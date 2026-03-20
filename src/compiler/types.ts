@@ -1,0 +1,94 @@
+import { ExecutionBlock, McpServer, Secret } from "../manifest/index.js";
+import { StringMap } from "../shared/index.js";
+
+export interface ResolvedDocument {
+  content: string;
+  role: string;
+  sourcePath: string;
+}
+
+export interface ResolvedSkill {
+  content: string;
+  name: string;
+  ref: string;
+  requiresMcp: string[];
+  sourcePath: string;
+}
+
+export interface ResolvedRuntime {
+  name: string;
+  options: Record<string, unknown>;
+}
+
+export interface ResolvedSubagentRef {
+  id: string;
+  nodeSource: string;
+}
+
+export interface ResolvedMemberRef {
+  id: string;
+  kind: "agent" | "team";
+  nodeSource: string;
+  runtimeName: string | null;
+}
+
+export interface ResolvedAgentNode {
+  docs: ResolvedDocument[];
+  env: StringMap;
+  execution: ExecutionBlock | undefined;
+  kind: "agent";
+  mcpServers: McpServer[];
+  name: string;
+  policyMode: string | null;
+  policyOnDegrade: string | null;
+  runtime: ResolvedRuntime;
+  secrets: Secret[];
+  skills: ResolvedSkill[];
+  source: string;
+  subagents: ResolvedSubagentRef[];
+}
+
+export interface ResolvedTeamStructure {
+  external: string[];
+  leader: string | null;
+  mode: "hierarchical" | "swarm";
+}
+
+export interface ResolvedTeamNode {
+  docs: ResolvedDocument[];
+  kind: "team";
+  members: ResolvedMemberRef[];
+  name: string;
+  policyMode: string | null;
+  policyOnDegrade: string | null;
+  shared: {
+    env: StringMap;
+    mcpServers: McpServer[];
+    secrets: Secret[];
+    skills: ResolvedSkill[];
+  };
+  source: string;
+  structure: ResolvedTeamStructure;
+}
+
+export interface CompilePlanEdge {
+  from: string;
+  kind: "subagent" | "team_member";
+  label: string;
+  to: string;
+}
+
+export interface CompilePlanNode {
+  id: string;
+  kind: "agent" | "team";
+  runtimeName: string | null;
+  slug: string;
+  value: ResolvedAgentNode | ResolvedTeamNode;
+}
+
+export interface CompilePlan {
+  edges: CompilePlanEdge[];
+  nodes: CompilePlanNode[];
+  root: string;
+  runtimes: Record<string, { nodeIds: string[] }>;
+}

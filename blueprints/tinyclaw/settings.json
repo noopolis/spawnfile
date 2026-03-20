@@ -1,0 +1,32 @@
+{
+  "workspace": {
+    "path": "<workspace-path>",
+    "name": "workspace"
+  },
+  "channels": {
+    "enabled": []
+  },
+  "agents": {
+    "default": {
+      "name": "TinyAGI Agent",
+      "provider": "anthropic",
+      "model": "opus",
+      "working_directory": "<workspace-path>/default"
+    }
+  },
+  "models": {
+    "provider": "anthropic"
+  },
+  "monitoring": {
+    "heartbeat_interval": 3600
+  },
+  "teams": {
+    "example-team": {
+      "name": "Example Team",
+      "agents": [
+        "default"
+      ],
+      "leader_agent": "default"
+    }
+  }
+}

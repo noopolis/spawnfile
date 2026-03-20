@@ -1,0 +1,35 @@
+spawnfile_version: "0.1"
+kind: team
+name: research-cell
+
+docs:
+  system: TEAM.md
+
+shared:
+  skills:
+    - ref: ./shared/skills/web_search
+  mcp_servers:
+    - name: web_search
+      transport: streamable_http
+      url: https://search.mcp.example.com/mcp
+      auth:
+        secret: SEARCH_API_KEY
+  secrets:
+    - name: SEARCH_API_KEY
+      required: true
+
+members:
+  - id: orchestrator
+    ref: ./agents/orchestrator
+  - id: researcher
+    ref: ./agents/researcher
+  - id: writer
+    ref: ./agents/writer
+
+structure:
+  mode: hierarchical
+  leader: orchestrator
+
+policy:
+  mode: warn
+  on_degrade: warn

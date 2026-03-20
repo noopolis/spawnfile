@@ -1,0 +1,46 @@
+# Runtime registry
+#
+# Each entry pins the stable version of a runtime that the Spawnfile
+# compiler currently targets or is researching.
+#
+# Fields:
+#   remote          Git clone URL
+#   ref             Pinned git ref — should be the latest stable tag
+#   default_branch  The repo's main branch (for fetch)
+#   status          active (has adapter) | exploratory (research only)
+#
+# Run ./scripts/runtimes.sh to clone or update all entries to their
+# pinned refs.
+
+runtimes:
+  openclaw:
+    remote: git@github.com:openclaw/openclaw.git
+    ref: v2026.3.13-1
+    default_branch: main
+    status: active
+
+  picoclaw:
+    remote: git@github.com:sipeed/picoclaw.git
+    ref: v0.2.3
+    default_branch: main
+    status: active
+
+  tinyclaw:
+    remote: git@github.com:TinyAGI/tinyclaw.git
+    ref: v0.0.15
+    default_branch: main
+    status: active
+
+  nullclaw:
+    remote: git@github.com:nullclaw/nullclaw.git
+    ref: v2026.3.17
+    default_branch: main
+    status: exploratory
+
+  zeroclaw:
+    remote: git@github.com:zeroclaw-labs/zeroclaw.git
+    ref: v0.5.0
+    default_branch: master
+    status: exploratory
+
+

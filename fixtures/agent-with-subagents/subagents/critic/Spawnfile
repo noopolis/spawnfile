@@ -1,0 +1,14 @@
+spawnfile_version: "0.1"
+kind: agent
+name: critic
+
+execution:
+  model:
+    primary:
+      provider: openai
+      name: gpt-4o-mini
+  sandbox:
+    mode: sandboxed
+
+docs:
+  system: AGENTS.md

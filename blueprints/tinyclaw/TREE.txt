@@ -1,0 +1,5 @@
+./settings.json
+./TREE.txt
+./workspace/default/AGENTS.md
+./workspace/default/heartbeat.md
+./workspace/default/SOUL.md

@@ -1,0 +1,8 @@
+./config.json
+./TREE.txt
+./workspace/AGENTS.md
+./workspace/HEARTBEAT.md
+./workspace/IDENTITY.md
+./workspace/memory/MEMORY.md
+./workspace/SOUL.md
+./workspace/USER.md

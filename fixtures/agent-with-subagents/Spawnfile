@@ -1,0 +1,31 @@
+spawnfile_version: "0.1"
+kind: agent
+name: editor
+
+runtime:
+  name: picoclaw
+  options:
+    restrict_to_workspace: true
+
+execution:
+  model:
+    primary:
+      provider: openai
+      name: gpt-4o-mini
+  workspace:
+    isolation: isolated
+  sandbox:
+    mode: workspace
+
+docs:
+  system: AGENTS.md
+
+subagents:
+  - id: researcher
+    ref: ./subagents/researcher
+  - id: critic
+    ref: ./subagents/critic
+
+policy:
+  mode: warn
+  on_degrade: warn

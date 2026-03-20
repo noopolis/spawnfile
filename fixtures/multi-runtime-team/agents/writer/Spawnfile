@@ -1,0 +1,18 @@
+spawnfile_version: "0.1"
+kind: agent
+name: writer
+
+runtime: tinyclaw
+
+execution:
+  model:
+    primary:
+      provider: anthropic
+      name: claude-sonnet-4-5
+  workspace:
+    isolation: isolated
+  sandbox:
+    mode: workspace
+
+docs:
+  soul: SOUL.md

@@ -1,0 +1,269 @@
+{
+  "default_temperature": 0.7,
+
+  "models": {
+    "providers": {
+      "openrouter": {
+        "api_key": "YOUR_OPENROUTER_API_KEY"
+      },
+      "azure": {
+        "api_key": "YOUR_AZURE_OPENAI_API_KEY",
+        "base_url": "https://your-resource.openai.azure.com"
+      },
+      "vertex": {
+        "api_key": {
+          "type": "service_account",
+          "project_id": "YOUR_GCP_PROJECT",
+          "client_email": "YOUR_SERVICE_ACCOUNT_EMAIL",
+          "private_key": "-----BEGIN PRIVATE KEY-----\\nYOUR_PRIVATE_KEY\\n-----END PRIVATE KEY-----\\n"
+        },
+        "base_url": "https://aiplatform.googleapis.com/v1/projects/YOUR_GCP_PROJECT/locations/global/publishers/google/models"
+      }
+    }
+  },
+
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "openrouter/anthropic/claude-sonnet-4"
+      }
+    }
+  },
+
+  "channels": {
+    "cli": true,
+    "telegram": {
+      "accounts": {
+        "main": {
+          "bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
+          "allow_from": ["YOUR_TELEGRAM_USER_ID"]
+        }
+      }
+    },
+    "external": {
+      "accounts": {
+        "wa-web": {
+          "runtime_name": "whatsapp_web",
+          "transport": {
+            "command": "nullclaw-plugin-whatsapp-web",
+            "args": ["--stdio"],
+            "timeout_ms": 10000,
+            "env": {
+              "PLUGIN_TOKEN": "YOUR_PLUGIN_TOKEN"
+            }
+          },
+          "config": {
+            "bridge_url": "http://127.0.0.1:3301",
+            "allow_from": ["*"]
+          }
+        }
+      }
+    },
+    "irc": {
+      "accounts": {
+        "meshrelay": {
+          "host": "irc.meshrelay.xyz",
+          "port": 6697,
+          "nick": "YOUR_AGENT_NICK",
+          "channels": ["#agents"],
+          "tls": true,
+          "nickserv_password": "YOUR_NICKSERV_PASSWORD",
+          "allow_from": ["*"]
+        }
+      }
+    }
+  },
+
+  "memory": {
+    "profile": "markdown_only",
+    "backend": "markdown",
+    "auto_save": true,
+    "citations": "auto",
+
+    "search": {
+      "enabled": true,
+      "provider": "none",
+      "model": "text-embedding-3-small",
+      "dimensions": 1536,
+      "fallback_provider": "none",
+      "store": {
+        "kind": "auto",
+        "sidecar_path": "",
+        "qdrant_url": "",
+        "qdrant_api_key": "",
+        "qdrant_collection": "nullclaw_memories",
+        "pgvector_table": "memory_embeddings"
+      },
+      "chunking": {
+        "max_tokens": 512,
+        "overlap": 64
+      },
+      "sync": {
+        "mode": "best_effort",
+        "embed_timeout_ms": 15000,
+        "vector_timeout_ms": 5000,
+        "embed_max_retries": 2,
+        "vector_max_retries": 2
+      },
+      "query": {
+        "max_results": 6,
+        "min_score": 0.0,
+        "merge_strategy": "rrf",
+        "rrf_k": 60,
+        "hybrid": {
+          "enabled": false,
+          "vector_weight": 0.7,
+          "text_weight": 0.3,
+          "candidate_multiplier": 4,
+          "mmr": { "enabled": false, "lambda": 0.7 },
+          "temporal_decay": { "enabled": false, "half_life_days": 30 }
+        }
+      },
+      "cache": {
+        "enabled": true,
+        "max_entries": 10000
+      }
+    },
+
+    "qmd": {
+      "enabled": false,
+      "command": "qmd",
+      "search_mode": "search",
+      "include_default_memory": true
+    },
+
+    "retrieval_stages": {
+      "query_expansion_enabled": false,
+      "adaptive_retrieval_enabled": false,
+      "adaptive_keyword_max_tokens": 3,
+      "adaptive_vector_min_tokens": 6,
+      "llm_reranker_enabled": false,
+      "llm_reranker_max_candidates": 10,
+      "llm_reranker_timeout_ms": 5000
+    },
+
+    "lifecycle": {
+      "hygiene_enabled": true,
+      "archive_after_days": 7,
+      "purge_after_days": 30,
+      "preserve_before_purge": true,
+      "conversation_retention_days": 30,
+      "snapshot_enabled": false,
+      "snapshot_on_hygiene": false,
+      "auto_hydrate": true
+    },
+
+    "response_cache": {
+      "enabled": false,
+      "ttl_minutes": 60,
+      "max_entries": 5000
+    },
+
+    "reliability": {
+      "rollout_mode": "off",
+      "circuit_breaker_failures": 5,
+      "circuit_breaker_cooldown_ms": 30000,
+      "shadow_hybrid_percent": 0,
+      "canary_hybrid_percent": 0,
+      "fallback_policy": "degrade"
+    },
+
+    "summarizer": {
+      "enabled": false,
+      "window_size_tokens": 4000,
+      "summary_max_tokens": 500,
+      "auto_extract_semantic": true
+    },
+
+    "postgres": {
+      "url": "postgresql://user:pass@localhost:5432/nullclaw",
+      "schema": "public",
+      "table": "memories",
+      "connect_timeout_secs": 30
+    },
+
+    "redis": {
+      "host": "127.0.0.1",
+      "port": 6379,
+      "password": "",
+      "db_index": 0,
+      "key_prefix": "nullclaw",
+      "ttl_seconds": 0
+    },
+
+    "api": {
+      "url": "http://localhost:8080",
+      "api_key": "",
+      "timeout_ms": 10000,
+      "namespace": ""
+    }
+  },
+
+  "reliability": {
+    "provider_retries": 2,
+    "provider_backoff_ms": 500,
+    "fallback_providers": [],
+    "model_fallbacks": []
+  },
+
+  "autonomy": {
+    "level": "supervised",
+    "workspace_only": true,
+    "max_actions_per_hour": 20,
+    "allow_raw_url_chars": false
+  },
+
+  "gateway": {
+    "port": 3000,
+    "host": "127.0.0.1",
+    "require_pairing": true
+  },
+
+  "tunnel": {
+    "provider": "none",
+    "ngrok": {
+      "auth_token": "YOUR_NGROK_AUTH_TOKEN",
+      "domain": "your-domain.ngrok-free.app"
+    },
+    "cloudflare": {
+      "token": "YOUR_CLOUDFLARE_TUNNEL_TOKEN"
+    },
+    "tailscale": {
+      "funnel": false,
+      "hostname": "your-hostname.ts.net"
+    },
+    "custom": {
+      "start_command": "/path/to/tunnel-start.sh",
+      "health_url": "http://localhost:4040/api/tunnels",
+      "url_pattern": "https://[a-z0-9-]+\\.[a-z]+"
+    }
+  },
+
+  "a2a": {
+    "enabled": false,
+    "name": "NullClaw",
+    "description": "AI assistant",
+    "url": "https://agent.example.com",
+    "version": "1.0.0"
+  },
+
+  "http_request": {
+    "enabled": false,
+    "max_response_size": 1000000,
+    "timeout_secs": 30,
+    "allowed_domains": [],
+    "search_base_url": null,
+    "search_provider": "auto",
+    "search_fallback_providers": ["jina", "duckduckgo"]
+  },
+
+
+  "security": {
+    "sandbox": {
+      "backend": "auto"
+    },
+    "audit": {
+      "enabled": true
+    }
+  }
+}

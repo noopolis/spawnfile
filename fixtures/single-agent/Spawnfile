@@ -1,0 +1,43 @@
+spawnfile_version: "0.1"
+kind: agent
+name: analyst
+
+runtime: openclaw
+
+execution:
+  model:
+    primary:
+      provider: anthropic
+      name: claude-sonnet-4-5
+  workspace:
+    isolation: isolated
+  sandbox:
+    mode: workspace
+
+docs:
+  identity: IDENTITY.md
+  soul: SOUL.md
+  system: AGENTS.md
+  memory: MEMORY.md
+  heartbeat: HEARTBEAT.md
+
+skills:
+  - ref: ./skills/web_search
+    requires:
+      mcp:
+        - web_search
+
+mcp_servers:
+  - name: web_search
+    transport: streamable_http
+    url: https://search.mcp.example.com/mcp
+    auth:
+      secret: SEARCH_API_KEY
+
+secrets:
+  - name: SEARCH_API_KEY
+    required: true
+
+policy:
+  mode: warn
+  on_degrade: warn

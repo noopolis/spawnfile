@@ -1,0 +1,16 @@
+spawnfile_version: "0.1"
+kind: agent
+name: researcher
+
+runtime: picoclaw
+
+execution:
+  model:
+    primary:
+      provider: openai
+      name: gpt-4o-mini
+  sandbox:
+    mode: workspace
+
+docs:
+  system: AGENTS.md
