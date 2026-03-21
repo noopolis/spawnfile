@@ -724,6 +724,31 @@ Incompatible (removed from registry):
 
 All five supported runtimes share the core pattern: a JSON or TOML config file plus separate markdown docs in a workspace directory. See `blueprints/` for the frozen reference layouts.
 
+### Verified Runtime Notes At Pinned Versions
+
+These are implementation notes from adapter work and container smoke verification at the currently pinned refs. They are informative, not normative.
+
+#### OpenClaw
+
+- Container output was verified from the host, not only inside Docker.
+- The generated runtime must bind to a host-reachable gateway setting for Docker port publishing to be useful.
+- The compiled output can place config and workspace files into final runtime paths at build time; the entrypoint only needs validation and startup.
+- The host-side smoke checks that currently matter are the control UI root path and `/healthz`.
+
+#### PicoClaw
+
+- The pinned runtime version currently needs `workspace/` copied into `cmd/picoclaw/internal/onboard/workspace` before `go build` succeeds in a clean checkout.
+- Provider auth is not satisfied by ambient env alone in the generated config path. The compiled config needs `model_list[].api_key` file references such as `file://secrets/OPENAI_API_KEY`, and the entrypoint must materialize those files from env before startup.
+- Clean container boot currently uses `picoclaw gateway --allow-empty`.
+- Health endpoints are exposed on `/health` and `/ready`.
+- The current compile/build flow runs one PicoClaw gateway process per compiled target and increments ports from the adapter base port.
+
+#### TinyClaw
+
+- TinyClaw is the strongest current native team target: one runtime process can host compiled agents plus the compiled team object.
+- The current host-side verification surface is `GET /api/agents` on port `3777`.
+- The compiled output can pre-place the runtime settings and workspace into final container paths; the entrypoint only needs minimal validation and startup.
+
 ---
 
 ## Open Questions To Research Later

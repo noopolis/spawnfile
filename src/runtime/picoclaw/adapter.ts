@@ -1,6 +1,11 @@
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import type { McpServer } from "../../manifest/index.js";
-import type { AdapterCompileResult, RuntimeAdapter } from "../types.js";
+import type {
+  AdapterCompileResult,
+  ContainerTarget,
+  ContainerTargetInput,
+  RuntimeAdapter
+} from "../types.js";
 import {
   createAgentCapabilities,
   createDiagnostic,
@@ -14,23 +19,40 @@ const formatModelName = (node: ResolvedAgentNode): string | null => {
   return primary.name;
 };
 
+const MODEL_PROVIDER_ENV_VARS = new Map<string, string>([
+  ["anthropic", "ANTHROPIC_API_KEY"],
+  ["google", "GOOGLE_API_KEY"],
+  ["groq", "GROQ_API_KEY"],
+  ["mistral", "MISTRAL_API_KEY"],
+  ["openai", "OPENAI_API_KEY"],
+  ["openrouter", "OPENROUTER_API_KEY"],
+  ["xai", "XAI_API_KEY"]
+]);
+
+const formatProviderEnvName = (provider: string): string =>
+  MODEL_PROVIDER_ENV_VARS.get(provider) ??
+  `${provider.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_API_KEY`;
+
+const createProviderSecretPath = (provider: string): string =>
+  `secrets/${formatProviderEnvName(provider)}`;
+
 const buildModelList = (node: ResolvedAgentNode): Array<Record<string, unknown>> => {
   const entries: Array<Record<string, unknown>> = [];
   const primary = node.execution?.model?.primary;
 
   if (primary) {
     entries.push({
+      api_key: `file://${createProviderSecretPath(primary.provider)}`,
       model_name: primary.name,
-      model: `${primary.provider}/${primary.name}`,
-      api_key: ""
+      model: `${primary.provider}/${primary.name}`
     });
   }
 
   for (const fallback of node.execution?.model?.fallback ?? []) {
     entries.push({
+      api_key: `file://${createProviderSecretPath(fallback.provider)}`,
       model_name: fallback.name,
-      model: `${fallback.provider}/${fallback.name}`,
-      api_key: ""
+      model: `${fallback.provider}/${fallback.name}`
     });
   }
 
@@ -91,6 +113,28 @@ const buildPicoClawConfig = (node: ResolvedAgentNode): string => {
   return `${JSON.stringify(config, null, 2)}\n`;
 };
 
+const createContainerTargets = async (
+  inputs: ContainerTargetInput[]
+): Promise<ContainerTarget[]> =>
+  inputs.map((input) => {
+    const agent = input.value as ResolvedAgentNode;
+    const providers = [
+      agent.execution?.model?.primary?.provider,
+      ...(agent.execution?.model?.fallback ?? []).map((model) => model.provider)
+    ].filter((provider): provider is string => Boolean(provider));
+
+    const envFiles = [...new Set(providers)].map((provider) => ({
+      envName: formatProviderEnvName(provider),
+      relativePath: createProviderSecretPath(provider)
+    }));
+
+    return {
+      envFiles,
+      files: input.emittedFiles,
+      id: `${input.kind}-${input.slug}`
+    };
+  });
+
 export const picoClawAdapter: RuntimeAdapter = {
   container: {
     configFileName: "config.json",
@@ -104,7 +148,7 @@ export const picoClawAdapter: RuntimeAdapter = {
     port: 18790,
     portEnv: "PICOCLAW_GATEWAY_PORT",
     standaloneBaseImage: "golang:1.25-bookworm",
-    startCommand: ["picoclaw", "gateway"],
+    startCommand: ["picoclaw", "gateway", "--allow-empty"],
     staticEnv: {
       PICOCLAW_GATEWAY_HOST: "0.0.0.0"
     },
@@ -123,6 +167,9 @@ export const picoClawAdapter: RuntimeAdapter = {
         }
       ]
     };
+  },
+  async createContainerTargets(inputs): Promise<ContainerTarget[]> {
+    return createContainerTargets(inputs);
   },
   name: "picoclaw",
   validateRuntimeOptions(options) {

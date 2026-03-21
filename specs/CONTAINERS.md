@@ -27,6 +27,9 @@ dist/
 ├── Dockerfile
 ├── entrypoint.sh
 ├── .env.example
+├── container/
+│   └── rootfs/
+│       └── var/lib/spawnfile/instances/...
 ├── runtimes/
 │   ├── openclaw/agents/analyst/...
 │   └── picoclaw/agents/editor/...
@@ -34,6 +37,8 @@ dist/
 ```
 
 The `Dockerfile` and `entrypoint.sh` are derived from the compile plan. They are not templates chosen by the user — the compiler generates them based on the resolved graph.
+
+`runtimes/` is the human-inspectable adapter output. `container/rootfs/` is the final container filesystem emitted by the compiler for build-time placement into the runtime's expected paths.
 
 ---
 
@@ -43,39 +48,61 @@ The `Dockerfile` and `entrypoint.sh` are derived from the compile plan. They are
 
 Each runtime adapter should declare:
 
-- a base image or install strategy (e.g. `npm install -g openclaw@latest`, `FROM sipeed/picoclaw:latest`)
+- a standalone base image or install strategy aligned with the pinned runtime ref
 - system dependencies required
 - the expected config and workspace paths inside the container
+- the start command and any runtime env it needs
 
-For single-runtime compiles, the Dockerfile uses that runtime's base image or install strategy directly.
+For single-runtime compiles, the Dockerfile uses that runtime's standalone base image or install strategy directly.
 
-For multi-runtime compiles, the Dockerfile should use a common base (e.g. `node:22-bookworm-slim`) and install each runtime.
+For multi-runtime compiles, the Dockerfile should use a common base and install each runtime.
 
 ### Runtime Installation
 
 Each adapter should expose enough information to generate install steps:
 
-```yaml
-containerMeta:
-  base_image: node:22-bookworm-slim          # or null if using install strategy
-  official_image: sipeed/picoclaw:latest      # if available
-  install: npm install -g openclaw@latest     # package install command
-  system_deps:                                # apt packages needed
-    - git
-    - bash
-    - ca-certificates
-  config_dir: /data/openclaw                  # where config lives
-  workspace_dir: /data/openclaw/workspace     # where workspace docs go
-  bin: openclaw                               # CLI binary name
+```typescript
+interface RuntimeContainerMeta {
+  configFileName: string;
+  configPathEnv?: string;
+  env?: Array<{
+    description: string;
+    name: string;
+    required: boolean;
+  }>;
+  homeEnv?: string;
+  instancePaths: {
+    configPathTemplate: string;
+    homePathTemplate?: string;
+    workspacePathTemplate: string;
+  };
+  port?: number;
+  portEnv?: string;
+  standaloneBaseImage: string;
+  startCommand: string[];
+  staticEnv?: Record<string, string>;
+  systemDeps: string[];
+}
+
+interface ContainerTarget {
+  id: string;
+  files: EmittedFile[];
+  envFiles?: Array<{
+    envName: string;
+    relativePath: string;
+  }>;
+}
 ```
 
-The compiler uses this metadata to compose the Dockerfile. Adapters own their runtime's container story; the compiler just stitches them together.
+The compiler uses this metadata to compose the Dockerfile and entrypoint. Adapters own their runtime's container story; the compiler just stitches them together.
 
 ### Pinned Versions
 
 The runtime version used in the Dockerfile should match the pinned `ref` from `runtimes.yaml`. This keeps the compiled container aligned with the runtime version the adapters were written against.
 
-If the adapter's install command supports version pinning (e.g. `npm install -g openclaw@v2026.3.13-1`), the compiler should use the pinned version. Otherwise, it should note this in the compile report as a diagnostic.
+`spawnfile compile` itself should not require local runtime clones on the compiler machine. The compile step reads the registry metadata and adapter contracts; the Docker build step is responsible for fetching or installing the pinned runtime artifact.
+
+The v0.1 reference implementation currently uses pinned source-checkout install recipes. Other install strategies may be added later, but they must stay aligned with the pinned ref.
 
 ---
 
@@ -83,22 +110,29 @@ If the adapter's install command supports version pinning (e.g. `npm install -g 
 
 The entrypoint script is responsible for:
 
-1. Provisioning compiled config and workspace files into the paths the runtime expects
-2. Starting the runtime process(es)
+1. Validating required env and required files
+2. Materializing env-backed secret files when a runtime expects file-based auth
+3. Starting the runtime process(es)
 
 ### Single-Runtime
 
-For a single runtime, the entrypoint:
+For a single runtime, the compiler should prefer build-time placement into the runtime's final config and workspace paths under `container/rootfs/`.
 
-- copies or symlinks compiled config into the runtime's config path
-- copies compiled workspace files into the runtime's workspace path
-- execs the runtime's start command
+The entrypoint should then stay minimal:
+
+- validate required env vars
+- validate that the compiled config exists at the expected final path
+- write env-backed secret files when needed
+- `exec` the runtime's start command
 
 ### Multi-Runtime
 
-For multiple runtimes in one container, the entrypoint:
+For multiple runtimes in one container, the compiler should still pre-place config and workspace files into final paths at build time.
 
-- provisions each runtime's config and workspace files
+The entrypoint then:
+
+- validates required env and config for each target
+- writes env-backed secret files for each target when needed
 - starts each runtime process
 - traps signals and forwards them to all child processes
 - waits for all processes
@@ -112,7 +146,7 @@ This follows the pattern used by existing multi-agent deployments (e.g. picoclaw
 - **Team with members on one runtime**: one runtime process with multi-agent config (if the runtime supports it), or one process per agent
 - **Team with members on multiple runtimes**: one process group, one runtime process per distinct runtime
 
-The entrypoint does not need to understand agent semantics. It only needs to know which runtime processes to start and which config to provision for each.
+The entrypoint does not need to understand agent semantics. It only needs to know which runtime processes to start, which env files to materialize, and where the final compiled config already lives.
 
 ---
 
@@ -132,41 +166,15 @@ At runtime, secrets are injected via:
 - environment variable pass-through
 - mounted secret files
 
+If a runtime expects secret file references in its config, the adapter should declare those env-to-file bindings and the entrypoint should materialize them before startup.
+
 ---
 
 ## Adapter Container Contract
 
-Each runtime adapter should expose container metadata as part of its adapter interface. Suggested shape:
+Each runtime adapter should expose container metadata as part of its adapter interface, plus optional per-target container overrides such as env-backed secret files.
 
-```typescript
-interface ContainerMeta {
-  /** Base image for standalone use, or null to use common base */
-  officialImage?: string;
-
-  /** Install command when using common base */
-  install: string;
-
-  /** System packages needed (apt-get) */
-  systemDeps: string[];
-
-  /** Path where runtime config should be placed */
-  configDir: string;
-
-  /** Path where workspace docs should be placed */
-  workspaceDir: string;
-
-  /** CLI binary name */
-  bin: string;
-
-  /** Default start command */
-  startCommand: string[];
-
-  /** Default exposed port, if any */
-  port?: number;
-}
-```
-
-The compiler calls each relevant adapter for its `ContainerMeta`, then composes the Dockerfile and entrypoint from the combined metadata.
+The compiler calls each relevant adapter for its container metadata and container targets, then composes the Dockerfile and entrypoint from the combined metadata.
 
 ---
 
@@ -197,7 +205,7 @@ These are explicitly out of scope for v0.1 container compilation:
 - Orchestration (Kubernetes, ECS, Fly, etc.)
 - Image publishing and registry
 - Runtime-native auth bootstrap (onboarding flows stay manual)
-- Health checks beyond basic process liveness
+- emitted Docker `HEALTHCHECK` instructions or richer readiness contracts
 - Volume management and persistence strategy
 - Network topology between containers
 - CI/CD integration
@@ -214,6 +222,13 @@ The compiler should verify at compile time:
 - config and workspace paths do not collide across runtimes
 
 At build/run time, validation is the container's responsibility — the entrypoint should fail fast with clear errors if required config or secrets are missing.
+
+Adapter verification at the pinned ref should include:
+
+- `spawnfile compile`
+- `docker build`
+- `docker run`
+- a host-side smoke check against the runtime's exposed health or API endpoint when the runtime exposes network services
 
 ---
 

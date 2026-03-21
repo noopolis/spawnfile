@@ -139,10 +139,14 @@ describe("createContainerArtifacts", () => {
     expect(dockerfile).not.toContain("COPY . /opt/spawnfile");
     expect(entrypoint).toContain("PICOCLAW_HOME=");
     expect(entrypoint).toContain("PICOCLAW_GATEWAY_HOST='0.0.0.0'");
+    expect(entrypoint).toContain(
+      "write_env_file 'OPENAI_API_KEY' '/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw/secrets/OPENAI_API_KEY'"
+    );
     expect(entrypoint).not.toContain("prepare_target");
     expect(configFile?.content).toContain(
       "/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw/workspace"
     );
+    expect(configFile?.content).toContain("file://secrets/OPENAI_API_KEY");
   });
 
   it("fails when a runtime emits files outside config or workspace", async () => {

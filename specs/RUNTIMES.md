@@ -81,6 +81,8 @@ Do not bump `ref` speculatively. The pin represents "the adapter works at this v
 
 The cloned repositories live in `runtimes/` at the repo root. This directory is gitignored.
 
+These local clones are for research, blueprint generation, and adapter development. `spawnfile compile` should not require local runtime clones on the compiler machine; container build/install should use the registry pin plus the adapter's install strategy.
+
 ---
 
 ## Adapter Lifecycle
@@ -99,6 +101,8 @@ A runtime moves from `exploratory` to `active` when:
 - an adapter exists in `src/runtime/<name>/`
 - the adapter passes tests against the pinned version
 - the adapter is registered in `src/runtime/registry.ts`
+- the compiled output can be built and the runtime can boot at the pinned version
+- if the runtime exposes a host-reachable service, a host-side smoke check succeeds against that service
 
 ### Deprecating A Runtime
 
@@ -109,6 +113,8 @@ A runtime moves to `deprecated` when:
 - the runtime's config surface has diverged beyond reasonable adapter maintenance
 
 Deprecated runtimes stay in the registry for reference but the compiler should warn when targeting them.
+
+Operational discoveries about a pinned runtime version — build quirks, auth surfaces, health endpoints, container boot behavior — should be recorded in `specs/research/RUNTIME-NOTES.md`.
 
 ---
 

@@ -14,7 +14,13 @@ export interface ContainerTargetInput {
   value: ResolvedAgentNode | ResolvedTeamNode;
 }
 
+export interface ContainerTargetEnvFile {
+  envName: string;
+  relativePath: string;
+}
+
 export interface ContainerTarget {
+  envFiles?: ContainerTargetEnvFile[];
   files: EmittedFile[];
   id: string;
 }

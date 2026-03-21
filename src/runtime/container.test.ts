@@ -20,6 +20,9 @@ describe("runtime container install recipes", () => {
     const recipe = await createRuntimeInstallRecipe("picoclaw");
 
     expect(recipe.commands).toContain(
+      `cd ${RUNTIME_SOURCE_ROOT}/picoclaw && cp -R workspace cmd/picoclaw/internal/onboard/workspace`
+    );
+    expect(recipe.commands).toContain(
       `cd ${RUNTIME_SOURCE_ROOT}/picoclaw && go build -o /usr/local/bin/picoclaw ./cmd/picoclaw`
     );
   });

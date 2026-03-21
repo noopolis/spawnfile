@@ -11,6 +11,7 @@ Spawnfile is a spec and source format for declaring autonomous agents and teams 
 A Spawnfile source project is a directory you own and version. It describes the portable parts of an agent: markdown identity docs, skills, MCP connections, runtime binding, execution intent, and team structure.
 
 `spawnfile compile` lowers that canonical source into runtime-specific config and workspace files. It is not a runtime-to-runtime translator. The compiler starts from the canonical source and emits each declared adapter's output.
+It also emits runnable container artifacts for the compiled output: `Dockerfile`, `entrypoint.sh`, `.env.example`, and a prebuilt `container/rootfs/` tree.
 
 ---
 
@@ -85,6 +86,8 @@ npm run runtimes:sync
 ```
 
 This clones each runtime at the version pinned in `runtimes.yaml` and generates blueprints showing the expected config and workspace layout. See `blueprints/` for the output.
+
+These clones are for local research, blueprint generation, and adapter work. `spawnfile compile` itself does not need local runtime clones.
 
 For local development without linking globally:
 
@@ -211,6 +214,19 @@ spawnfile compile fixtures/single-agent --out ./dist/example
 ```
 
 The compiler emits runtime-specific artifacts under `dist/runtimes/...` and writes a machine-readable `spawnfile-report.json`.
+
+It also emits:
+
+- final container filesystem output under `dist/container/rootfs/...`
+- `Dockerfile`, `entrypoint.sh`, `.env.example`
+
+There is no separate `spawnfile build` command yet. The current build step is standard Docker against the compile output:
+
+```bash
+cd ./dist/example
+docker build -t example-agent .
+docker run --env-file .env -p 18789:18789 example-agent
+```
 
 ---
 

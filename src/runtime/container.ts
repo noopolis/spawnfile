@@ -56,6 +56,7 @@ export const createRuntimeInstallRecipe = async (
       return {
         commands: [
           ...checkoutCommands,
+          `cd ${runtimeRoot} && cp -R workspace cmd/picoclaw/internal/onboard/workspace`,
           `cd ${runtimeRoot} && go build -o /usr/local/bin/picoclaw ./cmd/picoclaw`
         ],
         runtimeName,

@@ -41,7 +41,7 @@ describe("picoClawAdapter", () => {
       port: 18790,
       portEnv: "PICOCLAW_GATEWAY_PORT",
       standaloneBaseImage: "golang:1.25-bookworm",
-      startCommand: ["picoclaw", "gateway"],
+      startCommand: ["picoclaw", "gateway", "--allow-empty"],
       staticEnv: {
         PICOCLAW_GATEWAY_HOST: "0.0.0.0"
       },
@@ -58,6 +58,7 @@ describe("picoClawAdapter", () => {
     expect(config.agents.defaults.model_name).toBe("gpt-4o-mini");
     expect(config.agents.defaults.restrict_to_workspace).toBe(true);
     expect(config.model_list[0].model).toBe("openai/gpt-4o-mini");
+    expect(config.model_list[0].api_key).toBe("file://secrets/OPENAI_API_KEY");
     expect(config.model).toBeUndefined();
   });
 
@@ -93,9 +94,49 @@ describe("picoClawAdapter", () => {
     const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
     expect(config.model_list).toHaveLength(2);
     expect(config.model_list[1].model).toBe("anthropic/claude-sonnet-4-5");
+    expect(config.model_list[1].api_key).toBe("file://secrets/ANTHROPIC_API_KEY");
     expect(config.tools.mcp.servers.web.type).toBe("http");
     expect(config.tools.mcp.servers.web.url).toBe("https://example.com/mcp");
     expect(config.tools.mcp.servers.web.headers.SEARCH_API_KEY).toBe("");
+  });
+
+  it("declares per-target provider secret files for container boot", async () => {
+    const [target] = await picoClawAdapter.createContainerTargets?.([
+      {
+        emittedFiles: (await picoClawAdapter.compileAgent({
+          ...node,
+          execution: {
+            model: {
+              fallback: [{ name: "claude-sonnet-4-5", provider: "anthropic" }],
+              primary: {
+                name: "gpt-4o-mini",
+                provider: "openai"
+              }
+            }
+          }
+        })).files,
+        id: "agent:assistant",
+        kind: "agent",
+        slug: "assistant",
+        value: {
+          ...node,
+          execution: {
+            model: {
+              fallback: [{ name: "claude-sonnet-4-5", provider: "anthropic" }],
+              primary: {
+                name: "gpt-4o-mini",
+                provider: "openai"
+              }
+            }
+          }
+        }
+      }
+    ]) ?? [];
+
+    expect(target?.envFiles).toEqual([
+      { envName: "OPENAI_API_KEY", relativePath: "secrets/OPENAI_API_KEY" },
+      { envName: "ANTHROPIC_API_KEY", relativePath: "secrets/ANTHROPIC_API_KEY" }
+    ]);
   });
 
   it("validates runtime option types", () => {
