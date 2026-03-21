@@ -92,6 +92,24 @@ const buildPicoClawConfig = (node: ResolvedAgentNode): string => {
 };
 
 export const picoClawAdapter: RuntimeAdapter = {
+  container: {
+    configFileName: "config.json",
+    configPathEnv: "PICOCLAW_CONFIG",
+    homeEnv: "PICOCLAW_HOME",
+    instancePaths: {
+      configPathTemplate: "<instance-root>/picoclaw/<config-file>",
+      homePathTemplate: "<instance-root>/picoclaw",
+      workspacePathTemplate: "<instance-root>/picoclaw/workspace"
+    },
+    port: 18790,
+    portEnv: "PICOCLAW_GATEWAY_PORT",
+    standaloneBaseImage: "golang:1.25-bookworm",
+    startCommand: ["picoclaw", "gateway"],
+    staticEnv: {
+      PICOCLAW_GATEWAY_HOST: "0.0.0.0"
+    },
+    systemDeps: ["bash", "ca-certificates", "git"]
+  },
   async compileAgent(node): Promise<AdapterCompileResult> {
     return {
       capabilities: createAgentCapabilities(node),

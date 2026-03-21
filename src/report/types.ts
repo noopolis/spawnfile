@@ -25,7 +25,17 @@ export interface NodeReport {
   source: string;
 }
 
+export interface ContainerReport {
+  dockerfile: string;
+  entrypoint: string;
+  env_example: string;
+  ports: number[];
+  runtimes_installed: string[];
+  secrets_required: string[];
+}
+
 export interface CompileReport {
+  container?: ContainerReport;
   diagnostics: DiagnosticReport[];
   nodes: NodeReport[];
   root: string;

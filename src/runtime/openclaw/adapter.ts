@@ -24,9 +24,18 @@ const buildOpenClawConfig = (node: ResolvedAgentNode): string => {
       }
     },
     gateway: {
+      auth: {
+        mode: "token"
+      },
+      bind: "lan",
+      controlUi: {
+        allowedOrigins: [
+          "http://127.0.0.1:<gateway-port>",
+          "http://localhost:<gateway-port>"
+        ]
+      },
       mode: "local",
-      port: 18789,
-      bind: "loopback"
+      port: "<gateway-port>"
     }
   };
 
@@ -34,6 +43,36 @@ const buildOpenClawConfig = (node: ResolvedAgentNode): string => {
 };
 
 export const openClawAdapter: RuntimeAdapter = {
+  container: {
+    configFileName: "openclaw.json",
+    configPathEnv: "OPENCLAW_CONFIG_PATH",
+    env: [
+      {
+        description: "Gateway auth token required for non-loopback OpenClaw access",
+        name: "OPENCLAW_GATEWAY_TOKEN",
+        required: true
+      }
+    ],
+    homeEnv: "OPENCLAW_HOME",
+    instancePaths: {
+      configPathTemplate: "<instance-root>/home/.openclaw/<config-file>",
+      homePathTemplate: "<instance-root>/home",
+      workspacePathTemplate: "<instance-root>/home/.openclaw/workspace"
+    },
+    port: 18789,
+    portEnv: "OPENCLAW_GATEWAY_PORT",
+    standaloneBaseImage: "node:22-bookworm-slim",
+    startCommand: [
+      "node",
+      "<runtime-root>/openclaw.mjs",
+      "gateway",
+      "--allow-unconfigured",
+      "--port",
+      "<port>",
+      "--verbose"
+    ],
+    systemDeps: ["bash", "ca-certificates", "git", "python3", "make", "g++"]
+  },
   async compileAgent(node): Promise<AdapterCompileResult> {
     return {
       capabilities: createAgentCapabilities(node, {

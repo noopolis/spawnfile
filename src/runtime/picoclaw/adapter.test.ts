@@ -28,6 +28,27 @@ const node: ResolvedAgentNode = {
 };
 
 describe("picoClawAdapter", () => {
+  it("exposes container metadata for gateway boot", () => {
+    expect(picoClawAdapter.container).toEqual({
+      configFileName: "config.json",
+      configPathEnv: "PICOCLAW_CONFIG",
+      homeEnv: "PICOCLAW_HOME",
+      instancePaths: {
+        configPathTemplate: "<instance-root>/picoclaw/<config-file>",
+        homePathTemplate: "<instance-root>/picoclaw",
+        workspacePathTemplate: "<instance-root>/picoclaw/workspace"
+      },
+      port: 18790,
+      portEnv: "PICOCLAW_GATEWAY_PORT",
+      standaloneBaseImage: "golang:1.25-bookworm",
+      startCommand: ["picoclaw", "gateway"],
+      staticEnv: {
+        PICOCLAW_GATEWAY_HOST: "0.0.0.0"
+      },
+      systemDeps: ["bash", "ca-certificates", "git"]
+    });
+  });
+
   it("emits config with agents.defaults and model_list", async () => {
     const result = await picoClawAdapter.compileAgent(node);
     const configFile = result.files.find((file) => file.path === "config.json");
@@ -45,6 +66,36 @@ describe("picoClawAdapter", () => {
     const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
     expect(config.tools.mcp.enabled).toBe(true);
     expect(config.tools.mcp.servers.local.command).toBe("node");
+  });
+
+  it("emits fallback models and http MCP servers", async () => {
+    const result = await picoClawAdapter.compileAgent({
+      ...node,
+      execution: {
+        model: {
+          fallback: [{ name: "claude-sonnet-4-5", provider: "anthropic" }],
+          primary: {
+            name: "gpt-4o-mini",
+            provider: "openai"
+          }
+        }
+      },
+      mcpServers: [
+        {
+          auth: { secret: "SEARCH_API_KEY" },
+          name: "web",
+          transport: "streamable_http",
+          url: "https://example.com/mcp"
+        }
+      ]
+    });
+
+    const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
+    expect(config.model_list).toHaveLength(2);
+    expect(config.model_list[1].model).toBe("anthropic/claude-sonnet-4-5");
+    expect(config.tools.mcp.servers.web.type).toBe("http");
+    expect(config.tools.mcp.servers.web.url).toBe("https://example.com/mcp");
+    expect(config.tools.mcp.servers.web.headers.SEARCH_API_KEY).toBe("");
   });
 
   it("validates runtime option types", () => {

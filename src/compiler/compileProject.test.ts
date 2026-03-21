@@ -1,6 +1,7 @@
 import path from "node:path";
 import os from "node:os";
 import { mkdtemp } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -34,10 +35,84 @@ describe("compileProject", () => {
     await expect(
       fileExists(path.join(outputDirectory, "runtimes", "openclaw", "agents", "analyst", "openclaw.json"))
     ).resolves.toBe(true);
+    await expect(fileExists(path.join(outputDirectory, "Dockerfile"))).resolves.toBe(true);
+    await expect(fileExists(path.join(outputDirectory, "entrypoint.sh"))).resolves.toBe(true);
+    await expect(fileExists(path.join(outputDirectory, ".env.example"))).resolves.toBe(true);
+    await expect(
+      fileExists(
+        path.join(
+          outputDirectory,
+          "container",
+          "rootfs",
+          "var",
+          "lib",
+          "spawnfile",
+          "instances",
+          "openclaw",
+          "agent-analyst",
+          "home",
+          ".openclaw",
+          "openclaw.json"
+        )
+      )
+    ).resolves.toBe(true);
 
     const agentNode = result.report.nodes.find((node) => node.kind === "agent");
     expect(agentNode?.runtime_ref).toBe("v2026.3.13-1");
     expect(agentNode?.runtime_status).toBe("active");
+    expect(result.report.container).toEqual({
+      dockerfile: "Dockerfile",
+      entrypoint: "entrypoint.sh",
+      env_example: ".env.example",
+      ports: [18789],
+      runtimes_installed: ["openclaw"],
+      secrets_required: ["ANTHROPIC_API_KEY", "OPENCLAW_GATEWAY_TOKEN", "SEARCH_API_KEY"]
+    });
+
+    const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
+    expect(dockerfile).toContain("FROM node:22-bookworm-slim");
+    expect(dockerfile).toContain("runtime-sources/openclaw");
+    expect(dockerfile).toContain("pnpm canvas:a2ui:bundle");
+    expect(dockerfile).toContain("pnpm build:docker");
+    expect(dockerfile).toContain("COPY container/rootfs/ /");
+    expect(dockerfile).not.toContain("COPY . /opt/spawnfile");
+
+    const envExample = await readUtf8File(path.join(outputDirectory, ".env.example"));
+    expect(envExample).toContain("ANTHROPIC_API_KEY=");
+    expect(envExample).toContain("OPENCLAW_GATEWAY_TOKEN=");
+    expect(envExample).toContain("SEARCH_API_KEY=");
+
+    const entrypointStat = await stat(path.join(outputDirectory, "entrypoint.sh"));
+    expect(entrypointStat.mode & 0o111).toBeGreaterThan(0);
+
+    const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
+    expect(entrypoint).toContain("/opt/spawnfile/runtime-sources/openclaw/openclaw.mjs");
+    expect(entrypoint).not.toContain("<runtime-root>");
+    expect(entrypoint).not.toContain("prepare_target");
+
+    const rootedConfig = await readUtf8File(
+      path.join(
+        outputDirectory,
+        "container",
+        "rootfs",
+        "var",
+        "lib",
+        "spawnfile",
+        "instances",
+        "openclaw",
+        "agent-analyst",
+        "home",
+        ".openclaw",
+        "openclaw.json"
+      )
+    );
+    expect(rootedConfig).not.toContain("<workspace-path>");
+    expect(rootedConfig).toContain(
+      "/var/lib/spawnfile/instances/openclaw/agent-analyst/home/.openclaw/workspace"
+    );
+    expect(rootedConfig).toContain('"bind": "lan"');
+    expect(rootedConfig).toContain('"allowedOrigins"');
+    expect(rootedConfig).toContain('"http://127.0.0.1:18789"');
   });
 
   it("marks a multi-runtime team as degraded at team level", async () => {
@@ -55,6 +130,34 @@ describe("compileProject", () => {
 
     const reportJson = await readUtf8File(result.reportPath);
     expect(reportJson).toContain("research-cell");
+    expect(result.report.container).toEqual({
+      dockerfile: "Dockerfile",
+      entrypoint: "entrypoint.sh",
+      env_example: ".env.example",
+      ports: [3777, 18789, 18790],
+      runtimes_installed: ["openclaw", "picoclaw", "tinyclaw"],
+      secrets_required: [
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENCLAW_GATEWAY_TOKEN",
+        "SEARCH_API_KEY"
+      ]
+    });
+
+    const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
+    expect(dockerfile).toContain("FROM golang:1.25-bookworm");
+    expect(dockerfile).toContain("runtime-sources/openclaw");
+    expect(dockerfile).toContain("runtime-sources/picoclaw");
+    expect(dockerfile).toContain("runtime-sources/tinyclaw");
+    expect(dockerfile).toContain("go build -o /usr/local/bin/picoclaw ./cmd/picoclaw");
+    expect(dockerfile).toContain("npm run build");
+
+    const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
+    expect(entrypoint).toContain("OPENCLAW_HOME=");
+    expect(entrypoint).toContain("PICOCLAW_HOME=");
+    expect(entrypoint).toContain("TINYAGI_HOME=");
+    expect(entrypoint).toContain("/opt/spawnfile/runtime-sources/tinyclaw/packages/main/dist/index.js");
+    expect(entrypoint).not.toContain("prepare_target");
   });
 
   it("marks a single-runtime team as degraded when the runtime has no native team compiler", async () => {
@@ -132,6 +235,55 @@ describe("compileProject", () => {
     ).rejects.toThrow(/restrict_to_workspace/);
   });
 
+  it("fails when policy sets on_degrade to error for degraded capabilities", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-policy-degraded-"));
+    temporaryDirectories.push(directory);
+
+    await ensureDirectory(path.join(directory, "subagents", "critic"));
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Main agent\n");
+    await writeUtf8File(path.join(directory, "subagents", "critic", "AGENTS.md"), "# Critic\n");
+    await writeUtf8File(
+      path.join(directory, "subagents", "critic", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: critic",
+        "",
+        "runtime: openclaw",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: lead",
+        "",
+        "runtime: openclaw",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        "",
+        "subagents:",
+        "  - id: critic",
+        "    ref: ./subagents/critic",
+        "",
+        "policy:",
+        "  mode: warn",
+        "  on_degrade: error",
+        ""
+      ].join("\n")
+    );
+
+    await expect(
+      compileProject(directory, { outputDirectory: path.join(directory, "dist") })
+    ).rejects.toThrow(/on_degrade: error/);
+  });
+
   it("emits a native team artifact when the runtime adapter supports teams", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-native-team-"));
     temporaryDirectories.push(directory);
@@ -180,6 +332,43 @@ describe("compileProject", () => {
     await expect(
       fileExists(path.join(outputDirectory, "runtimes", "tinyclaw", "teams", "team", "tinyclaw-team.json"))
     ).resolves.toBe(true);
+    await expect(
+      fileExists(
+        path.join(
+          outputDirectory,
+          "container",
+          "rootfs",
+          "var",
+          "lib",
+          "spawnfile",
+          "instances",
+          "tinyclaw",
+          "tinyclaw-runtime",
+          "tinyagi",
+          "settings.json"
+        )
+      )
+    ).resolves.toBe(true);
+
+    const mergedSettings = JSON.parse(
+      await readUtf8File(
+        path.join(
+          outputDirectory,
+          "container",
+          "rootfs",
+          "var",
+          "lib",
+          "spawnfile",
+          "instances",
+          "tinyclaw",
+          "tinyclaw-runtime",
+          "tinyagi",
+          "settings.json"
+        )
+      )
+    );
+    expect(Object.keys(mergedSettings.agents)).toEqual(["a", "b"]);
+    expect(mergedSettings.teams.team.leader_agent).toBe("a");
   });
 
   it("preserves existing output files when clean is disabled", async () => {

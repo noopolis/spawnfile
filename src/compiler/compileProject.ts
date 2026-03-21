@@ -1,4 +1,5 @@
 import path from "node:path";
+import { chmod } from "node:fs/promises";
 
 import { ensureDirectory, removeDirectory, writeUtf8File } from "../filesystem/index.js";
 import {
@@ -20,6 +21,7 @@ import {
 import { Manifest } from "../manifest/index.js";
 
 import { buildCompilePlan } from "./buildCompilePlan.js";
+import { createContainerArtifacts } from "./containerArtifacts.js";
 import { CompilePlanNode, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 
 type PolicyMode = NonNullable<Manifest["policy"]>["mode"];
@@ -34,6 +36,15 @@ export interface CompileProjectResult {
   outputDirectory: string;
   report: CompileReport;
   reportPath: string;
+}
+
+interface CompiledNodeResult {
+  emittedFiles: Array<{ content: string; path: string }>;
+  kind: "agent" | "team";
+  report: NodeReport;
+  runtimeName: string | null;
+  slug: string;
+  value: ResolvedAgentNode | ResolvedTeamNode;
 }
 
 const writeEmittedFiles = async (
@@ -75,7 +86,7 @@ const createTeamOutputDirectory = (
 const compileAgentNode = async (
   baseDirectory: string,
   node: CompilePlanNode & { value: ResolvedAgentNode }
-): Promise<NodeReport> => {
+): Promise<CompiledNodeResult> => {
   const runtime = await assertRuntimeCanCompile(node.runtimeName ?? node.value.runtime.name);
   const adapter = getRuntimeAdapter(runtime.name);
   const diagnostics: DiagnosticReport[] = [
@@ -96,15 +107,22 @@ const compileAgentNode = async (
   await writeEmittedFiles(outputDirectory, result.files);
 
   return {
-    capabilities: result.capabilities,
-    diagnostics: [...diagnostics, ...result.diagnostics],
-    id: node.id,
+    emittedFiles: result.files,
     kind: node.kind,
-    output_dir: path.relative(baseDirectory, outputDirectory),
-    runtime: runtime.name,
-    runtime_ref: runtime.ref,
-    runtime_status: runtime.status,
-    source: node.value.source
+    report: {
+      capabilities: result.capabilities,
+      diagnostics: [...diagnostics, ...result.diagnostics],
+      id: node.id,
+      kind: node.kind,
+      output_dir: path.relative(baseDirectory, outputDirectory),
+      runtime: runtime.name,
+      runtime_ref: runtime.ref,
+      runtime_status: runtime.status,
+      source: node.value.source
+    },
+    runtimeName: runtime.name,
+    slug: node.slug,
+    value: node.value
   };
 };
 
@@ -116,27 +134,34 @@ const getTeamRuntimeName = (node: ResolvedTeamNode): string | null => {
 const compileTeamNode = async (
   baseDirectory: string,
   node: CompilePlanNode & { value: ResolvedTeamNode }
-): Promise<NodeReport> => {
+): Promise<CompiledNodeResult> => {
   const runtimeName = getTeamRuntimeName(node.value);
   if (!runtimeName) {
     return {
-      capabilities: createTeamCapabilities(
-        "degraded",
-        "Team spans multiple runtimes and cannot lower to one native team artifact in v0.1"
-      ),
-      diagnostics: [
-        createDiagnostic(
-          "warn",
-          `Team ${node.value.name} spans multiple runtimes and was not emitted as a native team artifact`
-        )
-      ],
-      id: node.id,
+      emittedFiles: [],
       kind: node.kind,
-      output_dir: null,
-      runtime: null,
-      runtime_ref: null,
-      runtime_status: null,
-      source: node.value.source
+      report: {
+        capabilities: createTeamCapabilities(
+          "degraded",
+          "Team spans multiple runtimes and cannot lower to one native team artifact in v0.1"
+        ),
+        diagnostics: [
+          createDiagnostic(
+            "warn",
+            `Team ${node.value.name} spans multiple runtimes and was not emitted as a native team artifact`
+          )
+        ],
+        id: node.id,
+        kind: node.kind,
+        output_dir: null,
+        runtime: null,
+        runtime_ref: null,
+        runtime_status: null,
+        source: node.value.source
+      },
+      runtimeName: null,
+      slug: node.slug,
+      value: node.value
     };
   }
 
@@ -146,24 +171,31 @@ const compileTeamNode = async (
 
   if (!adapter.compileTeam) {
     return {
-      capabilities: createTeamCapabilities(
-        "degraded",
-        `Runtime ${runtime.name} does not provide native team compilation in v0.1`
-      ),
-      diagnostics: [
-        ...diagnostics,
-        createDiagnostic(
-          "warn",
-          `Runtime ${runtime.name} did not emit a native team artifact for ${node.value.name}`
-        )
-      ],
-      id: node.id,
+      emittedFiles: [],
       kind: node.kind,
-      output_dir: null,
-      runtime: runtime.name,
-      runtime_ref: runtime.ref,
-      runtime_status: runtime.status,
-      source: node.value.source
+      report: {
+        capabilities: createTeamCapabilities(
+          "degraded",
+          `Runtime ${runtime.name} does not provide native team compilation in v0.1`
+        ),
+        diagnostics: [
+          ...diagnostics,
+          createDiagnostic(
+            "warn",
+            `Runtime ${runtime.name} did not emit a native team artifact for ${node.value.name}`
+          )
+        ],
+        id: node.id,
+        kind: node.kind,
+        output_dir: null,
+        runtime: runtime.name,
+        runtime_ref: runtime.ref,
+        runtime_status: runtime.status,
+        source: node.value.source
+      },
+      runtimeName: runtime.name,
+      slug: node.slug,
+      value: node.value
     };
   }
 
@@ -172,15 +204,22 @@ const compileTeamNode = async (
   await writeEmittedFiles(outputDirectory, result.files);
 
   return {
-    capabilities: result.capabilities,
-    diagnostics: [...diagnostics, ...result.diagnostics],
-    id: node.id,
+    emittedFiles: result.files,
     kind: node.kind,
-    output_dir: path.relative(baseDirectory, outputDirectory),
-    runtime: runtime.name,
-    runtime_ref: runtime.ref,
-    runtime_status: runtime.status,
-    source: node.value.source
+    report: {
+      capabilities: result.capabilities,
+      diagnostics: [...diagnostics, ...result.diagnostics],
+      id: node.id,
+      kind: node.kind,
+      output_dir: path.relative(baseDirectory, outputDirectory),
+      runtime: runtime.name,
+      runtime_ref: runtime.ref,
+      runtime_status: runtime.status,
+      source: node.value.source
+    },
+    runtimeName: runtime.name,
+    slug: node.slug,
+    value: node.value
   };
 };
 
@@ -221,24 +260,34 @@ export const compileProject = async (
   await ensureDirectory(outputDirectory);
 
   const nodeReports: NodeReport[] = [];
+  const compiledNodes: CompiledNodeResult[] = [];
   for (const node of plan.nodes) {
-    let report: NodeReport;
+    let compiled: CompiledNodeResult;
 
     if (node.kind === "agent") {
-      report = await compileAgentNode(outputDirectory, node as CompilePlanNode & { value: ResolvedAgentNode });
+      compiled = await compileAgentNode(outputDirectory, node as CompilePlanNode & { value: ResolvedAgentNode });
     } else {
-      report = await compileTeamNode(outputDirectory, node as CompilePlanNode & { value: ResolvedTeamNode });
+      compiled = await compileTeamNode(outputDirectory, node as CompilePlanNode & { value: ResolvedTeamNode });
     }
 
     enforcePolicy(
-      report,
+      compiled.report,
       node.value.policyMode as PolicyMode | null,
       node.value.policyOnDegrade as OnDegrade | null
     );
-    nodeReports.push(report);
+    nodeReports.push(compiled.report);
+    compiledNodes.push(compiled);
   }
 
-  const report = createCompileReport(plan.root, nodeReports);
+  const containerArtifacts = await createContainerArtifacts(plan, compiledNodes);
+  await writeEmittedFiles(outputDirectory, containerArtifacts.files);
+  await Promise.all(
+    containerArtifacts.executablePaths.map((filePath) =>
+      chmod(path.join(outputDirectory, filePath), 0o755)
+    )
+  );
+
+  const report = createCompileReport(plan.root, nodeReports, [], containerArtifacts.report);
   const reportPath = await writeCompileReport(outputDirectory, report);
 
   return {
