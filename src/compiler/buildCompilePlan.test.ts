@@ -133,6 +133,52 @@ describe("buildCompilePlan", () => {
     await expect(buildCompilePlan(directory)).rejects.toThrow(/does not declare a runtime/);
   });
 
+  it("rejects unknown runtime bindings during graph resolution", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-unknown-runtime-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Root\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: root",
+        "",
+        "runtime: mysteryclaw",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
+
+    await expect(buildCompilePlan(directory)).rejects.toThrow(/Unknown runtime binding/);
+  });
+
+  it("rejects exploratory runtimes before adapter execution", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-exploratory-runtime-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Root\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: root",
+        "",
+        "runtime: nullclaw",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
+
+    await expect(buildCompilePlan(directory)).rejects.toThrow(/exploratory/);
+  });
+
   it("rejects subagents whose local runtime differs from the parent", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-subagent-runtime-"));
     temporaryDirectories.push(directory);

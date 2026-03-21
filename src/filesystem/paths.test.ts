@@ -18,6 +18,12 @@ describe("paths", () => {
     expect(() => assertPortableRelativePath("../oops")).toThrowError(/Path traversal/);
   });
 
+  it("rejects backslashes in portable relative paths", () => {
+    expect(() => assertPortableRelativePath("docs\\NOTES.md")).toThrowError(
+      /forward slashes/
+    );
+  });
+
   it("keeps explicit Spawnfile paths intact", () => {
     expect(getManifestPath("/tmp/demo/Spawnfile")).toBe(path.resolve("/tmp/demo/Spawnfile"));
   });

@@ -5,6 +5,7 @@ import { mkdtemp } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { fileExists, removeDirectory, writeUtf8File } from "../filesystem/index.js";
+import { loadManifest } from "../manifest/index.js";
 
 import { initProject } from "./initProject.js";
 
@@ -20,9 +21,11 @@ describe("initProject", () => {
     temporaryDirectories.push(directory);
 
     const result = await initProject({ directory });
+    const loadedManifest = await loadManifest(path.join(directory, "Spawnfile"));
 
     expect(result.createdFiles).toHaveLength(2);
     await expect(fileExists(path.join(directory, "Spawnfile"))).resolves.toBe(true);
+    expect(loadedManifest.manifest.kind).toBe("agent");
   });
 
   it("scaffolds a team project", async () => {
@@ -30,8 +33,10 @@ describe("initProject", () => {
     temporaryDirectories.push(directory);
 
     await initProject({ directory, team: true });
+    const loadedManifest = await loadManifest(path.join(directory, "Spawnfile"));
 
     await expect(fileExists(path.join(directory, "TEAM.md"))).resolves.toBe(true);
+    expect(loadedManifest.manifest.kind).toBe("team");
   });
 
   it("refuses to overwrite an existing Spawnfile", async () => {

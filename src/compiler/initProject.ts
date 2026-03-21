@@ -39,6 +39,9 @@ const teamTemplate = [
   "  system: TEAM.md",
   "",
   "members: []",
+  "",
+  "structure:",
+  "  mode: swarm",
   ""
 ].join("\n");
 

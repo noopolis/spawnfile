@@ -15,6 +15,7 @@ import {
   mergeExecution,
   normalizeRuntimeBinding
 } from "../manifest/index.js";
+import { assertRuntimeCanCompile } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { assignStableNodeIds, stableStringify } from "./helpers.js";
@@ -100,10 +101,10 @@ const getTeamFingerprint = (node: ResolvedTeamNode): string =>
     }
   });
 
-const resolveRuntime = (
+const resolveRuntime = async (
   manifest: AgentManifest,
   context: AgentVisitContext
-): ResolvedRuntime => {
+): Promise<ResolvedRuntime> => {
   const localRuntime = normalizeRuntimeBinding(manifest.runtime);
 
   if (context.isSubagent) {
@@ -133,6 +134,8 @@ const resolveRuntime = (
       `Agent ${manifest.name} does not declare a runtime`
     );
   }
+
+  await assertRuntimeCanCompile(localRuntime.name);
 
   return localRuntime;
 };
@@ -177,7 +180,7 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       );
     }
 
-    const runtime = resolveRuntime(loadedManifest.manifest, context);
+    const runtime = await resolveRuntime(loadedManifest.manifest, context);
     const execution = context.isSubagent
       ? mergeExecution(context.inheritedExecution, loadedManifest.manifest.execution)
       : loadedManifest.manifest.execution;

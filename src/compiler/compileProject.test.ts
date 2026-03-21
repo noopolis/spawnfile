@@ -34,6 +34,10 @@ describe("compileProject", () => {
     await expect(
       fileExists(path.join(outputDirectory, "runtimes", "openclaw", "agents", "analyst", "openclaw.json"))
     ).resolves.toBe(true);
+
+    const agentNode = result.report.nodes.find((node) => node.kind === "agent");
+    expect(agentNode?.runtime_ref).toBe("v2026.3.13-1");
+    expect(agentNode?.runtime_status).toBe("active");
   });
 
   it("marks a multi-runtime team as degraded at team level", async () => {

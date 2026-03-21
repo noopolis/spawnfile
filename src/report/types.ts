@@ -1,3 +1,5 @@
+import type { RuntimeLifecycleStatus } from "../shared/index.js";
+
 export type CapabilityOutcome = "degraded" | "supported" | "unsupported";
 
 export interface CapabilityReport {
@@ -18,6 +20,8 @@ export interface NodeReport {
   kind: "agent" | "team";
   output_dir: string | null;
   runtime: string | null;
+  runtime_ref: string | null;
+  runtime_status: RuntimeLifecycleStatus | null;
   source: string;
 }
 

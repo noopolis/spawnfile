@@ -1,3 +1,5 @@
+import { parse as parseYaml } from "yaml";
+
 import { SpawnfileError } from "../shared/index.js";
 
 export interface SkillFrontmatter {
@@ -5,22 +7,43 @@ export interface SkillFrontmatter {
   name: string;
 }
 
-const FRONTMATTER_PATTERN = /^---\s*\n([\s\S]*?)\n---/;
-
-export const parseSkillFrontmatter = (source: string): SkillFrontmatter => {
-  const match = source.match(FRONTMATTER_PATTERN);
-  if (!match) {
+const readFrontmatterBlock = (source: string): string => {
+  const lines = source.split(/\r?\n/);
+  if (lines[0]?.trim() !== "---") {
     throw new SpawnfileError(
       "validation_error",
       "SKILL.md must begin with YAML frontmatter"
     );
   }
 
-  const content = match[1];
-  const nameMatch = content.match(/^name:\s*(.+)$/m);
-  const descriptionMatch = content.match(/^description:\s*(.+)$/m);
+  const closingIndex = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
+  if (closingIndex === -1) {
+    throw new SpawnfileError(
+      "validation_error",
+      "SKILL.md must begin with YAML frontmatter"
+    );
+  }
 
-  if (!nameMatch || !descriptionMatch) {
+  return lines.slice(1, closingIndex).join("\n");
+};
+
+export const parseSkillFrontmatter = (source: string): SkillFrontmatter => {
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(readFrontmatterBlock(source));
+  } catch {
+    throw new SpawnfileError(
+      "validation_error",
+      "SKILL.md frontmatter must be valid YAML"
+    );
+  }
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    typeof (parsed as Record<string, unknown>).name !== "string" ||
+    typeof (parsed as Record<string, unknown>).description !== "string"
+  ) {
     throw new SpawnfileError(
       "validation_error",
       "Skill frontmatter must declare name and description"
@@ -28,7 +51,7 @@ export const parseSkillFrontmatter = (source: string): SkillFrontmatter => {
   }
 
   return {
-    description: descriptionMatch[1].trim().replace(/^"(.*)"$/, "$1"),
-    name: nameMatch[1].trim().replace(/^"(.*)"$/, "$1")
+    description: (parsed as Record<string, string>).description,
+    name: (parsed as Record<string, string>).name
   };
 };

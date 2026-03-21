@@ -8,7 +8,8 @@
     "spawnfile": "./dist/cli/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "runtimes.yaml"
   ],
   "engines": {
     "node": ">=22.0.0"

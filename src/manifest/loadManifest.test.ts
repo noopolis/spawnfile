@@ -1,6 +1,6 @@
 import path from "node:path";
 import os from "node:os";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, symlink } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -46,6 +46,52 @@ describe("loadManifest", () => {
     );
 
     await expect(loadManifest(path.join(directory, "Spawnfile"))).rejects.toThrow(/Document not found/);
+  });
+
+  it("rejects document paths that are not Markdown files", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-invalid-doc-ext-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "SYSTEM.txt"), "instructions\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: broken",
+        "",
+        "runtime: openclaw",
+        "",
+        "docs:",
+        "  system: SYSTEM.txt",
+        ""
+      ].join("\n")
+    );
+
+    await expect(loadManifest(path.join(directory, "Spawnfile"))).rejects.toThrow(/Markdown files/);
+  });
+
+  it("rejects backslashes in document paths", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-backslash-doc-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Instructions\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: broken",
+        "",
+        "runtime: openclaw",
+        "",
+        "docs:",
+        "  system: docs\\AGENTS.md",
+        ""
+      ].join("\n")
+    );
+
+    await expect(loadManifest(path.join(directory, "Spawnfile"))).rejects.toThrow(/forward slashes/);
   });
 
   it("rejects skills that require undeclared MCP servers", async () => {
@@ -110,6 +156,95 @@ describe("loadManifest", () => {
     );
   });
 
+  it("rejects symlinked subagent refs", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-subagent-symlink-"));
+    temporaryDirectories.push(directory);
+
+    await ensureDirectory(path.join(directory, "real-subagent"));
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Instructions\n");
+    await writeUtf8File(path.join(directory, "real-subagent", "AGENTS.md"), "# Worker\n");
+    await writeUtf8File(
+      path.join(directory, "real-subagent", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: worker",
+        "",
+        "runtime: openclaw",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
+    await symlink(path.join(directory, "real-subagent"), path.join(directory, "subagents-link"));
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: broken",
+        "",
+        "runtime: openclaw",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        "",
+        "subagents:",
+        "  - id: worker",
+        "    ref: ./subagents-link",
+        ""
+      ].join("\n")
+    );
+
+    await expect(loadManifest(path.join(directory, "Spawnfile"))).rejects.toThrow(/Symlinks are not allowed/);
+  });
+
+  it("rejects symlinked team member refs", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-member-symlink-"));
+    temporaryDirectories.push(directory);
+
+    await ensureDirectory(path.join(directory, "real-member"));
+    await writeUtf8File(path.join(directory, "TEAM.md"), "# Team\n");
+    await writeUtf8File(path.join(directory, "real-member", "AGENTS.md"), "# Worker\n");
+    await writeUtf8File(
+      path.join(directory, "real-member", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: worker",
+        "",
+        "runtime: openclaw",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
+    await symlink(path.join(directory, "real-member"), path.join(directory, "member-link"));
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: broken-team",
+        "",
+        "docs:",
+        "  system: TEAM.md",
+        "",
+        "members:",
+        "  - id: worker",
+        "    ref: ./member-link",
+        "",
+        "structure:",
+        "  mode: swarm",
+        ""
+      ].join("\n")
+    );
+
+    await expect(loadManifest(path.join(directory, "Spawnfile"))).rejects.toThrow(/Symlinks are not allowed/);
+  });
+
   it("rejects duplicate team member ids", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-duplicate-members-"));
     temporaryDirectories.push(directory);
@@ -146,7 +281,23 @@ describe("loadManifest", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-bad-structure-leader-"));
     temporaryDirectories.push(directory);
 
+    await ensureDirectory(path.join(directory, "agents", "a"));
     await writeUtf8File(path.join(directory, "TEAM.md"), "# Team\n");
+    await writeUtf8File(path.join(directory, "agents", "a", "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(
+      path.join(directory, "agents", "a", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: analyst",
+        "",
+        "runtime: openclaw",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
     await writeUtf8File(
       path.join(directory, "Spawnfile"),
       [
@@ -177,7 +328,23 @@ describe("loadManifest", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-bad-structure-external-"));
     temporaryDirectories.push(directory);
 
+    await ensureDirectory(path.join(directory, "agents", "a"));
     await writeUtf8File(path.join(directory, "TEAM.md"), "# Team\n");
+    await writeUtf8File(path.join(directory, "agents", "a", "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(
+      path.join(directory, "agents", "a", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: analyst",
+        "",
+        "runtime: openclaw",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
     await writeUtf8File(
       path.join(directory, "Spawnfile"),
       [

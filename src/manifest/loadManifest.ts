@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
@@ -52,6 +54,17 @@ const validateSkillRequirements = (
   }
 };
 
+const MARKDOWN_EXTENSION_PATTERN = /\.(md|markdown)$/i;
+
+const assertMarkdownDocumentPath = (documentPath: string): void => {
+  if (!MARKDOWN_EXTENSION_PATTERN.test(documentPath)) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Document paths must point to Markdown files: ${documentPath}`
+    );
+  }
+};
+
 const validateDocFiles = async (manifestPath: string, manifest: Manifest): Promise<void> => {
   const docs = manifest.docs;
   if (!docs) {
@@ -69,6 +82,7 @@ const validateDocFiles = async (manifestPath: string, manifest: Manifest): Promi
 
   await Promise.all(
     docPaths.map(async (documentPath) => {
+      assertMarkdownDocumentPath(documentPath);
       const resolvedPath = resolveProjectPath(manifestPath, documentPath);
       if (await isSymlink(resolvedPath)) {
         throw new SpawnfileError(
@@ -80,6 +94,38 @@ const validateDocFiles = async (manifestPath: string, manifest: Manifest): Promi
         throw new SpawnfileError(
           "validation_error",
           `Document not found for manifest ${manifestPath}: ${documentPath}`
+        );
+      }
+    })
+  );
+};
+
+const validateManifestRefs = async (
+  manifestPath: string,
+  refs: string[] | undefined,
+  label: string
+): Promise<void> => {
+  await Promise.all(
+    (refs ?? []).map(async (ref) => {
+      const refDirectoryPath = resolveProjectPath(manifestPath, ref);
+      if (await isSymlink(refDirectoryPath)) {
+        throw new SpawnfileError(
+          "validation_error",
+          `Symlinks are not allowed: ${ref}`
+        );
+      }
+
+      const childManifestPath = path.join(refDirectoryPath, "Spawnfile");
+      if (await isSymlink(childManifestPath)) {
+        throw new SpawnfileError(
+          "validation_error",
+          `Symlinks are not allowed: ${ref}/Spawnfile`
+        );
+      }
+      if (!(await fileExists(childManifestPath))) {
+        throw new SpawnfileError(
+          "validation_error",
+          `${label} ref must point to a directory containing a Spawnfile: ${ref}`
         );
       }
     })
@@ -100,6 +146,12 @@ const validateSkills = async (
         );
       }
       const skillFilePath = resolveProjectPath(manifestPath, `${skill.ref}/SKILL.md`);
+      if (await isSymlink(skillFilePath)) {
+        throw new SpawnfileError(
+          "validation_error",
+          `Symlinks are not allowed: ${skill.ref}/SKILL.md`
+        );
+      }
       if (!(await fileExists(skillFilePath))) {
         throw new SpawnfileError(
           "validation_error",
@@ -121,6 +173,11 @@ const validateLocalAgentManifest = async (
 
   await validateDocFiles(manifestPath, manifest);
   await validateSkills(manifestPath, manifest.skills);
+  await validateManifestRefs(
+    manifestPath,
+    manifest.subagents?.map((subagent) => subagent.ref),
+    "Subagent"
+  );
   validateSkillRequirements(manifest.skills, getMcpNames(manifest.mcp_servers));
 };
 
@@ -136,6 +193,11 @@ const validateLocalTeamManifest = async (
 
   await validateDocFiles(manifestPath, manifest);
   await validateSkills(manifestPath, manifest.shared?.skills);
+  await validateManifestRefs(
+    manifestPath,
+    manifest.members.map((member) => member.ref),
+    "Member"
+  );
   validateSkillRequirements(manifest.shared?.skills, getSharedMcpNames(manifest.shared));
 
   const memberIds = new Set(manifest.members.map((member) => member.id));

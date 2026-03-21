@@ -11,7 +11,11 @@ import {
   NodeReport
 } from "../report/index.js";
 import { DEFAULT_OUTPUT_DIRECTORY } from "../shared/index.js";
-import { getRuntimeAdapter } from "../runtime/index.js";
+import {
+  assertRuntimeCanCompile,
+  createRuntimeLifecycleDiagnostics,
+  getRuntimeAdapter
+} from "../runtime/index.js";
 
 import { Manifest } from "../manifest/index.js";
 
@@ -72,8 +76,11 @@ const compileAgentNode = async (
   baseDirectory: string,
   node: CompilePlanNode & { value: ResolvedAgentNode }
 ): Promise<NodeReport> => {
-  const adapter = getRuntimeAdapter(node.runtimeName ?? node.value.runtime.name);
-  const diagnostics: DiagnosticReport[] = [];
+  const runtime = await assertRuntimeCanCompile(node.runtimeName ?? node.value.runtime.name);
+  const adapter = getRuntimeAdapter(runtime.name);
+  const diagnostics: DiagnosticReport[] = [
+    ...createRuntimeLifecycleDiagnostics(runtime)
+  ];
 
   for (const diagnostic of adapter.validateRuntimeOptions?.(node.value.runtime.options) ?? []) {
     diagnostics.push(diagnostic);
@@ -94,7 +101,9 @@ const compileAgentNode = async (
     id: node.id,
     kind: node.kind,
     output_dir: path.relative(baseDirectory, outputDirectory),
-    runtime: node.runtimeName,
+    runtime: runtime.name,
+    runtime_ref: runtime.ref,
+    runtime_status: runtime.status,
     source: node.value.source
   };
 };
@@ -125,42 +134,52 @@ const compileTeamNode = async (
       kind: node.kind,
       output_dir: null,
       runtime: null,
+      runtime_ref: null,
+      runtime_status: null,
       source: node.value.source
     };
   }
 
-  const adapter = getRuntimeAdapter(runtimeName);
+  const runtime = await assertRuntimeCanCompile(runtimeName);
+  const adapter = getRuntimeAdapter(runtime.name);
+  const diagnostics = [...createRuntimeLifecycleDiagnostics(runtime)];
+
   if (!adapter.compileTeam) {
     return {
       capabilities: createTeamCapabilities(
         "degraded",
-        `Runtime ${runtimeName} does not provide native team compilation in v0.1`
+        `Runtime ${runtime.name} does not provide native team compilation in v0.1`
       ),
       diagnostics: [
+        ...diagnostics,
         createDiagnostic(
           "warn",
-          `Runtime ${runtimeName} did not emit a native team artifact for ${node.value.name}`
+          `Runtime ${runtime.name} did not emit a native team artifact for ${node.value.name}`
         )
       ],
       id: node.id,
       kind: node.kind,
       output_dir: null,
-      runtime: runtimeName,
+      runtime: runtime.name,
+      runtime_ref: runtime.ref,
+      runtime_status: runtime.status,
       source: node.value.source
     };
   }
 
   const result = await adapter.compileTeam(node.value);
-  const outputDirectory = createTeamOutputDirectory(baseDirectory, runtimeName, node);
+  const outputDirectory = createTeamOutputDirectory(baseDirectory, runtime.name, node);
   await writeEmittedFiles(outputDirectory, result.files);
 
   return {
     capabilities: result.capabilities,
-    diagnostics: result.diagnostics,
+    diagnostics: [...diagnostics, ...result.diagnostics],
     id: node.id,
     kind: node.kind,
     output_dir: path.relative(baseDirectory, outputDirectory),
-    runtime: runtimeName,
+    runtime: runtime.name,
+    runtime_ref: runtime.ref,
+    runtime_status: runtime.status,
     source: node.value.source
   };
 };

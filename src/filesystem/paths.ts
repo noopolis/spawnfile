@@ -5,6 +5,13 @@ import { SpawnfileError } from "../shared/index.js";
 const INVALID_PATH_SEGMENT = "..";
 
 export const assertPortableRelativePath = (inputPath: string): void => {
+  if (inputPath.includes("\\")) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Paths must use forward slashes: ${inputPath}`
+    );
+  }
+
   if (path.isAbsolute(inputPath)) {
     throw new SpawnfileError(
       "validation_error",
