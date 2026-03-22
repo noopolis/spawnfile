@@ -16,7 +16,7 @@
   },
   "scripts": {
     "blueprints": "./scripts/blueprints.sh",
-    "build": "tsc --project tsconfig.build.json",
+    "build": "tsc --project tsconfig.build.json && node ./scripts/copy-runtime-scaffold-assets.mjs",
     "clean": "rm -rf coverage dist",
     "coverage": "vitest run --coverage",
     "dev": "tsx src/cli/index.ts",

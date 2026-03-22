@@ -357,6 +357,34 @@ describe("runCli", () => {
     expect(stdout[0]).toContain("initialized");
   });
 
+  it("initializes an agent project for a selected runtime", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-cli-runtime-init-"));
+    temporaryDirectories.push(directory);
+
+    const initProject = vi.fn(async () => ({
+      createdFiles: [path.join(directory, "Spawnfile"), path.join(directory, "AGENTS.md")],
+      directory
+    }));
+
+    const stdout: string[] = [];
+    const exitCode = await runCli(
+      ["init", directory, "--runtime", "tinyclaw"],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { initProject }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(initProject).toHaveBeenCalledWith({
+      directory,
+      runtime: "tinyclaw",
+      team: undefined
+    });
+    expect(stdout[0]).toContain("initialized");
+  });
+
   it("returns a non-zero exit code on errors", async () => {
     const stderr: string[] = [];
     const exitCode = await runCli(["validate", path.join(fixturesRoot, "does-not-exist")], {

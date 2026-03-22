@@ -7,6 +7,7 @@ This folder owns runtime adapters and runtime option validation.
 ```text
 src/runtime/
 ├── index.ts               # Barrel for adapter registry exports
+├── scaffoldAssets.ts      # Shared loader for runtime-owned init template assets
 ├── types.ts               # Shared adapter contract types
 ├── common.ts              # Shared lowering helpers used by adapters
 ├── registry.ts            # Bundled adapter registration and lookup
@@ -17,7 +18,7 @@ src/runtime/
 └── registry.test.ts       # Adapter registry tests
 ```
 
-Adapter-specific behavior belongs in the runtime subfolders. `common.ts` should only hold logic that is truly shared across adapters.
+Adapter-specific behavior belongs in the runtime subfolders. That includes runtime-owned init scaffolds and scaffold markdown assets. `common.ts` should only hold logic that is truly shared across adapters.
 
 ## Rules
 

@@ -146,8 +146,13 @@ export const runCli = async (
     .command("init")
     .argument("[path]", "Directory to initialize", process.cwd())
     .option("--team", "Initialize a team project")
-    .action(async (inputPath: string, options: { team?: boolean }) => {
-      const result = await handlers.initProject({ directory: inputPath, team: options.team });
+    .option("--runtime <name>", "Runtime for agent scaffolds")
+    .action(async (inputPath: string, options: { runtime?: string; team?: boolean }) => {
+      const result = await handlers.initProject({
+        directory: inputPath,
+        runtime: options.runtime,
+        team: options.team
+      });
       streams.stdout(`initialized ${result.directory}`);
       for (const filePath of result.createdFiles) {
         streams.stdout(`created ${filePath}`);

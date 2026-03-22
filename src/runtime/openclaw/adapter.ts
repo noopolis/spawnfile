@@ -8,6 +8,7 @@ import {
   createSkillFiles
 } from "../common.js";
 import { prepareOpenClawRuntimeAuth } from "./runAuth.js";
+import { createOpenClawAgentScaffold } from "./scaffold.js";
 
 const formatModel = (node: ResolvedAgentNode): string | null => {
   const primary = node.execution?.model?.primary;
@@ -110,6 +111,7 @@ export const openClawAdapter: RuntimeAdapter = {
   },
   name: "openclaw",
   prepareRuntimeAuth: prepareOpenClawRuntimeAuth,
+  scaffoldAgentProject: createOpenClawAgentScaffold,
   supportedModelAuthMethods(provider) {
     return listSupportedModelAuthMethods(provider);
   },

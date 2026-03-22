@@ -22,6 +22,48 @@ describe("buildCompilePlan", () => {
     expect(plan.runtimes.openclaw.nodeIds).toHaveLength(1);
   });
 
+  it("applies default workspace and sandbox execution intent when omitted", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-default-execution-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(path.join(directory, "IDENTITY.md"), "# Identity\n");
+    await writeUtf8File(path.join(directory, "SOUL.md"), "# Soul\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: root",
+        "",
+        "runtime: openclaw",
+        "",
+        "execution:",
+        "  model:",
+        "    primary:",
+        "      provider: openai",
+        "      name: gpt-5.4",
+        "",
+        "docs:",
+        "  identity: IDENTITY.md",
+        "  soul: SOUL.md",
+        "  system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const agentNode = plan.nodes.find((node) => node.kind === "agent");
+
+    expect(agentNode?.kind).toBe("agent");
+    if (!agentNode || agentNode.value.kind !== "agent") {
+      throw new Error("Expected agent node");
+    }
+
+    expect(agentNode.value.execution?.workspace).toEqual({ isolation: "isolated" });
+    expect(agentNode.value.execution?.sandbox).toEqual({ mode: "workspace" });
+  });
+
   it("builds a subagent graph", async () => {
     const plan = await buildCompilePlan(path.join(fixturesRoot, "agent-with-subagents"));
 

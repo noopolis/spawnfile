@@ -14,6 +14,7 @@ import {
   createSkillFiles
 } from "../common.js";
 import { preparePicoClawRuntimeAuth } from "./runAuth.js";
+import { createPicoClawAgentScaffold } from "./scaffold.js";
 
 const formatModelName = (node: ResolvedAgentNode): string | null => {
   const primary = node.execution?.model?.primary;
@@ -197,6 +198,7 @@ export const picoClawAdapter: RuntimeAdapter = {
   },
   name: "picoclaw",
   prepareRuntimeAuth: preparePicoClawRuntimeAuth,
+  scaffoldAgentProject: createPicoClawAgentScaffold,
   supportedModelAuthMethods(provider) {
     return listSupportedModelAuthMethods(provider);
   },

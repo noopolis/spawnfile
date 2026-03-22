@@ -13,6 +13,7 @@ import {
   createSkillFiles
 } from "../common.js";
 import { prepareTinyClawRuntimeAuth } from "./runAuth.js";
+import { createTinyClawAgentScaffold } from "./scaffold.js";
 
 const WORKSPACE_PLACEHOLDER = "<workspace-path>";
 
@@ -205,6 +206,7 @@ export const tinyClawAdapter: RuntimeAdapter = {
   },
   name: "tinyclaw",
   prepareRuntimeAuth: prepareTinyClawRuntimeAuth,
+  scaffoldAgentProject: createTinyClawAgentScaffold,
   supportedModelAuthMethods(provider) {
     return listSupportedModelAuthMethods(provider);
   }

@@ -13,7 +13,8 @@ src/compiler/
 ├── buildCompilePlan.ts         # Manifest graph walk and plan construction
 ├── compileProject.ts           # Adapter execution and output/report emission
 ├── runProject.ts               # `spawnfile run` docker-run planning and execution
-├── initProject.ts              # `spawnfile init` scaffolding
+├── initProject.ts              # `spawnfile init` orchestration around runtime-owned scaffolds
+├── executionDefaults.ts        # Effective execution defaults applied during graph resolution
 ├── *.test.ts                   # Tests next to the implementation they cover
 ```
 
@@ -25,3 +26,4 @@ src/compiler/
 - Resolve and validate the graph before calling any runtime adapter.
 - The compile plan is internal state, not user-authored schema.
 - Emit stable output paths and reports.
+- Keep runtime-specific init scaffolds in `src/runtime/<name>/`, not here.

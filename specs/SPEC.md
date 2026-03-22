@@ -249,6 +249,8 @@ Rules:
 - If `execution.model.auth` is omitted, the effective auth method defaults to `api_key` for each declared provider.
 - `execution.workspace.isolation` MUST be one of: `isolated`, `shared`.
 - `execution.sandbox.mode` MUST be one of: `workspace`, `sandboxed`, `unrestricted`.
+- If `execution.workspace` is omitted, the effective isolation defaults to `isolated`.
+- If `execution.sandbox` is omitted, the effective sandbox mode defaults to `workspace`.
 - Compilers MUST treat these values as author intent and map them to runtime-native configuration.
 - Compilers MUST reject runtime/auth combinations that the selected runtime adapter does not support.
 - If exact semantics cannot be preserved, the compiler MUST report `degraded` or `unsupported` according to the compile policy.
@@ -763,7 +765,7 @@ This allows the same Spawnfile to be compiled with different configurations by c
 The v0.1 CLI exposes three commands:
 
 ```
-spawnfile init [--team]
+spawnfile init [path] [--team] [--runtime <name>]
 spawnfile validate [path]
 spawnfile compile [path] [--out <dir>]
 ```
@@ -772,7 +774,10 @@ spawnfile compile [path] [--out <dir>]
 
 Scaffolds a new Spawnfile project in the current directory.
 
+- `path` is the directory to initialize (default: current directory)
 - `--team` scaffolds a team project instead of an agent project
+- `--runtime <name>` selects the bundled runtime for agent scaffolds (default: `openclaw`)
+- `--runtime` MUST be rejected when `--team` is also provided
 - MUST create a `Spawnfile` manifest and any required directory structure
 - MUST NOT overwrite existing files
 

@@ -35,6 +35,7 @@ import {
   ResolvedRuntime,
   ResolvedTeamNode
 } from "./types.js";
+import { applyExecutionDefaults } from "./executionDefaults.js";
 
 interface AgentVisitContext {
   inheritedExecution?: ExecutionBlock;
@@ -182,9 +183,11 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
     }
 
     const runtime = await resolveRuntime(loadedManifest.manifest, context);
-    const execution = context.isSubagent
-      ? mergeExecution(context.inheritedExecution, loadedManifest.manifest.execution)
-      : loadedManifest.manifest.execution;
+    const execution = applyExecutionDefaults(
+      context.isSubagent
+        ? mergeExecution(context.inheritedExecution, loadedManifest.manifest.execution)
+        : loadedManifest.manifest.execution
+    );
     assertRuntimeSupportsExecutionModelAuth(
       runtime.name,
       execution,

@@ -8,6 +8,8 @@ This folder owns the OpenClaw runtime adapter.
 src/runtime/openclaw/
 ├── adapter.ts        # OpenClaw lowering and capability reporting
 ├── runAuth.ts        # OpenClaw runtime-auth preparation for `spawnfile run`
+├── scaffold.ts       # OpenClaw-owned `spawnfile init --runtime openclaw` scaffold
+├── scaffold-assets/  # Bundled OpenClaw starter docs copied into dist at build time
 └── adapter.test.ts   # OpenClaw adapter tests
 ```
 

@@ -1,55 +1,24 @@
 import path from "node:path";
 
 import { ensureDirectory, fileExists, writeUtf8File } from "../filesystem/index.js";
+import { createTeamScaffoldManifest, renderSpawnfile } from "../manifest/index.js";
+import { getRuntimeAdapter } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 export interface InitProjectOptions {
   directory?: string;
+  runtime?: string;
   team?: boolean;
 }
 
-const agentTemplate = [
-  'spawnfile_version: "0.1"',
-  "kind: agent",
-  "name: my-agent",
-  "",
-  "runtime: openclaw",
-  "",
-  "docs:",
-  "  system: AGENTS.md",
-  "",
-  "execution:",
-  "  model:",
-  "    primary:",
-  "      provider: anthropic",
-  '      name: claude-sonnet-4-5',
-  "  workspace:",
-  "    isolation: isolated",
-  "  sandbox:",
-  "    mode: workspace",
-  ""
-].join("\n");
-
-const teamTemplate = [
-  'spawnfile_version: "0.1"',
-  "kind: team",
-  "name: my-team",
-  "",
-  "docs:",
-  "  system: TEAM.md",
-  "",
-  "members: []",
-  "",
-  "structure:",
-  "  mode: swarm",
-  ""
-].join("\n");
+const DEFAULT_AGENT_RUNTIME = "openclaw";
 
 export const initProject = async (
   options: InitProjectOptions = {}
 ): Promise<{ createdFiles: string[]; directory: string }> => {
   const directory = path.resolve(options.directory ?? process.cwd());
   const manifestPath = path.join(directory, "Spawnfile");
+  const runtimeName = options.runtime ?? DEFAULT_AGENT_RUNTIME;
 
   if (await fileExists(manifestPath)) {
     throw new SpawnfileError(
@@ -58,19 +27,37 @@ export const initProject = async (
     );
   }
 
+  if (options.team && options.runtime) {
+    throw new SpawnfileError(
+      "validation_error",
+      "Team scaffolds do not accept --runtime"
+    );
+  }
+
   await ensureDirectory(directory);
 
   const createdFiles: string[] = [manifestPath];
   if (options.team) {
     const teamDocPath = path.join(directory, "TEAM.md");
-    await writeUtf8File(manifestPath, teamTemplate);
+    await writeUtf8File(manifestPath, renderSpawnfile(createTeamScaffoldManifest()));
     await writeUtf8File(teamDocPath, "# Team Instructions\n");
     createdFiles.push(teamDocPath);
   } else {
-    const systemDocPath = path.join(directory, "AGENTS.md");
-    await writeUtf8File(manifestPath, agentTemplate);
-    await writeUtf8File(systemDocPath, "# Operating Instructions\n");
-    createdFiles.push(systemDocPath);
+    const scaffold = getRuntimeAdapter(runtimeName).scaffoldAgentProject?.();
+    if (!scaffold) {
+      throw new SpawnfileError(
+        "runtime_error",
+        `Runtime ${runtimeName} does not provide an init scaffold`
+      );
+    }
+
+    await writeUtf8File(manifestPath, renderSpawnfile(scaffold.manifest));
+
+    for (const file of scaffold.files) {
+      const targetPath = path.join(directory, file.path);
+      await writeUtf8File(targetPath, file.content);
+      createdFiles.push(targetPath);
+    }
   }
 
   return {

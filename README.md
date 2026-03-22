@@ -110,6 +110,7 @@ You write a source project once. Then you compile it:
 
 ```bash
 spawnfile init
+spawnfile init --runtime tinyclaw
 spawnfile validate
 spawnfile compile
 spawnfile auth import env .env --profile dev
@@ -205,6 +206,7 @@ The compiler reports one of three outcomes per declared capability: `supported`,
 
 ```bash
 spawnfile init
+spawnfile init --runtime tinyclaw
 spawnfile init --team
 spawnfile validate
 spawnfile compile
@@ -216,6 +218,7 @@ spawnfile run
 For example:
 
 ```bash
+spawnfile init --runtime picoclaw ./agents/researcher
 spawnfile validate fixtures/single-agent
 spawnfile compile fixtures/single-agent --out ./dist/example
 spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
@@ -224,6 +227,8 @@ spawnfile run fixtures/single-agent --tag example-agent --auth-profile dev
 ```
 
 The compiler emits runtime-specific artifacts under `dist/runtimes/...` and writes a machine-readable `spawnfile-report.json`.
+
+`spawnfile init` defaults agent scaffolds to `openclaw`. Use `spawnfile init --runtime <name>` to scaffold an agent for a different bundled runtime. `spawnfile init --team` stays runtime-neutral.
 
 `spawnfile compile` also emits:
 
