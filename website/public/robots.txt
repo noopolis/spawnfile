@@ -2,3 +2,5 @@ User-agent: *
 Allow: /
 
 Sitemap: https://spawnfile.ai/sitemap-0.xml
+LLMs: https://spawnfile.ai/llms.txt
+LLMs-full: https://spawnfile.ai/llms-full.txt
