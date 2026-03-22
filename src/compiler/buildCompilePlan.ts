@@ -25,6 +25,7 @@ import {
   loadResolvedSkills,
   mergeSharedSurface
 } from "./surfaces.js";
+import { assertRuntimeSupportsExecutionModelAuth } from "./modelAuth.js";
 import {
   CompilePlan,
   CompilePlanEdge,
@@ -184,6 +185,11 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
     const execution = context.isSubagent
       ? mergeExecution(context.inheritedExecution, loadedManifest.manifest.execution)
       : loadedManifest.manifest.execution;
+    assertRuntimeSupportsExecutionModelAuth(
+      runtime.name,
+      execution,
+      loadedManifest.manifest.name
+    );
 
     const sharedSurface = mergeSharedSurface(context.inheritedShared?.surface, {
       env: loadedManifest.manifest.env,

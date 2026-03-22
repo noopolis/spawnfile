@@ -21,6 +21,9 @@ const extractNodeMajorVersion = (image: string): number =>
 const createPackageInstallCommand = (packages: string[]): string =>
   `RUN apt-get update && apt-get install -y --no-install-recommends ${packages.join(" ")} && rm -rf /var/lib/apt/lists/*`;
 
+const createNpmPackageInstallCommand = (packages: string[]): string =>
+  `RUN npm install -g --omit=dev --no-fund --no-audit ${packages.join(" ")}`;
+
 const selectBaseImage = (runtimePlans: RuntimeTargetPlan[]): string => {
   const firstRuntimeMeta = runtimePlans[0]?.meta;
 
@@ -77,6 +80,9 @@ export const renderDockerfile = async (
   const systemDeps = [
     ...new Set(runtimePlans.flatMap((plan) => plan.meta.systemDeps))
   ].sort();
+  const globalNpmPackages = [
+    ...new Set(runtimePlans.flatMap((plan) => plan.meta.globalNpmPackages ?? []))
+  ].sort();
   const exposedPorts = [...new Set(runtimePlans.flatMap((plan) => (plan.port ? [plan.port] : [])))].sort(
     (left, right) => left - right
   );
@@ -85,6 +91,10 @@ export const renderDockerfile = async (
 
   if (systemDeps.length > 0) {
     lines.push(createPackageInstallCommand(systemDeps), "");
+  }
+
+  if (globalNpmPackages.length > 0) {
+    lines.push(createNpmPackageInstallCommand(globalNpmPackages), "");
   }
 
   for (const recipe of runtimeRecipes) {
@@ -98,16 +108,23 @@ export const renderDockerfile = async (
   }
 
   lines.push(
+    'RUN if ! id -u spawnfile >/dev/null 2>&1; then useradd --create-home --home-dir /home/spawnfile --shell /bin/bash spawnfile; fi',
+    ""
+  );
+
+  lines.push(
     "COPY container/rootfs/ /",
     "COPY .env.example /opt/spawnfile/.env.example",
     'COPY entrypoint.sh /opt/spawnfile/entrypoint.sh',
-    "RUN chmod +x /opt/spawnfile/entrypoint.sh"
+    "RUN chmod +x /opt/spawnfile/entrypoint.sh",
+    "RUN mkdir -p /var/lib/spawnfile && chown -R spawnfile:spawnfile /var/lib/spawnfile /opt/spawnfile"
   );
 
   if (exposedPorts.length > 0) {
     lines.push(`EXPOSE ${exposedPorts.join(" ")}`);
   }
 
+  lines.push("USER spawnfile");
   lines.push('ENTRYPOINT ["/opt/spawnfile/entrypoint.sh"]');
   return `${lines.join("\n").trimEnd()}\n`;
 };
@@ -143,6 +160,12 @@ const createEnvironmentAssignments = (plan: RuntimeTargetPlan): string[] => {
 const createEnvFileWrites = (plan: RuntimeTargetPlan): string[] =>
   plan.envFiles.map(
     (binding) => `write_env_file ${shellQuote(binding.envName)} ${shellQuote(binding.filePath)}`
+  );
+
+const createConfigEnvWrites = (plan: RuntimeTargetPlan): string[] =>
+  (plan.meta.configEnvBindings ?? []).map(
+    (binding) =>
+      `apply_json_env_value ${shellQuote(plan.instancePaths.configPath)} ${shellQuote(binding.envName)} ${shellQuote(binding.jsonPath)}`
   );
 
 const resolveStartCommand = (plan: RuntimeTargetPlan): string[] =>
@@ -215,8 +238,49 @@ export const renderEntrypoint = (
     "write_env_file() {",
     '  local name=\"$1\"',
     '  local target=\"$2\"',
+    '  if [ -z \"${!name:-}\" ]; then',
+    "    return",
+    "  fi",
     '  mkdir -p \"$(dirname \"$target\")\"',
-    '  printf %s \"${!name}\" > \"$target\"',
+    '  printf %s \"${!name:-}\" > \"$target\"',
+    "}",
+    "",
+    "apply_json_env_value() {",
+    '  local target=\"$1\"',
+    '  local name=\"$2\"',
+    '  local json_path=\"$3\"',
+    '  if [ -z \"${!name:-}\" ]; then',
+    "    return",
+    "  fi",
+    "  python3 - \"$target\" \"$name\" \"$json_path\" <<'PY'",
+    "import json",
+    "import os",
+    "import sys",
+    "",
+    "target_path = sys.argv[1]",
+    "env_name = sys.argv[2]",
+    "json_path = sys.argv[3].split('.')",
+    "value = os.environ.get(env_name)",
+    "if value is None:",
+    "    raise SystemExit(0)",
+    "",
+    "with open(target_path, encoding='utf-8') as handle:",
+    "    data = json.load(handle)",
+    "",
+    "cursor = data",
+    "for part in json_path[:-1]:",
+    "    child = cursor.get(part)",
+    "    if not isinstance(child, dict):",
+    "        child = {}",
+    "        cursor[part] = child",
+    "    cursor = child",
+    "",
+    "cursor[json_path[-1]] = value",
+    "",
+    "with open(target_path, 'w', encoding='utf-8') as handle:",
+    "    json.dump(data, handle, indent=2)",
+    "    handle.write('\\n')",
+    "PY",
     "}",
     ""
   ];
@@ -234,11 +298,13 @@ export const renderEntrypoint = (
     const commandTokens = resolveStartCommand(plan);
     const envAssignments = createEnvironmentAssignments(plan);
     const envFileWrites = createEnvFileWrites(plan);
+    const configEnvWrites = createConfigEnvWrites(plan);
 
     lines.push(
       `mkdir -p ${shellQuote(plan.instancePaths.workspacePath)}`,
       `require_file ${shellQuote(plan.instancePaths.configPath)}`,
       ...envFileWrites,
+      ...configEnvWrites,
       `${envAssignments.join(" ")} exec ${commandTokens.map(shellQuote).join(" ")}`
     );
 
@@ -262,11 +328,13 @@ export const renderEntrypoint = (
     const commandTokens = resolveStartCommand(plan);
     const envAssignments = createEnvironmentAssignments(plan);
     const envFileWrites = createEnvFileWrites(plan);
+    const configEnvWrites = createConfigEnvWrites(plan);
 
     lines.push(
       `mkdir -p ${shellQuote(plan.instancePaths.workspacePath)}`,
       `require_file ${shellQuote(plan.instancePaths.configPath)}`,
       ...envFileWrites,
+      ...configEnvWrites,
       `${envAssignments.join(" ")} ${commandTokens.map(shellQuote).join(" ")} &`,
       'PIDS+=("$!")',
       ""

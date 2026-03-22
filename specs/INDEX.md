@@ -12,7 +12,7 @@ These are the source of truth. Implementation in `src/` must stay aligned with t
 |----------|--------|-------------|
 | [SPEC.md](SPEC.md) | v0.1 draft | Canonical source format — manifest schema, portable surfaces, team schema, policy, CLI, env substitution |
 | [COMPILER.md](COMPILER.md) | v0.1 draft | Compiler pipeline, graph resolution, adapter contract, output layout, compile report |
-| [CONTAINERS.md](CONTAINERS.md) | v0.1 draft | Container compilation — Dockerfile and entrypoint generation, adapter container contract |
+| [CONTAINERS.md](CONTAINERS.md) | v0.1 draft | Container compilation — Dockerfile and entrypoint generation, run-time auth wiring, adapter container contract |
 | [RUNTIMES.md](RUNTIMES.md) | v0.1 draft | Runtime registry model — version pinning, status tracking, adapter lifecycle |
 
 ## Research
@@ -21,6 +21,7 @@ Working notes and analysis. Informative, not normative. These inform spec decisi
 
 | Document | Description |
 |----------|-------------|
+| [research/AUTH-NOTES.md](research/AUTH-NOTES.md) | Auth research and implementation notes — provider credentials, channel auth, CLI credential stores, and Spawnfile auth profile UX |
 | [research/RUNTIME-NOTES.md](research/RUNTIME-NOTES.md) | Per-runtime research — config surfaces, capabilities, overlap analysis, team lowering patterns, adapter strategies |
 
 ---
@@ -34,4 +35,5 @@ SPEC.md                    ← canonical schema, everything depends on this
   └── RUNTIMES.md          ← which runtimes exist and how they're tracked
 
 research/RUNTIME-NOTES.md  ← informs adapter implementation and RUNTIMES.md
+research/AUTH-NOTES.md     ← informs auth/profile UX, `execution.model.auth`, and future surface provisioning
 ```

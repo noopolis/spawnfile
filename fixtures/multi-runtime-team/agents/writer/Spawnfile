@@ -6,6 +6,8 @@ runtime: tinyclaw
 
 execution:
   model:
+    auth:
+      method: claude-code
     primary:
       provider: anthropic
       name: claude-sonnet-4-5

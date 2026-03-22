@@ -12,6 +12,7 @@ A Spawnfile source project is a directory you own and version. It describes the 
 
 `spawnfile compile` lowers that canonical source into runtime-specific config and workspace files. It is not a runtime-to-runtime translator. The compiler starts from the canonical source and emits each declared adapter's output.
 It also emits runnable container artifacts for the compiled output: `Dockerfile`, `entrypoint.sh`, `.env.example`, and a prebuilt `container/rootfs/` tree.
+`spawnfile build` turns that output into a Docker image using the pinned compiled runtime artifacts from `runtimes.yaml`, and `spawnfile run` is the auth-aware wrapper over `docker run`.
 
 ---
 
@@ -111,6 +112,9 @@ You write a source project once. Then you compile it:
 spawnfile init
 spawnfile validate
 spawnfile compile
+spawnfile auth import env .env --profile dev
+spawnfile build
+spawnfile run --auth-profile dev
 ```
 
 For a single agent, the compiler uses that manifest's declared runtime. For a team, it walks the member graph and compiles each member using that member's declared runtime.
@@ -204,7 +208,9 @@ spawnfile init
 spawnfile init --team
 spawnfile validate
 spawnfile compile
+spawnfile auth
 spawnfile build
+spawnfile run
 ```
 
 For example:
@@ -212,7 +218,9 @@ For example:
 ```bash
 spawnfile validate fixtures/single-agent
 spawnfile compile fixtures/single-agent --out ./dist/example
+spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
 spawnfile build fixtures/single-agent --out ./dist/example --tag example-agent
+spawnfile run fixtures/single-agent --tag example-agent --auth-profile dev
 ```
 
 The compiler emits runtime-specific artifacts under `dist/runtimes/...` and writes a machine-readable `spawnfile-report.json`.
@@ -222,7 +230,26 @@ The compiler emits runtime-specific artifacts under `dist/runtimes/...` and writ
 - final container filesystem output under `dist/container/rootfs/...`
 - `Dockerfile`, `entrypoint.sh`, `.env.example`
 
-`spawnfile build` is the happy path for compile + Docker image build. It compiles the project, then runs `docker build` against the emitted output directory.
+`spawnfile build` is the happy path for compile + Docker image build. It compiles the project, then runs `docker build` against the emitted output directory. The generated Dockerfile installs the pinned compiled runtime artifacts for the resolved runtimes; it does not rebuild runtime sources during image build.
+
+`spawnfile build` remains secrets-free by default. Runtime and model auth should be prepared locally, then applied at `spawnfile run` time.
+
+Model auth can be imported into a local Spawnfile auth profile:
+
+```bash
+spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
+spawnfile auth show --profile dev
+```
+
+Projects can declare `execution.model.auth.method` or provider-specific `execution.model.auth.methods` in the Spawnfile. `spawnfile auth sync` reads that intent and imports the matching local auth material into the selected profile. The lower-level `spawnfile auth import env`, `spawnfile auth import claude-code`, and `spawnfile auth import codex` commands remain available for manual profile editing.
+
+`env` auth is the primary path for provider API keys. `claude-code` and `codex` imports mount existing local CLI credential stores into runtime homes at `spawnfile run` time.
+
+Then run the built image with that profile:
+
+```bash
+spawnfile run fixtures/single-agent --tag example-agent --auth-profile dev
+```
 
 Manual Docker remains valid against the compile output:
 

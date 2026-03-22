@@ -1,11 +1,13 @@
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import type { AdapterCompileResult, RuntimeAdapter } from "../types.js";
+import type { ModelAuthMethod } from "../../shared/index.js";
 import {
   createAgentCapabilities,
   createDiagnostic,
   createDocumentFiles,
   createSkillFiles
 } from "../common.js";
+import { prepareOpenClawRuntimeAuth } from "./runAuth.js";
 
 const formatModel = (node: ResolvedAgentNode): string | null => {
   const primary = node.execution?.model?.primary;
@@ -41,6 +43,13 @@ const buildOpenClawConfig = (node: ResolvedAgentNode): string => {
 
   return `${JSON.stringify(config, null, 2)}\n`;
 };
+
+const listSupportedModelAuthMethods = (provider: string): ModelAuthMethod[] =>
+  provider === "anthropic"
+    ? ["api_key", "claude-code"]
+    : provider === "openai"
+      ? ["api_key", "codex"]
+      : ["api_key"];
 
 export const openClawAdapter: RuntimeAdapter = {
   container: {
@@ -100,6 +109,10 @@ export const openClawAdapter: RuntimeAdapter = {
     };
   },
   name: "openclaw",
+  prepareRuntimeAuth: prepareOpenClawRuntimeAuth,
+  supportedModelAuthMethods(provider) {
+    return listSupportedModelAuthMethods(provider);
+  },
   validateRuntimeOptions(options) {
     if ("profile" in options && typeof options.profile !== "string") {
       return [createDiagnostic("error", "OpenClaw runtime option profile must be a string")];

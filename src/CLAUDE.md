@@ -6,6 +6,7 @@ This folder contains all runtime code for the Spawnfile CLI and compiler.
 
 ```text
 src/
+├── auth/         # Local auth profile storage and auth import flows
 ├── cli/          # User-facing command parsing and terminal entrypoints
 ├── compiler/     # Graph resolution, compile planning, and artifact emission
 ├── filesystem/   # File IO and path utilities

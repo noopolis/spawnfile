@@ -133,6 +133,39 @@ describe("buildCompilePlan", () => {
     await expect(buildCompilePlan(directory)).rejects.toThrow(/does not declare a runtime/);
   });
 
+  it("rejects runtime and model auth combinations that the adapter does not support", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-unsupported-auth-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Root\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: root",
+        "",
+        "runtime: tinyclaw",
+        "",
+        "execution:",
+        "  model:",
+        "    primary:",
+        "      provider: openai",
+        "      name: gpt-5",
+        "    auth:",
+        "      method: api_key",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
+
+    await expect(buildCompilePlan(directory)).rejects.toThrow(
+      /does not support model auth method api_key for provider openai/
+    );
+  });
+
   it("rejects unknown runtime bindings during graph resolution", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-unknown-runtime-"));
     temporaryDirectories.push(directory);

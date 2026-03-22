@@ -1,5 +1,36 @@
 import { z } from "zod";
 
+const modelAuthMethodSchema = z.enum(["api_key", "claude-code", "codex"]);
+
+const modelAuthSchema = z
+  .object({
+    method: modelAuthMethodSchema.optional(),
+    methods: z.record(z.string(), modelAuthMethodSchema).optional()
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (!value.method && !value.methods) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "model auth must declare method or methods"
+      });
+    }
+
+    if (value.method && value.methods) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "model auth must not declare both method and methods"
+      });
+    }
+
+    if (value.methods && Object.keys(value.methods).length === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "model auth methods must not be empty"
+      });
+    }
+  });
+
 const docsSchema = z
   .object({
     extras: z.record(z.string(), z.string()).optional(),
@@ -61,6 +92,7 @@ const executionSchema = z
   .object({
     model: z
       .object({
+        auth: modelAuthSchema.optional(),
         fallback: z
           .array(
             z
@@ -77,6 +109,34 @@ const executionSchema = z
             provider: z.string()
           })
           .strict()
+      })
+      .superRefine((value, context) => {
+        const declaredProviders = new Set<string>([
+          value.primary.provider,
+          ...(value.fallback ?? []).map((model) => model.provider)
+        ]);
+
+        if (!value.auth?.methods) {
+          return;
+        }
+
+        for (const provider of declaredProviders) {
+          if (!(provider in value.auth.methods)) {
+            context.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `model auth methods must declare provider ${provider}`
+            });
+          }
+        }
+
+        for (const provider of Object.keys(value.auth.methods)) {
+          if (!declaredProviders.has(provider)) {
+            context.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `model auth methods declared unknown provider ${provider}`
+            });
+          }
+        }
       })
       .strict()
       .optional(),

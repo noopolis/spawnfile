@@ -8,7 +8,18 @@ describe("tinyClawAdapter", () => {
   it("exposes container metadata for API boot", () => {
     expect(tinyClawAdapter.container).toEqual({
       configFileName: "settings.json",
+      configEnvBindings: [
+        {
+          envName: "ANTHROPIC_API_KEY",
+          jsonPath: "models.anthropic.auth_token"
+        },
+        {
+          envName: "OPENAI_API_KEY",
+          jsonPath: "models.openai.auth_token"
+        }
+      ],
       homeEnv: "TINYAGI_HOME",
+      globalNpmPackages: ["@anthropic-ai/claude-code", "@openai/codex"],
       instancePaths: {
         configPathTemplate: "<instance-root>/tinyagi/<config-file>",
         homePathTemplate: "<instance-root>/tinyagi",

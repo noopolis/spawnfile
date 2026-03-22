@@ -287,6 +287,7 @@ export const mergeExecution = (
   const model =
     parentExecution.model || childExecution.model
       ? {
+          auth: childExecution.model?.auth ?? parentExecution.model?.auth,
           fallback: childExecution.model?.fallback ?? parentExecution.model?.fallback,
           primary: childExecution.model?.primary ?? parentExecution.model?.primary
         }
@@ -331,6 +332,7 @@ export const mergeExecution = (
 
   const resolvedModel: NonNullable<ExecutionBlock["model"]> | undefined = model
     ? {
+        auth: model.auth,
         fallback: model.fallback,
         primary: model.primary!
       }

@@ -7,6 +7,7 @@ This folder owns the OpenClaw runtime adapter.
 ```text
 src/runtime/openclaw/
 ├── adapter.ts        # OpenClaw lowering and capability reporting
+├── runAuth.ts        # OpenClaw runtime-auth preparation for `spawnfile run`
 └── adapter.test.ts   # OpenClaw adapter tests
 ```
 

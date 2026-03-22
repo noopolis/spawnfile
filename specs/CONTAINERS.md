@@ -64,6 +64,10 @@ Each adapter should expose enough information to generate install steps:
 ```typescript
 interface RuntimeContainerMeta {
   configFileName: string;
+  configEnvBindings?: Array<{
+    envName: string;
+    jsonPath: string;
+  }>;
   configPathEnv?: string;
   env?: Array<{
     description: string;
@@ -98,11 +102,16 @@ The compiler uses this metadata to compose the Dockerfile and entrypoint. Adapte
 
 ### Pinned Versions
 
-The runtime version used in the Dockerfile should match the pinned `ref` from `runtimes.yaml`. This keeps the compiled container aligned with the runtime version the adapters were written against.
+The runtime version used in the Dockerfile should match the pinned registry metadata from `runtimes.yaml`. This keeps the compiled container aligned with the runtime version the adapters were written against.
 
 `spawnfile compile` itself should not require local runtime clones on the compiler machine. The compile step reads the registry metadata and adapter contracts; the Docker build step is responsible for fetching or installing the pinned runtime artifact.
 
-The v0.1 reference implementation currently uses pinned source-checkout install recipes. Other install strategies may be added later, but they must stay aligned with the pinned ref.
+The v0.1 reference implementation uses pinned compiled runtime artifacts:
+
+- npm packages where the runtime publishes them
+- release archives or bundles where the runtime ships them
+
+Generated Dockerfiles must not clone runtime repositories or rebuild runtime sources during image build.
 
 ---
 
@@ -112,7 +121,8 @@ The entrypoint script is responsible for:
 
 1. Validating required env and required files
 2. Materializing env-backed secret files when a runtime expects file-based auth
-3. Starting the runtime process(es)
+3. Materializing env-backed runtime config fields when a runtime stores auth in config
+4. Starting the runtime process(es)
 
 ### Single-Runtime
 
@@ -123,6 +133,7 @@ The entrypoint should then stay minimal:
 - validate required env vars
 - validate that the compiled config exists at the expected final path
 - write env-backed secret files when needed
+- patch runtime-native config fields from env when needed
 - `exec` the runtime's start command
 
 ### Multi-Runtime
@@ -133,6 +144,7 @@ The entrypoint then:
 
 - validates required env and config for each target
 - writes env-backed secret files for each target when needed
+- patches runtime-native config fields from env when needed
 - starts each runtime process
 - traps signals and forwards them to all child processes
 - waits for all processes
@@ -155,7 +167,8 @@ The entrypoint does not need to understand agent semantics. It only needs to kno
 The compiler should emit a `.env.example` file listing all required and optional environment variables:
 
 - secrets declared in manifests (e.g. `SEARCH_API_KEY`)
-- runtime auth variables (e.g. `ANTHROPIC_API_KEY`)
+- model auth variables for providers that still use `api_key` auth (e.g. `ANTHROPIC_API_KEY`)
+- runtime auth variables (e.g. `OPENCLAW_GATEWAY_TOKEN`)
 - any variables the entrypoint or runtime expects
 
 Actual secret values are never emitted. The `.env.example` contains variable names with empty values and comments describing their purpose.
@@ -167,6 +180,11 @@ At runtime, secrets are injected via:
 - mounted secret files
 
 If a runtime expects secret file references in its config, the adapter should declare those env-to-file bindings and the entrypoint should materialize them before startup.
+
+Model auth intent itself is declared in source manifests under `execution.model.auth`. The compile output should therefore reflect:
+
+- which provider/runtime instances still require `api_key` env at run time
+- which provider/runtime instances expect imported CLI credential stores such as `claude-code` or `codex`
 
 ---
 
@@ -189,8 +207,23 @@ The compile report should include a `container` section:
     "dockerfile": "Dockerfile",
     "entrypoint": "entrypoint.sh",
     "env_example": ".env.example",
+    "model_secrets_required": ["ANTHROPIC_API_KEY"],
+    "runtime_secrets_required": ["OPENCLAW_GATEWAY_TOKEN"],
+    "runtime_homes": ["/var/lib/spawnfile/instances/openclaw/agent-analyst/home"],
     "secrets_required": ["SEARCH_API_KEY", "ANTHROPIC_API_KEY"],
-    "ports": [3000]
+    "ports": [3000],
+    "runtime_instances": [
+      {
+        "id": "agent-analyst",
+        "runtime": "openclaw",
+        "config_path": "/var/lib/spawnfile/instances/openclaw/agent-analyst/home/.openclaw/openclaw.json",
+        "home_path": "/var/lib/spawnfile/instances/openclaw/agent-analyst/home",
+        "model_auth_methods": {
+          "anthropic": "claude-code"
+        },
+        "model_secrets_required": []
+      }
+    ]
   }
 }
 ```
@@ -209,6 +242,8 @@ These are explicitly out of scope for v0.1 container compilation:
 - Volume management and persistence strategy
 - Network topology between containers
 - CI/CD integration
+
+Spawnfile-managed auth profile storage and `spawnfile run` orchestration are adjacent UX layers, not part of compile output itself, but the compile output does include the metadata needed for `run` to validate declared model auth and mount the right credential material.
 
 ---
 
@@ -238,25 +273,31 @@ Adapter verification at the pinned ref should include:
 The intended workflow for testing compiled output:
 
 ```bash
+# sync declared model auth into a local profile
+spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
+
 # compile and build the container
 spawnfile build fixtures/single-agent --out ./dist/single-agent --tag my-agent
 
-# create .env from example
-cp dist/single-agent/.env.example dist/single-agent/.env
-# fill in secrets...
-
-# run
-docker run --env-file dist/single-agent/.env my-agent
+# run with the local auth profile
+spawnfile run fixtures/single-agent --out ./dist/single-agent --tag my-agent --auth-profile dev
 ```
 
 For teams:
 
 ```bash
+spawnfile auth sync fixtures/multi-runtime-team --profile dev --env-file ./.env
 spawnfile build fixtures/multi-runtime-team --out ./dist/team --tag my-team
-cp dist/team/.env.example dist/team/.env
-docker run --env-file dist/team/.env my-team
+spawnfile run fixtures/multi-runtime-team --out ./dist/team --tag my-team --auth-profile dev
 ```
 
 Same flow regardless of project complexity. One compile, one build, one run.
 
 `spawnfile compile` still emits a standard Docker build context, so manual `docker build` remains supported when developers want to inspect or tweak the emitted output before building the image.
+
+The intended auth split is:
+
+- `Spawnfile` declares model auth intent via `execution.model.auth`
+- `spawnfile auth sync` materializes matching local auth into a profile
+- `spawnfile build` stays secrets-free
+- `spawnfile run --auth-profile ...` injects only the auth material required by the declared methods

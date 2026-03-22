@@ -12,6 +12,7 @@ src/compiler/
 ├── surfaces.ts                 # Resolved docs, skills, and shared-surface merging
 ├── buildCompilePlan.ts         # Manifest graph walk and plan construction
 ├── compileProject.ts           # Adapter execution and output/report emission
+├── runProject.ts               # `spawnfile run` docker-run planning and execution
 ├── initProject.ts              # `spawnfile init` scaffolding
 ├── *.test.ts                   # Tests next to the implementation they cover
 ```

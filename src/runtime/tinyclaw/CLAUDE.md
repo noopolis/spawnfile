@@ -7,7 +7,8 @@ This folder owns the TinyClaw runtime adapter.
 ```text
 src/runtime/tinyclaw/
 ├── adapter.ts        # TinyClaw lowering, including native team artifacts
-└── adapter.test.ts   # TinyClaw adapter tests
+├── runAuth.ts        # TinyClaw runtime auth coverage for spawnfile run
+└── *.test.ts         # TinyClaw adapter/auth tests
 ```
 
 TinyClaw is the current native-team adapter, so changes here should be careful about team semantics and explicit about degradation paths.

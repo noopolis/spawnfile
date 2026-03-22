@@ -1,4 +1,5 @@
 import type { ResolvedAgentNode, ResolvedTeamNode } from "../../compiler/types.js";
+import type { ModelAuthMethod } from "../../shared/index.js";
 import type {
   AdapterCompileResult,
   ContainerTarget,
@@ -11,6 +12,7 @@ import {
   createDocumentFiles,
   createSkillFiles
 } from "../common.js";
+import { prepareTinyClawRuntimeAuth } from "./runAuth.js";
 
 const WORKSPACE_PLACEHOLDER = "<workspace-path>";
 
@@ -113,15 +115,34 @@ const mergeTinyClawTargets = async (
           path: "settings.json"
         }
       ],
-      id: "tinyclaw-runtime"
+      id: "tinyclaw-runtime",
+      sourceIds: agentInputs.map((input) => input.id)
     }
   ];
 };
 
+const listSupportedModelAuthMethods = (provider: string): ModelAuthMethod[] =>
+  provider === "anthropic"
+    ? ["claude-code"]
+    : provider === "openai"
+      ? ["codex"]
+      : ["api_key"];
+
 export const tinyClawAdapter: RuntimeAdapter = {
   container: {
     configFileName: "settings.json",
+    configEnvBindings: [
+      {
+        envName: "ANTHROPIC_API_KEY",
+        jsonPath: "models.anthropic.auth_token"
+      },
+      {
+        envName: "OPENAI_API_KEY",
+        jsonPath: "models.openai.auth_token"
+      }
+    ],
     homeEnv: "TINYAGI_HOME",
+    globalNpmPackages: ["@anthropic-ai/claude-code", "@openai/codex"],
     instancePaths: {
       configPathTemplate: "<instance-root>/tinyagi/<config-file>",
       homePathTemplate: "<instance-root>/tinyagi",
@@ -182,5 +203,9 @@ export const tinyClawAdapter: RuntimeAdapter = {
       ]
     };
   },
-  name: "tinyclaw"
+  name: "tinyclaw",
+  prepareRuntimeAuth: prepareTinyClawRuntimeAuth,
+  supportedModelAuthMethods(provider) {
+    return listSupportedModelAuthMethods(provider);
+  }
 };

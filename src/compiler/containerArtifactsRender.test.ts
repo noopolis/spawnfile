@@ -49,6 +49,8 @@ const createRuntimePlan = (
     startCommand: ["runtime"],
     systemDeps: []
   },
+  modelAuthMethods: {},
+  modelSecretsRequired: [],
   runtimeName,
   runtimeRoot: `/opt/runtime/${runtimeName}`,
   targetFiles: [],
@@ -113,6 +115,9 @@ describe("renderDockerfile", () => {
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain("USER root");
     expect(dockerfile).toContain(
+      "RUN if ! id -u spawnfile >/dev/null 2>&1; then useradd --create-home --home-dir /home/spawnfile --shell /bin/bash spawnfile; fi"
+    );
+    expect(dockerfile).toContain(
       "RUN apt-get update && apt-get install -y --no-install-recommends curl openssl tar && rm -rf /var/lib/apt/lists/*"
     );
     expect(dockerfile).toContain("RUN npm install -g openclaw@2026.3.13");
@@ -120,6 +125,58 @@ describe("renderDockerfile", () => {
     expect(dockerfile).not.toContain("runtime-sources");
     expect(dockerfile).not.toContain("https://deb.nodesource.com/node_24.x");
     expect(dockerfile).not.toContain("RUN corepack enable");
+    expect(dockerfile).toContain(
+      "RUN mkdir -p /var/lib/spawnfile && chown -R spawnfile:spawnfile /var/lib/spawnfile /opt/spawnfile"
+    );
+    expect(dockerfile).toContain("USER spawnfile");
     expect(dockerfile).toContain("EXPOSE 18789 18790");
+  });
+});
+
+describe("renderEntrypoint", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("../runtime/index.js");
+  });
+
+  it("skips optional env-backed file writes when the env var is absent", async () => {
+    const { renderEntrypoint } = await loadRenderModule({
+      picoclaw: {
+        commands: [],
+        copyCommands: [],
+        runtimeName: "picoclaw",
+        runtimeRoot: "/opt/runtime/picoclaw"
+      }
+    });
+
+    const entrypoint = renderEntrypoint(
+      [
+        createRuntimePlan("picoclaw", {
+          envFiles: [
+            {
+              envName: "OPENAI_API_KEY",
+              filePath: "/var/lib/spawnfile/picoclaw/secrets/OPENAI_API_KEY"
+            }
+          ],
+          meta: {
+            configFileName: "config.json",
+            configPathEnv: "PICOCLAW_CONFIG",
+            homeEnv: "PICOCLAW_HOME",
+            instancePaths: {
+              configPathTemplate: "<instance-root>/config.json",
+              homePathTemplate: "<instance-root>/home",
+              workspacePathTemplate: "<instance-root>/workspace"
+            },
+            standaloneBaseImage: "debian:bookworm-slim",
+            startCommand: ["picoclaw", "gateway"],
+            systemDeps: []
+          }
+        })
+      ],
+      []
+    );
+
+    expect(entrypoint).toContain('if [ -z "${!name:-}" ]; then');
+    expect(entrypoint).toContain('printf %s "${!name:-}" > "$target"');
   });
 });

@@ -1,5 +1,6 @@
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import type { McpServer } from "../../manifest/index.js";
+import type { ModelAuthMethod } from "../../shared/index.js";
 import type {
   AdapterCompileResult,
   ContainerTarget,
@@ -12,11 +13,23 @@ import {
   createDocumentFiles,
   createSkillFiles
 } from "../common.js";
+import { preparePicoClawRuntimeAuth } from "./runAuth.js";
 
 const formatModelName = (node: ResolvedAgentNode): string | null => {
   const primary = node.execution?.model?.primary;
   if (!primary) return null;
   return primary.name;
+};
+
+const resolveDefaultTemperature = (node: ResolvedAgentNode): number | null => {
+  const primary = node.execution?.model?.primary;
+  if (!primary) return null;
+
+  if (primary.provider === "openai" && primary.name === "gpt-5") {
+    return 1;
+  }
+
+  return null;
 };
 
 const MODEL_PROVIDER_ENV_VARS = new Map<string, string>([
@@ -89,13 +102,15 @@ const buildMcpServers = (
 const buildPicoClawConfig = (node: ResolvedAgentNode): string => {
   const modelName = formatModelName(node);
   const restrictToWorkspace = node.runtime.options.restrict_to_workspace ?? true;
+  const temperature = resolveDefaultTemperature(node);
 
   const config: Record<string, unknown> = {
     agents: {
       defaults: {
         workspace: "<workspace-path>",
         restrict_to_workspace: restrictToWorkspace,
-        ...(modelName ? { model_name: modelName } : {})
+        ...(modelName ? { model_name: modelName } : {}),
+        ...(temperature !== null ? { temperature } : {})
       }
     },
     model_list: buildModelList(node)
@@ -131,14 +146,23 @@ const createContainerTargets = async (
     return {
       envFiles,
       files: input.emittedFiles,
-      id: `${input.kind}-${input.slug}`
+      id: `${input.kind}-${input.slug}`,
+      sourceIds: [input.id]
     };
   });
+
+const listSupportedModelAuthMethods = (provider: string): ModelAuthMethod[] =>
+  provider === "anthropic"
+    ? ["api_key", "claude-code"]
+    : provider === "openai"
+      ? ["api_key", "codex"]
+      : ["api_key"];
 
 export const picoClawAdapter: RuntimeAdapter = {
   container: {
     configFileName: "config.json",
     configPathEnv: "PICOCLAW_CONFIG",
+    globalNpmPackages: ["@anthropic-ai/claude-code", "@openai/codex"],
     homeEnv: "PICOCLAW_HOME",
     instancePaths: {
       configPathTemplate: "<instance-root>/picoclaw/<config-file>",
@@ -152,7 +176,7 @@ export const picoClawAdapter: RuntimeAdapter = {
     staticEnv: {
       PICOCLAW_GATEWAY_HOST: "0.0.0.0"
     },
-    systemDeps: ["bash", "ca-certificates", "curl", "tar"]
+    systemDeps: ["bash", "ca-certificates", "curl", "nodejs", "npm", "tar"]
   },
   async compileAgent(node): Promise<AdapterCompileResult> {
     return {
@@ -172,6 +196,10 @@ export const picoClawAdapter: RuntimeAdapter = {
     return createContainerTargets(inputs);
   },
   name: "picoclaw",
+  prepareRuntimeAuth: preparePicoClawRuntimeAuth,
+  supportedModelAuthMethods(provider) {
+    return listSupportedModelAuthMethods(provider);
+  },
   validateRuntimeOptions(options) {
     if (
       "restrict_to_workspace" in options &&

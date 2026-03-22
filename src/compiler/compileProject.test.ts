@@ -65,7 +65,22 @@ describe("compileProject", () => {
       dockerfile: "Dockerfile",
       entrypoint: "entrypoint.sh",
       env_example: ".env.example",
+      model_secrets_required: ["ANTHROPIC_API_KEY"],
       ports: [18789],
+      runtime_instances: [
+        {
+          config_path: "/var/lib/spawnfile/instances/openclaw/agent-analyst/home/.openclaw/openclaw.json",
+          home_path: "/var/lib/spawnfile/instances/openclaw/agent-analyst/home",
+          id: "agent-analyst",
+          model_auth_methods: {
+            anthropic: "api_key"
+          },
+          model_secrets_required: ["ANTHROPIC_API_KEY"],
+          runtime: "openclaw"
+        }
+      ],
+      runtime_homes: ["/var/lib/spawnfile/instances/openclaw/agent-analyst/home"],
+      runtime_secrets_required: ["OPENCLAW_GATEWAY_TOKEN"],
       runtimes_installed: ["openclaw"],
       secrets_required: ["ANTHROPIC_API_KEY", "OPENCLAW_GATEWAY_TOKEN", "SEARCH_API_KEY"]
     });
@@ -139,7 +154,46 @@ describe("compileProject", () => {
       dockerfile: "Dockerfile",
       entrypoint: "entrypoint.sh",
       env_example: ".env.example",
+      model_secrets_required: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
       ports: [3777, 18789, 18790],
+      runtime_instances: [
+        {
+          config_path: "/var/lib/spawnfile/instances/openclaw/agent-orchestrator/home/.openclaw/openclaw.json",
+          home_path: "/var/lib/spawnfile/instances/openclaw/agent-orchestrator/home",
+          id: "agent-orchestrator",
+          model_auth_methods: {
+            anthropic: "api_key"
+          },
+          model_secrets_required: ["ANTHROPIC_API_KEY"],
+          runtime: "openclaw"
+        },
+        {
+          config_path: "/var/lib/spawnfile/instances/picoclaw/agent-researcher/picoclaw/config.json",
+          home_path: "/var/lib/spawnfile/instances/picoclaw/agent-researcher/picoclaw",
+          id: "agent-researcher",
+          model_auth_methods: {
+            openai: "api_key"
+          },
+          model_secrets_required: ["OPENAI_API_KEY"],
+          runtime: "picoclaw"
+        },
+        {
+          config_path: "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/settings.json",
+          home_path: "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi",
+          id: "tinyclaw-runtime",
+          model_auth_methods: {
+            anthropic: "claude-code"
+          },
+          model_secrets_required: [],
+          runtime: "tinyclaw"
+        }
+      ],
+      runtime_homes: [
+        "/var/lib/spawnfile/instances/openclaw/agent-orchestrator/home",
+        "/var/lib/spawnfile/instances/picoclaw/agent-researcher/picoclaw",
+        "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi"
+      ],
+      runtime_secrets_required: ["OPENCLAW_GATEWAY_TOKEN"],
       runtimes_installed: ["openclaw", "picoclaw", "tinyclaw"],
       secrets_required: [
         "ANTHROPIC_API_KEY",

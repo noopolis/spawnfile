@@ -1,10 +1,19 @@
 import { Command } from "commander";
 
 import {
+  importClaudeCodeAuth,
+  importCodexAuth,
+  importEnvFile,
+  requireAuthProfile,
+  type ResolvedAuthProfile
+} from "../auth/index.js";
+import {
   buildCompilePlan,
   buildProject,
   compileProject,
-  initProject
+  initProject,
+  runProject,
+  syncProjectAuth
 } from "../compiler/index.js";
 import { isSpawnfileError } from "../shared/index.js";
 import { listRuntimeAdapters } from "../runtime/index.js";
@@ -23,16 +32,28 @@ export interface CliHandlers {
   buildCompilePlan: typeof buildCompilePlan;
   buildProject: typeof buildProject;
   compileProject: typeof compileProject;
+  importClaudeCodeAuth: typeof importClaudeCodeAuth;
+  importCodexAuth: typeof importCodexAuth;
+  importEnvFile: typeof importEnvFile;
   initProject: typeof initProject;
   listRuntimeAdapters: typeof listRuntimeAdapters;
+  requireAuthProfile: typeof requireAuthProfile;
+  runProject: typeof runProject;
+  syncProjectAuth: typeof syncProjectAuth;
 }
 
 const createDefaultHandlers = (): CliHandlers => ({
   buildCompilePlan,
   buildProject,
   compileProject,
+  importClaudeCodeAuth,
+  importCodexAuth,
+  importEnvFile,
   initProject,
-  listRuntimeAdapters
+  listRuntimeAdapters,
+  requireAuthProfile,
+  runProject,
+  syncProjectAuth
 });
 
 const formatPlanSummary = (plan: Awaited<ReturnType<typeof buildCompilePlan>>): string =>
@@ -41,6 +62,17 @@ const formatPlanSummary = (plan: Awaited<ReturnType<typeof buildCompilePlan>>): 
     `nodes: ${plan.nodes.length}`,
     `runtimes: ${Object.keys(plan.runtimes).sort().join(", ") || "none"}`
   ].join("\n");
+
+const formatAuthProfileSummary = (profile: ResolvedAuthProfile): string[] => {
+  const envKeys = Object.keys(profile.env).sort();
+  const importedKinds = Object.keys(profile.imports).sort();
+
+  return [
+    `profile: ${profile.name}`,
+    `env: ${envKeys.length > 0 ? envKeys.join(", ") : "none"}`,
+    `imports: ${importedKinds.length > 0 ? importedKinds.join(", ") : "none"}`
+  ];
+};
 
 export const runCli = async (
   argv: string[],
@@ -77,6 +109,40 @@ export const runCli = async (
     });
 
   program
+    .command("run")
+    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
+    .option("-o, --out <directory>", "Output directory")
+    .option("-t, --tag <image>", "Docker image tag")
+    .option("--auth-profile <name>", "Local Spawnfile auth profile")
+    .option("--name <container>", "Docker container name")
+    .option("-d, --detach", "Run the container in detached mode")
+    .action(
+      async (
+        inputPath: string,
+        options: {
+          authProfile?: string;
+          detach?: boolean;
+          name?: string;
+          out?: string;
+          tag?: string;
+        }
+      ) => {
+        const result = await handlers.runProject(inputPath, {
+          authProfile: options.authProfile,
+          containerName: options.name,
+          detach: options.detach,
+          imageTag: options.tag,
+          outputDirectory: options.out
+        });
+
+        if (options.detach) {
+          streams.stdout(`running container ${result.containerName ?? "unknown"}`);
+          streams.stdout(`image: ${result.imageTag}`);
+        }
+      }
+    );
+
+  program
     .command("init")
     .argument("[path]", "Directory to initialize", process.cwd())
     .option("--team", "Initialize a team project")
@@ -103,6 +169,83 @@ export const runCli = async (
     .action(() => {
       for (const runtimeName of handlers.listRuntimeAdapters()) {
         streams.stdout(runtimeName);
+      }
+    });
+
+  const authCommand = program.command("auth").description("Manage local Spawnfile auth profiles");
+  const authImportCommand = authCommand
+    .command("import")
+    .description("Import auth material into a local auth profile");
+
+  authImportCommand
+    .command("env")
+    .argument("<file>", "Path to an env file")
+    .option("-p, --profile <name>", "Auth profile name", "default")
+    .action(async (filePath: string, options: { profile: string }) => {
+      const profile = await handlers.importEnvFile(options.profile, filePath);
+      for (const line of formatAuthProfileSummary(profile)) {
+        streams.stdout(line);
+      }
+    });
+
+  authImportCommand
+    .command("claude-code")
+    .option("-p, --profile <name>", "Auth profile name", "default")
+    .option("--from <directory>", "Source Claude Code config directory")
+    .action(async (options: { from?: string; profile: string }) => {
+      const profile = await handlers.importClaudeCodeAuth(options.profile, options.from);
+      for (const line of formatAuthProfileSummary(profile)) {
+        streams.stdout(line);
+      }
+    });
+
+  authImportCommand
+    .command("codex")
+    .option("-p, --profile <name>", "Auth profile name", "default")
+    .option("--from <directory>", "Source Codex config directory")
+    .action(async (options: { from?: string; profile: string }) => {
+      const profile = await handlers.importCodexAuth(options.profile, options.from);
+      for (const line of formatAuthProfileSummary(profile)) {
+        streams.stdout(line);
+      }
+    });
+
+  authCommand
+    .command("sync")
+    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
+    .option("-p, --profile <name>", "Auth profile name", "default")
+    .option("--env-file <file>", "Path to an env file with model API keys")
+    .option("--claude-from <directory>", "Source Claude Code config directory")
+    .option("--codex-from <directory>", "Source Codex config directory")
+    .action(
+      async (
+        inputPath: string,
+        options: {
+          claudeFrom?: string;
+          codexFrom?: string;
+          envFile?: string;
+          profile: string;
+        }
+      ) => {
+        const profile = await handlers.syncProjectAuth(inputPath, {
+          claudeCodeDirectory: options.claudeFrom,
+          codexDirectory: options.codexFrom,
+          envFilePath: options.envFile,
+          profileName: options.profile
+        });
+        for (const line of formatAuthProfileSummary(profile)) {
+          streams.stdout(line);
+        }
+      }
+    );
+
+  authCommand
+    .command("show")
+    .option("-p, --profile <name>", "Auth profile name", "default")
+    .action(async (options: { profile: string }) => {
+      const profile = await handlers.requireAuthProfile(options.profile);
+      for (const line of formatAuthProfileSummary(profile)) {
+        streams.stdout(line);
       }
     });
 

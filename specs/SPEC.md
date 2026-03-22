@@ -220,6 +220,10 @@ The `execution` block declares portable intent, not literal adapter config.
 ```yaml
 execution:
   model:
+    auth:
+      methods:
+        anthropic: claude-code
+        openai: codex
     primary:
       provider: anthropic
       name: claude-sonnet-4-5
@@ -236,9 +240,17 @@ Rules:
 
 - `execution.model.primary.provider` and `execution.model.primary.name` are REQUIRED if `execution.model` is present.
 - `execution.model.fallback` is OPTIONAL and declares an ordered list of fallback models.
+- `execution.model.auth` is OPTIONAL.
+- `execution.model.auth.method` MAY declare one auth method for all declared model providers.
+- `execution.model.auth.methods` MAY declare auth methods per provider.
+- Supported auth methods in v0.1 are: `api_key`, `claude-code`, `codex`.
+- `execution.model.auth` MUST declare exactly one of `method` or `methods`.
+- If `execution.model.auth.methods` is used, it MUST cover every declared provider in `primary` and `fallback`, and it MUST NOT declare providers that are not present in that model set.
+- If `execution.model.auth` is omitted, the effective auth method defaults to `api_key` for each declared provider.
 - `execution.workspace.isolation` MUST be one of: `isolated`, `shared`.
 - `execution.sandbox.mode` MUST be one of: `workspace`, `sandboxed`, `unrestricted`.
 - Compilers MUST treat these values as author intent and map them to runtime-native configuration.
+- Compilers MUST reject runtime/auth combinations that the selected runtime adapter does not support.
 - If exact semantics cannot be preserved, the compiler MUST report `degraded` or `unsupported` according to the compile policy.
 
 ### 2.6 Environment and Secrets
@@ -303,6 +315,8 @@ runtime:
 
 execution:
   model:
+    auth:
+      method: api_key
     primary:
       provider: anthropic
       name: claude-sonnet-4-5
@@ -783,9 +797,34 @@ Compiles a Spawnfile project to runtime-specific output.
 - MUST enforce the project's `policy` block
 - Exits with code 0 on success, 1 on error
 
-### 9.2 Future Commands
+#### `spawnfile build`
 
-`spawnfile build` is reserved for container image building once the container compilation spec (`CONTAINERS.md`) is implemented. It will build a Docker image from compiled output.
+Builds a Docker image from compiled output.
+
+- `path` is the directory containing the Spawnfile (default: current directory)
+- `--out` sets the output directory (default: `./dist`)
+- `--tag` sets the Docker image tag
+- MUST compile the project before invoking Docker build
+- MUST keep build output secrets-free by default
+
+#### `spawnfile run`
+
+Runs a previously built image with the compiled project's published ports and auth wiring.
+
+- `path` is the directory containing the Spawnfile (default: current directory)
+- `--out` sets the output directory used to derive the compile report (default: `./dist`)
+- `--tag` selects the Docker image tag
+- `--auth-profile` selects a local Spawnfile auth profile
+- MUST compile the project before deriving runtime wiring
+- MUST apply model/runtime auth at run time, not build time
+
+#### `spawnfile auth`
+
+Manages local Spawnfile auth profiles.
+
+- MUST support local auth profile materialization outside project source
+- MAY support import of env files and existing local CLI credential stores
+- SHOULD support `spawnfile auth sync` as the primary happy path for reconciling declared `execution.model.auth` intent with a local auth profile
 
 ---
 

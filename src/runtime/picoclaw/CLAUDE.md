@@ -7,6 +7,7 @@ This folder owns the PicoClaw runtime adapter.
 ```text
 src/runtime/picoclaw/
 ├── adapter.ts        # PicoClaw lowering and runtime-option validation
+├── runAuth.ts        # PicoClaw runtime-auth preparation for `spawnfile run`
 └── adapter.test.ts   # PicoClaw adapter tests
 ```
 

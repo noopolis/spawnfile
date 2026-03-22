@@ -32,6 +32,7 @@ describe("picoClawAdapter", () => {
     expect(picoClawAdapter.container).toEqual({
       configFileName: "config.json",
       configPathEnv: "PICOCLAW_CONFIG",
+      globalNpmPackages: ["@anthropic-ai/claude-code", "@openai/codex"],
       homeEnv: "PICOCLAW_HOME",
       instancePaths: {
         configPathTemplate: "<instance-root>/picoclaw/<config-file>",
@@ -45,7 +46,7 @@ describe("picoClawAdapter", () => {
       staticEnv: {
         PICOCLAW_GATEWAY_HOST: "0.0.0.0"
       },
-      systemDeps: ["bash", "ca-certificates", "curl", "tar"]
+      systemDeps: ["bash", "ca-certificates", "curl", "nodejs", "npm", "tar"]
     });
   });
 
@@ -57,9 +58,28 @@ describe("picoClawAdapter", () => {
     const config = JSON.parse(configFile!.content);
     expect(config.agents.defaults.model_name).toBe("gpt-4o-mini");
     expect(config.agents.defaults.restrict_to_workspace).toBe(true);
+    expect(config.agents.defaults.temperature).toBeUndefined();
     expect(config.model_list[0].model).toBe("openai/gpt-4o-mini");
     expect(config.model_list[0].api_key).toBe("file://secrets/OPENAI_API_KEY");
     expect(config.model).toBeUndefined();
+  });
+
+  it("emits explicit temperature for openai gpt-5", async () => {
+    const result = await picoClawAdapter.compileAgent({
+      ...node,
+      execution: {
+        model: {
+          primary: {
+            name: "gpt-5",
+            provider: "openai"
+          }
+        }
+      }
+    });
+
+    const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
+    expect(config.agents.defaults.model_name).toBe("gpt-5");
+    expect(config.agents.defaults.temperature).toBe(1);
   });
 
   it("emits MCP servers as named map", async () => {

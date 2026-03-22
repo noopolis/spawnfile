@@ -27,6 +27,14 @@ export const createContainerArtifacts = async (
     .filter((variable) => variable.required)
     .map((variable) => variable.name)
     .sort();
+  const modelSecretsRequired = envVariables
+    .filter((variable) => variable.required && variable.categories.includes("model"))
+    .map((variable) => variable.name)
+    .sort();
+  const runtimeSecretsRequired = envVariables
+    .filter((variable) => variable.required && variable.categories.includes("runtime"))
+    .map((variable) => variable.name)
+    .sort();
 
   const files: EmittedFile[] = [
     ...createRootfsFiles(runtimePlans),
@@ -35,7 +43,10 @@ export const createContainerArtifacts = async (
       path: "Dockerfile"
     },
     {
-      content: renderEntrypoint(runtimePlans, requiredSecrets),
+      content: renderEntrypoint(
+        runtimePlans,
+        requiredSecrets.filter((secretName) => !modelSecretsRequired.includes(secretName))
+      ),
       path: "entrypoint.sh"
     },
     {
@@ -47,6 +58,19 @@ export const createContainerArtifacts = async (
   const ports = [...new Set(runtimePlans.flatMap((plan) => (plan.port ? [plan.port] : [])))].sort(
     (left, right) => left - right
   );
+  const runtimeHomes = [
+    ...new Set(runtimePlans.flatMap((plan) => (plan.instancePaths.homePath ? [plan.instancePaths.homePath] : [])))
+  ].sort();
+  const runtimeInstances = runtimePlans
+    .map((plan) => ({
+      config_path: plan.instancePaths.configPath,
+      home_path: plan.instancePaths.homePath ?? null,
+      id: plan.id,
+      model_auth_methods: plan.modelAuthMethods,
+      model_secrets_required: plan.modelSecretsRequired,
+      runtime: plan.runtimeName
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
   const runtimesInstalled = [...new Set(runtimePlans.map((plan) => plan.runtimeName))].sort();
 
   return {
@@ -56,7 +80,11 @@ export const createContainerArtifacts = async (
       dockerfile: "Dockerfile",
       entrypoint: "entrypoint.sh",
       env_example: ".env.example",
+      model_secrets_required: modelSecretsRequired,
       ports,
+      runtime_instances: runtimeInstances,
+      runtime_homes: runtimeHomes,
+      runtime_secrets_required: runtimeSecretsRequired,
       runtimes_installed: runtimesInstalled,
       secrets_required: requiredSecrets
     }

@@ -277,6 +277,43 @@ describe("loadManifest", () => {
     );
   });
 
+  it("rejects model auth methods that do not cover all declared providers", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-model-auth-missing-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Instructions\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: broken-auth",
+        "",
+        "runtime: openclaw",
+        "",
+        "execution:",
+        "  model:",
+        "    primary:",
+        "      provider: openai",
+        "      name: gpt-5",
+        "    fallback:",
+        "      - provider: anthropic",
+        "        name: claude-sonnet-4-5",
+        "    auth:",
+        "      methods:",
+        "        openai: codex",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
+
+    await expect(loadManifest(path.join(directory, "Spawnfile"))).rejects.toThrow(
+      /must declare provider anthropic/
+    );
+  });
+
   it("rejects leader that references undeclared member", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-bad-structure-leader-"));
     temporaryDirectories.push(directory);
@@ -470,8 +507,43 @@ describe("mergeExecution", () => {
       )
     ).toEqual({
       model: {
+        auth: undefined,
         fallback: [{ name: "claude-haiku", provider: "anthropic" }],
         primary: { name: "gpt-5", provider: "openai" }
+      },
+      sandbox: undefined,
+      workspace: undefined
+    });
+  });
+
+  it("inherits parent model auth settings when the child does not override them", () => {
+    expect(
+      mergeExecution(
+        {
+          model: {
+            auth: {
+              methods: {
+                anthropic: "claude-code"
+              }
+            },
+            primary: { name: "claude-sonnet", provider: "anthropic" }
+          }
+        },
+        {
+          model: {
+            primary: { name: "claude-opus", provider: "anthropic" }
+          }
+        }
+      )
+    ).toEqual({
+      model: {
+        auth: {
+          methods: {
+            anthropic: "claude-code"
+          }
+        },
+        fallback: undefined,
+        primary: { name: "claude-opus", provider: "anthropic" }
       },
       sandbox: undefined,
       workspace: undefined

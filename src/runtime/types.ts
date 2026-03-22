@@ -1,5 +1,8 @@
 import type { ResolvedAgentNode, ResolvedTeamNode } from "../compiler/types.js";
+import type { ResolvedAuthProfile } from "../auth/index.js";
 import type { CapabilityReport, DiagnosticReport } from "../report/index.js";
+import type { ContainerRuntimeInstanceReport } from "../report/index.js";
+import type { ModelAuthMethod } from "../shared/index.js";
 
 export interface EmittedFile {
   content: string;
@@ -23,6 +26,7 @@ export interface ContainerTarget {
   envFiles?: ContainerTargetEnvFile[];
   files: EmittedFile[];
   id: string;
+  sourceIds?: string[];
 }
 
 export interface RuntimeContainerInstancePaths {
@@ -31,8 +35,14 @@ export interface RuntimeContainerInstancePaths {
   workspacePathTemplate: string;
 }
 
+export interface RuntimeContainerConfigEnvBinding {
+  envName: string;
+  jsonPath: string;
+}
+
 export interface RuntimeContainerMeta {
   configFileName: string;
+  configEnvBindings?: RuntimeContainerConfigEnvBinding[];
   configPathEnv?: string;
   env?: Array<{
     description: string;
@@ -41,12 +51,26 @@ export interface RuntimeContainerMeta {
   }>;
   homeEnv?: string;
   instancePaths: RuntimeContainerInstancePaths;
+  globalNpmPackages?: string[];
   port?: number;
   portEnv?: string;
   standaloneBaseImage: string;
   startCommand: string[];
   staticEnv?: Record<string, string>;
   systemDeps: string[];
+}
+
+export interface RuntimeAuthPreparationInput {
+  authProfile: ResolvedAuthProfile;
+  env: Record<string, string>;
+  instance: ContainerRuntimeInstanceReport;
+  outputDirectory: string;
+  tempRoot: string;
+}
+
+export interface RuntimeAuthPreparationResult {
+  coveredModelSecrets: string[];
+  mountArgs: string[];
 }
 
 export interface AdapterCompileResult {
@@ -61,5 +85,9 @@ export interface RuntimeAdapter {
   compileTeam?(node: ResolvedTeamNode): Promise<AdapterCompileResult>;
   createContainerTargets?(inputs: ContainerTargetInput[]): Promise<ContainerTarget[]>;
   name: string;
+  prepareRuntimeAuth?(
+    input: RuntimeAuthPreparationInput
+  ): Promise<RuntimeAuthPreparationResult>;
+  supportedModelAuthMethods(provider: string): ModelAuthMethod[];
   validateRuntimeOptions?(options: Record<string, unknown>): DiagnosticReport[];
 }

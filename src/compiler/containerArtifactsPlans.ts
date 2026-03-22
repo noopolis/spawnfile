@@ -5,6 +5,7 @@ import {
   createRuntimeInstallRecipe,
   getRuntimeAdapter
 } from "../runtime/index.js";
+import type { ModelAuthMethod } from "../shared/index.js";
 import type {
   ContainerTarget,
   ContainerTargetInput,
@@ -13,6 +14,10 @@ import type {
 } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
+import {
+  listExecutionModelSecretNames,
+  resolveExecutionModelAuthMethods
+} from "./modelEnv.js";
 import type { CompilePlan } from "./types.js";
 import type {
   CompiledNodeArtifact,
@@ -23,20 +28,11 @@ import type {
 const CONFIG_FILE_PLACEHOLDER = "<config-file>";
 const INSTANCE_ROOT_PLACEHOLDER = "<instance-root>";
 
-const MODEL_PROVIDER_ENV_VARS = new Map<string, string>([
-  ["anthropic", "ANTHROPIC_API_KEY"],
-  ["google", "GOOGLE_API_KEY"],
-  ["groq", "GROQ_API_KEY"],
-  ["mistral", "MISTRAL_API_KEY"],
-  ["openai", "OPENAI_API_KEY"],
-  ["openrouter", "OPENROUTER_API_KEY"],
-  ["xai", "XAI_API_KEY"]
-]);
-
 const createDefaultTargets = (inputs: ContainerTargetInput[]): ContainerTarget[] =>
   inputs.map((input) => ({
     files: input.emittedFiles,
-    id: `${input.kind}-${input.slug}`
+    id: `${input.kind}-${input.slug}`,
+    sourceIds: [input.id]
   }));
 
 const resolveTargetEnvFiles = (
@@ -105,28 +101,32 @@ export const createEnvVariableMap = (
 ): Map<string, ContainerEnvVariable> => {
   const variables = new Map<string, ContainerEnvVariable>();
 
-  const register = (name: string, required: boolean, description: string): void => {
+  const register = (
+    name: string,
+    required: boolean,
+    description: string,
+    category: "model" | "project" | "runtime"
+  ): void => {
     const current = variables.get(name);
     if (!current) {
-      variables.set(name, { description, name, required });
+      variables.set(name, {
+        categories: [category],
+        description,
+        name,
+        required
+      });
       return;
     }
 
     variables.set(name, {
       ...current,
+      categories: [...new Set([...current.categories, category])],
       required: current.required || required
     });
   };
 
   const registerSecret = (secret: Secret): void => {
-    register(secret.name, secret.required, "Declared in Spawnfile secrets");
-  };
-
-  const registerProvider = (provider: string): void => {
-    const envName =
-      MODEL_PROVIDER_ENV_VARS.get(provider) ??
-      `${provider.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_API_KEY`;
-    register(envName, true, `Model provider auth for ${provider}`);
+    register(secret.name, secret.required, "Declared in Spawnfile secrets", "project");
   };
 
   for (const node of compiledNodes) {
@@ -135,12 +135,8 @@ export const createEnvVariableMap = (
         registerSecret(secret);
       }
 
-      const executionModel = node.value.execution?.model;
-      if (executionModel?.primary) {
-        registerProvider(executionModel.primary.provider);
-      }
-      for (const fallback of executionModel?.fallback ?? []) {
-        registerProvider(fallback.provider);
+      for (const secretName of listExecutionModelSecretNames(node.value.execution)) {
+        register(secretName, true, `Model provider auth for ${secretName}`, "model");
       }
       continue;
     }
@@ -152,11 +148,69 @@ export const createEnvVariableMap = (
 
   for (const runtimePlan of runtimePlans) {
     for (const variable of runtimePlan.meta.env ?? []) {
-      register(variable.name, variable.required, variable.description);
+      register(variable.name, variable.required, variable.description, "runtime");
     }
   }
 
   return variables;
+};
+
+const resolveTargetModelSecrets = (
+  target: ContainerTarget,
+  inputs: ContainerTargetInput[]
+): string[] => {
+  const sourceIds = new Set(target.sourceIds ?? []);
+  if (sourceIds.size === 0) {
+    return [];
+  }
+
+  const secretNames = new Set<string>();
+
+  for (const input of inputs) {
+    if (!sourceIds.has(input.id) || input.value.kind !== "agent") {
+      continue;
+    }
+
+    for (const secretName of listExecutionModelSecretNames(input.value.execution)) {
+      secretNames.add(secretName);
+    }
+  }
+
+  return [...secretNames].sort();
+};
+
+const resolveTargetModelAuthMethods = (
+  target: ContainerTarget,
+  inputs: ContainerTargetInput[]
+): Record<string, ModelAuthMethod> => {
+  const sourceIds = new Set(target.sourceIds ?? []);
+  if (sourceIds.size === 0) {
+    return {};
+  }
+
+  const methods = new Map<string, ModelAuthMethod>();
+
+  for (const input of inputs) {
+    if (!sourceIds.has(input.id) || input.value.kind !== "agent") {
+      continue;
+    }
+
+    for (const [provider, method] of Object.entries(
+      resolveExecutionModelAuthMethods(input.value.execution)
+    )) {
+      const existingMethod = methods.get(provider);
+      if (existingMethod && existingMethod !== method) {
+        throw new SpawnfileError(
+          "validation_error",
+          `Container target ${target.id} declares conflicting auth methods for provider ${provider}`
+        );
+      }
+
+      methods.set(provider, method);
+    }
+  }
+
+  return Object.fromEntries([...methods.entries()].sort(([left], [right]) => left.localeCompare(right)));
 };
 
 export const createRuntimeTargetPlans = async (
@@ -193,6 +247,8 @@ export const createRuntimeTargetPlans = async (
         id: target.id,
         instancePaths,
         meta: adapter.container,
+        modelAuthMethods: resolveTargetModelAuthMethods(target, targetInputs),
+        modelSecretsRequired: resolveTargetModelSecrets(target, targetInputs),
         port: adapter.container.port ? adapter.container.port + index : undefined,
         runtimeName,
         runtimeRoot: recipe.runtimeRoot,
