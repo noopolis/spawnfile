@@ -18,6 +18,45 @@ const runtimeAdapters = new Map<string, RuntimeAdapter>([
   [tinyClawAdapter.name, tinyClawAdapter]
 ]);
 
+const runtimeInstallSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      image: z.string().min(1),
+      kind: z.literal("container_image"),
+      tag: z.string().min(1)
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("npm"),
+      package: z.string().min(1),
+      version: z.string().min(1)
+    })
+    .strict(),
+  z
+    .object({
+      assets: z.record(z.string(), z.string().min(1)),
+      binary: z.string().min(1),
+      kind: z.literal("github_release_archive"),
+      repository: z.string().min(1),
+      tag: z.string().min(1)
+    })
+    .strict(),
+  z
+    .object({
+      asset: z.string().min(1),
+      kind: z.literal("github_release_bundle"),
+      repository: z.string().min(1),
+      tag: z.string().min(1)
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("source_repo")
+    })
+    .strict()
+]);
+
 const runtimeRegistrySchema = z
   .object({
     runtimes: z.record(
@@ -25,6 +64,7 @@ const runtimeRegistrySchema = z
       z
         .object({
           default_branch: z.string().min(1),
+          install: runtimeInstallSchema.optional(),
           ref: z.string().min(1),
           remote: z.string().min(1),
           status: z.enum(["active", "deprecated", "exploratory"])
@@ -38,8 +78,37 @@ const runtimeRegistryUrl = new URL("../../runtimes.yaml", import.meta.url);
 
 let runtimeRegistryPromise: Promise<RuntimeRegistryEntry[]> | undefined;
 
+export type RuntimeRegistryInstall =
+  | {
+      image: string;
+      kind: "container_image";
+      tag: string;
+    }
+  | {
+      kind: "github_release_archive";
+      assets: Record<string, string>;
+      binary: string;
+      repository: string;
+      tag: string;
+    }
+  | {
+      kind: "github_release_bundle";
+      asset: string;
+      repository: string;
+      tag: string;
+    }
+  | {
+      kind: "npm";
+      package: string;
+      version: string;
+    }
+  | {
+      kind: "source_repo";
+    };
+
 export interface RuntimeRegistryEntry {
   defaultBranch: string;
+  install?: RuntimeRegistryInstall;
   name: string;
   ref: string;
   remote: string;
@@ -53,6 +122,7 @@ export const parseRuntimeRegistry = (source: string): RuntimeRegistryEntry[] => 
     return Object.entries(parsed.runtimes)
       .map(([name, entry]) => ({
         defaultBranch: entry.default_branch,
+        install: entry.install,
         name,
         ref: entry.ref,
         remote: entry.remote,

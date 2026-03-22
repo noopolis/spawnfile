@@ -226,6 +226,7 @@ At build/run time, validation is the container's responsibility — the entrypoi
 Adapter verification at the pinned ref should include:
 
 - `spawnfile compile`
+- `spawnfile build`
 - `docker build`
 - `docker run`
 - a host-side smoke check against the runtime's exposed health or API endpoint when the runtime exposes network services
@@ -237,28 +238,25 @@ Adapter verification at the pinned ref should include:
 The intended workflow for testing compiled output:
 
 ```bash
-# compile the project
-spawnfile compile fixtures/single-agent --out ./dist/single-agent
-
-# build the container
-cd dist/single-agent
-docker build -t my-agent .
+# compile and build the container
+spawnfile build fixtures/single-agent --out ./dist/single-agent --tag my-agent
 
 # create .env from example
-cp .env.example .env
+cp dist/single-agent/.env.example dist/single-agent/.env
 # fill in secrets...
 
 # run
-docker run --env-file .env my-agent
+docker run --env-file dist/single-agent/.env my-agent
 ```
 
 For teams:
 
 ```bash
-spawnfile compile fixtures/multi-runtime-team --out ./dist/team
-cd dist/team
-docker build -t my-team .
-docker run --env-file .env my-team
+spawnfile build fixtures/multi-runtime-team --out ./dist/team --tag my-team
+cp dist/team/.env.example dist/team/.env
+docker run --env-file dist/team/.env my-team
 ```
 
 Same flow regardless of project complexity. One compile, one build, one run.
+
+`spawnfile compile` still emits a standard Docker build context, so manual `docker build` remains supported when developers want to inspect or tweak the emitted output before building the image.

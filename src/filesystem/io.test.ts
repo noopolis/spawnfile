@@ -5,6 +5,7 @@ import os from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  copyDirectory,
   ensureDirectory,
   fileExists,
   readUtf8File,
@@ -38,5 +39,24 @@ describe("io", () => {
     await ensureDirectory(nestedDirectory);
 
     await expect(fileExists(nestedDirectory)).resolves.toBe(true);
+  });
+
+  it("copies directories recursively with filtering", async () => {
+    const sourceDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-copy-src-"));
+    const destinationDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-copy-dst-"));
+    createdDirectories.push(sourceDirectory, destinationDirectory);
+
+    await writeUtf8File(path.join(sourceDirectory, "keep.txt"), "keep");
+    await ensureDirectory(path.join(sourceDirectory, ".git"));
+    await writeUtf8File(path.join(sourceDirectory, ".git", "ignored.txt"), "ignored");
+
+    await copyDirectory(sourceDirectory, path.join(destinationDirectory, "copy"), {
+      filter: (sourcePath) => !sourcePath.includes(`${path.sep}.git`)
+    });
+
+    await expect(fileExists(path.join(destinationDirectory, "copy", "keep.txt"))).resolves.toBe(true);
+    await expect(
+      fileExists(path.join(destinationDirectory, "copy", ".git", "ignored.txt"))
+    ).resolves.toBe(false);
   });
 });

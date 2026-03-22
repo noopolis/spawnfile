@@ -1,4 +1,20 @@
-import { mkdir, lstat, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, lstat, readFile, rm, stat, writeFile } from "node:fs/promises";
+
+export interface CopyDirectoryOptions {
+  filter?: (sourcePath: string, destinationPath: string) => boolean;
+}
+
+export const copyDirectory = async (
+  sourcePath: string,
+  destinationPath: string,
+  options: CopyDirectoryOptions = {}
+): Promise<void> => {
+  await cp(sourcePath, destinationPath, {
+    filter: options.filter,
+    force: true,
+    recursive: true
+  });
+};
 
 export const ensureDirectory = async (directoryPath: string): Promise<void> => {
   await mkdir(directoryPath, { recursive: true });

@@ -18,7 +18,7 @@ describe("tinyClawAdapter", () => {
       portEnv: "TINYAGI_API_PORT",
       standaloneBaseImage: "node:22-bookworm-slim",
       startCommand: ["node", "<runtime-root>/packages/main/dist/index.js"],
-      systemDeps: ["bash", "ca-certificates", "git"]
+      systemDeps: ["bash", "ca-certificates", "curl", "g++", "make", "python3", "tar"]
     });
   });
 

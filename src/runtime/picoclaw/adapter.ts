@@ -147,12 +147,12 @@ export const picoClawAdapter: RuntimeAdapter = {
     },
     port: 18790,
     portEnv: "PICOCLAW_GATEWAY_PORT",
-    standaloneBaseImage: "golang:1.25-bookworm",
+    standaloneBaseImage: "debian:bookworm-slim",
     startCommand: ["picoclaw", "gateway", "--allow-empty"],
     staticEnv: {
       PICOCLAW_GATEWAY_HOST: "0.0.0.0"
     },
-    systemDeps: ["bash", "ca-certificates", "git"]
+    systemDeps: ["bash", "ca-certificates", "curl", "tar"]
   },
   async compileAgent(node): Promise<AdapterCompileResult> {
     return {

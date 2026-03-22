@@ -53,6 +53,41 @@ describe("runCli", () => {
 
     expect(exitCode).toBe(0);
     expect(stdout[0]).toContain("compiled to");
+  }, 30000);
+
+  it("builds a project", async () => {
+    const stdout: string[] = [];
+    const buildProject = vi.fn(async () => ({
+      imageTag: "spawnfile-single-agent",
+      outputDirectory: "/tmp/spawnfile-build-out",
+      report: {
+        diagnostics: [],
+        nodes: [],
+        root: path.join(fixturesRoot, "single-agent"),
+        spawnfile_version: "0.1" as const
+      },
+      reportPath: "/tmp/spawnfile-build-out/spawnfile-report.json"
+    }));
+
+    const exitCode = await runCli(
+      ["build", path.join(fixturesRoot, "single-agent"), "--out", "/tmp/spawnfile-build-out"],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { buildProject }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(buildProject).toHaveBeenCalledWith(path.join(fixturesRoot, "single-agent"), {
+      imageTag: undefined,
+      outputDirectory: "/tmp/spawnfile-build-out"
+    });
+    expect(stdout).toEqual([
+      "built image spawnfile-single-agent",
+      "compiled to /tmp/spawnfile-build-out",
+      "report: /tmp/spawnfile-build-out/spawnfile-report.json"
+    ]);
   });
 
   it("initializes a team project", async () => {

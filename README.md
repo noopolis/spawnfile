@@ -204,6 +204,7 @@ spawnfile init
 spawnfile init --team
 spawnfile validate
 spawnfile compile
+spawnfile build
 ```
 
 For example:
@@ -211,18 +212,30 @@ For example:
 ```bash
 spawnfile validate fixtures/single-agent
 spawnfile compile fixtures/single-agent --out ./dist/example
+spawnfile build fixtures/single-agent --out ./dist/example --tag example-agent
 ```
 
 The compiler emits runtime-specific artifacts under `dist/runtimes/...` and writes a machine-readable `spawnfile-report.json`.
 
-It also emits:
+`spawnfile compile` also emits:
 
 - final container filesystem output under `dist/container/rootfs/...`
 - `Dockerfile`, `entrypoint.sh`, `.env.example`
 
-There is no separate `spawnfile build` command yet. The current build step is standard Docker against the compile output:
+`spawnfile build` is the happy path for compile + Docker image build. It compiles the project, then runs `docker build` against the emitted output directory.
+
+Manual Docker remains valid against the compile output:
 
 ```bash
+spawnfile build fixtures/single-agent --out ./dist/example --tag example-agent
+cp ./dist/example/.env.example ./dist/example/.env
+docker run --env-file ./dist/example/.env -p 18789:18789 example-agent
+```
+
+Equivalent manual flow:
+
+```bash
+spawnfile compile fixtures/single-agent --out ./dist/example
 cd ./dist/example
 docker build -t example-agent .
 docker run --env-file .env -p 18789:18789 example-agent

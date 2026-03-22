@@ -15,6 +15,27 @@ const WORKSPACE_PLACEHOLDER = "<workspace-path>";
 
 const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)}'`;
 
+const extractNodeMajorVersion = (image: string): number =>
+  Number(image.match(/^node:(\d+)/)?.[1] ?? "0");
+
+const createPackageInstallCommand = (packages: string[]): string =>
+  `RUN apt-get update && apt-get install -y --no-install-recommends ${packages.join(" ")} && rm -rf /var/lib/apt/lists/*`;
+
+const selectBaseImage = (runtimePlans: RuntimeTargetPlan[]): string => {
+  const firstRuntimeMeta = runtimePlans[0]?.meta;
+
+  if (runtimePlans.length <= 1) {
+    return firstRuntimeMeta?.standaloneBaseImage ?? "debian:bookworm-slim";
+  }
+
+  const nodeBaseImages = runtimePlans
+    .map((plan) => plan.meta.standaloneBaseImage)
+    .filter((image) => image.startsWith("node:"))
+    .sort((left, right) => extractNodeMajorVersion(right) - extractNodeMajorVersion(left));
+
+  return nodeBaseImages[0] ?? "debian:bookworm-slim";
+};
+
 export const renderEnvExample = (variables: ContainerEnvVariable[]): string => {
   if (variables.length === 0) {
     return "# No environment variables were detected during compile.\n";
@@ -52,46 +73,24 @@ export const renderDockerfile = async (
   const runtimeRecipes = await Promise.all(
     runtimeNames.map((runtimeName) => createRuntimeInstallRecipe(runtimeName))
   );
-  const firstRuntimeMeta = runtimePlans[0]?.meta;
-  const usesMultipleRuntimes = runtimeNames.length > 1;
-  const needsNodeSetup = runtimeNames.some(
-    (runtimeName) => runtimeName === "openclaw" || runtimeName === "tinyclaw"
-  );
-  const baseImage = usesMultipleRuntimes
-    ? "golang:1.25-bookworm"
-    : (firstRuntimeMeta?.standaloneBaseImage ?? "node:22-bookworm-slim");
+  const baseImage = selectBaseImage(runtimePlans);
   const systemDeps = [
-    ...new Set(
-      runtimePlans
-        .flatMap((plan) => plan.meta.systemDeps)
-        .concat(usesMultipleRuntimes && needsNodeSetup ? ["curl"] : [])
-    )
+    ...new Set(runtimePlans.flatMap((plan) => plan.meta.systemDeps))
   ].sort();
   const exposedPorts = [...new Set(runtimePlans.flatMap((plan) => (plan.port ? [plan.port] : [])))].sort(
     (left, right) => left - right
   );
 
-  const lines = [`FROM ${baseImage}`, "", "WORKDIR /opt/spawnfile"];
+  const lines = [`FROM ${baseImage}`, "USER root", "", "WORKDIR /opt/spawnfile"];
 
   if (systemDeps.length > 0) {
-    lines.push(
-      `RUN apt-get update && apt-get install -y --no-install-recommends ${systemDeps.join(" ")} && rm -rf /var/lib/apt/lists/*`,
-      ""
-    );
-  }
-
-  if (usesMultipleRuntimes && needsNodeSetup) {
-    lines.push(
-      "RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y --no-install-recommends nodejs && rm -rf /var/lib/apt/lists/*",
-      ""
-    );
-  }
-
-  if (needsNodeSetup) {
-    lines.push("RUN corepack enable", "");
+    lines.push(createPackageInstallCommand(systemDeps), "");
   }
 
   for (const recipe of runtimeRecipes) {
+    for (const copyCommand of recipe.copyCommands) {
+      lines.push(copyCommand);
+    }
     for (const command of recipe.commands) {
       lines.push(`RUN ${command}`);
     }
@@ -115,6 +114,10 @@ export const renderDockerfile = async (
 
 const createEnvironmentAssignments = (plan: RuntimeTargetPlan): string[] => {
   const envAssignments: string[] = [];
+
+  if (plan.instancePaths.homePath) {
+    envAssignments.push(`HOME=${shellQuote(plan.instancePaths.homePath)}`);
+  }
 
   if (plan.meta.homeEnv && plan.instancePaths.homePath) {
     envAssignments.push(`${plan.meta.homeEnv}=${shellQuote(plan.instancePaths.homePath)}`);

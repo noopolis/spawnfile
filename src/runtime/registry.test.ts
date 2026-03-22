@@ -18,6 +18,11 @@ describe("runtime registry", () => {
     const openClaw = await getRegisteredRuntime("openclaw");
 
     expect(openClaw).toMatchObject({
+      install: {
+        kind: "npm",
+        package: "openclaw",
+        version: "2026.3.13"
+      },
       name: "openclaw",
       ref: "v2026.3.13-1",
       status: "active"
@@ -31,7 +36,7 @@ describe("runtime registry", () => {
       .sort();
 
     expect(listRuntimeAdapters()).toEqual(compileableRuntimeNames);
-    expect(listInstallSelectionRuntimes()).toEqual(compileableRuntimeNames);
+    await expect(listInstallSelectionRuntimes()).resolves.toEqual(compileableRuntimeNames);
   });
 
   it("returns a runtime adapter by name", () => {

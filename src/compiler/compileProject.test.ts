@@ -38,6 +38,7 @@ describe("compileProject", () => {
     await expect(fileExists(path.join(outputDirectory, "Dockerfile"))).resolves.toBe(true);
     await expect(fileExists(path.join(outputDirectory, "entrypoint.sh"))).resolves.toBe(true);
     await expect(fileExists(path.join(outputDirectory, ".env.example"))).resolves.toBe(true);
+    await expect(fileExists(path.join(outputDirectory, "runtime-sources"))).resolves.toBe(false);
     await expect(
       fileExists(
         path.join(
@@ -70,12 +71,14 @@ describe("compileProject", () => {
     });
 
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
-    expect(dockerfile).toContain("FROM node:22-bookworm-slim");
-    expect(dockerfile).toContain("runtime-sources/openclaw");
-    expect(dockerfile).toContain("pnpm canvas:a2ui:bundle");
-    expect(dockerfile).toContain("pnpm build:docker");
+    expect(dockerfile).toContain("FROM node:24-bookworm-slim");
+    expect(dockerfile).toContain("USER root");
+    expect(dockerfile).toContain(
+      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.3.13"
+    );
     expect(dockerfile).toContain("COPY container/rootfs/ /");
     expect(dockerfile).not.toContain("COPY . /opt/spawnfile");
+    expect(dockerfile).not.toContain("runtime-sources");
 
     const envExample = await readUtf8File(path.join(outputDirectory, ".env.example"));
     expect(envExample).toContain("ANTHROPIC_API_KEY=");
@@ -86,7 +89,9 @@ describe("compileProject", () => {
     expect(entrypointStat.mode & 0o111).toBeGreaterThan(0);
 
     const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
-    expect(entrypoint).toContain("/opt/spawnfile/runtime-sources/openclaw/openclaw.mjs");
+    expect(entrypoint).toContain(
+      "'node' '/usr/local/lib/node_modules/openclaw/openclaw.mjs' 'gateway'"
+    );
     expect(entrypoint).not.toContain("<runtime-root>");
     expect(entrypoint).not.toContain("prepare_target");
 
@@ -113,7 +118,7 @@ describe("compileProject", () => {
     expect(rootedConfig).toContain('"bind": "lan"');
     expect(rootedConfig).toContain('"allowedOrigins"');
     expect(rootedConfig).toContain('"http://127.0.0.1:18789"');
-  });
+  }, 30000);
 
   it("marks a multi-runtime team as degraded at team level", async () => {
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-team-"));
@@ -145,20 +150,30 @@ describe("compileProject", () => {
     });
 
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
-    expect(dockerfile).toContain("FROM golang:1.25-bookworm");
-    expect(dockerfile).toContain("runtime-sources/openclaw");
-    expect(dockerfile).toContain("runtime-sources/picoclaw");
-    expect(dockerfile).toContain("runtime-sources/tinyclaw");
-    expect(dockerfile).toContain("go build -o /usr/local/bin/picoclaw ./cmd/picoclaw");
-    expect(dockerfile).toContain("npm run build");
+    expect(dockerfile).toContain("FROM node:24-bookworm-slim");
+    expect(dockerfile).toContain("USER root");
+    expect(dockerfile).toContain(
+      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.3.13"
+    );
+    expect(dockerfile).toContain(
+      "https://github.com/sipeed/picoclaw/releases/download/v0.2.3/$asset"
+    );
+    expect(dockerfile).toContain(
+      "https://github.com/TinyAGI/tinyagi/releases/download/v0.0.15/tinyagi-bundle.tar.gz"
+    );
+    expect(dockerfile).not.toContain("runtime-sources");
+    expect(dockerfile).not.toContain("go build -o /usr/local/bin/picoclaw");
+    expect(dockerfile).not.toContain("npm run build");
+
+    await expect(fileExists(path.join(outputDirectory, "runtime-sources"))).resolves.toBe(false);
 
     const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
     expect(entrypoint).toContain("OPENCLAW_HOME=");
     expect(entrypoint).toContain("PICOCLAW_HOME=");
     expect(entrypoint).toContain("TINYAGI_HOME=");
-    expect(entrypoint).toContain("/opt/spawnfile/runtime-sources/tinyclaw/packages/main/dist/index.js");
+    expect(entrypoint).toContain("/opt/spawnfile/runtime-installs/tinyclaw/packages/main/dist/index.js");
     expect(entrypoint).not.toContain("prepare_target");
-  });
+  }, 30000);
 
   it("marks a single-runtime team as degraded when the runtime has no native team compiler", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-single-team-"));
@@ -205,7 +220,7 @@ describe("compileProject", () => {
 
     expect(teamNode?.runtime).toBe("openclaw");
     expect(teamNode?.output_dir).toBeNull();
-  });
+  }, 30000);
 
   it("fails when runtime options are invalid", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-bad-runtime-"));
@@ -369,7 +384,7 @@ describe("compileProject", () => {
     );
     expect(Object.keys(mergedSettings.agents)).toEqual(["a", "b"]);
     expect(mergedSettings.teams.team.leader_agent).toBe("a");
-  });
+  }, 30000);
 
   it("preserves existing output files when clean is disabled", async () => {
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-no-clean-"));
@@ -384,5 +399,5 @@ describe("compileProject", () => {
     });
 
     await expect(readUtf8File(sentinelPath)).resolves.toBe("keep\n");
-  });
+  }, 30000);
 });

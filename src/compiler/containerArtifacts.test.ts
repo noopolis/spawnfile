@@ -102,7 +102,7 @@ describe("createContainerArtifacts", () => {
     expect(envExample).toContain("SHARED_TOKEN=");
   });
 
-  it("uses the standalone Go base image for PicoClaw-only output", async () => {
+  it("builds PicoClaw from the pinned release archive", async () => {
     const node = createAgentNode("picoclaw", {
       execution: {
         model: {
@@ -133,8 +133,15 @@ describe("createContainerArtifacts", () => {
         "container/rootfs/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw/config.json"
     );
 
-    expect(dockerfile).toContain("FROM golang:1.25-bookworm");
-    expect(dockerfile).not.toContain("corepack enable");
+    expect(dockerfile).toContain("FROM debian:bookworm-slim");
+    expect(dockerfile).toContain(
+      "https://github.com/sipeed/picoclaw/releases/download/v0.2.3/$asset"
+    );
+    expect(dockerfile).toContain(
+      'ln -sf /opt/spawnfile/runtime-installs/picoclaw/bin/picoclaw /usr/local/bin/picoclaw'
+    );
+    expect(dockerfile).not.toContain("runtime-sources");
+    expect(dockerfile).not.toContain("go build -o /usr/local/bin/picoclaw");
     expect(dockerfile).toContain("COPY container/rootfs/ /");
     expect(dockerfile).not.toContain("COPY . /opt/spawnfile");
     expect(entrypoint).toContain("PICOCLAW_HOME=");
@@ -147,6 +154,34 @@ describe("createContainerArtifacts", () => {
       "/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw/workspace"
     );
     expect(configFile?.content).toContain("file://secrets/OPENAI_API_KEY");
+  });
+
+  it("builds OpenClaw from the pinned npm package", async () => {
+    const node = createAgentNode("openclaw");
+    const compiled = await openClawAdapter.compileAgent(node);
+
+    const result = await createContainerArtifacts(createPlan(["openclaw"]), [
+      {
+        emittedFiles: compiled.files,
+        kind: "agent",
+        runtimeName: "openclaw",
+        slug: "assistant",
+        value: node
+      }
+    ]);
+
+    const dockerfile = result.files.find((file) => file.path === "Dockerfile")?.content ?? "";
+    const entrypoint = result.files.find((file) => file.path === "entrypoint.sh")?.content ?? "";
+
+    expect(dockerfile).toContain("FROM node:24-bookworm-slim");
+    expect(dockerfile).toContain("USER root");
+    expect(dockerfile).toContain("RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.3.13");
+    expect(dockerfile).not.toContain("ghcr.io/openclaw/openclaw");
+    expect(dockerfile).not.toContain("runtime-sources");
+    expect(dockerfile).not.toContain("pnpm build:docker");
+    expect(entrypoint).toContain(
+      "'/usr/local/lib/node_modules/openclaw/openclaw.mjs'"
+    );
   });
 
   it("fails when a runtime emits files outside config or workspace", async () => {

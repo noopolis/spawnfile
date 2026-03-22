@@ -61,17 +61,19 @@ export const openClawAdapter: RuntimeAdapter = {
     },
     port: 18789,
     portEnv: "OPENCLAW_GATEWAY_PORT",
-    standaloneBaseImage: "node:22-bookworm-slim",
+    standaloneBaseImage: "node:24-bookworm-slim",
     startCommand: [
       "node",
       "<runtime-root>/openclaw.mjs",
       "gateway",
       "--allow-unconfigured",
+      "--bind",
+      "lan",
       "--port",
       "<port>",
       "--verbose"
     ],
-    systemDeps: ["bash", "ca-certificates", "git", "python3", "make", "g++"]
+    systemDeps: ["bash", "ca-certificates", "curl", "git", "hostname", "openssl", "procps"]
   },
   async compileAgent(node): Promise<AdapterCompileResult> {
     return {

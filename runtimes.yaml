@@ -7,6 +7,7 @@
 #   remote          Git clone URL
 #   ref             Pinned git ref — should be the latest stable tag
 #   default_branch  The repo's main branch (for fetch)
+#   install         Pinned install strategy for the verified runtime version
 #   status          active (has adapter) | exploratory (research only)
 #
 # Run ./scripts/runtimes.sh to clone or update all entries to their
@@ -17,18 +18,35 @@ runtimes:
     remote: git@github.com:openclaw/openclaw.git
     ref: v2026.3.13-1
     default_branch: main
+    install:
+      kind: npm
+      package: openclaw
+      version: 2026.3.13
     status: active
 
   picoclaw:
     remote: git@github.com:sipeed/picoclaw.git
     ref: v0.2.3
     default_branch: main
+    install:
+      kind: github_release_archive
+      repository: sipeed/picoclaw
+      tag: v0.2.3
+      binary: picoclaw
+      assets:
+        linux_amd64: picoclaw_Linux_x86_64.tar.gz
+        linux_arm64: picoclaw_Linux_arm64.tar.gz
     status: active
 
   tinyclaw:
     remote: git@github.com:TinyAGI/tinyclaw.git
     ref: v0.0.15
     default_branch: main
+    install:
+      kind: github_release_bundle
+      repository: TinyAGI/tinyagi
+      tag: v0.0.15
+      asset: tinyagi-bundle.tar.gz
     status: active
 
   nullclaw:
@@ -42,5 +60,3 @@ runtimes:
     ref: v0.5.0
     default_branch: master
     status: exploratory
-
-
