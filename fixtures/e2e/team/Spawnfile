@@ -1,0 +1,22 @@
+spawnfile_version: "0.1"
+kind: team
+name: auth-smoke-team
+
+docs:
+  system: TEAM.md
+
+members:
+  - id: openclaw
+    ref: ./agents/openclaw
+  - id: picoclaw
+    ref: ./agents/picoclaw
+  - id: tinyclaw
+    ref: ./agents/tinyclaw
+
+structure:
+  mode: hierarchical
+  leader: openclaw
+
+policy:
+  mode: warn
+  on_degrade: warn

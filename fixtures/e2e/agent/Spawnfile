@@ -1,0 +1,24 @@
+spawnfile_version: "0.1"
+kind: agent
+name: assistant
+
+runtime: openclaw
+
+execution:
+  model:
+    auth:
+      method: api_key
+    primary:
+      provider: openai
+      name: gpt-5
+  workspace:
+    isolation: isolated
+  sandbox:
+    mode: workspace
+
+docs:
+  system: AGENTS.md
+
+policy:
+  mode: warn
+  on_degrade: warn

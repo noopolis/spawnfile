@@ -1,0 +1,20 @@
+spawnfile_version: "0.1"
+kind: agent
+name: openclaw
+
+runtime: openclaw
+
+execution:
+  model:
+    auth:
+      method: codex
+    primary:
+      provider: openai
+      name: gpt-5
+  workspace:
+    isolation: isolated
+  sandbox:
+    mode: workspace
+
+docs:
+  system: AGENTS.md

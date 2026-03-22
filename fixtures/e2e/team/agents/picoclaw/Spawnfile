@@ -1,0 +1,20 @@
+spawnfile_version: "0.1"
+kind: agent
+name: picoclaw
+
+runtime: picoclaw
+
+execution:
+  model:
+    auth:
+      method: api_key
+    primary:
+      provider: openai
+      name: gpt-5
+  workspace:
+    isolation: isolated
+  sandbox:
+    mode: workspace
+
+docs:
+  system: AGENTS.md

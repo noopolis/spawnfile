@@ -268,6 +268,21 @@ docker build -t example-agent .
 docker run --env-file .env -p 18789:18789 example-agent
 ```
 
+## Docker E2E
+
+The repo also includes an opt-in Docker auth E2E harness.
+It builds compiled images, starts them with a local Spawnfile auth profile, waits for runtime readiness, sends real prompts, and fails unless the expected sentinel reply comes back.
+
+Examples:
+
+```bash
+npm run test:e2e:docker-auth -- --scenario openclaw-codex
+npm run test:e2e:docker-auth -- --scenario team-multi-runtime --env-file ../headhunter/.env
+```
+
+This is intentionally separate from `npm test`.
+It requires Docker, network access, and real model credentials.
+
 ---
 
 ## The Builder

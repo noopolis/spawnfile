@@ -301,3 +301,14 @@ The intended auth split is:
 - `spawnfile auth sync` materializes matching local auth into a profile
 - `spawnfile build` stays secrets-free
 - `spawnfile run --auth-profile ...` injects only the auth material required by the declared methods
+
+For repository-level verification, an opt-in Docker auth E2E harness SHOULD exist outside the normal unit-test flow.
+That harness SHOULD:
+
+- build generated images from compiled output
+- start containers with a local Spawnfile auth profile
+- wait for host-reachable runtime readiness
+- send real prompts through each supported runtime path
+- fail unless the expected sentinel reply is observed
+
+This harness is intentionally separate from `npm test` because it requires Docker, network access, and real credentials.
