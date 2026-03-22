@@ -86,7 +86,7 @@ writeFileSync(join(DIST_DIR, 'llms.txt'), indexLines.join('\n'));
 
 // Generate llms-full.txt (all content)
 const fullLines = [
-  '# Spawnfile — Full Documentation',
+  '# Spawnfile -- Full Documentation',
   '',
   '> A fully open-source spec and compiler for autonomous agents and teams.',
   '',
