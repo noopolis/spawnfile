@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://spawnfile.ai/sitemap-index.xml
+Sitemap: https://spawnfile.ai/sitemap-0.xml
