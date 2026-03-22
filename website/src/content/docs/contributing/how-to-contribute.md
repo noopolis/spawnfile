@@ -7,12 +7,12 @@ Spawnfile is fully open source under the MIT license. Contributions and discussi
 
 ## Ways to Contribute
 
-- **Spec improvements** — propose changes to the Spawnfile specification
-- **Runtime adapters** — add support for new autonomous agent runtimes
-- **Compiler features** — improve the compilation pipeline
-- **Fixtures** — add test cases and example projects
-- **Documentation** — improve guides, references, and research notes
-- **Bug reports** — file issues for anything that doesn't work as expected
+- **Spec improvements** -- propose changes to the Spawnfile specification
+- **Runtime adapters** -- add support for new autonomous agent runtimes
+- **Compiler features** -- improve the compilation pipeline
+- **Fixtures** -- add test cases and example projects
+- **Documentation** -- improve guides, references, and research notes
+- **Bug reports** -- file issues for anything that doesn't work as expected
 
 ## Getting Started
 

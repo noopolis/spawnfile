@@ -5,32 +5,32 @@ description: The key ideas behind Spawnfile.
 
 ## Source Project
 
-A Spawnfile source project is a directory containing a `Spawnfile` manifest and markdown docs. It's the canonical definition of your agent — you own it, version it, and compile it.
+A Spawnfile source project is a directory containing a `Spawnfile` manifest and markdown docs. It's the canonical definition of your agent -- you own it, version it, and compile it.
 
 ```
 my-agent/
-├── Spawnfile          # manifest
-├── SOUL.md            # personality
-├── IDENTITY.md        # self-description
-├── AGENTS.md          # instructions
-├── MEMORY.md          # memory architecture
-├── HEARTBEAT.md       # periodic tasks
-└── skills/
-    └── web_search/
-        └── SKILL.md
+|-- Spawnfile          # manifest
+|-- SOUL.md            # personality
+|-- IDENTITY.md        # self-description
+|-- AGENTS.md          # instructions
+|-- MEMORY.md          # memory architecture
+|-- HEARTBEAT.md       # periodic tasks
+\-- skills/
+    \-- web_search/
+        \-- SKILL.md
 ```
 
 ## Manifest
 
 The `Spawnfile` is a YAML file named exactly `Spawnfile` (no extension). It declares:
 
-- **kind** — `agent` or `team`
-- **name** — the agent's identifier
-- **runtime** — which runtime to compile for
-- **docs** — references to markdown identity documents
-- **skills** — skill directories with `SKILL.md`
-- **mcp_servers** — MCP tool connections
-- **execution** — model, workspace, and sandbox intent
+- **kind** -- `agent` or `team`
+- **name** -- the agent's identifier
+- **runtime** -- which runtime to compile for
+- **docs** -- references to markdown identity documents
+- **skills** -- skill directories with `SKILL.md`
+- **mcp_servers** -- MCP tool connections
+- **execution** -- model, workspace, and sandbox intent
 
 ## Document Roles
 
@@ -50,7 +50,7 @@ All are optional. Adapters decide how to lower them into runtime-native surfaces
 
 A runtime is the host system that runs the agent. Each runtime has its own config format and workspace layout. The compiler translates your canonical source into the format each runtime expects.
 
-Spawnfile targets **autonomous agent runtimes** — long-lived services with markdown workspace identity. Not coding assistants or one-shot tools.
+Spawnfile targets **autonomous agent runtimes** -- long-lived services with markdown workspace identity. Not coding assistants or one-shot tools.
 
 ## Compilation
 
@@ -69,9 +69,9 @@ The compiler operates on resolved data, not raw YAML. Adapters receive fully res
 
 A team is an organizational structure of independent agents. It defines:
 
-- **members** — agents that belong together
-- **structure** — hierarchical (with a leader) or swarm (all peers)
-- **shared** — skills, MCP servers, env, and secrets inherited by all members
+- **members** -- agents that belong together
+- **structure** -- hierarchical (with a leader) or swarm (all peers)
+- **shared** -- skills, MCP servers, env, and secrets inherited by all members
 
 Each member agent declares its own runtime. One team can span multiple runtimes.
 
@@ -87,11 +87,11 @@ policy:
 
 The compiler reports each capability as `supported`, `degraded`, or `unsupported`. Policy determines whether degradation fails the build.
 
-When omitted, the compiler defaults to permissive — compilation always succeeds, but outcomes are still recorded in the report.
+When omitted, the compiler defaults to permissive -- compilation always succeeds, but outcomes are still recorded in the report.
 
 ## Compile Report
 
-Every compile emits `spawnfile-report.json` — a machine-readable report showing what was preserved for each capability:
+Every compile emits `spawnfile-report.json` -- a machine-readable report showing what was preserved for each capability:
 
 ```json
 {

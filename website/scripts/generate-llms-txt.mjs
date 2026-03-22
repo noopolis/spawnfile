@@ -1,13 +1,14 @@
 /**
- * Generates llms.txt and llms-full.txt from the docs content.
- * Run after `astro build` to place the files in dist/.
+ * Generates llms.txt, llms-full.txt, and copies raw .md files into dist/.
+ * Run after `astro build`.
  *
- * llms.txt — index of all doc pages with titles and URLs
- * llms-full.txt — full markdown content of all docs concatenated
+ * llms.txt      — index linking to raw .md files
+ * llms-full.txt — all docs concatenated as markdown
+ * docs/*.md     — raw markdown files accessible at /docs/<slug>.md
  */
 
-import { readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
-import { join, relative } from 'path';
+import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, copyFileSync } from 'fs';
+import { join, relative, dirname } from 'path';
 
 const DOCS_DIR = new URL('../src/content/docs', import.meta.url).pathname;
 const DIST_DIR = new URL('../dist', import.meta.url).pathname;
@@ -49,7 +50,17 @@ function getSlug(filePath) {
 
 const files = walkDir(DOCS_DIR).sort();
 
-// Generate llms.txt (index)
+// Copy raw .md files into dist/docs/ so they're accessible as /docs/<slug>.md
+const docsOutDir = join(DIST_DIR, 'docs');
+for (const file of files) {
+  const slug = getSlug(file);
+  if (!slug) continue;
+  const outPath = join(docsOutDir, `${slug}.md`);
+  mkdirSync(dirname(outPath), { recursive: true });
+  copyFileSync(file, outPath);
+}
+
+// Generate llms.txt (index pointing to raw .md files)
 const indexLines = [
   '# Spawnfile',
   '',
@@ -63,8 +74,9 @@ for (const file of files) {
   const content = readFileSync(file, 'utf8');
   const fm = extractFrontmatter(content);
   const slug = getSlug(file);
-  const url = slug ? `${SITE_URL}/${slug}/` : `${SITE_URL}/`;
-  const title = fm.title || slug || 'Home';
+  if (!slug) continue;
+  const url = `${SITE_URL}/docs/${slug}.md`;
+  const title = fm.title || slug;
   indexLines.push(`- [${title}](${url})`);
 }
 
@@ -91,4 +103,4 @@ for (const file of files) {
 
 writeFileSync(join(DIST_DIR, 'llms-full.txt'), fullLines.join('\n'));
 
-console.log(`Generated llms.txt (${files.length} pages) and llms-full.txt`);
+console.log(`Generated llms.txt (${files.length} pages), llms-full.txt, and raw .md files in docs/`);

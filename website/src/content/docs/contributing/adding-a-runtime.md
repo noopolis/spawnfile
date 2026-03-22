@@ -40,9 +40,9 @@ Document findings in `specs/research/RUNTIME-NOTES.md`.
 
 Create `src/runtime/myruntime/adapter.ts` implementing the `RuntimeAdapter` interface:
 
-- `compileAgent(node)` — emit runtime-native config and workspace files
-- `compileTeam(node)` — optional, for runtimes with native team support
-- `validateRuntimeOptions(options)` — optional, validate runtime-specific options
+- `compileAgent(node)` -- emit runtime-native config and workspace files
+- `compileTeam(node)` -- optional, for runtimes with native team support
+- `validateRuntimeOptions(options)` -- optional, validate runtime-specific options
 
 ### 4. Register
 

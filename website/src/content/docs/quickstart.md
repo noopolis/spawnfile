@@ -34,10 +34,10 @@ This creates a `Spawnfile` manifest and starter markdown docs in the current dir
 
 ```
 my-agent/
-├── Spawnfile
-├── IDENTITY.md
-├── SOUL.md
-└── AGENTS.md
+|-- Spawnfile
+|-- IDENTITY.md
+|-- SOUL.md
+\-- AGENTS.md
 ```
 
 ## Edit the Spawnfile
@@ -70,9 +70,9 @@ execution:
 
 Edit the markdown docs:
 
-- **SOUL.md** — personality, voice, tone
-- **IDENTITY.md** — who the agent is, self-description
-- **AGENTS.md** — operating instructions and conventions
+- **SOUL.md** -- personality, voice, tone
+- **IDENTITY.md** -- who the agent is, self-description
+- **AGENTS.md** -- operating instructions and conventions
 
 These are plain markdown files. The runtime loads them into the agent's context.
 
@@ -94,22 +94,22 @@ The compiler emits runtime-native config and workspace files:
 
 ```
 dist/
-├── runtimes/
-│   └── openclaw/
-│       └── agents/
-│           └── my-assistant/
-│               ├── openclaw.json
-│               └── workspace/
-│                   ├── IDENTITY.md
-│                   ├── SOUL.md
-│                   └── AGENTS.md
-└── spawnfile-report.json
+|-- runtimes/
+|   \-- openclaw/
+|       \-- agents/
+|           \-- my-assistant/
+|               |-- openclaw.json
+|               \-- workspace/
+|                   |-- IDENTITY.md
+|                   |-- SOUL.md
+|                   \-- AGENTS.md
+\-- spawnfile-report.json
 ```
 
 ## What's Next
 
-- [Write a Spawnfile](/guides/writing-a-spawnfile/) — full manifest reference
-- [Agent Docs](/guides/agent-docs/) — understand document roles
-- [Skills & MCP](/guides/skills-and-mcp/) — add skills and tool connections
-- [Teams](/guides/teams/) — define multi-agent teams
-- [Compiling](/guides/compiling/) — understand the compile pipeline
+- [Write a Spawnfile](/guides/writing-a-spawnfile/) -- full manifest reference
+- [Agent Docs](/guides/agent-docs/) -- understand document roles
+- [Skills & MCP](/guides/skills-and-mcp/) -- add skills and tool connections
+- [Teams](/guides/teams/) -- define multi-agent teams
+- [Compiling](/guides/compiling/) -- understand the compile pipeline

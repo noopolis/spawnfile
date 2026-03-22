@@ -3,13 +3,13 @@ title: Introduction
 description: What Spawnfile is and why it exists.
 ---
 
-Spawnfile is a spec and compiler for **autonomous agent runtimes** — systems that host agents as long-lived services with markdown workspace identity.
+Spawnfile is a spec and compiler for **autonomous agent runtimes** -- systems that host agents as long-lived services with markdown workspace identity.
 
 ## The Problem
 
 Every autonomous agent runtime has its own config format. If you build an agent on OpenClaw, you can't run it on PicoClaw or TinyClaw without rewriting the config, restructuring the workspace, and re-wiring skills and MCP connections.
 
-Your agent's identity — its personality, instructions, skills, and tool connections — gets locked into one runtime's conventions.
+Your agent's identity -- its personality, instructions, skills, and tool connections -- gets locked into one runtime's conventions.
 
 ## The Solution
 
@@ -39,7 +39,7 @@ Change `runtime: openclaw` to `runtime: picoclaw` or `runtime: tinyclaw`, run `s
 
 ## What Spawnfile Targets
 
-Spawnfile targets **autonomous agent runtimes** — systems that:
+Spawnfile targets **autonomous agent runtimes** -- systems that:
 
 - Run as long-lived services or daemons
 - Use a markdown workspace as a first-class agent surface

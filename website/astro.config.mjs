@@ -13,15 +13,11 @@ export default defineConfig({
       disable404Route: true,
       components: {
         ThemeSelect: './src/components/EmptyThemeSelect.astro',
+        SiteTitle: './src/components/SiteTitle.astro',
       },
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/noopolis/spawnfile' },
       ],
-      logo: {
-        light: './src/assets/logo-light.svg',
-        dark: './src/assets/logo-dark.svg',
-        replacesTitle: true,
-      },
       customCss: ['./src/styles/custom.css'],
       sidebar: [
         {
