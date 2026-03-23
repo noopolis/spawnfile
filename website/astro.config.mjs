@@ -17,6 +17,16 @@ export default defineConfig({
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/noopolis/spawnfile' },
       ],
+      head: [
+        {
+          tag: 'script',
+          attrs: { async: true, src: 'https://www.googletagmanager.com/gtag/js?id=G-8ZM3Y7MCD5' },
+        },
+        {
+          tag: 'script',
+          content: "window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-8ZM3Y7MCD5');",
+        },
+      ],
       customCss: ['./src/styles/custom.css'],
       sidebar: [
         {
