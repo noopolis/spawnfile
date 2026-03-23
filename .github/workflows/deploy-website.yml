@@ -35,5 +35,7 @@ jobs:
           aws-region: us-east-2
 
       - name: Deploy to S3
-        run: aws s3 sync dist/ s3://spawnfile-site/ --delete
         working-directory: website
+        run: |
+          aws s3 sync dist/ s3://spawnfile.ai/ --delete
+          aws s3 sync dist/ s3://spawnfile.com/ --delete
