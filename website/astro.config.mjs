@@ -10,7 +10,6 @@ export default defineConfig({
     starlight({
       title: 'Spawnfile',
       description: 'A fully open-source spec and compiler for autonomous agents and teams.',
-      disable404Route: true,
       components: {
         ThemeSelect: './src/components/EmptyThemeSelect.astro',
         SiteTitle: './src/components/SiteTitle.astro',
