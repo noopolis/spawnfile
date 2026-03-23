@@ -208,6 +208,9 @@ The compiler reports one of three outcomes per declared capability: `supported`,
 spawnfile init
 spawnfile init --runtime tinyclaw
 spawnfile init --team
+spawnfile add agent writer
+spawnfile add subagent critic
+spawnfile add team platform
 spawnfile validate
 spawnfile compile
 spawnfile auth
@@ -219,6 +222,9 @@ For example:
 
 ```bash
 spawnfile init --runtime picoclaw ./agents/researcher
+spawnfile add agent writer ./my-team --runtime tinyclaw
+spawnfile add subagent critic ./my-agent
+spawnfile add team platform ./my-team
 spawnfile validate fixtures/single-agent
 spawnfile compile fixtures/single-agent --out ./dist/example
 spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
@@ -229,6 +235,15 @@ spawnfile run fixtures/single-agent --tag example-agent --auth-profile dev
 The compiler emits runtime-specific artifacts under `dist/runtimes/...` and writes a machine-readable `spawnfile-report.json`.
 
 `spawnfile init` defaults agent scaffolds to `openclaw`. Use `spawnfile init --runtime <name>` to scaffold an agent for a different bundled runtime. `spawnfile init --team` stays runtime-neutral.
+
+`spawnfile add` grows an existing manifest graph in place. The target `[path]` is optional and defaults to the current directory. It must point to the parent project directory (or its `Spawnfile`):
+
+- `spawnfile add agent <id> [path]` adds `agents/<id>/` under a team
+  If `--runtime` is omitted, it uses the same default agent runtime as `spawnfile init`.
+- `spawnfile add subagent <id> [path]` adds `subagents/<id>/` under an agent
+- `spawnfile add team <id> [path]` adds `teams/<id>/` under a team
+
+The CLI rejects invalid parent kinds: `add agent` and `add team` only work on team projects, and `add subagent` only works on agent projects.
 
 `spawnfile compile` also emits:
 

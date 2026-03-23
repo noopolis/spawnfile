@@ -385,6 +385,133 @@ describe("runCli", () => {
     expect(stdout[0]).toContain("initialized");
   });
 
+  it("adds an agent member to a team project without requiring --runtime", async () => {
+    const addAgentProject = vi.fn(async () => ({
+      createdFiles: [
+        "/tmp/project/agents/writer/Spawnfile",
+        "/tmp/project/agents/writer/AGENTS.md"
+      ],
+      targetDirectory: "/tmp/project",
+      updatedFiles: ["/tmp/project/Spawnfile"]
+    }));
+
+    const stdout: string[] = [];
+    const exitCode = await runCli(
+      ["add", "agent", "writer", "/tmp/project"],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { addAgentProject }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(addAgentProject).toHaveBeenCalledWith({
+      id: "writer",
+      path: "/tmp/project",
+      runtime: undefined
+    });
+    expect(stdout).toEqual([
+      "updated /tmp/project/Spawnfile",
+      "created /tmp/project/agents/writer/Spawnfile",
+      "created /tmp/project/agents/writer/AGENTS.md"
+    ]);
+  });
+
+  it("adds an agent member to a team project with an explicit runtime override", async () => {
+    const addAgentProject = vi.fn(async () => ({
+      createdFiles: [
+        "/tmp/project/agents/writer/Spawnfile",
+        "/tmp/project/agents/writer/AGENTS.md"
+      ],
+      targetDirectory: "/tmp/project",
+      updatedFiles: ["/tmp/project/Spawnfile"]
+    }));
+
+    const stdout: string[] = [];
+    const exitCode = await runCli(
+      ["add", "agent", "writer", "/tmp/project", "--runtime", "tinyclaw"],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { addAgentProject }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(addAgentProject).toHaveBeenCalledWith({
+      id: "writer",
+      path: "/tmp/project",
+      runtime: "tinyclaw"
+    });
+    expect(stdout).toEqual([
+      "updated /tmp/project/Spawnfile",
+      "created /tmp/project/agents/writer/Spawnfile",
+      "created /tmp/project/agents/writer/AGENTS.md"
+    ]);
+  });
+
+  it("adds a subagent to an agent project", async () => {
+    const addSubagentProject = vi.fn(async () => ({
+      createdFiles: [
+        "/tmp/project/subagents/critic/Spawnfile",
+        "/tmp/project/subagents/critic/AGENTS.md"
+      ],
+      targetDirectory: "/tmp/project",
+      updatedFiles: ["/tmp/project/Spawnfile"]
+    }));
+
+    const stdout: string[] = [];
+    const exitCode = await runCli(
+      ["add", "subagent", "critic", "/tmp/project"],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { addSubagentProject }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(addSubagentProject).toHaveBeenCalledWith({
+      id: "critic",
+      path: "/tmp/project"
+    });
+    expect(stdout).toEqual([
+      "updated /tmp/project/Spawnfile",
+      "created /tmp/project/subagents/critic/Spawnfile",
+      "created /tmp/project/subagents/critic/AGENTS.md"
+    ]);
+  });
+
+  it("adds a nested team to a team project", async () => {
+    const addTeamProject = vi.fn(async () => ({
+      createdFiles: ["/tmp/project/teams/platform/Spawnfile", "/tmp/project/teams/platform/TEAM.md"],
+      targetDirectory: "/tmp/project",
+      updatedFiles: ["/tmp/project/Spawnfile"]
+    }));
+
+    const stdout: string[] = [];
+    const exitCode = await runCli(
+      ["add", "team", "platform", "/tmp/project"],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { addTeamProject }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(addTeamProject).toHaveBeenCalledWith({
+      id: "platform",
+      path: "/tmp/project"
+    });
+    expect(stdout).toEqual([
+      "updated /tmp/project/Spawnfile",
+      "created /tmp/project/teams/platform/Spawnfile",
+      "created /tmp/project/teams/platform/TEAM.md"
+    ]);
+  });
+
   it("returns a non-zero exit code on errors", async () => {
     const stderr: string[] = [];
     const exitCode = await runCli(["validate", path.join(fixturesRoot, "does-not-exist")], {

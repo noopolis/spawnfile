@@ -77,5 +77,54 @@ describe("renderSpawnfile", () => {
     expect(source).toContain("  identity: IDENTITY.md");
     expect(source).toContain("  soul: SOUL.md");
     expect(source).toContain("  system: AGENTS.md");
+    expect(source).toContain('name: my-agent\n\nruntime: openclaw\n\nexecution:');
+    expect(source).toContain("provider: anthropic\n\ndocs:");
+  });
+
+  it("renders rewritten agent manifests with subagents in canonical order", () => {
+    const source = renderSpawnfile({
+      docs: {
+        identity: "IDENTITY.md",
+        soul: "SOUL.md",
+        system: "AGENTS.md"
+      },
+      execution: {
+        model: {
+          primary: {
+            name: "claude-opus-4-6",
+            provider: "anthropic"
+          }
+        }
+      },
+      kind: "agent",
+      name: "my-agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      subagents: [
+        {
+          id: "pepito",
+          ref: "./subagents/pepito"
+        }
+      ]
+    });
+
+    const spawnfileVersionIndex = source.indexOf("spawnfile_version:");
+    const kindIndex = source.indexOf("kind: agent");
+    const nameIndex = source.indexOf("name: my-agent");
+    const runtimeIndex = source.indexOf("runtime: openclaw");
+    const executionIndex = source.indexOf("execution:");
+    const docsIndex = source.indexOf("docs:");
+    const subagentsIndex = source.indexOf("subagents:");
+
+    expect(spawnfileVersionIndex).toBeGreaterThanOrEqual(0);
+    expect(kindIndex).toBeGreaterThan(spawnfileVersionIndex);
+    expect(nameIndex).toBeGreaterThan(kindIndex);
+    expect(runtimeIndex).toBeGreaterThan(nameIndex);
+    expect(executionIndex).toBeGreaterThan(runtimeIndex);
+    expect(docsIndex).toBeGreaterThan(executionIndex);
+    expect(subagentsIndex).toBeGreaterThan(docsIndex);
+    expect(source).toContain("name: my-agent\n\nruntime: openclaw\n\nexecution:");
+    expect(source).toContain("docs:\n  identity: IDENTITY.md");
+    expect(source).toContain("system: AGENTS.md\n\nsubagents:");
   });
 });

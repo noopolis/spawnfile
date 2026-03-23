@@ -8,6 +8,9 @@ import {
   type ResolvedAuthProfile
 } from "../auth/index.js";
 import {
+  addAgentProject,
+  addSubagentProject,
+  addTeamProject,
   buildCompilePlan,
   buildProject,
   compileProject,
@@ -32,6 +35,9 @@ export interface CliHandlers {
   buildCompilePlan: typeof buildCompilePlan;
   buildProject: typeof buildProject;
   compileProject: typeof compileProject;
+  addAgentProject: typeof addAgentProject;
+  addSubagentProject: typeof addSubagentProject;
+  addTeamProject: typeof addTeamProject;
   importClaudeCodeAuth: typeof importClaudeCodeAuth;
   importCodexAuth: typeof importCodexAuth;
   importEnvFile: typeof importEnvFile;
@@ -46,6 +52,9 @@ const createDefaultHandlers = (): CliHandlers => ({
   buildCompilePlan,
   buildProject,
   compileProject,
+  addAgentProject,
+  addSubagentProject,
+  addTeamProject,
   importClaudeCodeAuth,
   importCodexAuth,
   importEnvFile,
@@ -154,6 +163,61 @@ export const runCli = async (
         team: options.team
       });
       streams.stdout(`initialized ${result.directory}`);
+      for (const filePath of result.createdFiles) {
+        streams.stdout(`created ${filePath}`);
+      }
+    });
+
+  const addCommand = program.command("add").description("Add children to an existing Spawnfile project");
+
+  addCommand
+    .command("agent")
+    .argument("<id>", "Agent member id")
+    .argument("[path]", "Team project directory or Spawnfile path", process.cwd())
+    .option("--runtime <name>", "Runtime for the new agent member")
+    .action(async (id: string, inputPath: string, options: { runtime?: string }) => {
+      const result = await handlers.addAgentProject({
+        id,
+        path: inputPath,
+        runtime: options.runtime
+      });
+      for (const filePath of result.updatedFiles) {
+        streams.stdout(`updated ${filePath}`);
+      }
+      for (const filePath of result.createdFiles) {
+        streams.stdout(`created ${filePath}`);
+      }
+    });
+
+  addCommand
+    .command("subagent")
+    .argument("<id>", "Subagent id")
+    .argument("[path]", "Agent project directory or Spawnfile path", process.cwd())
+    .action(async (id: string, inputPath: string) => {
+      const result = await handlers.addSubagentProject({
+        id,
+        path: inputPath
+      });
+      for (const filePath of result.updatedFiles) {
+        streams.stdout(`updated ${filePath}`);
+      }
+      for (const filePath of result.createdFiles) {
+        streams.stdout(`created ${filePath}`);
+      }
+    });
+
+  addCommand
+    .command("team")
+    .argument("<id>", "Nested team id")
+    .argument("[path]", "Team project directory or Spawnfile path", process.cwd())
+    .action(async (id: string, inputPath: string) => {
+      const result = await handlers.addTeamProject({
+        id,
+        path: inputPath
+      });
+      for (const filePath of result.updatedFiles) {
+        streams.stdout(`updated ${filePath}`);
+      }
       for (const filePath of result.createdFiles) {
         streams.stdout(`created ${filePath}`);
       }

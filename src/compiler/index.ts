@@ -1,3 +1,4 @@
+export * from "./addProjectNode.js";
 export * from "./buildCompilePlan.js";
 export * from "./buildProject.js";
 export * from "./compileProject.js";

@@ -762,12 +762,17 @@ This allows the same Spawnfile to be compiled with different configurations by c
 
 ### 9.1 Commands
 
-The v0.1 CLI exposes three commands:
+The v0.1 CLI exposes these primary commands:
 
 ```
 spawnfile init [path] [--team] [--runtime <name>]
+spawnfile add agent <id> [path] [--runtime <name>]
+spawnfile add subagent <id> [path]
+spawnfile add team <id> [path]
 spawnfile validate [path]
 spawnfile compile [path] [--out <dir>]
+spawnfile build [path] [--out <dir>] [--tag <image>]
+spawnfile run [path] [--out <dir>] [--tag <image>] [--auth-profile <name>]
 ```
 
 #### `spawnfile init`
@@ -780,6 +785,38 @@ Scaffolds a new Spawnfile project in the current directory.
 - `--runtime` MUST be rejected when `--team` is also provided
 - MUST create a `Spawnfile` manifest and any required directory structure
 - MUST NOT overwrite existing files
+
+#### `spawnfile add`
+
+Adds a child node under an existing Spawnfile project.
+
+- `[path]` is optional and defaults to the current directory
+- `path` MUST point to the parent project directory or its `Spawnfile`
+- child directories MUST use conventional locations:
+  - `agents/<id>/`
+  - `subagents/<id>/`
+  - `teams/<id>/`
+- MUST rewrite the parent `Spawnfile` to append the new child ref
+- MUST reject duplicate child ids
+- MUST reject existing child directories
+
+`spawnfile add agent <id> [path] [--runtime <name>]`
+
+- MUST only work when `path` resolves to a team manifest
+- MUST scaffold a new agent project at `agents/<id>/`
+- MUST use the selected runtime for the new team member when `--runtime` is provided
+- MUST use the same default agent runtime as `spawnfile init` when `--runtime` is omitted
+
+`spawnfile add subagent <id> [path]`
+
+- MUST only work when `path` resolves to an agent manifest
+- MUST scaffold a new agent project at `subagents/<id>/`
+- MUST inherit the parent agent runtime for the new subagent
+
+`spawnfile add team <id> [path]`
+
+- MUST only work when `path` resolves to a team manifest
+- MUST scaffold a new team project at `teams/<id>/`
 
 #### `spawnfile validate`
 

@@ -14,6 +14,7 @@ src/compiler/
 ├── compileProject.ts           # Adapter execution and output/report emission
 ├── runProject.ts               # `spawnfile run` docker-run planning and execution
 ├── initProject.ts              # `spawnfile init` orchestration around runtime-owned scaffolds
+├── addProjectNode.ts           # `spawnfile add ...` graph-editing helpers
 ├── executionDefaults.ts        # Effective execution defaults applied during graph resolution
 ├── *.test.ts                   # Tests next to the implementation they cover
 ```
