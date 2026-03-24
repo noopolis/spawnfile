@@ -208,6 +208,50 @@ describe("buildCompilePlan", () => {
     );
   });
 
+  it("accepts custom and local model targets on runtimes that support them", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-custom-models-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Root\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: root",
+        "",
+        "runtime: picoclaw",
+        "",
+        "execution:",
+        "  model:",
+        "    primary:",
+        "      provider: custom",
+        "      name: foo-large",
+        "      auth:",
+        "        method: api_key",
+        "        key: CUSTOM_API_KEY",
+        "      endpoint:",
+        "        compatibility: anthropic",
+        "        base_url: https://llm.example.com/v1",
+        "    fallback:",
+        "      - provider: local",
+        "        name: qwen2.5:14b",
+        "        auth:",
+        "          method: none",
+        "        endpoint:",
+        "          compatibility: openai",
+        "          base_url: http://host.docker.internal:11434/v1",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    expect(plan.nodes).toHaveLength(1);
+  });
+
   it("rejects unknown runtime bindings during graph resolution", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-unknown-runtime-"));
     temporaryDirectories.push(directory);

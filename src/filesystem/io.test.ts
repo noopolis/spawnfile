@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   copyDirectory,
   ensureDirectory,
+  ensureGitignoreEntry,
   fileExists,
   readUtf8File,
   removeDirectory,
@@ -58,5 +59,26 @@ describe("io", () => {
     await expect(
       fileExists(path.join(destinationDirectory, "copy", ".git", "ignored.txt"))
     ).resolves.toBe(false);
+  });
+
+  it("creates a .gitignore entry when missing", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-gitignore-create-"));
+    createdDirectories.push(directory);
+
+    await expect(ensureGitignoreEntry(directory, ".spawn/")).resolves.toBe(true);
+    await expect(readUtf8File(path.join(directory, ".gitignore"))).resolves.toBe(".spawn/\n");
+  });
+
+  it("appends a .gitignore entry once without duplicating it", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-gitignore-append-"));
+    createdDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, ".gitignore"), "node_modules/\n");
+
+    await expect(ensureGitignoreEntry(directory, ".spawn/")).resolves.toBe(true);
+    await expect(ensureGitignoreEntry(directory, ".spawn/")).resolves.toBe(false);
+    await expect(readUtf8File(path.join(directory, ".gitignore"))).resolves.toBe(
+      "node_modules/\n.spawn/\n"
+    );
   });
 });

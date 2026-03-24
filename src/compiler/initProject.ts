@@ -1,9 +1,14 @@
 import path from "node:path";
 
-import { ensureDirectory, fileExists, writeUtf8File } from "../filesystem/index.js";
+import {
+  ensureDirectory,
+  ensureGitignoreEntry,
+  fileExists,
+  writeUtf8File
+} from "../filesystem/index.js";
 import { createTeamScaffoldManifest, renderSpawnfile } from "../manifest/index.js";
 import { getRuntimeAdapter } from "../runtime/index.js";
-import { SpawnfileError } from "../shared/index.js";
+import { DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
 
 export interface InitProjectOptions {
   directory?: string;
@@ -37,6 +42,12 @@ export const initProject = async (
   await ensureDirectory(directory);
 
   const createdFiles: string[] = [manifestPath];
+  const gitignorePath = path.join(directory, ".gitignore");
+  const hadGitignore = await fileExists(gitignorePath);
+  if ((await ensureGitignoreEntry(directory, `${DEFAULT_OUTPUT_DIRECTORY}/`)) && !hadGitignore) {
+    createdFiles.push(path.join(directory, ".gitignore"));
+  }
+
   if (options.team) {
     const teamDocPath = path.join(directory, "TEAM.md");
     await writeUtf8File(manifestPath, renderSpawnfile(createTeamScaffoldManifest()));

@@ -34,8 +34,9 @@ describe("initProject", () => {
     const result = await initProject({ directory });
     const loadedManifest = await loadManifest(path.join(directory, "Spawnfile"));
 
-    expect(result.createdFiles).toHaveLength(4);
+    expect(result.createdFiles).toHaveLength(5);
     await expect(fileExists(path.join(directory, "Spawnfile"))).resolves.toBe(true);
+    await expect(fileExists(path.join(directory, ".gitignore"))).resolves.toBe(true);
     await expect(fileExists(path.join(directory, "IDENTITY.md"))).resolves.toBe(true);
     await expect(fileExists(path.join(directory, "SOUL.md"))).resolves.toBe(true);
     await expect(fileExists(path.join(directory, "AGENTS.md"))).resolves.toBe(true);
@@ -48,6 +49,7 @@ describe("initProject", () => {
     await expect(readUtf8File(path.join(directory, "IDENTITY.md"))).resolves.toContain(
       "Fill this in during your first conversation."
     );
+    await expect(readUtf8File(path.join(directory, ".gitignore"))).resolves.toBe(".spawn/\n");
     expect(loadedManifest.manifest.kind).toBe("agent");
     expect(getRuntimeName(loadedManifest.manifest.runtime)).toBe("openclaw");
     expect(loadedManifest.manifest.docs).toMatchObject({
@@ -68,7 +70,7 @@ describe("initProject", () => {
     const result = await initProject({ directory, runtime: "picoclaw" });
     const loadedManifest = await loadManifest(path.join(directory, "Spawnfile"));
 
-    expect(result.createdFiles).toHaveLength(4);
+    expect(result.createdFiles).toHaveLength(5);
     await expect(readUtf8File(path.join(directory, "AGENTS.md"))).resolves.toContain(
       "PicoClaw reads this from the workspace."
     );
@@ -87,7 +89,7 @@ describe("initProject", () => {
     const result = await initProject({ directory, runtime: "tinyclaw" });
     const loadedManifest = await loadManifest(path.join(directory, "Spawnfile"));
 
-    expect(result.createdFiles).toHaveLength(3);
+    expect(result.createdFiles).toHaveLength(4);
     expect(getRuntimeName(loadedManifest.manifest.runtime)).toBe("tinyclaw");
     await expect(fileExists(path.join(directory, "IDENTITY.md"))).resolves.toBe(false);
     await expect(readUtf8File(path.join(directory, "AGENTS.md"))).resolves.toContain(
@@ -112,11 +114,36 @@ describe("initProject", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-team-init-"));
     temporaryDirectories.push(directory);
 
-    await initProject({ directory, team: true });
+    const result = await initProject({ directory, team: true });
     const loadedManifest = await loadManifest(path.join(directory, "Spawnfile"));
 
+    expect(result.createdFiles).toHaveLength(3);
+    await expect(fileExists(path.join(directory, ".gitignore"))).resolves.toBe(true);
     await expect(fileExists(path.join(directory, "TEAM.md"))).resolves.toBe(true);
     expect(loadedManifest.manifest.kind).toBe("team");
+  });
+
+  it("appends the default output directory to an existing .gitignore once", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-init-gitignore-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, ".gitignore"), "node_modules/\n");
+
+    const firstResult = await initProject({ directory });
+    const secondDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-init-gitignore-second-"));
+    temporaryDirectories.push(secondDirectory);
+    await writeUtf8File(path.join(secondDirectory, ".gitignore"), "node_modules/\n.spawn/\n");
+
+    const secondResult = await initProject({ directory: secondDirectory });
+
+    expect(firstResult.createdFiles).not.toContain(path.join(directory, ".gitignore"));
+    expect(secondResult.createdFiles).not.toContain(path.join(secondDirectory, ".gitignore"));
+    await expect(readUtf8File(path.join(directory, ".gitignore"))).resolves.toBe(
+      "node_modules/\n.spawn/\n"
+    );
+    await expect(readUtf8File(path.join(secondDirectory, ".gitignore"))).resolves.toBe(
+      "node_modules/\n.spawn/\n"
+    );
   });
 
   it("refuses to overwrite an existing Spawnfile", async () => {

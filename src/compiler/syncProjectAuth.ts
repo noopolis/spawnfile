@@ -24,9 +24,9 @@ export interface SyncProjectAuthOptions {
 
 const resolveModelAuthRequirements = async (
   inputPath: string
-): Promise<{ methods: Set<"api_key" | "claude-code" | "codex">; envNames: Set<string> }> => {
+): Promise<{ methods: Set<"api_key" | "claude-code" | "codex" | "none">; envNames: Set<string> }> => {
   const plan = await buildCompilePlan(inputPath);
-  const methods = new Set<"api_key" | "claude-code" | "codex">();
+  const methods = new Set<"api_key" | "claude-code" | "codex" | "none">();
   const envNames = new Set<string>();
 
   for (const node of plan.nodes) {

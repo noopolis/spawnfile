@@ -1,5 +1,7 @@
-import type { ExecutionBlock } from "../manifest/index.js";
+import type { ExecutionBlock, ModelTarget } from "../manifest/index.js";
 import { type ModelAuthMethod, SpawnfileError } from "../shared/index.js";
+
+import type { EffectiveModelTarget } from "./types.js";
 
 const MODEL_PROVIDER_ENV_VARS = new Map<string, string>([
   ["anthropic", "ANTHROPIC_API_KEY"],
@@ -11,68 +13,144 @@ const MODEL_PROVIDER_ENV_VARS = new Map<string, string>([
   ["xai", "XAI_API_KEY"]
 ]);
 
+const resolveLegacyModelAuthMethod = (
+  execution: ExecutionBlock | undefined,
+  provider: string
+): ModelAuthMethod | undefined => {
+  const auth = execution?.model?.auth;
+  if (!auth) {
+    return undefined;
+  }
+
+  if (auth.method) {
+    return auth.method;
+  }
+
+  return auth.methods?.[provider];
+};
+
 export const resolveModelProviderEnvName = (provider: string): string =>
   MODEL_PROVIDER_ENV_VARS.get(provider) ??
   `${provider.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_API_KEY`;
 
-export const listExecutionModelProviders = (
+export const listExecutionModelTargets = (
   execution: ExecutionBlock | undefined
-): string[] => {
+): ModelTarget[] => {
   if (!execution?.model?.primary) {
     return [];
   }
 
-  return [
-    execution.model.primary.provider,
-    ...(execution.model.fallback ?? []).map((model) => model.provider)
-  ]
-    .filter((provider, index, providers) => providers.indexOf(provider) === index)
-    .sort();
+  return [execution.model.primary, ...(execution.model.fallback ?? [])];
+};
+
+const resolveDefaultModelAuthMethod = (target: ModelTarget): ModelAuthMethod | undefined => {
+  if (target.provider === "local") {
+    return "none";
+  }
+
+  if (target.provider === "custom") {
+    return undefined;
+  }
+
+  return "api_key";
+};
+
+export const resolveEffectiveModelTarget = (
+  target: ModelTarget,
+  execution: ExecutionBlock | undefined
+): EffectiveModelTarget => {
+  const method =
+    target.auth?.method ??
+    resolveLegacyModelAuthMethod(execution, target.provider) ??
+    resolveDefaultModelAuthMethod(target);
+
+  if (!method) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Model ${target.provider}/${target.name} must declare auth.method`
+    );
+  }
+
+  if (target.auth?.key && method !== "api_key") {
+    throw new SpawnfileError(
+      "validation_error",
+      `Model ${target.provider}/${target.name} can only declare auth.key with api_key auth`
+    );
+  }
+
+  if (
+    (target.provider === "custom" || target.provider === "local") &&
+    !target.endpoint
+  ) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Model ${target.provider}/${target.name} must declare endpoint`
+    );
+  }
+
+  if (
+    target.endpoint &&
+    target.provider !== "custom" &&
+    target.provider !== "local"
+  ) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Model ${target.provider}/${target.name} cannot declare endpoint`
+    );
+  }
+
+  if (
+    method === "api_key" &&
+    (target.provider === "custom" || target.provider === "local") &&
+    !target.auth?.key
+  ) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Model ${target.provider}/${target.name} must declare auth.key for api_key auth`
+    );
+  }
+
+  return {
+    auth: {
+      ...(target.auth?.key ? { key: target.auth.key } : {}),
+      method
+    },
+    ...(target.endpoint ? { endpoint: target.endpoint } : {}),
+    name: target.name,
+    provider: target.provider
+  };
+};
+
+export const listEffectiveExecutionModelTargets = (
+  execution: ExecutionBlock | undefined
+): EffectiveModelTarget[] => listExecutionModelTargets(execution).map((target) => resolveEffectiveModelTarget(target, execution));
+
+export const listExecutionModelProviders = (
+  execution: ExecutionBlock | undefined
+): string[] => {
+  const providers = listEffectiveExecutionModelTargets(execution).map((target) => target.provider);
+  return providers.filter((provider, index) => providers.indexOf(provider) === index).sort();
 };
 
 export const resolveExecutionModelAuthMethods = (
   execution: ExecutionBlock | undefined
 ): Record<string, ModelAuthMethod> => {
-  const providers = listExecutionModelProviders(execution);
-  if (providers.length === 0) {
-    return {};
-  }
+  const methods = new Map<string, ModelAuthMethod>();
 
-  const auth = execution?.model?.auth;
-  if (!auth) {
-    return Object.fromEntries(providers.map((provider) => [provider, "api_key"])) as Record<
-      string,
-      ModelAuthMethod
-    >;
-  }
-
-  if (auth.method) {
-    return Object.fromEntries(
-      providers.map((provider) => [provider, auth.method])
-    ) as Record<string, ModelAuthMethod>;
-  }
-
-  const methods = auth.methods ?? {};
-  for (const provider of providers) {
-    if (!(provider in methods)) {
+  for (const target of listEffectiveExecutionModelTargets(execution)) {
+    const existingMethod = methods.get(target.provider);
+    if (existingMethod && existingMethod !== target.auth.method) {
       throw new SpawnfileError(
         "validation_error",
-        `Model auth methods must declare provider ${provider}`
+        `Execution model declares conflicting auth methods for provider ${target.provider}`
       );
     }
-  }
 
-  for (const provider of Object.keys(methods)) {
-    if (!providers.includes(provider)) {
-      throw new SpawnfileError(
-        "validation_error",
-        `Model auth methods declared unknown provider ${provider}`
-      );
-    }
+    methods.set(target.provider, target.auth.method);
   }
 
   return Object.fromEntries(
-    providers.map((provider) => [provider, methods[provider]!])
+    [...methods.entries()].sort(([left], [right]) => left.localeCompare(right))
   ) as Record<string, ModelAuthMethod>;
 };
 
@@ -80,14 +158,13 @@ export const listExecutionModelSecretNames = (
   execution: ExecutionBlock | undefined
 ): string[] => {
   const secretNames = new Set<string>();
-  const modelAuthMethods = resolveExecutionModelAuthMethods(execution);
 
-  for (const [provider, method] of Object.entries(modelAuthMethods)) {
-    if (method !== "api_key") {
+  for (const target of listEffectiveExecutionModelTargets(execution)) {
+    if (target.auth.method !== "api_key") {
       continue;
     }
 
-    secretNames.add(resolveModelProviderEnvName(provider));
+    secretNames.add(target.auth.key ?? resolveModelProviderEnvName(target.provider));
   }
 
   return [...secretNames].sort();

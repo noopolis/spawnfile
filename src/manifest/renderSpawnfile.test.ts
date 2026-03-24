@@ -78,7 +78,7 @@ describe("renderSpawnfile", () => {
     expect(source).toContain("  soul: SOUL.md");
     expect(source).toContain("  system: AGENTS.md");
     expect(source).toContain('name: my-agent\n\nruntime: openclaw\n\nexecution:');
-    expect(source).toContain("provider: anthropic\n\ndocs:");
+    expect(source).toContain("      provider: anthropic\n      name: claude-opus-4-6\n\ndocs:");
   });
 
   it("renders rewritten agent manifests with subagents in canonical order", () => {
@@ -126,5 +126,69 @@ describe("renderSpawnfile", () => {
     expect(source).toContain("name: my-agent\n\nruntime: openclaw\n\nexecution:");
     expect(source).toContain("docs:\n  identity: IDENTITY.md");
     expect(source).toContain("system: AGENTS.md\n\nsubagents:");
+  });
+
+  it("renders inline model auth and endpoint fields in canonical order", () => {
+    const source = renderSpawnfile({
+      execution: {
+        model: {
+          fallback: [
+            {
+              auth: {
+                method: "none"
+              },
+              endpoint: {
+                base_url: "http://host.docker.internal:11434/v1",
+                compatibility: "openai"
+              },
+              name: "qwen2.5:14b",
+              provider: "local"
+            }
+          ],
+          primary: {
+            auth: {
+              key: "CUSTOM_API_KEY",
+              method: "api_key"
+            },
+            endpoint: {
+              base_url: "https://llm.example.com/v1",
+              compatibility: "anthropic"
+            },
+            name: "foo-large",
+            provider: "custom"
+          }
+        }
+      },
+      kind: "agent",
+      name: "custom-agent",
+      runtime: "picoclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(source).toContain(
+      [
+        "    primary:",
+        "      provider: custom",
+        "      name: foo-large",
+        "      auth:",
+        "        method: api_key",
+        "        key: CUSTOM_API_KEY",
+        "      endpoint:",
+        "        base_url: https://llm.example.com/v1",
+        "        compatibility: anthropic"
+      ].join("\n")
+    );
+    expect(source).toContain(
+      [
+        "    fallback:",
+        "      - provider: local",
+        "        name: qwen2.5:14b",
+        "        auth:",
+        "          method: none",
+        "        endpoint:",
+        "          base_url: http://host.docker.internal:11434/v1",
+        "          compatibility: openai"
+      ].join("\n")
+    );
   });
 });

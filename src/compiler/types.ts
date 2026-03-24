@@ -1,5 +1,5 @@
-import { ExecutionBlock, McpServer, Secret } from "../manifest/index.js";
-import { StringMap } from "../shared/index.js";
+import { ExecutionBlock, McpServer, ModelEndpoint, Secret } from "../manifest/index.js";
+import { ModelAuthMethod, StringMap } from "../shared/index.js";
 
 export interface ResolvedDocument {
   content: string;
@@ -18,6 +18,16 @@ export interface ResolvedSkill {
 export interface ResolvedRuntime {
   name: string;
   options: Record<string, unknown>;
+}
+
+export interface EffectiveModelTarget {
+  auth: {
+    key?: string;
+    method: ModelAuthMethod;
+  };
+  endpoint?: ModelEndpoint;
+  name: string;
+  provider: string;
 }
 
 export interface ResolvedSubagentRef {

@@ -1,12 +1,17 @@
 import type { ResolvedAgentNode } from "../../compiler/types.js";
+import {
+  listEffectiveExecutionModelTargets,
+  listExecutionModelSecretNames,
+  resolveModelProviderEnvName
+} from "../../compiler/modelEnv.js";
 import type { McpServer } from "../../manifest/index.js";
-import type { ModelAuthMethod } from "../../shared/index.js";
 import type {
   AdapterCompileResult,
   ContainerTarget,
   ContainerTargetInput,
   RuntimeAdapter
 } from "../types.js";
+import { SpawnfileError } from "../../shared/index.js";
 import {
   createAgentCapabilities,
   createDiagnostic,
@@ -48,29 +53,38 @@ const formatProviderEnvName = (provider: string): string =>
   `${provider.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_API_KEY`;
 
 const createProviderSecretPath = (provider: string): string =>
-  `secrets/${formatProviderEnvName(provider)}`;
+  createSecretPath(formatProviderEnvName(provider));
+
+const createSecretPath = (envName: string): string => `secrets/${envName}`;
 
 const buildModelList = (node: ResolvedAgentNode): Array<Record<string, unknown>> => {
-  const entries: Array<Record<string, unknown>> = [];
-  const primary = node.execution?.model?.primary;
+  return listEffectiveExecutionModelTargets(node.execution).map((target) => {
+    if (target.endpoint) {
+      return {
+        ...(target.auth.method === "api_key"
+          ? { api_key: `file://${createSecretPath(target.auth.key!)}` }
+          : {}),
+        api_base: target.endpoint.base_url,
+        model:
+          target.endpoint.compatibility === "anthropic"
+            ? `anthropic-messages/${target.name}`
+            : `openai/${target.name}`,
+        model_name: target.name
+      };
+    }
 
-  if (primary) {
-    entries.push({
-      api_key: `file://${createProviderSecretPath(primary.provider)}`,
-      model_name: primary.name,
-      model: `${primary.provider}/${primary.name}`
-    });
-  }
-
-  for (const fallback of node.execution?.model?.fallback ?? []) {
-    entries.push({
-      api_key: `file://${createProviderSecretPath(fallback.provider)}`,
-      model_name: fallback.name,
-      model: `${fallback.provider}/${fallback.name}`
-    });
-  }
-
-  return entries;
+    return {
+      ...(target.auth.method === "api_key"
+        ? {
+            api_key: `file://${createSecretPath(
+              target.auth.key ?? resolveModelProviderEnvName(target.provider)
+            )}`
+          }
+        : {}),
+      model: `${target.provider}/${target.name}`,
+      model_name: target.name
+    };
+  });
 };
 
 const buildMcpServers = (
@@ -134,14 +148,9 @@ const createContainerTargets = async (
 ): Promise<ContainerTarget[]> =>
   inputs.map((input) => {
     const agent = input.value as ResolvedAgentNode;
-    const providers = [
-      agent.execution?.model?.primary?.provider,
-      ...(agent.execution?.model?.fallback ?? []).map((model) => model.provider)
-    ].filter((provider): provider is string => Boolean(provider));
-
-    const envFiles = [...new Set(providers)].map((provider) => ({
-      envName: formatProviderEnvName(provider),
-      relativePath: createProviderSecretPath(provider)
+    const envFiles = listExecutionModelSecretNames(agent.execution).map((secretName) => ({
+      envName: secretName,
+      relativePath: createSecretPath(secretName)
     }));
 
     return {
@@ -152,14 +161,46 @@ const createContainerTargets = async (
     };
   });
 
-const listSupportedModelAuthMethods = (provider: string): ModelAuthMethod[] =>
-  provider === "anthropic"
-    ? ["api_key", "claude-code"]
-    : provider === "openai"
-      ? ["api_key", "codex"]
-      : ["api_key"];
-
 export const picoClawAdapter: RuntimeAdapter = {
+  assertSupportedModelTarget(target) {
+    if (target.endpoint) {
+      if (
+        target.endpoint.compatibility === "anthropic" &&
+        target.auth.method === "none"
+      ) {
+        throw new SpawnfileError(
+          "validation_error",
+          "PicoClaw anthropic-compatible custom or local models require api_key auth"
+        );
+      }
+
+      if (target.auth.method === "claude-code" || target.auth.method === "codex") {
+        throw new SpawnfileError(
+          "validation_error",
+          `PicoClaw custom or local models do not support ${target.auth.method} auth`
+        );
+      }
+
+      return;
+    }
+
+    if (target.provider === "anthropic") {
+      if (target.auth.method === "api_key" || target.auth.method === "claude-code") {
+        return;
+      }
+    } else if (target.provider === "openai") {
+      if (target.auth.method === "api_key" || target.auth.method === "codex") {
+        return;
+      }
+    } else if (target.auth.method === "api_key" || target.auth.method === "none") {
+      return;
+    }
+
+    throw new SpawnfileError(
+      "validation_error",
+      `PicoClaw does not support model auth method ${target.auth.method} for provider ${target.provider}`
+    );
+  },
   container: {
     configFileName: "config.json",
     configPathEnv: "PICOCLAW_CONFIG",
@@ -199,9 +240,6 @@ export const picoClawAdapter: RuntimeAdapter = {
   name: "picoclaw",
   prepareRuntimeAuth: preparePicoClawRuntimeAuth,
   scaffoldAgentProject: createPicoClawAgentScaffold,
-  supportedModelAuthMethods(provider) {
-    return listSupportedModelAuthMethods(provider);
-  },
   validateRuntimeOptions(options) {
     if (
       "restrict_to_workspace" in options &&

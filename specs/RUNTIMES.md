@@ -26,6 +26,8 @@ runtimes:
     remote: <git clone URL>
     ref: <pinned git ref — tag, SHA, or branch>
     default_branch: <main | master>
+    install:
+      kind: <container_image | npm | github_release_archive | github_release_bundle | source_repo>
     status: <active | exploratory | deprecated>
 ```
 
@@ -36,7 +38,24 @@ runtimes:
 | `remote` | yes | Git clone URL for the runtime repository |
 | `ref` | yes | Pinned git ref — should be the latest stable release tag |
 | `default_branch` | yes | The repository's primary branch name |
+| `install` | no | Pinned install strategy for the verified runtime version |
 | `status` | yes | Lifecycle status of this runtime in the Spawnfile project |
+
+### Install Strategies
+
+The `install` block declares which compiled artifact or packaged install surface Spawnfile should use for container builds at the pinned runtime version.
+
+Supported kinds in v0.1 are:
+
+| Kind | Required Fields | Meaning |
+|------|-----------------|---------|
+| `container_image` | `image`, `tag` | Install from a pinned runtime container image |
+| `npm` | `package`, `version` | Install a pinned npm package version |
+| `github_release_archive` | `repository`, `tag`, `binary`, `assets` | Download a pinned release archive and install a platform-specific binary |
+| `github_release_bundle` | `repository`, `tag`, `asset` | Download a pinned release bundle tarball |
+| `source_repo` | none | Fallback install from the pinned source repo ref |
+
+`install` is OPTIONAL at the schema level because exploratory runtimes may not yet have a verified build story. Active runtimes intended for `spawnfile build` SHOULD provide a verified install strategy.
 
 ### Status Values
 
@@ -70,6 +89,8 @@ Bump `ref` when:
 
 Do not bump `ref` speculatively. The pin represents "the adapter works at this version."
 
+If the install artifact version differs from the source `ref`, both values should still be updated intentionally in the same review. The runtime registry is the source of truth for the exact runtime version Spawnfile supports.
+
 ### Sync Script
 
 `scripts/runtimes.sh` reads `runtimes.yaml` and clones or checks out each runtime at its pinned ref.
@@ -82,6 +103,8 @@ Do not bump `ref` speculatively. The pin represents "the adapter works at this v
 The cloned repositories live in `runtimes/` at the repo root. This directory is gitignored.
 
 These local clones are for research, blueprint generation, and adapter development. `spawnfile compile` should not require local runtime clones on the compiler machine; container build/install should use the registry pin plus the adapter's install strategy.
+
+In v0.1, generated Dockerfiles must not clone runtime repositories or rebuild runtime sources during image build when a verified compiled install strategy is available. `source_repo` exists as a registry/install fallback, not the intended default for active runtime builds.
 
 ---
 
@@ -101,6 +124,7 @@ A runtime moves from `exploratory` to `active` when:
 - an adapter exists in `src/runtime/<name>/`
 - the adapter passes tests against the pinned version
 - the adapter is registered in `src/runtime/registry.ts`
+- the runtime has a verified install strategy in `runtimes.yaml`
 - the compiled output can be built and the runtime can boot at the pinned version
 - if the runtime exposes a host-reachable service, a host-side smoke check succeeds against that service
 

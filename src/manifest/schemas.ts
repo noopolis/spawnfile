@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-const modelAuthMethodSchema = z.enum(["api_key", "claude-code", "codex"]);
+const modelAuthMethodSchema = z.enum(["api_key", "claude-code", "codex", "none"]);
+const modelEndpointCompatibilitySchema = z.enum(["anthropic", "openai"]);
 
 const modelAuthSchema = z
   .object({
@@ -27,6 +28,63 @@ const modelAuthSchema = z
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "model auth methods must not be empty"
+      });
+    }
+  });
+
+const modelEntryAuthMethodSchema = z.enum(["api_key", "claude-code", "codex", "none"]);
+
+const modelEntryAuthSchema = z
+  .object({
+    key: z.string().optional(),
+    method: modelEntryAuthMethodSchema.optional()
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (!value.method) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "model auth must declare method"
+      });
+    }
+
+    if (value.key && value.method !== "api_key") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "model auth key is only valid for api_key auth"
+      });
+    }
+  });
+
+const modelEndpointSchema = z
+  .object({
+    base_url: z.string().min(1),
+    compatibility: modelEndpointCompatibilitySchema
+  })
+  .strict();
+
+const modelTargetSchema = z
+  .object({
+    auth: modelEntryAuthSchema.optional(),
+    endpoint: modelEndpointSchema.optional(),
+    name: z.string(),
+    provider: z.string()
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const usesCustomEndpoint = value.provider === "custom" || value.provider === "local";
+
+    if (usesCustomEndpoint && !value.endpoint) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${value.provider} models must declare endpoint`
+      });
+    }
+
+    if (!usesCustomEndpoint && value.endpoint) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "endpoint is only valid for custom or local models"
       });
     }
   });
@@ -93,22 +151,8 @@ const executionSchema = z
     model: z
       .object({
         auth: modelAuthSchema.optional(),
-        fallback: z
-          .array(
-            z
-              .object({
-                name: z.string(),
-                provider: z.string()
-              })
-              .strict()
-          )
-          .optional(),
-        primary: z
-          .object({
-            name: z.string(),
-            provider: z.string()
-          })
-          .strict()
+        fallback: z.array(modelTargetSchema).optional(),
+        primary: modelTargetSchema
       })
       .superRefine((value, context) => {
         const declaredProviders = new Set<string>([
@@ -116,24 +160,48 @@ const executionSchema = z
           ...(value.fallback ?? []).map((model) => model.provider)
         ]);
 
-        if (!value.auth?.methods) {
-          return;
-        }
+        if (value.auth?.methods) {
+          for (const provider of declaredProviders) {
+            if (!(provider in value.auth.methods)) {
+              context.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `model auth methods must declare provider ${provider}`
+              });
+            }
+          }
 
-        for (const provider of declaredProviders) {
-          if (!(provider in value.auth.methods)) {
-            context.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: `model auth methods must declare provider ${provider}`
-            });
+          for (const provider of Object.keys(value.auth.methods)) {
+            if (!declaredProviders.has(provider)) {
+              context.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `model auth methods declared unknown provider ${provider}`
+              });
+            }
           }
         }
 
-        for (const provider of Object.keys(value.auth.methods)) {
-          if (!declaredProviders.has(provider)) {
+        for (const target of [value.primary, ...(value.fallback ?? [])]) {
+          const method =
+            target.auth?.method ??
+            value.auth?.methods?.[target.provider] ??
+            value.auth?.method ??
+            (target.provider === "local" ? "none" : undefined);
+
+          if (target.provider === "custom" && !method) {
             context.addIssue({
               code: z.ZodIssueCode.custom,
-              message: `model auth methods declared unknown provider ${provider}`
+              message: "custom models must declare auth.method or inherit legacy model auth"
+            });
+          }
+
+          if (
+            (target.provider === "custom" || target.provider === "local") &&
+            method === "api_key" &&
+            !target.auth?.key
+          ) {
+            context.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `${target.provider} api_key auth must declare auth.key`
             });
           }
         }
@@ -258,6 +326,14 @@ const teamManifestSchema = commonManifestSchema
     shared: sharedSurfaceSchema.optional(),
     structure: structureSchema
   })
+  .superRefine((value, context) => {
+    if (value.execution !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "team manifests must not declare execution"
+      });
+    }
+  })
   .strict();
 
 export const manifestSchema = z.discriminatedUnion("kind", [
@@ -271,6 +347,9 @@ export type ExecutionBlock = z.infer<typeof executionSchema>;
 export type Manifest = z.infer<typeof manifestSchema>;
 export type ManifestMember = z.infer<typeof memberSchema>;
 export type McpServer = z.infer<typeof mcpServerSchema>;
+export type ModelEndpoint = z.infer<typeof modelEndpointSchema>;
+export type ModelEntryAuth = z.infer<typeof modelEntryAuthSchema>;
+export type ModelTarget = z.infer<typeof modelTargetSchema>;
 export type RuntimeBinding = z.infer<typeof runtimeBindingSchema>;
 export type Secret = z.infer<typeof secretSchema>;
 export type SharedSurface = z.infer<typeof sharedSurfaceSchema>;

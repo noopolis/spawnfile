@@ -120,6 +120,56 @@ describe("picoClawAdapter", () => {
     expect(config.tools.mcp.servers.web.headers.SEARCH_API_KEY).toBe("");
   });
 
+  it("emits custom and local endpoint models with explicit compatibility", async () => {
+    const result = await picoClawAdapter.compileAgent({
+      ...node,
+      execution: {
+        model: {
+          fallback: [
+            {
+              auth: {
+                method: "none"
+              },
+              endpoint: {
+                base_url: "http://host.docker.internal:11434/v1",
+                compatibility: "openai"
+              },
+              name: "qwen2.5:14b",
+              provider: "local"
+            }
+          ],
+          primary: {
+            auth: {
+              key: "CUSTOM_API_KEY",
+              method: "api_key"
+            },
+            endpoint: {
+              base_url: "https://llm.example.com/v1",
+              compatibility: "anthropic"
+            },
+            name: "foo-large",
+            provider: "custom"
+          }
+        }
+      }
+    });
+
+    const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
+    expect(config.model_list).toEqual([
+      {
+        api_base: "https://llm.example.com/v1",
+        api_key: "file://secrets/CUSTOM_API_KEY",
+        model: "anthropic-messages/foo-large",
+        model_name: "foo-large"
+      },
+      {
+        api_base: "http://host.docker.internal:11434/v1",
+        model: "openai/qwen2.5:14b",
+        model_name: "qwen2.5:14b"
+      }
+    ]);
+  });
+
   it("declares per-target provider secret files for container boot", async () => {
     const [target] = await picoClawAdapter.createContainerTargets?.([
       {
@@ -154,9 +204,109 @@ describe("picoClawAdapter", () => {
     ]) ?? [];
 
     expect(target?.envFiles).toEqual([
-      { envName: "OPENAI_API_KEY", relativePath: "secrets/OPENAI_API_KEY" },
-      { envName: "ANTHROPIC_API_KEY", relativePath: "secrets/ANTHROPIC_API_KEY" }
+      { envName: "ANTHROPIC_API_KEY", relativePath: "secrets/ANTHROPIC_API_KEY" },
+      { envName: "OPENAI_API_KEY", relativePath: "secrets/OPENAI_API_KEY" }
     ]);
+  });
+
+  it("declares custom API-key secret files for custom endpoints", async () => {
+    const [target] = await picoClawAdapter.createContainerTargets?.([
+      {
+        emittedFiles: (
+          await picoClawAdapter.compileAgent({
+            ...node,
+            execution: {
+              model: {
+                primary: {
+                  auth: {
+                    key: "CUSTOM_API_KEY",
+                    method: "api_key"
+                  },
+                  endpoint: {
+                    base_url: "https://llm.example.com/v1",
+                    compatibility: "openai"
+                  },
+                  name: "foo-large",
+                  provider: "custom"
+                }
+              }
+            }
+          })
+        ).files,
+        id: "agent:assistant",
+        kind: "agent",
+        slug: "assistant",
+        value: {
+          ...node,
+          execution: {
+            model: {
+              primary: {
+                auth: {
+                  key: "CUSTOM_API_KEY",
+                  method: "api_key"
+                },
+                endpoint: {
+                  base_url: "https://llm.example.com/v1",
+                  compatibility: "openai"
+                },
+                name: "foo-large",
+                provider: "custom"
+              }
+            }
+          }
+        }
+      }
+    ]) ?? [];
+
+    expect(target?.envFiles).toEqual([
+      { envName: "CUSTOM_API_KEY", relativePath: "secrets/CUSTOM_API_KEY" }
+    ]);
+  });
+
+  it("validates supported and unsupported model target combinations", () => {
+    expect(() =>
+      picoClawAdapter.assertSupportedModelTarget({
+        auth: { method: "claude-code" },
+        name: "claude-opus-4-6",
+        provider: "anthropic"
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      picoClawAdapter.assertSupportedModelTarget({
+        auth: { method: "none" },
+        endpoint: {
+          base_url: "http://host.docker.internal:11434/v1",
+          compatibility: "openai"
+        },
+        name: "qwen2.5:14b",
+        provider: "local"
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      picoClawAdapter.assertSupportedModelTarget({
+        auth: { method: "none" },
+        endpoint: {
+          base_url: "https://llm.example.com/v1",
+          compatibility: "anthropic"
+        },
+        name: "foo-large",
+        provider: "custom"
+      })
+    ).toThrow(/require api_key auth/);
+
+    expect(() =>
+      picoClawAdapter.assertSupportedModelTarget({
+        auth: { method: "codex" },
+        endpoint: {
+          base_url: "https://llm.example.com/v1",
+          compatibility: "openai"
+        },
+        name: "foo-large",
+        provider: "custom"
+      })
+    ).toThrow(/do not support codex auth/);
   });
 
   it("validates runtime option types", () => {

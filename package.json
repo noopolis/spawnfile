@@ -1,11 +1,11 @@
 {
-  "name": "@noopolis/spawnfile",
+  "name": "spawnfile",
   "version": "0.1.0",
   "description": "Canonical source compiler for autonomous agents and teams.",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "spawnfile": "./dist/cli/index.js"
+    "spawnfile": "dist/cli/index.js"
   },
   "files": [
     "dist",

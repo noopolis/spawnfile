@@ -12,7 +12,8 @@ This file is informative, not normative.
 
 Current implementation status:
 
-- Spawnfile now supports manifest-level model auth intent through `execution.model.auth.method` and `execution.model.auth.methods`.
+- Spawnfile now supports manifest-level model auth intent inline on each model target via `execution.model.primary.auth` and `execution.model.fallback[*].auth`.
+- Spawnfile also supports `endpoint` on `custom` and `local` model targets for compatibility-aware custom backends.
 - `spawnfile auth sync` is the primary happy path for importing auth material into a local profile.
 - `spawnfile build` stays secrets-free.
 - `spawnfile run --auth-profile ...` validates declared auth intent and mounts or patches runtime-native auth material at run time.

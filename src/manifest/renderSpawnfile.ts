@@ -4,6 +4,8 @@ import type {
   AgentManifest,
   DocsBlock,
   ExecutionBlock,
+  ModelEntryAuth,
+  ModelTarget,
   RuntimeBinding,
   SharedSurface,
   TeamManifest
@@ -42,6 +44,32 @@ const orderDocs = (docs: DocsBlock | undefined): DocsBlock | undefined => {
   ]) as unknown as DocsBlock;
 };
 
+const orderModelEntryAuth = (
+  auth: ModelEntryAuth | undefined
+): ModelEntryAuth | undefined => {
+  if (!auth) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["method", auth.method],
+    ["key", auth.key]
+  ]) as unknown as ModelEntryAuth;
+};
+
+const orderModelTarget = (target: ModelTarget | undefined): ModelTarget | undefined => {
+  if (!target) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["provider", target.provider],
+    ["name", target.name],
+    ["auth", orderModelEntryAuth(target.auth)],
+    ["endpoint", target.endpoint]
+  ]) as unknown as ModelTarget;
+};
+
 const orderExecution = (
   execution: ExecutionBlock | undefined
 ): ExecutionBlock | undefined => {
@@ -54,8 +82,8 @@ const orderExecution = (
       "model",
       execution.model
         ? withDefinedEntries([
-            ["primary", execution.model.primary],
-            ["fallback", execution.model.fallback],
+            ["primary", orderModelTarget(execution.model.primary)],
+            ["fallback", execution.model.fallback?.map(orderModelTarget)],
             ["auth", execution.model.auth]
           ])
         : undefined

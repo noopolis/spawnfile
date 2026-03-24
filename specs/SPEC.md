@@ -220,16 +220,23 @@ The `execution` block declares portable intent, not literal adapter config.
 ```yaml
 execution:
   model:
-    auth:
-      methods:
-        anthropic: claude-code
-        openai: codex
     primary:
       provider: anthropic
       name: claude-sonnet-4-5
+      auth:
+        method: claude-code
     fallback:
       - provider: openai
         name: gpt-4o-mini
+        auth:
+          method: codex
+      - provider: local
+        name: qwen2.5:14b
+        auth:
+          method: none
+        endpoint:
+          compatibility: openai
+          base_url: http://host.docker.internal:11434/v1
   workspace:
     isolation: isolated    # isolated | shared
   sandbox:
@@ -239,14 +246,31 @@ execution:
 Rules:
 
 - `execution.model.primary.provider` and `execution.model.primary.name` are REQUIRED if `execution.model` is present.
-- `execution.model.fallback` is OPTIONAL and declares an ordered list of fallback models.
-- `execution.model.auth` is OPTIONAL.
-- `execution.model.auth.method` MAY declare one auth method for all declared model providers.
-- `execution.model.auth.methods` MAY declare auth methods per provider.
-- Supported auth methods in v0.1 are: `api_key`, `claude-code`, `codex`.
+- `execution.model.primary` and each entry in `execution.model.fallback` are model targets.
+- A model target MUST declare:
+  - `provider`
+  - `name`
+- A model target MAY declare:
+  - `auth`
+  - `endpoint`
+- `execution.model.fallback` is OPTIONAL and declares an ordered list of fallback model targets.
+- Supported auth methods in v0.1 are: `api_key`, `claude-code`, `codex`, `none`.
+- If a model target declares `auth`, it MUST declare `auth.method`.
+- `auth.key` is OPTIONAL and MAY only be used with `auth.method: api_key`.
+- For built-in providers, if inline `auth` is omitted, the effective auth method defaults to `api_key`.
+- For `provider: local`, if inline `auth` is omitted, the effective auth method defaults to `none`.
+- `provider: custom` MUST declare inline `auth.method` or inherit a legacy auth method from `execution.model.auth`.
+- `provider: custom` and `provider: local` MUST declare `endpoint`.
+- `endpoint` MUST NOT appear on built-in providers.
+- `endpoint.compatibility` MUST be one of: `openai`, `anthropic`.
+- `endpoint.base_url` MUST be a non-empty URL string.
+- If a `custom` or `local` model target uses `auth.method: api_key`, it MUST declare `auth.key`.
+- `execution.model.auth` is a legacy compatibility surface. It MAY declare:
+  - `method` to apply one auth method to every declared provider
+  - `methods` to apply auth methods per provider
 - `execution.model.auth` MUST declare exactly one of `method` or `methods`.
 - If `execution.model.auth.methods` is used, it MUST cover every declared provider in `primary` and `fallback`, and it MUST NOT declare providers that are not present in that model set.
-- If `execution.model.auth` is omitted, the effective auth method defaults to `api_key` for each declared provider.
+- Canonical Spawnfiles SHOULD declare `auth` inline on each model target instead of relying on legacy `execution.model.auth`.
 - `execution.workspace.isolation` MUST be one of: `isolated`, `shared`.
 - `execution.sandbox.mode` MUST be one of: `workspace`, `sandboxed`, `unrestricted`.
 - If `execution.workspace` is omitted, the effective isolation defaults to `isolated`.
@@ -317,14 +341,16 @@ runtime:
 
 execution:
   model:
-    auth:
-      method: api_key
     primary:
       provider: anthropic
       name: claude-sonnet-4-5
+      auth:
+        method: api_key
     fallback:
       - provider: openai
         name: gpt-4o-mini
+        auth:
+          method: codex
   workspace:
     isolation: isolated
   sandbox:
@@ -571,6 +597,8 @@ The team doc SHOULD reference member slot `id` values explicitly so agents can i
 
 The team doc stays local to the team manifest. It is NOT automatically propagated to member agents. Adapters that support team context injection MAY make the team doc available to members and SHOULD report the capability outcome.
 
+Team manifests MUST NOT declare `execution`. Model, sandbox, and workspace intent apply to agents and subagents, not to teams as organizational nodes.
+
 ### 4.7 Team Lowering Contract
 
 For team manifests, a conforming compiler MUST preserve the following author intent whenever the target allows it:
@@ -769,6 +797,9 @@ spawnfile init [path] [--team] [--runtime <name>]
 spawnfile add agent <id> [path] [--runtime <name>]
 spawnfile add subagent <id> [path]
 spawnfile add team <id> [path]
+spawnfile model set <provider> <name> [path]
+spawnfile model add-fallback <provider> <name> [path]
+spawnfile model clear-fallbacks [path]
 spawnfile validate [path]
 spawnfile compile [path] [--out <dir>]
 spawnfile build [path] [--out <dir>] [--tag <image>]
@@ -784,6 +815,7 @@ Scaffolds a new Spawnfile project in the current directory.
 - `--runtime <name>` selects the bundled runtime for agent scaffolds (default: `openclaw`)
 - `--runtime` MUST be rejected when `--team` is also provided
 - MUST create a `Spawnfile` manifest and any required directory structure
+- SHOULD ensure the default generated output directory is ignored in the project `.gitignore`
 - MUST NOT overwrite existing files
 
 #### `spawnfile add`
@@ -818,6 +850,33 @@ Adds a child node under an existing Spawnfile project.
 - MUST only work when `path` resolves to a team manifest
 - MUST scaffold a new team project at `teams/<id>/`
 
+#### `spawnfile model`
+
+Edits model declarations in authored Spawnfiles.
+
+- `[path]` is optional and defaults to the current directory
+- `path` MUST point to the target project directory or its `Spawnfile`
+- `--recursive` SHOULD update the target manifest and all descendant manifests reachable through `members[*].ref` and `subagents[*].ref`
+- If `path` resolves to a team manifest, implementations MUST require `--recursive` and MUST only rewrite descendant agent manifests, not the team manifest itself
+- Implementations SHOULD normalize touched manifests to the canonical inline model-target form and SHOULD NOT emit legacy top-level `execution.model.auth` when rewriting manifests
+
+`spawnfile model set <provider> <name> [path]`
+
+- MUST set `execution.model.primary` on the target manifest
+- MUST reject auth method names such as `api_key`, `claude-code`, `codex`, and `none` when they are passed in the `<provider>` position
+- MAY set inline `auth` on that model target when `--auth` and `--key` are provided
+- MAY set inline `endpoint` on that model target when `--compat` and `--base-url` are provided
+
+`spawnfile model add-fallback <provider> <name> [path]`
+
+- MUST append the model target to `execution.model.fallback`
+- MUST fail when the target manifest has no primary model unless `--recursive` is used and the implementation explicitly skips manifests that do not declare a primary model
+- MAY set inline `auth` and `endpoint` on the added fallback model target
+
+`spawnfile model clear-fallbacks [path]`
+
+- MUST remove `execution.model.fallback`
+
 #### `spawnfile validate`
 
 Validates a Spawnfile project without compiling.
@@ -833,7 +892,7 @@ Validates a Spawnfile project without compiling.
 Compiles a Spawnfile project to runtime-specific output.
 
 - `path` is the directory containing the Spawnfile (default: current directory)
-- `--out` sets the output directory (default: `./dist`)
+- `--out` sets the output directory (default: `./.spawn`)
 - MUST perform all validation, then invoke adapters and emit output
 - MUST emit a compile report
 - MUST enforce the project's `policy` block
@@ -844,7 +903,7 @@ Compiles a Spawnfile project to runtime-specific output.
 Builds a Docker image from compiled output.
 
 - `path` is the directory containing the Spawnfile (default: current directory)
-- `--out` sets the output directory (default: `./dist`)
+- `--out` sets the output directory (default: `./.spawn`)
 - `--tag` sets the Docker image tag
 - MUST compile the project before invoking Docker build
 - MUST keep build output secrets-free by default
@@ -854,7 +913,7 @@ Builds a Docker image from compiled output.
 Runs a previously built image with the compiled project's published ports and auth wiring.
 
 - `path` is the directory containing the Spawnfile (default: current directory)
-- `--out` sets the output directory used to derive the compile report (default: `./dist`)
+- `--out` sets the output directory used to derive the compile report (default: `./.spawn`)
 - `--tag` selects the Docker image tag
 - `--auth-profile` selects a local Spawnfile auth profile
 - MUST compile the project before deriving runtime wiring
@@ -866,7 +925,7 @@ Manages local Spawnfile auth profiles.
 
 - MUST support local auth profile materialization outside project source
 - MAY support import of env files and existing local CLI credential stores
-- SHOULD support `spawnfile auth sync` as the primary happy path for reconciling declared `execution.model.auth` intent with a local auth profile
+- SHOULD support `spawnfile auth sync` as the primary happy path for reconciling declared model-target auth intent with a local auth profile
 
 ---
 

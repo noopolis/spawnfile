@@ -15,6 +15,7 @@ src/compiler/
 ├── runProject.ts               # `spawnfile run` docker-run planning and execution
 ├── initProject.ts              # `spawnfile init` orchestration around runtime-owned scaffolds
 ├── addProjectNode.ts           # `spawnfile add ...` graph-editing helpers
+├── updateProjectModels.ts      # `spawnfile model ...` manifest-editing helpers
 ├── executionDefaults.ts        # Effective execution defaults applied during graph resolution
 ├── *.test.ts                   # Tests next to the implementation they cover
 ```

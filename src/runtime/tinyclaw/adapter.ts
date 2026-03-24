@@ -1,11 +1,12 @@
 import type { ResolvedAgentNode, ResolvedTeamNode } from "../../compiler/types.js";
-import type { ModelAuthMethod } from "../../shared/index.js";
+import { listEffectiveExecutionModelTargets } from "../../compiler/modelEnv.js";
 import type {
   AdapterCompileResult,
   ContainerTarget,
   ContainerTargetInput,
   RuntimeAdapter
 } from "../types.js";
+import { SpawnfileError } from "../../shared/index.js";
 import {
   createCapability,
   createAgentCapabilities,
@@ -18,10 +19,11 @@ import { createTinyClawAgentScaffold } from "./scaffold.js";
 const WORKSPACE_PLACEHOLDER = "<workspace-path>";
 
 const buildTinyClawSettings = (node: ResolvedAgentNode): string => {
+  const [primary] = listEffectiveExecutionModelTargets(node.execution);
   const agentEntry: Record<string, unknown> = {
     name: node.name,
-    provider: node.execution?.model?.primary?.provider ?? "anthropic",
-    model: node.execution?.model?.primary?.name ?? "opus",
+    provider: primary?.provider ?? "anthropic",
+    model: primary?.name ?? "opus",
     working_directory: `${WORKSPACE_PLACEHOLDER}/${node.name}`
   };
 
@@ -37,7 +39,7 @@ const buildTinyClawSettings = (node: ResolvedAgentNode): string => {
       [node.name]: agentEntry
     },
     models: {
-      provider: node.execution?.model?.primary?.provider ?? "anthropic"
+      provider: primary?.provider ?? "anthropic"
     },
     monitoring: {
       heartbeat_interval: 3600
@@ -122,14 +124,32 @@ const mergeTinyClawTargets = async (
   ];
 };
 
-const listSupportedModelAuthMethods = (provider: string): ModelAuthMethod[] =>
-  provider === "anthropic"
-    ? ["claude-code"]
-    : provider === "openai"
-      ? ["codex"]
-      : ["api_key"];
-
 export const tinyClawAdapter: RuntimeAdapter = {
+  assertSupportedModelTarget(target) {
+    if (target.endpoint) {
+      throw new SpawnfileError(
+        "validation_error",
+        "TinyClaw custom or local endpoints are not supported in Spawnfile v0.1"
+      );
+    }
+
+    if (target.provider === "anthropic") {
+      if (target.auth.method === "claude-code") {
+        return;
+      }
+    } else if (target.provider === "openai") {
+      if (target.auth.method === "codex") {
+        return;
+      }
+    } else if (target.provider === "opencode" && target.auth.method === "none") {
+      return;
+    }
+
+    throw new SpawnfileError(
+      "validation_error",
+      `TinyClaw does not support model auth method ${target.auth.method} for provider ${target.provider}`
+    );
+  },
   container: {
     configFileName: "settings.json",
     configEnvBindings: [
@@ -206,8 +226,5 @@ export const tinyClawAdapter: RuntimeAdapter = {
   },
   name: "tinyclaw",
   prepareRuntimeAuth: prepareTinyClawRuntimeAuth,
-  scaffoldAgentProject: createTinyClawAgentScaffold,
-  supportedModelAuthMethods(provider) {
-    return listSupportedModelAuthMethods(provider);
-  }
+  scaffoldAgentProject: createTinyClawAgentScaffold
 };

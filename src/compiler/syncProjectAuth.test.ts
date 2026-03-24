@@ -167,6 +167,45 @@ describe("syncProjectAuth", () => {
     });
   });
 
+  it("captures custom API-key env names declared inline on model targets", async () => {
+    const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
+    const envDirectory = await createTempDirectory("spawnfile-env-home-");
+    process.env.SPAWNFILE_HOME = spawnfileHome;
+    await writeUtf8File(path.join(envDirectory, ".env"), "CUSTOM_API_KEY=custom-token\n");
+
+    const projectDirectory = await createAgentProject([
+      'spawnfile_version: "0.1"',
+      "kind: agent",
+      "name: auth-sync",
+      "",
+      "runtime: picoclaw",
+      "",
+      "execution:",
+      "  model:",
+      "    primary:",
+      "      provider: custom",
+      "      name: foo-large",
+      "      auth:",
+      "        method: api_key",
+      "        key: CUSTOM_API_KEY",
+      "      endpoint:",
+      "        compatibility: openai",
+      "        base_url: https://llm.example.com/v1",
+      "",
+      "docs:",
+      "  system: AGENTS.md"
+    ]);
+
+    const profile = await syncProjectAuth(projectDirectory, {
+      envFilePath: path.join(envDirectory, ".env"),
+      profileName: "dev"
+    });
+
+    expect(profile.env).toEqual({
+      CUSTOM_API_KEY: "custom-token"
+    });
+  });
+
   it("syncs auth for team projects by collecting requirements from member agents", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
     const claudeHome = await createTempDirectory("spawnfile-claude-home-");

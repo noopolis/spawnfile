@@ -163,7 +163,7 @@ const createEnvFileWrites = (plan: RuntimeTargetPlan): string[] =>
   );
 
 const createConfigEnvWrites = (plan: RuntimeTargetPlan): string[] =>
-  (plan.meta.configEnvBindings ?? []).map(
+  (plan.configEnvBindings ?? []).map(
     (binding) =>
       `apply_json_env_value ${shellQuote(plan.instancePaths.configPath)} ${shellQuote(binding.envName)} ${shellQuote(binding.jsonPath)}`
   );

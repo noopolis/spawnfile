@@ -231,6 +231,52 @@ describe("tinyClawAdapter", () => {
     expect(targets).toEqual([]);
   });
 
+  it("validates supported and unsupported model target combinations", () => {
+    expect(() =>
+      tinyClawAdapter.assertSupportedModelTarget({
+        auth: { method: "claude-code" },
+        name: "claude-opus-4-6",
+        provider: "anthropic"
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      tinyClawAdapter.assertSupportedModelTarget({
+        auth: { method: "codex" },
+        name: "gpt-5.4",
+        provider: "openai"
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      tinyClawAdapter.assertSupportedModelTarget({
+        auth: { method: "none" },
+        name: "opencode/claude-sonnet-4-6",
+        provider: "opencode"
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      tinyClawAdapter.assertSupportedModelTarget({
+        auth: { method: "api_key" },
+        name: "gpt-5.4",
+        provider: "openai"
+      })
+    ).toThrow(/does not support model auth method api_key/);
+
+    expect(() =>
+      tinyClawAdapter.assertSupportedModelTarget({
+        auth: { method: "api_key" },
+        endpoint: {
+          base_url: "https://llm.example.com/v1",
+          compatibility: "openai"
+        },
+        name: "foo-large",
+        provider: "custom"
+      })
+    ).toThrow(/custom or local endpoints are not supported/);
+  });
+
   it("ignores team inputs without a native team artifact when merging container targets", async () => {
     const node: ResolvedAgentNode = {
       docs: [],

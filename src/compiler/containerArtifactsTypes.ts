@@ -1,5 +1,9 @@
 import type { ContainerReport } from "../report/index.js";
-import type { EmittedFile, RuntimeContainerMeta } from "../runtime/index.js";
+import type {
+  EmittedFile,
+  RuntimeContainerConfigEnvBinding,
+  RuntimeContainerMeta
+} from "../runtime/index.js";
 import type { ModelAuthMethod } from "../shared/index.js";
 
 import type { ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
@@ -12,6 +16,7 @@ export interface ContainerEnvVariable {
 }
 
 export interface RuntimeTargetPlan {
+  configEnvBindings?: RuntimeContainerConfigEnvBinding[];
   envFiles: Array<{
     envName: string;
     filePath: string;

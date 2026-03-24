@@ -550,6 +550,59 @@ describe("mergeExecution", () => {
     });
   });
 
+  it("preserves inline model auth and endpoint settings when overriding primary models", () => {
+    expect(
+      mergeExecution(
+        {
+          model: {
+            primary: {
+              auth: {
+                method: "claude-code"
+              },
+              name: "claude-sonnet",
+              provider: "anthropic"
+            }
+          }
+        },
+        {
+          model: {
+            primary: {
+              auth: {
+                key: "CUSTOM_API_KEY",
+                method: "api_key"
+              },
+              endpoint: {
+                base_url: "https://llm.example.com/v1",
+                compatibility: "openai"
+              },
+              name: "foo-large",
+              provider: "custom"
+            }
+          }
+        }
+      )
+    ).toEqual({
+      model: {
+        auth: undefined,
+        fallback: undefined,
+        primary: {
+          auth: {
+            key: "CUSTOM_API_KEY",
+            method: "api_key"
+          },
+          endpoint: {
+            base_url: "https://llm.example.com/v1",
+            compatibility: "openai"
+          },
+          name: "foo-large",
+          provider: "custom"
+        }
+      },
+      sandbox: undefined,
+      workspace: undefined
+    });
+  });
+
   it("rejects merged execution models without a primary model", () => {
     expect(() =>
       mergeExecution(

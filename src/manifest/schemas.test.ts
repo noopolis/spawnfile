@@ -75,4 +75,197 @@ describe("manifestSchema", () => {
 
     expect(isTeamManifest(result)).toBe(true);
   });
+
+  it("rejects team manifests that declare execution", () => {
+    const result = manifestSchema.safeParse({
+      execution: {
+        model: {
+          primary: {
+            name: "claude-opus-4-6",
+            provider: "anthropic"
+          }
+        }
+      },
+      kind: "team",
+      members: [
+        {
+          id: "writer",
+          ref: "./agents/writer"
+        }
+      ],
+      name: "research-team",
+      spawnfile_version: "0.1",
+      structure: {
+        mode: "swarm"
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("team manifests must not declare execution");
+  });
+
+  it("accepts per-model auth and endpoint config for custom models", () => {
+    const result = manifestSchema.parse({
+      execution: {
+        model: {
+          primary: {
+            auth: {
+              key: "CUSTOM_API_KEY",
+              method: "api_key"
+            },
+            endpoint: {
+              base_url: "https://llm.example.com/v1",
+              compatibility: "anthropic"
+            },
+            name: "claude-sonnet-4-6",
+            provider: "custom"
+          }
+        }
+      },
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(isAgentManifest(result)).toBe(true);
+  });
+
+  it("rejects custom api_key models without auth.key", () => {
+    const result = manifestSchema.safeParse({
+      execution: {
+        model: {
+          primary: {
+            auth: {
+              method: "api_key"
+            },
+            endpoint: {
+              base_url: "https://llm.example.com/v1",
+              compatibility: "openai"
+            },
+            name: "foo-large",
+            provider: "custom"
+          }
+        }
+      },
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("must declare auth.key");
+  });
+
+  it("accepts local models with endpoint and implicit none auth", () => {
+    const result = manifestSchema.parse({
+      execution: {
+        model: {
+          primary: {
+            endpoint: {
+              base_url: "http://host.docker.internal:11434/v1",
+              compatibility: "openai"
+            },
+            name: "qwen2.5:14b",
+            provider: "local"
+          }
+        }
+      },
+      kind: "agent",
+      name: "agent",
+      runtime: "picoclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(isAgentManifest(result)).toBe(true);
+  });
+
+  it("rejects built-in providers with endpoint overrides", () => {
+    const result = manifestSchema.safeParse({
+      execution: {
+        model: {
+          primary: {
+            endpoint: {
+              base_url: "https://proxy.example.com/v1",
+              compatibility: "openai"
+            },
+            name: "gpt-5.4",
+            provider: "openai"
+          }
+        }
+      },
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("endpoint is only valid");
+  });
+
+  it("rejects legacy auth.methods that omit a declared provider", () => {
+    const result = manifestSchema.safeParse({
+      execution: {
+        model: {
+          auth: {
+            methods: {
+              openai: "codex"
+            }
+          },
+          fallback: [
+            {
+              name: "claude-opus-4-6",
+              provider: "anthropic"
+            }
+          ],
+          primary: {
+            name: "gpt-5.4",
+            provider: "openai"
+          }
+        }
+      },
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("must declare provider anthropic");
+  });
+
+  it("rejects legacy auth.methods that declare unknown providers", () => {
+    const result = manifestSchema.safeParse({
+      execution: {
+        model: {
+          auth: {
+            methods: {
+              anthropic: "claude-code",
+              google: "api_key",
+              openai: "codex"
+            }
+          },
+          fallback: [
+            {
+              name: "claude-opus-4-6",
+              provider: "anthropic"
+            }
+          ],
+          primary: {
+            name: "gpt-5.4",
+            provider: "openai"
+          }
+        }
+      },
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("declared unknown provider google");
+  });
 });

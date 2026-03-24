@@ -33,7 +33,9 @@ The reference pipeline is:
 6. Build a normalized intermediate representation.
 7. Group resolved nodes by runtime.
 8. Invoke runtime adapters.
-9. Emit output directories and `spawnfile-report.json`.
+9. Emit runtime output directories.
+10. Generate container artifacts from adapter container metadata.
+11. Emit `spawnfile-report.json`.
 
 The compiler should operate on resolved IR, not on raw YAML, after the graph phase.
 
@@ -130,6 +132,8 @@ execution:
     primary:
       provider: anthropic
       name: claude-sonnet-4-5
+      auth:
+        method: api_key
 docs: {}
 skills: []
 mcp_servers: []
@@ -151,7 +155,10 @@ shared:
   env: {}
   secrets: []
 members: []
-routing: {}
+structure:
+  mode: swarm
+  leader: null
+  external: []
 ```
 
 ### Compile Plan
@@ -162,9 +169,9 @@ nodes: []
 edges: []
 runtimes:
   openclaw:
-    nodes: []
+    nodeIds: []
   picoclaw:
-    nodes: []
+    nodeIds: []
 ```
 
 The important property is that adapters receive resolved nodes, never unresolved inheritance logic.
@@ -225,22 +232,28 @@ This keeps multi-runtime teams possible without requiring a universal native tea
 
 ## Output Layout
 
-The default output root for v0.1 should be `./dist`.
+The default output root for v0.1 should be `./.spawn`.
 
 Within that root, the compiler should emit:
 
 ```text
-dist/
-├── spawnfile-report.json
-└── runtimes/
-    ├── openclaw/
-    │   ├── agents/
-    │   │   └── analyst/
-    │   └── teams/
-    │       └── research-cell/
-    └── picoclaw/
-        └── agents/
-            └── researcher/
+.spawn/
+├── Dockerfile
+├── entrypoint.sh
+├── .env.example
+├── container/
+│   └── rootfs/
+│       └── var/lib/spawnfile/instances/...
+├── runtimes/
+│   ├── openclaw/
+│   │   ├── agents/
+│   │   │   └── analyst/
+│   │   └── teams/
+│   │       └── research-cell/
+│   └── picoclaw/
+│       └── agents/
+│           └── researcher/
+└── spawnfile-report.json
 ```
 
 Rules:
@@ -248,6 +261,7 @@ Rules:
 - one directory per runtime
 - one stable directory per compiled node
 - agent and team outputs are separated
+- container artifacts are always emitted at the root for the full resolved graph
 - the report file is always emitted at the root
 
 If a runtime adapter emits nothing for a team node, the report should still record the attempted lowering and capability outcomes.
@@ -265,7 +279,8 @@ The report should be JSON by default and written to `spawnfile-report.json`.
   "spawnfile_version": "0.1",
   "root": "/abs/path/to/Spawnfile",
   "nodes": [],
-  "diagnostics": []
+  "diagnostics": [],
+  "container": {}
 }
 ```
 
@@ -277,6 +292,8 @@ The report should be JSON by default and written to `spawnfile-report.json`.
   "kind": "agent",
   "source": "/abs/path/to/Spawnfile",
   "runtime": "openclaw",
+  "runtime_ref": "v2026.3.13-1",
+  "runtime_status": "active",
   "output_dir": "runtimes/openclaw/agents/analyst",
   "capabilities": [],
   "diagnostics": []
@@ -323,6 +340,19 @@ Adapters may add runtime-specific keys under:
 
 Those keys are informative, not part of the portable core.
 
+### Container Report Extension
+
+The compile report may include a `container` object describing the generated container artifacts for the full compile graph.
+
+At minimum, this should cover:
+
+- generated root files (`Dockerfile`, `entrypoint.sh`, `.env.example`)
+- installed runtimes
+- published ports
+- required model/runtime secrets
+- runtime instance config/home paths
+- effective model auth methods per runtime instance
+
 ---
 
 ## Recommended Validation Phases
@@ -342,7 +372,7 @@ Validation should happen in three layers:
 - cycle detection
 - duplicate node resolution conflicts
 - runtime resolution
-- team routing references
+- team structure references
 - skill `requires.mcp` resolution
 
 ### 3. Adapter Validation
@@ -365,10 +395,7 @@ See `CONTAINERS.md` for the full spec. The key rule is:
 - the Dockerfile and entrypoint are derived from adapter-provided container metadata
 - all agents, subagents, and team members in the compile graph share a single container
 
-This adds a final stage to the pipeline:
-
-10. Collect container metadata from each runtime adapter in the compile plan.
-11. Generate `Dockerfile`, `entrypoint.sh`, and `.env.example` at the output root.
+This is part of the main compile pipeline, not a separate authoring step.
 
 ---
 

@@ -85,6 +85,71 @@ describe("openClawAdapter", () => {
     );
   });
 
+  it("emits a generated provider catalog entry for custom endpoints", async () => {
+    const customResult = await openClawAdapter.compileAgent({
+      ...createNode(),
+      execution: {
+        model: {
+          primary: {
+            auth: {
+              key: "CUSTOM_API_KEY",
+              method: "api_key"
+            },
+            endpoint: {
+              base_url: "https://llm.example.com/v1",
+              compatibility: "anthropic"
+            },
+            name: "foo-large",
+            provider: "custom"
+          }
+        }
+      }
+    });
+    const config = JSON.parse(
+      customResult.files.find((file) => file.path === "openclaw.json")!.content
+    );
+
+    expect(customResult.files.find((file) => file.path === "openclaw.json")).toBeTruthy();
+    expect(config.agents.defaults.model).toBe("spawnfile-custom/foo-large");
+    expect(config.models.providers["spawnfile-custom"].baseUrl).toBe("https://llm.example.com/v1");
+    expect(config.models.providers["spawnfile-custom"].apiKey).toEqual({
+      id: "CUSTOM_API_KEY",
+      provider: "default",
+      source: "env"
+    });
+    expect(config.models.providers["spawnfile-custom"].api).toBe("anthropic-messages");
+  });
+
+  it("validates supported and unsupported model target combinations", () => {
+    expect(() =>
+      openClawAdapter.assertSupportedModelTarget({
+        auth: { method: "claude-code" },
+        name: "claude-opus-4-6",
+        provider: "anthropic"
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      openClawAdapter.assertSupportedModelTarget({
+        auth: { method: "none" },
+        name: "qwen2.5:14b",
+        provider: "ollama"
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      openClawAdapter.assertSupportedModelTarget({
+        auth: { method: "codex" },
+        endpoint: {
+          base_url: "https://llm.example.com/v1",
+          compatibility: "openai"
+        },
+        name: "foo-large",
+        provider: "custom"
+      })
+    ).toThrow(/do not support codex auth/);
+  });
+
   it("validates runtime option types", () => {
     expect(openClawAdapter.validateRuntimeOptions?.({ profile: 123 })).toEqual([
       {

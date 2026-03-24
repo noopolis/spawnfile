@@ -1,9 +1,12 @@
-import type { ResolvedAgentNode, ResolvedTeamNode } from "../compiler/types.js";
+import type {
+  EffectiveModelTarget,
+  ResolvedAgentNode,
+  ResolvedTeamNode
+} from "../compiler/types.js";
 import type { ResolvedAuthProfile } from "../auth/index.js";
 import type { AgentManifest } from "../manifest/index.js";
 import type { CapabilityReport, DiagnosticReport } from "../report/index.js";
 import type { ContainerRuntimeInstanceReport } from "../report/index.js";
-import type { ModelAuthMethod } from "../shared/index.js";
 
 export interface EmittedFile {
   content: string;
@@ -29,6 +32,7 @@ export interface ContainerTargetEnvFile {
 }
 
 export interface ContainerTarget {
+  configEnvBindings?: RuntimeContainerConfigEnvBinding[];
   envFiles?: ContainerTargetEnvFile[];
   files: EmittedFile[];
   id: string;
@@ -86,6 +90,7 @@ export interface AdapterCompileResult {
 }
 
 export interface RuntimeAdapter {
+  assertSupportedModelTarget(target: EffectiveModelTarget): void;
   container: RuntimeContainerMeta;
   compileAgent(node: ResolvedAgentNode): Promise<AdapterCompileResult>;
   compileTeam?(node: ResolvedTeamNode): Promise<AdapterCompileResult>;
@@ -95,6 +100,5 @@ export interface RuntimeAdapter {
     input: RuntimeAuthPreparationInput
   ): Promise<RuntimeAuthPreparationResult>;
   scaffoldAgentProject?(): RuntimeAgentScaffold;
-  supportedModelAuthMethods(provider: string): ModelAuthMethod[];
   validateRuntimeOptions?(options: Record<string, unknown>): DiagnosticReport[];
 }

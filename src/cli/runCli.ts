@@ -9,13 +9,16 @@ import {
 } from "../auth/index.js";
 import {
   addAgentProject,
+  addProjectModelFallback,
   addSubagentProject,
   addTeamProject,
   buildCompilePlan,
   buildProject,
+  clearProjectModelFallbacks,
   compileProject,
   initProject,
   runProject,
+  setProjectPrimaryModel,
   syncProjectAuth
 } from "../compiler/index.js";
 import { isSpawnfileError } from "../shared/index.js";
@@ -36,8 +39,10 @@ export interface CliHandlers {
   buildProject: typeof buildProject;
   compileProject: typeof compileProject;
   addAgentProject: typeof addAgentProject;
+  addProjectModelFallback: typeof addProjectModelFallback;
   addSubagentProject: typeof addSubagentProject;
   addTeamProject: typeof addTeamProject;
+  clearProjectModelFallbacks: typeof clearProjectModelFallbacks;
   importClaudeCodeAuth: typeof importClaudeCodeAuth;
   importCodexAuth: typeof importCodexAuth;
   importEnvFile: typeof importEnvFile;
@@ -45,6 +50,7 @@ export interface CliHandlers {
   listRuntimeAdapters: typeof listRuntimeAdapters;
   requireAuthProfile: typeof requireAuthProfile;
   runProject: typeof runProject;
+  setProjectPrimaryModel: typeof setProjectPrimaryModel;
   syncProjectAuth: typeof syncProjectAuth;
 }
 
@@ -53,8 +59,10 @@ const createDefaultHandlers = (): CliHandlers => ({
   buildProject,
   compileProject,
   addAgentProject,
+  addProjectModelFallback,
   addSubagentProject,
   addTeamProject,
+  clearProjectModelFallbacks,
   importClaudeCodeAuth,
   importCodexAuth,
   importEnvFile,
@@ -62,6 +70,7 @@ const createDefaultHandlers = (): CliHandlers => ({
   listRuntimeAdapters,
   requireAuthProfile,
   runProject,
+  setProjectPrimaryModel,
   syncProjectAuth
 });
 
@@ -220,6 +229,105 @@ export const runCli = async (
       }
       for (const filePath of result.createdFiles) {
         streams.stdout(`created ${filePath}`);
+      }
+    });
+
+  const modelCommand = program
+    .command("model")
+    .description("Edit primary and fallback model declarations");
+
+  modelCommand
+    .command("set")
+    .argument("<provider>", "Model provider")
+    .argument("<name>", "Model name")
+    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
+    .option("--auth <method>", "Model auth method")
+    .option("--key <env>", "Environment variable for api_key auth")
+    .option("--compat <compatibility>", "Endpoint compatibility for custom/local models")
+    .option("--base-url <url>", "Endpoint base URL for custom/local models")
+    .option("--recursive", "Update the target project and its descendants")
+    .action(
+      async (
+        provider: string,
+        name: string,
+        inputPath: string,
+        options: {
+          auth?: "api_key" | "claude-code" | "codex" | "none";
+          baseUrl?: string;
+          compat?: "anthropic" | "openai";
+          key?: string;
+          recursive?: boolean;
+        }
+      ) => {
+        const result = await handlers.setProjectPrimaryModel({
+          authKey: options.key,
+          authMethod: options.auth,
+          endpointBaseUrl: options.baseUrl,
+          endpointCompatibility: options.compat,
+          name,
+          path: inputPath,
+          provider,
+          recursive: options.recursive
+        });
+
+        for (const filePath of result.updatedFiles) {
+          streams.stdout(`updated ${filePath}`);
+        }
+      }
+    );
+
+  modelCommand
+    .command("add-fallback")
+    .argument("<provider>", "Model provider")
+    .argument("<name>", "Model name")
+    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
+    .option("--auth <method>", "Model auth method")
+    .option("--key <env>", "Environment variable for api_key auth")
+    .option("--compat <compatibility>", "Endpoint compatibility for custom/local models")
+    .option("--base-url <url>", "Endpoint base URL for custom/local models")
+    .option("--recursive", "Update the target project and its descendants")
+    .action(
+      async (
+        provider: string,
+        name: string,
+        inputPath: string,
+        options: {
+          auth?: "api_key" | "claude-code" | "codex" | "none";
+          baseUrl?: string;
+          compat?: "anthropic" | "openai";
+          key?: string;
+          recursive?: boolean;
+        }
+      ) => {
+        const result = await handlers.addProjectModelFallback({
+          authKey: options.key,
+          authMethod: options.auth,
+          endpointBaseUrl: options.baseUrl,
+          endpointCompatibility: options.compat,
+          name,
+          path: inputPath,
+          provider,
+          recursive: options.recursive
+        });
+
+        for (const filePath of result.updatedFiles) {
+          streams.stdout(`updated ${filePath}`);
+        }
+      }
+    );
+
+  modelCommand
+    .command("clear-fallbacks")
+    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
+    .option("--recursive", "Update the target project and its descendants")
+    .action(async (inputPath: string, options: { recursive?: boolean }) => {
+      const result = await handlers.clearProjectModelFallbacks({
+        path: inputPath,
+        recursive: options.recursive
+      });
+
+      for (const filePath of result.updatedFiles) {
+        streams.stdout(`updated ${filePath}`);
       }
     });
 

@@ -44,6 +44,12 @@ const resolveTargetEnvFiles = (
     filePath: path.posix.join(path.posix.dirname(configPath), binding.relativePath)
   }));
 
+const resolveTargetConfigEnvBindings = (
+  meta: RuntimeContainerMeta,
+  target: ContainerTarget
+): RuntimeContainerMeta["configEnvBindings"] =>
+  [...(meta.configEnvBindings ?? []), ...(target.configEnvBindings ?? [])];
+
 const assertTargetHasConfig = (
   runtimeName: string,
   targetId: string,
@@ -243,6 +249,7 @@ export const createRuntimeTargetPlans = async (
       assertTargetHasConfig(runtimeName, target.id, adapter.container, target.files);
       const instancePaths = resolveInstancePaths(runtimeName, target.id, adapter.container);
       runtimePlans.push({
+        configEnvBindings: resolveTargetConfigEnvBindings(adapter.container, target) ?? [],
         envFiles: resolveTargetEnvFiles(instancePaths.configPath, target),
         id: target.id,
         instancePaths,

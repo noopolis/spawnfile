@@ -1,3 +1,4 @@
+import path from "node:path";
 import { cp, mkdir, lstat, readFile, rm, stat, writeFile } from "node:fs/promises";
 
 export interface CopyDirectoryOptions {
@@ -40,6 +41,37 @@ export const isSymlink = async (filePath: string): Promise<boolean> => {
 
 export const readUtf8File = async (filePath: string): Promise<string> =>
   readFile(filePath, "utf8");
+
+export const ensureGitignoreEntry = async (
+  directoryPath: string,
+  entry: string
+): Promise<boolean> => {
+  const gitignorePath = path.join(directoryPath, ".gitignore");
+  const normalizedEntry = entry.trim();
+  if (normalizedEntry.length === 0) {
+    return false;
+  }
+
+  const existingSource = (await fileExists(gitignorePath)) ? await readUtf8File(gitignorePath) : "";
+  const existingEntries = new Set(
+    existingSource
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+  );
+
+  if (existingEntries.has(normalizedEntry)) {
+    return false;
+  }
+
+  const nextSource =
+    existingSource.length === 0
+      ? `${normalizedEntry}\n`
+      : `${existingSource}${existingSource.endsWith("\n") ? "" : "\n"}${normalizedEntry}\n`;
+
+  await writeUtf8File(gitignorePath, nextSource);
+  return true;
+};
 
 export const removeDirectory = async (directoryPath: string): Promise<void> => {
   await rm(directoryPath, { force: true, recursive: true });

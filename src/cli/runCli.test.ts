@@ -161,6 +161,102 @@ describe("runCli", () => {
     ]);
   });
 
+  it("sets a primary model through the CLI", async () => {
+    const stdout: string[] = [];
+    const setProjectPrimaryModel = vi.fn(async () => ({
+      updatedFiles: ["/tmp/project/Spawnfile"]
+    }));
+
+    const exitCode = await runCli(
+      [
+        "model",
+        "set",
+        "custom",
+        "foo-large",
+        "/tmp/project",
+        "--auth",
+        "api_key",
+        "--key",
+        "CUSTOM_API_KEY",
+        "--compat",
+        "anthropic",
+        "--base-url",
+        "https://llm.example.com/v1",
+        "--recursive"
+      ],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { setProjectPrimaryModel }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(setProjectPrimaryModel).toHaveBeenCalledWith({
+      authKey: "CUSTOM_API_KEY",
+      authMethod: "api_key",
+      endpointBaseUrl: "https://llm.example.com/v1",
+      endpointCompatibility: "anthropic",
+      name: "foo-large",
+      path: "/tmp/project",
+      provider: "custom",
+      recursive: true
+    });
+    expect(stdout).toEqual(["updated /tmp/project/Spawnfile"]);
+  });
+
+  it("adds a fallback model through the CLI", async () => {
+    const stdout: string[] = [];
+    const addProjectModelFallback = vi.fn(async () => ({
+      updatedFiles: ["/tmp/project/Spawnfile"]
+    }));
+
+    const exitCode = await runCli(
+      ["model", "add-fallback", "anthropic", "claude-opus-4-6", "/tmp/project", "--auth", "claude-code"],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { addProjectModelFallback }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(addProjectModelFallback).toHaveBeenCalledWith({
+      authKey: undefined,
+      authMethod: "claude-code",
+      endpointBaseUrl: undefined,
+      endpointCompatibility: undefined,
+      name: "claude-opus-4-6",
+      path: "/tmp/project",
+      provider: "anthropic",
+      recursive: undefined
+    });
+    expect(stdout).toEqual(["updated /tmp/project/Spawnfile"]);
+  });
+
+  it("clears fallback models through the CLI", async () => {
+    const stdout: string[] = [];
+    const clearProjectModelFallbacks = vi.fn(async () => ({
+      updatedFiles: ["/tmp/project/Spawnfile"]
+    }));
+
+    const exitCode = await runCli(
+      ["model", "clear-fallbacks", "/tmp/project", "--recursive"],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { clearProjectModelFallbacks }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(clearProjectModelFallbacks).toHaveBeenCalledWith({
+      path: "/tmp/project",
+      recursive: true
+    });
+    expect(stdout).toEqual(["updated /tmp/project/Spawnfile"]);
+  });
+
   it("imports env auth into a profile", async () => {
     const stdout: string[] = [];
     const importEnvFile = vi.fn(async () => ({

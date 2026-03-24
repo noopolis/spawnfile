@@ -23,7 +23,7 @@ The compiler walks the full graph from the root Spawnfile. Everything it resolve
 The compiler should emit container artifacts at the compile output root, alongside the existing runtime output:
 
 ```text
-dist/
+.spawn/
 ├── Dockerfile
 ├── entrypoint.sh
 ├── .env.example
@@ -39,6 +39,8 @@ dist/
 The `Dockerfile` and `entrypoint.sh` are derived from the compile plan. They are not templates chosen by the user — the compiler generates them based on the resolved graph.
 
 `runtimes/` is the human-inspectable adapter output. `container/rootfs/` is the final container filesystem emitted by the compiler for build-time placement into the runtime's expected paths.
+
+This is the default hidden output root. `--out <dir>` may be used to export the same artifacts into a visible directory when needed.
 
 ---
 
@@ -181,7 +183,7 @@ At runtime, secrets are injected via:
 
 If a runtime expects secret file references in its config, the adapter should declare those env-to-file bindings and the entrypoint should materialize them before startup.
 
-Model auth intent itself is declared in source manifests under `execution.model.auth`. The compile output should therefore reflect:
+Model auth intent itself is declared on each source model target under `execution.model.primary` and `execution.model.fallback[*]`. The compile output should therefore reflect:
 
 - which provider/runtime instances still require `api_key` env at run time
 - which provider/runtime instances expect imported CLI credential stores such as `claude-code` or `codex`
@@ -277,18 +279,18 @@ The intended workflow for testing compiled output:
 spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
 
 # compile and build the container
-spawnfile build fixtures/single-agent --out ./dist/single-agent --tag my-agent
+spawnfile build fixtures/single-agent --out ./bundle/single-agent --tag my-agent
 
 # run with the local auth profile
-spawnfile run fixtures/single-agent --out ./dist/single-agent --tag my-agent --auth-profile dev
+spawnfile run fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev
 ```
 
 For teams:
 
 ```bash
 spawnfile auth sync fixtures/multi-runtime-team --profile dev --env-file ./.env
-spawnfile build fixtures/multi-runtime-team --out ./dist/team --tag my-team
-spawnfile run fixtures/multi-runtime-team --out ./dist/team --tag my-team --auth-profile dev
+spawnfile build fixtures/multi-runtime-team --out ./bundle/team --tag my-team
+spawnfile run fixtures/multi-runtime-team --out ./bundle/team --tag my-team --auth-profile dev
 ```
 
 Same flow regardless of project complexity. One compile, one build, one run.
@@ -297,7 +299,7 @@ Same flow regardless of project complexity. One compile, one build, one run.
 
 The intended auth split is:
 
-- `Spawnfile` declares model auth intent via `execution.model.auth`
+- `Spawnfile` declares model auth intent on each model target via `auth`, plus `endpoint` for `custom` and `local` backends
 - `spawnfile auth sync` materializes matching local auth into a profile
 - `spawnfile build` stays secrets-free
 - `spawnfile run --auth-profile ...` injects only the auth material required by the declared methods

@@ -35,5 +35,5 @@ SPEC.md                    ← canonical schema, everything depends on this
   └── RUNTIMES.md          ← which runtimes exist and how they're tracked
 
 research/RUNTIME-NOTES.md  ← informs adapter implementation and RUNTIMES.md
-research/AUTH-NOTES.md     ← informs auth/profile UX, `execution.model.auth`, and future surface provisioning
+research/AUTH-NOTES.md     ← informs auth/profile UX, per-model auth/endpoint config, and future surface provisioning
 ```

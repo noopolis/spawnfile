@@ -226,13 +226,15 @@ spawnfile add agent writer ./my-team --runtime tinyclaw
 spawnfile add subagent critic ./my-agent
 spawnfile add team platform ./my-team
 spawnfile validate fixtures/single-agent
-spawnfile compile fixtures/single-agent --out ./dist/example
+spawnfile compile fixtures/single-agent --out ./bundle/example
 spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
-spawnfile build fixtures/single-agent --out ./dist/example --tag example-agent
+spawnfile build fixtures/single-agent --out ./bundle/example --tag example-agent
 spawnfile run fixtures/single-agent --tag example-agent --auth-profile dev
 ```
 
-The compiler emits runtime-specific artifacts under `dist/runtimes/...` and writes a machine-readable `spawnfile-report.json`.
+Without `--out`, the compiler writes generated artifacts under `.spawn/`. `spawnfile init` also ensures `.spawn/` is ignored in the project `.gitignore`.
+
+The compiler emits runtime-specific artifacts under `.spawn/runtimes/...` by default and writes a machine-readable `spawnfile-report.json`.
 
 `spawnfile init` defaults agent scaffolds to `openclaw`. Use `spawnfile init --runtime <name>` to scaffold an agent for a different bundled runtime. `spawnfile init --team` stays runtime-neutral.
 
@@ -245,9 +247,35 @@ The compiler emits runtime-specific artifacts under `dist/runtimes/...` and writ
 
 The CLI rejects invalid parent kinds: `add agent` and `add team` only work on team projects, and `add subagent` only works on agent projects.
 
-`spawnfile compile` also emits:
+`spawnfile model` edits model intent in place and rewrites touched manifests to the canonical inline shape:
 
-- final container filesystem output under `dist/container/rootfs/...`
+- `spawnfile model set <provider> <name> [path]` sets the primary model
+- `spawnfile model add-fallback <provider> <name> [path]` appends a fallback model
+- `spawnfile model clear-fallbacks [path]` removes fallback models
+- if `[path]` points to a team project, `--recursive` is required and only descendant agent manifests are updated; the team manifest itself is left unchanged
+- the first positional argument is always the model provider, not the auth method
+
+Team manifests should not declare `execution`. Model, sandbox, and workspace intent belong to agent manifests, not teams.
+
+Useful options:
+
+- `--auth <api_key|claude-code|codex|none>` sets the auth method on the edited model target
+- `--key <ENV_NAME>` sets the env var name used by `api_key` auth for custom/local models
+- `--compat <openai|anthropic>` and `--base-url <url>` configure local/custom endpoint targets
+- `--recursive` updates the target project and every descendant manifest in the graph
+
+Examples:
+
+```bash
+spawnfile model set anthropic claude-opus-4-6 --auth claude-code
+spawnfile model set openai gpt-5.4 --auth codex
+spawnfile model set local qwen2.5:14b --auth none --compat openai --base-url http://host.docker.internal:11434/v1
+spawnfile model set anthropic claude-opus-4-6 . --auth claude-code --recursive
+```
+
+`spawnfile compile` also emits under the output root:
+
+- final container filesystem output under `.spawn/container/rootfs/...` by default
 - `Dockerfile`, `entrypoint.sh`, `.env.example`
 
 `spawnfile build` is the happy path for compile + Docker image build. It compiles the project, then runs `docker build` against the emitted output directory. The generated Dockerfile installs the pinned compiled runtime artifacts for the resolved runtimes; it does not rebuild runtime sources during image build.
@@ -261,7 +289,34 @@ spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
 spawnfile auth show --profile dev
 ```
 
-Projects can declare `execution.model.auth.method` or provider-specific `execution.model.auth.methods` in the Spawnfile. `spawnfile auth sync` reads that intent and imports the matching local auth material into the selected profile. The lower-level `spawnfile auth import env`, `spawnfile auth import claude-code`, and `spawnfile auth import codex` commands remain available for manual profile editing.
+Projects declare model auth on each model entry in the Spawnfile, for example:
+
+```yaml
+execution:
+  model:
+    primary:
+      provider: anthropic
+      name: claude-opus-4-6
+      auth:
+        method: claude-code
+```
+
+For local and custom endpoints, the model entry can also declare `endpoint`:
+
+```yaml
+execution:
+  model:
+    primary:
+      provider: local
+      name: qwen2.5:14b
+      auth:
+        method: none
+      endpoint:
+        compatibility: openai
+        base_url: http://host.docker.internal:11434/v1
+```
+
+`spawnfile auth sync` reads that declared intent and imports the matching local auth material into the selected profile. The lower-level `spawnfile auth import env`, `spawnfile auth import claude-code`, and `spawnfile auth import codex` commands remain available for manual profile editing. The older top-level `execution.model.auth` form is still accepted for compatibility, but inline per-model auth is the canonical shape.
 
 `env` auth is the primary path for provider API keys. `claude-code` and `codex` imports mount existing local CLI credential stores into runtime homes at `spawnfile run` time.
 
@@ -274,16 +329,16 @@ spawnfile run fixtures/single-agent --tag example-agent --auth-profile dev
 Manual Docker remains valid against the compile output:
 
 ```bash
-spawnfile build fixtures/single-agent --out ./dist/example --tag example-agent
-cp ./dist/example/.env.example ./dist/example/.env
-docker run --env-file ./dist/example/.env -p 18789:18789 example-agent
+spawnfile build fixtures/single-agent --out ./bundle/example --tag example-agent
+cp ./bundle/example/.env.example ./bundle/example/.env
+docker run --env-file ./bundle/example/.env -p 18789:18789 example-agent
 ```
 
 Equivalent manual flow:
 
 ```bash
-spawnfile compile fixtures/single-agent --out ./dist/example
-cd ./dist/example
+spawnfile compile fixtures/single-agent --out ./bundle/example
+cd ./bundle/example
 docker build -t example-agent .
 docker run --env-file .env -p 18789:18789 example-agent
 ```

@@ -1,28 +1,69 @@
 import type { ResolvedAgentNode } from "../../compiler/types.js";
+import { listEffectiveExecutionModelTargets } from "../../compiler/modelEnv.js";
 import type { AdapterCompileResult, RuntimeAdapter } from "../types.js";
-import type { ModelAuthMethod } from "../../shared/index.js";
 import {
   createAgentCapabilities,
   createDiagnostic,
   createDocumentFiles,
   createSkillFiles
 } from "../common.js";
+import { SpawnfileError } from "../../shared/index.js";
 import { prepareOpenClawRuntimeAuth } from "./runAuth.js";
 import { createOpenClawAgentScaffold } from "./scaffold.js";
 
-const formatModel = (node: ResolvedAgentNode): string | null => {
-  const primary = node.execution?.model?.primary;
-  if (!primary) return null;
-  return `${primary.provider}/${primary.name}`;
+const buildEnvSecretRef = (envName: string): Record<string, string> => ({
+  id: envName,
+  provider: "default",
+  source: "env"
+});
+
+const createCustomProviderId = (provider: "custom" | "local"): string =>
+  `spawnfile-${provider}`;
+
+const createOpenClawModelConfig = (node: ResolvedAgentNode): {
+  model: string | null;
+  providers?: Record<string, unknown>;
+} => {
+  const [primary] = listEffectiveExecutionModelTargets(node.execution);
+  if (!primary) {
+    return { model: null };
+  }
+
+  if (primary.provider !== "custom" && primary.provider !== "local") {
+    return { model: `${primary.provider}/${primary.name}` };
+  }
+
+  const providerId = createCustomProviderId(primary.provider);
+  return {
+    model: `${providerId}/${primary.name}`,
+    providers: {
+      [providerId]: {
+        api:
+          primary.endpoint?.compatibility === "anthropic"
+            ? "anthropic-messages"
+            : "openai-completions",
+        ...(primary.auth.method === "api_key" && primary.auth.key
+          ? { apiKey: buildEnvSecretRef(primary.auth.key) }
+          : {}),
+        baseUrl: primary.endpoint?.base_url,
+        models: [
+          {
+            id: primary.name,
+            name: primary.name
+          }
+        ]
+      }
+    }
+  };
 };
 
 const buildOpenClawConfig = (node: ResolvedAgentNode): string => {
-  const model = formatModel(node);
+  const modelConfig = createOpenClawModelConfig(node);
 
   const config: Record<string, unknown> = {
     agents: {
       defaults: {
-        ...(model ? { model } : {}),
+        ...(modelConfig.model ? { model: modelConfig.model } : {}),
         workspace: "<workspace-path>"
       }
     },
@@ -42,17 +83,45 @@ const buildOpenClawConfig = (node: ResolvedAgentNode): string => {
     }
   };
 
+  if (modelConfig.providers) {
+    config.models = {
+      providers: modelConfig.providers
+    };
+  }
+
   return `${JSON.stringify(config, null, 2)}\n`;
 };
 
-const listSupportedModelAuthMethods = (provider: string): ModelAuthMethod[] =>
-  provider === "anthropic"
-    ? ["api_key", "claude-code"]
-    : provider === "openai"
-      ? ["api_key", "codex"]
-      : ["api_key"];
-
 export const openClawAdapter: RuntimeAdapter = {
+  assertSupportedModelTarget(target) {
+    if (target.endpoint) {
+      if (target.auth.method === "claude-code" || target.auth.method === "codex") {
+        throw new SpawnfileError(
+          "validation_error",
+          `OpenClaw custom or local models do not support ${target.auth.method} auth`
+        );
+      }
+
+      return;
+    }
+
+    if (target.provider === "anthropic") {
+      if (target.auth.method === "api_key" || target.auth.method === "claude-code") {
+        return;
+      }
+    } else if (target.provider === "openai") {
+      if (target.auth.method === "api_key" || target.auth.method === "codex") {
+        return;
+      }
+    } else if (target.auth.method === "api_key" || target.auth.method === "none") {
+      return;
+    }
+
+    throw new SpawnfileError(
+      "validation_error",
+      `OpenClaw does not support model auth method ${target.auth.method} for provider ${target.provider}`
+    );
+  },
   container: {
     configFileName: "openclaw.json",
     configPathEnv: "OPENCLAW_CONFIG_PATH",
@@ -112,9 +181,6 @@ export const openClawAdapter: RuntimeAdapter = {
   name: "openclaw",
   prepareRuntimeAuth: prepareOpenClawRuntimeAuth,
   scaffoldAgentProject: createOpenClawAgentScaffold,
-  supportedModelAuthMethods(provider) {
-    return listSupportedModelAuthMethods(provider);
-  },
   validateRuntimeOptions(options) {
     if ("profile" in options && typeof options.profile !== "string") {
       return [createDiagnostic("error", "OpenClaw runtime option profile must be a string")];
