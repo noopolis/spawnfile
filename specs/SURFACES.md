@@ -12,7 +12,7 @@ This document defines the portable communication-surface model that sits on top 
 
 ## Purpose
 
-A **surface** is an external interaction boundary through which humans or systems can reach an agent.
+A **surface** is an external interaction boundary through which an agent exchanges messages with humans, systems, or other agents.
 
 This is intentionally broader than "chat channel". In v0.1, the first standardized surface is Discord, but the abstraction is meant to grow to cover other messaging systems, webhook/http ingress, and future agent-network or room integrations.
 
