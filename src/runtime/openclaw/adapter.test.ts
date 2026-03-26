@@ -222,6 +222,38 @@ describe("openClawAdapter", () => {
     });
   });
 
+  it("emits Telegram channel config when Telegram is declared", async () => {
+    const result = await openClawAdapter.compileAgent({
+      ...createNode(),
+      surfaces: {
+        telegram: {
+          access: {
+            chats: ["-1001234567890"],
+            mode: "allowlist",
+            users: ["123456789"]
+          },
+          botTokenSecret: "TELEGRAM_BOT_TOKEN"
+        }
+      }
+    });
+
+    const config = JSON.parse(result.files.find((file) => file.path === "openclaw.json")!.content);
+    expect(config.channels.telegram).toEqual({
+      allowFrom: ["123456789"],
+      dmPolicy: "allowlist",
+      enabled: true,
+      groupPolicy: "allowlist",
+      groups: {
+        "-1001234567890": {
+          allowFrom: ["123456789"]
+        }
+      }
+    });
+    expect(
+      result.capabilities.find((capability) => capability.key === "surfaces.telegram")?.outcome
+    ).toBe("supported");
+  });
+
   it("emits a generated provider catalog entry for custom endpoints", async () => {
     const customResult = await openClawAdapter.compileAgent({
       ...createNode(),
@@ -310,5 +342,33 @@ describe("openClawAdapter", () => {
         }
       })
     ).toThrow(/exactly one guild id/);
+  });
+
+  it("accepts Telegram pairing and allowlist access", () => {
+    expect(() =>
+      openClawAdapter.assertSupportedSurfaces?.({
+        telegram: {
+          access: {
+            chats: [],
+            mode: "pairing",
+            users: []
+          },
+          botTokenSecret: "TELEGRAM_BOT_TOKEN"
+        }
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      openClawAdapter.assertSupportedSurfaces?.({
+        telegram: {
+          access: {
+            chats: ["-1001234567890"],
+            mode: "allowlist",
+            users: ["123456789"]
+          },
+          botTokenSecret: "TELEGRAM_BOT_TOKEN"
+        }
+      })
+    ).not.toThrow();
   });
 });

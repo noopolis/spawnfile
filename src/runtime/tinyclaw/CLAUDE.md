@@ -7,6 +7,7 @@ This folder owns the TinyClaw runtime adapter.
 ```text
 src/runtime/tinyclaw/
 ├── adapter.ts        # TinyClaw lowering, including native team artifacts
+├── surfaces.ts       # TinyClaw channel wiring and supported-surface restrictions
 ├── runAuth.ts        # TinyClaw runtime auth coverage for spawnfile run
 ├── scaffold.ts       # TinyClaw-owned `spawnfile init --runtime tinyclaw` scaffold
 ├── scaffold-assets/  # Bundled TinyClaw starter docs copied into dist at build time

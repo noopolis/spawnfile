@@ -93,6 +93,10 @@ export const createAgentCapabilities = (
     capabilities.push(createCapability("surfaces.discord", "supported"));
   }
 
+  if (node.surfaces?.telegram) {
+    capabilities.push(createCapability("surfaces.telegram", "supported"));
+  }
+
   if (node.subagents.length > 0) {
     capabilities.push(
       createCapability("agent.subagents", options.subagentOutcome ?? "supported")

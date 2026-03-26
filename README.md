@@ -27,9 +27,9 @@ Spawnfile v0.1 targets **autonomous agent runtimes** — systems that host agent
 - runtime binding
 - execution intent (model, workspace, sandbox)
 - team structure (members, hierarchy, shared surfaces)
-- agent-level Discord surfaces
+- agent-level Discord and Telegram surfaces
 
-v0.1 does not try to standardize every runtime-native feature. Beyond the initial Discord surface, communication surfaces, memory engines, task schedulers, UI surfaces, and other runtime-specific features stay adapter-defined for now.
+v0.1 does not try to standardize every runtime-native feature. Beyond the initial Discord and Telegram surfaces, communication surfaces, memory engines, task schedulers, UI surfaces, and other runtime-specific features stay adapter-defined for now.
 
 ---
 
@@ -258,7 +258,7 @@ The CLI rejects invalid parent kinds: `add agent` and `add team` only work on te
 
 Team manifests should not declare `execution`. Model, sandbox, and workspace intent belong to agent manifests, not teams.
 
-Agent manifests may declare portable communication surfaces under `surfaces`. The first standardized surface is:
+Agent manifests may declare portable communication surfaces under `surfaces`. The first standardized surfaces are Discord and Telegram:
 
 ```yaml
 surfaces:
@@ -267,6 +267,13 @@ surfaces:
       users:
         - "987654321098765432"
     bot_token_secret: DISCORD_BOT_TOKEN
+  telegram:
+    access:
+      users:
+        - "123456789"
+      chats:
+        - "-1001234567890"
+    bot_token_secret: TELEGRAM_BOT_TOKEN
 ```
 
 Discord access may declare:
@@ -276,15 +283,28 @@ Discord access may declare:
 - `guilds`
 - `channels`
 
-If `mode` is omitted and any of `users`, `guilds`, or `channels` are present, Spawnfile infers `allowlist`.
-If `bot_token_secret` is omitted, Spawnfile defaults to `DISCORD_BOT_TOKEN`.
+Telegram access may declare:
+
+- `mode: pairing | allowlist | open`
+- `users`
+- `chats`
+
+If `mode` is omitted and any allowlist fields are present, Spawnfile infers `allowlist`.
+If you want portable runtime behavior, set `access.mode` explicitly. Leaving `access` unset delegates to runtime defaults, which are not identical across runtimes.
+If `bot_token_secret` is omitted, Spawnfile defaults to `DISCORD_BOT_TOKEN` for Discord and `TELEGRAM_BOT_TOKEN` for Telegram.
 `spawnfile auth sync ... --env-file .env` will collect that env name into the selected auth profile, and `spawnfile run --auth-profile ...` will validate it before container startup.
 
 Runtime support is narrower than the portable schema:
 
-- `openclaw` supports `pairing`, `allowlist`, and `open`
-- `picoclaw` supports `open` and Discord user allowlists
-- `tinyclaw` currently supports `pairing` only and uses Discord as a paired DM surface, not a general guild/channel surface
+- `openclaw` supports `pairing`, `allowlist`, and `open` for both Discord and Telegram
+- `picoclaw` supports `open` and user allowlists for both Discord and Telegram
+- `tinyclaw` currently supports `pairing` only and uses Discord and Telegram as paired DM-style surfaces
+
+Practical notes from the current live smoke matrix:
+
+- Telegram was verified end to end on all three runtimes
+- `tinyclaw` required first-contact pairing on Telegram
+- `openclaw` and `picoclaw` both worked on Telegram with `access.mode: open`
 
 Useful options:
 

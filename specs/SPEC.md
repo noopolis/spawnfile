@@ -281,7 +281,7 @@ Rules:
 
 ### 2.6 Communication Surfaces
 
-Spawnfile v0.1 standardizes one initial communication surface on agent manifests:
+Spawnfile v0.1 standardizes two initial communication surfaces on agent manifests:
 
 ```yaml
 surfaces:
@@ -290,6 +290,13 @@ surfaces:
       users:
         - "987654321098765432"
     bot_token_secret: DISCORD_BOT_TOKEN
+  telegram:
+    access:
+      users:
+        - "123456789"
+      chats:
+        - "-1001234567890"
+    bot_token_secret: TELEGRAM_BOT_TOKEN
 ```
 
 Rules:
@@ -297,20 +304,30 @@ Rules:
 - `surfaces` is OPTIONAL.
 - If `surfaces` is present, it MUST declare at least one surface.
 - `surfaces.discord` is OPTIONAL.
+- `surfaces.telegram` is OPTIONAL.
 - `surfaces.discord.access` is OPTIONAL.
+- `surfaces.telegram.access` is OPTIONAL.
 - `surfaces.discord.access.mode` MAY be `pairing`, `allowlist`, or `open`.
+- `surfaces.telegram.access.mode` MAY be `pairing`, `allowlist`, or `open`.
 - `surfaces.discord.access.users`, `guilds`, and `channels` are OPTIONAL allowlist identifiers.
+- `surfaces.telegram.access.users` and `chats` are OPTIONAL allowlist identifiers.
 - If `surfaces.discord.access.mode` is omitted and any of `users`, `guilds`, or `channels` are present, the effective mode is `allowlist`.
+- If `surfaces.telegram.access.mode` is omitted and any of `users` or `chats` are present, the effective mode is `allowlist`.
+- If `surfaces.discord.access` or `surfaces.telegram.access` is omitted entirely, the effective behavior is runtime-defined and is not guaranteed to be portable across runtimes.
 - `surfaces.discord.access.users`, `guilds`, and `channels` MUST only be used with `allowlist` access.
+- `surfaces.telegram.access.users` and `chats` MUST only be used with `allowlist` access.
 - `surfaces.discord.access.mode: allowlist` MUST declare at least one of `users`, `guilds`, or `channels`.
+- `surfaces.telegram.access.mode: allowlist` MUST declare at least one of `users` or `chats`.
 - `surfaces.discord.bot_token_secret` is OPTIONAL.
+- `surfaces.telegram.bot_token_secret` is OPTIONAL.
 - If `surfaces.discord.bot_token_secret` is omitted, the effective secret name defaults to `DISCORD_BOT_TOKEN`.
+- If `surfaces.telegram.bot_token_secret` is omitted, the effective secret name defaults to `TELEGRAM_BOT_TOKEN`.
 - Declared surface auth names participate in the same run-time env validation path as other env-backed auth.
 - Team manifests MUST NOT declare `surfaces` in v0.1.
 - Subagents do not implicitly inherit parent `surfaces`.
 - A conforming compiler MUST validate runtime support for declared surface access and fail early on unsupported runtime/surface combinations.
 
-This is intentionally a narrow first surface. Additional communication surfaces remain adapter-defined until standardized.
+These are intentionally narrow first surfaces. Additional communication surfaces remain adapter-defined until standardized.
 
 ### 2.7 Environment and Secrets
 

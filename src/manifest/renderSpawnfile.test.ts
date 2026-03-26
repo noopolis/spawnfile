@@ -180,6 +180,52 @@ describe("renderSpawnfile", () => {
     );
   });
 
+  it("renders telegram surfaces after discord in canonical order", () => {
+    const source = renderSpawnfile({
+      docs: {
+        system: "AGENTS.md"
+      },
+      execution: {
+        model: {
+          primary: {
+            name: "claude-opus-4-6",
+            provider: "anthropic"
+          }
+        }
+      },
+      kind: "agent",
+      name: "telegram-agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        discord: {},
+        telegram: {
+          access: {
+            mode: "allowlist",
+            users: ["123456789"],
+            chats: ["-1001234567890"]
+          },
+          bot_token_secret: "TEAM_TELEGRAM_TOKEN"
+        }
+      }
+    });
+
+    expect(source).toContain(
+      [
+        "surfaces:",
+        "  discord: {}",
+        "  telegram:",
+        "    access:",
+        "      mode: allowlist",
+        "      users:",
+        "        - \"123456789\"",
+        "      chats:",
+        "        - \"-1001234567890\"",
+        "    bot_token_secret: TEAM_TELEGRAM_TOKEN"
+      ].join("\n")
+    );
+  });
+
   it("renders inline model auth and endpoint fields in canonical order", () => {
     const source = renderSpawnfile({
       execution: {

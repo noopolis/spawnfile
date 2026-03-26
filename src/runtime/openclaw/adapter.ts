@@ -1,6 +1,5 @@
 import type {
   ResolvedAgentNode,
-  ResolvedAgentSurfaces
 } from "../../compiler/types.js";
 import { listEffectiveExecutionModelTargets } from "../../compiler/modelEnv.js";
 import type { AdapterCompileResult, RuntimeAdapter } from "../types.js";
@@ -13,6 +12,10 @@ import {
 import { SpawnfileError } from "../../shared/index.js";
 import { prepareOpenClawRuntimeAuth } from "./runAuth.js";
 import { createOpenClawAgentScaffold } from "./scaffold.js";
+import {
+  assertSupportedOpenClawSurfaces,
+  buildOpenClawChannelConfig
+} from "./surfaces.js";
 
 const buildEnvSecretRef = (envName: string): Record<string, string> => ({
   id: envName,
@@ -22,79 +25,6 @@ const buildEnvSecretRef = (envName: string): Record<string, string> => ({
 
 const createCustomProviderId = (provider: "custom" | "local"): string =>
   `spawnfile-${provider}`;
-
-const buildOpenClawDiscordConfig = (
-  surfaces: ResolvedAgentSurfaces
-): Record<string, unknown> => {
-  const discordSurface = surfaces.discord;
-  if (!discordSurface) {
-    return {};
-  }
-
-  const config: Record<string, unknown> = {
-    enabled: true
-  };
-  const access = discordSurface.access;
-
-  if (!access) {
-    return config;
-  }
-
-  if (access.mode === "pairing") {
-    return {
-      ...config,
-      dmPolicy: "pairing"
-    };
-  }
-
-  if (access.mode === "open") {
-    return {
-      ...config,
-      allowFrom: ["*"],
-      dmPolicy: "open",
-      groupPolicy: "open"
-    };
-  }
-
-  if (access.channels.length > 0 && access.guilds.length !== 1) {
-    throw new SpawnfileError(
-      "validation_error",
-      "OpenClaw Discord channel allowlists require exactly one guild id"
-    );
-  }
-
-  const guilds =
-    access.guilds.length > 0
-      ? Object.fromEntries(
-          access.guilds.map((guildId) => [
-            guildId,
-            {
-              ...(access.channels.length > 0
-                ? {
-                    channels: Object.fromEntries(
-                      access.channels.map((channelId) => [channelId, { allow: true }])
-                    )
-                  }
-                : {}),
-              ...(access.users.length > 0 ? { users: access.users } : {})
-            }
-          ])
-        )
-      : undefined;
-
-  return {
-    ...config,
-    ...(access.users.length > 0 ? { allowFrom: access.users, dmPolicy: "allowlist" } : {}),
-    ...(guilds
-      ? {
-          groupPolicy: "allowlist",
-          guilds
-        }
-      : {
-          groupPolicy: "disabled"
-        })
-  };
-};
 
 const createOpenClawModelConfig = (node: ResolvedAgentNode): {
   model: string | null;
@@ -159,10 +89,9 @@ const buildOpenClawConfig = (node: ResolvedAgentNode): string => {
     }
   };
 
-  if (node.surfaces?.discord) {
-    config.channels = {
-      discord: buildOpenClawDiscordConfig(node.surfaces)
-    };
+  const channels = buildOpenClawChannelConfig(node.surfaces);
+  if (Object.keys(channels).length > 0) {
+    config.channels = channels;
   }
 
   if (modelConfig.providers) {
@@ -218,17 +147,7 @@ export const openClawAdapter: RuntimeAdapter = {
     );
   },
   assertSupportedSurfaces(surfaces) {
-    const access = surfaces?.discord?.access;
-    if (!access) {
-      return;
-    }
-
-    if (access.mode === "allowlist" && access.channels.length > 0 && access.guilds.length !== 1) {
-      throw new SpawnfileError(
-        "validation_error",
-        "OpenClaw Discord channel allowlists require exactly one guild id"
-      );
-    }
+    assertSupportedOpenClawSurfaces(surfaces);
   },
   container: {
     configFileName: "openclaw.json",

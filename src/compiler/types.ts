@@ -30,8 +30,18 @@ export interface ResolvedDiscordSurface {
   botTokenSecret: string;
 }
 
+export interface ResolvedTelegramSurface {
+  access?: {
+    chats: string[];
+    mode: "allowlist" | "open" | "pairing";
+    users: string[];
+  };
+  botTokenSecret: string;
+}
+
 export interface ResolvedAgentSurfaces {
   discord?: ResolvedDiscordSurface;
+  telegram?: ResolvedTelegramSurface;
 }
 
 export interface EffectiveModelTarget {

@@ -23,7 +23,7 @@ import {
   getTeamFingerprint,
   validateEffectiveSkillRequirements
 } from "./compilePlanHelpers.js";
-import { resolveAgentSurfaces } from "./discordSurface.js";
+import { resolveAgentSurfaces } from "./agentSurfaces.js";
 import { assignStableNodeIds } from "./helpers.js";
 import {
   loadResolvedDocuments,

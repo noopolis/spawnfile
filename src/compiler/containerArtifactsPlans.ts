@@ -14,11 +14,11 @@ import type {
 } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
+import { listAgentSurfaceSecretNames } from "./agentSurfaces.js";
 import {
   listExecutionModelSecretNames,
   resolveExecutionModelAuthMethods
 } from "./modelEnv.js";
-import { listAgentSurfaceSecretNames } from "./discordSurface.js";
 import type { CompilePlan } from "./types.js";
 import type {
   CompiledNodeArtifact,
@@ -150,7 +150,7 @@ export const createEnvVariableMap = (
         register(
           secretName,
           true,
-          "Discord bot token for declared Discord surfaces",
+          "Bot token for declared agent surfaces",
           "surface"
         );
       }

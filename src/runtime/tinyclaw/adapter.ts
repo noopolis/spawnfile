@@ -15,6 +15,11 @@ import {
 } from "../common.js";
 import { prepareTinyClawRuntimeAuth } from "./runAuth.js";
 import { createTinyClawAgentScaffold } from "./scaffold.js";
+import {
+  assertSupportedTinyClawSurfaces,
+  buildTinyClawChannels,
+  resolveTinyClawSurfaceTokenBindings
+} from "./surfaces.js";
 
 const WORKSPACE_PLACEHOLDER = "<workspace-path>";
 const TINYCLAW_START_SCRIPT = `
@@ -27,6 +32,10 @@ while IFS= read -r channel; do
   case "$channel" in
     discord)
       node <runtime-root>/packages/channels/dist/discord.js &
+      PIDS+=("$!")
+      ;;
+    telegram)
+      node <runtime-root>/packages/channels/dist/telegram.js &
       PIDS+=("$!")
       ;;
   esac
@@ -69,7 +78,7 @@ const buildTinyClawSettings = (node: ResolvedAgentNode): string => {
     working_directory: `${WORKSPACE_PLACEHOLDER}/${node.name}`
   };
 
-  const enabledChannels = node.surfaces?.discord ? ["discord"] : [];
+  const channels = buildTinyClawChannels(node.surfaces);
 
   const config: Record<string, unknown> = {
     workspace: {
@@ -77,8 +86,8 @@ const buildTinyClawSettings = (node: ResolvedAgentNode): string => {
       name: "workspace"
     },
     channels: {
-      enabled: enabledChannels,
-      ...(node.surfaces?.discord ? { discord: {} } : {})
+      enabled: channels.enabled,
+      ...channels.config
     },
     agents: {
       [node.name]: agentEntry
@@ -106,42 +115,6 @@ const parseJsonFile = (
   return JSON.parse(file.content) as Record<string, unknown>;
 };
 
-const resolveDiscordTokenBinding = (
-  inputs: ContainerTargetInput[]
-): ContainerTarget["configEnvBindings"] => {
-  const envNames = [
-    ...new Set(
-      inputs.flatMap((input) => {
-        if (input.kind !== "agent" || input.value.kind !== "agent") {
-          return [];
-        }
-
-        return input.value.surfaces?.discord
-          ? [input.value.surfaces.discord.botTokenSecret]
-          : [];
-      })
-    )
-  ];
-
-  if (envNames.length === 0) {
-    return undefined;
-  }
-
-  if (envNames.length > 1) {
-    throw new SpawnfileError(
-      "validation_error",
-      `TinyClaw runtime target declares conflicting Discord bot token secrets: ${envNames.join(", ")}`
-    );
-  }
-
-  return [
-    {
-      envName: envNames[0],
-      jsonPath: "channels.discord.bot_token"
-    }
-  ];
-};
-
 const mergeTinyClawTargets = async (
   inputs: ContainerTargetInput[]
 ): Promise<ContainerTarget[]> => {
@@ -154,6 +127,7 @@ const mergeTinyClawTargets = async (
   const mergedTeams: Record<string, unknown> = {};
   const enabledChannels = new Set<string>();
   let hasDiscordChannel = false;
+  let hasTelegramChannel = false;
   const workspaceFiles = agentInputs.flatMap((input) =>
     input.emittedFiles.filter((file) => file.path !== "settings.json")
   );
@@ -176,6 +150,10 @@ const mergeTinyClawTargets = async (
     if (channels.discord) {
       hasDiscordChannel = true;
     }
+
+    if (channels.telegram) {
+      hasTelegramChannel = true;
+    }
   }
 
   for (const input of inputs.filter((entry) => entry.kind === "team")) {
@@ -197,6 +175,7 @@ const mergeTinyClawTargets = async (
     channels: {
       ...(((mergedBase?.channels as Record<string, unknown> | undefined) ?? {})),
       ...(hasDiscordChannel ? { discord: {} } : {}),
+      ...(hasTelegramChannel ? { telegram: {} } : {}),
       enabled: [...enabledChannels].sort()
     },
     workspace: {
@@ -215,7 +194,7 @@ const mergeTinyClawTargets = async (
           path: "settings.json"
         }
       ],
-      configEnvBindings: resolveDiscordTokenBinding(agentInputs),
+      configEnvBindings: resolveTinyClawSurfaceTokenBindings(agentInputs),
       id: "tinyclaw-runtime",
       sourceIds: agentInputs.map((input) => input.id)
     }
@@ -249,28 +228,7 @@ export const tinyClawAdapter: RuntimeAdapter = {
     );
   },
   assertSupportedSurfaces(surfaces) {
-    const access = surfaces?.discord?.access;
-    if (!access) {
-      return;
-    }
-
-    if (access.mode !== "pairing") {
-      throw new SpawnfileError(
-        "validation_error",
-        "TinyClaw Discord only supports pairing access in Spawnfile v0.1"
-      );
-    }
-
-    if (
-      access.users.length > 0 ||
-      access.guilds.length > 0 ||
-      access.channels.length > 0
-    ) {
-      throw new SpawnfileError(
-        "validation_error",
-        "TinyClaw Discord does not support declarative users, guilds, or channels in Spawnfile v0.1"
-      );
-    }
+    assertSupportedTinyClawSurfaces(surfaces);
   },
   container: {
     configFileName: "settings.json",

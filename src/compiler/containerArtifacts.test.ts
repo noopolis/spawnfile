@@ -84,6 +84,35 @@ describe("createContainerArtifacts", () => {
     );
   });
 
+  it("renders Telegram surface secrets when an agent declares Telegram", async () => {
+    const node = createAgentNode("openclaw", {
+      surfaces: {
+        telegram: {
+          botTokenSecret: "TELEGRAM_BOT_TOKEN"
+        }
+      }
+    });
+    const compiled = await openClawAdapter.compileAgent(node);
+
+    const result = await createContainerArtifacts(createPlan(["openclaw"]), [
+      {
+        emittedFiles: compiled.files,
+        kind: "agent",
+        runtimeName: "openclaw",
+        slug: "assistant",
+        value: node
+      }
+    ]);
+
+    expect(result.report.secrets_required).toEqual([
+      "OPENCLAW_GATEWAY_TOKEN",
+      "TELEGRAM_BOT_TOKEN"
+    ]);
+    expect(result.files.find((file) => file.path === ".env.example")?.content).toContain(
+      "TELEGRAM_BOT_TOKEN="
+    );
+  });
+
   it("derives provider env vars and promotes duplicate secrets to required", async () => {
     const firstNode = createAgentNode("openclaw", {
       execution: {

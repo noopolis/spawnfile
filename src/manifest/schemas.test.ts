@@ -151,6 +151,26 @@ describe("manifestSchema", () => {
     expect(isAgentManifest(result)).toBe(true);
   });
 
+  it("accepts Telegram surfaces on agent manifests", () => {
+    const result = manifestSchema.parse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        telegram: {
+          access: {
+            chats: ["-1001234567890"],
+            mode: "allowlist",
+            users: ["123456789"]
+          }
+        }
+      }
+    });
+
+    expect(isAgentManifest(result)).toBe(true);
+  });
+
   it("infers Discord allowlist mode from declared users", () => {
     const result = manifestSchema.parse({
       kind: "agent",
@@ -161,6 +181,24 @@ describe("manifestSchema", () => {
         discord: {
           access: {
             users: ["987654321098765432"]
+          }
+        }
+      }
+    });
+
+    expect(isAgentManifest(result)).toBe(true);
+  });
+
+  it("infers Telegram allowlist mode from declared users", () => {
+    const result = manifestSchema.parse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        telegram: {
+          access: {
+            users: ["123456789"]
           }
         }
       }
@@ -190,6 +228,27 @@ describe("manifestSchema", () => {
     );
   });
 
+  it("rejects Telegram allowlist access without any allowlist entries", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        telegram: {
+          access: {
+            mode: "allowlist"
+          }
+        }
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain(
+      "telegram allowlist access must declare users or chats"
+    );
+  });
+
   it("accepts Discord open access without allowlist entries", () => {
     const result = manifestSchema.parse({
       kind: "agent",
@@ -198,6 +257,24 @@ describe("manifestSchema", () => {
       spawnfile_version: "0.1",
       surfaces: {
         discord: {
+          access: {
+            mode: "open"
+          }
+        }
+      }
+    });
+
+    expect(isAgentManifest(result)).toBe(true);
+  });
+
+  it("accepts Telegram open access without allowlist entries", () => {
+    const result = manifestSchema.parse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        telegram: {
           access: {
             mode: "open"
           }
@@ -230,6 +307,29 @@ describe("manifestSchema", () => {
     );
   });
 
+  it("rejects Telegram allowlist entries on non-allowlist access", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        telegram: {
+          access: {
+            mode: "pairing",
+            chats: ["-1001234567890"],
+            users: ["123456789"]
+          }
+        }
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain(
+      "telegram access users and chats are only valid for allowlist mode"
+    );
+  });
+
   it("rejects empty Discord access blocks", () => {
     const result = manifestSchema.safeParse({
       kind: "agent",
@@ -246,6 +346,25 @@ describe("manifestSchema", () => {
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.message).toContain(
       "discord access must declare mode or allowlist entries"
+    );
+  });
+
+  it("rejects empty Telegram access blocks", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        telegram: {
+          access: {}
+        }
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain(
+      "telegram access must declare mode or allowlist entries"
     );
   });
 

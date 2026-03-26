@@ -35,6 +35,9 @@ describe("tinyClawAdapter", () => {
       ],
       systemDeps: ["bash", "ca-certificates", "curl", "g++", "make", "python3", "tar"]
     });
+    expect(
+      tinyClawAdapter.container.startCommand[2]
+    ).toContain("node <runtime-root>/packages/channels/dist/telegram.js");
   });
 
   it("emits settings.json with agents map and workspace", async () => {
@@ -110,6 +113,47 @@ describe("tinyClawAdapter", () => {
     });
     expect(
       result.capabilities.find((capability) => capability.key === "surfaces.discord")?.outcome
+    ).toBe("supported");
+  });
+
+  it("emits Telegram channel settings when Telegram is declared", async () => {
+    const node: ResolvedAgentNode = {
+      docs: [],
+      env: {},
+      execution: {
+        model: {
+          primary: {
+            name: "claude-opus-4-6",
+            provider: "anthropic"
+          }
+        }
+      },
+      kind: "agent",
+      mcpServers: [],
+      name: "assistant",
+      policyMode: null,
+      policyOnDegrade: null,
+      runtime: { name: "tinyclaw", options: {} },
+      secrets: [],
+      skills: [],
+      source: "/tmp/Spawnfile",
+      subagents: [],
+      surfaces: {
+        telegram: {
+          botTokenSecret: "TEAM_TELEGRAM_TOKEN"
+        }
+      }
+    };
+
+    const result = await tinyClawAdapter.compileAgent(node);
+    const config = JSON.parse(result.files.find((file) => file.path === "settings.json")!.content);
+
+    expect(config.channels).toEqual({
+      enabled: ["telegram"],
+      telegram: {}
+    });
+    expect(
+      result.capabilities.find((capability) => capability.key === "surfaces.telegram")?.outcome
     ).toBe("supported");
   });
 
@@ -313,6 +357,61 @@ describe("tinyClawAdapter", () => {
     ]);
   });
 
+  it("declares merged Discord and Telegram token bindings for runtime targets", async () => {
+    const assistantNode: ResolvedAgentNode = {
+      docs: [],
+      env: {},
+      execution: {
+        model: {
+          primary: {
+            name: "claude-sonnet-4-5",
+            provider: "anthropic"
+          }
+        }
+      },
+      kind: "agent",
+      mcpServers: [],
+      name: "assistant",
+      policyMode: null,
+      policyOnDegrade: null,
+      runtime: { name: "tinyclaw", options: {} },
+      secrets: [],
+      skills: [],
+      source: "/tmp/assistant/Spawnfile",
+      subagents: [],
+      surfaces: {
+        discord: {
+          botTokenSecret: "TEAM_DISCORD_TOKEN"
+        },
+        telegram: {
+          botTokenSecret: "TEAM_TELEGRAM_TOKEN"
+        }
+      }
+    };
+
+    const assistantFiles = await tinyClawAdapter.compileAgent(assistantNode);
+    const targets = await tinyClawAdapter.createContainerTargets?.([
+      {
+        emittedFiles: assistantFiles.files,
+        id: "agent:assistant",
+        kind: "agent",
+        slug: "assistant",
+        value: assistantNode
+      }
+    ]);
+
+    expect(targets?.[0]?.configEnvBindings).toEqual([
+      {
+        envName: "TEAM_DISCORD_TOKEN",
+        jsonPath: "channels.discord.bot_token"
+      },
+      {
+        envName: "TEAM_TELEGRAM_TOKEN",
+        jsonPath: "channels.telegram.bot_token"
+      }
+    ]);
+  });
+
   it("rejects conflicting Discord bot token secrets across merged agents", async () => {
     const assistantNode: ResolvedAgentNode = {
       docs: [],
@@ -373,6 +472,68 @@ describe("tinyClawAdapter", () => {
         }
       ]) ?? Promise.resolve([])
     ).rejects.toThrow(/conflicting Discord bot token secrets/);
+  });
+
+  it("rejects conflicting Telegram bot token secrets across merged agents", async () => {
+    const assistantNode: ResolvedAgentNode = {
+      docs: [],
+      env: {},
+      execution: {
+        model: {
+          primary: {
+            name: "claude-sonnet-4-5",
+            provider: "anthropic"
+          }
+        }
+      },
+      kind: "agent",
+      mcpServers: [],
+      name: "assistant",
+      policyMode: null,
+      policyOnDegrade: null,
+      runtime: { name: "tinyclaw", options: {} },
+      secrets: [],
+      skills: [],
+      source: "/tmp/assistant/Spawnfile",
+      subagents: [],
+      surfaces: {
+        telegram: {
+          botTokenSecret: "TELEGRAM_ONE"
+        }
+      }
+    };
+    const writerNode: ResolvedAgentNode = {
+      ...assistantNode,
+      name: "writer",
+      source: "/tmp/writer/Spawnfile",
+      surfaces: {
+        telegram: {
+          botTokenSecret: "TELEGRAM_TWO"
+        }
+      }
+    };
+
+    const assistantFiles = await tinyClawAdapter.compileAgent(assistantNode);
+    const writerFiles = await tinyClawAdapter.compileAgent(writerNode);
+
+    await expect(
+      tinyClawAdapter.createContainerTargets?.([
+        {
+          emittedFiles: assistantFiles.files,
+          id: "agent:assistant",
+          kind: "agent",
+          slug: "assistant",
+          value: assistantNode
+        },
+        {
+          emittedFiles: writerFiles.files,
+          id: "agent:writer",
+          kind: "agent",
+          slug: "writer",
+          value: writerNode
+        }
+      ]) ?? Promise.resolve([])
+    ).rejects.toThrow(/conflicting telegram bot token secrets/i);
   });
 
   it("returns no container targets when no agent artifacts are present", async () => {

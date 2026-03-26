@@ -11,6 +11,8 @@ import type {
   RuntimeBinding,
   SharedSurface,
   SurfacesBlock,
+  TelegramSurface,
+  TelegramSurfaceAccess,
   TeamManifest
 } from "./schemas.js";
 
@@ -73,6 +75,33 @@ const orderDiscordSurfaceAccess = (
     ["guilds", access.guilds],
     ["channels", access.channels]
   ]) as unknown as DiscordSurfaceAccess;
+};
+
+const orderTelegramSurface = (
+  surface: TelegramSurface | undefined
+): TelegramSurface | undefined => {
+  if (!surface) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["access", orderTelegramSurfaceAccess(surface.access)],
+    ["bot_token_secret", surface.bot_token_secret]
+  ]) as unknown as TelegramSurface;
+};
+
+const orderTelegramSurfaceAccess = (
+  access: TelegramSurfaceAccess | undefined
+): TelegramSurfaceAccess | undefined => {
+  if (!access) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["mode", access.mode],
+    ["users", access.users],
+    ["chats", access.chats]
+  ]) as unknown as TelegramSurfaceAccess;
 };
 
 const orderModelEntryAuth = (
@@ -147,7 +176,8 @@ const orderSurfaces = (
   }
 
   return withDefinedEntries([
-    ["discord", orderDiscordSurface(surfaces.discord)]
+    ["discord", orderDiscordSurface(surfaces.discord)],
+    ["telegram", orderTelegramSurface(surfaces.telegram)]
   ]) as unknown as SurfacesBlock;
 };
 

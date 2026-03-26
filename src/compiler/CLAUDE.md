@@ -10,7 +10,7 @@ src/compiler/
 ├── types.ts                    # Internal compiler plan and resolved-node types
 ├── helpers.ts                  # Deterministic helper utilities
 ├── compilePlanHelpers.ts       # Fingerprints and shared validation used by graph resolution
-├── discordSurface.ts           # Portable Discord surface resolution helpers
+├── agentSurfaces.ts            # Portable agent-surface resolution helpers
 ├── surfaceSupport.ts           # Runtime surface compatibility checks during graph resolution
 ├── surfaces.ts                 # Resolved docs, skills, and shared-surface merging
 ├── buildCompilePlan.ts         # Manifest graph walk and plan construction

@@ -9,8 +9,8 @@ import {
 import { readUtf8File } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
+import { listAgentSurfaceSecretNames } from "./agentSurfaces.js";
 import { buildCompilePlan } from "./buildCompilePlan.js";
-import { listAgentSurfaceSecretNames } from "./discordSurface.js";
 import {
   listExecutionModelSecretNames,
   resolveExecutionModelAuthMethods

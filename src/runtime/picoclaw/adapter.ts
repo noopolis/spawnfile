@@ -1,6 +1,5 @@
 import type {
   ResolvedAgentNode,
-  ResolvedAgentSurfaces
 } from "../../compiler/types.js";
 import {
   listEffectiveExecutionModelTargets,
@@ -23,6 +22,11 @@ import {
 } from "../common.js";
 import { preparePicoClawRuntimeAuth } from "./runAuth.js";
 import { createPicoClawAgentScaffold } from "./scaffold.js";
+import {
+  assertSupportedPicoClawSurfaces,
+  buildPicoClawChannelConfig,
+  buildPicoClawSurfaceEnvBindings
+} from "./surfaces.js";
 
 const formatModelName = (node: ResolvedAgentNode): string | null => {
   const primary = node.execution?.model?.primary;
@@ -59,18 +63,6 @@ const createProviderSecretPath = (provider: string): string =>
   createSecretPath(formatProviderEnvName(provider));
 
 const createSecretPath = (envName: string): string => `secrets/${envName}`;
-
-const buildPicoClawDiscordConfig = (
-  surfaces: ResolvedAgentSurfaces
-): Record<string, unknown> => {
-  const access = surfaces.discord?.access;
-
-  return {
-    ...(access?.mode === "allowlist" ? { allow_from: access.users } : {}),
-    enabled: true,
-    mention_only: true
-  };
-};
 
 const buildModelList = (node: ResolvedAgentNode): Array<Record<string, unknown>> => {
   return listEffectiveExecutionModelTargets(node.execution).map((target) => {
@@ -146,10 +138,9 @@ const buildPicoClawConfig = (node: ResolvedAgentNode): string => {
     model_list: buildModelList(node)
   };
 
-  if (node.surfaces?.discord) {
-    config.channels = {
-      discord: buildPicoClawDiscordConfig(node.surfaces)
-    };
+  const channels = buildPicoClawChannelConfig(node.surfaces);
+  if (Object.keys(channels).length > 0) {
+    config.channels = channels;
   }
 
   if (node.mcpServers.length > 0) {
@@ -173,14 +164,7 @@ const createContainerTargets = async (
       envName: secretName,
       relativePath: createSecretPath(secretName)
     }));
-    const configEnvBindings = agent.surfaces?.discord
-      ? [
-          {
-            envName: agent.surfaces.discord.botTokenSecret,
-            jsonPath: "channels.discord.token"
-          }
-        ]
-      : undefined;
+    const configEnvBindings = buildPicoClawSurfaceEnvBindings(agent.surfaces);
 
     return {
       configEnvBindings,
@@ -232,24 +216,7 @@ export const picoClawAdapter: RuntimeAdapter = {
     );
   },
   assertSupportedSurfaces(surfaces) {
-    const access = surfaces?.discord?.access;
-    if (!access) {
-      return;
-    }
-
-    if (access.mode === "pairing") {
-      throw new SpawnfileError(
-        "validation_error",
-        "PicoClaw Discord does not support pairing access"
-      );
-    }
-
-    if (access.guilds.length > 0 || access.channels.length > 0) {
-      throw new SpawnfileError(
-        "validation_error",
-        "PicoClaw Discord only supports user allowlists in Spawnfile v0.1"
-      );
-    }
+    assertSupportedPicoClawSurfaces(surfaces);
   },
   container: {
     configFileName: "config.json",

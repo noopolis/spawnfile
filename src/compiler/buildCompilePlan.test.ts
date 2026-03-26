@@ -160,6 +160,88 @@ describe("buildCompilePlan", () => {
     });
   });
 
+  it("resolves Telegram surfaces with the default bot token secret", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-telegram-surface-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: root",
+        "",
+        "runtime: openclaw",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        "",
+        "surfaces:",
+        "  telegram: {}",
+        ""
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const agentNode = plan.nodes.find((node) => node.kind === "agent");
+
+    expect(agentNode?.value.kind).toBe("agent");
+    if (!agentNode || agentNode.value.kind !== "agent") {
+      throw new Error("Expected agent node");
+    }
+
+    expect(agentNode.value.surfaces?.telegram).toEqual({
+      botTokenSecret: "TELEGRAM_BOT_TOKEN"
+    });
+  });
+
+  it("resolves Telegram allowlist access on agents", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-telegram-access-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: root",
+        "",
+        "runtime: openclaw",
+        "",
+        "surfaces:",
+        "  telegram:",
+        "    access:",
+        "      users:",
+        '        - "123456789"',
+        "      chats:",
+        '        - "-1001234567890"',
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const agentNode = plan.nodes.find((node) => node.kind === "agent");
+
+    expect(agentNode?.value.kind).toBe("agent");
+    if (!agentNode || agentNode.value.kind !== "agent") {
+      throw new Error("Expected agent node");
+    }
+
+    expect(agentNode.value.surfaces?.telegram).toEqual({
+      access: {
+        chats: ["-1001234567890"],
+        mode: "allowlist",
+        users: ["123456789"]
+      },
+      botTokenSecret: "TELEGRAM_BOT_TOKEN"
+    });
+  });
+
   it("builds a multi-runtime team graph", async () => {
     const plan = await buildCompilePlan(path.join(fixturesRoot, "multi-runtime-team"));
 

@@ -7,6 +7,7 @@ This folder owns the PicoClaw runtime adapter.
 ```text
 src/runtime/picoclaw/
 ├── adapter.ts        # PicoClaw lowering and runtime-option validation
+├── surfaces.ts       # PicoClaw surface lowering and supported-surface checks
 ├── runAuth.ts        # PicoClaw runtime-auth preparation for `spawnfile run`
 ├── scaffold.ts       # PicoClaw-owned `spawnfile init --runtime picoclaw` scaffold
 ├── scaffold-assets/  # Bundled PicoClaw starter docs copied into dist at build time

@@ -146,6 +146,44 @@ describe("picoClawAdapter", () => {
     });
   });
 
+  it("emits Telegram channel config and token binding when Telegram is declared", async () => {
+    const telegramNode: ResolvedAgentNode = {
+      ...node,
+      surfaces: {
+        telegram: {
+          access: {
+            chats: [],
+            mode: "allowlist",
+            users: ["123456789"]
+          },
+          botTokenSecret: "TEAM_TELEGRAM_TOKEN"
+        }
+      }
+    };
+    const compiled = await picoClawAdapter.compileAgent(telegramNode);
+    const config = JSON.parse(compiled.files.find((file) => file.path === "config.json")!.content);
+    const [target] = await picoClawAdapter.createContainerTargets?.([
+      {
+        emittedFiles: compiled.files,
+        id: "agent:assistant",
+        kind: "agent",
+        slug: "assistant",
+        value: telegramNode
+      }
+    ]) ?? [];
+
+    expect(config.channels.telegram).toEqual({
+      allow_from: ["123456789"],
+      enabled: true
+    });
+    expect(target?.configEnvBindings).toEqual([
+      {
+        envName: "TEAM_TELEGRAM_TOKEN",
+        jsonPath: "channels.telegram.token"
+      }
+    ]);
+  });
+
   it("emits MCP servers as named map", async () => {
     const result = await picoClawAdapter.compileAgent(node);
     const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
@@ -409,6 +447,34 @@ describe("picoClawAdapter", () => {
             users: ["987654321098765432"]
           },
           botTokenSecret: "DISCORD_BOT_TOKEN"
+        }
+      })
+    ).toThrow(/only supports user allowlists/);
+  });
+
+  it("rejects Telegram pairing mode and chat allowlists", () => {
+    expect(() =>
+      picoClawAdapter.assertSupportedSurfaces?.({
+        telegram: {
+          access: {
+            chats: [],
+            mode: "pairing",
+            users: []
+          },
+          botTokenSecret: "TELEGRAM_BOT_TOKEN"
+        }
+      })
+    ).toThrow(/does not support pairing access/);
+
+    expect(() =>
+      picoClawAdapter.assertSupportedSurfaces?.({
+        telegram: {
+          access: {
+            chats: ["-1001234567890"],
+            mode: "allowlist",
+            users: ["123456789"]
+          },
+          botTokenSecret: "TELEGRAM_BOT_TOKEN"
         }
       })
     ).toThrow(/only supports user allowlists/);

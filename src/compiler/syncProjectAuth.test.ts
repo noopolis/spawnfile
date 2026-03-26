@@ -236,6 +236,36 @@ describe("syncProjectAuth", () => {
     });
   });
 
+  it("captures Telegram surface env names even without model API-key auth", async () => {
+    const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
+    const envDirectory = await createTempDirectory("spawnfile-env-home-");
+    process.env.SPAWNFILE_HOME = spawnfileHome;
+    await writeUtf8File(path.join(envDirectory, ".env"), "TELEGRAM_BOT_TOKEN=telegram-token\n");
+
+    const projectDirectory = await createAgentProject([
+      'spawnfile_version: "0.1"',
+      "kind: agent",
+      "name: auth-sync",
+      "",
+      "runtime: openclaw",
+      "",
+      "surfaces:",
+      "  telegram: {}",
+      "",
+      "docs:",
+      "  system: AGENTS.md"
+    ]);
+
+    const profile = await syncProjectAuth(projectDirectory, {
+      envFilePath: path.join(envDirectory, ".env"),
+      profileName: "dev"
+    });
+
+    expect(profile.env).toEqual({
+      TELEGRAM_BOT_TOKEN: "telegram-token"
+    });
+  });
+
   it("syncs auth for team projects by collecting requirements from member agents", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
     const claudeHome = await createTempDirectory("spawnfile-claude-home-");
