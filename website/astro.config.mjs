@@ -65,6 +65,7 @@ export default defineConfig({
             { label: 'SPEC.md', slug: 'spec/spec' },
             { label: 'COMPILER.md', slug: 'spec/compiler' },
             { label: 'CONTAINERS.md', slug: 'spec/containers' },
+            { label: 'SURFACES.md', slug: 'spec/surfaces' },
             { label: 'RUNTIMES.md', slug: 'spec/runtimes' },
           ],
         },

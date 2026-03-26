@@ -106,15 +106,16 @@ Spawnfile defines a portable surface that adapters attempt to preserve across ru
 - MCP server declarations
 - Runtime binding and execution intent
 - Team structure and shared surfaces
+- Communication surfaces (Discord in v0.1)
 
 If a runtime cannot preserve part of this surface exactly, the adapter reports `supported`, `degraded`, or `unsupported` according to the compile policy. The compile report always records these capability outcomes so you know what was preserved and what was lost.
 
 ## Quick Compatibility Matrix
 
-| Runtime | Docs | Skills | MCP | Models | Sandbox | Teams |
-|---------|------|--------|-----|--------|---------|-------|
-| OpenClaw | Strong | Strong | Bridge | Strong | Strong | Routed sessions |
-| PicoClaw | Strong | Strong | Strong | Strong | Strong | Spawned subagents |
-| TinyClaw | Strong | Present | No clear surface | Strong | Strong | Native teams |
-| NullClaw | Strong | Strong | stdio-first | Strong | Strong | Delegate agents |
-| ZeroClaw | Strong | Strong | Mixed | Strong | Strong | Delegate sub-agents |
+| Runtime | Docs | Skills | MCP | Models | Sandbox | Teams | Discord |
+|---------|------|--------|-----|--------|---------|-------|---------|
+| OpenClaw | Strong | Strong | Bridge | Strong | Strong | Routed sessions | Full (pairing, allowlist, open) |
+| PicoClaw | Strong | Strong | Strong | Strong | Strong | Spawned subagents | Partial (open, user allowlists) |
+| TinyClaw | Strong | Present | No clear surface | Strong | Strong | Native teams | Pairing only |
+| NullClaw | Strong | Strong | stdio-first | Strong | Strong | Delegate agents | -- |
+| ZeroClaw | Strong | Strong | Mixed | Strong | Strong | Delegate sub-agents | -- |

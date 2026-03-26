@@ -88,6 +88,26 @@ The adapter lowers Spawnfile team members into routed agents and maps the team l
 
 Nested teams and full native team identity are reported as `degraded`.
 
+## Discord Surface
+
+OpenClaw has the strongest Discord support among the active runtimes. Spawnfile lowers Discord access into OpenClaw's rich Discord config surface:
+
+- `dmPolicy`
+- `groupPolicy`
+- `allowFrom`
+- `guilds`
+- `guilds.*.channels`
+
+Supported access modes:
+
+| Mode | Support |
+|------|---------|
+| `pairing` | Supported |
+| `allowlist` | Supported (users, guilds, channels) |
+| `open` | Supported |
+
+Channel allowlists currently require exactly one guild in the Spawnfile lowering.
+
 ## What The Adapter Emits
 
 For a single agent, the adapter emits:

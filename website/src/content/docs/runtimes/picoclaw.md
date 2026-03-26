@@ -97,6 +97,23 @@ It does not have a strong native team object. The adapter:
 - Uses spawn or agent-targeted spawn for delegation
 - Reports degradation for native team identity and nesting
 
+## Discord Surface
+
+PicoClaw supports Discord with token wiring and user allowlists. Spawnfile lowers Discord into PicoClaw's channel config:
+
+- `token`
+- `allow_from`
+- `mention_only`
+
+Supported access modes:
+
+| Mode | Support |
+|------|---------|
+| `open` | Supported |
+| `allowlist` (users) | Supported |
+| `allowlist` (guilds/channels) | Not lowered in v0.1 |
+| `pairing` | Not supported |
+
 ## What The Adapter Emits
 
 For a single agent:

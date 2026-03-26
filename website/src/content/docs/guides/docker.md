@@ -92,48 +92,106 @@ For multiple runtimes in one container, the entrypoint:
 The compiler emits a `.env.example` listing all required and optional environment variables:
 
 - Secrets declared in manifests (e.g. `SEARCH_API_KEY`)
-- Runtime auth variables (e.g. `ANTHROPIC_API_KEY`)
+- Model auth variables for providers using `api_key` auth (e.g. `ANTHROPIC_API_KEY`)
+- Surface auth variables for declared communication surfaces (e.g. `DISCORD_BOT_TOKEN`)
+- Runtime auth variables (e.g. `OPENCLAW_GATEWAY_TOKEN`)
 - Variables the entrypoint or runtime expects
 
 Actual secret values are never emitted. The `.env.example` contains variable names with empty values and comments.
 
-At runtime, secrets are injected via:
-- `--env-file` on `docker run`
-- Environment variable pass-through
-- Mounted secret files
-
 If a runtime expects secret file references in its config, the adapter declares env-to-file bindings and the entrypoint materializes them before startup.
+
+## Auth Profiles
+
+Spawnfile manages runtime and model auth through local **auth profiles**. This keeps secrets out of the build and injects them only at run time.
+
+### Syncing Auth
+
+The primary happy path is `spawnfile auth sync`, which reads model auth intent from the project's manifests and imports matching local credentials into a named profile:
+
+```bash
+spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
+```
+
+This reads the declared `auth` methods on each model target and surface, then imports the matching material. For example, if the manifest declares `auth.method: claude-code`, the sync imports your local Claude Code CLI credentials. If it declares `auth.method: api_key`, it reads the key from the provided env file.
+
+### Manual Auth Import
+
+Lower-level commands are available for manual profile editing:
+
+```bash
+# Import a .env file into a profile
+spawnfile auth import-env --profile dev --env-file ./.env
+
+# Import Claude Code CLI credentials
+spawnfile auth import-claude-code --profile dev
+
+# Import Codex CLI credentials
+spawnfile auth import-codex --profile dev
+```
+
+### Viewing Profiles
+
+```bash
+# List all auth profiles
+spawnfile auth list
+
+# Show details of a profile
+spawnfile auth show --profile dev
+```
+
+### Auth Methods
+
+| Method | What Gets Imported |
+|--------|--------------------|
+| `api_key` | Provider API key from env file |
+| `claude-code` | Local Claude Code CLI credential store |
+| `codex` | Local Codex CLI credential store |
+| `none` | Nothing -- used for local models |
+
+`claude-code` and `codex` imports mount existing local CLI credential stores into runtime homes at `spawnfile run` time. `api_key` is the primary path for provider API keys passed as environment variables.
 
 ## Developer Workflow
 
-The intended flow:
+The intended flow uses `spawnfile build` and `spawnfile run` for the happy path:
 
 ```bash
-# Compile the project
-spawnfile compile fixtures/single-agent --out ./dist/single-agent
+# Sync declared model auth into a local profile
+spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
 
-# Build the container
-cd dist/single-agent
-docker build -t my-agent .
+# Compile and build the container
+spawnfile build fixtures/single-agent --out ./bundle/single-agent --tag my-agent
 
-# Create .env from example
-cp .env.example .env
-# Fill in secret values...
-
-# Run
-docker run --env-file .env my-agent
+# Run with the local auth profile
+spawnfile run fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev
 ```
 
 For teams:
 
 ```bash
-spawnfile compile fixtures/multi-runtime-team --out ./dist/team
-cd dist/team
-docker build -t my-team .
-docker run --env-file .env my-team
+spawnfile auth sync fixtures/multi-runtime-team --profile dev --env-file ./.env
+spawnfile build fixtures/multi-runtime-team --out ./bundle/team --tag my-team
+spawnfile run fixtures/multi-runtime-team --out ./bundle/team --tag my-team --auth-profile dev
 ```
 
 Same flow regardless of project complexity. One compile, one build, one run.
+
+`spawnfile build` stays secrets-free by default. It compiles the project and then runs `docker build` against the emitted output directory. The generated Dockerfile installs pinned compiled runtime artifacts -- it does not rebuild runtime sources during image build.
+
+`spawnfile run` is the auth-aware wrapper over `docker run`. It validates declared model auth before container startup and mounts the right credential material from the selected profile.
+
+### Manual Docker
+
+Manual Docker remains valid against the compile output:
+
+```bash
+spawnfile compile fixtures/single-agent --out ./bundle/single-agent
+cd ./bundle/single-agent
+docker build -t my-agent .
+cp .env.example .env
+# Fill in secret values...
+docker run --env-file .env -p 18789:18789 my-agent
+```
 
 ## Compile Report Container Section
 

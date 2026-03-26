@@ -31,6 +31,7 @@ The `Spawnfile` is a YAML file named exactly `Spawnfile` (no extension). It decl
 - **skills** -- skill directories with `SKILL.md`
 - **mcp_servers** -- MCP tool connections
 - **execution** -- model, workspace, and sandbox intent
+- **surfaces** -- external communication channels (e.g. Discord)
 
 ## Document Roles
 
@@ -74,6 +75,34 @@ A team is an organizational structure of independent agents. It defines:
 - **shared** -- skills, MCP servers, env, and secrets inherited by all members
 
 Each member agent declares its own runtime. One team can span multiple runtimes.
+
+## Surfaces
+
+Agent manifests may declare external communication surfaces under `surfaces`. The first standardized surface in v0.1 is Discord:
+
+```yaml
+surfaces:
+  discord:
+    access:
+      users:
+        - "987654321098765432"
+    bot_token_secret: DISCORD_BOT_TOKEN
+```
+
+Surfaces are validated at compile time against runtime support. Runtime coverage varies -- see the runtime pages for details on which Discord access modes each runtime supports.
+
+Team manifests do not declare surfaces. Surfaces belong to concrete agent manifests.
+
+## Auth Profiles
+
+Model and surface auth is managed through local auth profiles. The `spawnfile auth` commands import credentials into a named profile, and `spawnfile run` injects them at container startup:
+
+```bash
+spawnfile auth sync --profile dev --env-file .env
+spawnfile run --tag my-agent --auth-profile dev
+```
+
+Auth profiles keep secrets out of the build. `spawnfile build` is always secrets-free -- credentials are applied at run time only.
 
 ## Policy
 

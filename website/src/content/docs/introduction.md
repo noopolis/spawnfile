@@ -33,6 +33,8 @@ execution:
     primary:
       provider: anthropic
       name: claude-sonnet-4-5
+      auth:
+        method: claude-code
 ```
 
 Change `runtime: openclaw` to `runtime: picoclaw` or `runtime: tinyclaw`, run `spawnfile compile`, and the compiler emits the right files for that runtime.

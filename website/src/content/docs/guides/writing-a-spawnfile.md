@@ -121,9 +121,20 @@ execution:
     primary:
       provider: anthropic
       name: claude-sonnet-4-5
+      auth:
+        method: claude-code
     fallback:
       - provider: openai
         name: gpt-4o-mini
+        auth:
+          method: codex
+      - provider: local
+        name: qwen2.5:14b
+        auth:
+          method: none
+        endpoint:
+          compatibility: openai
+          base_url: http://host.docker.internal:11434/v1
   workspace:
     isolation: isolated    # isolated | shared
   sandbox:
@@ -134,6 +145,38 @@ execution:
 
 - `primary.provider` and `primary.name` are required if `execution.model` is present.
 - `fallback` is an optional ordered list of fallback models.
+- Each model target (primary or fallback) may declare inline `auth` and `endpoint`.
+
+### Model Auth
+
+Each model target may declare an `auth` block with a `method` field. Supported methods in v0.1:
+
+| Method | Description |
+|--------|-------------|
+| `api_key` | Uses an environment variable for the provider API key. Default for built-in providers. |
+| `claude-code` | Imports the local Claude Code CLI credential store. |
+| `codex` | Imports the local Codex CLI credential store. |
+| `none` | No auth required. Default for `provider: local`. |
+
+For `api_key` auth on custom or local models, use `auth.key` to name the env var:
+
+```yaml
+auth:
+  method: api_key
+  key: MY_CUSTOM_API_KEY
+```
+
+### Custom Endpoints
+
+Models using `provider: local` or `provider: custom` must declare an `endpoint` block:
+
+```yaml
+endpoint:
+  compatibility: openai    # openai | anthropic
+  base_url: http://host.docker.internal:11434/v1
+```
+
+The `compatibility` field tells the runtime which API format the endpoint speaks. The `base_url` is the endpoint URL. Built-in providers (`anthropic`, `openai`) must not declare `endpoint`.
 
 ### Workspace
 
@@ -187,6 +230,56 @@ policy:
 - `error` -- compilation fails.
 - `warn` -- compilation continues with a warning.
 - `allow` -- compilation continues silently.
+
+## surfaces
+
+The `surfaces` block declares external communication channels for the agent. The first standardized surface in v0.1 is Discord.
+
+```yaml
+surfaces:
+  discord:
+    access:
+      mode: allowlist
+      users:
+        - "987654321098765432"
+      guilds:
+        - "123456789012345678"
+      channels:
+        - "555555555555555555"
+    bot_token_secret: DISCORD_BOT_TOKEN
+```
+
+### Discord Fields
+
+| Field | Description |
+|-------|-------------|
+| `bot_token_secret` | Env var name for the Discord bot token. Defaults to `DISCORD_BOT_TOKEN`. |
+| `access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
+| `access.users` | Allowed Discord user IDs. |
+| `access.guilds` | Allowed Discord guild/server IDs. |
+| `access.channels` | Allowed Discord channel IDs. |
+
+### Access Rules
+
+- If `access.mode` is omitted and any of `users`, `guilds`, or `channels` are present, the effective mode is `allowlist`.
+- `users`, `guilds`, and `channels` are only valid with `allowlist`.
+- `allowlist` must declare at least one of `users`, `guilds`, or `channels`.
+
+### Runtime Support
+
+Not all runtimes support all Discord access shapes:
+
+- `openclaw` supports `pairing`, `allowlist`, and `open`.
+- `picoclaw` supports `open` and user allowlists.
+- `tinyclaw` supports `pairing` only (DM-oriented).
+
+The compiler validates the declared surface against the selected runtime and fails early on unsupported combinations.
+
+### Constraints
+
+- Only agent manifests may declare `surfaces`. Team manifests must not.
+- Subagents do not inherit parent `surfaces`.
+- Surface auth secrets (like `DISCORD_BOT_TOKEN`) participate in the same auth profile and env validation path as model auth.
 
 ## subagents
 
@@ -242,7 +335,7 @@ These are passed through to the compile report but do not affect compilation log
 
 ## Complete Example
 
-Here is the `single-agent` fixture showing a full agent manifest:
+Here is a full agent manifest showing all major sections:
 
 ```yaml
 spawnfile_version: "0.1"
@@ -256,6 +349,13 @@ execution:
     primary:
       provider: anthropic
       name: claude-sonnet-4-5
+      auth:
+        method: claude-code
+    fallback:
+      - provider: openai
+        name: gpt-4o-mini
+        auth:
+          method: codex
   workspace:
     isolation: isolated
   sandbox:
@@ -280,6 +380,13 @@ mcp_servers:
     url: https://search.mcp.example.com/mcp
     auth:
       secret: SEARCH_API_KEY
+
+surfaces:
+  discord:
+    access:
+      users:
+        - "987654321098765432"
+    bot_token_secret: DISCORD_BOT_TOKEN
 
 secrets:
   - name: SEARCH_API_KEY

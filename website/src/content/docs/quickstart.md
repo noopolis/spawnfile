@@ -30,7 +30,7 @@ spawnfile --help
 spawnfile init
 ```
 
-This creates a `Spawnfile` manifest and starter markdown docs in the current directory:
+This creates a `Spawnfile` manifest and starter markdown docs in the current directory. The generated docs (SOUL.md, IDENTITY.md, AGENTS.md) are tailored to the selected runtime's personality and capabilities:
 
 ```
 my-agent/
@@ -38,6 +38,12 @@ my-agent/
 |-- IDENTITY.md
 |-- SOUL.md
 \-- AGENTS.md
+```
+
+To scaffold for a specific runtime:
+
+```bash
+spawnfile init --runtime tinyclaw
 ```
 
 ## Edit the Spawnfile
@@ -60,6 +66,8 @@ execution:
     primary:
       provider: anthropic
       name: claude-sonnet-4-5
+      auth:
+        method: claude-code
   workspace:
     isolation: isolated
   sandbox:
@@ -106,6 +114,18 @@ dist/
 \-- spawnfile-report.json
 ```
 
+## Build and Run
+
+Once compiled, you can build a Docker image and run it with auth:
+
+```bash
+spawnfile auth sync --profile dev --env-file .env
+spawnfile build --tag my-assistant
+spawnfile run --tag my-assistant --auth-profile dev
+```
+
+See [Docker Packaging](/guides/docker/) for the full build and auth workflow.
+
 ## What's Next
 
 - [Write a Spawnfile](/guides/writing-a-spawnfile/) -- full manifest reference
@@ -113,3 +133,4 @@ dist/
 - [Skills & MCP](/guides/skills-and-mcp/) -- add skills and tool connections
 - [Teams](/guides/teams/) -- define multi-agent teams
 - [Compiling](/guides/compiling/) -- understand the compile pipeline
+- [Docker Packaging](/guides/docker/) -- build and run containers with auth

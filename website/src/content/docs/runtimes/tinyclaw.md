@@ -83,6 +83,20 @@ One TinyClaw runtime process can host all compiled agents plus the compiled team
 
 Nested teams likely need flattening or degradation reporting, as TinyClaw's team model is flat.
 
+## Discord Surface
+
+TinyClaw supports Discord as a paired DM surface. Spawnfile lowers Discord into TinyClaw's channel client config and starts the Discord worker process in the generated container.
+
+Supported access modes:
+
+| Mode | Support |
+|------|---------|
+| `pairing` | Supported |
+| `allowlist` | Not supported |
+| `open` | Not supported |
+
+The upstream runtime behavior is pairing-based and DM-oriented. Spawnfile rejects richer Discord access shapes for TinyClaw at compile time.
+
 ## What The Adapter Emits
 
 For a single agent:

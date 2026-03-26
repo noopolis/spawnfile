@@ -200,7 +200,60 @@ The compile report is always emitted regardless of policy. What changes is wheth
 
 ## CLI Commands
 
+### Scaffold and Grow
+
 ```bash
+# Scaffold a new agent project (defaults to openclaw)
+spawnfile init
+
+# Scaffold for a specific runtime
+spawnfile init --runtime tinyclaw
+
+# Scaffold a new team project
+spawnfile init --team
+
+# Add a member agent to a team
+spawnfile add agent writer ./my-team --runtime tinyclaw
+
+# Add a subagent to an agent
+spawnfile add subagent critic ./my-agent
+
+# Add a nested team to a team
+spawnfile add team platform ./my-team
+```
+
+`spawnfile init` generates runtime-specific markdown docs (SOUL.md, IDENTITY.md, AGENTS.md) tailored to each runtime's personality and capabilities. Each runtime adapter provides its own scaffold templates.
+
+`spawnfile add` grows an existing manifest graph in place. It creates the child directory, scaffolds a Spawnfile, and appends the reference to the parent manifest. The CLI enforces parent kind rules: `add agent` and `add team` only work on team projects, and `add subagent` only works on agent projects.
+
+### Model Editing
+
+```bash
+# Set the primary model
+spawnfile model set anthropic claude-opus-4-6 --auth claude-code
+
+# Set a model with custom endpoint
+spawnfile model set local qwen2.5:14b --auth none \
+  --compat openai --base-url http://host.docker.internal:11434/v1
+
+# Add a fallback model
+spawnfile model add-fallback openai gpt-4o-mini --auth codex
+
+# Remove all fallback models
+spawnfile model clear-fallbacks
+
+# Update all agents in a team recursively
+spawnfile model set anthropic claude-opus-4-6 ./my-team --auth claude-code --recursive
+```
+
+`spawnfile model` edits model intent in place and rewrites touched manifests to the canonical inline shape. When targeting a team project, `--recursive` is required and only descendant agent manifests are updated -- the team manifest itself is left unchanged (teams do not declare `execution`).
+
+### Compile and Validate
+
+```bash
+# Validate without compiling
+spawnfile validate ./fixtures/single-agent
+
 # Compile the project in the current directory
 spawnfile compile
 
@@ -209,13 +262,4 @@ spawnfile compile ./fixtures/single-agent
 
 # Compile with custom output directory
 spawnfile compile ./fixtures/single-agent --out ./build
-
-# Validate without compiling
-spawnfile validate ./fixtures/single-agent
-
-# Scaffold a new agent project
-spawnfile init
-
-# Scaffold a new team project
-spawnfile init --team
 ```
