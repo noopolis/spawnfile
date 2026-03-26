@@ -179,4 +179,90 @@ describe("renderEntrypoint", () => {
     expect(entrypoint).toContain('if [ -z "${!name:-}" ]; then');
     expect(entrypoint).toContain('printf %s "${!name:-}" > "$target"');
   });
+
+  it("replaces every runtime-root placeholder inside a start-command token", async () => {
+    const { renderEntrypoint } = await loadRenderModule({
+      tinyclaw: {
+        commands: [],
+        copyCommands: [],
+        runtimeName: "tinyclaw",
+        runtimeRoot: "/opt/runtime/tinyclaw"
+      }
+    });
+
+    const entrypoint = renderEntrypoint(
+      [
+        createRuntimePlan("tinyclaw", {
+          meta: {
+            configFileName: "settings.json",
+            homeEnv: "TINYAGI_HOME",
+            instancePaths: {
+              configPathTemplate: "<instance-root>/settings.json",
+              homePathTemplate: "<instance-root>/tinyagi",
+              workspacePathTemplate: "<instance-root>/workspace"
+            },
+            standaloneBaseImage: "node:22-bookworm-slim",
+            startCommand: [
+              "bash",
+              "-lc",
+              "node <runtime-root>/main.js && node <runtime-root>/discord.js"
+            ],
+            systemDeps: []
+          }
+        })
+      ],
+      []
+    );
+
+    expect(entrypoint).not.toContain("<runtime-root>");
+    expect(entrypoint).toContain("/opt/runtime/tinyclaw/main.js");
+    expect(entrypoint).toContain("/opt/runtime/tinyclaw/discord.js");
+  });
+});
+
+describe("createRootfsFiles", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("../runtime/index.js");
+  });
+
+  it("maps home-scoped files into the runtime home path", async () => {
+    const { createRootfsFiles } = await loadRenderModule({
+      openclaw: {
+        commands: [],
+        copyCommands: [],
+        runtimeName: "openclaw",
+        runtimeRoot: "/opt/runtime/openclaw"
+      }
+    });
+
+    const files = createRootfsFiles([
+      createRuntimePlan("openclaw", {
+        meta: {
+          configFileName: "openclaw.json",
+          instancePaths: {
+            configPathTemplate: "<instance-root>/home/.openclaw/<config-file>",
+            homePathTemplate: "<instance-root>/home",
+            workspacePathTemplate: "<instance-root>/home/.openclaw/workspace"
+          },
+          standaloneBaseImage: "node:24-bookworm-slim",
+          startCommand: ["openclaw"],
+          systemDeps: []
+        },
+        targetFiles: [
+          {
+            content: "",
+            path: "home/.openclaw/agents/main/sessions/.keep"
+          }
+        ]
+      })
+    ]);
+
+    expect(files).toEqual([
+      {
+        content: "",
+        path: "container/rootfs/var/lib/spawnfile/openclaw/home/.openclaw/agents/main/sessions/.keep"
+      }
+    ]);
+  });
 });

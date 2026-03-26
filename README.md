@@ -27,8 +27,9 @@ Spawnfile v0.1 targets **autonomous agent runtimes** — systems that host agent
 - runtime binding
 - execution intent (model, workspace, sandbox)
 - team structure (members, hierarchy, shared surfaces)
+- agent-level Discord surfaces
 
-v0.1 does not try to standardize every runtime-native feature. Communication surfaces, memory engines, task schedulers, UI surfaces, and other runtime-specific features stay adapter-defined for now.
+v0.1 does not try to standardize every runtime-native feature. Beyond the initial Discord surface, communication surfaces, memory engines, task schedulers, UI surfaces, and other runtime-specific features stay adapter-defined for now.
 
 ---
 
@@ -113,7 +114,7 @@ spawnfile init
 spawnfile init --runtime tinyclaw
 spawnfile validate
 spawnfile compile
-spawnfile auth import env .env --profile dev
+spawnfile auth sync --profile dev --env-file .env
 spawnfile build
 spawnfile run --auth-profile dev
 ```
@@ -256,6 +257,34 @@ The CLI rejects invalid parent kinds: `add agent` and `add team` only work on te
 - the first positional argument is always the model provider, not the auth method
 
 Team manifests should not declare `execution`. Model, sandbox, and workspace intent belong to agent manifests, not teams.
+
+Agent manifests may declare portable communication surfaces under `surfaces`. The first standardized surface is:
+
+```yaml
+surfaces:
+  discord:
+    access:
+      users:
+        - "987654321098765432"
+    bot_token_secret: DISCORD_BOT_TOKEN
+```
+
+Discord access may declare:
+
+- `mode: pairing | allowlist | open`
+- `users`
+- `guilds`
+- `channels`
+
+If `mode` is omitted and any of `users`, `guilds`, or `channels` are present, Spawnfile infers `allowlist`.
+If `bot_token_secret` is omitted, Spawnfile defaults to `DISCORD_BOT_TOKEN`.
+`spawnfile auth sync ... --env-file .env` will collect that env name into the selected auth profile, and `spawnfile run --auth-profile ...` will validate it before container startup.
+
+Runtime support is narrower than the portable schema:
+
+- `openclaw` supports `pairing`, `allowlist`, and `open`
+- `picoclaw` supports `open` and Discord user allowlists
+- `tinyclaw` currently supports `pairing` only and uses Discord as a paired DM surface, not a general guild/channel surface
 
 Useful options:
 

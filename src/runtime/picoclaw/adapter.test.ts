@@ -82,6 +82,70 @@ describe("picoClawAdapter", () => {
     expect(config.agents.defaults.temperature).toBe(1);
   });
 
+  it("emits Discord channel config and token binding when Discord is declared", async () => {
+    const discordNode: ResolvedAgentNode = {
+      ...node,
+      surfaces: {
+        discord: {
+          access: {
+            channels: [],
+            guilds: [],
+            mode: "allowlist",
+            users: ["987654321098765432"]
+          },
+          botTokenSecret: "TEAM_DISCORD_TOKEN"
+        }
+      }
+    };
+    const compiled = await picoClawAdapter.compileAgent(discordNode);
+    const config = JSON.parse(compiled.files.find((file) => file.path === "config.json")!.content);
+    const [target] = await picoClawAdapter.createContainerTargets?.([
+      {
+        emittedFiles: compiled.files,
+        id: "agent:assistant",
+        kind: "agent",
+        slug: "assistant",
+        value: discordNode
+      }
+    ]) ?? [];
+
+    expect(config.channels.discord).toEqual({
+      allow_from: ["987654321098765432"],
+      enabled: true,
+      mention_only: true
+    });
+    expect(target?.configEnvBindings).toEqual([
+      {
+        envName: "TEAM_DISCORD_TOKEN",
+        jsonPath: "channels.discord.token"
+      }
+    ]);
+  });
+
+  it("emits open Discord access without user allowlists", async () => {
+    const discordNode: ResolvedAgentNode = {
+      ...node,
+      surfaces: {
+        discord: {
+          access: {
+            channels: [],
+            guilds: [],
+            mode: "open",
+            users: []
+          },
+          botTokenSecret: "TEAM_DISCORD_TOKEN"
+        }
+      }
+    };
+    const compiled = await picoClawAdapter.compileAgent(discordNode);
+    const config = JSON.parse(compiled.files.find((file) => file.path === "config.json")!.content);
+
+    expect(config.channels.discord).toEqual({
+      enabled: true,
+      mention_only: true
+    });
+  });
+
   it("emits MCP servers as named map", async () => {
     const result = await picoClawAdapter.compileAgent(node);
     const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
@@ -318,5 +382,35 @@ describe("picoClawAdapter", () => {
         message: "PicoClaw runtime option restrict_to_workspace must be a boolean"
       }
     ]);
+  });
+
+  it("rejects Discord pairing mode and guild or channel allowlists", () => {
+    expect(() =>
+      picoClawAdapter.assertSupportedSurfaces?.({
+        discord: {
+          access: {
+            channels: [],
+            guilds: [],
+            mode: "pairing",
+            users: []
+          },
+          botTokenSecret: "DISCORD_BOT_TOKEN"
+        }
+      })
+    ).toThrow(/does not support pairing access/);
+
+    expect(() =>
+      picoClawAdapter.assertSupportedSurfaces?.({
+        discord: {
+          access: {
+            channels: ["555555555555555555"],
+            guilds: ["123456789012345678"],
+            mode: "allowlist",
+            users: ["987654321098765432"]
+          },
+          botTokenSecret: "DISCORD_BOT_TOKEN"
+        }
+      })
+    ).toThrow(/only supports user allowlists/);
   });
 });

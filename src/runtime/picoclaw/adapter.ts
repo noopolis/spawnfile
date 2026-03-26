@@ -1,4 +1,7 @@
-import type { ResolvedAgentNode } from "../../compiler/types.js";
+import type {
+  ResolvedAgentNode,
+  ResolvedAgentSurfaces
+} from "../../compiler/types.js";
 import {
   listEffectiveExecutionModelTargets,
   listExecutionModelSecretNames,
@@ -56,6 +59,18 @@ const createProviderSecretPath = (provider: string): string =>
   createSecretPath(formatProviderEnvName(provider));
 
 const createSecretPath = (envName: string): string => `secrets/${envName}`;
+
+const buildPicoClawDiscordConfig = (
+  surfaces: ResolvedAgentSurfaces
+): Record<string, unknown> => {
+  const access = surfaces.discord?.access;
+
+  return {
+    ...(access?.mode === "allowlist" ? { allow_from: access.users } : {}),
+    enabled: true,
+    mention_only: true
+  };
+};
 
 const buildModelList = (node: ResolvedAgentNode): Array<Record<string, unknown>> => {
   return listEffectiveExecutionModelTargets(node.execution).map((target) => {
@@ -131,6 +146,12 @@ const buildPicoClawConfig = (node: ResolvedAgentNode): string => {
     model_list: buildModelList(node)
   };
 
+  if (node.surfaces?.discord) {
+    config.channels = {
+      discord: buildPicoClawDiscordConfig(node.surfaces)
+    };
+  }
+
   if (node.mcpServers.length > 0) {
     config.tools = {
       mcp: {
@@ -152,8 +173,17 @@ const createContainerTargets = async (
       envName: secretName,
       relativePath: createSecretPath(secretName)
     }));
+    const configEnvBindings = agent.surfaces?.discord
+      ? [
+          {
+            envName: agent.surfaces.discord.botTokenSecret,
+            jsonPath: "channels.discord.token"
+          }
+        ]
+      : undefined;
 
     return {
+      configEnvBindings,
       envFiles,
       files: input.emittedFiles,
       id: `${input.kind}-${input.slug}`,
@@ -200,6 +230,26 @@ export const picoClawAdapter: RuntimeAdapter = {
       "validation_error",
       `PicoClaw does not support model auth method ${target.auth.method} for provider ${target.provider}`
     );
+  },
+  assertSupportedSurfaces(surfaces) {
+    const access = surfaces?.discord?.access;
+    if (!access) {
+      return;
+    }
+
+    if (access.mode === "pairing") {
+      throw new SpawnfileError(
+        "validation_error",
+        "PicoClaw Discord does not support pairing access"
+      );
+    }
+
+    if (access.guilds.length > 0 || access.channels.length > 0) {
+      throw new SpawnfileError(
+        "validation_error",
+        "PicoClaw Discord only supports user allowlists in Spawnfile v0.1"
+      );
+    }
   },
   container: {
     configFileName: "config.json",

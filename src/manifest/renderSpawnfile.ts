@@ -3,11 +3,14 @@ import YAML from "yaml";
 import type {
   AgentManifest,
   DocsBlock,
+  DiscordSurfaceAccess,
+  DiscordSurface,
   ExecutionBlock,
   ModelEntryAuth,
   ModelTarget,
   RuntimeBinding,
   SharedSurface,
+  SurfacesBlock,
   TeamManifest
 } from "./schemas.js";
 
@@ -42,6 +45,34 @@ const orderDocs = (docs: DocsBlock | undefined): DocsBlock | undefined => {
     ["heartbeat", docs.heartbeat],
     ["extras", docs.extras]
   ]) as unknown as DocsBlock;
+};
+
+const orderDiscordSurface = (
+  surface: DiscordSurface | undefined
+): DiscordSurface | undefined => {
+  if (!surface) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["access", orderDiscordSurfaceAccess(surface.access)],
+    ["bot_token_secret", surface.bot_token_secret]
+  ]) as unknown as DiscordSurface;
+};
+
+const orderDiscordSurfaceAccess = (
+  access: DiscordSurfaceAccess | undefined
+): DiscordSurfaceAccess | undefined => {
+  if (!access) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["mode", access.mode],
+    ["users", access.users],
+    ["guilds", access.guilds],
+    ["channels", access.channels]
+  ]) as unknown as DiscordSurfaceAccess;
 };
 
 const orderModelEntryAuth = (
@@ -108,6 +139,18 @@ const orderSharedSurface = (
   ]) as unknown as SharedSurface;
 };
 
+const orderSurfaces = (
+  surfaces: SurfacesBlock | undefined
+): SurfacesBlock | undefined => {
+  if (!surfaces) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["discord", orderDiscordSurface(surfaces.discord)]
+  ]) as unknown as SurfacesBlock;
+};
+
 const renderSections = (sections: Record<string, unknown>[]): string =>
   sections
     .filter(hasEntries)
@@ -123,6 +166,7 @@ const orderAgentManifestSections = (manifest: AgentManifest): Record<string, unk
   withDefinedEntries([["runtime", orderRuntimeBinding(manifest.runtime)]]),
   withDefinedEntries([["execution", orderExecution(manifest.execution)]]),
   withDefinedEntries([["docs", orderDocs(manifest.docs)]]),
+  withDefinedEntries([["surfaces", orderSurfaces(manifest.surfaces)]]),
   withDefinedEntries([
     ["skills", manifest.skills],
     ["mcp_servers", manifest.mcp_servers],

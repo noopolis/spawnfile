@@ -17,8 +17,14 @@ import {
 } from "../manifest/index.js";
 import { assertRuntimeCanCompile } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
-
-import { assignStableNodeIds, stableStringify } from "./helpers.js";
+import {
+  getAgentFingerprint,
+  getMcpNames,
+  getTeamFingerprint,
+  validateEffectiveSkillRequirements
+} from "./compilePlanHelpers.js";
+import { resolveAgentSurfaces } from "./discordSurface.js";
+import { assignStableNodeIds } from "./helpers.js";
 import {
   loadResolvedDocuments,
   mergeResolvedSkills,
@@ -26,6 +32,7 @@ import {
   mergeSharedSurface
 } from "./surfaces.js";
 import { assertRuntimeSupportsExecutionModelAuth } from "./modelAuth.js";
+import { assertRuntimeSupportsAgentSurfaces } from "./surfaceSupport.js";
 import {
   CompilePlan,
   CompilePlanEdge,
@@ -52,56 +59,6 @@ type InternalNode = {
   source: string;
   value: ResolvedAgentNode | ResolvedTeamNode;
 };
-
-const getMcpNames = (servers: Array<{ name: string }>): Set<string> =>
-  new Set(servers.map((server) => server.name));
-
-const validateEffectiveSkillRequirements = (
-  nodeName: string,
-  mcpNames: Set<string>,
-  skills: Array<{ name: string; requiresMcp: string[] }>
-): void => {
-  for (const skill of skills) {
-    for (const mcpName of skill.requiresMcp) {
-      if (!mcpNames.has(mcpName)) {
-        throw new SpawnfileError(
-          "validation_error",
-          `Skill ${skill.name} on ${nodeName} requires undeclared MCP server: ${mcpName}`
-        );
-      }
-    }
-  }
-};
-
-const getAgentFingerprint = (node: ResolvedAgentNode): string =>
-  stableStringify({
-    env: node.env,
-    execution: node.execution,
-    mcpServers: node.mcpServers,
-    runtime: node.runtime,
-    secrets: node.secrets,
-    skills: node.skills.map((skill) => ({
-      name: skill.name,
-      ref: skill.ref,
-      requiresMcp: skill.requiresMcp
-    }))
-  });
-
-const getTeamFingerprint = (node: ResolvedTeamNode): string =>
-  stableStringify({
-    members: node.members,
-    structure: node.structure,
-    shared: {
-      env: node.shared.env,
-      mcpServers: node.shared.mcpServers,
-      secrets: node.shared.secrets,
-      skills: node.shared.skills.map((skill) => ({
-        name: skill.name,
-        ref: skill.ref,
-        requiresMcp: skill.requiresMcp
-      }))
-    }
-  });
 
 const resolveRuntime = async (
   manifest: AgentManifest,
@@ -228,8 +185,14 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       secrets: sharedSurface.secrets,
       skills,
       source: canonicalPath,
+      surfaces: resolveAgentSurfaces(loadedManifest.manifest.surfaces),
       subagents: []
     };
+    assertRuntimeSupportsAgentSurfaces(
+      runtime.name,
+      candidate.surfaces,
+      loadedManifest.manifest.name
+    );
 
     const fingerprint = getAgentFingerprint(candidate);
     const existingFingerprint = fingerprintCache.get(canonicalPath);

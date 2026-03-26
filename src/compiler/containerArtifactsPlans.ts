@@ -18,6 +18,7 @@ import {
   listExecutionModelSecretNames,
   resolveExecutionModelAuthMethods
 } from "./modelEnv.js";
+import { listAgentSurfaceSecretNames } from "./discordSurface.js";
 import type { CompilePlan } from "./types.js";
 import type {
   CompiledNodeArtifact,
@@ -111,7 +112,7 @@ export const createEnvVariableMap = (
     name: string,
     required: boolean,
     description: string,
-    category: "model" | "project" | "runtime"
+    category: "model" | "project" | "runtime" | "surface"
   ): void => {
     const current = variables.get(name);
     if (!current) {
@@ -143,6 +144,15 @@ export const createEnvVariableMap = (
 
       for (const secretName of listExecutionModelSecretNames(node.value.execution)) {
         register(secretName, true, `Model provider auth for ${secretName}`, "model");
+      }
+
+      for (const secretName of listAgentSurfaceSecretNames(node.value.surfaces)) {
+        register(
+          secretName,
+          true,
+          "Discord bot token for declared Discord surfaces",
+          "surface"
+        );
       }
       continue;
     }

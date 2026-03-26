@@ -163,7 +163,7 @@ describe("syncProjectAuth", () => {
       })
     ).rejects.toMatchObject({
       code: "validation_error",
-      message: "Missing required API-key auth env: OPENAI_API_KEY"
+      message: "Missing required auth env: OPENAI_API_KEY"
     });
   });
 
@@ -203,6 +203,36 @@ describe("syncProjectAuth", () => {
 
     expect(profile.env).toEqual({
       CUSTOM_API_KEY: "custom-token"
+    });
+  });
+
+  it("captures Discord surface env names even without model API-key auth", async () => {
+    const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
+    const envDirectory = await createTempDirectory("spawnfile-env-home-");
+    process.env.SPAWNFILE_HOME = spawnfileHome;
+    await writeUtf8File(path.join(envDirectory, ".env"), "DISCORD_BOT_TOKEN=discord-token\n");
+
+    const projectDirectory = await createAgentProject([
+      'spawnfile_version: "0.1"',
+      "kind: agent",
+      "name: auth-sync",
+      "",
+      "runtime: openclaw",
+      "",
+      "surfaces:",
+      "  discord: {}",
+      "",
+      "docs:",
+      "  system: AGENTS.md"
+    ]);
+
+    const profile = await syncProjectAuth(projectDirectory, {
+      envFilePath: path.join(envDirectory, ".env"),
+      profileName: "dev"
+    });
+
+    expect(profile.env).toEqual({
+      DISCORD_BOT_TOKEN: "discord-token"
     });
   });
 

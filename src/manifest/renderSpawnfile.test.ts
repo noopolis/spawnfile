@@ -128,6 +128,58 @@ describe("renderSpawnfile", () => {
     expect(source).toContain("system: AGENTS.md\n\nsubagents:");
   });
 
+  it("renders surfaces after docs in canonical order", () => {
+    const source = renderSpawnfile({
+      docs: {
+        system: "AGENTS.md"
+      },
+      execution: {
+        model: {
+          primary: {
+            name: "claude-opus-4-6",
+            provider: "anthropic"
+          }
+        }
+      },
+      kind: "agent",
+      name: "discord-agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        discord: {
+          access: {
+            mode: "allowlist",
+            users: ["987654321098765432"],
+            guilds: ["123456789012345678"],
+            channels: ["555555555555555555"]
+          },
+          bot_token_secret: "TEAM_DISCORD_TOKEN"
+        }
+      }
+    });
+
+    const docsIndex = source.indexOf("docs:");
+    const surfacesIndex = source.indexOf("surfaces:");
+
+    expect(docsIndex).toBeGreaterThanOrEqual(0);
+    expect(surfacesIndex).toBeGreaterThan(docsIndex);
+    expect(source).toContain(
+      [
+        "surfaces:",
+        "  discord:",
+        "    access:",
+        "      mode: allowlist",
+        "      users:",
+        "        - \"987654321098765432\"",
+        "      guilds:",
+        "        - \"123456789012345678\"",
+        "      channels:",
+        "        - \"555555555555555555\"",
+        "    bot_token_secret: TEAM_DISCORD_TOKEN"
+      ].join("\n")
+    );
+  });
+
   it("renders inline model auth and endpoint fields in canonical order", () => {
     const source = renderSpawnfile({
       execution: {

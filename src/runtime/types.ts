@@ -1,6 +1,7 @@
 import type {
   EffectiveModelTarget,
   ResolvedAgentNode,
+  ResolvedAgentSurfaces,
   ResolvedTeamNode
 } from "../compiler/types.js";
 import type { ResolvedAuthProfile } from "../auth/index.js";
@@ -91,6 +92,7 @@ export interface AdapterCompileResult {
 
 export interface RuntimeAdapter {
   assertSupportedModelTarget(target: EffectiveModelTarget): void;
+  assertSupportedSurfaces?(surfaces: ResolvedAgentSurfaces | undefined): void;
   container: RuntimeContainerMeta;
   compileAgent(node: ResolvedAgentNode): Promise<AdapterCompileResult>;
   compileTeam?(node: ResolvedTeamNode): Promise<AdapterCompileResult>;

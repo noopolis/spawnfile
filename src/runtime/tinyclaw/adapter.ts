@@ -17,6 +17,48 @@ import { prepareTinyClawRuntimeAuth } from "./runAuth.js";
 import { createTinyClawAgentScaffold } from "./scaffold.js";
 
 const WORKSPACE_PLACEHOLDER = "<workspace-path>";
+const TINYCLAW_START_SCRIPT = `
+set -euo pipefail
+PIDS=()
+node <runtime-root>/packages/main/dist/index.js &
+PIDS+=("$!")
+sleep 1
+while IFS= read -r channel; do
+  case "$channel" in
+    discord)
+      node <runtime-root>/packages/channels/dist/discord.js &
+      PIDS+=("$!")
+      ;;
+  esac
+done < <(python3 - <<'PY'
+import json
+import os
+
+settings_path = os.path.join(os.environ["TINYAGI_HOME"], "settings.json")
+try:
+    with open(settings_path, encoding="utf-8") as handle:
+        settings = json.load(handle)
+except FileNotFoundError:
+    raise SystemExit(0)
+
+for channel in settings.get("channels", {}).get("enabled", []):
+    print(channel)
+PY
+)
+terminate_children() {
+  for pid in "\${PIDS[@]:-}"; do
+    kill "$pid" 2>/dev/null || true
+  done
+}
+trap terminate_children INT TERM EXIT
+status=0
+for pid in "\${PIDS[@]}"; do
+  if ! wait "$pid"; then
+    status=1
+  fi
+done
+exit "$status"
+`.trim();
 
 const buildTinyClawSettings = (node: ResolvedAgentNode): string => {
   const [primary] = listEffectiveExecutionModelTargets(node.execution);
@@ -27,13 +69,16 @@ const buildTinyClawSettings = (node: ResolvedAgentNode): string => {
     working_directory: `${WORKSPACE_PLACEHOLDER}/${node.name}`
   };
 
+  const enabledChannels = node.surfaces?.discord ? ["discord"] : [];
+
   const config: Record<string, unknown> = {
     workspace: {
       path: WORKSPACE_PLACEHOLDER,
       name: "workspace"
     },
     channels: {
-      enabled: []
+      enabled: enabledChannels,
+      ...(node.surfaces?.discord ? { discord: {} } : {})
     },
     agents: {
       [node.name]: agentEntry
@@ -61,6 +106,42 @@ const parseJsonFile = (
   return JSON.parse(file.content) as Record<string, unknown>;
 };
 
+const resolveDiscordTokenBinding = (
+  inputs: ContainerTargetInput[]
+): ContainerTarget["configEnvBindings"] => {
+  const envNames = [
+    ...new Set(
+      inputs.flatMap((input) => {
+        if (input.kind !== "agent" || input.value.kind !== "agent") {
+          return [];
+        }
+
+        return input.value.surfaces?.discord
+          ? [input.value.surfaces.discord.botTokenSecret]
+          : [];
+      })
+    )
+  ];
+
+  if (envNames.length === 0) {
+    return undefined;
+  }
+
+  if (envNames.length > 1) {
+    throw new SpawnfileError(
+      "validation_error",
+      `TinyClaw runtime target declares conflicting Discord bot token secrets: ${envNames.join(", ")}`
+    );
+  }
+
+  return [
+    {
+      envName: envNames[0],
+      jsonPath: "channels.discord.bot_token"
+    }
+  ];
+};
+
 const mergeTinyClawTargets = async (
   inputs: ContainerTargetInput[]
 ): Promise<ContainerTarget[]> => {
@@ -71,6 +152,8 @@ const mergeTinyClawTargets = async (
 
   const mergedAgents: Record<string, unknown> = {};
   const mergedTeams: Record<string, unknown> = {};
+  const enabledChannels = new Set<string>();
+  let hasDiscordChannel = false;
   const workspaceFiles = agentInputs.flatMap((input) =>
     input.emittedFiles.filter((file) => file.path !== "settings.json")
   );
@@ -79,11 +162,20 @@ const mergeTinyClawTargets = async (
 
   for (const input of agentInputs) {
     const settings = parseJsonFile(input, "settings.json");
+    const channels = (settings.channels as Record<string, unknown> | undefined) ?? {};
     mergedBase ??= settings;
     Object.assign(
       mergedAgents,
       (settings.agents as Record<string, unknown> | undefined) ?? {}
     );
+
+    for (const channel of ((channels.enabled as string[] | undefined) ?? []).filter(Boolean)) {
+      enabledChannels.add(channel);
+    }
+
+    if (channels.discord) {
+      hasDiscordChannel = true;
+    }
   }
 
   for (const input of inputs.filter((entry) => entry.kind === "team")) {
@@ -102,6 +194,11 @@ const mergeTinyClawTargets = async (
     ...(mergedBase ?? {}),
     agents: mergedAgents,
     ...(Object.keys(mergedTeams).length > 0 ? { teams: mergedTeams } : {}),
+    channels: {
+      ...(((mergedBase?.channels as Record<string, unknown> | undefined) ?? {})),
+      ...(hasDiscordChannel ? { discord: {} } : {}),
+      enabled: [...enabledChannels].sort()
+    },
     workspace: {
       ...(((mergedBase?.workspace as Record<string, unknown> | undefined) ?? {})),
       name: ((mergedBase?.workspace as Record<string, unknown> | undefined)?.name as string | undefined) ?? "workspace",
@@ -118,6 +215,7 @@ const mergeTinyClawTargets = async (
           path: "settings.json"
         }
       ],
+      configEnvBindings: resolveDiscordTokenBinding(agentInputs),
       id: "tinyclaw-runtime",
       sourceIds: agentInputs.map((input) => input.id)
     }
@@ -150,6 +248,30 @@ export const tinyClawAdapter: RuntimeAdapter = {
       `TinyClaw does not support model auth method ${target.auth.method} for provider ${target.provider}`
     );
   },
+  assertSupportedSurfaces(surfaces) {
+    const access = surfaces?.discord?.access;
+    if (!access) {
+      return;
+    }
+
+    if (access.mode !== "pairing") {
+      throw new SpawnfileError(
+        "validation_error",
+        "TinyClaw Discord only supports pairing access in Spawnfile v0.1"
+      );
+    }
+
+    if (
+      access.users.length > 0 ||
+      access.guilds.length > 0 ||
+      access.channels.length > 0
+    ) {
+      throw new SpawnfileError(
+        "validation_error",
+        "TinyClaw Discord does not support declarative users, guilds, or channels in Spawnfile v0.1"
+      );
+    }
+  },
   container: {
     configFileName: "settings.json",
     configEnvBindings: [
@@ -172,7 +294,7 @@ export const tinyClawAdapter: RuntimeAdapter = {
     port: 3777,
     portEnv: "TINYAGI_API_PORT",
     standaloneBaseImage: "node:22-bookworm-slim",
-    startCommand: ["node", "<runtime-root>/packages/main/dist/index.js"],
+    startCommand: ["bash", "-lc", TINYCLAW_START_SCRIPT],
     systemDeps: ["bash", "ca-certificates", "curl", "g++", "make", "python3", "tar"]
   },
   async compileAgent(node): Promise<AdapterCompileResult> {

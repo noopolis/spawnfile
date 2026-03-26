@@ -170,6 +170,7 @@ The compiler should emit a `.env.example` file listing all required and optional
 
 - secrets declared in manifests (e.g. `SEARCH_API_KEY`)
 - model auth variables for providers that still use `api_key` auth (e.g. `ANTHROPIC_API_KEY`)
+- surface auth variables for declared communication surfaces (e.g. `DISCORD_BOT_TOKEN`)
 - runtime auth variables (e.g. `OPENCLAW_GATEWAY_TOKEN`)
 - any variables the entrypoint or runtime expects
 
@@ -187,6 +188,7 @@ Model auth intent itself is declared on each source model target under `executio
 
 - which provider/runtime instances still require `api_key` env at run time
 - which provider/runtime instances expect imported CLI credential stores such as `claude-code` or `codex`
+- which declared communication surfaces require env-backed secrets at run time
 
 ---
 

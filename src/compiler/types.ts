@@ -20,6 +20,20 @@ export interface ResolvedRuntime {
   options: Record<string, unknown>;
 }
 
+export interface ResolvedDiscordSurface {
+  access?: {
+    channels: string[];
+    guilds: string[];
+    mode: "allowlist" | "open" | "pairing";
+    users: string[];
+  };
+  botTokenSecret: string;
+}
+
+export interface ResolvedAgentSurfaces {
+  discord?: ResolvedDiscordSurface;
+}
+
 export interface EffectiveModelTarget {
   auth: {
     key?: string;
@@ -55,6 +69,7 @@ export interface ResolvedAgentNode {
   secrets: Secret[];
   skills: ResolvedSkill[];
   source: string;
+  surfaces?: ResolvedAgentSurfaces;
   subagents: ResolvedSubagentRef[];
 }
 

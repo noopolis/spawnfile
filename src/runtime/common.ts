@@ -89,6 +89,10 @@ export const createAgentCapabilities = (
     );
   }
 
+  if (node.surfaces?.discord) {
+    capabilities.push(createCapability("surfaces.discord", "supported"));
+  }
+
   if (node.subagents.length > 0) {
     capabilities.push(
       createCapability("agent.subagents", options.subagentOutcome ?? "supported")

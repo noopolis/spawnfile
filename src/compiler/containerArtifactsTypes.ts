@@ -9,7 +9,7 @@ import type { ModelAuthMethod } from "../shared/index.js";
 import type { ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 
 export interface ContainerEnvVariable {
-  categories: Array<"model" | "project" | "runtime">;
+  categories: Array<"model" | "project" | "runtime" | "surface">;
   description: string;
   name: string;
   required: boolean;

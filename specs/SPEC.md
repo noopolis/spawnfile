@@ -279,7 +279,40 @@ Rules:
 - Compilers MUST reject runtime/auth combinations that the selected runtime adapter does not support.
 - If exact semantics cannot be preserved, the compiler MUST report `degraded` or `unsupported` according to the compile policy.
 
-### 2.6 Environment and Secrets
+### 2.6 Communication Surfaces
+
+Spawnfile v0.1 standardizes one initial communication surface on agent manifests:
+
+```yaml
+surfaces:
+  discord:
+    access:
+      users:
+        - "987654321098765432"
+    bot_token_secret: DISCORD_BOT_TOKEN
+```
+
+Rules:
+
+- `surfaces` is OPTIONAL.
+- If `surfaces` is present, it MUST declare at least one surface.
+- `surfaces.discord` is OPTIONAL.
+- `surfaces.discord.access` is OPTIONAL.
+- `surfaces.discord.access.mode` MAY be `pairing`, `allowlist`, or `open`.
+- `surfaces.discord.access.users`, `guilds`, and `channels` are OPTIONAL allowlist identifiers.
+- If `surfaces.discord.access.mode` is omitted and any of `users`, `guilds`, or `channels` are present, the effective mode is `allowlist`.
+- `surfaces.discord.access.users`, `guilds`, and `channels` MUST only be used with `allowlist` access.
+- `surfaces.discord.access.mode: allowlist` MUST declare at least one of `users`, `guilds`, or `channels`.
+- `surfaces.discord.bot_token_secret` is OPTIONAL.
+- If `surfaces.discord.bot_token_secret` is omitted, the effective secret name defaults to `DISCORD_BOT_TOKEN`.
+- Declared surface auth names participate in the same run-time env validation path as other env-backed auth.
+- Team manifests MUST NOT declare `surfaces` in v0.1.
+- Subagents do not implicitly inherit parent `surfaces`.
+- A conforming compiler MUST validate runtime support for declared surface access and fail early on unsupported runtime/surface combinations.
+
+This is intentionally a narrow first surface. Additional communication surfaces remain adapter-defined until standardized.
+
+### 2.7 Environment and Secrets
 
 `env` is an OPTIONAL flat key-value map of non-secret environment values. Values MUST be strings.
 
@@ -355,6 +388,13 @@ execution:
     isolation: isolated
   sandbox:
     mode: workspace
+
+surfaces:
+  discord:
+    access:
+      users:
+        - "987654321098765432"
+    bot_token_secret: DISCORD_BOT_TOKEN
 
 env:
   LOG_LEVEL: info
@@ -598,6 +638,7 @@ The team doc SHOULD reference member slot `id` values explicitly so agents can i
 The team doc stays local to the team manifest. It is NOT automatically propagated to member agents. Adapters that support team context injection MAY make the team doc available to members and SHOULD report the capability outcome.
 
 Team manifests MUST NOT declare `execution`. Model, sandbox, and workspace intent apply to agents and subagents, not to teams as organizational nodes.
+Team manifests MUST NOT declare `surfaces`. Communication surfaces belong to concrete agent manifests in v0.1.
 
 ### 4.7 Team Lowering Contract
 

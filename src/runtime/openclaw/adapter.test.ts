@@ -85,6 +85,143 @@ describe("openClawAdapter", () => {
     );
   });
 
+  it("emits Discord channel config when Discord is declared", async () => {
+    const result = await openClawAdapter.compileAgent({
+      ...createNode(),
+      surfaces: {
+        discord: {
+          access: {
+            channels: ["555555555555555555"],
+            guilds: ["123456789012345678"],
+            mode: "allowlist",
+            users: ["987654321098765432"]
+          },
+          botTokenSecret: "DISCORD_BOT_TOKEN"
+        }
+      }
+    });
+
+    const config = JSON.parse(result.files.find((file) => file.path === "openclaw.json")!.content);
+    expect(config.channels.discord).toEqual({
+      allowFrom: ["987654321098765432"],
+      dmPolicy: "allowlist",
+      enabled: true,
+      groupPolicy: "allowlist",
+      guilds: {
+        "123456789012345678": {
+          channels: {
+            "555555555555555555": {
+              allow: true
+            }
+          },
+          users: ["987654321098765432"]
+        }
+      }
+    });
+    expect(
+      result.capabilities.find((capability) => capability.key === "surfaces.discord")?.outcome
+    ).toBe("supported");
+  });
+
+  it("emits open Discord access without allowlists", async () => {
+    const result = await openClawAdapter.compileAgent({
+      ...createNode(),
+      surfaces: {
+        discord: {
+          access: {
+            channels: [],
+            guilds: [],
+            mode: "open",
+            users: []
+          },
+          botTokenSecret: "DISCORD_BOT_TOKEN"
+        }
+      }
+    });
+
+    const config = JSON.parse(result.files.find((file) => file.path === "openclaw.json")!.content);
+    expect(config.channels.discord).toEqual({
+      allowFrom: ["*"],
+      dmPolicy: "open",
+      enabled: true,
+      groupPolicy: "open"
+    });
+  });
+
+  it("emits pairing-only Discord access without guild routing", async () => {
+    const result = await openClawAdapter.compileAgent({
+      ...createNode(),
+      surfaces: {
+        discord: {
+          access: {
+            channels: [],
+            guilds: [],
+            mode: "pairing",
+            users: []
+          },
+          botTokenSecret: "DISCORD_BOT_TOKEN"
+        }
+      }
+    });
+
+    const config = JSON.parse(result.files.find((file) => file.path === "openclaw.json")!.content);
+    expect(config.channels.discord).toEqual({
+      dmPolicy: "pairing",
+      enabled: true
+    });
+  });
+
+  it("emits Discord DM allowlist access without guild access", async () => {
+    const result = await openClawAdapter.compileAgent({
+      ...createNode(),
+      surfaces: {
+        discord: {
+          access: {
+            channels: [],
+            guilds: [],
+            mode: "allowlist",
+            users: ["987654321098765432"]
+          },
+          botTokenSecret: "DISCORD_BOT_TOKEN"
+        }
+      }
+    });
+
+    const config = JSON.parse(result.files.find((file) => file.path === "openclaw.json")!.content);
+    expect(config.channels.discord).toEqual({
+      allowFrom: ["987654321098765432"],
+      dmPolicy: "allowlist",
+      enabled: true,
+      groupPolicy: "disabled"
+    });
+  });
+
+  it("emits Discord guild allowlist access without DM allowlist", async () => {
+    const result = await openClawAdapter.compileAgent({
+      ...createNode(),
+      surfaces: {
+        discord: {
+          access: {
+            channels: [],
+            guilds: ["123456789012345678"],
+            mode: "allowlist",
+            users: []
+          },
+          botTokenSecret: "DISCORD_BOT_TOKEN"
+        }
+      }
+    });
+
+    const config = JSON.parse(result.files.find((file) => file.path === "openclaw.json")!.content);
+    expect(config.channels.discord).toEqual({
+      enabled: true,
+      groupPolicy: "allowlist",
+      guilds: {
+        "123456789012345678": {}
+      }
+    });
+  });
+
   it("emits a generated provider catalog entry for custom endpoints", async () => {
     const customResult = await openClawAdapter.compileAgent({
       ...createNode(),
@@ -157,5 +294,21 @@ describe("openClawAdapter", () => {
         message: "OpenClaw runtime option profile must be a string"
       }
     ]);
+  });
+
+  it("rejects ambiguous Discord channel allowlists without exactly one guild", () => {
+    expect(() =>
+      openClawAdapter.assertSupportedSurfaces?.({
+        discord: {
+          access: {
+            channels: ["555555555555555555"],
+            guilds: ["123", "456"],
+            mode: "allowlist",
+            users: []
+          },
+          botTokenSecret: "DISCORD_BOT_TOKEN"
+        }
+      })
+    ).toThrow(/exactly one guild id/);
   });
 });

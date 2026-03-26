@@ -4,7 +4,7 @@ This document is the implementation companion to `SPEC.md`.
 
 `SPEC.md` defines the canonical source format. This file defines the reference compiler shape for v0.1 so the project can move into implementation.
 
-Related specs: `CONTAINERS.md` (container compilation), `RUNTIMES.md` (runtime registry and version pinning).
+Related specs: `CONTAINERS.md` (container compilation), `SURFACES.md` (portable communication surfaces), `RUNTIMES.md` (runtime registry and version pinning).
 
 ---
 
@@ -134,6 +134,13 @@ execution:
       name: claude-sonnet-4-5
       auth:
         method: api_key
+surfaces:
+  discord:
+    access:
+      mode: allowlist
+      users:
+        - "987654321098765432"
+    botTokenSecret: DISCORD_BOT_TOKEN
 docs: {}
 skills: []
 mcp_servers: []

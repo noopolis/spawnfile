@@ -55,6 +55,35 @@ describe("createContainerArtifacts", () => {
     );
   });
 
+  it("renders Discord surface secrets when an agent declares Discord", async () => {
+    const node = createAgentNode("openclaw", {
+      surfaces: {
+        discord: {
+          botTokenSecret: "DISCORD_BOT_TOKEN"
+        }
+      }
+    });
+    const compiled = await openClawAdapter.compileAgent(node);
+
+    const result = await createContainerArtifacts(createPlan(["openclaw"]), [
+      {
+        emittedFiles: compiled.files,
+        kind: "agent",
+        runtimeName: "openclaw",
+        slug: "assistant",
+        value: node
+      }
+    ]);
+
+    expect(result.report.secrets_required).toEqual([
+      "DISCORD_BOT_TOKEN",
+      "OPENCLAW_GATEWAY_TOKEN"
+    ]);
+    expect(result.files.find((file) => file.path === ".env.example")?.content).toContain(
+      "DISCORD_BOT_TOKEN="
+    );
+  });
+
   it("derives provider env vars and promotes duplicate secrets to required", async () => {
     const firstNode = createAgentNode("openclaw", {
       execution: {
@@ -200,6 +229,11 @@ describe("createContainerArtifacts", () => {
 
     const dockerfile = result.files.find((file) => file.path === "Dockerfile")?.content ?? "";
     const entrypoint = result.files.find((file) => file.path === "entrypoint.sh")?.content ?? "";
+    const stateKeepFile = result.files.find(
+      (file) =>
+        file.path ===
+        "container/rootfs/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/agents/main/sessions/.keep"
+    );
 
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain("USER root");
@@ -210,6 +244,7 @@ describe("createContainerArtifacts", () => {
     expect(entrypoint).toContain(
       "'/usr/local/lib/node_modules/openclaw/openclaw.mjs'"
     );
+    expect(stateKeepFile?.content).toBe("");
   });
 
   it("does not hard-require model auth env vars in the generated entrypoint", async () => {

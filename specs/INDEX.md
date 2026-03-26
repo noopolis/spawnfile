@@ -13,6 +13,7 @@ These are the source of truth. Implementation in `src/` must stay aligned with t
 | [SPEC.md](SPEC.md) | v0.1 draft | Canonical source format — manifest schema, portable surfaces, team schema, policy, CLI, env substitution |
 | [COMPILER.md](COMPILER.md) | v0.1 draft | Compiler pipeline, graph resolution, adapter contract, output layout, compile report |
 | [CONTAINERS.md](CONTAINERS.md) | v0.1 draft | Container compilation — Dockerfile and entrypoint generation, run-time auth wiring, adapter container contract |
+| [SURFACES.md](SURFACES.md) | v0.1 draft | Communication surfaces — portable Discord surface contract, runtime support matrix, and lowering notes |
 | [RUNTIMES.md](RUNTIMES.md) | v0.1 draft | Runtime registry model — version pinning, status tracking, adapter lifecycle |
 
 ## Research
@@ -32,6 +33,7 @@ Working notes and analysis. Informative, not normative. These inform spec decisi
 SPEC.md                    ← canonical schema, everything depends on this
   ├── COMPILER.md           ← how to compile what SPEC defines
   │   └── CONTAINERS.md    ← container layer on top of compiler output
+  ├── SURFACES.md          ← portable communication-surface contract and runtime support matrix
   └── RUNTIMES.md          ← which runtimes exist and how they're tracked
 
 research/RUNTIME-NOTES.md  ← informs adapter implementation and RUNTIMES.md

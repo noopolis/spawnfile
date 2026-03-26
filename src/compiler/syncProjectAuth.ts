@@ -10,6 +10,7 @@ import { readUtf8File } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { buildCompilePlan } from "./buildCompilePlan.js";
+import { listAgentSurfaceSecretNames } from "./discordSurface.js";
 import {
   listExecutionModelSecretNames,
   resolveExecutionModelAuthMethods
@@ -22,7 +23,7 @@ export interface SyncProjectAuthOptions {
   profileName: string;
 }
 
-const resolveModelAuthRequirements = async (
+const resolveAuthRequirements = async (
   inputPath: string
 ): Promise<{ methods: Set<"api_key" | "claude-code" | "codex" | "none">; envNames: Set<string> }> => {
   const plan = await buildCompilePlan(inputPath);
@@ -41,12 +42,16 @@ const resolveModelAuthRequirements = async (
     for (const envName of listExecutionModelSecretNames(node.value.execution)) {
       envNames.add(envName);
     }
+
+    for (const envName of listAgentSurfaceSecretNames(node.value.surfaces)) {
+      envNames.add(envName);
+    }
   }
 
   return { envNames, methods };
 };
 
-const resolveApiKeyEnv = async (
+const resolveRequiredEnv = async (
   envNames: Set<string>,
   envFilePath?: string
 ): Promise<Record<string, string>> => {
@@ -77,7 +82,7 @@ const resolveApiKeyEnv = async (
   if (missingEnv.length > 0) {
     throw new SpawnfileError(
       "validation_error",
-      `Missing required API-key auth env: ${missingEnv.join(", ")}`
+      `Missing required auth env: ${missingEnv.join(", ")}`
     );
   }
 
@@ -88,7 +93,7 @@ export const syncProjectAuth = async (
   inputPath: string,
   options: SyncProjectAuthOptions
 ) => {
-  const { envNames, methods } = await resolveModelAuthRequirements(inputPath);
+  const { envNames, methods } = await resolveAuthRequirements(inputPath);
 
   await ensureAuthProfile(options.profileName);
 
@@ -100,10 +105,10 @@ export const syncProjectAuth = async (
     await importClaudeCodeAuth(options.profileName, options.claudeCodeDirectory);
   }
 
-  if (methods.has("api_key")) {
+  if (envNames.size > 0) {
     await setAuthProfileEnv(
       options.profileName,
-      await resolveApiKeyEnv(envNames, options.envFilePath)
+      await resolveRequiredEnv(envNames, options.envFilePath)
     );
   }
 

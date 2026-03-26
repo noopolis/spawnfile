@@ -139,6 +139,7 @@ A runtime moves to `deprecated` when:
 Deprecated runtimes stay in the registry for reference but the compiler should warn when targeting them.
 
 Operational discoveries about a pinned runtime version — build quirks, auth surfaces, health endpoints, container boot behavior — should be recorded in `specs/research/RUNTIME-NOTES.md`.
+Current standardized communication-surface support and access-mode differences should be tracked in `SURFACES.md`.
 
 ---
 
@@ -147,4 +148,5 @@ Operational discoveries about a pinned runtime version — build quirks, auth su
 - `SPEC.md` defines the `runtime` field in manifests — the name must match a registered runtime
 - `COMPILER.md` defines how runtime adapters are invoked and how output is grouped by runtime
 - `CONTAINERS.md` defines how runtime container metadata is used to generate Dockerfiles
+- `SURFACES.md` defines the current portable communication-surface contract and runtime support matrix
 - `research/RUNTIME-NOTES.md` contains the per-runtime research that informs adapter design

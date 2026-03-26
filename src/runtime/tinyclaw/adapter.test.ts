@@ -28,7 +28,11 @@ describe("tinyClawAdapter", () => {
       port: 3777,
       portEnv: "TINYAGI_API_PORT",
       standaloneBaseImage: "node:22-bookworm-slim",
-      startCommand: ["node", "<runtime-root>/packages/main/dist/index.js"],
+      startCommand: [
+        "bash",
+        "-lc",
+        expect.stringContaining("node <runtime-root>/packages/channels/dist/discord.js")
+      ],
       systemDeps: ["bash", "ca-certificates", "curl", "g++", "make", "python3", "tar"]
     });
   });
@@ -66,6 +70,47 @@ describe("tinyClawAdapter", () => {
     expect(config.agents.assistant.model).toBe("claude-sonnet-4-5");
     expect(config.workspace).toBeTruthy();
     expect(config.agent).toBeUndefined();
+  });
+
+  it("emits Discord channel settings when Discord is declared", async () => {
+    const node: ResolvedAgentNode = {
+      docs: [],
+      env: {},
+      execution: {
+        model: {
+          primary: {
+            name: "claude-opus-4-6",
+            provider: "anthropic"
+          }
+        }
+      },
+      kind: "agent",
+      mcpServers: [],
+      name: "assistant",
+      policyMode: null,
+      policyOnDegrade: null,
+      runtime: { name: "tinyclaw", options: {} },
+      secrets: [],
+      skills: [],
+      source: "/tmp/Spawnfile",
+      subagents: [],
+      surfaces: {
+        discord: {
+          botTokenSecret: "TEAM_DISCORD_TOKEN"
+        }
+      }
+    };
+
+    const result = await tinyClawAdapter.compileAgent(node);
+    const config = JSON.parse(result.files.find((file) => file.path === "settings.json")!.content);
+
+    expect(config.channels).toEqual({
+      discord: {},
+      enabled: ["discord"]
+    });
+    expect(
+      result.capabilities.find((capability) => capability.key === "surfaces.discord")?.outcome
+    ).toBe("supported");
   });
 
   it("marks MCP as degraded when MCP servers are declared", async () => {
@@ -207,6 +252,129 @@ describe("tinyClawAdapter", () => {
     expect(settings.teams["research-cell"].leader_agent).toBe("assistant");
   });
 
+  it("declares a merged Discord token binding for runtime targets", async () => {
+    const assistantNode: ResolvedAgentNode = {
+      docs: [],
+      env: {},
+      execution: {
+        model: {
+          primary: {
+            name: "claude-sonnet-4-5",
+            provider: "anthropic"
+          }
+        }
+      },
+      kind: "agent",
+      mcpServers: [],
+      name: "assistant",
+      policyMode: null,
+      policyOnDegrade: null,
+      runtime: { name: "tinyclaw", options: {} },
+      secrets: [],
+      skills: [],
+      source: "/tmp/assistant/Spawnfile",
+      subagents: [],
+      surfaces: {
+        discord: {
+          botTokenSecret: "TEAM_DISCORD_TOKEN"
+        }
+      }
+    };
+    const writerNode: ResolvedAgentNode = {
+      ...assistantNode,
+      name: "writer",
+      source: "/tmp/writer/Spawnfile"
+    };
+
+    const assistantFiles = await tinyClawAdapter.compileAgent(assistantNode);
+    const writerFiles = await tinyClawAdapter.compileAgent(writerNode);
+    const targets = await tinyClawAdapter.createContainerTargets?.([
+      {
+        emittedFiles: assistantFiles.files,
+        id: "agent:assistant",
+        kind: "agent",
+        slug: "assistant",
+        value: assistantNode
+      },
+      {
+        emittedFiles: writerFiles.files,
+        id: "agent:writer",
+        kind: "agent",
+        slug: "writer",
+        value: writerNode
+      }
+    ]);
+
+    expect(targets?.[0]?.configEnvBindings).toEqual([
+      {
+        envName: "TEAM_DISCORD_TOKEN",
+        jsonPath: "channels.discord.bot_token"
+      }
+    ]);
+  });
+
+  it("rejects conflicting Discord bot token secrets across merged agents", async () => {
+    const assistantNode: ResolvedAgentNode = {
+      docs: [],
+      env: {},
+      execution: {
+        model: {
+          primary: {
+            name: "claude-sonnet-4-5",
+            provider: "anthropic"
+          }
+        }
+      },
+      kind: "agent",
+      mcpServers: [],
+      name: "assistant",
+      policyMode: null,
+      policyOnDegrade: null,
+      runtime: { name: "tinyclaw", options: {} },
+      secrets: [],
+      skills: [],
+      source: "/tmp/assistant/Spawnfile",
+      subagents: [],
+      surfaces: {
+        discord: {
+          botTokenSecret: "DISCORD_ONE"
+        }
+      }
+    };
+    const writerNode: ResolvedAgentNode = {
+      ...assistantNode,
+      name: "writer",
+      source: "/tmp/writer/Spawnfile",
+      surfaces: {
+        discord: {
+          botTokenSecret: "DISCORD_TWO"
+        }
+      }
+    };
+
+    const assistantFiles = await tinyClawAdapter.compileAgent(assistantNode);
+    const writerFiles = await tinyClawAdapter.compileAgent(writerNode);
+
+    await expect(
+      tinyClawAdapter.createContainerTargets?.([
+        {
+          emittedFiles: assistantFiles.files,
+          id: "agent:assistant",
+          kind: "agent",
+          slug: "assistant",
+          value: assistantNode
+        },
+        {
+          emittedFiles: writerFiles.files,
+          id: "agent:writer",
+          kind: "agent",
+          slug: "writer",
+          value: writerNode
+        }
+      ]) ?? Promise.resolve([])
+    ).rejects.toThrow(/conflicting Discord bot token secrets/);
+  });
+
   it("returns no container targets when no agent artifacts are present", async () => {
     const targets = await tinyClawAdapter.createContainerTargets?.([
       {
@@ -275,6 +443,36 @@ describe("tinyClawAdapter", () => {
         provider: "custom"
       })
     ).toThrow(/custom or local endpoints are not supported/);
+  });
+
+  it("rejects unsupported Discord access modes and allowlist fields", () => {
+    expect(() =>
+      tinyClawAdapter.assertSupportedSurfaces?.({
+        discord: {
+          access: {
+            channels: [],
+            guilds: [],
+            mode: "allowlist",
+            users: ["987654321098765432"]
+          },
+          botTokenSecret: "DISCORD_BOT_TOKEN"
+        }
+      })
+    ).toThrow(/only supports pairing access/);
+
+    expect(() =>
+      tinyClawAdapter.assertSupportedSurfaces?.({
+        discord: {
+          access: {
+            channels: [],
+            guilds: [],
+            mode: "pairing",
+            users: ["987654321098765432"]
+          },
+          botTokenSecret: "DISCORD_BOT_TOKEN"
+        }
+      })
+    ).toThrow(/does not support declarative users, guilds, or channels/);
   });
 
   it("ignores team inputs without a native team artifact when merging container targets", async () => {

@@ -131,6 +131,147 @@ describe("manifestSchema", () => {
     expect(isAgentManifest(result)).toBe(true);
   });
 
+  it("accepts Discord surfaces on agent manifests", () => {
+    const result = manifestSchema.parse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        discord: {
+          access: {
+            guilds: ["123456789012345678"],
+            mode: "allowlist",
+            users: ["987654321098765432"]
+          }
+        }
+      }
+    });
+
+    expect(isAgentManifest(result)).toBe(true);
+  });
+
+  it("infers Discord allowlist mode from declared users", () => {
+    const result = manifestSchema.parse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        discord: {
+          access: {
+            users: ["987654321098765432"]
+          }
+        }
+      }
+    });
+
+    expect(isAgentManifest(result)).toBe(true);
+  });
+
+  it("rejects Discord allowlist access without any allowlist entries", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        discord: {
+          access: {
+            mode: "allowlist"
+          }
+        }
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain(
+      "discord allowlist access must declare users, guilds, or channels"
+    );
+  });
+
+  it("accepts Discord open access without allowlist entries", () => {
+    const result = manifestSchema.parse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        discord: {
+          access: {
+            mode: "open"
+          }
+        }
+      }
+    });
+
+    expect(isAgentManifest(result)).toBe(true);
+  });
+
+  it("rejects Discord users on non-allowlist access", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        discord: {
+          access: {
+            mode: "pairing",
+            users: ["987654321098765432"]
+          }
+        }
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain(
+      "discord access users, guilds, and channels are only valid for allowlist mode"
+    );
+  });
+
+  it("rejects empty Discord access blocks", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        discord: {
+          access: {}
+        }
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain(
+      "discord access must declare mode or allowlist entries"
+    );
+  });
+
+  it("rejects team manifests that declare surfaces", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "writer",
+          ref: "./agents/writer"
+        }
+      ],
+      name: "research-team",
+      spawnfile_version: "0.1",
+      structure: {
+        mode: "swarm"
+      },
+      surfaces: {
+        discord: {}
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("team manifests must not declare surfaces");
+  });
+
   it("rejects custom api_key models without auth.key", () => {
     const result = manifestSchema.safeParse({
       execution: {

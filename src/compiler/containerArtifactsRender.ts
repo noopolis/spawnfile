@@ -172,8 +172,8 @@ const resolveStartCommand = (plan: RuntimeTargetPlan): string[] =>
   plan.meta.startCommand
     .map((token) =>
       token
-        .replace("<runtime-root>", plan.runtimeRoot)
-        .replace("<port>", plan.port ? String(plan.port) : "")
+        .replaceAll("<runtime-root>", plan.runtimeRoot)
+        .replaceAll("<port>", plan.port ? String(plan.port) : "")
     )
     .filter((token) => token.length > 0);
 
@@ -200,6 +200,24 @@ export const createRootfsFiles = (runtimePlans: RuntimeTargetPlan[]): EmittedFil
           path: `${CONTAINER_ROOTFS_ROOT}${path.posix.join(
             plan.instancePaths.workspacePath,
             relativeWorkspacePath
+          )}`
+        };
+      }
+
+      if (file.path.startsWith("home/")) {
+        if (!plan.instancePaths.homePath) {
+          throw new SpawnfileError(
+            "runtime_error",
+            `Container target ${plan.id} for ${plan.runtimeName} emitted home-scoped files without a home path`
+          );
+        }
+
+        const relativeHomePath = file.path.slice("home/".length);
+        return {
+          content: file.content,
+          path: `${CONTAINER_ROOTFS_ROOT}${path.posix.join(
+            plan.instancePaths.homePath,
+            relativeHomePath
           )}`
         };
       }

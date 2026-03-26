@@ -71,6 +71,95 @@ describe("buildCompilePlan", () => {
     expect(plan.edges.filter((edge) => edge.kind === "subagent")).toHaveLength(2);
   });
 
+  it("resolves Discord surfaces with the default bot token secret", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-discord-surface-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: root",
+        "",
+        "runtime: openclaw",
+        "",
+        "execution:",
+        "  model:",
+        "    primary:",
+        "      provider: anthropic",
+        "      name: claude-opus-4-6",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        "",
+        "surfaces:",
+        "  discord: {}",
+        ""
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const agentNode = plan.nodes.find((node) => node.kind === "agent");
+
+    expect(agentNode?.value.kind).toBe("agent");
+    if (!agentNode || agentNode.value.kind !== "agent") {
+      throw new Error("Expected agent node");
+    }
+
+    expect(agentNode.value.surfaces?.discord).toEqual({
+      botTokenSecret: "DISCORD_BOT_TOKEN"
+    });
+  });
+
+  it("resolves Discord allowlist access on agents", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-discord-access-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: root",
+        "",
+        "runtime: openclaw",
+        "",
+        "surfaces:",
+        "  discord:",
+        "    access:",
+        "      users:",
+        '        - "987654321098765432"',
+        '      guilds:',
+        '        - "123456789012345678"',
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const agentNode = plan.nodes.find((node) => node.kind === "agent");
+
+    expect(agentNode?.value.kind).toBe("agent");
+    if (!agentNode || agentNode.value.kind !== "agent") {
+      throw new Error("Expected agent node");
+    }
+
+    expect(agentNode.value.surfaces?.discord).toEqual({
+      access: {
+        channels: [],
+        guilds: ["123456789012345678"],
+        mode: "allowlist",
+        users: ["987654321098765432"]
+      },
+      botTokenSecret: "DISCORD_BOT_TOKEN"
+    });
+  });
+
   it("builds a multi-runtime team graph", async () => {
     const plan = await buildCompilePlan(path.join(fixturesRoot, "multi-runtime-team"));
 
@@ -205,6 +294,38 @@ describe("buildCompilePlan", () => {
 
     await expect(buildCompilePlan(directory)).rejects.toThrow(
       /does not support model auth method api_key for provider openai/
+    );
+  });
+
+  it("rejects runtime and surface access combinations that the adapter does not support", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-unsupported-surface-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Root\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: root",
+        "",
+        "runtime: tinyclaw",
+        "",
+        "surfaces:",
+        "  discord:",
+        "    access:",
+        "      mode: allowlist",
+        '      users:',
+        '        - "987654321098765432"',
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
+
+    await expect(buildCompilePlan(directory)).rejects.toThrow(
+      /TinyClaw Discord only supports pairing access/
     );
   });
 

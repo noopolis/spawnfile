@@ -1,4 +1,7 @@
-import type { ResolvedAgentNode } from "../../compiler/types.js";
+import type {
+  ResolvedAgentNode,
+  ResolvedAgentSurfaces
+} from "../../compiler/types.js";
 import { listEffectiveExecutionModelTargets } from "../../compiler/modelEnv.js";
 import type { AdapterCompileResult, RuntimeAdapter } from "../types.js";
 import {
@@ -19,6 +22,79 @@ const buildEnvSecretRef = (envName: string): Record<string, string> => ({
 
 const createCustomProviderId = (provider: "custom" | "local"): string =>
   `spawnfile-${provider}`;
+
+const buildOpenClawDiscordConfig = (
+  surfaces: ResolvedAgentSurfaces
+): Record<string, unknown> => {
+  const discordSurface = surfaces.discord;
+  if (!discordSurface) {
+    return {};
+  }
+
+  const config: Record<string, unknown> = {
+    enabled: true
+  };
+  const access = discordSurface.access;
+
+  if (!access) {
+    return config;
+  }
+
+  if (access.mode === "pairing") {
+    return {
+      ...config,
+      dmPolicy: "pairing"
+    };
+  }
+
+  if (access.mode === "open") {
+    return {
+      ...config,
+      allowFrom: ["*"],
+      dmPolicy: "open",
+      groupPolicy: "open"
+    };
+  }
+
+  if (access.channels.length > 0 && access.guilds.length !== 1) {
+    throw new SpawnfileError(
+      "validation_error",
+      "OpenClaw Discord channel allowlists require exactly one guild id"
+    );
+  }
+
+  const guilds =
+    access.guilds.length > 0
+      ? Object.fromEntries(
+          access.guilds.map((guildId) => [
+            guildId,
+            {
+              ...(access.channels.length > 0
+                ? {
+                    channels: Object.fromEntries(
+                      access.channels.map((channelId) => [channelId, { allow: true }])
+                    )
+                  }
+                : {}),
+              ...(access.users.length > 0 ? { users: access.users } : {})
+            }
+          ])
+        )
+      : undefined;
+
+  return {
+    ...config,
+    ...(access.users.length > 0 ? { allowFrom: access.users, dmPolicy: "allowlist" } : {}),
+    ...(guilds
+      ? {
+          groupPolicy: "allowlist",
+          guilds
+        }
+      : {
+          groupPolicy: "disabled"
+        })
+  };
+};
 
 const createOpenClawModelConfig = (node: ResolvedAgentNode): {
   model: string | null;
@@ -83,6 +159,12 @@ const buildOpenClawConfig = (node: ResolvedAgentNode): string => {
     }
   };
 
+  if (node.surfaces?.discord) {
+    config.channels = {
+      discord: buildOpenClawDiscordConfig(node.surfaces)
+    };
+  }
+
   if (modelConfig.providers) {
     config.models = {
       providers: modelConfig.providers
@@ -91,6 +173,19 @@ const buildOpenClawConfig = (node: ResolvedAgentNode): string => {
 
   return `${JSON.stringify(config, null, 2)}\n`;
 };
+
+const createOpenClawStateFiles = (): Array<{ content: string; path: string }> => [
+  {
+    // Pre-create the agent state tree so Docker bind mounts do not create root-owned parents.
+    content: "",
+    path: "home/.openclaw/agents/main/agent/.keep"
+  },
+  {
+    // OpenClaw persists session state under agents/main/sessions at runtime.
+    content: "",
+    path: "home/.openclaw/agents/main/sessions/.keep"
+  }
+];
 
 export const openClawAdapter: RuntimeAdapter = {
   assertSupportedModelTarget(target) {
@@ -121,6 +216,19 @@ export const openClawAdapter: RuntimeAdapter = {
       "validation_error",
       `OpenClaw does not support model auth method ${target.auth.method} for provider ${target.provider}`
     );
+  },
+  assertSupportedSurfaces(surfaces) {
+    const access = surfaces?.discord?.access;
+    if (!access) {
+      return;
+    }
+
+    if (access.mode === "allowlist" && access.channels.length > 0 && access.guilds.length !== 1) {
+      throw new SpawnfileError(
+        "validation_error",
+        "OpenClaw Discord channel allowlists require exactly one guild id"
+      );
+    }
   },
   container: {
     configFileName: "openclaw.json",
@@ -171,6 +279,7 @@ export const openClawAdapter: RuntimeAdapter = {
       files: [
         ...createDocumentFiles("workspace", node.docs),
         ...createSkillFiles("workspace/skills", node.skills),
+        ...createOpenClawStateFiles(),
         {
           content: buildOpenClawConfig(node),
           path: "openclaw.json"

@@ -100,6 +100,67 @@ const docsSchema = z
   })
   .strict();
 
+const discordSurfaceAccessModeSchema = z.enum(["allowlist", "open", "pairing"]);
+
+const discordSurfaceAccessSchema = z
+  .object({
+    channels: z.array(z.string().min(1)).optional(),
+    guilds: z.array(z.string().min(1)).optional(),
+    mode: discordSurfaceAccessModeSchema.optional(),
+    users: z.array(z.string().min(1)).optional()
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const hasAllowlistEntries =
+      (value.users?.length ?? 0) +
+        (value.guilds?.length ?? 0) +
+        (value.channels?.length ?? 0) >
+      0;
+    const mode = value.mode ?? (hasAllowlistEntries ? "allowlist" : undefined);
+
+    if (!mode) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "discord access must declare mode or allowlist entries"
+      });
+    }
+
+    if (mode !== "allowlist" && hasAllowlistEntries) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "discord access users, guilds, and channels are only valid for allowlist mode"
+      });
+    }
+
+    if (mode === "allowlist" && !hasAllowlistEntries) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "discord allowlist access must declare users, guilds, or channels"
+      });
+    }
+  });
+
+const discordSurfaceSchema = z
+  .object({
+    access: discordSurfaceAccessSchema.optional(),
+    bot_token_secret: z.string().min(1).optional()
+  })
+  .strict();
+
+const surfacesSchema = z
+  .object({
+    discord: discordSurfaceSchema.optional()
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (!value.discord) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "surfaces must declare at least one surface"
+      });
+    }
+  });
+
 const skillRequirementSchema = z
   .object({
     mcp: z.array(z.string()).optional()
@@ -262,6 +323,7 @@ const commonManifestSchema = z
     runtime: runtimeBindingSchema.optional(),
     secrets: z.array(secretSchema).optional(),
     skills: z.array(skillReferenceSchema).optional(),
+    surfaces: surfacesSchema.optional(),
     spawnfile_version: z.literal("0.1")
   })
   .strict();
@@ -333,6 +395,13 @@ const teamManifestSchema = commonManifestSchema
         message: "team manifests must not declare execution"
       });
     }
+
+    if (value.surfaces !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "team manifests must not declare surfaces"
+      });
+    }
   })
   .strict();
 
@@ -343,6 +412,8 @@ export const manifestSchema = z.discriminatedUnion("kind", [
 
 export type AgentManifest = z.infer<typeof agentManifestSchema>;
 export type DocsBlock = z.infer<typeof docsSchema>;
+export type DiscordSurfaceAccess = z.infer<typeof discordSurfaceAccessSchema>;
+export type DiscordSurface = z.infer<typeof discordSurfaceSchema>;
 export type ExecutionBlock = z.infer<typeof executionSchema>;
 export type Manifest = z.infer<typeof manifestSchema>;
 export type ManifestMember = z.infer<typeof memberSchema>;
@@ -354,6 +425,7 @@ export type RuntimeBinding = z.infer<typeof runtimeBindingSchema>;
 export type Secret = z.infer<typeof secretSchema>;
 export type SharedSurface = z.infer<typeof sharedSurfaceSchema>;
 export type SkillReference = z.infer<typeof skillReferenceSchema>;
+export type SurfacesBlock = z.infer<typeof surfacesSchema>;
 export type TeamManifest = z.infer<typeof teamManifestSchema>;
 
 export const isAgentManifest = (manifest: Manifest): manifest is AgentManifest =>
