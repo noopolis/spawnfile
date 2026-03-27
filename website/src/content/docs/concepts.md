@@ -31,7 +31,7 @@ The `Spawnfile` is a YAML file named exactly `Spawnfile` (no extension). It decl
 - **skills** -- skill directories with `SKILL.md`
 - **mcp_servers** -- MCP tool connections
 - **execution** -- model, workspace, and sandbox intent
-- **surfaces** -- external communication channels (e.g. Discord)
+- **surfaces** -- external communication channels (Discord, Telegram, WhatsApp, Slack)
 
 ## Document Roles
 
@@ -78,7 +78,7 @@ Each member agent declares its own runtime. One team can span multiple runtimes.
 
 ## Surfaces
 
-Agent manifests may declare external communication surfaces under `surfaces`. The first standardized surface in v0.1 is Discord:
+Agent manifests may declare external communication surfaces under `surfaces`. Spawnfile v0.1 standardizes four surfaces: Discord, Telegram, WhatsApp, and Slack.
 
 ```yaml
 surfaces:
@@ -87,9 +87,26 @@ surfaces:
       users:
         - "987654321098765432"
     bot_token_secret: DISCORD_BOT_TOKEN
+  telegram:
+    access:
+      users:
+        - "123456789"
+    bot_token_secret: TELEGRAM_BOT_TOKEN
+  whatsapp:
+    access:
+      users:
+        - "15551234567"
+  slack:
+    access:
+      users:
+        - "U1234567890"
+    bot_token_secret: SLACK_BOT_TOKEN
+    app_token_secret: SLACK_APP_TOKEN
 ```
 
-Surfaces are validated at compile time against runtime support. Runtime coverage varies -- see the runtime pages for details on which Discord access modes each runtime supports.
+Each surface follows the same access-mode pattern (`pairing`, `allowlist`, `open`) but with platform-specific identifier types. WhatsApp does not have a portable token secret -- QR/session auth is runtime-defined. Slack requires both a bot token and an app-level socket token.
+
+Surfaces are validated at compile time against runtime support. Runtime coverage varies -- see the runtime pages for details on which access modes each runtime supports for each surface.
 
 Team manifests do not declare surfaces. Surfaces belong to concrete agent manifests.
 

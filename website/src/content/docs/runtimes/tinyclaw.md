@@ -83,11 +83,11 @@ One TinyClaw runtime process can host all compiled agents plus the compiled team
 
 Nested teams likely need flattening or degradation reporting, as TinyClaw's team model is flat.
 
-## Discord Surface
+## Surfaces
 
-TinyClaw supports Discord as a paired DM surface. Spawnfile lowers Discord into TinyClaw's channel client config and starts the Discord worker process in the generated container.
+TinyClaw supports Discord, Telegram, and WhatsApp as pairing-gated DM surfaces. Spawnfile lowers each into TinyClaw's channel client config and starts the corresponding worker process in the generated container. TinyClaw does not support Slack.
 
-Supported access modes:
+### Discord
 
 | Mode | Support |
 |------|---------|
@@ -95,7 +95,27 @@ Supported access modes:
 | `allowlist` | Not supported |
 | `open` | Not supported |
 
-The upstream runtime behavior is pairing-based and DM-oriented. Spawnfile rejects richer Discord access shapes for TinyClaw at compile time.
+### Telegram
+
+| Mode | Support |
+|------|---------|
+| `pairing` | Supported |
+| `allowlist` | Not supported |
+| `open` | Not supported |
+
+### WhatsApp
+
+| Mode | Support |
+|------|---------|
+| `pairing` | Supported |
+| `allowlist` | Not supported |
+| `open` | Not supported |
+
+### Slack
+
+TinyClaw does not support Slack in Spawnfile v0.1. The compiler rejects Slack surface declarations targeting TinyClaw.
+
+The upstream runtime behavior for Discord, Telegram, and WhatsApp is pairing-based and DM-oriented. Spawnfile rejects richer access shapes for TinyClaw at compile time.
 
 ## What The Adapter Emits
 

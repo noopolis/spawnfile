@@ -233,7 +233,7 @@ policy:
 
 ## surfaces
 
-The `surfaces` block declares external communication channels for the agent. The first standardized surface in v0.1 is Discord.
+The `surfaces` block declares external communication channels for the agent. Spawnfile v0.1 standardizes four surfaces: Discord, Telegram, WhatsApp, and Slack.
 
 ```yaml
 surfaces:
@@ -247,6 +247,30 @@ surfaces:
       channels:
         - "555555555555555555"
     bot_token_secret: DISCORD_BOT_TOKEN
+  telegram:
+    access:
+      mode: allowlist
+      users:
+        - "123456789"
+      chats:
+        - "-1001234567890"
+    bot_token_secret: TELEGRAM_BOT_TOKEN
+  whatsapp:
+    access:
+      mode: allowlist
+      users:
+        - "15551234567"
+      groups:
+        - "120363400000000000@g.us"
+  slack:
+    access:
+      mode: allowlist
+      users:
+        - "U1234567890"
+      channels:
+        - "C1234567890"
+    bot_token_secret: SLACK_BOT_TOKEN
+    app_token_secret: SLACK_APP_TOKEN
 ```
 
 ### Discord Fields
@@ -259,19 +283,73 @@ surfaces:
 | `access.guilds` | Allowed Discord guild/server IDs. |
 | `access.channels` | Allowed Discord channel IDs. |
 
+### Telegram Fields
+
+| Field | Description |
+|-------|-------------|
+| `bot_token_secret` | Env var name for the Telegram bot token. Defaults to `TELEGRAM_BOT_TOKEN`. |
+| `access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
+| `access.users` | Allowed Telegram user IDs. |
+| `access.chats` | Allowed Telegram chat IDs. |
+
+### WhatsApp Fields
+
+| Field | Description |
+|-------|-------------|
+| `access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
+| `access.users` | Allowed WhatsApp user identifiers. |
+| `access.groups` | Allowed WhatsApp group identifiers. |
+
+WhatsApp does not have a portable token secret field. QR/session auth is runtime-defined.
+
+### Slack Fields
+
+| Field | Description |
+|-------|-------------|
+| `bot_token_secret` | Env var name for the Slack bot token. Defaults to `SLACK_BOT_TOKEN`. |
+| `app_token_secret` | Env var name for the Slack app-level socket token. Defaults to `SLACK_APP_TOKEN`. |
+| `access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
+| `access.users` | Allowed Slack user IDs. |
+| `access.channels` | Allowed Slack channel IDs. |
+
+Slack requires both a bot token and an app-level socket token.
+
 ### Access Rules
 
-- If `access.mode` is omitted and any of `users`, `guilds`, or `channels` are present, the effective mode is `allowlist`.
-- `users`, `guilds`, and `channels` are only valid with `allowlist`.
-- `allowlist` must declare at least one of `users`, `guilds`, or `channels`.
+All four surfaces follow the same access-mode pattern:
+
+- If `access.mode` is omitted and any allowlist identifiers are present, the effective mode is `allowlist`.
+- Allowlist identifiers are only valid with `allowlist` mode.
+- `allowlist` must declare at least one identifier list.
+- Discord uses `users`, `guilds`, and `channels`.
+- Telegram uses `users` and `chats`.
+- WhatsApp uses `users` and `groups`.
+- Slack uses `users` and `channels`.
+- If `access` is omitted entirely, the effective behavior is runtime-defined and not currently portable. Projects that need predictable cross-runtime behavior should declare `access.mode` explicitly.
 
 ### Runtime Support
 
-Not all runtimes support all Discord access shapes:
+Not all runtimes support all access shapes for every surface:
 
+**Discord:**
 - `openclaw` supports `pairing`, `allowlist`, and `open`.
 - `picoclaw` supports `open` and user allowlists.
 - `tinyclaw` supports `pairing` only (DM-oriented).
+
+**Telegram:**
+- `openclaw` supports `pairing`, `allowlist`, and `open`.
+- `picoclaw` supports `open` and user allowlists.
+- `tinyclaw` supports `pairing` only.
+
+**WhatsApp:**
+- `openclaw` supports `pairing`, `allowlist`, and `open`.
+- `picoclaw` supports `open` and user allowlists.
+- `tinyclaw` supports `pairing` only.
+
+**Slack:**
+- `openclaw` supports `pairing`, `allowlist`, and `open`.
+- `picoclaw` supports `open` and user allowlists.
+- `tinyclaw` does not support Slack.
 
 The compiler validates the declared surface against the selected runtime and fails early on unsupported combinations.
 
@@ -279,7 +357,7 @@ The compiler validates the declared surface against the selected runtime and fai
 
 - Only agent manifests may declare `surfaces`. Team manifests must not.
 - Subagents do not inherit parent `surfaces`.
-- Surface auth secrets (like `DISCORD_BOT_TOKEN`) participate in the same auth profile and env validation path as model auth.
+- Surface auth secrets (like `DISCORD_BOT_TOKEN`, `TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`) participate in the same auth profile and env validation path as model auth.
 
 ## subagents
 
@@ -387,6 +465,11 @@ surfaces:
       users:
         - "987654321098765432"
     bot_token_secret: DISCORD_BOT_TOKEN
+  telegram:
+    access:
+      users:
+        - "123456789"
+    bot_token_secret: TELEGRAM_BOT_TOKEN
 
 secrets:
   - name: SEARCH_API_KEY

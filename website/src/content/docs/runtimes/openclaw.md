@@ -88,17 +88,19 @@ The adapter lowers Spawnfile team members into routed agents and maps the team l
 
 Nested teams and full native team identity are reported as `degraded`.
 
-## Discord Surface
+## Surfaces
 
-OpenClaw has the strongest Discord support among the active runtimes. Spawnfile lowers Discord access into OpenClaw's rich Discord config surface:
+OpenClaw has the strongest surface support among the active runtimes. All four portable surfaces -- Discord, Telegram, WhatsApp, and Slack -- are fully supported with pairing, allowlist, and open access modes.
+
+### Discord
+
+Spawnfile lowers Discord access into OpenClaw's rich config surface:
 
 - `dmPolicy`
 - `groupPolicy`
 - `allowFrom`
 - `guilds`
 - `guilds.*.channels`
-
-Supported access modes:
 
 | Mode | Support |
 |------|---------|
@@ -107,6 +109,56 @@ Supported access modes:
 | `open` | Supported |
 
 Channel allowlists currently require exactly one guild in the Spawnfile lowering.
+
+### Telegram
+
+Spawnfile lowers Telegram access into the same rich OpenClaw channel surface:
+
+- `dmPolicy`
+- `groupPolicy`
+- `allowFrom`
+- `groups`
+
+| Mode | Support |
+|------|---------|
+| `pairing` | Supported |
+| `allowlist` | Supported (users, chats) |
+| `open` | Supported |
+
+### WhatsApp
+
+Spawnfile lowers WhatsApp access into OpenClaw's channel surface:
+
+- `dmPolicy`
+- `groupPolicy`
+- `allowFrom`
+- `groups`
+
+| Mode | Support |
+|------|---------|
+| `pairing` | Supported |
+| `allowlist` | Supported (users, groups) |
+| `open` | Supported |
+
+WhatsApp does not have a portable token secret. QR/session auth is runtime-defined.
+
+### Slack
+
+Spawnfile lowers Slack access into OpenClaw's channel surface using socket mode:
+
+- `mode: socket`
+- `dmPolicy`
+- `groupPolicy`
+- `allowFrom`
+- `channels`
+
+| Mode | Support |
+|------|---------|
+| `pairing` | Supported |
+| `allowlist` | Supported (users, channels) |
+| `open` | Supported |
+
+Slack requires both `bot_token_secret` and `app_token_secret`.
 
 ## What The Adapter Emits
 

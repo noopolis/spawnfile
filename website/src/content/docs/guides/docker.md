@@ -93,7 +93,7 @@ The compiler emits a `.env.example` listing all required and optional environmen
 
 - Secrets declared in manifests (e.g. `SEARCH_API_KEY`)
 - Model auth variables for providers using `api_key` auth (e.g. `ANTHROPIC_API_KEY`)
-- Surface auth variables for declared communication surfaces (e.g. `DISCORD_BOT_TOKEN`)
+- Surface auth variables for declared communication surfaces (e.g. `DISCORD_BOT_TOKEN`, `TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`)
 - Runtime auth variables (e.g. `OPENCLAW_GATEWAY_TOKEN`)
 - Variables the entrypoint or runtime expects
 

@@ -97,15 +97,17 @@ It does not have a strong native team object. The adapter:
 - Uses spawn or agent-targeted spawn for delegation
 - Reports degradation for native team identity and nesting
 
-## Discord Surface
+## Surfaces
 
-PicoClaw supports Discord with token wiring and user allowlists. Spawnfile lowers Discord into PicoClaw's channel config:
+PicoClaw supports all four portable surfaces with token wiring and user allowlists. Guild, channel, chat, and group allowlists are not lowered in v0.1.
+
+### Discord
+
+Spawnfile lowers Discord into PicoClaw's channel config:
 
 - `token`
 - `allow_from`
 - `mention_only`
-
-Supported access modes:
 
 | Mode | Support |
 |------|---------|
@@ -113,6 +115,54 @@ Supported access modes:
 | `allowlist` (users) | Supported |
 | `allowlist` (guilds/channels) | Not lowered in v0.1 |
 | `pairing` | Not supported |
+
+### Telegram
+
+Spawnfile lowers Telegram into PicoClaw's channel config:
+
+- `token`
+- `allow_from`
+
+| Mode | Support |
+|------|---------|
+| `open` | Supported |
+| `allowlist` (users) | Supported |
+| `allowlist` (chats) | Not lowered in v0.1 |
+| `pairing` | Not supported |
+
+### WhatsApp
+
+Spawnfile lowers WhatsApp into PicoClaw's channel config:
+
+- `enabled`
+- `use_native`
+- `allow_from`
+
+| Mode | Support |
+|------|---------|
+| `open` | Supported |
+| `allowlist` (users) | Supported |
+| `allowlist` (groups) | Not lowered in v0.1 |
+| `pairing` | Not supported |
+
+WhatsApp does not have a portable token secret. QR/session auth is runtime-defined.
+
+### Slack
+
+Spawnfile lowers Slack into PicoClaw's channel config:
+
+- `enabled`
+- `group_trigger.mention_only`
+- `allow_from`
+
+| Mode | Support |
+|------|---------|
+| `open` | Supported |
+| `allowlist` (users) | Supported |
+| `allowlist` (channels) | Not lowered in v0.1 |
+| `pairing` | Not supported |
+
+Slack requires both `bot_token_secret` and `app_token_secret`. PicoClaw replies to channel messages in a thread and replies to direct messages inline.
 
 ## What The Adapter Emits
 
