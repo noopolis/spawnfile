@@ -16,10 +16,12 @@
   },
   "scripts": {
     "blueprints": "./scripts/blueprints.sh",
-    "build": "tsc --project tsconfig.build.json && node ./scripts/copy-runtime-scaffold-assets.mjs",
+    "build": "rm -rf dist && tsc --project tsconfig.build.json && node ./scripts/copy-runtime-scaffold-assets.mjs",
     "clean": "rm -rf coverage dist",
     "coverage": "vitest run --coverage",
     "dev": "tsx src/cli/index.ts",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test",
     "runtimes": "./scripts/runtimes.sh",
     "runtimes:sync": "./scripts/runtimes.sh && ./scripts/blueprints.sh",
     "test:e2e:docker-auth": "tsx src/e2e/cli.ts",
