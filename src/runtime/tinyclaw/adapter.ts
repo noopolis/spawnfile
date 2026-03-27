@@ -38,6 +38,10 @@ while IFS= read -r channel; do
       node <runtime-root>/packages/channels/dist/telegram.js &
       PIDS+=("$!")
       ;;
+    whatsapp)
+      node <runtime-root>/packages/channels/dist/whatsapp.js &
+      PIDS+=("$!")
+      ;;
   esac
 done < <(python3 - <<'PY'
 import json
@@ -127,6 +131,7 @@ const mergeTinyClawTargets = async (
   const mergedTeams: Record<string, unknown> = {};
   const enabledChannels = new Set<string>();
   let hasDiscordChannel = false;
+  let hasWhatsappChannel = false;
   let hasTelegramChannel = false;
   const workspaceFiles = agentInputs.flatMap((input) =>
     input.emittedFiles.filter((file) => file.path !== "settings.json")
@@ -154,6 +159,10 @@ const mergeTinyClawTargets = async (
     if (channels.telegram) {
       hasTelegramChannel = true;
     }
+
+    if (channels.whatsapp) {
+      hasWhatsappChannel = true;
+    }
   }
 
   for (const input of inputs.filter((entry) => entry.kind === "team")) {
@@ -176,6 +185,7 @@ const mergeTinyClawTargets = async (
       ...(((mergedBase?.channels as Record<string, unknown> | undefined) ?? {})),
       ...(hasDiscordChannel ? { discord: {} } : {}),
       ...(hasTelegramChannel ? { telegram: {} } : {}),
+      ...(hasWhatsappChannel ? { whatsapp: {} } : {}),
       enabled: [...enabledChannels].sort()
     },
     workspace: {

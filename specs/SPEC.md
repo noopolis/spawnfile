@@ -281,7 +281,7 @@ Rules:
 
 ### 2.6 Communication Surfaces
 
-Spawnfile v0.1 standardizes two initial communication surfaces on agent manifests:
+Spawnfile v0.1 standardizes four initial communication surfaces on agent manifests:
 
 ```yaml
 surfaces:
@@ -297,6 +297,20 @@ surfaces:
       chats:
         - "-1001234567890"
     bot_token_secret: TELEGRAM_BOT_TOKEN
+  whatsapp:
+    access:
+      users:
+        - "15551234567"
+      groups:
+        - "120363400000000000@g.us"
+  slack:
+    access:
+      users:
+        - "U1234567890"
+      channels:
+        - "C1234567890"
+    bot_token_secret: SLACK_BOT_TOKEN
+    app_token_secret: SLACK_APP_TOKEN
 ```
 
 Rules:
@@ -305,23 +319,42 @@ Rules:
 - If `surfaces` is present, it MUST declare at least one surface.
 - `surfaces.discord` is OPTIONAL.
 - `surfaces.telegram` is OPTIONAL.
+- `surfaces.whatsapp` is OPTIONAL.
+- `surfaces.slack` is OPTIONAL.
 - `surfaces.discord.access` is OPTIONAL.
 - `surfaces.telegram.access` is OPTIONAL.
+- `surfaces.whatsapp.access` is OPTIONAL.
+- `surfaces.slack.access` is OPTIONAL.
 - `surfaces.discord.access.mode` MAY be `pairing`, `allowlist`, or `open`.
 - `surfaces.telegram.access.mode` MAY be `pairing`, `allowlist`, or `open`.
+- `surfaces.whatsapp.access.mode` MAY be `pairing`, `allowlist`, or `open`.
+- `surfaces.slack.access.mode` MAY be `pairing`, `allowlist`, or `open`.
 - `surfaces.discord.access.users`, `guilds`, and `channels` are OPTIONAL allowlist identifiers.
 - `surfaces.telegram.access.users` and `chats` are OPTIONAL allowlist identifiers.
+- `surfaces.whatsapp.access.users` and `groups` are OPTIONAL allowlist identifiers.
+- `surfaces.slack.access.users` and `channels` are OPTIONAL allowlist identifiers.
 - If `surfaces.discord.access.mode` is omitted and any of `users`, `guilds`, or `channels` are present, the effective mode is `allowlist`.
 - If `surfaces.telegram.access.mode` is omitted and any of `users` or `chats` are present, the effective mode is `allowlist`.
-- If `surfaces.discord.access` or `surfaces.telegram.access` is omitted entirely, the effective behavior is runtime-defined and is not guaranteed to be portable across runtimes.
+- If `surfaces.whatsapp.access.mode` is omitted and any of `users` or `groups` are present, the effective mode is `allowlist`.
+- If `surfaces.slack.access.mode` is omitted and any of `users` or `channels` are present, the effective mode is `allowlist`.
+- If `surfaces.discord.access`, `surfaces.telegram.access`, `surfaces.whatsapp.access`, or `surfaces.slack.access` is omitted entirely, the effective behavior is runtime-defined and is not guaranteed to be portable across runtimes.
 - `surfaces.discord.access.users`, `guilds`, and `channels` MUST only be used with `allowlist` access.
 - `surfaces.telegram.access.users` and `chats` MUST only be used with `allowlist` access.
+- `surfaces.whatsapp.access.users` and `groups` MUST only be used with `allowlist` access.
+- `surfaces.slack.access.users` and `channels` MUST only be used with `allowlist` access.
 - `surfaces.discord.access.mode: allowlist` MUST declare at least one of `users`, `guilds`, or `channels`.
 - `surfaces.telegram.access.mode: allowlist` MUST declare at least one of `users` or `chats`.
+- `surfaces.whatsapp.access.mode: allowlist` MUST declare at least one of `users` or `groups`.
+- `surfaces.slack.access.mode: allowlist` MUST declare at least one of `users` or `channels`.
 - `surfaces.discord.bot_token_secret` is OPTIONAL.
 - `surfaces.telegram.bot_token_secret` is OPTIONAL.
+- `surfaces.slack.bot_token_secret` is OPTIONAL.
+- `surfaces.slack.app_token_secret` is OPTIONAL.
 - If `surfaces.discord.bot_token_secret` is omitted, the effective secret name defaults to `DISCORD_BOT_TOKEN`.
 - If `surfaces.telegram.bot_token_secret` is omitted, the effective secret name defaults to `TELEGRAM_BOT_TOKEN`.
+- If `surfaces.slack.bot_token_secret` is omitted, the effective secret name defaults to `SLACK_BOT_TOKEN`.
+- If `surfaces.slack.app_token_secret` is omitted, the effective secret name defaults to `SLACK_APP_TOKEN`.
+- WhatsApp does not currently define a portable token-secret field in v0.1; runtime-specific session or QR auth remains adapter-defined.
 - Declared surface auth names participate in the same run-time env validation path as other env-backed auth.
 - Team manifests MUST NOT declare `surfaces` in v0.1.
 - Subagents do not implicitly inherit parent `surfaces`.
@@ -412,6 +445,14 @@ surfaces:
       users:
         - "987654321098765432"
     bot_token_secret: DISCORD_BOT_TOKEN
+  slack:
+    access:
+      users:
+        - "U1234567890"
+      channels:
+        - "C1234567890"
+    bot_token_secret: SLACK_BOT_TOKEN
+    app_token_secret: SLACK_APP_TOKEN
 
 env:
   LOG_LEVEL: info

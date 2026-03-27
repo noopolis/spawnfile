@@ -1,4 +1,5 @@
 import type { ResolvedAgentSurfaces } from "../../compiler/types.js";
+import type { RuntimeContainerConfigEnvBinding } from "../types.js";
 import { SpawnfileError } from "../../shared/index.js";
 
 const buildOpenClawDiscordConfig = (
@@ -137,6 +138,121 @@ const buildOpenClawTelegramConfig = (
   };
 };
 
+const buildOpenClawWhatsAppConfig = (
+  surfaces: ResolvedAgentSurfaces
+): Record<string, unknown> => {
+  const whatsappSurface = surfaces.whatsapp;
+  if (!whatsappSurface) {
+    return {};
+  }
+
+  const config: Record<string, unknown> = {
+    enabled: true
+  };
+  const access = whatsappSurface.access;
+
+  if (!access) {
+    return config;
+  }
+
+  if (access.mode === "pairing") {
+    return {
+      ...config,
+      dmPolicy: "pairing",
+      groupPolicy: "disabled"
+    };
+  }
+
+  if (access.mode === "open") {
+    return {
+      ...config,
+      allowFrom: ["*"],
+      dmPolicy: "open",
+      groupPolicy: "open",
+      groups: {
+        "*": {}
+      }
+    };
+  }
+
+  const groups =
+    access.groups.length > 0
+      ? Object.fromEntries(access.groups.map((groupId) => [groupId, {}]))
+      : undefined;
+
+  return {
+    ...config,
+    ...(access.users.length > 0 ? { allowFrom: access.users, dmPolicy: "allowlist" } : {}),
+    ...(groups
+      ? {
+          groupPolicy: access.users.length > 0 ? "allowlist" : "open",
+          groups
+        }
+      : {
+          groupPolicy: "disabled"
+        })
+  };
+};
+
+const buildOpenClawSlackConfig = (
+  surfaces: ResolvedAgentSurfaces
+): Record<string, unknown> => {
+  const slackSurface = surfaces.slack;
+  if (!slackSurface) {
+    return {};
+  }
+
+  const config: Record<string, unknown> = {
+    enabled: true,
+    mode: "socket"
+  };
+  const access = slackSurface.access;
+
+  if (!access) {
+    return config;
+  }
+
+  if (access.mode === "pairing") {
+    return {
+      ...config,
+      dmPolicy: "pairing",
+      groupPolicy: "disabled"
+    };
+  }
+
+  if (access.mode === "open") {
+    return {
+      ...config,
+      allowFrom: ["*"],
+      dmPolicy: "open",
+      groupPolicy: "open"
+    };
+  }
+
+  const channels =
+    access.channels.length > 0
+      ? Object.fromEntries(
+          access.channels.map((channelId) => [
+            channelId,
+            access.users.length > 0 ? { users: access.users } : {}
+          ])
+        )
+      : undefined;
+
+  return {
+    ...config,
+    ...(access.users.length > 0 ? { allowFrom: access.users, dmPolicy: "allowlist" } : {}),
+    ...(channels
+      ? {
+          channels,
+          groupPolicy: access.users.length > 0 ? "allowlist" : "open"
+        }
+      : {
+          groupPolicy: "disabled"
+        })
+  };
+};
+
 export const buildOpenClawChannelConfig = (
   surfaces: ResolvedAgentSurfaces | undefined
 ): Record<string, unknown> => {
@@ -154,7 +270,54 @@ export const buildOpenClawChannelConfig = (
     channels.telegram = buildOpenClawTelegramConfig(surfaces);
   }
 
+  if (surfaces.whatsapp) {
+    channels.whatsapp = buildOpenClawWhatsAppConfig(surfaces);
+  }
+
+  if (surfaces.slack) {
+    channels.slack = buildOpenClawSlackConfig(surfaces);
+  }
+
   return channels;
+};
+
+export const buildOpenClawSurfaceEnvBindings = (
+  surfaces: ResolvedAgentSurfaces | undefined
+): RuntimeContainerConfigEnvBinding[] | undefined => {
+  if (!surfaces) {
+    return undefined;
+  }
+
+  const bindings: RuntimeContainerConfigEnvBinding[] = [];
+
+  if (surfaces.discord) {
+    bindings.push({
+      envName: surfaces.discord.botTokenSecret,
+      jsonPath: "channels.discord.token"
+    });
+  }
+
+  if (surfaces.telegram) {
+    bindings.push({
+      envName: surfaces.telegram.botTokenSecret,
+      jsonPath: "channels.telegram.botToken"
+    });
+  }
+
+  if (surfaces.slack) {
+    bindings.push(
+      {
+        envName: surfaces.slack.botTokenSecret,
+        jsonPath: "channels.slack.botToken"
+      },
+      {
+        envName: surfaces.slack.appTokenSecret,
+        jsonPath: "channels.slack.appToken"
+      }
+    );
+  }
+
+  return bindings.length > 0 ? bindings : undefined;
 };
 
 export const assertSupportedOpenClawSurfaces = (

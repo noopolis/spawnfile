@@ -9,11 +9,15 @@ import type {
   ModelEntryAuth,
   ModelTarget,
   RuntimeBinding,
+  SlackSurface,
+  SlackSurfaceAccess,
   SharedSurface,
   SurfacesBlock,
   TelegramSurface,
   TelegramSurfaceAccess,
-  TeamManifest
+  TeamManifest,
+  WhatsAppSurface,
+  WhatsAppSurfaceAccess
 } from "./schemas.js";
 
 const withDefinedEntries = (entries: Array<[string, unknown]>): Record<string, unknown> =>
@@ -104,6 +108,58 @@ const orderTelegramSurfaceAccess = (
   ]) as unknown as TelegramSurfaceAccess;
 };
 
+const orderWhatsAppSurface = (
+  surface: WhatsAppSurface | undefined
+): WhatsAppSurface | undefined => {
+  if (!surface) {
+    return undefined;
+  }
+
+  return withDefinedEntries([["access", orderWhatsAppSurfaceAccess(surface.access)]]) as unknown as WhatsAppSurface;
+};
+
+const orderWhatsAppSurfaceAccess = (
+  access: WhatsAppSurfaceAccess | undefined
+): WhatsAppSurfaceAccess | undefined => {
+  if (!access) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["mode", access.mode],
+    ["users", access.users],
+    ["groups", access.groups]
+  ]) as unknown as WhatsAppSurfaceAccess;
+};
+
+const orderSlackSurface = (
+  surface: SlackSurface | undefined
+): SlackSurface | undefined => {
+  if (!surface) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["access", orderSlackSurfaceAccess(surface.access)],
+    ["bot_token_secret", surface.bot_token_secret],
+    ["app_token_secret", surface.app_token_secret]
+  ]) as unknown as SlackSurface;
+};
+
+const orderSlackSurfaceAccess = (
+  access: SlackSurfaceAccess | undefined
+): SlackSurfaceAccess | undefined => {
+  if (!access) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["mode", access.mode],
+    ["users", access.users],
+    ["channels", access.channels]
+  ]) as unknown as SlackSurfaceAccess;
+};
+
 const orderModelEntryAuth = (
   auth: ModelEntryAuth | undefined
 ): ModelEntryAuth | undefined => {
@@ -177,7 +233,9 @@ const orderSurfaces = (
 
   return withDefinedEntries([
     ["discord", orderDiscordSurface(surfaces.discord)],
-    ["telegram", orderTelegramSurface(surfaces.telegram)]
+    ["telegram", orderTelegramSurface(surfaces.telegram)],
+    ["whatsapp", orderWhatsAppSurface(surfaces.whatsapp)],
+    ["slack", orderSlackSurface(surfaces.slack)]
   ]) as unknown as SurfacesBlock;
 };
 

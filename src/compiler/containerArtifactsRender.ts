@@ -77,8 +77,14 @@ export const renderDockerfile = async (
     runtimeNames.map((runtimeName) => createRuntimeInstallRecipe(runtimeName))
   );
   const baseImage = selectBaseImage(runtimePlans);
+  const needsJsonEnvWriter = runtimePlans.some(
+    (plan) => (plan.configEnvBindings?.length ?? 0) > 0
+  );
   const systemDeps = [
-    ...new Set(runtimePlans.flatMap((plan) => plan.meta.systemDeps))
+    ...new Set([
+      ...runtimePlans.flatMap((plan) => plan.meta.systemDeps),
+      ...(needsJsonEnvWriter ? ["python3"] : [])
+    ])
   ].sort();
   const globalNpmPackages = [
     ...new Set(runtimePlans.flatMap((plan) => plan.meta.globalNpmPackages ?? []))

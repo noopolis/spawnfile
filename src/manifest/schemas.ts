@@ -369,9 +369,13 @@ export type TeamManifest = z.infer<typeof teamManifestSchema>;
 export type {
   DiscordSurface,
   DiscordSurfaceAccess,
+  SlackSurface,
+  SlackSurfaceAccess,
   SurfacesBlock,
   TelegramSurface,
-  TelegramSurfaceAccess
+  TelegramSurfaceAccess,
+  WhatsAppSurface,
+  WhatsAppSurfaceAccess
 } from "./surfaceSchemas.js";
 
 export const isAgentManifest = (manifest: Manifest): manifest is AgentManifest =>

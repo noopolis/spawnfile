@@ -142,17 +142,24 @@ OpenClaw has the strongest communication-surface model of the active runtimes.
 
 - Discord is a real first-class surface with distinct DM and guild policy controls
 - Telegram is also a real first-class surface with distinct DM and group policy controls
+- WhatsApp is also a real first-class surface with DM and group policy controls
+- Slack is a real first-class surface with socket-mode ingress and DM/channel policy controls
 - access patterns can be open, pairing-gated, or allowlisted
 - guild-level config can carry channel scoping
-- Slack is also a real runtime surface, but it is not part of the current portable Spawnfile surface contract
 
 Adapter target:
 
-- treat OpenClaw as the best early target for the portable Discord and Telegram surfaces
+- treat OpenClaw as the best early target for the portable Discord, Telegram, WhatsApp, and Slack surfaces
 - lower portable Discord access into the runtime's richer DM/group/guild policy fields
 - lower portable Telegram access into the runtime's richer DM/group policy fields
+- lower portable WhatsApp access into the runtime's richer DM/group policy fields
+- lower portable Slack access into the runtime's richer DM/channel policy fields
 - record any degradation explicitly when a portable surface cannot preserve a runtime-native option
-- current live-smoke status: Telegram works end to end with `access.mode: open`
+- current live-smoke status:
+  - Discord works end to end
+  - Telegram works end to end with `access.mode: open`
+  - WhatsApp works end to end
+  - Slack works end to end
 
 ### Workspace and Sandbox
 
@@ -260,16 +267,24 @@ PicoClaw has usable runtime-native channel support, but the policy surface is si
 
 - Discord is token-based and maps cleanly for simple ingress
 - Telegram is token-based and also maps cleanly for simple ingress
+- WhatsApp is available, but portable group allowlists are not a strong fit
+- Slack is available, but portable channel allowlists are not a strong fit
 - user allowlists have a direct lowering path
 - mention-driven behavior exists
 - guild and channel scoping are not currently a strong portable fit from Spawnfile
 
 Adapter target:
 
-- treat PicoClaw as a good Discord and Telegram target for open access and user allowlists
+- treat PicoClaw as a good Discord, Telegram, WhatsApp, and Slack target for open access and user allowlists
 - do not claim portable guild/channel policy support unless the runtime lowering becomes concrete
+- do not claim portable WhatsApp group policy or Slack channel policy support unless the runtime lowering becomes concrete
 - keep richer surface semantics runtime-specific until they are proven in the adapter
-- current live-smoke status: Telegram works end to end with `access.mode: open`
+- current live-smoke status:
+  - Discord works end to end
+  - Telegram works end to end with `access.mode: open`
+  - Slack works end to end
+  - Slack channel replies are posted in a thread; direct messages reply inline
+  - WhatsApp is still blocked in the pinned artifact because `whatsapp_native` is not compiled into the shipped binary
 
 ### Workspace and Sandbox
 
@@ -352,20 +367,26 @@ Adapter target:
 
 ### Channels and Surfaces
 
-TinyClaw does expose Discord, Telegram, and other channels, but its current Discord/Telegram behavior is much narrower than the other active runtimes.
+TinyClaw does expose Discord, Telegram, WhatsApp, and other channels, but its current Discord/Telegram/WhatsApp behavior is much narrower than the other active runtimes.
 
 - Discord is DM-oriented in the upstream client
 - Telegram is also pairing-gated in the upstream client
+- WhatsApp is also pairing-gated in the upstream client
 - sender pairing happens before normal routing
 - declarative allowlist policy is not the runtime's native model today
 - guild/channel semantics are not the right portable target for TinyClaw in v0.1
+- Slack is not a supported Spawnfile surface for TinyClaw in v0.1
 
 Adapter target:
 
-- compile TinyClaw Discord and Telegram as paired DM-style surfaces only
-- reject richer portable Discord or Telegram access modes at compile time instead of surprising users at run time
+- compile TinyClaw Discord, Telegram, and WhatsApp as paired DM-style surfaces only
+- reject richer portable Discord, Telegram, or WhatsApp access modes at compile time instead of surprising users at run time
+- reject Slack entirely for TinyClaw in v0.1
 - keep room or broader network-style communication out of the portable TinyClaw surface contract for now
-- current live-smoke status: Telegram works end to end, but first-contact pairing is required
+- current live-smoke status:
+  - Discord works end to end as a paired DM surface
+  - Telegram works end to end, but first-contact pairing is required
+  - WhatsApp is still blocked in the shipped container because the upstream client needs a browser runtime
 
 ### Workspace and Sandbox
 

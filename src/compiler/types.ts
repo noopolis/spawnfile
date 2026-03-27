@@ -39,9 +39,29 @@ export interface ResolvedTelegramSurface {
   botTokenSecret: string;
 }
 
+export interface ResolvedWhatsAppSurface {
+  access?: {
+    groups: string[];
+    mode: "allowlist" | "open" | "pairing";
+    users: string[];
+  };
+}
+
+export interface ResolvedSlackSurface {
+  access?: {
+    channels: string[];
+    mode: "allowlist" | "open" | "pairing";
+    users: string[];
+  };
+  appTokenSecret: string;
+  botTokenSecret: string;
+}
+
 export interface ResolvedAgentSurfaces {
   discord?: ResolvedDiscordSurface;
+  slack?: ResolvedSlackSurface;
   telegram?: ResolvedTelegramSurface;
+  whatsapp?: ResolvedWhatsAppSurface;
 }
 
 export interface EffectiveModelTarget {

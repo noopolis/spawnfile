@@ -4,7 +4,7 @@ This document is the implementation companion to `SPEC.md`.
 
 `SPEC.md` defines the canonical source format. This file defines the reference compiler shape for v0.1 so the project can move into implementation.
 
-Related specs: `CONTAINERS.md` (container compilation), `SURFACES.md` (portable Discord and Telegram surfaces), `RUNTIMES.md` (runtime registry and version pinning).
+Related specs: `CONTAINERS.md` (container compilation), `SURFACES.md` (portable communication surfaces), `RUNTIMES.md` (runtime registry and version pinning).
 
 ---
 
@@ -147,6 +147,13 @@ surfaces:
       users:
         - "123456789"
     botTokenSecret: TELEGRAM_BOT_TOKEN
+  slack:
+    access:
+      mode: allowlist
+      users:
+        - "U1234567890"
+    appTokenSecret: SLACK_APP_TOKEN
+    botTokenSecret: SLACK_BOT_TOKEN
 docs: {}
 skills: []
 mcp_servers: []

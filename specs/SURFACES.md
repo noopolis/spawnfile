@@ -5,7 +5,7 @@ This document defines the portable communication-surface model that sits on top 
 `SPEC.md` remains the canonical source schema. This file exists to make three things explicit:
 
 - what a surface is
-- what the standardized Discord and Telegram surfaces mean in v0.1
+- what the standardized Discord, Telegram, WhatsApp, and Slack surfaces mean in v0.1
 - which runtimes support which portable surface shapes
 
 ---
@@ -14,7 +14,7 @@ This document defines the portable communication-surface model that sits on top 
 
 A **surface** is an external interaction boundary through which an agent exchanges messages with humans, systems, or other agents.
 
-This is intentionally broader than "chat channel". In v0.1, the first standardized surfaces are Discord and Telegram, but the abstraction is meant to grow to cover other messaging systems, webhook/http ingress, and future agent-network or room integrations.
+This is intentionally broader than "chat channel". In v0.1, the first standardized surfaces are Discord, Telegram, WhatsApp, and Slack, but the abstraction is meant to grow to cover other messaging systems, webhook/http ingress, and future agent-network or room integrations.
 
 Surfaces are:
 
@@ -28,7 +28,7 @@ Team manifests do not declare surfaces in v0.1. Surfaces belong to concrete agen
 
 ## Current Portable Surface
 
-Spawnfile v0.1 standardizes two initial surfaces:
+Spawnfile v0.1 standardizes four initial surfaces:
 
 ```yaml
 surfaces:
@@ -50,21 +50,45 @@ surfaces:
       chats:
         - "-1001234567890"
     bot_token_secret: TELEGRAM_BOT_TOKEN
+  whatsapp:
+    access:
+      mode: allowlist
+      users:
+        - "15551234567"
+      groups:
+        - "120363400000000000@g.us"
+  slack:
+    access:
+      mode: allowlist
+      users:
+        - "U1234567890"
+      channels:
+        - "C1234567890"
+    bot_token_secret: SLACK_BOT_TOKEN
+    app_token_secret: SLACK_APP_TOKEN
 ```
 
 ### Fields
 
 | Field | Meaning |
 |------|---------|
-| `bot_token_secret` | Env var name carrying the Discord bot token. Defaults to `DISCORD_BOT_TOKEN`. |
-| `access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
-| `access.users` | Allowed Discord user IDs. |
-| `access.guilds` | Allowed Discord guild/server IDs. |
-| `access.channels` | Allowed Discord channel IDs. |
+| `discord.bot_token_secret` | Env var name carrying the Discord bot token. Defaults to `DISCORD_BOT_TOKEN`. |
+| `discord.access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
+| `discord.access.users` | Allowed Discord user IDs. |
+| `discord.access.guilds` | Allowed Discord guild/server IDs. |
+| `discord.access.channels` | Allowed Discord channel IDs. |
 | `telegram.bot_token_secret` | Env var name carrying the Telegram bot token. Defaults to `TELEGRAM_BOT_TOKEN`. |
 | `telegram.access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
 | `telegram.access.users` | Allowed Telegram user IDs. |
 | `telegram.access.chats` | Allowed Telegram chat IDs. |
+| `whatsapp.access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
+| `whatsapp.access.users` | Allowed WhatsApp user identifiers. |
+| `whatsapp.access.groups` | Allowed WhatsApp group identifiers. |
+| `slack.bot_token_secret` | Env var name carrying the Slack bot token. Defaults to `SLACK_BOT_TOKEN`. |
+| `slack.app_token_secret` | Env var name carrying the Slack app-level socket token. Defaults to `SLACK_APP_TOKEN`. |
+| `slack.access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
+| `slack.access.users` | Allowed Slack user IDs. |
+| `slack.access.channels` | Allowed Slack channel IDs. |
 
 ### Access Rules
 
@@ -72,8 +96,11 @@ surfaces:
 - `users`, `guilds`, and `channels` are only valid with `allowlist`.
 - `allowlist` must declare at least one of `users`, `guilds`, or `channels`.
 - Telegram follows the same pattern, using `users` and `chats`.
+- WhatsApp follows the same pattern, using `users` and `groups`.
+- Slack follows the same pattern, using `users` and `channels`.
 - If `access` is omitted entirely, the effective behavior is runtime-defined and is not currently portable. Projects that need predictable cross-runtime behavior should declare `access.mode` explicitly.
 - Surface secrets are runtime env, not inline manifest secrets.
+- WhatsApp does not currently have a portable token-secret field; QR/session auth remains runtime-defined.
 
 ### ID Sources
 
@@ -89,6 +116,13 @@ For Telegram, the identifiers are the bot-visible numeric ids:
 
 - user ID
 - chat ID
+
+For WhatsApp and Slack, identifiers are runtime-facing platform identifiers:
+
+- WhatsApp user or phone identity
+- WhatsApp group id
+- Slack user id
+- Slack channel id
 
 ---
 
@@ -109,6 +143,10 @@ The portable schema is broader than any single runtime. A conforming compiler mu
 - `openclaw` is the best current target for full Discord channel/server policy.
 - `picoclaw` is a good target for token-based Discord plus simple user allowlists.
 - `tinyclaw` supports Discord as a paired DM surface, not as a general guild/channel surface.
+- Live smoke status:
+  - `openclaw` Discord was verified end to end
+  - `picoclaw` Discord was verified end to end
+  - `tinyclaw` Discord was verified end to end as a paired DM surface
 
 ### Telegram
 
@@ -128,6 +166,42 @@ The portable schema is broader than any single runtime. A conforming compiler mu
   - `openclaw` Telegram was verified end to end with `access.mode: open`
   - `picoclaw` Telegram was verified end to end with `access.mode: open`
 
+### WhatsApp
+
+| Runtime | Supported Access | Notes |
+|--------|------------------|-------|
+| `openclaw` | `pairing`, `allowlist`, `open` | Supports DM and group policy lowering. |
+| `picoclaw` | `open`, `allowlist` | Supports user allowlists. Portable group allowlists are not lowered in Spawnfile v0.1. |
+| `tinyclaw` | `pairing` | WhatsApp is pairing-gated. Declarative user/group allowlists are not supported in Spawnfile v0.1. |
+
+### Practical Meaning
+
+- `openclaw` is the strongest current target for portable WhatsApp policy.
+- `picoclaw` is a good target for simple WhatsApp ingress and user allowlists.
+- `tinyclaw` supports WhatsApp as a pairing-gated surface only.
+- Live smoke status:
+  - `openclaw` WhatsApp was verified end to end
+  - `picoclaw` WhatsApp is still blocked in the pinned artifact because `whatsapp_native` is not compiled into the shipped binary
+  - `tinyclaw` WhatsApp is still blocked in the shipped container because the upstream client needs a browser runtime
+
+### Slack
+
+| Runtime | Supported Access | Notes |
+|--------|------------------|-------|
+| `openclaw` | `pairing`, `allowlist`, `open` | Requires both bot and app/socket tokens. Supports DM and channel policy lowering. |
+| `picoclaw` | `open`, `allowlist` | Requires both bot and app/socket tokens. Portable channel allowlists are not lowered in Spawnfile v0.1. |
+| `tinyclaw` | unsupported | TinyClaw does not support Slack in Spawnfile v0.1. |
+
+### Practical Meaning
+
+- `openclaw` is the current reference target for portable Slack policy.
+- `picoclaw` supports token-based Slack ingress plus user allowlists, but not channel allowlists.
+- `tinyclaw` currently has no Spawnfile Slack surface.
+- Live smoke status:
+  - `openclaw` Slack was verified end to end
+  - `picoclaw` Slack was verified end to end
+  - `picoclaw` replies to channel messages in Slack threads; direct messages reply inline
+
 ---
 
 ## Runtime Lowering Notes
@@ -143,6 +217,18 @@ Spawnfile lowers Discord access into the runtime's richer Discord config surface
 - `guilds.*.channels`
 
 OpenClaw is the only bundled runtime where the first portable Discord surface maps to a real channel/server policy model instead of a reduced subset.
+
+Spawnfile lowers Telegram into the same richer OpenClaw channel surface:
+
+- `dmPolicy`
+- `groupPolicy`
+- `allowFrom`
+- `groups`
+
+Spawnfile lowers WhatsApp and Slack into the same richer OpenClaw channel surface:
+
+- WhatsApp lowers into `dmPolicy`, `groupPolicy`, `allowFrom`, and `groups`
+- Slack lowers into `mode: socket`, `dmPolicy`, `groupPolicy`, `allowFrom`, and `channels`
 
 ### PicoClaw
 
@@ -161,11 +247,19 @@ Spawnfile lowers Telegram into PicoClaw's simpler channel config:
 
 User allowlists map well. Portable chat allowlists do not currently have a direct lowering in Spawnfile v0.1.
 
+Spawnfile lowers WhatsApp and Slack into PicoClaw's simpler channel config:
+
+- WhatsApp lowers into `enabled`, `use_native`, and optional `allow_from`
+- Slack lowers into `enabled`, `group_trigger.mention_only`, and optional `allow_from`
+
+User allowlists map well. Portable group or channel allowlists do not currently have a direct lowering in Spawnfile v0.1.
+For Slack specifically, PicoClaw answers channel messages in a thread under the inbound message and answers direct messages inline.
+
 ### TinyClaw
 
-Spawnfile lowers Discord and Telegram into TinyClaw's channel client config and starts the corresponding worker processes in the generated container.
+Spawnfile lowers Discord, Telegram, and WhatsApp into TinyClaw's channel client config and starts the corresponding worker processes in the generated container.
 
-But the upstream runtime behavior remains pairing-based and DM-oriented, so Spawnfile rejects richer Discord and Telegram access shapes for TinyClaw at compile time.
+But the upstream runtime behavior remains pairing-based and DM-oriented, so Spawnfile rejects richer Discord, Telegram, and WhatsApp access shapes for TinyClaw at compile time. Spawnfile also rejects Slack entirely for TinyClaw in v0.1.
 
 ---
 

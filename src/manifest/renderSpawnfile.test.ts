@@ -226,6 +226,55 @@ describe("renderSpawnfile", () => {
     );
   });
 
+  it("renders whatsapp before slack in canonical order", () => {
+    const source = renderSpawnfile({
+      kind: "agent",
+      name: "multi-surface-agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        slack: {
+          access: {
+            mode: "allowlist",
+            users: ["U1234567890"],
+            channels: ["C1234567890"]
+          },
+          bot_token_secret: "TEAM_SLACK_BOT_TOKEN",
+          app_token_secret: "TEAM_SLACK_APP_TOKEN"
+        },
+        whatsapp: {
+          access: {
+            mode: "allowlist",
+            users: ["15551234567"],
+            groups: ["120363400000000000@g.us"]
+          }
+        }
+      }
+    });
+
+    expect(source).toContain(
+      [
+        "surfaces:",
+        "  whatsapp:",
+        "    access:",
+        "      mode: allowlist",
+        "      users:",
+        "        - \"15551234567\"",
+        "      groups:",
+        "        - 120363400000000000@g.us",
+        "  slack:",
+        "    access:",
+        "      mode: allowlist",
+        "      users:",
+        "        - U1234567890",
+        "      channels:",
+        "        - C1234567890",
+        "    bot_token_secret: TEAM_SLACK_BOT_TOKEN",
+        "    app_token_secret: TEAM_SLACK_APP_TOKEN"
+      ].join("\n")
+    );
+  });
+
   it("renders inline model auth and endpoint fields in canonical order", () => {
     const source = renderSpawnfile({
       execution: {

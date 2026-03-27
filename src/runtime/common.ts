@@ -97,6 +97,14 @@ export const createAgentCapabilities = (
     capabilities.push(createCapability("surfaces.telegram", "supported"));
   }
 
+  if (node.surfaces?.whatsapp) {
+    capabilities.push(createCapability("surfaces.whatsapp", "supported"));
+  }
+
+  if (node.surfaces?.slack) {
+    capabilities.push(createCapability("surfaces.slack", "supported"));
+  }
+
   if (node.subagents.length > 0) {
     capabilities.push(
       createCapability("agent.subagents", options.subagentOutcome ?? "supported")

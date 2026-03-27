@@ -22,6 +22,11 @@ export const buildTinyClawChannels = (
     config.telegram = {};
   }
 
+  if (surfaces?.whatsapp) {
+    enabled.push("whatsapp");
+    config.whatsapp = {};
+  }
+
   return {
     config,
     enabled
@@ -127,5 +132,29 @@ export const assertSupportedTinyClawSurfaces = (
         "TinyClaw Telegram does not support declarative users or chats in Spawnfile v0.1"
       );
     }
+  }
+
+  const whatsappAccess = surfaces?.whatsapp?.access;
+  if (whatsappAccess) {
+    if (whatsappAccess.mode !== "pairing") {
+      throw new SpawnfileError(
+        "validation_error",
+        "TinyClaw WhatsApp only supports pairing access in Spawnfile v0.1"
+      );
+    }
+
+    if (whatsappAccess.users.length > 0 || whatsappAccess.groups.length > 0) {
+      throw new SpawnfileError(
+        "validation_error",
+        "TinyClaw WhatsApp does not support declarative users or groups in Spawnfile v0.1"
+      );
+    }
+  }
+
+  if (surfaces?.slack) {
+    throw new SpawnfileError(
+      "validation_error",
+      "TinyClaw does not support Slack in Spawnfile v0.1"
+    );
   }
 };

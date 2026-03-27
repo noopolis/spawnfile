@@ -2,7 +2,12 @@ import type {
   ResolvedAgentNode,
 } from "../../compiler/types.js";
 import { listEffectiveExecutionModelTargets } from "../../compiler/modelEnv.js";
-import type { AdapterCompileResult, RuntimeAdapter } from "../types.js";
+import type {
+  AdapterCompileResult,
+  ContainerTarget,
+  ContainerTargetInput,
+  RuntimeAdapter
+} from "../types.js";
 import {
   createAgentCapabilities,
   createDiagnostic,
@@ -14,7 +19,8 @@ import { prepareOpenClawRuntimeAuth } from "./runAuth.js";
 import { createOpenClawAgentScaffold } from "./scaffold.js";
 import {
   assertSupportedOpenClawSurfaces,
-  buildOpenClawChannelConfig
+  buildOpenClawChannelConfig,
+  buildOpenClawSurfaceEnvBindings
 } from "./surfaces.js";
 
 const buildEnvSecretRef = (envName: string): Record<string, string> => ({
@@ -116,6 +122,20 @@ const createOpenClawStateFiles = (): Array<{ content: string; path: string }> =>
   }
 ];
 
+const createContainerTargets = async (
+  inputs: ContainerTargetInput[]
+): Promise<ContainerTarget[]> =>
+  inputs.map((input) => {
+    const agent = input.kind === "agent" ? (input.value as ResolvedAgentNode) : null;
+
+    return {
+      configEnvBindings: buildOpenClawSurfaceEnvBindings(agent?.surfaces),
+      files: input.emittedFiles,
+      id: `${input.kind}-${input.slug}`,
+      sourceIds: [input.id]
+    };
+  });
+
 export const openClawAdapter: RuntimeAdapter = {
   assertSupportedModelTarget(target) {
     if (target.endpoint) {
@@ -205,6 +225,9 @@ export const openClawAdapter: RuntimeAdapter = {
         }
       ]
     };
+  },
+  async createContainerTargets(inputs) {
+    return createContainerTargets(inputs);
   },
   name: "openclaw",
   prepareRuntimeAuth: prepareOpenClawRuntimeAuth,

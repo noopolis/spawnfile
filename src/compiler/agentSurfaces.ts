@@ -1,6 +1,8 @@
 import { SurfacesBlock } from "../manifest/index.js";
 import {
   DEFAULT_DISCORD_BOT_TOKEN_SECRET,
+  DEFAULT_SLACK_APP_TOKEN_SECRET,
+  DEFAULT_SLACK_BOT_TOKEN_SECRET,
   DEFAULT_TELEGRAM_BOT_TOKEN_SECRET
 } from "../shared/index.js";
 
@@ -48,6 +50,36 @@ export const resolveAgentSurfaces = (
     };
   }
 
+  if (surfaces.whatsapp) {
+    resolved.whatsapp = surfaces.whatsapp.access
+      ? {
+          access: {
+            groups: [...(surfaces.whatsapp.access.groups ?? [])],
+            mode: surfaces.whatsapp.access.mode ?? "allowlist",
+            users: [...(surfaces.whatsapp.access.users ?? [])]
+          }
+        }
+      : {};
+  }
+
+  if (surfaces.slack) {
+    resolved.slack = {
+      ...(surfaces.slack.access
+        ? {
+            access: {
+              channels: [...(surfaces.slack.access.channels ?? [])],
+              mode: surfaces.slack.access.mode ?? "allowlist",
+              users: [...(surfaces.slack.access.users ?? [])]
+            }
+          }
+        : {}),
+      appTokenSecret:
+        surfaces.slack.app_token_secret ?? DEFAULT_SLACK_APP_TOKEN_SECRET,
+      botTokenSecret:
+        surfaces.slack.bot_token_secret ?? DEFAULT_SLACK_BOT_TOKEN_SECRET
+    };
+  }
+
   return Object.keys(resolved).length > 0 ? resolved : undefined;
 };
 
@@ -56,5 +88,8 @@ export const listAgentSurfaceSecretNames = (
 ): string[] =>
   [
     ...(surfaces?.discord ? [surfaces.discord.botTokenSecret] : []),
+    ...(surfaces?.slack
+      ? [surfaces.slack.appTokenSecret, surfaces.slack.botTokenSecret]
+      : []),
     ...(surfaces?.telegram ? [surfaces.telegram.botTokenSecret] : [])
   ].sort();

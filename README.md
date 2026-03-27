@@ -27,9 +27,9 @@ Spawnfile v0.1 targets **autonomous agent runtimes** — systems that host agent
 - runtime binding
 - execution intent (model, workspace, sandbox)
 - team structure (members, hierarchy, shared surfaces)
-- agent-level Discord and Telegram surfaces
+- agent-level Discord, Telegram, WhatsApp, and Slack surfaces
 
-v0.1 does not try to standardize every runtime-native feature. Beyond the initial Discord and Telegram surfaces, communication surfaces, memory engines, task schedulers, UI surfaces, and other runtime-specific features stay adapter-defined for now.
+v0.1 does not try to standardize every runtime-native feature. Beyond the initial Discord, Telegram, WhatsApp, and Slack surfaces, communication surfaces, memory engines, task schedulers, UI surfaces, and other runtime-specific features stay adapter-defined for now.
 
 ---
 
@@ -258,7 +258,7 @@ The CLI rejects invalid parent kinds: `add agent` and `add team` only work on te
 
 Team manifests should not declare `execution`. Model, sandbox, and workspace intent belong to agent manifests, not teams.
 
-Agent manifests may declare portable communication surfaces under `surfaces`. The first standardized surfaces are Discord and Telegram:
+Agent manifests may declare portable communication surfaces under `surfaces`. The first standardized surfaces are Discord, Telegram, WhatsApp, and Slack:
 
 ```yaml
 surfaces:
@@ -274,6 +274,20 @@ surfaces:
       chats:
         - "-1001234567890"
     bot_token_secret: TELEGRAM_BOT_TOKEN
+  whatsapp:
+    access:
+      users:
+        - "15551234567"
+      groups:
+        - "120363400000000000@g.us"
+  slack:
+    access:
+      users:
+        - "U1234567890"
+      channels:
+        - "C1234567890"
+    bot_token_secret: SLACK_BOT_TOKEN
+    app_token_secret: SLACK_APP_TOKEN
 ```
 
 Discord access may declare:
@@ -289,22 +303,42 @@ Telegram access may declare:
 - `users`
 - `chats`
 
+WhatsApp access may declare:
+
+- `mode: pairing | allowlist | open`
+- `users`
+- `groups`
+
+Slack access may declare:
+
+- `mode: pairing | allowlist | open`
+- `users`
+- `channels`
+
 If `mode` is omitted and any allowlist fields are present, Spawnfile infers `allowlist`.
 If you want portable runtime behavior, set `access.mode` explicitly. Leaving `access` unset delegates to runtime defaults, which are not identical across runtimes.
-If `bot_token_secret` is omitted, Spawnfile defaults to `DISCORD_BOT_TOKEN` for Discord and `TELEGRAM_BOT_TOKEN` for Telegram.
+If `bot_token_secret` is omitted, Spawnfile defaults to `DISCORD_BOT_TOKEN` for Discord, `TELEGRAM_BOT_TOKEN` for Telegram, and `SLACK_BOT_TOKEN` for Slack. If `app_token_secret` is omitted on Slack, Spawnfile defaults to `SLACK_APP_TOKEN`.
+WhatsApp has no portable token-secret field in v0.1; session or QR-style auth remains runtime-defined.
 `spawnfile auth sync ... --env-file .env` will collect that env name into the selected auth profile, and `spawnfile run --auth-profile ...` will validate it before container startup.
 
 Runtime support is narrower than the portable schema:
 
-- `openclaw` supports `pairing`, `allowlist`, and `open` for both Discord and Telegram
-- `picoclaw` supports `open` and user allowlists for both Discord and Telegram
-- `tinyclaw` currently supports `pairing` only and uses Discord and Telegram as paired DM-style surfaces
+- `openclaw` supports `pairing`, `allowlist`, and `open` for Discord, Telegram, WhatsApp, and Slack
+- `picoclaw` supports `open` and user allowlists for Discord, Telegram, WhatsApp, and Slack
+- `tinyclaw` supports `pairing` only for Discord, Telegram, and WhatsApp, and does not support Slack in Spawnfile v0.1
 
 Practical notes from the current live smoke matrix:
 
+- Discord was verified end to end on OpenClaw and PicoClaw, and as a paired DM surface on TinyClaw
 - Telegram was verified end to end on all three runtimes
 - `tinyclaw` required first-contact pairing on Telegram
 - `openclaw` and `picoclaw` both worked on Telegram with `access.mode: open`
+- WhatsApp was verified end to end on OpenClaw
+- `picoclaw` WhatsApp remains blocked in the pinned artifact because `whatsapp_native` is not compiled into the shipped binary
+- `tinyclaw` WhatsApp remains blocked in the shipped container because the upstream client needs a browser runtime
+- Slack was verified end to end on OpenClaw
+- Slack was verified end to end on PicoClaw
+- `picoclaw` replies to channel messages in a Slack thread; direct messages reply inline
 
 Useful options:
 

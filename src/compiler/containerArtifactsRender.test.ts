@@ -131,6 +131,45 @@ describe("renderDockerfile", () => {
     expect(dockerfile).toContain("USER spawnfile");
     expect(dockerfile).toContain("EXPOSE 18789 18790");
   });
+
+  it("installs python3 when generated entrypoints need JSON config env writes", async () => {
+    const { renderDockerfile } = await loadRenderModule({
+      openclaw: {
+        commands: ["npm install -g openclaw@2026.3.13"],
+        copyCommands: [],
+        runtimeName: "openclaw",
+        runtimeRoot: "/usr/local/lib/node_modules/openclaw"
+      }
+    });
+
+    const dockerfile = await renderDockerfile([
+      createRuntimePlan("openclaw", {
+        configEnvBindings: [
+          {
+            envName: "SLACK_BOT_TOKEN",
+            jsonPath: "channels.slack.botToken"
+          }
+        ],
+        meta: {
+          configFileName: "openclaw.json",
+          configPathEnv: "OPENCLAW_CONFIG_PATH",
+          homeEnv: "OPENCLAW_HOME",
+          instancePaths: {
+            configPathTemplate: "<instance-root>/openclaw.json",
+            homePathTemplate: "<instance-root>/home",
+            workspacePathTemplate: "<instance-root>/workspace"
+          },
+          standaloneBaseImage: "node:24-bookworm-slim",
+          startCommand: ["node", "<runtime-root>/openclaw.mjs"],
+          systemDeps: ["openssl"]
+        }
+      })
+    ]);
+
+    expect(dockerfile).toContain(
+      "RUN apt-get update && apt-get install -y --no-install-recommends openssl python3 && rm -rf /var/lib/apt/lists/*"
+    );
+  });
 });
 
 describe("renderEntrypoint", () => {
