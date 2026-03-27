@@ -6,16 +6,7 @@ description: Install Spawnfile and compile your first agent in 5 minutes.
 ## Install
 
 ```bash
-nvm use
-npm install
-npm run build
-npm link
-```
-
-Or use the bootstrap script:
-
-```bash
-./scripts/install.sh
+npm install -g spawnfile
 ```
 
 Verify:

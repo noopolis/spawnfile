@@ -54,31 +54,31 @@ Spawnfile v0.1 is implemented as a Node.js CLI in TypeScript.
 - manifest parsing: `yaml` + `zod`
 - tests: `vitest`
 
-That gives us fast iteration, a conventional `bin`-based CLI, and a clean path to future install surfaces such as npm or a shell bootstrapper.
+That gives us fast iteration and a conventional `bin`-based CLI published to [npm](https://www.npmjs.com/package/spawnfile).
 
 ---
 
 ## Install
 
-From a repository checkout:
+```bash
+npm install -g spawnfile
+```
+
+Verify:
 
 ```bash
+spawnfile --help
+```
+
+### From source
+
+```bash
+git clone https://github.com/noopolis/spawnfile.git
+cd spawnfile
 nvm use
 npm install
 npm run build
 npm link
-```
-
-Or use the bootstrap script:
-
-```bash
-./scripts/install.sh
-```
-
-Then:
-
-```bash
-spawnfile --help
 ```
 
 To clone the target runtimes and generate reference blueprints:
