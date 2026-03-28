@@ -7,3 +7,4 @@ export * from "./runProject.js";
 export * from "./syncProjectAuth.js";
 export * from "./types.js";
 export * from "./updateProjectModels.js";
+export * from "./updateProjectSurfaces.js";

@@ -257,6 +257,87 @@ describe("runCli", () => {
     expect(stdout).toEqual(["updated /tmp/project/Spawnfile"]);
   });
 
+  it("adds a surface through the CLI", async () => {
+    const stdout: string[] = [];
+    const addProjectSurface = vi.fn(async () => ({
+      updatedFiles: ["/tmp/project/Spawnfile"]
+    }));
+
+    const exitCode = await runCli(
+      [
+        "surface",
+        "add",
+        "slack",
+        "/tmp/project",
+        "--bot-token-secret",
+        "SLACK_BOT_TOKEN",
+        "--app-token-secret",
+        "SLACK_APP_TOKEN",
+        "--recursive"
+      ],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { addProjectSurface }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(addProjectSurface).toHaveBeenCalledWith({
+      appTokenSecret: "SLACK_APP_TOKEN",
+      botTokenSecret: "SLACK_BOT_TOKEN",
+      path: "/tmp/project",
+      recursive: true,
+      surface: "slack"
+    });
+    expect(stdout).toEqual(["updated /tmp/project/Spawnfile"]);
+  });
+
+  it("sets surface access through the CLI", async () => {
+    const stdout: string[] = [];
+    const setProjectSurfaceAccess = vi.fn(async () => ({
+      updatedFiles: ["/tmp/project/Spawnfile"]
+    }));
+
+    const exitCode = await runCli(
+      [
+        "surface",
+        "set-access",
+        "discord",
+        "/tmp/project",
+        "--mode",
+        "allowlist",
+        "--user",
+        "U1",
+        "--user",
+        "U2",
+        "--guild",
+        "G1",
+        "--channel",
+        "C1"
+      ],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { setProjectSurfaceAccess }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(setProjectSurfaceAccess).toHaveBeenCalledWith({
+      channels: ["C1"],
+      chats: [],
+      groups: [],
+      guilds: ["G1"],
+      mode: "allowlist",
+      path: "/tmp/project",
+      recursive: undefined,
+      surface: "discord",
+      users: ["U1", "U2"]
+    });
+    expect(stdout).toEqual(["updated /tmp/project/Spawnfile"]);
+  });
+
   it("imports env auth into a profile", async () => {
     const stdout: string[] = [];
     const importEnvFile = vi.fn(async () => ({

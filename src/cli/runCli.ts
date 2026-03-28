@@ -9,6 +9,7 @@ import {
 } from "../auth/index.js";
 import {
   addAgentProject,
+  addProjectSurface,
   addProjectModelFallback,
   addSubagentProject,
   addTeamProject,
@@ -17,12 +18,17 @@ import {
   clearProjectModelFallbacks,
   compileProject,
   initProject,
+  removeProjectSurface,
   runProject,
   setProjectPrimaryModel,
+  setProjectSurfaceAccess,
+  showProjectSurfaces,
   syncProjectAuth
 } from "../compiler/index.js";
 import { isSpawnfileError } from "../shared/index.js";
 import { listRuntimeAdapters } from "../runtime/index.js";
+import { registerModelCommands } from "./modelCommands.js";
+import { registerSurfaceCommands } from "./surfaceCommands.js";
 
 export interface CliStreams {
   stderr: (message: string) => void;
@@ -40,6 +46,7 @@ export interface CliHandlers {
   compileProject: typeof compileProject;
   addAgentProject: typeof addAgentProject;
   addProjectModelFallback: typeof addProjectModelFallback;
+  addProjectSurface: typeof addProjectSurface;
   addSubagentProject: typeof addSubagentProject;
   addTeamProject: typeof addTeamProject;
   clearProjectModelFallbacks: typeof clearProjectModelFallbacks;
@@ -48,9 +55,12 @@ export interface CliHandlers {
   importEnvFile: typeof importEnvFile;
   initProject: typeof initProject;
   listRuntimeAdapters: typeof listRuntimeAdapters;
+  removeProjectSurface: typeof removeProjectSurface;
   requireAuthProfile: typeof requireAuthProfile;
   runProject: typeof runProject;
   setProjectPrimaryModel: typeof setProjectPrimaryModel;
+  setProjectSurfaceAccess: typeof setProjectSurfaceAccess;
+  showProjectSurfaces: typeof showProjectSurfaces;
   syncProjectAuth: typeof syncProjectAuth;
 }
 
@@ -60,6 +70,7 @@ const createDefaultHandlers = (): CliHandlers => ({
   compileProject,
   addAgentProject,
   addProjectModelFallback,
+  addProjectSurface,
   addSubagentProject,
   addTeamProject,
   clearProjectModelFallbacks,
@@ -68,9 +79,12 @@ const createDefaultHandlers = (): CliHandlers => ({
   importEnvFile,
   initProject,
   listRuntimeAdapters,
+  removeProjectSurface,
   requireAuthProfile,
   runProject,
   setProjectPrimaryModel,
+  setProjectSurfaceAccess,
+  showProjectSurfaces,
   syncProjectAuth
 });
 
@@ -232,104 +246,8 @@ export const runCli = async (
       }
     });
 
-  const modelCommand = program
-    .command("model")
-    .description("Edit primary and fallback model declarations");
-
-  modelCommand
-    .command("set")
-    .argument("<provider>", "Model provider")
-    .argument("<name>", "Model name")
-    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
-    .option("--auth <method>", "Model auth method")
-    .option("--key <env>", "Environment variable for api_key auth")
-    .option("--compat <compatibility>", "Endpoint compatibility for custom/local models")
-    .option("--base-url <url>", "Endpoint base URL for custom/local models")
-    .option("--recursive", "Update the target project and its descendants")
-    .action(
-      async (
-        provider: string,
-        name: string,
-        inputPath: string,
-        options: {
-          auth?: "api_key" | "claude-code" | "codex" | "none";
-          baseUrl?: string;
-          compat?: "anthropic" | "openai";
-          key?: string;
-          recursive?: boolean;
-        }
-      ) => {
-        const result = await handlers.setProjectPrimaryModel({
-          authKey: options.key,
-          authMethod: options.auth,
-          endpointBaseUrl: options.baseUrl,
-          endpointCompatibility: options.compat,
-          name,
-          path: inputPath,
-          provider,
-          recursive: options.recursive
-        });
-
-        for (const filePath of result.updatedFiles) {
-          streams.stdout(`updated ${filePath}`);
-        }
-      }
-    );
-
-  modelCommand
-    .command("add-fallback")
-    .argument("<provider>", "Model provider")
-    .argument("<name>", "Model name")
-    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
-    .option("--auth <method>", "Model auth method")
-    .option("--key <env>", "Environment variable for api_key auth")
-    .option("--compat <compatibility>", "Endpoint compatibility for custom/local models")
-    .option("--base-url <url>", "Endpoint base URL for custom/local models")
-    .option("--recursive", "Update the target project and its descendants")
-    .action(
-      async (
-        provider: string,
-        name: string,
-        inputPath: string,
-        options: {
-          auth?: "api_key" | "claude-code" | "codex" | "none";
-          baseUrl?: string;
-          compat?: "anthropic" | "openai";
-          key?: string;
-          recursive?: boolean;
-        }
-      ) => {
-        const result = await handlers.addProjectModelFallback({
-          authKey: options.key,
-          authMethod: options.auth,
-          endpointBaseUrl: options.baseUrl,
-          endpointCompatibility: options.compat,
-          name,
-          path: inputPath,
-          provider,
-          recursive: options.recursive
-        });
-
-        for (const filePath of result.updatedFiles) {
-          streams.stdout(`updated ${filePath}`);
-        }
-      }
-    );
-
-  modelCommand
-    .command("clear-fallbacks")
-    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
-    .option("--recursive", "Update the target project and its descendants")
-    .action(async (inputPath: string, options: { recursive?: boolean }) => {
-      const result = await handlers.clearProjectModelFallbacks({
-        path: inputPath,
-        recursive: options.recursive
-      });
-
-      for (const filePath of result.updatedFiles) {
-        streams.stdout(`updated ${filePath}`);
-      }
-    });
+  registerModelCommands(program, handlers, streams);
+  registerSurfaceCommands(program, handlers, streams);
 
   program
     .command("validate")

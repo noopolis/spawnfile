@@ -896,6 +896,10 @@ spawnfile init [path] [--team] [--runtime <name>]
 spawnfile add agent <id> [path] [--runtime <name>]
 spawnfile add subagent <id> [path]
 spawnfile add team <id> [path]
+spawnfile surface add <surface> [path]
+spawnfile surface remove <surface> [path]
+spawnfile surface set-access <surface> [path] --mode <mode>
+spawnfile surface show [path]
 spawnfile model set <provider> <name> [path]
 spawnfile model add-fallback <provider> <name> [path]
 spawnfile model clear-fallbacks [path]
@@ -975,6 +979,42 @@ Edits model declarations in authored Spawnfiles.
 `spawnfile model clear-fallbacks [path]`
 
 - MUST remove `execution.model.fallback`
+
+#### `spawnfile surface`
+
+Edits declared communication surfaces.
+
+- `[path]` is optional and defaults to the current directory
+- `path` MUST point to the target project directory or its `Spawnfile`
+- source-editing commands SHOULD rewrite touched manifests into canonical surface order
+- if `path` resolves to a team manifest, mutating commands MUST require `--recursive` and MUST only rewrite descendant agent manifests, not the team manifest itself
+
+`spawnfile surface add <surface> [path]`
+
+- MUST add the named surface block when it is missing
+- MAY update token-secret fields on an already-declared surface block
+- MUST reject secret flags that are invalid for the selected surface
+- MUST validate the resulting declared surface against the selected runtime when the target agent already declares a runtime
+
+`spawnfile surface remove <surface> [path]`
+
+- MUST remove the named surface block from the target manifest
+- SHOULD remove the top-level `surfaces` block entirely when it becomes empty
+
+`spawnfile surface set-access <surface> [path] --mode <mode>`
+
+- MUST only operate on an already-declared surface block unless `--recursive` is used and the implementation explicitly skips manifests where that surface is absent
+- MUST set the surface access mode to `pairing`, `allowlist`, or `open`
+- MUST validate allowlist identifiers according to the selected surface:
+  - Discord: `users`, `guilds`, `channels`
+  - Telegram: `users`, `chats`
+  - WhatsApp: `users`, `groups`
+  - Slack: `users`, `channels`
+
+`spawnfile surface show [path]`
+
+- MUST print the currently declared surface blocks for the selected manifest
+- MAY support `--recursive` to list descendant agent manifests in a team graph
 
 #### `spawnfile validate`
 

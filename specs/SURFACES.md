@@ -26,6 +26,21 @@ Team manifests do not declare surfaces in v0.1. Surfaces belong to concrete agen
 
 ---
 
+## CLI Workflows
+
+Spawnfile currently exposes a declarative CLI for surfaces.
+
+### Declarative Commands
+
+These commands edit agent manifests and follow the same `add` / `remove` / `set-*` / `show` philosophy as the rest of the CLI:
+
+- `spawnfile surface add <surface> [path]`
+- `spawnfile surface remove <surface> [path]`
+- `spawnfile surface set-access <surface> [path] --mode <mode>`
+- `spawnfile surface show [path]`
+
+When the target path is a team manifest, surface edit commands require `--recursive` and only rewrite descendant agent manifests.
+
 ## Current Portable Surface
 
 Spawnfile v0.1 standardizes four initial surfaces:

@@ -11,6 +11,7 @@ src/compiler/
 ├── helpers.ts                  # Deterministic helper utilities
 ├── compilePlanHelpers.ts       # Fingerprints and shared validation used by graph resolution
 ├── agentSurfaces.ts            # Portable agent-surface resolution helpers
+├── surfaceDefinitions.ts       # Shared surface-edit command types and manifest-shape helpers
 ├── surfaceSupport.ts           # Runtime surface compatibility checks during graph resolution
 ├── surfaces.ts                 # Resolved docs, skills, and shared-surface merging
 ├── buildCompilePlan.ts         # Manifest graph walk and plan construction
@@ -19,6 +20,7 @@ src/compiler/
 ├── initProject.ts              # `spawnfile init` orchestration around runtime-owned scaffolds
 ├── addProjectNode.ts           # `spawnfile add ...` graph-editing helpers
 ├── updateProjectModels.ts      # `spawnfile model ...` manifest-editing helpers
+├── updateProjectSurfaces.ts    # `spawnfile surface ...` manifest-editing helpers
 ├── executionDefaults.ts        # Effective execution defaults applied during graph resolution
 ├── *.test.ts                   # Tests next to the implementation they cover
 ```

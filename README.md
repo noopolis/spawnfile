@@ -258,6 +258,14 @@ The CLI rejects invalid parent kinds: `add agent` and `add team` only work on te
 
 Team manifests should not declare `execution`. Model, sandbox, and workspace intent belong to agent manifests, not teams.
 
+`spawnfile surface` follows the same split between structure and mutation:
+
+- `spawnfile surface add <surface> [path]` adds or updates the declared surface block
+- `spawnfile surface remove <surface> [path]` removes a declared surface block
+- `spawnfile surface set-access <surface> [path] --mode <mode>` updates access policy on an existing surface
+- `spawnfile surface show [path]` prints currently declared surfaces
+- if `[path]` points to a team project, mutating commands require `--recursive` and only descendant agent manifests are updated
+
 Agent manifests may declare portable communication surfaces under `surfaces`. The first standardized surfaces are Discord, Telegram, WhatsApp, and Slack:
 
 ```yaml

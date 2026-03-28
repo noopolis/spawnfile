@@ -7,7 +7,9 @@ This folder owns user-facing command parsing and process exit behavior.
 ```text
 src/cli/
 ├── index.ts        # Executable Node entrypoint
-├── runCli.ts       # Commander setup and command handlers
+├── runCli.ts       # Top-level Commander setup and shared CLI types
+├── modelCommands.ts # `spawnfile model ...` command registration
+├── surfaceCommands.ts # `spawnfile surface ...` command registration
 └── runCli.test.ts  # CLI behavior tests
 ```
 
