@@ -5,7 +5,7 @@ This document defines the portable communication-surface model that sits on top 
 `SPEC.md` remains the canonical source schema. This file exists to make three things explicit:
 
 - what a surface is
-- what the standardized Discord, Telegram, WhatsApp, and Slack surfaces mean in v0.1
+- what the standardized Discord, Telegram, WhatsApp, Slack, and HTTP surfaces mean in v0.1
 - which runtimes support which portable surface shapes
 
 ---
@@ -14,7 +14,7 @@ This document defines the portable communication-surface model that sits on top 
 
 A **surface** is an external interaction boundary through which an agent exchanges messages with humans, systems, or other agents.
 
-This is intentionally broader than "chat channel". In v0.1, the first standardized surfaces are Discord, Telegram, WhatsApp, and Slack, but the abstraction is meant to grow to cover other messaging systems, webhook/http ingress, and future agent-network or room integrations.
+This is intentionally broader than "chat channel". In v0.1, the first standardized surfaces are Discord, Telegram, WhatsApp, Slack, and HTTP, but the abstraction is meant to grow to cover other messaging systems, webhook/http ingress, and future agent-network or room integrations.
 
 Surfaces are:
 
@@ -43,7 +43,7 @@ When the target path is a team manifest, surface edit commands require `--recurs
 
 ## Current Portable Surface
 
-Spawnfile v0.1 standardizes four initial surfaces:
+Spawnfile v0.1 standardizes five initial surfaces:
 
 ```yaml
 surfaces:
@@ -81,6 +81,9 @@ surfaces:
         - "C1234567890"
     bot_token_secret: SLACK_BOT_TOKEN
     app_token_secret: SLACK_APP_TOKEN
+  http:
+    access:
+      mode: open
 ```
 
 ### Fields
@@ -104,6 +107,7 @@ surfaces:
 | `slack.access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
 | `slack.access.users` | Allowed Slack user IDs. |
 | `slack.access.channels` | Allowed Slack channel IDs. |
+| `http.access.mode` | Access policy for the portable HTTP surface. Currently only `open` is standardized. |
 
 ### Access Rules
 
@@ -113,9 +117,11 @@ surfaces:
 - Telegram follows the same pattern, using `users` and `chats`.
 - WhatsApp follows the same pattern, using `users` and `groups`.
 - Slack follows the same pattern, using `users` and `channels`.
+- HTTP currently only supports `mode: open`.
 - If `access` is omitted entirely, the effective behavior is runtime-defined and is not currently portable. Projects that need predictable cross-runtime behavior should declare `access.mode` explicitly.
 - Surface secrets are runtime env, not inline manifest secrets.
 - WhatsApp does not currently have a portable token-secret field; QR/session auth remains runtime-defined.
+- HTTP does not currently define a portable secret or allowlist field in v0.1.
 
 ### ID Sources
 
@@ -138,6 +144,8 @@ For WhatsApp and Slack, identifiers are runtime-facing platform identifiers:
 - WhatsApp group id
 - Slack user id
 - Slack channel id
+
+HTTP currently has no portable identifier allowlist fields in v0.1.
 
 ---
 
@@ -215,7 +223,24 @@ The portable schema is broader than any single runtime. A conforming compiler mu
 - Live smoke status:
   - `openclaw` Slack was verified end to end
   - `picoclaw` Slack was verified end to end
-  - `picoclaw` replies to channel messages in Slack threads; direct messages reply inline
+- `picoclaw` replies to channel messages in Slack threads; direct messages reply inline
+
+### HTTP
+
+| Runtime | Supported Access | Notes |
+|--------|------------------|-------|
+| `openclaw` | unsupported | OpenClaw has webhook-capable internals, but Spawnfile does not yet lower a portable HTTP surface into them. |
+| `picoclaw` | unsupported | PicoClaw has a shared webhook server model, but Spawnfile does not yet lower a portable HTTP surface into it. |
+| `tinyclaw` | `open` | Uses TinyClaw's built-in HTTP API server and response queue. |
+
+### Practical Meaning
+
+- `tinyclaw` is the only bundled runtime that currently preserves the portable HTTP surface.
+- The current live path is TinyClaw's built-in API:
+  - `POST /api/message`
+  - `GET /api/responses/pending?channel=<name>`
+- Live smoke status:
+  - `tinyclaw` HTTP was verified end to end
 
 ---
 
@@ -275,6 +300,11 @@ For Slack specifically, PicoClaw answers channel messages in a thread under the 
 Spawnfile lowers Discord, Telegram, and WhatsApp into TinyClaw's channel client config and starts the corresponding worker processes in the generated container.
 
 But the upstream runtime behavior remains pairing-based and DM-oriented, so Spawnfile rejects richer Discord, Telegram, and WhatsApp access shapes for TinyClaw at compile time. Spawnfile also rejects Slack entirely for TinyClaw in v0.1.
+
+Spawnfile also accepts the portable HTTP surface on TinyClaw. In v0.1 this maps to the runtime's built-in API server rather than to a separate channel worker:
+
+- ingress: `POST /api/message`
+- egress: `GET /api/responses/pending?channel=<name>`
 
 ---
 

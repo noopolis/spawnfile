@@ -6,6 +6,8 @@ import type {
   DiscordSurfaceAccess,
   DiscordSurface,
   ExecutionBlock,
+  HttpSurface,
+  HttpSurfaceAccess,
   ModelEntryAuth,
   ModelTarget,
   RuntimeBinding,
@@ -106,6 +108,26 @@ const orderTelegramSurfaceAccess = (
     ["users", access.users],
     ["chats", access.chats]
   ]) as unknown as TelegramSurfaceAccess;
+};
+
+const orderHttpSurface = (surface: HttpSurface | undefined): HttpSurface | undefined => {
+  if (!surface) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["access", orderHttpSurfaceAccess(surface.access)]
+  ]) as unknown as HttpSurface;
+};
+
+const orderHttpSurfaceAccess = (
+  access: HttpSurfaceAccess | undefined
+): HttpSurfaceAccess | undefined => {
+  if (!access) {
+    return undefined;
+  }
+
+  return withDefinedEntries([["mode", access.mode]]) as unknown as HttpSurfaceAccess;
 };
 
 const orderWhatsAppSurface = (
@@ -235,7 +257,8 @@ const orderSurfaces = (
     ["discord", orderDiscordSurface(surfaces.discord)],
     ["telegram", orderTelegramSurface(surfaces.telegram)],
     ["whatsapp", orderWhatsAppSurface(surfaces.whatsapp)],
-    ["slack", orderSlackSurface(surfaces.slack)]
+    ["slack", orderSlackSurface(surfaces.slack)],
+    ["http", orderHttpSurface(surfaces.http)]
   ]) as unknown as SurfacesBlock;
 };
 

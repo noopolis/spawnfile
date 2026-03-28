@@ -96,6 +96,14 @@ export const resolveTinyClawSurfaceTokenBindings = (
 export const assertSupportedTinyClawSurfaces = (
   surfaces: ResolvedAgentSurfaces | undefined
 ): void => {
+  const httpAccess = surfaces?.http?.access;
+  if (httpAccess && httpAccess.mode !== "open") {
+    throw new SpawnfileError(
+      "validation_error",
+      "TinyClaw http only supports open access in Spawnfile v0.1"
+    );
+  }
+
   const discordAccess = surfaces?.discord?.access;
   if (discordAccess) {
     if (discordAccess.mode !== "pairing") {

@@ -281,7 +281,7 @@ Rules:
 
 ### 2.6 Communication Surfaces
 
-Spawnfile v0.1 standardizes four initial communication surfaces on agent manifests:
+Spawnfile v0.1 standardizes five initial communication surfaces on agent manifests:
 
 ```yaml
 surfaces:
@@ -311,6 +311,9 @@ surfaces:
         - "C1234567890"
     bot_token_secret: SLACK_BOT_TOKEN
     app_token_secret: SLACK_APP_TOKEN
+  http:
+    access:
+      mode: open
 ```
 
 Rules:
@@ -318,26 +321,31 @@ Rules:
 - `surfaces` is OPTIONAL.
 - If `surfaces` is present, it MUST declare at least one surface.
 - `surfaces.discord` is OPTIONAL.
+- `surfaces.http` is OPTIONAL.
 - `surfaces.telegram` is OPTIONAL.
 - `surfaces.whatsapp` is OPTIONAL.
 - `surfaces.slack` is OPTIONAL.
 - `surfaces.discord.access` is OPTIONAL.
+- `surfaces.http.access` is OPTIONAL.
 - `surfaces.telegram.access` is OPTIONAL.
 - `surfaces.whatsapp.access` is OPTIONAL.
 - `surfaces.slack.access` is OPTIONAL.
 - `surfaces.discord.access.mode` MAY be `pairing`, `allowlist`, or `open`.
+- `surfaces.http.access.mode` MAY only be `open`.
 - `surfaces.telegram.access.mode` MAY be `pairing`, `allowlist`, or `open`.
 - `surfaces.whatsapp.access.mode` MAY be `pairing`, `allowlist`, or `open`.
 - `surfaces.slack.access.mode` MAY be `pairing`, `allowlist`, or `open`.
 - `surfaces.discord.access.users`, `guilds`, and `channels` are OPTIONAL allowlist identifiers.
+- `surfaces.http.access` does not currently define portable allowlist identifiers in v0.1.
 - `surfaces.telegram.access.users` and `chats` are OPTIONAL allowlist identifiers.
 - `surfaces.whatsapp.access.users` and `groups` are OPTIONAL allowlist identifiers.
 - `surfaces.slack.access.users` and `channels` are OPTIONAL allowlist identifiers.
 - If `surfaces.discord.access.mode` is omitted and any of `users`, `guilds`, or `channels` are present, the effective mode is `allowlist`.
+- If `surfaces.http.access` is present, it MUST declare `mode: open`.
 - If `surfaces.telegram.access.mode` is omitted and any of `users` or `chats` are present, the effective mode is `allowlist`.
 - If `surfaces.whatsapp.access.mode` is omitted and any of `users` or `groups` are present, the effective mode is `allowlist`.
 - If `surfaces.slack.access.mode` is omitted and any of `users` or `channels` are present, the effective mode is `allowlist`.
-- If `surfaces.discord.access`, `surfaces.telegram.access`, `surfaces.whatsapp.access`, or `surfaces.slack.access` is omitted entirely, the effective behavior is runtime-defined and is not guaranteed to be portable across runtimes.
+- If `surfaces.discord.access`, `surfaces.http.access`, `surfaces.telegram.access`, `surfaces.whatsapp.access`, or `surfaces.slack.access` is omitted entirely, the effective behavior is runtime-defined and is not guaranteed to be portable across runtimes.
 - `surfaces.discord.access.users`, `guilds`, and `channels` MUST only be used with `allowlist` access.
 - `surfaces.telegram.access.users` and `chats` MUST only be used with `allowlist` access.
 - `surfaces.whatsapp.access.users` and `groups` MUST only be used with `allowlist` access.
@@ -355,6 +363,7 @@ Rules:
 - If `surfaces.slack.bot_token_secret` is omitted, the effective secret name defaults to `SLACK_BOT_TOKEN`.
 - If `surfaces.slack.app_token_secret` is omitted, the effective secret name defaults to `SLACK_APP_TOKEN`.
 - WhatsApp does not currently define a portable token-secret field in v0.1; runtime-specific session or QR auth remains adapter-defined.
+- HTTP does not currently define a portable token-secret field in v0.1.
 - Declared surface auth names participate in the same run-time env validation path as other env-backed auth.
 - Team manifests MUST NOT declare `surfaces` in v0.1.
 - Subagents do not implicitly inherit parent `surfaces`.
@@ -1004,9 +1013,10 @@ Edits declared communication surfaces.
 `spawnfile surface set-access <surface> [path] --mode <mode>`
 
 - MUST only operate on an already-declared surface block unless `--recursive` is used and the implementation explicitly skips manifests where that surface is absent
-- MUST set the surface access mode to `pairing`, `allowlist`, or `open`
+- MUST set the surface access mode to a value supported by the selected surface
 - MUST validate allowlist identifiers according to the selected surface:
   - Discord: `users`, `guilds`, `channels`
+  - HTTP: none
   - Telegram: `users`, `chats`
   - WhatsApp: `users`, `groups`
   - Slack: `users`, `channels`

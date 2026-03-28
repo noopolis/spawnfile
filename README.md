@@ -27,9 +27,9 @@ Spawnfile v0.1 targets **autonomous agent runtimes** — systems that host agent
 - runtime binding
 - execution intent (model, workspace, sandbox)
 - team structure (members, hierarchy, shared surfaces)
-- agent-level Discord, Telegram, WhatsApp, and Slack surfaces
+- agent-level Discord, Telegram, WhatsApp, Slack, and HTTP surfaces
 
-v0.1 does not try to standardize every runtime-native feature. Beyond the initial Discord, Telegram, WhatsApp, and Slack surfaces, communication surfaces, memory engines, task schedulers, UI surfaces, and other runtime-specific features stay adapter-defined for now.
+v0.1 does not try to standardize every runtime-native feature. Beyond the initial Discord, Telegram, WhatsApp, Slack, and HTTP surfaces, communication surfaces, memory engines, task schedulers, UI surfaces, and other runtime-specific features stay adapter-defined for now.
 
 ---
 
@@ -266,7 +266,7 @@ Team manifests should not declare `execution`. Model, sandbox, and workspace int
 - `spawnfile surface show [path]` prints currently declared surfaces
 - if `[path]` points to a team project, mutating commands require `--recursive` and only descendant agent manifests are updated
 
-Agent manifests may declare portable communication surfaces under `surfaces`. The first standardized surfaces are Discord, Telegram, WhatsApp, and Slack:
+Agent manifests may declare portable communication surfaces under `surfaces`. The first standardized surfaces are Discord, Telegram, WhatsApp, Slack, and HTTP:
 
 ```yaml
 surfaces:
@@ -296,6 +296,9 @@ surfaces:
         - "C1234567890"
     bot_token_secret: SLACK_BOT_TOKEN
     app_token_secret: SLACK_APP_TOKEN
+  http:
+    access:
+      mode: open
 ```
 
 Discord access may declare:
@@ -323,17 +326,23 @@ Slack access may declare:
 - `users`
 - `channels`
 
+HTTP access currently declares:
+
+- `mode: open`
+
 If `mode` is omitted and any allowlist fields are present, Spawnfile infers `allowlist`.
 If you want portable runtime behavior, set `access.mode` explicitly. Leaving `access` unset delegates to runtime defaults, which are not identical across runtimes.
 If `bot_token_secret` is omitted, Spawnfile defaults to `DISCORD_BOT_TOKEN` for Discord, `TELEGRAM_BOT_TOKEN` for Telegram, and `SLACK_BOT_TOKEN` for Slack. If `app_token_secret` is omitted on Slack, Spawnfile defaults to `SLACK_APP_TOKEN`.
 WhatsApp has no portable token-secret field in v0.1; session or QR-style auth remains runtime-defined.
+HTTP currently has no portable secret or allowlist field in v0.1.
 `spawnfile auth sync ... --env-file .env` will collect that env name into the selected auth profile, and `spawnfile run --auth-profile ...` will validate it before container startup.
 
 Runtime support is narrower than the portable schema:
 
 - `openclaw` supports `pairing`, `allowlist`, and `open` for Discord, Telegram, WhatsApp, and Slack
 - `picoclaw` supports `open` and user allowlists for Discord, Telegram, WhatsApp, and Slack
-- `tinyclaw` supports `pairing` only for Discord, Telegram, and WhatsApp, and does not support Slack in Spawnfile v0.1
+- `tinyclaw` supports `pairing` only for Discord, Telegram, and WhatsApp, does not support Slack, and supports the portable HTTP surface
+- `openclaw` and `picoclaw` do not currently support the portable HTTP surface in Spawnfile v0.1
 
 Practical notes from the current live smoke matrix:
 
@@ -347,6 +356,7 @@ Practical notes from the current live smoke matrix:
 - Slack was verified end to end on OpenClaw
 - Slack was verified end to end on PicoClaw
 - `picoclaw` replies to channel messages in a Slack thread; direct messages reply inline
+- HTTP was verified end to end on TinyClaw via `POST /api/message` and `GET /api/responses/pending?channel=<name>`
 
 Useful options:
 

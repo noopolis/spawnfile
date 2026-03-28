@@ -97,6 +97,13 @@ export const buildPicoClawSurfaceEnvBindings = (
 export const assertSupportedPicoClawSurfaces = (
   surfaces: ResolvedAgentSurfaces | undefined
 ): void => {
+  if (surfaces?.http) {
+    throw new SpawnfileError(
+      "validation_error",
+      "PicoClaw does not support the portable http surface in Spawnfile v0.1"
+    );
+  }
+
   const discordAccess = surfaces?.discord?.access;
   if (discordAccess) {
     if (discordAccess.mode === "pairing") {

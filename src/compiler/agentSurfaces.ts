@@ -34,6 +34,16 @@ export const resolveAgentSurfaces = (
     };
   }
 
+  if (surfaces.http) {
+    resolved.http = surfaces.http.access
+      ? {
+          access: {
+            mode: "open"
+          }
+        }
+      : {};
+  }
+
   if (surfaces.telegram) {
     resolved.telegram = {
       ...(surfaces.telegram.access

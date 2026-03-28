@@ -338,6 +338,36 @@ describe("runCli", () => {
     expect(stdout).toEqual(["updated /tmp/project/Spawnfile"]);
   });
 
+  it("sets http surface access through the CLI", async () => {
+    const stdout: string[] = [];
+    const setProjectSurfaceAccess = vi.fn(async () => ({
+      updatedFiles: ["/tmp/project/Spawnfile"]
+    }));
+
+    const exitCode = await runCli(
+      ["surface", "set-access", "http", "/tmp/project", "--mode", "open"],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { setProjectSurfaceAccess }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(setProjectSurfaceAccess).toHaveBeenCalledWith({
+      channels: [],
+      chats: [],
+      groups: [],
+      guilds: [],
+      mode: "open",
+      path: "/tmp/project",
+      recursive: undefined,
+      surface: "http",
+      users: []
+    });
+    expect(stdout).toEqual(["updated /tmp/project/Spawnfile"]);
+  });
+
   it("imports env auth into a profile", async () => {
     const stdout: string[] = [];
     const importEnvFile = vi.fn(async () => ({

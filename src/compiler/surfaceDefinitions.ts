@@ -2,6 +2,8 @@ import type {
   AgentManifest,
   DiscordSurface,
   DiscordSurfaceAccess,
+  HttpSurface,
+  HttpSurfaceAccess,
   SlackSurface,
   SlackSurfaceAccess,
   SurfacesBlock,
@@ -19,7 +21,7 @@ import { assertRuntimeSupportsAgentSurfaces } from "./surfaceSupport.js";
 type ProjectManifest = AgentManifest | TeamManifest;
 
 export type SurfaceAccessMode = "allowlist" | "open" | "pairing";
-export type SurfaceName = "discord" | "slack" | "telegram" | "whatsapp";
+export type SurfaceName = "discord" | "http" | "slack" | "telegram" | "whatsapp";
 
 export interface ProjectSurfaceSecretOptions {
   appTokenSecret?: string;
@@ -107,10 +109,10 @@ const validateSecrets = (
     );
   }
 
-  if (options.botTokenSecret && surface === "whatsapp") {
+  if (options.botTokenSecret && !["discord", "slack", "telegram"].includes(surface)) {
     throw new SpawnfileError(
       "validation_error",
-      "--bot-token-secret is not valid for whatsapp surfaces"
+      `--bot-token-secret is not valid for ${surface} surfaces`
     );
   }
 };
@@ -229,12 +231,47 @@ const buildSlackAccess = (
   };
 };
 
+const buildHttpAccess = (
+  options: ProjectSurfaceAccessOptions
+): HttpSurfaceAccess => {
+  const hasScopedEntries = Boolean(
+    normalizeEntries(options.users) ||
+      normalizeEntries(options.channels) ||
+      normalizeEntries(options.guilds) ||
+      normalizeEntries(options.chats) ||
+      normalizeEntries(options.groups)
+  );
+
+  if (hasScopedEntries) {
+    throw new SpawnfileError(
+      "validation_error",
+      "http surfaces do not accept allowlist ids in Spawnfile v0.1"
+    );
+  }
+
+  if (options.mode !== "open") {
+    throw new SpawnfileError(
+      "validation_error",
+      "http surfaces only support --mode open in Spawnfile v0.1"
+    );
+  }
+
+  return { mode: "open" };
+};
+
 const buildSurfaceAccess = (
   options: ProjectSurfaceAccessOptions
-): DiscordSurfaceAccess | SlackSurfaceAccess | TelegramSurfaceAccess | WhatsAppSurfaceAccess => {
+):
+  | DiscordSurfaceAccess
+  | HttpSurfaceAccess
+  | SlackSurfaceAccess
+  | TelegramSurfaceAccess
+  | WhatsAppSurfaceAccess => {
   switch (options.surface) {
     case "discord":
       return buildDiscordAccess(options);
+    case "http":
+      return buildHttpAccess(options);
     case "telegram":
       return buildTelegramAccess(options);
     case "whatsapp":
@@ -258,6 +295,11 @@ export const upsertSurface = (
         ...(surfaces?.discord ?? {}),
         ...(options.botTokenSecret ? { bot_token_secret: options.botTokenSecret } : {})
       } satisfies DiscordSurface;
+      break;
+    case "http":
+      nextSurfaces.http = {
+        ...(surfaces?.http ?? {})
+      } satisfies HttpSurface;
       break;
     case "telegram":
       nextSurfaces.telegram = {
@@ -302,7 +344,19 @@ export const updateSurfaceAccess = (
           `Surface discord is not declared in ${manifestPath}; use spawnfile surface add discord first`
         );
       }
-      nextSurfaces.discord = { ...nextSurfaces.discord, access };
+      nextSurfaces.discord = { ...nextSurfaces.discord, access: access as DiscordSurfaceAccess };
+      break;
+    case "http":
+      if (!nextSurfaces.http) {
+        if (recursive) {
+          return null;
+        }
+        throw new SpawnfileError(
+          "validation_error",
+          `Surface http is not declared in ${manifestPath}; use spawnfile surface add http first`
+        );
+      }
+      nextSurfaces.http = { ...nextSurfaces.http, access: access as HttpSurfaceAccess };
       break;
     case "telegram":
       if (!nextSurfaces.telegram) {
@@ -314,7 +368,7 @@ export const updateSurfaceAccess = (
           `Surface telegram is not declared in ${manifestPath}; use spawnfile surface add telegram first`
         );
       }
-      nextSurfaces.telegram = { ...nextSurfaces.telegram, access };
+      nextSurfaces.telegram = { ...nextSurfaces.telegram, access: access as TelegramSurfaceAccess };
       break;
     case "whatsapp":
       if (!nextSurfaces.whatsapp) {
@@ -326,7 +380,7 @@ export const updateSurfaceAccess = (
           `Surface whatsapp is not declared in ${manifestPath}; use spawnfile surface add whatsapp first`
         );
       }
-      nextSurfaces.whatsapp = { ...nextSurfaces.whatsapp, access };
+      nextSurfaces.whatsapp = { ...nextSurfaces.whatsapp, access: access as WhatsAppSurfaceAccess };
       break;
     case "slack":
       if (!nextSurfaces.slack) {
@@ -338,7 +392,7 @@ export const updateSurfaceAccess = (
           `Surface slack is not declared in ${manifestPath}; use spawnfile surface add slack first`
         );
       }
-      nextSurfaces.slack = { ...nextSurfaces.slack, access };
+      nextSurfaces.slack = { ...nextSurfaces.slack, access: access as SlackSurfaceAccess };
       break;
   }
 

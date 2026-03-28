@@ -57,8 +57,15 @@ export interface ResolvedSlackSurface {
   botTokenSecret: string;
 }
 
+export interface ResolvedHttpSurface {
+  access?: {
+    mode: "open";
+  };
+}
+
 export interface ResolvedAgentSurfaces {
   discord?: ResolvedDiscordSurface;
+  http?: ResolvedHttpSurface;
   slack?: ResolvedSlackSurface;
   telegram?: ResolvedTelegramSurface;
   whatsapp?: ResolvedWhatsAppSurface;

@@ -48,6 +48,30 @@ describe("addProjectSurface", () => {
     expect(nextManifest.manifest.surfaces?.discord).toEqual({});
   });
 
+  it("adds the http surface without secrets", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-surface-add-http-"));
+    temporaryDirectories.push(directory);
+
+    await initProject({ directory, runtime: "tinyclaw" });
+
+    const manifestPath = path.join(directory, "Spawnfile");
+    const result = await addProjectSurface({
+      path: directory,
+      surface: "http"
+    });
+
+    const nextSource = await readUtf8File(manifestPath);
+    const nextManifest = await loadManifest(manifestPath);
+
+    expect(result.updatedFiles).toEqual([manifestPath]);
+    expect(nextSource).toContain("surfaces:\n  http: {}");
+    expect(nextManifest.manifest.kind).toBe("agent");
+    if (nextManifest.manifest.kind !== "agent") {
+      throw new Error("expected agent manifest");
+    }
+    expect(nextManifest.manifest.surfaces?.http).toEqual({});
+  });
+
   it("updates a whole team graph recursively", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-surface-add-recursive-"));
     temporaryDirectories.push(directory);
@@ -137,6 +161,26 @@ describe("setProjectSurfaceAccess", () => {
     expect(nextSource).toContain("      users:\n        - U1\n        - U2");
     expect(nextSource).toContain("      guilds:\n        - G1");
     expect(nextSource).toContain("      channels:\n        - C1\n        - C2");
+  });
+
+  it("sets open access on an existing http surface", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-surface-access-http-"));
+    temporaryDirectories.push(directory);
+
+    await initProject({ directory, runtime: "tinyclaw" });
+    await addProjectSurface({ path: directory, surface: "http" });
+
+    const manifestPath = path.join(directory, "Spawnfile");
+    const result = await setProjectSurfaceAccess({
+      mode: "open",
+      path: directory,
+      surface: "http"
+    });
+
+    const nextSource = await readUtf8File(manifestPath);
+
+    expect(result.updatedFiles).toEqual([manifestPath]);
+    expect(nextSource).toContain("  http:\n    access:\n      mode: open");
   });
 
   it("skips missing surfaces during recursive access updates", async () => {

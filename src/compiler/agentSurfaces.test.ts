@@ -16,6 +16,11 @@ describe("agentSurfaces", () => {
             users: ["987654321098765432"]
           }
         },
+        http: {
+          access: {
+            mode: "open"
+          }
+        },
         telegram: {
           access: {
             chats: ["-1001234567890"]
@@ -41,6 +46,11 @@ describe("agentSurfaces", () => {
           users: ["987654321098765432"]
         },
         botTokenSecret: "DISCORD_BOT_TOKEN"
+      },
+      http: {
+        access: {
+          mode: "open"
+        }
       },
       telegram: {
         access: {

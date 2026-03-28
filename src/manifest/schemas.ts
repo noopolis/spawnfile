@@ -369,6 +369,8 @@ export type TeamManifest = z.infer<typeof teamManifestSchema>;
 export type {
   DiscordSurface,
   DiscordSurfaceAccess,
+  HttpSurface,
+  HttpSurfaceAccess,
   SlackSurface,
   SlackSurfaceAccess,
   SurfacesBlock,

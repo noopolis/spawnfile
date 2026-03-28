@@ -99,6 +99,12 @@ describe("openClaw surfaces", () => {
   it("accepts valid surfaces and rejects ambiguous discord channel allowlists", () => {
     expect(() =>
       assertSupportedOpenClawSurfaces({
+        http: {}
+      })
+    ).toThrow(/does not support the portable http surface/i);
+
+    expect(() =>
+      assertSupportedOpenClawSurfaces({
         telegram: {
           access: {
             chats: ["-1001234567890"],

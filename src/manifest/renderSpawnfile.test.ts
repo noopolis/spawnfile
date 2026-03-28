@@ -275,6 +275,39 @@ describe("renderSpawnfile", () => {
     );
   });
 
+  it("renders http after slack in canonical order", () => {
+    const source = renderSpawnfile({
+      kind: "agent",
+      name: "http-agent",
+      runtime: "tinyclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        http: {
+          access: {
+            mode: "open"
+          }
+        },
+        slack: {
+          access: {
+            mode: "open"
+          }
+        }
+      }
+    });
+
+    expect(source).toContain(
+      [
+        "surfaces:",
+        "  slack:",
+        "    access:",
+        "      mode: open",
+        "  http:",
+        "    access:",
+        "      mode: open"
+      ].join("\n")
+    );
+  });
+
   it("renders inline model auth and endpoint fields in canonical order", () => {
     const source = renderSpawnfile({
       execution: {

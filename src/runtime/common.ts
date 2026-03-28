@@ -93,6 +93,10 @@ export const createAgentCapabilities = (
     capabilities.push(createCapability("surfaces.discord", "supported"));
   }
 
+  if (node.surfaces?.http) {
+    capabilities.push(createCapability("surfaces.http", "supported"));
+  }
+
   if (node.surfaces?.telegram) {
     capabilities.push(createCapability("surfaces.telegram", "supported"));
   }

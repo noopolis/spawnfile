@@ -167,16 +167,37 @@ const slackSurfaceSchema = z
   })
   .strict();
 
+const httpSurfaceAccessSchema = z
+  .object({
+    mode: z.literal("open").optional()
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (!value.mode) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "http access must declare mode"
+      });
+    }
+  });
+
+const httpSurfaceSchema = z
+  .object({
+    access: httpSurfaceAccessSchema.optional()
+  })
+  .strict();
+
 export const surfacesSchema = z
   .object({
     discord: discordSurfaceSchema.optional(),
+    http: httpSurfaceSchema.optional(),
     slack: slackSurfaceSchema.optional(),
     telegram: telegramSurfaceSchema.optional(),
     whatsapp: whatsappSurfaceSchema.optional()
   })
   .strict()
   .superRefine((value, context) => {
-    if (!value.discord && !value.telegram && !value.whatsapp && !value.slack) {
+    if (!value.discord && !value.http && !value.telegram && !value.whatsapp && !value.slack) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "surfaces must declare at least one surface"
@@ -186,6 +207,8 @@ export const surfacesSchema = z
 
 export type DiscordSurfaceAccess = z.infer<typeof discordSurfaceAccessSchema>;
 export type DiscordSurface = z.infer<typeof discordSurfaceSchema>;
+export type HttpSurfaceAccess = z.infer<typeof httpSurfaceAccessSchema>;
+export type HttpSurface = z.infer<typeof httpSurfaceSchema>;
 export type SlackSurfaceAccess = z.infer<typeof slackSurfaceAccessSchema>;
 export type SlackSurface = z.infer<typeof slackSurfaceSchema>;
 export type TelegramSurfaceAccess = z.infer<typeof telegramSurfaceAccessSchema>;

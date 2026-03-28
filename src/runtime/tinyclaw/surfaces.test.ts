@@ -36,6 +36,11 @@ describe("tinyClaw surfaces", () => {
   it("allows pairing-only telegram and whatsapp and rejects unsupported shapes", () => {
     expect(() =>
       assertSupportedTinyClawSurfaces({
+        http: {
+          access: {
+            mode: "open"
+          }
+        },
         telegram: {
           access: {
             chats: [],
@@ -51,6 +56,12 @@ describe("tinyClaw surfaces", () => {
             users: []
           }
         }
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      assertSupportedTinyClawSurfaces({
+        http: {}
       })
     ).not.toThrow();
 

@@ -3,6 +3,42 @@ import { describe, expect, it } from "vitest";
 import { manifestSchema } from "./schemas.js";
 
 describe("surfaceSchemas", () => {
+  it("accepts http open access and rejects unsupported modes", () => {
+    expect(
+      manifestSchema.parse({
+        kind: "agent",
+        name: "agent",
+        runtime: "tinyclaw",
+        spawnfile_version: "0.1",
+        surfaces: {
+          http: {
+            access: {
+              mode: "open"
+            }
+          }
+        }
+      })
+    ).toMatchObject({
+      kind: "agent"
+    });
+
+    const pairing = manifestSchema.safeParse({
+      kind: "agent",
+      name: "agent",
+      runtime: "tinyclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        http: {
+          access: {
+            mode: "pairing"
+          }
+        }
+      }
+    });
+
+    expect(pairing.success).toBe(false);
+  });
+
   it("accepts WhatsApp and Slack open access", () => {
     expect(
       manifestSchema.parse({
