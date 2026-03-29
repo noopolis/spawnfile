@@ -5,6 +5,7 @@ import { ResolvedAgentNode } from "../compiler/types.js";
 import { createAgentCapabilities, createDocumentFiles, createSkillFiles } from "./common.js";
 
 const baseAgent: ResolvedAgentNode = {
+  description: "",
   docs: [
     { content: "# System", role: "system", sourcePath: "/tmp/AGENTS.md" },
     { content: "# Extra", role: "extras.notes", sourcePath: "/tmp/NOTES.md" }

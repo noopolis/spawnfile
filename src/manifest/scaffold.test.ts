@@ -82,9 +82,7 @@ describe("createTeamScaffoldManifest", () => {
       },
       kind: "team",
       members: [],
-      structure: {
-        mode: "swarm"
-      }
+      mode: "swarm"
     });
   });
 });

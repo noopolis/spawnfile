@@ -1,6 +1,10 @@
 spawnfile_version: "0.1"
 kind: team
 name: research-cell
+description: "Research team that finds, analyzes, and writes up findings"
+
+mode: hierarchical
+lead: orchestrator
 
 docs:
   system: TEAM.md
@@ -25,10 +29,6 @@ members:
     ref: ./agents/researcher
   - id: writer
     ref: ./agents/writer
-
-structure:
-  mode: hierarchical
-  leader: orchestrator
 
 policy:
   mode: warn

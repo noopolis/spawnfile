@@ -22,7 +22,12 @@ import { Manifest } from "../manifest/index.js";
 
 import { buildCompilePlan } from "./buildCompilePlan.js";
 import { createContainerArtifacts } from "./containerArtifacts.js";
+import { generateTeamRosters } from "./teamRoster.js";
+import { generateTeamMcpScript, createTeamMcpServerEntry } from "./teamMcp.js";
+import { generateSurfaceRouterScript, generateRouterConfig } from "./surfaceRouter.js";
 import { CompilePlanNode, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
+
+const DEFAULT_ROUTER_PORT = 9100;
 
 type PolicyMode = NonNullable<Manifest["policy"]>["mode"];
 type OnDegrade = NonNullable<Manifest["policy"]>["on_degrade"];
@@ -65,9 +70,11 @@ const createTeamCapabilities = (
   message: string
 ): CapabilityReport[] => [
   { key: "team.members", message, outcome },
-  { key: "team.structure.mode", message, outcome },
-  { key: "team.structure.leader", message, outcome },
-  { key: "team.structure.external", message, outcome },
+  { key: "team.mode", message, outcome },
+  { key: "team.lead", message, outcome },
+  { key: "team.external", message, outcome },
+  { key: "team.auth", message, outcome },
+  { key: "team.roster", message, outcome },
   { key: "team.shared", message, outcome },
   { key: "team.nested", message, outcome }
 ];
@@ -259,6 +266,41 @@ export const compileProject = async (
   }
   await ensureDirectory(outputDirectory);
 
+  // Generate team rosters and inject team MCP tool for team members
+  const rosterFiles = new Map<string, string>(); // nodeSource -> roster YAML
+  const memberAgentIds = new Map<string, string>(); // nodeSource -> member ID
+  const teamMcpScript = generateTeamMcpScript();
+  for (const node of plan.nodes) {
+    if (node.kind === "team") {
+      const teamNode = node.value as ResolvedTeamNode;
+      const rosters = generateTeamRosters(teamNode, plan, DEFAULT_ROUTER_PORT);
+      for (const [memberId, rosterYaml] of rosters) {
+        const memberRef = teamNode.members.find((m) => m.id === memberId);
+        if (memberRef) {
+          rosterFiles.set(memberRef.nodeSource, rosterYaml);
+          memberAgentIds.set(memberRef.nodeSource, memberId);
+        }
+      }
+    }
+  }
+
+  // Generate surface router artifacts for teams
+  const surfaceRouterScript = generateSurfaceRouterScript();
+  for (const node of plan.nodes) {
+    if (node.kind === "team") {
+      const teamNode = node.value as ResolvedTeamNode;
+      const routerConfig = generateRouterConfig(teamNode, plan, DEFAULT_ROUTER_PORT);
+      await writeUtf8File(
+        path.join(outputDirectory, "surface-router.js"),
+        surfaceRouterScript
+      );
+      await writeUtf8File(
+        path.join(outputDirectory, "router-config.json"),
+        JSON.stringify(routerConfig, null, 2) + "\n"
+      );
+    }
+  }
+
   const nodeReports: NodeReport[] = [];
   const compiledNodes: CompiledNodeResult[] = [];
   for (const node of plan.nodes) {
@@ -266,6 +308,68 @@ export const compileProject = async (
 
     if (node.kind === "agent") {
       compiled = await compileAgentNode(outputDirectory, node as CompilePlanNode & { value: ResolvedAgentNode });
+
+      // Write roster and team MCP script for team members
+      const rosterYaml = rosterFiles.get(node.value.source);
+      if (rosterYaml && compiled.report.output_dir) {
+        const agentOutputDir = path.join(outputDirectory, compiled.report.output_dir);
+        const agentName = (node.value as ResolvedAgentNode).name;
+        const memberId = memberAgentIds.get(node.value.source) ?? agentName;
+
+        await ensureDirectory(path.join(agentOutputDir, ".spawnfile"));
+        await writeUtf8File(path.join(agentOutputDir, ".spawnfile", "roster.yaml"), rosterYaml);
+        await writeUtf8File(path.join(agentOutputDir, ".spawnfile", "team-mcp.js"), teamMcpScript);
+
+        // Inject team files into emittedFiles so they flow into the container
+        compiled.emittedFiles.push(
+          {
+            content: rosterYaml,
+            path: `workspace/${agentName}/.spawnfile/roster.yaml`
+          },
+          {
+            content: teamMcpScript,
+            path: `workspace/${agentName}/.spawnfile/team-mcp.js`
+          }
+        );
+
+        // Gap 3: Append roster to agent AGENTS.md so it's part of the agent context
+        const agentsMdPath = `workspace/${agentName}/AGENTS.md`;
+        const existingAgentsMd = compiled.emittedFiles.find((f) => f.path === agentsMdPath);
+        const rosterBlock = "\n\n## Team Roster\n\nYour team roster is available at `.spawnfile/roster.yaml`. " +
+          "Read it to discover your teammates and how to reach them via the `team_message` MCP tool.\n\n" +
+          "```yaml\n" + rosterYaml + "```\n";
+        if (existingAgentsMd) {
+          existingAgentsMd.content += rosterBlock;
+        } else {
+          compiled.emittedFiles.push({
+            content: rosterBlock.trimStart(),
+            path: agentsMdPath
+          });
+        }
+
+        // Gap 4: Register team MCP server in Claude Code .claude/settings.json
+        // Use relative path from agent working directory (.spawnfile/team-mcp.js)
+        // since Claude Code runs from the agent's workspace dir
+        const runtimeName = (node.value as ResolvedAgentNode).runtime.name;
+        if (runtimeName === "tinyclaw") {
+          const claudeSettings = {
+            mcpServers: {
+              spawnfile_team: {
+                command: "node",
+                args: [`.spawnfile/team-mcp.js`],
+                env: {
+                  SPAWNFILE_ROUTER_URL: `http://localhost:${DEFAULT_ROUTER_PORT}`,
+                  SPAWNFILE_AGENT_NAME: memberId
+                }
+              }
+            }
+          };
+          compiled.emittedFiles.push({
+            content: JSON.stringify(claudeSettings, null, 2) + "\n",
+            path: `workspace/${agentName}/.claude/settings.json`
+          });
+        }
+      }
     } else {
       compiled = await compileTeamNode(outputDirectory, node as CompilePlanNode & { value: ResolvedTeamNode });
     }
@@ -279,7 +383,8 @@ export const compileProject = async (
     compiledNodes.push(compiled);
   }
 
-  const containerArtifacts = await createContainerArtifacts(plan, compiledNodes);
+  const hasTeamRouter = rosterFiles.size > 0;
+  const containerArtifacts = await createContainerArtifacts(plan, compiledNodes, { hasTeamRouter });
   await writeEmittedFiles(outputDirectory, containerArtifacts.files);
   await Promise.all(
     containerArtifacts.executablePaths.map((filePath) =>

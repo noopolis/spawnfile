@@ -3,3 +3,7 @@ dist
 .spawn
 node_modules
 /runtimes
+/testing
+/discussions
+/testing
+/discussions

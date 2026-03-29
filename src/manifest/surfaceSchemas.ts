@@ -181,9 +181,26 @@ const httpSurfaceAccessSchema = z
     }
   });
 
+const httpSurfaceAuthSchema = z
+  .object({
+    mode: z.literal("bearer"),
+    token_secret: z.string().min(1).optional()
+  })
+  .strict();
+
 const httpSurfaceSchema = z
   .object({
-    access: httpSurfaceAccessSchema.optional()
+    access: httpSurfaceAccessSchema.optional(),
+    auth: httpSurfaceAuthSchema.optional(),
+    path_prefix: z.string().min(1).optional(),
+    port: z.number().int().positive().optional()
+  })
+  .strict();
+
+const webhookSurfaceSchema = z
+  .object({
+    signing_secret: z.string().min(1).optional(),
+    url: z.string().url()
   })
   .strict();
 
@@ -193,11 +210,12 @@ export const surfacesSchema = z
     http: httpSurfaceSchema.optional(),
     slack: slackSurfaceSchema.optional(),
     telegram: telegramSurfaceSchema.optional(),
+    webhook: webhookSurfaceSchema.optional(),
     whatsapp: whatsappSurfaceSchema.optional()
   })
   .strict()
   .superRefine((value, context) => {
-    if (!value.discord && !value.http && !value.telegram && !value.whatsapp && !value.slack) {
+    if (!value.discord && !value.http && !value.telegram && !value.whatsapp && !value.slack && !value.webhook) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "surfaces must declare at least one surface"
@@ -208,11 +226,13 @@ export const surfacesSchema = z
 export type DiscordSurfaceAccess = z.infer<typeof discordSurfaceAccessSchema>;
 export type DiscordSurface = z.infer<typeof discordSurfaceSchema>;
 export type HttpSurfaceAccess = z.infer<typeof httpSurfaceAccessSchema>;
+export type HttpSurfaceAuth = z.infer<typeof httpSurfaceAuthSchema>;
 export type HttpSurface = z.infer<typeof httpSurfaceSchema>;
 export type SlackSurfaceAccess = z.infer<typeof slackSurfaceAccessSchema>;
 export type SlackSurface = z.infer<typeof slackSurfaceSchema>;
 export type TelegramSurfaceAccess = z.infer<typeof telegramSurfaceAccessSchema>;
 export type TelegramSurface = z.infer<typeof telegramSurfaceSchema>;
+export type WebhookSurface = z.infer<typeof webhookSurfaceSchema>;
 export type WhatsAppSurfaceAccess = z.infer<typeof whatsappSurfaceAccessSchema>;
 export type WhatsAppSurface = z.infer<typeof whatsappSurfaceSchema>;
 export type SurfacesBlock = z.infer<typeof surfacesSchema>;

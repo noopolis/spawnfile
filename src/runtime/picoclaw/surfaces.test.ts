@@ -16,7 +16,7 @@ describe("picoClaw surfaces", () => {
   it("rejects the portable http surface", () => {
     expect(() =>
       assertSupportedPicoClawSurfaces({
-        http: {}
+        http: { pathPrefix: "/v1" }
       })
     ).toThrow(/does not support the portable http surface/i);
   });

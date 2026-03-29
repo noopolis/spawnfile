@@ -251,6 +251,7 @@ const policySchema = z
 
 const commonManifestSchema = z
   .object({
+    description: z.string().optional(),
     docs: docsSchema.optional(),
     env: z.record(z.string(), z.string()).optional(),
     execution: executionSchema.optional(),
@@ -285,28 +286,12 @@ const sharedSurfaceSchema = z
   })
   .strict();
 
-const structureSchema = z
+const teamAuthSchema = z
   .object({
-    external: z.array(z.string().min(1)).optional(),
-    leader: z.string().min(1).optional(),
-    mode: z.enum(["hierarchical", "swarm"])
+    mode: z.literal("shared_secret"),
+    secret: z.string().min(1)
   })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.mode === "hierarchical" && !value.leader) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "hierarchical teams must declare a leader"
-      });
-    }
-
-    if (value.mode === "swarm" && value.leader) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "swarm teams must not declare a leader"
-      });
-    }
-  });
+  .strict();
 
 const memberSchema = z
   .object({
@@ -324,19 +309,33 @@ const agentManifestSchema = commonManifestSchema
 
 const teamManifestSchema = commonManifestSchema
   .extend({
+    auth: teamAuthSchema.optional(),
+    external: z.array(z.string().min(1)).optional(),
     kind: z.literal("team"),
+    lead: z.string().min(1).optional(),
     members: z.array(memberSchema),
-    shared: sharedSurfaceSchema.optional(),
-    structure: structureSchema
+    mode: z.enum(["hierarchical", "swarm"]),
+    shared: sharedSurfaceSchema.optional()
   })
   .superRefine((value, context) => {
+    if (value.mode === "hierarchical" && !value.lead) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "hierarchical teams must declare lead"
+      });
+    }
+    if (value.mode === "swarm" && value.lead) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "swarm teams must not declare lead"
+      });
+    }
     if (value.execution !== undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "team manifests must not declare execution"
       });
     }
-
     if (value.surfaces !== undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -364,6 +363,7 @@ export type RuntimeBinding = z.infer<typeof runtimeBindingSchema>;
 export type Secret = z.infer<typeof secretSchema>;
 export type SharedSurface = z.infer<typeof sharedSurfaceSchema>;
 export type SkillReference = z.infer<typeof skillReferenceSchema>;
+export type TeamAuth = z.infer<typeof teamAuthSchema>;
 export type TeamManifest = z.infer<typeof teamManifestSchema>;
 
 export type {
@@ -371,11 +371,13 @@ export type {
   DiscordSurfaceAccess,
   HttpSurface,
   HttpSurfaceAccess,
+  HttpSurfaceAuth,
   SlackSurface,
   SlackSurfaceAccess,
   SurfacesBlock,
   TelegramSurface,
   TelegramSurfaceAccess,
+  WebhookSurface,
   WhatsAppSurface,
   WhatsAppSurfaceAccess
 } from "./surfaceSchemas.js";

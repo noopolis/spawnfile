@@ -70,7 +70,8 @@ export const renderEnvExample = (variables: ContainerEnvVariable[]): string => {
 };
 
 export const renderDockerfile = async (
-  runtimePlans: RuntimeTargetPlan[]
+  runtimePlans: RuntimeTargetPlan[],
+  options: EntrypointOptions = {}
 ): Promise<string> => {
   const runtimeNames = [...new Set(runtimePlans.map((plan) => plan.runtimeName))];
   const runtimeRecipes = await Promise.all(
@@ -122,7 +123,17 @@ export const renderDockerfile = async (
     "COPY container/rootfs/ /",
     "COPY .env.example /opt/spawnfile/.env.example",
     'COPY entrypoint.sh /opt/spawnfile/entrypoint.sh',
-    "RUN chmod +x /opt/spawnfile/entrypoint.sh",
+    "RUN chmod +x /opt/spawnfile/entrypoint.sh"
+  );
+
+  if (options.hasTeamRouter) {
+    lines.push(
+      "COPY surface-router.js /opt/spawnfile/surface-router.js",
+      "COPY router-config.json /opt/spawnfile/router-config.json"
+    );
+  }
+
+  lines.push(
     "RUN mkdir -p /var/lib/spawnfile && chown -R spawnfile:spawnfile /var/lib/spawnfile /opt/spawnfile"
   );
 
@@ -235,9 +246,14 @@ export const createRootfsFiles = (runtimePlans: RuntimeTargetPlan[]): EmittedFil
     })
   );
 
+export interface EntrypointOptions {
+  hasTeamRouter?: boolean;
+}
+
 export const renderEntrypoint = (
   runtimePlans: RuntimeTargetPlan[],
-  requiredSecrets: string[]
+  requiredSecrets: string[],
+  options: EntrypointOptions = {}
 ): string => {
   const lines = [
     "#!/usr/bin/env bash",
@@ -324,13 +340,47 @@ export const renderEntrypoint = (
     const envFileWrites = createEnvFileWrites(plan);
     const configEnvWrites = createConfigEnvWrites(plan);
 
-    lines.push(
-      `mkdir -p ${shellQuote(plan.instancePaths.workspacePath)}`,
-      `require_file ${shellQuote(plan.instancePaths.configPath)}`,
-      ...envFileWrites,
-      ...configEnvWrites,
-      `${envAssignments.join(" ")} exec ${commandTokens.map(shellQuote).join(" ")}`
-    );
+    if (options.hasTeamRouter) {
+      // Multi-process mode for single-runtime teams: router + runtime
+      lines.push(
+        "PIDS=()",
+        "",
+        "terminate_children() {",
+        '  for pid in "${PIDS[@]:-}"; do',
+        '    kill "$pid" 2>/dev/null || true',
+        "  done",
+        "}",
+        "",
+        "trap terminate_children INT TERM EXIT",
+        "",
+        "node /opt/spawnfile/surface-router.js /opt/spawnfile/router-config.json &",
+        'PIDS+=("$!")',
+        "",
+        `mkdir -p ${shellQuote(plan.instancePaths.workspacePath)}`,
+        `require_file ${shellQuote(plan.instancePaths.configPath)}`,
+        ...envFileWrites,
+        ...configEnvWrites,
+        `${envAssignments.join(" ")} ${commandTokens.map(shellQuote).join(" ")} &`,
+        'PIDS+=("$!")',
+        "",
+        "status=0",
+        'for pid in "${PIDS[@]}"; do',
+        '  if ! wait "$pid"; then',
+        "    status=1",
+        "  fi",
+        "done",
+        "",
+        'exit "$status"'
+      );
+    } else {
+      lines.push(
+        `mkdir -p ${shellQuote(plan.instancePaths.workspacePath)}`,
+        `require_file ${shellQuote(plan.instancePaths.configPath)}`,
+        ...envFileWrites,
+        ...configEnvWrites,
+        `${envAssignments.join(" ")} exec ${commandTokens.map(shellQuote).join(" ")}`
+      );
+    }
 
     return `${lines.join("\n").trimEnd()}\n`;
   }
@@ -347,6 +397,14 @@ export const renderEntrypoint = (
     "trap terminate_children INT TERM EXIT",
     ""
   );
+
+  if (options.hasTeamRouter) {
+    lines.push(
+      "node /opt/spawnfile/surface-router.js /opt/spawnfile/router-config.json &",
+      'PIDS+=("$!")',
+      ""
+    );
+  }
 
   for (const plan of runtimePlans) {
     const commandTokens = resolveStartCommand(plan);

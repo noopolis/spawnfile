@@ -236,8 +236,7 @@ describe("loadManifest", () => {
         "  - id: worker",
         "    ref: ./member-link",
         "",
-        "structure:",
-        "  mode: swarm",
+        "mode: swarm",
         ""
       ].join("\n")
     );
@@ -266,8 +265,7 @@ describe("loadManifest", () => {
         "  - id: analyst",
         "    ref: ./agents/b",
         "",
-        "structure:",
-        "  mode: swarm",
+        "mode: swarm",
         ""
       ].join("\n")
     );
@@ -349,15 +347,14 @@ describe("loadManifest", () => {
         "  - id: analyst",
         "    ref: ./agents/a",
         "",
-        "structure:",
-        "  mode: hierarchical",
-        "  leader: reviewer",
+        "mode: hierarchical",
+        "lead: reviewer",
         ""
       ].join("\n")
     );
 
     await expect(loadManifest(path.join(directory, "Spawnfile"))).rejects.toThrow(
-      /Structure leader is not a declared team member/
+      /Lead is not a declared team member/
     );
   });
 
@@ -396,16 +393,15 @@ describe("loadManifest", () => {
         "  - id: analyst",
         "    ref: ./agents/a",
         "",
-        "structure:",
-        "  mode: swarm",
-        "  external:",
-        "    - reviewer",
+        "mode: swarm",
+        "external:",
+        "  - reviewer",
         ""
       ].join("\n")
     );
 
     await expect(loadManifest(path.join(directory, "Spawnfile"))).rejects.toThrow(
-      /Structure external references undeclared member/
+      /External references undeclared member/
     );
   });
 

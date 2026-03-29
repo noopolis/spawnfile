@@ -41,7 +41,9 @@ export const getAgentFingerprint = (node: ResolvedAgentNode): string =>
 export const getTeamFingerprint = (node: ResolvedTeamNode): string =>
   stableStringify({
     members: node.members,
-    structure: node.structure,
+    mode: node.mode,
+    lead: node.lead,
+    external: node.external,
     shared: {
       env: node.shared.env,
       mcpServers: node.shared.mcpServers,

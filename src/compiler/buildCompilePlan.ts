@@ -173,6 +173,7 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
     );
 
     const candidate: ResolvedAgentNode = {
+      description: loadedManifest.manifest.description ?? "",
       docs: await loadResolvedDocuments(canonicalPath, loadedManifest.manifest.docs),
       env: sharedSurface.env,
       execution,
@@ -264,32 +265,32 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       sharedSkills
     );
 
-    const structure = loadedManifest.manifest.structure;
-    const memberIds = loadedManifest.manifest.members.map((member) => member.id);
-    const resolvedExternal = structure.external
-      ?? (structure.mode === "hierarchical" && structure.leader
-        ? [structure.leader]
+    const manifest = loadedManifest.manifest;
+    const memberIds = manifest.members.map((member) => member.id);
+    const resolvedExternal = manifest.external
+      ?? (manifest.mode === "hierarchical" && manifest.lead
+        ? [manifest.lead]
         : memberIds);
 
     const candidate: ResolvedTeamNode = {
-      docs: await loadResolvedDocuments(canonicalPath, loadedManifest.manifest.docs),
+      auth: manifest.auth ?? null,
+      description: manifest.description ?? "",
+      docs: await loadResolvedDocuments(canonicalPath, manifest.docs),
+      external: resolvedExternal,
       kind: "team",
+      lead: manifest.lead ?? null,
       members: [],
-      name: loadedManifest.manifest.name,
-      policyMode: loadedManifest.manifest.policy?.mode ?? null,
-      policyOnDegrade: loadedManifest.manifest.policy?.on_degrade ?? null,
+      mode: manifest.mode,
+      name: manifest.name,
+      policyMode: manifest.policy?.mode ?? null,
+      policyOnDegrade: manifest.policy?.on_degrade ?? null,
       shared: {
-        env: loadedManifest.manifest.shared?.env ?? {},
-        mcpServers: loadedManifest.manifest.shared?.mcp_servers ?? [],
-        secrets: loadedManifest.manifest.shared?.secrets ?? [],
+        env: manifest.shared?.env ?? {},
+        mcpServers: manifest.shared?.mcp_servers ?? [],
+        secrets: manifest.shared?.secrets ?? [],
         skills: sharedSkills
       },
       source: canonicalPath,
-      structure: {
-        external: resolvedExternal,
-        leader: structure.leader ?? null,
-        mode: structure.mode
-      }
     };
 
     const fingerprint = getTeamFingerprint(candidate);

@@ -5,6 +5,7 @@ import { ResolvedAgentNode } from "../../compiler/types.js";
 import { picoClawAdapter } from "./adapter.js";
 
 const node: ResolvedAgentNode = {
+  description: "",
   docs: [],
   env: {},
   execution: {

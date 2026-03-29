@@ -323,8 +323,7 @@ describe("buildCompilePlan", () => {
         "  - id: two",
         "    ref: ./agents/shared",
         "",
-        "structure:",
-        "  mode: swarm",
+        "mode: swarm",
         ""
       ].join("\n")
     );
@@ -581,8 +580,7 @@ describe("buildCompilePlan", () => {
         "",
         "members: []",
         "",
-        "structure:",
-        "  mode: swarm",
+        "mode: swarm",
         ""
       ].join("\n")
     );
@@ -616,8 +614,7 @@ describe("buildCompilePlan", () => {
         "  - id: a",
         "    ref: ./agents/a",
         "",
-        "structure:",
-        "  mode: swarm",
+        "mode: swarm",
         ""
       ].join("\n")
     );
@@ -637,8 +634,7 @@ describe("buildCompilePlan", () => {
         "  - id: two",
         "    ref: ./teams/inner",
         "",
-        "structure:",
-        "  mode: swarm",
+        "mode: swarm",
         ""
       ].join("\n")
     );

@@ -15,9 +15,14 @@ import type { CompilePlan } from "./types.js";
 
 export type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./containerArtifactsTypes.js";
 
+export interface ContainerArtifactOptions {
+  hasTeamRouter?: boolean;
+}
+
 export const createContainerArtifacts = async (
   plan: CompilePlan,
-  compiledNodes: CompiledNodeArtifact[]
+  compiledNodes: CompiledNodeArtifact[],
+  options: ContainerArtifactOptions = {}
 ): Promise<GeneratedContainerArtifacts> => {
   const runtimePlans = await createRuntimeTargetPlans(plan, compiledNodes);
   const envVariables = [...createEnvVariableMap(compiledNodes, runtimePlans).values()].sort(
@@ -39,13 +44,14 @@ export const createContainerArtifacts = async (
   const files: EmittedFile[] = [
     ...createRootfsFiles(runtimePlans),
     {
-      content: await renderDockerfile(runtimePlans),
+      content: await renderDockerfile(runtimePlans, { hasTeamRouter: options.hasTeamRouter }),
       path: "Dockerfile"
     },
     {
       content: renderEntrypoint(
         runtimePlans,
-        requiredSecrets.filter((secretName) => !modelSecretsRequired.includes(secretName))
+        requiredSecrets.filter((secretName) => !modelSecretsRequired.includes(secretName)),
+        { hasTeamRouter: options.hasTeamRouter }
       ),
       path: "entrypoint.sh"
     },

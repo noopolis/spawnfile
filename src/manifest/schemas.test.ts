@@ -66,11 +66,9 @@ describe("manifestSchema", () => {
           ref: "./agents/analyst"
         }
       ],
+      mode: "swarm",
       name: "research-team",
-      spawnfile_version: "0.1",
-      structure: {
-        mode: "swarm"
-      }
+      spawnfile_version: "0.1"
     });
 
     expect(isTeamManifest(result)).toBe(true);
@@ -93,11 +91,9 @@ describe("manifestSchema", () => {
           ref: "./agents/writer"
         }
       ],
+      mode: "swarm",
       name: "research-team",
-      spawnfile_version: "0.1",
-      structure: {
-        mode: "swarm"
-      }
+      spawnfile_version: "0.1"
     });
 
     expect(result.success).toBe(false);
@@ -377,11 +373,9 @@ describe("manifestSchema", () => {
           ref: "./agents/writer"
         }
       ],
+      mode: "swarm",
       name: "research-team",
       spawnfile_version: "0.1",
-      structure: {
-        mode: "swarm"
-      },
       surfaces: {
         discord: {}
       }

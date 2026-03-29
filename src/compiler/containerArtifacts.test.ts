@@ -17,6 +17,7 @@ const createAgentNode = (
   runtimeName: "openclaw" | "picoclaw" | "tinyclaw",
   overrides: Partial<ResolvedAgentNode> = {}
 ): ResolvedAgentNode => ({
+  description: "",
   docs: [],
   env: {},
   execution: undefined,

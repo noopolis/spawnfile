@@ -22,6 +22,7 @@ src/compiler/
 ├── updateProjectModels.ts      # `spawnfile model ...` manifest-editing helpers
 ├── updateProjectSurfaces.ts    # `spawnfile surface ...` manifest-editing helpers
 ├── executionDefaults.ts        # Effective execution defaults applied during graph resolution
+├── surfaceRouter.ts              # Surface router script and config generation for team routing
 ├── *.test.ts                   # Tests next to the implementation they cover
 ```
 

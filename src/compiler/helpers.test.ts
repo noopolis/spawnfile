@@ -31,7 +31,8 @@ describe("compiler helpers", () => {
           secrets: [],
           skills: [],
           source: "/tmp/a/Spawnfile",
-          subagents: []
+          subagents: [],
+          description: ""
         }
       },
       {
@@ -52,7 +53,8 @@ describe("compiler helpers", () => {
           secrets: [],
           skills: [],
           source: "/tmp/b/Spawnfile",
-          subagents: []
+          subagents: [],
+          description: ""
         }
       }
     ]);

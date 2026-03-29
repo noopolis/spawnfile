@@ -293,15 +293,15 @@ export const tinyClawAdapter: RuntimeAdapter = {
     const teamConfig = {
       name: node.name,
       agents: agentIds,
-      leader_agent: node.structure.leader ?? agentIds[0] ?? "leader"
+      leader_agent: node.lead ?? agentIds[0] ?? "leader"
     };
 
     return {
       capabilities: [
         createCapability("team.members", "supported"),
-        createCapability("team.structure.mode", node.structure.mode === "hierarchical" ? "supported" : "degraded", "TinyClaw only supports leader-led teams"),
-        createCapability("team.structure.leader", node.structure.leader ? "supported" : "degraded", "TinyClaw requires a leader_agent"),
-        createCapability("team.structure.external", "degraded", "TinyClaw does not enforce external boundary"),
+        createCapability("team.mode", node.mode === "hierarchical" ? "supported" : "degraded", "TinyClaw only supports leader-led teams"),
+        createCapability("team.lead", node.lead ? "supported" : "degraded", "TinyClaw requires a leader_agent"),
+        createCapability("team.external", "degraded", "TinyClaw does not enforce external boundary"),
         createCapability("team.shared", "supported"),
         createCapability("team.nested", "degraded", "TinyClaw nested teams flatten in v0.1")
       ],

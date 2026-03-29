@@ -30,12 +30,14 @@ The reference pipeline is:
 3. Walk the manifest graph through `members[*].ref` and `subagents[*].ref`.
 4. Detect cycles and incompatible duplicate references.
 5. Resolve effective `runtime` and `execution` for every graph node.
-6. Build a normalized intermediate representation.
-7. Group resolved nodes by runtime.
-8. Invoke runtime adapters.
-9. Emit runtime output directories.
-10. Generate container artifacts from adapter container metadata.
-11. Emit `spawnfile-report.json`.
+6. Resolve `description` for every agent node (from manifest or derived from docs).
+7. Build a normalized intermediate representation.
+8. For team roots, generate per-member rosters.
+9. Group resolved nodes by runtime.
+10. Invoke runtime adapters.
+11. Emit runtime output directories (including rosters in agent workspaces).
+12. Generate container artifacts from adapter container metadata.
+13. Emit `spawnfile-report.json`.
 
 The compiler should operate on resolved IR, not on raw YAML, after the graph phase.
 
@@ -140,20 +142,20 @@ surfaces:
       mode: allowlist
       users:
         - "987654321098765432"
-    botTokenSecret: DISCORD_BOT_TOKEN
+    bot_token_secret: DISCORD_BOT_TOKEN
   telegram:
     access:
       mode: allowlist
       users:
         - "123456789"
-    botTokenSecret: TELEGRAM_BOT_TOKEN
+    bot_token_secret: TELEGRAM_BOT_TOKEN
   slack:
     access:
       mode: allowlist
       users:
         - "U1234567890"
-    appTokenSecret: SLACK_APP_TOKEN
-    botTokenSecret: SLACK_BOT_TOKEN
+    app_token_secret: SLACK_APP_TOKEN
+    bot_token_secret: SLACK_BOT_TOKEN
 docs: {}
 skills: []
 mcp_servers: []
@@ -162,12 +164,23 @@ secrets: []
 subagents: []
 ```
 
+### Resolved Agent (additions)
+
+The resolved agent IR also includes:
+
+```yaml
+description: "Research analyst that finds, evaluates, and synthesizes information"
+```
+
+`description` is the agent's short summary. If the manifest does not declare one, the compiler derives it from `docs.identity` by extracting the first non-empty paragraph, truncated to 200 characters. If no `docs.identity` is declared, the description is left empty.
+
 ### Resolved Team
 
 ```yaml
 kind: team
 id: team:research-cell
 source: /abs/path/to/Spawnfile
+description: "Research team that finds, analyzes, and writes up findings"
 docs: {}
 shared:
   skills: []
@@ -175,11 +188,13 @@ shared:
   env: {}
   secrets: []
 members: []
-structure:
-  mode: swarm
-  leader: null
-  external: []
+mode: swarm
+lead: null
+external: []
+auth: null
 ```
+
+Note: `mode`, `lead`, `external`, and `auth` are top-level team fields, not nested under `structure`. `auth` is `null` when the team manifest omits it.
 
 ### Compile Plan
 
@@ -195,6 +210,66 @@ runtimes:
 ```
 
 The important property is that adapters receive resolved nodes, never unresolved inheritance logic.
+
+---
+
+## Team Roster Compilation
+
+When compiling a team, the compiler generates a roster for each direct member after resolving all member nodes.
+
+### Compilation Steps
+
+1. Resolve each member's `description` — from the agent manifest's `description` field, or derived from `docs.identity` if available.
+2. Compute reachability based on `mode`:
+   - `hierarchical`: non-lead members can only reach the lead. The lead can reach all members.
+   - `swarm`: all members can reach all other members.
+3. Resolve each member's HTTP endpoint — from the agent's `surfaces.http` config, or auto-enabled if not declared.
+4. Generate a per-member roster YAML at `{workspace}/.spawnfile/roster.yaml`.
+5. Register the roster in the doc injection pipeline with `role: roster`.
+6. Generate a `team_message` MCP server script for each member. The script exposes one tool that POSTs to teammate endpoints using the roster data.
+7. Inject the `team_message` MCP server into each member's `mcp_servers` list during compilation.
+
+### Roster Schema
+
+```yaml
+team: research-cell
+mode: hierarchical
+lead: orchestrator
+self: researcher
+external: false
+auth:
+  mode: shared_secret
+  secret_env: TEAM_SHARED_SECRET
+
+members:
+  - name: orchestrator
+    role: lead
+    description: "Coordinates the research team, assigns tasks, synthesizes results"
+    endpoint: http://localhost:9100/route/orchestrator/v1/messages
+  - name: writer
+    role: member
+    description: "Writes reports and articles from research findings"
+    endpoint: http://localhost:9100/route/writer/v1/messages
+```
+
+The `auth` block is present only when the team manifest declares `team.auth`. The `endpoint` is the HTTP URL where each teammate receives messages. For same-container deployments, endpoints route through the surface router on localhost. For cross-container or cross-network deployments, endpoints are the agent's actual HTTP surface URLs.
+
+The `team_message` MCP tool (compiler-generated for each team member) uses these endpoints to deliver messages. Auth is attached automatically when `team.auth` is declared.
+
+The roster is a per-member view:
+
+- `self` identifies which member this roster belongs to. The self agent does not appear in `members`.
+- `external` indicates whether this member can communicate outside the team (from the team's `external` list).
+- `role` is `lead` for the team lead, `member` for everyone else. For nested team entries, `role` is `team`.
+- `description` comes from each agent's resolved description.
+- In `hierarchical` mode, non-lead members only see the lead in their roster. The lead sees all members.
+- In `swarm` mode, all members see all other members.
+
+For nested team members, the inner team appears as a single entry with `role: team` and its own description. The outer team does not see the inner team's individual members.
+
+### Compile Report
+
+The compile report should include a `roster` entry for each team member documenting whether the roster was generated successfully.
 
 ---
 
@@ -347,9 +422,11 @@ The compiler should use these keys by default:
 - `execution.sandbox`
 - `agent.subagents`
 - `team.members`
-- `team.structure.mode`
-- `team.structure.leader`
-- `team.structure.external`
+- `team.mode`
+- `team.lead`
+- `team.external`
+- `team.auth`
+- `team.roster`
 - `team.shared`
 - `team.nested`
 
@@ -392,7 +469,7 @@ Validation should happen in three layers:
 - cycle detection
 - duplicate node resolution conflicts
 - runtime resolution
-- team structure references
+- team mode/lead/external references
 - skill `requires.mcp` resolution
 
 ### 3. Adapter Validation
@@ -447,6 +524,6 @@ Before building adapters, the compiler should be tested against three canonical 
 3. Multi-runtime team
    - direct members on different runtimes
    - shared skills/MCP
-   - team structure with leader
+   - team with mode and lead
 
 If these three fixtures compile cleanly and produce stable reports, the v0.1 foundation is strong enough to start adapters.

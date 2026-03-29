@@ -309,7 +309,9 @@ const orderTeamManifestSections = (manifest: TeamManifest): Record<string, unkno
   ]),
   withDefinedEntries([
     ["members", manifest.members],
-    ["structure", manifest.structure]
+    ["mode", manifest.mode],
+    ["lead", manifest.lead],
+    ["external", manifest.external]
   ])
 ];
 

@@ -42,6 +42,7 @@ describe("tinyClawAdapter", () => {
 
   it("emits settings.json with agents map and workspace", async () => {
     const node: ResolvedAgentNode = {
+      description: "",
       docs: [],
       env: {},
       execution: {
@@ -77,6 +78,7 @@ describe("tinyClawAdapter", () => {
 
   it("emits Discord channel settings when Discord is declared", async () => {
     const node: ResolvedAgentNode = {
+      description: "",
       docs: [],
       env: {},
       execution: {
@@ -118,6 +120,7 @@ describe("tinyClawAdapter", () => {
 
   it("emits Telegram channel settings when Telegram is declared", async () => {
     const node: ResolvedAgentNode = {
+      description: "",
       docs: [],
       env: {},
       execution: {
@@ -159,6 +162,7 @@ describe("tinyClawAdapter", () => {
 
   it("marks MCP as degraded when MCP servers are declared", async () => {
     const node: ResolvedAgentNode = {
+      description: "",
       docs: [],
       env: {},
       execution: undefined,
@@ -182,18 +186,22 @@ describe("tinyClawAdapter", () => {
 
   it("compiles a native team artifact with teams map", async () => {
     const result = await tinyClawAdapter.compileTeam?.({
+      auth: null,
+      description: "",
       docs: [],
+      external: ["leader"],
       kind: "team",
+      lead: "leader",
       members: [
         { id: "leader", kind: "agent", nodeSource: "/tmp/a", runtimeName: "tinyclaw" },
         { id: "writer", kind: "agent", nodeSource: "/tmp/b", runtimeName: "tinyclaw" }
       ],
+      mode: "hierarchical" as const,
       name: "research-cell",
       policyMode: null,
       policyOnDegrade: null,
       shared: { env: {}, mcpServers: [], secrets: [], skills: [] },
-      source: "/tmp/team/Spawnfile",
-      structure: { external: ["leader"], leader: "leader", mode: "hierarchical" as const }
+      source: "/tmp/team/Spawnfile"
     });
 
     const configFile = result?.files[0];
@@ -206,6 +214,7 @@ describe("tinyClawAdapter", () => {
 
   it("merges agent and team artifacts into one container target", async () => {
     const assistantNode: ResolvedAgentNode = {
+      description: "",
       docs: [],
       env: {},
       execution: {
@@ -236,18 +245,22 @@ describe("tinyClawAdapter", () => {
     const assistantFiles = await tinyClawAdapter.compileAgent(assistantNode);
     const writerFiles = await tinyClawAdapter.compileAgent(writerNode);
     const teamFiles = await tinyClawAdapter.compileTeam?.({
+      auth: null,
+      description: "",
       docs: [],
+      external: [],
       kind: "team",
+      lead: "assistant",
       members: [
         { id: "assistant", kind: "agent", nodeSource: "/tmp/a", runtimeName: "tinyclaw" },
         { id: "writer", kind: "agent", nodeSource: "/tmp/b", runtimeName: "tinyclaw" }
       ],
+      mode: "hierarchical" as const,
       name: "research-cell",
       policyMode: null,
       policyOnDegrade: null,
       shared: { env: {}, mcpServers: [], secrets: [], skills: [] },
-      source: "/tmp/team/Spawnfile",
-      structure: { external: [], leader: "assistant", mode: "hierarchical" }
+      source: "/tmp/team/Spawnfile"
     });
 
     const targets = await tinyClawAdapter.createContainerTargets?.([
@@ -271,18 +284,22 @@ describe("tinyClawAdapter", () => {
         kind: "team",
         slug: "research-cell",
         value: {
+          auth: null,
+          description: "",
           docs: [],
+          external: [],
           kind: "team",
+          lead: "assistant",
           members: [
             { id: "assistant", kind: "agent", nodeSource: "/tmp/a", runtimeName: "tinyclaw" },
             { id: "writer", kind: "agent", nodeSource: "/tmp/b", runtimeName: "tinyclaw" }
           ],
+          mode: "hierarchical" as const,
           name: "research-cell",
           policyMode: null,
           policyOnDegrade: null,
           shared: { env: {}, mcpServers: [], secrets: [], skills: [] },
-          source: "/tmp/team/Spawnfile",
-          structure: { external: [], leader: "assistant", mode: "hierarchical" }
+          source: "/tmp/team/Spawnfile"
         }
       }
     ]);
@@ -298,6 +315,7 @@ describe("tinyClawAdapter", () => {
 
   it("declares a merged Discord token binding for runtime targets", async () => {
     const assistantNode: ResolvedAgentNode = {
+      description: "",
       docs: [],
       env: {},
       execution: {
@@ -359,6 +377,7 @@ describe("tinyClawAdapter", () => {
 
   it("declares merged Discord and Telegram token bindings for runtime targets", async () => {
     const assistantNode: ResolvedAgentNode = {
+      description: "",
       docs: [],
       env: {},
       execution: {
@@ -414,6 +433,7 @@ describe("tinyClawAdapter", () => {
 
   it("rejects conflicting Discord bot token secrets across merged agents", async () => {
     const assistantNode: ResolvedAgentNode = {
+      description: "",
       docs: [],
       env: {},
       execution: {
@@ -476,6 +496,7 @@ describe("tinyClawAdapter", () => {
 
   it("rejects conflicting Telegram bot token secrets across merged agents", async () => {
     const assistantNode: ResolvedAgentNode = {
+      description: "",
       docs: [],
       env: {},
       execution: {
@@ -544,15 +565,19 @@ describe("tinyClawAdapter", () => {
         kind: "team",
         slug: "research-cell",
         value: {
+          auth: null,
+          description: "",
           docs: [],
+          external: [],
           kind: "team",
+          lead: null,
           members: [],
+          mode: "swarm" as const,
           name: "research-cell",
           policyMode: null,
           policyOnDegrade: null,
           shared: { env: {}, mcpServers: [], secrets: [], skills: [] },
-          source: "/tmp/team/Spawnfile",
-          structure: { external: [], leader: null, mode: "swarm" }
+          source: "/tmp/team/Spawnfile"
         }
       }
     ]);
@@ -638,6 +663,7 @@ describe("tinyClawAdapter", () => {
 
   it("ignores team inputs without a native team artifact when merging container targets", async () => {
     const node: ResolvedAgentNode = {
+      description: "",
       docs: [],
       env: {},
       execution: undefined,
@@ -668,15 +694,19 @@ describe("tinyClawAdapter", () => {
         kind: "team",
         slug: "research-cell",
         value: {
+          auth: null,
+          description: "",
           docs: [],
+          external: [],
           kind: "team",
+          lead: "assistant",
           members: [{ id: "assistant", kind: "agent", nodeSource: "/tmp/a", runtimeName: "tinyclaw" }],
+          mode: "hierarchical" as const,
           name: "research-cell",
           policyMode: null,
           policyOnDegrade: null,
           shared: { env: {}, mcpServers: [], secrets: [], skills: [] },
-          source: "/tmp/team/Spawnfile",
-          structure: { external: [], leader: "assistant", mode: "hierarchical" }
+          source: "/tmp/team/Spawnfile"
         }
       }
     ]);

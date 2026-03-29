@@ -262,9 +262,8 @@ describe("compileProject", () => {
         "  - id: b",
         "    ref: ./agents/b",
         "",
-        "structure:",
-        "  mode: hierarchical",
-        "  leader: a",
+        "mode: hierarchical",
+        "lead: a",
         ""
       ].join("\n")
     );
@@ -386,9 +385,8 @@ describe("compileProject", () => {
         "  - id: b",
         "    ref: ./agents/b",
         "",
-        "structure:",
-        "  mode: hierarchical",
-        "  leader: a",
+        "mode: hierarchical",
+        "lead: a",
         ""
       ].join("\n")
     );

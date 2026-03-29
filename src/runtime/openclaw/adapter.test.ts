@@ -5,6 +5,7 @@ import { ResolvedAgentNode } from "../../compiler/types.js";
 import { openClawAdapter } from "./adapter.js";
 
 const createNode = (options: Record<string, unknown> = {}): ResolvedAgentNode => ({
+  description: "",
   docs: [],
   env: {},
   execution: {

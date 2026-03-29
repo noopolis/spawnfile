@@ -65,7 +65,15 @@ kind: agent                # "agent" or "team"
 name: my-agent             # non-empty string, no whitespace
 ```
 
-### 1.3 Path Resolution
+### 1.3 Description
+
+`description` is OPTIONAL. It is a short, single-line, human-readable string (one or two sentences) that summarizes what this agent or team does. If a multi-line YAML scalar is used, the compiler MUST normalize it by collapsing newlines into spaces and trimming trailing whitespace.
+
+For agents, `description` is the primary signal used in team rosters — it tells teammates what this agent does. If `description` is omitted, the compiler SHOULD derive a description from the `docs.identity` document by extracting the first non-empty paragraph, truncated to 200 characters. If no `docs.identity` is declared, the description is left empty.
+
+For teams, `description` summarizes the team's collective purpose.
+
+### 1.4 Path Resolution
 
 All `ref` values and document file paths in a manifest are relative paths resolved from the manifest's directory.
 
@@ -281,7 +289,7 @@ Rules:
 
 ### 2.6 Communication Surfaces
 
-Spawnfile v0.1 standardizes five initial communication surfaces on agent manifests:
+Spawnfile standardizes the following communication surfaces on agent manifests:
 
 ```yaml
 surfaces:
@@ -312,8 +320,16 @@ surfaces:
     bot_token_secret: SLACK_BOT_TOKEN
     app_token_secret: SLACK_APP_TOKEN
   http:
+    port: 8080
+    path_prefix: /v1
+    auth:
+      mode: bearer
+      token_secret: HTTP_AUTH_TOKEN
     access:
       mode: open
+  webhook:
+    url: "https://my-service.example.com/callbacks"
+    signing_secret: WEBHOOK_SECRET
 ```
 
 Rules:
@@ -362,14 +378,24 @@ Rules:
 - If `surfaces.telegram.bot_token_secret` is omitted, the effective secret name defaults to `TELEGRAM_BOT_TOKEN`.
 - If `surfaces.slack.bot_token_secret` is omitted, the effective secret name defaults to `SLACK_BOT_TOKEN`.
 - If `surfaces.slack.app_token_secret` is omitted, the effective secret name defaults to `SLACK_APP_TOKEN`.
-- WhatsApp does not currently define a portable token-secret field in v0.1; runtime-specific session or QR auth remains adapter-defined.
-- HTTP does not currently define a portable token-secret field in v0.1.
+- WhatsApp does not currently define a portable token-secret field; runtime-specific session or QR auth remains adapter-defined.
+- `surfaces.http.port` is OPTIONAL. If omitted, the runtime selects a default port.
+- `surfaces.http.path_prefix` is OPTIONAL. If omitted, defaults to `/v1`.
+- `surfaces.http.auth` is OPTIONAL. If omitted, the surface accepts unauthenticated requests. This is a valid configuration for local development, private networks, and any deployment where the network itself is the trust boundary.
+- If `surfaces.http.auth` is present, it MUST declare `mode: bearer` and SHOULD declare `token_secret`.
+- `surfaces.http.auth.token_secret` names the env var carrying the bearer token. The surface validates `Authorization: Bearer <token>` against this value.
+- When `team.auth` is declared on the enclosing team, the agent's HTTP surface MUST also accept the team shared secret as a valid bearer token, in addition to any per-surface `token_secret`. Both paths are valid simultaneously.
+- `surfaces.webhook` is OPTIONAL.
+- `surfaces.webhook.url` is REQUIRED when `surfaces.webhook` is present. It MUST be a valid URL.
+- `surfaces.webhook.signing_secret` is OPTIONAL. It names the env var carrying the HMAC-SHA256 signing secret. When present, the runtime MUST sign webhook payloads.
+- Webhook delivery is fire-and-forget: the runtime attempts delivery once with a timeout of 10 seconds. A non-2xx response or timeout means the event is lost. The runtime SHOULD log delivery failures.
+- Webhook payloads use the same event envelope format as SSE events, delivered as `application/json` via HTTP POST.
 - Declared surface auth names participate in the same run-time env validation path as other env-backed auth.
-- Team manifests MUST NOT declare `surfaces` in v0.1.
+- Team manifests MUST NOT declare `surfaces`. Communication surfaces belong to concrete agent manifests.
 - Subagents do not implicitly inherit parent `surfaces`.
 - A conforming compiler MUST validate runtime support for declared surface access and fail early on unsupported runtime/surface combinations.
 
-These are intentionally narrow first surfaces. Additional communication surfaces remain adapter-defined until standardized.
+Additional communication surfaces (A2A, network) are under active development. See `research/DIRECTION.md` for the planned surface roadmap.
 
 ### 2.7 Environment and Secrets
 
@@ -394,6 +420,7 @@ Compilers SHOULD warn when a secret is marked `required` but is not present in t
 spawnfile_version: "0.1"
 kind: agent
 name: analyst
+description: "Research analyst that finds, evaluates, and synthesizes information"
 
 docs:
   identity: IDENTITY.md
@@ -462,6 +489,11 @@ surfaces:
         - "C1234567890"
     bot_token_secret: SLACK_BOT_TOKEN
     app_token_secret: SLACK_APP_TOKEN
+  http:
+    port: 8080
+    path_prefix: /v1
+    access:
+      mode: open
 
 env:
   LOG_LEVEL: info
@@ -524,31 +556,31 @@ For a subagent reference, the effective configuration is resolved as follows:
 
 ### 4.1 What A Team Is
 
-A Spawnfile team is an organizational structure — not a workflow graph, not a message router, not a deployment topology.
-
-It defines:
+A Spawnfile team is an organizational structure that defines:
 
 - who is in the team (`members`)
 - what they share (`shared`)
-- how the team is organized (`structure`)
+- how the team is organized (`mode`, `lead`, `external`)
 - who the team is as a collective (`docs`)
+- how members coordinate (`roster` — compiler-generated)
 
 The distinction between `agent` and `team` is deliberate:
 
 - `agent` + `subagents` = one authored agent with internal helpers. Subagent orchestration is the runtime's concern.
-- `team` = several first-class authored agents that belong together as an organizational unit. Team coordination happens through external communication surfaces (channels, A2A, webhooks, etc.), not through runtime internals.
+- `team` = several first-class authored agents that belong together as an organizational unit.
 
 Teams are:
 
 - canonical author intent
 - degradation-aware
 - potentially multi-runtime
+- coordination-aware — the compiler generates a roster so members know about each other
 
 Spawnfile does not assume that every runtime has a native team config format, nested teams, shared team memory, or durable team lifecycle APIs.
 
 Adapters MAY lower a Spawnfile team into a native team object, a flat leader/member config, routed agent sessions, or another target-native surface. If a target cannot preserve the declared structure, the compiler MUST report `degraded` or `unsupported`.
 
-Coordination rules beyond what the structure declares (handoff protocols, escalation paths, conflict resolution) belong in the team's `docs.system` document, where LLM agents can read and follow them as natural language instructions.
+Coordination rules beyond what the manifest declares (handoff protocols, escalation paths, conflict resolution) belong in the team's `docs.system` document, where LLM agents can read and follow them as natural language instructions.
 
 See `research/RUNTIME-NOTES.md` for per-runtime team lowering research.
 
@@ -558,6 +590,14 @@ See `research/RUNTIME-NOTES.md` for per-runtime team lowering research.
 spawnfile_version: "0.1"
 kind: team
 name: research-cell
+description: "Research team that finds, analyzes, and writes up findings"
+
+mode: hierarchical
+lead: orchestrator
+
+auth:
+  mode: shared_secret
+  secret: TEAM_SHARED_SECRET
 
 docs:
   system: TEAM.md
@@ -582,10 +622,6 @@ members:
     ref: ./agents/researcher
   - id: writer
     ref: ./agents/writer
-
-structure:
-  mode: hierarchical
-  leader: orchestrator
 
 policy:
   mode: warn
@@ -626,35 +662,26 @@ For validation of a shared skill's `requires.mcp`, the visible MCP scope is `sha
 
 For validation of a direct member's skill `requires.mcp`, the visible MCP scope is the union of inherited shared MCP servers and member-local MCP servers, with member-local names taking precedence.
 
-### 4.5 Structure
+### 4.5 Mode, Lead, and External
 
-The `structure` block defines the organizational topology of the team. It is REQUIRED for `kind: team`.
+#### `mode`
 
-```yaml
-structure:
-  mode: hierarchical
-  leader: orchestrator
-  external: [orchestrator]
-```
-
-#### `structure.mode`
-
-REQUIRED. Defines the team topology.
+REQUIRED for `kind: team`. Defines the team's organizational and coordination topology.
 
 | Mode | Description |
 |------|-------------|
-| `hierarchical` | Leader-led team. One member is the designated leader with authority over the group. |
-| `swarm` | Flat peer team. All members are equals with no formal leader. |
+| `hierarchical` | Leader-led team. One member is the designated leader who delegates and coordinates. Communication routes through the leader. |
+| `swarm` | Flat peer team. All members are equals. Any member can communicate with any other member directly. |
 
-#### `structure.leader`
+#### `lead`
 
 The `id` of the member who leads the team. REQUIRED when `mode` is `hierarchical`. MUST NOT be present when `mode` is `swarm`.
 
 The leader is the default authority, escalation point, and — unless `external` overrides it — the default voice of the team to the outside world.
 
-Adapters SHOULD map `leader` to native leader or default-agent concepts when they exist (e.g. TinyClaw's `leader_agent`, OpenClaw's default routed agent).
+Adapters SHOULD map `lead` to native leader or default-agent concepts when they exist (e.g. TinyClaw's `leader_agent`, OpenClaw's default routed agent).
 
-#### `structure.external`
+#### `external`
 
 OPTIONAL. A list of member `id` values that are allowed to respond to messages from outside the team (non-team-members, humans, external systems).
 
@@ -662,38 +689,55 @@ Members not listed in `external` are **internal-only** — they can receive mess
 
 Defaults:
 
-- `hierarchical` mode: defaults to `[leader]` if not specified
+- `hierarchical` mode: defaults to `[lead]` if not specified
 - `swarm` mode: defaults to all members if not specified
 
 Examples:
 
 ```yaml
 # Leader-led, only leader talks externally (default)
-structure:
-  mode: hierarchical
-  leader: orchestrator
+mode: hierarchical
+lead: orchestrator
 
 # Leader-led, but researcher also responds externally
-structure:
-  mode: hierarchical
-  leader: orchestrator
-  external: [orchestrator, researcher]
+mode: hierarchical
+lead: orchestrator
+external: [orchestrator, researcher]
 
 # Swarm, all peers, all respond (default)
-structure:
-  mode: swarm
+mode: swarm
 
 # Swarm, all peers, but only two respond externally
-structure:
-  mode: swarm
-  external: [monitor-a, monitor-b]
+mode: swarm
+external: [monitor-a, monitor-b]
 ```
 
 `external` is organizational intent. Enforcement depends on the deployment surface (channel configuration, API gateway, etc.). The compiler records the intent; adapters and deployment layers SHOULD respect it when possible.
 
-### 4.6 Team Docs
+### 4.6 Team Auth
 
-The team's `docs.system` document (typically `TEAM.md`) describes who the team is as a collective — purpose, culture, identity. It is also the place for coordination rules that go beyond what the `structure` block captures:
+`auth` is OPTIONAL on team manifests. It declares how team members authenticate to each other during coordination.
+
+```yaml
+auth:
+  mode: shared_secret
+  secret: TEAM_SHARED_SECRET
+```
+
+Rules:
+
+- If `auth` is omitted, team members communicate without authentication. This is valid for same-container deployments and private-network deployments where the network is the trust boundary.
+- If `auth` is present, `mode` MUST be `shared_secret`. Other modes (e.g., `mtls`) are reserved for future versions.
+- `secret` names the environment variable carrying the shared secret. The compiler MUST inject this variable into every member's container.
+- When `team.auth` is declared, each member's HTTP surface MUST accept the team secret as a valid bearer token, in addition to any per-surface `auth.token_secret` the agent declares. Both paths are valid simultaneously — the surface does not need to distinguish between them.
+- For `internal://` endpoints (same-container), team auth is not applied — the surface router dispatches in-process and no network call occurs.
+- `team.auth.secret` participates in the same env validation path as other secret references.
+
+The team auth model treats teams as trust groups: a single shared credential for all members. Per-member credentials and certificate-based auth are deferred to future versions.
+
+### 4.7 Team Docs
+
+The team's `docs.system` document (typically `TEAM.md`) describes who the team is as a collective — purpose, culture, identity. It is also the place for coordination rules that go beyond what the manifest captures:
 
 - Handoff protocols between members
 - Escalation procedures
@@ -705,31 +749,76 @@ The team doc SHOULD reference member slot `id` values explicitly so agents can i
 The team doc stays local to the team manifest. It is NOT automatically propagated to member agents. Adapters that support team context injection MAY make the team doc available to members and SHOULD report the capability outcome.
 
 Team manifests MUST NOT declare `execution`. Model, sandbox, and workspace intent apply to agents and subagents, not to teams as organizational nodes.
-Team manifests MUST NOT declare `surfaces`. Communication surfaces belong to concrete agent manifests in v0.1.
+Team manifests MUST NOT declare `surfaces`. Communication surfaces belong to concrete agent manifests.
 
-### 4.7 Team Lowering Contract
+### 4.8 Team Roster
+
+When compiling a team, the compiler MUST generate a **roster** for each direct member. The roster is a structured document that tells an agent about its team — who else is on the team, what they do, and how the team is organized.
+
+The roster is placed at `{workspace}/.spawnfile/roster.yaml` in each member's compiled workspace and injected into agent context through the doc pipeline with `role: roster`.
+
+The roster contains:
+
+- the team name and mode
+- the lead (if hierarchical)
+- which member this roster belongs to (`self`)
+- whether this member has external access
+- the team auth mode (if `team.auth` is declared)
+- a list of teammates with their descriptions and roles
+
+The roster is a **per-member view**. In `hierarchical` mode, non-leader members see only the leader as reachable. The leader's roster shows all members as reachable. In `swarm` mode, all members see all other members as reachable.
+
+Member descriptions in the roster come from each agent's `description` field. If an agent has no `description`, the compiler SHOULD derive one from `docs.identity`. The compiler SHOULD warn if a team member has no description and no identity doc to fall back on.
+
+Each member entry in the roster includes an `endpoint` — the HTTP URL where that agent receives messages. For same-container deployments, this is a localhost URL routed through the surface router. For cross-container or cross-network deployments, this is the agent's actual HTTP surface URL. The `team_message` tool uses these endpoints to deliver messages.
+
+The roster is a compiled artifact — agents do not author it. The compiler generates it from the team manifest and each member's agent manifest.
+
+Agents are described in natural language, not classified by capability tags. Descriptions are the primary coordination signal in rosters. LLM agents reason about who to coordinate with based on descriptions of what their teammates do.
+
+### 4.8.1 Team Message Tool
+
+When compiling a team, the compiler MUST generate a `team_message` MCP tool for each direct member. This tool is the portable mechanism by which agents send messages to teammates.
+
+The compiler generates a small MCP server (stdio transport) that exposes one tool:
+
+- **Name:** `team_message`
+- **Parameters:** `to` (teammate name from roster, required), `message` (text to send, required)
+- **Returns:** The teammate's response text, or an error if delivery failed or timed out.
+
+The tool implementation POSTs to the teammate's HTTP endpoint (from the roster) using the canonical message envelope. If `team.auth` is declared, the tool attaches the shared secret as a bearer token. The tool call is synchronous — it blocks until the teammate responds or a timeout is reached (default 120 seconds).
+
+The receiving agent does not need to know the message came from a teammate. It arrives on the agent's HTTP surface like any other message, with `from.type: agent` and a `context_id` scoped to the sender-receiver pair (e.g., `team:planner->researcher`). The runtime uses `context_id` to maintain separate conversation threads per sender.
+
+This means the HTTP surface serves both external callers and internal team coordination. One surface, one contract, one endpoint — the caller's identity and auth determine who they are, not which endpoint they hit.
+
+Team members MUST have an HTTP surface. If a team member does not declare `surfaces.http`, the compiler MUST auto-enable an internal HTTP surface that is not publicly exposed but is reachable by the surface router and teammates.
+
+### 4.9 Team Lowering Contract
 
 For team manifests, a conforming compiler MUST preserve the following author intent whenever the target allows it:
 
 - which members belong to the team (slot IDs)
-- the team structure mode and leader
+- the team mode and lead
 - which members are external-facing
 - which surfaces are shared versus member-local
+- the compiled roster for each member
 
 A compiler MAY change the mechanical implementation used by the target runtime as long as the declared intent is preserved or the loss is reported as `degraded` or `unsupported`.
 
-When `spawnfile compile` is run from a team root, the compiler MUST walk the reachable member graph and compile each agent member using that member's declared runtime.
+When `spawnfile compile` is run from a team root, the compiler MUST walk the reachable member graph and compile each agent member using that member's declared runtime. The compiler MUST also generate a roster for each direct member.
 
 If a team spans multiple runtimes, the compiler MAY emit multiple runtime-specific outputs as part of the same compile run.
 
 Compilers MUST report capability outcomes for at least:
 
 - `team.members`
-- `team.structure.mode`
-- `team.structure.leader`
-- `team.structure.external`
+- `team.mode`
+- `team.lead`
+- `team.external`
 - `team.shared`
 - `team.nested`
+- `team.roster`
 
 ---
 

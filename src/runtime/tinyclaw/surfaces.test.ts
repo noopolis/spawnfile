@@ -39,7 +39,8 @@ describe("tinyClaw surfaces", () => {
         http: {
           access: {
             mode: "open"
-          }
+          },
+          pathPrefix: "/v1"
         },
         telegram: {
           access: {
@@ -61,7 +62,7 @@ describe("tinyClaw surfaces", () => {
 
     expect(() =>
       assertSupportedTinyClawSurfaces({
-        http: {}
+        http: { pathPrefix: "/v1" }
       })
     ).not.toThrow();
 
@@ -121,6 +122,7 @@ describe("tinyClaw surfaces", () => {
           kind: "agent",
           slug: "assistant",
           value: {
+            description: "",
             docs: [],
             env: {},
             execution: undefined,
@@ -147,6 +149,7 @@ describe("tinyClaw surfaces", () => {
           kind: "agent",
           slug: "assistant",
           value: {
+            description: "",
             docs: [],
             env: {},
             execution: undefined,

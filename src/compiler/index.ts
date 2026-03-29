@@ -5,6 +5,8 @@ export * from "./compileProject.js";
 export * from "./initProject.js";
 export * from "./runProject.js";
 export * from "./syncProjectAuth.js";
+export * from "./surfaceRouter.js";
+export * from "./teamMcp.js";
 export * from "./types.js";
 export * from "./updateProjectModels.js";
 export * from "./updateProjectSurfaces.js";

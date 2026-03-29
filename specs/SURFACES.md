@@ -1,11 +1,11 @@
-# Communication Surfaces v0.1
+# Communication Surfaces
 
 This document defines the portable communication-surface model that sits on top of `SPEC.md`.
 
 `SPEC.md` remains the canonical source schema. This file exists to make three things explicit:
 
 - what a surface is
-- what the standardized Discord, Telegram, WhatsApp, Slack, and HTTP surfaces mean in v0.1
+- what the standardized surfaces (Discord, Telegram, WhatsApp, Slack, HTTP, Webhook) mean
 - which runtimes support which portable surface shapes
 
 ---
@@ -14,7 +14,7 @@ This document defines the portable communication-surface model that sits on top 
 
 A **surface** is an external interaction boundary through which an agent exchanges messages with humans, systems, or other agents.
 
-This is intentionally broader than "chat channel". In v0.1, the first standardized surfaces are Discord, Telegram, WhatsApp, Slack, and HTTP, but the abstraction is meant to grow to cover other messaging systems, webhook/http ingress, and future agent-network or room integrations.
+This is intentionally broader than "chat channel". The current standardized surfaces are Discord, Telegram, WhatsApp, Slack, HTTP, and Webhook. The abstraction is designed to grow to cover A2A, agent-network, and future surfaces.
 
 Surfaces are:
 
@@ -22,7 +22,7 @@ Surfaces are:
 - validated at compile time against runtime support
 - provisioned through the same auth/run path as model credentials
 
-Team manifests do not declare surfaces in v0.1. Surfaces belong to concrete agents.
+Team manifests do not declare surfaces. Surfaces belong to concrete agents.
 
 ---
 
@@ -82,8 +82,16 @@ surfaces:
     bot_token_secret: SLACK_BOT_TOKEN
     app_token_secret: SLACK_APP_TOKEN
   http:
+    port: 8080
+    path_prefix: /v1
+    auth:
+      mode: bearer
+      token_secret: HTTP_AUTH_TOKEN
     access:
       mode: open
+  webhook:
+    url: "https://my-service.example.com/callbacks"
+    signing_secret: WEBHOOK_SECRET
 ```
 
 ### Fields
@@ -107,7 +115,15 @@ surfaces:
 | `slack.access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
 | `slack.access.users` | Allowed Slack user IDs. |
 | `slack.access.channels` | Allowed Slack channel IDs. |
+| `http.port` | Port for the HTTP surface. Optional, runtime selects default if omitted. |
+| `http.path_prefix` | URL path prefix for the HTTP surface. Defaults to `/v1`. |
+| `http.auth.mode` | Auth mode. Currently only `bearer` is supported. If `auth` is omitted entirely, the surface accepts unauthenticated requests. |
+| `http.auth.token_secret` | Env var name carrying the bearer token. Only valid with `auth.mode: bearer`. |
 | `http.access.mode` | Access policy for the portable HTTP surface. Currently only `open` is standardized. |
+| `webhook.url` | Callback URL for webhook event delivery. Required when webhook is declared. |
+| `webhook.signing_secret` | Env var name carrying the HMAC-SHA256 signing secret. Optional. When present, the runtime signs payloads with `X-Spawnfile-Signature`. |
+
+Note: When a team declares `team.auth`, each member's HTTP surface also accepts the team shared secret as a bearer token, in addition to any per-surface `token_secret`. See `SPEC.md` section 4.6 for team auth rules.
 
 ### Access Rules
 
@@ -121,7 +137,7 @@ surfaces:
 - If `access` is omitted entirely, the effective behavior is runtime-defined and is not currently portable. Projects that need predictable cross-runtime behavior should declare `access.mode` explicitly.
 - Surface secrets are runtime env, not inline manifest secrets.
 - WhatsApp does not currently have a portable token-secret field; QR/session auth remains runtime-defined.
-- HTTP does not currently define a portable secret or allowlist field in v0.1.
+- HTTP defines `bearer` auth with `token_secret` but does not define a portable allowlist field.
 
 ### ID Sources
 
@@ -239,8 +255,25 @@ The portable schema is broader than any single runtime. A conforming compiler mu
 - The current live path is TinyClaw's built-in API:
   - `POST /api/message`
   - `GET /api/responses/pending?channel=<name>`
+- The portable HTTP contract defines `POST {path_prefix}/messages` as the canonical agent message endpoint. Runtime adapters bridge this to their native APIs.
 - Live smoke status:
   - `tinyclaw` HTTP was verified end to end
+
+### Webhook
+
+| Runtime | Supported | Notes |
+|--------|-----------|-------|
+| `openclaw` | not yet | Webhook delivery support is planned. |
+| `picoclaw` | not yet | Webhook delivery support is planned. |
+| `tinyclaw` | not yet | Webhook delivery support is planned. |
+
+### Practical Meaning
+
+- Webhook is a push surface — the agent delivers events to a caller-owned callback URL.
+- Delivery is fire-and-forget: one attempt, no retry. Non-2xx responses or timeouts are logged as failures.
+- When `signing_secret` is configured, payloads are signed with HMAC-SHA256. The signature is sent in the `X-Spawnfile-Signature` header using the format `t=<unix_timestamp>,v1=<hex_signature>`.
+- Webhook payloads use the same event envelope as SSE events, serialized as `application/json`.
+- No runtime adapter currently implements the webhook surface. It is defined here to enable implementation.
 
 ---
 

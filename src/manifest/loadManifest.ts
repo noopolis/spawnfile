@@ -202,18 +202,18 @@ const validateLocalTeamManifest = async (
 
   const memberIds = new Set(manifest.members.map((member) => member.id));
 
-  if (manifest.structure.leader && !memberIds.has(manifest.structure.leader)) {
+  if (manifest.lead && !memberIds.has(manifest.lead)) {
     throw new SpawnfileError(
       "validation_error",
-      `Structure leader is not a declared team member: ${manifest.structure.leader}`
+      `Lead is not a declared team member: ${manifest.lead}`
     );
   }
 
-  for (const id of manifest.structure.external ?? []) {
+  for (const id of manifest.external ?? []) {
     if (!memberIds.has(id)) {
       throw new SpawnfileError(
         "validation_error",
-        `Structure external references undeclared member: ${id}`
+        `External references undeclared member: ${id}`
       );
     }
   }

@@ -10,11 +10,11 @@ These are the source of truth. Implementation in `src/` must stay aligned with t
 
 | Document | Status | Description |
 |----------|--------|-------------|
-| [SPEC.md](SPEC.md) | v0.1 draft | Canonical source format — manifest schema, portable surfaces, team schema, policy, CLI, env substitution |
-| [COMPILER.md](COMPILER.md) | v0.1 draft | Compiler pipeline, graph resolution, adapter contract, output layout, compile report |
-| [CONTAINERS.md](CONTAINERS.md) | v0.1 draft | Container compilation — Dockerfile and entrypoint generation, run-time auth wiring, adapter container contract |
-| [SURFACES.md](SURFACES.md) | v0.1 draft | Communication surfaces — portable Discord surface contract, runtime support matrix, and lowering notes |
-| [RUNTIMES.md](RUNTIMES.md) | v0.1 draft | Runtime registry model — version pinning, status tracking, adapter lifecycle |
+| [SPEC.md](SPEC.md) | evolving | Canonical source format — manifest schema, portable surfaces, team schema with roster, policy, CLI, env substitution |
+| [COMPILER.md](COMPILER.md) | evolving | Compiler pipeline, graph resolution, roster compilation, adapter contract, output layout, compile report |
+| [CONTAINERS.md](CONTAINERS.md) | evolving | Container compilation — Dockerfile and entrypoint generation, run-time auth wiring, adapter container contract |
+| [SURFACES.md](SURFACES.md) | evolving | Communication surfaces — platform messaging, HTTP, webhook, runtime support matrix, and lowering notes |
+| [RUNTIMES.md](RUNTIMES.md) | evolving | Runtime registry model — version pinning, status tracking, adapter lifecycle |
 
 ## Research
 
@@ -23,6 +23,8 @@ Working notes and analysis. Informative, not normative. These inform spec decisi
 | Document | Description |
 |----------|-------------|
 | [research/AUTH-NOTES.md](research/AUTH-NOTES.md) | Auth research and implementation notes — provider credentials, channel auth, CLI credential stores, and Spawnfile auth profile UX |
+| [research/DIRECT-SURFACES.md](research/DIRECT-SURFACES.md) | Direct protocol surface research — `http`, `webhook`, `a2a`, shared envelope design, and future shared-network compatibility rules |
+| [research/DIRECTION.md](research/DIRECTION.md) | Design direction and roadmap — consolidated findings from 21 design discussions, feature status, implementation priority |
 | [research/RUNTIME-NOTES.md](research/RUNTIME-NOTES.md) | Per-runtime research — config surfaces, capabilities, overlap analysis, team lowering patterns, adapter strategies |
 
 ---
@@ -38,4 +40,6 @@ SPEC.md                    ← canonical schema, everything depends on this
 
 research/RUNTIME-NOTES.md  ← informs adapter implementation and RUNTIMES.md
 research/AUTH-NOTES.md     ← informs auth/profile UX, per-model auth/endpoint config, and future surface provisioning
+research/DIRECT-SURFACES.md ← informs direct `http` / `webhook` / `a2a` surface design and future shared-network compatibility
+research/DIRECTION.md      ← consolidated design direction and roadmap from 21 discussions
 ```

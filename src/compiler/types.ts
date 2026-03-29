@@ -61,6 +61,17 @@ export interface ResolvedHttpSurface {
   access?: {
     mode: "open";
   };
+  auth?: {
+    mode: "bearer";
+    tokenSecret?: string;
+  };
+  pathPrefix: string;
+  port?: number;
+}
+
+export interface ResolvedWebhookSurface {
+  signingSecret?: string;
+  url: string;
 }
 
 export interface ResolvedAgentSurfaces {
@@ -68,6 +79,7 @@ export interface ResolvedAgentSurfaces {
   http?: ResolvedHttpSurface;
   slack?: ResolvedSlackSurface;
   telegram?: ResolvedTelegramSurface;
+  webhook?: ResolvedWebhookSurface;
   whatsapp?: ResolvedWhatsAppSurface;
 }
 
@@ -94,6 +106,7 @@ export interface ResolvedMemberRef {
 }
 
 export interface ResolvedAgentNode {
+  description: string;
   docs: ResolvedDocument[];
   env: StringMap;
   execution: ExecutionBlock | undefined;
@@ -110,16 +123,15 @@ export interface ResolvedAgentNode {
   subagents: ResolvedSubagentRef[];
 }
 
-export interface ResolvedTeamStructure {
-  external: string[];
-  leader: string | null;
-  mode: "hierarchical" | "swarm";
-}
-
 export interface ResolvedTeamNode {
+  auth: { mode: "shared_secret"; secret: string } | null;
+  description: string;
   docs: ResolvedDocument[];
+  external: string[];
   kind: "team";
+  lead: string | null;
   members: ResolvedMemberRef[];
+  mode: "hierarchical" | "swarm";
   name: string;
   policyMode: string | null;
   policyOnDegrade: string | null;
@@ -130,7 +142,6 @@ export interface ResolvedTeamNode {
     skills: ResolvedSkill[];
   };
   source: string;
-  structure: ResolvedTeamStructure;
 }
 
 export interface CompilePlanEdge {

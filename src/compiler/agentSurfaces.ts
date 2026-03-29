@@ -35,13 +35,13 @@ export const resolveAgentSurfaces = (
   }
 
   if (surfaces.http) {
-    resolved.http = surfaces.http.access
-      ? {
-          access: {
-            mode: "open"
-          }
-        }
-      : {};
+    const httpSurface = surfaces.http;
+    resolved.http = {
+      ...(httpSurface.access ? { access: { mode: "open" as const } } : {}),
+      ...(httpSurface.auth ? { auth: httpSurface.auth } : {}),
+      pathPrefix: httpSurface.path_prefix ?? "/v1",
+      ...(httpSurface.port !== undefined ? { port: httpSurface.port } : {})
+    };
   }
 
   if (surfaces.telegram) {

@@ -55,7 +55,5 @@ export const createTeamScaffoldManifest = (): TeamManifest => ({
     system: "TEAM.md"
   },
   members: [],
-  structure: {
-    mode: "swarm" as const
-  }
+  mode: "swarm" as const
 });

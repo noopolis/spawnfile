@@ -50,7 +50,8 @@ describe("agentSurfaces", () => {
       http: {
         access: {
           mode: "open"
-        }
+        },
+        pathPrefix: "/v1"
       },
       telegram: {
         access: {
