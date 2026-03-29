@@ -17,5 +17,10 @@ execution:
   sandbox:
     mode: workspace
 
+surfaces:
+  http:
+    access:
+      mode: open
+
 docs:
   soul: SOUL.md

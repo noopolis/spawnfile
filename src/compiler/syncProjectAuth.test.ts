@@ -287,10 +287,7 @@ describe("syncProjectAuth", () => {
       profileName: "dev"
     });
 
-    expect(profile.env).toEqual({
-      ANTHROPIC_API_KEY: "file-anthropic",
-      OPENAI_API_KEY: "file-openai"
-    });
+    expect(profile.env).toEqual({});
     expect(profile.imports["claude-code"]).toBeDefined();
     expect(profile.imports.codex).toBeUndefined();
   });

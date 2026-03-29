@@ -113,25 +113,51 @@ const sendOpenClaw = async (wsUrl, targetAgentId, fromAgent, message, authToken)
     const ws = new WebSocket(wsUrl);
     const idempotencyKey = "team_" + Date.now() + "_" + Math.random().toString(36).slice(2);
     let responseText = "";
-
-    ws.addEventListener("open", () => {
-      if (authToken) {
-        ws.send(JSON.stringify({ method: "auth", params: { token: authToken }, id: "auth" }));
-      }
-      ws.send(JSON.stringify({
-        method: "chat.send",
-        params: {
-          sessionKey: "agent:" + targetAgentId + ":team:" + fromAgent,
-          message: message,
-          idempotencyKey: idempotencyKey
-        },
-        id: idempotencyKey
-      }));
-    });
+    let connected = false;
 
     ws.addEventListener("message", (event) => {
       try {
         const frame = JSON.parse(typeof event.data === "string" ? event.data : event.data.toString());
+
+        // Step 1: Server sends connect.challenge, we respond with connect + auth
+        if (frame.event === "connect.challenge" && !connected) {
+          ws.send(JSON.stringify({
+            type: "req",
+            method: "connect",
+            id: "connect-" + Date.now(),
+            params: {
+              minProtocol: 3,
+              maxProtocol: 3,
+              client: {
+                id: "cli",
+                version: "0.1.0",
+                platform: "node",
+                mode: "cli"
+              },
+              scopes: ["operator.read", "operator.write"],
+              auth: authToken ? { token: authToken } : undefined
+            }
+          }));
+          return;
+        }
+
+        // Step 2: Server confirms connection, now send chat.send
+        if (frame.type === "res" && frame.ok && !connected) {
+          connected = true;
+          ws.send(JSON.stringify({
+            type: "req",
+            method: "chat.send",
+            id: idempotencyKey,
+            params: {
+              sessionKey: "agent:" + targetAgentId + ":team:" + fromAgent,
+              message: message,
+              idempotencyKey: idempotencyKey
+            }
+          }));
+          return;
+        }
+
+        // Step 3: Collect streaming response
         if (frame.state === "delta" && frame.message && frame.message.text) {
           responseText += frame.message.text;
         }
@@ -142,6 +168,12 @@ const sendOpenClaw = async (wsUrl, targetAgentId, fromAgent, message, authToken)
         if (frame.state === "error" || frame.state === "aborted") {
           ws.close();
           reject(new Error("OpenClaw error: " + (frame.errorMessage || "unknown")));
+        }
+
+        // Handle connect rejection
+        if (frame.type === "res" && !frame.ok && !connected) {
+          ws.close();
+          reject(new Error("OpenClaw connect failed: " + JSON.stringify(frame.error || frame)));
         }
       } catch (_e) {
         // ignore non-JSON frames

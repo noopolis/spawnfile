@@ -323,12 +323,8 @@ export const buildOpenClawSurfaceEnvBindings = (
 export const assertSupportedOpenClawSurfaces = (
   surfaces: ResolvedAgentSurfaces | undefined
 ): void => {
-  if (surfaces?.http) {
-    throw new SpawnfileError(
-      "validation_error",
-      "OpenClaw does not support the portable http surface in Spawnfile v0.1"
-    );
-  }
+  // HTTP surface is accepted — the surface router provides it for team coordination.
+  // OpenClaw does not natively serve the portable HTTP contract but the router bridges to it.
 
   const discordAccess = surfaces?.discord?.access;
   if (discordAccess && discordAccess.mode === "allowlist" && discordAccess.channels.length > 0 && discordAccess.guilds.length !== 1) {

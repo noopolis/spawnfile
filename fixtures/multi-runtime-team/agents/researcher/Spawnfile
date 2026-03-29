@@ -8,12 +8,19 @@ runtime: picoclaw
 execution:
   model:
     primary:
-      provider: openai
-      name: gpt-4o-mini
+      provider: anthropic
+      name: claude-sonnet-4-5
+      auth:
+        method: claude-code
   workspace:
     isolation: isolated
   sandbox:
     mode: workspace
+
+surfaces:
+  http:
+    access:
+      mode: open
 
 docs:
   soul: SOUL.md

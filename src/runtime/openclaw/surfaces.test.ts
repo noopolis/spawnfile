@@ -101,7 +101,7 @@ describe("openClaw surfaces", () => {
       assertSupportedOpenClawSurfaces({
         http: { pathPrefix: "/v1" }
       })
-    ).toThrow(/does not support the portable http surface/i);
+    ).not.toThrow();
 
     expect(() =>
       assertSupportedOpenClawSurfaces({

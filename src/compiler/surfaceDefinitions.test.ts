@@ -417,7 +417,7 @@ describe("surfaceDefinitions", () => {
           }
         })
       )
-    ).toThrow(/does not support the portable http surface/i);
+    ).not.toThrow();
 
     expect(() =>
       validateAgentSurfaceSupport(
