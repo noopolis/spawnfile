@@ -61,7 +61,9 @@ export const createContainerArtifacts = async (
     }
   ];
 
-  const ports = [...new Set(runtimePlans.flatMap((plan) => (plan.port ? [plan.port] : [])))].sort(
+  const runtimePorts = runtimePlans.flatMap((plan) => (plan.port ? [plan.port] : []));
+  const routerPort = options.hasTeamRouter ? [9100] : [];
+  const ports = [...new Set([...routerPort, ...runtimePorts])].sort(
     (left, right) => left - right
   );
   const runtimeHomes = [

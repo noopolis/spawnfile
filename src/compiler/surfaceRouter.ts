@@ -11,6 +11,7 @@ export interface RouterRoute {
 }
 
 export interface RouterConfig {
+  defaultAgent: string | null;
   port: number;
   routes: RouterRoute[];
   teamAuthSecret?: string;
@@ -151,6 +152,54 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Portable HTTP contract: POST /v1/messages
+  // Routes to the team's default (external-facing) agent
+  if (req.method === "POST" && req.url === "/v1/messages") {
+    const defaultAgentId = config.defaultAgent;
+    if (!defaultAgentId) {
+      json(res, 503, { error: "no default agent configured" });
+      return;
+    }
+    const route = routes.get(defaultAgentId);
+    if (!route) {
+      json(res, 503, { error: "default agent not found in routes: " + defaultAgentId });
+      return;
+    }
+
+    let body;
+    try {
+      body = await readBody(req);
+    } catch (_err) {
+      json(res, 400, { error: "invalid request body" });
+      return;
+    }
+
+    try {
+      let parsed;
+      try { parsed = JSON.parse(body); } catch (_e) { parsed = { message: body }; }
+      const message = parsed.message || parsed.body || body;
+      const from = parsed.from || { type: "human", id: "api" };
+
+      let responseMessage;
+      if (route.runtime === "tinyclaw") {
+        const sender = typeof from === "string" ? from : (from.name || from.id || "api");
+        responseMessage = await sendTinyClaw(route.url, defaultAgentId, sender, message);
+      } else {
+        responseMessage = await sendDefault(route.url, { from, to: defaultAgentId, message }, {});
+      }
+
+      json(res, 200, {
+        message_id: "msg_" + Date.now(),
+        from: { type: "agent", id: defaultAgentId },
+        message: responseMessage
+      });
+    } catch (err) {
+      json(res, 502, { error: "agent error: " + err.message });
+    }
+    return;
+  }
+
+  // Internal routing: POST /route/:agentId/v1/messages
   const routeMatch = req.url && req.url.match(/^\\/route\\/([^/]+)\\/v1\\/messages$/);
   if (req.method === "POST" && routeMatch) {
     const agentId = routeMatch[1];
@@ -218,7 +267,13 @@ export const generateRouterConfig = (
     routes.push({ agentId: member.id, runtime: runtimeName, runtimeUrl });
   }
 
+  // The default agent is the first external-facing member (the lead in hierarchical mode)
+  const defaultAgent = teamNode.external.length > 0
+    ? teamNode.external[0]
+    : (teamNode.lead ?? (teamNode.members[0]?.id ?? null));
+
   return {
+    defaultAgent: defaultAgent ?? null,
     port: routerPort,
     routes,
     ...(teamNode.auth ? { teamAuthSecret: teamNode.auth.secret } : {})

@@ -155,7 +155,7 @@ describe("compileProject", () => {
       entrypoint: "entrypoint.sh",
       env_example: ".env.example",
       model_secrets_required: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
-      ports: [3777, 18789, 18790],
+      ports: [3777, 9100, 18789, 18790],
       runtime_instances: [
         {
           config_path: "/var/lib/spawnfile/instances/openclaw/agent-orchestrator/home/.openclaw/openclaw.json",
