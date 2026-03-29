@@ -69,21 +69,42 @@ const sendTinyClaw = async (baseUrl, targetAgentId, fromAgent, message) => {
   const pollUrl = origin + "/api/responses/pending?channel=" + encodeURIComponent(channel);
   const maxWait = 120000;
   const pollInterval = 1000;
+  const cooldown = 15000;
   const deadline = Date.now() + maxWait;
+
+  // TinyClaw team delegation produces multiple responses:
+  // 1. Delegation acknowledgment from the lead
+  // 2. Internal routing messages
+  // 3. Final synthesized answer from the lead
+  // We consume all responses, keeping the last one from the target agent.
+  let lastMessage = null;
+  let lastResponseTime = 0;
 
   while (Date.now() < deadline) {
     await sleep(pollInterval);
     const pollRes = await fetch(pollUrl);
     if (!pollRes.ok) continue;
     const pending = await pollRes.json();
-    if (!Array.isArray(pending) || pending.length === 0) continue;
+    if (!Array.isArray(pending) || pending.length === 0) {
+      // No new responses — if we have one and cooldown passed, return it
+      if (lastMessage !== null && (Date.now() - lastResponseTime) > cooldown) {
+        return lastMessage;
+      }
+      continue;
+    }
 
-    const entry = pending[0];
-    const ackUrl = origin + "/api/responses/" + entry.id + "/ack";
-    await fetch(ackUrl, { method: "POST" }).catch(() => {});
-    return entry.message || "";
+    // ACK and consume all pending responses, keeping the last one from the target agent
+    for (const entry of pending) {
+      const ackUrl = origin + "/api/responses/" + entry.id + "/ack";
+      await fetch(ackUrl, { method: "POST" }).catch(() => {});
+      if (!entry.agent || entry.agent === targetAgentId) {
+        lastMessage = entry.message || "";
+        lastResponseTime = Date.now();
+      }
+    }
   }
 
+  if (lastMessage !== null) return lastMessage;
   throw new Error("TinyClaw response timeout after " + maxWait + "ms");
 };
 
