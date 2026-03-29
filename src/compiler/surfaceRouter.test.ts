@@ -110,6 +110,39 @@ describe("generateSurfaceRouterScript", () => {
     const script = generateSurfaceRouterScript();
     expect(script).toContain('route.runtime === "tinyclaw"');
   });
+
+  it("contains OpenClaw WebSocket send function", () => {
+    const script = generateSurfaceRouterScript();
+    expect(script).toContain("sendOpenClaw");
+    expect(script).toContain("chat.send");
+    expect(script).toContain("idempotencyKey");
+    expect(script).toContain("sessionKey");
+  });
+
+  it("contains PicoClaw WebSocket send function", () => {
+    const script = generateSurfaceRouterScript();
+    expect(script).toContain("sendPicoClaw");
+    expect(script).toContain('type: "message"');
+    expect(script).toContain("Authorization");
+  });
+
+  it("dispatches openclaw route to sendOpenClaw", () => {
+    const script = generateSurfaceRouterScript();
+    expect(script).toContain('route.runtime === "openclaw"');
+    expect(script).toContain("OPENCLAW_GATEWAY_TOKEN");
+  });
+
+  it("dispatches picoclaw route to sendPicoClaw", () => {
+    const script = generateSurfaceRouterScript();
+    expect(script).toContain('route.runtime === "picoclaw"');
+    expect(script).toContain("PICOCLAW_PICO_TOKEN");
+  });
+
+  it("uses global WebSocket for OpenClaw and PicoClaw", () => {
+    const script = generateSurfaceRouterScript();
+    expect(script).toContain("new WebSocket(wsUrl)");
+    expect(script).toContain("new WebSocket(wsUrl, { headers: headers })");
+  });
 });
 
 describe("generateRouterConfig", () => {
@@ -185,7 +218,7 @@ describe("generateRouterConfig", () => {
     expect(config.routes[0].runtime).toBe("tinyclaw");
   });
 
-  it("uses portable URL for other runtimes", () => {
+  it("uses WebSocket URL for openclaw agents", () => {
     const agent = makeAgentNode("oc-agent", "/project/oc/Spawnfile", "openclaw");
 
     const teamNode = makeTeamNode({
@@ -198,11 +231,45 @@ describe("generateRouterConfig", () => {
     const config = generateRouterConfig(teamNode, plan, 9100);
 
     expect(config.routes).toHaveLength(1);
-    expect(config.routes[0].runtimeUrl).toBe("http://localhost:8080/v1/messages");
+    expect(config.routes[0].runtimeUrl).toBe("ws://localhost:18789");
     expect(config.routes[0].runtime).toBe("openclaw");
   });
 
-  it("respects custom http port from agent surfaces", () => {
+  it("uses WebSocket URL for picoclaw agents", () => {
+    const agent = makeAgentNode("pc-agent", "/project/pc/Spawnfile", "picoclaw");
+
+    const teamNode = makeTeamNode({
+      members: [
+        { id: "pc-agent", kind: "agent", nodeSource: "/project/pc/Spawnfile", runtimeName: "picoclaw" }
+      ]
+    });
+
+    const plan = makePlan([{ node: agent, slug: "pc-agent" }]);
+    const config = generateRouterConfig(teamNode, plan, 9100);
+
+    expect(config.routes).toHaveLength(1);
+    expect(config.routes[0].runtimeUrl).toBe("ws://localhost:18790/pico/ws");
+    expect(config.routes[0].runtime).toBe("picoclaw");
+  });
+
+  it("uses portable HTTP URL for unknown runtimes", () => {
+    const agent = makeAgentNode("other-agent", "/project/other/Spawnfile", "someclaw");
+
+    const teamNode = makeTeamNode({
+      members: [
+        { id: "other-agent", kind: "agent", nodeSource: "/project/other/Spawnfile", runtimeName: "someclaw" }
+      ]
+    });
+
+    const plan = makePlan([{ node: agent, slug: "other-agent" }]);
+    const config = generateRouterConfig(teamNode, plan, 9100);
+
+    expect(config.routes).toHaveLength(1);
+    expect(config.routes[0].runtimeUrl).toBe("http://localhost:8080/v1/messages");
+    expect(config.routes[0].runtime).toBe("someclaw");
+  });
+
+  it("respects custom http port for openclaw WebSocket URL", () => {
     const agent = makeAgentNode("custom", "/project/custom/Spawnfile", "openclaw", {
       http: { pathPrefix: "/v1", port: 3000 }
     });
@@ -216,17 +283,34 @@ describe("generateRouterConfig", () => {
     const plan = makePlan([{ node: agent, slug: "custom" }]);
     const config = generateRouterConfig(teamNode, plan, 9100);
 
-    expect(config.routes[0].runtimeUrl).toBe("http://localhost:3000/v1/messages");
+    expect(config.routes[0].runtimeUrl).toBe("ws://localhost:3000");
   });
 
-  it("respects custom pathPrefix from agent surfaces", () => {
-    const agent = makeAgentNode("prefix", "/project/prefix/Spawnfile", "openclaw", {
+  it("respects custom http port for picoclaw WebSocket URL", () => {
+    const agent = makeAgentNode("custom-pc", "/project/custom-pc/Spawnfile", "picoclaw", {
+      http: { pathPrefix: "/v1", port: 4000 }
+    });
+
+    const teamNode = makeTeamNode({
+      members: [
+        { id: "custom-pc", kind: "agent", nodeSource: "/project/custom-pc/Spawnfile", runtimeName: "picoclaw" }
+      ]
+    });
+
+    const plan = makePlan([{ node: agent, slug: "custom-pc" }]);
+    const config = generateRouterConfig(teamNode, plan, 9100);
+
+    expect(config.routes[0].runtimeUrl).toBe("ws://localhost:4000/pico/ws");
+  });
+
+  it("respects custom pathPrefix for unknown runtimes", () => {
+    const agent = makeAgentNode("prefix", "/project/prefix/Spawnfile", "someclaw", {
       http: { pathPrefix: "/api/v2", port: 8080 }
     });
 
     const teamNode = makeTeamNode({
       members: [
-        { id: "prefix", kind: "agent", nodeSource: "/project/prefix/Spawnfile", runtimeName: "openclaw" }
+        { id: "prefix", kind: "agent", nodeSource: "/project/prefix/Spawnfile", runtimeName: "someclaw" }
       ]
     });
 
@@ -253,28 +337,36 @@ describe("generateRouterConfig", () => {
     expect(config.routes[0].agentId).toBe("lead");
   });
 
-  it("includes runtime field for mixed-runtime teams", () => {
+  it("includes runtime field and correct URLs for mixed-runtime teams", () => {
     const tcAgent = makeAgentNode("tc", "/project/tc/Spawnfile", "tinyclaw");
     const ocAgent = makeAgentNode("oc", "/project/oc/Spawnfile", "openclaw");
+    const pcAgent = makeAgentNode("pc", "/project/pc/Spawnfile", "picoclaw");
 
     const teamNode = makeTeamNode({
       members: [
         { id: "tc", kind: "agent", nodeSource: "/project/tc/Spawnfile", runtimeName: "tinyclaw" },
-        { id: "oc", kind: "agent", nodeSource: "/project/oc/Spawnfile", runtimeName: "openclaw" }
+        { id: "oc", kind: "agent", nodeSource: "/project/oc/Spawnfile", runtimeName: "openclaw" },
+        { id: "pc", kind: "agent", nodeSource: "/project/pc/Spawnfile", runtimeName: "picoclaw" }
       ]
     });
 
     const plan = makePlan([
       { node: tcAgent, slug: "tc" },
-      { node: ocAgent, slug: "oc" }
+      { node: ocAgent, slug: "oc" },
+      { node: pcAgent, slug: "pc" }
     ]);
 
     const config = generateRouterConfig(teamNode, plan, 9100);
     const tcRoute = config.routes.find((r) => r.agentId === "tc");
     const ocRoute = config.routes.find((r) => r.agentId === "oc");
+    const pcRoute = config.routes.find((r) => r.agentId === "pc");
 
     expect(tcRoute?.runtime).toBe("tinyclaw");
+    expect(tcRoute?.runtimeUrl).toBe("http://localhost:3777/api/message");
     expect(ocRoute?.runtime).toBe("openclaw");
+    expect(ocRoute?.runtimeUrl).toBe("ws://localhost:18789");
+    expect(pcRoute?.runtime).toBe("picoclaw");
+    expect(pcRoute?.runtimeUrl).toBe("ws://localhost:18790/pico/ws");
   });
 
   it("uses tinyclaw custom port when specified", () => {

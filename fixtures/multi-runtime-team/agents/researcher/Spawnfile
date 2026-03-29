@@ -1,6 +1,7 @@
 spawnfile_version: "0.1"
 kind: agent
 name: researcher
+description: "Investigates topics, gathers information, and reports findings"
 
 runtime: picoclaw
 

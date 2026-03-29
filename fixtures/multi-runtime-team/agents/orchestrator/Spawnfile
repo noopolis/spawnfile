@@ -1,6 +1,7 @@
 spawnfile_version: "0.1"
 kind: agent
 name: orchestrator
+description: "Coordinates the research team, assigns tasks, and synthesizes findings"
 
 runtime: openclaw
 

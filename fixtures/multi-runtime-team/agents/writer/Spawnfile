@@ -1,6 +1,7 @@
 spawnfile_version: "0.1"
 kind: agent
 name: writer
+description: "Writes reports, articles, and summaries from research findings"
 
 runtime: tinyclaw
 
