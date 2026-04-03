@@ -36,6 +36,7 @@ const createPlan = (): CompilePlan => ({
         name: "research-cell",
         networks: [
           {
+            expose: false,
             id: "local_lab",
             name: "Local Lab",
             provider: "moltnet",
@@ -143,6 +144,7 @@ describe("moltnetArtifacts", () => {
           teamSource: "/tmp/team/Spawnfile"
         }
       ]);
+      expect(artifacts?.publishedPorts).toEqual([]);
       expect(artifacts?.bridgePlans).toEqual([
         {
           agentId: "orchestrator",
@@ -178,7 +180,24 @@ describe("moltnetArtifacts", () => {
     const artifacts = await generateMoltnetArtifacts(plan);
     expect(artifacts?.bridgePlans).toEqual([]);
     expect(artifacts?.serverPlans).toHaveLength(1);
+    expect(artifacts?.publishedPorts).toEqual([]);
     expect(artifacts?.files).toEqual([]);
+  });
+
+  it("publishes only networks marked expose: true", async () => {
+    const plan = createPlan();
+    const teamNode = plan.nodes[0];
+    if (!teamNode || teamNode.kind !== "team") {
+      throw new Error("expected team node");
+    }
+
+    const team = teamNode.value as ResolvedTeamNode;
+    if (team.networks?.[0]) {
+      team.networks[0].expose = true;
+    }
+
+    const artifacts = await generateMoltnetArtifacts(plan);
+    expect(artifacts?.publishedPorts).toEqual([8787]);
   });
 
   it("serializes room and dm policy details into bridge configs", async () => {

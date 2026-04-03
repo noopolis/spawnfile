@@ -309,6 +309,7 @@ const teamNetworkRoomSchema = z
 
 const teamNetworkSchema = z
   .object({
+    expose: z.boolean().optional(),
     id: z.string().min(1),
     name: z.string().min(1).optional(),
     provider: z.literal("moltnet"),
@@ -327,6 +328,7 @@ const teamNetworkSchema = z
 
 const agentManifestSchema = commonManifestSchema
   .extend({
+    expose: z.boolean().optional(),
     kind: z.literal("agent"),
     subagents: z.array(subagentSchema).optional()
   })

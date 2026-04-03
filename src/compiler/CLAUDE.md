@@ -25,8 +25,8 @@ src/compiler/
 ├── updateProjectSurfaces.ts    # `spawnfile surface ...` manifest-editing helpers
 ├── executionDefaults.ts        # Effective execution defaults applied during graph resolution
 ├── surfaceRouter.ts              # Surface router script and config generation for team routing
-├── moltnetSkill.ts             # Canonical Moltnet skill installation and local client config emission
-├── moltnetInstallAssets.ts     # Local Moltnet release-bundle staging for container installs
+├── moltnetClientConfig.ts      # Moltnet client config emission and runtime workspace layout helpers
+├── moltnetBinaries.ts          # Compiled Moltnet CLI/release discovery and binary staging
 ├── *.test.ts                   # Tests next to the implementation they cover
 ```
 

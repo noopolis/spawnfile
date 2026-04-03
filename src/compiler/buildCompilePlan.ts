@@ -185,6 +185,7 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       docs: await loadResolvedDocuments(canonicalPath, loadedManifest.manifest.docs),
       env: sharedSurface.env,
       execution,
+      expose: loadedManifest.manifest.expose ?? false,
       kind: "agent",
       mcpServers: sharedSurface.mcpServers,
       name: loadedManifest.manifest.name,
@@ -301,6 +302,7 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       mode: manifest.mode,
       name: manifest.name,
       networks: (manifest.networks ?? []).map((network) => ({
+        expose: network.expose ?? false,
         id: network.id,
         name: network.name ?? network.id,
         provider: network.provider,

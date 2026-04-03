@@ -11,6 +11,7 @@ describe("renderSpawnfile", () => {
       docs: {
         system: "AGENTS.md"
       },
+      expose: true,
       execution: {
         model: {
           auth: {
@@ -35,9 +36,11 @@ describe("renderSpawnfile", () => {
     });
 
     expect(source).toContain("runtime: openclaw");
+    expect(source).toContain("expose: true");
     expect(
       manifestSchema.parse(YAML.parse(source) as unknown)
     ).toMatchObject({
+      expose: true,
       kind: "agent",
       runtime: "openclaw"
     });
@@ -79,6 +82,45 @@ describe("renderSpawnfile", () => {
     expect(source).toContain("  system: AGENTS.md");
     expect(source).toContain('name: my-agent\n\nruntime: openclaw\n\nexecution:');
     expect(source).toContain("      provider: anthropic\n      name: claude-opus-4-6\n\ndocs:");
+  });
+
+  it("renders network exposure on team manifests", () => {
+    const source = renderSpawnfile({
+      kind: "team",
+      members: [
+        {
+          id: "analyst",
+          ref: "./agents/analyst"
+        }
+      ],
+      mode: "swarm",
+      name: "research-team",
+      networks: [
+        {
+          expose: true,
+          id: "local_lab",
+          provider: "moltnet",
+          rooms: [
+            {
+              id: "research",
+              members: ["analyst"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(source).toContain("    expose: true");
+    expect(manifestSchema.parse(YAML.parse(source) as unknown)).toMatchObject({
+      kind: "team",
+      networks: [
+        {
+          expose: true,
+          id: "local_lab"
+        }
+      ]
+    });
   });
 
   it("renders rewritten agent manifests with subagents in canonical order", () => {

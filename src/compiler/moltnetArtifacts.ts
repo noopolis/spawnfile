@@ -30,6 +30,7 @@ export interface MoltnetArtifacts {
   bridgePlans: MoltnetBridgePlan[];
   files: EmittedFile[];
   ports: number[];
+  publishedPorts: number[];
   serverPlans: MoltnetServerPlan[];
 }
 
@@ -181,6 +182,19 @@ export const generateMoltnetArtifacts = async (
     bridgePlans: bridgePlans.sort((left, right) => left.configPath.localeCompare(right.configPath)),
     files: configFiles,
     ports: [...new Set([...serverPlans.values()].map((plan) => plan.port))].sort((left, right) => left - right),
+    publishedPorts: [
+      ...new Set(
+        teamNodes
+          .flatMap((teamNode) =>
+            (teamNode.value.networks ?? []).map((network) =>
+              network.expose
+                ? serverPlans.get(createServerKey(teamNode.value.source, network.id))?.port
+                : undefined
+            )
+          )
+          .filter((port): port is number => port !== undefined)
+      )
+    ].sort((left, right) => left - right),
     serverPlans: [...serverPlans.values()].sort((left, right) => left.port - right.port)
   };
 };

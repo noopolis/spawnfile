@@ -9,7 +9,7 @@ import type {
   RuntimeTargetPlan
 } from "./containerArtifactsTypes.js";
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
-import { MOLTNET_INSTALL_DIRECTORY } from "./moltnetInstallAssets.js";
+import { MOLTNET_BIN_DIRECTORY, MOLTNET_BINARY_NAMES } from "./moltnetBinaries.js";
 
 const CONTAINER_ROOTFS_ROOT = "container/rootfs";
 const GATEWAY_PORT_PLACEHOLDER = "<gateway-port>";
@@ -86,16 +86,17 @@ export const renderDockerfile = async (
   const systemDeps = [
     ...new Set([
       ...runtimePlans.flatMap((plan) => plan.meta.systemDeps),
-      ...(options.hasMoltnet ? ["curl", "tar"] : []),
       ...(needsJsonEnvWriter ? ["python3"] : [])
     ])
   ].sort();
   const globalNpmPackages = [
     ...new Set(runtimePlans.flatMap((plan) => plan.meta.globalNpmPackages ?? []))
   ].sort();
-  const runtimePorts = runtimePlans.flatMap((plan) => (plan.port ? [plan.port] : []));
-  const routerPort = options.hasTeamRouter ? [9100] : [];
-  const exposedPorts = [...new Set([...routerPort, ...runtimePorts])].sort(
+  const runtimePorts = runtimePlans.flatMap((plan) =>
+    plan.publishedPort ? [plan.publishedPort] : []
+  );
+  const moltnetPorts = options.moltnetPublishedPorts ?? [];
+  const exposedPorts = [...new Set([...runtimePorts, ...moltnetPorts])].sort(
     (left, right) => left - right
   );
 
@@ -137,8 +138,8 @@ export const renderDockerfile = async (
 
   if (options.hasMoltnet) {
     lines.push(
-      `COPY ${MOLTNET_INSTALL_DIRECTORY}/ /opt/spawnfile/${MOLTNET_INSTALL_DIRECTORY}/`,
-      `RUN MOLTNET_DOWNLOAD_BASE_URL=file:///opt/spawnfile/${MOLTNET_INSTALL_DIRECTORY} MOLTNET_INSTALL_DIR=/usr/local/bin sh /opt/spawnfile/${MOLTNET_INSTALL_DIRECTORY}/install.sh && rm -rf /opt/spawnfile/${MOLTNET_INSTALL_DIRECTORY}`
+      `COPY ${MOLTNET_BIN_DIRECTORY}/ /usr/local/bin/`,
+      `RUN chmod +x ${MOLTNET_BINARY_NAMES.map((binaryName) => `/usr/local/bin/${binaryName}`).join(" ")}`
     );
   }
 
@@ -210,6 +211,25 @@ const resolveStartCommand = (plan: RuntimeTargetPlan): string[] =>
     )
     .filter((token) => token.length > 0);
 
+const createRuntimeReadinessWait = (plan: RuntimeTargetPlan): string[] => {
+  if (plan.runtimeName !== "openclaw" || !plan.port) {
+    return [];
+  }
+
+  return [
+    "attempts=0",
+    `until curl -sf ${shellQuote(`http://127.0.0.1:${plan.port}/healthz`)} >/dev/null; do`,
+    "  attempts=$((attempts + 1))",
+    '  if [ "$attempts" -ge 180 ]; then',
+    `    echo ${shellQuote(`Timed out waiting for ${plan.runtimeName} on port ${plan.port}`)} >&2`,
+    "    exit 1",
+    "  fi",
+    "  sleep 1",
+    "done",
+    ""
+  ];
+};
+
 export const createRootfsFiles = (runtimePlans: RuntimeTargetPlan[]): EmittedFile[] =>
   runtimePlans.flatMap((plan) =>
     plan.targetFiles.map((file) => {
@@ -269,6 +289,7 @@ export interface EntrypointOptions {
     bridgePlans: MoltnetArtifacts["bridgePlans"];
     serverPlans: MoltnetArtifacts["serverPlans"];
   };
+  moltnetPublishedPorts?: number[];
 }
 
 export const renderEntrypoint = (
@@ -403,6 +424,7 @@ export const renderEntrypoint = (
         `${envAssignments.join(" ")} ${commandTokens.map(shellQuote).join(" ")} &`,
         'PIDS+=("$!")',
         "",
+        ...createRuntimeReadinessWait(plan),
         ...moltnetServerPlans.flatMap((serverPlan) => [
           `until curl -sf ${shellQuote(`http://127.0.0.1:${serverPlan.port}/healthz`)} >/dev/null; do sleep 1; done`,
           ...serverPlan.rooms.map(
@@ -485,7 +507,8 @@ export const renderEntrypoint = (
       ...configEnvWrites,
       `${envAssignments.join(" ")} ${commandTokens.map(shellQuote).join(" ")} &`,
       'PIDS+=("$!")',
-      ""
+      "",
+      ...createRuntimeReadinessWait(plan)
     );
   }
 

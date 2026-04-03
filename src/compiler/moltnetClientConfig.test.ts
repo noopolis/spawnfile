@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { createMoltnetSkillFiles } from "./moltnetSkill.js";
+import {
+  createMoltnetClientConfigFiles,
+  resolveMoltnetWorkspaceLayout
+} from "./moltnetClientConfig.js";
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import type { ResolvedAgentNode } from "./types.js";
 
@@ -8,6 +11,7 @@ const createArtifacts = (): MoltnetArtifacts => ({
   bridgePlans: [],
   files: [],
   ports: [8787],
+  publishedPorts: [],
   serverPlans: [
     {
       id: "research-cell-local_lab",
@@ -57,43 +61,41 @@ const createAgent = (runtime: "openclaw" | "picoclaw" | "tinyclaw"): ResolvedAge
   subagents: []
 });
 
-describe("moltnetSkill", () => {
-  it("emits a workspace skill and config file for openclaw", () => {
-    const files = createMoltnetSkillFiles(createAgent("openclaw"), createArtifacts());
+describe("moltnetClientConfig", () => {
+  it("emits a workspace config file for openclaw", () => {
+    const files = createMoltnetClientConfigFiles(createAgent("openclaw"), createArtifacts());
 
-    expect(files.map((file) => file.path)).toEqual([
-      "workspace/skills/moltnet/SKILL.md",
-      "workspace/.moltnet/config.json"
-    ]);
-    expect(files[0]?.content).toContain("name: moltnet");
-    expect(files[1]?.content).toContain('"base_url": "http://127.0.0.1:8787"');
-    expect(files[1]?.content).toContain('"member_id": "orchestrator"');
+    expect(files.map((file) => file.path)).toEqual(["workspace/.moltnet/config.json"]);
+    expect(files[0]?.content).toContain('"base_url": "http://127.0.0.1:8787"');
+    expect(files[0]?.content).toContain('"member_id": "orchestrator"');
   });
 
-  it("emits runtime-specific skill copies for tinyclaw", () => {
-    const files = createMoltnetSkillFiles(createAgent("tinyclaw"), createArtifacts());
-
-    expect(files.map((file) => file.path)).toEqual([
-      "workspace/orchestrator/.agents/skills/moltnet/SKILL.md",
-      "workspace/orchestrator/.claude/skills/moltnet/SKILL.md",
-      "workspace/orchestrator/.moltnet/config.json"
-    ]);
+  it("resolves runtime-specific skill and config layout for tinyclaw", () => {
+    expect(resolveMoltnetWorkspaceLayout("tinyclaw", "orchestrator")).toEqual({
+      clientConfigPath: "workspace/orchestrator/.moltnet/config.json",
+      cliRuntime: "tinyclaw",
+      skillPaths: [
+        "workspace/orchestrator/.agents/skills/moltnet/SKILL.md",
+        "workspace/orchestrator/.claude/skills/moltnet/SKILL.md"
+      ],
+      workspaceRootPath: "workspace/orchestrator"
+    });
   });
 
-  it("emits the workspace skill layout for picoclaw", () => {
-    const files = createMoltnetSkillFiles(createAgent("picoclaw"), createArtifacts());
-
-    expect(files.map((file) => file.path)).toEqual([
-      "workspace/skills/moltnet/SKILL.md",
-      "workspace/.moltnet/config.json"
-    ]);
+  it("resolves the workspace skill layout for picoclaw", () => {
+    expect(resolveMoltnetWorkspaceLayout("picoclaw", "orchestrator")).toEqual({
+      clientConfigPath: "workspace/.moltnet/config.json",
+      cliRuntime: "picoclaw",
+      skillPaths: ["workspace/skills/moltnet/SKILL.md"],
+      workspaceRootPath: "workspace"
+    });
   });
 
   it("returns no files when the agent has no moltnet attachments", () => {
     const agent = createAgent("picoclaw");
     agent.surfaces = undefined;
 
-    expect(createMoltnetSkillFiles(agent, createArtifacts())).toEqual([]);
+    expect(createMoltnetClientConfigFiles(agent, createArtifacts())).toEqual([]);
   });
 
   it("omits optional room and dm sections when the attachment does not declare them", () => {
@@ -109,10 +111,10 @@ describe("moltnetSkill", () => {
       ]
     };
 
-    const files = createMoltnetSkillFiles(agent, createArtifacts());
+    const files = createMoltnetClientConfigFiles(agent, createArtifacts());
 
-    expect(files[1]?.content).not.toContain('"rooms"');
-    expect(files[1]?.content).not.toContain('"dms"');
+    expect(files[0]?.content).not.toContain('"rooms"');
+    expect(files[0]?.content).not.toContain('"dms"');
   });
 
   it("omits optional policy fields when room and dm policies leave them unset", () => {
@@ -133,11 +135,11 @@ describe("moltnetSkill", () => {
       ]
     };
 
-    const files = createMoltnetSkillFiles(agent, createArtifacts());
+    const files = createMoltnetClientConfigFiles(agent, createArtifacts());
 
-    expect(files[1]?.content).toContain('"enabled": true');
-    expect(files[1]?.content).not.toContain('"reply":');
-    expect(files[1]?.content).not.toContain('"read":');
+    expect(files[0]?.content).toContain('"enabled": true');
+    expect(files[0]?.content).not.toContain('"reply":');
+    expect(files[0]?.content).not.toContain('"read":');
   });
 
   it("fails when the attachment member id is missing", () => {
@@ -146,7 +148,7 @@ describe("moltnetSkill", () => {
       agent.surfaces.moltnet[0].memberId = null;
     }
 
-    expect(() => createMoltnetSkillFiles(agent, createArtifacts())).toThrow(
+    expect(() => createMoltnetClientConfigFiles(agent, createArtifacts())).toThrow(
       /requires a resolved member id/
     );
   });
@@ -155,16 +157,13 @@ describe("moltnetSkill", () => {
     const artifacts = createArtifacts();
     artifacts.serverPlans = [];
 
-    expect(() => createMoltnetSkillFiles(createAgent("openclaw"), artifacts)).toThrow(
+    expect(() => createMoltnetClientConfigFiles(createAgent("openclaw"), artifacts)).toThrow(
       /Unable to resolve Moltnet server plan/
     );
   });
 
-  it("fails when the runtime does not have a Moltnet skill layout", () => {
-    const agent = createAgent("openclaw");
-    (agent.runtime as { name: string; options: Record<string, unknown> }).name = "zeroclaw";
-
-    expect(() => createMoltnetSkillFiles(agent, createArtifacts())).toThrow(
+  it("fails when the runtime does not have a Moltnet workspace layout", () => {
+    expect(() => resolveMoltnetWorkspaceLayout("zeroclaw", "orchestrator")).toThrow(
       /does not know how to emit files for runtime zeroclaw/
     );
   });

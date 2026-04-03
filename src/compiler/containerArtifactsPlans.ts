@@ -238,6 +238,20 @@ const resolveTargetModelAuthMethods = (
   return Object.fromEntries([...methods.entries()].sort(([left], [right]) => left.localeCompare(right)));
 };
 
+const resolveTargetExposure = (
+  target: ContainerTarget,
+  inputs: ContainerTargetInput[]
+): boolean => {
+  const sourceIds = new Set(target.sourceIds ?? []);
+  if (sourceIds.size === 0) {
+    return false;
+  }
+
+  return inputs.some(
+    (input) => sourceIds.has(input.id) && input.value.kind === "agent" && input.value.expose === true
+  );
+};
+
 export const createRuntimeTargetPlans = async (
   plan: CompilePlan,
   compiledNodes: CompiledNodeArtifact[]
@@ -277,6 +291,10 @@ export const createRuntimeTargetPlans = async (
         modelAuthMethods: resolveTargetModelAuthMethods(target, targetInputs),
         modelSecretsRequired: resolveTargetModelSecrets(target, targetInputs),
         port: adapter.container.port ? adapter.container.port + (index * portStride) : undefined,
+        publishedPort:
+          resolveTargetExposure(target, targetInputs) && adapter.container.port
+            ? adapter.container.port + (index * portStride)
+            : undefined,
         runtimeName,
         runtimeRoot: recipe.runtimeRoot,
         targetConfigEnvBindings: target.configEnvBindings,

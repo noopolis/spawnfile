@@ -157,9 +157,11 @@ describe("createContainerArtifacts", () => {
           }
         }
       },
+      expose: true,
       secrets: [{ name: "SHARED_TOKEN", required: false }]
     });
     const secondNode = createAgentNode("openclaw", {
+      expose: true,
       name: "writer",
       secrets: [{ name: "SHARED_TOKEN", required: true }]
     });

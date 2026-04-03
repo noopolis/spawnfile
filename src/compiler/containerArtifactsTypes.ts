@@ -32,6 +32,7 @@ export interface RuntimeTargetPlan {
   modelAuthMethods: Record<string, ModelAuthMethod>;
   modelSecretsRequired: string[];
   port?: number;
+  publishedPort?: number;
   runtimeName: string;
   runtimeRoot: string;
   targetConfigEnvBindings?: RuntimeContainerConfigEnvBinding[];

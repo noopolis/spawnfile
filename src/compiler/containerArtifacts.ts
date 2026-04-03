@@ -49,7 +49,8 @@ export const createContainerArtifacts = async (
     {
       content: await renderDockerfile(runtimePlans, {
         hasMoltnet: Boolean(options.moltnet),
-        hasTeamRouter: options.hasTeamRouter
+        hasTeamRouter: options.hasTeamRouter,
+        moltnetPublishedPorts: options.moltnet?.publishedPorts ?? []
       }),
       path: "Dockerfile"
     },
@@ -75,10 +76,11 @@ export const createContainerArtifacts = async (
     }
   ];
 
-  const runtimePorts = runtimePlans.flatMap((plan) => (plan.port ? [plan.port] : []));
-  const moltnetPorts = options.moltnet?.ports ?? [];
-  const routerPort = options.hasTeamRouter ? [9100] : [];
-  const ports = [...new Set([...routerPort, ...runtimePorts, ...moltnetPorts])].sort(
+  const runtimePorts = runtimePlans.flatMap((plan) =>
+    plan.publishedPort ? [plan.publishedPort] : []
+  );
+  const moltnetPorts = options.moltnet?.publishedPorts ?? [];
+  const ports = [...new Set([...runtimePorts, ...moltnetPorts])].sort(
     (left, right) => left - right
   );
   const runtimeHomes = [

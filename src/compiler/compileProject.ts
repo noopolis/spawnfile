@@ -23,12 +23,12 @@ import { Manifest } from "../manifest/index.js";
 import { buildCompilePlan } from "./buildCompilePlan.js";
 import { createContainerArtifacts } from "./containerArtifacts.js";
 import {
-  injectMoltnetSkillFiles,
+  injectMoltnetWorkspaceFiles,
   injectTeamCompileSupportFiles,
   prepareTeamCompileSupport,
   writeEmittedFiles
 } from "./compileProjectSupport.js";
-import { stageMoltnetInstallAssets } from "./moltnetInstallAssets.js";
+import { stageMoltnetBinaries } from "./moltnetBinaries.js";
 import { CompilePlanNode, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 import { generateMoltnetArtifacts } from "./moltnetArtifacts.js";
 
@@ -292,9 +292,9 @@ export const compileProject = async (
 
   const moltnetArtifacts = await generateMoltnetArtifacts(plan);
   if (moltnetArtifacts) {
-    await stageMoltnetInstallAssets(outputDirectory);
+    await stageMoltnetBinaries(outputDirectory);
   }
-  await injectMoltnetSkillFiles(outputDirectory, compiledNodes, moltnetArtifacts);
+  await injectMoltnetWorkspaceFiles(outputDirectory, compiledNodes, moltnetArtifacts);
   const containerArtifacts = await createContainerArtifacts(plan, compiledNodes, {
     hasTeamRouter: teamCompileSupport.hasTeamRouter,
     moltnet: moltnetArtifacts

@@ -107,6 +107,7 @@ export interface ResolvedTeamNetworkRoom {
 }
 
 export interface ResolvedTeamNetwork {
+  expose?: boolean;
   id: string;
   name: string;
   provider: "moltnet";
@@ -140,6 +141,7 @@ export interface ResolvedAgentNode {
   docs: ResolvedDocument[];
   env: StringMap;
   execution: ExecutionBlock | undefined;
+  expose?: boolean;
   kind: "agent";
   mcpServers: McpServer[];
   name: string;

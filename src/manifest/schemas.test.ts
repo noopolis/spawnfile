@@ -74,6 +74,22 @@ describe("manifestSchema", () => {
     expect(isTeamManifest(result)).toBe(true);
   });
 
+  it("accepts expose on agent manifests", () => {
+    const result = manifestSchema.parse({
+      expose: true,
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(isAgentManifest(result)).toBe(true);
+    if (!isAgentManifest(result)) {
+      throw new Error("expected agent manifest");
+    }
+    expect(result.expose).toBe(true);
+  });
+
   it("accepts team networks and agent moltnet surfaces", () => {
     const team = manifestSchema.parse({
       kind: "team",
@@ -91,6 +107,7 @@ describe("manifestSchema", () => {
       name: "research-team",
       networks: [
         {
+          expose: true,
           id: "local_lab",
           provider: "moltnet",
           rooms: [
@@ -126,6 +143,28 @@ describe("manifestSchema", () => {
 
     expect(isTeamManifest(team)).toBe(true);
     expect(isAgentManifest(agent)).toBe(true);
+    if (!isTeamManifest(team)) {
+      throw new Error("expected team manifest");
+    }
+    expect(team.networks?.[0]?.expose).toBe(true);
+  });
+
+  it("rejects expose on team manifests", () => {
+    const result = manifestSchema.safeParse({
+      expose: true,
+      kind: "team",
+      members: [
+        {
+          id: "analyst",
+          ref: "./agents/analyst"
+        }
+      ],
+      mode: "swarm",
+      name: "research-team",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it("rejects team manifests that declare execution", () => {

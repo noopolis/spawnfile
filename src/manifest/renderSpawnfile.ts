@@ -341,6 +341,7 @@ const orderTeamNetworks = (
       ["id", network.id],
       ["provider", network.provider],
       ["name", network.name],
+      ["expose", network.expose],
       [
         "rooms",
         network.rooms.map((room) =>
@@ -363,7 +364,8 @@ const orderAgentManifestSections = (manifest: AgentManifest): Record<string, unk
   withDefinedEntries([
     ["spawnfile_version", manifest.spawnfile_version],
     ["kind", manifest.kind],
-    ["name", manifest.name]
+    ["name", manifest.name],
+    ["expose", manifest.expose]
   ]),
   withDefinedEntries([["runtime", orderRuntimeBinding(manifest.runtime)]]),
   withDefinedEntries([["execution", orderExecution(manifest.execution)]]),

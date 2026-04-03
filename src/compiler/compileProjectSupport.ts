@@ -1,14 +1,24 @@
 import path from "node:path";
+import { execFile as execFileCallback } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import { promisify } from "node:util";
 
 import { ensureDirectory, writeUtf8File } from "../filesystem/index.js";
 import type { EmittedFile } from "../runtime/index.js";
+import { SpawnfileError } from "../shared/index.js";
 
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
-import { createMoltnetSkillFiles } from "./moltnetSkill.js";
+import {
+  createMoltnetClientConfigFiles,
+  resolveMoltnetWorkspaceLayout
+} from "./moltnetClientConfig.js";
+import { resolveMoltnetCliCommand } from "./moltnetBinaries.js";
 import { generateRouterConfig, generateSurfaceRouterScript } from "./surfaceRouter.js";
 import { generateTeamMcpScript } from "./teamMcp.js";
 import { generateTeamRosters } from "./teamRoster.js";
 import type { CompilePlan, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
+
+const execFile = promisify(execFileCallback);
 
 export interface CompiledNodeOutput {
   emittedFiles: EmittedFile[];
@@ -156,7 +166,8 @@ export const injectTeamCompileSupportFiles = async (
 
   const rosterBlock =
     "\n\n## Team Roster\n\nYour team roster is available at `.spawnfile/roster.yaml`. " +
-    "Read it to discover your teammates and how to reach them via the `team_message` MCP tool.\n\n" +
+    "Read it to discover your teammates and how to reach them via the `team_message` MCP tool. " +
+    "Use `team_message` for teammate coordination, not the generic `message` tool.\n\n" +
     "```yaml\n" +
     rosterYaml +
     "```\n";
@@ -199,7 +210,7 @@ export const injectTeamCompileSupportFiles = async (
   await writeEmittedFiles(path.join(outputDirectory, compiled.report.output_dir), filesToWrite);
 };
 
-export const injectMoltnetSkillFiles = async (
+export const injectMoltnetWorkspaceFiles = async (
   outputDirectory: string,
   compiledNodes: CompiledNodeOutput[],
   artifacts: MoltnetArtifacts | null
@@ -207,6 +218,8 @@ export const injectMoltnetSkillFiles = async (
   if (!artifacts) {
     return;
   }
+
+  let moltnetCliCommand: string | null = null;
 
   for (const compiled of compiledNodes) {
     if (
@@ -217,14 +230,60 @@ export const injectMoltnetSkillFiles = async (
       continue;
     }
 
-    const moltnetSkillFiles = createMoltnetSkillFiles(compiled.value, artifacts);
-    if (moltnetSkillFiles.length === 0) {
+    const runtimeOutputDirectory = path.join(outputDirectory, compiled.report.output_dir);
+    const moltnetClientConfigFiles = createMoltnetClientConfigFiles(compiled.value, artifacts);
+    if (moltnetClientConfigFiles.length === 0) {
       continue;
     }
+
+    const layout = resolveMoltnetWorkspaceLayout(compiled.value.runtime.name, compiled.value.name);
+    const workspacePath = path.join(runtimeOutputDirectory, layout.workspaceRootPath);
+
+    for (const file of moltnetClientConfigFiles) {
+      upsertEmittedFile(compiled.emittedFiles, file);
+    }
+    await writeEmittedFiles(runtimeOutputDirectory, moltnetClientConfigFiles);
+
+    if (!moltnetCliCommand) {
+      moltnetCliCommand = await resolveMoltnetCliCommand();
+    }
+
+    try {
+      await execFile(moltnetCliCommand, [
+        "skill",
+        "install",
+        "--runtime",
+        layout.cliRuntime,
+        "--workspace",
+        workspacePath
+      ]);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new SpawnfileError(
+        "compile_error",
+        `Unable to install the Moltnet skill into ${compiled.value.name}: ${reason}`
+      );
+    }
+
+    const moltnetSkillFiles = await Promise.all(
+      layout.skillPaths.map(async (filePath) => {
+        try {
+          return {
+            content: await readFile(path.join(runtimeOutputDirectory, filePath), "utf8"),
+            path: filePath
+          };
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          throw new SpawnfileError(
+            "compile_error",
+            `Moltnet skill install for ${compiled.value.name} did not produce ${filePath}: ${reason}`
+          );
+        }
+      })
+    );
 
     for (const file of moltnetSkillFiles) {
       upsertEmittedFile(compiled.emittedFiles, file);
     }
-    await writeEmittedFiles(path.join(outputDirectory, compiled.report.output_dir), moltnetSkillFiles);
   }
 };

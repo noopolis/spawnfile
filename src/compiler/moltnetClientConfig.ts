@@ -1,6 +1,3 @@
-import path from "node:path";
-import { readFileSync } from "node:fs";
-
 import type { EmittedFile } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
@@ -9,16 +6,8 @@ import type { ResolvedAgentNode, ResolvedMoltnetAttachment } from "./types.js";
 
 const GENERATED_SKILL_NAME = "moltnet";
 const GENERATED_CONFIG_PATH = ".moltnet/config.json";
-const SKILL_SOURCE_PATH = path.resolve(
-  process.cwd(),
-  "moltnet",
-  "internal",
-  "skills",
-  "moltnet",
-  "SKILL.md"
-);
 
-interface MoltnetSkillAttachmentConfig {
+interface MoltnetClientAttachmentConfig {
   agent_name: string;
   auth: {
     mode: "none";
@@ -39,11 +28,16 @@ interface MoltnetSkillAttachmentConfig {
   }>;
 }
 
-const createSkillContent = (): string => readFileSync(SKILL_SOURCE_PATH, "utf8");
+export interface MoltnetWorkspaceLayout {
+  clientConfigPath: string;
+  cliRuntime: string;
+  skillPaths: string[];
+  workspaceRootPath: string;
+}
 
 const createConfigContent = (
   node: ResolvedAgentNode,
-  attachments: MoltnetSkillAttachmentConfig[]
+  attachments: MoltnetClientAttachmentConfig[]
 ): string =>
   `${JSON.stringify(
     {
@@ -80,11 +74,11 @@ const createAttachmentConfig = (
   node: ResolvedAgentNode,
   artifacts: MoltnetArtifacts,
   attachment: ResolvedMoltnetAttachment
-): MoltnetSkillAttachmentConfig => {
+): MoltnetClientAttachmentConfig => {
   if (!attachment.memberId) {
     throw new SpawnfileError(
       "compile_error",
-      `Moltnet skill requires a resolved member id for ${node.name}`
+      `Moltnet client config requires a resolved member id for ${node.name}`
     );
   }
 
@@ -119,49 +113,38 @@ const createAttachmentConfig = (
   };
 };
 
-const createSkillFilesForRuntime = (
+export const resolveMoltnetWorkspaceLayout = (
   runtimeName: string,
-  agentName: string,
-  skillContent: string,
-  configContent: string
-): EmittedFile[] => {
+  agentName: string
+): MoltnetWorkspaceLayout => {
   if (runtimeName === "openclaw" || runtimeName === "picoclaw") {
-    return [
-      {
-        content: skillContent,
-        path: `workspace/skills/${GENERATED_SKILL_NAME}/SKILL.md`
-      },
-      {
-        content: configContent,
-        path: `workspace/${GENERATED_CONFIG_PATH}`
-      }
-    ];
+    return {
+      clientConfigPath: `workspace/${GENERATED_CONFIG_PATH}`,
+      cliRuntime: runtimeName,
+      skillPaths: [`workspace/skills/${GENERATED_SKILL_NAME}/SKILL.md`],
+      workspaceRootPath: "workspace"
+    };
   }
 
   if (runtimeName === "tinyclaw") {
-    return [
-      {
-        content: skillContent,
-        path: `workspace/${agentName}/.agents/skills/${GENERATED_SKILL_NAME}/SKILL.md`
-      },
-      {
-        content: skillContent,
-        path: `workspace/${agentName}/.claude/skills/${GENERATED_SKILL_NAME}/SKILL.md`
-      },
-      {
-        content: configContent,
-        path: `workspace/${agentName}/${GENERATED_CONFIG_PATH}`
-      }
-    ];
+    return {
+      clientConfigPath: `workspace/${agentName}/${GENERATED_CONFIG_PATH}`,
+      cliRuntime: runtimeName,
+      skillPaths: [
+        `workspace/${agentName}/.agents/skills/${GENERATED_SKILL_NAME}/SKILL.md`,
+        `workspace/${agentName}/.claude/skills/${GENERATED_SKILL_NAME}/SKILL.md`
+      ],
+      workspaceRootPath: `workspace/${agentName}`
+    };
   }
 
   throw new SpawnfileError(
     "compile_error",
-    `Moltnet skill does not know how to emit files for runtime ${runtimeName}`
+    `Moltnet client config does not know how to emit files for runtime ${runtimeName}`
   );
 };
 
-export const createMoltnetSkillFiles = (
+export const createMoltnetClientConfigFiles = (
   node: ResolvedAgentNode,
   artifacts: MoltnetArtifacts
 ): EmittedFile[] => {
@@ -170,11 +153,14 @@ export const createMoltnetSkillFiles = (
     return [];
   }
 
-  const skillContent = createSkillContent();
-  const configContent = createConfigContent(
-    node,
-    attachments.map((attachment) => createAttachmentConfig(node, artifacts, attachment))
-  );
-
-  return createSkillFilesForRuntime(node.runtime.name, node.name, skillContent, configContent);
+  const layout = resolveMoltnetWorkspaceLayout(node.runtime.name, node.name);
+  return [
+    {
+      content: createConfigContent(
+        node,
+        attachments.map((attachment) => createAttachmentConfig(node, artifacts, attachment))
+      ),
+      path: layout.clientConfigPath
+    }
+  ];
 };

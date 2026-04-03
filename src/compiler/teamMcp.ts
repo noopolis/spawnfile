@@ -13,7 +13,7 @@ export const generateTeamMcpScript = (): string => {
 
 const TOOL_DEFINITION = {
   name: "team_message",
-  description: "Send a message to a teammate and wait for their response. Check your team roster to see who your teammates are.",
+  description: "Send a private routed message to a teammate through Spawnfile team routing. Use this tool, not the generic message tool, for teammate coordination.",
   inputSchema: {
     type: "object",
     properties: {

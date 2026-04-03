@@ -51,6 +51,7 @@ const createRuntimePlan = (
   },
   modelAuthMethods: {},
   modelSecretsRequired: [],
+  publishedPort: overrides.publishedPort ?? overrides.port,
   runtimeName,
   runtimeRoot: `/opt/runtime/${runtimeName}`,
   targetFiles: [],
@@ -201,12 +202,10 @@ describe("renderDockerfile", () => {
     );
 
     expect(dockerfile).not.toContain("FROM golang:1.24-bookworm AS moltnet-builder");
+    expect(dockerfile).not.toContain("moltnet-install");
+    expect(dockerfile).toContain("COPY moltnet-bin/ /usr/local/bin/");
     expect(dockerfile).toContain(
-      "RUN apt-get update && apt-get install -y --no-install-recommends curl tar && rm -rf /var/lib/apt/lists/*"
-    );
-    expect(dockerfile).toContain("COPY moltnet-install/ /opt/spawnfile/moltnet-install/");
-    expect(dockerfile).toContain(
-      "RUN MOLTNET_DOWNLOAD_BASE_URL=file:///opt/spawnfile/moltnet-install MOLTNET_INSTALL_DIR=/usr/local/bin sh /opt/spawnfile/moltnet-install/install.sh && rm -rf /opt/spawnfile/moltnet-install"
+      "RUN chmod +x /usr/local/bin/moltnet /usr/local/bin/moltnet-node /usr/local/bin/moltnet-bridge"
     );
   });
 });
@@ -320,7 +319,8 @@ describe("renderEntrypoint", () => {
             standaloneBaseImage: "node:24-bookworm-slim",
             startCommand: ["node", "<runtime-root>/openclaw.mjs"],
             systemDeps: []
-          }
+          },
+          port: 18789
         })
       ],
       [],
@@ -356,6 +356,7 @@ describe("renderEntrypoint", () => {
     );
 
     expect(entrypoint).toContain("/usr/local/bin/moltnet &");
+    expect(entrypoint).toContain("http://127.0.0.1:18789/healthz");
     expect(entrypoint).toContain("http://127.0.0.1:8787/healthz");
     expect(entrypoint).toContain("http://127.0.0.1:8787/v1/rooms");
     expect(entrypoint).toContain("/usr/local/bin/moltnet-bridge '/var/lib/spawnfile/moltnet/bridges/research.json' &");
@@ -391,7 +392,8 @@ describe("renderEntrypoint", () => {
             standaloneBaseImage: "node:24-bookworm-slim",
             startCommand: ["node", "<runtime-root>/openclaw.mjs"],
             systemDeps: []
-          }
+          },
+          port: 18789
         }),
         createRuntimePlan("picoclaw", {
           meta: {
@@ -441,6 +443,7 @@ describe("renderEntrypoint", () => {
 
     expect(entrypoint).toContain("node /opt/spawnfile/surface-router.js /opt/spawnfile/router-config.json &");
     expect(entrypoint).toContain("/usr/local/bin/moltnet &");
+    expect(entrypoint).toContain("http://127.0.0.1:18789/healthz");
     expect(entrypoint).toContain("picoclaw");
     expect(entrypoint).toContain("/usr/local/bin/moltnet-bridge '/var/lib/spawnfile/moltnet/bridges/research.json' &");
   });
