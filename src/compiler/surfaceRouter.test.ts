@@ -77,6 +77,17 @@ describe("generateSurfaceRouterScript", () => {
     expect(script).toContain("/team/message");
   });
 
+  it("supports OpenClaw hook payloads on /team/message", () => {
+    const script = generateSurfaceRouterScript();
+    expect(script).toContain("body.agentId");
+    expect(script).toContain("body.sessionKey");
+    expect(script).toContain("target agent required");
+    expect(script).toContain("delivered: false");
+    expect(script).toContain("sendOpenClawHook");
+    expect(script).toContain("/hooks/agent");
+    expect(script).toContain("OPENCLAW_HOOKS_TOKEN");
+  });
+
   it("contains handler for /route/ path", () => {
     const script = generateSurfaceRouterScript();
     expect(script).toContain("\\/route\\/");
@@ -106,42 +117,47 @@ describe("generateSurfaceRouterScript", () => {
     expect(script).toContain("sendDefault");
   });
 
+  it("contains shared runtime command helper", () => {
+    const script = generateSurfaceRouterScript();
+    expect(script).toContain('require("node:child_process")');
+    expect(script).toContain("runCommand");
+    expect(script).toContain("buildSessionId");
+  });
+
   it("dispatches based on route runtime", () => {
     const script = generateSurfaceRouterScript();
     expect(script).toContain('route.runtime === "tinyclaw"');
   });
 
-  it("contains OpenClaw WebSocket send function", () => {
+  it("contains OpenClaw CLI send function", () => {
     const script = generateSurfaceRouterScript();
     expect(script).toContain("sendOpenClaw");
-    expect(script).toContain("chat.send");
-    expect(script).toContain("idempotencyKey");
-    expect(script).toContain("sessionKey");
+    expect(script).toContain('["agent", "--session-id", sessionId, "--message", message, "--json"]');
+    expect(script).toContain("OPENCLAW_CONFIG_PATH");
+    expect(script).toContain('body.sessionKey || body.context_id');
   });
 
-  it("contains PicoClaw WebSocket send function", () => {
+  it("contains PicoClaw CLI send function", () => {
     const script = generateSurfaceRouterScript();
     expect(script).toContain("sendPicoClaw");
-    expect(script).toContain('type: "message"');
-    expect(script).toContain("Authorization");
+    expect(script).toContain('["agent", "--session", sessionId, "--message", message]');
+    expect(script).toContain("PICOCLAW_CONFIG");
   });
 
   it("dispatches openclaw route to sendOpenClaw", () => {
     const script = generateSurfaceRouterScript();
     expect(script).toContain('route.runtime === "openclaw"');
-    expect(script).toContain("OPENCLAW_GATEWAY_TOKEN");
   });
 
   it("dispatches picoclaw route to sendPicoClaw", () => {
     const script = generateSurfaceRouterScript();
     expect(script).toContain('route.runtime === "picoclaw"');
-    expect(script).toContain("PICOCLAW_PICO_TOKEN");
   });
 
-  it("uses global WebSocket for OpenClaw and PicoClaw", () => {
+  it("parses PicoClaw CLI output and strips ANSI noise", () => {
     const script = generateSurfaceRouterScript();
-    expect(script).toContain("new WebSocket(wsUrl)");
-    expect(script).toContain("new WebSocket(wsUrl, { headers: headers })");
+    expect(script).toContain("parsePicoClawOutput");
+    expect(script).toContain("stripAnsi");
   });
 });
 
@@ -215,6 +231,12 @@ describe("generateRouterConfig", () => {
 
     expect(config.routes).toHaveLength(1);
     expect(config.routes[0].runtimeUrl).toBe("http://localhost:3777/api/message");
+    expect(config.routes[0].runtimeHomePath).toBe(
+      "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi"
+    );
+    expect(config.routes[0].runtimeConfigPath).toBe(
+      "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/settings.json"
+    );
     expect(config.routes[0].runtime).toBe("tinyclaw");
   });
 
@@ -232,7 +254,40 @@ describe("generateRouterConfig", () => {
 
     expect(config.routes).toHaveLength(1);
     expect(config.routes[0].runtimeUrl).toBe("ws://localhost:18789");
+    expect(config.routes[0].runtimeHomePath).toBe(
+      "/var/lib/spawnfile/instances/openclaw/agent-oc-agent/home"
+    );
+    expect(config.routes[0].runtimeConfigPath).toBe(
+      "/var/lib/spawnfile/instances/openclaw/agent-oc-agent/home/.openclaw/openclaw.json"
+    );
     expect(config.routes[0].runtime).toBe("openclaw");
+  });
+
+  it("assigns distinct default ports to multiple openclaw agents", () => {
+    const alpha = makeAgentNode("alpha", "/project/alpha/Spawnfile", "openclaw");
+    const beta = makeAgentNode("beta", "/project/beta/Spawnfile", "openclaw");
+    const gamma = makeAgentNode("gamma", "/project/gamma/Spawnfile", "openclaw");
+
+    const teamNode = makeTeamNode({
+      members: [
+        { id: "alpha", kind: "agent", nodeSource: "/project/alpha/Spawnfile", runtimeName: "openclaw" },
+        { id: "beta", kind: "agent", nodeSource: "/project/beta/Spawnfile", runtimeName: "openclaw" },
+        { id: "gamma", kind: "agent", nodeSource: "/project/gamma/Spawnfile", runtimeName: "openclaw" }
+      ]
+    });
+
+    const plan = makePlan([
+      { node: alpha, slug: "alpha" },
+      { node: beta, slug: "beta" },
+      { node: gamma, slug: "gamma" }
+    ]);
+    const config = generateRouterConfig(teamNode, plan, 9100);
+
+    expect(config.routes.map((route) => route.runtimeUrl)).toEqual([
+      "ws://localhost:18789",
+      "ws://localhost:18809",
+      "ws://localhost:18829"
+    ]);
   });
 
   it("uses WebSocket URL for picoclaw agents", () => {
@@ -249,6 +304,12 @@ describe("generateRouterConfig", () => {
 
     expect(config.routes).toHaveLength(1);
     expect(config.routes[0].runtimeUrl).toBe("ws://localhost:18790/pico/ws");
+    expect(config.routes[0].runtimeHomePath).toBe(
+      "/var/lib/spawnfile/instances/picoclaw/agent-pc-agent/picoclaw"
+    );
+    expect(config.routes[0].runtimeConfigPath).toBe(
+      "/var/lib/spawnfile/instances/picoclaw/agent-pc-agent/picoclaw/config.json"
+    );
     expect(config.routes[0].runtime).toBe("picoclaw");
   });
 
@@ -365,8 +426,14 @@ describe("generateRouterConfig", () => {
     expect(tcRoute?.runtimeUrl).toBe("http://localhost:3777/api/message");
     expect(ocRoute?.runtime).toBe("openclaw");
     expect(ocRoute?.runtimeUrl).toBe("ws://localhost:18789");
+    expect(ocRoute?.runtimeConfigPath).toBe(
+      "/var/lib/spawnfile/instances/openclaw/agent-oc/home/.openclaw/openclaw.json"
+    );
     expect(pcRoute?.runtime).toBe("picoclaw");
     expect(pcRoute?.runtimeUrl).toBe("ws://localhost:18790/pico/ws");
+    expect(pcRoute?.runtimeConfigPath).toBe(
+      "/var/lib/spawnfile/instances/picoclaw/agent-pc/picoclaw/config.json"
+    );
   });
 
   it("uses tinyclaw custom port when specified", () => {

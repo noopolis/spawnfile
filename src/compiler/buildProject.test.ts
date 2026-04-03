@@ -137,5 +137,12 @@ describe("buildProject helpers", () => {
       cwd: "/tmp/dist",
       imageTag: "spawnfile-agent"
     });
+
+    expect(createDockerBuildInvocation("/tmp/dist", "spawnfile-agent", "podman")).toEqual({
+      args: ["build", "-t", "spawnfile-agent", "."],
+      command: "podman",
+      cwd: "/tmp/dist",
+      imageTag: "spawnfile-agent"
+    });
   });
 });

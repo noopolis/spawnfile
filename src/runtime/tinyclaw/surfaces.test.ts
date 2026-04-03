@@ -33,15 +33,9 @@ describe("tinyClaw surfaces", () => {
     });
   });
 
-  it("allows pairing-only telegram and whatsapp and rejects unsupported shapes", () => {
+  it("allows a single pairing-gated surface and rejects unsupported shapes", () => {
     expect(() =>
       assertSupportedTinyClawSurfaces({
-        http: {
-          access: {
-            mode: "open"
-          },
-          pathPrefix: "/v1"
-        },
         telegram: {
           access: {
             chats: [],
@@ -49,13 +43,29 @@ describe("tinyClaw surfaces", () => {
             users: []
           },
           botTokenSecret: "TELEGRAM_BOT_TOKEN"
-        },
+        }
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      assertSupportedTinyClawSurfaces({
         whatsapp: {
           access: {
             groups: [],
             mode: "pairing",
             users: []
           }
+        }
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      assertSupportedTinyClawSurfaces({
+        http: {
+          access: {
+            mode: "open"
+          },
+          pathPrefix: "/v1"
         }
       })
     ).not.toThrow();
@@ -111,6 +121,64 @@ describe("tinyClaw surfaces", () => {
         }
       })
     ).toThrow(/does not support Slack/);
+  });
+
+  it("rejects multiple interactive conversation scopes", () => {
+    expect(() =>
+      assertSupportedTinyClawSurfaces({
+        discord: {
+          access: {
+            channels: [],
+            guilds: [],
+            mode: "pairing",
+            users: []
+          },
+          botTokenSecret: "DISCORD_BOT_TOKEN"
+        },
+        telegram: {
+          access: {
+            chats: [],
+            mode: "pairing",
+            users: []
+          },
+          botTokenSecret: "TELEGRAM_BOT_TOKEN"
+        }
+      })
+    ).toThrow(/only one interactive conversation scope/);
+
+    expect(() =>
+      assertSupportedTinyClawSurfaces({
+        moltnet: [
+          {
+            memberId: "writer",
+            network: "local_lab",
+            rooms: {
+              research: {},
+              review: {}
+            },
+            teamSource: "/tmp/team/Spawnfile"
+          }
+        ]
+      })
+    ).toThrow(/only one interactive conversation scope/);
+
+    expect(() =>
+      assertSupportedTinyClawSurfaces({
+        moltnet: [
+          {
+            dms: {
+              enabled: true
+            },
+            memberId: "writer",
+            network: "local_lab",
+            rooms: {
+              research: {}
+            },
+            teamSource: "/tmp/team/Spawnfile"
+          }
+        ]
+      })
+    ).toThrow(/only one interactive conversation scope/);
   });
 
   it("resolves no, one, or two surface token bindings", () => {

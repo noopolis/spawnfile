@@ -210,4 +210,47 @@ describe("surfaceSchemas", () => {
       "slack access must declare mode or allowlist entries"
     );
   });
+
+  it("accepts moltnet surfaces and rejects empty attachments", () => {
+    expect(
+      manifestSchema.parse({
+        kind: "agent",
+        name: "agent",
+        runtime: "openclaw",
+        spawnfile_version: "0.1",
+        surfaces: {
+          moltnet: [
+            {
+              network: "local_lab",
+              rooms: {
+                research: {
+                  read: "mentions",
+                  reply: "auto"
+                }
+              }
+            }
+          ]
+        }
+      })
+    ).toMatchObject({
+      kind: "agent"
+    });
+
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        moltnet: [
+          {
+            network: "local_lab"
+          }
+        ]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("must declare rooms or dms");
+  });
 });

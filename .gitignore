@@ -1,9 +1,13 @@
 coverage
 dist
 .spawn
+.vscode
 node_modules
 /runtimes
+/design
+/moltnet
 /testing
 /discussions
 /testing
 /discussions
+.env

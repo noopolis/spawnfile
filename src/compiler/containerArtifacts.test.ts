@@ -114,6 +114,39 @@ describe("createContainerArtifacts", () => {
     );
   });
 
+  it("renders OpenClaw Moltnet token secrets from runtime options", async () => {
+    const node = createAgentNode("openclaw", {
+      runtime: {
+        name: "openclaw",
+        options: {
+          moltnet: {
+            base_url: "http://127.0.0.1:8787",
+            token_secret: "MOLTNET_API_TOKEN"
+          }
+        }
+      }
+    });
+    const compiled = await openClawAdapter.compileAgent(node);
+
+    const result = await createContainerArtifacts(createPlan(["openclaw"]), [
+      {
+        emittedFiles: compiled.files,
+        kind: "agent",
+        runtimeName: "openclaw",
+        slug: "assistant",
+        value: node
+      }
+    ]);
+
+    expect(result.report.secrets_required).toEqual([
+      "MOLTNET_API_TOKEN",
+      "OPENCLAW_GATEWAY_TOKEN"
+    ]);
+    expect(result.files.find((file) => file.path === ".env.example")?.content).toContain(
+      "MOLTNET_API_TOKEN="
+    );
+  });
+
   it("derives provider env vars and promotes duplicate secrets to required", async () => {
     const firstNode = createAgentNode("openclaw", {
       execution: {
@@ -156,7 +189,7 @@ describe("createContainerArtifacts", () => {
       "SHARED_TOKEN"
     ]);
     expect(result.report.model_secrets_required).toEqual(["PROXY_API_API_KEY"]);
-    expect(result.report.ports).toEqual([18789, 18790]);
+    expect(result.report.ports).toEqual([18789, 18809]);
     expect(result.report.runtime_instances).toEqual([
       {
         config_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/openclaw.json",

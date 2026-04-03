@@ -86,24 +86,38 @@ describe("prepareRuntimeAuthMounts", () => {
     });
   });
 
-  it("skips runtimes that do not provide runtime-auth preparation hooks", async () => {
+  it("prepares TinyClaw runtime settings mounts when an auth profile is present", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
+    const outputDirectory = await createTempDirectory("spawnfile-tinyclaw-out-");
     const tempRoot = await createTempDirectory("spawnfile-run-auth-");
     process.env.SPAWNFILE_HOME = spawnfileHome;
     await setAuthProfileEnv("dev", {});
-
-    await expect(
-      prepareRuntimeAuthMounts(
-        "/tmp/out",
-        createContainerReport("tinyclaw"),
-        await requireAuthProfile("dev"),
-        {},
-        tempRoot
-      )
-    ).resolves.toEqual({
-      coveredModelSecrets: new Set(),
-      mountArgs: []
+    const configPath = "/var/lib/spawnfile/instances/tinyclaw/instance/config.json";
+    await createContainerConfig(outputDirectory, configPath, {
+      agents: {
+        writer: {
+          model: "gpt-5.4",
+          provider: "openai"
+        }
+      },
+      models: {
+        provider: "openai"
+      }
     });
+
+    const prepared = await prepareRuntimeAuthMounts(
+      outputDirectory,
+      createContainerReport("tinyclaw"),
+      await requireAuthProfile("dev"),
+      {},
+      tempRoot
+    );
+
+    expect(prepared.coveredModelSecrets).toEqual(new Set());
+    expect(prepared.mountArgs).toHaveLength(2);
+    expect(prepared.mountArgs[1]).toMatch(
+      /runtime-auth\/tinyclaw\/tinyclaw-instance\/settings\.json:\/var\/lib\/spawnfile\/instances\/tinyclaw\/instance\/config\.json$/
+    );
   });
 
   it("delegates runtime auth preparation to adapters with declared auth methods", async () => {

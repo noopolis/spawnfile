@@ -69,6 +69,23 @@ export interface ResolvedHttpSurface {
   port?: number;
 }
 
+export interface ResolvedMoltnetRoomPolicy {
+  read?: "all" | "mentions" | "thread_only";
+  reply?: "auto" | "manual" | "never";
+}
+
+export interface ResolvedMoltnetDMConfig extends ResolvedMoltnetRoomPolicy {
+  enabled: boolean;
+}
+
+export interface ResolvedMoltnetAttachment {
+  dms?: ResolvedMoltnetDMConfig;
+  memberId: string | null;
+  network: string;
+  rooms?: Record<string, ResolvedMoltnetRoomPolicy>;
+  teamSource: string | null;
+}
+
 export interface ResolvedWebhookSurface {
   signingSecret?: string;
   url: string;
@@ -77,10 +94,23 @@ export interface ResolvedWebhookSurface {
 export interface ResolvedAgentSurfaces {
   discord?: ResolvedDiscordSurface;
   http?: ResolvedHttpSurface;
+  moltnet?: ResolvedMoltnetAttachment[];
   slack?: ResolvedSlackSurface;
   telegram?: ResolvedTelegramSurface;
   webhook?: ResolvedWebhookSurface;
   whatsapp?: ResolvedWhatsAppSurface;
+}
+
+export interface ResolvedTeamNetworkRoom {
+  id: string;
+  members: string[];
+}
+
+export interface ResolvedTeamNetwork {
+  id: string;
+  name: string;
+  provider: "moltnet";
+  rooms: ResolvedTeamNetworkRoom[];
 }
 
 export interface EffectiveModelTarget {
@@ -133,6 +163,7 @@ export interface ResolvedTeamNode {
   members: ResolvedMemberRef[];
   mode: "hierarchical" | "swarm";
   name: string;
+  networks?: ResolvedTeamNetwork[];
   policyMode: string | null;
   policyOnDegrade: string | null;
   shared: {

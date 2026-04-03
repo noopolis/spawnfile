@@ -166,6 +166,15 @@ export const createEnvVariableMap = (
     for (const variable of runtimePlan.meta.env ?? []) {
       register(variable.name, variable.required, variable.description, "runtime");
     }
+
+    for (const binding of runtimePlan.targetConfigEnvBindings ?? []) {
+      register(
+        binding.envName,
+        true,
+        `Injected into ${runtimePlan.runtimeName} runtime config`,
+        "runtime"
+      );
+    }
   }
 
   return variables;
@@ -258,6 +267,7 @@ export const createRuntimeTargetPlans = async (
     targets.forEach((target, index) => {
       assertTargetHasConfig(runtimeName, target.id, adapter.container, target.files);
       const instancePaths = resolveInstancePaths(runtimeName, target.id, adapter.container);
+      const portStride = adapter.container.portStride ?? 1;
       runtimePlans.push({
         configEnvBindings: resolveTargetConfigEnvBindings(adapter.container, target) ?? [],
         envFiles: resolveTargetEnvFiles(instancePaths.configPath, target),
@@ -266,9 +276,10 @@ export const createRuntimeTargetPlans = async (
         meta: adapter.container,
         modelAuthMethods: resolveTargetModelAuthMethods(target, targetInputs),
         modelSecretsRequired: resolveTargetModelSecrets(target, targetInputs),
-        port: adapter.container.port ? adapter.container.port + index : undefined,
+        port: adapter.container.port ? adapter.container.port + (index * portStride) : undefined,
         runtimeName,
         runtimeRoot: recipe.runtimeRoot,
+        targetConfigEnvBindings: target.configEnvBindings,
         targetFiles: target.files
       });
     });

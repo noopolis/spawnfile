@@ -47,6 +47,7 @@ describe("openClawAdapter", () => {
         workspacePathTemplate: "<instance-root>/home/.openclaw/workspace"
       },
       port: 18789,
+      portStride: 20,
       portEnv: "OPENCLAW_GATEWAY_PORT",
       standaloneBaseImage: "node:24-bookworm-slim",
       startCommand: [
@@ -55,7 +56,7 @@ describe("openClawAdapter", () => {
         "gateway",
         "--allow-unconfigured",
         "--bind",
-        "lan",
+        "loopback",
         "--port",
         "<port>",
         "--verbose"
@@ -72,7 +73,7 @@ describe("openClawAdapter", () => {
     const config = JSON.parse(configFile!.content);
     expect(config.agents.defaults.model).toBe("anthropic/claude-sonnet-4-5");
     expect(config.gateway.mode).toBe("local");
-    expect(config.gateway.bind).toBe("lan");
+    expect(config.gateway.bind).toBe("loopback");
     expect(config.gateway.auth.mode).toBe("token");
     expect(config.agent).toBeUndefined();
   });
@@ -290,6 +291,80 @@ describe("openClawAdapter", () => {
     expect(config.models.providers["spawnfile-custom"].api).toBe("anthropic-messages");
   });
 
+  it("emits native Moltnet runtime config from OpenClaw runtime options", async () => {
+    const result = await openClawAdapter.compileAgent(
+      createNode({
+        moltnet: {
+          base_url: "http://127.0.0.1:8787/",
+          enabled: true,
+          network_id: "local_lab",
+          timeout_ms: 15000
+        }
+      })
+    );
+
+    const config = JSON.parse(result.files.find((file) => file.path === "openclaw.json")!.content);
+    expect(config.moltnet).toEqual({
+      baseUrl: "http://127.0.0.1:8787",
+      enabled: true,
+      networkId: "local_lab",
+      timeoutMs: 15000
+    });
+  });
+
+  it("adds config env bindings for Moltnet token secrets", async () => {
+    const runtimeOptions = {
+      moltnet: {
+        base_url: "http://127.0.0.1:8787",
+        token_secret: "MOLTNET_API_TOKEN"
+      }
+    };
+    const inputs = [
+      {
+        emittedFiles: (await openClawAdapter.compileAgent(createNode(runtimeOptions))).files,
+        id: "agent:assistant",
+        kind: "agent" as const,
+        slug: "assistant",
+        value: createNode(runtimeOptions)
+      }
+    ];
+
+    const [target] = await openClawAdapter.createContainerTargets!(inputs);
+    expect(target?.configEnvBindings).toContainEqual({
+      envName: "MOLTNET_API_TOKEN",
+      jsonPath: "moltnet.token"
+    });
+  });
+
+  it("enables async hooks for Moltnet-attached agents", async () => {
+    const result = await openClawAdapter.compileAgent({
+      ...createNode(),
+      surfaces: {
+        moltnet: [
+          {
+            memberId: "assistant",
+            network: "stage_lights",
+            rooms: {
+              "green-room": {
+                read: "all",
+                reply: "manual"
+              }
+            },
+            teamSource: "/tmp/team/Spawnfile"
+          }
+        ]
+      }
+    });
+
+    const config = JSON.parse(result.files.find((file) => file.path === "openclaw.json")!.content);
+    expect(config.hooks).toEqual({
+      allowRequestSessionKey: true,
+      allowedSessionKeyPrefixes: ["hook:"],
+      enabled: true,
+      token: "${OPENCLAW_HOOKS_TOKEN}"
+    });
+  });
+
   it("validates supported and unsupported model target combinations", () => {
     expect(() =>
       openClawAdapter.assertSupportedModelTarget({
@@ -325,6 +400,25 @@ describe("openClawAdapter", () => {
       {
         level: "error",
         message: "OpenClaw runtime option profile must be a string"
+      }
+    ]);
+
+    expect(
+      openClawAdapter.validateRuntimeOptions?.({
+        moltnet: {
+          base_url: "ftp://example.com",
+          token: "abc",
+          token_secret: "MOLTNET_API_TOKEN"
+        }
+      })
+    ).toEqual([
+      {
+        level: "error",
+        message: "OpenClaw runtime option moltnet.base_url must use http or https"
+      },
+      {
+        level: "error",
+        message: "OpenClaw runtime option moltnet must not declare both token and token_secret"
       }
     ]);
   });

@@ -1,4 +1,5 @@
 import type { ResolvedAgentNode, ResolvedAgentSurfaces } from "../../compiler/types.js";
+import { listInteractiveSurfaceScopes } from "../../compiler/interactiveSurfaceScopes.js";
 import type {
   ContainerTarget,
   ContainerTargetInput,
@@ -163,6 +164,14 @@ export const assertSupportedTinyClawSurfaces = (
     throw new SpawnfileError(
       "validation_error",
       "TinyClaw does not support Slack in Spawnfile v0.1"
+    );
+  }
+
+  const interactiveScopes = listInteractiveSurfaceScopes(surfaces);
+  if (interactiveScopes.length > 1) {
+    throw new SpawnfileError(
+      "validation_error",
+      `TinyClaw preserves only one interactive conversation scope in Spawnfile v0.1; declared ${interactiveScopes.join(", ")}`
     );
   }
 };

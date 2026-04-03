@@ -7,6 +7,7 @@ import type {
 import type { ModelAuthMethod } from "../shared/index.js";
 
 import type { ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
+import type { MoltnetBridgePlan, MoltnetServerPlan } from "./moltnetArtifacts.js";
 
 export interface ContainerEnvVariable {
   categories: Array<"model" | "project" | "runtime" | "surface">;
@@ -33,6 +34,7 @@ export interface RuntimeTargetPlan {
   port?: number;
   runtimeName: string;
   runtimeRoot: string;
+  targetConfigEnvBindings?: RuntimeContainerConfigEnvBinding[];
   targetFiles: EmittedFile[];
 }
 
@@ -47,5 +49,9 @@ export interface CompiledNodeArtifact {
 export interface GeneratedContainerArtifacts {
   executablePaths: string[];
   files: EmittedFile[];
+  moltnet?: {
+    bridgePlans: MoltnetBridgePlan[];
+    serverPlans: MoltnetServerPlan[];
+  };
   report: ContainerReport;
 }

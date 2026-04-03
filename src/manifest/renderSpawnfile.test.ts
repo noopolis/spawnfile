@@ -371,4 +371,69 @@ describe("renderSpawnfile", () => {
       ].join("\n")
     );
   });
+
+  it("renders moltnet surfaces and team networks in canonical order", () => {
+    const agentSource = renderSpawnfile({
+      kind: "agent",
+      name: "researcher",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        moltnet: [
+          {
+            network: "local_lab",
+            rooms: {
+              research: {
+                read: "mentions",
+                reply: "auto"
+              }
+            },
+            dms: {
+              enabled: true,
+              read: "all",
+              reply: "manual"
+            }
+          }
+        ]
+      }
+    });
+
+    const teamSource = renderSpawnfile({
+      kind: "team",
+      lead: "researcher",
+      members: [
+        {
+          id: "researcher",
+          ref: "./agents/researcher"
+        }
+      ],
+      mode: "hierarchical",
+      name: "research-cell",
+      networks: [
+        {
+          id: "local_lab",
+          provider: "moltnet",
+          rooms: [
+            {
+              id: "research",
+              members: ["researcher"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(agentSource).toContain("  moltnet:");
+    expect(agentSource).toContain("    - network: local_lab");
+    expect(agentSource).toContain("      rooms:");
+    expect(agentSource).toContain("        research:");
+    expect(agentSource).toContain("          read: mentions");
+    expect(agentSource).toContain("          reply: auto");
+    expect(agentSource).toContain("        enabled: true");
+    expect(teamSource).toContain("networks:");
+    expect(teamSource).toContain("  - id: local_lab");
+    expect(teamSource).toContain("    provider: moltnet");
+    expect(teamSource).toContain("      - id: research");
+  });
 });

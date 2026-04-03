@@ -223,11 +223,11 @@ When compiling a team, the compiler generates a roster for each direct member af
 2. Compute reachability based on `mode`:
    - `hierarchical`: non-lead members can only reach the lead. The lead can reach all members.
    - `swarm`: all members can reach all other members.
-3. Resolve each member's HTTP endpoint — from the agent's `surfaces.http` config, or auto-enabled if not declared.
+3. Resolve or synthesize each member's coordination endpoint — a compiler-generated team route, router path, or other adapter-defined coordination target. This endpoint is team-scoped and MUST NOT be assumed to equal the agent's direct `surfaces.http` URL.
 4. Generate a per-member roster YAML at `{workspace}/.spawnfile/roster.yaml`.
 5. Register the roster in the doc injection pipeline with `role: roster`.
-6. Generate a `team_message` MCP server script for each member. The script exposes one tool that POSTs to teammate endpoints using the roster data.
-7. Inject the `team_message` MCP server into each member's `mcp_servers` list during compilation.
+6. Generate a `team_message` tool surface for each direct member. The tool uses the roster's coordination endpoints and canonical envelope to reach teammates through team coordination infrastructure.
+7. Inject that tool into each member's effective runtime/tooling surface during compilation.
 
 ### Roster Schema
 
@@ -252,14 +252,14 @@ members:
     endpoint: http://localhost:9100/route/writer/v1/messages
 ```
 
-The `auth` block is present only when the team manifest declares `team.auth`. The `endpoint` is the HTTP URL where each teammate receives messages. For same-container deployments, endpoints route through the surface router on localhost. For cross-container or cross-network deployments, endpoints are the agent's actual HTTP surface URLs.
+The `auth` block is present only when the team manifest declares `team.auth`. The `endpoint` is a compiler-generated coordination endpoint for reaching each teammate inside the team deployment. For same-container deployments, endpoints often route through the surface router on localhost. Other targets may map them to different internal routes or bridge targets. They are not required to equal the agent's direct HTTP surface URLs.
 
-The `team_message` MCP tool (compiler-generated for each team member) uses these endpoints to deliver messages. Auth is attached automatically when `team.auth` is declared.
+The compiler-generated `team_message` tool uses these endpoints to deliver messages. Auth is attached when the chosen coordination path requires it under `team.auth`.
 
 The roster is a per-member view:
 
 - `self` identifies which member this roster belongs to. The self agent does not appear in `members`.
-- `external` indicates whether this member can communicate outside the team (from the team's `external` list).
+- `external` indicates whether this member is exposed through the team boundary (from the team's `external` list). It does not suppress that member's own direct surfaces.
 - `role` is `lead` for the team lead, `member` for everyone else. For nested team entries, `role` is `team`.
 - `description` comes from each agent's resolved description.
 - In `hierarchical` mode, non-lead members only see the lead in their roster. The lead sees all members.

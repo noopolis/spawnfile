@@ -300,6 +300,31 @@ const memberSchema = z
   })
   .strict();
 
+const teamNetworkRoomSchema = z
+  .object({
+    id: z.string().min(1),
+    members: z.array(z.string().min(1)).min(1)
+  })
+  .strict();
+
+const teamNetworkSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1).optional(),
+    provider: z.literal("moltnet"),
+    rooms: z.array(teamNetworkRoomSchema).min(1)
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const roomIds = value.rooms.map((room) => room.id);
+    if (new Set(roomIds).size !== roomIds.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `network ${value.id} declares duplicate room ids`
+      });
+    }
+  });
+
 const agentManifestSchema = commonManifestSchema
   .extend({
     kind: z.literal("agent"),
@@ -315,9 +340,12 @@ const teamManifestSchema = commonManifestSchema
     lead: z.string().min(1).optional(),
     members: z.array(memberSchema),
     mode: z.enum(["hierarchical", "swarm"]),
+    networks: z.array(teamNetworkSchema).optional(),
     shared: sharedSurfaceSchema.optional()
   })
   .superRefine((value, context) => {
+    const memberIds = new Set(value.members.map((member) => member.id));
+
     if (value.mode === "hierarchical" && !value.lead) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -342,6 +370,29 @@ const teamManifestSchema = commonManifestSchema
         message: "team manifests must not declare surfaces"
       });
     }
+
+    if (value.networks) {
+      const networkIds = value.networks.map((network) => network.id);
+      if (new Set(networkIds).size !== networkIds.length) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "team manifests must not declare duplicate network ids"
+        });
+      }
+
+      for (const network of value.networks) {
+        for (const room of network.rooms) {
+          for (const memberId of room.members) {
+            if (!memberIds.has(memberId)) {
+              context.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `network ${network.id} room ${room.id} references unknown member ${memberId}`
+              });
+            }
+          }
+        }
+      }
+    }
   })
   .strict();
 
@@ -365,6 +416,8 @@ export type SharedSurface = z.infer<typeof sharedSurfaceSchema>;
 export type SkillReference = z.infer<typeof skillReferenceSchema>;
 export type TeamAuth = z.infer<typeof teamAuthSchema>;
 export type TeamManifest = z.infer<typeof teamManifestSchema>;
+export type TeamNetwork = z.infer<typeof teamNetworkSchema>;
+export type TeamNetworkRoom = z.infer<typeof teamNetworkRoomSchema>;
 
 export type {
   DiscordSurface,
@@ -372,6 +425,12 @@ export type {
   HttpSurface,
   HttpSurfaceAccess,
   HttpSurfaceAuth,
+  MoltnetAttachment,
+  MoltnetDM,
+  MoltnetRead,
+  MoltnetReply,
+  MoltnetRoomBehavior,
+  MoltnetSurface,
   SlackSurface,
   SlackSurfaceAccess,
   SurfacesBlock,

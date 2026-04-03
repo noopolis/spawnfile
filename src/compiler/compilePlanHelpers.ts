@@ -44,6 +44,7 @@ export const getTeamFingerprint = (node: ResolvedTeamNode): string =>
     mode: node.mode,
     lead: node.lead,
     external: node.external,
+    networks: node.networks ?? [],
     shared: {
       env: node.shared.env,
       mcpServers: node.shared.mcpServers,

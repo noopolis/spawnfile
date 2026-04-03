@@ -74,6 +74,60 @@ describe("manifestSchema", () => {
     expect(isTeamManifest(result)).toBe(true);
   });
 
+  it("accepts team networks and agent moltnet surfaces", () => {
+    const team = manifestSchema.parse({
+      kind: "team",
+      members: [
+        {
+          id: "orchestrator",
+          ref: "./agents/orchestrator"
+        },
+        {
+          id: "researcher",
+          ref: "./agents/researcher"
+        }
+      ],
+      mode: "hierarchical",
+      name: "research-team",
+      networks: [
+        {
+          id: "local_lab",
+          provider: "moltnet",
+          rooms: [
+            {
+              id: "research",
+              members: ["orchestrator", "researcher"]
+            }
+          ]
+        }
+      ],
+      lead: "orchestrator",
+      spawnfile_version: "0.1"
+    });
+    const agent = manifestSchema.parse({
+      kind: "agent",
+      name: "researcher",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        moltnet: [
+          {
+            network: "local_lab",
+            rooms: {
+              research: {
+                read: "mentions",
+                reply: "auto"
+              }
+            }
+          }
+        ]
+      }
+    });
+
+    expect(isTeamManifest(team)).toBe(true);
+    expect(isAgentManifest(agent)).toBe(true);
+  });
+
   it("rejects team manifests that declare execution", () => {
     const result = manifestSchema.safeParse({
       execution: {
@@ -98,6 +152,36 @@ describe("manifestSchema", () => {
 
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.message).toContain("team manifests must not declare execution");
+  });
+
+  it("rejects team networks that reference unknown members", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "writer",
+          ref: "./agents/writer"
+        }
+      ],
+      mode: "swarm",
+      name: "research-team",
+      networks: [
+        {
+          id: "local_lab",
+          provider: "moltnet",
+          rooms: [
+            {
+              id: "research",
+              members: ["writer", "reviewer"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("references unknown member reviewer");
   });
 
   it("accepts per-model auth and endpoint config for custom models", () => {

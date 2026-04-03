@@ -301,6 +301,175 @@ describe("compileProject", () => {
     ).rejects.toThrow(/restrict_to_workspace/);
   });
 
+  it(
+    "emits moltnet install assets, bridge configs, and container wiring for team networks",
+    async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moltnet-compile-"));
+    temporaryDirectories.push(directory);
+
+    await ensureDirectory(path.join(directory, "agents", "orchestrator"));
+    await writeUtf8File(path.join(directory, "TEAM.md"), "# Team\n");
+    await writeUtf8File(path.join(directory, "agents", "orchestrator", "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(
+      path.join(directory, "agents", "orchestrator", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: orchestrator-agent",
+        "",
+        "runtime: openclaw",
+        "",
+        "docs:",
+        "  system: AGENTS.md",
+        "",
+        "surfaces:",
+        "  moltnet:",
+        "    - network: local_lab",
+        "      rooms:",
+        "        research:",
+        "          read: all",
+        "          reply: auto",
+        ""
+      ].join("\n")
+    );
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: research-cell",
+        "",
+        "docs:",
+        "  system: TEAM.md",
+        "",
+        "members:",
+        "  - id: orchestrator",
+        "    ref: ./agents/orchestrator",
+        "",
+        "mode: hierarchical",
+        "lead: orchestrator",
+        "",
+        "networks:",
+        "  - id: local_lab",
+        "    provider: moltnet",
+        "    rooms:",
+        "      - id: research",
+        "        members: [orchestrator]",
+        ""
+      ].join("\n")
+    );
+
+    const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moltnet-out-"));
+    temporaryDirectories.push(outputDirectory);
+
+    const result = await compileProject(directory, { outputDirectory });
+    const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
+    const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
+    const bridgeConfig = await readUtf8File(
+      path.join(
+        outputDirectory,
+        "container",
+        "rootfs",
+        "var",
+        "lib",
+        "spawnfile",
+        "moltnet",
+        "bridges",
+        "research-cell-local_lab-orchestrator.json"
+      )
+    );
+
+    expect(result.report.container?.ports).toContain(8787);
+    expect(dockerfile).not.toContain("FROM golang:1.24-bookworm AS moltnet-builder");
+    expect(dockerfile).toContain("COPY moltnet-install/ /opt/spawnfile/moltnet-install/");
+    expect(dockerfile).toContain(
+      "RUN MOLTNET_DOWNLOAD_BASE_URL=file:///opt/spawnfile/moltnet-install MOLTNET_INSTALL_DIR=/usr/local/bin sh /opt/spawnfile/moltnet-install/install.sh && rm -rf /opt/spawnfile/moltnet-install"
+    );
+    expect(entrypoint).toContain("/usr/local/bin/moltnet");
+    expect(entrypoint).toContain("/usr/local/bin/moltnet-bridge");
+    expect(entrypoint).toContain("http://127.0.0.1:8787/v1/rooms");
+    expect(bridgeConfig).toContain('"control_url": "http://127.0.0.1:9100/team/message"');
+    expect(
+      await readUtf8File(
+        path.join(
+          outputDirectory,
+          "moltnet-install",
+          "checksums.txt"
+        )
+      )
+    ).toContain("moltnet_linux_");
+    await expect(
+      fileExists(path.join(outputDirectory, "moltnet-install", "install.sh"))
+    ).resolves.toBe(true);
+    await expect(
+      fileExists(
+        path.join(
+          outputDirectory,
+          "moltnet-install",
+          `moltnet_linux_${process.arch === "arm64" ? "arm64" : "amd64"}.tar.gz`
+        )
+      )
+    ).resolves.toBe(true);
+    expect(
+      await readUtf8File(
+        path.join(
+          outputDirectory,
+          "runtimes",
+          "openclaw",
+          "agents",
+          "orchestrator-agent",
+          "workspace",
+          ".spawnfile",
+          "roster.yaml"
+        )
+      )
+    ).toContain("research-cell");
+    expect(
+      await readUtf8File(
+        path.join(
+          outputDirectory,
+          "runtimes",
+          "openclaw",
+          "agents",
+          "orchestrator-agent",
+          "workspace",
+          "AGENTS.md"
+        )
+      )
+    ).toContain("## Team Roster");
+    expect(
+      await readUtf8File(
+        path.join(
+          outputDirectory,
+          "runtimes",
+          "openclaw",
+          "agents",
+          "orchestrator-agent",
+          "workspace",
+          "skills",
+          "moltnet",
+          "SKILL.md"
+        )
+      )
+    ).toContain("Moltnet is a transport, not an implicit reply channel.");
+    expect(
+      await readUtf8File(
+        path.join(
+          outputDirectory,
+          "runtimes",
+          "openclaw",
+          "agents",
+          "orchestrator-agent",
+          "workspace",
+          ".moltnet",
+          "config.json"
+        )
+      )
+    ).toContain('"base_url": "http://127.0.0.1:8787"');
+  },
+    40_000
+  );
+
   it("fails when policy sets on_degrade to error for degraded capabilities", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-policy-degraded-"));
     temporaryDirectories.push(directory);

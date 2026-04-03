@@ -44,6 +44,38 @@ export const resolveAgentSurfaces = (
     };
   }
 
+  if (surfaces.moltnet) {
+    resolved.moltnet = surfaces.moltnet.map((attachment) => ({
+      ...(attachment.dms
+        ? {
+            dms: {
+              enabled: attachment.dms.enabled,
+              ...(attachment.dms.read ? { read: attachment.dms.read } : {}),
+              ...(attachment.dms.reply ? { reply: attachment.dms.reply } : {})
+            }
+          }
+        : {}),
+      memberId: null,
+      network: attachment.network,
+      ...(attachment.rooms
+        ? {
+            rooms: Object.fromEntries(
+              Object.entries(attachment.rooms)
+                .sort(([left], [right]) => left.localeCompare(right))
+                .map(([roomId, behavior]) => [
+                  roomId,
+                  {
+                    ...(behavior.read ? { read: behavior.read } : {}),
+                    ...(behavior.reply ? { reply: behavior.reply } : {})
+                  }
+                ])
+            )
+          }
+        : {}),
+      teamSource: null
+    }));
+  }
+
   if (surfaces.telegram) {
     resolved.telegram = {
       ...(surfaces.telegram.access

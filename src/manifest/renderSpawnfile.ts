@@ -8,6 +8,9 @@ import type {
   ExecutionBlock,
   HttpSurface,
   HttpSurfaceAccess,
+  MoltnetAttachment,
+  MoltnetDM,
+  MoltnetRoomBehavior,
   ModelEntryAuth,
   ModelTarget,
   RuntimeBinding,
@@ -17,7 +20,9 @@ import type {
   SurfacesBlock,
   TelegramSurface,
   TelegramSurfaceAccess,
+  TeamNetwork,
   TeamManifest,
+  WebhookSurface,
   WhatsAppSurface,
   WhatsAppSurfaceAccess
 } from "./schemas.js";
@@ -116,7 +121,10 @@ const orderHttpSurface = (surface: HttpSurface | undefined): HttpSurface | undef
   }
 
   return withDefinedEntries([
-    ["access", orderHttpSurfaceAccess(surface.access)]
+    ["access", orderHttpSurfaceAccess(surface.access)],
+    ["auth", surface.auth],
+    ["path_prefix", surface.path_prefix],
+    ["port", surface.port]
   ]) as unknown as HttpSurface;
 };
 
@@ -129,6 +137,67 @@ const orderHttpSurfaceAccess = (
 
   return withDefinedEntries([["mode", access.mode]]) as unknown as HttpSurfaceAccess;
 };
+
+const orderWebhookSurface = (
+  surface: WebhookSurface | undefined
+): WebhookSurface | undefined => {
+  if (!surface) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["url", surface.url],
+    ["signing_secret", surface.signing_secret]
+  ]) as unknown as WebhookSurface;
+};
+
+const orderMoltnetRoomBehavior = (
+  behavior: MoltnetRoomBehavior | undefined
+): MoltnetRoomBehavior | undefined => {
+  if (!behavior) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["read", behavior.read],
+    ["reply", behavior.reply]
+  ]) as MoltnetRoomBehavior;
+};
+
+const orderMoltnetDm = (dms: MoltnetDM | undefined): MoltnetDM | undefined => {
+  if (!dms) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["enabled", dms.enabled],
+    ["read", dms.read],
+    ["reply", dms.reply]
+  ]) as MoltnetDM;
+};
+
+const orderMoltnetAttachment = (
+  attachment: MoltnetAttachment
+): MoltnetAttachment =>
+  withDefinedEntries([
+    ["network", attachment.network],
+    [
+      "rooms",
+      attachment.rooms
+        ? Object.fromEntries(
+            Object.entries(attachment.rooms)
+              .sort(([left], [right]) => left.localeCompare(right))
+              .map(([roomId, behavior]) => [roomId, orderMoltnetRoomBehavior(behavior)])
+          )
+        : undefined
+    ],
+    ["dms", orderMoltnetDm(attachment.dms)]
+  ]) as MoltnetAttachment;
+
+const orderMoltnetSurface = (
+  surface: SurfacesBlock["moltnet"]
+): SurfacesBlock["moltnet"] | undefined =>
+  surface?.map(orderMoltnetAttachment);
 
 const orderWhatsAppSurface = (
   surface: WhatsAppSurface | undefined
@@ -258,9 +327,31 @@ const orderSurfaces = (
     ["telegram", orderTelegramSurface(surfaces.telegram)],
     ["whatsapp", orderWhatsAppSurface(surfaces.whatsapp)],
     ["slack", orderSlackSurface(surfaces.slack)],
-    ["http", orderHttpSurface(surfaces.http)]
+    ["http", orderHttpSurface(surfaces.http)],
+    ["webhook", orderWebhookSurface(surfaces.webhook)],
+    ["moltnet", orderMoltnetSurface(surfaces.moltnet)]
   ]) as unknown as SurfacesBlock;
 };
+
+const orderTeamNetworks = (
+  networks: TeamManifest["networks"]
+): TeamManifest["networks"] | undefined =>
+  networks?.map((network) =>
+    withDefinedEntries([
+      ["id", network.id],
+      ["provider", network.provider],
+      ["name", network.name],
+      [
+        "rooms",
+        network.rooms.map((room) =>
+          withDefinedEntries([
+            ["id", room.id],
+            ["members", room.members]
+          ])
+        )
+      ]
+    ]) as TeamNetwork
+  );
 
 const renderSections = (sections: Record<string, unknown>[]): string =>
   sections
@@ -298,7 +389,8 @@ const orderTeamManifestSections = (manifest: TeamManifest): Record<string, unkno
   withDefinedEntries([["execution", orderExecution(manifest.execution)]]),
   withDefinedEntries([
     ["docs", orderDocs(manifest.docs)],
-    ["shared", orderSharedSurface(manifest.shared)]
+    ["shared", orderSharedSurface(manifest.shared)],
+    ["networks", orderTeamNetworks(manifest.networks)]
   ]),
   withDefinedEntries([
     ["skills", manifest.skills],

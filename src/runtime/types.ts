@@ -64,6 +64,7 @@ export interface RuntimeContainerMeta {
   instancePaths: RuntimeContainerInstancePaths;
   globalNpmPackages?: string[];
   port?: number;
+  portStride?: number;
   portEnv?: string;
   standaloneBaseImage: string;
   startCommand: string[];

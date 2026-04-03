@@ -3,9 +3,12 @@ import {
   ResolvedAgentNode,
   ResolvedTeamNode
 } from "./types.js";
+import { getRuntimeAdapter } from "../runtime/index.js";
 
 export interface RouterRoute {
   agentId: string;
+  runtimeConfigPath?: string;
+  runtimeHomePath?: string;
   runtime: string;
   runtimeUrl: string;
 }
@@ -17,6 +20,35 @@ export interface RouterConfig {
   teamAuthSecret?: string;
 }
 
+const resolveSequentialRuntimePort = (
+  plan: CompilePlan,
+  runtimeName: string,
+  slug: string,
+  fallbackPort?: number
+): number | undefined => {
+  let adapterPort: number | undefined;
+  let adapterPortStride = 1;
+  try {
+    const container = getRuntimeAdapter(runtimeName).container;
+    adapterPort = container.port;
+    adapterPortStride = container.portStride ?? 1;
+  } catch (_err) {
+    adapterPort = undefined;
+    adapterPortStride = 1;
+  }
+
+  const basePort = adapterPort ?? fallbackPort;
+  if (basePort === undefined) {
+    return undefined;
+  }
+
+  const runtimeAgents = plan.nodes.filter(
+    (node) => node.kind === "agent" && node.runtimeName === runtimeName
+  );
+  const index = runtimeAgents.findIndex((node) => node.slug === slug);
+  return index >= 0 ? basePort + (index * adapterPortStride) : basePort;
+};
+
 /**
  * Generate the surface-router.js script content.
  * Self-contained Node.js HTTP server, no dependencies.
@@ -24,6 +56,7 @@ export interface RouterConfig {
 export const generateSurfaceRouterScript = (): string => {
   return `"use strict";
 const http = require("node:http");
+const { spawn } = require("node:child_process");
 
 const configPath = process.argv[2];
 if (!configPath) {
@@ -32,7 +65,7 @@ if (!configPath) {
 }
 
 const config = JSON.parse(require("node:fs").readFileSync(configPath, "utf-8"));
-const routes = new Map(config.routes.map(r => [r.agentId, { url: r.runtimeUrl, runtime: r.runtime }]));
+const routes = new Map(config.routes.map(r => [r.agentId, r]));
 
 const readBody = async (req) => {
   let body = "";
@@ -46,6 +79,147 @@ const json = (res, status, data) => {
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const stripAnsi = (value) => value.replace(/\\u001b\\[[0-9;]*m/g, "").replace(/\\r/g, "");
+const sanitizeSessionId = (value) => value.replace(/[^A-Za-z0-9._:-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 120) || "default";
+const buildSessionId = (body, targetAgentId, sender) => sanitizeSessionId(body.sessionKey || body.context_id || ("route-" + sender + "-to-" + targetAgentId));
+const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const readAgentId = (body) => {
+  if (typeof body.to === "string" && body.to.trim()) return body.to.trim();
+  if (typeof body.agentId === "string" && body.agentId.trim()) return body.agentId.trim();
+  return "";
+};
+const readSender = (body) => {
+  if (typeof body.from === "string" && body.from.trim()) return body.from.trim();
+  if (isRecord(body.from)) {
+    if (typeof body.from.name === "string" && body.from.name.trim()) return body.from.name.trim();
+    if (typeof body.from.id === "string" && body.from.id.trim()) return body.from.id.trim();
+  }
+  if (typeof body.name === "string" && body.name.trim()) return body.name.trim();
+  return "api";
+};
+const isHookDispatch = (body) =>
+  typeof body.agentId === "string" &&
+  body.agentId.trim().length > 0 &&
+  typeof body.message === "string";
+
+const runCommand = (command, args, env) => new Promise((resolve, reject) => {
+  const child = spawn(command, args, {
+    env: { ...process.env, ...env },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  let stdout = "";
+  let stderr = "";
+  const timer = setTimeout(() => {
+    child.kill("SIGTERM");
+    reject(new Error(command + " timeout"));
+  }, 120000);
+
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk.toString();
+  });
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk.toString();
+  });
+
+  child.once("error", (error) => {
+    clearTimeout(timer);
+    reject(error);
+  });
+
+  child.once("close", (code) => {
+    clearTimeout(timer);
+    if (code !== 0) {
+      reject(new Error(command + " exited with code " + code + ": " + stripAnsi(stderr || stdout).trim()));
+      return;
+    }
+    resolve({ stdout, stderr });
+  });
+});
+
+const parseOpenClawOutput = (stdout) => {
+  const trimmed = stdout.trim();
+  const payload = JSON.parse(trimmed);
+  const texts = (((payload || {}).result || {}).payloads || [])
+    .map((entry) => entry && typeof entry.text === "string" ? entry.text : "")
+    .filter(Boolean);
+  if (texts.length > 0) {
+    return texts.join("\\n").trim();
+  }
+  return (((payload || {}).result || {}).summary || payload.summary || "").toString().trim();
+};
+
+const parsePicoClawOutput = (stdout, stderr) => {
+  const cleanedLines = stripAnsi((stdout || "") + "\\n" + (stderr || ""))
+    .split("\\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (let index = cleanedLines.length - 1; index >= 0; index -= 1) {
+    const line = cleanedLines[index];
+    if (line.startsWith("🦞")) {
+      return line.replace(/^🦞\\s*/u, "").trim();
+    }
+    const responseMatch = line.match(/Response:\\s*(.+)$/);
+    if (responseMatch) {
+      return responseMatch[1].trim();
+    }
+  }
+
+  return cleanedLines[cleanedLines.length - 1] || "";
+};
+
+const resolveOpenClawHookUrl = (route) => {
+  const runtimeUrl = route.runtimeUrl.replace(/^ws:/, "http:").replace(/^wss:/, "https:");
+  const url = new URL(runtimeUrl);
+  url.pathname = "/hooks/agent";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+};
+
+const sendOpenClawHook = async (route, body) => {
+  const hookUrl = resolveOpenClawHookUrl(route);
+  const token = (
+    process.env.OPENCLAW_HOOKS_TOKEN ||
+    (process.env.OPENCLAW_GATEWAY_TOKEN ? "hooks-" + process.env.OPENCLAW_GATEWAY_TOKEN : "") ||
+    ""
+  ).trim();
+  const headers = { "Content-Type": "application/json" };
+  if (token) {
+    headers.Authorization = "Bearer " + token;
+  }
+
+  const hookBody = {
+    message: body.message,
+    ...(typeof body.name === "string" && body.name.trim() ? { name: body.name.trim() } : {}),
+    ...(typeof body.sessionKey === "string" && body.sessionKey.trim()
+      ? { sessionKey: body.sessionKey.trim() }
+      : {}),
+    ...(typeof body.wakeMode === "string" && body.wakeMode.trim()
+      ? { wakeMode: body.wakeMode.trim() }
+      : { wakeMode: "now" }),
+    ...(typeof body.disableMessageTool === "boolean"
+      ? { disableMessageTool: body.disableMessageTool }
+      : {}),
+    ...(typeof body.deliver === "boolean" ? { deliver: body.deliver } : { deliver: false })
+  };
+
+  const response = await fetch(hookUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(hookBody),
+    signal: AbortSignal.timeout(15000)
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error("OpenClaw hook failed (" + response.status + "): " + errBody);
+  }
+
+  const result = await response.json().catch(() => ({}));
+  return typeof result.runId === "string" ? result.runId : "";
+};
 
 const sendTinyClaw = async (baseUrl, targetAgentId, fromAgent, message) => {
   const channel = "team:" + fromAgent;
@@ -108,109 +282,40 @@ const sendTinyClaw = async (baseUrl, targetAgentId, fromAgent, message) => {
   throw new Error("TinyClaw response timeout after " + maxWait + "ms");
 };
 
-const sendOpenClaw = async (wsUrl, targetAgentId, fromAgent, message, authToken) => {
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(wsUrl);
-    const idempotencyKey = "team_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-    let responseText = "";
-    let connected = false;
+const sendOpenClaw = async (route, targetAgentId, body, sender, message) => {
+  if (!route.runtimeConfigPath || !route.runtimeHomePath) {
+    throw new Error("OpenClaw route is missing runtime paths");
+  }
 
-    ws.addEventListener("message", (event) => {
-      try {
-        const frame = JSON.parse(typeof event.data === "string" ? event.data : event.data.toString());
-
-        // Step 1: Server sends connect.challenge, we respond with connect + auth
-        if (frame.event === "connect.challenge" && !connected) {
-          ws.send(JSON.stringify({
-            type: "req",
-            method: "connect",
-            id: "connect-" + Date.now(),
-            params: {
-              minProtocol: 3,
-              maxProtocol: 3,
-              client: {
-                id: "cli",
-                version: "0.1.0",
-                platform: "node",
-                mode: "cli"
-              },
-              scopes: ["operator.read", "operator.write"],
-              auth: authToken ? { token: authToken } : undefined
-            }
-          }));
-          return;
-        }
-
-        // Step 2: Server confirms connection, now send chat.send
-        if (frame.type === "res" && frame.ok && !connected) {
-          connected = true;
-          ws.send(JSON.stringify({
-            type: "req",
-            method: "chat.send",
-            id: idempotencyKey,
-            params: {
-              sessionKey: "agent:" + targetAgentId + ":team:" + fromAgent,
-              message: message,
-              idempotencyKey: idempotencyKey
-            }
-          }));
-          return;
-        }
-
-        // Step 3: Collect streaming response
-        if (frame.state === "delta" && frame.message && frame.message.text) {
-          responseText += frame.message.text;
-        }
-        if (frame.state === "final") {
-          ws.close();
-          resolve(responseText || (frame.message && frame.message.text) || "");
-        }
-        if (frame.state === "error" || frame.state === "aborted") {
-          ws.close();
-          reject(new Error("OpenClaw error: " + (frame.errorMessage || "unknown")));
-        }
-
-        // Handle connect rejection
-        if (frame.type === "res" && !frame.ok && !connected) {
-          ws.close();
-          reject(new Error("OpenClaw connect failed: " + JSON.stringify(frame.error || frame)));
-        }
-      } catch (_e) {
-        // ignore non-JSON frames
-      }
-    });
-
-    ws.addEventListener("error", (err) => reject(err));
-    const timer = setTimeout(() => { ws.close(); reject(new Error("OpenClaw timeout")); }, 120000);
-    ws.addEventListener("close", () => clearTimeout(timer));
-  });
+  const sessionId = buildSessionId(body, targetAgentId, sender);
+  const result = await runCommand(
+    "openclaw",
+    ["agent", "--session-id", sessionId, "--message", message, "--json"],
+    {
+      HOME: route.runtimeHomePath,
+      OPENCLAW_CONFIG_PATH: route.runtimeConfigPath,
+      OPENCLAW_HOME: route.runtimeHomePath
+    }
+  );
+  return parseOpenClawOutput(result.stdout);
 };
 
-const sendPicoClaw = async (wsUrl, targetAgentId, fromAgent, message, authToken) => {
-  return new Promise((resolve, reject) => {
-    const headers = authToken ? { "Authorization": "Bearer " + authToken } : {};
-    const ws = new WebSocket(wsUrl, { headers: headers });
+const sendPicoClaw = async (route, targetAgentId, body, sender, message) => {
+  if (!route.runtimeConfigPath || !route.runtimeHomePath) {
+    throw new Error("PicoClaw route is missing runtime paths");
+  }
 
-    ws.addEventListener("open", () => {
-      ws.send(JSON.stringify({ type: "message", content: message, sender: fromAgent }));
-    });
-
-    ws.addEventListener("message", (event) => {
-      try {
-        const frame = JSON.parse(typeof event.data === "string" ? event.data : event.data.toString());
-        if (frame.type === "message" || frame.type === "response") {
-          ws.close();
-          resolve(frame.content || frame.message || frame.text || "");
-        }
-      } catch (_e) {
-        // ignore non-JSON frames
-      }
-    });
-
-    ws.addEventListener("error", (err) => reject(err));
-    const timer = setTimeout(() => { ws.close(); reject(new Error("PicoClaw timeout")); }, 120000);
-    ws.addEventListener("close", () => clearTimeout(timer));
-  });
+  const sessionId = buildSessionId(body, targetAgentId, sender);
+  const result = await runCommand(
+    "picoclaw",
+    ["agent", "--session", sessionId, "--message", message],
+    {
+      HOME: route.runtimeHomePath,
+      PICOCLAW_CONFIG: route.runtimeConfigPath,
+      PICOCLAW_HOME: route.runtimeHomePath
+    }
+  );
+  return parsePicoClawOutput(result.stdout, result.stderr);
 };
 
 const sendDefault = async (targetUrl, body, authHeaders) => {
@@ -226,6 +331,22 @@ const sendDefault = async (targetUrl, body, authHeaders) => {
   });
   const result = await response.json();
   return result.message || result.response || JSON.stringify(result);
+};
+
+const sendToRoute = async (route, body, targetAgentId, sender, authHeaders) => {
+  if (route.runtime === "tinyclaw") {
+    return sendTinyClaw(route.runtimeUrl, targetAgentId, sender, body.message);
+  }
+  if (route.runtime === "openclaw") {
+    if (isHookDispatch(body)) {
+      return sendOpenClawHook(route, body);
+    }
+    return sendOpenClaw(route, targetAgentId, body, sender, body.message);
+  }
+  if (route.runtime === "picoclaw") {
+    return sendPicoClaw(route, targetAgentId, body, sender, body.message);
+  }
+  return sendDefault(route.runtimeUrl, body, authHeaders);
 };
 
 const server = http.createServer(async (req, res) => {
@@ -252,9 +373,15 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    const route = routes.get(body.to);
+    const targetAgentId = readAgentId(body);
+    if (!targetAgentId) {
+      json(res, 400, { error: "target agent required" });
+      return;
+    }
+
+    const route = routes.get(targetAgentId);
     if (!route) {
-      json(res, 404, { error: "unknown agent: " + body.to });
+      json(res, 404, { error: "unknown agent: " + targetAgentId });
       return;
     }
 
@@ -264,22 +391,23 @@ const server = http.createServer(async (req, res) => {
         authHeaders["Authorization"] = "Bearer " + process.env[config.teamAuthSecret];
       }
 
-      let responseMessage;
-      if (route.runtime === "tinyclaw") {
-        responseMessage = await sendTinyClaw(route.url, body.to, body.from, body.message);
-      } else if (route.runtime === "openclaw") {
-        const ocToken = process.env.OPENCLAW_GATEWAY_TOKEN;
-        responseMessage = await sendOpenClaw(route.url, body.to, body.from, body.message, ocToken);
-      } else if (route.runtime === "picoclaw") {
-        const picoToken = process.env.PICOCLAW_PICO_TOKEN;
-        responseMessage = await sendPicoClaw(route.url, body.to, body.from, body.message, picoToken);
-      } else {
-        responseMessage = await sendDefault(route.url, body, authHeaders);
+      const sender = readSender(body);
+      const responseMessage = await sendToRoute(route, body, targetAgentId, sender, authHeaders);
+
+      if (isHookDispatch(body)) {
+        json(res, 200, {
+          ok: true,
+          agentId: targetAgentId,
+          delivered: false,
+          sessionKey: typeof body.sessionKey === "string" ? body.sessionKey : null,
+          summary: responseMessage || null
+        });
+        return;
       }
 
-      json(res, 200, { from: body.to, message: responseMessage });
+      json(res, 200, { from: targetAgentId, message: responseMessage });
     } catch (err) {
-      json(res, 502, { error: "failed to reach " + body.to + ": " + err.message });
+      json(res, 502, { error: "failed to reach " + targetAgentId + ": " + err.message });
     }
     return;
   }
@@ -312,19 +440,14 @@ const server = http.createServer(async (req, res) => {
       const message = parsed.message || parsed.body || body;
       const from = parsed.from || { type: "human", id: "api" };
 
-      let responseMessage;
       const sender = typeof from === "string" ? from : (from.name || from.id || "api");
-      if (route.runtime === "tinyclaw") {
-        responseMessage = await sendTinyClaw(route.url, defaultAgentId, sender, message);
-      } else if (route.runtime === "openclaw") {
-        const ocToken = process.env.OPENCLAW_GATEWAY_TOKEN;
-        responseMessage = await sendOpenClaw(route.url, defaultAgentId, sender, message, ocToken);
-      } else if (route.runtime === "picoclaw") {
-        const picoToken = process.env.PICOCLAW_PICO_TOKEN;
-        responseMessage = await sendPicoClaw(route.url, defaultAgentId, sender, message, picoToken);
-      } else {
-        responseMessage = await sendDefault(route.url, { from, to: defaultAgentId, message }, {});
-      }
+      const responseMessage = await sendToRoute(
+        route,
+        { context_id: parsed.context_id, from, message, to: defaultAgentId },
+        defaultAgentId,
+        sender,
+        {}
+      );
 
       json(res, 200, {
         message_id: "msg_" + Date.now(),
@@ -350,15 +473,12 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
 
     try {
-      const response = await fetch(route.url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: body,
-        signal: AbortSignal.timeout(120000)
-      });
-      const result = await response.text();
-      res.writeHead(response.status, { "Content-Type": "application/json" });
-      res.end(result);
+      const parsed = JSON.parse(body);
+      const sender = typeof parsed.from === "string"
+        ? parsed.from
+        : (parsed.from && (parsed.from.name || parsed.from.id)) || "api";
+      const result = await sendToRoute(route, parsed, agentId, sender, {});
+      json(res, 200, { from: agentId, message: result });
     } catch (err) {
       json(res, 502, { error: "failed to reach " + agentId + ": " + err.message });
     }
@@ -394,19 +514,40 @@ export const generateRouterConfig = (
     const httpPort = agentNode.surfaces?.http?.port;
     const pathPrefix = agentNode.surfaces?.http?.pathPrefix ?? "/v1";
     const runtimeName = agentNode.runtime.name;
+    const runtimePort =
+      runtimeName === "openclaw"
+        ? resolveSequentialRuntimePort(plan, runtimeName, memberNode.slug, 18789)
+        : runtimeName === "picoclaw"
+          ? resolveSequentialRuntimePort(plan, runtimeName, memberNode.slug, 18790)
+          : undefined;
 
     let runtimeUrl: string;
+    let runtimeHomePath: string | undefined;
+    let runtimeConfigPath: string | undefined;
+
     if (runtimeName === "tinyclaw") {
       runtimeUrl = `http://localhost:${httpPort ?? 3777}/api/message`;
+      runtimeHomePath = "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi";
+      runtimeConfigPath = "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/settings.json";
     } else if (runtimeName === "openclaw") {
-      runtimeUrl = `ws://localhost:${httpPort ?? 18789}`;
+      runtimeUrl = `ws://localhost:${httpPort ?? runtimePort ?? 18789}`;
+      runtimeHomePath = `/var/lib/spawnfile/instances/openclaw/agent-${memberNode.slug}/home`;
+      runtimeConfigPath = `${runtimeHomePath}/.openclaw/openclaw.json`;
     } else if (runtimeName === "picoclaw") {
-      runtimeUrl = `ws://localhost:${httpPort ?? 18790}/pico/ws`;
+      runtimeUrl = `ws://localhost:${httpPort ?? runtimePort ?? 18790}/pico/ws`;
+      runtimeHomePath = `/var/lib/spawnfile/instances/picoclaw/agent-${memberNode.slug}/picoclaw`;
+      runtimeConfigPath = `${runtimeHomePath}/config.json`;
     } else {
       runtimeUrl = `http://localhost:${httpPort ?? 8080}${pathPrefix}/messages`;
     }
 
-    routes.push({ agentId: member.id, runtime: runtimeName, runtimeUrl });
+    routes.push({
+      agentId: member.id,
+      ...(runtimeConfigPath ? { runtimeConfigPath } : {}),
+      ...(runtimeHomePath ? { runtimeHomePath } : {}),
+      runtime: runtimeName,
+      runtimeUrl
+    });
   }
 
   // The default agent is the first external-facing member (the lead in hierarchical mode)

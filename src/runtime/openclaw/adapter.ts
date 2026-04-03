@@ -22,6 +22,11 @@ import {
   buildOpenClawChannelConfig,
   buildOpenClawSurfaceEnvBindings
 } from "./surfaces.js";
+import {
+  buildOpenClawMoltnetConfig,
+  buildOpenClawMoltnetEnvBindings,
+  validateOpenClawMoltnetRuntimeOptions
+} from "./moltnet.js";
 
 const buildEnvSecretRef = (envName: string): Record<string, string> => ({
   id: envName,
@@ -83,7 +88,7 @@ const buildOpenClawConfig = (node: ResolvedAgentNode): string => {
       auth: {
         mode: "token"
       },
-      bind: "lan",
+      bind: "loopback",
       controlUi: {
         allowedOrigins: [
           "http://127.0.0.1:<gateway-port>",
@@ -95,6 +100,15 @@ const buildOpenClawConfig = (node: ResolvedAgentNode): string => {
     }
   };
 
+  if ((node.surfaces?.moltnet?.length ?? 0) > 0) {
+    config.hooks = {
+      allowRequestSessionKey: true,
+      allowedSessionKeyPrefixes: ["hook:"],
+      enabled: true,
+      token: "${OPENCLAW_HOOKS_TOKEN}"
+    };
+  }
+
   const channels = buildOpenClawChannelConfig(node.surfaces);
   if (Object.keys(channels).length > 0) {
     config.channels = channels;
@@ -104,6 +118,11 @@ const buildOpenClawConfig = (node: ResolvedAgentNode): string => {
     config.models = {
       providers: modelConfig.providers
     };
+  }
+
+  const moltnet = buildOpenClawMoltnetConfig(node.runtime.options);
+  if (moltnet) {
+    config.moltnet = moltnet;
   }
 
   return `${JSON.stringify(config, null, 2)}\n`;
@@ -127,9 +146,13 @@ const createContainerTargets = async (
 ): Promise<ContainerTarget[]> =>
   inputs.map((input) => {
     const agent = input.kind === "agent" ? (input.value as ResolvedAgentNode) : null;
+    const configEnvBindings = [
+      ...(buildOpenClawSurfaceEnvBindings(agent?.surfaces) ?? []),
+      ...(agent ? (buildOpenClawMoltnetEnvBindings(agent.runtime.options) ?? []) : [])
+    ];
 
     return {
-      configEnvBindings: buildOpenClawSurfaceEnvBindings(agent?.surfaces),
+      ...(configEnvBindings.length > 0 ? { configEnvBindings } : {}),
       files: input.emittedFiles,
       id: `${input.kind}-${input.slug}`,
       sourceIds: [input.id]
@@ -186,6 +209,7 @@ export const openClawAdapter: RuntimeAdapter = {
       workspacePathTemplate: "<instance-root>/home/.openclaw/workspace"
     },
     port: 18789,
+    portStride: 20,
     portEnv: "OPENCLAW_GATEWAY_PORT",
     standaloneBaseImage: "node:24-bookworm-slim",
     startCommand: [
@@ -194,7 +218,7 @@ export const openClawAdapter: RuntimeAdapter = {
       "gateway",
       "--allow-unconfigured",
       "--bind",
-      "lan",
+      "loopback",
       "--port",
       "<port>",
       "--verbose"
@@ -233,10 +257,16 @@ export const openClawAdapter: RuntimeAdapter = {
   prepareRuntimeAuth: prepareOpenClawRuntimeAuth,
   scaffoldAgentProject: createOpenClawAgentScaffold,
   validateRuntimeOptions(options) {
+    const diagnostics = validateOpenClawMoltnetRuntimeOptions(options).map((message) =>
+      createDiagnostic("error", message)
+    );
+
     if ("profile" in options && typeof options.profile !== "string") {
-      return [createDiagnostic("error", "OpenClaw runtime option profile must be a string")];
+      diagnostics.push(
+        createDiagnostic("error", "OpenClaw runtime option profile must be a string")
+      );
     }
 
-    return [];
+    return diagnostics;
   }
 };

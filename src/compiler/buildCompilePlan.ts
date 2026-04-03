@@ -40,9 +40,11 @@ import {
   ResolvedAgentNode,
   ResolvedMemberRef,
   ResolvedRuntime,
+  ResolvedTeamNetwork,
   ResolvedTeamNode
 } from "./types.js";
 import { applyExecutionDefaults } from "./executionDefaults.js";
+import { resolveMoltnetAttachments } from "./moltnetResolution.js";
 
 interface AgentVisitContext {
   inheritedExecution?: ExecutionBlock;
@@ -52,6 +54,12 @@ interface AgentVisitContext {
   };
   inheritedRuntime?: ResolvedRuntime;
   isSubagent: boolean;
+  teamContext?: {
+    memberId: string;
+    teamName: string;
+    teamSource: string;
+    networks: ResolvedTeamNetwork[];
+  };
 }
 
 type InternalNode = {
@@ -189,6 +197,16 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       surfaces: resolveAgentSurfaces(loadedManifest.manifest.surfaces),
       subagents: []
     };
+    if (candidate.surfaces?.moltnet) {
+      candidate.surfaces = {
+        ...candidate.surfaces,
+        moltnet: resolveMoltnetAttachments(
+          candidate.surfaces.moltnet,
+          context.teamContext,
+          loadedManifest.manifest.name
+        )
+      };
+    }
     assertRuntimeSupportsAgentSurfaces(
       runtime.name,
       candidate.surfaces,
@@ -282,6 +300,15 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       members: [],
       mode: manifest.mode,
       name: manifest.name,
+      networks: (manifest.networks ?? []).map((network) => ({
+        id: network.id,
+        name: network.name ?? network.id,
+        provider: network.provider,
+        rooms: network.rooms.map((room) => ({
+          id: room.id,
+          members: [...room.members]
+        }))
+      })),
       policyMode: manifest.policy?.mode ?? null,
       policyOnDegrade: manifest.policy?.on_degrade ?? null,
       shared: {
@@ -326,7 +353,13 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
             manifestPath: canonicalPath,
             surface: loadedManifest.manifest.shared
           },
-          isSubagent: false
+          isSubagent: false,
+          teamContext: {
+            memberId: member.id,
+            teamName: candidate.name,
+            teamSource: canonicalPath,
+            networks: candidate.networks ?? []
+          }
         });
 
         resolvedMember = {
@@ -353,6 +386,28 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
         to: resolvedMember.nodeSource
       });
     }
+
+    for (const network of candidate.networks ?? []) {
+      for (const room of network.rooms) {
+        for (const roomMemberId of room.members) {
+          const resolvedMember = candidate.members.find((member) => member.id === roomMemberId);
+          if (!resolvedMember) {
+            throw new SpawnfileError(
+              "validation_error",
+              `Team ${candidate.name} Moltnet room ${room.id} references unknown member ${roomMemberId}`
+            );
+          }
+
+          if (resolvedMember.kind !== "agent") {
+            throw new SpawnfileError(
+              "validation_error",
+              `Team ${candidate.name} Moltnet room ${room.id} can only include agent members in Spawnfile v0.1`
+            );
+          }
+        }
+      }
+    }
+
     visitStack.pop();
 
     return candidate;

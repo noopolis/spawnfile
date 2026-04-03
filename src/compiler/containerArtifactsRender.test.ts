@@ -170,6 +170,45 @@ describe("renderDockerfile", () => {
       "RUN apt-get update && apt-get install -y --no-install-recommends openssl python3 && rm -rf /var/lib/apt/lists/*"
     );
   });
+
+  it("installs staged moltnet binaries when requested", async () => {
+    const { renderDockerfile } = await loadRenderModule({
+      openclaw: {
+        commands: [],
+        copyCommands: [],
+        runtimeName: "openclaw",
+        runtimeRoot: "/usr/local/lib/node_modules/openclaw"
+      }
+    });
+
+    const dockerfile = await renderDockerfile(
+      [
+        createRuntimePlan("openclaw", {
+          meta: {
+            configFileName: "openclaw.json",
+            instancePaths: {
+              configPathTemplate: "<instance-root>/openclaw.json",
+              homePathTemplate: "<instance-root>/home",
+              workspacePathTemplate: "<instance-root>/workspace"
+            },
+            standaloneBaseImage: "node:24-bookworm-slim",
+            startCommand: ["node", "<runtime-root>/openclaw.mjs"],
+            systemDeps: []
+          }
+        })
+      ],
+      { hasMoltnet: true }
+    );
+
+    expect(dockerfile).not.toContain("FROM golang:1.24-bookworm AS moltnet-builder");
+    expect(dockerfile).toContain(
+      "RUN apt-get update && apt-get install -y --no-install-recommends curl tar && rm -rf /var/lib/apt/lists/*"
+    );
+    expect(dockerfile).toContain("COPY moltnet-install/ /opt/spawnfile/moltnet-install/");
+    expect(dockerfile).toContain(
+      "RUN MOLTNET_DOWNLOAD_BASE_URL=file:///opt/spawnfile/moltnet-install MOLTNET_INSTALL_DIR=/usr/local/bin sh /opt/spawnfile/moltnet-install/install.sh && rm -rf /opt/spawnfile/moltnet-install"
+    );
+  });
 });
 
 describe("renderEntrypoint", () => {
@@ -256,6 +295,154 @@ describe("renderEntrypoint", () => {
     expect(entrypoint).not.toContain("<runtime-root>");
     expect(entrypoint).toContain("/opt/runtime/tinyclaw/main.js");
     expect(entrypoint).toContain("/opt/runtime/tinyclaw/discord.js");
+  });
+
+  it("starts moltnet servers and bridges before waiting on child processes", async () => {
+    const { renderEntrypoint } = await loadRenderModule({
+      openclaw: {
+        commands: [],
+        copyCommands: [],
+        runtimeName: "openclaw",
+        runtimeRoot: "/opt/runtime/openclaw"
+      }
+    });
+
+    const entrypoint = renderEntrypoint(
+      [
+        createRuntimePlan("openclaw", {
+          meta: {
+            configFileName: "openclaw.json",
+            instancePaths: {
+              configPathTemplate: "<instance-root>/openclaw.json",
+              homePathTemplate: "<instance-root>/home",
+              workspacePathTemplate: "<instance-root>/workspace"
+            },
+            standaloneBaseImage: "node:24-bookworm-slim",
+            startCommand: ["node", "<runtime-root>/openclaw.mjs"],
+            systemDeps: []
+          }
+        })
+      ],
+      [],
+      {
+        hasMoltnet: true,
+        hasTeamRouter: true,
+        moltnet: {
+          bridgePlans: [
+            {
+              agentId: "orchestrator",
+              configPath: "/var/lib/spawnfile/moltnet/bridges/research.json",
+              networkId: "local_lab",
+              runtime: "openclaw"
+            }
+          ],
+          serverPlans: [
+            {
+              id: "local_lab",
+              name: "Local Lab",
+              networkId: "local_lab",
+              port: 8787,
+              rooms: [
+                {
+                  id: "research",
+                  members: ["orchestrator", "researcher"]
+                }
+              ],
+              teamSource: "/tmp/team/Spawnfile"
+            }
+          ]
+        }
+      }
+    );
+
+    expect(entrypoint).toContain("/usr/local/bin/moltnet &");
+    expect(entrypoint).toContain("http://127.0.0.1:8787/healthz");
+    expect(entrypoint).toContain("http://127.0.0.1:8787/v1/rooms");
+    expect(entrypoint).toContain("/usr/local/bin/moltnet-bridge '/var/lib/spawnfile/moltnet/bridges/research.json' &");
+    expect(entrypoint).toContain('export OPENCLAW_HOOKS_TOKEN="hooks-${OPENCLAW_GATEWAY_TOKEN}"');
+  });
+
+  it("starts moltnet servers and bridges in multi-runtime entrypoints", async () => {
+    const { renderEntrypoint } = await loadRenderModule({
+      openclaw: {
+        commands: [],
+        copyCommands: [],
+        runtimeName: "openclaw",
+        runtimeRoot: "/opt/runtime/openclaw"
+      },
+      picoclaw: {
+        commands: [],
+        copyCommands: [],
+        runtimeName: "picoclaw",
+        runtimeRoot: "/opt/runtime/picoclaw"
+      }
+    });
+
+    const entrypoint = renderEntrypoint(
+      [
+        createRuntimePlan("openclaw", {
+          meta: {
+            configFileName: "openclaw.json",
+            instancePaths: {
+              configPathTemplate: "<instance-root>/openclaw.json",
+              homePathTemplate: "<instance-root>/home",
+              workspacePathTemplate: "<instance-root>/workspace"
+            },
+            standaloneBaseImage: "node:24-bookworm-slim",
+            startCommand: ["node", "<runtime-root>/openclaw.mjs"],
+            systemDeps: []
+          }
+        }),
+        createRuntimePlan("picoclaw", {
+          meta: {
+            configFileName: "config.json",
+            instancePaths: {
+              configPathTemplate: "<instance-root>/config.json",
+              homePathTemplate: "<instance-root>/home",
+              workspacePathTemplate: "<instance-root>/workspace"
+            },
+            standaloneBaseImage: "debian:bookworm-slim",
+            startCommand: ["picoclaw", "gateway"],
+            systemDeps: []
+          }
+        })
+      ],
+      [],
+      {
+        hasMoltnet: true,
+        hasTeamRouter: true,
+        moltnet: {
+          bridgePlans: [
+            {
+              agentId: "orchestrator",
+              configPath: "/var/lib/spawnfile/moltnet/bridges/research.json",
+              networkId: "local_lab",
+              runtime: "openclaw"
+            }
+          ],
+          serverPlans: [
+            {
+              id: "local_lab",
+              name: "Local Lab",
+              networkId: "local_lab",
+              port: 8787,
+              rooms: [
+                {
+                  id: "research",
+                  members: ["orchestrator"]
+                }
+              ],
+              teamSource: "/tmp/team/Spawnfile"
+            }
+          ]
+        }
+      }
+    );
+
+    expect(entrypoint).toContain("node /opt/spawnfile/surface-router.js /opt/spawnfile/router-config.json &");
+    expect(entrypoint).toContain("/usr/local/bin/moltnet &");
+    expect(entrypoint).toContain("picoclaw");
+    expect(entrypoint).toContain("/usr/local/bin/moltnet-bridge '/var/lib/spawnfile/moltnet/bridges/research.json' &");
   });
 });
 

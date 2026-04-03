@@ -22,6 +22,8 @@ Surfaces are:
 - validated at compile time against runtime support
 - provisioned through the same auth/run path as model credentials
 
+Runtimes may also impose limits on how many independent interactive conversation scopes they can preserve at once. Spawnfile treats that as part of surface compatibility validation. This matters when one declaration expands into several runtime-visible conversations, such as multiple Moltnet rooms or DMs.
+
 Team manifests do not declare surfaces. Surfaces belong to concrete agents.
 
 ---
@@ -117,13 +119,13 @@ surfaces:
 | `slack.access.channels` | Allowed Slack channel IDs. |
 | `http.port` | Port for the HTTP surface. Optional, runtime selects default if omitted. |
 | `http.path_prefix` | URL path prefix for the HTTP surface. Defaults to `/v1`. |
-| `http.auth.mode` | Auth mode. Currently only `bearer` is supported. If `auth` is omitted entirely, the surface accepts unauthenticated requests. |
-| `http.auth.token_secret` | Env var name carrying the bearer token. Only valid with `auth.mode: bearer`. |
+| `http.auth.mode` | Auth mode for the direct agent HTTP surface. Currently only `bearer` is supported. If `auth` is omitted entirely, the surface accepts unauthenticated requests. |
+| `http.auth.token_secret` | Env var name carrying the bearer token for the direct agent HTTP surface. Only valid with `auth.mode: bearer`. |
 | `http.access.mode` | Access policy for the portable HTTP surface. Currently only `open` is standardized. |
 | `webhook.url` | Callback URL for webhook event delivery. Required when webhook is declared. |
 | `webhook.signing_secret` | Env var name carrying the HMAC-SHA256 signing secret. Optional. When present, the runtime signs payloads with `X-Spawnfile-Signature`. |
 
-Note: When a team declares `team.auth`, each member's HTTP surface also accepts the team shared secret as a bearer token, in addition to any per-surface `token_secret`. See `SPEC.md` section 4.6 for team auth rules.
+Note: `http` is a direct agent surface. `team.auth` applies to compiler-generated team-boundary or coordination routes, not automatically to the direct HTTP credential set. A compiler may reuse one listener internally, but that is not the portable contract. See `SPEC.md` section 4.6 for team auth rules.
 
 ### Access Rules
 
@@ -182,6 +184,7 @@ The portable schema is broader than any single runtime. A conforming compiler mu
 - `openclaw` is the best current target for full Discord channel/server policy.
 - `picoclaw` is a good target for token-based Discord plus simple user allowlists.
 - `tinyclaw` supports Discord as a paired DM surface, not as a general guild/channel surface.
+- `tinyclaw` currently preserves only one interactive conversation scope per agent. Multiple inbound surfaces or multi-scope Moltnet attachments are rejected at compile time in Spawnfile v0.1.
 - Live smoke status:
   - `openclaw` Discord was verified end to end
   - `picoclaw` Discord was verified end to end

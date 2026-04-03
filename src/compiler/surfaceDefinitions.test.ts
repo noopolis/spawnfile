@@ -411,6 +411,32 @@ describe("surfaceDefinitions", () => {
       validateAgentSurfaceSupport(
         createAgentManifest({
           name: "tiny",
+          runtime: "tinyclaw",
+          surfaces: {
+            discord: {
+              access: {
+                channels: [],
+                guilds: [],
+                mode: "pairing",
+                users: []
+              }
+            },
+            telegram: {
+              access: {
+                chats: [],
+                mode: "pairing",
+                users: []
+              }
+            }
+          }
+        })
+      )
+    ).toThrow(/only one interactive conversation scope/i);
+
+    expect(() =>
+      validateAgentSurfaceSupport(
+        createAgentManifest({
+          name: "tiny",
           runtime: "openclaw",
           surfaces: {
             http: {}

@@ -97,6 +97,10 @@ export const createAgentCapabilities = (
     capabilities.push(createCapability("surfaces.http", "supported"));
   }
 
+  if (node.surfaces?.moltnet) {
+    capabilities.push(createCapability("surfaces.moltnet", "supported"));
+  }
+
   if (node.surfaces?.telegram) {
     capabilities.push(createCapability("surfaces.telegram", "supported"));
   }

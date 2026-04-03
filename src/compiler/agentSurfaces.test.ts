@@ -5,6 +5,7 @@ import { listAgentSurfaceSecretNames, resolveAgentSurfaces } from "./agentSurfac
 describe("agentSurfaces", () => {
   it("returns undefined when no surfaces are declared", () => {
     expect(resolveAgentSurfaces(undefined)).toBeUndefined();
+    expect(resolveAgentSurfaces({})).toBeUndefined();
     expect(listAgentSurfaceSecretNames(undefined)).toEqual([]);
   });
 
@@ -16,16 +17,32 @@ describe("agentSurfaces", () => {
             users: ["987654321098765432"]
           }
         },
-        http: {
-          access: {
-            mode: "open"
+      http: {
+        access: {
+          mode: "open"
+        }
+      },
+      moltnet: [
+        {
+          dms: {
+            enabled: true,
+            read: "all",
+            reply: "auto"
+          },
+          network: "local_lab",
+          rooms: {
+            research: {
+              read: "mentions",
+              reply: "manual"
+            }
           }
-        },
-        telegram: {
-          access: {
-            chats: ["-1001234567890"]
-          }
-        },
+        }
+      ],
+      telegram: {
+        access: {
+          chats: ["-1001234567890"]
+        }
+      },
         whatsapp: {
           access: {
             groups: ["120363400000000000@g.us"]
@@ -53,6 +70,24 @@ describe("agentSurfaces", () => {
         },
         pathPrefix: "/v1"
       },
+      moltnet: [
+        {
+          dms: {
+            enabled: true,
+            read: "all",
+            reply: "auto"
+          },
+          memberId: null,
+          network: "local_lab",
+          rooms: {
+            research: {
+              read: "mentions",
+              reply: "manual"
+            }
+          },
+          teamSource: null
+        }
+      ],
       telegram: {
         access: {
           chats: ["-1001234567890"],
@@ -128,5 +163,39 @@ describe("agentSurfaces", () => {
       "M_SLACK_APP_TOKEN",
       "Z_DISCORD_TOKEN"
     ]);
+  });
+
+  it("normalizes moltnet attachments with sorted rooms", () => {
+    expect(
+      resolveAgentSurfaces({
+        moltnet: [
+          {
+            dms: {
+              enabled: true
+            },
+            network: "local_lab",
+            rooms: {
+              zebra: {},
+              alpha: {}
+            }
+          }
+        ]
+      })
+    ).toEqual({
+      moltnet: [
+        {
+          dms: {
+            enabled: true
+          },
+          memberId: null,
+          network: "local_lab",
+          rooms: {
+            alpha: {},
+            zebra: {}
+          },
+          teamSource: null
+        }
+      ]
+    });
   });
 });

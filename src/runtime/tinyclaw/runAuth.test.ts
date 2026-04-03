@@ -4,7 +4,12 @@ import { mkdtemp } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ensureDirectory, removeDirectory, writeUtf8File } from "../../filesystem/index.js";
+import {
+  ensureDirectory,
+  readUtf8File,
+  removeDirectory,
+  writeUtf8File
+} from "../../filesystem/index.js";
 
 import { prepareTinyClawRuntimeAuth } from "./runAuth.js";
 
@@ -21,8 +26,31 @@ afterEach(async () => {
 });
 
 describe("prepareTinyClawRuntimeAuth", () => {
+  const createOutputConfig = async (
+    directory: string,
+    value: Record<string, unknown>
+  ): Promise<void> => {
+    const configPath = path.join(
+      directory,
+      "container",
+      "rootfs",
+      "var",
+      "lib",
+      "spawnfile",
+      "instances",
+      "tinyclaw",
+      "tinyclaw-runtime",
+      "tinyagi",
+      "settings.json"
+    );
+    await ensureDirectory(path.dirname(configPath));
+    await writeUtf8File(configPath, `${JSON.stringify(value, null, 2)}\n`);
+  };
+
   it("covers model secrets when imported Claude and Codex auth are present", async () => {
     const profileDirectory = await createTempDirectory("spawnfile-tinyclaw-auth-");
+    const outputDirectory = await createTempDirectory("spawnfile-tinyclaw-out-");
+    const tempRoot = await createTempDirectory("spawnfile-tinyclaw-run-");
     const claudeDirectory = path.join(profileDirectory, "imports", "claude-code");
     const codexDirectory = path.join(profileDirectory, "imports", "codex");
     await ensureDirectory(claudeDirectory);
@@ -46,6 +74,17 @@ describe("prepareTinyClawRuntimeAuth", () => {
         }
       })
     );
+    await createOutputConfig(outputDirectory, {
+      agents: {
+        writer: {
+          model: "gpt-5.4",
+          provider: "openai"
+        }
+      },
+      models: {
+        provider: "openai"
+      }
+    });
 
     const result = await prepareTinyClawRuntimeAuth({
       authProfile: {
@@ -78,18 +117,38 @@ describe("prepareTinyClawRuntimeAuth", () => {
         model_secrets_required: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
         runtime: "tinyclaw"
       },
-      outputDirectory: "/tmp/out",
-      tempRoot: "/tmp/auth"
+      outputDirectory,
+      tempRoot
     });
 
-    expect(result).toEqual({
-      coveredModelSecrets: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
-      mountArgs: []
+    expect(result.coveredModelSecrets).toEqual(["ANTHROPIC_API_KEY", "OPENAI_API_KEY"]);
+    expect(result.mountArgs).toHaveLength(2);
+    const mountedSettingsPath = result.mountArgs[1]!.split(":")[0]!;
+    const mountedSettings = JSON.parse(await readUtf8File(mountedSettingsPath));
+    expect(mountedSettings.models).toEqual({ provider: "openai" });
+    expect(mountedSettings.agents).toEqual({
+      writer: {
+        model: "gpt-5.4",
+        provider: "openai"
+      }
     });
   });
 
   it("does not cover secrets when matching env vars are already set", async () => {
     const profileDirectory = await createTempDirectory("spawnfile-tinyclaw-auth-");
+    const outputDirectory = await createTempDirectory("spawnfile-tinyclaw-out-");
+    const tempRoot = await createTempDirectory("spawnfile-tinyclaw-run-");
+    await createOutputConfig(outputDirectory, {
+      agents: {
+        writer: {
+          model: "gpt-5.4",
+          provider: "openai"
+        }
+      },
+      models: {
+        provider: "openai"
+      }
+    });
 
     const result = await prepareTinyClawRuntimeAuth({
       authProfile: {
@@ -116,13 +175,11 @@ describe("prepareTinyClawRuntimeAuth", () => {
         model_secrets_required: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
         runtime: "tinyclaw"
       },
-      outputDirectory: "/tmp/out",
-      tempRoot: "/tmp/auth"
+      outputDirectory,
+      tempRoot
     });
 
-    expect(result).toEqual({
-      coveredModelSecrets: [],
-      mountArgs: []
-    });
+    expect(result.coveredModelSecrets).toEqual([]);
+    expect(result.mountArgs).toHaveLength(2);
   });
 });

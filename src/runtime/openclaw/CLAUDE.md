@@ -7,6 +7,7 @@ This folder owns the OpenClaw runtime adapter.
 ```text
 src/runtime/openclaw/
 ├── adapter.ts        # OpenClaw lowering and capability reporting
+├── moltnet.ts        # OpenClaw-native Moltnet runtime-option lowering
 ├── surfaces.ts       # OpenClaw surface lowering and surface-support validation
 ├── runAuth.ts        # OpenClaw runtime-auth preparation for `spawnfile run`
 ├── scaffold.ts       # OpenClaw-owned `spawnfile init --runtime openclaw` scaffold

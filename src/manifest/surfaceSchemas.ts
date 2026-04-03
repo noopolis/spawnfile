@@ -204,10 +204,47 @@ const webhookSurfaceSchema = z
   })
   .strict();
 
+const moltnetReadSchema = z.enum(["all", "mentions", "thread_only"]);
+const moltnetReplySchema = z.enum(["auto", "manual", "never"]);
+
+const moltnetRoomBehaviorSchema = z
+  .object({
+    read: moltnetReadSchema.optional(),
+    reply: moltnetReplySchema.optional()
+  })
+  .strict();
+
+const moltnetDmSchema = z
+  .object({
+    enabled: z.boolean(),
+    read: moltnetReadSchema.optional(),
+    reply: moltnetReplySchema.optional()
+  })
+  .strict();
+
+const moltnetAttachmentSchema = z
+  .object({
+    dms: moltnetDmSchema.optional(),
+    network: z.string().min(1),
+    rooms: z.record(z.string().min(1), moltnetRoomBehaviorSchema).optional()
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (!value.rooms && !value.dms) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "moltnet attachments must declare rooms or dms"
+      });
+    }
+  });
+
+const moltnetSurfaceSchema = z.array(moltnetAttachmentSchema).min(1);
+
 export const surfacesSchema = z
   .object({
     discord: discordSurfaceSchema.optional(),
     http: httpSurfaceSchema.optional(),
+    moltnet: moltnetSurfaceSchema.optional(),
     slack: slackSurfaceSchema.optional(),
     telegram: telegramSurfaceSchema.optional(),
     webhook: webhookSurfaceSchema.optional(),
@@ -215,7 +252,15 @@ export const surfacesSchema = z
   })
   .strict()
   .superRefine((value, context) => {
-    if (!value.discord && !value.http && !value.telegram && !value.whatsapp && !value.slack && !value.webhook) {
+    if (
+      !value.discord &&
+      !value.http &&
+      !value.moltnet &&
+      !value.telegram &&
+      !value.whatsapp &&
+      !value.slack &&
+      !value.webhook
+    ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "surfaces must declare at least one surface"
@@ -228,6 +273,12 @@ export type DiscordSurface = z.infer<typeof discordSurfaceSchema>;
 export type HttpSurfaceAccess = z.infer<typeof httpSurfaceAccessSchema>;
 export type HttpSurfaceAuth = z.infer<typeof httpSurfaceAuthSchema>;
 export type HttpSurface = z.infer<typeof httpSurfaceSchema>;
+export type MoltnetAttachment = z.infer<typeof moltnetAttachmentSchema>;
+export type MoltnetDM = z.infer<typeof moltnetDmSchema>;
+export type MoltnetRead = z.infer<typeof moltnetReadSchema>;
+export type MoltnetReply = z.infer<typeof moltnetReplySchema>;
+export type MoltnetRoomBehavior = z.infer<typeof moltnetRoomBehaviorSchema>;
+export type MoltnetSurface = z.infer<typeof moltnetSurfaceSchema>;
 export type SlackSurfaceAccess = z.infer<typeof slackSurfaceAccessSchema>;
 export type SlackSurface = z.infer<typeof slackSurfaceSchema>;
 export type TelegramSurfaceAccess = z.infer<typeof telegramSurfaceAccessSchema>;

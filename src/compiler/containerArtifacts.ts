@@ -7,6 +7,7 @@ import {
   renderEntrypoint,
   renderEnvExample
 } from "./containerArtifactsRender.js";
+import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import type {
   CompiledNodeArtifact,
   GeneratedContainerArtifacts
@@ -17,6 +18,7 @@ export type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./contai
 
 export interface ContainerArtifactOptions {
   hasTeamRouter?: boolean;
+  moltnet?: MoltnetArtifacts | null;
 }
 
 export const createContainerArtifacts = async (
@@ -43,15 +45,27 @@ export const createContainerArtifacts = async (
 
   const files: EmittedFile[] = [
     ...createRootfsFiles(runtimePlans),
+    ...(options.moltnet?.files ?? []),
     {
-      content: await renderDockerfile(runtimePlans, { hasTeamRouter: options.hasTeamRouter }),
+      content: await renderDockerfile(runtimePlans, {
+        hasMoltnet: Boolean(options.moltnet),
+        hasTeamRouter: options.hasTeamRouter
+      }),
       path: "Dockerfile"
     },
     {
       content: renderEntrypoint(
         runtimePlans,
         requiredSecrets.filter((secretName) => !modelSecretsRequired.includes(secretName)),
-        { hasTeamRouter: options.hasTeamRouter }
+        {
+          hasTeamRouter: options.hasTeamRouter,
+          moltnet: options.moltnet
+            ? {
+                bridgePlans: options.moltnet.bridgePlans,
+                serverPlans: options.moltnet.serverPlans
+              }
+            : undefined
+        }
       ),
       path: "entrypoint.sh"
     },
@@ -62,8 +76,9 @@ export const createContainerArtifacts = async (
   ];
 
   const runtimePorts = runtimePlans.flatMap((plan) => (plan.port ? [plan.port] : []));
+  const moltnetPorts = options.moltnet?.ports ?? [];
   const routerPort = options.hasTeamRouter ? [9100] : [];
-  const ports = [...new Set([...routerPort, ...runtimePorts])].sort(
+  const ports = [...new Set([...routerPort, ...runtimePorts, ...moltnetPorts])].sort(
     (left, right) => left - right
   );
   const runtimeHomes = [
@@ -84,6 +99,14 @@ export const createContainerArtifacts = async (
   return {
     executablePaths: ["entrypoint.sh"],
     files,
+    ...(options.moltnet
+      ? {
+          moltnet: {
+            bridgePlans: options.moltnet.bridgePlans,
+            serverPlans: options.moltnet.serverPlans
+          }
+        }
+      : {}),
     report: {
       dockerfile: "Dockerfile",
       entrypoint: "entrypoint.sh",

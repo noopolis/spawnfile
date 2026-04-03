@@ -384,7 +384,8 @@ Rules:
 - `surfaces.http.auth` is OPTIONAL. If omitted, the surface accepts unauthenticated requests. This is a valid configuration for local development, private networks, and any deployment where the network itself is the trust boundary.
 - If `surfaces.http.auth` is present, it MUST declare `mode: bearer` and SHOULD declare `token_secret`.
 - `surfaces.http.auth.token_secret` names the env var carrying the bearer token. The surface validates `Authorization: Bearer <token>` against this value.
-- When `team.auth` is declared on the enclosing team, the agent's HTTP surface MUST also accept the team shared secret as a valid bearer token, in addition to any per-surface `token_secret`. Both paths are valid simultaneously.
+- The portable HTTP surface is a direct agent surface. Compiler-generated team-boundary routes, coordination routers, or internal team links are separate deployment artifacts, not author-declared surfaces.
+- When `team.auth` is declared on an enclosing team, it applies to compiler-generated team-boundary or coordination routes. It does NOT automatically change the auth contract of the agent's direct HTTP surface. A compiler MAY reuse one listener for both roles internally, but that is an implementation detail, not the portable contract.
 - `surfaces.webhook` is OPTIONAL.
 - `surfaces.webhook.url` is REQUIRED when `surfaces.webhook` is present. It MUST be a valid URL.
 - `surfaces.webhook.signing_secret` is OPTIONAL. It names the env var carrying the HMAC-SHA256 signing secret. When present, the runtime MUST sign webhook payloads.
@@ -394,6 +395,9 @@ Rules:
 - Team manifests MUST NOT declare `surfaces`. Communication surfaces belong to concrete agent manifests.
 - Subagents do not implicitly inherit parent `surfaces`.
 - A conforming compiler MUST validate runtime support for declared surface access and fail early on unsupported runtime/surface combinations.
+- A runtime MAY declare limits on how many independent interactive conversation scopes it can preserve at once.
+- An interactive conversation scope is a runtime-visible inbound conversation boundary such as a chat surface, a direct HTTP message surface, or an attached network room or DM.
+- A conforming compiler MUST validate declared interactive conversation scopes against the selected runtime and fail early when the runtime cannot preserve independent context for the resulting shape.
 
 Additional communication surfaces (A2A, network) are under active development. See `research/DIRECTION.md` for the planned surface roadmap.
 
@@ -576,6 +580,8 @@ Teams are:
 - potentially multi-runtime
 - coordination-aware — the compiler generates a roster so members know about each other
 
+Direct protocol surfaces belong to agents, not teams. A team MAY cause the compiler to generate boundary routes, directories, coordination endpoints, or other deployment artifacts, but those artifacts are layered over agent manifests rather than being author-declared team surfaces.
+
 Spawnfile does not assume that every runtime has a native team config format, nested teams, shared team memory, or durable team lifecycle APIs.
 
 Adapters MAY lower a Spawnfile team into a native team object, a flat leader/member config, routed agent sessions, or another target-native surface. If a target cannot preserve the declared structure, the compiler MUST report `degraded` or `unsupported`.
@@ -683,9 +689,9 @@ Adapters SHOULD map `lead` to native leader or default-agent concepts when they 
 
 #### `external`
 
-OPTIONAL. A list of member `id` values that are allowed to respond to messages from outside the team (non-team-members, humans, external systems).
+OPTIONAL. A list of member `id` values that represent the team when traffic enters through a team boundary, router, directory, or other team-scoped ingress.
 
-Members not listed in `external` are **internal-only** — they can receive messages from other team members but SHOULD NOT respond to external input directly.
+Members not listed in `external` are not advertised as team-facing entrypoints. They remain valid agent manifests with their own declared surfaces; team membership does not suppress or delete those surfaces.
 
 Defaults:
 
@@ -695,28 +701,28 @@ Defaults:
 Examples:
 
 ```yaml
-# Leader-led, only leader talks externally (default)
+# Leader-led, only leader represents the team boundary (default)
 mode: hierarchical
 lead: orchestrator
 
-# Leader-led, but researcher also responds externally
+# Leader-led, but researcher is also exposed at the team boundary
 mode: hierarchical
 lead: orchestrator
 external: [orchestrator, researcher]
 
-# Swarm, all peers, all respond (default)
+# Swarm, all peers, all represent the team by default
 mode: swarm
 
-# Swarm, all peers, but only two respond externally
+# Swarm, all peers, but only two are advertised through the team boundary
 mode: swarm
 external: [monitor-a, monitor-b]
 ```
 
-`external` is organizational intent. Enforcement depends on the deployment surface (channel configuration, API gateway, etc.). The compiler records the intent; adapters and deployment layers SHOULD respect it when possible.
+`external` is team-boundary routing intent. It does not remove direct agent surfaces. The compiler SHOULD use it when generating team-facing routes, directories, default entrypoints, or other boundary artifacts, and adapters or deployment layers SHOULD preserve that intent when possible.
 
 ### 4.6 Team Auth
 
-`auth` is OPTIONAL on team manifests. It declares how team members authenticate to each other during coordination.
+`auth` is OPTIONAL on team manifests. It declares auth for compiler-generated team-boundary and coordination paths.
 
 ```yaml
 auth:
@@ -728,12 +734,12 @@ Rules:
 
 - If `auth` is omitted, team members communicate without authentication. This is valid for same-container deployments and private-network deployments where the network is the trust boundary.
 - If `auth` is present, `mode` MUST be `shared_secret`. Other modes (e.g., `mtls`) are reserved for future versions.
-- `secret` names the environment variable carrying the shared secret. The compiler MUST inject this variable into every member's container.
-- When `team.auth` is declared, each member's HTTP surface MUST accept the team secret as a valid bearer token, in addition to any per-surface `auth.token_secret` the agent declares. Both paths are valid simultaneously — the surface does not need to distinguish between them.
-- For `internal://` endpoints (same-container), team auth is not applied — the surface router dispatches in-process and no network call occurs.
+- `secret` names the environment variable carrying the shared secret. The compiler MUST make this secret available anywhere it is needed to call or protect compiler-generated team-boundary routes.
+- `team.auth` does not redefine or widen the auth contract of an agent's direct `surfaces.http` surface. Direct surface auth remains governed by the agent manifest. If a compiler chooses to collapse direct and team-boundary ingress onto one listener, it MAY accept both credentials internally, but that behavior is adapter-defined rather than portable.
+- For same-process, same-container, or otherwise fully internal coordination paths, a compiler MAY satisfy `team.auth` by protecting only the generated boundary artifact rather than enforcing a credential on every intra-team hop.
 - `team.auth.secret` participates in the same env validation path as other secret references.
 
-The team auth model treats teams as trust groups: a single shared credential for all members. Per-member credentials and certificate-based auth are deferred to future versions.
+The team auth model treats teams as trust groups: one shared credential for team-boundary and coordination traffic when the deployment requires one. Per-member credentials, mutual TLS, and richer capability enforcement are deferred to future versions.
 
 ### 4.7 Team Docs
 
@@ -762,15 +768,15 @@ The roster contains:
 - the team name and mode
 - the lead (if hierarchical)
 - which member this roster belongs to (`self`)
-- whether this member has external access
-- the team auth mode (if `team.auth` is declared)
+- whether this member is exposed through the team boundary
+- the team auth mode for coordination routes (if `team.auth` is declared)
 - a list of teammates with their descriptions and roles
 
 The roster is a **per-member view**. In `hierarchical` mode, non-leader members see only the leader as reachable. The leader's roster shows all members as reachable. In `swarm` mode, all members see all other members as reachable.
 
 Member descriptions in the roster come from each agent's `description` field. If an agent has no `description`, the compiler SHOULD derive one from `docs.identity`. The compiler SHOULD warn if a team member has no description and no identity doc to fall back on.
 
-Each member entry in the roster includes an `endpoint` — the HTTP URL where that agent receives messages. For same-container deployments, this is a localhost URL routed through the surface router. For cross-container or cross-network deployments, this is the agent's actual HTTP surface URL. The `team_message` tool uses these endpoints to deliver messages.
+Each member entry in the roster includes an `endpoint` — a compiler-generated coordination endpoint for reaching that teammate inside the team deployment. This endpoint is team-scoped routing metadata. It is not required to be the same thing as the agent's direct HTTP surface URL, and callers MUST NOT assume it is a public endpoint. For same-container deployments, it often resolves to a localhost route through the surface router. Other targets MAY use different boundary or bridge mechanisms while preserving the same coordination semantics. The `team_message` tool uses these endpoints to deliver messages.
 
 The roster is a compiled artifact — agents do not author it. The compiler generates it from the team manifest and each member's agent manifest.
 
@@ -786,13 +792,13 @@ The compiler generates a small MCP server (stdio transport) that exposes one too
 - **Parameters:** `to` (teammate name from roster, required), `message` (text to send, required)
 - **Returns:** The teammate's response text, or an error if delivery failed or timed out.
 
-The tool implementation POSTs to the teammate's HTTP endpoint (from the roster) using the canonical message envelope. If `team.auth` is declared, the tool attaches the shared secret as a bearer token. The tool call is synchronous — it blocks until the teammate responds or a timeout is reached (default 120 seconds).
+The tool implementation sends the message to the teammate's compiler-generated coordination endpoint (from the roster) using the canonical message envelope. If `team.auth` is declared and the chosen coordination path requires auth, the tool attaches the shared secret. The tool call is synchronous — it blocks until the teammate responds or a timeout is reached (default 120 seconds).
 
-The receiving agent does not need to know the message came from a teammate. It arrives on the agent's HTTP surface like any other message, with `from.type: agent` and a `context_id` scoped to the sender-receiver pair (e.g., `team:planner->researcher`). The runtime uses `context_id` to maintain separate conversation threads per sender.
+The receiving agent does not need to know the message came from a teammate. It arrives through team coordination infrastructure with `from.type: agent` and a `context_id` scoped to the sender-receiver pair (e.g., `team:planner->researcher`). The runtime uses `context_id` to maintain separate conversation threads per sender.
 
-This means the HTTP surface serves both external callers and internal team coordination. One surface, one contract, one endpoint — the caller's identity and auth determine who they are, not which endpoint they hit.
+Direct agent surfaces and team coordination are separate portable concepts. A compiler MAY implement both through one listener or router internally, but the portable spec does not require one shared endpoint for both.
 
-Team members MUST have an HTTP surface. If a team member does not declare `surfaces.http`, the compiler MUST auto-enable an internal HTTP surface that is not publicly exposed but is reachable by the surface router and teammates.
+Team members do not need to declare `surfaces.http` in order to participate in a team. A compiler MAY synthesize internal coordination endpoints or routes for team members even when they do not expose a direct HTTP surface.
 
 ### 4.9 Team Lowering Contract
 
@@ -800,7 +806,7 @@ For team manifests, a conforming compiler MUST preserve the following author int
 
 - which members belong to the team (slot IDs)
 - the team mode and lead
-- which members are external-facing
+- which members are exposed through the team boundary
 - which surfaces are shared versus member-local
 - the compiled roster for each member
 

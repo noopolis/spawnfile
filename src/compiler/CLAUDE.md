@@ -11,11 +11,13 @@ src/compiler/
 ├── helpers.ts                  # Deterministic helper utilities
 ├── compilePlanHelpers.ts       # Fingerprints and shared validation used by graph resolution
 ├── agentSurfaces.ts            # Portable agent-surface resolution helpers
+├── interactiveSurfaceScopes.ts # Shared helpers for runtime validation of interactive surface scope counts
 ├── surfaceDefinitions.ts       # Shared surface-edit command types and manifest-shape helpers
 ├── surfaceSupport.ts           # Runtime surface compatibility checks during graph resolution
 ├── surfaces.ts                 # Resolved docs, skills, and shared-surface merging
 ├── buildCompilePlan.ts         # Manifest graph walk and plan construction
 ├── compileProject.ts           # Adapter execution and output/report emission
+├── compileProjectSupport.ts    # Shared compile-time artifact injection and file writing helpers
 ├── runProject.ts               # `spawnfile run` docker-run planning and execution
 ├── initProject.ts              # `spawnfile init` orchestration around runtime-owned scaffolds
 ├── addProjectNode.ts           # `spawnfile add ...` graph-editing helpers
@@ -23,6 +25,8 @@ src/compiler/
 ├── updateProjectSurfaces.ts    # `spawnfile surface ...` manifest-editing helpers
 ├── executionDefaults.ts        # Effective execution defaults applied during graph resolution
 ├── surfaceRouter.ts              # Surface router script and config generation for team routing
+├── moltnetSkill.ts             # Canonical Moltnet skill installation and local client config emission
+├── moltnetInstallAssets.ts     # Local Moltnet release-bundle staging for container installs
 ├── *.test.ts                   # Tests next to the implementation they cover
 ```
 
