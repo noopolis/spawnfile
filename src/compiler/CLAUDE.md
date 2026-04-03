@@ -22,6 +22,7 @@ src/compiler/
 ├── initProject.ts              # `spawnfile init` orchestration around runtime-owned scaffolds
 ├── addProjectNode.ts           # `spawnfile add ...` graph-editing helpers
 ├── updateProjectModels.ts      # `spawnfile model ...` manifest-editing helpers
+├── updateProjectRuntime.ts     # `spawnfile runtime ...` manifest-editing helpers
 ├── updateProjectSurfaces.ts    # `spawnfile surface ...` manifest-editing helpers
 ├── executionDefaults.ts        # Effective execution defaults applied during graph resolution
 ├── surfaceRouter.ts              # Surface router script and config generation for team routing

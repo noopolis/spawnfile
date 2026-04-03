@@ -4,9 +4,14 @@ import {
   ResolvedTeamNode
 } from "./types.js";
 import { getRuntimeAdapter } from "../runtime/index.js";
+import {
+  PICOCLAW_GATEWAY_BASE_PORT,
+  PICOCLAW_INTERNAL_PICO_TOKEN
+} from "../runtime/picoclaw/pico.js";
 
 export interface RouterRoute {
   agentId: string;
+  runtimeToken?: string;
   runtimeConfigPath?: string;
   runtimeHomePath?: string;
   runtime: string;
@@ -56,7 +61,17 @@ const resolveSequentialRuntimePort = (
 export const generateSurfaceRouterScript = (): string => {
   return `"use strict";
 const http = require("node:http");
+const fs = require("node:fs");
 const { spawn } = require("node:child_process");
+const { WebSocket } = globalThis;
+
+if (typeof fetch !== "function") {
+  throw new Error("[surface-router] global fetch is unavailable");
+}
+
+if (typeof WebSocket !== "function") {
+  throw new Error("[surface-router] global WebSocket is unavailable");
+}
 
 const configPath = process.argv[2];
 if (!configPath) {
@@ -80,8 +95,54 @@ const json = (res, status, data) => {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const stripAnsi = (value) => value.replace(/\\u001b\\[[0-9;]*m/g, "").replace(/\\r/g, "");
-const sanitizeSessionId = (value) => value.replace(/[^A-Za-z0-9._:-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 120) || "default";
-const buildSessionId = (body, targetAgentId, sender) => sanitizeSessionId(body.sessionKey || body.context_id || ("route-" + sender + "-to-" + targetAgentId));
+const sanitizeRouteSessionId = (value) => value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 120) || "default";
+const sanitizePicoSessionId = (value) => value.replace(/[^A-Za-z0-9._:-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 120) || "default";
+const buildSessionId = (body, targetAgentId, sender) => sanitizeRouteSessionId(body.sessionKey || body.context_id || ("route-" + sender + "-to-" + targetAgentId));
+const parseMoltnetContextId = (value) => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("moltnet:")) return null;
+  const chatId = trimmed.slice("moltnet:".length);
+  if (!chatId) return null;
+  return { chatId, contextId: trimmed };
+};
+const buildPicoClawMessage = (body, sender, message) => {
+  const moltnetContext = parseMoltnetContextId(body.context_id);
+  if (!moltnetContext) {
+    return message;
+  }
+
+  return [
+    "[Moltnet context]",
+    "conversation: " + moltnetContext.contextId,
+    "channel: moltnet",
+    "chat_id: " + moltnetContext.chatId,
+    "sender: " + sender,
+    "[/Moltnet context]",
+    "",
+    message
+  ].join("\\n");
+};
+const buildPicoClawDispatch = (body, targetAgentId, sender) => {
+  const moltnetContext = parseMoltnetContextId(body.context_id);
+  if (moltnetContext) {
+    const explicitSessionKey = typeof body.sessionKey === "string" ? body.sessionKey.trim() : "";
+    const sessionId = explicitSessionKey.startsWith("agent:")
+      ? explicitSessionKey
+      : "agent:" + targetAgentId + ":" + moltnetContext.contextId;
+    return {
+      discardDirectReply: true,
+      message: buildPicoClawMessage(body, sender, body.message),
+      sessionId: sanitizePicoSessionId(sessionId)
+    };
+  }
+
+  return {
+    discardDirectReply: false,
+    message: body.message,
+    sessionId: buildSessionId(body, targetAgentId, sender)
+  };
+};
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const readAgentId = (body) => {
   if (typeof body.to === "string" && body.to.trim()) return body.to.trim();
@@ -167,6 +228,65 @@ const parsePicoClawOutput = (stdout, stderr) => {
   }
 
   return cleanedLines[cleanedLines.length - 1] || "";
+};
+
+const sendPicoClawViaPico = async (route, dispatch) => {
+  let pidToken = "";
+  if (route.runtimeHomePath) {
+    try {
+      const pidState = JSON.parse(fs.readFileSync(route.runtimeHomePath + "/.picoclaw.pid", "utf-8"));
+      if (pidState && typeof pidState.token === "string" && pidState.token.trim()) {
+        pidToken = pidState.token.trim();
+      }
+    } catch (_err) {
+      pidToken = "";
+    }
+  }
+  let runtimeToken = route.runtimeToken || "";
+  if (pidToken && runtimeToken && !runtimeToken.startsWith("pico-")) {
+    runtimeToken = "pico-" + pidToken + runtimeToken;
+  }
+  if (!runtimeToken) {
+    throw new Error("PicoClaw route is missing pico token");
+  }
+
+  const socketUrl = new URL(route.runtimeUrl);
+  socketUrl.searchParams.set("session_id", dispatch.sessionId);
+  socketUrl.searchParams.set("token", runtimeToken);
+
+  const ws = await new Promise((resolve, reject) => {
+    const socket = new WebSocket(socketUrl.toString());
+    const timer = setTimeout(() => {
+      try { socket.close(); } catch (_err) {}
+      reject(new Error("PicoClaw pico websocket timeout"));
+    }, 10000);
+
+    socket.addEventListener("open", () => {
+      clearTimeout(timer);
+      resolve(socket);
+    });
+
+    socket.addEventListener("error", (event) => {
+      clearTimeout(timer);
+      const message = event && event.error && event.error.message
+        ? event.error.message
+        : "PicoClaw pico websocket error";
+      reject(new Error(message));
+    });
+  });
+
+  ws.send(JSON.stringify({
+    type: "message.send",
+    session_id: dispatch.sessionId,
+    payload: {
+      content: dispatch.message
+    }
+  }));
+
+  // PicoClaw needs a short grace window after message.send so the gateway can
+  // hand the inbound event to the agent loop before the client disconnects.
+  await sleep(1000);
+  ws.close();
 };
 
 const resolveOpenClawHookUrl = (route) => {
@@ -305,16 +425,23 @@ const sendPicoClaw = async (route, targetAgentId, body, sender, message) => {
     throw new Error("PicoClaw route is missing runtime paths");
   }
 
-  const sessionId = buildSessionId(body, targetAgentId, sender);
+  const dispatch = buildPicoClawDispatch(body, targetAgentId, sender);
   const result = await runCommand(
     "picoclaw",
-    ["agent", "--session", sessionId, "--message", message],
+    [
+      "agent",
+      "--session", dispatch.sessionId,
+      "--message", dispatch.message
+    ],
     {
       HOME: route.runtimeHomePath,
       PICOCLAW_CONFIG: route.runtimeConfigPath,
       PICOCLAW_HOME: route.runtimeHomePath
     }
   );
+  if (dispatch.discardDirectReply) {
+    return "";
+  }
   return parsePicoClawOutput(result.stdout, result.stderr);
 };
 
@@ -518,7 +645,7 @@ export const generateRouterConfig = (
       runtimeName === "openclaw"
         ? resolveSequentialRuntimePort(plan, runtimeName, memberNode.slug, 18789)
         : runtimeName === "picoclaw"
-          ? resolveSequentialRuntimePort(plan, runtimeName, memberNode.slug, 18790)
+          ? resolveSequentialRuntimePort(plan, runtimeName, memberNode.slug, PICOCLAW_GATEWAY_BASE_PORT)
           : undefined;
 
     let runtimeUrl: string;
@@ -534,7 +661,7 @@ export const generateRouterConfig = (
       runtimeHomePath = `/var/lib/spawnfile/instances/openclaw/agent-${memberNode.slug}/home`;
       runtimeConfigPath = `${runtimeHomePath}/.openclaw/openclaw.json`;
     } else if (runtimeName === "picoclaw") {
-      runtimeUrl = `ws://localhost:${httpPort ?? runtimePort ?? 18790}/pico/ws`;
+      runtimeUrl = `ws://localhost:${httpPort ?? runtimePort ?? PICOCLAW_GATEWAY_BASE_PORT}/pico/ws`;
       runtimeHomePath = `/var/lib/spawnfile/instances/picoclaw/agent-${memberNode.slug}/picoclaw`;
       runtimeConfigPath = `${runtimeHomePath}/config.json`;
     } else {
@@ -543,6 +670,9 @@ export const generateRouterConfig = (
 
     routes.push({
       agentId: member.id,
+      ...(runtimeName === "picoclaw" && agentNode.surfaces?.moltnet
+        ? { runtimeToken: PICOCLAW_INTERNAL_PICO_TOKEN }
+        : {}),
       ...(runtimeConfigPath ? { runtimeConfigPath } : {}),
       ...(runtimeHomePath ? { runtimeHomePath } : {}),
       runtime: runtimeName,

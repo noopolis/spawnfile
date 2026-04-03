@@ -140,7 +140,19 @@ describe("generateSurfaceRouterScript", () => {
   it("contains PicoClaw CLI send function", () => {
     const script = generateSurfaceRouterScript();
     expect(script).toContain("sendPicoClaw");
-    expect(script).toContain('["agent", "--session", sessionId, "--message", message]');
+    expect(script).toContain("const { WebSocket } = globalThis;");
+    expect(script).toContain("sendPicoClawViaPico");
+    expect(script).toContain("buildPicoClawDispatch");
+    expect(script).toContain("buildPicoClawMessage");
+    expect(script).toContain('"agent",');
+    expect(script).toContain('"--session", dispatch.sessionId,');
+    expect(script).toContain('"--message", dispatch.message');
+    expect(script).toContain('"[Moltnet context]"');
+    expect(script).toContain('"channel: moltnet"');
+    expect(script).toContain('"chat_id: " + moltnetContext.chatId');
+    expect(script).toContain('discardDirectReply: true');
+    expect(script).toContain('"agent:" + targetAgentId + ":" + moltnetContext.contextId');
+    expect(script).toContain('runtimeToken = "pico-" + pidToken + runtimeToken');
     expect(script).toContain("PICOCLAW_CONFIG");
   });
 
@@ -303,7 +315,7 @@ describe("generateRouterConfig", () => {
     const config = generateRouterConfig(teamNode, plan, 9100);
 
     expect(config.routes).toHaveLength(1);
-    expect(config.routes[0].runtimeUrl).toBe("ws://localhost:18790/pico/ws");
+    expect(config.routes[0].runtimeUrl).toBe("ws://localhost:18990/pico/ws");
     expect(config.routes[0].runtimeHomePath).toBe(
       "/var/lib/spawnfile/instances/picoclaw/agent-pc-agent/picoclaw"
     );
@@ -311,6 +323,35 @@ describe("generateRouterConfig", () => {
       "/var/lib/spawnfile/instances/picoclaw/agent-pc-agent/picoclaw/config.json"
     );
     expect(config.routes[0].runtime).toBe("picoclaw");
+  });
+
+  it("adds pico token metadata for moltnet-backed picoclaw routes", () => {
+    const agent = makeAgentNode("pc-agent", "/project/pc/Spawnfile", "picoclaw", {
+      moltnet: [
+        {
+          memberId: "pc-agent",
+          network: "pasadena_net",
+          rooms: {
+            "apartment-4a": {
+              read: "all",
+              reply: "manual"
+            }
+          },
+          teamSource: "/project/team/Spawnfile"
+        }
+      ]
+    });
+
+    const teamNode = makeTeamNode({
+      members: [
+        { id: "pc-agent", kind: "agent", nodeSource: "/project/pc/Spawnfile", runtimeName: "picoclaw" }
+      ]
+    });
+
+    const plan = makePlan([{ node: agent, slug: "pc-agent" }]);
+    const config = generateRouterConfig(teamNode, plan, 9100);
+
+    expect(config.routes[0].runtimeToken).toBe("spawnfile-internal-pico");
   });
 
   it("uses portable HTTP URL for unknown runtimes", () => {
@@ -430,7 +471,7 @@ describe("generateRouterConfig", () => {
       "/var/lib/spawnfile/instances/openclaw/agent-oc/home/.openclaw/openclaw.json"
     );
     expect(pcRoute?.runtime).toBe("picoclaw");
-    expect(pcRoute?.runtimeUrl).toBe("ws://localhost:18790/pico/ws");
+    expect(pcRoute?.runtimeUrl).toBe("ws://localhost:18990/pico/ws");
     expect(pcRoute?.runtimeConfigPath).toBe(
       "/var/lib/spawnfile/instances/picoclaw/agent-pc/picoclaw/config.json"
     );

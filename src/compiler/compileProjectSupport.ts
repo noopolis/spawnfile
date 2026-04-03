@@ -32,6 +32,7 @@ export interface CompiledNodeOutput {
 export interface TeamCompileSupport {
   hasTeamRouter: boolean;
   memberAgentIds: Map<string, string>;
+  teamConfigFiles: Map<string, string>;
   rosterFiles: Map<string, string>;
   teamMcpScript: string;
 }
@@ -89,6 +90,7 @@ export const prepareTeamCompileSupport = async (
 ): Promise<TeamCompileSupport> => {
   const rosterFiles = new Map<string, string>();
   const memberAgentIds = new Map<string, string>();
+  const teamConfigFiles = new Map<string, string>();
   const teamMcpScript = generateTeamMcpScript();
 
   for (const node of plan.nodes) {
@@ -105,6 +107,18 @@ export const prepareTeamCompileSupport = async (
       }
       rosterFiles.set(memberRef.nodeSource, rosterYaml);
       memberAgentIds.set(memberRef.nodeSource, memberId);
+      teamConfigFiles.set(
+        memberRef.nodeSource,
+        `${JSON.stringify(
+          {
+            agent_name: memberId,
+            ...(teamNode.auth ? { team_secret_env: teamNode.auth.secret } : {}),
+            router_url: `http://localhost:${routerPort}`
+          },
+          null,
+          2
+        )}\n`
+      );
     }
   }
 
@@ -126,6 +140,7 @@ export const prepareTeamCompileSupport = async (
   return {
     hasTeamRouter: rosterFiles.size > 0,
     memberAgentIds,
+    teamConfigFiles,
     rosterFiles,
     teamMcpScript
   };
@@ -161,13 +176,18 @@ export const injectTeamCompileSupportFiles = async (
     upsertEmittedFile(compiled.emittedFiles, {
       content: support.teamMcpScript,
       path: `${workspacePaths.spawnfileDirectory}/team-mcp.js`
+    }),
+    upsertEmittedFile(compiled.emittedFiles, {
+      content: support.teamConfigFiles.get(compiled.value.source) ?? "{}\n",
+      path: `${workspacePaths.spawnfileDirectory}/team.json`
     })
   ];
 
   const rosterBlock =
     "\n\n## Team Roster\n\nYour team roster is available at `.spawnfile/roster.yaml`. " +
-    "Read it to discover your teammates and how to reach them via the `team_message` MCP tool. " +
-    "Use `team_message` for teammate coordination, not the generic `message` tool.\n\n" +
+    "Read it to discover your teammates and how to reach them via the `team_message` MCP tool " +
+    "or the local helper `spawnfile-team-message --to <agent> --message <text>`. " +
+    "Use those teammate-only paths for private coordination instead of the generic message tool.\n\n" +
     "```yaml\n" +
     rosterYaml +
     "```\n";

@@ -91,7 +91,7 @@ describe("runtime container install recipe fallbacks", () => {
         kind: "source_repo",
         remote: "https://github.com/sipeed/picoclaw.git",
         runtimeName: "picoclaw",
-        runtimeRef: "v0.2.3",
+        runtimeRef: "v0.2.5",
         selectionSource: "runtime_registry_ref"
       }
     });
@@ -110,9 +110,9 @@ describe("runtime container install recipe fallbacks", () => {
         kind: "github_release_archive",
         repository: "sipeed/picoclaw",
         runtimeName: "picoclaw",
-        runtimeRef: "v0.2.3",
+        runtimeRef: "v0.2.5",
         selectionSource: "runtime_registry_install",
-        tag: "v0.2.3",
+        tag: "v0.2.5",
         versionedAssets: {
           linux_amd64: "picoclaw_Linux_x86_64.tar.gz",
           linux_arm64: "picoclaw_Linux_arm64.tar.gz"
@@ -125,7 +125,7 @@ describe("runtime container install recipe fallbacks", () => {
     expect(recipe.copyCommands).toEqual([]);
     expect(recipe.commands).toContain(`mkdir -p ${RUNTIME_INSTALL_ROOT}/picoclaw/bin`);
     expect(recipe.commands[1]).toContain(
-      "https://github.com/sipeed/picoclaw/releases/download/v0.2.3/$asset"
+      "https://github.com/sipeed/picoclaw/releases/download/v0.2.5/$asset"
     );
   });
 

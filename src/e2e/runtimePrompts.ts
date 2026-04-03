@@ -93,7 +93,7 @@ const getHealthUrl = (runtime: E2ERuntime): string =>
   runtime === "openclaw"
     ? "http://127.0.0.1:18789/healthz"
     : runtime === "picoclaw"
-      ? "http://127.0.0.1:18790/health"
+      ? "http://127.0.0.1:18990/health"
       : "http://127.0.0.1:3777/api/agents";
 
 export const waitForRuntimeReady = async (

@@ -21,7 +21,7 @@ describe("runtime container install recipes", () => {
     expect(recipe.copyCommands).toEqual([]);
     expect(recipe.commands).toContain(`mkdir -p ${RUNTIME_INSTALL_ROOT}/picoclaw/bin`);
     expect(recipe.commands[1]).toContain(
-      "https://github.com/sipeed/picoclaw/releases/download/v0.2.3/$asset"
+      "https://github.com/sipeed/picoclaw/releases/download/v0.2.5/$asset"
     );
     expect(recipe.commands[1]).toContain(
       `install -m 0755 "$binary_path" ${RUNTIME_INSTALL_ROOT}/picoclaw/bin/picoclaw`

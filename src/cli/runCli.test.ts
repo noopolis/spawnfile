@@ -257,6 +257,30 @@ describe("runCli", () => {
     expect(stdout).toEqual(["updated /tmp/project/Spawnfile"]);
   });
 
+  it("sets a runtime through the CLI", async () => {
+    const stdout: string[] = [];
+    const setProjectRuntime = vi.fn(async () => ({
+      updatedFiles: ["/tmp/project/Spawnfile"]
+    }));
+
+    const exitCode = await runCli(
+      ["runtime", "set", "picoclaw", "/tmp/project", "--recursive"],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { setProjectRuntime }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(setProjectRuntime).toHaveBeenCalledWith({
+      path: "/tmp/project",
+      recursive: true,
+      runtime: "picoclaw"
+    });
+    expect(stdout).toEqual(["updated /tmp/project/Spawnfile"]);
+  });
+
   it("adds a surface through the CLI", async () => {
     const stdout: string[] = [];
     const addProjectSurface = vi.fn(async () => ({

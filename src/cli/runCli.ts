@@ -21,6 +21,7 @@ import {
   removeProjectSurface,
   runProject,
   setProjectPrimaryModel,
+  setProjectRuntime,
   setProjectSurfaceAccess,
   showProjectSurfaces,
   syncProjectAuth
@@ -28,6 +29,7 @@ import {
 import { isSpawnfileError } from "../shared/index.js";
 import { listRuntimeAdapters } from "../runtime/index.js";
 import { registerModelCommands } from "./modelCommands.js";
+import { registerRuntimeCommands } from "./runtimeCommands.js";
 import { registerSurfaceCommands } from "./surfaceCommands.js";
 
 export interface CliStreams {
@@ -59,6 +61,7 @@ export interface CliHandlers {
   requireAuthProfile: typeof requireAuthProfile;
   runProject: typeof runProject;
   setProjectPrimaryModel: typeof setProjectPrimaryModel;
+  setProjectRuntime: typeof setProjectRuntime;
   setProjectSurfaceAccess: typeof setProjectSurfaceAccess;
   showProjectSurfaces: typeof showProjectSurfaces;
   syncProjectAuth: typeof syncProjectAuth;
@@ -83,6 +86,7 @@ const createDefaultHandlers = (): CliHandlers => ({
   requireAuthProfile,
   runProject,
   setProjectPrimaryModel,
+  setProjectRuntime,
   setProjectSurfaceAccess,
   showProjectSurfaces,
   syncProjectAuth
@@ -247,6 +251,7 @@ export const runCli = async (
     });
 
   registerModelCommands(program, handlers, streams);
+  registerRuntimeCommands(program, handlers, streams);
   registerSurfaceCommands(program, handlers, streams);
 
   program

@@ -75,7 +75,7 @@ describe("buildProject", () => {
       "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.3.13"
     );
     expect(dockerfile).toContain(
-      "https://github.com/sipeed/picoclaw/releases/download/v0.2.3/$asset"
+      "https://github.com/sipeed/picoclaw/releases/download/v0.2.5/$asset"
     );
     expect(dockerfile).toContain(
       "https://github.com/TinyAGI/tinyagi/releases/download/v0.0.15/tinyagi-bundle.tar.gz"

@@ -26,12 +26,12 @@ runtimes:
 
   picoclaw:
     remote: git@github.com:sipeed/picoclaw.git
-    ref: v0.2.3
+    ref: v0.2.5
     default_branch: main
     install:
       kind: github_release_archive
       repository: sipeed/picoclaw
-      tag: v0.2.3
+      tag: v0.2.5
       binary: picoclaw
       assets:
         linux_amd64: picoclaw_Linux_x86_64.tar.gz

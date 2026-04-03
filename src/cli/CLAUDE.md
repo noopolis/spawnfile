@@ -9,6 +9,7 @@ src/cli/
 ├── index.ts        # Executable Node entrypoint
 ├── runCli.ts       # Top-level Commander setup and shared CLI types
 ├── modelCommands.ts # `spawnfile model ...` command registration
+├── runtimeCommands.ts # `spawnfile runtime ...` command registration
 ├── surfaceCommands.ts # `spawnfile surface ...` command registration
 └── runCli.test.ts  # CLI behavior tests
 ```

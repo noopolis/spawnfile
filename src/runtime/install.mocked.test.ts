@@ -151,10 +151,10 @@ describe("runtime install selection with mocked registry data", () => {
           binary: "picoclaw",
           kind: "github_release_archive",
           repository: "sipeed/picoclaw",
-          tag: "v0.2.3"
+          tag: "v0.2.5"
         },
         name: "picoclaw",
-        ref: "v0.2.3",
+        ref: "v0.2.5",
         remote: "git@github.com:sipeed/picoclaw.git",
         status: "active"
       }
@@ -168,9 +168,9 @@ describe("runtime install selection with mocked registry data", () => {
       kind: "github_release_archive",
       repository: "sipeed/picoclaw",
       runtimeName: "picoclaw",
-      runtimeRef: "v0.2.3",
+      runtimeRef: "v0.2.5",
       selectionSource: "runtime_registry_install",
-      tag: "v0.2.3",
+      tag: "v0.2.5",
       versionedAssets: {
         linux_amd64: "picoclaw_Linux_x86_64.tar.gz",
         linux_arm64: "picoclaw_Linux_arm64.tar.gz"

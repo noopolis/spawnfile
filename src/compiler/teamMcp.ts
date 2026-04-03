@@ -175,6 +175,100 @@ process.stdin.on("data", async (chunk) => {
 `;
 };
 
+export const generateTeamMessageCliScript = (): string => {
+  return `#!/usr/bin/env node
+"use strict";
+
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv.slice(2);
+let to = "";
+let message = "";
+
+for (let index = 0; index < args.length; index += 1) {
+  const arg = args[index];
+  if (arg === "--to") {
+    to = args[index + 1] || "";
+    index += 1;
+    continue;
+  }
+  if (arg === "--message") {
+    message = args[index + 1] || "";
+    index += 1;
+    continue;
+  }
+}
+
+const fail = (text) => {
+  console.error(text);
+  process.exit(1);
+};
+
+if (!to.trim()) fail("--to is required");
+if (!message.trim()) fail("--message is required");
+
+const resolveConfigPath = () => {
+  const explicit = process.env.SPAWNFILE_TEAM_CONFIG;
+  if (explicit && fs.existsSync(explicit)) {
+    return explicit;
+  }
+
+  let current = process.cwd();
+  while (true) {
+    const candidate = path.join(current, ".spawnfile", "team.json");
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+
+  fail("could not locate .spawnfile/team.json from " + process.cwd());
+};
+
+const configPath = resolveConfigPath();
+const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+const routerUrl = typeof config.router_url === "string" ? config.router_url : "";
+const agentName = typeof config.agent_name === "string" ? config.agent_name : "";
+const teamSecretEnv = typeof config.team_secret_env === "string" ? config.team_secret_env : "";
+const teamSecret = teamSecretEnv ? (process.env[teamSecretEnv] || "") : "";
+
+if (!routerUrl) fail("router_url is not set in " + configPath);
+if (!agentName) fail("agent_name is not set in " + configPath);
+
+const headers = { "Content-Type": "application/json" };
+if (teamSecret) {
+  headers.Authorization = "Bearer " + teamSecret;
+}
+
+const main = async () => {
+  const response = await fetch(routerUrl + "/team/message", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      from: agentName,
+      to,
+      message,
+      context_id: "team:" + agentName + "->" + to
+    })
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    fail(text || ("team message failed with status " + response.status));
+  }
+
+  process.stdout.write(text);
+};
+
+main().catch((error) => fail(error && error.message ? error.message : String(error)));
+`;
+};
+
 /**
  * Generate the MCP server config entry for the team communication tool.
  * This gets injected into each team member's mcp_servers list.

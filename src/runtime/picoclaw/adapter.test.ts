@@ -40,7 +40,7 @@ describe("picoClawAdapter", () => {
         homePathTemplate: "<instance-root>/picoclaw",
         workspacePathTemplate: "<instance-root>/picoclaw/workspace"
       },
-      port: 18790,
+      port: 18990,
       portEnv: "PICOCLAW_GATEWAY_PORT",
       standaloneBaseImage: "debian:bookworm-slim",
       startCommand: ["picoclaw", "gateway", "--allow-empty"],
@@ -190,6 +190,38 @@ describe("picoClawAdapter", () => {
     const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
     expect(config.tools.mcp.enabled).toBe(true);
     expect(config.tools.mcp.servers.local.command).toBe("node");
+  });
+
+  it("enables exec when Moltnet is attached", async () => {
+    const result = await picoClawAdapter.compileAgent({
+      ...node,
+      mcpServers: [],
+      surfaces: {
+        moltnet: [
+          {
+            memberId: "assistant",
+            network: "pasadena_net",
+            rooms: {
+              "apartment-4a": {
+                read: "all",
+                reply: "manual"
+              }
+            },
+            teamSource: "/tmp/Spawnfile"
+          }
+        ]
+      }
+    });
+    const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
+
+    expect(config.channels.pico).toEqual({
+      allow_token_query: true,
+      enabled: true,
+      token: "spawnfile-internal-pico"
+    });
+    expect(config.tools.exec).toEqual({
+      enabled: true
+    });
   });
 
   it("emits fallback models and http MCP servers", async () => {

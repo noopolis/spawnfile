@@ -1,6 +1,7 @@
 import type { ResolvedAgentSurfaces } from "../../compiler/types.js";
 import type { RuntimeContainerConfigEnvBinding } from "../types.js";
 import { SpawnfileError } from "../../shared/index.js";
+import { PICOCLAW_INTERNAL_PICO_TOKEN } from "./pico.js";
 
 export const buildPicoClawChannelConfig = (
   surfaces: ResolvedAgentSurfaces | undefined
@@ -49,6 +50,14 @@ export const buildPicoClawChannelConfig = (
       group_trigger: {
         mention_only: true
       }
+    };
+  }
+
+  if (surfaces.moltnet) {
+    channels.pico = {
+      allow_token_query: true,
+      enabled: true,
+      token: PICOCLAW_INTERNAL_PICO_TOKEN
     };
   }
 

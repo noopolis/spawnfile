@@ -257,7 +257,7 @@ describe("createContainerArtifacts", () => {
 
     expect(dockerfile).toContain("FROM debian:bookworm-slim");
     expect(dockerfile).toContain(
-      "https://github.com/sipeed/picoclaw/releases/download/v0.2.3/$asset"
+      "https://github.com/sipeed/picoclaw/releases/download/v0.2.5/$asset"
     );
     expect(dockerfile).toContain(
       'ln -sf /opt/spawnfile/runtime-installs/picoclaw/bin/picoclaw /usr/local/bin/picoclaw'

@@ -104,12 +104,12 @@ describe("renderDockerfile", () => {
             homePathTemplate: "<instance-root>/home",
             workspacePathTemplate: "<instance-root>/workspace"
           },
-          port: 18790,
+          port: 18990,
           standaloneBaseImage: "debian:bookworm-slim",
           startCommand: ["picoclaw", "gateway"],
           systemDeps: ["tar"]
         },
-        port: 18790
+        port: 18990
       })
     ]);
 
@@ -130,7 +130,7 @@ describe("renderDockerfile", () => {
       "RUN mkdir -p /var/lib/spawnfile && chown -R spawnfile:spawnfile /var/lib/spawnfile /opt/spawnfile"
     );
     expect(dockerfile).toContain("USER spawnfile");
-    expect(dockerfile).toContain("EXPOSE 18789 18790");
+    expect(dockerfile).toContain("EXPOSE 18789 18990");
   });
 
   it("installs python3 when generated entrypoints need JSON config env writes", async () => {

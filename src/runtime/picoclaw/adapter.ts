@@ -27,6 +27,7 @@ import {
   buildPicoClawChannelConfig,
   buildPicoClawSurfaceEnvBindings
 } from "./surfaces.js";
+import { PICOCLAW_GATEWAY_BASE_PORT } from "./pico.js";
 
 const formatModelName = (node: ResolvedAgentNode): string | null => {
   const primary = node.execution?.model?.primary;
@@ -121,6 +122,27 @@ const buildMcpServers = (
   return result;
 };
 
+const buildPicoClawToolsConfig = (
+  node: ResolvedAgentNode
+): Record<string, unknown> | undefined => {
+  const tools: Record<string, unknown> = {};
+
+  if (node.surfaces?.moltnet) {
+    tools.exec = {
+      enabled: true
+    };
+  }
+
+  if (node.mcpServers.length > 0) {
+    tools.mcp = {
+      enabled: true,
+      servers: buildMcpServers(node.mcpServers)
+    };
+  }
+
+  return Object.keys(tools).length > 0 ? tools : undefined;
+};
+
 const buildPicoClawConfig = (node: ResolvedAgentNode): string => {
   const modelName = formatModelName(node);
   const restrictToWorkspace = node.runtime.options.restrict_to_workspace ?? true;
@@ -143,13 +165,9 @@ const buildPicoClawConfig = (node: ResolvedAgentNode): string => {
     config.channels = channels;
   }
 
-  if (node.mcpServers.length > 0) {
-    config.tools = {
-      mcp: {
-        enabled: true,
-        servers: buildMcpServers(node.mcpServers)
-      }
-    };
+  const tools = buildPicoClawToolsConfig(node);
+  if (tools) {
+    config.tools = tools;
   }
 
   return `${JSON.stringify(config, null, 2)}\n`;
@@ -228,7 +246,7 @@ export const picoClawAdapter: RuntimeAdapter = {
       homePathTemplate: "<instance-root>/picoclaw",
       workspacePathTemplate: "<instance-root>/picoclaw/workspace"
     },
-    port: 18790,
+    port: PICOCLAW_GATEWAY_BASE_PORT,
     portEnv: "PICOCLAW_GATEWAY_PORT",
     standaloneBaseImage: "debian:bookworm-slim",
     startCommand: ["picoclaw", "gateway", "--allow-empty"],

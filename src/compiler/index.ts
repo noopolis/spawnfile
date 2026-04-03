@@ -9,4 +9,5 @@ export * from "./surfaceRouter.js";
 export * from "./teamMcp.js";
 export * from "./types.js";
 export * from "./updateProjectModels.js";
+export * from "./updateProjectRuntime.js";
 export * from "./updateProjectSurfaces.js";

@@ -1,4 +1,5 @@
 import type { EmittedFile } from "../runtime/index.js";
+import { generateTeamMessageCliScript } from "./teamMcp.js";
 
 import { createEnvVariableMap, createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
 import {
@@ -46,6 +47,14 @@ export const createContainerArtifacts = async (
   const files: EmittedFile[] = [
     ...createRootfsFiles(runtimePlans),
     ...(options.moltnet?.files ?? []),
+    ...(options.hasTeamRouter
+      ? [
+          {
+            content: generateTeamMessageCliScript(),
+            path: "container/rootfs/usr/local/bin/spawnfile-team-message"
+          } satisfies EmittedFile
+        ]
+      : []),
     {
       content: await renderDockerfile(runtimePlans, {
         hasMoltnet: Boolean(options.moltnet),
@@ -99,7 +108,10 @@ export const createContainerArtifacts = async (
   const runtimesInstalled = [...new Set(runtimePlans.map((plan) => plan.runtimeName))].sort();
 
   return {
-    executablePaths: ["entrypoint.sh"],
+    executablePaths: [
+      "entrypoint.sh",
+      ...(options.hasTeamRouter ? ["container/rootfs/usr/local/bin/spawnfile-team-message"] : [])
+    ],
     files,
     ...(options.moltnet
       ? {

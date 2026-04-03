@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { createTeamMcpServerEntry, generateTeamMcpScript } from "./teamMcp.js";
+import {
+  createTeamMcpServerEntry,
+  generateTeamMcpScript,
+  generateTeamMessageCliScript
+} from "./teamMcp.js";
 
 describe("generateTeamMcpScript", () => {
   it("returns a non-empty string containing team_message", () => {
@@ -49,6 +53,32 @@ describe("generateTeamMcpScript", () => {
   it("posts to the /team/message endpoint", () => {
     const script = generateTeamMcpScript();
     expect(script).toContain("/team/message");
+  });
+});
+
+describe("generateTeamMessageCliScript", () => {
+  it("returns a non-empty string containing team config discovery", () => {
+    const script = generateTeamMessageCliScript();
+    expect(script.length).toBeGreaterThan(0);
+    expect(script).toContain(".spawnfile/team.json");
+    expect(script).toContain("SPAWNFILE_TEAM_CONFIG");
+  });
+
+  it("requires explicit to/message flags", () => {
+    const script = generateTeamMessageCliScript();
+    expect(script).toContain("--to");
+    expect(script).toContain("--message");
+  });
+
+  it("posts to the /team/message endpoint", () => {
+    const script = generateTeamMessageCliScript();
+    expect(script).toContain("/team/message");
+  });
+
+  it("returns syntactically valid JavaScript", () => {
+    const script = generateTeamMessageCliScript();
+    const normalized = script.replace(/^#![^\n]*\n/, "");
+    expect(() => new Function(normalized)).not.toThrow();
   });
 });
 
