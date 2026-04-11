@@ -27,7 +27,7 @@ import {
   buildPicoClawChannelConfig,
   buildPicoClawSurfaceEnvBindings
 } from "./surfaces.js";
-import { PICOCLAW_GATEWAY_BASE_PORT } from "./pico.js";
+import { PICOCLAW_GATEWAY_BASE_PORT, PICOCLAW_INTERNAL_PICO_TOKEN } from "./pico.js";
 
 const formatModelName = (node: ResolvedAgentNode): string | null => {
   const primary = node.execution?.model?.primary;
@@ -251,6 +251,7 @@ export const picoClawAdapter: RuntimeAdapter = {
     standaloneBaseImage: "debian:bookworm-slim",
     startCommand: ["picoclaw", "gateway", "--allow-empty"],
     staticEnv: {
+      PICOCLAW_CHANNELS_PICO_TOKEN: PICOCLAW_INTERNAL_PICO_TOKEN,
       PICOCLAW_GATEWAY_HOST: "0.0.0.0"
     },
     systemDeps: ["bash", "ca-certificates", "curl", "nodejs", "npm", "tar"]

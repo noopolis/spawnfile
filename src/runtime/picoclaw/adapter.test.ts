@@ -45,6 +45,7 @@ describe("picoClawAdapter", () => {
       standaloneBaseImage: "debian:bookworm-slim",
       startCommand: ["picoclaw", "gateway", "--allow-empty"],
       staticEnv: {
+        PICOCLAW_CHANNELS_PICO_TOKEN: "spawnfile-internal-pico",
         PICOCLAW_GATEWAY_HOST: "0.0.0.0"
       },
       systemDeps: ["bash", "ca-certificates", "curl", "nodejs", "npm", "tar"]

@@ -38,7 +38,7 @@ describe("runtime container install recipes", () => {
     expect(recipe.copyCommands).toEqual([]);
     expect(recipe.commands).toEqual([
       `mkdir -p ${RUNTIME_INSTALL_ROOT}/tinyclaw`,
-      `curl -fsSL "https://github.com/TinyAGI/tinyagi/releases/download/v0.0.15/tinyagi-bundle.tar.gz" | tar -xz --strip-components=1 -C ${RUNTIME_INSTALL_ROOT}/tinyclaw`,
+      `curl -fsSL "https://github.com/TinyAGI/tinyagi/releases/download/v0.0.20/tinyagi-bundle.tar.gz" | tar -xz --strip-components=1 -C ${RUNTIME_INSTALL_ROOT}/tinyclaw`,
       `cd ${RUNTIME_INSTALL_ROOT}/tinyclaw && npm rebuild better-sqlite3 --silent`
     ]);
   });

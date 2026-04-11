@@ -186,10 +186,10 @@ describe("runtime install selection with mocked registry data", () => {
           asset: "tinyagi-bundle.tar.gz",
           kind: "github_release_bundle",
           repository: "TinyAGI/tinyagi",
-          tag: "v0.0.15"
+          tag: "v0.0.20"
         },
         name: "tinyclaw",
-        ref: "v0.0.15",
+        ref: "v0.0.20",
         remote: "git@github.com:TinyAGI/tinyclaw.git",
         status: "active"
       }
@@ -203,9 +203,9 @@ describe("runtime install selection with mocked registry data", () => {
       kind: "github_release_bundle",
       repository: "TinyAGI/tinyagi",
       runtimeName: "tinyclaw",
-      runtimeRef: "v0.0.15",
+      runtimeRef: "v0.0.20",
       selectionSource: "runtime_registry_install",
-      tag: "v0.0.15"
+      tag: "v0.0.20"
     });
   });
 

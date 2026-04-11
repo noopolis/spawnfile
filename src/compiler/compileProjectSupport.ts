@@ -1,6 +1,6 @@
 import path from "node:path";
 import { execFile as execFileCallback } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { chmod, readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
 import { ensureDirectory, writeUtf8File } from "../filesystem/index.js";
@@ -19,6 +19,9 @@ import { generateTeamRosters } from "./teamRoster.js";
 import type { CompilePlan, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 
 const execFile = promisify(execFileCallback);
+
+const hasMoltnetAttachment = (agentNode: ResolvedAgentNode | undefined): boolean =>
+  (agentNode?.surfaces?.moltnet?.length ?? 0) > 0;
 
 export interface CompiledNodeOutput {
   emittedFiles: EmittedFile[];
@@ -79,6 +82,9 @@ export const writeEmittedFiles = async (
       const targetPath = path.join(outputDirectory, file.path);
       await ensureDirectory(path.dirname(targetPath));
       await writeUtf8File(targetPath, file.content);
+      if (file.mode !== undefined) {
+        await chmod(targetPath, file.mode);
+      }
     })
   );
 };
@@ -105,6 +111,16 @@ export const prepareTeamCompileSupport = async (
       if (!memberRef) {
         continue;
       }
+      const memberNode = plan.nodes.find(
+        (node) => node.kind === "agent" && node.value.source === memberRef.nodeSource
+      );
+      if (
+        memberNode &&
+        memberNode.kind === "agent" &&
+        hasMoltnetAttachment(memberNode.value as ResolvedAgentNode)
+      ) {
+        continue;
+      }
       rosterFiles.set(memberRef.nodeSource, rosterYaml);
       memberAgentIds.set(memberRef.nodeSource, memberId);
       teamConfigFiles.set(
@@ -123,18 +139,20 @@ export const prepareTeamCompileSupport = async (
   }
 
   const surfaceRouterScript = generateSurfaceRouterScript();
-  for (const node of plan.nodes) {
-    if (node.kind !== "team") {
-      continue;
-    }
+  if (rosterFiles.size > 0) {
+    for (const node of plan.nodes) {
+      if (node.kind !== "team") {
+        continue;
+      }
 
-    const teamNode = node.value as ResolvedTeamNode;
-    const routerConfig = generateRouterConfig(teamNode, plan, routerPort);
-    await writeUtf8File(path.join(outputDirectory, "surface-router.js"), surfaceRouterScript);
-    await writeUtf8File(
-      path.join(outputDirectory, "router-config.json"),
-      JSON.stringify(routerConfig, null, 2) + "\n"
-    );
+      const teamNode = node.value as ResolvedTeamNode;
+      const routerConfig = generateRouterConfig(teamNode, plan, routerPort);
+      await writeUtf8File(path.join(outputDirectory, "surface-router.js"), surfaceRouterScript);
+      await writeUtf8File(
+        path.join(outputDirectory, "router-config.json"),
+        JSON.stringify(routerConfig, null, 2) + "\n"
+      );
+    }
   }
 
   return {

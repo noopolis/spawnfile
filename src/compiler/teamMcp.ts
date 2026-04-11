@@ -18,7 +18,11 @@ const TOOL_DEFINITION = {
     type: "object",
     properties: {
       to: { type: "string", description: "Teammate name from your roster" },
-      message: { type: "string", description: "The message to send" }
+      message: { type: "string", description: "The message to send" },
+      wait: {
+        type: "boolean",
+        description: "Wait for the teammate's direct response. Set false for fire-and-forget wakeups."
+      }
     },
     required: ["to", "message"]
   }
@@ -95,7 +99,8 @@ const handleToolsCall = async (id, params) => {
         from: agentName,
         to: args.to,
         message: args.message,
-        context_id: "team:" + agentName + "->" + args.to
+        context_id: "team:" + agentName + "->" + args.to,
+        await_response: args.wait !== false
       })
     });
 
@@ -184,6 +189,7 @@ const path = require("node:path");
 const args = process.argv.slice(2);
 let to = "";
 let message = "";
+let noWait = false;
 
 for (let index = 0; index < args.length; index += 1) {
   const arg = args[index];
@@ -195,6 +201,10 @@ for (let index = 0; index < args.length; index += 1) {
   if (arg === "--message") {
     message = args[index + 1] || "";
     index += 1;
+    continue;
+  }
+  if (arg === "--no-wait") {
+    noWait = true;
     continue;
   }
 }
@@ -253,7 +263,8 @@ const main = async () => {
       from: agentName,
       to,
       message,
-      context_id: "team:" + agentName + "->" + to
+      context_id: "team:" + agentName + "->" + to,
+      await_response: !noWait
     })
   });
 

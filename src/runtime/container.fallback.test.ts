@@ -137,7 +137,7 @@ describe("runtime container install recipe fallbacks", () => {
         kind: "source_repo",
         remote: "https://github.com/TinyAGI/tinyclaw.git",
         runtimeName: "tinyclaw",
-        runtimeRef: "v0.0.15",
+        runtimeRef: "v0.0.20",
         selectionSource: "runtime_registry_ref"
       }
     });
@@ -156,9 +156,9 @@ describe("runtime container install recipe fallbacks", () => {
         kind: "github_release_bundle",
         repository: "TinyAGI/tinyagi",
         runtimeName: "tinyclaw",
-        runtimeRef: "v0.0.15",
+        runtimeRef: "v0.0.20",
         selectionSource: "runtime_registry_install",
-        tag: "v0.0.15"
+        tag: "v0.0.20"
       }
     });
     const recipe = await createRuntimeInstallRecipe("tinyclaw");
@@ -167,7 +167,7 @@ describe("runtime container install recipe fallbacks", () => {
     expect(recipe.copyCommands).toEqual([]);
     expect(recipe.commands).toEqual([
       `mkdir -p ${RUNTIME_INSTALL_ROOT}/tinyclaw`,
-      `curl -fsSL "https://github.com/TinyAGI/tinyagi/releases/download/v0.0.15/tinyagi-bundle.tar.gz" | tar -xz --strip-components=1 -C ${RUNTIME_INSTALL_ROOT}/tinyclaw`,
+      `curl -fsSL "https://github.com/TinyAGI/tinyagi/releases/download/v0.0.20/tinyagi-bundle.tar.gz" | tar -xz --strip-components=1 -C ${RUNTIME_INSTALL_ROOT}/tinyclaw`,
       `cd ${RUNTIME_INSTALL_ROOT}/tinyclaw && npm rebuild better-sqlite3 --silent`
     ]);
   });

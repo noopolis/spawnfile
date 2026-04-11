@@ -385,82 +385,25 @@ export const renderEntrypoint = (
   const moltnetServerPlans = options.moltnet?.serverPlans ?? [];
   const moltnetBridgePlans = options.moltnet?.bridgePlans ?? [];
 
-  if (runtimePlans.length === 1) {
+  if (
+    runtimePlans.length === 1 &&
+    !options.hasTeamRouter &&
+    moltnetServerPlans.length === 0 &&
+    moltnetBridgePlans.length === 0
+  ) {
     const plan = runtimePlans[0]!;
     const commandTokens = resolveStartCommand(plan);
     const envAssignments = createEnvironmentAssignments(plan);
     const envFileWrites = createEnvFileWrites(plan);
     const configEnvWrites = createConfigEnvWrites(plan);
 
-    if (options.hasTeamRouter) {
-      // Multi-process mode for single-runtime teams: router + runtime
-      lines.push(
-        "PIDS=()",
-        "",
-        "terminate_children() {",
-        '  for pid in "${PIDS[@]:-}"; do',
-        '    kill "$pid" 2>/dev/null || true',
-        "  done",
-        "}",
-        "",
-        "trap terminate_children INT TERM EXIT",
-        "",
-        ...(options.hasTeamRouter
-          ? [
-              "node /opt/spawnfile/surface-router.js /opt/spawnfile/router-config.json &",
-              'PIDS+=("$!")',
-              ""
-            ]
-          : []),
-        ...moltnetServerPlans.flatMap((serverPlan) => [
-          `MOLTNET_LISTEN_ADDR=${shellQuote(`:${serverPlan.port}`)} MOLTNET_NETWORK_ID=${shellQuote(serverPlan.networkId)} MOLTNET_NETWORK_NAME=${shellQuote(serverPlan.name)} /usr/local/bin/moltnet &`,
-          'PIDS+=("$!")',
-          ""
-        ]),
-        `mkdir -p ${shellQuote(plan.instancePaths.workspacePath)}`,
-        `require_file ${shellQuote(plan.instancePaths.configPath)}`,
-        ...envFileWrites,
-        ...configEnvWrites,
-        `${envAssignments.join(" ")} ${commandTokens.map(shellQuote).join(" ")} &`,
-        'PIDS+=("$!")',
-        "",
-        ...createRuntimeReadinessWait(plan),
-        ...moltnetServerPlans.flatMap((serverPlan) => [
-          `until curl -sf ${shellQuote(`http://127.0.0.1:${serverPlan.port}/healthz`)} >/dev/null; do sleep 1; done`,
-          ...serverPlan.rooms.map(
-            (room) =>
-              `curl -sf -X POST -H 'Content-Type: application/json' -d ${shellQuote(
-                JSON.stringify({
-                  id: room.id,
-                  members: room.members
-                })
-              )} ${shellQuote(`http://127.0.0.1:${serverPlan.port}/v1/rooms`)} >/dev/null || true`
-          ),
-          ""
-        ]),
-        ...moltnetBridgePlans.flatMap((bridgePlan) => [
-          `/usr/local/bin/moltnet-bridge ${shellQuote(bridgePlan.configPath)} &`,
-          'PIDS+=("$!")',
-          ""
-        ]),
-        "status=0",
-        'for pid in "${PIDS[@]}"; do',
-        '  if ! wait "$pid"; then',
-        "    status=1",
-        "  fi",
-        "done",
-        "",
-        'exit "$status"'
-      );
-    } else {
-      lines.push(
-        `mkdir -p ${shellQuote(plan.instancePaths.workspacePath)}`,
-        `require_file ${shellQuote(plan.instancePaths.configPath)}`,
-        ...envFileWrites,
-        ...configEnvWrites,
-        `${envAssignments.join(" ")} exec ${commandTokens.map(shellQuote).join(" ")}`
-      );
-    }
+    lines.push(
+      `mkdir -p ${shellQuote(plan.instancePaths.workspacePath)}`,
+      `require_file ${shellQuote(plan.instancePaths.configPath)}`,
+      ...envFileWrites,
+      ...configEnvWrites,
+      `${envAssignments.join(" ")} exec ${commandTokens.map(shellQuote).join(" ")}`
+    );
 
     return `${lines.join("\n").trimEnd()}\n`;
   }

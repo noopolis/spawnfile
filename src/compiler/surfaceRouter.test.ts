@@ -75,6 +75,8 @@ describe("generateSurfaceRouterScript", () => {
   it("contains handler for /team/message", () => {
     const script = generateSurfaceRouterScript();
     expect(script).toContain("/team/message");
+    expect(script).toContain("await_response");
+    expect(script).toContain("sendToRouteNoWait");
   });
 
   it("supports OpenClaw hook payloads on /team/message", () => {
@@ -108,6 +110,7 @@ describe("generateSurfaceRouterScript", () => {
   it("contains TinyClaw async send function", () => {
     const script = generateSurfaceRouterScript();
     expect(script).toContain("sendTinyClaw");
+    expect(script).toContain("sendTinyClawNoWait");
     expect(script).toContain("/api/responses/pending");
     expect(script).toContain("/ack");
   });
@@ -132,6 +135,7 @@ describe("generateSurfaceRouterScript", () => {
   it("contains OpenClaw CLI send function", () => {
     const script = generateSurfaceRouterScript();
     expect(script).toContain("sendOpenClaw");
+    expect(script).toContain("sendOpenClawNoWait");
     expect(script).toContain('["agent", "--session-id", sessionId, "--message", message, "--json"]');
     expect(script).toContain("OPENCLAW_CONFIG_PATH");
     expect(script).toContain('body.sessionKey || body.context_id');
@@ -140,6 +144,7 @@ describe("generateSurfaceRouterScript", () => {
   it("contains PicoClaw CLI send function", () => {
     const script = generateSurfaceRouterScript();
     expect(script).toContain("sendPicoClaw");
+    expect(script).toContain("sendPicoClawNoWait");
     expect(script).toContain("const { WebSocket } = globalThis;");
     expect(script).toContain("sendPicoClawViaPico");
     expect(script).toContain("buildPicoClawDispatch");

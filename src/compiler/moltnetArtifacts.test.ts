@@ -160,7 +160,10 @@ describe("moltnetArtifacts", () => {
         file.path.endsWith("research-cell-local_lab-orchestrator.json")
       );
       expect(bridgeConfig?.content).toContain(
-        '"control_url": "http://127.0.0.1:9100/team/message"'
+        '"gateway_url": "ws://127.0.0.1:18789"'
+      );
+      expect(bridgeConfig?.content).toContain(
+        '"home_path": "/var/lib/spawnfile/instances/openclaw/agent-orchestrator/home"'
       );
       expect(bridgeConfig?.content).toContain('"network_id": "local_lab"');
     },
@@ -182,6 +185,107 @@ describe("moltnetArtifacts", () => {
     expect(artifacts?.serverPlans).toHaveLength(1);
     expect(artifacts?.publishedPorts).toEqual([]);
     expect(artifacts?.files).toEqual([]);
+  });
+
+  it("emits direct pico command and tinyclaw runtime ingress config", async () => {
+    const plan = createPlan();
+    plan.nodes.push(
+      {
+        id: "agent-2",
+        kind: "agent",
+        runtimeName: "picoclaw",
+        slug: "researcher",
+        value: {
+          description: "",
+          docs: [],
+          env: {},
+          execution: undefined,
+          kind: "agent",
+          mcpServers: [],
+          name: "researcher-agent",
+          policyMode: null,
+          policyOnDegrade: null,
+          runtime: { name: "picoclaw", options: {} },
+          secrets: [],
+          skills: [],
+          source: "/tmp/agents/researcher/Spawnfile",
+          surfaces: {
+            moltnet: [
+              {
+                memberId: "researcher",
+                network: "local_lab",
+                rooms: {
+                  research: {
+                    read: "all",
+                    reply: "auto"
+                  }
+                },
+                teamSource: "/tmp/team/Spawnfile"
+              }
+            ]
+          },
+          subagents: []
+        }
+      },
+      {
+        id: "agent-3",
+        kind: "agent",
+        runtimeName: "tinyclaw",
+        slug: "assistant",
+        value: {
+          description: "",
+          docs: [],
+          env: {},
+          execution: undefined,
+          kind: "agent",
+          mcpServers: [],
+          name: "assistant-agent",
+          policyMode: null,
+          policyOnDegrade: null,
+          runtime: { name: "tinyclaw", options: {} },
+          secrets: [],
+          skills: [],
+          source: "/tmp/agents/assistant/Spawnfile",
+          surfaces: {
+            moltnet: [
+              {
+                memberId: "assistant",
+                network: "local_lab",
+                rooms: {
+                  research: {
+                    read: "all",
+                    reply: "auto"
+                  }
+                },
+                teamSource: "/tmp/team/Spawnfile"
+              }
+            ]
+          },
+          subagents: []
+        }
+      }
+    );
+
+    const artifacts = await generateMoltnetArtifacts(plan);
+    const researcherConfig = artifacts?.files.find((file) =>
+      file.path.endsWith("research-cell-local_lab-researcher.json")
+    );
+    const assistantConfig = artifacts?.files.find((file) =>
+      file.path.endsWith("research-cell-local_lab-assistant.json")
+    );
+
+    expect(researcherConfig?.content).toContain('"command": "/usr/local/bin/picoclaw"');
+    expect(researcherConfig?.content).toContain(
+      '"config_path": "/var/lib/spawnfile/instances/picoclaw/agent-researcher/picoclaw/config.json"'
+    );
+    expect(researcherConfig?.content).toContain(
+      '"home_path": "/var/lib/spawnfile/instances/picoclaw/agent-researcher/picoclaw"'
+    );
+    expect(assistantConfig?.content).toContain('"inbound_url": "http://127.0.0.1:3777/api/message"');
+    expect(assistantConfig?.content).toContain('"ack_url": "http://127.0.0.1:3777/api/responses"');
+    expect(assistantConfig?.content).toContain(
+      '"outbound_url": "http://127.0.0.1:3777/api/responses/pending?channel=moltnet%3Alocal_lab%3Aassistant"'
+    );
   });
 
   it("publishes only networks marked expose: true", async () => {

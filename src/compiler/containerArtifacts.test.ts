@@ -387,7 +387,7 @@ describe("createContainerArtifacts", () => {
     ]);
     expect(entrypoint).toContain("apply_json_env_value");
     expect(entrypoint).toContain(
-      "apply_json_env_value '/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/settings.json' 'ANTHROPIC_API_KEY' 'models.anthropic.auth_token'"
+      "apply_json_env_value '/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/settings.json' 'ANTHROPIC_API_KEY' 'models.anthropic.api_key'"
     );
   });
 

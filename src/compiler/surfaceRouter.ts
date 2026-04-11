@@ -402,6 +402,25 @@ const sendTinyClaw = async (baseUrl, targetAgentId, fromAgent, message) => {
   throw new Error("TinyClaw response timeout after " + maxWait + "ms");
 };
 
+const sendTinyClawNoWait = async (baseUrl, targetAgentId, fromAgent, message) => {
+  const channel = "team:" + fromAgent;
+  const postRes = await fetch(baseUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: message,
+      agent: targetAgentId,
+      sender: fromAgent,
+      channel: channel
+    })
+  });
+
+  if (!postRes.ok) {
+    const errBody = await postRes.text();
+    throw new Error("TinyClaw POST failed (" + postRes.status + "): " + errBody);
+  }
+};
+
 const sendOpenClaw = async (route, targetAgentId, body, sender, message) => {
   if (!route.runtimeConfigPath || !route.runtimeHomePath) {
     throw new Error("OpenClaw route is missing runtime paths");
@@ -418,6 +437,18 @@ const sendOpenClaw = async (route, targetAgentId, body, sender, message) => {
     }
   );
   return parseOpenClawOutput(result.stdout);
+};
+
+const sendOpenClawNoWait = async (route, targetAgentId, body, sender) => {
+  return sendOpenClawHook(route, {
+    agentId: targetAgentId,
+    deliver: false,
+    from: body.from,
+    message: body.message,
+    name: sender,
+    sessionKey: buildSessionId(body, targetAgentId, sender),
+    wakeMode: "now"
+  });
 };
 
 const sendPicoClaw = async (route, targetAgentId, body, sender, message) => {
@@ -445,6 +476,11 @@ const sendPicoClaw = async (route, targetAgentId, body, sender, message) => {
   return parsePicoClawOutput(result.stdout, result.stderr);
 };
 
+const sendPicoClawNoWait = async (route, targetAgentId, body, sender) => {
+  const dispatch = buildPicoClawDispatch(body, targetAgentId, sender);
+  await sendPicoClawViaPico(route, dispatch);
+};
+
 const sendDefault = async (targetUrl, body, authHeaders) => {
   const response = await fetch(targetUrl, {
     method: "POST",
@@ -458,6 +494,23 @@ const sendDefault = async (targetUrl, body, authHeaders) => {
   });
   const result = await response.json();
   return result.message || result.response || JSON.stringify(result);
+};
+
+const sendToRouteNoWait = async (route, body, targetAgentId, sender, authHeaders) => {
+  if (route.runtime === "tinyclaw") {
+    await sendTinyClawNoWait(route.runtimeUrl, targetAgentId, sender, body.message);
+    return "";
+  }
+  if (route.runtime === "openclaw") {
+    await sendOpenClawNoWait(route, targetAgentId, body, sender);
+    return "";
+  }
+  if (route.runtime === "picoclaw") {
+    await sendPicoClawNoWait(route, targetAgentId, body, sender);
+    return "";
+  }
+  await sendDefault(route.runtimeUrl, body, authHeaders);
+  return "";
 };
 
 const sendToRoute = async (route, body, targetAgentId, sender, authHeaders) => {
@@ -519,7 +572,10 @@ const server = http.createServer(async (req, res) => {
       }
 
       const sender = readSender(body);
-      const responseMessage = await sendToRoute(route, body, targetAgentId, sender, authHeaders);
+      const shouldAwaitResponse = body.await_response !== false;
+      const responseMessage = shouldAwaitResponse
+        ? await sendToRoute(route, body, targetAgentId, sender, authHeaders)
+        : await sendToRouteNoWait(route, body, targetAgentId, sender, authHeaders);
 
       if (isHookDispatch(body)) {
         json(res, 200, {
@@ -529,6 +585,11 @@ const server = http.createServer(async (req, res) => {
           sessionKey: typeof body.sessionKey === "string" ? body.sessionKey : null,
           summary: responseMessage || null
         });
+        return;
+      }
+
+      if (!shouldAwaitResponse) {
+        json(res, 200, { ok: true, from: targetAgentId, delivered: false });
         return;
       }
 

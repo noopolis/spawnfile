@@ -277,7 +277,7 @@ describe("compileProject", () => {
       "https://github.com/sipeed/picoclaw/releases/download/v0.2.5/$asset"
     );
     expect(dockerfile).toContain(
-      "https://github.com/TinyAGI/tinyagi/releases/download/v0.0.15/tinyagi-bundle.tar.gz"
+      "https://github.com/TinyAGI/tinyagi/releases/download/v0.0.20/tinyagi-bundle.tar.gz"
     );
     expect(dockerfile).not.toContain("runtime-sources");
     expect(dockerfile).not.toContain("go build -o /usr/local/bin/picoclaw");
@@ -464,7 +464,10 @@ describe("compileProject", () => {
         expect(entrypoint).toContain("/usr/local/bin/moltnet");
         expect(entrypoint).toContain("/usr/local/bin/moltnet-bridge");
         expect(entrypoint).toContain("http://127.0.0.1:8787/v1/rooms");
-        expect(bridgeConfig).toContain('"control_url": "http://127.0.0.1:9100/team/message"');
+        expect(bridgeConfig).toContain('"gateway_url": "ws://127.0.0.1:18789"');
+        expect(bridgeConfig).toContain(
+          '"home_path": "/var/lib/spawnfile/instances/openclaw/agent-orchestrator-agent/home"'
+        );
         expect(
           await readUtf8File(path.join(outputDirectory, "moltnet-bin", "moltnet"))
         ).toContain("echo moltnet");
@@ -474,8 +477,8 @@ describe("compileProject", () => {
         await expect(
           fileExists(path.join(outputDirectory, "moltnet-bin", "moltnet-node"))
         ).resolves.toBe(true);
-        expect(
-          await readUtf8File(
+        await expect(
+          fileExists(
             path.join(
               outputDirectory,
               "runtimes",
@@ -487,7 +490,10 @@ describe("compileProject", () => {
               "roster.yaml"
             )
           )
-        ).toContain("research-cell");
+        ).resolves.toBe(false);
+        await expect(fileExists(path.join(outputDirectory, "surface-router.js"))).resolves.toBe(
+          false
+        );
         expect(
           await readUtf8File(
             path.join(
@@ -500,7 +506,7 @@ describe("compileProject", () => {
               "AGENTS.md"
             )
           )
-        ).toContain("## Team Roster");
+        ).not.toContain("## Team Roster");
         expect(
           await readUtf8File(
             path.join(

@@ -122,7 +122,7 @@ describe("prepareTinyClawRuntimeAuth", () => {
     });
 
     expect(result.coveredModelSecrets).toEqual(["ANTHROPIC_API_KEY", "OPENAI_API_KEY"]);
-    expect(result.mountArgs).toHaveLength(2);
+    expect(result.mountArgs).toHaveLength(6);
     const mountedSettingsPath = result.mountArgs[1]!.split(":")[0]!;
     const mountedSettings = JSON.parse(await readUtf8File(mountedSettingsPath));
     expect(mountedSettings.models).toEqual({ provider: "openai" });
@@ -132,6 +132,10 @@ describe("prepareTinyClawRuntimeAuth", () => {
         provider: "openai"
       }
     });
+    const mountedClaudePath = result.mountArgs[3]!.split(":")[0]!;
+    expect(await readUtf8File(mountedClaudePath)).toContain("\"accessToken\":\"claude-access\"");
+    const mountedCodexPath = result.mountArgs[5]!.split(":")[0]!;
+    expect(await readUtf8File(mountedCodexPath)).toContain("\"access_token\":\"codex-access\"");
   });
 
   it("does not cover secrets when matching env vars are already set", async () => {

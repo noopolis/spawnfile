@@ -147,6 +147,14 @@ const createContainerTargets = async (
   inputs.map((input) => {
     const agent = input.kind === "agent" ? (input.value as ResolvedAgentNode) : null;
     const configEnvBindings = [
+      ...(agent?.surfaces?.moltnet
+        ? [
+            {
+              envName: "OPENCLAW_HOOKS_TOKEN",
+              jsonPath: "hooks.token"
+            }
+          ]
+        : []),
       ...(buildOpenClawSurfaceEnvBindings(agent?.surfaces) ?? []),
       ...(agent ? (buildOpenClawMoltnetEnvBindings(agent.runtime.options) ?? []) : [])
     ];

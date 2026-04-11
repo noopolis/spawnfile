@@ -40,6 +40,7 @@ const SINGLE_AGENT_SCENARIOS: DockerAuthE2EScenario[] = [
   createSingleAgentScenario("picoclaw", "openai", "gpt-5", "api_key"),
   createSingleAgentScenario("picoclaw", "openai", "gpt-5", "codex"),
   createSingleAgentScenario("picoclaw", "anthropic", "claude-sonnet-4-5", "claude-code"),
+  createSingleAgentScenario("tinyclaw", "openai", "gpt-5", "api_key"),
   createSingleAgentScenario("tinyclaw", "openai", "gpt-5", "codex"),
   createSingleAgentScenario("tinyclaw", "anthropic", "claude-sonnet-4-5", "claude-code")
 ];

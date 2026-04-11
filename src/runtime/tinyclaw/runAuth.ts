@@ -17,20 +17,28 @@ const createMountArgs = (hostPath: string, containerPath: string): string[] => [
   `${hostPath}:${containerPath}`
 ];
 
-const writePatchedSettings = async (
+const writeRuntimeAuthFile = async (
   input: RuntimeAuthPreparationInput,
-  config: Record<string, unknown>
+  relativePath: string,
+  content: string
 ): Promise<string> => {
   const hostPath = path.join(
     input.tempRoot,
     "runtime-auth",
     "tinyclaw",
     input.instance.id,
-    "settings.json"
+    ...relativePath.split("/")
   );
   await ensureDirectory(path.dirname(hostPath));
-  await writeUtf8File(hostPath, `${JSON.stringify(config, null, 2)}\n`);
+  await writeUtf8File(hostPath, content);
   return hostPath;
+};
+
+const writePatchedSettings = async (
+  input: RuntimeAuthPreparationInput,
+  config: Record<string, unknown>
+): Promise<string> => {
+  return writeRuntimeAuthFile(input, "settings.json", `${JSON.stringify(config, null, 2)}\n`);
 };
 
 export const prepareTinyClawRuntimeAuth = async (
@@ -63,9 +71,38 @@ export const prepareTinyClawRuntimeAuth = async (
     await readUtf8File(resolveRootfsSourcePath(input.outputDirectory, input.instance.config_path))
   ) as Record<string, unknown>;
   const patchedConfigPath = await writePatchedSettings(input, sourceConfig);
+  const mountArgs = createMountArgs(patchedConfigPath, input.instance.config_path);
+
+  if (input.instance.home_path && input.instance.model_auth_methods.anthropic === "claude-code" && claudeCode) {
+    const mountedClaudePath = await writeRuntimeAuthFile(
+      input,
+      ".claude/.credentials.json",
+      await readUtf8File(path.join(input.authProfile.imports["claude-code"]!.path, ".credentials.json"))
+    );
+    mountArgs.push(
+      ...createMountArgs(
+        mountedClaudePath,
+        path.posix.join(input.instance.home_path, ".claude", ".credentials.json")
+      )
+    );
+  }
+
+  if (input.instance.home_path && input.instance.model_auth_methods.openai === "codex" && codex) {
+    const mountedAuthPath = await writeRuntimeAuthFile(
+      input,
+      ".codex/auth.json",
+      await readUtf8File(path.join(input.authProfile.imports.codex!.path, "auth.json"))
+    );
+    mountArgs.push(
+      ...createMountArgs(
+        mountedAuthPath,
+        path.posix.join(input.instance.home_path, ".codex", "auth.json")
+      )
+    );
+  }
 
   return {
     coveredModelSecrets,
-    mountArgs: createMountArgs(patchedConfigPath, input.instance.config_path)
+    mountArgs
   };
 };

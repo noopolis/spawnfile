@@ -1,4 +1,5 @@
 import type { EmittedFile } from "../runtime/index.js";
+import { getRuntimeAdapter } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import type {
@@ -35,14 +36,126 @@ export interface MoltnetArtifacts {
 }
 
 const DEFAULT_MOLTNET_PORT = 8787;
-const ROUTER_CONTROL_URL = "http://127.0.0.1:9100/team/message";
+const DEFAULT_TINYCLAW_PORT = 3777;
 const ROOTFS_PREFIX = "container/rootfs";
+const INSTANCE_ROOT_PLACEHOLDER = "<instance-root>";
+const CONFIG_FILE_PLACEHOLDER = "<config-file>";
 
 const createServerKey = (teamSource: string, networkId: string): string =>
   `${teamSource}::${networkId}`;
 
 const createBridgeConfigPath = (teamSlug: string, networkId: string, agentId: string): string =>
   `${ROOTFS_PREFIX}/var/lib/spawnfile/moltnet/bridges/${teamSlug}-${networkId}-${agentId}.json`;
+
+const resolveSequentialRuntimePort = (
+  plan: CompilePlan,
+  runtimeName: string,
+  slug: string
+): number | undefined => {
+  const adapter = getRuntimeAdapter(runtimeName);
+  const basePort = adapter.container.port;
+  if (basePort === undefined) {
+    return undefined;
+  }
+
+  const runtimeAgents = plan.nodes.filter(
+    (node) => node.kind === "agent" && node.runtimeName === runtimeName
+  );
+  const index = runtimeAgents.findIndex((node) => node.slug === slug);
+  if (index < 0) {
+    return undefined;
+  }
+
+  return basePort + (index * (adapter.container.portStride ?? 1));
+};
+
+const createTinyClawChannel = (networkId: string, agentId: string): string =>
+  `moltnet:${networkId}:${agentId}`;
+
+const replaceContainerPathTemplate = (
+  template: string,
+  instanceRoot: string,
+  configFileName: string
+): string =>
+  template
+    .replaceAll(INSTANCE_ROOT_PLACEHOLDER, instanceRoot)
+    .replaceAll(CONFIG_FILE_PLACEHOLDER, configFileName);
+
+const resolveRuntimeInstancePaths = (
+  runtimeName: string,
+  slug: string
+): { configPath: string; homePath?: string } => {
+  const adapter = getRuntimeAdapter(runtimeName);
+  const instanceRoot = `/var/lib/spawnfile/instances/${runtimeName}/agent-${slug}`;
+
+  return {
+    configPath: replaceContainerPathTemplate(
+      adapter.container.instancePaths.configPathTemplate,
+      instanceRoot,
+      adapter.container.configFileName
+    ),
+    homePath: adapter.container.instancePaths.homePathTemplate
+      ? replaceContainerPathTemplate(
+          adapter.container.instancePaths.homePathTemplate,
+          instanceRoot,
+          adapter.container.configFileName
+        )
+      : undefined
+  };
+};
+
+const resolveRuntimeConfig = (
+  plan: CompilePlan,
+  agentNode: ResolvedAgentNode,
+  nodeSlug: string,
+  networkId: string,
+  agentId: string
+): Record<string, string> => {
+  switch (agentNode.runtime.name) {
+    case "openclaw": {
+      const port = resolveSequentialRuntimePort(plan, "openclaw", nodeSlug);
+      if (!port) {
+        throw new SpawnfileError(
+          "compile_error",
+          `Unable to resolve OpenClaw gateway port for Moltnet agent ${agentNode.name}`
+        );
+      }
+      const instancePaths = resolveRuntimeInstancePaths("openclaw", nodeSlug);
+
+      return {
+        gateway_url: `ws://127.0.0.1:${port}`,
+        ...(instancePaths.homePath ? { home_path: instancePaths.homePath } : {}),
+        kind: "openclaw",
+      };
+    }
+    case "picoclaw": {
+      const instancePaths = resolveRuntimeInstancePaths("picoclaw", nodeSlug);
+
+      return {
+        command: "/usr/local/bin/picoclaw",
+        config_path: instancePaths.configPath,
+        ...(instancePaths.homePath ? { home_path: instancePaths.homePath } : {}),
+        kind: "picoclaw",
+      };
+    }
+    case "tinyclaw": {
+      const channel = createTinyClawChannel(networkId, agentId);
+      return {
+        ack_url: `http://127.0.0.1:${DEFAULT_TINYCLAW_PORT}/api/responses`,
+        channel,
+        inbound_url: `http://127.0.0.1:${DEFAULT_TINYCLAW_PORT}/api/message`,
+        kind: "tinyclaw",
+        outbound_url:
+          `http://127.0.0.1:${DEFAULT_TINYCLAW_PORT}/api/responses/pending?channel=${encodeURIComponent(channel)}`
+      };
+    }
+    default:
+      throw new SpawnfileError(
+        "compile_error",
+        `Moltnet does not know how to attach runtime ${agentNode.runtime.name} directly`
+      );
+  }
+};
 
 export const generateMoltnetArtifacts = async (
   plan: CompilePlan
@@ -138,10 +251,13 @@ export const generateMoltnetArtifacts = async (
                 base_url: `http://127.0.0.1:${serverPlan.port}`,
                 network_id: attachment.network
               },
-              runtime: {
-                kind: agentNode.runtime.name,
-                control_url: ROUTER_CONTROL_URL
-              },
+              runtime: resolveRuntimeConfig(
+                plan,
+                agentNode,
+                node.slug,
+                attachment.network,
+                attachment.memberId
+              ),
               ...(attachment.rooms
                 ? {
                     rooms: Object.entries(attachment.rooms)
@@ -166,6 +282,7 @@ export const generateMoltnetArtifacts = async (
             null,
             2
           )}\n`,
+        mode: 0o600,
         path: configPath
       });
 

@@ -55,9 +55,9 @@ describe("runtime install selection", () => {
       kind: "github_release_bundle",
       repository: "TinyAGI/tinyagi",
       runtimeName: "tinyclaw",
-      runtimeRef: "v0.0.15",
+      runtimeRef: "v0.0.20",
       selectionSource: "runtime_registry_install",
-      tag: "v0.0.15"
+      tag: "v0.0.20"
     });
   });
 

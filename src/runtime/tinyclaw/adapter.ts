@@ -22,6 +22,8 @@ import {
 } from "./surfaces.js";
 
 const WORKSPACE_PLACEHOLDER = "<workspace-path>";
+const SUPPORTED_TINYCLAW_OPENAI_MODEL_PREFIXES = ["gpt-5"];
+
 const TINYCLAW_START_SCRIPT = `
 set -euo pipefail
 PIDS=()
@@ -72,6 +74,9 @@ for pid in "\${PIDS[@]}"; do
 done
 exit "$status"
 `.trim();
+
+const isSupportedTinyClawOpenAiModel = (modelName: string): boolean =>
+  SUPPORTED_TINYCLAW_OPENAI_MODEL_PREFIXES.some((prefix) => modelName.startsWith(prefix));
 
 const buildTinyClawSettings = (node: ResolvedAgentNode): string => {
   const [primary] = listEffectiveExecutionModelTargets(node.execution);
@@ -221,11 +226,18 @@ export const tinyClawAdapter: RuntimeAdapter = {
     }
 
     if (target.provider === "anthropic") {
-      if (target.auth.method === "claude-code") {
+      if (target.auth.method === "claude-code" || target.auth.method === "api_key") {
         return;
       }
     } else if (target.provider === "openai") {
-      if (target.auth.method === "codex") {
+      if (!isSupportedTinyClawOpenAiModel(target.name)) {
+        throw new SpawnfileError(
+          "validation_error",
+          `TinyClaw OpenAI models must use the runtime's Codex/GPT-5 path; received ${target.name}`
+        );
+      }
+
+      if (target.auth.method === "codex" || target.auth.method === "api_key") {
         return;
       }
     } else if (target.provider === "opencode" && target.auth.method === "none") {
@@ -245,11 +257,11 @@ export const tinyClawAdapter: RuntimeAdapter = {
     configEnvBindings: [
       {
         envName: "ANTHROPIC_API_KEY",
-        jsonPath: "models.anthropic.auth_token"
+        jsonPath: "models.anthropic.api_key"
       },
       {
         envName: "OPENAI_API_KEY",
-        jsonPath: "models.openai.auth_token"
+        jsonPath: "models.openai.api_key"
       }
     ],
     homeEnv: "TINYAGI_HOME",

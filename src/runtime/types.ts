@@ -11,6 +11,7 @@ import type { ContainerRuntimeInstanceReport } from "../report/index.js";
 
 export interface EmittedFile {
   content: string;
+  mode?: number;
   path: string;
 }
 

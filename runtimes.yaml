@@ -40,12 +40,12 @@ runtimes:
 
   tinyclaw:
     remote: git@github.com:TinyAGI/tinyclaw.git
-    ref: v0.0.15
+    ref: v0.0.20
     default_branch: main
     install:
       kind: github_release_bundle
       repository: TinyAGI/tinyagi
-      tag: v0.0.15
+      tag: v0.0.20
       asset: tinyagi-bundle.tar.gz
     status: active
 

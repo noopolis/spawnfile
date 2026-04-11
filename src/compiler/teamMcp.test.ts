@@ -68,11 +68,19 @@ describe("generateTeamMessageCliScript", () => {
     const script = generateTeamMessageCliScript();
     expect(script).toContain("--to");
     expect(script).toContain("--message");
+    expect(script).toContain("--no-wait");
   });
 
   it("posts to the /team/message endpoint", () => {
     const script = generateTeamMessageCliScript();
     expect(script).toContain("/team/message");
+    expect(script).toContain("await_response");
+  });
+
+  it("allows the MCP tool to request fire-and-forget delivery", () => {
+    const script = generateTeamMcpScript();
+    expect(script).toContain("wait");
+    expect(script).toContain("await_response: args.wait !== false");
   });
 
   it("returns syntactically valid JavaScript", () => {

@@ -78,7 +78,7 @@ describe("buildProject", () => {
       "https://github.com/sipeed/picoclaw/releases/download/v0.2.5/$asset"
     );
     expect(dockerfile).toContain(
-      "https://github.com/TinyAGI/tinyagi/releases/download/v0.0.15/tinyagi-bundle.tar.gz"
+      "https://github.com/TinyAGI/tinyagi/releases/download/v0.0.20/tinyagi-bundle.tar.gz"
     );
     expect(dockerfile).not.toContain("go build -o /usr/local/bin/picoclaw");
     expect(dockerfile).not.toContain("pnpm install");

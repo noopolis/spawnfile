@@ -11,11 +11,11 @@ describe("tinyClawAdapter", () => {
       configEnvBindings: [
         {
           envName: "ANTHROPIC_API_KEY",
-          jsonPath: "models.anthropic.auth_token"
+          jsonPath: "models.anthropic.api_key"
         },
         {
           envName: "OPENAI_API_KEY",
-          jsonPath: "models.openai.auth_token"
+          jsonPath: "models.openai.api_key"
         }
       ],
       homeEnv: "TINYAGI_HOME",
@@ -616,7 +616,15 @@ describe("tinyClawAdapter", () => {
         name: "gpt-5.4",
         provider: "openai"
       })
-    ).toThrow(/does not support model auth method api_key/);
+    ).not.toThrow();
+
+    expect(() =>
+      tinyClawAdapter.assertSupportedModelTarget({
+        auth: { method: "api_key" },
+        name: "claude-opus-4-6",
+        provider: "anthropic"
+      })
+    ).not.toThrow();
 
     expect(() =>
       tinyClawAdapter.assertSupportedModelTarget({
@@ -629,6 +637,14 @@ describe("tinyClawAdapter", () => {
         provider: "custom"
       })
     ).toThrow(/custom or local endpoints are not supported/);
+
+    expect(() =>
+      tinyClawAdapter.assertSupportedModelTarget({
+        auth: { method: "api_key" },
+        name: "gpt-4o",
+        provider: "openai"
+      })
+    ).toThrow(/Codex\/GPT-5 path/);
   });
 
   it("rejects unsupported Discord access modes and allowlist fields", () => {

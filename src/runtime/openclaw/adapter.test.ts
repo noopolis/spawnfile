@@ -337,7 +337,7 @@ describe("openClawAdapter", () => {
   });
 
   it("enables async hooks for Moltnet-attached agents", async () => {
-    const result = await openClawAdapter.compileAgent({
+    const node: ResolvedAgentNode = {
       ...createNode(),
       surfaces: {
         moltnet: [
@@ -346,15 +346,16 @@ describe("openClawAdapter", () => {
             network: "stage_lights",
             rooms: {
               "green-room": {
-                read: "all",
-                reply: "manual"
+                read: "all" as const,
+                reply: "manual" as const
               }
             },
             teamSource: "/tmp/team/Spawnfile"
           }
         ]
       }
-    });
+    };
+    const result = await openClawAdapter.compileAgent(node);
 
     const config = JSON.parse(result.files.find((file) => file.path === "openclaw.json")!.content);
     expect(config.hooks).toEqual({
@@ -362,6 +363,20 @@ describe("openClawAdapter", () => {
       allowedSessionKeyPrefixes: ["hook:"],
       enabled: true,
       token: "${OPENCLAW_HOOKS_TOKEN}"
+    });
+
+    const [target] = await openClawAdapter.createContainerTargets!([
+      {
+        emittedFiles: result.files,
+        id: "agent:assistant",
+        kind: "agent" as const,
+        slug: "assistant",
+        value: node
+      }
+    ]);
+    expect(target?.configEnvBindings).toContainEqual({
+      envName: "OPENCLAW_HOOKS_TOKEN",
+      jsonPath: "hooks.token"
     });
   });
 
