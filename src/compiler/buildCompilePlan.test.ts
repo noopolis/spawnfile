@@ -317,6 +317,7 @@ describe("buildCompilePlan", () => {
 
     expect(teamNode.value.networks).toEqual([
       {
+        expose: false,
         id: "local_lab",
         name: "local_lab",
         provider: "moltnet",
@@ -638,7 +639,7 @@ describe("buildCompilePlan", () => {
         "      provider: openai",
         "      name: gpt-5",
         "    auth:",
-        "      method: api_key",
+        "      method: claude-code",
         "",
         "docs:",
         "  system: AGENTS.md",
@@ -647,7 +648,7 @@ describe("buildCompilePlan", () => {
     );
 
     await expect(buildCompilePlan(directory)).rejects.toThrow(
-      /does not support model auth method api_key for provider openai/
+      /does not support model auth method claude-code for provider openai/
     );
   });
 

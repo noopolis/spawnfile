@@ -15,7 +15,7 @@ const LOCAL_MOLTNET_RELEASE_DIRECTORY = path.resolve(process.cwd(), "moltnet", "
 const MOLTNET_TARGET_OS = "linux";
 
 export const MOLTNET_BIN_DIRECTORY = "moltnet-bin";
-export const MOLTNET_BINARY_NAMES = ["moltnet", "moltnet-node", "moltnet-bridge"] as const;
+export const MOLTNET_BINARY_NAMES = ["moltnet"] as const;
 
 const resolveTargetArchitecture = (): string => {
   switch (process.arch) {

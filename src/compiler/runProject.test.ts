@@ -291,7 +291,7 @@ describe("runProject", () => {
       expect(invocation.command).toBe("docker");
       expect(invocation.args).toContain("--name");
       expect(invocation.args).toContain("spawnfile-single-agent");
-      expect(invocation.args).toContain("-p");
+      expect(invocation.args).not.toContain("-p");
       expect(await readUtf8File(invocation.envFilePath)).toContain("ANTHROPIC_API_KEY=profile-ant");
       expect(await readUtf8File(invocation.envFilePath)).toContain("SEARCH_API_KEY=search-key");
     });

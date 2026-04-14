@@ -304,6 +304,18 @@ describe("surfaceDefinitions", () => {
       updateSurfaceAccess(
         { discord: {} },
         {
+          mode: "allowlist",
+          surface: "discord"
+        },
+        "/tmp/Spawnfile",
+        false
+      )
+    ).toThrow(/discord allowlist access requires at least one --user, --guild, or --channel/i);
+
+    expect(() =>
+      updateSurfaceAccess(
+        { discord: {} },
+        {
           mode: "open",
           surface: "discord",
           users: ["U123"]
@@ -330,6 +342,19 @@ describe("surfaceDefinitions", () => {
       updateSurfaceAccess(
         { slack: {} },
         {
+          channels: ["C123"],
+          mode: "open",
+          surface: "slack"
+        },
+        "/tmp/Spawnfile",
+        false
+      )
+    ).toThrow(/slack allowlist entries are only valid with --mode allowlist/i);
+
+    expect(() =>
+      updateSurfaceAccess(
+        { slack: {} },
+        {
           mode: "allowlist",
           surface: "slack"
         },
@@ -340,6 +365,18 @@ describe("surfaceDefinitions", () => {
   });
 
   it("handles missing declared surfaces for direct and recursive edits", () => {
+    expect(() =>
+      updateSurfaceAccess(
+        { whatsapp: {} },
+        {
+          mode: "allowlist",
+          surface: "whatsapp"
+        },
+        "/tmp/Spawnfile",
+        false
+      )
+    ).toThrow(/whatsapp allowlist access requires at least one --user or --group/i);
+
     expect(() =>
       updateSurfaceAccess(
         { discord: {} },
@@ -358,6 +395,42 @@ describe("surfaceDefinitions", () => {
         {
           mode: "open",
           surface: "whatsapp"
+        },
+        "/tmp/Spawnfile",
+        true
+      )
+    ).toBeNull();
+
+    expect(
+      updateSurfaceAccess(
+        { http: {} },
+        {
+          mode: "open",
+          surface: "discord"
+        },
+        "/tmp/Spawnfile",
+        true
+      )
+    ).toBeNull();
+
+    expect(() =>
+      updateSurfaceAccess(
+        { http: {} },
+        {
+          mode: "open",
+          surface: "telegram"
+        },
+        "/tmp/Spawnfile",
+        false
+      )
+    ).toThrow(/use spawnfile surface add telegram first/i);
+
+    expect(
+      updateSurfaceAccess(
+        { http: {} },
+        {
+          mode: "open",
+          surface: "slack"
         },
         "/tmp/Spawnfile",
         true

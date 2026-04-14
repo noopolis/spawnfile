@@ -204,9 +204,7 @@ describe("renderDockerfile", () => {
     expect(dockerfile).not.toContain("FROM golang:1.24-bookworm AS moltnet-builder");
     expect(dockerfile).not.toContain("moltnet-install");
     expect(dockerfile).toContain("COPY moltnet-bin/ /usr/local/bin/");
-    expect(dockerfile).toContain(
-      "RUN chmod +x /usr/local/bin/moltnet /usr/local/bin/moltnet-node /usr/local/bin/moltnet-bridge"
-    );
+    expect(dockerfile).toContain("RUN chmod +x /usr/local/bin/moltnet");
   });
 });
 
@@ -359,7 +357,7 @@ describe("renderEntrypoint", () => {
     expect(entrypoint).toContain("http://127.0.0.1:18789/healthz");
     expect(entrypoint).toContain("http://127.0.0.1:8787/healthz");
     expect(entrypoint).toContain("http://127.0.0.1:8787/v1/rooms");
-    expect(entrypoint).toContain("/usr/local/bin/moltnet-bridge '/var/lib/spawnfile/moltnet/bridges/research.json' &");
+    expect(entrypoint).toContain("/usr/local/bin/moltnet bridge '/var/lib/spawnfile/moltnet/bridges/research.json' &");
     expect(entrypoint).toContain('export OPENCLAW_HOOKS_TOKEN="hooks-${OPENCLAW_GATEWAY_TOKEN}"');
   });
 
@@ -445,7 +443,7 @@ describe("renderEntrypoint", () => {
     expect(entrypoint).toContain("/usr/local/bin/moltnet &");
     expect(entrypoint).toContain("http://127.0.0.1:18789/healthz");
     expect(entrypoint).toContain("picoclaw");
-    expect(entrypoint).toContain("/usr/local/bin/moltnet-bridge '/var/lib/spawnfile/moltnet/bridges/research.json' &");
+    expect(entrypoint).toContain("/usr/local/bin/moltnet bridge '/var/lib/spawnfile/moltnet/bridges/research.json' &");
   });
 });
 

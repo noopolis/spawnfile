@@ -113,7 +113,7 @@ describe("setProjectRuntime", () => {
         "  model:",
         "    primary:",
         "      provider: openai",
-        "      name: gpt-4o",
+        "      name: gpt-5",
         "      auth:",
         "        method: api_key",
         "",

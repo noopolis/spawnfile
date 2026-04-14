@@ -27,7 +27,8 @@ describe("buildProject default runner", () => {
       });
       return child;
     });
-    vi.doMock("node:child_process", () => ({ spawn }));
+    const execFile = vi.fn();
+    vi.doMock("node:child_process", () => ({ execFile, spawn }));
 
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-build-default-"));
     temporaryDirectories.push(outputDirectory);

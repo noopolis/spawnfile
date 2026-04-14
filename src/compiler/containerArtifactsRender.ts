@@ -170,6 +170,14 @@ const createEnvironmentAssignments = (plan: RuntimeTargetPlan): string[] => {
     envAssignments.push(`HOME=${shellQuote(plan.instancePaths.homePath)}`);
   }
 
+  if (
+    plan.runtimeName === "tinyclaw" &&
+    plan.instancePaths.homePath &&
+    (plan.modelAuthMethods.openai === "api_key" || plan.modelAuthMethods.openai === "codex")
+  ) {
+    envAssignments.push(`CODEX_HOME=${shellQuote(path.posix.join(plan.instancePaths.homePath, ".codex"))}`);
+  }
+
   if (plan.meta.homeEnv && plan.instancePaths.homePath) {
     envAssignments.push(`${plan.meta.homeEnv}=${shellQuote(plan.instancePaths.homePath)}`);
   }
@@ -201,6 +209,18 @@ const createConfigEnvWrites = (plan: RuntimeTargetPlan): string[] =>
     (binding) =>
       `apply_json_env_value ${shellQuote(plan.instancePaths.configPath)} ${shellQuote(binding.envName)} ${shellQuote(binding.jsonPath)}`
   );
+
+const createAuthSetupCommands = (plan: RuntimeTargetPlan): string[] => {
+  if (
+    plan.runtimeName !== "tinyclaw" ||
+    !plan.instancePaths.homePath ||
+    plan.modelAuthMethods.openai !== "api_key"
+  ) {
+    return [];
+  }
+
+  return [`configure_codex_api_key_auth ${shellQuote(plan.instancePaths.homePath)}`];
+};
 
 const resolveStartCommand = (plan: RuntimeTargetPlan): string[] =>
   plan.meta.startCommand
@@ -364,6 +384,15 @@ export const renderEntrypoint = (
     "    handle.write('\\n')",
     "PY",
     "}",
+    "",
+    "configure_codex_api_key_auth() {",
+    '  local home_path="$1"',
+    '  if [ -z "${OPENAI_API_KEY:-}" ]; then',
+    "    return",
+    "  fi",
+    '  mkdir -p "$home_path/.codex"',
+    '  printf "%s\\n" "${OPENAI_API_KEY:-}" | HOME="$home_path" CODEX_HOME="$home_path/.codex" codex login --with-api-key >/dev/null',
+    "}",
     ""
   ];
 
@@ -396,12 +425,14 @@ export const renderEntrypoint = (
     const envAssignments = createEnvironmentAssignments(plan);
     const envFileWrites = createEnvFileWrites(plan);
     const configEnvWrites = createConfigEnvWrites(plan);
+    const authSetupCommands = createAuthSetupCommands(plan);
 
     lines.push(
       `mkdir -p ${shellQuote(plan.instancePaths.workspacePath)}`,
       `require_file ${shellQuote(plan.instancePaths.configPath)}`,
       ...envFileWrites,
       ...configEnvWrites,
+      ...authSetupCommands,
       `${envAssignments.join(" ")} exec ${commandTokens.map(shellQuote).join(" ")}`
     );
 
@@ -442,12 +473,14 @@ export const renderEntrypoint = (
     const envAssignments = createEnvironmentAssignments(plan);
     const envFileWrites = createEnvFileWrites(plan);
     const configEnvWrites = createConfigEnvWrites(plan);
+    const authSetupCommands = createAuthSetupCommands(plan);
 
     lines.push(
       `mkdir -p ${shellQuote(plan.instancePaths.workspacePath)}`,
       `require_file ${shellQuote(plan.instancePaths.configPath)}`,
       ...envFileWrites,
       ...configEnvWrites,
+      ...authSetupCommands,
       `${envAssignments.join(" ")} ${commandTokens.map(shellQuote).join(" ")} &`,
       'PIDS+=("$!")',
       "",
@@ -476,7 +509,7 @@ export const renderEntrypoint = (
 
   for (const bridgePlan of moltnetBridgePlans) {
     lines.push(
-      `/usr/local/bin/moltnet-bridge ${shellQuote(bridgePlan.configPath)} &`,
+      `/usr/local/bin/moltnet bridge ${shellQuote(bridgePlan.configPath)} &`,
       'PIDS+=("$!")',
       ""
     );

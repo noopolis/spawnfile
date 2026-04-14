@@ -6,7 +6,8 @@ const createFakeChild = (): EventEmitter => new EventEmitter();
 
 const loadRunProjectModule = async (child: EventEmitter) => {
   const spawn = vi.fn(() => child);
-  vi.doMock("node:child_process", () => ({ spawn }));
+  const execFile = vi.fn();
+  vi.doMock("node:child_process", () => ({ execFile, spawn }));
 
   const module = await import("./runProject.js");
   return { ...module, spawn };

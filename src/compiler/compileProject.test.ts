@@ -72,7 +72,7 @@ const createFakeMoltnetReleaseDirectory = async (): Promise<string> => {
 
   const payloadDirectory = path.join(directory, "payload");
   await ensureDirectory(payloadDirectory);
-  for (const binaryName of ["moltnet", "moltnet-node", "moltnet-bridge"]) {
+  for (const binaryName of ["moltnet"]) {
     const binaryPath = path.join(payloadDirectory, binaryName);
     await writeUtf8File(binaryPath, `#!/usr/bin/env sh\necho ${binaryName}\n`);
     await chmod(binaryPath, 0o755);
@@ -458,11 +458,9 @@ describe("compileProject", () => {
         expect(result.report.container?.ports).toEqual([8787]);
         expect(dockerfile).not.toContain("FROM golang:1.24-bookworm AS moltnet-builder");
         expect(dockerfile).toContain("COPY moltnet-bin/ /usr/local/bin/");
-        expect(dockerfile).toContain(
-          "RUN chmod +x /usr/local/bin/moltnet /usr/local/bin/moltnet-node /usr/local/bin/moltnet-bridge"
-        );
+        expect(dockerfile).toContain("RUN chmod +x /usr/local/bin/moltnet");
         expect(entrypoint).toContain("/usr/local/bin/moltnet");
-        expect(entrypoint).toContain("/usr/local/bin/moltnet-bridge");
+        expect(entrypoint).toContain("/usr/local/bin/moltnet bridge");
         expect(entrypoint).toContain("http://127.0.0.1:8787/v1/rooms");
         expect(bridgeConfig).toContain('"gateway_url": "ws://127.0.0.1:18789"');
         expect(bridgeConfig).toContain(
@@ -474,9 +472,6 @@ describe("compileProject", () => {
         await expect(fileExists(path.join(outputDirectory, "moltnet-bin", "moltnet"))).resolves.toBe(
           true
         );
-        await expect(
-          fileExists(path.join(outputDirectory, "moltnet-bin", "moltnet-node"))
-        ).resolves.toBe(true);
         await expect(
           fileExists(
             path.join(

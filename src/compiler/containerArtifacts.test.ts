@@ -391,6 +391,56 @@ describe("createContainerArtifacts", () => {
     );
   });
 
+  it("initializes Codex auth for TinyClaw OpenAI API-key models at startup", async () => {
+    const node = createAgentNode("tinyclaw", {
+      execution: {
+        model: {
+          primary: {
+            name: "gpt-5.3-codex",
+            provider: "openai"
+          }
+        }
+      }
+    });
+    const compiled = await tinyClawAdapter.compileAgent(node);
+
+    const result = await createContainerArtifacts(createPlan(["tinyclaw"]), [
+      {
+        emittedFiles: compiled.files,
+        kind: "agent",
+        runtimeName: "tinyclaw",
+        slug: "assistant",
+        value: node
+      }
+    ]);
+
+    const entrypoint = result.files.find((file) => file.path === "entrypoint.sh")?.content ?? "";
+
+    expect(result.report.model_secrets_required).toEqual(["OPENAI_API_KEY"]);
+    expect(result.report.runtime_instances).toEqual([
+      {
+        config_path: "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/settings.json",
+        home_path: "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi",
+        id: "tinyclaw-runtime",
+        model_auth_methods: {
+          openai: "api_key"
+        },
+        model_secrets_required: ["OPENAI_API_KEY"],
+        runtime: "tinyclaw"
+      }
+    ]);
+    expect(entrypoint).toContain(
+      "apply_json_env_value '/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/settings.json' 'OPENAI_API_KEY' 'models.openai.api_key'"
+    );
+    expect(entrypoint).toContain("codex login --with-api-key");
+    expect(entrypoint).toContain(
+      "configure_codex_api_key_auth '/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi'"
+    );
+    expect(entrypoint).toContain(
+      "CODEX_HOME='/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/.codex'"
+    );
+  });
+
   it("fails when a runtime emits files outside config or workspace", async () => {
     const node = createAgentNode("openclaw");
     const compiled = await openClawAdapter.compileAgent(node);

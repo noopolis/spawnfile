@@ -50,12 +50,14 @@ const createFakeMoltnetCli = async (): Promise<string> => {
   return cliPath;
 };
 
-const createFakeReleaseDirectory = async (): Promise<string> => {
+const createFakeReleaseDirectory = async (
+  binaryNames: string[] = ["moltnet"]
+): Promise<string> => {
   const directory = await createTempDirectory("spawnfile-moltnet-release-");
   const payloadDirectory = path.join(directory, "payload");
   await ensureDirectory(payloadDirectory);
 
-  for (const binaryName of ["moltnet", "moltnet-node", "moltnet-bridge"]) {
+  for (const binaryName of binaryNames) {
     const binaryPath = path.join(payloadDirectory, binaryName);
     await writeUtf8File(binaryPath, `#!/usr/bin/env sh\necho ${binaryName}\n`);
     await chmod(binaryPath, 0o755);
@@ -80,6 +82,26 @@ describe("moltnetBinaries", () => {
     await expect(resolveMoltnetCliCommand()).resolves.toBe(cliPath);
   });
 
+  it("resolves the local compiled Moltnet CLI when no environment override is set", async () => {
+    vi.stubEnv("SPAWNFILE_MOLTNET_CLI", "");
+
+    await expect(resolveMoltnetCliCommand()).resolves.toBe(
+      path.resolve(process.cwd(), "moltnet", "bin", "moltnet")
+    );
+  });
+
+  it("wraps invalid configured Moltnet CLI execution errors", async () => {
+    const directory = await createTempDirectory("spawnfile-moltnet-bad-cli-");
+    const cliPath = path.join(directory, "moltnet");
+    await writeUtf8File(cliPath, "#!/usr/bin/env sh\nexit 17\n");
+    await chmod(cliPath, 0o755);
+    vi.stubEnv("SPAWNFILE_MOLTNET_CLI", cliPath);
+
+    await expect(resolveMoltnetCliCommand()).rejects.toThrow(
+      /Unable to execute compiled Moltnet CLI/
+    );
+  });
+
   it("extracts the local Moltnet Linux release asset into the compile output", async () => {
     const releaseDirectory = await createFakeReleaseDirectory();
     const outputDirectory = await createTempDirectory("spawnfile-moltnet-out-");
@@ -87,10 +109,67 @@ describe("moltnetBinaries", () => {
 
     await stageMoltnetBinaries(outputDirectory);
 
-    for (const binaryName of ["moltnet", "moltnet-node", "moltnet-bridge"]) {
-      const binaryPath = path.join(outputDirectory, MOLTNET_BIN_DIRECTORY, binaryName);
-      await expect(fileExists(binaryPath)).resolves.toBe(true);
-      await expect(readUtf8File(binaryPath)).resolves.toContain(binaryName);
+    const binaryPath = path.join(outputDirectory, MOLTNET_BIN_DIRECTORY, "moltnet");
+    await expect(fileExists(binaryPath)).resolves.toBe(true);
+    await expect(readUtf8File(binaryPath)).resolves.toContain("moltnet");
+  });
+
+  it("rejects missing configured release directories and assets", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-moltnet-out-");
+    const missingDirectory = path.join(outputDirectory, "missing-release");
+    vi.stubEnv("SPAWNFILE_MOLTNET_RELEASE_DIR", missingDirectory);
+
+    await expect(stageMoltnetBinaries(outputDirectory)).rejects.toThrow(
+      /Moltnet release directory .* does not exist/
+    );
+
+    const releaseDirectory = await createTempDirectory("spawnfile-moltnet-empty-release-");
+    vi.stubEnv("SPAWNFILE_MOLTNET_RELEASE_DIR", releaseDirectory);
+
+    await expect(stageMoltnetBinaries(outputDirectory)).rejects.toThrow(
+      /Moltnet release asset .* does not exist/
+    );
+  });
+
+  it("rejects corrupt or incomplete Moltnet release assets", async () => {
+    const corruptReleaseDirectory = await createTempDirectory("spawnfile-moltnet-corrupt-release-");
+    const outputDirectory = await createTempDirectory("spawnfile-moltnet-out-");
+    const assetName = `moltnet_linux_${process.arch === "arm64" ? "arm64" : "amd64"}.tar.gz`;
+    await writeUtf8File(path.join(corruptReleaseDirectory, assetName), "not a tarball\n");
+    vi.stubEnv("SPAWNFILE_MOLTNET_RELEASE_DIR", corruptReleaseDirectory);
+
+    await expect(stageMoltnetBinaries(outputDirectory)).rejects.toThrow(
+      /Unable to extract Moltnet release asset/
+    );
+
+    const incompleteReleaseDirectory = await createFakeReleaseDirectory([]);
+    vi.stubEnv("SPAWNFILE_MOLTNET_RELEASE_DIR", incompleteReleaseDirectory);
+
+    await expect(stageMoltnetBinaries(outputDirectory)).rejects.toThrow(
+      /did not contain moltnet/
+    );
+  });
+
+  it("rejects unsupported host architectures for container release assets", async () => {
+    const releaseDirectory = await createFakeReleaseDirectory();
+    const outputDirectory = await createTempDirectory("spawnfile-moltnet-out-");
+    const originalArch = process.arch;
+    vi.stubEnv("SPAWNFILE_MOLTNET_RELEASE_DIR", releaseDirectory);
+
+    Object.defineProperty(process, "arch", {
+      configurable: true,
+      value: "mips"
+    });
+
+    try {
+      await expect(stageMoltnetBinaries(outputDirectory)).rejects.toThrow(
+        /Moltnet container installs do not support host architecture mips/
+      );
+    } finally {
+      Object.defineProperty(process, "arch", {
+        configurable: true,
+        value: originalArch
+      });
     }
   });
 });
