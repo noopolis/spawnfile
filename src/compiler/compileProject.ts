@@ -28,9 +28,9 @@ import {
   prepareTeamCompileSupport,
   writeEmittedFiles
 } from "./compileProjectSupport.js";
-import { stageMoltnetBinaries } from "./moltnetBinaries.js";
 import { CompilePlanNode, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 import { generateMoltnetArtifacts } from "./moltnetArtifacts.js";
+import { stageMoltnetBinaries } from "./moltnetBinaries.js";
 
 const DEFAULT_ROUTER_PORT = 9100;
 
@@ -291,12 +291,13 @@ export const compileProject = async (
   }
 
   const moltnetArtifacts = await generateMoltnetArtifacts(plan);
-  if (moltnetArtifacts) {
-    await stageMoltnetBinaries(outputDirectory);
-  }
+  const hasStagedMoltnetBinaries = moltnetArtifacts
+    ? await stageMoltnetBinaries(outputDirectory)
+    : false;
   await injectMoltnetWorkspaceFiles(outputDirectory, compiledNodes, moltnetArtifacts);
   const containerArtifacts = await createContainerArtifacts(plan, compiledNodes, {
     hasTeamRouter: teamCompileSupport.hasTeamRouter,
+    hasStagedMoltnetBinaries,
     moltnet: moltnetArtifacts
   });
   await writeEmittedFiles(outputDirectory, containerArtifacts.files);

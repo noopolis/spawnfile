@@ -72,11 +72,9 @@ const createFakeMoltnetReleaseDirectory = async (): Promise<string> => {
 
   const payloadDirectory = path.join(directory, "payload");
   await ensureDirectory(payloadDirectory);
-  for (const binaryName of ["moltnet"]) {
-    const binaryPath = path.join(payloadDirectory, binaryName);
-    await writeUtf8File(binaryPath, `#!/usr/bin/env sh\necho ${binaryName}\n`);
-    await chmod(binaryPath, 0o755);
-  }
+  const binaryPath = path.join(payloadDirectory, "moltnet");
+  await writeUtf8File(binaryPath, "#!/usr/bin/env sh\necho moltnet\n");
+  await chmod(binaryPath, 0o755);
 
   const assetName = `moltnet_linux_${process.arch === "arm64" ? "arm64" : "amd64"}.tar.gz`;
   await execFile("tar", ["-C", payloadDirectory, "-czf", path.join(directory, assetName), "."]);
@@ -368,7 +366,7 @@ describe("compileProject", () => {
   });
 
   it(
-    "emits compiled moltnet binaries, bridge configs, and container wiring for team networks",
+    "emits moltnet bridge configs and staged local container wiring for team networks",
     async () => {
       const previousCli = process.env.SPAWNFILE_MOLTNET_CLI;
       const previousReleaseDir = process.env.SPAWNFILE_MOLTNET_RELEASE_DIR;
@@ -459,6 +457,7 @@ describe("compileProject", () => {
         expect(dockerfile).not.toContain("FROM golang:1.24-bookworm AS moltnet-builder");
         expect(dockerfile).toContain("COPY moltnet-bin/ /usr/local/bin/");
         expect(dockerfile).toContain("RUN chmod +x /usr/local/bin/moltnet");
+        expect(dockerfile).not.toContain("https://moltnet.dev/install.sh");
         expect(entrypoint).toContain("/usr/local/bin/moltnet");
         expect(entrypoint).toContain("/usr/local/bin/moltnet bridge");
         expect(entrypoint).toContain("http://127.0.0.1:8787/v1/rooms");

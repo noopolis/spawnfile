@@ -13,6 +13,7 @@ import { MOLTNET_BIN_DIRECTORY, MOLTNET_BINARY_NAMES } from "./moltnetBinaries.j
 
 const CONTAINER_ROOTFS_ROOT = "container/rootfs";
 const GATEWAY_PORT_PLACEHOLDER = "<gateway-port>";
+const MOLTNET_INSTALL_SCRIPT_URL = "https://moltnet.dev/install.sh";
 const WORKSPACE_PLACEHOLDER = "<workspace-path>";
 
 const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)}'`;
@@ -86,6 +87,9 @@ export const renderDockerfile = async (
   const systemDeps = [
     ...new Set([
       ...runtimePlans.flatMap((plan) => plan.meta.systemDeps),
+      ...(options.hasMoltnet && !options.hasStagedMoltnetBinaries
+        ? ["ca-certificates", "curl", "tar"]
+        : []),
       ...(needsJsonEnvWriter ? ["python3"] : [])
     ])
   ].sort();
@@ -114,6 +118,19 @@ export const renderDockerfile = async (
     lines.push(createNpmPackageInstallCommand(globalNpmPackages), "");
   }
 
+  if (options.hasMoltnet && options.hasStagedMoltnetBinaries) {
+    lines.push(
+      `COPY ${MOLTNET_BIN_DIRECTORY}/ /usr/local/bin/`,
+      `RUN chmod +x ${MOLTNET_BINARY_NAMES.map((binaryName) => `/usr/local/bin/${binaryName}`).join(" ")}`,
+      ""
+    );
+  } else if (options.hasMoltnet) {
+    lines.push(
+      `RUN MOLTNET_INSTALL_DIR=/usr/local/bin sh -c ${shellQuote(`curl -fsSL ${MOLTNET_INSTALL_SCRIPT_URL} | sh`)}`,
+      ""
+    );
+  }
+
   for (const recipe of runtimeRecipes) {
     for (const copyCommand of recipe.copyCommands) {
       lines.push(copyCommand);
@@ -135,13 +152,6 @@ export const renderDockerfile = async (
     'COPY entrypoint.sh /opt/spawnfile/entrypoint.sh',
     "RUN chmod +x /opt/spawnfile/entrypoint.sh"
   );
-
-  if (options.hasMoltnet) {
-    lines.push(
-      `COPY ${MOLTNET_BIN_DIRECTORY}/ /usr/local/bin/`,
-      `RUN chmod +x ${MOLTNET_BINARY_NAMES.map((binaryName) => `/usr/local/bin/${binaryName}`).join(" ")}`
-    );
-  }
 
   if (options.hasTeamRouter) {
     lines.push(
@@ -304,6 +314,7 @@ export const createRootfsFiles = (runtimePlans: RuntimeTargetPlan[]): EmittedFil
 
 export interface EntrypointOptions {
   hasMoltnet?: boolean;
+  hasStagedMoltnetBinaries?: boolean;
   hasTeamRouter?: boolean;
   moltnet?: {
     bridgePlans: MoltnetArtifacts["bridgePlans"];

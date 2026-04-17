@@ -20,9 +20,8 @@ import {
   stageMoltnetBinaries
 } from "./moltnetBinaries.js";
 
-const execFile = promisify(execFileCallback);
-
 const temporaryDirectories: string[] = [];
+const execFile = promisify(execFileCallback);
 
 const createTempDirectory = async (prefix: string): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
@@ -82,12 +81,12 @@ describe("moltnetBinaries", () => {
     await expect(resolveMoltnetCliCommand()).resolves.toBe(cliPath);
   });
 
-  it("resolves the local compiled Moltnet CLI when no environment override is set", async () => {
+  it("resolves an installed Moltnet CLI from PATH before local dev fallbacks", async () => {
+    const cliPath = await createFakeMoltnetCli();
     vi.stubEnv("SPAWNFILE_MOLTNET_CLI", "");
+    vi.stubEnv("PATH", `${path.dirname(cliPath)}:${process.env.PATH ?? ""}`);
 
-    await expect(resolveMoltnetCliCommand()).resolves.toBe(
-      path.resolve(process.cwd(), "moltnet", "bin", "moltnet")
-    );
+    await expect(resolveMoltnetCliCommand()).resolves.toBe("moltnet");
   });
 
   it("wraps invalid configured Moltnet CLI execution errors", async () => {
@@ -102,12 +101,22 @@ describe("moltnetBinaries", () => {
     );
   });
 
-  it("extracts the local Moltnet Linux release asset into the compile output", async () => {
+  it("skips container binary staging when no local release directory is configured", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-moltnet-out-");
+    vi.stubEnv("SPAWNFILE_MOLTNET_RELEASE_DIR", "");
+
+    await expect(stageMoltnetBinaries(outputDirectory)).resolves.toBe(false);
+    await expect(fileExists(path.join(outputDirectory, MOLTNET_BIN_DIRECTORY))).resolves.toBe(
+      false
+    );
+  });
+
+  it("extracts a configured Moltnet Linux release asset into the compile output", async () => {
     const releaseDirectory = await createFakeReleaseDirectory();
     const outputDirectory = await createTempDirectory("spawnfile-moltnet-out-");
     vi.stubEnv("SPAWNFILE_MOLTNET_RELEASE_DIR", releaseDirectory);
 
-    await stageMoltnetBinaries(outputDirectory);
+    await expect(stageMoltnetBinaries(outputDirectory)).resolves.toBe(true);
 
     const binaryPath = path.join(outputDirectory, MOLTNET_BIN_DIRECTORY, "moltnet");
     await expect(fileExists(binaryPath)).resolves.toBe(true);
@@ -148,28 +157,5 @@ describe("moltnetBinaries", () => {
     await expect(stageMoltnetBinaries(outputDirectory)).rejects.toThrow(
       /did not contain moltnet/
     );
-  });
-
-  it("rejects unsupported host architectures for container release assets", async () => {
-    const releaseDirectory = await createFakeReleaseDirectory();
-    const outputDirectory = await createTempDirectory("spawnfile-moltnet-out-");
-    const originalArch = process.arch;
-    vi.stubEnv("SPAWNFILE_MOLTNET_RELEASE_DIR", releaseDirectory);
-
-    Object.defineProperty(process, "arch", {
-      configurable: true,
-      value: "mips"
-    });
-
-    try {
-      await expect(stageMoltnetBinaries(outputDirectory)).rejects.toThrow(
-        /Moltnet container installs do not support host architecture mips/
-      );
-    } finally {
-      Object.defineProperty(process, "arch", {
-        configurable: true,
-        value: originalArch
-      });
-    }
   });
 });

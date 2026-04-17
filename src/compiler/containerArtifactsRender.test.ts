@@ -172,7 +172,7 @@ describe("renderDockerfile", () => {
     );
   });
 
-  it("installs staged moltnet binaries when requested", async () => {
+  it("installs moltnet from the public installer when requested", async () => {
     const { renderDockerfile } = await loadRenderModule({
       openclaw: {
         commands: [],
@@ -202,9 +202,48 @@ describe("renderDockerfile", () => {
     );
 
     expect(dockerfile).not.toContain("FROM golang:1.24-bookworm AS moltnet-builder");
-    expect(dockerfile).not.toContain("moltnet-install");
+    expect(dockerfile).not.toContain("COPY moltnet-bin/ /usr/local/bin/");
+    expect(dockerfile).toContain(
+      "RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl tar"
+    );
+    expect(dockerfile).toContain(
+      "RUN MOLTNET_INSTALL_DIR=/usr/local/bin sh -c 'curl -fsSL https://moltnet.dev/install.sh | sh'"
+    );
+  });
+
+  it("installs staged moltnet binaries when a local release is configured", async () => {
+    const { renderDockerfile } = await loadRenderModule({
+      openclaw: {
+        commands: [],
+        copyCommands: [],
+        runtimeName: "openclaw",
+        runtimeRoot: "/usr/local/lib/node_modules/openclaw"
+      }
+    });
+
+    const dockerfile = await renderDockerfile(
+      [
+        createRuntimePlan("openclaw", {
+          meta: {
+            configFileName: "openclaw.json",
+            instancePaths: {
+              configPathTemplate: "<instance-root>/openclaw.json",
+              homePathTemplate: "<instance-root>/home",
+              workspacePathTemplate: "<instance-root>/workspace"
+            },
+            standaloneBaseImage: "node:24-bookworm-slim",
+            startCommand: ["node", "<runtime-root>/openclaw.mjs"],
+            systemDeps: []
+          }
+        })
+      ],
+      { hasMoltnet: true, hasStagedMoltnetBinaries: true }
+    );
+
     expect(dockerfile).toContain("COPY moltnet-bin/ /usr/local/bin/");
     expect(dockerfile).toContain("RUN chmod +x /usr/local/bin/moltnet");
+    expect(dockerfile).not.toContain("https://moltnet.dev/install.sh");
+    expect(dockerfile).not.toContain("ca-certificates curl tar");
   });
 });
 

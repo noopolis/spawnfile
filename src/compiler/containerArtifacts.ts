@@ -18,6 +18,7 @@ import type { CompilePlan } from "./types.js";
 export type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./containerArtifactsTypes.js";
 
 export interface ContainerArtifactOptions {
+  hasStagedMoltnetBinaries?: boolean;
   hasTeamRouter?: boolean;
   moltnet?: MoltnetArtifacts | null;
 }
@@ -58,6 +59,7 @@ export const createContainerArtifacts = async (
     {
       content: await renderDockerfile(runtimePlans, {
         hasMoltnet: Boolean(options.moltnet),
+        hasStagedMoltnetBinaries: options.hasStagedMoltnetBinaries,
         hasTeamRouter: options.hasTeamRouter,
         moltnetPublishedPorts: options.moltnet?.publishedPorts ?? []
       }),

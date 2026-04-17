@@ -11,7 +11,6 @@ const execFile = promisify(execFileCallback);
 const MOLTNET_CLI_ENV = "SPAWNFILE_MOLTNET_CLI";
 const MOLTNET_RELEASE_DIR_ENV = "SPAWNFILE_MOLTNET_RELEASE_DIR";
 const LOCAL_MOLTNET_CLI_PATH = path.resolve(process.cwd(), "moltnet", "bin", "moltnet");
-const LOCAL_MOLTNET_RELEASE_DIRECTORY = path.resolve(process.cwd(), "moltnet", "dist", "release");
 const MOLTNET_TARGET_OS = "linux";
 
 export const MOLTNET_BIN_DIRECTORY = "moltnet-bin";
@@ -34,6 +33,12 @@ const resolveTargetArchitecture = (): string => {
 const createReleaseAssetName = (architecture: string): string =>
   `moltnet_${MOLTNET_TARGET_OS}_${architecture}.tar.gz`;
 
+const isCommandNotFoundError = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  (error as { code?: unknown }).code === "ENOENT";
+
 const validateMoltnetCli = async (
   command: string,
   sourceLabel: string
@@ -45,37 +50,52 @@ const validateMoltnetCli = async (
     const reason = error instanceof Error ? error.message : String(error);
     throw new SpawnfileError(
       "compile_error",
-      `Unable to execute compiled Moltnet CLI from ${sourceLabel}: ${reason}. Build Moltnet with \`cd moltnet && make build release-assets\` or set ${MOLTNET_CLI_ENV} and ${MOLTNET_RELEASE_DIR_ENV}.`
+      `Unable to execute compiled Moltnet CLI from ${sourceLabel}: ${reason}. Install Moltnet with \`curl -fsSL https://moltnet.dev/install.sh | sh\` or set ${MOLTNET_CLI_ENV}.`
     );
   }
 };
 
-const resolveReleaseDirectory = async (): Promise<string> => {
+const resolveConfiguredReleaseDirectory = async (): Promise<string | null> => {
   const configuredDirectory = process.env[MOLTNET_RELEASE_DIR_ENV]?.trim();
-  if (configuredDirectory) {
-    if (!(await fileExists(configuredDirectory))) {
-      throw new SpawnfileError(
-        "compile_error",
-        `Moltnet release directory ${configuredDirectory} does not exist`
-      );
+  if (!configuredDirectory) {
+    return null;
+  }
+
+  if (!(await fileExists(configuredDirectory))) {
+    throw new SpawnfileError(
+      "compile_error",
+      `Moltnet release directory ${configuredDirectory} does not exist`
+    );
+  }
+
+  return configuredDirectory;
+};
+
+const findPathMoltnetCli = async (): Promise<string | null> => {
+  try {
+    await execFile("moltnet", ["version"]);
+    return "moltnet";
+  } catch (error) {
+    if (isCommandNotFoundError(error)) {
+      return null;
     }
-    return configuredDirectory;
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new SpawnfileError(
+      "compile_error",
+      `Unable to execute compiled Moltnet CLI from PATH: ${reason}. Install Moltnet with \`curl -fsSL https://moltnet.dev/install.sh | sh\` or set ${MOLTNET_CLI_ENV}.`
+    );
   }
-
-  if (await fileExists(LOCAL_MOLTNET_RELEASE_DIRECTORY)) {
-    return LOCAL_MOLTNET_RELEASE_DIRECTORY;
-  }
-
-  throw new SpawnfileError(
-    "compile_error",
-    `Moltnet release assets were not found. Build them with \`cd moltnet && make build release-assets\` or set ${MOLTNET_RELEASE_DIR_ENV}.`
-  );
 };
 
 export const resolveMoltnetCliCommand = async (): Promise<string> => {
   const configuredCli = process.env[MOLTNET_CLI_ENV]?.trim();
   if (configuredCli) {
     return validateMoltnetCli(configuredCli, configuredCli);
+  }
+
+  const pathCli = await findPathMoltnetCli();
+  if (pathCli) {
+    return pathCli;
   }
 
   if (await fileExists(LOCAL_MOLTNET_CLI_PATH)) {
@@ -85,8 +105,12 @@ export const resolveMoltnetCliCommand = async (): Promise<string> => {
   return validateMoltnetCli("moltnet", "PATH");
 };
 
-export const stageMoltnetBinaries = async (outputDirectory: string): Promise<void> => {
-  const releaseDirectory = await resolveReleaseDirectory();
+export const stageMoltnetBinaries = async (outputDirectory: string): Promise<boolean> => {
+  const releaseDirectory = await resolveConfiguredReleaseDirectory();
+  if (!releaseDirectory) {
+    return false;
+  }
+
   const architecture = resolveTargetArchitecture();
   const releaseAssetPath = path.join(
     releaseDirectory,
@@ -123,4 +147,6 @@ export const stageMoltnetBinaries = async (outputDirectory: string): Promise<voi
     }
     await chmod(binaryPath, 0o755);
   }
+
+  return true;
 };
