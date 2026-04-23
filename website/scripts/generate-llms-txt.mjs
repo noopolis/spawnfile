@@ -12,7 +12,7 @@ import { join, relative, dirname } from 'path';
 
 const DOCS_DIR = new URL('../src/content/docs', import.meta.url).pathname;
 const DIST_DIR = new URL('../dist', import.meta.url).pathname;
-const SITE_URL = 'https://spawnfile.ai';
+const SITE_URL = 'https://spawnfile.com';
 
 function walkDir(dir) {
   const files = [];

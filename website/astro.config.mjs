@@ -4,7 +4,7 @@ import starlight from '@astrojs/starlight';
 import sitemap from '@astrojs/sitemap';
 
 export default defineConfig({
-  site: 'https://spawnfile.ai',
+  site: 'https://spawnfile.com',
   integrations: [
     sitemap(),
     starlight({

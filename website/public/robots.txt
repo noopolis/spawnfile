@@ -1,6 +1,6 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://spawnfile.ai/sitemap-0.xml
-LLMs: https://spawnfile.ai/llms.txt
-LLMs-full: https://spawnfile.ai/llms-full.txt
+Sitemap: https://spawnfile.com/sitemap-0.xml
+LLMs: https://spawnfile.com/llms.txt
+LLMs-full: https://spawnfile.com/llms-full.txt
