@@ -3,6 +3,15 @@
   color-scheme: dark;
 }
 
+::selection {
+  background: #d4604a;
+  color: #fff;
+}
+::-moz-selection {
+  background: #d4604a;
+  color: #fff;
+}
+
 /* Spawnfile docs custom styles */
 :root {
   --sl-color-accent-low: #2a1510;
