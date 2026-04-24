@@ -70,7 +70,7 @@
 
 <link rel="sitemap" href="/sitemap-0.xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -205,7 +205,7 @@ br.mobile-break { display: none; }
 }
 
 .hero h1 {
-  font-family: 'Instrument Serif', serif;
+  font-family: 'Fraunces', serif;
   font-size: clamp(2.8rem, 4.5vw, 4.2rem);
   font-weight: 400;
   line-height: 0.92;
@@ -231,6 +231,53 @@ br.mobile-break { display: none; }
 .hero-actions {
   display: flex; gap: 0.7rem; align-items: center;
   margin-bottom: 1rem;
+}
+
+.hero-install {
+  margin-top: 1rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--faint);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.hero-install-cmd {
+  display: inline-flex;
+  align-items: stretch;
+  max-width: 100%;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.hero-install code {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.4rem 0.7rem;
+  color: var(--sub);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+.hero-install-copy {
+  flex: 0 0 auto;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--faint);
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0 0.75rem;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.hero-install-copy:hover { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
+.hero-install-copy.is-copied { color: var(--coral); }
+.hero-install-note {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.8rem;
+  color: var(--faint);
 }
 
 .btn {
@@ -482,7 +529,7 @@ br.mobile-break { display: none; }
 }
 
 .section h2 {
-  font-family: 'Instrument Serif', serif;
+  font-family: 'Fraunces', serif;
   font-size: clamp(2.2rem, 4vw, 3.5rem);
   font-weight: 400;
   line-height: 0.95;
@@ -522,7 +569,7 @@ br.mobile-break { display: none; }
   content: counter(step, decimal-leading-zero);
   position: absolute;
   top: 1rem; right: 1.25rem;
-  font-family: 'Instrument Serif';
+  font-family: 'Fraunces';
   font-size: 3.5rem;
   color: rgba(255,255,255,0.03);
   line-height: 1;
@@ -747,7 +794,7 @@ br.mobile-break { display: none; }
 }
 
 .cta-section h2 {
-  font-family: 'Instrument Serif';
+  font-family: 'Fraunces';
   font-size: clamp(2.5rem, 4.5vw, 4rem);
   font-weight: 400;
   font-style: italic;
@@ -892,6 +939,13 @@ footer a:hover { color: var(--sub); }
       <div class="hero-actions">
         <a href="#how" class="btn btn-fill">See how it works</a>
         <a href="/introduction/" class="btn">Docs</a>
+      </div>
+      <div class="hero-install">
+        <span class="hero-install-cmd">
+          <code>$ npm install -g spawnfile</code>
+          <button type="button" class="hero-install-copy" data-copy="npm install -g spawnfile" aria-label="Copy install command">Copy</button>
+        </span>
+        <span class="hero-install-note">Node 22+. Init, validate, compile, build, run.</span>
       </div>
     </div>
     <img src="/new-claw-images.png" alt="Spawnfile agents shipping across runtimes" class="hero-illustration">
@@ -1221,6 +1275,23 @@ Building image            <span class="ok">done</span>
     <a href="https://github.com/noopolis/spawnfile">GitHub</a>
   </div>
 </footer>
+
+<script>
+  document.querySelectorAll('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copy);
+        const orig = btn.textContent;
+        btn.textContent = 'Copied';
+        btn.classList.add('is-copied');
+        setTimeout(() => {
+          btn.textContent = orig;
+          btn.classList.remove('is-copied');
+        }, 1500);
+      } catch {}
+    });
+  });
+</script>
 
 </body>
 </html>
