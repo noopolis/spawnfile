@@ -1,76 +1,117 @@
 # Spawnfile
 
-> *Canonical source for autonomous agents. Write once. Compile to any runtime.*
+> A spec and compiler for autonomous agent runtimes. Write your agent once, compile for any runtime.
 
----
+<p align="center">
+  <a href="https://www.npmjs.com/package/spawnfile"><img src="https://img.shields.io/npm/v/spawnfile?style=flat-square&color=d4604a&label=npm" alt="npm"></a>
+  <a href="https://www.npmjs.com/package/spawnfile"><img src="https://img.shields.io/npm/dm/spawnfile?style=flat-square&color=d4604a" alt="downloads"></a>
+  <a href="#from-source"><img src="https://img.shields.io/node/v/spawnfile?style=flat-square&color=d4604a" alt="node"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/npm/l/spawnfile?style=flat-square&color=d4604a" alt="MIT"></a>
+  <a href="https://spawnfile.com"><img src="https://img.shields.io/website?url=https%3A%2F%2Fspawnfile.com&style=flat-square&label=spawnfile.com&color=d4604a" alt="website"></a>
+</p>
 
-## What Spawnfile Is
+<p align="center">
+  <img src="website/public/new-claw-images.png" alt="Spawnfile compiles one agent source into multiple runtimes" width="420" />
+</p>
 
-Spawnfile is a spec and source format for declaring autonomous agents and teams independently of the runtime that will host them.
+Spawnfile is a **portable source format** for autonomous agents and teams. You write one canonical project — identity docs, skills, MCP connections, model and sandbox intent, team structure — and `spawnfile compile` lowers it into the runtime-specific config and workspace each adapter needs.
 
-A Spawnfile source project is a directory you own and version. It describes the portable parts of an agent: markdown identity docs, skills, MCP connections, runtime binding, execution intent, and team structure.
+It's not a runtime-to-runtime translator. The compiler starts from the canonical source, emits each declared adapter's output, and reports per-capability support as `supported`, `degraded`, or `unsupported`.
 
-`spawnfile compile` lowers that canonical source into runtime-specific config and workspace files. It is not a runtime-to-runtime translator. The compiler starts from the canonical source and emits each declared adapter's output.
-It also emits runnable container artifacts for the compiled output: `Dockerfile`, `entrypoint.sh`, `.env.example`, and a prebuilt `container/rootfs/` tree.
-`spawnfile build` turns that output into a Docker image using the pinned compiled runtime artifacts from `runtimes.yaml`, and `spawnfile run` is the auth-aware wrapper over `docker run`.
-
----
-
-## V0.1 Scope
-
-Spawnfile v0.1 targets **autonomous agent runtimes** — systems that host agents as long-lived services with markdown workspace identity. It focuses on the portable surface shared across compatible runtimes:
-
-- identity and personality docs (SOUL.md, IDENTITY.md, AGENTS.md)
-- memory and heartbeat intent docs
-- skills with SKILL.md
-- MCP declarations
-- runtime binding
-- execution intent (model, workspace, sandbox)
-- team structure (members, hierarchy, shared surfaces)
-- agent-level Discord, Telegram, WhatsApp, Slack, and HTTP surfaces
-
-v0.1 does not try to standardize every runtime-native feature. Beyond the initial Discord, Telegram, WhatsApp, Slack, and HTTP surfaces, communication surfaces, memory engines, task schedulers, UI surfaces, and other runtime-specific features stay adapter-defined for now.
-
----
-
-## Companion Docs
-
-- `specs/INDEX.md` - map of all specs with status and relationships
-- `specs/SPEC.md` - canonical Spawnfile source spec
-- `specs/COMPILER.md` - v0.1 compiler architecture, graph resolution, and adapter contract
-- `specs/CONTAINERS.md` - container compilation spec
-- `specs/RUNTIMES.md` - runtime registry, version pinning, and adapter lifecycle
-- `specs/research/` - per-runtime research notes and adapter strategies
-- `fixtures/` - canonical v0.1 source projects for compiler validation
-
----
-
-## Technology
-
-Spawnfile v0.1 is implemented as a Node.js CLI in TypeScript.
-
-- runtime: Node.js 22+
-- CLI: `commander`
-- manifest parsing: `yaml` + `zod`
-- tests: `vitest`
-
-That gives us fast iteration and a conventional `bin`-based CLI published to [npm](https://www.npmjs.com/package/spawnfile).
-
----
+Pairs with [**Moltnet**](https://moltnet.dev) — the network layer that lets compiled agents share rooms, DMs, and history across runtimes.
 
 ## Install
 
 ```bash
 npm install -g spawnfile
-```
-
-Verify:
-
-```bash
 spawnfile --help
 ```
 
-### From source
+Node.js 22+ required. See [source install](#from-source) for local development.
+
+## The happy path
+
+```bash
+spawnfile init                                   # scaffold an agent (defaults to openclaw)
+spawnfile validate                               # check the graph
+spawnfile compile                                # lower to runtime-native output
+spawnfile auth sync --profile dev --env-file .env
+spawnfile build  --tag my-agent                  # compile + docker build
+spawnfile run    --tag my-agent --auth-profile dev
+```
+
+Compiled output lands under `.spawn/` by default, including a `Dockerfile`, `entrypoint.sh`, `.env.example`, and a prebuilt `container/rootfs/` tree. `spawnfile build` uses the pinned runtime artifacts from `runtimes.yaml`; it does not rebuild runtimes from source.
+
+## Project structure
+
+A Spawnfile project is either an `agent` or a `team`.
+
+**Agent**
+
+```text
+my-agent/
+├── Spawnfile
+├── IDENTITY.md         # who the agent is
+├── SOUL.md             # tone and personality
+├── AGENTS.md           # system prompt
+├── MEMORY.md           # long-lived memory
+├── HEARTBEAT.md        # periodic prompt for scheduled wakes
+├── skills/
+│   └── web_search/SKILL.md
+└── subagents/
+    └── researcher/Spawnfile
+```
+
+**Team**
+
+```text
+my-team/
+├── Spawnfile
+├── TEAM.md
+├── shared/skills/...
+└── agents/
+    ├── orchestrator/Spawnfile
+    ├── researcher/Spawnfile
+    └── writer/Spawnfile
+```
+
+Team members may target different runtimes; the compiler resolves each member independently. Subagents are internal helpers owned by a parent agent — not the same thing as team members.
+
+Not every file is required. Spawnfile names the portable roles; adapters decide how to lower them into runtime-native surfaces. See [`specs/SPEC.md`](specs/SPEC.md) for the full shape.
+
+## Runtime support
+
+v0.1 targets autonomous agent runtimes that share a markdown workspace identity model.
+
+| Runtime   | Status        | Default | Surfaces                                      |
+|-----------|---------------|---------|-----------------------------------------------|
+| OpenClaw  | active        | ✅      | Discord, Telegram, WhatsApp, Slack            |
+| PicoClaw  | active        |         | Discord, Telegram, Slack (WhatsApp blocked)   |
+| TinyClaw  | active        |         | Discord, Telegram, HTTP                       |
+| NullClaw  | exploratory   |         | No active adapter yet                         |
+| ZeroClaw  | exploratory   |         | No active adapter yet                         |
+
+Each adapter maps the portable schema into its native forms. The compiler reports a machine-readable `spawnfile-report.json` with the resolved graph, chosen runtimes, and capability outcomes (`supported`, `degraded`, `unsupported`). See [`specs/RUNTIMES.md`](specs/RUNTIMES.md) for the live matrix and pinned versions, or [`runtimes.yaml`](runtimes.yaml) for the registry source of truth.
+
+## Why
+
+Autonomous agent runtimes already share a meaningful core: markdown workspace identity, skill folders, MCP, model selection, sandboxing. Today that core is re-authored by hand for each runtime. Spawnfile makes it canonical so one source project can ship to any compatible runtime.
+
+## Docs
+
+Hosted docs with rendered specs, runtime guides, and a capability matrix: **[spawnfile.com](https://spawnfile.com)** — start at [Introduction](https://spawnfile.com/introduction/), [Quickstart](https://spawnfile.com/quickstart/), or the [Runtimes overview](https://spawnfile.com/runtimes/overview/).
+
+The source-of-truth specs live in this repo:
+
+- [`specs/INDEX.md`](specs/INDEX.md) — map of all specs
+- [`specs/SPEC.md`](specs/SPEC.md) — canonical source format
+- [`specs/COMPILER.md`](specs/COMPILER.md) — compiler architecture and adapter contract
+- [`specs/CONTAINERS.md`](specs/CONTAINERS.md) — container compilation
+- [`specs/RUNTIMES.md`](specs/RUNTIMES.md) — runtime registry and version pinning
+- [`specs/SURFACES.md`](specs/SURFACES.md) — messaging surface model
+- [`fixtures/`](fixtures/) — canonical example projects
+
+## From source
 
 ```bash
 git clone https://github.com/noopolis/spawnfile.git
@@ -81,15 +122,11 @@ npm run build
 npm link
 ```
 
-To clone the target runtimes and generate reference blueprints:
+To clone pinned runtimes and generate reference blueprints:
 
 ```bash
 npm run runtimes:sync
 ```
-
-This clones each runtime at the version pinned in `runtimes.yaml` and generates blueprints showing the expected config and workspace layout. See `blueprints/` for the output.
-
-These clones are for local research, blueprint generation, and adapter work. `spawnfile compile` itself does not need local runtime clones.
 
 For local development without linking globally:
 
@@ -97,386 +134,14 @@ For local development without linking globally:
 npm run dev -- validate fixtures/single-agent
 ```
 
----
+## Contributing
 
-## Why
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, tests, and the runtime adapter contract.
 
-The autonomous agent runtimes are different, but they already share a meaningful core: markdown workspace identity, skill folders, MCP, model selection, and workspace isolation. Today that core is re-authored by hand for each runtime. Spawnfile makes it canonical.
+## License
 
----
-
-## How It Works
-
-You write a source project once. Then you compile it:
-
-```bash
-spawnfile init
-spawnfile init --runtime tinyclaw
-spawnfile validate
-spawnfile compile
-spawnfile auth sync --profile dev --env-file .env
-spawnfile build
-spawnfile run --auth-profile dev
-```
-
-For a single agent, the compiler uses that manifest's declared runtime. For a team, it walks the member graph and compiles each member using that member's declared runtime.
-
-Each adapter maps the canonical project into runtime-native forms. If a runtime cannot preserve a declaration, the compiler reports `supported`, `degraded`, or `unsupported` according to the project's compile policy.
-
-Each compile also produces a machine-readable report describing the resolved graph, chosen runtimes, output locations, and capability outcomes.
-
-The portable model stays intentionally small:
-
-- `runtime` names the host runtime and may carry runtime-specific options
-- `execution` carries portable intent like model, workspace, and sandbox
-- `agent` may hold internal `subagents`
-- `team` is for first-class agents that coordinate as a group
+MIT — see [LICENSE](LICENSE).
 
 ---
 
-## Project Structure
-
-A source project has a `kind` - either `agent` or `team`.
-
-### Agent
-
-```text
-my-agent/
-├── Spawnfile
-├── IDENTITY.md
-├── SOUL.md
-├── AGENTS.md
-├── MEMORY.md
-├── HEARTBEAT.md
-├── subagents/
-│   └── researcher/
-│       └── Spawnfile
-└── skills/
-    ├── web_search/
-    │   └── SKILL.md
-    └── memory_store/
-        └── SKILL.md
-```
-
-Not every file is required. Spawnfile names portable document roles; adapters decide how to lower them into target-native surfaces.
-
-### Team
-
-```text
-my-team/
-├── Spawnfile
-├── TEAM.md
-├── shared/
-│   └── skills/
-│       └── web_search/
-│           └── SKILL.md
-└── agents/
-    ├── orchestrator/
-    │   ├── Spawnfile
-    │   └── AGENTS.md
-    ├── researcher/
-    │   ├── Spawnfile
-    │   └── SOUL.md
-    └── writer/
-        ├── Spawnfile
-        └── SOUL.md
-```
-
-Teams can reference agents or other teams. Team structure (hierarchy, leadership) is part of the canonical model, but preservation is target-dependent and explicitly reported by the compiler.
-Team members may be on the same runtime or on different runtimes depending on what each member declares.
-
-An `agent` may also declare internal `subagents`. Those are not the same as a `team`: they are helper agents owned by a parent agent and lowered according to that runtime's own delegation or subagent model.
-
----
-
-## Policy
-
-Not every target supports every declared capability. Spawnfile makes that explicit:
-
-```yaml
-policy:
-  mode: strict
-  on_degrade: error
-```
-
-The compiler reports one of three outcomes per declared capability: `supported`, `degraded`, or `unsupported`.
-
----
-
-## The CLI
-
-```bash
-spawnfile init
-spawnfile init --runtime tinyclaw
-spawnfile init --team
-spawnfile add agent writer
-spawnfile add subagent critic
-spawnfile add team platform
-spawnfile validate
-spawnfile compile
-spawnfile auth
-spawnfile build
-spawnfile run
-```
-
-For example:
-
-```bash
-spawnfile init --runtime picoclaw ./agents/researcher
-spawnfile add agent writer ./my-team --runtime tinyclaw
-spawnfile add subagent critic ./my-agent
-spawnfile add team platform ./my-team
-spawnfile validate fixtures/single-agent
-spawnfile compile fixtures/single-agent --out ./bundle/example
-spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
-spawnfile build fixtures/single-agent --out ./bundle/example --tag example-agent
-spawnfile run fixtures/single-agent --tag example-agent --auth-profile dev
-```
-
-Without `--out`, the compiler writes generated artifacts under `.spawn/`. `spawnfile init` also ensures `.spawn/` is ignored in the project `.gitignore`.
-
-The compiler emits runtime-specific artifacts under `.spawn/runtimes/...` by default and writes a machine-readable `spawnfile-report.json`.
-
-`spawnfile init` defaults agent scaffolds to `openclaw`. Use `spawnfile init --runtime <name>` to scaffold an agent for a different bundled runtime. `spawnfile init --team` stays runtime-neutral.
-
-`spawnfile add` grows an existing manifest graph in place. The target `[path]` is optional and defaults to the current directory. It must point to the parent project directory (or its `Spawnfile`):
-
-- `spawnfile add agent <id> [path]` adds `agents/<id>/` under a team
-  If `--runtime` is omitted, it uses the same default agent runtime as `spawnfile init`.
-- `spawnfile add subagent <id> [path]` adds `subagents/<id>/` under an agent
-- `spawnfile add team <id> [path]` adds `teams/<id>/` under a team
-
-The CLI rejects invalid parent kinds: `add agent` and `add team` only work on team projects, and `add subagent` only works on agent projects.
-
-`spawnfile model` edits model intent in place and rewrites touched manifests to the canonical inline shape:
-
-- `spawnfile model set <provider> <name> [path]` sets the primary model
-- `spawnfile model add-fallback <provider> <name> [path]` appends a fallback model
-- `spawnfile model clear-fallbacks [path]` removes fallback models
-- if `[path]` points to a team project, `--recursive` is required and only descendant agent manifests are updated; the team manifest itself is left unchanged
-- the first positional argument is always the model provider, not the auth method
-
-Team manifests should not declare `execution`. Model, sandbox, and workspace intent belong to agent manifests, not teams.
-
-`spawnfile surface` follows the same split between structure and mutation:
-
-- `spawnfile surface add <surface> [path]` adds or updates the declared surface block
-- `spawnfile surface remove <surface> [path]` removes a declared surface block
-- `spawnfile surface set-access <surface> [path] --mode <mode>` updates access policy on an existing surface
-- `spawnfile surface show [path]` prints currently declared surfaces
-- if `[path]` points to a team project, mutating commands require `--recursive` and only descendant agent manifests are updated
-
-Agent manifests may declare portable communication surfaces under `surfaces`. The first standardized surfaces are Discord, Telegram, WhatsApp, Slack, and HTTP:
-
-```yaml
-surfaces:
-  discord:
-    access:
-      users:
-        - "987654321098765432"
-    bot_token_secret: DISCORD_BOT_TOKEN
-  telegram:
-    access:
-      users:
-        - "123456789"
-      chats:
-        - "-1001234567890"
-    bot_token_secret: TELEGRAM_BOT_TOKEN
-  whatsapp:
-    access:
-      users:
-        - "15551234567"
-      groups:
-        - "120363400000000000@g.us"
-  slack:
-    access:
-      users:
-        - "U1234567890"
-      channels:
-        - "C1234567890"
-    bot_token_secret: SLACK_BOT_TOKEN
-    app_token_secret: SLACK_APP_TOKEN
-  http:
-    access:
-      mode: open
-```
-
-Discord access may declare:
-
-- `mode: pairing | allowlist | open`
-- `users`
-- `guilds`
-- `channels`
-
-Telegram access may declare:
-
-- `mode: pairing | allowlist | open`
-- `users`
-- `chats`
-
-WhatsApp access may declare:
-
-- `mode: pairing | allowlist | open`
-- `users`
-- `groups`
-
-Slack access may declare:
-
-- `mode: pairing | allowlist | open`
-- `users`
-- `channels`
-
-HTTP access currently declares:
-
-- `mode: open`
-
-If `mode` is omitted and any allowlist fields are present, Spawnfile infers `allowlist`.
-If you want portable runtime behavior, set `access.mode` explicitly. Leaving `access` unset delegates to runtime defaults, which are not identical across runtimes.
-If `bot_token_secret` is omitted, Spawnfile defaults to `DISCORD_BOT_TOKEN` for Discord, `TELEGRAM_BOT_TOKEN` for Telegram, and `SLACK_BOT_TOKEN` for Slack. If `app_token_secret` is omitted on Slack, Spawnfile defaults to `SLACK_APP_TOKEN`.
-WhatsApp has no portable token-secret field in v0.1; session or QR-style auth remains runtime-defined.
-HTTP currently has no portable secret or allowlist field in v0.1.
-`spawnfile auth sync ... --env-file .env` will collect that env name into the selected auth profile, and `spawnfile run --auth-profile ...` will validate it before container startup.
-
-Runtime support is narrower than the portable schema:
-
-- `openclaw` supports `pairing`, `allowlist`, and `open` for Discord, Telegram, WhatsApp, and Slack
-- `picoclaw` supports `open` and user allowlists for Discord, Telegram, WhatsApp, and Slack
-- `tinyclaw` supports `pairing` only for Discord, Telegram, and WhatsApp, does not support Slack, and supports the portable HTTP surface
-- `openclaw` and `picoclaw` do not currently support the portable HTTP surface in Spawnfile v0.1
-
-Practical notes from the current live smoke matrix:
-
-- Discord was verified end to end on OpenClaw and PicoClaw, and as a paired DM surface on TinyClaw
-- Telegram was verified end to end on all three runtimes
-- `tinyclaw` required first-contact pairing on Telegram
-- `openclaw` and `picoclaw` both worked on Telegram with `access.mode: open`
-- WhatsApp was verified end to end on OpenClaw
-- `picoclaw` WhatsApp remains blocked in the pinned artifact because `whatsapp_native` is not compiled into the shipped binary
-- `tinyclaw` WhatsApp remains blocked in the shipped container because the upstream client needs a browser runtime
-- Slack was verified end to end on OpenClaw
-- Slack was verified end to end on PicoClaw
-- `picoclaw` replies to channel messages in a Slack thread; direct messages reply inline
-- HTTP was verified end to end on TinyClaw via `POST /api/message` and `GET /api/responses/pending?channel=<name>`
-
-Useful options:
-
-- `--auth <api_key|claude-code|codex|none>` sets the auth method on the edited model target
-- `--key <ENV_NAME>` sets the env var name used by `api_key` auth for custom/local models
-- `--compat <openai|anthropic>` and `--base-url <url>` configure local/custom endpoint targets
-- `--recursive` updates the target project and every descendant manifest in the graph
-
-Examples:
-
-```bash
-spawnfile model set anthropic claude-opus-4-6 --auth claude-code
-spawnfile model set openai gpt-5.4 --auth codex
-spawnfile model set local qwen2.5:14b --auth none --compat openai --base-url http://host.docker.internal:11434/v1
-spawnfile model set anthropic claude-opus-4-6 . --auth claude-code --recursive
-```
-
-`spawnfile compile` also emits under the output root:
-
-- final container filesystem output under `.spawn/container/rootfs/...` by default
-- `Dockerfile`, `entrypoint.sh`, `.env.example`
-
-`spawnfile build` is the happy path for compile + Docker image build. It compiles the project, then runs `docker build` against the emitted output directory. The generated Dockerfile installs the pinned compiled runtime artifacts for the resolved runtimes; it does not rebuild runtime sources during image build.
-
-`spawnfile build` remains secrets-free by default. Runtime and model auth should be prepared locally, then applied at `spawnfile run` time.
-
-Model auth can be imported into a local Spawnfile auth profile:
-
-```bash
-spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
-spawnfile auth show --profile dev
-```
-
-Projects declare model auth on each model entry in the Spawnfile, for example:
-
-```yaml
-execution:
-  model:
-    primary:
-      provider: anthropic
-      name: claude-opus-4-6
-      auth:
-        method: claude-code
-```
-
-For local and custom endpoints, the model entry can also declare `endpoint`:
-
-```yaml
-execution:
-  model:
-    primary:
-      provider: local
-      name: qwen2.5:14b
-      auth:
-        method: none
-      endpoint:
-        compatibility: openai
-        base_url: http://host.docker.internal:11434/v1
-```
-
-`spawnfile auth sync` reads that declared intent and imports the matching local auth material into the selected profile. The lower-level `spawnfile auth import env`, `spawnfile auth import claude-code`, and `spawnfile auth import codex` commands remain available for manual profile editing. The older top-level `execution.model.auth` form is still accepted for compatibility, but inline per-model auth is the canonical shape.
-
-`env` auth is the primary path for provider API keys. `claude-code` and `codex` imports mount existing local CLI credential stores into runtime homes at `spawnfile run` time.
-
-Then run the built image with that profile:
-
-```bash
-spawnfile run fixtures/single-agent --tag example-agent --auth-profile dev
-```
-
-Manual Docker remains valid against the compile output:
-
-```bash
-spawnfile build fixtures/single-agent --out ./bundle/example --tag example-agent
-cp ./bundle/example/.env.example ./bundle/example/.env
-docker run --env-file ./bundle/example/.env -p 18789:18789 example-agent
-```
-
-Equivalent manual flow:
-
-```bash
-spawnfile compile fixtures/single-agent --out ./bundle/example
-cd ./bundle/example
-docker build -t example-agent .
-docker run --env-file .env -p 18789:18789 example-agent
-```
-
-## Docker E2E
-
-The repo also includes an opt-in Docker auth E2E harness.
-It builds compiled images, starts them with a local Spawnfile auth profile, waits for runtime readiness, sends real prompts, and fails unless the expected sentinel reply comes back.
-
-Examples:
-
-```bash
-npm run test:e2e:docker-auth -- --scenario openclaw-codex
-npm run test:e2e:docker-auth -- --scenario team-multi-runtime --env-file ../headhunter/.env
-```
-
-This is intentionally separate from `npm test`.
-It requires Docker, network access, and real model credentials.
-
----
-
-## The Builder
-
-**spawnfile.ai** is a web-based authoring surface for the canonical format. It walks through docs, skills, MCP, runtime binding, execution intent, and team composition, then produces a source project you own and can edit by hand.
-
----
-
-## The Name
-
-**Spawn** - in computing, you spawn a process. In games, you spawn a character. In biology, you spawn life. Deliberate creation. Independent existence from that point forward.
-
-**File** - the atomic unit of software. Something you can read, version, fork, check into git, and own completely. It anchors a project - a directory, a complete picture of what something is.
-
-Together: *a canonical source project that spawns an agent and can be compiled into the runtimes that can host it.*
-
----
-
-*One source format. Many runtimes. Manifest-driven compilation.*
-
-**spawnfile.ai** · **github.com/noopolis/spawnfile**
+**[spawnfile.com](https://spawnfile.com)** · **[github.com/noopolis/spawnfile](https://github.com/noopolis/spawnfile)**
