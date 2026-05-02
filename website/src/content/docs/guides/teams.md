@@ -91,6 +91,50 @@ Room members may name direct agent slots or direct child-team slots. Child-team 
 
 Moltnet `reply` policy is `auto | never` in this alpha. `manual` is not portable.
 
+### Inspecting Nested Team Networks
+
+The `fixtures/e2e/moltnet-team-chat` fixture shows a parent team with two nested teams, explicit representatives, and Moltnet rooms at both parent and child levels.
+
+```bash
+spawnfile view fixtures/e2e/moltnet-team-chat
+```
+
+Default tree mode shows the authored organization shape and compact summaries of declared room member slots:
+
+```text
+team moltnet-team-chat  mode=hierarchical lead=coordinator external=coordinator
+├── network local_lab "Local Lab" exposed: mission-control [coordinator, field-team, analysis-team]
+├── coordinator: agent coordinator [openclaw] runtime=openclaw
+├── field-team: team field-team  mode=hierarchical lead=field-representative external=field-representative
+│   ├── network field_lab "Field Lab" exposed: field-room [field-representative, field-observer]
+│   ├── field-representative: agent field-representative [openclaw] runtime=openclaw
+│   └── field-observer: agent field-observer [openclaw] runtime=openclaw
+└── analysis-team: team analysis-team  mode=hierarchical lead=analysis-representative external=analysis-representative
+    ├── analysis-representative: agent analysis-representative [openclaw] runtime=openclaw
+    └── analysis-observer: agent analysis-observer [openclaw] runtime=openclaw
+```
+
+In networks mode, the output shows the concrete Moltnet participants after nested team members expand through representatives:
+
+```bash
+spawnfile view fixtures/e2e/moltnet-team-chat --mode networks
+```
+
+```text
+Moltnet networks
+├── moltnet local_lab
+│   └── local_lab "Local Lab" on moltnet-team-chat exposed
+│       └── #mission-control
+│           ├── coordinator  team=moltnet-team-chat member=coordinator read=all reply=auto
+│           ├── field-representative  represents=field-team member=field-representative
+│           └── analysis-representative  represents=analysis-team member=analysis-representative
+└── moltnet field_lab
+    └── field_lab "Field Lab" on field-team exposed
+        └── #field-room
+            ├── field-representative  team=field-team member=field-representative read=all reply=auto
+            └── field-observer  team=field-team member=field-observer read=all reply=never
+```
+
 ## TEAM.md And Context Files
 
 The team's `docs.system` document is typically `TEAM.md`. It describes the team as a collective and may include handoff protocols, escalation procedures, decision-making norms, and quality standards.

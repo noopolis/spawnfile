@@ -1128,6 +1128,7 @@ spawnfile model set <provider> <name> [path]
 spawnfile model add-fallback <provider> <name> [path]
 spawnfile model clear-fallbacks [path]
 spawnfile validate [path]
+spawnfile view [path]
 spawnfile compile [path] [--out <dir>]
 spawnfile build [path] [--out <dir>] [--tag <image>]
 spawnfile run [path] [--out <dir>] [--tag <image>] [--auth-profile <name>]
@@ -1249,6 +1250,28 @@ Validates a Spawnfile project without compiling.
 - MUST walk the manifest graph and detect cycles
 - MUST NOT invoke runtime adapters or emit output files
 - Exits with code 0 on success, 1 on validation failure
+
+#### `spawnfile view`
+
+Renders a read-only, pre-compile inspection view of the resolved Spawnfile graph.
+
+- `path` is the directory containing the Spawnfile or the Spawnfile path itself (default: current directory)
+- `--mode <mode>` selects the view mode; Phase 1 modes are `tree` and `networks`
+- `--show <items>` accepts a comma-separated list of Phase 1 detail layers: `paths` and `declared`
+- `--paths` is a shortcut for `--show paths`
+- `--ascii` uses portable ASCII connectors instead of Unicode connectors in tree and networks renderers
+- `--color <when>` controls terminal color and MUST accept `auto`, `always`, and `never`
+- MUST default to `--mode tree`
+- MUST treat the positional argument as a project path, not a mode name; for example, `spawnfile view networks` means inspect `./networks`
+- MUST operate from the same resolved graph used by `spawnfile validate`
+- MUST NOT call the compile operation, invoke runtime adapters, run Docker, run Moltnet, read generated output, inspect spawned runtimes, or emit output files
+- MUST render `tree` mode as the organization tree with teams, agents, nested teams, representatives, runtime names, and compact declared team-network room summaries
+- MUST render networks mode as provider/network/room groupings with concrete resolved members and representative expansion
+- MUST keep declared room members distinct from resolved concrete members when `--show declared` is used in networks mode
+- MUST append source paths when `--paths` or `--show paths` is used
+- MUST fail before rendering when graph validation fails and MUST use the same error shape as `spawnfile validate`
+- Exits with code 0 on success
+- Exits non-zero for CLI parse errors, invalid options, path resolution failures, validation errors, and view-model build errors
 
 #### `spawnfile compile`
 

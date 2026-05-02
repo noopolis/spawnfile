@@ -58,6 +58,16 @@ spawnfile validate ./my-agent
 
 This performs static and graph validation without invoking adapters or emitting output.
 
+Use `spawnfile view` after validation when you want to inspect the resolved graph before compiling:
+
+```bash
+spawnfile view ./my-agent
+spawnfile view ./my-team --mode networks
+spawnfile view ./my-team --paths
+```
+
+`validate` answers whether the project is structurally valid. `view` shows what Spawnfile resolved from that valid project while staying read-only. `compile` performs validation, invokes runtime adapters, writes runtime-native output, and emits the compile report.
+
 ## Graph Resolution
 
 ### Node Identity
@@ -269,6 +279,12 @@ spawnfile model set anthropic claude-opus-4-6 ./my-team --auth claude-code --rec
 ```bash
 # Validate without compiling
 spawnfile validate ./fixtures/single-agent
+
+# Inspect the resolved graph without compiling
+spawnfile view ./fixtures/single-agent
+
+# Inspect concrete team-network membership
+spawnfile view ./fixtures/e2e/moltnet-team-chat --mode networks
 
 # Compile the project in the current directory
 spawnfile compile

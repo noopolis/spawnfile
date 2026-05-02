@@ -83,6 +83,14 @@ spawnfile validate
 
 This checks the manifest schema, file references, and graph structure without compiling.
 
+## View
+
+```bash
+spawnfile view .
+```
+
+This is read-only and writes no files while showing the resolved project graph.
+
 ## Compile
 
 ```bash

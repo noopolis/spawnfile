@@ -11,7 +11,9 @@ src/cli/
 ├── modelCommands.ts # `spawnfile model ...` command registration
 ├── runtimeCommands.ts # `spawnfile runtime ...` command registration
 ├── surfaceCommands.ts # `spawnfile surface ...` command registration
-└── runCli.test.ts  # CLI behavior tests
+├── viewCommand.ts  # `spawnfile view` command registration and render option mapping
+├── viewCommand.test.ts # `spawnfile view` behavior tests
+└── runCli.test.ts  # General CLI behavior tests
 ```
 
 `index.ts` should stay minimal. `runCli.ts` owns command wiring, while real work stays in compiler modules.

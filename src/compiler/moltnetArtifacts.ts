@@ -7,6 +7,7 @@ import type {
   ResolvedAgentNode,
   ResolvedTeamNode
 } from "./types.js";
+import { listConcreteMoltnetRoomMemberIds } from "./moltnetRoomMemberships.js";
 
 export interface MoltnetServerPlan {
   id: string;
@@ -176,13 +177,21 @@ export const generateMoltnetArtifacts = async (
       const existingPlan = serverPlans.get(serverKey);
       if (existingPlan) {
         for (const room of network.rooms) {
+          const concreteMembers = listConcreteMoltnetRoomMemberIds(
+            plan,
+            teamNode.value,
+            network.id,
+            room
+          );
           const existingRoom = existingPlan.rooms.find((entry) => entry.id === room.id);
           if (existingRoom) {
-            existingRoom.members = [...new Set([...existingRoom.members, ...room.members])].sort();
+            existingRoom.members = [
+              ...new Set([...existingRoom.members, ...concreteMembers])
+            ].sort();
           } else {
             existingPlan.rooms.push({
               id: room.id,
-              members: [...new Set(room.members)].sort()
+              members: concreteMembers
             });
           }
         }
@@ -195,7 +204,12 @@ export const generateMoltnetArtifacts = async (
           port: nextPort,
           rooms: network.rooms.map((room) => ({
             id: room.id,
-            members: [...new Set(room.members)].sort()
+            members: listConcreteMoltnetRoomMemberIds(
+              plan,
+              teamNode.value,
+              network.id,
+              room
+            )
           })),
           teamSource: teamNode.value.source
         });

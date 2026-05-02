@@ -576,7 +576,7 @@ describe("buildCompilePlan", () => {
     await expect(buildCompilePlan(directory)).rejects.toThrow(/Moltnet member_id rep/);
   });
 
-  it("expands team networks that include nested teams through representatives", async () => {
+  it("preserves authored team network slots for nested representatives", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moltnet-nested-team-"));
     temporaryDirectories.push(directory);
 
@@ -686,7 +686,7 @@ describe("buildCompilePlan", () => {
 
     expect(parentTeam.value.networks?.[0]?.rooms[0]?.members).toEqual([
       "researcher",
-      "placeholder"
+      "subteam"
     ]);
     expect(representativeAgent.value.surfaces?.moltnet).toEqual([
       {

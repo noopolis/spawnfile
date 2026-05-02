@@ -34,6 +34,7 @@ Node.js 22+ required. See [source install](#from-source) for local development.
 ```bash
 spawnfile init                                   # scaffold an agent (defaults to openclaw)
 spawnfile validate                               # check the graph
+spawnfile view .                                 # read-only graph view; writes no files
 spawnfile compile                                # lower to runtime-native output
 spawnfile auth sync --profile dev --env-file .env
 spawnfile build  --tag my-agent                  # compile + docker build

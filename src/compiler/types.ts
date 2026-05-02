@@ -213,9 +213,28 @@ export interface ResolvedTeamMembershipContext {
   teamSource: string;
 }
 
+export interface ResolvedMoltnetRoomMembership {
+  agentName: string;
+  agentSource: string;
+  concreteMemberId: string;
+  declaredSlot: string;
+  declaringTeamName: string;
+  declaringTeamSource: string;
+  directTeamName: string;
+  directTeamSource: string;
+  networkId: string;
+  policy?: ResolvedMoltnetRoomPolicy;
+  representedSlot?: string;
+  representedTeamName?: string;
+  representedTeamSource?: string;
+  representativePath?: string[];
+  roomId: string;
+}
+
 export interface CompilePlan {
   edges: CompilePlanEdge[];
   memberships?: ResolvedTeamMembershipContext[];
+  moltnetRoomMemberships?: ResolvedMoltnetRoomMembership[];
   nodes: CompilePlanNode[];
   root: string;
   runtimes: Record<string, { nodeIds: string[] }>;

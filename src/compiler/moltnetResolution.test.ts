@@ -367,7 +367,7 @@ describe("moltnetResolution", () => {
         teamSource: childTeam.source
       }
     ]);
-    expect(parentTeam.networks?.[0]?.rooms[0]?.members).toEqual(["rep"]);
+    expect(parentTeam.networks?.[0]?.rooms[0]?.members).toEqual(["child"]);
   });
 
   it("rejects incompatible duplicate moltnet room policies for the same network and member id", () => {

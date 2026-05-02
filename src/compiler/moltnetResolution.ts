@@ -4,8 +4,10 @@ import type {
   CompilePlan,
   ResolvedAgentNode,
   ResolvedMoltnetAttachment,
+  ResolvedMoltnetRoomMembership,
   ResolvedTeamNode
 } from "./types.js";
+import { resolveMoltnetRoomMemberships } from "./moltnetRoomMemberships.js";
 import {
   resolveMoltnetAttachments,
   resolveTeamRepresentatives
@@ -68,68 +70,39 @@ const validateGlobalMemberIds = (plan: CompilePlan): void => {
   }
 };
 
-const expandTeamNetworkRooms = (plan: CompilePlan): ResolvedMoltnetAttachment[] => {
-  const synthesizedAttachments: ResolvedMoltnetAttachment[] = [];
+const getRoomMemberships = (
+  plan: CompilePlan
+): ResolvedMoltnetRoomMembership[] => {
+  const memberships = plan.moltnetRoomMemberships ?? resolveMoltnetRoomMemberships(plan);
+  plan.moltnetRoomMemberships = memberships;
 
-  for (const node of plan.nodes) {
-    if (node.value.kind !== "team") {
-      continue;
-    }
-
-    const teamNode = node.value;
-    for (const network of teamNode.networks ?? []) {
-      for (const room of network.rooms) {
-        const expandedMembers: string[] = [];
-
-        for (const roomMemberId of room.members) {
-          const member = teamNode.members.find((entry) => entry.id === roomMemberId);
-          if (!member) {
-            throw new SpawnfileError(
-              "validation_error",
-              `Team ${teamNode.name} Moltnet room ${room.id} references unknown member ${roomMemberId}`
-            );
-          }
-
-          if (member.kind === "agent") {
-            expandedMembers.push(member.id);
-            continue;
-          }
-
-          const childTeam = findTeamBySource(plan, member.nodeSource);
-          const representatives = resolveTeamRepresentatives(plan, childTeam);
-          if (representatives.length === 0) {
-            throw new SpawnfileError(
-              "validation_error",
-              `Team ${childTeam.name} has no concrete representative for Moltnet room ${room.id} on ${teamNode.name}`
-            );
-          }
-
-          for (const representative of representatives) {
-            expandedMembers.push(representative.memberId);
-            synthesizedAttachments.push({
-              contextRooms: {
-                [teamNode.source]: [room.id]
-              },
-              memberId: representative.memberId,
-              network: network.id,
-              rooms: {
-                [room.id]: {}
-              },
-              teamSource: teamNode.source
-            });
-          }
-        }
-
-        room.members = [...new Set(expandedMembers)];
-      }
-    }
-  }
-
-  return synthesizedAttachments;
+  return memberships;
 };
+
+const synthesizeRepresentativeAttachments = (
+  memberships: ResolvedMoltnetRoomMembership[]
+): ResolvedMoltnetAttachment[] =>
+  memberships
+    .filter((membership) => membership.representedSlot !== undefined)
+    .map((membership) => ({
+      contextRooms: {
+        [membership.declaringTeamSource]: [membership.roomId]
+      },
+      memberId: membership.concreteMemberId,
+      network: membership.networkId,
+      rooms: {
+        [membership.roomId]: {}
+      },
+      teamSource: membership.declaringTeamSource
+    }));
 
 const roomPolicyKey = (policy: unknown): string =>
   JSON.stringify(policy ?? {});
+
+const hasRoomPolicy = (
+  policy: NonNullable<ResolvedMoltnetAttachment["rooms"]>[string]
+): boolean =>
+  policy.read !== undefined || policy.reply !== undefined;
 
 const mergeAttachment = (
   target: ResolvedMoltnetAttachment,
@@ -153,8 +126,11 @@ const mergeAttachment = (
 
   for (const [roomId, policy] of Object.entries(next.rooms ?? {})) {
     const existingPolicy = target.rooms[roomId];
+    const existingHasPolicy = existingPolicy ? hasRoomPolicy(existingPolicy) : false;
+    const nextHasPolicy = hasRoomPolicy(policy);
     if (
-      existingPolicy &&
+      existingHasPolicy &&
+      nextHasPolicy &&
       roomPolicyKey(existingPolicy) !== roomPolicyKey(policy)
     ) {
       throw new SpawnfileError(
@@ -163,7 +139,9 @@ const mergeAttachment = (
       );
     }
 
-    target.rooms[roomId] = { ...policy };
+    target.rooms[roomId] = existingPolicy && existingHasPolicy && !nextHasPolicy
+      ? { ...existingPolicy }
+      : { ...policy };
   }
 
   if (next.contextRooms) {
@@ -233,7 +211,8 @@ const mergeAgentAttachments = (
 
 export const resolvePlanMoltnetAttachments = (plan: CompilePlan): void => {
   validateGlobalMemberIds(plan);
-  const synthesizedAttachments = expandTeamNetworkRooms(plan);
+  const roomMemberships = getRoomMemberships(plan);
+  const synthesizedAttachments = synthesizeRepresentativeAttachments(roomMemberships);
   const synthesizedByAgent = new Map<string, ResolvedMoltnetAttachment[]>();
 
   for (const attachment of synthesizedAttachments) {

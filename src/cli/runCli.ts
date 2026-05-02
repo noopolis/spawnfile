@@ -13,6 +13,7 @@ import {
   addProjectModelFallback,
   addSubagentProject,
   addTeamProject,
+  buildOrganizationView,
   buildCompilePlan,
   buildProject,
   clearProjectModelFallbacks,
@@ -31,66 +32,95 @@ import { listRuntimeAdapters } from "../runtime/index.js";
 import { registerModelCommands } from "./modelCommands.js";
 import { registerRuntimeCommands } from "./runtimeCommands.js";
 import { registerSurfaceCommands } from "./surfaceCommands.js";
+import { registerViewCommand } from "./viewCommand.js";
 
-export interface CliStreams {
-  stderr: (message: string) => void;
-  stdout: (message: string) => void;
-}
+export interface CliStreams { stderr: (message: string) => void; stdout: (message: string) => void; }
 
 const createDefaultStreams = (): CliStreams => ({
   stderr: (message) => process.stderr.write(`${message}\n`),
   stdout: (message) => process.stdout.write(`${message}\n`)
 });
 
+export interface CliRenderEnvironment {
+  ci: boolean;
+  noColor: boolean;
+  stdoutIsTty: boolean;
+}
+
+const createDefaultRenderEnvironment = (): CliRenderEnvironment => ({
+  ci: process.env.CI !== undefined && process.env.CI !== "" && process.env.CI !== "0",
+  noColor: process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== "",
+  stdoutIsTty: process.stdout.isTTY === true
+});
+
 export interface CliHandlers {
-  buildCompilePlan: typeof buildCompilePlan;
-  buildProject: typeof buildProject;
-  compileProject: typeof compileProject;
-  addAgentProject: typeof addAgentProject;
-  addProjectModelFallback: typeof addProjectModelFallback;
-  addProjectSurface: typeof addProjectSurface;
-  addSubagentProject: typeof addSubagentProject;
-  addTeamProject: typeof addTeamProject;
-  clearProjectModelFallbacks: typeof clearProjectModelFallbacks;
-  importClaudeCodeAuth: typeof importClaudeCodeAuth;
-  importCodexAuth: typeof importCodexAuth;
-  importEnvFile: typeof importEnvFile;
-  initProject: typeof initProject;
-  listRuntimeAdapters: typeof listRuntimeAdapters;
-  removeProjectSurface: typeof removeProjectSurface;
-  requireAuthProfile: typeof requireAuthProfile;
-  runProject: typeof runProject;
-  setProjectPrimaryModel: typeof setProjectPrimaryModel;
-  setProjectRuntime: typeof setProjectRuntime;
-  setProjectSurfaceAccess: typeof setProjectSurfaceAccess;
-  showProjectSurfaces: typeof showProjectSurfaces;
+  buildCompilePlan: typeof buildCompilePlan; buildOrganizationView: typeof buildOrganizationView;
+  buildProject: typeof buildProject; compileProject: typeof compileProject;
+  addAgentProject: typeof addAgentProject; addProjectModelFallback: typeof addProjectModelFallback;
+  addProjectSurface: typeof addProjectSurface; addSubagentProject: typeof addSubagentProject;
+  addTeamProject: typeof addTeamProject; clearProjectModelFallbacks: typeof clearProjectModelFallbacks;
+  importClaudeCodeAuth: typeof importClaudeCodeAuth; importCodexAuth: typeof importCodexAuth;
+  importEnvFile: typeof importEnvFile; initProject: typeof initProject;
+  listRuntimeAdapters: typeof listRuntimeAdapters; removeProjectSurface: typeof removeProjectSurface;
+  requireAuthProfile: typeof requireAuthProfile; runProject: typeof runProject;
+  setProjectPrimaryModel: typeof setProjectPrimaryModel; setProjectRuntime: typeof setProjectRuntime;
+  setProjectSurfaceAccess: typeof setProjectSurfaceAccess; showProjectSurfaces: typeof showProjectSurfaces;
   syncProjectAuth: typeof syncProjectAuth;
 }
 
 const createDefaultHandlers = (): CliHandlers => ({
-  buildCompilePlan,
-  buildProject,
-  compileProject,
-  addAgentProject,
-  addProjectModelFallback,
-  addProjectSurface,
-  addSubagentProject,
-  addTeamProject,
-  clearProjectModelFallbacks,
-  importClaudeCodeAuth,
-  importCodexAuth,
-  importEnvFile,
-  initProject,
-  listRuntimeAdapters,
-  removeProjectSurface,
-  requireAuthProfile,
-  runProject,
-  setProjectPrimaryModel,
-  setProjectRuntime,
-  setProjectSurfaceAccess,
-  showProjectSurfaces,
-  syncProjectAuth
+  buildCompilePlan, buildOrganizationView, buildProject, compileProject,
+  addAgentProject, addProjectModelFallback, addProjectSurface,
+  addSubagentProject, addTeamProject, clearProjectModelFallbacks,
+  importClaudeCodeAuth, importCodexAuth, importEnvFile,
+  initProject, listRuntimeAdapters, removeProjectSurface, requireAuthProfile,
+  runProject, setProjectPrimaryModel, setProjectRuntime,
+  setProjectSurfaceAccess, showProjectSurfaces, syncProjectAuth
 });
+
+export interface RunCliOptions {
+  handlers?: Partial<CliHandlers>; renderEnvironment?: CliRenderEnvironment; streams?: CliStreams;
+}
+
+const isCliStreams = (value: CliStreams | RunCliOptions | undefined): value is CliStreams => {
+  const candidate = value as Partial<CliStreams> | undefined;
+  return typeof candidate?.stderr === "function" && typeof candidate.stdout === "function";
+};
+
+const normalizeRunCliOptions = (
+  optionsOrStreams?: CliStreams | RunCliOptions,
+  handlerOverrides: Partial<CliHandlers> = {}
+): Required<RunCliOptions> => isCliStreams(optionsOrStreams)
+  ? {
+      handlers: handlerOverrides,
+      renderEnvironment: createDefaultRenderEnvironment(),
+      streams: optionsOrStreams
+    }
+  : {
+      handlers: optionsOrStreams?.handlers ?? handlerOverrides,
+      renderEnvironment: optionsOrStreams?.renderEnvironment ?? createDefaultRenderEnvironment(),
+      streams: optionsOrStreams?.streams ?? createDefaultStreams()
+    };
+
+const writeCommanderOutput = (
+  write: (message: string) => void,
+  message: string
+): void => {
+  const normalized = message.replace(/\n$/, "");
+  if (normalized.length > 0) {
+    write(normalized);
+  }
+};
+
+const isCommanderError = (error: unknown): error is { code: string; exitCode: number } => {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  const candidate = error as { code?: unknown; exitCode?: unknown };
+  return typeof candidate.code === "string"
+    && candidate.code.startsWith("commander.")
+    && typeof candidate.exitCode === "number";
+};
 
 const formatPlanSummary = (plan: Awaited<ReturnType<typeof buildCompilePlan>>): string =>
   [
@@ -110,14 +140,35 @@ const formatAuthProfileSummary = (profile: ResolvedAuthProfile): string[] => {
   ];
 };
 
-export const runCli = async (
+const emitLines = (streams: CliStreams, lines: string[]): void =>
+  lines.forEach((line) => streams.stdout(line));
+
+const emitFileLines = (streams: CliStreams, label: string, filePaths: string[]): void =>
+  emitLines(streams, filePaths.map((filePath) => `${label} ${filePath}`));
+
+type RunCli = {
+  (argv: string[], options?: RunCliOptions): Promise<number>;
+  (
+    argv: string[], streams?: CliStreams, handlerOverrides?: Partial<CliHandlers>
+  ): Promise<number>;
+};
+
+export const runCli: RunCli = async (
   argv: string[],
-  streams: CliStreams = createDefaultStreams(),
+  optionsOrStreams?: CliStreams | RunCliOptions,
   handlerOverrides: Partial<CliHandlers> = {}
 ): Promise<number> => {
-  const handlers = { ...createDefaultHandlers(), ...handlerOverrides };
+  const cliOptions = normalizeRunCliOptions(optionsOrStreams, handlerOverrides);
+  const streams = cliOptions.streams;
+  const handlers = { ...createDefaultHandlers(), ...cliOptions.handlers };
   const program = new Command();
   program.name("spawnfile").description("Spawnfile v0.1 compiler");
+  program.exitOverride();
+  program.configureOutput({
+    outputError: (message, write) => write(message),
+    writeErr: (message) => writeCommanderOutput(streams.stderr, message),
+    writeOut: (message) => writeCommanderOutput(streams.stdout, message)
+  });
 
   program
     .command("compile")
@@ -190,9 +241,7 @@ export const runCli = async (
         team: options.team
       });
       streams.stdout(`initialized ${result.directory}`);
-      for (const filePath of result.createdFiles) {
-        streams.stdout(`created ${filePath}`);
-      }
+      emitFileLines(streams, "created", result.createdFiles);
     });
 
   const addCommand = program.command("add").description("Add children to an existing Spawnfile project");
@@ -208,12 +257,8 @@ export const runCli = async (
         path: inputPath,
         runtime: options.runtime
       });
-      for (const filePath of result.updatedFiles) {
-        streams.stdout(`updated ${filePath}`);
-      }
-      for (const filePath of result.createdFiles) {
-        streams.stdout(`created ${filePath}`);
-      }
+      emitFileLines(streams, "updated", result.updatedFiles);
+      emitFileLines(streams, "created", result.createdFiles);
     });
 
   addCommand
@@ -225,12 +270,8 @@ export const runCli = async (
         id,
         path: inputPath
       });
-      for (const filePath of result.updatedFiles) {
-        streams.stdout(`updated ${filePath}`);
-      }
-      for (const filePath of result.createdFiles) {
-        streams.stdout(`created ${filePath}`);
-      }
+      emitFileLines(streams, "updated", result.updatedFiles);
+      emitFileLines(streams, "created", result.createdFiles);
     });
 
   addCommand
@@ -242,17 +283,14 @@ export const runCli = async (
         id,
         path: inputPath
       });
-      for (const filePath of result.updatedFiles) {
-        streams.stdout(`updated ${filePath}`);
-      }
-      for (const filePath of result.createdFiles) {
-        streams.stdout(`created ${filePath}`);
-      }
+      emitFileLines(streams, "updated", result.updatedFiles);
+      emitFileLines(streams, "created", result.createdFiles);
     });
 
   registerModelCommands(program, handlers, streams);
   registerRuntimeCommands(program, handlers, streams);
   registerSurfaceCommands(program, handlers, streams);
+  registerViewCommand(program, handlers, streams, cliOptions.renderEnvironment);
 
   program
     .command("validate")
@@ -283,9 +321,7 @@ export const runCli = async (
     .option("-p, --profile <name>", "Auth profile name", "default")
     .action(async (filePath: string, options: { profile: string }) => {
       const profile = await handlers.importEnvFile(options.profile, filePath);
-      for (const line of formatAuthProfileSummary(profile)) {
-        streams.stdout(line);
-      }
+      emitLines(streams, formatAuthProfileSummary(profile));
     });
 
   authImportCommand
@@ -294,9 +330,7 @@ export const runCli = async (
     .option("--from <directory>", "Source Claude Code config directory")
     .action(async (options: { from?: string; profile: string }) => {
       const profile = await handlers.importClaudeCodeAuth(options.profile, options.from);
-      for (const line of formatAuthProfileSummary(profile)) {
-        streams.stdout(line);
-      }
+      emitLines(streams, formatAuthProfileSummary(profile));
     });
 
   authImportCommand
@@ -305,9 +339,7 @@ export const runCli = async (
     .option("--from <directory>", "Source Codex config directory")
     .action(async (options: { from?: string; profile: string }) => {
       const profile = await handlers.importCodexAuth(options.profile, options.from);
-      for (const line of formatAuthProfileSummary(profile)) {
-        streams.stdout(line);
-      }
+      emitLines(streams, formatAuthProfileSummary(profile));
     });
 
   authCommand
@@ -333,9 +365,7 @@ export const runCli = async (
           envFilePath: options.envFile,
           profileName: options.profile
         });
-        for (const line of formatAuthProfileSummary(profile)) {
-          streams.stdout(line);
-        }
+        emitLines(streams, formatAuthProfileSummary(profile));
       }
     );
 
@@ -344,15 +374,17 @@ export const runCli = async (
     .option("-p, --profile <name>", "Auth profile name", "default")
     .action(async (options: { profile: string }) => {
       const profile = await handlers.requireAuthProfile(options.profile);
-      for (const line of formatAuthProfileSummary(profile)) {
-        streams.stdout(line);
-      }
+      emitLines(streams, formatAuthProfileSummary(profile));
     });
 
   try {
     await program.parseAsync(argv, { from: "user" });
     return 0;
   } catch (error: unknown) {
+    if (isCommanderError(error)) {
+      return error.exitCode === 0 ? 0 : 1;
+    }
+
     const message = isSpawnfileError(error)
       ? `${error.code}: ${error.message}`
       : error instanceof Error

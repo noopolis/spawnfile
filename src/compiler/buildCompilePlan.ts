@@ -38,6 +38,7 @@ import {
 } from "./types.js";
 import { applyExecutionDefaults } from "./executionDefaults.js";
 import { resolvePlanMoltnetAttachments } from "./moltnetResolution.js";
+import { resolveMoltnetRoomMemberships } from "./moltnetRoomMemberships.js";
 import {
   normalizeDescription,
   resolveDescription,
@@ -379,6 +380,7 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
     runtimes
   };
 
+  compilePlan.moltnetRoomMemberships = resolveMoltnetRoomMemberships(compilePlan);
   resolvePlanMoltnetAttachments(compilePlan);
 
   return compilePlan;

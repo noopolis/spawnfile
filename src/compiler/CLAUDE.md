@@ -26,8 +26,10 @@ src/compiler/
 ├── updateProjectRuntime.ts     # `spawnfile runtime ...` manifest-editing helpers
 ├── updateProjectSurfaces.ts    # `spawnfile surface ...` manifest-editing helpers
 ├── executionDefaults.ts        # Effective execution defaults applied during graph resolution
+├── moltnetRoomMemberships.ts   # Pure concrete Moltnet room membership projection
 ├── moltnetClientConfig.ts      # Moltnet client config emission and runtime workspace layout helpers
 ├── moltnetBinaries.ts          # Compiled Moltnet CLI/release discovery and binary staging
+├── view/                       # Pure compiler view models/renderers for `spawnfile view`
 ├── *.test.ts                   # Tests next to the implementation they cover
 ```
 
