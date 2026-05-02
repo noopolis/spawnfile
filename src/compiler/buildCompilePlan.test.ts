@@ -64,6 +64,45 @@ describe("buildCompilePlan", () => {
     expect(agentNode.value.execution?.sandbox).toEqual({ mode: "workspace" });
   });
 
+  it("derives missing agent descriptions from identity docs", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-description-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "IDENTITY.md"), [
+      "# Identity",
+      "",
+      "  First paragraph describes the agent.",
+      "It can span lines and should normalize whitespace.",
+      "",
+      "Second paragraph is ignored.",
+      ""
+    ].join("\n"));
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: root",
+        "",
+        "runtime: openclaw",
+        "",
+        "docs:",
+        "  identity: IDENTITY.md",
+        ""
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const agentNode = plan.nodes.find((node) => node.kind === "agent");
+    if (!agentNode || agentNode.value.kind !== "agent") {
+      throw new Error("Expected agent node");
+    }
+
+    expect(agentNode.value.description).toBe(
+      "First paragraph describes the agent. It can span lines and should normalize whitespace."
+    );
+  });
+
   it("builds a subagent graph", async () => {
     const plan = await buildCompilePlan(path.join(fixturesRoot, "agent-with-subagents"));
 
@@ -243,7 +282,47 @@ describe("buildCompilePlan", () => {
   });
 
   it("builds a multi-runtime team graph", async () => {
-    const plan = await buildCompilePlan(path.join(fixturesRoot, "multi-runtime-team"));
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-multi-runtime-plan-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "TEAM.md"), "# Team\n");
+    for (const [id, runtime] of [
+      ["orchestrator", "openclaw"],
+      ["researcher", "picoclaw"],
+      ["writer", "tinyclaw"]
+    ] as const) {
+      await ensureDirectory(path.join(directory, "agents", id));
+      await writeUtf8File(path.join(directory, "agents", id, "AGENTS.md"), `# ${id}\n`);
+      await writeUtf8File(
+        path.join(directory, "agents", id, "Spawnfile"),
+        ['spawnfile_version: "0.1"', "kind: agent", `name: ${id}`, "", `runtime: ${runtime}`, "", "docs:", "  system: AGENTS.md", ""].join("\n")
+      );
+    }
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: research-cell",
+        "",
+        "docs:",
+        "  system: TEAM.md",
+        "",
+        "members:",
+        "  - id: orchestrator",
+        "    ref: ./agents/orchestrator",
+        "  - id: researcher",
+        "    ref: ./agents/researcher",
+        "  - id: writer",
+        "    ref: ./agents/writer",
+        "",
+        "mode: hierarchical",
+        "lead: orchestrator",
+        ""
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
 
     expect(Object.keys(plan.runtimes).sort()).toEqual(["openclaw", "picoclaw", "tinyclaw"]);
     expect(plan.nodes.find((node) => node.kind === "team")).toBeTruthy();
@@ -331,6 +410,9 @@ describe("buildCompilePlan", () => {
     ]);
     expect(agentNode.value.surfaces?.moltnet).toEqual([
       {
+        contextRooms: {
+          [teamNode.value.source]: ["research"]
+        },
         memberId: "researcher",
         network: "local_lab",
         rooms: {
@@ -431,7 +513,70 @@ describe("buildCompilePlan", () => {
     await expect(buildCompilePlan(directory)).rejects.toThrow(/unknown Moltnet room missing/);
   });
 
-  it("rejects team networks that include nested teams as room members", async () => {
+  it("rejects duplicate moltnet member ids across direct agent slots", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moltnet-member-collision-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "TEAM.md"), "# Team\n");
+    for (const teamName of ["one", "two"]) {
+      await ensureDirectory(path.join(directory, "teams", teamName, "agents", "rep"));
+      await writeUtf8File(path.join(directory, "teams", teamName, "TEAM.md"), `# ${teamName}\n`);
+      await writeUtf8File(path.join(directory, "teams", teamName, "agents", "rep", "AGENTS.md"), "# Rep\n");
+      await writeUtf8File(
+        path.join(directory, "teams", teamName, "agents", "rep", "Spawnfile"),
+        ['spawnfile_version: "0.1"', "kind: agent", `name: ${teamName}-rep`, "", "runtime: openclaw", "", "docs:", "  system: AGENTS.md", ""].join("\n")
+      );
+      await writeUtf8File(
+        path.join(directory, "teams", teamName, "Spawnfile"),
+        [
+          'spawnfile_version: "0.1"',
+          "kind: team",
+          `name: ${teamName}`,
+          "",
+          "docs:",
+          "  system: TEAM.md",
+          "",
+          "members:",
+          "  - id: rep",
+          "    ref: ./agents/rep",
+          "",
+          "mode: swarm",
+          ""
+        ].join("\n")
+      );
+    }
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: collision",
+        "",
+        "docs:",
+        "  system: TEAM.md",
+        "",
+        "members:",
+        "  - id: one",
+        "    ref: ./teams/one",
+        "  - id: two",
+        "    ref: ./teams/two",
+        "",
+        "mode: swarm",
+        "",
+        "networks:",
+        "  - id: org",
+        "    provider: moltnet",
+        "    rooms:",
+        "      - id: room",
+        "        members: [one, two]",
+        ""
+      ].join("\n")
+    );
+
+    await expect(buildCompilePlan(directory)).rejects.toThrow(/Moltnet member_id rep/);
+  });
+
+  it("expands team networks that include nested teams through representatives", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moltnet-nested-team-"));
     temporaryDirectories.push(directory);
 
@@ -520,7 +665,42 @@ describe("buildCompilePlan", () => {
       ].join("\n")
     );
 
-    await expect(buildCompilePlan(directory)).rejects.toThrow(/can only include agent members/);
+    const plan = await buildCompilePlan(directory);
+    const parentTeam = plan.nodes.find(
+      (node) => node.kind === "team" && node.value.name === "research-cell"
+    );
+    const representativeAgent = plan.nodes.find(
+      (node) => node.kind === "agent" && node.value.name === "placeholder-agent"
+    );
+
+    expect(parentTeam?.value.kind).toBe("team");
+    expect(representativeAgent?.value.kind).toBe("agent");
+    if (
+      !parentTeam ||
+      parentTeam.value.kind !== "team" ||
+      !representativeAgent ||
+      representativeAgent.value.kind !== "agent"
+    ) {
+      throw new Error("expected parent team and representative agent");
+    }
+
+    expect(parentTeam.value.networks?.[0]?.rooms[0]?.members).toEqual([
+      "researcher",
+      "placeholder"
+    ]);
+    expect(representativeAgent.value.surfaces?.moltnet).toEqual([
+      {
+        contextRooms: {
+          [parentTeam.value.source]: ["research"]
+        },
+        memberId: "placeholder",
+        network: "local_lab",
+        rooms: {
+          research: {}
+        },
+        teamSource: parentTeam.value.source
+      }
+    ]);
   });
 
   it("rejects cyclic subagent graphs", async () => {

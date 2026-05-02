@@ -23,6 +23,7 @@ import { Manifest } from "../manifest/index.js";
 import { buildCompilePlan } from "./buildCompilePlan.js";
 import { createContainerArtifacts } from "./containerArtifacts.js";
 import {
+  TeamCompileSupport,
   injectMoltnetWorkspaceFiles,
   injectTeamCompileSupportFiles,
   prepareTeamCompileSupport,
@@ -31,8 +32,6 @@ import {
 import { CompilePlanNode, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 import { generateMoltnetArtifacts } from "./moltnetArtifacts.js";
 import { stageMoltnetBinaries } from "./moltnetBinaries.js";
-
-const DEFAULT_ROUTER_PORT = 9100;
 
 type PolicyMode = NonNullable<Manifest["policy"]>["mode"];
 type OnDegrade = NonNullable<Manifest["policy"]>["on_degrade"];
@@ -65,8 +64,6 @@ const createTeamCapabilities = (
   { key: "team.mode", message, outcome },
   { key: "team.lead", message, outcome },
   { key: "team.external", message, outcome },
-  { key: "team.auth", message, outcome },
-  { key: "team.roster", message, outcome },
   { key: "team.shared", message, outcome },
   { key: "team.nested", message, outcome }
 ];
@@ -246,6 +243,58 @@ const enforcePolicy = (
   }
 };
 
+const createIdentityCapabilities = (
+  node: ResolvedAgentNode
+): CapabilityReport[] => [
+  ...(node.surfaces?.slack?.identity
+    ? [{
+        key: "surfaces.slack.identity",
+        message: "Declared Slack identity was preserved for roster output",
+        outcome: "supported" as const
+      }]
+    : []),
+  ...(node.surfaces?.discord?.identity
+    ? [{
+        key: "surfaces.discord.identity",
+        message: "Declared Discord identity was preserved for roster output",
+        outcome: "supported" as const
+      }]
+    : []),
+  ...(node.surfaces?.telegram?.identity
+    ? [{
+        key: "surfaces.telegram.identity",
+        message: "Declared Telegram identity was preserved for roster output",
+        outcome: "supported" as const
+      }]
+    : []),
+  ...(node.surfaces?.whatsapp?.identity
+    ? [{
+        key: "surfaces.whatsapp.identity",
+        message: "Declared WhatsApp identity was preserved for roster output",
+        outcome: "supported" as const
+      }]
+    : [])
+];
+
+const augmentNodeReports = (
+  compiledNodes: CompiledNodeResult[],
+  support: TeamCompileSupport
+): void => {
+  for (const compiled of compiledNodes) {
+    if (compiled.value.kind === "team") {
+      compiled.report.capabilities.push(
+        ...(support.capabilitiesByTeamSource.get(compiled.value.source) ?? [])
+      );
+      compiled.report.diagnostics.push(
+        ...(support.diagnosticsByTeamSource.get(compiled.value.source) ?? [])
+      );
+      continue;
+    }
+
+    compiled.report.capabilities.push(...createIdentityCapabilities(compiled.value));
+  }
+};
+
 export const compileProject = async (
   inputPath: string,
   options: CompileProjectOptions = {}
@@ -258,11 +307,7 @@ export const compileProject = async (
   }
   await ensureDirectory(outputDirectory);
 
-  const teamCompileSupport = await prepareTeamCompileSupport(
-    plan,
-    outputDirectory,
-    DEFAULT_ROUTER_PORT
-  );
+  const teamCompileSupport = await prepareTeamCompileSupport(plan);
 
   const nodeReports: NodeReport[] = [];
   const compiledNodes: CompiledNodeResult[] = [];
@@ -274,20 +319,23 @@ export const compileProject = async (
       await injectTeamCompileSupportFiles(
         outputDirectory,
         compiled,
-        teamCompileSupport,
-        DEFAULT_ROUTER_PORT
+        teamCompileSupport
       );
     } else {
       compiled = await compileTeamNode(outputDirectory, node as CompilePlanNode & { value: ResolvedTeamNode });
     }
 
-    enforcePolicy(
-      compiled.report,
-      node.value.policyMode as PolicyMode | null,
-      node.value.policyOnDegrade as OnDegrade | null
-    );
     nodeReports.push(compiled.report);
     compiledNodes.push(compiled);
+  }
+
+  augmentNodeReports(compiledNodes, teamCompileSupport);
+  for (const compiled of compiledNodes) {
+    enforcePolicy(
+      compiled.report,
+      compiled.value.policyMode as PolicyMode | null,
+      compiled.value.policyOnDegrade as OnDegrade | null
+    );
   }
 
   const moltnetArtifacts = await generateMoltnetArtifacts(plan);
@@ -296,7 +344,6 @@ export const compileProject = async (
     : false;
   await injectMoltnetWorkspaceFiles(outputDirectory, compiledNodes, moltnetArtifacts);
   const containerArtifacts = await createContainerArtifacts(plan, compiledNodes, {
-    hasTeamRouter: teamCompileSupport.hasTeamRouter,
     hasStagedMoltnetBinaries,
     moltnet: moltnetArtifacts
   });

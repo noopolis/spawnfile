@@ -96,12 +96,12 @@ describe("openClaw surfaces", () => {
     });
   });
 
-  it("accepts valid surfaces and rejects ambiguous discord channel allowlists", () => {
+  it("rejects portable http and ambiguous discord channel allowlists", () => {
     expect(() =>
       assertSupportedOpenClawSurfaces({
         http: { pathPrefix: "/v1" }
       })
-    ).not.toThrow();
+    ).toThrow(/does not support portable HTTP surfaces/);
 
     expect(() =>
       assertSupportedOpenClawSurfaces({

@@ -21,3 +21,5 @@ Keep the emitted structure obvious and faithful to what OpenClaw expects. If low
 
 - Prefer emitting obvious OpenClaw workspace structure over clever abstraction.
 - Keep capability reporting explicit when a feature maps only approximately.
+- Portable HTTP is not part of the v0.1 alpha surface contract. Treat any OpenClaw HTTP/webhook internals as runtime-specific unless a future spec reintroduces portable ingress.
+- Do not add Spawnfile-owned team routing. Team context orientation should use the adapter's system-instruction surface metadata when supported.

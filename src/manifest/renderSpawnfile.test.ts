@@ -317,37 +317,39 @@ describe("renderSpawnfile", () => {
     );
   });
 
-  it("renders http after slack in canonical order", () => {
+  it("round-trips surface identities", () => {
     const source = renderSpawnfile({
       kind: "agent",
-      name: "http-agent",
-      runtime: "tinyclaw",
+      name: "identity-agent",
+      runtime: "openclaw",
       spawnfile_version: "0.1",
       surfaces: {
-        http: {
-          access: {
-            mode: "open"
-          }
+        discord: {
+          identity: { user_id: "987654321098765432" }
         },
         slack: {
-          access: {
-            mode: "open"
-          }
+          identity: { user_id: "U1234567890" }
+        },
+        telegram: {
+          identity: { user_id: "123456789", username: "identity_agent" }
+        },
+        whatsapp: {
+          identity: { phone: "+15551234567" }
         }
       }
     });
 
-    expect(source).toContain(
-      [
-        "surfaces:",
-        "  slack:",
-        "    access:",
-        "      mode: open",
-        "  http:",
-        "    access:",
-        "      mode: open"
-      ].join("\n")
-    );
+    const parsed = manifestSchema.parse(YAML.parse(source) as unknown);
+
+    expect(source).toContain("    identity:");
+    expect(parsed).toMatchObject({
+      surfaces: {
+        discord: { identity: { user_id: "987654321098765432" } },
+        slack: { identity: { user_id: "U1234567890" } },
+        telegram: { identity: { user_id: "123456789", username: "identity_agent" } },
+        whatsapp: { identity: { phone: "+15551234567" } }
+      }
+    });
   });
 
   it("renders inline model auth and endpoint fields in canonical order", () => {
@@ -433,7 +435,7 @@ describe("renderSpawnfile", () => {
             dms: {
               enabled: true,
               read: "all",
-              reply: "manual"
+              reply: "never"
             }
           }
         ]

@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import YAML from "yaml";
 
-import type { SurfaceName } from "../compiler/index.js";
+import { resolvePortableSurfaceName } from "../compiler/index.js";
 
 import type { CliHandlers, CliStreams } from "./runCli.js";
 
@@ -46,7 +46,7 @@ export const registerSurfaceCommands = (
     .option("--recursive", "Update the target project and its descendants")
     .action(
       async (
-        surface: SurfaceName,
+        surface: string,
         inputPath: string,
         options: {
           appTokenSecret?: string;
@@ -54,12 +54,13 @@ export const registerSurfaceCommands = (
           recursive?: boolean;
         }
       ) => {
+        const surfaceName = resolvePortableSurfaceName(surface);
         const result = await handlers.addProjectSurface({
           appTokenSecret: options.appTokenSecret,
           botTokenSecret: options.botTokenSecret,
           path: inputPath,
           recursive: options.recursive,
-          surface
+          surface: surfaceName
         });
 
         for (const filePath of result.updatedFiles) {
@@ -73,11 +74,12 @@ export const registerSurfaceCommands = (
     .argument("<surface>", "Surface name")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .option("--recursive", "Update the target project and its descendants")
-    .action(async (surface: SurfaceName, inputPath: string, options: { recursive?: boolean }) => {
+    .action(async (surface: string, inputPath: string, options: { recursive?: boolean }) => {
+      const surfaceName = resolvePortableSurfaceName(surface);
       const result = await handlers.removeProjectSurface({
         path: inputPath,
         recursive: options.recursive,
-        surface
+        surface: surfaceName
       });
 
       for (const filePath of result.updatedFiles) {
@@ -98,7 +100,7 @@ export const registerSurfaceCommands = (
     .option("--recursive", "Update the target project and its descendants")
     .action(
       async (
-        surface: SurfaceName,
+        surface: string,
         inputPath: string,
         options: {
           channel: string[];
@@ -110,6 +112,7 @@ export const registerSurfaceCommands = (
           user: string[];
         }
       ) => {
+        const surfaceName = resolvePortableSurfaceName(surface);
         const result = await handlers.setProjectSurfaceAccess({
           channels: options.channel,
           chats: options.chat,
@@ -118,7 +121,7 @@ export const registerSurfaceCommands = (
           mode: options.mode,
           path: inputPath,
           recursive: options.recursive,
-          surface,
+          surface: surfaceName,
           users: options.user
         });
 

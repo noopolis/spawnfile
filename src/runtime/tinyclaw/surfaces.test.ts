@@ -68,13 +68,7 @@ describe("tinyClaw surfaces", () => {
           pathPrefix: "/v1"
         }
       })
-    ).not.toThrow();
-
-    expect(() =>
-      assertSupportedTinyClawSurfaces({
-        http: { pathPrefix: "/v1" }
-      })
-    ).not.toThrow();
+    ).toThrow(/does not support portable HTTP surfaces/);
 
     expect(() =>
       assertSupportedTinyClawSurfaces({

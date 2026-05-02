@@ -13,12 +13,12 @@ describe("picoClaw surfaces", () => {
     expect(buildPicoClawSurfaceEnvBindings({ whatsapp: {} })).toBeUndefined();
   });
 
-  it("accepts the portable http surface", () => {
+  it("rejects portable http surfaces", () => {
     expect(() =>
       assertSupportedPicoClawSurfaces({
         http: { pathPrefix: "/v1" }
       })
-    ).not.toThrow();
+    ).toThrow(/does not support portable HTTP surfaces/);
   });
 
   it("builds WhatsApp and Slack channel config with env bindings", () => {

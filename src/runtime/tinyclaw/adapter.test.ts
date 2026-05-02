@@ -40,6 +40,30 @@ describe("tinyClawAdapter", () => {
     ).toContain("node <runtime-root>/packages/channels/dist/telegram.js");
   });
 
+  it("resolves the system instruction surface from the agent name", () => {
+    const node: ResolvedAgentNode = {
+      description: "",
+      docs: [],
+      env: {},
+      execution: undefined,
+      kind: "agent",
+      mcpServers: [],
+      name: "field-researcher",
+      policyMode: null,
+      policyOnDegrade: null,
+      runtime: { name: "tinyclaw", options: {} },
+      secrets: [],
+      skills: [],
+      source: "/tmp/field-researcher/Spawnfile",
+      subagents: []
+    };
+
+    expect(tinyClawAdapter.systemInstructionSurface?.placement).toBe("append_pointer");
+    expect(tinyClawAdapter.systemInstructionSurface?.resolvePath({ node })).toBe(
+      "workspace/field-researcher/AGENTS.md"
+    );
+  });
+
   it("emits settings.json with agents map and workspace", async () => {
     const node: ResolvedAgentNode = {
       description: "",
@@ -186,7 +210,6 @@ describe("tinyClawAdapter", () => {
 
   it("compiles a native team artifact with teams map", async () => {
     const result = await tinyClawAdapter.compileTeam?.({
-      auth: null,
       description: "",
       docs: [],
       external: ["leader"],
@@ -210,6 +233,32 @@ describe("tinyClawAdapter", () => {
     const config = JSON.parse(configFile!.content);
     expect(config.teams["research-cell"].leader_agent).toBe("leader");
     expect(config.teams["research-cell"].agents).toEqual(["leader", "writer"]);
+  });
+
+  it("does not invent a TinyClaw leader when no direct agent lead is declared", async () => {
+    const result = await tinyClawAdapter.compileTeam?.({
+      description: "",
+      docs: [],
+      external: [],
+      kind: "team",
+      lead: null,
+      members: [
+        { id: "writer", kind: "agent", nodeSource: "/tmp/b", runtimeName: "tinyclaw" },
+        { id: "reviewer", kind: "agent", nodeSource: "/tmp/c", runtimeName: "tinyclaw" }
+      ],
+      mode: "swarm" as const,
+      name: "research-cell",
+      policyMode: null,
+      policyOnDegrade: null,
+      shared: { env: {}, mcpServers: [], secrets: [], skills: [] },
+      source: "/tmp/team/Spawnfile"
+    });
+
+    const config = JSON.parse(result!.files[0]!.content);
+    expect(config.teams["research-cell"].leader_agent).toBeUndefined();
+    expect(result?.capabilities.find((capability) => capability.key === "team.lead")?.outcome).toBe(
+      "degraded"
+    );
   });
 
   it("merges agent and team artifacts into one container target", async () => {
@@ -245,7 +294,6 @@ describe("tinyClawAdapter", () => {
     const assistantFiles = await tinyClawAdapter.compileAgent(assistantNode);
     const writerFiles = await tinyClawAdapter.compileAgent(writerNode);
     const teamFiles = await tinyClawAdapter.compileTeam?.({
-      auth: null,
       description: "",
       docs: [],
       external: [],
@@ -284,7 +332,6 @@ describe("tinyClawAdapter", () => {
         kind: "team",
         slug: "research-cell",
         value: {
-          auth: null,
           description: "",
           docs: [],
           external: [],
@@ -565,7 +612,6 @@ describe("tinyClawAdapter", () => {
         kind: "team",
         slug: "research-cell",
         value: {
-          auth: null,
           description: "",
           docs: [],
           external: [],
@@ -710,7 +756,6 @@ describe("tinyClawAdapter", () => {
         kind: "team",
         slug: "research-cell",
         value: {
-          auth: null,
           description: "",
           docs: [],
           external: [],

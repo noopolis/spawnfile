@@ -8,6 +8,10 @@ import {
 
 import type { ResolvedAgentSurfaces } from "./types.js";
 
+type SurfaceWithIdentity<T> = {
+  identity?: T;
+};
+
 export const resolveAgentSurfaces = (
   surfaces: SurfacesBlock | undefined
 ): ResolvedAgentSurfaces | undefined => {
@@ -18,6 +22,7 @@ export const resolveAgentSurfaces = (
   const resolved: ResolvedAgentSurfaces = {};
 
   if (surfaces.discord) {
+    const identity = (surfaces.discord as SurfaceWithIdentity<{ user_id: string }>).identity;
     resolved.discord = {
       ...(surfaces.discord.access
         ? {
@@ -30,17 +35,8 @@ export const resolveAgentSurfaces = (
           }
         : {}),
       botTokenSecret:
-        surfaces.discord.bot_token_secret ?? DEFAULT_DISCORD_BOT_TOKEN_SECRET
-    };
-  }
-
-  if (surfaces.http) {
-    const httpSurface = surfaces.http;
-    resolved.http = {
-      ...(httpSurface.access ? { access: { mode: "open" as const } } : {}),
-      ...(httpSurface.auth ? { auth: httpSurface.auth } : {}),
-      pathPrefix: httpSurface.path_prefix ?? "/v1",
-      ...(httpSurface.port !== undefined ? { port: httpSurface.port } : {})
+        surfaces.discord.bot_token_secret ?? DEFAULT_DISCORD_BOT_TOKEN_SECRET,
+      ...(identity ? { identity: { userId: identity.user_id } } : {})
     };
   }
 
@@ -77,6 +73,10 @@ export const resolveAgentSurfaces = (
   }
 
   if (surfaces.telegram) {
+    const identity = (surfaces.telegram as SurfaceWithIdentity<{
+      user_id?: string;
+      username?: string;
+    }>).identity;
     resolved.telegram = {
       ...(surfaces.telegram.access
         ? {
@@ -88,23 +88,36 @@ export const resolveAgentSurfaces = (
           }
         : {}),
       botTokenSecret:
-        surfaces.telegram.bot_token_secret ?? DEFAULT_TELEGRAM_BOT_TOKEN_SECRET
+        surfaces.telegram.bot_token_secret ?? DEFAULT_TELEGRAM_BOT_TOKEN_SECRET,
+      ...(identity
+        ? {
+            identity: {
+              ...(identity.user_id ? { userId: identity.user_id } : {}),
+              ...(identity.username ? { username: identity.username } : {})
+            }
+          }
+        : {})
     };
   }
 
   if (surfaces.whatsapp) {
+    const identity = (surfaces.whatsapp as SurfaceWithIdentity<{ phone: string }>).identity;
     resolved.whatsapp = surfaces.whatsapp.access
       ? {
           access: {
             groups: [...(surfaces.whatsapp.access.groups ?? [])],
             mode: surfaces.whatsapp.access.mode ?? "allowlist",
             users: [...(surfaces.whatsapp.access.users ?? [])]
-          }
+          },
+          ...(identity ? { identity: { phone: identity.phone } } : {})
         }
-      : {};
+      : {
+          ...(identity ? { identity: { phone: identity.phone } } : {})
+        };
   }
 
   if (surfaces.slack) {
+    const identity = (surfaces.slack as SurfaceWithIdentity<{ user_id: string }>).identity;
     resolved.slack = {
       ...(surfaces.slack.access
         ? {
@@ -118,7 +131,8 @@ export const resolveAgentSurfaces = (
       appTokenSecret:
         surfaces.slack.app_token_secret ?? DEFAULT_SLACK_APP_TOKEN_SECRET,
       botTokenSecret:
-        surfaces.slack.bot_token_secret ?? DEFAULT_SLACK_BOT_TOKEN_SECRET
+        surfaces.slack.bot_token_secret ?? DEFAULT_SLACK_BOT_TOKEN_SECRET,
+      ...(identity ? { identity: { userId: identity.user_id } } : {})
     };
   }
 

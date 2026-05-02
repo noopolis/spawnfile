@@ -1,5 +1,4 @@
 import type { EmittedFile } from "../runtime/index.js";
-import { generateTeamMessageCliScript } from "./teamMcp.js";
 
 import { createEnvVariableMap, createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
 import {
@@ -19,7 +18,6 @@ export type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./contai
 
 export interface ContainerArtifactOptions {
   hasStagedMoltnetBinaries?: boolean;
-  hasTeamRouter?: boolean;
   moltnet?: MoltnetArtifacts | null;
 }
 
@@ -48,19 +46,10 @@ export const createContainerArtifacts = async (
   const files: EmittedFile[] = [
     ...createRootfsFiles(runtimePlans),
     ...(options.moltnet?.files ?? []),
-    ...(options.hasTeamRouter
-      ? [
-          {
-            content: generateTeamMessageCliScript(),
-            path: "container/rootfs/usr/local/bin/spawnfile-team-message"
-          } satisfies EmittedFile
-        ]
-      : []),
     {
       content: await renderDockerfile(runtimePlans, {
         hasMoltnet: Boolean(options.moltnet),
         hasStagedMoltnetBinaries: options.hasStagedMoltnetBinaries,
-        hasTeamRouter: options.hasTeamRouter,
         moltnetPublishedPorts: options.moltnet?.publishedPorts ?? []
       }),
       path: "Dockerfile"
@@ -70,7 +59,6 @@ export const createContainerArtifacts = async (
         runtimePlans,
         requiredSecrets.filter((secretName) => !modelSecretsRequired.includes(secretName)),
         {
-          hasTeamRouter: options.hasTeamRouter,
           moltnet: options.moltnet
             ? {
                 bridgePlans: options.moltnet.bridgePlans,
@@ -110,10 +98,7 @@ export const createContainerArtifacts = async (
   const runtimesInstalled = [...new Set(runtimePlans.map((plan) => plan.runtimeName))].sort();
 
   return {
-    executablePaths: [
-      "entrypoint.sh",
-      ...(options.hasTeamRouter ? ["container/rootfs/usr/local/bin/spawnfile-team-message"] : [])
-    ],
+    executablePaths: ["entrypoint.sh"],
     files,
     ...(options.moltnet
       ? {

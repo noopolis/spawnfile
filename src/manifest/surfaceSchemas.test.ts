@@ -3,26 +3,8 @@ import { describe, expect, it } from "vitest";
 import { manifestSchema } from "./schemas.js";
 
 describe("surfaceSchemas", () => {
-  it("accepts http open access and rejects unsupported modes", () => {
-    expect(
-      manifestSchema.parse({
-        kind: "agent",
-        name: "agent",
-        runtime: "tinyclaw",
-        spawnfile_version: "0.1",
-        surfaces: {
-          http: {
-            access: {
-              mode: "open"
-            }
-          }
-        }
-      })
-    ).toMatchObject({
-      kind: "agent"
-    });
-
-    const pairing = manifestSchema.safeParse({
+  it("rejects portable http surfaces", () => {
+    const result = manifestSchema.safeParse({
       kind: "agent",
       name: "agent",
       runtime: "tinyclaw",
@@ -30,13 +12,14 @@ describe("surfaceSchemas", () => {
       surfaces: {
         http: {
           access: {
-            mode: "pairing"
+            mode: "open"
           }
         }
       }
     });
 
-    expect(pairing.success).toBe(false);
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error?.issues)).toContain("http");
   });
 
   it("accepts WhatsApp and Slack open access", () => {
@@ -62,6 +45,68 @@ describe("surfaceSchemas", () => {
     ).toMatchObject({
       kind: "agent"
     });
+  });
+
+  it("accepts surface identity metadata for roster addresses", () => {
+    const result = manifestSchema.parse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        discord: {
+          identity: { user_id: "987654321098765432" }
+        },
+        slack: {
+          identity: { user_id: "U1234567890" }
+        },
+        telegram: {
+          identity: { username: "agent_bot" }
+        },
+        whatsapp: {
+          identity: { phone: "+15551234567" }
+        }
+      }
+    });
+
+    expect(result.surfaces).toMatchObject({
+      discord: { identity: { user_id: "987654321098765432" } },
+      slack: { identity: { user_id: "U1234567890" } },
+      telegram: { identity: { username: "agent_bot" } },
+      whatsapp: { identity: { phone: "+15551234567" } }
+    });
+  });
+
+  it("rejects invalid surface identity shapes", () => {
+    const telegram = manifestSchema.safeParse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        telegram: {
+          identity: {}
+        }
+      }
+    });
+    const slack = manifestSchema.safeParse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        slack: {
+          identity: {
+            username: "not-a-slack-field"
+          }
+        }
+      }
+    });
+
+    expect(telegram.success).toBe(false);
+    expect(telegram.error?.issues[0]?.message).toContain("user_id or username");
+    expect(slack.success).toBe(false);
+    expect(JSON.stringify(slack.error?.issues)).toContain("user_id");
   });
 
   it("infers allowlist mode from WhatsApp and Slack allowlist entries", () => {
@@ -211,7 +256,7 @@ describe("surfaceSchemas", () => {
     );
   });
 
-  it("accepts moltnet surfaces and rejects empty attachments", () => {
+  it("accepts moltnet surfaces and rejects empty attachments or manual replies", () => {
     expect(
       manifestSchema.parse({
         kind: "agent",
@@ -252,5 +297,27 @@ describe("surfaceSchemas", () => {
 
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.message).toContain("must declare rooms or dms");
+
+    const manualReply = manifestSchema.safeParse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      surfaces: {
+        moltnet: [
+          {
+            dms: {
+              enabled: true,
+              reply: "manual"
+            },
+            network: "local_lab"
+          }
+        ]
+      }
+    });
+
+    expect(manualReply.success).toBe(false);
+    expect(manualReply.error?.issues[0]?.message).toContain("auto");
+    expect(manualReply.error?.issues[0]?.message).toContain("never");
   });
 });

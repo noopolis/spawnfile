@@ -1,0 +1,30 @@
+spawnfile_version: "0.1"
+kind: team
+name: field-team
+description: "Child team with an explicit representative and a local Moltnet room"
+
+docs:
+  system: TEAM.md
+
+members:
+  - id: field-representative
+    ref: ./agents/representative
+  - id: field-observer
+    ref: ./agents/observer
+
+mode: hierarchical
+lead: field-representative
+external: [field-representative]
+
+networks:
+  - id: field_lab
+    name: Field Lab
+    provider: moltnet
+    expose: true
+    rooms:
+      - id: field-room
+        members: [field-representative, field-observer]
+
+policy:
+  mode: warn
+  on_degrade: warn

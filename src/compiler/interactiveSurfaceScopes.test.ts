@@ -16,9 +16,6 @@ describe("interactiveSurfaceScopes", () => {
         discord: {
           botTokenSecret: "DISCORD_BOT_TOKEN"
         },
-        http: {
-          pathPrefix: "/v1"
-        },
         moltnet: [
           {
             dms: {
@@ -39,7 +36,6 @@ describe("interactiveSurfaceScopes", () => {
       })
     ).toEqual([
       "discord",
-      "http",
       "moltnet:local_lab:room:research",
       "moltnet:local_lab:room:review",
       "moltnet:local_lab:dms",

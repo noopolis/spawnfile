@@ -52,6 +52,13 @@ describe("picoClawAdapter", () => {
     });
   });
 
+  it("declares the workspace AGENTS.md system instruction surface", () => {
+    expect(picoClawAdapter.systemInstructionSurface?.placement).toBe("append_pointer");
+    expect(picoClawAdapter.systemInstructionSurface?.resolvePath({ node })).toBe(
+      "workspace/AGENTS.md"
+    );
+  });
+
   it("emits config with agents.defaults and model_list", async () => {
     const result = await picoClawAdapter.compileAgent(node);
     const configFile = result.files.find((file) => file.path === "config.json");
@@ -205,7 +212,7 @@ describe("picoClawAdapter", () => {
             rooms: {
               "apartment-4a": {
                 read: "all",
-                reply: "manual"
+                reply: "never"
               }
             },
             teamSource: "/tmp/Spawnfile"

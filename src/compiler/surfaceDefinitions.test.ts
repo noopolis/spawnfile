@@ -72,14 +72,6 @@ describe("surfaceDefinitions", () => {
 
     expect(
       upsertSurface(undefined, {
-        surface: "http"
-      })
-    ).toEqual({
-      http: {}
-    });
-
-    expect(
-      upsertSurface(undefined, {
         surface: "whatsapp"
       })
     ).toEqual({
@@ -115,10 +107,9 @@ describe("surfaceDefinitions", () => {
 
     expect(() =>
       upsertSurface(undefined, {
-        botTokenSecret: "NOPE",
         surface: "http"
       })
-    ).toThrow(/--bot-token-secret is not valid for http surfaces/i);
+    ).toThrow(/unsupported portable surface http/i);
   });
 
   it("builds and normalizes discord allowlists", () => {
@@ -147,7 +138,7 @@ describe("surfaceDefinitions", () => {
     });
   });
 
-  it("validates telegram, http, whatsapp, and slack access rules", () => {
+  it("validates telegram, whatsapp, and slack access rules", () => {
     expect(
       updateSurfaceAccess(
         { telegram: {} },
@@ -182,9 +173,9 @@ describe("surfaceDefinitions", () => {
       )
     ).toThrow(/telegram allowlist access requires at least one --user or --chat/i);
 
-    expect(
+    expect(() =>
       updateSurfaceAccess(
-        { http: {} },
+        { telegram: {} },
         {
           mode: "open",
           surface: "http"
@@ -192,38 +183,7 @@ describe("surfaceDefinitions", () => {
         "/tmp/Spawnfile",
         false
       )
-    ).toEqual({
-      http: {
-        access: {
-          mode: "open"
-        }
-      }
-    });
-
-    expect(() =>
-      updateSurfaceAccess(
-        { http: {} },
-        {
-          mode: "allowlist",
-          surface: "http",
-          users: ["42"]
-        },
-        "/tmp/Spawnfile",
-        false
-      )
-    ).toThrow(/http surfaces do not accept allowlist ids/i);
-
-    expect(() =>
-      updateSurfaceAccess(
-        { http: {} },
-        {
-          mode: "pairing",
-          surface: "http"
-        },
-        "/tmp/Spawnfile",
-        false
-      )
-    ).toThrow(/http surfaces only support --mode open/i);
+    ).toThrow(/unsupported portable surface http/i);
 
     expect(
       updateSurfaceAccess(
@@ -377,18 +337,6 @@ describe("surfaceDefinitions", () => {
       )
     ).toThrow(/whatsapp allowlist access requires at least one --user or --group/i);
 
-    expect(() =>
-      updateSurfaceAccess(
-        { discord: {} },
-        {
-          mode: "open",
-          surface: "http"
-        },
-        "/tmp/Spawnfile",
-        false
-      )
-    ).toThrow(/use spawnfile surface add http first/i);
-
     expect(
       updateSurfaceAccess(
         { telegram: {} },
@@ -403,7 +351,7 @@ describe("surfaceDefinitions", () => {
 
     expect(
       updateSurfaceAccess(
-        { http: {} },
+        { telegram: {} },
         {
           mode: "open",
           surface: "discord"
@@ -415,7 +363,7 @@ describe("surfaceDefinitions", () => {
 
     expect(() =>
       updateSurfaceAccess(
-        { http: {} },
+        { slack: {} },
         {
           mode: "open",
           surface: "telegram"
@@ -427,7 +375,7 @@ describe("surfaceDefinitions", () => {
 
     expect(
       updateSurfaceAccess(
-        { http: {} },
+        { whatsapp: {} },
         {
           mode: "open",
           surface: "slack"
@@ -440,19 +388,19 @@ describe("surfaceDefinitions", () => {
 
   it("removes surfaces cleanly and validates runtime support", () => {
     expect(removeSurface(undefined, "discord")).toBeUndefined();
-    expect(removeSurface(undefined, "http")).toBeUndefined();
+    expect(() => removeSurface(undefined, "http")).toThrow(/unsupported portable surface http/i);
     expect(
       removeSurface(
         {
           discord: {},
-          http: {},
-          slack: {}
+          slack: {},
+          telegram: {}
         },
         "discord"
       )
     ).toEqual({
-      http: {},
-      slack: {}
+      slack: {},
+      telegram: {}
     });
     expect(removeSurface({ discord: {} }, "discord")).toBeUndefined();
 
@@ -467,18 +415,6 @@ describe("surfaceDefinitions", () => {
         })
       )
     ).toThrow(/TinyClaw does not support Slack/i);
-
-    expect(() =>
-      validateAgentSurfaceSupport(
-        createAgentManifest({
-          name: "tiny",
-          runtime: "tinyclaw",
-          surfaces: {
-            http: {}
-          }
-        })
-      )
-    ).not.toThrow();
 
     expect(() =>
       validateAgentSurfaceSupport(
@@ -505,18 +441,6 @@ describe("surfaceDefinitions", () => {
         })
       )
     ).toThrow(/only one interactive conversation scope/i);
-
-    expect(() =>
-      validateAgentSurfaceSupport(
-        createAgentManifest({
-          name: "tiny",
-          runtime: "openclaw",
-          surfaces: {
-            http: {}
-          }
-        })
-      )
-    ).not.toThrow();
 
     expect(() =>
       validateAgentSurfaceSupport(

@@ -89,9 +89,9 @@ describe("createDockerRunInvocation", () => {
             }
           ],
           runtime_homes: ["/var/lib/spawnfile/instances/openclaw/agent-assistant/home"],
-          runtime_secrets_required: ["OPENCLAW_GATEWAY_TOKEN"],
+          runtime_secrets_required: ["OPENCLAW_GATEWAY_TOKEN", "OPENCLAW_HOOKS_TOKEN"],
           runtimes_installed: ["openclaw"],
-          secrets_required: ["ANTHROPIC_API_KEY", "OPENCLAW_GATEWAY_TOKEN"]
+          secrets_required: ["ANTHROPIC_API_KEY", "OPENCLAW_GATEWAY_TOKEN", "OPENCLAW_HOOKS_TOKEN"]
         }),
         reportPath: "/tmp/spawnfile-run-out/spawnfile-report.json"
       },
@@ -116,6 +116,7 @@ describe("createDockerRunInvocation", () => {
     const envFile = await readUtf8File(invocation.envFilePath);
     expect(envFile).toContain("ANTHROPIC_API_KEY=profile-ant");
     expect(envFile).toContain("OPENCLAW_GATEWAY_TOKEN=");
+    expect(envFile).toContain("OPENCLAW_HOOKS_TOKEN=");
 
     await removeDirectory(path.dirname(invocation.envFilePath));
   });

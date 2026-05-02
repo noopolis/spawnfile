@@ -44,7 +44,7 @@ const createAgent = (runtime: "openclaw" | "picoclaw" | "tinyclaw"): ResolvedAge
         dms: {
           enabled: true,
           read: "all",
-          reply: "manual"
+          reply: "never"
         },
         memberId: "orchestrator",
         network: "local_lab",
@@ -160,6 +160,18 @@ describe("moltnetClientConfig", () => {
     expect(() => createMoltnetClientConfigFiles(createAgent("openclaw"), artifacts)).toThrow(
       /Unable to resolve Moltnet server plan/
     );
+  });
+
+  it("falls back to the shared network server plan when a representative context has a different team source", () => {
+    const agent = createAgent("openclaw");
+    if (agent.surfaces?.moltnet?.[0]) {
+      agent.surfaces.moltnet[0].teamSource = "/tmp/child/Spawnfile";
+    }
+
+    const files = createMoltnetClientConfigFiles(agent, createArtifacts());
+
+    expect(files[0]?.content).toContain('"base_url": "http://127.0.0.1:8787"');
+    expect(files[0]?.content).toContain('"network_id": "local_lab"');
   });
 
   it("fails when the runtime does not have a Moltnet workspace layout", () => {

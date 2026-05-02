@@ -65,7 +65,7 @@ const getImportMountTargetName = (kind: keyof ResolvedAuthProfile["imports"]): s
   kind === "claude-code" ? ".claude" : ".codex";
 
 const createGeneratedRuntimeSecret = (secretName: string): string | null => {
-  if (secretName === "OPENCLAW_GATEWAY_TOKEN") {
+  if (secretName === "OPENCLAW_GATEWAY_TOKEN" || secretName === "OPENCLAW_HOOKS_TOKEN") {
     return randomBytes(24).toString("hex");
   }
 

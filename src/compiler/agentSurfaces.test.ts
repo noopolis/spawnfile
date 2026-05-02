@@ -17,32 +17,27 @@ describe("agentSurfaces", () => {
             users: ["987654321098765432"]
           }
         },
-      http: {
-        access: {
-          mode: "open"
-        }
-      },
-      moltnet: [
-        {
-          dms: {
-            enabled: true,
-            read: "all",
-            reply: "auto"
-          },
-          network: "local_lab",
-          rooms: {
-            research: {
-              read: "mentions",
-              reply: "manual"
+        moltnet: [
+          {
+            dms: {
+              enabled: true,
+              read: "all",
+              reply: "auto"
+            },
+            network: "local_lab",
+            rooms: {
+              research: {
+                read: "mentions",
+                reply: "never"
+              }
             }
           }
-        }
-      ],
-      telegram: {
-        access: {
-          chats: ["-1001234567890"]
-        }
-      },
+        ],
+        telegram: {
+          access: {
+            chats: ["-1001234567890"]
+          }
+        },
         whatsapp: {
           access: {
             groups: ["120363400000000000@g.us"]
@@ -64,12 +59,6 @@ describe("agentSurfaces", () => {
         },
         botTokenSecret: "DISCORD_BOT_TOKEN"
       },
-      http: {
-        access: {
-          mode: "open"
-        },
-        pathPrefix: "/v1"
-      },
       moltnet: [
         {
           dms: {
@@ -82,7 +71,7 @@ describe("agentSurfaces", () => {
           rooms: {
             research: {
               read: "mentions",
-              reply: "manual"
+              reply: "never"
             }
           },
           teamSource: null

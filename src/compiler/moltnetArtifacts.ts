@@ -41,8 +41,7 @@ const ROOTFS_PREFIX = "container/rootfs";
 const INSTANCE_ROOT_PLACEHOLDER = "<instance-root>";
 const CONFIG_FILE_PLACEHOLDER = "<config-file>";
 
-const createServerKey = (teamSource: string, networkId: string): string =>
-  `${teamSource}::${networkId}`;
+const createServerKey = (networkId: string): string => networkId;
 
 const createBridgeConfigPath = (teamSlug: string, networkId: string, agentId: string): string =>
   `${ROOTFS_PREFIX}/var/lib/spawnfile/moltnet/bridges/${teamSlug}-${networkId}-${agentId}.json`;
@@ -173,22 +172,40 @@ export const generateMoltnetArtifacts = async (
 
   for (const teamNode of teamNodes) {
     for (const network of teamNode.value.networks ?? []) {
-      serverPlans.set(createServerKey(teamNode.value.source, network.id), {
-        id: `${teamNode.slug}-${network.id}`,
-        name: network.name,
-        networkId: network.id,
-        port: nextPort,
-        rooms: network.rooms.map((room) => ({
-          id: room.id,
-          members: [...room.members]
-        })),
-        teamSource: teamNode.value.source
-      });
-      nextPort += 1;
+      const serverKey = createServerKey(network.id);
+      const existingPlan = serverPlans.get(serverKey);
+      if (existingPlan) {
+        for (const room of network.rooms) {
+          const existingRoom = existingPlan.rooms.find((entry) => entry.id === room.id);
+          if (existingRoom) {
+            existingRoom.members = [...new Set([...existingRoom.members, ...room.members])].sort();
+          } else {
+            existingPlan.rooms.push({
+              id: room.id,
+              members: [...new Set(room.members)].sort()
+            });
+          }
+        }
+        existingPlan.rooms.sort((left, right) => left.id.localeCompare(right.id));
+      } else {
+        serverPlans.set(serverKey, {
+          id: `${teamNode.slug}-${network.id}`,
+          name: network.name,
+          networkId: network.id,
+          port: nextPort,
+          rooms: network.rooms.map((room) => ({
+            id: room.id,
+            members: [...new Set(room.members)].sort()
+          })),
+          teamSource: teamNode.value.source
+        });
+        nextPort += 1;
+      }
     }
   }
 
   const bridgePlans: MoltnetBridgePlan[] = [];
+  const bridgePlanKeys = new Set<string>();
   const configFiles: EmittedFile[] = [];
 
   for (const node of plan.nodes) {
@@ -217,14 +234,7 @@ export const generateMoltnetArtifacts = async (
         );
       }
 
-      if (teamNode.value.auth) {
-        throw new SpawnfileError(
-          "validation_error",
-          `Moltnet attachments do not yet support team.auth on team ${teamNode.value.name}`
-        );
-      }
-
-      const serverPlan = serverPlans.get(createServerKey(attachment.teamSource, attachment.network));
+      const serverPlan = serverPlans.get(createServerKey(attachment.network));
       if (!serverPlan) {
         throw new SpawnfileError(
           "validation_error",
@@ -237,6 +247,14 @@ export const generateMoltnetArtifacts = async (
         attachment.network,
         attachment.memberId
       );
+      const bridgePlanKey = `${attachment.network}::${attachment.memberId}`;
+      if (bridgePlanKeys.has(bridgePlanKey)) {
+        throw new SpawnfileError(
+          "validation_error",
+          `Duplicate Moltnet bridge attachment for ${attachment.network}/${attachment.memberId}`
+        );
+      }
+      bridgePlanKeys.add(bridgePlanKey);
 
       configFiles.push({
         content:
@@ -305,7 +323,7 @@ export const generateMoltnetArtifacts = async (
           .flatMap((teamNode) =>
             (teamNode.value.networks ?? []).map((network) =>
               network.expose
-                ? serverPlans.get(createServerKey(teamNode.value.source, network.id))?.port
+                ? serverPlans.get(createServerKey(network.id))?.port
                 : undefined
             )
           )

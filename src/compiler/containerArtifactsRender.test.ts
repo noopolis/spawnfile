@@ -363,7 +363,6 @@ describe("renderEntrypoint", () => {
       [],
       {
         hasMoltnet: true,
-        hasTeamRouter: true,
         moltnet: {
           bridgePlans: [
             {
@@ -392,6 +391,10 @@ describe("renderEntrypoint", () => {
       }
     );
 
+    expect(entrypoint).toContain("mkdir -p '/var/lib/spawnfile/moltnet/servers'");
+    expect(entrypoint).toContain(
+      "MOLTNET_DATA_PATH='/var/lib/spawnfile/moltnet/servers/local_lab.db'"
+    );
     expect(entrypoint).toContain("/usr/local/bin/moltnet &");
     expect(entrypoint).toContain("http://127.0.0.1:18789/healthz");
     expect(entrypoint).toContain("http://127.0.0.1:8787/healthz");
@@ -449,7 +452,6 @@ describe("renderEntrypoint", () => {
       [],
       {
         hasMoltnet: true,
-        hasTeamRouter: true,
         moltnet: {
           bridgePlans: [
             {
@@ -478,7 +480,11 @@ describe("renderEntrypoint", () => {
       }
     );
 
-    expect(entrypoint).toContain("node /opt/spawnfile/surface-router.js /opt/spawnfile/router-config.json &");
+    expect(entrypoint).not.toContain("surface-router.js");
+    expect(entrypoint).not.toContain("router-config.json");
+    expect(entrypoint).toContain(
+      "MOLTNET_DATA_PATH='/var/lib/spawnfile/moltnet/servers/local_lab.db'"
+    );
     expect(entrypoint).toContain("/usr/local/bin/moltnet &");
     expect(entrypoint).toContain("http://127.0.0.1:18789/healthz");
     expect(entrypoint).toContain("picoclaw");

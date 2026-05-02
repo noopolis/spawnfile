@@ -81,7 +81,6 @@ describe("compilePlanHelpers", () => {
     );
 
     const baseTeam = {
-      auth: null,
       description: "",
       docs: [],
       external: ["researcher"],

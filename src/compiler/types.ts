@@ -28,6 +28,9 @@ export interface ResolvedDiscordSurface {
     users: string[];
   };
   botTokenSecret: string;
+  identity?: {
+    userId: string;
+  };
 }
 
 export interface ResolvedTelegramSurface {
@@ -37,6 +40,10 @@ export interface ResolvedTelegramSurface {
     users: string[];
   };
   botTokenSecret: string;
+  identity?: {
+    userId?: string;
+    username?: string;
+  };
 }
 
 export interface ResolvedWhatsAppSurface {
@@ -44,6 +51,9 @@ export interface ResolvedWhatsAppSurface {
     groups: string[];
     mode: "allowlist" | "open" | "pairing";
     users: string[];
+  };
+  identity?: {
+    phone: string;
   };
 }
 
@@ -55,6 +65,9 @@ export interface ResolvedSlackSurface {
   };
   appTokenSecret: string;
   botTokenSecret: string;
+  identity?: {
+    userId: string;
+  };
 }
 
 export interface ResolvedHttpSurface {
@@ -71,7 +84,7 @@ export interface ResolvedHttpSurface {
 
 export interface ResolvedMoltnetRoomPolicy {
   read?: "all" | "mentions" | "thread_only";
-  reply?: "auto" | "manual" | "never";
+  reply?: "auto" | "never";
 }
 
 export interface ResolvedMoltnetDMConfig extends ResolvedMoltnetRoomPolicy {
@@ -79,6 +92,7 @@ export interface ResolvedMoltnetDMConfig extends ResolvedMoltnetRoomPolicy {
 }
 
 export interface ResolvedMoltnetAttachment {
+  contextRooms?: Record<string, string[]>;
   dms?: ResolvedMoltnetDMConfig;
   memberId: string | null;
   network: string;
@@ -156,10 +170,10 @@ export interface ResolvedAgentNode {
 }
 
 export interface ResolvedTeamNode {
-  auth: { mode: "shared_secret"; secret: string } | null;
   description: string;
   docs: ResolvedDocument[];
   external: string[];
+  externalExplicit?: boolean;
   kind: "team";
   lead: string | null;
   members: ResolvedMemberRef[];
@@ -192,8 +206,16 @@ export interface CompilePlanNode {
   value: ResolvedAgentNode | ResolvedTeamNode;
 }
 
+export interface ResolvedTeamMembershipContext {
+  agentSource: string;
+  memberId: string;
+  teamName: string;
+  teamSource: string;
+}
+
 export interface CompilePlan {
   edges: CompilePlanEdge[];
+  memberships?: ResolvedTeamMembershipContext[];
   nodes: CompilePlanNode[];
   root: string;
   runtimes: Record<string, { nodeIds: string[] }>;

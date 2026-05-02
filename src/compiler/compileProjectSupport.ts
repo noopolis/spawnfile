@@ -1,27 +1,25 @@
-import path from "node:path";
 import { execFile as execFileCallback } from "node:child_process";
 import { chmod, readFile } from "node:fs/promises";
+import path from "node:path";
 import { promisify } from "node:util";
 
 import { ensureDirectory, writeUtf8File } from "../filesystem/index.js";
-import type { EmittedFile } from "../runtime/index.js";
+import { getRuntimeAdapter, type EmittedFile } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
+import { resolveMoltnetCliCommand } from "./moltnetBinaries.js";
 import {
   createMoltnetClientConfigFiles,
   resolveMoltnetWorkspaceLayout
 } from "./moltnetClientConfig.js";
-import { resolveMoltnetCliCommand } from "./moltnetBinaries.js";
-import { generateRouterConfig, generateSurfaceRouterScript } from "./surfaceRouter.js";
-import { generateTeamMcpScript } from "./teamMcp.js";
-import { generateTeamRosters } from "./teamRoster.js";
-import type { CompilePlan, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
+import type { TeamCompileSupport } from "./teamContextSupport.js";
+import type { ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
+
+export { prepareTeamCompileSupport } from "./teamContextSupport.js";
+export type { TeamCompileSupport } from "./teamContextSupport.js";
 
 const execFile = promisify(execFileCallback);
-
-const hasMoltnetAttachment = (agentNode: ResolvedAgentNode | undefined): boolean =>
-  (agentNode?.surfaces?.moltnet?.length ?? 0) > 0;
 
 export interface CompiledNodeOutput {
   emittedFiles: EmittedFile[];
@@ -32,32 +30,30 @@ export interface CompiledNodeOutput {
   value: ResolvedAgentNode | ResolvedTeamNode;
 }
 
-export interface TeamCompileSupport {
-  hasTeamRouter: boolean;
-  memberAgentIds: Map<string, string>;
-  teamConfigFiles: Map<string, string>;
-  rosterFiles: Map<string, string>;
-  teamMcpScript: string;
-}
-
 interface AgentWorkspacePaths {
-  agentsMdPath: string;
+  systemInstructionPath: string;
   spawnfileDirectory: string;
 }
 
 const resolveAgentWorkspacePaths = (
-  runtimeName: string,
-  agentName: string
-): AgentWorkspacePaths =>
-  runtimeName === "tinyclaw"
-    ? {
-        agentsMdPath: `workspace/${agentName}/AGENTS.md`,
-        spawnfileDirectory: `workspace/${agentName}/.spawnfile`
-      }
-    : {
-        agentsMdPath: "workspace/AGENTS.md",
-        spawnfileDirectory: "workspace/.spawnfile"
-      };
+  node: ResolvedAgentNode
+): AgentWorkspacePaths | null => {
+  const systemInstructionSurface = getRuntimeAdapter(node.runtime.name).systemInstructionSurface;
+  if (!systemInstructionSurface) {
+    return null;
+  }
+
+  const systemInstructionPath = systemInstructionSurface.resolvePath({ node });
+  const systemInstructionDirectory = path.posix.dirname(systemInstructionPath);
+
+  return {
+    systemInstructionPath,
+    spawnfileDirectory:
+      systemInstructionDirectory === "."
+        ? ".spawnfile"
+        : `${systemInstructionDirectory}/.spawnfile`
+  };
+};
 
 const upsertEmittedFile = (
   emittedFiles: EmittedFile[],
@@ -89,86 +85,10 @@ export const writeEmittedFiles = async (
   );
 };
 
-export const prepareTeamCompileSupport = async (
-  plan: CompilePlan,
-  outputDirectory: string,
-  routerPort: number
-): Promise<TeamCompileSupport> => {
-  const rosterFiles = new Map<string, string>();
-  const memberAgentIds = new Map<string, string>();
-  const teamConfigFiles = new Map<string, string>();
-  const teamMcpScript = generateTeamMcpScript();
-
-  for (const node of plan.nodes) {
-    if (node.kind !== "team") {
-      continue;
-    }
-
-    const teamNode = node.value as ResolvedTeamNode;
-    const rosters = generateTeamRosters(teamNode, plan, routerPort);
-    for (const [memberId, rosterYaml] of rosters) {
-      const memberRef = teamNode.members.find((member) => member.id === memberId);
-      if (!memberRef) {
-        continue;
-      }
-      const memberNode = plan.nodes.find(
-        (node) => node.kind === "agent" && node.value.source === memberRef.nodeSource
-      );
-      if (
-        memberNode &&
-        memberNode.kind === "agent" &&
-        hasMoltnetAttachment(memberNode.value as ResolvedAgentNode)
-      ) {
-        continue;
-      }
-      rosterFiles.set(memberRef.nodeSource, rosterYaml);
-      memberAgentIds.set(memberRef.nodeSource, memberId);
-      teamConfigFiles.set(
-        memberRef.nodeSource,
-        `${JSON.stringify(
-          {
-            agent_name: memberId,
-            ...(teamNode.auth ? { team_secret_env: teamNode.auth.secret } : {}),
-            router_url: `http://localhost:${routerPort}`
-          },
-          null,
-          2
-        )}\n`
-      );
-    }
-  }
-
-  const surfaceRouterScript = generateSurfaceRouterScript();
-  if (rosterFiles.size > 0) {
-    for (const node of plan.nodes) {
-      if (node.kind !== "team") {
-        continue;
-      }
-
-      const teamNode = node.value as ResolvedTeamNode;
-      const routerConfig = generateRouterConfig(teamNode, plan, routerPort);
-      await writeUtf8File(path.join(outputDirectory, "surface-router.js"), surfaceRouterScript);
-      await writeUtf8File(
-        path.join(outputDirectory, "router-config.json"),
-        JSON.stringify(routerConfig, null, 2) + "\n"
-      );
-    }
-  }
-
-  return {
-    hasTeamRouter: rosterFiles.size > 0,
-    memberAgentIds,
-    teamConfigFiles,
-    rosterFiles,
-    teamMcpScript
-  };
-};
-
 export const injectTeamCompileSupportFiles = async (
   outputDirectory: string,
   compiled: CompiledNodeOutput,
-  support: TeamCompileSupport,
-  routerPort: number
+  support: TeamCompileSupport
 ): Promise<void> => {
   if (
     compiled.kind !== "agent" ||
@@ -178,39 +98,32 @@ export const injectTeamCompileSupportFiles = async (
     return;
   }
 
-  const rosterYaml = support.rosterFiles.get(compiled.value.source);
-  if (!rosterYaml) {
+  const supportFiles = support.filesByAgentSource.get(compiled.value.source);
+  if (!supportFiles || supportFiles.length === 0) {
     return;
   }
 
-  const agentName = compiled.value.name;
-  const memberId = support.memberAgentIds.get(compiled.value.source) ?? agentName;
-  const workspacePaths = resolveAgentWorkspacePaths(compiled.value.runtime.name, agentName);
-  const filesToWrite: EmittedFile[] = [
+  const workspacePaths = resolveAgentWorkspacePaths(compiled.value);
+  if (!workspacePaths) {
+    return;
+  }
+
+  const filesToWrite: EmittedFile[] = supportFiles.map((file) =>
     upsertEmittedFile(compiled.emittedFiles, {
-      content: rosterYaml,
-      path: `${workspacePaths.spawnfileDirectory}/roster.yaml`
-    }),
-    upsertEmittedFile(compiled.emittedFiles, {
-      content: support.teamMcpScript,
-      path: `${workspacePaths.spawnfileDirectory}/team-mcp.js`
-    }),
-    upsertEmittedFile(compiled.emittedFiles, {
-      content: support.teamConfigFiles.get(compiled.value.source) ?? "{}\n",
-      path: `${workspacePaths.spawnfileDirectory}/team.json`
+      ...file,
+      path: file.path.startsWith(".spawnfile/") || file.path === "TEAM.md"
+        ? path.posix.join(path.posix.dirname(workspacePaths.spawnfileDirectory), file.path)
+        : file.path
     })
-  ];
+  );
 
   const rosterBlock =
-    "\n\n## Team Roster\n\nYour team roster is available at `.spawnfile/roster.yaml`. " +
-    "Read it to discover your teammates and how to reach them via the `team_message` MCP tool " +
-    "or the local helper `spawnfile-team-message --to <agent> --message <text>`. " +
-    "Use those teammate-only paths for private coordination instead of the generic message tool.\n\n" +
-    "```yaml\n" +
-    rosterYaml +
-    "```\n";
+    "\n\n<!-- spawnfile-team-context:start -->\n" +
+    "## Spawnfile Team Context\n\n" +
+    "Read `.spawnfile/team-contexts.md` and `.spawnfile/team-contexts.yaml` for generated team membership, representative context, and surface bindings.\n" +
+    "<!-- spawnfile-team-context:end -->\n";
   const existingAgentsMd = compiled.emittedFiles.find(
-    (file) => file.path === workspacePaths.agentsMdPath
+    (file) => file.path === workspacePaths.systemInstructionPath
   );
   filesToWrite.push(
     existingAgentsMd
@@ -220,30 +133,9 @@ export const injectTeamCompileSupportFiles = async (
         })()
       : upsertEmittedFile(compiled.emittedFiles, {
           content: rosterBlock.trimStart(),
-          path: workspacePaths.agentsMdPath
+          path: workspacePaths.systemInstructionPath
         })
   );
-
-  if (compiled.value.runtime.name === "tinyclaw") {
-    const claudeSettings = {
-      mcpServers: {
-        spawnfile_team: {
-          command: "node",
-          args: [".spawnfile/team-mcp.js"],
-          env: {
-            SPAWNFILE_AGENT_NAME: memberId,
-            SPAWNFILE_ROUTER_URL: `http://localhost:${routerPort}`
-          }
-        }
-      }
-    };
-    filesToWrite.push(
-      upsertEmittedFile(compiled.emittedFiles, {
-        content: JSON.stringify(claudeSettings, null, 2) + "\n",
-        path: `workspace/${agentName}/.claude/settings.json`
-      })
-    );
-  }
 
   await writeEmittedFiles(path.join(outputDirectory, compiled.report.output_dir), filesToWrite);
 };

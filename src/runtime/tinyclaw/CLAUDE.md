@@ -20,3 +20,5 @@ TinyClaw is the current native-team adapter, so changes here should be careful a
 
 - TinyClaw is the strongest native team model, but v0.1 should stay conservative.
 - Report degradation clearly when a team cannot lower natively.
+- Portable HTTP is not part of the v0.1 alpha surface contract. TinyClaw's native HTTP API is runtime-specific unless a future spec reintroduces portable ingress.
+- Do not add Spawnfile-owned team routing. Native team lowering must preserve representative and context semantics or report degradation.

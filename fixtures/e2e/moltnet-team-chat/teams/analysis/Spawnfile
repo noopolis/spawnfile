@@ -1,0 +1,21 @@
+spawnfile_version: "0.1"
+kind: team
+name: analysis-team
+description: "Child team with an explicit representative and a non-representative descendant"
+
+docs:
+  system: TEAM.md
+
+members:
+  - id: analysis-representative
+    ref: ./agents/representative
+  - id: analysis-observer
+    ref: ./agents/observer
+
+mode: hierarchical
+lead: analysis-representative
+external: [analysis-representative]
+
+policy:
+  mode: warn
+  on_degrade: warn

@@ -2,7 +2,10 @@ import type { EmittedFile } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import type { MoltnetArtifacts, MoltnetServerPlan } from "./moltnetArtifacts.js";
-import type { ResolvedAgentNode, ResolvedMoltnetAttachment } from "./types.js";
+import type {
+  ResolvedAgentNode,
+  ResolvedMoltnetAttachment
+} from "./types.js";
 
 const GENERATED_SKILL_NAME = "moltnet";
 const GENERATED_CONFIG_PATH = ".moltnet/config.json";
@@ -16,7 +19,7 @@ interface MoltnetClientAttachmentConfig {
   dms?: {
     enabled: boolean;
     read?: "all" | "mentions" | "thread_only";
-    reply?: "auto" | "manual" | "never";
+    reply?: "auto" | "never";
   };
   member_id: string;
   network_id: string;
@@ -24,7 +27,7 @@ interface MoltnetClientAttachmentConfig {
   rooms?: Array<{
     id: string;
     read?: "all" | "mentions" | "thread_only";
-    reply?: "auto" | "manual" | "never";
+    reply?: "auto" | "never";
   }>;
 }
 
@@ -56,10 +59,13 @@ const findServerPlan = (
   artifacts: MoltnetArtifacts,
   attachment: ResolvedMoltnetAttachment
 ): MoltnetServerPlan => {
-  const plan = artifacts.serverPlans.find(
+  const exactPlan = artifacts.serverPlans.find(
     (serverPlan) =>
       serverPlan.networkId === attachment.network &&
       serverPlan.teamSource === attachment.teamSource
+  );
+  const plan = exactPlan ?? artifacts.serverPlans.find(
+    (serverPlan) => serverPlan.networkId === attachment.network
   );
   if (!plan) {
     throw new SpawnfileError(

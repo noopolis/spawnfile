@@ -93,10 +93,6 @@ export const createAgentCapabilities = (
     capabilities.push(createCapability("surfaces.discord", "supported"));
   }
 
-  if (node.surfaces?.http) {
-    capabilities.push(createCapability("surfaces.http", "supported"));
-  }
-
   if (node.surfaces?.moltnet) {
     capabilities.push(createCapability("surfaces.moltnet", "supported"));
   }

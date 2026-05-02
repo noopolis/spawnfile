@@ -147,6 +147,44 @@ describe("createContainerArtifacts", () => {
     );
   });
 
+  it("renders generated OpenClaw hooks env for moltnet-attached agents", async () => {
+    const node = createAgentNode("openclaw", {
+      surfaces: {
+        moltnet: [
+          {
+            memberId: "assistant",
+            network: "local_lab",
+            rooms: { research: {} },
+            teamSource: "/tmp/team/Spawnfile"
+          }
+        ]
+      }
+    });
+    const compiled = await openClawAdapter.compileAgent(node);
+
+    const result = await createContainerArtifacts(createPlan(["openclaw"]), [
+      {
+        emittedFiles: compiled.files,
+        kind: "agent",
+        runtimeName: "openclaw",
+        slug: "assistant",
+        value: node
+      }
+    ]);
+    const entrypoint = result.files.find((file) => file.path === "entrypoint.sh")?.content ?? "";
+
+    expect(result.report.runtime_secrets_required).toEqual([
+      "OPENCLAW_GATEWAY_TOKEN",
+      "OPENCLAW_HOOKS_TOKEN"
+    ]);
+    expect(result.files.find((file) => file.path === ".env.example")?.content).toContain(
+      "OPENCLAW_HOOKS_TOKEN="
+    );
+    expect(entrypoint.indexOf('export OPENCLAW_HOOKS_TOKEN="hooks-${OPENCLAW_GATEWAY_TOKEN}"')).toBeLessThan(
+      entrypoint.indexOf("require_env 'OPENCLAW_HOOKS_TOKEN'")
+    );
+  });
+
   it("derives provider env vars and promotes duplicate secrets to required", async () => {
     const firstNode = createAgentNode("openclaw", {
       execution: {

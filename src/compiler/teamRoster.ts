@@ -1,110 +1,102 @@
 import YAML from "yaml";
 
+import type { DiagnosticReport } from "../report/index.js";
+
 import {
-  CompilePlan,
-  ResolvedAgentNode,
-  ResolvedTeamNode
-} from "./types.js";
+  resolveTeamRepresentatives,
+  type TeamRepresentativeResolution
+} from "./moltnetResolution.js";
+import {
+  collectConcreteParticipants,
+  createCoordinationDiagnostics,
+  createRosterEntry,
+  getVisibleTeamMembers
+} from "./teamRosterEntries.js";
+export type {
+  GeneratedTeamRoster,
+  GenerateTeamRosterOptions,
+  Roster,
+  RosterEntry,
+  RosterRepresentativeEntry
+} from "./teamRosterTypes.js";
+import type {
+  GeneratedTeamRoster,
+  GenerateTeamRosterOptions,
+  Roster
+} from "./teamRosterTypes.js";
+import type { CompilePlan, ResolvedTeamNode } from "./types.js";
 
-export interface RosterEntry {
-  name: string;
-  role: "lead" | "member" | "team";
-  description: string;
-  endpoint: string;
-}
+export { getVisibleTeamMembers } from "./teamRosterEntries.js";
 
-export interface Roster {
-  team: string;
-  mode: "hierarchical" | "swarm";
-  lead: string | null;
-  self: string;
-  external: boolean;
-  auth?: {
-    mode: "shared_secret";
-    secret_env: string;
-  };
-  members: RosterEntry[];
-}
-
-const lookupMemberDescription = (
-  nodeSource: string,
-  plan: CompilePlan
-): string => {
-  const node = plan.nodes.find((n) => n.value.source === nodeSource);
-  if (!node) {
-    return "";
-  }
-  return (node.value as ResolvedAgentNode | ResolvedTeamNode).description;
-};
-
-const buildMemberEndpoint = (memberId: string, routerPort: number): string =>
-  `http://localhost:${routerPort}/route/${memberId}/v1/messages`;
-
-/**
- * Generate per-member rosters for a team.
- * Returns a map of member ID -> roster YAML string.
- */
-export const generateTeamRosters = (
+export const generateTeamRoster = (
   teamNode: ResolvedTeamNode,
   plan: CompilePlan,
-  routerPort: number
-): Map<string, string> => {
-  const result = new Map<string, string>();
+  options: GenerateTeamRosterOptions
+): GeneratedTeamRoster => {
+  const visibleMembers = getVisibleTeamMembers(
+    teamNode,
+    options.selfMemberId,
+    options.delegateRole,
+    options.representedSlotId
+  );
+  const roster: Roster = {
+    ...(options.representedSlotId && options.delegateRole
+      ? {
+          context_kind: "representative" as const,
+          represents: {
+            delegate_role: options.delegateRole,
+            representative: options.selfMemberId,
+            slot: options.representedSlotId
+          }
+        }
+      : { context_kind: "direct" as const }),
+    lead: teamNode.lead,
+    members: Object.fromEntries(
+      visibleMembers.map((member) => [
+        member.id,
+        createRosterEntry(plan, teamNode, member, options)
+      ])
+    ),
+    mode: teamNode.mode,
+    self: options.selfMemberId,
+    team: teamNode.name
+  };
+  const participants = collectConcreteParticipants(
+    plan,
+    teamNode,
+    options.selfMemberId,
+    visibleMembers,
+    options.representedSlotId
+  );
 
-  const allEntries: Map<string, RosterEntry> = new Map();
-  for (const member of teamNode.members) {
-    const isLead = member.id === teamNode.lead;
-    const role: RosterEntry["role"] = member.kind === "team"
-      ? "team"
-      : isLead
-        ? "lead"
-        : "member";
-
-    allEntries.set(member.id, {
-      name: member.id,
-      role,
-      description: lookupMemberDescription(member.nodeSource, plan),
-      endpoint: buildMemberEndpoint(member.id, routerPort)
-    });
-  }
-
-  const auth = teamNode.auth
-    ? { mode: "shared_secret" as const, secret_env: teamNode.auth.secret }
-    : undefined;
-
-  for (const member of teamNode.members) {
-    let visibleMembers: RosterEntry[];
-
-    if (teamNode.mode === "hierarchical") {
-      if (member.id === teamNode.lead) {
-        // Lead sees all other members
-        visibleMembers = [...allEntries.values()].filter(
-          (entry) => entry.name !== member.id
-        );
-      } else {
-        // Non-lead members only see the lead
-        const leadEntry = teamNode.lead ? allEntries.get(teamNode.lead) : undefined;
-        visibleMembers = leadEntry ? [leadEntry] : [];
-      }
-    } else {
-      // Swarm: everyone sees everyone else
-      visibleMembers = [...allEntries.values()].filter(
-        (entry) => entry.name !== member.id
-      );
-    }
-
-    const roster: Roster = {
-      team: teamNode.name,
-      mode: teamNode.mode,
-      lead: teamNode.lead,
-      self: member.id,
-      external: teamNode.external.includes(member.id),
-      ...(auth ? { auth } : {}),
-      members: visibleMembers
-    };
-
-    result.set(member.id, YAML.stringify(roster));
-  }
-
-  return result;
+  return {
+    diagnostics: createCoordinationDiagnostics(plan, teamNode, participants, options.teamSource),
+    roster: YAML.stringify(roster),
+    visibleMembers
+  };
 };
+
+export const generateTeamRosters = (
+  teamNode: ResolvedTeamNode,
+  plan: CompilePlan
+): { diagnostics: DiagnosticReport[]; rosters: Map<string, string> } => {
+  const diagnostics: DiagnosticReport[] = [];
+  const rosters = new Map<string, string>();
+
+  for (const member of teamNode.members.filter((entry) => entry.kind === "agent")) {
+    const generated = generateTeamRoster(teamNode, plan, {
+      contextKey: teamNode.name,
+      selfMemberId: member.id,
+      teamSource: teamNode.source
+    });
+    rosters.set(member.id, generated.roster);
+    diagnostics.push(...generated.diagnostics);
+  }
+
+  return { diagnostics, rosters };
+};
+
+export const listTeamRepresentatives = (
+  plan: CompilePlan,
+  teamNode: ResolvedTeamNode
+): TeamRepresentativeResolution[] => resolveTeamRepresentatives(plan, teamNode);

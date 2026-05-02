@@ -139,23 +139,53 @@ const slackSurfaceAccessSchema = z
     }
   });
 
+const userIdIdentitySchema = z
+  .object({
+    user_id: z.string().min(1)
+  })
+  .strict();
+
+const telegramIdentitySchema = z
+  .object({
+    user_id: z.string().min(1).optional(),
+    username: z.string().min(1).optional()
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (!value.user_id && !value.username) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "telegram identity must declare user_id or username"
+      });
+    }
+  });
+
+const whatsappIdentitySchema = z
+  .object({
+    phone: z.string().min(1)
+  })
+  .strict();
+
 const discordSurfaceSchema = z
   .object({
     access: discordSurfaceAccessSchema.optional(),
-    bot_token_secret: z.string().min(1).optional()
+    bot_token_secret: z.string().min(1).optional(),
+    identity: userIdIdentitySchema.optional()
   })
   .strict();
 
 const telegramSurfaceSchema = z
   .object({
     access: telegramSurfaceAccessSchema.optional(),
-    bot_token_secret: z.string().min(1).optional()
+    bot_token_secret: z.string().min(1).optional(),
+    identity: telegramIdentitySchema.optional()
   })
   .strict();
 
 const whatsappSurfaceSchema = z
   .object({
-    access: whatsappSurfaceAccessSchema.optional()
+    access: whatsappSurfaceAccessSchema.optional(),
+    identity: whatsappIdentitySchema.optional()
   })
   .strict();
 
@@ -163,37 +193,8 @@ const slackSurfaceSchema = z
   .object({
     access: slackSurfaceAccessSchema.optional(),
     app_token_secret: z.string().min(1).optional(),
-    bot_token_secret: z.string().min(1).optional()
-  })
-  .strict();
-
-const httpSurfaceAccessSchema = z
-  .object({
-    mode: z.literal("open").optional()
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (!value.mode) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "http access must declare mode"
-      });
-    }
-  });
-
-const httpSurfaceAuthSchema = z
-  .object({
-    mode: z.literal("bearer"),
-    token_secret: z.string().min(1).optional()
-  })
-  .strict();
-
-const httpSurfaceSchema = z
-  .object({
-    access: httpSurfaceAccessSchema.optional(),
-    auth: httpSurfaceAuthSchema.optional(),
-    path_prefix: z.string().min(1).optional(),
-    port: z.number().int().positive().optional()
+    bot_token_secret: z.string().min(1).optional(),
+    identity: userIdIdentitySchema.optional()
   })
   .strict();
 
@@ -205,7 +206,7 @@ const webhookSurfaceSchema = z
   .strict();
 
 const moltnetReadSchema = z.enum(["all", "mentions", "thread_only"]);
-const moltnetReplySchema = z.enum(["auto", "manual", "never"]);
+const moltnetReplySchema = z.enum(["auto", "never"]);
 
 const moltnetRoomBehaviorSchema = z
   .object({
@@ -243,7 +244,6 @@ const moltnetSurfaceSchema = z.array(moltnetAttachmentSchema).min(1);
 export const surfacesSchema = z
   .object({
     discord: discordSurfaceSchema.optional(),
-    http: httpSurfaceSchema.optional(),
     moltnet: moltnetSurfaceSchema.optional(),
     slack: slackSurfaceSchema.optional(),
     telegram: telegramSurfaceSchema.optional(),
@@ -254,7 +254,6 @@ export const surfacesSchema = z
   .superRefine((value, context) => {
     if (
       !value.discord &&
-      !value.http &&
       !value.moltnet &&
       !value.telegram &&
       !value.whatsapp &&
@@ -270,9 +269,9 @@ export const surfacesSchema = z
 
 export type DiscordSurfaceAccess = z.infer<typeof discordSurfaceAccessSchema>;
 export type DiscordSurface = z.infer<typeof discordSurfaceSchema>;
-export type HttpSurfaceAccess = z.infer<typeof httpSurfaceAccessSchema>;
-export type HttpSurfaceAuth = z.infer<typeof httpSurfaceAuthSchema>;
-export type HttpSurface = z.infer<typeof httpSurfaceSchema>;
+export type HttpSurfaceAccess = never;
+export type HttpSurfaceAuth = never;
+export type HttpSurface = never;
 export type MoltnetAttachment = z.infer<typeof moltnetAttachmentSchema>;
 export type MoltnetDM = z.infer<typeof moltnetDmSchema>;
 export type MoltnetRead = z.infer<typeof moltnetReadSchema>;

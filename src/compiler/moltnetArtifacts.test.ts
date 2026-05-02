@@ -12,7 +12,6 @@ const createPlan = (): CompilePlan => ({
       runtimeName: null,
       slug: "research-cell",
       value: {
-        auth: null,
         description: "",
         docs: [],
         external: ["orchestrator"],
@@ -304,6 +303,121 @@ describe("moltnetArtifacts", () => {
     expect(artifacts?.publishedPorts).toEqual([8787]);
   });
 
+  it("merges teams that reuse the same moltnet network id into one server plan", async () => {
+    const plan = createPlan();
+    plan.nodes.push(
+      {
+        id: "team-2",
+        kind: "team",
+        runtimeName: null,
+        slug: "quality-cell",
+        value: {
+          description: "",
+          docs: [],
+          external: ["reviewer"],
+          kind: "team",
+          lead: "reviewer",
+          members: [
+            {
+              id: "reviewer",
+              kind: "agent",
+              nodeSource: "/tmp/agents/reviewer/Spawnfile",
+              runtimeName: "openclaw"
+            }
+          ],
+          mode: "hierarchical",
+          name: "quality-cell",
+          networks: [
+            {
+              expose: true,
+              id: "local_lab",
+              name: "Local Lab",
+              provider: "moltnet",
+              rooms: [
+                {
+                  id: "quality",
+                  members: ["reviewer"]
+                }
+              ]
+            }
+          ],
+          policyMode: null,
+          policyOnDegrade: null,
+          shared: {
+            env: {},
+            mcpServers: [],
+            secrets: [],
+            skills: []
+          },
+          source: "/tmp/quality/Spawnfile"
+        }
+      },
+      {
+        id: "agent-2",
+        kind: "agent",
+        runtimeName: "openclaw",
+        slug: "reviewer",
+        value: {
+          description: "",
+          docs: [],
+          env: {},
+          execution: undefined,
+          kind: "agent",
+          mcpServers: [],
+          name: "reviewer-agent",
+          policyMode: null,
+          policyOnDegrade: null,
+          runtime: { name: "openclaw", options: {} },
+          secrets: [],
+          skills: [],
+          source: "/tmp/agents/reviewer/Spawnfile",
+          surfaces: {
+            moltnet: [
+              {
+                memberId: "reviewer",
+                network: "local_lab",
+                rooms: {
+                  quality: {
+                    read: "all"
+                  }
+                },
+                teamSource: "/tmp/quality/Spawnfile"
+              }
+            ]
+          },
+          subagents: []
+        }
+      }
+    );
+    plan.runtimes.openclaw.nodeIds.push("agent-2");
+
+    const artifacts = await generateMoltnetArtifacts(plan);
+
+    expect(artifacts?.ports).toEqual([8787]);
+    expect(artifacts?.publishedPorts).toEqual([8787]);
+    expect(artifacts?.serverPlans).toHaveLength(1);
+    expect(artifacts?.serverPlans[0]?.rooms).toEqual([
+      {
+        id: "quality",
+        members: ["reviewer"]
+      },
+      {
+        id: "research",
+        members: ["orchestrator", "researcher"]
+      }
+    ]);
+    expect(artifacts?.bridgePlans).toContainEqual({
+      agentId: "reviewer",
+      configPath: "/var/lib/spawnfile/moltnet/bridges/quality-cell-local_lab-reviewer.json",
+      networkId: "local_lab",
+      runtime: "openclaw"
+    });
+    expect(
+      artifacts?.files.find((file) => file.path.endsWith("quality-cell-local_lab-reviewer.json"))
+        ?.content
+    ).toContain('"base_url": "http://127.0.0.1:8787"');
+  });
+
   it("serializes room and dm policy details into bridge configs", async () => {
     const plan = createPlan();
     const agentNode = plan.nodes[1];
@@ -318,14 +432,14 @@ describe("moltnetArtifacts", () => {
           dms: {
             enabled: true,
             read: "mentions",
-            reply: "manual"
+            reply: "never"
           },
           memberId: "orchestrator",
           network: "local_lab",
           rooms: {
             research: {
               read: "mentions",
-              reply: "manual"
+              reply: "auto"
             }
           },
           teamSource: "/tmp/team/Spawnfile"
@@ -340,24 +454,10 @@ describe("moltnetArtifacts", () => {
 
     expect(bridgeConfig?.content).toContain('"rooms": [');
     expect(bridgeConfig?.content).toContain('"read": "mentions"');
-    expect(bridgeConfig?.content).toContain('"reply": "manual"');
+    expect(bridgeConfig?.content).toContain('"reply": "auto"');
+    expect(bridgeConfig?.content).toContain('"reply": "never"');
+    expect(bridgeConfig?.content).not.toContain('"reply": "manual"');
     expect(bridgeConfig?.content).toContain('"dms": {');
-  });
-
-  it("rejects moltnet attachments on teams with auth", async () => {
-    const plan = createPlan();
-    const [teamNode] = plan.nodes;
-    if (!teamNode || teamNode.kind !== "team") {
-      throw new Error("expected team node");
-    }
-
-    const team = teamNode.value as ResolvedTeamNode;
-    team.auth = {
-      mode: "shared_secret",
-      secret: "TEAM_SECRET"
-    };
-
-    await expect(generateMoltnetArtifacts(plan)).rejects.toThrow(/do not yet support team.auth/);
   });
 
   it("rejects attachments without a resolved team context", async () => {
@@ -421,5 +521,76 @@ describe("moltnetArtifacts", () => {
     };
 
     await expect(generateMoltnetArtifacts(plan)).rejects.toThrow(/Unable to find Moltnet network missing/);
+  });
+
+  it("rejects duplicate bridge attachments for the same network member", async () => {
+    const plan = createPlan();
+    const agentNode = plan.nodes[1];
+    if (!agentNode || agentNode.kind !== "agent") {
+      throw new Error("expected agent node");
+    }
+
+    const agent = agentNode.value as ResolvedAgentNode;
+    agent.surfaces = {
+      moltnet: [
+        {
+          memberId: "orchestrator",
+          network: "local_lab",
+          rooms: { research: {} },
+          teamSource: "/tmp/team/Spawnfile"
+        },
+        {
+          memberId: "orchestrator",
+          network: "local_lab",
+          teamSource: "/tmp/team/Spawnfile"
+        }
+      ]
+    };
+
+    await expect(generateMoltnetArtifacts(plan)).rejects.toThrow(
+      /Duplicate Moltnet bridge attachment/
+    );
+  });
+
+  it("rejects direct moltnet bridge configs for unsupported runtimes", async () => {
+    const plan = createPlan();
+    plan.nodes.push({
+      id: "agent-unsupported",
+      kind: "agent",
+      runtimeName: "zeroclaw",
+      slug: "unsupported",
+      value: {
+        description: "",
+        docs: [],
+        env: {},
+        execution: undefined,
+        kind: "agent",
+        mcpServers: [],
+        name: "unsupported-agent",
+        policyMode: null,
+        policyOnDegrade: null,
+        runtime: { name: "zeroclaw", options: {} },
+        secrets: [],
+        skills: [],
+        source: "/tmp/agents/unsupported/Spawnfile",
+        surfaces: {
+          moltnet: [
+            {
+              memberId: "unsupported",
+              network: "local_lab",
+              rooms: {
+                research: {}
+              },
+              teamSource: "/tmp/team/Spawnfile"
+            }
+          ]
+        },
+        subagents: []
+      }
+    });
+
+    await expect(generateMoltnetArtifacts(plan)).rejects.toThrow(
+      /does not know how to attach runtime zeroclaw/
+    );
   });
 });

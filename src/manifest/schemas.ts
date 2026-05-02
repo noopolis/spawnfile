@@ -286,13 +286,6 @@ const sharedSurfaceSchema = z
   })
   .strict();
 
-const teamAuthSchema = z
-  .object({
-    mode: z.literal("shared_secret"),
-    secret: z.string().min(1)
-  })
-  .strict();
-
 const memberSchema = z
   .object({
     id: z.string().min(1),
@@ -336,7 +329,6 @@ const agentManifestSchema = commonManifestSchema
 
 const teamManifestSchema = commonManifestSchema
   .extend({
-    auth: teamAuthSchema.optional(),
     external: z.array(z.string().min(1)).optional(),
     kind: z.literal("team"),
     lead: z.string().min(1).optional(),
@@ -416,7 +408,6 @@ export type RuntimeBinding = z.infer<typeof runtimeBindingSchema>;
 export type Secret = z.infer<typeof secretSchema>;
 export type SharedSurface = z.infer<typeof sharedSurfaceSchema>;
 export type SkillReference = z.infer<typeof skillReferenceSchema>;
-export type TeamAuth = z.infer<typeof teamAuthSchema>;
 export type TeamManifest = z.infer<typeof teamManifestSchema>;
 export type TeamNetwork = z.infer<typeof teamNetworkSchema>;
 export type TeamNetworkRoom = z.infer<typeof teamNetworkRoomSchema>;

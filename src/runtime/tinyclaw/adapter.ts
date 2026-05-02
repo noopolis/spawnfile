@@ -277,6 +277,12 @@ export const tinyClawAdapter: RuntimeAdapter = {
     startCommand: ["bash", "-lc", TINYCLAW_START_SCRIPT],
     systemDeps: ["bash", "ca-certificates", "curl", "g++", "make", "python3", "tar"]
   },
+  systemInstructionSurface: {
+    placement: "append_pointer",
+    resolvePath({ node }) {
+      return `workspace/${node.name}/AGENTS.md`;
+    }
+  },
   async compileAgent(node): Promise<AdapterCompileResult> {
     return {
       capabilities: createAgentCapabilities(node, {
@@ -301,18 +307,25 @@ export const tinyClawAdapter: RuntimeAdapter = {
     const agentIds = node.members
       .filter((member) => member.kind === "agent")
       .map((member) => member.id);
+    const leadAgent = node.lead
+      ? node.members.find((member) => member.id === node.lead && member.kind === "agent")
+      : null;
 
     const teamConfig = {
       name: node.name,
       agents: agentIds,
-      leader_agent: node.lead ?? agentIds[0] ?? "leader"
+      ...(leadAgent ? { leader_agent: leadAgent.id } : {})
     };
 
     return {
       capabilities: [
         createCapability("team.members", "supported"),
         createCapability("team.mode", node.mode === "hierarchical" ? "supported" : "degraded", "TinyClaw only supports leader-led teams"),
-        createCapability("team.lead", node.lead ? "supported" : "degraded", "TinyClaw requires a leader_agent"),
+        createCapability(
+          "team.lead",
+          leadAgent ? "supported" : "degraded",
+          leadAgent ? "" : "TinyClaw requires a concrete leader_agent"
+        ),
         createCapability("team.external", "degraded", "TinyClaw does not enforce external boundary"),
         createCapability("team.shared", "supported"),
         createCapability("team.nested", "degraded", "TinyClaw nested teams flatten in v0.1")

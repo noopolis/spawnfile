@@ -103,7 +103,8 @@ export {
   type ProjectSurfaceSummariesResult,
   type RemoveProjectSurfaceOptions,
   type ShowProjectSurfacesOptions,
-  type UpdateProjectSurfacesResult
+  type UpdateProjectSurfacesResult,
+  resolvePortableSurfaceName
 } from "./surfaceDefinitions.js";
 export type { ProjectSurfaceSummary, SurfaceAccessMode, SurfaceName } from "./surfaceDefinitions.js";
 

@@ -256,6 +256,12 @@ export const picoClawAdapter: RuntimeAdapter = {
     },
     systemDeps: ["bash", "ca-certificates", "curl", "nodejs", "npm", "tar"]
   },
+  systemInstructionSurface: {
+    placement: "append_pointer",
+    resolvePath() {
+      return "workspace/AGENTS.md";
+    }
+  },
   async compileAgent(node): Promise<AdapterCompileResult> {
     return {
       capabilities: createAgentCapabilities(node),

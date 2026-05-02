@@ -97,11 +97,10 @@ export const resolveTinyClawSurfaceTokenBindings = (
 export const assertSupportedTinyClawSurfaces = (
   surfaces: ResolvedAgentSurfaces | undefined
 ): void => {
-  const httpAccess = surfaces?.http?.access;
-  if (httpAccess && httpAccess.mode !== "open") {
+  if (surfaces?.http) {
     throw new SpawnfileError(
       "validation_error",
-      "TinyClaw http only supports open access in Spawnfile v0.1"
+      "TinyClaw does not support portable HTTP surfaces in Spawnfile v0.1"
     );
   }
 

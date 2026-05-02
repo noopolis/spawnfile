@@ -1,79 +1,307 @@
 import { SpawnfileError } from "../shared/index.js";
 
 import type {
+  CompilePlan,
+  ResolvedAgentNode,
   ResolvedMoltnetAttachment,
-  ResolvedTeamNetwork
+  ResolvedTeamNode
 } from "./types.js";
+import {
+  resolveMoltnetAttachments,
+  resolveTeamRepresentatives
+} from "./moltnetRepresentativeResolution.js";
+export {
+  resolveMoltnetAttachments,
+  resolveTeamRepresentatives,
+  type MoltnetTeamContext,
+  type TeamRepresentativeResolution
+} from "./moltnetRepresentativeResolution.js";
 
-export interface MoltnetTeamContext {
-  memberId: string;
-  teamName: string;
-  teamSource: string;
-  networks: ResolvedTeamNetwork[];
-}
-
-const cloneAttachment = (
-  attachment: ResolvedMoltnetAttachment,
-  context: MoltnetTeamContext
-): ResolvedMoltnetAttachment => ({
-  ...(attachment.dms ? { dms: { ...attachment.dms } } : {}),
-  memberId: context.memberId,
-  network: attachment.network,
-  ...(attachment.rooms
-    ? {
-        rooms: Object.fromEntries(
-          Object.entries(attachment.rooms).map(([roomId, policy]) => [
-            roomId,
-            { ...policy }
-          ])
-        )
-      }
-    : {}),
-  teamSource: context.teamSource
-});
-
-export const resolveMoltnetAttachments = (
-  attachments: ResolvedMoltnetAttachment[] | undefined,
-  context: MoltnetTeamContext | undefined,
-  nodeName: string
-): ResolvedMoltnetAttachment[] | undefined => {
-  if (!attachments || attachments.length === 0) {
-    return undefined;
-  }
-
-  if (!context) {
+const findTeamBySource = (
+  plan: CompilePlan,
+  source: string
+): ResolvedTeamNode => {
+  const node = plan.nodes.find((entry) => entry.kind === "team" && entry.value.source === source);
+  if (!node || node.value.kind !== "team") {
     throw new SpawnfileError(
-      "validation_error",
-      `Agent ${nodeName} declares Moltnet surfaces but is not attached to a team network`
+      "compile_error",
+      `Unable to find team node at ${source}`
     );
   }
 
-  return attachments.map((attachment) => {
-    const network = context.networks.find((entry) => entry.id === attachment.network);
-    if (!network) {
+  return node.value;
+};
+
+const hasMoltnetIntent = (plan: CompilePlan): boolean =>
+  plan.nodes.some((node) => {
+    if (node.value.kind === "team") {
+      return (node.value.networks?.length ?? 0) > 0;
+    }
+
+    return (node.value.surfaces?.moltnet?.length ?? 0) > 0;
+  });
+
+const validateGlobalMemberIds = (plan: CompilePlan): void => {
+  if (!hasMoltnetIntent(plan)) {
+    return;
+  }
+
+  const seen = new Map<string, string>();
+  const uniqueContexts = new Map(
+    (plan.memberships ?? []).map((context) => [
+      `${context.teamSource}::${context.memberId}::${context.agentSource}`,
+      context
+    ])
+  );
+
+  for (const context of uniqueContexts.values()) {
+    const previous = seen.get(context.memberId);
+    const label = `${context.teamName} (${context.teamSource}) member ${context.memberId}`;
+    if (previous && previous !== label) {
       throw new SpawnfileError(
         "validation_error",
-        `Agent ${nodeName} references unknown Moltnet network ${attachment.network} on team ${context.teamName}`
+        `Moltnet member_id ${context.memberId} is declared by multiple direct agent member slots: ${previous}; ${label}`
       );
     }
 
-    for (const roomId of Object.keys(attachment.rooms ?? {})) {
-      const room = network.rooms.find((entry) => entry.id === roomId);
-      if (!room) {
-        throw new SpawnfileError(
-          "validation_error",
-          `Agent ${nodeName} references unknown Moltnet room ${roomId} on network ${network.id}`
-        );
-      }
+    seen.set(context.memberId, label);
+  }
+};
 
-      if (!room.members.includes(context.memberId)) {
-        throw new SpawnfileError(
-          "validation_error",
-          `Agent ${nodeName} cannot attach to Moltnet room ${roomId} because member ${context.memberId} is not in that room`
-        );
-      }
+const expandTeamNetworkRooms = (plan: CompilePlan): ResolvedMoltnetAttachment[] => {
+  const synthesizedAttachments: ResolvedMoltnetAttachment[] = [];
+
+  for (const node of plan.nodes) {
+    if (node.value.kind !== "team") {
+      continue;
     }
 
-    return cloneAttachment(attachment, context);
-  });
+    const teamNode = node.value;
+    for (const network of teamNode.networks ?? []) {
+      for (const room of network.rooms) {
+        const expandedMembers: string[] = [];
+
+        for (const roomMemberId of room.members) {
+          const member = teamNode.members.find((entry) => entry.id === roomMemberId);
+          if (!member) {
+            throw new SpawnfileError(
+              "validation_error",
+              `Team ${teamNode.name} Moltnet room ${room.id} references unknown member ${roomMemberId}`
+            );
+          }
+
+          if (member.kind === "agent") {
+            expandedMembers.push(member.id);
+            continue;
+          }
+
+          const childTeam = findTeamBySource(plan, member.nodeSource);
+          const representatives = resolveTeamRepresentatives(plan, childTeam);
+          if (representatives.length === 0) {
+            throw new SpawnfileError(
+              "validation_error",
+              `Team ${childTeam.name} has no concrete representative for Moltnet room ${room.id} on ${teamNode.name}`
+            );
+          }
+
+          for (const representative of representatives) {
+            expandedMembers.push(representative.memberId);
+            synthesizedAttachments.push({
+              contextRooms: {
+                [teamNode.source]: [room.id]
+              },
+              memberId: representative.memberId,
+              network: network.id,
+              rooms: {
+                [room.id]: {}
+              },
+              teamSource: teamNode.source
+            });
+          }
+        }
+
+        room.members = [...new Set(expandedMembers)];
+      }
+    }
+  }
+
+  return synthesizedAttachments;
+};
+
+const roomPolicyKey = (policy: unknown): string =>
+  JSON.stringify(policy ?? {});
+
+const mergeAttachment = (
+  target: ResolvedMoltnetAttachment,
+  next: ResolvedMoltnetAttachment,
+  nodeName: string
+): void => {
+  if (
+    target.dms &&
+    next.dms &&
+    roomPolicyKey(target.dms) !== roomPolicyKey(next.dms)
+  ) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Agent ${nodeName} declares incompatible Moltnet dms for ${next.network}/${next.memberId ?? "unknown"}`
+    );
+  }
+
+  target.dms ??= next.dms ? { ...next.dms } : undefined;
+  target.teamSource ??= next.teamSource;
+  target.rooms ??= {};
+
+  for (const [roomId, policy] of Object.entries(next.rooms ?? {})) {
+    const existingPolicy = target.rooms[roomId];
+    if (
+      existingPolicy &&
+      roomPolicyKey(existingPolicy) !== roomPolicyKey(policy)
+    ) {
+      throw new SpawnfileError(
+        "validation_error",
+        `Agent ${nodeName} declares incompatible Moltnet room policy for ${next.network}/${next.memberId ?? "unknown"} room ${roomId}`
+      );
+    }
+
+    target.rooms[roomId] = { ...policy };
+  }
+
+  if (next.contextRooms) {
+    target.contextRooms ??= {};
+    for (const [teamSource, roomIds] of Object.entries(next.contextRooms)) {
+      target.contextRooms[teamSource] = [
+        ...new Set([...(target.contextRooms[teamSource] ?? []), ...roomIds])
+      ].sort();
+    }
+  } else if (next.teamSource) {
+    target.contextRooms ??= {};
+    target.contextRooms[next.teamSource] = [
+      ...new Set([
+        ...(target.contextRooms[next.teamSource] ?? []),
+        ...Object.keys(next.rooms ?? {})
+      ])
+    ].sort();
+  }
+};
+
+const mergeAgentAttachments = (
+  agentNode: ResolvedAgentNode,
+  attachments: ResolvedMoltnetAttachment[]
+): ResolvedMoltnetAttachment[] => {
+  const merged = new Map<string, ResolvedMoltnetAttachment>();
+
+  for (const attachment of attachments) {
+    const key = `${attachment.network}::${attachment.memberId ?? ""}`;
+    const existing = merged.get(key);
+    if (existing) {
+      mergeAttachment(existing, attachment, agentNode.name);
+      continue;
+    }
+
+    merged.set(key, {
+      contextRooms: attachment.contextRooms
+        ? Object.fromEntries(
+            Object.entries(attachment.contextRooms).map(([teamSource, roomIds]) => [
+              teamSource,
+              [...roomIds].sort()
+            ])
+          )
+        : attachment.teamSource
+          ? { [attachment.teamSource]: Object.keys(attachment.rooms ?? {}).sort() }
+          : undefined,
+      ...(attachment.dms ? { dms: { ...attachment.dms } } : {}),
+      memberId: attachment.memberId,
+      network: attachment.network,
+      ...(attachment.rooms
+        ? {
+            rooms: Object.fromEntries(
+              Object.entries(attachment.rooms).map(([roomId, policy]) => [
+                roomId,
+                { ...policy }
+              ])
+            )
+          }
+        : {}),
+      teamSource: attachment.teamSource
+    });
+  }
+
+  return [...merged.values()].sort((left, right) =>
+    `${left.network}:${left.memberId ?? ""}`.localeCompare(`${right.network}:${right.memberId ?? ""}`)
+  );
+};
+
+export const resolvePlanMoltnetAttachments = (plan: CompilePlan): void => {
+  validateGlobalMemberIds(plan);
+  const synthesizedAttachments = expandTeamNetworkRooms(plan);
+  const synthesizedByAgent = new Map<string, ResolvedMoltnetAttachment[]>();
+
+  for (const attachment of synthesizedAttachments) {
+    const representativeContext = (plan.memberships ?? []).find(
+      (context) => context.memberId === attachment.memberId
+    );
+    if (!representativeContext) {
+      throw new SpawnfileError(
+        "validation_error",
+        `Unable to find direct member context for synthesized Moltnet member ${attachment.memberId ?? "unknown"}`
+      );
+    }
+
+    const group = synthesizedByAgent.get(representativeContext.agentSource) ?? [];
+    group.push(attachment);
+    synthesizedByAgent.set(representativeContext.agentSource, group);
+  }
+
+  for (const node of plan.nodes) {
+    if (node.value.kind !== "agent") {
+      continue;
+    }
+
+    const agentNode = node.value;
+    const declaredAttachments = agentNode.surfaces?.moltnet;
+    const directContexts = (plan.memberships ?? []).filter(
+      (context) => context.agentSource === agentNode.source
+    );
+    const resolvedAttachments: ResolvedMoltnetAttachment[] = [];
+
+    if (declaredAttachments && directContexts.length === 0) {
+      throw new SpawnfileError(
+        "validation_error",
+        `Agent ${agentNode.name} declares Moltnet surfaces but is not attached to a team network`
+      );
+    }
+
+    for (const context of directContexts) {
+      if (!declaredAttachments) {
+        continue;
+      }
+
+      const teamNode = findTeamBySource(plan, context.teamSource);
+      const resolved = resolveMoltnetAttachments(
+        declaredAttachments,
+        {
+          memberId: context.memberId,
+          networks: teamNode.networks ?? [],
+          teamName: context.teamName,
+          teamSource: context.teamSource
+        },
+        agentNode.name
+      );
+      resolvedAttachments.push(...(resolved ?? []));
+    }
+
+    resolvedAttachments.push(...(synthesizedByAgent.get(agentNode.source) ?? []));
+
+    if (resolvedAttachments.length > 0) {
+      agentNode.surfaces = {
+        ...agentNode.surfaces,
+        moltnet: mergeAgentAttachments(agentNode, resolvedAttachments)
+      };
+    } else if (agentNode.surfaces?.moltnet) {
+      agentNode.surfaces = {
+        ...agentNode.surfaces,
+        moltnet: undefined
+      };
+    }
+  }
 };

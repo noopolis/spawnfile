@@ -20,3 +20,5 @@ This adapter is a strong overlap target for docs, skills, MCP, and workspace int
 
 - Preserve PicoClaw's workspace-first model.
 - Keep MCP lowering faithful because PicoClaw is a strong MCP target.
+- Portable HTTP is not part of the v0.1 alpha surface contract. Treat PicoClaw webhook/server behavior as runtime-specific unless a future spec reintroduces portable ingress.
+- Do not add Spawnfile-owned team routing. Team context orientation should use the adapter's system-instruction surface metadata when supported.

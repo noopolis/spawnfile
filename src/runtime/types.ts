@@ -86,6 +86,20 @@ export interface RuntimeAuthPreparationResult {
   mountArgs: string[];
 }
 
+export interface RuntimeSystemInstructionSurfaceInput {
+  node: ResolvedAgentNode;
+}
+
+export type RuntimeSystemInstructionPlacement =
+  | "append_pointer"
+  | "append_inline"
+  | "replace_generated_block";
+
+export interface RuntimeSystemInstructionSurface {
+  placement: RuntimeSystemInstructionPlacement;
+  resolvePath(input: RuntimeSystemInstructionSurfaceInput): string;
+}
+
 export interface AdapterCompileResult {
   capabilities: CapabilityReport[];
   diagnostics: DiagnosticReport[];
@@ -104,5 +118,6 @@ export interface RuntimeAdapter {
     input: RuntimeAuthPreparationInput
   ): Promise<RuntimeAuthPreparationResult>;
   scaffoldAgentProject?(): RuntimeAgentScaffold;
+  systemInstructionSurface?: RuntimeSystemInstructionSurface;
   validateRuntimeOptions?(options: Record<string, unknown>): DiagnosticReport[];
 }

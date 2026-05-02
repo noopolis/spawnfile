@@ -65,6 +65,13 @@ describe("openClawAdapter", () => {
     });
   });
 
+  it("declares the workspace AGENTS.md system instruction surface", () => {
+    expect(openClawAdapter.systemInstructionSurface?.placement).toBe("append_pointer");
+    expect(openClawAdapter.systemInstructionSurface?.resolvePath({ node: createNode() })).toBe(
+      "workspace/AGENTS.md"
+    );
+  });
+
   it("emits config with agents.defaults and gateway", async () => {
     const result = await openClawAdapter.compileAgent(createNode());
     const configFile = result.files.find((file) => file.path === "openclaw.json");
@@ -347,7 +354,7 @@ describe("openClawAdapter", () => {
             rooms: {
               "green-room": {
                 read: "all" as const,
-                reply: "manual" as const
+                reply: "never" as const
               }
             },
             teamSource: "/tmp/team/Spawnfile"

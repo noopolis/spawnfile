@@ -200,15 +200,70 @@ describe("compileProject", () => {
   }, 30000);
 
   it("marks a multi-runtime team as degraded at team level", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-team-src-"));
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-team-"));
+    temporaryDirectories.push(directory);
     temporaryDirectories.push(outputDirectory);
 
-    const result = await compileProject(path.join(fixturesRoot, "multi-runtime-team"), {
-      outputDirectory
-    });
+    await writeUtf8File(path.join(directory, "TEAM.md"), "# Team\n");
+    for (const [id, runtime] of [
+      ["orchestrator", "openclaw"],
+      ["researcher", "picoclaw"],
+      ["writer", "tinyclaw"]
+    ] as const) {
+      await ensureDirectory(path.join(directory, "agents", id));
+      await writeUtf8File(
+        path.join(directory, "agents", id, "Spawnfile"),
+        [
+          'spawnfile_version: "0.1"',
+          "kind: agent",
+          `name: ${id}`,
+          "",
+          `runtime: ${runtime}`,
+          "",
+          "execution:",
+          "  model:",
+          "    primary:",
+          "      provider: anthropic",
+          "      name: claude-sonnet-4-5",
+          "      auth:",
+          "        method: claude-code",
+          ""
+        ].join("\n")
+      );
+    }
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: research-cell",
+        "",
+        "docs:",
+        "  system: TEAM.md",
+        "",
+        "members:",
+        "  - id: orchestrator",
+        "    ref: ./agents/orchestrator",
+        "  - id: researcher",
+        "    ref: ./agents/researcher",
+        "  - id: writer",
+        "    ref: ./agents/writer",
+        "",
+        "mode: hierarchical",
+        "lead: orchestrator",
+        "",
+        "policy:",
+        "  mode: warn",
+        "  on_degrade: warn",
+        ""
+      ].join("\n")
+    );
+
+    const result = await compileProject(directory, { outputDirectory });
 
     const teamNode = result.report.nodes.find((node) => node.kind === "team");
-    expect(teamNode?.capabilities.every((capability) => capability.outcome === "degraded")).toBe(
+    expect(teamNode?.capabilities.some((capability) => capability.outcome === "degraded")).toBe(
       true
     );
 
@@ -259,10 +314,7 @@ describe("compileProject", () => {
       ],
       runtime_secrets_required: ["OPENCLAW_GATEWAY_TOKEN"],
       runtimes_installed: ["openclaw", "picoclaw", "tinyclaw"],
-      secrets_required: [
-        "OPENCLAW_GATEWAY_TOKEN",
-        "SEARCH_API_KEY"
-      ]
+      secrets_required: ["OPENCLAW_GATEWAY_TOKEN"]
     });
 
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
@@ -458,9 +510,12 @@ describe("compileProject", () => {
         expect(dockerfile).toContain("COPY moltnet-bin/ /usr/local/bin/");
         expect(dockerfile).toContain("RUN chmod +x /usr/local/bin/moltnet");
         expect(dockerfile).not.toContain("https://moltnet.dev/install.sh");
+        expect(dockerfile).not.toContain("surface-router.js");
+        expect(dockerfile).not.toContain("router-config.json");
         expect(entrypoint).toContain("/usr/local/bin/moltnet");
         expect(entrypoint).toContain("/usr/local/bin/moltnet bridge");
         expect(entrypoint).toContain("http://127.0.0.1:8787/v1/rooms");
+        expect(entrypoint).not.toContain("surface-router.js");
         expect(bridgeConfig).toContain('"gateway_url": "ws://127.0.0.1:18789"');
         expect(bridgeConfig).toContain(
           '"home_path": "/var/lib/spawnfile/instances/openclaw/agent-orchestrator-agent/home"'
@@ -484,12 +539,9 @@ describe("compileProject", () => {
               "roster.yaml"
             )
           )
-        ).resolves.toBe(false);
-        await expect(fileExists(path.join(outputDirectory, "surface-router.js"))).resolves.toBe(
-          false
-        );
-        expect(
-          await readUtf8File(
+        ).resolves.toBe(true);
+        await expect(
+          fileExists(
             path.join(
               outputDirectory,
               "runtimes",
@@ -497,10 +549,117 @@ describe("compileProject", () => {
               "agents",
               "orchestrator-agent",
               "workspace",
-              "AGENTS.md"
+              "TEAM.md"
             )
           )
-        ).not.toContain("## Team Roster");
+        ).resolves.toBe(true);
+        await expect(
+          fileExists(
+            path.join(
+              outputDirectory,
+              "runtimes",
+              "openclaw",
+              "agents",
+              "orchestrator-agent",
+              "workspace",
+              ".spawnfile",
+              "team-contexts",
+              "research-cell",
+              "TEAM.md"
+            )
+          )
+        ).resolves.toBe(true);
+        await expect(
+          fileExists(
+            path.join(
+              outputDirectory,
+              "runtimes",
+              "openclaw",
+              "agents",
+              "orchestrator-agent",
+              "workspace",
+              ".spawnfile",
+              "rosters",
+              "research-cell.yaml"
+            )
+          )
+        ).resolves.toBe(true);
+        await expect(
+          fileExists(
+            path.join(
+              outputDirectory,
+              "runtimes",
+              "openclaw",
+              "agents",
+              "orchestrator-agent",
+              "workspace",
+              ".spawnfile",
+              "team-contexts.yaml"
+            )
+          )
+        ).resolves.toBe(true);
+        await expect(fileExists(path.join(outputDirectory, "surface-router.js"))).resolves.toBe(
+          false
+        );
+        await expect(fileExists(path.join(outputDirectory, "router-config.json"))).resolves.toBe(
+          false
+        );
+        await expect(
+          fileExists(
+            path.join(
+              outputDirectory,
+              "container",
+              "rootfs",
+              "usr",
+              "local",
+              "bin",
+              "spawnfile-team-message"
+            )
+          )
+        ).resolves.toBe(false);
+        await expect(
+          fileExists(
+            path.join(
+              outputDirectory,
+              "runtimes",
+              "openclaw",
+              "agents",
+              "orchestrator-agent",
+              "workspace",
+              ".spawnfile",
+              "team-mcp.js"
+            )
+          )
+        ).resolves.toBe(false);
+        await expect(
+          fileExists(
+            path.join(
+              outputDirectory,
+              "runtimes",
+              "openclaw",
+              "agents",
+              "orchestrator-agent",
+              "workspace",
+              ".spawnfile",
+              "team.json"
+            )
+          )
+        ).resolves.toBe(false);
+        const agentsMd = await readUtf8File(
+          path.join(
+            outputDirectory,
+            "runtimes",
+            "openclaw",
+            "agents",
+            "orchestrator-agent",
+            "workspace",
+            "AGENTS.md"
+          )
+        );
+        expect(agentsMd).toContain("## Spawnfile Team Context");
+        expect(agentsMd).toContain(".spawnfile/team-contexts.md");
+        expect(agentsMd).not.toContain("team_message");
+        expect(agentsMd).not.toContain("spawnfile-team-message");
         expect(
           await readUtf8File(
             path.join(

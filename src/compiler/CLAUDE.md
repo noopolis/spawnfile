@@ -18,6 +18,7 @@ src/compiler/
 ├── buildCompilePlan.ts         # Manifest graph walk and plan construction
 ├── compileProject.ts           # Adapter execution and output/report emission
 ├── compileProjectSupport.ts    # Shared compile-time artifact injection and file writing helpers
+├── teamRoster.ts               # Context-scoped team roster generation and diagnostics
 ├── runProject.ts               # `spawnfile run` docker-run planning and execution
 ├── initProject.ts              # `spawnfile init` orchestration around runtime-owned scaffolds
 ├── addProjectNode.ts           # `spawnfile add ...` graph-editing helpers
@@ -25,7 +26,6 @@ src/compiler/
 ├── updateProjectRuntime.ts     # `spawnfile runtime ...` manifest-editing helpers
 ├── updateProjectSurfaces.ts    # `spawnfile surface ...` manifest-editing helpers
 ├── executionDefaults.ts        # Effective execution defaults applied during graph resolution
-├── surfaceRouter.ts              # Surface router script and config generation for team routing
 ├── moltnetClientConfig.ts      # Moltnet client config emission and runtime workspace layout helpers
 ├── moltnetBinaries.ts          # Compiled Moltnet CLI/release discovery and binary staging
 ├── *.test.ts                   # Tests next to the implementation they cover
@@ -39,4 +39,7 @@ src/compiler/
 - Resolve and validate the graph before calling any runtime adapter.
 - The compile plan is internal state, not user-authored schema.
 - Emit stable output paths and reports.
+- Keep Spawnfile as a compiler/canonicalizer: do not add custom team routers, team-message tools, or runtime RPC mechanisms.
+- Treat spawned runtimes as write-only. Generated files/config/secrets may be written, but runtime state must not be read back to infer identity or update rosters.
+- Team contexts are emitted as generated artifacts (`.spawnfile/team-contexts/*`, `.spawnfile/rosters/*`, `.spawnfile/team-contexts.yaml`, `.spawnfile/team-contexts.md`) and surfaced through runtime system-instruction placement when available.
 - Keep runtime-specific init scaffolds in `src/runtime/<name>/`, not here.

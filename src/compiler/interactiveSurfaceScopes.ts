@@ -21,7 +21,6 @@ export const listInteractiveSurfaceScopes = (
 
   return [
     ...(surfaces.discord ? ["discord"] : []),
-    ...(surfaces.http ? ["http"] : []),
     ...(surfaces.moltnet?.flatMap(listMoltnetAttachmentScopes) ?? []),
     ...(surfaces.slack ? ["slack"] : []),
     ...(surfaces.telegram ? ["telegram"] : []),

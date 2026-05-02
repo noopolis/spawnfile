@@ -1,0 +1,28 @@
+spawnfile_version: "0.1"
+kind: agent
+name: field-observer
+
+runtime: openclaw
+
+execution:
+  model:
+    auth:
+      method: codex
+    primary:
+      provider: openai
+      name: gpt-5
+  workspace:
+    isolation: isolated
+  sandbox:
+    mode: workspace
+
+surfaces:
+  moltnet:
+    - network: field_lab
+      rooms:
+        field-room:
+          read: all
+          reply: never
+
+docs:
+  system: AGENTS.md

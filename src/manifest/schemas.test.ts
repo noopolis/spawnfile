@@ -74,6 +74,28 @@ describe("manifestSchema", () => {
     expect(isTeamManifest(result)).toBe(true);
   });
 
+  it("rejects team auth", () => {
+    const result = manifestSchema.safeParse({
+      auth: {
+        mode: "shared_secret",
+        secret: "TEAM_SECRET"
+      },
+      kind: "team",
+      members: [
+        {
+          id: "analyst",
+          ref: "./agents/analyst"
+        }
+      ],
+      mode: "swarm",
+      name: "research-team",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("Unrecognized key");
+  });
+
   it("accepts expose on agent manifests", () => {
     const result = manifestSchema.parse({
       expose: true,

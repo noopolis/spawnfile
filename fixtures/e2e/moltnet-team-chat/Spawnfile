@@ -1,0 +1,32 @@
+spawnfile_version: "0.1"
+kind: team
+name: moltnet-team-chat
+description: "E2E fixture for Moltnet representative team chat"
+
+docs:
+  system: TEAM.md
+
+members:
+  - id: coordinator
+    ref: ./agents/coordinator
+  - id: field-team
+    ref: ./teams/field
+  - id: analysis-team
+    ref: ./teams/analysis
+
+mode: hierarchical
+lead: coordinator
+external: [coordinator]
+
+networks:
+  - id: local_lab
+    name: Local Lab
+    provider: moltnet
+    expose: true
+    rooms:
+      - id: mission-control
+        members: [coordinator, field-team, analysis-team]
+
+policy:
+  mode: warn
+  on_degrade: warn

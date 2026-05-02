@@ -6,8 +6,6 @@ import type {
   DiscordSurfaceAccess,
   DiscordSurface,
   ExecutionBlock,
-  HttpSurface,
-  HttpSurfaceAccess,
   MoltnetAttachment,
   MoltnetDM,
   MoltnetRoomBehavior,
@@ -69,7 +67,8 @@ const orderDiscordSurface = (
 
   return withDefinedEntries([
     ["access", orderDiscordSurfaceAccess(surface.access)],
-    ["bot_token_secret", surface.bot_token_secret]
+    ["bot_token_secret", surface.bot_token_secret],
+    ["identity", surface.identity]
   ]) as unknown as DiscordSurface;
 };
 
@@ -97,7 +96,8 @@ const orderTelegramSurface = (
 
   return withDefinedEntries([
     ["access", orderTelegramSurfaceAccess(surface.access)],
-    ["bot_token_secret", surface.bot_token_secret]
+    ["bot_token_secret", surface.bot_token_secret],
+    ["identity", surface.identity]
   ]) as unknown as TelegramSurface;
 };
 
@@ -113,29 +113,6 @@ const orderTelegramSurfaceAccess = (
     ["users", access.users],
     ["chats", access.chats]
   ]) as unknown as TelegramSurfaceAccess;
-};
-
-const orderHttpSurface = (surface: HttpSurface | undefined): HttpSurface | undefined => {
-  if (!surface) {
-    return undefined;
-  }
-
-  return withDefinedEntries([
-    ["access", orderHttpSurfaceAccess(surface.access)],
-    ["auth", surface.auth],
-    ["path_prefix", surface.path_prefix],
-    ["port", surface.port]
-  ]) as unknown as HttpSurface;
-};
-
-const orderHttpSurfaceAccess = (
-  access: HttpSurfaceAccess | undefined
-): HttpSurfaceAccess | undefined => {
-  if (!access) {
-    return undefined;
-  }
-
-  return withDefinedEntries([["mode", access.mode]]) as unknown as HttpSurfaceAccess;
 };
 
 const orderWebhookSurface = (
@@ -206,7 +183,10 @@ const orderWhatsAppSurface = (
     return undefined;
   }
 
-  return withDefinedEntries([["access", orderWhatsAppSurfaceAccess(surface.access)]]) as unknown as WhatsAppSurface;
+  return withDefinedEntries([
+    ["access", orderWhatsAppSurfaceAccess(surface.access)],
+    ["identity", surface.identity]
+  ]) as unknown as WhatsAppSurface;
 };
 
 const orderWhatsAppSurfaceAccess = (
@@ -233,7 +213,8 @@ const orderSlackSurface = (
   return withDefinedEntries([
     ["access", orderSlackSurfaceAccess(surface.access)],
     ["bot_token_secret", surface.bot_token_secret],
-    ["app_token_secret", surface.app_token_secret]
+    ["app_token_secret", surface.app_token_secret],
+    ["identity", surface.identity]
   ]) as unknown as SlackSurface;
 };
 
@@ -327,7 +308,6 @@ const orderSurfaces = (
     ["telegram", orderTelegramSurface(surfaces.telegram)],
     ["whatsapp", orderWhatsAppSurface(surfaces.whatsapp)],
     ["slack", orderSlackSurface(surfaces.slack)],
-    ["http", orderHttpSurface(surfaces.http)],
     ["webhook", orderWebhookSurface(surfaces.webhook)],
     ["moltnet", orderMoltnetSurface(surfaces.moltnet)]
   ]) as unknown as SurfacesBlock;

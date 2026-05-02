@@ -4,18 +4,12 @@ import {
   resolveProjectPath
 } from "../filesystem/index.js";
 import {
-  AgentManifest,
-  ExecutionBlock,
   LoadedManifest,
-  SharedSurface,
-  TeamManifest,
   isAgentManifest,
   isTeamManifest,
   loadManifest,
-  mergeExecution,
-  normalizeRuntimeBinding
+  mergeExecution
 } from "../manifest/index.js";
-import { assertRuntimeCanCompile } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import {
   getAgentFingerprint,
@@ -39,72 +33,27 @@ import {
   CompilePlanNode,
   ResolvedAgentNode,
   ResolvedMemberRef,
-  ResolvedRuntime,
-  ResolvedTeamNetwork,
+  ResolvedTeamMembershipContext,
   ResolvedTeamNode
 } from "./types.js";
 import { applyExecutionDefaults } from "./executionDefaults.js";
-import { resolveMoltnetAttachments } from "./moltnetResolution.js";
-
-interface AgentVisitContext {
-  inheritedExecution?: ExecutionBlock;
-  inheritedShared?: {
-    manifestPath: string;
-    surface: SharedSurface | undefined;
-  };
-  inheritedRuntime?: ResolvedRuntime;
-  isSubagent: boolean;
-  teamContext?: {
-    memberId: string;
-    teamName: string;
-    teamSource: string;
-    networks: ResolvedTeamNetwork[];
-  };
-}
+import { resolvePlanMoltnetAttachments } from "./moltnetResolution.js";
+import {
+  normalizeDescription,
+  resolveDescription,
+  resolveRuntime,
+  type AgentVisitContext
+} from "./buildCompilePlanRuntime.js";
+import {
+  resolveTeamExternalIds,
+  resolveTeamNetworks,
+  validateTeamNetworkRooms
+} from "./buildCompilePlanTeams.js";
 
 type InternalNode = {
   runtimeName: string | null;
   source: string;
   value: ResolvedAgentNode | ResolvedTeamNode;
-};
-
-const resolveRuntime = async (
-  manifest: AgentManifest,
-  context: AgentVisitContext
-): Promise<ResolvedRuntime> => {
-  const localRuntime = normalizeRuntimeBinding(manifest.runtime);
-
-  if (context.isSubagent) {
-    if (!context.inheritedRuntime) {
-      throw new SpawnfileError(
-        "runtime_error",
-        `Subagent ${manifest.name} is missing inherited runtime context`
-      );
-    }
-
-    if (
-      localRuntime &&
-      localRuntime.name !== context.inheritedRuntime.name
-    ) {
-      throw new SpawnfileError(
-        "runtime_error",
-        `Subagent ${manifest.name} must match parent runtime`
-      );
-    }
-
-    return context.inheritedRuntime;
-  }
-
-  if (!localRuntime) {
-    throw new SpawnfileError(
-      "runtime_error",
-      `Agent ${manifest.name} does not declare a runtime`
-    );
-  }
-
-  await assertRuntimeCanCompile(localRuntime.name);
-
-  return localRuntime;
 };
 
 export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> => {
@@ -113,6 +62,7 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
   const nodeCache = new Map<string, InternalNode>();
   const fingerprintCache = new Map<string, string>();
   const edges: CompilePlanEdge[] = [];
+  const memberships = new Map<string, ResolvedTeamMembershipContext>();
   const visitStack: string[] = [];
 
   const getLoadedManifest = (manifestPath: string): Promise<LoadedManifest> => {
@@ -180,9 +130,10 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       skills
     );
 
+    const docs = await loadResolvedDocuments(canonicalPath, loadedManifest.manifest.docs);
     const candidate: ResolvedAgentNode = {
-      description: loadedManifest.manifest.description ?? "",
-      docs: await loadResolvedDocuments(canonicalPath, loadedManifest.manifest.docs),
+      description: resolveDescription(loadedManifest.manifest.description, docs),
+      docs,
       env: sharedSurface.env,
       execution,
       expose: loadedManifest.manifest.expose ?? false,
@@ -198,16 +149,6 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       surfaces: resolveAgentSurfaces(loadedManifest.manifest.surfaces),
       subagents: []
     };
-    if (candidate.surfaces?.moltnet) {
-      candidate.surfaces = {
-        ...candidate.surfaces,
-        moltnet: resolveMoltnetAttachments(
-          candidate.surfaces.moltnet,
-          context.teamContext,
-          loadedManifest.manifest.name
-        )
-      };
-    }
     assertRuntimeSupportsAgentSurfaces(
       runtime.name,
       candidate.surfaces,
@@ -285,32 +226,19 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
     );
 
     const manifest = loadedManifest.manifest;
-    const memberIds = manifest.members.map((member) => member.id);
-    const resolvedExternal = manifest.external
-      ?? (manifest.mode === "hierarchical" && manifest.lead
-        ? [manifest.lead]
-        : memberIds);
-
+    const resolvedExternal = resolveTeamExternalIds(manifest);
+    const docs = await loadResolvedDocuments(canonicalPath, manifest.docs);
     const candidate: ResolvedTeamNode = {
-      auth: manifest.auth ?? null,
-      description: manifest.description ?? "",
-      docs: await loadResolvedDocuments(canonicalPath, manifest.docs),
+      description: manifest.description ? normalizeDescription(manifest.description) : "",
+      docs,
       external: resolvedExternal,
+      externalExplicit: manifest.external !== undefined,
       kind: "team",
       lead: manifest.lead ?? null,
       members: [],
       mode: manifest.mode,
       name: manifest.name,
-      networks: (manifest.networks ?? []).map((network) => ({
-        expose: network.expose ?? false,
-        id: network.id,
-        name: network.name ?? network.id,
-        provider: network.provider,
-        rooms: network.rooms.map((room) => ({
-          id: room.id,
-          members: [...room.members]
-        }))
-      })),
+      networks: resolveTeamNetworks(manifest),
       policyMode: manifest.policy?.mode ?? null,
       policyOnDegrade: manifest.policy?.on_degrade ?? null,
       shared: {
@@ -355,13 +283,7 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
             manifestPath: canonicalPath,
             surface: loadedManifest.manifest.shared
           },
-          isSubagent: false,
-          teamContext: {
-            memberId: member.id,
-            teamName: candidate.name,
-            teamSource: canonicalPath,
-            networks: candidate.networks ?? []
-          }
+          isSubagent: false
         });
 
         resolvedMember = {
@@ -370,6 +292,15 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
           nodeSource: resolvedAgent.source,
           runtimeName: resolvedAgent.runtime.name
         };
+        memberships.set(
+          `${canonicalPath}::${member.id}::${resolvedAgent.source}`,
+          {
+            agentSource: resolvedAgent.source,
+            memberId: member.id,
+            teamName: candidate.name,
+            teamSource: canonicalPath
+          }
+        );
       } else {
         const resolvedTeam = await visitTeam(childManifestPath);
         resolvedMember = {
@@ -389,26 +320,7 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       });
     }
 
-    for (const network of candidate.networks ?? []) {
-      for (const room of network.rooms) {
-        for (const roomMemberId of room.members) {
-          const resolvedMember = candidate.members.find((member) => member.id === roomMemberId);
-          if (!resolvedMember) {
-            throw new SpawnfileError(
-              "validation_error",
-              `Team ${candidate.name} Moltnet room ${room.id} references unknown member ${roomMemberId}`
-            );
-          }
-
-          if (resolvedMember.kind !== "agent") {
-            throw new SpawnfileError(
-              "validation_error",
-              `Team ${candidate.name} Moltnet room ${room.id} can only include agent members in Spawnfile v0.1`
-            );
-          }
-        }
-      }
-    }
+    validateTeamNetworkRooms(candidate);
 
     visitStack.pop();
 
@@ -455,10 +367,19 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
     return groups;
   }, {});
 
-  return {
+  const compilePlan: CompilePlan = {
     edges: compilePlanEdges,
+    memberships: [...memberships.values()].sort((left, right) =>
+      `${left.agentSource}:${left.teamSource}:${left.memberId}`.localeCompare(
+        `${right.agentSource}:${right.teamSource}:${right.memberId}`
+      )
+    ),
     nodes: compilePlanNodes,
     root: rootManifestPath,
     runtimes
   };
+
+  resolvePlanMoltnetAttachments(compilePlan);
+
+  return compilePlan;
 };

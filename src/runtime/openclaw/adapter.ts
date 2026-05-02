@@ -233,6 +233,12 @@ export const openClawAdapter: RuntimeAdapter = {
     ],
     systemDeps: ["bash", "ca-certificates", "curl", "git", "hostname", "openssl", "procps"]
   },
+  systemInstructionSurface: {
+    placement: "append_pointer",
+    resolvePath() {
+      return "workspace/AGENTS.md";
+    }
+  },
   async compileAgent(node): Promise<AdapterCompileResult> {
     return {
       capabilities: createAgentCapabilities(node, {

@@ -2,8 +2,6 @@ import type {
   AgentManifest,
   DiscordSurface,
   DiscordSurfaceAccess,
-  HttpSurface,
-  HttpSurfaceAccess,
   SlackSurface,
   SlackSurfaceAccess,
   SurfacesBlock,
@@ -21,7 +19,8 @@ import { assertRuntimeSupportsAgentSurfaces } from "./surfaceSupport.js";
 type ProjectManifest = AgentManifest | TeamManifest;
 
 export type SurfaceAccessMode = "allowlist" | "open" | "pairing";
-export type SurfaceName = "discord" | "http" | "slack" | "telegram" | "whatsapp";
+export const PORTABLE_SURFACE_NAMES = ["discord", "slack", "telegram", "whatsapp"] as const;
+export type SurfaceName = (typeof PORTABLE_SURFACE_NAMES)[number];
 
 export interface ProjectSurfaceSecretOptions {
   appTokenSecret?: string;
@@ -31,7 +30,7 @@ export interface ProjectSurfaceSecretOptions {
 export interface AddProjectSurfaceOptions extends ProjectSurfaceSecretOptions {
   path?: string;
   recursive?: boolean;
-  surface: SurfaceName;
+  surface: string;
 }
 
 export interface ProjectSurfaceAccessOptions {
@@ -42,14 +41,14 @@ export interface ProjectSurfaceAccessOptions {
   mode: SurfaceAccessMode;
   path?: string;
   recursive?: boolean;
-  surface: SurfaceName;
+  surface: string;
   users?: string[];
 }
 
 export interface RemoveProjectSurfaceOptions {
   path?: string;
   recursive?: boolean;
-  surface: SurfaceName;
+  surface: string;
 }
 
 export interface ShowProjectSurfacesOptions {
@@ -77,6 +76,17 @@ export const TEAM_SURFACE_COMMAND_ERROR =
 
 export const getRuntimeName = (runtime: AgentManifest["runtime"]): string | undefined =>
   typeof runtime === "string" ? runtime : runtime?.name;
+
+export const resolvePortableSurfaceName = (surface: string): SurfaceName => {
+  if (!(PORTABLE_SURFACE_NAMES as readonly string[]).includes(surface)) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Unsupported portable surface ${surface}; expected one of: ${PORTABLE_SURFACE_NAMES.join(", ")}`
+    );
+  }
+
+  return surface as SurfaceName;
+};
 
 export const assertSurfaceMutationAllowed = (
   manifest: ProjectManifest,
@@ -231,47 +241,18 @@ const buildSlackAccess = (
   };
 };
 
-const buildHttpAccess = (
-  options: ProjectSurfaceAccessOptions
-): HttpSurfaceAccess => {
-  const hasScopedEntries = Boolean(
-    normalizeEntries(options.users) ||
-      normalizeEntries(options.channels) ||
-      normalizeEntries(options.guilds) ||
-      normalizeEntries(options.chats) ||
-      normalizeEntries(options.groups)
-  );
-
-  if (hasScopedEntries) {
-    throw new SpawnfileError(
-      "validation_error",
-      "http surfaces do not accept allowlist ids in Spawnfile v0.1"
-    );
-  }
-
-  if (options.mode !== "open") {
-    throw new SpawnfileError(
-      "validation_error",
-      "http surfaces only support --mode open in Spawnfile v0.1"
-    );
-  }
-
-  return { mode: "open" };
-};
-
 const buildSurfaceAccess = (
   options: ProjectSurfaceAccessOptions
 ):
   | DiscordSurfaceAccess
-  | HttpSurfaceAccess
   | SlackSurfaceAccess
   | TelegramSurfaceAccess
   | WhatsAppSurfaceAccess => {
-  switch (options.surface) {
+  const surface = resolvePortableSurfaceName(options.surface);
+
+  switch (surface) {
     case "discord":
       return buildDiscordAccess(options);
-    case "http":
-      return buildHttpAccess(options);
     case "telegram":
       return buildTelegramAccess(options);
     case "whatsapp":
@@ -285,21 +266,17 @@ export const upsertSurface = (
   surfaces: SurfacesBlock | undefined,
   options: AddProjectSurfaceOptions
 ): SurfacesBlock => {
-  validateSecrets(options.surface, options);
+  const surface = resolvePortableSurfaceName(options.surface);
+  validateSecrets(surface, options);
 
   const nextSurfaces: SurfacesBlock = { ...(surfaces ?? {}) };
 
-  switch (options.surface) {
+  switch (surface) {
     case "discord":
       nextSurfaces.discord = {
         ...(surfaces?.discord ?? {}),
         ...(options.botTokenSecret ? { bot_token_secret: options.botTokenSecret } : {})
       } satisfies DiscordSurface;
-      break;
-    case "http":
-      nextSurfaces.http = {
-        ...(surfaces?.http ?? {})
-      } satisfies HttpSurface;
       break;
     case "telegram":
       nextSurfaces.telegram = {
@@ -330,10 +307,11 @@ export const updateSurfaceAccess = (
   manifestPath: string,
   recursive: boolean
 ): SurfacesBlock | null => {
+  const surface = resolvePortableSurfaceName(options.surface);
   const nextSurfaces: SurfacesBlock = { ...(surfaces ?? {}) };
-  const access = buildSurfaceAccess(options);
+  const access = buildSurfaceAccess({ ...options, surface });
 
-  switch (options.surface) {
+  switch (surface) {
     case "discord":
       if (!nextSurfaces.discord) {
         if (recursive) {
@@ -345,18 +323,6 @@ export const updateSurfaceAccess = (
         );
       }
       nextSurfaces.discord = { ...nextSurfaces.discord, access: access as DiscordSurfaceAccess };
-      break;
-    case "http":
-      if (!nextSurfaces.http) {
-        if (recursive) {
-          return null;
-        }
-        throw new SpawnfileError(
-          "validation_error",
-          `Surface http is not declared in ${manifestPath}; use spawnfile surface add http first`
-        );
-      }
-      nextSurfaces.http = { ...nextSurfaces.http, access: access as HttpSurfaceAccess };
       break;
     case "telegram":
       if (!nextSurfaces.telegram) {
@@ -401,14 +367,15 @@ export const updateSurfaceAccess = (
 
 export const removeSurface = (
   surfaces: SurfacesBlock | undefined,
-  surface: SurfaceName
+  surface: string
 ): SurfacesBlock | undefined => {
-  if (!surfaces?.[surface]) {
+  const surfaceName = resolvePortableSurfaceName(surface);
+  if (!surfaces?.[surfaceName]) {
     return surfaces;
   }
 
   const nextSurfaces = { ...surfaces };
-  delete nextSurfaces[surface];
+  delete nextSurfaces[surfaceName];
   return Object.keys(nextSurfaces).length > 0 ? nextSurfaces : undefined;
 };
 
