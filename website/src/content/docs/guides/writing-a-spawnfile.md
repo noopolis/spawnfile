@@ -233,7 +233,7 @@ policy:
 
 ## surfaces
 
-The `surfaces` block declares external communication channels for the agent. Spawnfile v0.1 standardizes four surfaces: Discord, Telegram, WhatsApp, and Slack.
+The `surfaces` block declares communication channels for the agent. Spawnfile v0.1 alpha standardizes Discord, Telegram, WhatsApp, Slack, Moltnet, and Webhook. Portable HTTP ingress is not part of this alpha surface schema.
 
 ```yaml
 surfaces:
@@ -263,6 +263,8 @@ surfaces:
       groups:
         - "120363400000000000@g.us"
   slack:
+    identity:
+      user_id: "U1234567890"
     access:
       mode: allowlist
       users:
@@ -271,7 +273,15 @@ surfaces:
         - "C1234567890"
     bot_token_secret: SLACK_BOT_TOKEN
     app_token_secret: SLACK_APP_TOKEN
+  moltnet:
+    - network: local_lab
+      rooms:
+        research:
+          read: all
+          reply: auto
 ```
+
+Optional `identity` fields advertise the agent's own account in generated rosters. They do not provision accounts or cause Spawnfile to read runtime state. Supported identity fields are Discord `user_id`, Telegram `user_id` and/or `username`, WhatsApp `phone`, and Slack `user_id`.
 
 ### Discord Fields
 
@@ -316,7 +326,7 @@ Slack requires both a bot token and an app-level socket token.
 
 ### Access Rules
 
-All four surfaces follow the same access-mode pattern:
+Chat surfaces follow the same access-mode pattern:
 
 - If `access.mode` is omitted and any allowlist identifiers are present, the effective mode is `allowlist`.
 - Allowlist identifiers are only valid with `allowlist` mode.
@@ -326,6 +336,8 @@ All four surfaces follow the same access-mode pattern:
 - WhatsApp uses `users` and `groups`.
 - Slack uses `users` and `channels`.
 - If `access` is omitted entirely, the effective behavior is runtime-defined and not currently portable. Projects that need predictable cross-runtime behavior should declare `access.mode` explicitly.
+
+Moltnet attachments reference team-declared networks and rooms. Moltnet `reply` policy is only `auto` or `never` in this alpha.
 
 ### Runtime Support
 

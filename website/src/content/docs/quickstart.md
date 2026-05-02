@@ -86,13 +86,13 @@ This checks the manifest schema, file references, and graph structure without co
 ## Compile
 
 ```bash
-spawnfile compile --out ./dist
+spawnfile compile
 ```
 
 The compiler emits runtime-native config and workspace files:
 
 ```
-dist/
+.spawn/
 |-- runtimes/
 |   \-- openclaw/
 |       \-- agents/

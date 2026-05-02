@@ -16,7 +16,7 @@ The compiler walks the full graph from the root Spawnfile. Everything it resolve
 The compiler emits container artifacts at the compile output root alongside the runtime-specific output:
 
 ```text
-dist/
+.spawn/
   Dockerfile
   entrypoint.sh
   .env.example

@@ -65,7 +65,7 @@ TinyClaw is the strongest native team target in the Spawnfile ecosystem. Its nat
 - `leader_agent` -- the designated team leader
 
 Native team interaction:
-- `@team_id` messages route to the leader
+- `@team_id` messages go to the leader in the native runtime
 - Agents mention teammates to collaborate
 - Fan-out exists in the prompt protocol
 
@@ -75,9 +75,9 @@ The adapter maps Spawnfile team concepts directly:
 
 | Spawnfile Concept | TinyClaw Native |
 |------------------|----------------|
-| `structure.leader` | `leader_agent` |
+| `lead` | `leader_agent` when it resolves to one concrete delegate |
 | `members[*].id` | Agent entries in the team |
-| `structure.external` | Organizational intent (recorded) |
+| `external` | Representative intent (recorded) |
 
 One TinyClaw runtime process can host all compiled agents plus the compiled team object.
 
@@ -85,7 +85,7 @@ Nested teams likely need flattening or degradation reporting, as TinyClaw's team
 
 ## Surfaces
 
-TinyClaw supports Discord, Telegram, and WhatsApp as pairing-gated DM surfaces. Spawnfile lowers each into TinyClaw's channel client config and starts the corresponding worker process in the generated container. TinyClaw does not support Slack.
+TinyClaw supports Discord, Telegram, and WhatsApp as pairing-gated DM surfaces. Spawnfile lowers each into TinyClaw's channel client config and starts the corresponding worker process in the generated container. TinyClaw does not support Slack. Portable HTTP is not part of the v0.1 alpha surface contract; TinyClaw's native API remains runtime-specific.
 
 ### Discord
 
@@ -133,12 +133,12 @@ For container compilation:
 - Base image metadata
 - Settings and workspace pre-placed into final container paths
 - Start command
-- Port configuration (API on port 3777)
+- Runtime-specific port configuration when needed
 
 ## Container Notes
 
 - TinyClaw is the strongest native team target: one runtime process hosts compiled agents plus the team object.
-- Host-side verification uses `GET /api/agents` on port 3777.
+- Host-side verification may use TinyClaw's native API, but that API is not a portable Spawnfile surface.
 - Compiled output pre-places runtime settings and workspace into final container paths. The entrypoint only needs minimal validation and startup.
 
 ## Example
@@ -181,9 +181,8 @@ members:
   - id: writer
     ref: ./agents/writer          # tinyclaw
 
-structure:
-  mode: hierarchical
-  leader: orchestrator
+mode: hierarchical
+lead: orchestrator
 ```
 
 In this multi-runtime team, TinyClaw compiles the writer agent while OpenClaw and PicoClaw handle the other members. The team-level structure is preserved in the compile report.

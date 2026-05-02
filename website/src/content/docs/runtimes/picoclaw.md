@@ -85,21 +85,20 @@ The adapter maps:
 - `execution.workspace.isolation` to workspace path configuration
 - `execution.sandbox.mode` to `restrict_to_workspace` and related settings
 
-## Teams and Routing
+## Teams
 
 PicoClaw has:
-- Route bindings with `binding.team` as a routing tier
 - Spawned subagents with optional `agent_id`
 - Heartbeat-driven async spawning
 
 It does not have a strong native team object. The adapter:
 - Compiles team members into named agents
 - Uses spawn or agent-targeted spawn for delegation
-- Reports degradation for native team identity and nesting
+- Reports degradation when native behavior cannot preserve Spawnfile representatives, context artifacts, team networks, team identity, or nesting
 
 ## Surfaces
 
-PicoClaw supports all four portable surfaces with token wiring and user allowlists. Guild, channel, chat, and group allowlists are not lowered in v0.1.
+PicoClaw supports Discord, Telegram, WhatsApp, and Slack with token wiring and user allowlists. Guild, channel, chat, and group allowlists are not lowered in v0.1. Portable HTTP is not part of the v0.1 alpha surface contract.
 
 ### Discord
 

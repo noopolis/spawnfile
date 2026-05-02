@@ -3,7 +3,7 @@ title: OpenClaw
 description: OpenClaw runtime adapter details -- config shape, workspace layout, model format, MCP handling, and what the adapter emits.
 ---
 
-OpenClaw is an active Spawnfile runtime with a JSON config file and a rich markdown workspace layout. It supports multi-agent operation through routing and isolated sessions.
+OpenClaw is an active Spawnfile runtime with a JSON config file and a rich markdown workspace layout. It supports multi-agent operation through native sessions, but Spawnfile v0.1 does not inject its own team router.
 
 **Status:** Active
 
@@ -77,20 +77,19 @@ ACPX runtime paths can inject named MCP server maps, which gives the adapter a t
 
 The adapter maps `execution.workspace.isolation` and `execution.sandbox.mode` to OpenClaw's workspace and session sandboxing configuration.
 
-## Teams and Routing
+## Teams
 
 OpenClaw does not have a native team manifest. What it has:
-- Multi-agent routing
-- Routed sessions
+- Multi-agent sessions
 - Agent-to-agent session tools
 
-The adapter lowers Spawnfile team members into routed agents and maps the team leader to the initial route target. Delegate relationships are lowered into session coordination tools like `sessions_send`.
+The adapter lowers Spawnfile team members into runtime-native agents/sessions where possible and reports degradation when native semantics do not preserve Spawnfile representatives, context artifacts, or team networks.
 
 Nested teams and full native team identity are reported as `degraded`.
 
 ## Surfaces
 
-OpenClaw has the strongest surface support among the active runtimes. All four portable surfaces -- Discord, Telegram, WhatsApp, and Slack -- are fully supported with pairing, allowlist, and open access modes.
+OpenClaw has the strongest chat-surface support among the active runtimes. Discord, Telegram, WhatsApp, and Slack are supported with pairing, allowlist, and open access modes. Portable HTTP is not part of the v0.1 alpha surface contract.
 
 ### Discord
 

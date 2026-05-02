@@ -2,355 +2,234 @@
 
 This document defines the portable communication-surface model that sits on top of `SPEC.md`.
 
-`SPEC.md` remains the canonical source schema. This file exists to make three things explicit:
+`SPEC.md` remains the canonical source schema. This file makes three things explicit:
 
-- what a surface is
-- what the standardized surfaces (Discord, Telegram, WhatsApp, Slack, HTTP, Webhook) mean
+- what an agent surface is
+- how agent surfaces differ from `team.networks[]`
 - which runtimes support which portable surface shapes
 
 ---
 
 ## Purpose
 
-A **surface** is an external interaction boundary through which an agent exchanges messages with humans, systems, or other agents.
+A **surface** is an agent-level communication capability: a place where one concrete agent can exchange messages with humans, systems, or other agents. Surfaces are declared on agent manifests, validated at compile time, and lowered into runtime-native config.
 
-This is intentionally broader than "chat channel". The current standardized surfaces are Discord, Telegram, WhatsApp, Slack, HTTP, and Webhook. The abstraction is designed to grow to cover A2A, agent-network, and future surfaces.
+A **team network** is a team-level organizational communication topology under `team.networks[]`. It describes rooms/channels that a team owns and that Spawnfile can compile, provision, bind, or validate. Moltnet is the first provider for this contract; future providers can use the same model if Spawnfile can manage their shared topology.
 
-Surfaces are:
+Team manifests do not declare `surfaces`. Concrete agent manifests declare `surfaces`; team manifests declare `networks`.
 
-- declared on agent manifests
-- validated at compile time against runtime support
-- provisioned through the same auth/run path as model credentials
-
-Runtimes may also impose limits on how many independent interactive conversation scopes they can preserve at once. Spawnfile treats that as part of surface compatibility validation. This matters when one declaration expands into several runtime-visible conversations, such as multiple Moltnet rooms or DMs.
-
-Team manifests do not declare surfaces. Surfaces belong to concrete agents.
+Spawnfile has a write-only runtime boundary. It does not read spawned runtimes to discover account IDs, infer live membership, or update rosters from runtime state. Roster addresses are emitted only when they are derivable from the manifest or explicitly authored through `identity`.
 
 ---
 
-## CLI Workflows
+## Current Portable Surfaces
 
-Spawnfile currently exposes a declarative CLI for surfaces.
+Spawnfile v0.1 standardizes these agent surfaces:
 
-### Declarative Commands
+- `discord`
+- `telegram`
+- `whatsapp`
+- `slack`
+- `moltnet`
+- `webhook`
 
-These commands edit agent manifests and follow the same `add` / `remove` / `set-*` / `show` philosophy as the rest of the CLI:
-
-- `spawnfile surface add <surface> [path]`
-- `spawnfile surface remove <surface> [path]`
-- `spawnfile surface set-access <surface> [path] --mode <mode>`
-- `spawnfile surface show [path]`
-
-When the target path is a team manifest, surface edit commands require `--recursive` and only rewrite descendant agent manifests.
-
-## Current Portable Surface
-
-Spawnfile v0.1 standardizes five initial surfaces:
+Portable HTTP ingress is not part of this alpha schema. Runtime-native HTTP APIs may exist through runtime-specific options, but they are not portable Spawnfile surfaces and do not appear in rosters.
 
 ```yaml
 surfaces:
   discord:
+    identity:
+      user_id: "987654321098765432"
     access:
       mode: allowlist
-      users:
-        - "987654321098765432"
-      guilds:
-        - "123456789012345678"
-      channels:
-        - "555555555555555555"
+      users: ["987654321098765432"]
     bot_token_secret: DISCORD_BOT_TOKEN
   telegram:
+    identity:
+      user_id: "123456789"
+      username: "research_bot"
     access:
       mode: allowlist
-      users:
-        - "123456789"
-      chats:
-        - "-1001234567890"
+      users: ["123456789"]
+      chats: ["-1001234567890"]
     bot_token_secret: TELEGRAM_BOT_TOKEN
   whatsapp:
+    identity:
+      phone: "+15551234567"
     access:
       mode: allowlist
-      users:
-        - "15551234567"
-      groups:
-        - "120363400000000000@g.us"
+      users: ["15551234567"]
+      groups: ["120363400000000000@g.us"]
   slack:
+    identity:
+      user_id: "U1234567890"
     access:
       mode: allowlist
-      users:
-        - "U1234567890"
-      channels:
-        - "C1234567890"
+      users: ["U1234567890"]
+      channels: ["C1234567890"]
     bot_token_secret: SLACK_BOT_TOKEN
     app_token_secret: SLACK_APP_TOKEN
-  http:
-    port: 8080
-    path_prefix: /v1
-    auth:
-      mode: bearer
-      token_secret: HTTP_AUTH_TOKEN
-    access:
-      mode: open
+  moltnet:
+    - network: local_lab
+      rooms:
+        research:
+          read: all
+          reply: auto
+      dms:
+        enabled: true
+        read: mentions
+        reply: never
   webhook:
     url: "https://my-service.example.com/callbacks"
     signing_secret: WEBHOOK_SECRET
 ```
 
-### Fields
+---
 
-| Field | Meaning |
-|------|---------|
-| `discord.bot_token_secret` | Env var name carrying the Discord bot token. Defaults to `DISCORD_BOT_TOKEN`. |
-| `discord.access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
-| `discord.access.users` | Allowed Discord user IDs. |
-| `discord.access.guilds` | Allowed Discord guild/server IDs. |
-| `discord.access.channels` | Allowed Discord channel IDs. |
-| `telegram.bot_token_secret` | Env var name carrying the Telegram bot token. Defaults to `TELEGRAM_BOT_TOKEN`. |
-| `telegram.access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
-| `telegram.access.users` | Allowed Telegram user IDs. |
-| `telegram.access.chats` | Allowed Telegram chat IDs. |
-| `whatsapp.access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
-| `whatsapp.access.users` | Allowed WhatsApp user identifiers. |
-| `whatsapp.access.groups` | Allowed WhatsApp group identifiers. |
-| `slack.bot_token_secret` | Env var name carrying the Slack bot token. Defaults to `SLACK_BOT_TOKEN`. |
-| `slack.app_token_secret` | Env var name carrying the Slack app-level socket token. Defaults to `SLACK_APP_TOKEN`. |
-| `slack.access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
-| `slack.access.users` | Allowed Slack user IDs. |
-| `slack.access.channels` | Allowed Slack channel IDs. |
-| `http.port` | Port for the HTTP surface. Optional, runtime selects default if omitted. |
-| `http.path_prefix` | URL path prefix for the HTTP surface. Defaults to `/v1`. |
-| `http.auth.mode` | Auth mode for the direct agent HTTP surface. Currently only `bearer` is supported. If `auth` is omitted entirely, the surface accepts unauthenticated requests. |
-| `http.auth.token_secret` | Env var name carrying the bearer token for the direct agent HTTP surface. Only valid with `auth.mode: bearer`. |
-| `http.access.mode` | Access policy for the portable HTTP surface. Currently only `open` is standardized. |
-| `webhook.url` | Callback URL for webhook event delivery. Required when webhook is declared. |
-| `webhook.signing_secret` | Env var name carrying the HMAC-SHA256 signing secret. Optional. When present, the runtime signs payloads with `X-Spawnfile-Signature`. |
+## Surface Identity
 
-Note: `http` is a direct agent surface. `team.auth` applies to compiler-generated team-boundary or coordination routes, not automatically to the direct HTTP credential set. A compiler may reuse one listener internally, but that is not the portable contract. See `SPEC.md` section 4.6 for team auth rules.
+`identity` is optional opt-in roster metadata. It tells the compiler which account/address to advertise when the agent is visible in a team-context roster. It does not provision an account, guarantee provider-side reachability, or permit Spawnfile to read runtime state.
 
-### Access Rules
+| Surface | Identity fields | Roster address |
+|---|---|---|
+| `discord` | `user_id` | `addresses.discord.user_id` |
+| `telegram` | `user_id` and/or `username` | `addresses.telegram.user_id`, `addresses.telegram.username` |
+| `whatsapp` | `phone` | `addresses.whatsapp.phone` |
+| `slack` | `user_id` | `addresses.slack.user_id` |
+| `moltnet` | derived from team network attachment | `addresses.moltnet.<network_id>.fqid` |
 
-- If `access.mode` is omitted and any of `users`, `guilds`, or `channels` are present, the effective mode is `allowlist`.
-- `users`, `guilds`, and `channels` are only valid with `allowlist`.
-- `allowlist` must declare at least one of `users`, `guilds`, or `channels`.
-- Telegram follows the same pattern, using `users` and `chats`.
-- WhatsApp follows the same pattern, using `users` and `groups`.
-- Slack follows the same pattern, using `users` and `channels`.
-- HTTP currently only supports `mode: open`.
-- If `access` is omitted entirely, the effective behavior is runtime-defined and is not currently portable. Projects that need predictable cross-runtime behavior should declare `access.mode` explicitly.
-- Surface secrets are runtime env, not inline manifest secrets.
+If a chat surface is declared without `identity`, rosters may list that surface while omitting an address. Teammates then rely on native discovery: mentions, channel membership, replies, or provider UI.
+
+---
+
+## Access Rules
+
+- Discord access uses `pairing`, `allowlist`, or `open`. `users`, `guilds`, and `channels` are only valid with `allowlist`.
+- Telegram access uses `pairing`, `allowlist`, or `open`. `users` and `chats` are only valid with `allowlist`.
+- WhatsApp access uses `pairing`, `allowlist`, or `open`. `users` and `groups` are only valid with `allowlist`.
+- Slack access uses `pairing`, `allowlist`, or `open`. `users` and `channels` are only valid with `allowlist`.
+- If an access mode is omitted and allowlist entries are present, the effective mode is `allowlist`.
+- If an access block is omitted entirely, behavior is runtime-defined and is not portable.
+- Surface secrets are runtime env references, not inline manifest secrets.
 - WhatsApp does not currently have a portable token-secret field; QR/session auth remains runtime-defined.
-- HTTP defines `bearer` auth with `token_secret` but does not define a portable allowlist field.
 
-### ID Sources
+---
 
-For Discord, the identifiers are copied from Discord Developer Mode:
+## Moltnet
 
-- user ID
-- guild/server ID
-- channel ID
+Moltnet is both an agent surface and the first `team.networks[]` provider.
 
-These are low-level identifiers, but they are stable and map cleanly to allowlist semantics.
+Agent-side Moltnet surface:
 
-For Telegram, the identifiers are the bot-visible numeric ids:
+```yaml
+surfaces:
+  moltnet:
+    - network: local_lab
+      rooms:
+        research:
+          read: all
+          reply: auto
+      dms:
+        enabled: true
+        read: mentions
+        reply: never
+```
 
-- user ID
-- chat ID
+Team-side network:
 
-For WhatsApp and Slack, identifiers are runtime-facing platform identifiers:
+```yaml
+networks:
+  - id: local_lab
+    provider: moltnet
+    rooms:
+      - id: research
+        members: [lead, writer]
+```
 
-- WhatsApp user or phone identity
-- WhatsApp group id
-- Slack user id
-- Slack channel id
+Rules:
 
-HTTP currently has no portable identifier allowlist fields in v0.1.
+- Agent attachments reference team-declared networks and rooms.
+- `read` may be `all`, `mentions`, or `thread_only`.
+- `reply` may be only `auto` or `never` in this alpha. `manual` is not portable.
+- Moltnet FQIDs are derivable and should be emitted into context-scoped rosters.
+- A parent room member may name a direct child-team slot. The compiler expands that slot through the child team's representative chain and attaches only selected concrete representatives.
+- Parent networks do not autojoin every descendant. Non-representative child members do not receive parent room attachments.
+- Moltnet member IDs are direct agent member slot IDs and must be unique across the reachable nested team graph.
+- Reusing the same network id across teams is allowed. Compatible duplicate attachments for the same `(network_id, member_id)` merge rooms; incompatible duplicates fail compilation.
 
 ---
 
 ## Runtime Support Matrix
 
-The portable schema is broader than any single runtime. A conforming compiler must validate the declared surface against the selected runtime and fail early when the runtime cannot preserve it.
+The portable schema is broader than any single runtime. A conforming compiler validates the declared surface against the selected runtime and fails early when the runtime cannot preserve it.
 
 ### Discord
 
 | Runtime | Supported Access | Notes |
-|--------|------------------|-------|
+|---|---|---|
 | `openclaw` | `pairing`, `allowlist`, `open` | Supports user, guild, and channel policy lowering. Channel allowlists currently require exactly one guild in Spawnfile lowering. |
 | `picoclaw` | `open`, `allowlist` | Supports Discord token wiring and user allowlists. Guild/channel allowlists are not lowered in v0.1. |
-| `tinyclaw` | `pairing` | Discord client is DM-oriented and pairing-gated. Declarative user/guild/channel allowlists are not supported in Spawnfile v0.1. |
-
-### Practical Meaning
-
-- `openclaw` is the best current target for full Discord channel/server policy.
-- `picoclaw` is a good target for token-based Discord plus simple user allowlists.
-- `tinyclaw` supports Discord as a paired DM surface, not as a general guild/channel surface.
-- `tinyclaw` currently preserves only one interactive conversation scope per agent. Multiple inbound surfaces or multi-scope Moltnet attachments are rejected at compile time in Spawnfile v0.1.
-- Live smoke status:
-  - `openclaw` Discord was verified end to end
-  - `picoclaw` Discord was verified end to end
-  - `tinyclaw` Discord was verified end to end as a paired DM surface
+| `tinyclaw` | `pairing` | DM-oriented and pairing-gated. Declarative user/guild/channel allowlists are not supported in Spawnfile v0.1. |
 
 ### Telegram
 
 | Runtime | Supported Access | Notes |
-|--------|------------------|-------|
+|---|---|---|
 | `openclaw` | `pairing`, `allowlist`, `open` | Supports DM and group/chat policy lowering. |
 | `picoclaw` | `open`, `allowlist` | Supports Telegram token wiring and user allowlists. Chat allowlists are not lowered in v0.1. |
-| `tinyclaw` | `pairing` | Telegram client is pairing-gated. Declarative user/chat allowlists are not supported in Spawnfile v0.1. |
-
-### Practical Meaning
-
-- `openclaw` is also the best current target for full portable Telegram policy.
-- `picoclaw` is a good target for token-based Telegram plus simple user allowlists.
-- `tinyclaw` supports Telegram as a paired DM-style surface, not as a declarative allowlist surface.
-- Live smoke status:
-  - `tinyclaw` Telegram was verified end to end with pairing
-  - `openclaw` Telegram was verified end to end with `access.mode: open`
-  - `picoclaw` Telegram was verified end to end with `access.mode: open`
+| `tinyclaw` | `pairing` | Pairing-gated. Declarative user/chat allowlists are not supported in Spawnfile v0.1. |
 
 ### WhatsApp
 
 | Runtime | Supported Access | Notes |
-|--------|------------------|-------|
+|---|---|---|
 | `openclaw` | `pairing`, `allowlist`, `open` | Supports DM and group policy lowering. |
 | `picoclaw` | `open`, `allowlist` | Supports user allowlists. Portable group allowlists are not lowered in Spawnfile v0.1. |
-| `tinyclaw` | `pairing` | WhatsApp is pairing-gated. Declarative user/group allowlists are not supported in Spawnfile v0.1. |
-
-### Practical Meaning
-
-- `openclaw` is the strongest current target for portable WhatsApp policy.
-- `picoclaw` is a good target for simple WhatsApp ingress and user allowlists.
-- `tinyclaw` supports WhatsApp as a pairing-gated surface only.
-- Live smoke status:
-  - `openclaw` WhatsApp was verified end to end
-  - `picoclaw` WhatsApp is still blocked in the pinned artifact because `whatsapp_native` is not compiled into the shipped binary
-  - `tinyclaw` WhatsApp is still blocked in the shipped container because the upstream client needs a browser runtime
+| `tinyclaw` | `pairing` | Pairing-gated. Declarative user/group allowlists are not supported in Spawnfile v0.1. |
 
 ### Slack
 
 | Runtime | Supported Access | Notes |
-|--------|------------------|-------|
+|---|---|---|
 | `openclaw` | `pairing`, `allowlist`, `open` | Requires both bot and app/socket tokens. Supports DM and channel policy lowering. |
 | `picoclaw` | `open`, `allowlist` | Requires both bot and app/socket tokens. Portable channel allowlists are not lowered in Spawnfile v0.1. |
 | `tinyclaw` | unsupported | TinyClaw does not support Slack in Spawnfile v0.1. |
 
-### Practical Meaning
+### Moltnet
 
-- `openclaw` is the current reference target for portable Slack policy.
-- `picoclaw` supports token-based Slack ingress plus user allowlists, but not channel allowlists.
-- `tinyclaw` currently has no Spawnfile Slack surface.
-- Live smoke status:
-  - `openclaw` Slack was verified end to end
-  - `picoclaw` Slack was verified end to end
-- `picoclaw` replies to channel messages in Slack threads; direct messages reply inline
-
-### HTTP
-
-| Runtime | Supported Access | Notes |
-|--------|------------------|-------|
-| `openclaw` | unsupported | OpenClaw has webhook-capable internals, but Spawnfile does not yet lower a portable HTTP surface into them. |
-| `picoclaw` | unsupported | PicoClaw has a shared webhook server model, but Spawnfile does not yet lower a portable HTTP surface into it. |
-| `tinyclaw` | `open` | Uses TinyClaw's built-in HTTP API server and response queue. |
-
-### Practical Meaning
-
-- `tinyclaw` is the only bundled runtime that currently preserves the portable HTTP surface.
-- The current live path is TinyClaw's built-in API:
-  - `POST /api/message`
-  - `GET /api/responses/pending?channel=<name>`
-- The portable HTTP contract defines `POST {path_prefix}/messages` as the canonical agent message endpoint. Runtime adapters bridge this to their native APIs.
-- Live smoke status:
-  - `tinyclaw` HTTP was verified end to end
+| Runtime | Supported Shape | Notes |
+|---|---|---|
+| `openclaw` | team-network attachments | Lowers generated Moltnet client config and skill installation when artifacts are available. |
+| `picoclaw` | team-network attachments | Lowers generated Moltnet client config and skill installation when artifacts are available. |
+| `tinyclaw` | constrained by interactive scope limits | TinyClaw preserves fewer independent scopes, so multi-room attachments may be rejected or degraded. |
 
 ### Webhook
 
 | Runtime | Supported | Notes |
-|--------|-----------|-------|
+|---|---|---|
 | `openclaw` | not yet | Webhook delivery support is planned. |
 | `picoclaw` | not yet | Webhook delivery support is planned. |
 | `tinyclaw` | not yet | Webhook delivery support is planned. |
 
-### Practical Meaning
-
-- Webhook is a push surface — the agent delivers events to a caller-owned callback URL.
-- Delivery is fire-and-forget: one attempt, no retry. Non-2xx responses or timeouts are logged as failures.
-- When `signing_secret` is configured, payloads are signed with HMAC-SHA256. The signature is sent in the `X-Spawnfile-Signature` header using the format `t=<unix_timestamp>,v1=<hex_signature>`.
-- Webhook payloads use the same event envelope as SSE events, serialized as `application/json`.
-- No runtime adapter currently implements the webhook surface. It is defined here to enable implementation.
+Webhook is a push surface: the agent delivers events to a caller-owned callback URL. Delivery is fire-and-forget. When `signing_secret` is configured, payloads are signed with HMAC-SHA256.
 
 ---
 
-## Runtime Lowering Notes
+## Runtime Verification
 
-### OpenClaw
+The Moltnet team-network contract requires an opt-in, release-gating E2E that compiles, builds, runs, and verifies a real team conversation through Moltnet room history. The fixture should include a parent team, nested child teams, explicit representatives, parent-room membership expansion, non-representative exclusion, and one representative answering in both parent and child rooms.
 
-Spawnfile lowers Discord access into the runtime's richer Discord config surface:
-
-- `dmPolicy`
-- `groupPolicy`
-- `allowFrom`
-- `guilds`
-- `guilds.*.channels`
-
-OpenClaw is the only bundled runtime where the first portable Discord surface maps to a real channel/server policy model instead of a reduced subset.
-
-Spawnfile lowers Telegram into the same richer OpenClaw channel surface:
-
-- `dmPolicy`
-- `groupPolicy`
-- `allowFrom`
-- `groups`
-
-Spawnfile lowers WhatsApp and Slack into the same richer OpenClaw channel surface:
-
-- WhatsApp lowers into `dmPolicy`, `groupPolicy`, `allowFrom`, and `groups`
-- Slack lowers into `mode: socket`, `dmPolicy`, `groupPolicy`, `allowFrom`, and `channels`
-
-### PicoClaw
-
-Spawnfile lowers Discord into PicoClaw's simpler channel config:
-
-- `token`
-- `allow_from`
-- `mention_only`
-
-PicoClaw's user allowlists map well. Guild/channel allowlists do not currently have a portable lowering in Spawnfile.
-
-Spawnfile lowers Telegram into PicoClaw's simpler channel config:
-
-- `token`
-- `allow_from`
-
-User allowlists map well. Portable chat allowlists do not currently have a direct lowering in Spawnfile v0.1.
-
-Spawnfile lowers WhatsApp and Slack into PicoClaw's simpler channel config:
-
-- WhatsApp lowers into `enabled`, `use_native`, and optional `allow_from`
-- Slack lowers into `enabled`, `group_trigger.mention_only`, and optional `allow_from`
-
-User allowlists map well. Portable group or channel allowlists do not currently have a direct lowering in Spawnfile v0.1.
-For Slack specifically, PicoClaw answers channel messages in a thread under the inbound message and answers direct messages inline.
-
-### TinyClaw
-
-Spawnfile lowers Discord, Telegram, and WhatsApp into TinyClaw's channel client config and starts the corresponding worker processes in the generated container.
-
-But the upstream runtime behavior remains pairing-based and DM-oriented, so Spawnfile rejects richer Discord, Telegram, and WhatsApp access shapes for TinyClaw at compile time. Spawnfile also rejects Slack entirely for TinyClaw in v0.1.
-
-Spawnfile also accepts the portable HTTP surface on TinyClaw. In v0.1 this maps to the runtime's built-in API server rather than to a separate channel worker:
-
-- ingress: `POST /api/message`
-- egress: `GET /api/responses/pending?channel=<name>`
+Slack, Discord, Telegram, and WhatsApp do not need equivalent team-chat E2Es for this contract because Spawnfile only carries their declared identity/roster data.
 
 ---
 
 ## Relationship To Other Specs
 
 - `SPEC.md`
-  Defines the canonical manifest schema for `surfaces`.
+  Defines the canonical manifest schema for `surfaces` and `team.networks`.
 - `COMPILER.md`
-  Defines when surface support is resolved and validated.
+  Defines when surface support is resolved, validated, and emitted into rosters.
 - `CONTAINERS.md`
   Defines how surface secrets are emitted into `.env.example` and injected at run time.
 - `RUNTIMES.md`
-  Tracks which runtimes exist; this file tracks what the current standardized surface means on those runtimes.
+  Tracks which runtimes exist; this file tracks what the current standardized surfaces mean on those runtimes.

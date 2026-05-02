@@ -19,6 +19,8 @@ A **conforming compiler** is one that correctly processes conforming source proj
 
 ## 0. Scope
 
+`spawnfile_version` remains `"0.1"` for this alpha reset. The current alpha contract is defined by this document; no `0.2` manifest version or compatibility mode is introduced here.
+
 ### 0.1 What Spawnfile Targets
 
 Spawnfile is a canonical authoring format for **autonomous agent runtimes**: systems that host agents as long-lived services rather than tools invoked per task.
@@ -39,12 +41,18 @@ Spawnfile v0.1 defines a portable surface that adapters attempt to preserve acro
 - skills with `SKILL.md`
 - MCP server declarations
 - runtime binding and execution intent
-- team structure and shared surfaces
-- optional runtime capabilities such as communication surfaces, memory backends, periodic tasks, proactive behavior, and multi-agent coordination
+- team structure, team networks, and generated team-context artifacts
+- optional runtime capabilities such as communication surfaces, memory backends, periodic tasks, and proactive behavior
 
 If a runtime cannot preserve part of this surface exactly, the adapter reports `supported`, `degraded`, or `unsupported` according to compile policy.
 
-### 0.3 Non-Target Systems
+### 0.3 Write-only Runtime Boundary
+
+Spawnfile is a compiler/canonicalizer. It may write generated files, runtime-native config, env files, mounted credential stores, generated secrets, and explicit operator-triggered updates into spawned runtime environments.
+
+Spawnfile MUST NOT read spawned runtimes, containers, runtime homes, or agent workspaces to discover identity, infer organization state, rewrite rosters, or maintain live coordination state.
+
+### 0.4 Non-Target Systems
 
 Spawnfile does not target systems that are manually invoked per task, even if they use workspace conventions or Markdown control files. Coding assistants, chat CLIs, and one-shot agent shells may share files like `AGENTS.md`, but they are not the long-lived host runtimes that Spawnfile compiles for.
 
@@ -378,19 +386,19 @@ For a subagent reference, the effective configuration is resolved as follows:
 
 ### 4.1 What A Team Is
 
-A Spawnfile team is an organizational structure -- not a workflow graph, not a message router, not a deployment topology.
-
-It defines:
+A Spawnfile team is an organizational structure. It defines:
 
 - who is in the team (`members`)
 - what they share (`shared`)
-- how the team is organized (`structure`)
+- how the team is organized (`mode`, `lead`, `external`)
 - who the team is as a collective (`docs`)
+- which provider-backed team networks exist (`networks`)
+- which context artifacts members receive (`TEAM.md`, rosters, team cards, and context indexes)
 
 The distinction between `agent` and `team` is deliberate:
 
 - `agent` + `subagents` = one authored agent with internal helpers. Subagent orchestration is the runtime's concern.
-- `team` = several first-class authored agents that belong together as an organizational unit. Team coordination happens through external communication surfaces (channels, A2A, webhooks, etc.), not through runtime internals.
+- `team` = several first-class authored agents that belong together as an organizational unit. Team coordination happens through shared declared agent surfaces and declared team networks.
 
 Teams are:
 
@@ -400,9 +408,11 @@ Teams are:
 
 Spawnfile does not assume that every runtime has a native team config format, nested teams, shared team memory, or durable team lifecycle APIs.
 
-Adapters MAY lower a Spawnfile team into a native team object, a flat leader/member config, routed agent sessions, or another target-native surface. If a target cannot preserve the declared structure, the compiler MUST report `degraded` or `unsupported`.
+Adapters MAY lower a Spawnfile team into a native team object, a flat leader/member config, provider-backed rooms, generated context files, or another target-native surface. If a target cannot preserve the declared structure, the compiler MUST report `degraded` or `unsupported`.
 
-Coordination rules beyond what the structure declares (handoff protocols, escalation paths, conflict resolution) belong in the team's `docs.system` document, where LLM agents can read and follow them as natural language instructions.
+Spawnfile does not inject a team message tool, surface router, proxy process, or team-internal RPC mechanism. How agents reach each other depends on which surfaces they share and which addresses are knowable from authored manifests.
+
+Coordination rules beyond what the manifest declares belong in the team's `docs.system` document.
 
 ### 4.2 Full Manifest
 
@@ -435,9 +445,15 @@ members:
   - id: writer
     ref: ./agents/writer
 
-structure:
-  mode: hierarchical
-  leader: orchestrator
+mode: hierarchical
+lead: orchestrator
+
+networks:
+  - id: local_lab
+    provider: moltnet
+    rooms:
+      - id: research-room
+        members: [orchestrator, researcher, writer]
 
 policy:
   mode: warn
@@ -457,9 +473,10 @@ Direct members of the same team MAY be on the same runtime or on different runti
 A nested team member is a black box to the outer team:
 
 - The outer team targets the nested team as a unit by its `member.id`, not its internal members.
-- The outer team MUST NOT address inner members of a nested team directly.
+- The outer team MUST NOT address arbitrary inner members of a nested team directly.
 - The inner team's own structure is compiled separately.
-- Inner members of a nested team MUST NOT interact with outer team members through the portable spec. The nested team boundary is one-way.
+- Parent-team communication with a nested team crosses the boundary through the child team's resolved representatives.
+- Non-representative inner members do not receive parent team context just because their team is nested.
 - If a target lacks nested team support, the compiler MAY flatten or re-express the nested team boundary, but it MUST report `degraded`.
 
 ### 4.4 Shared Surface
@@ -478,92 +495,94 @@ For validation of a shared skill's `requires.mcp`, the visible MCP scope is `sha
 
 For validation of a direct member's skill `requires.mcp`, the visible MCP scope is the union of inherited shared MCP servers and member-local MCP servers, with member-local names taking precedence.
 
-### 4.5 Structure
+### 4.5 Mode, Lead, External, And Representatives
 
-The `structure` block defines the organizational topology of the team. It is REQUIRED for `kind: team`.
+`mode`, `lead`, and `external` define the organizational topology of the team.
 
 ```yaml
-structure:
-  mode: hierarchical
-  leader: orchestrator
-  external: [orchestrator]
+mode: hierarchical
+lead: orchestrator
+external: [orchestrator]
 ```
 
-#### `structure.mode`
+#### `mode`
 
 REQUIRED. Defines the team topology.
 
 | Mode | Description |
 |------|-------------|
-| `hierarchical` | Leader-led team. One member is the designated leader with authority over the group. |
-| `swarm` | Flat peer team. All members are equals with no formal leader. |
+| `hierarchical` | Leader-led team. One member slot is the designated lead who delegates and coordinates. |
+| `swarm` | Flat peer team. All members are peers. |
 
-#### `structure.leader`
+#### `lead`
 
-The `id` of the member who leads the team. REQUIRED when `mode` is `hierarchical`. MUST NOT be present when `mode` is `swarm`.
+The `id` of the member slot that leads the team. REQUIRED when `mode` is `hierarchical`. MUST NOT be present when `mode` is `swarm`. The lead may be an agent or a nested team. If a nested team resolves to multiple concrete lead delegates, adapters MUST NOT silently pick one.
 
-The leader is the default authority, escalation point, and -- unless `external` overrides it -- the default voice of the team to the outside world.
+#### `external`
 
-Adapters SHOULD map `leader` to native leader or default-agent concepts when they exist (e.g. TinyClaw's `leader_agent`, OpenClaw's default routed agent).
+OPTIONAL. A list of direct member slot ids that represent the team in parent-team and organization-boundary contexts. It is representative intent, not router/default-agent intent.
 
-#### `structure.external`
+Representative resolution is recursive:
 
-OPTIONAL. A list of member `id` values that are allowed to respond to messages from outside the team (non-team-members, humans, external systems).
+- If `external` is declared, select those slots.
+- Else if `mode: hierarchical`, select `[lead]`.
+- Else if `mode: swarm`, select all direct member slots.
+- If a selected slot is a nested team, resolve that child team's representative interface with the same rules.
 
-Members not listed in `external` are **internal-only** -- they can receive messages from other team members but SHOULD NOT respond to external input directly.
+The compiler MUST NOT include arbitrary descendants. A descendant is included only when every boundary on the path selects it through `external`, `lead`, or swarm fallback.
 
-Defaults:
+### 4.6 Team Networks
 
-- `hierarchical` mode: defaults to `[leader]` if not specified
-- `swarm` mode: defaults to all members if not specified
-
-Examples:
+`team.networks[]` declares provider-backed organizational communication topology. It is different from agent-level `surfaces`.
 
 ```yaml
-# Leader-led, only leader talks externally (default)
-structure:
-  mode: hierarchical
-  leader: orchestrator
-
-# Leader-led, but researcher also responds externally
-structure:
-  mode: hierarchical
-  leader: orchestrator
-  external: [orchestrator, researcher]
-
-# Swarm, all peers, all respond (default)
-structure:
-  mode: swarm
-
-# Swarm, all peers, but only two respond externally
-structure:
-  mode: swarm
-  external: [monitor-a, monitor-b]
+networks:
+  - id: local_lab
+    provider: moltnet
+    rooms:
+      - id: org-council
+        members: [coordinator, research-team]
 ```
 
-`external` is organizational intent. Enforcement depends on the deployment surface (channel configuration, API gateway, etc.). The compiler records the intent; adapters and deployment layers SHOULD respect it when possible.
+In v0.1, `provider` is `moltnet`. Parent room members may name direct child-team slots; those slots expand only to selected concrete representatives. Moltnet member IDs are direct agent member slot IDs and must be unique across the reachable nested team graph. Moltnet `reply` policy is `auto | never`; `manual` is not portable.
 
-### 4.6 Team Docs
+### 4.7 Team Docs And Context Artifacts
 
-The team's `docs.system` document (typically `TEAM.md`) describes who the team is as a collective -- purpose, culture, identity. It is also the place for coordination rules that go beyond what the `structure` block captures:
+The team's `docs.system` document (typically `TEAM.md`) describes who the team is as a collective. The compiler emits it literally as a generated team-context artifact, not through the normal runtime document-role mapping.
 
-- Handoff protocols between members
-- Escalation procedures
-- Decision-making norms
-- Quality standards
+Rules:
 
-The team doc SHOULD reference member slot `id` values explicitly so agents can identify their role. Compilers MAY lint for drift between member IDs and the team doc content.
+- Every direct membership gets `.spawnfile/team-contexts/<team-context-key>/TEAM.md`.
+- Every direct membership gets `.spawnfile/rosters/<team-context-key>.yaml`.
+- Root `TEAM.md` and `.spawnfile/roster.yaml` are emitted only when a compiled agent has exactly one direct team membership.
+- Reusable agents with multiple direct memberships do not get ambiguous root aliases.
+- Selected representatives receive parent `TEAM.md`, parent roster, team cards, `.spawnfile/team-contexts.yaml`, and `.spawnfile/team-contexts.md`.
+- The compiler MUST NOT merge multiple `TEAM.md` files.
+- Compiler post-processing places or points to `.spawnfile/team-contexts.md` through the compiled runtime's system-instruction surface when available.
 
-The team doc stays local to the team manifest. It is NOT automatically propagated to member agents. Adapters that support team context injection MAY make the team doc available to members and SHOULD report the capability outcome.
+Team manifests MUST NOT declare `execution`, `surfaces`, or `auth`.
 
-### 4.7 Team Lowering Contract
+### 4.8 Team Rosters
+
+Rosters are context-scoped. They carry derivable per-surface `addresses`, not routed endpoints.
+
+- Moltnet FQIDs are derivable.
+- Slack, Discord, Telegram, and WhatsApp addresses require optional `surfaces.<name>.identity`.
+- Portable HTTP addresses are not part of roster v2.
+- No roster `auth` block exists.
+- Nested team entries stay black boxes and expose only team cards plus selected representatives.
+
+The compiler builds a coordination graph for each emitted roster with more than one visible concrete participant. It warns, not fails, when a visible participant has no shared declared coordination surface or when the graph has no edges.
+
+### 4.9 Team Lowering Contract
 
 For team manifests, a conforming compiler MUST preserve the following author intent whenever the target allows it:
 
 - which members belong to the team (slot IDs)
-- the team structure mode and leader
-- which members are external-facing
+- the team mode, lead, and representative interface
 - which surfaces are shared versus member-local
+- declared team networks
+- generated team-context artifacts
 
 A compiler MAY change the mechanical implementation used by the target runtime as long as the declared intent is preserved or the loss is reported as `degraded` or `unsupported`.
 
@@ -574,11 +593,18 @@ If a team spans multiple runtimes, the compiler MAY emit multiple runtime-specif
 Compilers MUST report capability outcomes for at least:
 
 - `team.members`
-- `team.structure.mode`
-- `team.structure.leader`
-- `team.structure.external`
+- `team.mode`
+- `team.lead`
+- `team.external`
 - `team.shared`
 - `team.nested`
+- `team.roster`
+- `team.context_orientation`
+- `team.representatives`
+- `team.networks`
+- `team.networks.<provider>`
+- `team.networks.<provider>.<network-id-key>`
+- `surfaces.<name>.identity`
 
 ---
 
@@ -604,7 +630,7 @@ For a runtime to be a valid Spawnfile target in v0.1, its adapter MUST be able t
 - configure declared MCP servers, or report degradation
 - map execution model intent into runtime-native model selection, or report degradation
 - map execution workspace and sandbox intent into runtime-native execution policy, or report degradation
-- for team manifests, lower member and routing intent, or report `unsupported`
+- for team manifests, lower member, representative, team-context, and team-network intent, or report `unsupported`
 
 ### 5.3 Compile Report
 
@@ -666,7 +692,7 @@ For every declared capability the compiler MUST report one of:
 | `degraded` | Partially mapped; runtime behavior may differ from declared intent |
 | `unsupported` | Cannot be expressed in the target |
 
-At minimum, compilers MUST report outcomes for declared docs, skills, MCP servers, execution model intent, execution workspace intent, execution sandbox intent, and routing intent.
+At minimum, compilers MUST report outcomes for declared docs, skills, MCP servers, execution model intent, execution workspace intent, execution sandbox intent, declared surfaces, and team context/network intent.
 
 ### 6.4 How It Works In Practice
 
@@ -736,7 +762,7 @@ Rules:
 - `${VAR}` resolves to the value of environment variable `VAR`. If `VAR` is not set, the compiler MUST fail with a clear error naming the missing variable.
 - `${VAR:-default}` resolves to the value of `VAR` if set, or `default` if not.
 - Substitution applies only to string values, not to field names or structural elements.
-- The `secrets[*].name` field and `auth.secret` field MUST NOT be substituted -- they are references to environment variable names, not values.
+- The `secrets[*].name` field and surface secret-name fields such as `bot_token_secret`, `app_token_secret`, and `signing_secret` MUST NOT be substituted -- they are references to environment variable names, not values.
 - Substitution MUST NOT be recursive. A resolved value containing `${...}` is treated as a literal string.
 
 This allows the same Spawnfile to be compiled with different configurations by changing environment variables or providing a `.env` file, without duplicating the manifest.
@@ -778,7 +804,7 @@ Validates a Spawnfile project without compiling.
 Compiles a Spawnfile project to runtime-specific output.
 
 - `path` is the directory containing the Spawnfile (default: current directory)
-- `--out` sets the output directory (default: `./dist`)
+- `--out` sets the output directory (default: `./.spawn`)
 - MUST perform all validation, then invoke adapters and emit output
 - MUST emit a compile report
 - MUST enforce the project's `policy` block
@@ -803,7 +829,7 @@ These are intentionally excluded from the v0.1 portable core. Adapters MAY suppo
 - Persistent storage declarations
 - UI surfaces
 - Runtime-native auth bootstrap (onboarding flows)
-- Agent-to-agent protocol definitions beyond routing intent
+- Agent-to-agent protocol definitions beyond declared surfaces and team networks
 - Resource constraints (compute, memory, token budgets)
 - Observability hooks (probes, structured logging)
 - Dependency versioning and lock files for skills and MCP servers

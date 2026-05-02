@@ -74,7 +74,7 @@ When an adapter is implemented, it would likely emit:
 ## Open Questions
 
 - Exact user-facing MCP server config surface for non-provider MCP integrations
-- How swarms (sequential/parallel/router strategies) relate to the Spawnfile team model
+- How swarms (sequential/parallel strategy choices) relate to the Spawnfile team model
 
 ## Contributing
 

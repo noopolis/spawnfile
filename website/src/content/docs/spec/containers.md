@@ -26,7 +26,7 @@ The compiler walks the full graph from the root Spawnfile. Everything it resolve
 The compiler should emit container artifacts at the compile output root, alongside the existing runtime output:
 
 ```text
-dist/
+.spawn/
   Dockerfile
   entrypoint.sh
   .env.example
@@ -241,10 +241,10 @@ The intended workflow for testing compiled output:
 
 ```bash
 # compile the project
-spawnfile compile fixtures/single-agent --out ./dist/single-agent
+spawnfile compile fixtures/single-agent --out ./.spawn/single-agent
 
 # build the container
-cd dist/single-agent
+cd .spawn/single-agent
 docker build -t my-agent .
 
 # create .env from example
@@ -258,8 +258,8 @@ docker run --env-file .env my-agent
 For teams:
 
 ```bash
-spawnfile compile fixtures/multi-runtime-team --out ./dist/team
-cd dist/team
+spawnfile compile fixtures/multi-runtime-team --out ./.spawn/team
+cd .spawn/team
 docker build -t my-team .
 docker run --env-file .env my-team
 ```

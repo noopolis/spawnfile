@@ -15,9 +15,11 @@ The v0.1 compiler should do four things well:
 - load a Spawnfile graph deterministically
 - resolve effective runtime and execution configuration
 - hand resolved nodes to runtime adapters
-- emit stable outputs plus a machine-readable compile report
+- emit stable runtime-native outputs, generated team-context artifacts, container artifacts, and a machine-readable compile report
 
-It should not try to solve packaging, publishing, deployment orchestration, or runtime-native channel setup in v0.1.
+It should not try to solve packaging, publishing, deployment orchestration, runtime-native channel setup, or runtime coordination in v0.1. The compiler does not inject custom MCP tools, proxy/router processes, or team-internal RPC mechanisms.
+
+The compiler has a write-only runtime boundary. It may write generated files, config, env files, mounted credential stores, generated secrets, and future explicit operator-triggered updates. It must not read spawned runtimes, containers, runtime homes, or agent workspaces to discover identity, infer organization state, rewrite rosters, or maintain live coordination state.
 
 ---
 
@@ -32,12 +34,15 @@ The reference pipeline is:
 5. Resolve effective `runtime` and `execution` for every graph node.
 6. Resolve `description` for every agent node (from manifest or derived from docs).
 7. Build a normalized intermediate representation.
-8. For team roots, generate per-member rosters.
-9. Group resolved nodes by runtime.
-10. Invoke runtime adapters.
-11. Emit runtime output directories (including rosters in agent workspaces).
-12. Generate container artifacts from adapter container metadata.
-13. Emit `spawnfile-report.json`.
+8. Group resolved nodes by runtime.
+9. Invoke runtime adapters.
+10. Resolve team representatives, team-context files, roster files, and team-network artifacts.
+11. Merge generated files into compiled workspaces.
+12. Place or point to generated team-context orientation through each runtime's system-instruction surface when possible.
+13. Attach compiler-owned capability outcomes and warning diagnostics.
+14. Enforce policy after report augmentation.
+15. Generate container artifacts from adapter container metadata.
+16. Emit `spawnfile-report.json`.
 
 The compiler should operate on resolved IR, not on raw YAML, after the graph phase.
 
@@ -191,10 +196,10 @@ members: []
 mode: swarm
 lead: null
 external: []
-auth: null
+networks: []
 ```
 
-Note: `mode`, `lead`, `external`, and `auth` are top-level team fields, not nested under `structure`. `auth` is `null` when the team manifest omits it.
+Note: `mode`, `lead`, `external`, and `networks` are top-level team fields, not nested under `structure`. Team manifests do not carry an `auth` field in the alpha reset.
 
 ### Compile Plan
 
@@ -215,19 +220,20 @@ The important property is that adapters receive resolved nodes, never unresolved
 
 ## Team Roster Compilation
 
-When compiling a team, the compiler generates a roster for each direct member after resolving all member nodes.
+When compiling a team, the compiler generates context-scoped team artifacts after resolving all member nodes and after runtime adapters emit their base files.
 
 ### Compilation Steps
 
-1. Resolve each member's `description` — from the agent manifest's `description` field, or derived from `docs.identity` if available.
-2. Compute reachability based on `mode`:
-   - `hierarchical`: non-lead members can only reach the lead. The lead can reach all members.
-   - `swarm`: all members can reach all other members.
-3. Resolve or synthesize each member's coordination endpoint — a compiler-generated team route, router path, or other adapter-defined coordination target. This endpoint is team-scoped and MUST NOT be assumed to equal the agent's direct `surfaces.http` URL.
-4. Generate a per-member roster YAML at `{workspace}/.spawnfile/roster.yaml`.
-5. Register the roster in the doc injection pipeline with `role: roster`.
-6. Generate a `team_message` tool surface for each direct member. The tool uses the roster's coordination endpoints and canonical envelope to reach teammates through team coordination infrastructure.
-7. Inject that tool into each member's effective runtime/tooling surface during compilation.
+1. Resolve each member's `description` from the agent manifest's `description` field, or derive it from `docs.identity` if available.
+2. Build membership-context records keyed by `(agent-source, team-source, member-slot-id)`. The same agent source may fill several team roles without merging those contexts.
+3. Resolve the representative interface for nested team slots using `external`, `lead`, and swarm fallback.
+4. Resolve team networks. Moltnet parent-room members that name child-team slots expand only to the child team's selected concrete representatives.
+5. Generate namespaced direct-membership `TEAM.md` files under `.spawnfile/team-contexts/<team-context-key>/TEAM.md`.
+6. Generate context-scoped roster YAML under `.spawnfile/rosters/<team-context-key>.yaml`.
+7. Generate representative parent-context `TEAM.md`, rosters, team cards, `.spawnfile/team-contexts.yaml`, and `.spawnfile/team-contexts.md` for selected representatives.
+8. Emit root `TEAM.md` and `.spawnfile/roster.yaml` aliases only when a compiled agent has exactly one direct team membership.
+9. Build coordination-graph diagnostics for each emitted team-context roster.
+10. Attach compiler-owned capability outcomes before policy enforcement.
 
 ### Roster Schema
 
@@ -236,40 +242,107 @@ team: research-cell
 mode: hierarchical
 lead: orchestrator
 self: researcher
-external: false
-auth:
-  mode: shared_secret
-  secret_env: TEAM_SHARED_SECRET
+context_kind: direct
 
 members:
-  - name: orchestrator
+  orchestrator:
     role: lead
     description: "Coordinates the research team, assigns tasks, synthesizes results"
-    endpoint: http://localhost:9100/route/orchestrator/v1/messages
-  - name: writer
+    surfaces: [moltnet, slack]
+    addresses:
+      moltnet:
+        local_lab:
+          fqid: "molt://local_lab/agents/orchestrator"
+          rooms: [research-room]
+      slack:
+        user_id: "U1234567"
+  writer:
     role: member
     description: "Writes reports and articles from research findings"
-    endpoint: http://localhost:9100/route/writer/v1/messages
+    surfaces: [moltnet]
+    addresses:
+      moltnet:
+        local_lab:
+          fqid: "molt://local_lab/agents/writer"
+          rooms: [research-room]
 ```
 
-The `auth` block is present only when the team manifest declares `team.auth`. The `endpoint` is a compiler-generated coordination endpoint for reaching each teammate inside the team deployment. For same-container deployments, endpoints often route through the surface router on localhost. Other targets may map them to different internal routes or bridge targets. They are not required to equal the agent's direct HTTP surface URLs.
-
-The compiler-generated `team_message` tool uses these endpoints to deliver messages. Auth is attached when the chosen coordination path requires it under `team.auth`.
+Roster entries carry context-scoped derivable per-surface `addresses`. The compiler does not synthesize routed endpoints. Moltnet addresses are derivable. Slack, Discord, Telegram, and WhatsApp addresses appear only when the agent manifest declares the corresponding `surfaces.<name>.identity` field. Portable HTTP addresses never appear because `surfaces.http` is not part of the alpha surface schema.
 
 The roster is a per-member view:
 
 - `self` identifies which member this roster belongs to. The self agent does not appear in `members`.
-- `external` indicates whether this member is exposed through the team boundary (from the team's `external` list). It does not suppress that member's own direct surfaces.
 - `role` is `lead` for the team lead, `member` for everyone else. For nested team entries, `role` is `team`.
 - `description` comes from each agent's resolved description.
 - In `hierarchical` mode, non-lead members only see the lead in their roster. The lead sees all members.
 - In `swarm` mode, all members see all other members.
 
-For nested team members, the inner team appears as a single entry with `role: team` and its own description. The outer team does not see the inner team's individual members.
+For nested team members, the inner team appears as a single entry with `role: team`, its own description, a team card path, and selected representatives. The outer team does not see the inner team's full internal roster.
+
+### Context Artifacts
+
+Every direct membership receives:
+
+```text
+.spawnfile/team-contexts/<team-context-key>/TEAM.md
+.spawnfile/rosters/<team-context-key>.yaml
+```
+
+Representative agents also receive parent-context artifacts:
+
+```text
+.spawnfile/team-contexts.yaml
+.spawnfile/team-contexts.md
+.spawnfile/team-contexts/<team-context-key>/TEAM.md
+.spawnfile/rosters/<team-context-key>.yaml
+.spawnfile/team-cards/<team-context-key>/<parent-member-slot-id>.md
+```
+
+`TEAM.md` is emitted literally from the team's `docs.system` source document. It bypasses runtime document-role mapping so it does not replace the agent's own system instructions. The compiler must not merge several `TEAM.md` files.
+
+`EmittedFile` remains a plain file-output contract:
+
+```ts
+interface EmittedFile {
+  path: string;
+  content: string;
+  mode?: number;
+}
+```
+
+Team-context discoverability uses runtime adapter metadata after files are emitted:
+
+```ts
+interface RuntimeSystemInstructionSurface {
+  resolvePath(input: { node: ResolvedAgentNode }): string;
+  placement: "append_pointer" | "append_inline" | "replace_generated_block";
+}
+```
+
+The compiler performs this placement as post-processing. If a runtime cannot expose a system-instruction surface, it reports `team.context_orientation` as degraded or unsupported. Merely placing `.spawnfile/team-contexts.md` adjacent to runtime files is not enough when the runtime has a system-instruction surface.
+
+### Team Network Lowering
+
+Team networks are provider-backed organizational communication topology. Moltnet is the current provider.
+
+Rules:
+
+- A parent team's `networks[].rooms[].members` list may name direct agent member IDs or direct child-team member IDs.
+- Direct child-team IDs expand through the child team's representative chain, not to arbitrary descendants.
+- The compiler synthesizes Moltnet room attachments for selected representatives because the parent room is declared organization membership, not a proxy.
+- Moltnet member IDs are direct member slot IDs and must be unique across the reachable nested team graph.
+- Reusing the same Moltnet `network` id across teams is allowed. Compatible duplicate attachments for the same `(network_id, member_id)` merge rooms; incompatible duplicates fail compilation.
+- Moltnet `reply` policy is `auto | never` in this alpha. `manual` is rejected or normalized out before generated config.
+
+### Coordination Diagnostics
+
+For every emitted team-context roster with more than one visible concrete participant, the compiler builds a coordination graph. Nodes are visible concrete participants. Edges are shared declared coordination surfaces: a shared agent surface key in that context, or a shared team-network room after representative expansion.
+
+The compiler reports warnings, not errors, when a visible concrete participant has no edge to another visible participant, when the whole cross-member graph has no edges, or when one concrete agent has the same surface binding tuple mapped to multiple team contexts. These diagnostics belong in `spawnfile-report.json`.
 
 ### Compile Report
 
-The compile report should include a `roster` entry for each team member documenting whether the roster was generated successfully.
+The compile report should include `team.roster` for context-scoped roster emission and should attach warning diagnostics to the affected team node.
 
 ---
 
@@ -308,6 +381,8 @@ Where:
   - per-capability outcomes
 - `diagnostics`
   - warnings and errors discovered by the adapter
+
+Adapters may also expose `systemInstructionSurface` metadata so compiler post-processing can place or point to generated team-context orientation. The resolver returns a runtime-output-relative path for the concrete agent, not a static global path.
 
 ### Team Lowering Rule
 
@@ -425,10 +500,15 @@ The compiler should use these keys by default:
 - `team.mode`
 - `team.lead`
 - `team.external`
-- `team.auth`
 - `team.roster`
+- `team.context_orientation`
+- `team.representatives`
+- `team.networks`
+- `team.networks.<provider>`
+- `team.networks.<provider>.<network-id-key>`
 - `team.shared`
 - `team.nested`
+- `surfaces.<name>.identity`
 
 Adapters may add runtime-specific keys under:
 
@@ -470,6 +550,9 @@ Validation should happen in three layers:
 - duplicate node resolution conflicts
 - runtime resolution
 - team mode/lead/external references
+- team representative resolution
+- team network member references
+- duplicate Moltnet `member_id` detection across reachable nested teams
 - skill `requires.mcp` resolution
 
 ### 3. Adapter Validation
@@ -494,6 +577,21 @@ See `CONTAINERS.md` for the full spec. The key rule is:
 
 This is part of the main compile pipeline, not a separate authoring step.
 
+### Moltnet Team Conversation E2E
+
+Compiler unit tests are not sufficient to prove that emitted team-network artifacts can coordinate at runtime. Spawnfile v0.1 requires an opt-in, release-gating Moltnet conversation E2E for the team-network contract.
+
+The E2E should compile, build, and run a fixture with a parent team, nested child teams, explicit child representatives, a parent Moltnet room, and at least one representative that also belongs to its own child-team room. It must verify behavior through Moltnet room history rather than runtime stdout:
+
+- parent room membership is exactly the direct parent agent plus selected child representatives
+- non-representative descendants are absent from the parent room
+- a real agent-to-agent exchange occurs in the parent room using `moltnet send`
+- the same representative can also answer in its child room
+- room history contains expected sentinels and compiled Moltnet member IDs
+- failures print Docker logs and relevant room histories
+
+Slack, Discord, Telegram, and WhatsApp do not require equivalent team-chat E2Es for this contract because Spawnfile only carries their declared identity/roster metadata. Moltnet is the provider Spawnfile provisions and lowers.
+
 ---
 
 ## Deferred For Later Versions
@@ -504,7 +602,7 @@ These should stay out of the core compiler architecture for v0.1:
 - publish flows
 - lockfile and reproducibility records
 - runtime-native auth bootstrap
-- public chat surfaces as portable schema
+- runtime-native chat features outside declared portable surfaces
 - workflow schedulers
 - memory engine contracts
 - multi-container orchestration (Docker Compose, Kubernetes, etc.)

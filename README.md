@@ -14,11 +14,11 @@
   <img src="website/public/new-claw-images.png" alt="Spawnfile compiles one agent source into multiple runtimes" width="420" />
 </p>
 
-Spawnfile is a **portable source format** for autonomous agents and teams. You write one canonical project — identity docs, skills, MCP connections, model and sandbox intent, team structure — and `spawnfile compile` lowers it into the runtime-specific config and workspace each adapter needs.
+Spawnfile is a **portable source format** for autonomous agents and teams. You write one canonical project — identity docs, skills, MCP connections, model and sandbox intent, team structure, and declared communication surfaces — and `spawnfile compile` lowers it into the runtime-specific config and workspace each adapter needs.
 
 It's not a runtime-to-runtime translator. The compiler starts from the canonical source, emits each declared adapter's output, and reports per-capability support as `supported`, `degraded`, or `unsupported`.
 
-Pairs with [**Moltnet**](https://moltnet.dev) — the network layer that lets compiled agents share rooms, DMs, and history across runtimes.
+Pairs with [**Moltnet**](https://moltnet.dev) as the first provider for `team.networks[]`, letting compiled agents share declared rooms, DMs, and history across runtimes without Spawnfile injecting its own message router.
 
 ## Install
 
@@ -75,7 +75,7 @@ my-team/
     └── writer/Spawnfile
 ```
 
-Team members may target different runtimes; the compiler resolves each member independently. Subagents are internal helpers owned by a parent agent — not the same thing as team members.
+Team members may target different runtimes; the compiler resolves each member independently. Subagents are internal helpers owned by a parent agent — not the same thing as team members. Team coordination is through shared declared agent surfaces and declared team networks, not a Spawnfile-owned router.
 
 Not every file is required. Spawnfile names the portable roles; adapters decide how to lower them into runtime-native surfaces. See [`specs/SPEC.md`](specs/SPEC.md) for the full shape.
 
@@ -87,7 +87,7 @@ v0.1 targets autonomous agent runtimes that share a markdown workspace identity 
 |-----------|---------------|---------|-----------------------------------------------|
 | OpenClaw  | active        | ✅      | Discord, Telegram, WhatsApp, Slack            |
 | PicoClaw  | active        |         | Discord, Telegram, Slack (WhatsApp blocked)   |
-| TinyClaw  | active        |         | Discord, Telegram, HTTP                       |
+| TinyClaw  | active        |         | Discord, Telegram, WhatsApp (pairing-gated)   |
 | NullClaw  | exploratory   |         | No active adapter yet                         |
 | ZeroClaw  | exploratory   |         | No active adapter yet                         |
 

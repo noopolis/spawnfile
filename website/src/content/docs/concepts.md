@@ -31,7 +31,7 @@ The `Spawnfile` is a YAML file named exactly `Spawnfile` (no extension). It decl
 - **skills** -- skill directories with `SKILL.md`
 - **mcp_servers** -- MCP tool connections
 - **execution** -- model, workspace, and sandbox intent
-- **surfaces** -- external communication channels (Discord, Telegram, WhatsApp, Slack)
+- **surfaces** -- agent-level communication channels (Discord, Telegram, WhatsApp, Slack, Moltnet, Webhook)
 
 ## Document Roles
 
@@ -62,7 +62,8 @@ Spawnfile targets **autonomous agent runtimes** -- long-lived services with mark
 3. Walk the manifest graph (subagents, team members)
 4. Resolve effective runtime and execution config
 5. Invoke the runtime adapter
-6. Emit config files, workspace docs, and a compile report
+6. Resolve team context artifacts and team networks
+7. Emit config files, workspace docs, container artifacts, and a compile report
 
 The compiler operates on resolved data, not raw YAML. Adapters receive fully resolved nodes.
 
@@ -71,14 +72,15 @@ The compiler operates on resolved data, not raw YAML. Adapters receive fully res
 A team is an organizational structure of independent agents. It defines:
 
 - **members** -- agents that belong together
-- **structure** -- hierarchical (with a leader) or swarm (all peers)
+- **mode/lead/external** -- hierarchy, lead slot, and representative interface
 - **shared** -- skills, MCP servers, env, and secrets inherited by all members
+- **networks** -- provider-backed team communication topology
 
-Each member agent declares its own runtime. One team can span multiple runtimes.
+Each member agent declares its own runtime. One team can span multiple runtimes. Team coordination happens through shared declared agent surfaces and declared `team.networks[]`, not a Spawnfile-owned router.
 
 ## Surfaces
 
-Agent manifests may declare external communication surfaces under `surfaces`. Spawnfile v0.1 standardizes four surfaces: Discord, Telegram, WhatsApp, and Slack.
+Agent manifests may declare external communication surfaces under `surfaces`. Spawnfile v0.1 alpha standardizes Discord, Telegram, WhatsApp, Slack, Moltnet, and Webhook. Portable HTTP ingress is not part of this alpha surface schema.
 
 ```yaml
 surfaces:
@@ -104,11 +106,11 @@ surfaces:
     app_token_secret: SLACK_APP_TOKEN
 ```
 
-Each surface follows the same access-mode pattern (`pairing`, `allowlist`, `open`) but with platform-specific identifier types. WhatsApp does not have a portable token secret -- QR/session auth is runtime-defined. Slack requires both a bot token and an app-level socket token.
+Chat surfaces follow the same access-mode pattern (`pairing`, `allowlist`, `open`) but with platform-specific identifier types. Optional `identity` fields advertise an agent's own account in generated rosters. WhatsApp does not have a portable token secret -- QR/session auth is runtime-defined. Slack requires both a bot token and an app-level socket token.
 
 Surfaces are validated at compile time against runtime support. Runtime coverage varies -- see the runtime pages for details on which access modes each runtime supports for each surface.
 
-Team manifests do not declare surfaces. Surfaces belong to concrete agent manifests.
+Team manifests do not declare surfaces. Surfaces belong to concrete agent manifests. Team manifests declare `networks` when they own shared topology such as Moltnet rooms.
 
 ## Auth Profiles
 

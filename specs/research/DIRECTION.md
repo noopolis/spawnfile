@@ -11,15 +11,15 @@ This document captures the current design direction for Spawnfile based on 21 st
 
 **Status:** shipping now
 
-**Summary:** Teams gain real coordination semantics beyond metadata grouping. The `structure` block is flattened to top-level `mode`, `lead`, and `external`. Agents get an optional `description` field. The compiler generates a per-member roster so agents know their teammates. Hierarchical and swarm topologies ship first.
+**Summary:** Teams gain real coordination semantics beyond metadata grouping. The `structure` block is flattened to top-level `mode`, `lead`, and `external`. Agents get an optional `description` field. The compiler emits context-scoped `TEAM.md`, roster, and team-card artifacts so agents know which team context they are acting in. Hierarchical and swarm topologies ship first.
 
 **Key decisions:**
 - Flattened team schema: `mode: hierarchical | swarm`, `lead`, `external` at top level (was nested under `structure`).
 - New optional `description` field on agents — short summary for roster presentation. Falls back to `docs.identity` if omitted.
-- Compiled roster placed at `{workspace}/.spawnfile/roster.yaml`, injected via doc pipeline with `role: roster`.
+- Context-scoped rosters are emitted under `{workspace}/.spawnfile/rosters/`, with root aliases only for agents that have exactly one direct team membership.
 - Agents are described in natural language, not classified by capability tags. Descriptions are the coordination signal.
 - No `capabilities` block, no `expose` filter — dropped in favor of natural language descriptions that LLMs reason about.
-- Runtime adapters require no changes; team coordination is handled by compiler and surface router.
+- Runtime adapters expose their system-instruction surface so the compiler can point agents at generated team-context orientation. Spawnfile does not inject a team router or team-message tool.
 
 **Open questions:**
 - Roster refresh at runtime vs static compile-time artifact only.
@@ -30,17 +30,14 @@ This document captures the current design direction for Spawnfile based on 21 st
 
 ## 2. Direct Surfaces: HTTP
 
-**Status:** shipping now
+**Status:** deferred out of the v0.1 alpha portable surface contract
 
-**Summary:** A portable Spawnfile-owned HTTP surface contract that is runtime-neutral, not shaped by any single runtime's private API. Envelope family is A2A-derived but Spawnfile-native.
+**Summary:** Portable HTTP ingress is not part of the current alpha surface schema. TinyClaw and other runtimes may have native HTTP APIs, but Spawnfile does not standardize those as a portable agent surface yet.
 
 **Key decisions:**
-- Portable endpoints: `POST /v1/messages`, `GET /v1/events/stream`, `GET /v1/tasks/{task_id}`.
-- Canonical message envelope with `message_id`, `from`, `to`, `parts[]`, optional `task_id` and `context_id`.
-- SSE-first streaming; WebSocket deferred.
-- Task lifecycle states adopted from A2A: submitted, working, input_required, completed, failed, canceled.
-- Part model stays close to A2A: text, raw, url, data with media_type and filename.
-- Auth: none (local/dev), bearer token (HTTP/SSE), signed delivery (webhook).
+- `surfaces.http` is removed from the v0.1 alpha schema.
+- Team-level HTTP entrypoints are not a replacement for the removed team router.
+- Runtime-native HTTP remains runtime-specific until a real portable ingress contract is designed.
 
 **Open questions:**
 - Whether `POST /v1/messages` should always be async-first.
@@ -311,11 +308,11 @@ This document captures the current design direction for Spawnfile based on 21 st
 
 **Status:** future
 
-**Summary:** Secret leakage prevention, secure-by-default surface router, and audit tooling.
+**Summary:** Secret leakage prevention, secure-by-default surface/provider configuration, and audit tooling.
 
 **Key decisions:**
 - `spawnfile audit` command for security review.
-- Surface router should be secure by default (no open endpoints without explicit config).
+- Spawnfile-owned generated services should be secure by default, with no open endpoints without explicit config.
 - Secret references (`$SECRET_NAME`) never resolved into compiled output.
 
 **Open questions:**
@@ -372,7 +369,7 @@ This document captures the current design direction for Spawnfile based on 21 st
 
 **Open questions:**
 - Formal deprecation process and timelines.
-- How breaking changes are communicated across the ecosystem.
+- How compatibility and versioning are communicated once Spawnfile has a real v1 user base.
 
 ---
 
@@ -398,7 +395,7 @@ This document captures the current design direction for Spawnfile based on 21 st
 
 The work ships in this order:
 
-1. **Team coordination + HTTP + webhook** -- Roster compilation, hierarchical/swarm topology, portable HTTP contract, webhook callback delivery with HMAC signing. Shipping now.
+1. **Team coordination + Moltnet networks + webhook metadata** -- Context-scoped rosters, hierarchical/swarm topology, nested-team representatives, Moltnet team-network lowering, and declared webhook/surface metadata. Shipping now.
 
 2. **A2A surface + envelope family** -- Agent Card generation from manifests, dual-mode protocol (standalone A2A, team internal + boundary adapter), three-layer envelope versioning with profile system. Ships immediately after HTTP.
 

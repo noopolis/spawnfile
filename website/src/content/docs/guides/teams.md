@@ -1,17 +1,18 @@
 ---
 title: Teams
-description: How to define team manifests with structure, members, shared surfaces, and the external field.
+description: How to define team manifests with members, representatives, team networks, and context artifacts.
 ---
 
-A Spawnfile team is an organizational structure that groups multiple first-class agents. It defines who is in the team, what they share, and how the team is organized.
+A Spawnfile team is an organizational structure that groups multiple first-class agents. It defines who is in the team, what they share, how representatives are selected, and which team networks and context artifacts the compiler emits.
 
 Teams are distinct from agents with subagents:
+
 - An **agent with subagents** is one authored agent with internal helpers. Subagent orchestration is the runtime's concern.
-- A **team** is several first-class authored agents that belong together. Team coordination happens through external communication surfaces (channels, A2A, webhooks), not runtime internals.
+- A **team** is several first-class authored agents that belong together. Team coordination happens through shared declared agent surfaces and declared `team.networks[]`, not a Spawnfile-owned router.
+
+Spawnfile v0.1 alpha does not inject a team-message MCP tool, a surface router, team route env vars, or team-level auth.
 
 ## Team Manifest
-
-A team manifest uses `kind: team` and must declare a `structure` block:
 
 ```yaml
 spawnfile_version: "0.1"
@@ -21,18 +22,8 @@ name: research-cell
 docs:
   system: TEAM.md
 
-shared:
-  skills:
-    - ref: ./shared/skills/web_search
-  mcp_servers:
-    - name: web_search
-      transport: streamable_http
-      url: https://search.mcp.example.com/mcp
-      auth:
-        secret: SEARCH_API_KEY
-  secrets:
-    - name: SEARCH_API_KEY
-      required: true
+mode: hierarchical
+lead: orchestrator
 
 members:
   - id: orchestrator
@@ -42,197 +33,110 @@ members:
   - id: writer
     ref: ./agents/writer
 
-structure:
-  mode: hierarchical
-  leader: orchestrator
-
-policy:
-  mode: warn
-  on_degrade: warn
+networks:
+  - id: local_lab
+    provider: moltnet
+    rooms:
+      - id: research-room
+        members: [orchestrator, researcher, writer]
 ```
 
 ## Members
 
-Each member must have a unique `id` within the team and a `ref` pointing to either an agent source project or another team source project.
+Each member has a unique slot `id` within the team and a `ref` pointing to an agent source project or another team source project. The same agent source project may fill different slots in different teams. Each occurrence is a separate direct membership, so the compiler keeps its `TEAM.md`, roster, and team-network context separate.
+
+Each referenced agent declares its own `runtime`. Teams do not override or assign runtimes to members.
+
+## Nested Teams And Representatives
+
+A member `ref` may point to another team. The nested team is a black box to the outer team. Parent-team communication crosses the boundary through selected representatives.
+
+Representative selection:
+
+- If `external` is declared, those direct member slots represent the team.
+- Else if `mode: hierarchical`, the `lead` slot represents the team.
+- Else if `mode: swarm`, all direct member slots represent the team.
+- If a selected slot is itself a team, the compiler resolves that child team's representatives with the same rules.
+
+The compiler does not include arbitrary descendants. Non-representative child members do not receive parent `TEAM.md`, parent rosters, parent team cards, or parent Moltnet room attachments.
+
+## Mode, Lead, And External
 
 ```yaml
-members:
-  - id: orchestrator
-    ref: ./agents/orchestrator
-  - id: researcher
-    ref: ./agents/researcher
-  - id: writer
-    ref: ./agents/writer
+mode: hierarchical
+lead: orchestrator
+external: [orchestrator, researcher]
 ```
 
-The `id` is the **slot name** -- the role this agent fills in this team. The `ref` is who fills that slot. The same agent project may fill different slots in different teams.
+`mode` is required and must be `hierarchical` or `swarm`.
 
-Each referenced agent declares its own `runtime` in its Spawnfile. Teams do not override or assign runtimes to members. Direct members of the same team may be on different runtimes.
+`lead` is required for hierarchical teams and must be absent for swarm teams. A lead may be a nested team; if it resolves to multiple concrete representatives, those representatives are all lead delegates. Runtime adapters must not silently pick one.
 
-### Nested Teams
+`external` is optional representative intent. It is not router intent and does not create forwarding behavior.
 
-A member `ref` may point to another team, creating a nested team. The nested team is a black box to the outer team:
+## Team Networks
 
-- The outer team targets the nested team as a unit by its `member.id`.
-- The outer team must not address inner members directly.
-- The inner team is compiled separately.
-- Inner members must not interact with outer team members through the portable spec.
-
-If a runtime lacks nested team support, the compiler may flatten the boundary but must report `degraded`.
-
-## Structure
-
-The `structure` block defines the organizational topology. It is required for team manifests.
-
-### mode
-
-The `mode` field is required and must be one of:
-
-| Mode | Description |
-|------|-------------|
-| `hierarchical` | Leader-led team. One member is the designated leader. |
-| `swarm` | Flat peer team. All members are equals with no formal leader. |
-
-### leader
-
-The `id` of the member who leads the team. Required when `mode` is `hierarchical`. Must not be present when `mode` is `swarm`.
+`team.networks[]` is organizational communication topology. `surfaces` are agent-level communication capabilities. Moltnet is the current team-network provider.
 
 ```yaml
-structure:
-  mode: hierarchical
-  leader: orchestrator
+networks:
+  - id: local_lab
+    provider: moltnet
+    rooms:
+      - id: org-council
+        members: [coordinator, research-team]
 ```
 
-The leader is the default authority, escalation point, and -- unless `external` overrides it -- the default voice of the team to the outside world.
+Room members may name direct agent slots or direct child-team slots. Child-team slots expand through representatives only. Moltnet member IDs are direct agent member slot IDs and must be unique across the reachable nested team graph.
 
-### external
+Moltnet `reply` policy is `auto | never` in this alpha. `manual` is not portable.
 
-An optional list of member IDs that are allowed to respond to messages from outside the team. Members not listed are internal-only.
+## TEAM.md And Context Files
 
-```yaml
-# Only leader talks externally (hierarchical default)
-structure:
-  mode: hierarchical
-  leader: orchestrator
+The team's `docs.system` document is typically `TEAM.md`. It describes the team as a collective and may include handoff protocols, escalation procedures, decision-making norms, and quality standards.
 
-# Leader and researcher both respond externally
-structure:
-  mode: hierarchical
-  leader: orchestrator
-  external: [orchestrator, researcher]
+The compiler emits `TEAM.md` literally as generated team context. It does not pass it through runtime doc-role mapping and does not merge several team docs.
 
-# Swarm, all respond externally (swarm default)
-structure:
-  mode: swarm
-
-# Swarm, but only two respond externally
-structure:
-  mode: swarm
-  external: [monitor-a, monitor-b]
-```
-
-Defaults:
-- `hierarchical` mode: defaults to `[leader]`
-- `swarm` mode: defaults to all members
-
-The `external` field is organizational intent. Enforcement depends on the deployment surface.
-
-## Shared Surfaces
-
-The `shared` block declares skills, MCP servers, env values, and secrets that all direct members inherit.
-
-```yaml
-shared:
-  skills:
-    - ref: ./shared/skills/web_search
-  mcp_servers:
-    - name: web_search
-      transport: streamable_http
-      url: https://search.mcp.example.com/mcp
-      auth:
-        secret: SEARCH_API_KEY
-  env:
-    LOG_LEVEL: info
-  secrets:
-    - name: SEARCH_API_KEY
-      required: true
-```
-
-Inheritance rules:
-- Members extend the shared surface.
-- Members cannot remove inherited items.
-- On MCP name conflict, member-local wins.
-- On env or secret name conflict, member-local wins.
-- Shared surfaces do not propagate through nested team boundaries.
-
-## Team Docs
-
-The team's `docs.system` document (typically `TEAM.md`) describes the team as a collective. It is the place for:
-
-- Handoff protocols between members
-- Escalation procedures
-- Decision-making norms
-- Quality standards
-
-The document should reference member slot IDs explicitly so agents can identify their role:
-
-```markdown
-# Team Intent
-
-The orchestrator receives work, the researcher gathers facts,
-and the writer turns the result into final prose.
-```
-
-Team docs stay local to the team manifest. They are not automatically propagated to member agents. Adapters that support team context injection may make the team doc available to members.
-
-## Multi-Runtime Teams
-
-Members of the same team may target different runtimes. From the `multi-runtime-team` fixture:
-
-```yaml
-# agents/orchestrator/Spawnfile
-runtime: openclaw
-
-# agents/researcher/Spawnfile
-runtime: picoclaw
-
-# agents/writer/Spawnfile
-runtime: tinyclaw
-```
-
-When `spawnfile compile` runs on a team root, the compiler walks the member graph and compiles each agent using that member's declared runtime. For multi-runtime teams, the compiler emits multiple runtime-specific outputs as part of the same compile run.
-
-## How Runtimes Handle Teams
-
-Team lowering varies by runtime:
-
-- **TinyClaw** has the strongest native team support with team ID, member list, and a `leader_agent` field. Spawnfile teams map well to TinyClaw's native team object.
-- **OpenClaw** uses routed agent sessions. Team members become named agents with routing between them.
-- **PicoClaw** uses spawned subagents with routing. Members become named agents that can be spawned and targeted.
-- **NullClaw** and **ZeroClaw** use delegate agent patterns. Members become named delegate agents.
-
-If a runtime cannot preserve the declared team structure, the compiler reports `degraded` or `unsupported` for the affected capabilities. The compile report always records capability outcomes for `team.members`, `team.structure.mode`, `team.structure.leader`, `team.structure.external`, `team.shared`, and `team.nested`.
-
-## Complete Example
-
-The `multi-runtime-team` fixture shows a full team project:
+Direct memberships receive:
 
 ```text
-multi-runtime-team/
-  Spawnfile          # kind: team
-  TEAM.md            # docs.system
-  agents/
-    orchestrator/
-      Spawnfile      # runtime: openclaw
-      AGENTS.md
-    researcher/
-      Spawnfile      # runtime: picoclaw
-      SOUL.md
-    writer/
-      Spawnfile      # runtime: tinyclaw
-      SOUL.md
-  shared/
-    skills/
-      web_search/
-        SKILL.md
+.spawnfile/team-contexts/<team-context-key>/TEAM.md
+.spawnfile/rosters/<team-context-key>.yaml
 ```
+
+If an agent has exactly one direct team membership, it also receives root aliases:
+
+```text
+TEAM.md
+.spawnfile/roster.yaml
+```
+
+Reusable agents with multiple direct memberships do not get those root aliases because the context would be ambiguous.
+
+Selected representatives receive parent-context artifacts:
+
+```text
+.spawnfile/team-contexts.yaml
+.spawnfile/team-contexts.md
+.spawnfile/team-contexts/<team-context-key>/TEAM.md
+.spawnfile/rosters/<team-context-key>.yaml
+.spawnfile/team-cards/<team-context-key>/<parent-member-slot-id>.md
+```
+
+## Rosters
+
+Rosters are context-scoped. Entries carry derivable per-surface `addresses`, not routed endpoints.
+
+- Moltnet FQIDs are derivable.
+- Slack, Discord, Telegram, and WhatsApp addresses require optional `surfaces.<name>.identity`.
+- Portable HTTP addresses are not part of roster v2.
+- No roster `auth` block exists.
+- Nested team entries expose only team cards plus selected representatives.
+
+The compiler warns when a roster has no shared declared coordination surface between visible participants, or when one participant is isolated. These are compile-report warnings, not manifest rejection rules.
+
+## Runtime Lowering
+
+Team lowering varies by runtime. If a runtime cannot preserve the declared team structure, representatives, context artifacts, or team networks, the compiler reports `degraded` or `unsupported`.
+
+Capability outcomes include `team.members`, `team.mode`, `team.lead`, `team.external`, `team.shared`, `team.nested`, `team.roster`, `team.context_orientation`, `team.representatives`, `team.networks`, and provider/network-specific `team.networks.*` keys.

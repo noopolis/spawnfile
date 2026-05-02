@@ -16,6 +16,8 @@ A **conforming compiler** is one that correctly processes conforming source proj
 
 ## 0. Scope
 
+`spawnfile_version` remains `"0.1"` for this alpha reset. The current alpha contract is defined by this document; no `0.2` manifest version or compatibility mode is introduced here.
+
 ### 0.1 What Spawnfile Targets
 
 Spawnfile is a canonical authoring format for **autonomous agent runtimes**: systems that host agents as long-lived services rather than tools invoked per task.
@@ -36,12 +38,20 @@ Spawnfile v0.1 defines a portable surface that adapters attempt to preserve acro
 - skills with `SKILL.md`
 - MCP server declarations
 - runtime binding and execution intent
-- team structure and shared surfaces
-- optional runtime capabilities such as communication surfaces, memory backends, periodic tasks, proactive behavior, and multi-agent coordination
+- team structure, team networks, and generated team-context artifacts
+- optional runtime capabilities such as communication surfaces, memory backends, periodic tasks, and proactive behavior
 
 If a runtime cannot preserve part of this surface exactly, the adapter reports `supported`, `degraded`, or `unsupported` according to compile policy.
 
-### 0.3 Non-Target Systems
+### 0.3 Write-only Runtime Boundary
+
+Spawnfile is a compiler/canonicalizer. It may write generated files, runtime-native config, env files, mounted credential stores, generated secrets, and explicit operator-triggered updates into spawned runtime environments.
+
+Spawnfile MUST NOT read spawned runtimes, containers, runtime homes, or agent workspaces to discover identity, infer organization state, rewrite rosters, or maintain live coordination state. Runtime adapters MUST NOT observe a running runtime and feed discovered identities back into generated rosters as part of the v0.1 alpha contract.
+
+If an agent or runtime learns new facts after spawn, such as a Slack user ID, Discord account ID, or updated team document, those facts must become authored input through the organization's workflow: commit to the repository, update an authored Spawnfile, write to a declared state store, or ask an operator to persist the change. Spawnfile can then reflect those authored inputs on the next compile or run.
+
+### 0.4 Non-Target Systems
 
 Spawnfile does not target systems that are manually invoked per task, even if they use workspace conventions or Markdown control files. Coding assistants, chat CLIs, and one-shot agent shells may share files like `AGENTS.md`, but they are not the long-lived host runtimes that Spawnfile compiles for.
 
@@ -294,11 +304,16 @@ Spawnfile standardizes the following communication surfaces on agent manifests:
 ```yaml
 surfaces:
   discord:
+    identity:
+      user_id: "987654321098765432"
     access:
       users:
         - "987654321098765432"
     bot_token_secret: DISCORD_BOT_TOKEN
   telegram:
+    identity:
+      user_id: "123456789"
+      username: "research_bot"
     access:
       users:
         - "123456789"
@@ -306,12 +321,16 @@ surfaces:
         - "-1001234567890"
     bot_token_secret: TELEGRAM_BOT_TOKEN
   whatsapp:
+    identity:
+      phone: "+15551234567"
     access:
       users:
         - "15551234567"
       groups:
         - "120363400000000000@g.us"
   slack:
+    identity:
+      user_id: "U1234567890"
     access:
       users:
         - "U1234567890"
@@ -319,14 +338,16 @@ surfaces:
         - "C1234567890"
     bot_token_secret: SLACK_BOT_TOKEN
     app_token_secret: SLACK_APP_TOKEN
-  http:
-    port: 8080
-    path_prefix: /v1
-    auth:
-      mode: bearer
-      token_secret: HTTP_AUTH_TOKEN
-    access:
-      mode: open
+  moltnet:
+    - network: local_lab
+      rooms:
+        research:
+          read: all
+          reply: auto
+      dms:
+        enabled: true
+        read: mentions
+        reply: never
   webhook:
     url: "https://my-service.example.com/callbacks"
     signing_secret: WEBHOOK_SECRET
@@ -337,31 +358,28 @@ Rules:
 - `surfaces` is OPTIONAL.
 - If `surfaces` is present, it MUST declare at least one surface.
 - `surfaces.discord` is OPTIONAL.
-- `surfaces.http` is OPTIONAL.
 - `surfaces.telegram` is OPTIONAL.
 - `surfaces.whatsapp` is OPTIONAL.
 - `surfaces.slack` is OPTIONAL.
+- `surfaces.moltnet` is OPTIONAL.
+- `surfaces.webhook` is OPTIONAL.
 - `surfaces.discord.access` is OPTIONAL.
-- `surfaces.http.access` is OPTIONAL.
 - `surfaces.telegram.access` is OPTIONAL.
 - `surfaces.whatsapp.access` is OPTIONAL.
 - `surfaces.slack.access` is OPTIONAL.
 - `surfaces.discord.access.mode` MAY be `pairing`, `allowlist`, or `open`.
-- `surfaces.http.access.mode` MAY only be `open`.
 - `surfaces.telegram.access.mode` MAY be `pairing`, `allowlist`, or `open`.
 - `surfaces.whatsapp.access.mode` MAY be `pairing`, `allowlist`, or `open`.
 - `surfaces.slack.access.mode` MAY be `pairing`, `allowlist`, or `open`.
 - `surfaces.discord.access.users`, `guilds`, and `channels` are OPTIONAL allowlist identifiers.
-- `surfaces.http.access` does not currently define portable allowlist identifiers in v0.1.
 - `surfaces.telegram.access.users` and `chats` are OPTIONAL allowlist identifiers.
 - `surfaces.whatsapp.access.users` and `groups` are OPTIONAL allowlist identifiers.
 - `surfaces.slack.access.users` and `channels` are OPTIONAL allowlist identifiers.
 - If `surfaces.discord.access.mode` is omitted and any of `users`, `guilds`, or `channels` are present, the effective mode is `allowlist`.
-- If `surfaces.http.access` is present, it MUST declare `mode: open`.
 - If `surfaces.telegram.access.mode` is omitted and any of `users` or `chats` are present, the effective mode is `allowlist`.
 - If `surfaces.whatsapp.access.mode` is omitted and any of `users` or `groups` are present, the effective mode is `allowlist`.
 - If `surfaces.slack.access.mode` is omitted and any of `users` or `channels` are present, the effective mode is `allowlist`.
-- If `surfaces.discord.access`, `surfaces.http.access`, `surfaces.telegram.access`, `surfaces.whatsapp.access`, or `surfaces.slack.access` is omitted entirely, the effective behavior is runtime-defined and is not guaranteed to be portable across runtimes.
+- If `surfaces.discord.access`, `surfaces.telegram.access`, `surfaces.whatsapp.access`, or `surfaces.slack.access` is omitted entirely, the effective behavior is runtime-defined and is not guaranteed to be portable across runtimes.
 - `surfaces.discord.access.users`, `guilds`, and `channels` MUST only be used with `allowlist` access.
 - `surfaces.telegram.access.users` and `chats` MUST only be used with `allowlist` access.
 - `surfaces.whatsapp.access.users` and `groups` MUST only be used with `allowlist` access.
@@ -379,14 +397,15 @@ Rules:
 - If `surfaces.slack.bot_token_secret` is omitted, the effective secret name defaults to `SLACK_BOT_TOKEN`.
 - If `surfaces.slack.app_token_secret` is omitted, the effective secret name defaults to `SLACK_APP_TOKEN`.
 - WhatsApp does not currently define a portable token-secret field; runtime-specific session or QR auth remains adapter-defined.
-- `surfaces.http.port` is OPTIONAL. If omitted, the runtime selects a default port.
-- `surfaces.http.path_prefix` is OPTIONAL. If omitted, defaults to `/v1`.
-- `surfaces.http.auth` is OPTIONAL. If omitted, the surface accepts unauthenticated requests. This is a valid configuration for local development, private networks, and any deployment where the network itself is the trust boundary.
-- If `surfaces.http.auth` is present, it MUST declare `mode: bearer` and SHOULD declare `token_secret`.
-- `surfaces.http.auth.token_secret` names the env var carrying the bearer token. The surface validates `Authorization: Bearer <token>` against this value.
-- The portable HTTP surface is a direct agent surface. Compiler-generated team-boundary routes, coordination routers, or internal team links are separate deployment artifacts, not author-declared surfaces.
-- When `team.auth` is declared on an enclosing team, it applies to compiler-generated team-boundary or coordination routes. It does NOT automatically change the auth contract of the agent's direct HTTP surface. A compiler MAY reuse one listener for both roles internally, but that is an implementation detail, not the portable contract.
-- `surfaces.webhook` is OPTIONAL.
+- `surfaces.discord.identity.user_id` is OPTIONAL. If present, it is a Discord user snowflake string advertised in generated rosters where this agent is visible.
+- `surfaces.telegram.identity` is OPTIONAL and MUST declare `user_id`, `username`, or both. `user_id` MAY be numeric or numeric-string; `username` is the Telegram username without a leading `@`.
+- `surfaces.whatsapp.identity.phone` is OPTIONAL and SHOULD be an E.164 phone number.
+- `surfaces.slack.identity.user_id` is OPTIONAL. If present, it is the Slack user ID advertised in generated rosters where this agent is visible.
+- Surface `identity` fields are opt-in roster metadata. They do not provision accounts, validate provider-side membership, or cause Spawnfile to read runtime state.
+- `surfaces.moltnet` is a list of Moltnet attachments. Each attachment MUST declare `network` and at least one of `rooms` or `dms`.
+- Moltnet room and DM `read` policy MAY be `all`, `mentions`, or `thread_only`.
+- Moltnet room and DM `reply` policy MAY be only `auto` or `never` in this alpha. `manual` is not part of the portable v0.1 contract.
+- Moltnet attachments are valid only when the agent participates in a team context whose `team.networks[]` declares the named network and rooms.
 - `surfaces.webhook.url` is REQUIRED when `surfaces.webhook` is present. It MUST be a valid URL.
 - `surfaces.webhook.signing_secret` is OPTIONAL. It names the env var carrying the HMAC-SHA256 signing secret. When present, the runtime MUST sign webhook payloads.
 - Webhook delivery is fire-and-forget: the runtime attempts delivery once with a timeout of 10 seconds. A non-2xx response or timeout means the event is lost. The runtime SHOULD log delivery failures.
@@ -396,10 +415,10 @@ Rules:
 - Subagents do not implicitly inherit parent `surfaces`.
 - A conforming compiler MUST validate runtime support for declared surface access and fail early on unsupported runtime/surface combinations.
 - A runtime MAY declare limits on how many independent interactive conversation scopes it can preserve at once.
-- An interactive conversation scope is a runtime-visible inbound conversation boundary such as a chat surface, a direct HTTP message surface, or an attached network room or DM.
+- An interactive conversation scope is a runtime-visible inbound conversation boundary such as a chat surface, a Moltnet room, or a Moltnet DM.
 - A conforming compiler MUST validate declared interactive conversation scopes against the selected runtime and fail early when the runtime cannot preserve independent context for the resulting shape.
 
-Additional communication surfaces (A2A, network) are under active development. See `research/DIRECTION.md` for the planned surface roadmap.
+Portable HTTP ingress is not part of the v0.1 alpha surface schema. Runtime-native HTTP APIs MAY remain available through runtime-specific options, but they are not portable Spawnfile surfaces and MUST NOT be emitted as roster addresses.
 
 ### 2.7 Environment and Secrets
 
@@ -493,11 +512,12 @@ surfaces:
         - "C1234567890"
     bot_token_secret: SLACK_BOT_TOKEN
     app_token_secret: SLACK_APP_TOKEN
-  http:
-    port: 8080
-    path_prefix: /v1
-    access:
-      mode: open
+  moltnet:
+    - network: local_lab
+      rooms:
+        research:
+          read: all
+          reply: auto
 
 env:
   LOG_LEVEL: info
@@ -539,7 +559,7 @@ Rules:
 - Each `ref` MUST point to an agent source project.
 - A subagent is not a team member. It is an internal helper or delegate of the parent agent.
 - A subagent inherits the parent agent's effective `runtime` unless an adapter explicitly supports another lowering strategy.
-- If a target runtime has no native subagent concept, the compiler MAY lower subagents into delegate agents, routed sessions, or spawned workers, but it MUST report `degraded` if semantics are not equivalent.
+- If a target runtime has no native subagent concept, the compiler MAY lower subagents into delegate agents, runtime-native sessions, or spawned workers, but it MUST report `degraded` if semantics are not equivalent.
 
 ### 3.4 Effective Subagent Resolution
 
@@ -566,7 +586,8 @@ A Spawnfile team is an organizational structure that defines:
 - what they share (`shared`)
 - how the team is organized (`mode`, `lead`, `external`)
 - who the team is as a collective (`docs`)
-- how members coordinate (`roster` — compiler-generated)
+- which provider-backed team networks exist (`networks`)
+- which context artifacts members receive (`TEAM.md`, rosters, team cards, and context indexes)
 
 The distinction between `agent` and `team` is deliberate:
 
@@ -578,13 +599,13 @@ Teams are:
 - canonical author intent
 - degradation-aware
 - potentially multi-runtime
-- coordination-aware — the compiler generates a roster so members know about each other
+- coordination-aware through declared agent surfaces and declared team networks
 
-Direct protocol surfaces belong to agents, not teams. A team MAY cause the compiler to generate boundary routes, directories, coordination endpoints, or other deployment artifacts, but those artifacts are layered over agent manifests rather than being author-declared team surfaces.
+Direct protocol surfaces belong to agents, not teams. A team does not cause Spawnfile to inject a custom message router, MCP tool, proxy process, team-secret route, or other runtime coordination primitive. How agents reach each other is a function of the surfaces they share and the addresses the manifest makes knowable at compile time.
 
 Spawnfile does not assume that every runtime has a native team config format, nested teams, shared team memory, or durable team lifecycle APIs.
 
-Adapters MAY lower a Spawnfile team into a native team object, a flat leader/member config, routed agent sessions, or another target-native surface. If a target cannot preserve the declared structure, the compiler MUST report `degraded` or `unsupported`.
+Adapters MAY lower a Spawnfile team into a native team object, a flat leader/member config, provider-backed rooms, generated context files, or another target-native surface. If a target cannot preserve the declared structure, the compiler MUST report `degraded` or `unsupported`.
 
 Coordination rules beyond what the manifest declares (handoff protocols, escalation paths, conflict resolution) belong in the team's `docs.system` document, where LLM agents can read and follow them as natural language instructions.
 
@@ -600,10 +621,6 @@ description: "Research team that finds, analyzes, and writes up findings"
 
 mode: hierarchical
 lead: orchestrator
-
-auth:
-  mode: shared_secret
-  secret: TEAM_SHARED_SECRET
 
 docs:
   system: TEAM.md
@@ -629,6 +646,13 @@ members:
   - id: writer
     ref: ./agents/writer
 
+networks:
+  - id: local_lab
+    provider: moltnet
+    rooms:
+      - id: research-room
+        members: [orchestrator, researcher, writer]
+
 policy:
   mode: warn
   on_degrade: warn
@@ -644,12 +668,15 @@ Each referenced agent MUST declare its own `runtime` in its Spawnfile. Teams do 
 
 Direct members of the same team MAY be on the same runtime or on different runtimes, depending on what each member declares.
 
+The same agent source project MAY be referenced by multiple team manifests. Each occurrence is a separate logical direct membership keyed by the agent source, team source, and member slot id. A concrete reusable agent that belongs to several teams MUST receive separate team-context artifacts for each direct membership; compilers MUST NOT merge those roles into one synthetic team document or roster.
+
 A nested team member is a black box to the outer team:
 
 - The outer team targets the nested team as a unit by its `member.id`, not its internal members.
-- The outer team MUST NOT address inner members of a nested team directly.
+- The outer team MUST NOT address arbitrary inner members of a nested team directly.
 - The inner team's own structure is compiled separately.
-- Inner members of a nested team MUST NOT interact with outer team members through the portable spec. The nested team boundary is one-way.
+- Parent-team communication with a nested team crosses the boundary through the child team's resolved representatives.
+- Non-representative inner members MUST NOT receive parent team context just because their team is nested.
 - If a target lacks nested team support, the compiler MAY flatten or re-express the nested team boundary, but it MUST report `degraded`.
 
 ### 4.4 Shared Surface
@@ -676,22 +703,24 @@ REQUIRED for `kind: team`. Defines the team's organizational and coordination to
 
 | Mode | Description |
 |------|-------------|
-| `hierarchical` | Leader-led team. One member is the designated leader who delegates and coordinates. Communication routes through the leader. |
-| `swarm` | Flat peer team. All members are equals. Any member can communicate with any other member directly. |
+| `hierarchical` | Leader-led team. One member slot is the designated lead who delegates and coordinates. |
+| `swarm` | Flat peer team. All members are peers. |
 
 #### `lead`
 
-The `id` of the member who leads the team. REQUIRED when `mode` is `hierarchical`. MUST NOT be present when `mode` is `swarm`.
+The `id` of the member slot that leads the team. REQUIRED when `mode` is `hierarchical`. MUST NOT be present when `mode` is `swarm`.
 
 The leader is the default authority, escalation point, and — unless `external` overrides it — the default voice of the team to the outside world.
 
-Adapters SHOULD map `lead` to native leader or default-agent concepts when they exist (e.g. TinyClaw's `leader_agent`, OpenClaw's default routed agent).
+The lead slot MAY reference either an agent or a nested team. If it references a nested team, the nested team's representative interface resolves to one or more concrete lead delegates. Runtime-native fields that require a single leader MUST NOT silently pick an arbitrary delegate. They MAY lower a single resolved delegate exactly; if multiple delegates resolve, they MUST report degraded or unsupported according to policy while preserving the multi-delegate context in rosters and team networks.
+
+Adapters SHOULD map `lead` to native leader or default-agent concepts when they exist.
 
 #### `external`
 
-OPTIONAL. A list of member `id` values that represent the team when traffic enters through a team boundary, router, directory, or other team-scoped ingress.
+OPTIONAL. A list of direct member slot `id` values that represent the team in parent-team and organization-boundary contexts.
 
-Members not listed in `external` are not advertised as team-facing entrypoints. They remain valid agent manifests with their own declared surfaces; team membership does not suppress or delete those surfaces.
+Members not listed in `external` are not advertised as this team's representative interface. They remain valid agent manifests with their own declared surfaces; team membership does not suppress or delete those surfaces.
 
 Defaults:
 
@@ -701,47 +730,72 @@ Defaults:
 Examples:
 
 ```yaml
-# Leader-led, only leader represents the team boundary (default)
+# Leader-led, only leader represents the team upward (default)
 mode: hierarchical
 lead: orchestrator
 
-# Leader-led, but researcher is also exposed at the team boundary
+# Leader-led, but researcher is also a representative
 mode: hierarchical
 lead: orchestrator
 external: [orchestrator, researcher]
 
-# Swarm, all peers, all represent the team by default
+# Swarm, all peers represent the team by default
 mode: swarm
 
-# Swarm, all peers, but only two are advertised through the team boundary
+# Swarm, but only two are representatives
 mode: swarm
 external: [monitor-a, monitor-b]
 ```
 
-`external` is team-boundary routing intent. It does not remove direct agent surfaces. The compiler SHOULD use it when generating team-facing routes, directories, default entrypoints, or other boundary artifacts, and adapters or deployment layers SHOULD preserve that intent when possible.
+`external` is representative intent, not router/default-agent intent. It does not create routes or forwarding behavior. A child team selected in a parent context resolves recursively:
 
-### 4.6 Team Auth
+1. If `external` is declared, select those direct member slots.
+2. Else if `mode: hierarchical`, select `[lead]`.
+3. Else if `mode: swarm`, select all direct member slots.
+4. For each selected slot, include the agent directly or, if the slot is a nested team, resolve that child team's representative interface using the same rules.
 
-`auth` is OPTIONAL on team manifests. It declares auth for compiler-generated team-boundary and coordination paths.
+Validation rules:
+
+- Every `external` entry MUST name a direct member slot of that team.
+- A `lead` value MUST name a direct member slot of that team.
+- Any team selected as a parent-room member, selected by another team's `external`, or selected as another team's `lead` MUST resolve to at least one concrete representative agent.
+- Representative resolution MUST NOT include arbitrary descendants. A descendant is included only when every boundary on the path selects it through `external`, `lead`, or swarm fallback.
+- The compiler SHOULD warn when a nested swarm team is exposed without explicit `external`, because swarm fallback can expose many representatives.
+- If a team used as `lead` resolves to multiple concrete representatives, Spawnfile treats all of them as lead delegates. The compiler MUST NOT silently pick the first representative.
+
+### 4.6 Team Networks
+
+`team.networks[]` declares provider-backed organizational communication topology. A network is a shared team-level topology that Spawnfile can compile, provision, bind, or validate. It is not an IP network abstraction and it is not an agent-local surface.
+
+`surfaces` are agent-level communication capabilities. `team.networks[]` is team-level organization topology. Agents attach to a declared network through their own surface declarations, and the team network defines shared rooms/channels in the team context.
+
+Moltnet is the first provider for this contract:
 
 ```yaml
-auth:
-  mode: shared_secret
-  secret: TEAM_SHARED_SECRET
+networks:
+  - id: local_lab
+    provider: moltnet
+    expose: true
+    rooms:
+      - id: org-council
+        members: [coordinator, research-team]
 ```
 
 Rules:
 
-- If `auth` is omitted, team members communicate without authentication. This is valid for same-container deployments and private-network deployments where the network is the trust boundary.
-- If `auth` is present, `mode` MUST be `shared_secret`. Other modes (e.g., `mtls`) are reserved for future versions.
-- `secret` names the environment variable carrying the shared secret. The compiler MUST make this secret available anywhere it is needed to call or protect compiler-generated team-boundary routes.
-- `team.auth` does not redefine or widen the auth contract of an agent's direct `surfaces.http` surface. Direct surface auth remains governed by the agent manifest. If a compiler chooses to collapse direct and team-boundary ingress onto one listener, it MAY accept both credentials internally, but that behavior is adapter-defined rather than portable.
-- For same-process, same-container, or otherwise fully internal coordination paths, a compiler MAY satisfy `team.auth` by protecting only the generated boundary artifact rather than enforcing a credential on every intra-team hop.
-- `team.auth.secret` participates in the same env validation path as other secret references.
+- `team.networks` is OPTIONAL.
+- In v0.1, `provider` MUST be `moltnet`.
+- Each network `id` MUST be unique within the team.
+- Each room `id` MUST be unique within the network.
+- A room `members` list MAY name direct agent member IDs or direct child-team member IDs.
+- Direct child-team IDs in a parent room expand to the child team's concrete representatives for that parent context.
+- Parent networks do not generally propagate through nested team boundaries. Only explicit parent-room representative attachments propagate, and only to selected representatives.
+- Moltnet member IDs are the direct agent member slot IDs from the team where each concrete agent is a direct member. They MUST be unique across the full reachable team nesting used by the compile graph.
+- If two direct agent member slots anywhere in the reachable nested team graph would compile to the same Moltnet `member_id`, compilation MUST fail with a validation error naming the colliding team paths and member slots.
+- The same Moltnet network id MAY be reused by different teams. If the same concrete representative sees multiple attachments with the same `(network_id, member_id)`, the compiler MUST merge compatible room memberships into one client/bridge attachment. Incompatible duplicate attachments MUST fail compilation.
+- Moltnet room and DM `reply` policy is limited to `auto` and `never` in this alpha contract.
 
-The team auth model treats teams as trust groups: one shared credential for team-boundary and coordination traffic when the deployment requires one. Per-member credentials, mutual TLS, and richer capability enforcement are deferred to future versions.
-
-### 4.7 Team Docs
+### 4.7 Team Docs And Context Artifacts
 
 The team's `docs.system` document (typically `TEAM.md`) describes who the team is as a collective — purpose, culture, identity. It is also the place for coordination rules that go beyond what the manifest captures:
 
@@ -752,53 +806,105 @@ The team's `docs.system` document (typically `TEAM.md`) describes who the team i
 
 The team doc SHOULD reference member slot `id` values explicitly so agents can identify their role. Compilers MAY lint for drift between member IDs and the team doc content.
 
-The team doc stays local to the team manifest. It is NOT automatically propagated to member agents. Adapters that support team context injection MAY make the team doc available to members and SHOULD report the capability outcome.
+The team doc stays local to the team boundary. When compiled into member workspaces, it is emitted as a literal generated artifact rather than passed through the normal runtime document-role mapping. The compiler MUST NOT rename a team `docs.system: TEAM.md` through `ROLE_FILE_NAMES` in a way that clobbers the member agent's own `AGENTS.md`.
+
+Rules:
+
+- Every direct membership gets a namespaced team document at `.spawnfile/team-contexts/<team-context-key>/TEAM.md`.
+- Every direct membership gets a context-scoped roster at `.spawnfile/rosters/<team-context-key>.yaml`.
+- If the compiled agent has exactly one direct team membership, the compiler MUST also emit convenience aliases at workspace root `TEAM.md` and `.spawnfile/roster.yaml`.
+- If the compiled agent has multiple direct team memberships, the compiler MUST NOT emit root `TEAM.md` or root `.spawnfile/roster.yaml` as canonical context, because those paths are ambiguous.
+- A concrete representative selected into a parent context also gets the parent team's `TEAM.md`, namespaced under `.spawnfile/team-contexts/<team-context-key>/TEAM.md`.
+- Non-representative leaf agents do not receive ancestor `TEAM.md` files.
+- The compiler MUST NOT merge multiple `TEAM.md` files. Every team context remains inspectable as its own document.
+- `<team-context-key>` is a compiler-stable, path-safe key derived from the full context identity tuple, not only from team id or team name.
+- The compiler MUST emit `.spawnfile/team-contexts.yaml` as the machine-readable context index and `.spawnfile/team-contexts.md` as the human/LLM-readable orientation.
+- Compiler post-processing MUST place or point to `.spawnfile/team-contexts.md` through the compiled runtime's system-instruction surface. Adjacent files alone do not satisfy discoverability when the runtime has a system-instruction surface.
+
+Parent rosters may reference team cards at `.spawnfile/team-cards/<team-context-key>/<parent-member-slot-id>.md`. A team card is a public description of a nested team in the parent context. It may include the child team's name, description, optional `docs.identity`, and resolved representatives. It MUST NOT include the child team's `TEAM.md`, internal roster, non-representative members, or descendants not reached by the representative chain.
 
 Team manifests MUST NOT declare `execution`. Model, sandbox, and workspace intent apply to agents and subagents, not to teams as organizational nodes.
 Team manifests MUST NOT declare `surfaces`. Communication surfaces belong to concrete agent manifests.
+Team manifests MUST NOT declare `auth`. The former team-level auth field authenticated removed router artifacts and is not part of this alpha contract.
 
 ### 4.8 Team Roster
 
-When compiling a team, the compiler MUST generate a **roster** for each direct member. The roster is a structured document that tells an agent about its team — who else is on the team, what they do, and how the team is organized.
+When compiling a team, the compiler MUST generate context-scoped rosters for direct memberships and selected representative parent contexts. A roster is a structured document that tells an agent about its visible team context: who else is visible, what they do, how the team is organized, and which derivable addresses are available for that context.
 
-The roster is placed at `{workspace}/.spawnfile/roster.yaml` in each member's compiled workspace and injected into agent context through the doc pipeline with `role: roster`.
+Canonical rosters live under `.spawnfile/rosters/*.yaml`. The root `.spawnfile/roster.yaml` path is a single-direct-membership convenience alias only when unambiguous. Rosters are not injected through the runtime document-role pipeline.
 
-The roster contains:
+Roster v2 shape:
 
-- the team name and mode
-- the lead (if hierarchical)
-- which member this roster belongs to (`self`)
-- whether this member is exposed through the team boundary
-- the team auth mode for coordination routes (if `team.auth` is declared)
-- a list of teammates with their descriptions and roles
+```yaml
+self: sheldon
+team: physics-lab
+context_kind: direct
+mode: hierarchical
+lead: sheldon
+members:
+  leonard:
+    role: member
+    description: "Experimental physicist."
+    surfaces: [moltnet]
+    addresses:
+      moltnet:
+        local_lab:
+          fqid: "molt://local_lab/agents/leonard"
+          rooms: [apartment-4a]
+  howard:
+    role: member
+    description: "Engineer."
+    surfaces: [slack, moltnet]
+    addresses:
+      slack:
+        user_id: "U7654321"
+      moltnet:
+        local_lab:
+          fqid: "molt://local_lab/agents/howard"
+          rooms: [apartment-4a]
+  alpha-pod:
+    role: team
+    description: "Sub-team for ops."
+    card:
+      summary: "Ops sub-team. Contact for deployment and incident response."
+      path: ".spawnfile/team-cards/physics-lab/alpha-pod.md"
+    representatives:
+      amy:
+        description: "Primary ops representative."
+        surfaces: [moltnet]
+        addresses:
+          moltnet:
+            local_lab:
+              fqid: "molt://local_lab/agents/amy"
+              rooms: [org-council]
+    surfaces: []
+    addresses: {}
+```
 
-The roster is a **per-member view**. In `hierarchical` mode, non-leader members see only the leader as reachable. The leader's roster shows all members as reachable. In `swarm` mode, all members see all other members as reachable.
+Rules:
 
-Member descriptions in the roster come from each agent's `description` field. If an agent has no `description`, the compiler SHOULD derive one from `docs.identity`. The compiler SHOULD warn if a team member has no description and no identity doc to fall back on.
+- `self` is always the concrete reader and is excluded from `members`.
+- In `hierarchical` mode, a non-lead reader sees only the lead slot. The lead reader sees all other members.
+- If a hierarchical `lead` is a nested team that resolves to multiple concrete representatives, each lead delegate receives the parent roster view that the lead slot is entitled to.
+- In `swarm` mode, each reader sees all other visible members.
+- `lead` is the direct member slot id from the team manifest. If that slot is a nested team, the nested team entry uses `role: team` and `is_lead: true`; concrete delegates under `representatives` use `delegate_role: lead`.
+- Member descriptions come from each agent's `description` field. If an agent has no `description`, the compiler SHOULD derive one from `docs.identity`. The compiler SHOULD warn if no description can be derived.
+- Roster entries carry derivable per-surface `addresses`, not routed endpoints.
+- Moltnet FQIDs are derivable and are emitted when visible in the roster context.
+- Slack, Discord, Telegram, and WhatsApp addresses are emitted only when the corresponding `surfaces.<name>.identity` field is declared by the visible agent.
+- If an agent declares a surface without identity, the roster MAY list the surface in `surfaces` while omitting an address. Teammates then rely on the provider's own discovery mechanisms, such as mentions, shared channel membership, or replies.
+- Portable HTTP addresses are not part of roster v2.
+- No roster `auth` block exists in this alpha.
+- Nested team entries remain black boxes. A parent roster may show a child team, a team card, and selected representatives, but it MUST NOT expose the child team's full internal roster.
 
-Each member entry in the roster includes an `endpoint` — a compiler-generated coordination endpoint for reaching that teammate inside the team deployment. This endpoint is team-scoped routing metadata. It is not required to be the same thing as the agent's direct HTTP surface URL, and callers MUST NOT assume it is a public endpoint. For same-container deployments, it often resolves to a localhost route through the surface router. Other targets MAY use different boundary or bridge mechanisms while preserving the same coordination semantics. The `team_message` tool uses these endpoints to deliver messages.
+The compiler MUST build a coordination graph for each emitted team-context roster with more than one visible concrete participant. Nodes are visible concrete participants. Edges are shared declared coordination surfaces:
 
-The roster is a compiled artifact — agents do not author it. The compiler generates it from the team manifest and each member's agent manifest.
+- a shared agent communication surface, such as Slack, Discord, Telegram, or WhatsApp, when both participants declare the same surface key in that team context
+- a team network surface, such as a Moltnet room produced from `team.networks[]`, when both participants are attached to the same declared room after representative expansion
 
-Agents are described in natural language, not classified by capability tags. Descriptions are the primary coordination signal in rosters. LLM agents reason about who to coordinate with based on descriptions of what their teammates do.
+For non-network agent surfaces, this is a declared-presence edge only. The compiler does not validate provider-side Slack, Discord, Telegram, or WhatsApp workspace membership, channel membership, or actual discoverability.
 
-### 4.8.1 Team Message Tool
-
-When compiling a team, the compiler MUST generate a `team_message` MCP tool for each direct member. This tool is the portable mechanism by which agents send messages to teammates.
-
-The compiler generates a small MCP server (stdio transport) that exposes one tool:
-
-- **Name:** `team_message`
-- **Parameters:** `to` (teammate name from roster, required), `message` (text to send, required)
-- **Returns:** The teammate's response text, or an error if delivery failed or timed out.
-
-The tool implementation sends the message to the teammate's compiler-generated coordination endpoint (from the roster) using the canonical message envelope. If `team.auth` is declared and the chosen coordination path requires auth, the tool attaches the shared secret. The tool call is synchronous — it blocks until the teammate responds or a timeout is reached (default 120 seconds).
-
-The receiving agent does not need to know the message came from a teammate. It arrives through team coordination infrastructure with `from.type: agent` and a `context_id` scoped to the sender-receiver pair (e.g., `team:planner->researcher`). The runtime uses `context_id` to maintain separate conversation threads per sender.
-
-Direct agent surfaces and team coordination are separate portable concepts. A compiler MAY implement both through one listener or router internally, but the portable spec does not require one shared endpoint for both.
-
-Team members do not need to declare `surfaces.http` in order to participate in a team. A compiler MAY synthesize internal coordination endpoints or routes for team members even when they do not expose a direct HTTP surface.
+The compiler MUST warn, not fail, when any visible concrete participant has no edge to another visible participant. It MUST also warn when the whole reachable cross-member coordination graph has no edges. These warnings belong in the compile report.
 
 ### 4.9 Team Lowering Contract
 
@@ -806,13 +912,14 @@ For team manifests, a conforming compiler MUST preserve the following author int
 
 - which members belong to the team (slot IDs)
 - the team mode and lead
-- which members are exposed through the team boundary
+- which members form the representative interface
 - which surfaces are shared versus member-local
-- the compiled roster for each member
+- declared team networks and provider-backed rooms
+- context-scoped team docs, rosters, context indexes, and team cards
 
 A compiler MAY change the mechanical implementation used by the target runtime as long as the declared intent is preserved or the loss is reported as `degraded` or `unsupported`.
 
-When `spawnfile compile` is run from a team root, the compiler MUST walk the reachable member graph and compile each agent member using that member's declared runtime. The compiler MUST also generate a roster for each direct member.
+When `spawnfile compile` is run from a team root, the compiler MUST walk the reachable member graph and compile each agent member using that member's declared runtime. The compiler MUST also generate context artifacts for direct members and selected representatives.
 
 If a team spans multiple runtimes, the compiler MAY emit multiple runtime-specific outputs as part of the same compile run.
 
@@ -825,6 +932,19 @@ Compilers MUST report capability outcomes for at least:
 - `team.shared`
 - `team.nested`
 - `team.roster`
+- `team.context_orientation`
+- `team.representatives`
+- `team.networks`
+- `team.networks.<provider>`
+- `team.networks.<provider>.<network-id-key>`
+
+Agent-declared surface identities report on the agent node with:
+
+- `surfaces.<name>.identity`
+
+Dynamic capability key segments MUST be report-key safe before joining with `.`. Use the raw segment when it matches `[A-Za-z0-9_-]+`; otherwise percent-encode the segment.
+
+Compiler-owned capability outcomes for team context, representatives, and team networks MUST be attached before policy enforcement runs.
 
 ---
 
@@ -850,7 +970,7 @@ For a runtime to be a valid Spawnfile target in v0.1, its adapter MUST be able t
 - configure declared MCP servers, or report degradation
 - map execution model intent into runtime-native model selection, or report degradation
 - map execution workspace and sandbox intent into runtime-native execution policy, or report degradation
-- for team manifests, lower member and routing intent, or report `unsupported`
+- for team manifests, lower member, representative, team-context, and team-network intent, or report `unsupported`
 
 ### 5.3 Compile Report
 
@@ -912,7 +1032,7 @@ For every declared capability the compiler MUST report one of:
 | `degraded` | Partially mapped; runtime behavior may differ from declared intent |
 | `unsupported` | Cannot be expressed in the target |
 
-At minimum, compilers MUST report outcomes for declared docs, skills, MCP servers, execution model intent, execution workspace intent, execution sandbox intent, and routing intent.
+At minimum, compilers MUST report outcomes for declared docs, skills, MCP servers, execution model intent, execution workspace intent, execution sandbox intent, declared surfaces, and team context/network intent.
 
 ### 6.4 How It Works In Practice
 
@@ -982,7 +1102,7 @@ Rules:
 - `${VAR}` resolves to the value of environment variable `VAR`. If `VAR` is not set, the compiler MUST fail with a clear error naming the missing variable.
 - `${VAR:-default}` resolves to the value of `VAR` if set, or `default` if not.
 - Substitution applies only to string values, not to field names or structural elements.
-- The `secrets[*].name` field and `auth.secret` field MUST NOT be substituted — they are references to environment variable names, not values.
+- The `secrets[*].name` field and surface secret-name fields such as `bot_token_secret`, `app_token_secret`, and `signing_secret` MUST NOT be substituted — they are references to environment variable names, not values.
 - Substitution MUST NOT be recursive. A resolved value containing `${...}` is treated as a literal string.
 
 This allows the same Spawnfile to be compiled with different configurations by changing environment variables or providing a `.env` file, without duplicating the manifest.
@@ -1111,7 +1231,6 @@ Edits declared communication surfaces.
 - MUST set the surface access mode to a value supported by the selected surface
 - MUST validate allowlist identifiers according to the selected surface:
   - Discord: `users`, `guilds`, `channels`
-  - HTTP: none
   - Telegram: `users`, `chats`
   - WhatsApp: `users`, `groups`
   - Slack: `users`, `channels`
@@ -1186,7 +1305,7 @@ These are intentionally excluded from the v0.1 portable core. Adapters MAY suppo
 - Persistent storage declarations
 - UI surfaces
 - Runtime-native auth bootstrap (onboarding flows)
-- Agent-to-agent protocol definitions beyond routing intent
+- Agent-to-agent protocol definitions beyond declared surfaces and team networks
 - Resource constraints (compute, memory, token budgets)
 - Observability hooks (probes, structured logging)
 - Dependency versioning and lock files for skills and MCP servers

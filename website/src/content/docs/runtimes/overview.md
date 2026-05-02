@@ -51,7 +51,7 @@ runtimes:
 
 These runtimes have working adapters:
 
-1. **[OpenClaw](/runtimes/openclaw/)** -- JSON config, rich workspace layout, MCP through mcporter bridge, multi-agent routing.
+1. **[OpenClaw](/runtimes/openclaw/)** -- JSON config, rich workspace layout, MCP through mcporter bridge, native multi-agent sessions.
 2. **[PicoClaw](/runtimes/picoclaw/)** -- JSON config, workspace-first model, first-class MCP surface, spawned subagents.
 3. **[TinyClaw](/runtimes/tinyclaw/)** -- Multi-agent/multi-team runtime with the strongest native team support.
 
@@ -105,8 +105,8 @@ Spawnfile defines a portable surface that adapters attempt to preserve across ru
 - Skills with `SKILL.md`
 - MCP server declarations
 - Runtime binding and execution intent
-- Team structure and shared surfaces
-- Communication surfaces (Discord, Telegram, WhatsApp, Slack in v0.1)
+- Team structure, representatives, generated team-context artifacts, and `team.networks[]`
+- Communication surfaces (Discord, Telegram, WhatsApp, Slack, Moltnet, and Webhook in v0.1 alpha)
 
 If a runtime cannot preserve part of this surface exactly, the adapter reports `supported`, `degraded`, or `unsupported` according to the compile policy. The compile report always records these capability outcomes so you know what was preserved and what was lost.
 
@@ -114,7 +114,7 @@ If a runtime cannot preserve part of this surface exactly, the adapter reports `
 
 | Runtime | Docs | Skills | MCP | Models | Sandbox | Teams | Discord | Telegram | WhatsApp | Slack |
 |---------|------|--------|-----|--------|---------|-------|---------|----------|----------|-------|
-| OpenClaw | Strong | Strong | Bridge | Strong | Strong | Routed sessions | Full | Full | Full | Full |
+| OpenClaw | Strong | Strong | Bridge | Strong | Strong | Native sessions | Full | Full | Full | Full |
 | PicoClaw | Strong | Strong | Strong | Strong | Strong | Spawned subagents | Partial | Partial | Partial | Partial |
 | TinyClaw | Strong | Present | No clear surface | Strong | Strong | Native teams | Pairing only | Pairing only | Pairing only | Unsupported |
 | NullClaw | Strong | Strong | stdio-first | Strong | Strong | Delegate agents | -- | -- | -- | -- |

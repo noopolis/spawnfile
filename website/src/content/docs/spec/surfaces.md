@@ -1,140 +1,114 @@
 ---
 title: Communication Surfaces
-description: Portable communication-surface model for Spawnfile v0.1 -- Discord surface schema, access rules, and runtime support matrix.
+description: Portable communication-surface model for Spawnfile v0.1 alpha.
 ---
 
-This document defines the portable communication-surface model that sits on top of `SPEC.md`.
-
-`SPEC.md` remains the canonical source schema. This file exists to make three things explicit:
-
-- what a surface is
-- what the standardized Discord surface means in v0.1
-- which runtimes support which Discord access shapes
-
----
+This document defines the portable communication-surface model that sits on top of the [Spawnfile Specification](/spec/spec/).
 
 ## Purpose
 
-A **surface** is an external interaction boundary through which humans or systems can reach an agent.
+A **surface** is an agent-level communication capability. Concrete agent manifests declare `surfaces`; team manifests declare `networks`.
 
-This is intentionally broader than "chat channel". In v0.1, the first standardized surface is Discord, but the abstraction is meant to grow to cover other messaging systems, webhook/http ingress, and future agent-network or room integrations.
+A **team network** is team-level organizational communication topology under `team.networks[]`. Moltnet is the first provider for this contract.
 
-Surfaces are:
+Spawnfile has a write-only runtime boundary. It does not read spawned runtimes to discover account IDs or update rosters from runtime state. Roster addresses are emitted only when they are derivable from the manifest or explicitly authored through `identity`.
 
-- declared on agent manifests
-- validated at compile time against runtime support
-- provisioned through the same auth/run path as model credentials
+## Current Portable Surfaces
 
-Team manifests do not declare surfaces in v0.1. Surfaces belong to concrete agents.
+Spawnfile v0.1 alpha standardizes:
 
----
+- `discord`
+- `telegram`
+- `whatsapp`
+- `slack`
+- `moltnet`
+- `webhook`
 
-## Current Portable Surface
-
-Spawnfile v0.1 standardizes one initial surface:
+Portable HTTP ingress is not part of this alpha schema. Runtime-native HTTP APIs may exist through runtime-specific options, but they are not portable Spawnfile surfaces and do not appear in rosters.
 
 ```yaml
 surfaces:
-  discord:
+  slack:
+    identity:
+      user_id: "U1234567890"
     access:
       mode: allowlist
-      users:
-        - "987654321098765432"
-      guilds:
-        - "123456789012345678"
-      channels:
-        - "555555555555555555"
-    bot_token_secret: DISCORD_BOT_TOKEN
+      users: ["U1234567890"]
+      channels: ["C1234567890"]
+    bot_token_secret: SLACK_BOT_TOKEN
+    app_token_secret: SLACK_APP_TOKEN
+  moltnet:
+    - network: local_lab
+      rooms:
+        research:
+          read: all
+          reply: auto
+      dms:
+        enabled: true
+        read: mentions
+        reply: never
 ```
 
-### Fields
+## Surface Identity
 
-| Field | Meaning |
-|------|---------|
-| `bot_token_secret` | Env var name carrying the Discord bot token. Defaults to `DISCORD_BOT_TOKEN`. |
-| `access.mode` | Access policy: `pairing`, `allowlist`, or `open`. |
-| `access.users` | Allowed Discord user IDs. |
-| `access.guilds` | Allowed Discord guild/server IDs. |
-| `access.channels` | Allowed Discord channel IDs. |
+`identity` is optional opt-in roster metadata. It does not provision accounts, guarantee provider-side reachability, or allow Spawnfile to read runtime state.
 
-### Access Rules
+| Surface | Identity fields | Roster address |
+|---|---|---|
+| `discord` | `user_id` | `addresses.discord.user_id` |
+| `telegram` | `user_id` and/or `username` | `addresses.telegram.user_id`, `addresses.telegram.username` |
+| `whatsapp` | `phone` | `addresses.whatsapp.phone` |
+| `slack` | `user_id` | `addresses.slack.user_id` |
+| `moltnet` | derived from team network attachment | `addresses.moltnet.<network_id>.fqid` |
 
-- If `access.mode` is omitted and any of `users`, `guilds`, or `channels` are present, the effective mode is `allowlist`.
-- `users`, `guilds`, and `channels` are only valid with `allowlist`.
-- `allowlist` must declare at least one of `users`, `guilds`, or `channels`.
-- Surface secrets are runtime env, not inline manifest secrets.
+If a chat surface is declared without `identity`, rosters may list that surface while omitting an address. Teammates then rely on native discovery: mentions, channel membership, replies, or provider UI.
 
-### ID Sources
+## Access Rules
 
-For Discord, the identifiers are copied from Discord Developer Mode:
+- Discord access uses `pairing`, `allowlist`, or `open`.
+- Telegram access uses `pairing`, `allowlist`, or `open`.
+- WhatsApp access uses `pairing`, `allowlist`, or `open`.
+- Slack access uses `pairing`, `allowlist`, or `open`.
+- If an access mode is omitted and allowlist entries are present, the effective mode is `allowlist`.
+- If an access block is omitted entirely, behavior is runtime-defined and is not portable.
+- Surface secrets are runtime env references, not inline manifest secrets.
+- WhatsApp does not currently have a portable token-secret field; QR/session auth remains runtime-defined.
 
-- user ID
-- guild/server ID
-- channel ID
+## Moltnet
 
-These are low-level identifiers, but they are stable and map cleanly to allowlist semantics.
+Moltnet is both an agent surface and the first `team.networks[]` provider.
 
----
+```yaml
+networks:
+  - id: local_lab
+    provider: moltnet
+    rooms:
+      - id: research
+        members: [lead, writer]
+```
+
+Rules:
+
+- Agent attachments reference team-declared networks and rooms.
+- `read` may be `all`, `mentions`, or `thread_only`.
+- `reply` may be only `auto` or `never` in this alpha. `manual` is not portable.
+- Moltnet FQIDs are derivable and emitted into context-scoped rosters.
+- Parent room child-team members expand through the child team's representative chain.
+- Non-representative child members do not receive parent room attachments.
+- Moltnet member IDs are direct agent member slot IDs and must be unique across the reachable nested team graph.
+- Compatible duplicate attachments for the same `(network_id, member_id)` merge rooms; incompatible duplicates fail compilation.
 
 ## Runtime Support Matrix
 
-The portable schema is broader than any single runtime. A conforming compiler must validate the declared surface against the selected runtime and fail early when the runtime cannot preserve it.
+| Surface | OpenClaw | PicoClaw | TinyClaw |
+|---|---|---|---|
+| Discord | pairing, allowlist, open | open, allowlist | pairing |
+| Telegram | pairing, allowlist, open | open, allowlist | pairing |
+| WhatsApp | pairing, allowlist, open | open, allowlist | pairing |
+| Slack | pairing, allowlist, open | open, allowlist | unsupported |
+| Moltnet | team-network attachments | team-network attachments | constrained by scope limits |
+| Webhook | not yet | not yet | not yet |
 
-### Discord
+## Runtime Verification
 
-| Runtime | Supported Access | Notes |
-|--------|------------------|-------|
-| `openclaw` | `pairing`, `allowlist`, `open` | Supports user, guild, and channel policy lowering. Channel allowlists currently require exactly one guild in Spawnfile lowering. |
-| `picoclaw` | `open`, `allowlist` | Supports Discord token wiring and user allowlists. Guild/channel allowlists are not lowered in v0.1. |
-| `tinyclaw` | `pairing` | Discord client is DM-oriented and pairing-gated. Declarative user/guild/channel allowlists are not supported in Spawnfile v0.1. |
-
-### Practical Meaning
-
-- `openclaw` is the best current target for full Discord channel/server policy.
-- `picoclaw` is a good target for token-based Discord plus simple user allowlists.
-- `tinyclaw` supports Discord as a paired DM surface, not as a general guild/channel surface.
-
----
-
-## Runtime Lowering Notes
-
-### OpenClaw
-
-Spawnfile lowers Discord access into the runtime's richer Discord config surface:
-
-- `dmPolicy`
-- `groupPolicy`
-- `allowFrom`
-- `guilds`
-- `guilds.*.channels`
-
-OpenClaw is the only bundled runtime where the first portable Discord surface maps to a real channel/server policy model instead of a reduced subset.
-
-### PicoClaw
-
-Spawnfile lowers Discord into PicoClaw's simpler channel config:
-
-- `token`
-- `allow_from`
-- `mention_only`
-
-PicoClaw's user allowlists map well. Guild/channel allowlists do not currently have a portable lowering in Spawnfile.
-
-### TinyClaw
-
-Spawnfile lowers Discord into TinyClaw's channel client config and starts the Discord worker process in the generated container.
-
-But the upstream runtime behavior remains pairing-based and DM-oriented, so Spawnfile rejects richer Discord access shapes for TinyClaw at compile time.
-
----
-
-## Relationship To Other Specs
-
-- `SPEC.md`
-  Defines the canonical manifest schema for `surfaces`.
-- `COMPILER.md`
-  Defines when surface support is resolved and validated.
-- `CONTAINERS.md`
-  Defines how surface secrets are emitted into `.env.example` and injected at run time.
-- `RUNTIMES.md`
-  Tracks which runtimes exist; this file tracks what the current standardized surface means on those runtimes.
+The Moltnet team-network contract requires an opt-in, release-gating E2E that compiles, builds, runs, and verifies a real team conversation through Moltnet room history. Slack, Discord, Telegram, and WhatsApp do not need equivalent team-chat E2Es for this contract because Spawnfile only carries their declared identity/roster data.

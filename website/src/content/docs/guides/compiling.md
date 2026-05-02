@@ -14,10 +14,13 @@ The reference compiler follows this pipeline:
 3. **Walk** the manifest graph through `members[*].ref` and `subagents[*].ref`.
 4. **Detect** cycles and incompatible duplicate references.
 5. **Resolve** effective `runtime` and `execution` for every graph node.
-6. **Build** a normalized intermediate representation (IR).
-7. **Group** resolved nodes by runtime.
-8. **Invoke** runtime adapters.
-9. **Emit** output directories and `spawnfile-report.json`.
+6. **Resolve** agent descriptions.
+7. **Build** a normalized intermediate representation (IR).
+8. **Group** resolved nodes by runtime.
+9. **Invoke** runtime adapters.
+10. **Resolve** representatives, team context files, rosters, and team-network artifacts.
+11. **Attach** compiler-owned capability outcomes and warnings before policy enforcement.
+12. **Emit** output directories and `spawnfile-report.json`.
 
 The compiler operates on resolved IR after the graph phase, not on raw YAML. Adapters receive fully resolved nodes with all inheritance applied.
 
@@ -38,6 +41,7 @@ Validation happens in three layers:
 - Cycle detection across teams and subagents
 - Duplicate node resolution conflicts (same path, different effective config)
 - Runtime resolution (every agent must have an effective runtime)
+- Team representative and team-network member references
 - Skill `requires.mcp` resolution against visible MCP scope
 
 ### Adapter Validation
@@ -92,12 +96,22 @@ Every agent node is always compilable independently by its runtime adapter. Team
 
 For multi-runtime teams, the compiler compiles each member agent independently and reports any loss of native team semantics.
 
+The compiler does not inject a team router or team-message tool. It emits context files and rosters that describe how agents can coordinate through shared declared surfaces and team networks.
+
+## Team Context Artifacts
+
+Direct team memberships receive `.spawnfile/team-contexts/<team-context-key>/TEAM.md` and `.spawnfile/rosters/<team-context-key>.yaml`. Root `TEAM.md` and `.spawnfile/roster.yaml` are emitted only when the agent has exactly one direct team membership.
+
+Selected nested-team representatives also receive parent context files: `.spawnfile/team-contexts.yaml`, `.spawnfile/team-contexts.md`, namespaced parent `TEAM.md`, parent rosters, and referenced team cards.
+
+Rosters carry derivable per-surface `addresses`, not routed endpoints. Moltnet FQIDs are derivable. Slack, Discord, Telegram, and WhatsApp addresses require optional `surfaces.<name>.identity`. Portable HTTP addresses are not part of roster v2.
+
 ## Output Layout
 
-The default output root is `./dist`. Within that root:
+The default output root is `./.spawn`. Within that root:
 
 ```text
-dist/
+.spawn/
   spawnfile-report.json
   runtimes/
     openclaw/
@@ -182,7 +196,9 @@ The compiler reports on these keys:
 - `mcp.<name>`
 - `execution.model`, `execution.workspace`, `execution.sandbox`
 - `agent.subagents`
-- `team.members`, `team.structure.mode`, `team.structure.leader`, `team.structure.external`, `team.shared`, `team.nested`
+- `team.members`, `team.mode`, `team.lead`, `team.external`, `team.shared`, `team.nested`
+- `team.roster`, `team.context_orientation`, `team.representatives`, `team.networks`, `team.networks.<provider>`, `team.networks.<provider>.<network-id-key>`
+- `surfaces.<name>.identity`
 
 Adapters may add runtime-specific keys under `runtime.options.*` and `runtime.native.*`.
 
