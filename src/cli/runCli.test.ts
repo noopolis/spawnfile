@@ -136,6 +136,8 @@ describe("runCli", () => {
         path.join(fixturesRoot, "single-agent"),
         "--auth-profile",
         "dev",
+        "--env-file",
+        "/tmp/dev.env",
         "--detach",
         "--out",
         "/tmp/spawnfile-run-out"
@@ -152,6 +154,7 @@ describe("runCli", () => {
       authProfile: "dev",
       containerName: undefined,
       detach: true,
+      envFilePath: "/tmp/dev.env",
       imageTag: undefined,
       outputDirectory: "/tmp/spawnfile-run-out"
     });

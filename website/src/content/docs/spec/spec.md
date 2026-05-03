@@ -339,6 +339,10 @@ policy:
   on_degrade: error
 ```
 
+Declared secrets are runtime inputs, not literal secret values. `spawnfile auth sync --env-file <file>` MUST collect values for declared required secrets from the process environment or the provided env file and MUST fail when a required value is unavailable. Optional declared secrets SHOULD be copied into the selected auth profile when a value is available, and ignored when absent.
+
+`spawnfile run --env-file <file>` MUST inject the provided env file values into the generated Docker run environment for that invocation. When an auth profile and run env file both define the same variable, the run env file value wins. A value from the process environment wins over both when that variable is part of the generated run environment.
+
 ### 3.2 Validation Scope
 
 For an agent manifest, skill `requires.mcp` names MUST be validated against that agent's `mcp_servers` list.

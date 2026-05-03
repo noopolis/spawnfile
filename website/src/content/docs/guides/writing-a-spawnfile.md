@@ -212,6 +212,21 @@ secrets:
 
 The compiler warns when a required secret is not present in the execution environment used for compilation.
 
+Declared secrets are also used by the auth/run workflow. `spawnfile auth sync --env-file .env` copies required secret values into the selected auth profile and fails if a required value is missing. Optional secrets are copied only when present. `spawnfile run --env-file .env` can inject the same env file directly into the generated Docker run environment.
+
+This is the intended pattern for external credentials such as repository tokens:
+
+```yaml
+secrets:
+  - name: GH_TOKEN
+    required: true
+```
+
+```bash
+spawnfile auth sync . --profile dev --env-file ./ops/secrets/agent.env
+spawnfile run . --auth-profile dev
+```
+
 ## policy
 
 The `policy` block controls how strictly the compiler enforces capability preservation. It is optional and defaults to permissive mode.

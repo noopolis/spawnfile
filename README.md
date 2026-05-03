@@ -43,6 +43,8 @@ spawnfile run    --tag my-agent --auth-profile dev
 
 Compiled output lands under `.spawn/` by default, including a `Dockerfile`, `entrypoint.sh`, `.env.example`, and a prebuilt `container/rootfs/` tree. `spawnfile build` uses the pinned runtime artifacts from `runtimes.yaml`; it does not rebuild runtimes from source.
 
+Declare external credentials in `secrets:` and provide values through an ignored env file or the shell environment. `spawnfile auth sync --env-file .env` stores declared model auth and project secrets in a local auth profile; `spawnfile run --env-file .env` can inject the same values directly for a single run. This is the intended pattern for credentials like `GH_TOKEN`, MCP tokens, and provider API keys.
+
 ## Project structure
 
 A Spawnfile project is either an `agent` or a `team`.

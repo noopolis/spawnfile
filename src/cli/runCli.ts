@@ -202,6 +202,7 @@ export const runCli: RunCli = async (
     .option("-t, --tag <image>", "Docker image tag")
     .option("--auth-profile <name>", "Local Spawnfile auth profile")
     .option("--name <container>", "Docker container name")
+    .option("--env-file <file>", "Path to an env file for runtime secrets")
     .option("-d, --detach", "Run the container in detached mode")
     .action(
       async (
@@ -209,6 +210,7 @@ export const runCli: RunCli = async (
         options: {
           authProfile?: string;
           detach?: boolean;
+          envFile?: string;
           name?: string;
           out?: string;
           tag?: string;
@@ -218,6 +220,7 @@ export const runCli: RunCli = async (
           authProfile: options.authProfile,
           containerName: options.name,
           detach: options.detach,
+          envFilePath: options.envFile,
           imageTag: options.tag,
           outputDirectory: options.out
         });
@@ -346,7 +349,7 @@ export const runCli: RunCli = async (
     .command("sync")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .option("-p, --profile <name>", "Auth profile name", "default")
-    .option("--env-file <file>", "Path to an env file with model API keys")
+    .option("--env-file <file>", "Path to an env file with model keys and runtime secrets")
     .option("--claude-from <directory>", "Source Claude Code config directory")
     .option("--codex-from <directory>", "Source Codex config directory")
     .action(

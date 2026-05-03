@@ -115,6 +115,21 @@ spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
 
 This reads the declared `auth` methods on each model target and surface, then imports the matching material. For example, if the manifest declares `auth.method: claude-code`, the sync imports your local Claude Code CLI credentials. If it declares `auth.method: api_key`, it reads the key from the provided env file.
 
+`auth sync` also reads declared project secrets from `secrets:` and inherited team `shared.secrets:`. Required secrets must be present in the process environment or the provided env file. Optional secrets are copied into the profile only when a value is available.
+
+```yaml
+secrets:
+  - name: GH_TOKEN
+    required: true
+```
+
+```bash
+spawnfile auth sync ./agents/episode-worker --profile dev --env-file ./ops/secrets/episode-worker.env
+spawnfile run ./agents/episode-worker --auth-profile dev
+```
+
+This is the clean path for repository tokens, MCP tokens, and runtime-specific credentials that should be supplied externally instead of committed into the Spawnfile project.
+
 ### Manual Auth Import
 
 Lower-level commands are available for manual profile editing:
@@ -179,6 +194,14 @@ Same flow regardless of project complexity. One compile, one build, one run.
 `spawnfile build` stays secrets-free by default. It compiles the project and then runs `docker build` against the emitted output directory. The generated Dockerfile installs pinned compiled runtime artifacts -- it does not rebuild runtime sources during image build.
 
 `spawnfile run` is the auth-aware wrapper over `docker run`. It validates declared model auth before container startup and mounts the right credential material from the selected profile.
+
+You can also pass an env file directly at run time:
+
+```bash
+spawnfile run ./agents/episode-worker --env-file ./ops/secrets/episode-worker.env
+```
+
+This writes the provided values into Spawnfile's generated Docker env file for that run. When both an auth profile and `--env-file` provide the same variable, the env file value wins; if the same variable is set in the shell environment, the shell value wins.
 
 ### Manual Docker
 

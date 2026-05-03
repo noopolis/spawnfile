@@ -277,7 +277,7 @@ Adapter verification at the pinned ref should include:
 The intended workflow for testing compiled output:
 
 ```bash
-# sync declared model auth into a local profile
+# sync declared model auth and project secrets into a local profile
 spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
 
 # compile and build the container
@@ -302,9 +302,11 @@ Same flow regardless of project complexity. One compile, one build, one run.
 The intended auth split is:
 
 - `Spawnfile` declares model auth intent on each model target via `auth`, plus `endpoint` for `custom` and `local` backends
-- `spawnfile auth sync` materializes matching local auth into a profile
+- `Spawnfile` declares runtime/project secret requirements through `secrets` and team `shared.secrets`
+- `spawnfile auth sync` materializes matching local auth and declared secret values into a profile
 - `spawnfile build` stays secrets-free
-- `spawnfile run --auth-profile ...` injects only the auth material required by the declared methods
+- `spawnfile run --auth-profile ...` injects only the auth material required by the declared methods and secrets
+- `spawnfile run --env-file ...` MAY inject external env values directly for a single run without first storing them in an auth profile
 
 For repository-level verification, an opt-in Docker auth E2E harness SHOULD exist outside the normal unit-test flow.
 That harness SHOULD:

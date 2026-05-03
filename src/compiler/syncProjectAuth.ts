@@ -25,14 +25,35 @@ export interface SyncProjectAuthOptions {
 
 const resolveAuthRequirements = async (
   inputPath: string
-): Promise<{ methods: Set<"api_key" | "claude-code" | "codex" | "none">; envNames: Set<string> }> => {
+): Promise<{
+  methods: Set<"api_key" | "claude-code" | "codex" | "none">;
+  optionalEnvNames: Set<string>;
+  requiredEnvNames: Set<string>;
+}> => {
   const plan = await buildCompilePlan(inputPath);
   const methods = new Set<"api_key" | "claude-code" | "codex" | "none">();
-  const envNames = new Set<string>();
+  const optionalEnvNames = new Set<string>();
+  const requiredEnvNames = new Set<string>();
+
+  const addProjectSecret = (secret: { name: string; required: boolean }): void => {
+    if (secret.required) {
+      requiredEnvNames.add(secret.name);
+      optionalEnvNames.delete(secret.name);
+    } else if (!requiredEnvNames.has(secret.name)) {
+      optionalEnvNames.add(secret.name);
+    }
+  };
 
   for (const node of plan.nodes) {
     if (node.value.kind !== "agent") {
+      for (const secret of node.value.shared.secrets) {
+        addProjectSecret(secret);
+      }
       continue;
+    }
+
+    for (const secret of node.value.secrets) {
+      addProjectSecret(secret);
     }
 
     for (const method of Object.values(resolveExecutionModelAuthMethods(node.value.execution))) {
@@ -40,39 +61,56 @@ const resolveAuthRequirements = async (
     }
 
     for (const envName of listExecutionModelSecretNames(node.value.execution)) {
-      envNames.add(envName);
+      requiredEnvNames.add(envName);
+      optionalEnvNames.delete(envName);
     }
 
     for (const envName of listAgentSurfaceSecretNames(node.value.surfaces)) {
-      envNames.add(envName);
+      requiredEnvNames.add(envName);
+      optionalEnvNames.delete(envName);
     }
   }
 
-  return { envNames, methods };
+  return { methods, optionalEnvNames, requiredEnvNames };
+};
+
+const readEnvFile = async (envFilePath?: string): Promise<Record<string, string>> =>
+  envFilePath ? parseEnvFile(await readUtf8File(envFilePath)) : {};
+
+const resolveEnvValue = (
+  envName: string,
+  fileEnv: Record<string, string>
+): string | null => {
+  const processValue = process.env[envName];
+  if (typeof processValue === "string" && processValue.length > 0) {
+    return processValue;
+  }
+
+  const fileValue = fileEnv[envName];
+  if (typeof fileValue === "string" && fileValue.length > 0) {
+    return fileValue;
+  }
+
+  return null;
 };
 
 const resolveRequiredEnv = async (
-  envNames: Set<string>,
+  requiredEnvNames: Set<string>,
+  optionalEnvNames: Set<string>,
   envFilePath?: string
 ): Promise<Record<string, string>> => {
-  if (envNames.size === 0) {
+  if (requiredEnvNames.size === 0 && optionalEnvNames.size === 0) {
     return {};
   }
 
-  const fileEnv = envFilePath ? parseEnvFile(await readUtf8File(envFilePath)) : {};
+  const fileEnv = await readEnvFile(envFilePath);
   const resolvedEnv: Record<string, string> = {};
   const missingEnv: string[] = [];
 
-  for (const envName of [...envNames].sort()) {
-    const processValue = process.env[envName];
-    if (typeof processValue === "string" && processValue.length > 0) {
-      resolvedEnv[envName] = processValue;
-      continue;
-    }
-
-    const fileValue = fileEnv[envName];
-    if (typeof fileValue === "string" && fileValue.length > 0) {
-      resolvedEnv[envName] = fileValue;
+  for (const envName of [...requiredEnvNames].sort()) {
+    const value = resolveEnvValue(envName, fileEnv);
+    if (value !== null) {
+      resolvedEnv[envName] = value;
       continue;
     }
 
@@ -86,6 +124,17 @@ const resolveRequiredEnv = async (
     );
   }
 
+  for (const envName of [...optionalEnvNames].sort()) {
+    if (requiredEnvNames.has(envName)) {
+      continue;
+    }
+
+    const value = resolveEnvValue(envName, fileEnv);
+    if (value !== null) {
+      resolvedEnv[envName] = value;
+    }
+  }
+
   return resolvedEnv;
 };
 
@@ -93,7 +142,7 @@ export const syncProjectAuth = async (
   inputPath: string,
   options: SyncProjectAuthOptions
 ) => {
-  const { envNames, methods } = await resolveAuthRequirements(inputPath);
+  const { methods, optionalEnvNames, requiredEnvNames } = await resolveAuthRequirements(inputPath);
 
   await ensureAuthProfile(options.profileName);
 
@@ -105,10 +154,10 @@ export const syncProjectAuth = async (
     await importClaudeCodeAuth(options.profileName, options.claudeCodeDirectory);
   }
 
-  if (envNames.size > 0) {
+  if (requiredEnvNames.size > 0 || optionalEnvNames.size > 0) {
     await setAuthProfileEnv(
       options.profileName,
-      await resolveRequiredEnv(envNames, options.envFilePath)
+      await resolveRequiredEnv(requiredEnvNames, optionalEnvNames, options.envFilePath)
     );
   }
 

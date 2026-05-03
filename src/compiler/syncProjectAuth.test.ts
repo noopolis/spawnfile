@@ -12,6 +12,7 @@ const fixturesRoot = path.resolve(process.cwd(), "fixtures");
 const temporaryDirectories: string[] = [];
 const previousSpawnfileHome = process.env.SPAWNFILE_HOME;
 const previousOpenAiKey = process.env.OPENAI_API_KEY;
+const previousGithubToken = process.env.GH_TOKEN;
 
 const createTempDirectory = async (prefix: string): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
@@ -37,6 +38,12 @@ afterEach(async () => {
     delete process.env.OPENAI_API_KEY;
   } else {
     process.env.OPENAI_API_KEY = previousOpenAiKey;
+  }
+
+  if (previousGithubToken === undefined) {
+    delete process.env.GH_TOKEN;
+  } else {
+    process.env.GH_TOKEN = previousGithubToken;
   }
 
   await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
@@ -266,7 +273,44 @@ describe("syncProjectAuth", () => {
     });
   });
 
-  it("syncs auth for team projects by collecting requirements from member agents", async () => {
+  it("captures declared project secrets from env files", async () => {
+    const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
+    const envDirectory = await createTempDirectory("spawnfile-env-home-");
+    process.env.SPAWNFILE_HOME = spawnfileHome;
+    await writeUtf8File(
+      path.join(envDirectory, ".env"),
+      "GH_TOKEN=github-token\nOPTIONAL_REPORTING_TOKEN=optional-token\n"
+    );
+
+    const projectDirectory = await createAgentProject([
+      'spawnfile_version: "0.1"',
+      "kind: agent",
+      "name: auth-sync",
+      "",
+      "runtime: picoclaw",
+      "",
+      "secrets:",
+      "  - name: GH_TOKEN",
+      "    required: true",
+      "  - name: OPTIONAL_REPORTING_TOKEN",
+      "    required: false",
+      "",
+      "docs:",
+      "  system: AGENTS.md"
+    ]);
+
+    const profile = await syncProjectAuth(projectDirectory, {
+      envFilePath: path.join(envDirectory, ".env"),
+      profileName: "dev"
+    });
+
+    expect(profile.env).toEqual({
+      GH_TOKEN: "github-token",
+      OPTIONAL_REPORTING_TOKEN: "optional-token"
+    });
+  });
+
+  it("syncs auth for team projects by collecting shared secrets and member requirements", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
     const claudeHome = await createTempDirectory("spawnfile-claude-home-");
     const envDirectory = await createTempDirectory("spawnfile-env-home-");
@@ -278,7 +322,7 @@ describe("syncProjectAuth", () => {
     );
     await writeUtf8File(
       path.join(envDirectory, ".env"),
-      "ANTHROPIC_API_KEY=file-anthropic\nOPENAI_API_KEY=file-openai\n"
+      "ANTHROPIC_API_KEY=file-anthropic\nOPENAI_API_KEY=file-openai\nSEARCH_API_KEY=file-search\n"
     );
 
     const profile = await syncProjectAuth(path.join(fixturesRoot, "multi-runtime-team"), {
@@ -287,7 +331,9 @@ describe("syncProjectAuth", () => {
       profileName: "dev"
     });
 
-    expect(profile.env).toEqual({});
+    expect(profile.env).toEqual({
+      SEARCH_API_KEY: "file-search"
+    });
     expect(profile.imports["claude-code"]).toBeDefined();
     expect(profile.imports.codex).toBeUndefined();
   });

@@ -4,8 +4,14 @@ import { mkdtemp } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 
-import { requireAuthProfile, type ResolvedAuthProfile } from "../auth/index.js";
-import { ensureDirectory, fileExists, removeDirectory, writeUtf8File } from "../filesystem/index.js";
+import { parseEnvFile, requireAuthProfile, type ResolvedAuthProfile } from "../auth/index.js";
+import {
+  ensureDirectory,
+  fileExists,
+  readUtf8File,
+  removeDirectory,
+  writeUtf8File
+} from "../filesystem/index.js";
 import type { ContainerReport } from "../report/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
@@ -39,6 +45,7 @@ export interface RunProjectOptions extends CompileProjectOptions {
   containerName?: string;
   detach?: boolean;
   dockerCommand?: string;
+  envFilePath?: string;
   imageTag?: string;
   runRunner?: DockerRunRunner;
 }
@@ -109,10 +116,12 @@ const collectMissingRequiredSecrets = (
 
 const resolveRunEnvironment = (
   containerReport: ContainerReport,
-  authProfile: ResolvedAuthProfile | null
+  authProfile: ResolvedAuthProfile | null,
+  envFileEnv: Record<string, string> = {}
 ): Record<string, string> => {
   const env: Record<string, string> = {
-    ...(authProfile?.env ?? {})
+    ...(authProfile?.env ?? {}),
+    ...envFileEnv
   };
 
   for (const name of new Set([...Object.keys(env), ...containerReport.secrets_required])) {
@@ -165,6 +174,24 @@ const renderDockerEnvFile = (env: Record<string, string>): string =>
     .map(([name, value]) => `${name}=${value}`)
     .join("\n")}\n`;
 
+const readRunEnvFile = async (
+  envFilePath: string | undefined
+): Promise<Record<string, string>> => {
+  if (!envFilePath) {
+    return {};
+  }
+
+  try {
+    return parseEnvFile(await readUtf8File(envFilePath));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new SpawnfileError(
+      "validation_error",
+      `Unable to read env file ${envFilePath}: ${reason}`
+    );
+  }
+};
+
 const resolveAuthMountArgs = async (
   containerReport: ContainerReport,
   authProfile: ResolvedAuthProfile | null
@@ -208,6 +235,7 @@ export const createDockerRunInvocation = async (
     containerName?: string;
     detach?: boolean;
     dockerCommand?: string;
+    envFilePath?: string;
   } = {}
 ): Promise<DockerRunInvocation> => {
   const containerReport = compileResult.report.container;
@@ -223,7 +251,11 @@ export const createDockerRunInvocation = async (
 
   try {
     assertDeclaredModelAuthSatisfied(containerReport, options.authProfile ?? null);
-    const env = resolveRunEnvironment(containerReport, options.authProfile ?? null);
+    const env = resolveRunEnvironment(
+      containerReport,
+      options.authProfile ?? null,
+      await readRunEnvFile(options.envFilePath)
+    );
     const preparedRuntimeAuth = await prepareRuntimeAuthMounts(
       compileResult.outputDirectory,
       containerReport,
@@ -323,7 +355,8 @@ export const runProject = async (
     authProfile,
     containerName: options.containerName,
     detach: options.detach,
-    dockerCommand: options.dockerCommand
+    dockerCommand: options.dockerCommand,
+    envFilePath: options.envFilePath
   });
 
   try {

@@ -19,6 +19,7 @@ const temporaryDirectories: string[] = [];
 const previousSpawnfileHome = process.env.SPAWNFILE_HOME;
 const previousAnthropicKey = process.env.ANTHROPIC_API_KEY;
 const previousSearchKey = process.env.SEARCH_API_KEY;
+const previousGithubToken = process.env.GH_TOKEN;
 
 const createTempDirectory = async (prefix: string): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
@@ -49,6 +50,11 @@ afterEach(async () => {
     delete process.env.SEARCH_API_KEY;
   } else {
     process.env.SEARCH_API_KEY = previousSearchKey;
+  }
+  if (previousGithubToken === undefined) {
+    delete process.env.GH_TOKEN;
+  } else {
+    process.env.GH_TOKEN = previousGithubToken;
   }
   await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
 });
@@ -212,6 +218,39 @@ describe("createDockerRunInvocation", () => {
     expect(await readUtf8File(invocation.envFilePath)).toContain(
       "OPENCLAW_GATEWAY_TOKEN=provided-token"
     );
+
+    await removeDirectory(invocation.supportDirectory);
+  });
+
+  it("merges user env files into the generated Docker env file", async () => {
+    const envDirectory = await createTempDirectory("spawnfile-run-env-");
+    const envFilePath = path.join(envDirectory, ".env");
+    await writeUtf8File(envFilePath, "GH_TOKEN=file-gh\nOPTIONAL_FLAG=enabled\n");
+
+    const invocation = await createDockerRunInvocation(
+      {
+        outputDirectory: "/tmp/spawnfile-run-out",
+        report: createCompileReport({
+          dockerfile: "Dockerfile",
+          entrypoint: "entrypoint.sh",
+          env_example: ".env.example",
+          model_secrets_required: [],
+          ports: [],
+          runtime_instances: [],
+          runtime_homes: [],
+          runtime_secrets_required: [],
+          runtimes_installed: ["picoclaw"],
+          secrets_required: ["GH_TOKEN"]
+        }),
+        reportPath: "/tmp/spawnfile-run-out/spawnfile-report.json"
+      },
+      "spawnfile-single-agent",
+      { envFilePath }
+    );
+
+    const envFile = await readUtf8File(invocation.envFilePath);
+    expect(envFile).toContain("GH_TOKEN=file-gh");
+    expect(envFile).toContain("OPTIONAL_FLAG=enabled");
 
     await removeDirectory(invocation.supportDirectory);
   });

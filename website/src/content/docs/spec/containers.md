@@ -166,6 +166,8 @@ Actual secret values are never emitted. The `.env.example` contains variable nam
 At runtime, secrets are injected via:
 
 - `--env-file` on `docker run`
+- `spawnfile run --env-file <file>` for one-off external env injection
+- `spawnfile run --auth-profile <name>` after `spawnfile auth sync` has materialized declared auth and secret values
 - environment variable pass-through
 - mounted secret files
 
@@ -240,28 +242,22 @@ Adapter verification at the pinned ref should include:
 The intended workflow for testing compiled output:
 
 ```bash
-# compile the project
-spawnfile compile fixtures/single-agent --out ./.spawn/single-agent
+# sync declared model auth and project secrets into a local profile
+spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
 
-# build the container
-cd .spawn/single-agent
-docker build -t my-agent .
+# compile and build the container
+spawnfile build fixtures/single-agent --out ./bundle/single-agent --tag my-agent
 
-# create .env from example
-cp .env.example .env
-# fill in secrets...
-
-# run
-docker run --env-file .env my-agent
+# run with the local auth profile
+spawnfile run fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev
 ```
 
 For teams:
 
 ```bash
-spawnfile compile fixtures/multi-runtime-team --out ./.spawn/team
-cd .spawn/team
-docker build -t my-team .
-docker run --env-file .env my-team
+spawnfile auth sync fixtures/multi-runtime-team --profile dev --env-file ./.env
+spawnfile build fixtures/multi-runtime-team --out ./bundle/team --tag my-team
+spawnfile run fixtures/multi-runtime-team --out ./bundle/team --tag my-team --auth-profile dev
 ```
 
 Same flow regardless of project complexity. One compile, one build, one run.
