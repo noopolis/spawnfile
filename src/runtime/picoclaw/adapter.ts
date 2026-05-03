@@ -81,6 +81,14 @@ const buildModelList = (node: ResolvedAgentNode): Array<Record<string, unknown>>
       };
     }
 
+    if (target.provider === "openai" && target.auth.method === "codex") {
+      return {
+        model: `codex-cli/${target.name}`,
+        model_name: target.name,
+        workspace: "<workspace-path>"
+      };
+    }
+
     return {
       ...(target.auth.method === "api_key"
         ? {

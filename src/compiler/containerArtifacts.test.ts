@@ -316,6 +316,63 @@ describe("createContainerArtifacts", () => {
     expect(configFile?.content).toContain("file://secrets/OPENAI_API_KEY");
   });
 
+  it("configures PicoClaw Codex auth through the Codex CLI provider", async () => {
+    const node = createAgentNode("picoclaw", {
+      execution: {
+        model: {
+          primary: {
+            auth: { method: "codex" },
+            name: "gpt-5.5",
+            provider: "openai"
+          }
+        }
+      }
+    });
+    const compiled = await picoClawAdapter.compileAgent(node);
+
+    const result = await createContainerArtifacts(createPlan(["picoclaw"]), [
+      {
+        emittedFiles: compiled.files,
+        kind: "agent",
+        runtimeName: "picoclaw",
+        slug: "assistant",
+        value: node
+      }
+    ]);
+
+    const entrypoint = result.files.find((file) => file.path === "entrypoint.sh")?.content ?? "";
+    const configFile = result.files.find(
+      (file) =>
+        file.path ===
+        "container/rootfs/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw/config.json"
+    );
+
+    expect(result.report.model_secrets_required).toEqual([]);
+    expect(result.report.runtime_instances).toEqual([
+      {
+        config_path: "/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw/config.json",
+        home_path: "/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw",
+        id: "agent-assistant",
+        model_auth_methods: {
+          openai: "codex"
+        },
+        model_secrets_required: [],
+        runtime: "picoclaw"
+      }
+    ]);
+    expect(configFile?.content).toContain("\"model\": \"codex-cli/gpt-5.5\"");
+    expect(configFile?.content).toContain(
+      "\"workspace\": \"/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw/workspace\""
+    );
+    expect(configFile?.content).not.toContain("file://secrets/OPENAI_API_KEY");
+    expect(entrypoint).toContain(
+      "CODEX_HOME='/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw/.codex'"
+    );
+    expect(entrypoint).not.toContain(
+      "write_env_file 'OPENAI_API_KEY' '/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw/secrets/OPENAI_API_KEY'"
+    );
+  });
+
   it("builds OpenClaw from the pinned npm package", async () => {
     const node = createAgentNode("openclaw");
     const compiled = await openClawAdapter.compileAgent(node);

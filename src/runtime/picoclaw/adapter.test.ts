@@ -91,6 +91,29 @@ describe("picoClawAdapter", () => {
     expect(config.agents.defaults.temperature).toBe(1);
   });
 
+  it("emits Codex auth models through PicoClaw's Codex CLI provider", async () => {
+    const result = await picoClawAdapter.compileAgent({
+      ...node,
+      execution: {
+        model: {
+          primary: {
+            auth: { method: "codex" },
+            name: "gpt-5.5",
+            provider: "openai"
+          }
+        }
+      }
+    });
+
+    const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
+    expect(config.agents.defaults.model_name).toBe("gpt-5.5");
+    expect(config.model_list[0]).toEqual({
+      model: "codex-cli/gpt-5.5",
+      model_name: "gpt-5.5",
+      workspace: "<workspace-path>"
+    });
+  });
+
   it("emits Discord channel config and token binding when Discord is declared", async () => {
     const discordNode: ResolvedAgentNode = {
       ...node,

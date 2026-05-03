@@ -20,11 +20,13 @@ const createEnvironmentAssignments = (plan: RuntimeTargetPlan): string[] => {
     envAssignments.push(`HOME=${shellQuote(plan.instancePaths.homePath)}`);
   }
 
-  if (
-    plan.runtimeName === "tinyclaw" &&
-    plan.instancePaths.homePath &&
-    (plan.modelAuthMethods.openai === "api_key" || plan.modelAuthMethods.openai === "codex")
-  ) {
+  if (plan.instancePaths.homePath && (
+    (
+      plan.runtimeName === "tinyclaw" &&
+      (plan.modelAuthMethods.openai === "api_key" || plan.modelAuthMethods.openai === "codex")
+    ) ||
+    (plan.runtimeName === "picoclaw" && plan.modelAuthMethods.openai === "codex")
+  )) {
     envAssignments.push(`CODEX_HOME=${shellQuote(path.posix.join(plan.instancePaths.homePath, ".codex"))}`);
   }
 

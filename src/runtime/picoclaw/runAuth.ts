@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { loadImportedClaudeCodeCredential, loadImportedCodexCredential } from "../../auth/index.js";
+import { loadImportedClaudeCodeCredential } from "../../auth/index.js";
 import {
   copyDirectory,
   ensureDirectory,
@@ -24,8 +24,7 @@ const createMountArgs = (hostPath: string, containerPath: string): string[] => [
 
 const createMountedHomeDirectory = async (
   input: RuntimeAuthPreparationInput,
-  patchedConfig: Record<string, unknown>,
-  authStore: Record<string, unknown> | null
+  patchedConfig: Record<string, unknown>
 ): Promise<string> => {
   const sourceHomePath = resolveRootfsSourcePath(input.outputDirectory, input.instance.home_path!);
   const mountedHomePath = path.join("runtime-auth", "picoclaw", input.instance.id, "home");
@@ -36,41 +35,19 @@ const createMountedHomeDirectory = async (
 
   const relativeConfigPath = path.posix.relative(input.instance.home_path!, input.instance.config_path);
   const hostConfigPath = path.join(hostHomePath, ...relativeConfigPath.split("/"));
-  const hostAuthPath = path.join(hostHomePath, "auth.json");
 
   await ensureDirectory(path.dirname(hostConfigPath));
   await writeUtf8File(hostConfigPath, `${JSON.stringify(patchedConfig, null, 2)}\n`);
-  if (authStore) {
-    await writeUtf8File(hostAuthPath, `${JSON.stringify(authStore, null, 2)}\n`);
-  }
 
   return hostHomePath;
 };
-
-const createPicoClawCredential = (
-  provider: "anthropic" | "openai",
-  credential: NonNullable<
-    Awaited<ReturnType<typeof loadImportedClaudeCodeCredential>> | Awaited<ReturnType<typeof loadImportedCodexCredential>>
-  >
-): Record<string, unknown> => ({
-  access_token: credential.access,
-  ...("type" in credential && credential.type === "oauth" && credential.refresh
-    ? { refresh_token: credential.refresh }
-    : !("type" in credential)
-      ? { refresh_token: credential.refresh }
-      : {}),
-  ...("accountId" in credential && credential.accountId ? { account_id: credential.accountId } : {}),
-  auth_method: "oauth",
-  expires_at: new Date(credential.expires).toISOString(),
-  provider
-});
 
 const normalizeClaudeCliModelName = (modelName: string): string =>
   modelName.replaceAll(".", "-");
 
 const patchPicoClawConfig = (
   config: Record<string, unknown>,
-  options: { useClaudeCode: boolean; useCodex: boolean }
+  options: { useClaudeCode: boolean }
 ): Record<string, unknown> => {
   const agents = (config.agents as Record<string, unknown> | undefined) ?? {};
   const defaults = (agents.defaults as Record<string, unknown> | undefined) ?? {};
@@ -98,23 +75,11 @@ const patchPicoClawConfig = (
       }
     }
 
-    if (options.useCodex && typeof model === "string" && model.startsWith("openai/")) {
-      delete record.api_key;
-      record.auth_method = "oauth";
-    }
-
     return record;
   });
 
   if (options.useClaudeCode) {
     delete nextProviders.anthropic;
-  }
-
-  if (options.useCodex) {
-    nextProviders.openai = {
-      ...(nextProviders.openai ?? {}),
-      auth_method: "oauth"
-    };
   }
 
   return {
@@ -138,26 +103,15 @@ export const preparePicoClawRuntimeAuth = async (
   const claudeCode = input.authProfile.imports["claude-code"]
     ? await loadImportedClaudeCodeCredential(input.authProfile.imports["claude-code"].path)
     : null;
-  const codex = input.authProfile.imports.codex
-    ? await loadImportedCodexCredential(input.authProfile.imports.codex.path)
-    : null;
 
   const useClaudeCode =
     input.instance.model_auth_methods.anthropic === "claude-code" && claudeCode;
-  const useCodex =
-    input.instance.model_auth_methods.openai === "codex" && codex;
 
-  if (!useClaudeCode && !useCodex) {
+  if (!useClaudeCode) {
     return { coveredModelSecrets: [], mountArgs: [] };
   }
 
-  const credentials: Record<string, unknown> = {};
   const coveredModelSecrets: string[] = [];
-
-  if (useCodex) {
-    credentials.openai = createPicoClawCredential("openai", codex);
-    coveredModelSecrets.push("OPENAI_API_KEY");
-  }
 
   if (useClaudeCode) {
     coveredModelSecrets.push("ANTHROPIC_API_KEY");
@@ -167,13 +121,11 @@ export const preparePicoClawRuntimeAuth = async (
     await readUtf8File(resolveRootfsSourcePath(input.outputDirectory, input.instance.config_path))
   ) as Record<string, unknown>;
   const patchedConfig = patchPicoClawConfig(sourceConfig, {
-    useClaudeCode: Boolean(useClaudeCode),
-    useCodex: Boolean(useCodex)
+    useClaudeCode: Boolean(useClaudeCode)
   });
   const mountedHomePath = await createMountedHomeDirectory(
     input,
-    patchedConfig,
-    Object.keys(credentials).length > 0 ? { credentials } : null
+    patchedConfig
   );
 
   return {

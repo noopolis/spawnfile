@@ -58,7 +58,7 @@ afterEach(async () => {
 });
 
 describe("preparePicoClawRuntimeAuth", () => {
-  it("writes PicoClaw auth.json and patches config to oauth auth methods", async () => {
+  it("mounts a patched home for Claude Code without rewriting Codex CLI models", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
     const outputDirectory = await createTempDirectory("spawnfile-picoclaw-out-");
     const tempRoot = await createTempDirectory("spawnfile-picoclaw-run-");
@@ -96,8 +96,7 @@ describe("preparePicoClawRuntimeAuth", () => {
           model_name: "claude-sonnet-4"
         },
         {
-          api_key: "file://secrets/OPENAI_API_KEY",
-          model: "openai/gpt-5",
+          model: "codex-cli/gpt-5",
           model_name: "gpt-5"
         }
       ]
@@ -122,22 +121,17 @@ describe("preparePicoClawRuntimeAuth", () => {
     });
 
     expect(prepared.coveredModelSecrets.sort()).toEqual([
-      "ANTHROPIC_API_KEY",
-      "OPENAI_API_KEY"
+      "ANTHROPIC_API_KEY"
     ]);
     expect(prepared.mountArgs).toHaveLength(2);
 
     const mountedHomePath = getMountedHostPath(prepared.mountArgs, homePath);
-    await expect(readUtf8File(path.join(mountedHomePath, "auth.json"))).resolves.toContain(
-      "\"openai\""
-    );
-    await expect(readUtf8File(path.join(mountedHomePath, "auth.json"))).resolves.not.toContain(
-      "\"anthropic\""
-    );
+    await expect(readUtf8File(path.join(mountedHomePath, "auth.json"))).rejects.toThrow();
 
     const patchedConfig = await readUtf8File(path.join(mountedHomePath, "config.json"));
     expect(patchedConfig).toContain("\"model\": \"claude-cli/claude-sonnet-4\"");
-    expect(patchedConfig).toContain("\"auth_method\": \"oauth\"");
+    expect(patchedConfig).toContain("\"model\": \"codex-cli/gpt-5\"");
+    expect(patchedConfig).not.toContain("\"auth_method\": \"oauth\"");
     expect(patchedConfig).not.toContain("\"api_key\": \"file://secrets/ANTHROPIC_API_KEY\"");
   });
 
@@ -159,6 +153,46 @@ describe("preparePicoClawRuntimeAuth", () => {
           openai: "api_key"
         },
         model_secrets_required: ["OPENAI_API_KEY"],
+        runtime: "picoclaw"
+      },
+      outputDirectory,
+      tempRoot
+    });
+
+    expect(prepared).toEqual({
+      coveredModelSecrets: [],
+      mountArgs: []
+    });
+  });
+
+  it("leaves Codex-only PicoClaw auth to the mounted .codex import", async () => {
+    const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
+    const outputDirectory = await createTempDirectory("spawnfile-picoclaw-out-");
+    const tempRoot = await createTempDirectory("spawnfile-picoclaw-run-");
+    process.env.SPAWNFILE_HOME = spawnfileHome;
+
+    const codexImport = await registerImportedAuth("dev", "codex");
+    await writeUtf8File(
+      path.join(codexImport.directory, "auth.json"),
+      JSON.stringify({
+        tokens: {
+          access_token: "codex-access",
+          refresh_token: "codex-refresh"
+        }
+      })
+    );
+
+    const prepared = await preparePicoClawRuntimeAuth({
+      authProfile: await requireAuthProfile("dev"),
+      env: {},
+      instance: {
+        config_path: "/var/lib/spawnfile/instances/picoclaw/agent-router/picoclaw/config.json",
+        home_path: "/var/lib/spawnfile/instances/picoclaw/agent-router/picoclaw",
+        id: "agent-router",
+        model_auth_methods: {
+          openai: "codex"
+        },
+        model_secrets_required: [],
         runtime: "picoclaw"
       },
       outputDirectory,
