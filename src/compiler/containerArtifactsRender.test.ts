@@ -1,6 +1,23 @@
+import { execFile as execFileCallback } from "node:child_process";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
+
+const execFile = promisify(execFileCallback);
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) =>
+      rm(directory, { force: true, recursive: true })
+    )
+  );
+});
 
 const loadRenderModule = async (
   recipeByRuntime: Record<
@@ -56,6 +73,42 @@ const createRuntimePlan = (
   runtimeRoot: `/opt/runtime/${runtimeName}`,
   targetFiles: [],
   ...overrides
+});
+
+const writeExecutableEntrypoint = async (
+  directory: string,
+  content: string
+): Promise<string> => {
+  const entrypointPath = path.join(directory, "entrypoint.sh");
+  await writeFile(entrypointPath, content);
+  await chmod(entrypointPath, 0o755);
+  return entrypointPath;
+};
+
+const createResourceRuntimePlan = (
+  directory: string,
+  startCommand: string,
+  resources: RuntimeTargetPlan["resources"]
+): RuntimeTargetPlan => ({
+  ...createRuntimePlan("test-runtime", {
+    instancePaths: {
+      configPath: path.join(directory, "runtime", "config.json"),
+      homePath: path.join(directory, "runtime", "home"),
+      workspacePath: path.join(directory, "runtime", "workspace")
+    },
+    meta: {
+      configFileName: "config.json",
+      instancePaths: {
+        configPathTemplate: "<instance-root>/config.json",
+        homePathTemplate: "<instance-root>/home",
+        workspacePathTemplate: "<instance-root>/workspace"
+      },
+      standaloneBaseImage: "debian:bookworm-slim",
+      startCommand: ["sh", "-c", startCommand],
+      systemDeps: []
+    },
+    resources
+  })
 });
 
 describe("renderDockerfile", () => {
@@ -333,7 +386,7 @@ describe("renderEntrypoint", () => {
     expect(entrypoint).toContain("/opt/runtime/tinyclaw/discord.js");
   });
 
-  it("starts moltnet servers and bridges before waiting on child processes", async () => {
+  it("starts moltnet servers and nodes before waiting on child processes", async () => {
     const { renderEntrypoint } = await loadRenderModule({
       openclaw: {
         commands: [],
@@ -410,7 +463,7 @@ describe("renderEntrypoint", () => {
     expect(entrypoint).toContain('export OPENCLAW_HOOKS_TOKEN="hooks-${OPENCLAW_GATEWAY_TOKEN}"');
   });
 
-  it("starts moltnet servers and bridges in multi-runtime entrypoints", async () => {
+  it("starts moltnet servers and nodes in multi-runtime entrypoints", async () => {
     const { renderEntrypoint } = await loadRenderModule({
       openclaw: {
         commands: [],
@@ -504,6 +557,87 @@ describe("renderEntrypoint", () => {
     expect(entrypoint).toContain("http://127.0.0.1:18789/healthz");
     expect(entrypoint).toContain("picoclaw");
     expect(entrypoint).toContain("/usr/local/bin/moltnet node '/var/lib/spawnfile/moltnet/nodes/research.json' &");
+  });
+
+  it("prepares volume resources before starting the runtime", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-volume-resource-"));
+    temporaryDirectories.push(directory);
+    const mountPath = path.join(directory, "resources", "cache");
+    const proofPath = path.join(mountPath, "proof.txt");
+    const { renderEntrypoint } = await loadRenderModule({});
+    const plan = createResourceRuntimePlan(
+      directory,
+      `test -d "${mountPath}" && printf volume-ok > "${proofPath}"`,
+      [
+        {
+          id: "cache",
+          kind: "volume",
+          mode: "mutable",
+          mount: mountPath
+        }
+      ]
+    );
+    await mkdir(path.dirname(plan.instancePaths.configPath), { recursive: true });
+    await writeFile(plan.instancePaths.configPath, "{}\n");
+
+    const entrypoint = await writeExecutableEntrypoint(
+      directory,
+      renderEntrypoint([plan], [])
+    );
+    await execFile("bash", [entrypoint], { cwd: directory });
+
+    await expect(readFile(proofPath, "utf8")).resolves.toBe("volume-ok");
+  });
+
+  it("clones git resources into the declared mount path before starting the runtime", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-git-resource-"));
+    temporaryDirectories.push(directory);
+    const originPath = path.join(directory, "origin");
+    const clonePath = path.join(directory, "resources", "project");
+    await mkdir(originPath, { recursive: true });
+    await execFile("git", ["init", originPath]);
+    await writeFile(path.join(originPath, "README.md"), "hello from repo\n");
+    await execFile("git", ["-C", originPath, "add", "README.md"]);
+    await execFile("git", [
+      "-C",
+      originPath,
+      "-c",
+      "user.email=spawnfile@example.test",
+      "-c",
+      "user.name=Spawnfile Test",
+      "commit",
+      "-m",
+      "init"
+    ]);
+    await execFile("git", ["-C", originPath, "branch", "-M", "main"]);
+
+    const { renderEntrypoint } = await loadRenderModule({});
+    const plan = createResourceRuntimePlan(
+      directory,
+      `test -d "${clonePath}/.git" && test "$(cat "${clonePath}/README.md")" = "hello from repo"`,
+      [
+        {
+          branch: "main",
+          id: "project",
+          kind: "git",
+          mode: "mutable",
+          mount: clonePath,
+          url: originPath
+        }
+      ]
+    );
+    await mkdir(path.dirname(plan.instancePaths.configPath), { recursive: true });
+    await writeFile(plan.instancePaths.configPath, "{}\n");
+
+    const entrypoint = await writeExecutableEntrypoint(
+      directory,
+      renderEntrypoint([plan], [])
+    );
+    await execFile("bash", [entrypoint], { cwd: directory });
+
+    await expect(readFile(path.join(clonePath, "README.md"), "utf8")).resolves.toBe(
+      "hello from repo\n"
+    );
   });
 });
 
