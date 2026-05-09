@@ -199,7 +199,26 @@ The `compatibility` field tells the runtime which API format the endpoint speaks
 
 ### Workspace Resources
 
-`workspace.resources` may attach project resources to the generated runtime workspace. Resource entries are explicit mounts, not agent identity sources.
+`workspace.resources` attach project resources to the generated runtime workspace. The `mount` path is where the agent sees the resource:
+
+```yaml
+workspace:
+  resources:
+    - id: product
+      kind: git
+      url: https://github.com/example/product.git
+      branch: main
+      mount: ./repos/product
+      mode: mutable
+
+    - id: team-dropbox
+      kind: volume
+      mount: ./shared
+      mode: mutable
+      sharing: team
+```
+
+`./...` and `${workspace}/...` mounts are workspace-relative. Spawnfile prepares the real git clone or volume in managed backing storage, then creates a symlink inside each agent workspace. By default resources are `sharing: per_agent`, so each concrete agent gets its own backing resource. Use `sharing: team` only for shared volumes where team members should write to the same files.
 
 ### Sandbox
 
