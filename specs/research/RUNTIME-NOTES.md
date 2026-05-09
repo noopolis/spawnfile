@@ -534,7 +534,7 @@ Adapter target:
 NullClaw supports MCP, but current evidence suggests a stdio-first stance:
 
 - README advertises MCP
-- MeshRelay example says direct remote MCP URLs are not loaded directly from `mcp_servers`
+- MeshRelay example says direct remote MCP URLs are not loaded directly from `environment.mcp_servers`
 - stdio MCP servers via `command` + `args` are clearly supported
 
 Adapter target:

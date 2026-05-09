@@ -207,17 +207,17 @@ workspace:
     system: AGENTS.md
     memory: MEMORY.md
     heartbeat: HEARTBEAT.md
+  skills:
+    - ref: ./skills/web_search
+      requires:
+        mcp:
+          - web_search
 
-skills:
-  - ref: ./skills/web_search
-    requires:
-      mcp:
-        - web_search
-
-mcp_servers:
-  - name: web_search
-    transport: streamable_http
-    url: https://search.mcp.example.com/mcp
-    auth:
-      secret: SEARCH_API_KEY
+environment:
+  mcp_servers:
+    - name: web_search
+      transport: streamable_http
+      url: https://search.mcp.example.com/mcp
+      auth:
+        secret: SEARCH_API_KEY
 ```

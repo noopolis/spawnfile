@@ -10,7 +10,7 @@ import {
   removeDirectory,
   writeUtf8File
 } from "../filesystem/index.js";
-import { loadManifest } from "../manifest/index.js";
+import { isAgentManifest, loadManifest } from "../manifest/index.js";
 
 import { initProject } from "./initProject.js";
 
@@ -50,7 +50,9 @@ describe("initProject", () => {
       "Fill this in during your first conversation."
     );
     await expect(readUtf8File(path.join(directory, ".gitignore"))).resolves.toBe(".spawn/\n");
-    expect(loadedManifest.manifest.kind).toBe("agent");
+    if (loadedManifest.manifest.kind !== "agent") {
+      throw new Error("Expected agent manifest");
+    }
     expect(getRuntimeName(loadedManifest.manifest.runtime)).toBe("openclaw");
     expect(loadedManifest.manifest.workspace?.docs).toMatchObject({
       identity: "IDENTITY.md",
@@ -73,6 +75,10 @@ describe("initProject", () => {
     await expect(readUtf8File(path.join(directory, "AGENTS.md"))).resolves.toContain(
       "PicoClaw reads this from the workspace."
     );
+    expect(isAgentManifest(loadedManifest.manifest)).toBe(true);
+    if (!isAgentManifest(loadedManifest.manifest)) {
+      throw new Error("Expected agent manifest");
+    }
     expect(getRuntimeName(loadedManifest.manifest.runtime)).toBe("picoclaw");
     expect(loadedManifest.manifest.execution?.model?.auth).toBeUndefined();
     expect(loadedManifest.manifest.execution?.model?.primary.name).toBe("claude-sonnet-4-6");
@@ -88,6 +94,9 @@ describe("initProject", () => {
     const loadedManifest = await loadManifest(path.join(directory, "Spawnfile"));
 
     expect(result.createdFiles).toHaveLength(4);
+    if (loadedManifest.manifest.kind !== "agent") {
+      throw new Error("Expected agent manifest");
+    }
     expect(getRuntimeName(loadedManifest.manifest.runtime)).toBe("tinyclaw");
     await expect(fileExists(path.join(directory, "IDENTITY.md"))).resolves.toBe(false);
     await expect(readUtf8File(path.join(directory, "AGENTS.md"))).resolves.toContain(

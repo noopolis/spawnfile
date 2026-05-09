@@ -12,6 +12,7 @@ import type { EntrypointOptions } from "./containerEntrypointRender.js";
 export { renderEntrypoint } from "./containerEntrypointRender.js";
 export type { EntrypointOptions } from "./containerEntrypointRender.js";
 import { MOLTNET_BIN_DIRECTORY, MOLTNET_BINARY_NAMES } from "./moltnetBinaries.js";
+import type { ResolvedPackage } from "./types.js";
 
 const CONTAINER_ROOTFS_ROOT = "container/rootfs";
 const GATEWAY_PORT_PLACEHOLDER = "<gateway-port>";
@@ -28,6 +29,112 @@ const createPackageInstallCommand = (packages: string[]): string =>
 
 const createNpmPackageInstallCommand = (packages: string[]): string =>
   `RUN npm install -g --omit=dev --no-fund --no-audit ${packages.join(" ")}`;
+
+const createPipxPackageInstallCommand = (packages: string[]): string =>
+  `RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install ${packages.join(" ")}`;
+
+const dedupePackages = (packages: ResolvedPackage[]): ResolvedPackage[] => {
+  const seen = new Map<string, ResolvedPackage>();
+  for (const currentPackage of packages) {
+    seen.set(
+      `${currentPackage.manager}\u0000${currentPackage.name}\u0000${currentPackage.version ?? ""}\u0000${currentPackage.scope ?? ""}`,
+      currentPackage
+    );
+  }
+
+  return [...seen.values()].sort((left, right) =>
+    `${left.manager}\u0000${left.name}\u0000${left.version ?? ""}\u0000${left.scope ?? ""}`.localeCompare(
+      `${right.manager}\u0000${right.name}\u0000${right.version ?? ""}\u0000${right.scope ?? ""}`
+    )
+  );
+};
+
+const createPackageIdentity = (pkg: ResolvedPackage): string =>
+  `${pkg.manager}\u0000${pkg.name}\u0000${pkg.version ?? ""}\u0000${pkg.scope ?? ""}`;
+
+const createPackageConflictIdentity = (pkg: ResolvedPackage): string =>
+  `${pkg.manager}\u0000${pkg.name}`;
+
+const assertImagePackageCompatibility = (packages: ResolvedPackage[]): void => {
+  const byName = new Map<string, ResolvedPackage>();
+  for (const currentPackage of packages) {
+    const conflictIdentity = createPackageConflictIdentity(currentPackage);
+    const existingPackage = byName.get(conflictIdentity);
+    if (!existingPackage) {
+      byName.set(conflictIdentity, currentPackage);
+      continue;
+    }
+
+    if (createPackageIdentity(existingPackage) !== createPackageIdentity(currentPackage)) {
+      throw new SpawnfileError(
+        "validation_error",
+        `Generated container declares conflicting package definitions for ${currentPackage.manager} package ${currentPackage.name}`
+      );
+    }
+  }
+};
+
+const createAptPackageInstallItem = (pkg: ResolvedPackage): string =>
+  pkg.version ? `${pkg.name}=${pkg.version}` : pkg.name;
+
+const createNpmPackageInstallItem = (pkg: ResolvedPackage): string =>
+  pkg.version ? `${pkg.name}@${pkg.version}` : pkg.name;
+
+const createPipxPackageInstallItem = (pkg: ResolvedPackage): string =>
+  pkg.version ? `${pkg.name}==${pkg.version}` : pkg.name;
+
+const getNpmInstallItemName = (item: string): string => {
+  if (!item.startsWith("@")) {
+    const versionMarker = item.indexOf("@");
+    return versionMarker === -1 ? item : item.slice(0, versionMarker);
+  }
+
+  const slashIndex = item.indexOf("/");
+  if (slashIndex === -1) {
+    return item;
+  }
+
+  const versionMarker = item.indexOf("@", slashIndex);
+  return versionMarker === -1 ? item : item.slice(0, versionMarker);
+};
+
+const collectPackagesByManager = (runtimePlans: RuntimeTargetPlan[]): {
+  apt: ResolvedPackage[];
+  npm: ResolvedPackage[];
+  pipx: ResolvedPackage[];
+} => {
+  const packagesByManager: {
+    apt: ResolvedPackage[];
+    npm: ResolvedPackage[];
+    pipx: ResolvedPackage[];
+  } = {
+    apt: [],
+    npm: [],
+    pipx: []
+  };
+  const imagePackages = runtimePlans.flatMap((plan) => plan.packages ?? []);
+  assertImagePackageCompatibility(imagePackages);
+  const resolvedPackages = dedupePackages(imagePackages);
+
+  for (const packageConfig of resolvedPackages) {
+    if (packageConfig.manager === "apt") {
+      packagesByManager.apt.push(packageConfig);
+      continue;
+    }
+
+    if (packageConfig.manager === "npm") {
+      packagesByManager.npm.push(packageConfig);
+      continue;
+    }
+
+    if (packageConfig.manager === "pipx") {
+      packagesByManager.pipx.push(packageConfig);
+      continue;
+    }
+  }
+
+  return packagesByManager;
+};
 
 const selectBaseImage = (runtimePlans: RuntimeTargetPlan[]): string => {
   const firstRuntimeMeta = runtimePlans[0]?.meta;
@@ -99,9 +206,24 @@ export const renderDockerfile = async (
       ...(needsJsonEnvWriter ? ["python3"] : [])
     ])
   ].sort();
+  const { apt: aptPackages, npm: npmPackages, pipx: pipxPackages } =
+    collectPackagesByManager(runtimePlans);
+  const aptDependencies = [
+    ...systemDeps,
+    ...aptPackages.map((pkg) => createAptPackageInstallItem(pkg)),
+    ...(pipxPackages.length > 0 ? ["pipx"] : [])
+  ];
+  const aptInstallPackages = [...new Set(aptDependencies)].sort();
+  const projectNpmPackages = npmPackages.map((pkg) => createNpmPackageInstallItem(pkg));
+  const projectNpmPackageNames = new Set(projectNpmPackages.map(getNpmInstallItemName));
+  const runtimeNpmPackages = runtimePlans
+    .flatMap((plan) => plan.meta.globalNpmPackages ?? [])
+    .filter((pkg) => !projectNpmPackageNames.has(getNpmInstallItemName(pkg)));
   const globalNpmPackages = [
-    ...new Set(runtimePlans.flatMap((plan) => plan.meta.globalNpmPackages ?? []))
+    ...new Set([...runtimeNpmPackages, ...projectNpmPackages])
   ].sort();
+  const pipxInstallPackages = [...new Set(pipxPackages.map((pkg) => createPipxPackageInstallItem(pkg)))]
+    .sort();
   const runtimePorts = runtimePlans.flatMap((plan) =>
     plan.publishedPort ? [plan.publishedPort] : []
   );
@@ -116,12 +238,16 @@ export const renderDockerfile = async (
 
   lines.push("USER root", "", "WORKDIR /opt/spawnfile");
 
-  if (systemDeps.length > 0) {
-    lines.push(createPackageInstallCommand(systemDeps), "");
+  if (aptInstallPackages.length > 0) {
+    lines.push(createPackageInstallCommand(aptInstallPackages), "");
   }
 
   if (globalNpmPackages.length > 0) {
     lines.push(createNpmPackageInstallCommand(globalNpmPackages), "");
+  }
+
+  if (pipxInstallPackages.length > 0) {
+    lines.push(createPipxPackageInstallCommand(pipxInstallPackages), "");
   }
 
   if (options.hasMoltnet && options.hasStagedMoltnetBinaries) {

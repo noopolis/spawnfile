@@ -1,6 +1,7 @@
 import { SpawnfileError } from "../shared/index.js";
 
 import { stableStringify } from "./helpers.js";
+export { mergePackages } from "./surfaces.js";
 import type {
   CompilePlanNode,
   ResolvedAgentNode,
@@ -37,6 +38,7 @@ export const getAgentFingerprint = (node: ResolvedAgentNode): string =>
     mcpServers: node.mcpServers,
     runtime: node.runtime,
     schedule: node.schedule,
+    packages: node.packages,
     secrets: node.secrets,
     skills: node.skills.map((skill) => ({
       name: skill.name,
@@ -58,6 +60,7 @@ export const getTeamFingerprint = (node: ResolvedTeamNode): string =>
     shared: {
       env: node.shared.env,
       mcpServers: node.shared.mcpServers,
+      packages: node.shared.packages,
       secrets: node.shared.secrets,
       skills: node.shared.skills.map((skill) => ({
         name: skill.name,

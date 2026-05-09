@@ -25,7 +25,8 @@ import type {
   ContainerEnvVariable,
   RuntimeTargetPlan
 } from "./containerArtifactsTypes.js";
-import { mergeWorkspaceResourcePlans } from "./workspaceResources.js";
+import type { ResolvedPackage } from "./types.js";
+import { resolveTargetResources } from "./containerTargetResources.js";
 
 const CONFIG_FILE_PLACEHOLDER = "<config-file>";
 const INSTANCE_ROOT_PLACEHOLDER = "<instance-root>";
@@ -66,6 +67,54 @@ const assertTargetHasConfig = (
   }
 };
 
+const createPackageIdentity = (pkg: ResolvedPackage): string =>
+  `${pkg.manager}\u0000${pkg.name}\u0000${pkg.version ?? ""}\u0000${pkg.scope ?? ""}`;
+
+const createPackageConflictIdentity = (pkg: ResolvedPackage): string =>
+  `${pkg.manager}\u0000${pkg.name}`;
+
+const createPackageLabel = (pkg: ResolvedPackage): string =>
+  `${pkg.manager} package ${pkg.name}`;
+
+const resolveTargetPackages = (
+  target: ContainerTarget,
+  inputs: ContainerTargetInput[]
+): ResolvedPackage[] => {
+  const sourceIds = new Set(target.sourceIds ?? []);
+  if (sourceIds.size === 0) {
+    return [];
+  }
+
+  const byIdentity = new Map<string, ResolvedPackage>();
+
+  for (const input of inputs) {
+    if (!sourceIds.has(input.id) || input.value.kind !== "agent") {
+      continue;
+    }
+
+    const candidatePackages = input.value.packages ?? [];
+    for (const currentPackage of candidatePackages) {
+      const conflictIdentity = createPackageConflictIdentity(currentPackage);
+      const existingPackage = byIdentity.get(conflictIdentity);
+      if (!existingPackage) {
+        byIdentity.set(conflictIdentity, currentPackage);
+        continue;
+      }
+
+      if (createPackageIdentity(existingPackage) !== createPackageIdentity(currentPackage)) {
+        throw new SpawnfileError(
+          "validation_error",
+          `Container target ${target.id} declares conflicting package definitions for ${createPackageLabel(currentPackage)}`
+        );
+      }
+    }
+  }
+
+  return [...byIdentity.values()].sort((left, right) =>
+    createPackageIdentity(left).localeCompare(createPackageIdentity(right))
+  );
+};
+
 const replaceContainerPathTemplate = (
   template: string,
   instanceRoot: string,
@@ -79,7 +128,7 @@ const resolveInstancePaths = (
   runtimeName: string,
   targetId: string,
   meta: RuntimeContainerMeta
-): { configPath: string; homePath?: string; workspacePath: string } => {
+): { configPath: string; homePath?: string; instanceRoot: string; workspacePath: string } => {
   const instanceRoot = `/var/lib/spawnfile/instances/${runtimeName}/${targetId}`;
 
   return {
@@ -90,11 +139,12 @@ const resolveInstancePaths = (
     ),
     homePath: meta.instancePaths.homePathTemplate
       ? replaceContainerPathTemplate(
-          meta.instancePaths.homePathTemplate,
-          instanceRoot,
-          meta.configFileName
-        )
+      meta.instancePaths.homePathTemplate,
+      instanceRoot,
+      meta.configFileName
+    )
       : undefined,
+    instanceRoot,
     workspacePath: replaceContainerPathTemplate(
       meta.instancePaths.workspacePathTemplate,
       instanceRoot,
@@ -253,26 +303,6 @@ const resolveTargetExposure = (
   );
 };
 
-const resolveTargetResources = (
-  target: ContainerTarget,
-  inputs: ContainerTargetInput[],
-  instancePaths: { workspacePath: string }
-) => {
-  const sourceIds = new Set(target.sourceIds ?? []);
-  if (sourceIds.size === 0) {
-    return [];
-  }
-
-  const resources = inputs.flatMap((input) =>
-    sourceIds.has(input.id) ? (input.value.workspaceResources ?? []) : []
-  );
-
-  return mergeWorkspaceResourcePlans(resources, `container target ${target.id}`, {
-    targetId: target.id,
-    workspacePath: instancePaths.workspacePath
-  });
-};
-
 export const createRuntimeTargetPlans = async (
   plan: CompilePlan,
   compiledNodes: CompiledNodeArtifact[]
@@ -306,6 +336,7 @@ export const createRuntimeTargetPlans = async (
       runtimePlans.push({
         configEnvBindings: resolveTargetConfigEnvBindings(adapter.container, target) ?? [],
         envFiles: resolveTargetEnvFiles(instancePaths.configPath, target),
+        packages: resolveTargetPackages(target, targetInputs),
         id: target.id,
         instancePaths,
         meta: adapter.container,
@@ -316,7 +347,12 @@ export const createRuntimeTargetPlans = async (
           resolveTargetExposure(target, targetInputs) && adapter.container.port
             ? adapter.container.port + (index * portStride)
             : undefined,
-        resources: resolveTargetResources(target, targetInputs, instancePaths),
+        resources: resolveTargetResources(
+          target,
+          targetInputs,
+          instancePaths,
+          adapter.container
+        ),
         runtimeName,
         runtimeRoot: recipe.runtimeRoot,
         targetConfigEnvBindings: target.configEnvBindings,

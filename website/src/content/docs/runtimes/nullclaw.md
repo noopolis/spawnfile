@@ -29,7 +29,7 @@ An adapter would need to preserve `SKILL.md` and potentially synthesize the TOML
 NullClaw supports MCP with a **stdio-first** approach:
 
 - stdio MCP servers via `command` + `args` are clearly supported
-- Remote MCP URLs are not loaded directly from `mcp_servers` -- they may require a local bridge
+- Remote MCP URLs are not loaded directly from `environment.mcp_servers` -- they may require a local bridge
 
 This means Spawnfile's `stdio` transport maps well, but `streamable_http` and `sse` transports may need adapter-specific bridging.
 

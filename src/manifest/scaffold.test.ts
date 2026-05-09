@@ -78,9 +78,11 @@ describe("createAgentScaffoldManifest", () => {
 describe("createTeamScaffoldManifest", () => {
   it("builds the default team scaffold manifest", () => {
     expect(createTeamScaffoldManifest()).toMatchObject({
-      workspace: {
-        docs: {
-          system: "TEAM.md"
+      shared: {
+        workspace: {
+          docs: {
+            system: "TEAM.md"
+          }
         }
       },
       kind: "team",

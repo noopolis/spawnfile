@@ -16,8 +16,11 @@ src/compiler/
 ├── surfaceSupport.ts           # Runtime surface compatibility checks during graph resolution
 ├── surfaces.ts                 # Resolved docs, skills, and shared-surface merging
 ├── buildCompilePlan.ts         # Manifest graph walk and plan construction
+├── buildCompilePlanTraversal.ts # Graph traversal + recursion by manifest kind
+├── buildCompilePlanTraversalHelpers.ts # Shared traversal helper primitives
 ├── compileProject.ts           # Adapter execution and output/report emission
 ├── compileProjectSupport.ts    # Shared compile-time artifact injection and file writing helpers
+├── containerTargetResources.ts # Per-runtime workspace resource placement for container targets
 ├── teamRoster.ts               # Context-scoped team roster generation and diagnostics
 ├── runProject.ts               # `spawnfile run` docker-run planning and execution
 ├── initProject.ts              # `spawnfile init` orchestration around runtime-owned scaffolds

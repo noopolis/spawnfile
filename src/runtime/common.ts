@@ -55,6 +55,8 @@ export const createAgentCapabilities = (
   options: {
     mcpOutcome?: CapabilityReport["outcome"];
     sandboxOutcome?: CapabilityReport["outcome"];
+    scheduleMessage?: string;
+    scheduleOutcome?: CapabilityReport["outcome"];
     subagentOutcome?: CapabilityReport["outcome"];
   } = {}
 ): CapabilityReport[] => {
@@ -86,8 +88,8 @@ export const createAgentCapabilities = (
     capabilities.push(
       createCapability(
         "agent.schedule",
-        "degraded",
-        "Schedule intent is validated but no runtime scheduler is emitted yet"
+        options.scheduleOutcome ?? "degraded",
+        options.scheduleMessage ?? "Schedule intent is validated but no runtime scheduler is emitted yet"
       )
     );
   }

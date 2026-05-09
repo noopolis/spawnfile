@@ -33,7 +33,7 @@ The reference pipeline is:
 4. Detect cycles and incompatible duplicate references.
 5. Resolve effective `runtime` and `execution` for every graph node.
 6. Resolve `description` for every agent node (from manifest or derived from `workspace.docs.identity`).
-7. Resolve workspace resources and inheritance context for each concrete agent.
+7. Resolve workspace, skills, and environment inheritance context for each concrete agent.
 8. Resolve schedule lowering constraints.
 9. Build a normalized intermediate representation.
 10. Group resolved nodes by runtime.
@@ -119,13 +119,15 @@ even when authored as a shorthand string. This normalization happens once during
 
 ### Resolution Implementation
 
-The compiler resolves effective configuration during graph walking, not as a separate pass. Each node's effective runtime, execution, `workspace.docs`, `workspace.resources`, and schedule are computed when the node is first visited, and the result is cached by canonical manifest path with a fingerprint to detect conflicting resolutions.
+The compiler resolves effective configuration during graph walking, not as a separate pass. Each node's effective runtime, execution, `workspace.docs`, `workspace.resources`, `workspace.skills`, `environment`, and schedule are computed when the node is first visited, and the result is cached by canonical manifest path with a fingerprint to detect conflicting resolutions.
 
 ---
 
 ## Intermediate Representation
 
 The compiler should normalize manifests into two node types and one plan.
+
+Resolved IR is not Spawnfile authoring syntax. The examples below use compiler field names after canonical `workspace.*`, `environment.*`, `shared.workspace.*`, and `shared.environment.*` declarations have been resolved. Fields such as `docs`, `workspaceResources`, `skills`, `mcpServers`, `env`, `secrets`, and `packages` MUST NOT be accepted as top-level authored manifest fields.
 
 ### Resolved Agent
 
@@ -163,13 +165,13 @@ surfaces:
         - "U1234567890"
     app_token_secret: SLACK_APP_TOKEN
     bot_token_secret: SLACK_BOT_TOKEN
-workspace:
-  docs: {}
-  resources: []
+docs: []
+workspaceResources: []
 skills: []
-mcp_servers: []
+mcpServers: []
 env: {}
 secrets: []
+packages: []
 subagents: []
 ```
 
@@ -190,14 +192,14 @@ kind: team
 id: team:research-cell
 source: /abs/path/to/Spawnfile
 description: "Research team that finds, analyzes, and writes up findings"
-workspace:
-  docs: {}
-  resources: []
+docs: []
+workspaceResources: []
 shared:
-  skills: []
-  mcp_servers: []
   env: {}
+  mcpServers: []
   secrets: []
+  packages: []
+  skills: []
 members: []
 mode: swarm
 lead: null
@@ -205,7 +207,7 @@ external: []
 networks: []
 ```
 
-Note: `mode`, `lead`, `external`, and `networks` are top-level team fields, not nested under `structure`. Team manifests do not carry an `auth` field in the alpha reset.
+Note: `mode`, `lead`, `external`, and `networks` are top-level team fields, not nested under `structure`. Team manifests do not carry an `auth` field in the current v0.1 contract.
 
 ### Compile Plan
 
@@ -233,7 +235,7 @@ When compiling a team, the compiler generates context-scoped team artifacts afte
 1. Resolve each member's `description` from the agent manifest's `description` field, or derive it from `workspace.docs.identity` if available.
 2. Build membership-context records keyed by `(agent-source, team-source, member-slot-id)`. The same agent source may fill several team roles without merging those contexts.
 3. Resolve the representative interface for nested team slots using `external`, `lead`, and swarm fallback.
-4. Resolve `workspace.resources` for each concrete member from team-local and direct inheritance, preserving the manifest scope that declared each resource so team-shared backing storage can be scoped to that team.
+4. Resolve `workspace.resources`, `workspace.skills`, and `environment` for each concrete member from team-local and direct inheritance, preserving the manifest scope that declared each resource so team-shared backing storage can be scoped to that team.
 5. Resolve team networks. Moltnet parent-room members that name child-team slots expand only to the child team's selected concrete representatives.
 6. Emit a generated resource plan that lists each resource's declared mount, concrete agent-visible link path, backing path, and sharing mode.
 7. Generate namespaced direct-membership `TEAM.md` files under `.spawnfile/team-contexts/<team-context-key>/TEAM.md`.
@@ -307,7 +309,7 @@ Representative agents also receive parent-context artifacts:
 .spawnfile/team-cards/<team-context-key>/<parent-member-slot-id>.md
 ```
 
-`TEAM.md` is emitted literally from the team's `workspace.docs.system` source document. It bypasses runtime document-role mapping so it does not replace the agent's own system instructions. The compiler must not merge several `TEAM.md` files.
+`TEAM.md` is emitted literally from the team's `shared.workspace.docs.system` source document. It bypasses runtime document-role mapping so it does not replace the agent's own system instructions. The compiler must not merge several `TEAM.md` files.
 
 `EmittedFile` remains a plain file-output contract:
 
@@ -528,12 +530,14 @@ The compiler should use these keys by default:
 - `workspace.docs.memory`
 - `workspace.docs.heartbeat`
 - `workspace.docs.extras.<name>`
-- `skills.<name-or-ref>`
+- `workspace.skills.<name-or-ref>`
 - `mcp.<name>`
 - `execution.model`
 - `execution.sandbox`
 - `agent.schedule`
 - `workspace.resources`
+- `workspace.skills`
+- `environment`
 - `agent.subagents`
 - `team.members`
 - `team.mode`
@@ -546,6 +550,8 @@ The compiler should use these keys by default:
 - `team.networks.<provider>`
 - `team.networks.<provider>.<network-id-key>`
 - `team.shared`
+- `team.shared.workspace`
+- `team.shared.environment`
 - `team.nested`
 - `surfaces.<name>.identity`
 
@@ -635,6 +641,23 @@ The E2E should compile, build, and run a fixture with a parent team, nested chil
 - failures print Docker logs and relevant room histories
 
 Slack, Discord, Telegram, and WhatsApp do not require equivalent team-chat E2Es for this contract because Spawnfile only carries their declared identity/roster metadata. Moltnet is the provider Spawnfile provisions and lowers.
+
+### Operational Docker E2E
+
+Compiler unit tests are also not sufficient to prove that `spawnfile up`
+materializes a working organization. Spawnfile v0.1 requires an opt-in
+operational Docker E2E for schedule, Moltnet, and workspace-resource behavior.
+
+The operational E2E should run `spawnfile up` on a deterministic fixture and
+verify the running container rather than only inspecting compile output:
+
+- a managed Moltnet server starts and passes health checks
+- the runtime starts and exposes its local API inside the container
+- the agent's Moltnet node registers and attaches to the declared room
+- a cron schedule wakes the agent through runtime-native scheduling
+- agent-owned workspace resources are linked inside the agent's runtime working directory
+- team-shared workspace resources are linked inside the agent's runtime working directory
+- model credentials are not required for the smoke path
 
 ## Coverage Targets
 

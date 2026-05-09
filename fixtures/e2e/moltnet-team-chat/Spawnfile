@@ -3,9 +3,10 @@ kind: team
 name: moltnet-team-chat
 description: "E2E fixture for Moltnet representative team chat"
 
-workspace:
-  docs:
-    system: TEAM.md
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
 
 members:
   - id: coordinator

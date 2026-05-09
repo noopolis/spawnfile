@@ -23,6 +23,7 @@ describe("tinyClawAdapter", () => {
       instancePaths: {
         configPathTemplate: "<instance-root>/tinyagi/<config-file>",
         homePathTemplate: "<instance-root>/tinyagi",
+        sourceWorkspacePathTemplate: "<instance-root>/workspace/<agent-name>",
         workspacePathTemplate: "<instance-root>/workspace"
       },
       port: 3777,
@@ -98,6 +99,104 @@ describe("tinyClawAdapter", () => {
     expect(config.agents.assistant.model).toBe("claude-sonnet-4-5");
     expect(config.workspace).toBeTruthy();
     expect(config.agent).toBeUndefined();
+  });
+
+  it("lowers cron schedules into TinyClaw schedules.json", async () => {
+    const node: ResolvedAgentNode = {
+      description: "",
+      docs: [],
+      env: {},
+      execution: {
+        model: {
+          primary: {
+            auth: { method: "none" },
+            name: "noop",
+            provider: "opencode"
+          }
+        }
+      },
+      kind: "agent",
+      mcpServers: [],
+      name: "scheduled",
+      policyMode: null,
+      policyOnDegrade: null,
+      runtime: { name: "tinyclaw", options: {} },
+      schedule: {
+        cron: "* * * * *",
+        kind: "cron",
+        prompt: "check the room"
+      },
+      secrets: [],
+      skills: [],
+      source: "/tmp/scheduled/Spawnfile",
+      subagents: []
+    };
+
+    const compiled = await tinyClawAdapter.compileAgent(node);
+    const targets = await tinyClawAdapter.createContainerTargets?.([
+      {
+        emittedFiles: compiled.files,
+        id: "agent:scheduled",
+        kind: "agent",
+        slug: "scheduled",
+        value: node
+      }
+    ]);
+
+    const schedulesFile = targets?.[0]?.files.find((file) => file.path === "home/schedules.json");
+    const schedules = JSON.parse(schedulesFile?.content ?? "[]");
+
+    expect(schedules).toEqual([
+      {
+        agentId: "scheduled",
+        channel: "schedule",
+        createdAt: 0,
+        cron: "* * * * *",
+        enabled: true,
+        id: "spawnfile-scheduled",
+        label: "Spawnfile schedule for scheduled",
+        message: "check the room",
+        sender: "Spawnfile Scheduler"
+      }
+    ]);
+    expect(
+      compiled.capabilities.find((capability) => capability.key === "agent.schedule")?.outcome
+    ).toBe("supported");
+  });
+
+  it("degrades every schedules because TinyClaw only lowers cron natively", async () => {
+    const node: ResolvedAgentNode = {
+      description: "",
+      docs: [],
+      env: {},
+      execution: undefined,
+      kind: "agent",
+      mcpServers: [],
+      name: "scheduled",
+      policyMode: null,
+      policyOnDegrade: null,
+      runtime: { name: "tinyclaw", options: {} },
+      schedule: {
+        every: "2h",
+        kind: "every"
+      },
+      secrets: [],
+      skills: [],
+      source: "/tmp/scheduled/Spawnfile",
+      subagents: []
+    };
+
+    const result = await tinyClawAdapter.compileAgent(node);
+
+    expect(
+      result.capabilities.find((capability) => capability.key === "agent.schedule")?.outcome
+    ).toBe("degraded");
+    expect(result.diagnostics).toEqual([
+      {
+        level: "warn",
+        message: expect.stringContaining("every schedules are degraded")
+      }
+    ]);
   });
 
   it("emits Discord channel settings when Discord is declared", async () => {

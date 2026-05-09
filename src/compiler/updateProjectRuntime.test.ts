@@ -5,7 +5,7 @@ import { mkdtemp } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { readUtf8File, removeDirectory, writeUtf8File } from "../filesystem/index.js";
-import { isTeamManifest, loadManifest } from "../manifest/index.js";
+import { isAgentManifest, isTeamManifest, loadManifest } from "../manifest/index.js";
 
 import { addAgentProject, addSubagentProject } from "./addProjectNode.js";
 import { initProject } from "./initProject.js";
@@ -62,6 +62,11 @@ describe("setProjectRuntime", () => {
       path.join(directory, "agents", "writer", "subagents", "critic", "Spawnfile")
     ]);
     expect(isTeamManifest(rootManifest.manifest)).toBe(true);
+    expect(isAgentManifest(writerManifest.manifest)).toBe(true);
+    expect(isAgentManifest(criticManifest.manifest)).toBe(true);
+    if (!isAgentManifest(writerManifest.manifest) || !isAgentManifest(criticManifest.manifest)) {
+      throw new Error("expected agent manifests");
+    }
     expect(writerManifest.manifest.runtime).toBe("picoclaw");
     expect(criticManifest.manifest.runtime).toBe("picoclaw");
   });

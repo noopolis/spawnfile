@@ -23,6 +23,7 @@ export interface UpProjectOptions extends CompileProjectOptions {
 export interface UpProjectResult extends BuildProjectResult {
   authProfileName: string | null;
   containerName: string | null;
+  supportDirectory: string | null;
 }
 
 export const upProject = async (
@@ -58,6 +59,7 @@ export const upProject = async (
   return {
     ...buildResult,
     authProfileName: authProfile?.name ?? null,
-    containerName: invocation.containerName
+    containerName: invocation.containerName,
+    supportDirectory: invocation.supportDirectory
   };
 };

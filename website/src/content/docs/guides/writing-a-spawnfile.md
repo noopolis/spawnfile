@@ -1,11 +1,11 @@
 ---
 title: Writing a Spawnfile
-description: Complete manifest reference covering every field in the Spawnfile format, with examples for each.
+description: Guide to the common Spawnfile manifest fields for agents and teams, with examples for the main portable sections.
 ---
 
 A Spawnfile manifest is a YAML file named exactly `Spawnfile` (no extension) at the root of your agent or team project directory. It must be valid YAML 1.2 and UTF-8 encoded with no BOM.
 
-This guide covers every field the manifest supports.
+This guide covers the common portable fields used by agent and team manifests. For full normative details, including team-specific fields, see the [spec](/spec/spec/) and the [Teams guide](/guides/teams/).
 
 ## Required Fields
 
@@ -28,7 +28,8 @@ The `runtime` field declares which runtime adapter should compile the manifest. 
 Short form:
 
 ```yaml
-runtime: openclaw
+runtime:
+  name: openclaw
 ```
 
 Long form with options:
@@ -46,7 +47,7 @@ For agents with subagents, the parent's runtime is inherited. Subagents must not
 
 ## workspace
 
-The `workspace` block declares portable markdown surfaces and attached working resources. `workspace.docs` defines the agent's identity, behavior, and operating context. All doc fields are optional.
+The `workspace` block declares portable markdown surfaces, attached working resources, and local skills for an agent. `workspace.docs` defines the agent's identity, behavior, and operating context. All doc fields are optional.
 
 ```yaml
 workspace:
@@ -59,11 +60,15 @@ workspace:
     extras:
       user: USER.md
       notes: docs/NOTES.md
+  skills:
+    - ref: ./skills/web_search
 ```
 
 Each path must resolve to a UTF-8 Markdown file within the project root. See the [Agent Docs guide](/guides/agent-docs/) for what goes in each role.
 
 Paths must use forward slashes and must not escape the project root via `..` traversal. Symlinks are not followed during compilation.
+
+Teams declare shared workspace material under `shared.workspace` instead of `workspace`.
 
 ## schedule
 
@@ -85,42 +90,44 @@ Supported forms:
 
 `cron` and `every` schedules may include `timezone` and `prompt`. The prompt should describe one bounded wake iteration and usually complements `workspace.docs.heartbeat`.
 
+Schedule declarations are portable wake intent. In this alpha, runtimes may report schedule lowering as degraded when they validate the intent but do not emit a native scheduler yet.
+
 ## skills
 
-The `skills` list declares skill directories available to the agent. Each entry must have a `ref` pointing to a directory that contains a `SKILL.md` file.
+The `workspace.skills` list declares skill directories available to the agent. Each entry must have a `ref` pointing to a directory that contains a `SKILL.md` file.
 
 ```yaml
-skills:
-  - ref: ./skills/web_search
-    requires:
-      mcp:
-        - web_search
-  - ref: ./skills/memory_store
-    requires:
-      mcp:
-        - memory_store
+workspace:
+  skills:
+    - ref: ./skills/web_search
+      requires:
+        mcp:
+          - web_search
 ```
 
-The optional `requires.mcp` list names MCP servers that the skill depends on. The compiler validates these names against the agent's `mcp_servers` list and reports an error if any required server is missing.
+The optional `requires.mcp` list names MCP servers that the skill depends on. The compiler validates these names against the agent's visible MCP server list and reports an error if any required server is missing.
+
+Teams can declare inherited skill directories under `shared.workspace.skills` with the same shape.
 
 See [Skills and MCP](/guides/skills-and-mcp/) for details.
 
-## mcp_servers
+## environment.mcp_servers
 
-The `mcp_servers` list declares MCP (Model Context Protocol) servers available to the agent.
+The `environment.mcp_servers` list declares MCP (Model Context Protocol) servers available to the agent.
 
 ```yaml
-mcp_servers:
-  - name: web_search
-    transport: streamable_http
-    url: https://search.mcp.example.com/mcp
-    auth:
-      secret: SEARCH_API_KEY
-  - name: local_index
-    transport: stdio
-    command: node
-    args:
-      - ./tools/index-mcp.js
+environment:
+  mcp_servers:
+    - name: web_search
+      transport: streamable_http
+      url: https://search.mcp.example.com/mcp
+      auth:
+        secret: SEARCH_API_KEY
+    - name: local_index
+      transport: stdio
+      command: node
+      args:
+        - ./tools/index-mcp.js
 ```
 
 Each entry must have a unique `name` within its manifest scope. The `transport` field must be one of `stdio`, `streamable_http`, or `sse`.
@@ -210,15 +217,17 @@ workspace:
       branch: main
       mount: ./repos/product
       mode: mutable
-
-    - id: team-dropbox
+    - id: agent-scratch
       kind: volume
-      mount: ./shared
+      mount: ./scratch
       mode: mutable
-      sharing: team
 ```
 
-`./...` and `${workspace}/...` mounts are workspace-relative. Spawnfile prepares the real git clone or volume in managed backing storage, then creates a symlink inside each agent workspace. By default resources are `sharing: per_agent`, so each concrete agent gets its own backing resource. Use `sharing: team` only for shared volumes where team members should write to the same files.
+`./...` and `${workspace}/...` mounts are workspace-relative. Absolute paths are advanced container paths. Mounts must not point at the workspace root, contain `..`, or overlap another resource mount for the same concrete agent.
+
+Spawnfile prepares the real git clone or volume in managed backing storage, then creates a symlink inside each agent workspace. If the target path already exists and is not the expected symlink, startup fails instead of hiding those files. Existing git backing directories are reused only when their remote and selected branch, tag, or ref match the declaration.
+
+By default resources are `sharing: per_agent`, so each concrete agent gets its own backing resource. Use `sharing: team` only for shared volumes where team members should write to the same files. Git resources cannot use `sharing: team`; declare the git resource once at team level under `shared.workspace.resources` and let each concrete agent receive its own checkout.
 
 ### Sandbox
 
@@ -226,37 +235,46 @@ workspace:
 - `mode: sandboxed` applies stricter containment (runtime-dependent).
 - `mode: unrestricted` gives the agent full filesystem access.
 
-## env
+## environment
 
-A flat key-value map of non-secret environment values. Values must be strings.
-
-```yaml
-env:
-  LOG_LEVEL: info
-```
-
-## secrets
-
-A list of secret declarations. Each entry must have a `name` and a `required` flag.
+The `environment` block declares runtime and image inputs. `environment.env` carries non-secret values, `environment.secrets` names required credentials, and `environment.packages` declares package inputs for the runtime or container image.
 
 ```yaml
-secrets:
-  - name: SEARCH_API_KEY
-    required: true
-  - name: MEMORY_API_KEY
-    required: false
+environment:
+  env:
+    LOG_LEVEL: info
+  secrets:
+    - name: SEARCH_API_KEY
+      required: true
+    - name: MEMORY_API_KEY
+      required: false
+  packages:
+    - id: github-cli
+      manager: apt
+      name: gh
 ```
 
-The compiler warns when a required secret is not present in the execution environment used for compilation.
+Values in `environment.env` must be strings. The compiler warns when a required secret is not present in the execution environment used for compilation.
 
 Declared secrets are also used by the auth/run workflow. `spawnfile auth sync --env-file .env` copies required secret values into the selected auth profile and fails if a required value is missing. Optional secrets are copied only when present. `spawnfile run --env-file .env` can inject the same env file directly into the generated Docker run environment.
+
+Teams can declare inherited environment inputs under `shared.environment` with the same shape.
+
+Package declarations lower into generated container images:
+
+- `manager: apt` installs a Debian package with `apt-get install`; `version` becomes `name=version`.
+- `manager: npm` installs a global npm package with `npm install -g`; `version` becomes `name@version`. `scope`, when present, must be `global`.
+- `manager: pipx` installs a Python CLI package with `pipx install`; `version` becomes `name==version`.
+
+Inherited team packages are merged into each direct member. If a member declares the same `manager` and `name`, the member-local package wins. If several agents are packed into the same generated container target and their effective package definitions conflict, the compiler fails rather than picking one silently.
 
 This is the intended pattern for external credentials such as repository tokens:
 
 ```yaml
-secrets:
-  - name: GH_TOKEN
-    required: true
+environment:
+  secrets:
+    - name: GH_TOKEN
+      required: true
 ```
 
 ```bash
@@ -437,7 +455,7 @@ subagents:
 
 Each subagent must have a unique `id` and a `ref` pointing to an agent source project (a directory with its own `Spawnfile`).
 
-Subagents inherit the parent's runtime. They do not inherit docs, skills, MCP servers, env, or secrets -- each subagent is a self-contained project.
+Subagents inherit the parent's runtime. They do not inherit the parent's `workspace` or `environment` declarations -- each subagent is a self-contained project.
 
 For execution, the parent's `execution` is deep-merged with the subagent's local `execution`: objects merge recursively, scalars replace, arrays replace wholesale.
 
@@ -452,10 +470,11 @@ execution:
       provider: ${PROVIDER:-anthropic}
       name: ${MODEL:-claude-sonnet-4-5}
 
-mcp_servers:
-  - name: web_search
-    transport: streamable_http
-    url: ${SEARCH_MCP_URL}
+environment:
+  mcp_servers:
+    - name: web_search
+      transport: streamable_http
+      url: ${SEARCH_MCP_URL}
 ```
 
 If a referenced variable is not set and has no default, the compiler fails. Substitution is not recursive -- a resolved value containing `${...}` is treated as literal.
@@ -484,7 +503,8 @@ spawnfile_version: "0.1"
 kind: agent
 name: analyst
 
-runtime: openclaw
+runtime:
+  name: openclaw
 
 execution:
   model:
@@ -508,19 +528,11 @@ workspace:
     system: AGENTS.md
     memory: MEMORY.md
     heartbeat: HEARTBEAT.md
-
-skills:
-  - ref: ./skills/web_search
-    requires:
-      mcp:
-        - web_search
-
-mcp_servers:
-  - name: web_search
-    transport: streamable_http
-    url: https://search.mcp.example.com/mcp
-    auth:
-      secret: SEARCH_API_KEY
+  skills:
+    - ref: ./skills/web_search
+      requires:
+        mcp:
+          - web_search
 
 surfaces:
   discord:
@@ -534,9 +546,16 @@ surfaces:
         - "123456789"
     bot_token_secret: TELEGRAM_BOT_TOKEN
 
-secrets:
-  - name: SEARCH_API_KEY
-    required: true
+environment:
+  mcp_servers:
+    - name: web_search
+      transport: streamable_http
+      url: https://search.mcp.example.com/mcp
+      auth:
+        secret: SEARCH_API_KEY
+  secrets:
+    - name: SEARCH_API_KEY
+      required: true
 
 policy:
   mode: warn

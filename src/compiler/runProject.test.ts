@@ -5,7 +5,12 @@ import { mkdtemp } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { requireAuthProfile, registerImportedAuth, setAuthProfileEnv } from "../auth/index.js";
-import { fileExists, readUtf8File, removeDirectory, writeUtf8File } from "../filesystem/index.js";
+import {
+  fileExists,
+  readUtf8File,
+  removeDirectory,
+  writeUtf8File
+} from "../filesystem/index.js";
 import type { CompileReport } from "../report/index.js";
 
 import {

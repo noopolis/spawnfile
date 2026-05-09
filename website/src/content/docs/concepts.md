@@ -26,11 +26,13 @@ The `Spawnfile` is a YAML file named exactly `Spawnfile` (no extension). It decl
 
 - **kind** -- `agent` or `team`
 - **name** -- the agent's identifier
-- **runtime** -- which runtime to compile for
-- **docs** -- references to markdown identity documents
-- **skills** -- skill directories with `SKILL.md`
-- **mcp_servers** -- MCP tool connections
+- **runtime** -- agent-only runtime adapter binding
+- **workspace.docs** -- references to markdown identity documents for agents
+- **workspace.skills** -- skill directories with `SKILL.md` for agents
+- **shared.workspace.docs** and **shared.workspace.skills** -- inherited team docs and skills
+- **environment.mcp_servers** -- MCP tool connections
 - **execution** -- model, workspace, and sandbox intent
+- **environment** -- env vars, secrets, and package inputs
 - **surfaces** -- agent-level communication channels (Discord, Telegram, WhatsApp, Slack, Moltnet, Webhook)
 
 ## Document Roles
@@ -73,7 +75,7 @@ A team is an organizational structure of independent agents. It defines:
 
 - **members** -- agents that belong together
 - **mode/lead/external** -- hierarchy, lead slot, and representative interface
-- **shared** -- skills, MCP servers, env, and secrets inherited by all members
+- **shared.workspace** and **shared.environment** -- docs, resources, skills, env, secrets, and packages inherited by all members
 - **networks** -- provider-backed team communication topology
 
 Each member agent declares its own runtime. One team can span multiple runtimes. Team coordination happens through shared declared agent surfaces and declared `team.networks[]`, not a Spawnfile-owned router.

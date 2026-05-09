@@ -7,7 +7,7 @@ Spawnfile is a spec and compiler for **autonomous agent runtimes** -- systems th
 
 ## The Problem
 
-Every autonomous agent runtime has its own config format. If you build an agent on OpenClaw, you can't run it on PicoClaw or TinyClaw without rewriting the config, restructuring the workspace, and re-wiring skills and MCP connections.
+Every autonomous agent runtime has its own config format. OpenClaw, PicoClaw, and TinyClaw each expect different runtime config, workspace layout, skill wiring, and MCP wiring.
 
 Your agent's identity -- its personality, instructions, skills, and tool connections -- gets locked into one runtime's conventions.
 
@@ -16,18 +16,25 @@ Your agent's identity -- its personality, instructions, skills, and tool connect
 Spawnfile gives you one canonical source format. You write a `Spawnfile` manifest and a set of markdown docs. The compiler generates the runtime-native config and workspace files each target expects.
 
 ```yaml
+spawnfile_version: "0.1"
 kind: agent
 name: research-assistant
-runtime: openclaw
+runtime:
+  name: openclaw
 
 workspace:
   docs:
-    soul: SOUL.md
     identity: IDENTITY.md
+    soul: SOUL.md
     system: AGENTS.md
+  skills:
+    - ref: ./skills/web_search
 
-skills:
-  - ref: ./skills/web_search
+environment:
+  packages:
+    - id: playwright
+      manager: npm
+      name: playwright
 
 execution:
   model:
@@ -38,7 +45,7 @@ execution:
         method: claude-code
 ```
 
-Change `runtime: openclaw` to `runtime: picoclaw` or `runtime: tinyclaw`, run `spawnfile compile`, and the compiler emits the right files for that runtime.
+Set `runtime.name` to an adapter-supported runtime and run `spawnfile compile`. The compiler emits that runtime's native files and reports any capability that is degraded or unsupported.
 
 ## What Spawnfile Targets
 

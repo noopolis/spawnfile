@@ -53,9 +53,11 @@ export const createTeamScaffoldManifest = (): TeamManifest => ({
   spawnfile_version: "0.1" as const,
   kind: "team" as const,
   name: "my-team",
-  workspace: {
-    docs: {
-      system: "TEAM.md"
+  shared: {
+    workspace: {
+      docs: {
+        system: "TEAM.md"
+      }
     }
   },
   members: [],

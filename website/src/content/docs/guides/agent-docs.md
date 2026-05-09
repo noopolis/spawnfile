@@ -3,7 +3,7 @@ title: Agent Docs
 description: How document roles work in Spawnfile -- identity, soul, system, memory, heartbeat, and extras -- and what to put in each file.
 ---
 
-Spawnfile agents are built around a **markdown workspace**: a set of Markdown documents that define who the agent is, how it behaves, and what context it operates with. The `workspace.docs` block in a Spawnfile manifest maps these documents to portable roles that compilers translate into runtime-specific surfaces.
+Spawnfile agents are built around a **markdown workspace**: a set of Markdown documents that define who the agent is, how it behaves, and what context it operates with. The `workspace.docs` block in a Spawnfile manifest maps these documents to portable roles that compilers translate into runtime-specific surfaces. Teams use `shared.workspace.docs` for the team-level documents that stay local to the team boundary.
 
 ## Document Roles
 
@@ -137,15 +137,16 @@ If a runtime cannot use a particular document role, the compiler reports the cap
 
 ## Team Docs
 
-Teams also have a `workspace.docs` block, but team docs describe the team manifest itself -- purpose, coordination rules, decision-making norms. They do not automatically propagate to member agents.
+Teams also have a `shared.workspace.docs` block, but team docs describe the team manifest itself -- purpose, coordination rules, decision-making norms. They do not automatically propagate to member agents.
 
 ```yaml
 kind: team
 name: research-cell
 
-workspace:
-  docs:
-    system: TEAM.md
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
 ```
 
 The team's `system` doc (typically `TEAM.md`) should reference member slot IDs explicitly so agents can identify their role. Example from the `multi-runtime-team` fixture:
@@ -157,7 +158,7 @@ The orchestrator receives work, the researcher gathers facts,
 and the writer turns the result into final prose.
 ```
 
-Adapters that support team context injection may make the team doc available to members, but this is not guaranteed by the portable spec.
+Direct team members receive generated team context artifacts that include the relevant team docs, roster, and membership context. Runtime-native presentation can vary by adapter.
 
 ## Tips
 

@@ -5,6 +5,7 @@ import { isSpawnfileError } from "../shared/index.js";
 
 import { runDockerAuthE2E } from "./dockerAuth.js";
 import { runMoltnetTeamChatE2E } from "./moltnetTeamChat.js";
+import { runOperationalSmokeE2E } from "./operationalSmoke.js";
 import type { E2ERuntime } from "./types.js";
 
 const collect = (value: string, previous: string[]): string[] => [...previous, value];
@@ -64,9 +65,54 @@ const runMoltnetTeamChatCli = async (argv: string[]): Promise<void> => {
   console.log(`Moltnet team-chat E2E passed (${result.sentinels.parentRequest})`);
 };
 
+const runOperationalSmokeCli = async (argv: string[]): Promise<void> => {
+  const command = new Command();
+  command
+    .name("spawnfile-e2e operational-smoke")
+    .description("Run the opt-in Docker operational smoke E2E")
+    .option("--container-name <name>", "Docker container name")
+    .option("--docker-command <command>", "Docker command", "docker")
+    .option("--fixture <path>", "Fixture directory override")
+    .option("--image-tag <tag>", "Docker image tag")
+    .option("--keep-artifacts", "Keep temporary compile output")
+    .option("--keep-images", "Keep built Docker image")
+    .option("--poll-interval-ms <ms>", "Poll interval", Number)
+    .option("--timeout-ms <ms>", "Readiness/schedule timeout", Number);
+
+  await command.parseAsync(argv, { from: "user" });
+  const options = command.opts<{
+    containerName?: string;
+    dockerCommand?: string;
+    fixture?: string;
+    imageTag?: string;
+    keepArtifacts?: boolean;
+    keepImages?: boolean;
+    pollIntervalMs?: number;
+    timeoutMs?: number;
+  }>();
+
+  const result = await runOperationalSmokeE2E({
+    containerName: options.containerName,
+    dockerCommand: options.dockerCommand,
+    fixtureDirectory: options.fixture,
+    imageTag: options.imageTag,
+    keepArtifacts: options.keepArtifacts,
+    keepImages: options.keepImages,
+    pollIntervalMs: options.pollIntervalMs,
+    timeoutMs: options.timeoutMs
+  });
+
+  console.log(`Operational smoke E2E passed (${result.containerName})`);
+};
+
 const main = async (): Promise<void> => {
   if (process.argv[2] === "moltnet-team-chat") {
     await runMoltnetTeamChatCli(process.argv.slice(3));
+    return;
+  }
+
+  if (process.argv[2] === "operational-smoke") {
+    await runOperationalSmokeCli(process.argv.slice(3));
     return;
   }
 

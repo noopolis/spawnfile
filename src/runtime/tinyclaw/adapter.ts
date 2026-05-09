@@ -20,6 +20,11 @@ import {
   buildTinyClawChannels,
   resolveTinyClawSurfaceTokenBindings
 } from "./surfaces.js";
+import {
+  createScheduleDiagnostics,
+  createTinyClawSchedulesFile,
+  scheduleOutcomeFor
+} from "./schedules.js";
 
 const WORKSPACE_PLACEHOLDER = "<workspace-path>";
 const SUPPORTED_TINYCLAW_OPENAI_MODEL_PREFIXES = ["gpt-5"];
@@ -141,6 +146,7 @@ const mergeTinyClawTargets = async (
   const workspaceFiles = agentInputs.flatMap((input) =>
     input.emittedFiles.filter((file) => file.path !== "settings.json")
   );
+  const schedulesFile = createTinyClawSchedulesFile(agentInputs);
 
   let mergedBase: Record<string, unknown> | null = null;
 
@@ -204,6 +210,7 @@ const mergeTinyClawTargets = async (
     {
       files: [
         ...workspaceFiles,
+        ...(schedulesFile ? [schedulesFile] : []),
         {
           content: `${JSON.stringify(mergedSettings, null, 2)}\n`,
           path: "settings.json"
@@ -269,6 +276,7 @@ export const tinyClawAdapter: RuntimeAdapter = {
     instancePaths: {
       configPathTemplate: "<instance-root>/tinyagi/<config-file>",
       homePathTemplate: "<instance-root>/tinyagi",
+      sourceWorkspacePathTemplate: "<instance-root>/workspace/<agent-name>",
       workspacePathTemplate: "<instance-root>/workspace"
     },
     port: 3777,
@@ -284,11 +292,14 @@ export const tinyClawAdapter: RuntimeAdapter = {
     }
   },
   async compileAgent(node): Promise<AdapterCompileResult> {
+    const scheduleOutcome = scheduleOutcomeFor(node);
     return {
       capabilities: createAgentCapabilities(node, {
-        mcpOutcome: node.mcpServers.length > 0 ? "degraded" : "supported"
+        mcpOutcome: node.mcpServers.length > 0 ? "degraded" : "supported",
+        scheduleMessage: scheduleOutcome.message,
+        scheduleOutcome: scheduleOutcome.outcome
       }),
-      diagnostics: [],
+      diagnostics: createScheduleDiagnostics(node),
       files: [
         ...createDocumentFiles(`workspace/${node.name}`, node.docs),
         ...createSkillFiles(`workspace/${node.name}/.agents/skills`, node.skills),

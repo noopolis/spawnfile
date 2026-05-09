@@ -7,7 +7,7 @@ import type {
 } from "../runtime/index.js";
 import type { ModelAuthMethod } from "../shared/index.js";
 
-import type { ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
+import type { ResolvedAgentNode, ResolvedPackage, ResolvedTeamNode } from "./types.js";
 import type { MoltnetNodePlan, MoltnetServerPlan } from "./moltnetArtifacts.js";
 import type { WorkspaceResourcePlan } from "./workspaceResources.js";
 
@@ -20,6 +20,7 @@ export interface ContainerEnvVariable {
 
 export interface RuntimeTargetPlan {
   configEnvBindings?: RuntimeContainerConfigEnvBinding[];
+  packages?: ResolvedPackage[];
   envFiles: Array<{
     envName: string;
     filePath: string;
@@ -28,6 +29,7 @@ export interface RuntimeTargetPlan {
   instancePaths: {
     configPath: string;
     homePath?: string;
+    instanceRoot?: string;
     workspacePath: string;
   };
   meta: RuntimeContainerMeta;

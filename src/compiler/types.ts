@@ -23,6 +23,14 @@ export interface ResolvedSkill {
   sourcePath: string;
 }
 
+export interface ResolvedPackage {
+  id: string;
+  manager: string;
+  name: string;
+  scope?: string;
+  version?: string;
+}
+
 export interface ResolvedRuntime {
   name: string;
   options: Record<string, unknown>;
@@ -169,6 +177,7 @@ export interface ResolvedAgentNode {
   kind: "agent";
   mcpServers: McpServer[];
   name: string;
+  packages?: ResolvedPackage[];
   policyMode: string | null;
   policyOnDegrade: string | null;
   runtime: ResolvedRuntime;
@@ -200,6 +209,7 @@ export interface ResolvedTeamNode {
     mcpServers: McpServer[];
     secrets: Secret[];
     skills: ResolvedSkill[];
+    packages?: ResolvedPackage[];
   };
   source: string;
 }

@@ -19,9 +19,42 @@ Spawnfile is fully open source under the MIT license. Contributions and discussi
 1. Fork the repository
 2. Clone your fork
 3. Install dependencies: `npm install`
-4. Run tests: `npm test`
+4. Run checks: `npm run typecheck`, `npm test`, and `npm run coverage`
 5. Make your changes
 6. Submit a pull request
+
+## Verification
+
+Run the checks that match the change:
+
+```bash
+npm run typecheck
+npm test
+npm run coverage
+npm run build
+```
+
+For runtime or container changes, also run the relevant E2E scripts:
+
+```bash
+npm run test:e2e:docker-auth
+npm run test:e2e:moltnet-team-chat
+npm run test:e2e:operational-smoke
+```
+
+`test:e2e:operational-smoke` runs `spawnfile up` against a real Docker
+container and verifies a scheduled TinyClaw agent, managed Moltnet attachment,
+and workspace resource links inside the running container. It does not require
+model credentials.
+
+For website or normative docs changes, build the docs site:
+
+```bash
+cd website
+npm run build
+```
+
+When a normative spec in `specs/` changes, update the matching page under `website/src/content/docs/spec/` in the same change.
 
 ## Discussion
 

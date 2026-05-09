@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CompilePlan, ResolvedAgentNode } from "./types.js";
+import type { ContainerTargetInput } from "../runtime/index.js";
+import * as runtimeIndex from "../runtime/index.js";
 import { createContainerArtifacts } from "./containerArtifacts.js";
+import { createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
 import { openClawAdapter } from "../runtime/openclaw/adapter.js";
 import { picoClawAdapter } from "../runtime/picoclaw/adapter.js";
 import { tinyClawAdapter } from "../runtime/tinyclaw/adapter.js";
@@ -35,6 +38,10 @@ const createAgentNode = (
 });
 
 describe("createContainerArtifacts", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders runtime-required env vars when the adapter declares them", async () => {
     const node = createAgentNode("openclaw");
     const compiled = await openClawAdapter.compileAgent(node);
@@ -336,6 +343,53 @@ describe("createContainerArtifacts", () => {
     expect(envExample).toContain("SHARED_TOKEN=");
   });
 
+  it("rejects conflicting package versions across separate targets in one image", async () => {
+    const firstNode = createAgentNode("openclaw", {
+      packages: [
+        {
+          id: "curl",
+          manager: "apt",
+          name: "curl",
+          version: "8.8"
+        }
+      ]
+    });
+    const secondNode = createAgentNode("openclaw", {
+      name: "writer",
+      packages: [
+        {
+          id: "curl",
+          manager: "apt",
+          name: "curl",
+          version: "8.9"
+        }
+      ],
+      source: "/tmp/openclaw/writer/Spawnfile"
+    });
+
+    const firstCompiled = await openClawAdapter.compileAgent(firstNode);
+    const secondCompiled = await openClawAdapter.compileAgent(secondNode);
+
+    await expect(
+      createContainerArtifacts(createPlan(["openclaw"]), [
+        {
+          emittedFiles: firstCompiled.files,
+          kind: "agent",
+          runtimeName: "openclaw",
+          slug: "assistant",
+          value: firstNode
+        },
+        {
+          emittedFiles: secondCompiled.files,
+          kind: "agent",
+          runtimeName: "openclaw",
+          slug: "writer",
+          value: secondNode
+        }
+      ])
+    ).rejects.toThrow("conflicting package definitions for apt package curl");
+  });
+
   it("builds PicoClaw from the pinned release archive", async () => {
     const node = createAgentNode("picoclaw", {
       execution: {
@@ -625,5 +679,70 @@ describe("createContainerArtifacts", () => {
         }
       ])
     ).rejects.toThrow(/unsupported path NOTES\.txt/);
+  });
+
+  it("rejects conflicting package versions for a shared container target", async () => {
+    const firstNode = createAgentNode("openclaw", {
+      packages: [
+        {
+          id: "system-curl-1",
+          manager: "apt",
+          name: "curl",
+          version: "1"
+        }
+      ]
+    });
+    const secondNode = createAgentNode("openclaw", {
+      name: "writer",
+      packages: [
+        {
+          id: "system-curl-2",
+          manager: "apt",
+          name: "curl",
+          version: "2"
+        }
+      ]
+    });
+
+    const firstCompiled = await openClawAdapter.compileAgent(firstNode);
+    const secondCompiled = await openClawAdapter.compileAgent(secondNode);
+
+    vi.spyOn(runtimeIndex, "getRuntimeAdapter").mockReturnValue({
+      ...openClawAdapter,
+      createContainerTargets: vi.fn(async (inputs: ContainerTargetInput[]) => [
+        {
+          files: firstCompiled.files,
+          id: "openclaw-shared",
+          sourceIds: inputs.map((input) => input.id)
+        }
+      ])
+    });
+    vi.spyOn(runtimeIndex, "createRuntimeInstallRecipe").mockResolvedValue({
+      commands: [],
+      copyCommands: [],
+      runtimeName: "openclaw",
+      runtimeRoot: "/opt/runtime/openclaw"
+    });
+
+    await expect(
+      createRuntimeTargetPlans(createPlan(["openclaw"]), [
+        {
+          emittedFiles: firstCompiled.files,
+          kind: "agent",
+          runtimeName: "openclaw",
+          slug: "assistant",
+          value: firstNode
+        },
+        {
+          emittedFiles: secondCompiled.files,
+          kind: "agent",
+          runtimeName: "openclaw",
+          slug: "writer",
+          value: secondNode
+        }
+      ])
+    ).rejects.toThrow(
+      "Container target openclaw-shared declares conflicting package definitions for apt package curl"
+    );
   });
 });

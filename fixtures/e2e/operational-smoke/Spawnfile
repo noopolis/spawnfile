@@ -1,0 +1,42 @@
+spawnfile_version: "0.1"
+kind: team
+name: operational-smoke
+description: "Docker operational smoke fixture for schedules, Moltnet, and workspace resources"
+
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
+    resources:
+      - id: team-dropbox
+        kind: volume
+        mount: ./team-dropbox
+        mode: mutable
+        sharing: team
+
+members:
+  - id: scheduled-agent
+    ref: ./agents/scheduled
+
+mode: hierarchical
+lead: scheduled-agent
+
+networks:
+  - id: ops_lab
+    name: Ops Lab
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 0.0.0.0
+        port: 19087
+      store:
+        kind: sqlite
+        path: /var/lib/spawnfile/moltnet/ops_lab.sqlite
+      auth:
+        mode: none
+      human_ingress: true
+      direct_messages: false
+    rooms:
+      - id: ops-room
+        members: [scheduled-agent]

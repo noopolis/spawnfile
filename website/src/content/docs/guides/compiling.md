@@ -14,7 +14,7 @@ The reference compiler follows this pipeline:
 3. **Walk** the manifest graph through `members[*].ref` and `subagents[*].ref`.
 4. **Detect** cycles and incompatible duplicate references.
 5. **Resolve** effective `runtime` and `execution` for every graph node.
-6. **Resolve** agent descriptions.
+6. **Resolve** agent descriptions and workspace/environment inheritance.
 7. **Build** a normalized intermediate representation (IR).
 8. **Group** resolved nodes by runtime.
 9. **Invoke** runtime adapters.
@@ -32,7 +32,7 @@ Validation happens in three layers:
 
 - YAML validity
 - Required fields (`spawnfile_version`, `kind`, `name`)
-- Path existence for docs, skills, and member/subagent refs
+- Path existence for docs, skills, environment inputs, and member/subagent refs
 - Enum checks (transport, isolation, sandbox mode)
 - Duplicate name/id detection
 
@@ -202,11 +202,11 @@ Example:
 The compiler reports on these keys:
 
 - `workspace.docs.identity`, `workspace.docs.soul`, `workspace.docs.system`, `workspace.docs.memory`, `workspace.docs.heartbeat`, `workspace.docs.extras.<name>`
-- `skills.<name-or-ref>`
+- `workspace.skills.<name-or-ref>`
 - `mcp.<name>`
-- `execution.model`, `execution.sandbox`, `workspace.docs`, `workspace.resources`
+- `execution.model`, `execution.sandbox`, `workspace.docs`, `workspace.resources`, `workspace.skills`, `environment`
 - `agent.subagents`
-- `team.members`, `team.mode`, `team.lead`, `team.external`, `team.shared`, `team.nested`
+- `team.members`, `team.mode`, `team.lead`, `team.external`, `team.shared`, `team.shared.workspace`, `team.shared.environment`, `team.nested`
 - `team.roster`, `team.context_orientation`, `team.representatives`, `team.networks`, `team.networks.<provider>`, `team.networks.<provider>.<network-id-key>`
 - `surfaces.<name>.identity`
 

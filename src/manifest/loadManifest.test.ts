@@ -74,19 +74,20 @@ describe("loadManifest", () => {
       manifestPath,
       [
         'spawnfile_version: "0.1"',
-        "kind: team",
-        "name: team",
-        "mode: hierarchical",
-        "lead: lead",
-        "members:",
-        "  - id: lead",
-        "    ref: ./agents/lead",
-        "  - id: member",
-        "    ref: ./agents/member",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
-        "networks:",
+      "kind: team",
+      "name: team",
+      "mode: hierarchical",
+      "lead: lead",
+      "members:",
+      "  - id: lead",
+      "    ref: ./agents/lead",
+      "  - id: member",
+      "    ref: ./agents/member",
+      "shared:",
+      "  workspace:",
+      "    docs:",
+      "      system: TEAM.md",
+      "networks:",
         "  - id: local_lab",
         "    provider: moltnet",
         "    server:",
@@ -138,6 +139,31 @@ describe("loadManifest", () => {
     );
 
     await expect(loadManifest(path.join(directory, "Spawnfile"))).rejects.toThrow(/Document not found/);
+  });
+
+  it("rejects duplicate package ids", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-package-ids-"));
+    temporaryDirectories.push(directory);
+    const manifestPath = path.join(directory, "Spawnfile");
+    await writeUtf8File(
+      manifestPath,
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: analyst",
+        "runtime: openclaw",
+        "environment:",
+        "  packages:",
+        "    - id: cli",
+        "      manager: apt",
+        "      name: gh",
+        "    - id: cli",
+        "      manager: pipx",
+        "      name: yt-dlp"
+      ].join("\n")
+    );
+
+    await expect(loadManifest(manifestPath)).rejects.toThrow(/package ids/);
   });
 
   it("rejects document paths that are not Markdown files", async () => {
@@ -210,11 +236,10 @@ describe("loadManifest", () => {
         "workspace:",
         "  docs:",
         "    system: AGENTS.md",
-        "",
-        "skills:",
-        "  - ref: ./skills/web_search",
-        "    requires:",
-        "      mcp:",
+        "  skills:",
+        "    - ref: ./skills/web_search",
+        "      requires:",
+        "        mcp:",
         "        - missing",
         ""
       ].join("\n")
@@ -240,9 +265,8 @@ describe("loadManifest", () => {
         "workspace:",
         "  docs:",
         "    system: AGENTS.md",
-        "",
-        "skills:",
-        "  - ref: ./skills/missing",
+        "  skills:",
+        "    - ref: ./skills/missing",
         ""
       ].join("\n")
     );
@@ -328,9 +352,10 @@ describe("loadManifest", () => {
         "kind: team",
         "name: broken-team",
         "",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
         "",
         "members:",
         "  - id: worker",
@@ -356,9 +381,10 @@ describe("loadManifest", () => {
         "kind: team",
         "name: broken-team",
         "",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
         "",
         "members:",
         "  - id: analyst",
@@ -443,9 +469,10 @@ describe("loadManifest", () => {
         "kind: team",
         "name: broken-team",
         "",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
         "",
         "members:",
         "  - id: analyst",
@@ -491,9 +518,10 @@ describe("loadManifest", () => {
         "kind: team",
         "name: broken-team",
         "",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
         "",
         "members:",
         "  - id: analyst",

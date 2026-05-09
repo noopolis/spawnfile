@@ -4,7 +4,11 @@ import { mkdtemp } from "node:fs/promises";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fileExists, readUtf8File, removeDirectory } from "../filesystem/index.js";
+import {
+  fileExists,
+  readUtf8File,
+  removeDirectory
+} from "../filesystem/index.js";
 
 import {
   buildProject,

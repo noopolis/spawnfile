@@ -54,6 +54,7 @@ export const orderWorkspace = (
 
   return withDefinedEntries([
     ["docs", orderDocs(workspace.docs)],
-    ["resources", workspace.resources?.map(orderWorkspaceResource)]
+    ["resources", workspace.resources?.map(orderWorkspaceResource)],
+    ["skills", workspace.skills]
   ]) as unknown as TeamWorkspace;
 };

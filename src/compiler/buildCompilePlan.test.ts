@@ -16,7 +16,42 @@ afterEach(async () => {
 
 describe("buildCompilePlan", () => {
   it("builds a single-agent plan", async () => {
-    const plan = await buildCompilePlan(path.join(fixturesRoot, "single-agent"));
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-single-agent-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(path.join(directory, "IDENTITY.md"), "# Identity\n");
+    await writeUtf8File(path.join(directory, "SOUL.md"), "# Soul\n");
+    await writeUtf8File(path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: analyst",
+        "",
+        "runtime: openclaw",
+        "",
+        "execution:",
+        "  model:",
+        "    primary:",
+        "      provider: anthropic",
+        "      name: claude-sonnet-4-5",
+        "  sandbox:",
+        "    mode: workspace",
+        "",
+        "workspace:",
+        "  docs:",
+        "    identity: IDENTITY.md",
+        "    soul: SOUL.md",
+        "    system: AGENTS.md",
+        "",
+        "policy:",
+        "  mode: warn",
+        "  on_degrade: warn",
+        ""
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
 
     expect(plan.nodes).toHaveLength(1);
     expect(plan.runtimes.openclaw.nodeIds).toHaveLength(1);
@@ -127,21 +162,22 @@ describe("buildCompilePlan", () => {
         "name: lab",
         "mode: hierarchical",
         "lead: worker",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
-        "  resources:",
-        "    - id: project",
-        "      kind: git",
-        "      url: https://example.com/project.git",
-        "      branch: main",
-        "      mount: ./repos/project",
-        "      mode: mutable",
-        "    - id: dropbox",
-        "      kind: volume",
-        "      mount: ./shared",
-        "      mode: mutable",
-        "      sharing: team",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
+        "    resources:",
+        "      - id: project",
+        "        kind: git",
+        "        url: https://example.com/project.git",
+        "        branch: main",
+        "        mount: ./repos/project",
+        "        mode: mutable",
+        "      - id: dropbox",
+        "        kind: volume",
+        "        mount: ./shared",
+        "        mode: mutable",
+        "        sharing: team",
         "members:",
         "  - id: worker",
         "    ref: ./agents/worker",
@@ -236,6 +272,171 @@ describe("buildCompilePlan", () => {
     ]);
   });
 
+  it("loads inherited shared workspace docs and merges environment packages", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-shared-workspace-"));
+    temporaryDirectories.push(directory);
+
+    await ensureDirectory(path.join(directory, "agents", "researcher"));
+    await writeUtf8File(path.join(directory, "TEAM.md"), "# Team\n");
+    await writeUtf8File(path.join(directory, "TEAM_POLICY.md"), "# Team policy\n");
+    await writeUtf8File(path.join(directory, "TEAM_ID.md"), "# Team Identity\n");
+    await writeUtf8File(path.join(directory, "agents", "researcher", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: researcher",
+        "runtime: openclaw",
+        "workspace:",
+        "  docs:",
+        "    identity: AGENT_ID.md",
+        "    extras:",
+        "      agent: AGENT_NOTES.md",
+        "    system: AGENTS.md",
+        "  skills: []",
+        "",
+        "environment:",
+        "  packages:",
+        "    - id: curl-agent",
+        "      manager: apt",
+        "      name: curl",
+        "      version: \"9.0\"",
+        "    - id: shared-npm",
+        "      manager: npm",
+        "      name: \"@openai/codex\"",
+        "      version: \"0.128\"",
+        "      scope: global",
+        ""
+      ].join("\n")
+    );
+    await writeUtf8File(path.join(directory, "agents", "researcher", "AGENT_ID.md"), "# Researcher\n");
+    await writeUtf8File(path.join(directory, "agents", "researcher", "AGENT_NOTES.md"), "# Research notes\n");
+    await writeUtf8File(path.join(directory, "agents", "researcher", "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: research-cell",
+        "mode: hierarchical",
+        "lead: researcher",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      identity: TEAM_ID.md",
+        "      extras:",
+        "        team: TEAM_POLICY.md",
+        "  environment:",
+        "    packages:",
+        "      - id: curl-team",
+        "        manager: apt",
+        "        name: curl",
+        "        version: \"8.9\"",
+        "    secrets: []",
+        "    mcp_servers: []",
+        "members:",
+        "  - id: researcher",
+        "    ref: ./agents/researcher",
+        ""
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const team = plan.nodes.find((node) => node.kind === "team");
+    const agent = plan.nodes.find((node) => node.kind === "agent");
+
+    if (!team || team.value.kind !== "team" || !agent || agent.value.kind !== "agent") {
+      throw new Error("Expected agent and team nodes");
+    }
+
+    expect(team.value.docs.find((doc) => doc.role === "identity")?.content).toBe("# Team Identity\n");
+    expect(agent.value.docs.find((doc) => doc.role === "identity")?.content).toBe("# Researcher\n");
+    expect(agent.value.docs.find((doc) => doc.role === "extras.team")?.content).toBe(
+      "# Team policy\n"
+    );
+    expect(agent.value.packages).toEqual([
+      {
+        id: "curl-agent",
+        manager: "apt",
+        name: "curl",
+        version: "9.0"
+      },
+      {
+        id: "shared-npm",
+        manager: "npm",
+        name: "@openai/codex",
+        version: "0.128",
+        scope: "global"
+      }
+    ]);
+  });
+
+  it("allows local environment packages to override inherited package versions", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-package-override-"));
+    temporaryDirectories.push(directory);
+
+    await ensureDirectory(path.join(directory, "agents", "researcher"));
+    await writeUtf8File(path.join(directory, "agents", "researcher", "AGENT_ID.md"), "# Researcher\n");
+    await writeUtf8File(path.join(directory, "agents", "researcher", "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(
+      path.join(directory, "agents", "researcher", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: researcher",
+        "runtime: openclaw",
+        "workspace:",
+        "  docs:",
+        "    identity: AGENT_ID.md",
+        "    system: AGENTS.md",
+        "  ",
+        "environment:",
+        "  packages:",
+        "    - id: curl-agent",
+        "      manager: apt",
+        "      name: curl",
+        "      version: \"9.0\"",
+        ""
+      ].join("\n")
+    );
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: research-cell",
+        "mode: hierarchical",
+        "lead: researcher",
+        "shared:",
+        "  environment:",
+        "    packages:",
+        "      - id: curl-team",
+        "        manager: apt",
+        "        name: curl",
+        "        version: \"8.9\"",
+        "members:",
+        "  - id: researcher",
+        "    ref: ./agents/researcher",
+        ""
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const agent = plan.nodes.find((node) => node.kind === "agent");
+
+    if (!agent || agent.value.kind !== "agent") {
+      throw new Error("Expected agent node");
+    }
+
+    expect(agent.value.packages).toEqual([
+      {
+        id: "curl-agent",
+        manager: "apt",
+        name: "curl",
+        version: "9.0"
+      }
+    ]);
+  });
+
   it("rejects inherited workspace resources with overlapping agent mounts", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-resource-conflict-"));
     temporaryDirectories.push(directory);
@@ -249,12 +450,13 @@ describe("buildCompilePlan", () => {
         "name: lab",
         "mode: hierarchical",
         "lead: worker",
-        "workspace:",
-        "  resources:",
-        "    - id: project",
-        "      kind: volume",
-        "      mount: ./work/project",
-        "      mode: mutable",
+        "shared:",
+        "  workspace:",
+        "    resources:",
+        "      - id: project",
+        "        kind: volume",
+        "        mount: ./work/project",
+        "        mode: mutable",
         "members:",
         "  - id: worker",
         "    ref: ./agents/worker",
@@ -484,9 +686,10 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: research-cell",
         "",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
         "",
         "members:",
         "  - id: orchestrator",
@@ -545,9 +748,10 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: research-cell",
         "",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
         "",
         "members:",
         "  - id: researcher",
@@ -692,9 +896,10 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: research-cell",
         "",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
         "",
         "members:",
         "  - id: researcher",
@@ -745,9 +950,10 @@ describe("buildCompilePlan", () => {
           "kind: team",
           `name: ${teamName}`,
           "",
-          "workspace:",
-          "  docs:",
-          "    system: TEAM.md",
+          "shared:",
+          "  workspace:",
+          "    docs:",
+          "      system: TEAM.md",
           "",
           "members:",
           "  - id: rep",
@@ -765,9 +971,10 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: collision",
         "",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
         "",
         "members:",
         "  - id: one",
@@ -830,9 +1037,10 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: subteam",
         "",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
         "",
         "members:",
         "  - id: placeholder",
@@ -869,9 +1077,10 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: research-cell",
         "",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
         "",
         "members:",
         "  - id: researcher",
@@ -1006,9 +1215,10 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: team",
         "",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
         "",
         "members:",
         "  - id: one",
@@ -1310,9 +1520,10 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: nested-team",
         "",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
         "",
         "members: []",
         "",
@@ -1343,9 +1554,10 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: inner",
         "",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
         "",
         "members:",
         "  - id: a",
@@ -1362,9 +1574,10 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: outer",
         "",
-        "workspace:",
-        "  docs:",
-        "    system: TEAM.md",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
         "",
         "members:",
         "  - id: one",

@@ -105,10 +105,24 @@ const teamWorkspaceResourceSchema = z.discriminatedUnion("kind", [
   teamWorkspaceResourceVolumeSchema
 ]);
 
+const workspaceSkillRequirementSchema = z
+  .object({
+    mcp: z.array(z.string()).optional()
+  })
+  .strict();
+
+const workspaceSkillReferenceSchema = z
+  .object({
+    ref: z.string(),
+    requires: workspaceSkillRequirementSchema.optional()
+  })
+  .strict();
+
 export const teamWorkspaceSchema = z
   .object({
     docs: teamWorkspaceDocsSchema.optional(),
-    resources: z.array(teamWorkspaceResourceSchema).optional()
+    resources: z.array(teamWorkspaceResourceSchema).optional(),
+    skills: z.array(workspaceSkillReferenceSchema).optional()
   })
   .strict()
   .superRefine((value, context) => {
@@ -178,3 +192,4 @@ export const teamWorkspaceSchema = z
 export type TeamWorkspace = z.infer<typeof teamWorkspaceSchema>;
 export type TeamWorkspaceDocs = z.infer<typeof teamWorkspaceDocsSchema>;
 export type TeamWorkspaceResource = z.infer<typeof teamWorkspaceResourceSchema>;
+export type TeamWorkspaceSkill = z.infer<typeof workspaceSkillReferenceSchema>;

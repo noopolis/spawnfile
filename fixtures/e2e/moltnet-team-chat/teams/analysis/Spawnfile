@@ -3,9 +3,10 @@ kind: team
 name: analysis-team
 description: "Child team with an explicit representative and a non-representative descendant"
 
-workspace:
-  docs:
-    system: TEAM.md
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
 
 members:
   - id: analysis-representative

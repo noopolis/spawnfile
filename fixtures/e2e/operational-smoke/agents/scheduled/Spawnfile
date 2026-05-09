@@ -1,0 +1,38 @@
+spawnfile_version: "0.1"
+kind: agent
+name: scheduled-agent
+
+runtime: tinyclaw
+
+execution:
+  model:
+    primary:
+      provider: opencode
+      name: noop
+      auth:
+        method: none
+  sandbox:
+    mode: workspace
+
+schedule:
+  kind: cron
+  cron: "* * * * *"
+  timezone: UTC
+  prompt: "SF-SPAWNFILE-OPERATIONAL-SCHEDULE"
+
+surfaces:
+  moltnet:
+    - network: ops_lab
+      rooms:
+        ops-room:
+          read: all
+          reply: never
+
+workspace:
+  docs:
+    system: AGENTS.md
+  resources:
+    - id: agent-scratch
+      kind: volume
+      mount: ./scratch
+      mode: mutable

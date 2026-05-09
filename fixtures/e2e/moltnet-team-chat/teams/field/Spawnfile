@@ -3,9 +3,10 @@ kind: team
 name: field-team
 description: "Child team with an explicit representative and a local Moltnet room"
 
-workspace:
-  docs:
-    system: TEAM.md
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
 
 members:
   - id: field-representative

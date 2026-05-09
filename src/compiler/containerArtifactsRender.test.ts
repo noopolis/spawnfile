@@ -186,6 +186,115 @@ describe("renderDockerfile", () => {
     expect(dockerfile).toContain("EXPOSE 18789 18990");
   });
 
+  it("installs apt, npm, and pipx packages from effective environment packages", async () => {
+    const { renderDockerfile } = await loadRenderModule({
+      openclaw: {
+        commands: [],
+        copyCommands: [],
+        runtimeName: "openclaw",
+        runtimeRoot: "/usr/local/lib/node_modules/openclaw"
+      }
+    });
+
+    const dockerfile = await renderDockerfile([
+      createRuntimePlan("openclaw", {
+        meta: {
+          configFileName: "openclaw.json",
+          instancePaths: {
+            configPathTemplate: "<instance-root>/openclaw.json",
+            homePathTemplate: "<instance-root>/home",
+            workspacePathTemplate: "<instance-root>/workspace"
+          },
+          port: 18789,
+          standaloneBaseImage: "debian:bookworm-slim",
+          startCommand: ["node", "<runtime-root>/openclaw.mjs"],
+          systemDeps: []
+        },
+        packages: [
+          {
+            id: "apt-jq",
+            manager: "apt",
+            name: "jq",
+            version: "1.7.1"
+          },
+          {
+            id: "apt-jq-dup",
+            manager: "apt",
+            name: "jq",
+            version: "1.7.1"
+          },
+          {
+            id: "npm-openapi",
+            manager: "npm",
+            name: "openapi-typescript",
+            version: "6.7.4"
+          },
+          {
+            id: "npm-pip",
+            manager: "npm",
+            name: "npm"
+          },
+          {
+            id: "pipx-req",
+            manager: "pipx",
+            name: "cowsay",
+            version: "0.4.0"
+          }
+        ],
+        port: 18789
+      })
+    ]);
+
+    expect(dockerfile).toContain(
+      "RUN apt-get update && apt-get install -y --no-install-recommends jq=1.7.1 pipx && rm -rf /var/lib/apt/lists/*"
+    );
+    expect(dockerfile).toContain(
+      "RUN npm install -g --omit=dev --no-fund --no-audit npm openapi-typescript@6.7.4"
+    );
+    expect(dockerfile).toContain("RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install cowsay==0.4.0");
+  });
+
+  it("lets explicit npm packages override runtime global npm defaults", async () => {
+    const { renderDockerfile } = await loadRenderModule({
+      picoclaw: {
+        commands: [],
+        copyCommands: [],
+        runtimeName: "picoclaw",
+        runtimeRoot: "/opt/spawnfile/runtime-installs/picoclaw"
+      }
+    });
+
+    const dockerfile = await renderDockerfile([
+      createRuntimePlan("picoclaw", {
+        meta: {
+          configFileName: "config.json",
+          globalNpmPackages: ["@openai/codex", "typescript"],
+          instancePaths: {
+            configPathTemplate: "<instance-root>/config.json",
+            homePathTemplate: "<instance-root>/home",
+            workspacePathTemplate: "<instance-root>/workspace"
+          },
+          standaloneBaseImage: "debian:bookworm-slim",
+          startCommand: ["picoclaw", "run"],
+          systemDeps: []
+        },
+        packages: [
+          {
+            id: "codex",
+            manager: "npm",
+            name: "@openai/codex",
+            version: "0.128.0"
+          }
+        ]
+      })
+    ]);
+
+    expect(dockerfile).toContain(
+      "RUN npm install -g --omit=dev --no-fund --no-audit @openai/codex@0.128.0 typescript"
+    );
+    expect(dockerfile).not.toContain("@openai/codex ");
+  });
+
   it("installs python3 when generated entrypoints need JSON config env writes", async () => {
     const { renderDockerfile } = await loadRenderModule({
       openclaw: {

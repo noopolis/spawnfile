@@ -115,12 +115,13 @@ spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
 
 This reads the declared `auth` methods on each model target and surface, then imports the matching material. For example, if the manifest declares `auth.method: claude-code`, the sync imports your local Claude Code CLI credentials. If it declares `auth.method: api_key`, it reads the key from the provided env file.
 
-`auth sync` also reads declared project secrets from `secrets:` and inherited team `shared.secrets:`. Required secrets must be present in the process environment or the provided env file. Optional secrets are copied into the profile only when a value is available.
+`auth sync` also reads declared project secrets from `environment.secrets:` and inherited team `shared.environment.secrets:`. Required secrets must be present in the process environment or the provided env file. Optional secrets are copied into the profile only when a value is available.
 
 ```yaml
-secrets:
-  - name: GH_TOKEN
-    required: true
+environment:
+  secrets:
+    - name: GH_TOKEN
+      required: true
 ```
 
 ```bash
@@ -168,12 +169,18 @@ spawnfile auth show --profile dev
 
 ## Developer Workflow
 
-The intended flow uses `spawnfile build` and `spawnfile run` for the happy path:
+For local development, `spawnfile up` is the one-command path after auth is synced:
 
 ```bash
 # Sync declared model auth into a local profile
 spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
 
+spawnfile up fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev
+```
+
+Use the split-step `build` and `run` flow when you want to inspect, extend, or publish the image between steps:
+
+```bash
 # Compile and build the container
 spawnfile build fixtures/single-agent --out ./bundle/single-agent --tag my-agent
 
@@ -189,11 +196,18 @@ spawnfile build fixtures/multi-runtime-team --out ./bundle/team --tag my-team
 spawnfile run fixtures/multi-runtime-team --out ./bundle/team --tag my-team --auth-profile dev
 ```
 
-Same flow regardless of project complexity. One compile, one build, one run.
+The same commands apply regardless of project complexity. Use `up` for one-command local startup, or use `build` and `run` when you want explicit image staging.
 
 `spawnfile build` stays secrets-free by default. It compiles the project and then runs `docker build` against the emitted output directory. The generated Dockerfile installs pinned compiled runtime artifacts -- it does not rebuild runtime sources during image build.
 
 `spawnfile run` is the auth-aware wrapper over `docker run`. It validates declared model auth before container startup and mounts the right credential material from the selected profile.
+
+Command boundaries:
+
+- `spawnfile compile` validates the graph and writes runtime output, container artifacts, and the compile report.
+- `spawnfile build` runs `compile`, then builds a Docker image from the generated output.
+- `spawnfile run` runs `compile` again to derive current runtime wiring, then starts the selected image with ports, env, auth material, and workspace resources.
+- `spawnfile up` is the local one-command path. It builds the image and then runs it with the same auth and env options as `run`.
 
 You can also pass an env file directly at run time:
 
@@ -202,6 +216,46 @@ spawnfile run ./agents/episode-worker --env-file ./ops/secrets/episode-worker.en
 ```
 
 This writes the provided values into Spawnfile's generated Docker env file for that run. When both an auth profile and `--env-file` provide the same variable, the env file value wins; if the same variable is set in the shell environment, the shell value wins.
+
+### Project-Specific Tools
+
+The generated image contains the compiled organization and runtime support. If an agent needs extra project tools, build a small overlay image on top of the generated image instead of editing the generated Dockerfile:
+
+```dockerfile
+ARG BASE_IMAGE=my-team:spawnfile
+FROM ${BASE_IMAGE}
+
+USER root
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends gh python3-pip \
+  && rm -rf /var/lib/apt/lists/*
+USER spawnfile
+```
+
+```bash
+spawnfile build . --tag my-team:spawnfile
+docker build -f ops/docker/agent-tools.Dockerfile \
+  --build-arg BASE_IMAGE=my-team:spawnfile \
+  -t my-team:tools .
+spawnfile run . --tag my-team:tools --auth-profile dev
+```
+
+Keep credentials out of the overlay image. Declare required tokens as `environment.secrets:` or `shared.environment.secrets:`, then provide them with `spawnfile auth sync --env-file ...` or `spawnfile run --env-file ...`.
+
+### Runtime Inputs
+
+Spawnfile supports the common runtime inputs directly in the manifest:
+
+| Runtime need | Spawnfile declaration |
+|--------------|-----------------------|
+| Repository checkout | `workspace.resources` with `kind: git` and a workspace-relative `mount` |
+| Shared scratch directory | `shared.workspace.resources` with `kind: volume` and `sharing: team` |
+| Per-agent state or cron data | `workspace.resources` with `kind: volume` and default `sharing: per_agent` |
+| Required tokens | `environment.secrets:` or `shared.environment.secrets:` plus `auth sync` or `run --env-file` |
+| Model CLI credentials | `execution.model.*.auth.method` plus an auth profile |
+| Extra operating system packages | Overlay image based on the generated image |
+
+Resource mounts are symlink-backed inside the runtime workspace. Use workspace-relative mounts such as `./repos/product`, `./state`, and `./cron` so each agent sees stable paths without depending on runtime-internal directories.
 
 ### Manual Docker
 

@@ -50,6 +50,11 @@ const resolveAuthRequirements = async (
       for (const secret of node.value.shared.secrets) {
         addProjectSecret(secret);
       }
+      for (const server of node.value.shared.mcpServers) {
+        if (server.auth?.secret) {
+          addProjectSecret({ name: server.auth.secret, required: true });
+        }
+      }
       for (const secretName of listMoltnetNetworkSecretNames([node])) {
         addProjectSecret({ name: secretName, required: true });
       }
@@ -58,6 +63,12 @@ const resolveAuthRequirements = async (
 
     for (const secret of node.value.secrets) {
       addProjectSecret(secret);
+    }
+
+    for (const server of node.value.mcpServers) {
+      if (server.auth?.secret) {
+        addProjectSecret({ name: server.auth.secret, required: true });
+      }
     }
 
     for (const method of Object.values(resolveExecutionModelAuthMethods(node.value.execution))) {

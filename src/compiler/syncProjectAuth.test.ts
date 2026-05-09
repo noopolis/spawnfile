@@ -323,7 +323,8 @@ describe("syncProjectAuth", () => {
       "",
       "runtime: picoclaw",
       "",
-      "secrets:",
+      "environment:",
+      "  secrets:",
       "  - name: GH_TOKEN",
       "    required: true",
       "  - name: OPTIONAL_REPORTING_TOKEN",
@@ -367,14 +368,14 @@ describe("syncProjectAuth", () => {
           "kind: team",
           "name: research-cell",
           "",
-          "workspace:",
-          "  docs:",
-          "    system: TEAM.md",
-          "",
           "shared:",
-          "  secrets:",
-          "    - name: SEARCH_API_KEY",
-          "      required: true",
+          "  workspace:",
+          "    docs:",
+          "      system: TEAM.md",
+          "  environment:",
+          "    secrets:",
+          "      - name: SEARCH_API_KEY",
+          "        required: true",
           "",
           "mode: hierarchical",
           "lead: leader",
@@ -418,6 +419,104 @@ describe("syncProjectAuth", () => {
     expect(profile.imports.codex).toBeUndefined();
   });
 
+  it("collects MCP server secrets from the effective agent environment", async () => {
+    const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
+    const envDirectory = await createTempDirectory("spawnfile-env-home-");
+    process.env.SPAWNFILE_HOME = spawnfileHome;
+    await writeUtf8File(
+      path.join(envDirectory, ".env"),
+      "MCP_SEARCH_API_KEY=from-mcp\n"
+    );
+
+    const projectDirectory = await createAgentProject([
+      'spawnfile_version: "0.1"',
+      "kind: agent",
+      "name: auth-sync",
+      "",
+      "runtime: openclaw",
+      "",
+      "environment:",
+      "  mcp_servers:",
+      "    - name: web_search",
+      "      transport: streamable_http",
+      "      url: https://search.mcp.example.com/mcp",
+      "      auth:",
+      "        secret: MCP_SEARCH_API_KEY",
+      "",
+      "workspace:",
+      "  docs:",
+      "    system: AGENTS.md"
+    ]);
+
+    const profile = await syncProjectAuth(projectDirectory, {
+      envFilePath: path.join(envDirectory, ".env"),
+      profileName: "dev"
+    });
+
+    expect(profile.env).toEqual({
+      MCP_SEARCH_API_KEY: "from-mcp"
+    });
+  });
+
+  it("collects MCP server secrets from shared team environment", async () => {
+    const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
+    const envDirectory = await createTempDirectory("spawnfile-env-home-");
+    process.env.SPAWNFILE_HOME = spawnfileHome;
+    await writeUtf8File(
+      path.join(envDirectory, ".env"),
+      "TEAM_MCP_TOKEN=team-mcp-token\n"
+    );
+
+    const profile = await syncProjectAuth(
+      await createTeamProject(
+        [
+          'spawnfile_version: "0.1"',
+          "kind: team",
+          "name: research-cell",
+          "",
+          "shared:",
+          "  workspace:",
+          "    docs:",
+          "      system: TEAM.md",
+          "  environment:",
+          "    mcp_servers:",
+          "      - name: github",
+          "        transport: stdio",
+          "        command: /bin/gh-mcp",
+          "        auth:",
+          "          secret: TEAM_MCP_TOKEN",
+          "",
+          "mode: hierarchical",
+          "lead: leader",
+          "",
+          "members:",
+          "  - id: leader",
+          "    ref: ./agents/leader",
+          ""
+        ],
+        [
+          'spawnfile_version: "0.1"',
+          "kind: agent",
+          "name: leader",
+          "",
+          "runtime: openclaw",
+          "",
+          "workspace:",
+          "  docs:",
+          "    system: AGENTS.md"
+        ]
+      ),
+      {
+        envFilePath: path.join(envDirectory, ".env"),
+        profileName: "dev"
+      }
+    );
+
+    expect(profile.env).toEqual({
+      TEAM_MCP_TOKEN: "team-mcp-token"
+    });
+  });
+
   it("collects managed Moltnet secrets, including bearer/open tokens, DSN, and pairings", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
     const envDirectory = await createTempDirectory("spawnfile-env-home-");
@@ -437,9 +536,10 @@ describe("syncProjectAuth", () => {
       "kind: team",
       "name: mesh",
       "",
-      "workspace:",
-      "  docs:",
-      "    system: TEAM.md",
+      "shared:",
+      "  workspace:",
+      "    docs:",
+      "      system: TEAM.md",
       "",
       "mode: hierarchical",
       "lead: leader",
@@ -529,9 +629,10 @@ describe("syncProjectAuth", () => {
       "kind: team",
       "name: mesh",
       "",
-      "workspace:",
-      "  docs:",
-      "    system: TEAM.md",
+      "shared:",
+      "  workspace:",
+      "    docs:",
+      "      system: TEAM.md",
       "",
       "mode: hierarchical",
       "lead: leader",
@@ -574,9 +675,10 @@ describe("syncProjectAuth", () => {
       "kind: team",
       "name: mesh",
       "",
-      "workspace:",
-      "  docs:",
-      "    system: TEAM.md",
+      "shared:",
+      "  workspace:",
+      "    docs:",
+      "      system: TEAM.md",
       "",
       "mode: hierarchical",
       "lead: leader",

@@ -115,6 +115,14 @@ The v0.1 reference implementation uses pinned compiled runtime artifacts:
 
 Generated Dockerfiles must not clone runtime repositories or rebuild runtime sources during image build.
 
+Declared `environment.packages` are installed into the generated image before runtime startup:
+
+- `apt` packages are added to the Debian `apt-get install` layer; `version` is rendered as `name=version`.
+- `npm` packages are installed globally with `npm install -g`; `version` is rendered as `name@version`.
+- `pipx` packages are installed with `PIPX_HOME=/opt/pipx` and `PIPX_BIN_DIR=/usr/local/bin`; `version` is rendered as `name==version`.
+
+Project-declared npm packages override runtime default global npm packages with the same package name, so a project can pin a runtime-adjacent CLI version intentionally.
+
 ---
 
 ## Entrypoint Generation
@@ -354,7 +362,7 @@ Same flow regardless of project complexity. One compile, one build, one run.
 The intended auth split is:
 
 - `Spawnfile` declares model auth intent on each model target via `auth`, plus `endpoint` for `custom` and `local` backends
-- `Spawnfile` declares runtime/project secret requirements through `secrets` and team `shared.secrets`
+- `Spawnfile` declares runtime/project secret requirements through `environment.secrets` and team `shared.environment.secrets`
 - `spawnfile auth sync` materializes matching local auth and declared secret values into a profile
 - `spawnfile build` stays secrets-free
 - `spawnfile run --auth-profile ...` injects only the auth material required by the declared methods and secrets

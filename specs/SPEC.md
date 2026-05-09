@@ -16,7 +16,7 @@ A **conforming compiler** is one that correctly processes conforming source proj
 
 ## 0. Scope
 
-`spawnfile_version` remains `"0.1"` for this alpha reset. The current alpha contract is defined by this document; no `0.2` manifest version or compatibility mode is introduced here.
+The current v0.1 contract uses `spawnfile_version: "0.1"`. No `0.2` manifest version or compatibility mode is introduced here.
 
 ### 0.1 What Spawnfile Targets
 
@@ -34,10 +34,11 @@ A runtime is **Spawnfile-compatible** when it satisfies all of these hard gates:
 
 Spawnfile v0.1 defines a portable surface that adapters attempt to preserve across compatible runtimes. These are portability targets, not runtime-admission requirements:
 
-- markdown document roles (`identity`, `soul`, `system`, `memory`, `heartbeat`, `extras`)
-- skills with `SKILL.md`
+- markdown document roles (`identity`, `soul`, `system`, `memory`, `heartbeat`, `extras`) declared under `workspace.docs` or `shared.workspace.docs`
+- skills with `SKILL.md` declared under `workspace.skills` or `shared.workspace.skills`
 - MCP server declarations
 - runtime binding and execution intent
+- workspace resources and environment inputs declared on agents or shared by teams
 - team structure, team networks, and generated team-context artifacts
 - optional runtime capabilities such as communication surfaces, memory backends, periodic tasks, and proactive behavior
 
@@ -79,9 +80,9 @@ name: my-agent             # non-empty string, no whitespace
 
 `description` is OPTIONAL. It is a short, single-line, human-readable string (one or two sentences) that summarizes what this agent or team does. If a multi-line YAML scalar is used, the compiler MUST normalize it by collapsing newlines into spaces and trimming trailing whitespace.
 
-For agents, `description` is the primary signal used in team rosters — it tells teammates what this agent does. If `description` is omitted, the compiler SHOULD derive a description from the `workspace.docs.identity` document by extracting the first non-empty paragraph, truncated to 200 characters. If no `workspace.docs.identity` is declared, the description is left empty.
+For agents, `description` is the primary signal used in team rosters — it tells teammates what this agent does. If `description` is omitted, the compiler SHOULD derive a description from the agent's `workspace.docs.identity` document by extracting the first non-empty paragraph, truncated to 200 characters. If no `workspace.docs.identity` is declared, the description is left empty.
 
-For teams, `description` summarizes the team's collective purpose.
+For teams, `description` summarizes the team's collective purpose. If `description` is omitted, the compiler SHOULD derive a description from `shared.workspace.docs.identity` when that document is present; otherwise the description is left empty.
 
 ### 1.4 Path Resolution
 
@@ -114,7 +115,7 @@ Rules:
 
 ### 2.1 Document Roles
 
-The `workspace.docs` block declares portable markdown surfaces. Compilers map these roles to target-specific workspace surfaces. Document contents are author text; this spec does not define their runtime behavior.
+The `workspace.docs` block declares portable markdown surfaces for agents. The `shared.workspace.docs` block declares inherited markdown surfaces for teams. Compilers map these roles to target-specific workspace surfaces. Document contents are author text; this spec does not define their runtime behavior.
 
 ```yaml
 workspace:
@@ -142,17 +143,20 @@ Built-in roles:
 
 Rules:
 
-- `workspace` is OPTIONAL.
+- `workspace` is OPTIONAL for agents.
 - `workspace.docs` is OPTIONAL.
 - All `workspace.docs` fields are OPTIONAL.
-- Paths in `workspace.docs` MUST resolve to Markdown files within the project root.
+- `shared.workspace` is OPTIONAL for teams.
+- `shared.workspace.docs` is OPTIONAL.
+- All `shared.workspace.docs` fields are OPTIONAL.
+- Paths in `workspace.docs` and `shared.workspace.docs` MUST resolve to Markdown files within the project root.
 - A conforming compiler MUST treat document contents as opaque text and MUST NOT reinterpret them as structured schema.
-- Team-level `workspace.docs` describe the team manifest itself and MUST NOT automatically propagate to members.
+- Team-level `shared.workspace.docs` describe the team manifest itself and MUST NOT automatically propagate to members except through the declared team-context artifacts.
 - Top-level `docs` is not part of v0.1 and MUST NOT be used as a shorthand.
 
 ### 2.1.1 Workspace Resources
 
-`workspace.resources` declares mounted resources for a runtime workspace.
+`workspace.resources` declares mounted resources for an agent workspace. `shared.workspace.resources` declares mounted resources for a team-shared workspace.
 
 ```yaml
 workspace:
@@ -168,16 +172,20 @@ workspace:
       name: agent-scratch-vol
       mount: ./scratch
       mode: mutable
-    - id: team-dropbox
-      kind: volume
-      mount: ./shared
-      mode: mutable
-      sharing: team
+shared:
+  workspace:
+    resources:
+      - id: team-dropbox
+        kind: volume
+        mount: ./shared
+        mode: mutable
+        sharing: team
 ```
 
 Rules:
 
 - `workspace.resources` is OPTIONAL.
+- `shared.workspace.resources` is OPTIONAL.
 - Each resource MUST have:
   - `id`
   - `kind` (`git` or `volume`)
@@ -205,11 +213,11 @@ Rules:
 - `volume` resources MUST NOT declare `url`.
 - In a concrete agent context, effective resources MUST either be unique by identity or normalize to identical declarations where IDs collide.
 - In a concrete agent context, effective resource mounts MUST not overlap.
-- Team resources are inherited by direct concrete members and selected representatives through nested teams.
+- Team resources declared under `shared.workspace.resources` are inherited by direct concrete members and selected representatives through nested teams.
 
 ### 2.2 Skills
 
-Each entry in `skills` MUST have a `ref` pointing to a skill directory. A skill directory MUST contain a `SKILL.md` file.
+Each entry in `workspace.skills` or `shared.workspace.skills` MUST have a `ref` pointing to a skill directory. A skill directory MUST contain a `SKILL.md` file.
 
 `SKILL.md` MUST begin with a YAML frontmatter block declaring at minimum:
 
@@ -226,7 +234,7 @@ The exact contents of `SKILL.md` beyond required frontmatter are intentionally l
 
 ### 2.3 MCP Servers
 
-Each entry in `mcp_servers` MUST have a unique `name` within its manifest scope. `name` values are logical identifiers, not runtime-specific instance ids.
+Each entry in `environment.mcp_servers` MUST have a unique `name` within its manifest scope. `name` values are logical identifiers, not runtime-specific instance ids.
 
 `transport` MUST be one of: `stdio`, `streamable_http`, `sse`.
 
@@ -239,17 +247,18 @@ Transport requirements:
 Example:
 
 ```yaml
-mcp_servers:
-  - name: web_search
-    transport: streamable_http
-    url: https://search.mcp.example.com/mcp
-    auth:
-      secret: SEARCH_API_KEY
-  - name: local_index
-    transport: stdio
-    command: node
-    args:
-      - ./tools/index-mcp.js
+environment:
+  mcp_servers:
+    - name: web_search
+      transport: streamable_http
+      url: https://search.mcp.example.com/mcp
+      auth:
+        secret: SEARCH_API_KEY
+    - name: local_index
+      transport: stdio
+      command: node
+      args:
+        - ./tools/index-mcp.js
 ```
 
 Rules:
@@ -259,10 +268,11 @@ Rules:
 
 ### 2.4 Runtime Binding
 
-The `runtime` field declares which runtime adapter should compile a manifest.
+For `kind: agent`, the `runtime` field declares which runtime adapter should compile the agent manifest. Team manifests MUST NOT declare `runtime`; each referenced agent declares its own runtime.
 
 ```yaml
-runtime: openclaw
+runtime:
+  name: openclaw
 ```
 
 Rules:
@@ -280,6 +290,7 @@ runtime:
 - If `runtime` is an object, `runtime.options` is OPTIONAL and MUST be a mapping.
 - `runtime.options` is adapter-specific and outside the portable core.
 - For `kind: agent`, `runtime` is REQUIRED. Subagents inherit their parent's runtime but MUST NOT declare a different one.
+- For `kind: team`, `runtime` is INVALID. Teams compile by walking reachable members and using each agent member's own effective runtime.
 - `spawnfile compile` MUST read runtime bindings from the manifest graph; the CLI does not select a runtime in v0.1.
 - If compilation reaches an agent with no effective runtime binding, the compiler MUST fail.
 
@@ -477,18 +488,53 @@ Rules:
 
 Portable HTTP ingress is not part of the v0.1 alpha surface schema. Runtime-native HTTP APIs MAY remain available through runtime-specific options, but they are not portable Spawnfile surfaces and MUST NOT be emitted as roster addresses.
 
-### 2.7 Environment and Secrets
+### 2.7 Environment Inputs
 
-`env` is an OPTIONAL flat key-value map of non-secret environment values. Values MUST be strings.
-
-`secrets` is an OPTIONAL list. Each entry MUST have:
+`environment` declares runtime and image inputs for an agent. `shared.environment` declares inherited runtime and image inputs for a team.
 
 ```yaml
-- name: SEARCH_API_KEY
-  required: true
+environment:
+  env:
+    LOG_LEVEL: info
+  secrets:
+    - name: SEARCH_API_KEY
+      required: true
+  packages:
+    - id: github-cli
+      manager: apt
+      name: gh
+
+shared:
+  environment:
+    env:
+      GIT_AUTHOR_NAME: Example Agents
+    secrets:
+      - name: PROJECT_GH_TOKEN
+        required: true
+    packages:
+      - id: yt-dlp
+        manager: pipx
+        name: yt-dlp
 ```
 
-Compilers SHOULD warn when a secret is marked `required` but is not present in the execution environment used for compilation or deployment.
+Rules:
+
+- `environment` is OPTIONAL.
+- `shared.environment` is OPTIONAL.
+- `environment.env` and `shared.environment.env` are OPTIONAL flat key-value maps of non-secret environment values. Values MUST be strings.
+- `environment.secrets` and `shared.environment.secrets` are OPTIONAL lists. Each entry MUST have `name` and `required`.
+- `environment.packages` and `shared.environment.packages` are OPTIONAL lists of declarative package inputs.
+- `packages` are runtime/image environment inputs, not workspace resources.
+- `package.id` values MUST be unique within one `environment.packages` list.
+- `package.manager` is REQUIRED. Valid values are `apt`, `npm`, and `pipx`.
+- `package.name` is REQUIRED. It is the manager-native package name.
+- `package.version` is OPTIONAL. Version interpretation is manager-specific.
+- `package.scope` is OPTIONAL and currently valid only for `manager: npm` with value `global`.
+- `apt` packages lower into generated container images through `apt-get install`; `version` becomes `name=version`.
+- `npm` packages lower into generated container images through global `npm install -g`; `version` becomes `name@version`.
+- `pipx` packages lower into generated container images through `pipx install`; `version` becomes `name==version`.
+- If an inherited and member-local package share the same `manager` and `name`, the member-local package wins. If multiple concrete agents are packed into the same generated container target and their effective package definitions conflict, the compiler MUST fail rather than selecting one silently.
+- Compilers SHOULD warn when a secret is marked `required` but is not present in the execution environment used for compilation or deployment.
 
 ---
 
@@ -518,28 +564,11 @@ workspace:
       branch: main
       mount: ./repos/project
       mode: mutable
-
-skills:
-  - ref: ./skills/web_search
-    requires:
-      mcp:
-        - web_search
-  - ref: ./skills/memory_store
-    requires:
-      mcp:
-        - memory_store
-
-mcp_servers:
-  - name: web_search
-    transport: streamable_http
-    url: https://search.mcp.example.com/mcp
-    auth:
-      secret: SEARCH_API_KEY
-  - name: memory_store
-    transport: streamable_http
-    url: https://memory.mcp.example.com/mcp
-    auth:
-      secret: MEMORY_API_KEY
+  skills:
+    - ref: ./skills/web_search
+      requires:
+        mcp:
+          - web_search
 
 runtime:
   name: openclaw
@@ -588,14 +617,31 @@ surfaces:
           read: all
           reply: auto
 
-env:
-  LOG_LEVEL: info
-
-secrets:
-  - name: SEARCH_API_KEY
-    required: true
-  - name: MEMORY_API_KEY
-    required: false
+environment:
+  env:
+    LOG_LEVEL: info
+  mcp_servers:
+    - name: web_search
+      transport: streamable_http
+      url: https://search.mcp.example.com/mcp
+      auth:
+        secret: SEARCH_API_KEY
+    - name: memory_store
+      transport: streamable_http
+      url: https://memory.mcp.example.com/mcp
+      auth:
+        secret: MEMORY_API_KEY
+  secrets:
+    - name: SEARCH_API_KEY
+      required: true
+    - name: MEMORY_API_KEY
+      required: false
+  packages:
+    - id: playwright
+      manager: npm
+      name: playwright
+      version: "1.57.0"
+      scope: global
 
 policy:
   mode: strict
@@ -608,7 +654,7 @@ Declared secrets are runtime inputs, not literal secret values. `spawnfile auth 
 
 ### 3.2 Validation Scope
 
-For an agent manifest, skill `requires.mcp` names MUST be validated against that agent's `mcp_servers` list.
+For an agent manifest, skill `requires.mcp` names MUST be validated against that agent's visible MCP server list.
 
 All blocks other than the top-level required fields are OPTIONAL unless otherwise stated by their own rules.
 
@@ -694,7 +740,7 @@ For a subagent reference, the effective configuration is resolved as follows:
   - object fields are merged recursively
   - scalar fields replace parent values
   - arrays replace parent values wholesale
-- Subagents do not implicitly inherit parent `workspace.docs`, `skills`, `mcp_servers`, `env`, or `secrets`. A subagent MAY declare any of these surfaces in its own Spawnfile manifest — they are simply not copied from the parent. Each subagent is a self-contained agent project that happens to be owned by a parent.
+- Subagents do not implicitly inherit the parent's `workspace`, `environment`, or `surfaces` declarations. A subagent MAY declare any of these surfaces in its own Spawnfile manifest — they are simply not copied from the parent. Each subagent is a self-contained agent project that happens to be owned by a parent.
 
 ---
 
@@ -705,9 +751,9 @@ For a subagent reference, the effective configuration is resolved as follows:
 A Spawnfile team is an organizational structure that defines:
 
 - who is in the team (`members`)
-- what they share (`shared`)
+- what they share (`shared.workspace`, `shared.environment`, and any declared tool servers)
 - how the team is organized (`mode`, `lead`, `external`)
-- who the team is as a collective (`workspace.docs`)
+- who the team is as a collective (`shared.workspace.docs`)
 - which provider-backed team networks exist (`networks`)
 - which context artifacts members receive (`TEAM.md`, rosters, team cards, and context indexes)
 
@@ -729,7 +775,7 @@ Spawnfile does not assume that every runtime has a native team config format, ne
 
 Adapters MAY lower a Spawnfile team into a native team object, a flat leader/member config, provider-backed rooms, generated context files, or another target-native surface. If a target cannot preserve the declared structure, the compiler MUST report `degraded` or `unsupported`.
 
-Coordination rules beyond what the manifest declares (handoff protocols, escalation paths, conflict resolution) belong in the team's `workspace.docs.system` document, where LLM agents can read and follow them as natural language instructions.
+Coordination rules beyond what the manifest declares (handoff protocols, escalation paths, conflict resolution) belong in the team's `shared.workspace.docs.system` document, where LLM agents can read and follow them as natural language instructions.
 
 See `research/RUNTIME-NOTES.md` for per-runtime team lowering research.
 
@@ -744,22 +790,47 @@ description: "Research team that finds, analyzes, and writes up findings"
 mode: hierarchical
 lead: orchestrator
 
-workspace:
-  docs:
-    system: TEAM.md
-
 shared:
-  skills:
-    - ref: ./shared/skills/web_search
-  mcp_servers:
-    - name: web_search
-      transport: streamable_http
-      url: https://search.mcp.example.com/mcp
-      auth:
-        secret: SEARCH_API_KEY
-  secrets:
-    - name: SEARCH_API_KEY
-      required: true
+  workspace:
+    docs:
+      system: TEAM.md
+    resources:
+      - id: project-repo
+        kind: git
+        url: https://github.com/example/project.git
+        branch: main
+        mount: ./repos/project
+        mode: mutable
+      - id: agent-scratch
+        kind: volume
+        mount: ./scratch
+        mode: mutable
+      - id: team-dropbox
+        kind: volume
+        mount: ./shared
+        mode: mutable
+        sharing: team
+    skills:
+      - ref: ./shared/skills/web_search
+  environment:
+    env:
+      GIT_AUTHOR_NAME: Example Agents
+    mcp_servers:
+      - name: web_search
+        transport: streamable_http
+        url: https://search.mcp.example.com/mcp
+        auth:
+          secret: SEARCH_API_KEY
+    secrets:
+      - name: SEARCH_API_KEY
+        required: true
+    packages:
+      - id: github-cli
+        manager: apt
+        name: gh
+      - id: yt-dlp
+        manager: pipx
+        name: yt-dlp
 
 members:
   - id: orchestrator
@@ -802,19 +873,19 @@ A nested team member is a black box to the outer team:
 - Non-representative inner members MUST NOT receive parent team context just because their team is nested.
 - If a target lacks nested team support, the compiler MAY flatten or re-express the nested team boundary, but it MUST report `degraded`.
 
-### 4.4 Shared Surface
+### 4.4 Shared Workspace And Environment
 
-`shared.skills`, `shared.mcp_servers`, `shared.env`, and `shared.secrets` are OPTIONAL and are inherited by all direct members of the team.
+`shared.workspace.docs`, `shared.workspace.resources`, `shared.workspace.skills`, `shared.environment.env`, `shared.environment.secrets`, `shared.environment.packages`, and `shared.environment.mcp_servers` are OPTIONAL and are inherited by all direct members of the team.
 
 Inheritance rules:
 
 - Members extend the shared surface.
 - Members MUST NOT remove inherited items.
 - On MCP name conflict, the member-local declaration MUST win.
-- On env or secret name conflict, the member-local declaration MUST win.
+- On env, secret, package, or resource name conflict, the member-local declaration MUST win.
 - The outer team's shared surface MUST NOT automatically propagate through a nested team boundary into that nested team's own members.
 
-For validation of a shared skill's `requires.mcp`, the visible MCP scope is `shared.mcp_servers`.
+For validation of a shared skill's `requires.mcp`, the visible MCP scope is `shared.environment.mcp_servers`.
 
 For validation of a direct member's skill `requires.mcp`, the visible MCP scope is the union of inherited shared MCP servers and member-local MCP servers, with member-local names taking precedence.
 
@@ -972,7 +1043,7 @@ Rules:
 
 ### 4.7 Team Docs And Context Artifacts
 
-The team's `workspace.docs.system` document (typically `TEAM.md`) describes who the team is as a collective — purpose, culture, identity. It is also the place for coordination rules that go beyond what the manifest captures:
+The team's `shared.workspace.docs.system` document (typically `TEAM.md`) describes who the team is as a collective — purpose, culture, identity. It is also the place for coordination rules that go beyond what the manifest captures:
 
 - Handoff protocols between members
 - Escalation procedures
@@ -981,7 +1052,7 @@ The team's `workspace.docs.system` document (typically `TEAM.md`) describes who 
 
 The team doc SHOULD reference member slot `id` values explicitly so agents can identify their role. Compilers MAY lint for drift between member IDs and the team doc content.
 
-The team doc stays local to the team boundary. When compiled into member workspaces, it is emitted as a literal generated artifact rather than passed through the normal runtime document-role mapping. The compiler MUST NOT rename a team `workspace.docs.system: TEAM.md` through `ROLE_FILE_NAMES` in a way that clobbers the member agent's own `AGENTS.md`.
+The team doc stays local to the team boundary. When compiled into member workspaces, it is emitted as a literal generated artifact rather than passed through the normal runtime document-role mapping. The compiler MUST NOT rename a team `shared.workspace.docs.system: TEAM.md` through `ROLE_FILE_NAMES` in a way that clobbers the member agent's own `AGENTS.md`.
 
 Rules:
 
@@ -996,7 +1067,7 @@ Rules:
 - The compiler MUST emit `.spawnfile/team-contexts.yaml` as the machine-readable context index and `.spawnfile/team-contexts.md` as the human/LLM-readable orientation.
 - Compiler post-processing MUST place or point to `.spawnfile/team-contexts.md` through the compiled runtime's system-instruction surface. Adjacent files alone do not satisfy discoverability when the runtime has a system-instruction surface.
 
-Parent rosters may reference team cards at `.spawnfile/team-cards/<team-context-key>/<parent-member-slot-id>.md`. A team card is a public description of a nested team in the parent context. It may include the child team's name, description, optional `workspace.docs.identity`, and resolved representatives. It MUST NOT include the child team's `TEAM.md`, internal roster, non-representative members, or descendants not reached by the representative chain.
+Parent rosters may reference team cards at `.spawnfile/team-cards/<team-context-key>/<parent-member-slot-id>.md`. A team card is a public description of a nested team in the parent context. It may include the child team's name, description, optional `shared.workspace.docs.identity`, and resolved representatives. It MUST NOT include the child team's `TEAM.md`, internal roster, non-representative members, or descendants not reached by the representative chain.
 
 Team manifests MUST NOT declare `execution`. Model, sandbox, and workspace intent apply to agents and subagents, not to teams as organizational nodes.
 Team manifests MUST NOT declare `surfaces`. Communication surfaces belong to concrete agent manifests.
@@ -1088,7 +1159,7 @@ For team manifests, a conforming compiler MUST preserve the following author int
 - which members belong to the team (slot IDs)
 - the team mode and lead
 - which members form the representative interface
-- which surfaces are shared versus member-local
+- which workspace and environment inputs are shared versus member-local
 - declared team networks and provider-backed rooms
 - context-scoped team docs, rosters, context indexes, and team cards
 
@@ -1105,6 +1176,8 @@ Compilers MUST report capability outcomes for at least:
 - `team.lead`
 - `team.external`
 - `team.shared`
+- `team.shared.workspace`
+- `team.shared.environment`
 - `team.nested`
 - `team.roster`
 - `team.context_orientation`
@@ -1141,7 +1214,8 @@ Rules:
 For a runtime to be a valid Spawnfile target in v0.1, its adapter MUST be able to do all of the following:
 
 - place or inject declared docs into runtime-native surfaces, or report degradation
-- install or expose declared skills, or report degradation
+- install or expose declared workspace skills, or report degradation
+- lower declarative environment inputs, including packages, or report degradation
 - configure declared MCP servers, or report degradation
 - map execution model intent into runtime-native model selection, or report degradation
 - map execution sandbox intent into runtime-native execution policy, or report degradation
@@ -1208,19 +1282,21 @@ For every declared capability the compiler MUST report one of:
 | `degraded` | Partially mapped; runtime behavior may differ from declared intent |
 | `unsupported` | Cannot be expressed in the target |
 
-At minimum, compilers MUST report outcomes for declared docs, skills, MCP servers, execution model intent, execution sandbox intent, schedules, workspace resources, declared surfaces, and team context/network intent.
+At minimum, compilers MUST report outcomes for declared docs, workspace skills, MCP servers, execution model intent, execution sandbox intent, schedules, workspace resources, environment inputs, declared surfaces, and team context/network intent.
 
 ### 6.4 How It Works In Practice
 
 Given this manifest:
 
 ```yaml
-runtime: tinyclaw
+runtime:
+  name: tinyclaw
 
-mcp_servers:
-  - name: web_search
-    transport: streamable_http
-    url: https://search.example.com/mcp
+environment:
+  mcp_servers:
+    - name: web_search
+      transport: streamable_http
+      url: https://search.example.com/mcp
 
 policy:
   mode: strict
@@ -1266,10 +1342,11 @@ execution:
       provider: ${PROVIDER:-anthropic}
       name: ${MODEL:-claude-sonnet-4-5}
 
-mcp_servers:
-  - name: web_search
-    transport: streamable_http
-    url: ${SEARCH_MCP_URL}
+environment:
+  mcp_servers:
+    - name: web_search
+      transport: streamable_http
+      url: ${SEARCH_MCP_URL}
 ```
 
 Rules:
@@ -1278,7 +1355,7 @@ Rules:
 - `${VAR}` resolves to the value of environment variable `VAR`. If `VAR` is not set, the compiler MUST fail with a clear error naming the missing variable.
 - `${VAR:-default}` resolves to the value of `VAR` if set, or `default` if not.
 - Substitution applies only to string values, not to field names or structural elements.
-- The `secrets[*].name` field and surface secret-name fields such as `bot_token_secret`, `app_token_secret`, and `signing_secret` MUST NOT be substituted — they are references to environment variable names, not values.
+- The `environment.secrets[*].name` field, the `shared.environment.secrets[*].name` field, and surface secret-name fields such as `bot_token_secret`, `app_token_secret`, and `signing_secret` MUST NOT be substituted — they are references to environment variable names, not values.
 - Substitution MUST NOT be recursive. A resolved value containing `${...}` is treated as a literal string.
 
 This allows the same Spawnfile to be compiled with different configurations by changing environment variables or providing a `.env` file, without duplicating the manifest.
@@ -1464,7 +1541,7 @@ Compiles a Spawnfile project to runtime-specific output.
 #### `spawnfile up`
 
 Builds and starts a local lifecycle process set from source intent.
-`spawnfile up` is the required command for local lifecycle execution in v0.1.
+ `spawnfile up` is the required command for local lifecycle execution in v0.1.
 
 - `path` is the directory containing the Spawnfile (default: current directory)
 - `--out` sets the output directory (default: `./.spawn`)
@@ -1472,7 +1549,7 @@ Builds and starts a local lifecycle process set from source intent.
 - `--env-file` injects external env values for this local run
 - MAY prepare workspace resources and create/manage local runtime state paths
 - MUST validate and compile as part of startup
-- MUST prepare and enforce `workspace.resources` and workspace state before spawning runtime processes
+- MUST prepare and enforce `workspace.resources`, `environment.packages`, and workspace state before spawning runtime processes
 - MUST run adapter-native or managed Moltnet servers where declared
 - MUST start generated Moltnet nodes and agents in one coordinated lifecycle
 - Exits with code 0 on successful process start; stays attached unless otherwise specified

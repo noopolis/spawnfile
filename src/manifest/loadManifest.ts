@@ -10,8 +10,9 @@ import {
   ExecutionBlock,
   Manifest,
   McpServer,
-  RuntimeBinding,
   SharedSurface,
+  RuntimeBinding,
+  TeamWorkspace,
   SkillReference,
   TeamManifest,
   isAgentManifest,
@@ -65,8 +66,10 @@ const assertMarkdownDocumentPath = (documentPath: string): void => {
   }
 };
 
-const validateDocFiles = async (manifestPath: string, manifest: Manifest): Promise<void> => {
-  const docs = manifest.workspace?.docs;
+const validateDocFiles = async (
+  manifestPath: string,
+  docs: TeamWorkspace["docs"] | undefined
+): Promise<void> => {
   if (!docs) {
     return;
   }
@@ -168,37 +171,46 @@ const validateLocalAgentManifest = async (
   manifestPath: string,
   manifest: AgentManifest
 ): Promise<void> => {
-  ensureUniqueNames((manifest.mcp_servers ?? []).map((server) => server.name), "MCP server");
+  const agentWorkspaceSkills = manifest.workspace?.skills;
+  const agentEnvironment = manifest.environment;
+
+  ensureUniqueNames((agentEnvironment?.mcp_servers ?? []).map((server) => server.name), "MCP server");
   ensureUniqueNames((manifest.subagents ?? []).map((subagent) => subagent.id), "subagent id");
 
-  await validateDocFiles(manifestPath, manifest);
-  await validateSkills(manifestPath, manifest.skills);
+  await validateDocFiles(manifestPath, manifest.workspace?.docs);
+  await validateSkills(manifestPath, agentWorkspaceSkills);
   await validateManifestRefs(
     manifestPath,
     manifest.subagents?.map((subagent) => subagent.ref),
     "Subagent"
   );
-  validateSkillRequirements(manifest.skills, getMcpNames(manifest.mcp_servers));
+  validateSkillRequirements(agentWorkspaceSkills, getMcpNames(agentEnvironment?.mcp_servers));
 };
 
 const getSharedMcpNames = (shared: SharedSurface | undefined): Set<string> =>
-  getMcpNames(shared?.mcp_servers);
+  getMcpNames(shared?.environment?.mcp_servers);
 
 const validateLocalTeamManifest = async (
   manifestPath: string,
   manifest: TeamManifest
 ): Promise<void> => {
-  ensureUniqueNames((manifest.shared?.mcp_servers ?? []).map((server) => server.name), "MCP server");
+  const sharedWorkspace = manifest.shared?.workspace;
+  const sharedEnvironment = manifest.shared?.environment;
+
+  ensureUniqueNames(
+    (sharedEnvironment?.mcp_servers ?? []).map((server) => server.name),
+    "MCP server"
+  );
   ensureUniqueNames(manifest.members.map((member) => member.id), "member id");
 
-  await validateDocFiles(manifestPath, manifest);
-  await validateSkills(manifestPath, manifest.shared?.skills);
+  await validateDocFiles(manifestPath, sharedWorkspace?.docs);
+  await validateSkills(manifestPath, sharedWorkspace?.skills);
   await validateManifestRefs(
     manifestPath,
     manifest.members.map((member) => member.ref),
     "Member"
   );
-  validateSkillRequirements(manifest.shared?.skills, getSharedMcpNames(manifest.shared));
+  validateSkillRequirements(sharedWorkspace?.skills, getSharedMcpNames(manifest.shared));
 
   const memberIds = new Set(manifest.members.map((member) => member.id));
 

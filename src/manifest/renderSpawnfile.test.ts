@@ -205,6 +205,83 @@ describe("renderSpawnfile", () => {
     });
   });
 
+  it("renders agent workspace skills and environment in canonical order", () => {
+    const source = renderSpawnfile({
+      kind: "agent",
+      name: "ops-agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      workspace: {
+        docs: {
+          identity: "IDENTITY.md",
+          system: "AGENTS.md"
+        },
+        skills: [
+          {
+            ref: "./skills/web_search"
+          }
+        ]
+      },
+      environment: {
+        env: {
+          NODE_ENV: "production"
+        },
+        packages: [
+          {
+            id: "gh",
+            manager: "apt",
+            name: "gh"
+          }
+        ],
+        mcp_servers: [
+          {
+            command: "uvx",
+            name: "memory",
+            transport: "stdio"
+          }
+        ],
+        secrets: [
+          {
+            name: "OPS_TOKEN",
+            required: false
+          }
+        ]
+      }
+    });
+
+    const workspaceIndex = source.indexOf("workspace:");
+    const environmentIndex = source.indexOf("environment:");
+    const skillsIndex = source.indexOf("skills:");
+    const envIndex = source.indexOf("env:");
+    const packagesIndex = source.indexOf("packages:");
+    const mcpIndex = source.indexOf("mcp_servers:");
+
+    expect(workspaceIndex).toBeGreaterThanOrEqual(0);
+    expect(skillsIndex).toBeGreaterThan(workspaceIndex);
+    expect(environmentIndex).toBeGreaterThan(workspaceIndex);
+    expect(envIndex).toBeGreaterThan(environmentIndex);
+    expect(packagesIndex).toBeGreaterThan(envIndex);
+    expect(mcpIndex).toBeGreaterThan(packagesIndex);
+    expect(source).toContain("workspace:");
+    expect(source).toContain("  skills:");
+    expect(source).toContain("environment:");
+    expect(source).toContain("  env:");
+    expect(source).toContain("    NODE_ENV: production");
+    expect(source).toContain("    - id: gh");
+    expect(source).toContain("    - command: uvx");
+    expect(manifestSchema.parse(YAML.parse(source) as unknown)).toMatchObject({
+      environment: {
+        packages: [
+          {
+            id: "gh",
+            manager: "apt",
+            name: "gh"
+          }
+        ]
+      }
+    });
+  });
+
   it("renders managed moltnet server settings on team manifests", () => {
     const source = renderSpawnfile({
       kind: "team",
@@ -275,6 +352,61 @@ describe("renderSpawnfile", () => {
         }
       ]
     });
+  });
+
+  it("renders shared workspace and environment in canonical order", () => {
+    const source = renderSpawnfile({
+      kind: "team",
+      members: [
+        {
+          id: "analyst",
+          ref: "./agents/analyst"
+        }
+      ],
+      mode: "swarm",
+      name: "ops-team",
+      shared: {
+        workspace: {
+          docs: {
+            system: "TEAM.md"
+          },
+          skills: [
+            {
+              ref: "./skills/web_search"
+            }
+          ]
+        },
+        environment: {
+          env: {
+            TEAM_MODE: "team"
+          },
+          packages: [
+            {
+              id: "yt-dlp",
+              manager: "pipx",
+              name: "yt-dlp"
+            }
+          ]
+        }
+      },
+      spawnfile_version: "0.1"
+    });
+
+    const sharedIndex = source.indexOf("shared:");
+    const workspaceIndex = source.indexOf("  workspace:");
+    const environmentIndex = source.indexOf("  environment:");
+    const skillsIndex = source.indexOf("  skills:");
+
+    expect(sharedIndex).toBeGreaterThanOrEqual(0);
+    expect(workspaceIndex).toBeGreaterThan(sharedIndex);
+    expect(skillsIndex).toBeGreaterThan(workspaceIndex);
+    expect(environmentIndex).toBeGreaterThan(skillsIndex);
+    expect(source).toContain("shared:");
+    expect(source).toContain("  workspace:");
+    expect(source).toContain("    docs:");
+    expect(source).toContain("    skills:");
+    expect(source).toContain("  environment:");
+    expect(source).toContain("    env:");
   });
 
   it("redacts moltnet secret values when rendering", () => {

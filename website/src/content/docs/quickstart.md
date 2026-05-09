@@ -45,13 +45,18 @@ Open `Spawnfile` and set your agent's name and runtime:
 spawnfile_version: "0.1"
 kind: agent
 name: my-assistant
-runtime: openclaw
+runtime:
+  name: openclaw
 
 workspace:
   docs:
     identity: IDENTITY.md
     soul: SOUL.md
     system: AGENTS.md
+
+environment:
+  env:
+    LOG_LEVEL: info
 
 execution:
   model:

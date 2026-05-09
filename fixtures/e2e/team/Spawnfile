@@ -5,9 +5,10 @@ name: auth-smoke-team
 mode: hierarchical
 lead: openclaw
 
-workspace:
-  docs:
-    system: TEAM.md
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
 
 members:
   - id: openclaw

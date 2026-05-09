@@ -5,6 +5,7 @@ import {
   getMcpNames,
   getTeamFingerprint,
   listMoltnetNetworkSecretNames,
+  mergePackages,
   validateEffectiveSkillRequirements
 } from "./compilePlanHelpers.js";
 import type { CompilePlanNode } from "./types.js";
@@ -237,6 +238,41 @@ describe("compilePlanHelpers", () => {
       "MOLTNET_DSN",
       "OPEN_DSN",
       "REMOTE_NET_PAIR_TOKEN"
+    ]);
+  });
+
+  it("dedupes package declarations and lets local versions override shared versions", () => {
+    const sharedPackages = [
+      {
+        id: "apt-gh-shared",
+        manager: "apt" as const,
+        name: "gh",
+        version: "2.42.0"
+      },
+      {
+        id: "apt-git",
+        manager: "apt",
+        name: "git"
+      }
+    ];
+    const localPackages = [
+      {
+        id: "apt-gh-agent",
+        manager: "apt" as const,
+        name: "gh",
+        version: "2.50.0"
+      },
+      {
+        id: "pipx-yt-dlp",
+        manager: "pipx",
+        name: "yt-dlp"
+      }
+    ];
+
+    expect(mergePackages(sharedPackages, localPackages)).toEqual([
+      localPackages[0],
+      sharedPackages[1],
+      localPackages[1]
     ]);
   });
 });

@@ -3,13 +3,12 @@ import {
   DocsBlock,
   McpServer,
   Secret,
-  SharedSurface,
   SkillReference
 } from "../manifest/index.js";
 import { parseSkillFrontmatter } from "../manifest/index.js";
 import { StringMap } from "../shared/index.js";
 
-import { ResolvedDocument, ResolvedSkill } from "./types.js";
+import { ResolvedDocument, ResolvedPackage, ResolvedSkill } from "./types.js";
 
 const mergeByKey = <TValue>(
   sharedValues: TValue[],
@@ -38,6 +37,12 @@ export const mergeResolvedSkills = (
   sharedSkills: ResolvedSkill[] = [],
   localSkills: ResolvedSkill[] = []
 ): ResolvedSkill[] => mergeByKey(sharedSkills, localSkills, (skill) => skill.ref);
+
+export const mergePackages = (
+  sharedPackages: ResolvedPackage[] = [],
+  localPackages: ResolvedPackage[] = []
+): ResolvedPackage[] =>
+  mergeByKey(sharedPackages, localPackages, (pkg) => `${pkg.manager}::${pkg.name}`);
 
 export const mergeMcpServers = (
   sharedServers: McpServer[] = [],
@@ -106,23 +111,3 @@ export const loadResolvedSkills = async (
       };
     })
   );
-
-export const mergeSharedSurface = (
-  shared: SharedSurface | undefined,
-  local: {
-    env: StringMap | undefined;
-    mcpServers: McpServer[] | undefined;
-    secrets: Secret[] | undefined;
-    skills: SkillReference[] | undefined;
-  }
-): {
-  env: StringMap;
-  mcpServers: McpServer[];
-  secrets: Secret[];
-  skills: SkillReference[];
-} => ({
-  env: mergeEnv(shared?.env, local.env),
-  mcpServers: mergeMcpServers(shared?.mcp_servers, local.mcpServers),
-  secrets: mergeSecrets(shared?.secrets, local.secrets),
-  skills: mergeSkills(shared?.skills, local.skills)
-});

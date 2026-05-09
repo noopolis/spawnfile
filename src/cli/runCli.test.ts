@@ -152,7 +152,8 @@ describe("runCli", () => {
         root: path.join(fixturesRoot, "single-agent"),
         spawnfile_version: "0.1" as const
       },
-      reportPath: "/tmp/spawnfile-up-out/spawnfile-report.json"
+      reportPath: "/tmp/spawnfile-up-out/spawnfile-report.json",
+      supportDirectory: "/tmp/spawnfile-run-support"
     }));
 
     const exitCode = await runCli(

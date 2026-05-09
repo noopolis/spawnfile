@@ -19,10 +19,6 @@ spawnfile_version: "0.1"
 kind: team
 name: research-cell
 
-workspace:
-  docs:
-    system: TEAM.md
-
 mode: hierarchical
 lead: orchestrator
 
@@ -50,6 +46,29 @@ networks:
     rooms:
       - id: research-room
         members: [orchestrator, researcher, writer]
+
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
+    resources:
+      - id: team-dropbox
+        kind: volume
+        mount: ./shared
+        mode: mutable
+        sharing: team
+    skills:
+      - ref: ./skills/web_search
+  environment:
+    env:
+      LOG_LEVEL: info
+    secrets:
+      - name: SEARCH_API_KEY
+        required: true
+    packages:
+      - id: gh
+        manager: apt
+        name: gh
 ```
 
 ## Members
@@ -161,7 +180,7 @@ Moltnet networks
 
 ## TEAM.md And Context Files
 
-The team's `workspace.docs.system` document is typically `TEAM.md`. It describes the team as a collective and may include handoff protocols, escalation procedures, decision-making norms, and quality standards.
+The team's `shared.workspace.docs.system` document is typically `TEAM.md`. It describes the team as a collective and may include handoff protocols, escalation procedures, decision-making norms, and quality standards.
 
 The compiler emits `TEAM.md` literally as generated team context. It does not pass it through runtime doc-role mapping and does not merge several team docs.
 

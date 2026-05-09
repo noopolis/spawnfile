@@ -11,10 +11,11 @@ import type {
   MoltnetRoomBehavior,
   ModelEntryAuth,
   ModelTarget,
+  Environment,
   RuntimeBinding,
+  SharedSurface,
   SlackSurface,
   SlackSurfaceAccess,
-  SharedSurface,
   SurfacesBlock,
   TelegramSurface,
   TelegramSurfaceAccess,
@@ -294,6 +295,19 @@ const orderAgentSchedule = (
   return { kind: schedule.kind };
 };
 
+const orderEnvironment = (environment: Environment | undefined): Environment | undefined => {
+  if (!environment) {
+    return undefined;
+  }
+
+  return withDefinedEntries([
+    ["env", environment.env],
+    ["secrets", environment.secrets],
+    ["packages", environment.packages],
+    ["mcp_servers", environment.mcp_servers]
+  ]) as unknown as Environment;
+};
+
 const orderSharedSurface = (
   shared: SharedSurface | undefined
 ): SharedSurface | undefined => {
@@ -302,10 +316,8 @@ const orderSharedSurface = (
   }
 
   return withDefinedEntries([
-    ["env", shared.env],
-    ["mcp_servers", shared.mcp_servers],
-    ["secrets", shared.secrets],
-    ["skills", shared.skills]
+    ["workspace", orderWorkspace(shared.workspace)],
+    ["environment", orderEnvironment(shared.environment)]
   ]) as unknown as SharedSurface;
 };
 
@@ -343,14 +355,9 @@ const orderAgentManifestSections = (manifest: AgentManifest): Record<string, unk
   withDefinedEntries([["execution", orderExecution(manifest.execution)]]),
   withDefinedEntries([["schedule", orderAgentSchedule(manifest.schedule)]]),
   withDefinedEntries([["workspace", orderWorkspace(manifest.workspace)]]),
+  withDefinedEntries([["environment", orderEnvironment(manifest.environment)]]),
   withDefinedEntries([["surfaces", orderSurfaces(manifest.surfaces)]]),
-  withDefinedEntries([
-    ["skills", manifest.skills],
-    ["mcp_servers", manifest.mcp_servers],
-    ["secrets", manifest.secrets],
-    ["env", manifest.env],
-    ["policy", manifest.policy]
-  ]),
+  withDefinedEntries([["policy", manifest.policy]]),
   withDefinedEntries([["subagents", manifest.subagents]])
 ];
 
@@ -360,20 +367,10 @@ const orderTeamManifestSections = (manifest: TeamManifest): Record<string, unkno
     ["kind", manifest.kind],
     ["name", manifest.name]
   ]),
-  withDefinedEntries([["runtime", orderRuntimeBinding(manifest.runtime)]]),
   withDefinedEntries([["execution", orderExecution(manifest.execution)]]),
-  withDefinedEntries([
-    ["workspace", orderWorkspace(manifest.workspace)],
-    ["shared", orderSharedSurface(manifest.shared)],
-    ["networks", orderTeamNetworks(manifest.networks)]
-  ]),
-  withDefinedEntries([
-    ["skills", manifest.skills],
-    ["mcp_servers", manifest.mcp_servers],
-    ["secrets", manifest.secrets],
-    ["env", manifest.env],
-    ["policy", manifest.policy]
-  ]),
+  withDefinedEntries([["shared", orderSharedSurface(manifest.shared)]]),
+  withDefinedEntries([["networks", orderTeamNetworks(manifest.networks)]]),
+  withDefinedEntries([["policy", manifest.policy]]),
   withDefinedEntries([
     ["members", manifest.members],
     ["mode", manifest.mode],

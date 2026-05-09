@@ -50,13 +50,15 @@ describe("manifestSchema", () => {
   it("accepts stdio MCP servers with a command", () => {
     const result = manifestSchema.parse({
       kind: "agent",
-      mcp_servers: [
-        {
-          command: "uvx",
-          name: "memory",
-          transport: "stdio"
-        }
-      ],
+      environment: {
+        mcp_servers: [
+          {
+            command: "uvx",
+            name: "memory",
+            transport: "stdio"
+          }
+        ]
+      },
       name: "agent",
       runtime: "openclaw",
       spawnfile_version: "0.1"
@@ -68,12 +70,14 @@ describe("manifestSchema", () => {
   it("rejects stdio MCP servers without a command", () => {
     const result = manifestSchema.safeParse({
       kind: "agent",
-      mcp_servers: [
-        {
-          name: "memory",
-          transport: "stdio"
-        }
-      ],
+      environment: {
+        mcp_servers: [
+          {
+            name: "memory",
+            transport: "stdio"
+          }
+        ]
+      },
       name: "agent",
       runtime: "openclaw",
       spawnfile_version: "0.1"
@@ -86,12 +90,14 @@ describe("manifestSchema", () => {
   it("rejects remote MCP servers without a url", () => {
     const result = manifestSchema.safeParse({
       kind: "agent",
-      mcp_servers: [
-        {
-          name: "search",
-          transport: "sse"
-        }
-      ],
+      environment: {
+        mcp_servers: [
+          {
+            name: "search",
+            transport: "sse"
+          }
+        ]
+      },
       name: "agent",
       runtime: "openclaw",
       spawnfile_version: "0.1"
@@ -99,6 +105,336 @@ describe("manifestSchema", () => {
 
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.message).toContain("must declare url");
+  });
+
+  it("accepts package declarations with valid managers", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      environment: {
+        packages: [
+          {
+            id: "gh",
+            manager: "apt",
+            name: "gh"
+          },
+          {
+            id: "code",
+            manager: "pipx",
+            name: "pytool",
+            version: "1.2.3"
+          },
+          {
+            id: "npm-cli",
+            manager: "npm",
+            name: "@openai/codex",
+            scope: "global"
+          }
+        ]
+      },
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects package entries with unsupported scope usage", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      environment: {
+        packages: [
+          {
+            id: "gh",
+            manager: "apt",
+            name: "gh",
+            scope: "global"
+          }
+        ]
+      },
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("scope");
+  });
+
+  it("rejects package entries with unknown manager", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      environment: {
+        packages: [
+          {
+            id: "strange",
+            manager: "yum",
+            name: "yum-pkg"
+          }
+        ]
+      } as never,
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects duplicate package ids in one environment scope", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      environment: {
+        packages: [
+          {
+            id: "cli",
+            manager: "apt",
+            name: "gh"
+          },
+          {
+            id: "cli",
+            manager: "npm",
+            name: "@openai/codex"
+          }
+        ]
+      },
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("package ids");
+  });
+
+  describe("legacy root-level fields", () => {
+    const legacyRootFields = [
+      ["env", { LEGACY: "true" }],
+      ["mcp_servers", [{ name: "search", transport: "sse", url: "https://search.example" }]],
+      ["packages", [{ id: "gh", manager: "apt", name: "gh" }]],
+      ["secrets", [{ name: "LEGACY", required: true }]],
+      ["skills", [{ ref: "./skills/web_search" }]]
+    ] as const;
+
+    for (const [field, value] of legacyRootFields) {
+      it(`rejects root-level ${field} in agent manifests`, () => {
+        const result = manifestSchema.safeParse({
+          [field]: value,
+          kind: "agent",
+          name: "legacy-agent",
+          runtime: "openclaw",
+          spawnfile_version: "0.1"
+        } as never);
+
+        expect(result.success).toBe(false);
+        expect(result.error?.issues[0]?.message).toContain("Unrecognized key");
+      });
+
+      it(`rejects root-level ${field} in team manifests`, () => {
+        const result = manifestSchema.safeParse({
+          [field]: value,
+          kind: "team",
+          members: [
+            {
+              id: "analyst",
+              ref: "./agents/analyst"
+            }
+          ],
+          mode: "swarm",
+          name: "legacy-team",
+          spawnfile_version: "0.1"
+        } as never);
+
+        expect(result.success).toBe(false);
+        expect(result.error?.issues[0]?.message).toContain("Unrecognized key");
+      });
+    }
+  });
+
+  it("rejects runtime in team manifests", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "analyst",
+          ref: "./agents/analyst"
+        }
+      ],
+      mode: "swarm",
+      name: "runtime-team",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("Unrecognized key");
+  });
+
+  it("rejects old shared.skills in team manifests", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "analyst",
+          ref: "./agents/analyst"
+        }
+      ],
+      mode: "swarm",
+      name: "legacy-team",
+      shared: {
+        skills: [
+          {
+            ref: "./skills/web_search"
+          }
+        ]
+      },
+      spawnfile_version: "0.1"
+    } as never);
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("Unrecognized key");
+  });
+
+  it("rejects old shared.env in team manifests", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "analyst",
+          ref: "./agents/analyst"
+        }
+      ],
+      mode: "swarm",
+      name: "legacy-team",
+      shared: {
+        env: {
+          TEAM: "1"
+        }
+      },
+      spawnfile_version: "0.1"
+    } as never);
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("Unrecognized key");
+  });
+
+  it("rejects old shared.secrets in team manifests", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "analyst",
+          ref: "./agents/analyst"
+        }
+      ],
+      mode: "swarm",
+      name: "legacy-team",
+      shared: {
+        secrets: [{ name: "LEGACY", required: true }]
+      },
+      spawnfile_version: "0.1"
+    } as never);
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("Unrecognized key");
+  });
+
+  it("rejects old shared.mcp_servers in team manifests", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "analyst",
+          ref: "./agents/analyst"
+        }
+      ],
+      mode: "swarm",
+      name: "legacy-team",
+      shared: {
+        mcp_servers: [
+          {
+            name: "search",
+            transport: "sse",
+            url: "https://search.example"
+          }
+        ]
+      },
+      spawnfile_version: "0.1"
+    } as never);
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("Unrecognized key");
+  });
+
+  it("accepts team workspace skills and shared environment packages", () => {
+    const result = manifestSchema.parse({
+      kind: "team",
+      members: [
+        {
+          id: "analyst",
+          ref: "./agents/analyst"
+        }
+      ],
+      mode: "swarm",
+      name: "modern-team",
+      shared: {
+        workspace: {
+          skills: [
+            {
+              ref: "./skills/web_search"
+            }
+          ]
+        },
+        environment: {
+          packages: [
+            {
+              id: "gh",
+              manager: "apt",
+              name: "gh"
+            }
+          ]
+        }
+      },
+      spawnfile_version: "0.1"
+    });
+
+    expect(isTeamManifest(result)).toBe(true);
+    if (!isTeamManifest(result)) {
+      throw new Error("expected team manifest");
+    }
+    expect(result.shared?.environment?.packages?.[0].id).toBe("gh");
+  });
+
+  it("accepts agent workspace skills and environment packages", () => {
+    const result = manifestSchema.parse({
+      kind: "agent",
+      name: "worker",
+      runtime: "openclaw",
+      workspace: {
+        docs: {
+          system: "AGENTS.md"
+        },
+        skills: [{ ref: "./skills/web_search" }]
+      },
+      environment: {
+        packages: [
+          {
+            id: "yt-dlp",
+            manager: "pipx",
+            name: "yt-dlp",
+            version: "2025.1.0"
+          }
+        ]
+      },
+      spawnfile_version: "0.1"
+    });
+
+    expect(isAgentManifest(result)).toBe(true);
+    if (!isAgentManifest(result)) {
+      throw new Error("expected agent manifest");
+    }
+    expect(result.environment?.packages?.[0].manager).toBe("pipx");
+    expect(result.workspace?.skills?.[0].ref).toBe("./skills/web_search");
   });
 
   it("identifies team manifests", () => {
@@ -937,24 +1273,26 @@ describe("manifestSchema", () => {
   it("accepts workspace resources with git and volume entries", () => {
     const result = manifestSchema.safeParse({
       kind: "team",
-      workspace: {
-        resources: [
-          {
-            id: "project",
-            kind: "git",
-            url: "https://example.com/example/project.git",
-            branch: "main",
-            mount: "./repos/project",
-            mode: "mutable"
-          },
-          {
-            id: "scratch",
-            kind: "volume",
-            mount: "${workspace}/scratch",
-            mode: "readonly",
-            sharing: "team"
-          }
-        ]
+      shared: {
+        workspace: {
+          resources: [
+            {
+              id: "project",
+              kind: "git",
+              url: "https://example.com/example/project.git",
+              branch: "main",
+              mount: "./repos/project",
+              mode: "mutable"
+            },
+            {
+              id: "scratch",
+              kind: "volume",
+              mount: "${workspace}/scratch",
+              mode: "readonly",
+              sharing: "team"
+            }
+          ]
+        }
       },
       members: [
         {
@@ -973,18 +1311,20 @@ describe("manifestSchema", () => {
   it("rejects team-shared git workspace resources", () => {
     const result = manifestSchema.safeParse({
       kind: "team",
-      workspace: {
-        resources: [
-          {
-            id: "project",
-            kind: "git",
-            url: "https://example.com/example/project.git",
-            branch: "main",
-            mount: "./repos/project",
-            mode: "mutable",
-            sharing: "team"
-          }
-        ]
+      shared: {
+        workspace: {
+          resources: [
+            {
+              id: "project",
+              kind: "git",
+              url: "https://example.com/example/project.git",
+              branch: "main",
+              mount: "./repos/project",
+              mode: "mutable",
+              sharing: "team"
+            }
+          ]
+        }
       },
       members: [
         {
@@ -1004,21 +1344,23 @@ describe("manifestSchema", () => {
   it("accepts duplicate workspace resource ids when declarations are identical", () => {
     const result = manifestSchema.safeParse({
       kind: "team",
-      workspace: {
-        resources: [
-          {
-            id: "scratch",
-            kind: "volume",
-            mount: "/scratch",
-            mode: "mutable"
-          },
-          {
-            id: "scratch",
-            kind: "volume",
-            mount: "/scratch",
-            mode: "mutable"
-          }
-        ]
+      shared: {
+        workspace: {
+          resources: [
+            {
+              id: "scratch",
+              kind: "volume",
+              mount: "/scratch",
+              mode: "mutable"
+            },
+            {
+              id: "scratch",
+              kind: "volume",
+              mount: "/scratch",
+              mode: "mutable"
+            }
+          ]
+        }
       },
       members: [
         {
@@ -1037,25 +1379,27 @@ describe("manifestSchema", () => {
   it("rejects duplicate workspace resource ids when declarations differ", () => {
     const result = manifestSchema.safeParse({
       kind: "team",
-      workspace: {
-        resources: [
-          {
-            id: "project",
-            kind: "git",
-            url: "https://example.com/example/project.git",
-            branch: "main",
-            mount: "/workspaces/project",
-            mode: "mutable"
-          },
-          {
-            id: "project",
-            kind: "git",
-            url: "https://example.com/example/project.git",
-            tag: "v1",
-            mount: "/workspaces/project",
-            mode: "mutable"
-          }
-        ]
+      shared: {
+        workspace: {
+          resources: [
+            {
+              id: "project",
+              kind: "git",
+              url: "https://example.com/example/project.git",
+              branch: "main",
+              mount: "/workspaces/project",
+              mode: "mutable"
+            },
+            {
+              id: "project",
+              kind: "git",
+              url: "https://example.com/example/project.git",
+              tag: "v1",
+              mount: "/workspaces/project",
+              mode: "mutable"
+            }
+          ]
+        }
       },
       members: [
         {
@@ -1075,23 +1419,25 @@ describe("manifestSchema", () => {
   it("rejects overlapping workspace resource mounts", () => {
     const result = manifestSchema.safeParse({
       kind: "team",
-      workspace: {
-        resources: [
-          {
-            id: "project",
-            kind: "git",
-            url: "https://example.com/example/project.git",
-            branch: "main",
-            mount: "/workspaces",
-            mode: "mutable"
-          },
-          {
-            id: "nested",
-            kind: "volume",
-            mount: "/workspaces/project",
-            mode: "readonly"
-          }
-        ]
+      shared: {
+        workspace: {
+          resources: [
+            {
+              id: "project",
+              kind: "git",
+              url: "https://example.com/example/project.git",
+              branch: "main",
+              mount: "/workspaces",
+              mode: "mutable"
+            },
+            {
+              id: "nested",
+              kind: "volume",
+              mount: "/workspaces/project",
+              mode: "readonly"
+            }
+          ]
+        }
       },
       members: [
         {
@@ -1111,15 +1457,17 @@ describe("manifestSchema", () => {
   it("rejects invalid workspace resource mounts", () => {
     const result = manifestSchema.safeParse({
       kind: "team",
-      workspace: {
-        resources: [
-          {
-            id: "scratch",
-            kind: "volume",
-            mount: "scratch",
-            mode: "mutable"
-          }
-        ]
+      shared: {
+        workspace: {
+          resources: [
+            {
+              id: "scratch",
+              kind: "volume",
+              mount: "scratch",
+              mode: "mutable"
+            }
+          ]
+        }
       },
       members: [
         {
@@ -1139,15 +1487,17 @@ describe("manifestSchema", () => {
   it("rejects workspace resource mounts at the workspace root", () => {
     const result = manifestSchema.safeParse({
       kind: "team",
-      workspace: {
-        resources: [
-          {
-            id: "scratch",
-            kind: "volume",
-            mount: "${workspace}",
-            mode: "mutable"
-          }
-        ]
+      shared: {
+        workspace: {
+          resources: [
+            {
+              id: "scratch",
+              kind: "volume",
+              mount: "${workspace}",
+              mode: "mutable"
+            }
+          ]
+        }
       },
       members: [
         {
@@ -1167,15 +1517,17 @@ describe("manifestSchema", () => {
   it("rejects invalid workspace resource mode values", () => {
     const result = manifestSchema.safeParse({
       kind: "team",
-      workspace: {
-        resources: [
-          {
-            id: "scratch",
-            kind: "volume",
-            mount: "/scratch",
-            mode: "bogus"
-          }
-        ]
+      shared: {
+        workspace: {
+          resources: [
+            {
+              id: "scratch",
+              kind: "volume",
+              mount: "/scratch",
+              mode: "bogus"
+            }
+          ]
+        }
       },
       members: [
         {
@@ -1189,7 +1541,7 @@ describe("manifestSchema", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(issueHasPath(result, "workspace.resources.0.mode")).toBe(true);
+    expect(issueHasPath(result, "shared.workspace.resources.0.mode")).toBe(true);
   });
 
   it("accepts postgres moltnet store configuration", () => {

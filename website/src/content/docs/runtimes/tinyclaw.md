@@ -46,6 +46,13 @@ TinyClaw does not have a clear first-class MCP authoring or config surface. MCP 
 
 This is an area under ongoing research. See the runtime notes for updates.
 
+## Schedule Handling
+
+TinyClaw supports Spawnfile `schedule.kind: cron` through its native scheduler.
+The adapter emits a `schedules.json` file in the TinyClaw home directory, and
+`spawnfile up` starts TinyClaw with that file in place. `schedule.kind: every`
+is validated but reported as degraded for TinyClaw in v0.1.
+
 ## Workspace and Sandbox
 
 Each agent has:

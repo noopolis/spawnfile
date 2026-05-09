@@ -29,6 +29,7 @@
     "runtimes:sync": "./scripts/runtimes.sh && ./scripts/blueprints.sh",
     "test:e2e:docker-auth": "tsx src/e2e/cli.ts",
     "test:e2e:moltnet-team-chat": "tsx src/e2e/cli.ts moltnet-team-chat",
+    "test:e2e:operational-smoke": "tsx src/e2e/cli.ts operational-smoke",
     "test": "vitest run",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },

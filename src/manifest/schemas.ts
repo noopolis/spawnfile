@@ -79,22 +79,61 @@ const policySchema = z
   })
   .strict();
 
+const packageManagerSchema = z.enum(["apt", "npm", "pipx"]);
+
+const packageSchema = z
+  .object({
+    id: z.string().min(1),
+    manager: packageManagerSchema,
+    name: z.string().min(1),
+    scope: z.string().min(1).optional(),
+    version: z.string().min(1).optional()
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.manager !== "npm" && value.scope !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "scope is only supported for npm-managed packages"
+      });
+    }
+
+    if (value.manager === "npm" && value.scope !== undefined && value.scope !== "global") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "npm package scope must be global"
+      });
+    }
+  });
+
+const environmentSchema = z
+  .object({
+    env: z.record(z.string(), z.string()).optional(),
+    mcp_servers: z.array(mcpServerSchema).optional(),
+    packages: z.array(packageSchema).optional(),
+    secrets: z.array(secretSchema).optional()
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const packageIds = value.packages?.map((pkg) => pkg.id) ?? [];
+    if (new Set(packageIds).size !== packageIds.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "environment package ids must be unique"
+      });
+    }
+  });
+
 const commonManifestSchema = z
   .object({
     description: z.string().optional(),
-    workspace: teamWorkspaceSchema.optional(),
-    env: z.record(z.string(), z.string()).optional(),
     execution: executionSchema.optional(),
     kind: z.enum(["agent", "team"]),
-    mcp_servers: z.array(mcpServerSchema).optional(),
     name: z
       .string()
       .min(1)
       .refine((value) => !/\s/.test(value), { message: "name must not contain whitespace" }),
     policy: policySchema.optional(),
-    runtime: runtimeBindingSchema.optional(),
-    secrets: z.array(secretSchema).optional(),
-    skills: z.array(skillReferenceSchema).optional(),
     surfaces: surfacesSchema.optional(),
     spawnfile_version: z.literal("0.1")
   })
@@ -109,10 +148,8 @@ const subagentSchema = z
 
 const sharedSurfaceSchema = z
   .object({
-    env: z.record(z.string(), z.string()).optional(),
-    mcp_servers: z.array(mcpServerSchema).optional(),
-    secrets: z.array(secretSchema).optional(),
-    skills: z.array(skillReferenceSchema).optional()
+    environment: environmentSchema.optional(),
+    workspace: teamWorkspaceSchema.optional()
   })
   .strict();
 
@@ -127,8 +164,11 @@ const agentManifestSchema = commonManifestSchema
   .extend({
     expose: z.boolean().optional(),
     kind: z.literal("agent"),
+    environment: environmentSchema.optional(),
+    runtime: runtimeBindingSchema.optional(),
     schedule: agentScheduleSchema.optional(),
-    subagents: z.array(subagentSchema).optional()
+    subagents: z.array(subagentSchema).optional(),
+    workspace: teamWorkspaceSchema.optional()
   })
   .strict();
 
@@ -203,10 +243,12 @@ export const manifestSchema = z.discriminatedUnion("kind", [
 export type AgentManifest = z.infer<typeof agentManifestSchema>;
 export type { AgentSchedule } from "./scheduleSchemas.js";
 export type DocsBlock = z.infer<typeof teamWorkspaceDocsSchema>;
+export type Environment = z.infer<typeof environmentSchema>;
 export type Manifest = z.infer<typeof manifestSchema>;
 export type ManifestMember = z.infer<typeof memberSchema>;
 export type McpServer = z.infer<typeof mcpServerSchema>;
 export type RuntimeBinding = z.infer<typeof runtimeBindingSchema>;
+export type Package = z.infer<typeof packageSchema>;
 export type Secret = z.infer<typeof secretSchema>;
 export type SharedSurface = z.infer<typeof sharedSurfaceSchema>;
 export type SkillReference = z.infer<typeof skillReferenceSchema>;

@@ -118,6 +118,7 @@ describe("upProject", () => {
     expect(result.imageTag).toBe("spawnfile-up-container");
     expect(result.containerName).toBe("up-container");
     expect(result.authProfileName).toBeNull();
+    expect(result.supportDirectory).toBe("/tmp/spawnfile-run-support");
   });
 
   it("does not start runtime when planning fails", async () => {
@@ -209,5 +210,6 @@ describe("upProject", () => {
     expect(removeDirectory).not.toHaveBeenCalled();
     expect(result.authProfileName).toBe("prod");
     expect(result.containerName).toBe("detached-container");
+    expect(result.supportDirectory).toBe("/tmp/spawnfile-run-support");
   });
 });

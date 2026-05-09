@@ -59,6 +59,10 @@ describe("addAgentProject", () => {
       ref: "./agents/writer"
     });
     expect(parentSource.indexOf("docs:")).toBeLessThan(parentSource.indexOf("members:"));
+    expect(isAgentManifest(childManifest.manifest)).toBe(true);
+    if (!isAgentManifest(childManifest.manifest)) {
+      throw new Error("expected child agent manifest");
+    }
     expect(getRuntimeName(childManifest.manifest.runtime)).toBe("openclaw");
     await expect(fileExists(path.join(directory, "agents", "writer", "AGENTS.md"))).resolves.toBe(
       true
@@ -92,6 +96,10 @@ describe("addAgentProject", () => {
       ref: "./agents/writer"
     });
     expect(parentSource.indexOf("docs:")).toBeLessThan(parentSource.indexOf("members:"));
+    expect(isAgentManifest(childManifest.manifest)).toBe(true);
+    if (!isAgentManifest(childManifest.manifest)) {
+      throw new Error("expected child agent manifest");
+    }
     expect(getRuntimeName(childManifest.manifest.runtime)).toBe("picoclaw");
     await expect(fileExists(path.join(directory, "agents", "writer", "AGENTS.md"))).resolves.toBe(
       true
@@ -165,6 +173,10 @@ describe("addSubagentProject", () => {
     expect(parentSource.indexOf("runtime: tinyclaw")).toBeLessThan(parentSource.indexOf("execution:"));
     expect(parentSource.indexOf("execution:")).toBeLessThan(parentSource.indexOf("docs:"));
     expect(parentSource.indexOf("docs:")).toBeLessThan(parentSource.indexOf("subagents:"));
+    expect(isAgentManifest(childManifest.manifest)).toBe(true);
+    if (!isAgentManifest(childManifest.manifest)) {
+      throw new Error("expected child agent manifest");
+    }
     expect(getRuntimeName(childManifest.manifest.runtime)).toBe("tinyclaw");
     expect(childManifest.manifest.execution?.model?.auth?.method).toBe("claude-code");
   });

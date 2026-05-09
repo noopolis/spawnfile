@@ -22,8 +22,14 @@ myruntime:
   remote: git@github.com:org/myruntime.git
   ref: v1.0.0
   default_branch: main
+  install:
+    kind: npm
+    package: myruntime
+    version: 1.0.0
   status: exploratory
 ```
+
+The `install` block is the compiled install surface Spawnfile will use when it builds containers. Exploratory runtimes can start without a verified install strategy, but active runtimes intended for `spawnfile build` should declare one in `runtimes.yaml`.
 
 ### 2. Research
 
@@ -50,8 +56,8 @@ Add the adapter to `src/runtime/registry.ts`.
 
 ### 5. Test
 
-Write tests in `src/runtime/myruntime/adapter.test.ts`. Verify output matches the blueprint.
+Write tests in `src/runtime/myruntime/adapter.test.ts`. Verify output matches the blueprint, the generated container can install the pinned runtime, and any host-reachable service has a smoke check.
 
 ### 6. Promote
 
-Once tests pass and the adapter produces valid output, change status to `active` in `runtimes.yaml`.
+Once tests pass, the adapter produces valid output, and the build/install smoke path works, change status to `active` in `runtimes.yaml`.

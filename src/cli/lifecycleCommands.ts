@@ -20,10 +20,12 @@ export const registerLifecycleCommands = (
   program
     .command("build")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
+    .option("--docker-command <command>", "Docker command")
     .option("-o, --out <directory>", "Output directory")
     .option("-t, --tag <image>", "Docker image tag")
-    .action(async (inputPath: string, options: { out?: string; tag?: string }) => {
+    .action(async (inputPath: string, options: { dockerCommand?: string; out?: string; tag?: string }) => {
       const result = await handlers.buildProject(inputPath, {
+        dockerCommand: options.dockerCommand,
         imageTag: options.tag,
         outputDirectory: options.out
       });
@@ -38,6 +40,7 @@ export const registerLifecycleCommands = (
     .option("-o, --out <directory>", "Output directory")
     .option("-t, --tag <image>", "Docker image tag")
     .option("--auth-profile <name>", "Local Spawnfile auth profile")
+    .option("--docker-command <command>", "Docker command")
     .option("--name <container>", "Docker container name")
     .option("--env-file <file>", "Path to an env file for runtime secrets")
     .option("-d, --detach", "Run the container in detached mode")
@@ -47,6 +50,7 @@ export const registerLifecycleCommands = (
         options: {
           authProfile?: string;
           detach?: boolean;
+          dockerCommand?: string;
           envFile?: string;
           name?: string;
           out?: string;
@@ -57,6 +61,7 @@ export const registerLifecycleCommands = (
           authProfile: options.authProfile,
           containerName: options.name,
           detach: options.detach,
+          dockerCommand: options.dockerCommand,
           envFilePath: options.envFile,
           imageTag: options.tag,
           outputDirectory: options.out
@@ -75,6 +80,7 @@ export const registerLifecycleCommands = (
     .option("-o, --out <directory>", "Output directory")
     .option("-t, --tag <image>", "Docker image tag")
     .option("--auth-profile <name>", "Local Spawnfile auth profile")
+    .option("--docker-command <command>", "Docker command")
     .option("--name <container>", "Docker container name")
     .option("--env-file <file>", "Path to an env file for runtime secrets")
     .option("-d, --detach", "Run the container in detached mode")
@@ -84,6 +90,7 @@ export const registerLifecycleCommands = (
         options: {
           authProfile?: string;
           detach?: boolean;
+          dockerCommand?: string;
           envFile?: string;
           name?: string;
           out?: string;
@@ -94,6 +101,7 @@ export const registerLifecycleCommands = (
           authProfile: options.authProfile,
           containerName: options.name,
           detach: options.detach,
+          dockerCommand: options.dockerCommand,
           envFilePath: options.envFile,
           imageTag: options.tag,
           outputDirectory: options.out

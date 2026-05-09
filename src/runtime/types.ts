@@ -44,6 +44,7 @@ export interface ContainerTarget {
 export interface RuntimeContainerInstancePaths {
   configPathTemplate: string;
   homePathTemplate?: string;
+  sourceWorkspacePathTemplate?: string;
   workspacePathTemplate: string;
 }
 
