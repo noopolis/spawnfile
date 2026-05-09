@@ -3,8 +3,9 @@ kind: team
 name: field-team
 description: "Child team with an explicit representative and a local Moltnet room"
 
-docs:
-  system: TEAM.md
+workspace:
+  docs:
+    system: TEAM.md
 
 members:
   - id: field-representative
@@ -20,7 +21,16 @@ networks:
   - id: field_lab
     name: Field Lab
     provider: moltnet
-    expose: true
+    server:
+      mode: managed
+      listen:
+        bind: 127.0.0.1
+        port: 8787
+      store:
+        kind: memory
+      auth:
+        mode: none
+      human_ingress: true
     rooms:
       - id: field-room
         members: [field-representative, field-observer]

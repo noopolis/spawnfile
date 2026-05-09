@@ -20,10 +20,11 @@ kind: agent
 name: research-assistant
 runtime: openclaw
 
-docs:
-  soul: SOUL.md
-  identity: IDENTITY.md
-  system: AGENTS.md
+workspace:
+  docs:
+    soul: SOUL.md
+    identity: IDENTITY.md
+    system: AGENTS.md
 
 skills:
   - ref: ./skills/web_search

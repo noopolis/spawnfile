@@ -195,9 +195,11 @@ describe("addSubagentProject", () => {
         'spawnfile_version: "0.1"',
         "kind: agent",
         "name: no-runtime",
-        "docs:",
-        "  system: AGENTS.md"
-      ].join("\n") + "\n"
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
+        ""
+      ].join("\n")
     );
 
     await expect(

@@ -117,8 +117,9 @@ describe("setProjectRuntime", () => {
         "      auth:",
         "        method: api_key",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );

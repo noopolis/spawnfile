@@ -18,8 +18,7 @@ const baseAgent: ResolvedAgentNode = {
         provider: "anthropic"
       }
     },
-    sandbox: { mode: "workspace" },
-    workspace: { isolation: "isolated" }
+    sandbox: { mode: "workspace" }
   },
   kind: "agent",
   mcpServers: [{ name: "web_search", transport: "streamable_http", url: "https://example.com" }],
@@ -62,8 +61,7 @@ describe("runtime common helpers", () => {
     const capabilities = createAgentCapabilities(baseAgent, {
       mcpOutcome: "degraded",
       sandboxOutcome: "supported",
-      subagentOutcome: "degraded",
-      workspaceOutcome: "supported"
+      subagentOutcome: "degraded"
     });
 
     expect(capabilities.map((capability) => capability.key)).toEqual([
@@ -72,12 +70,25 @@ describe("runtime common helpers", () => {
       "skills.web_search",
       "mcp.web_search",
       "execution.model",
-      "execution.workspace",
       "execution.sandbox",
       "agent.subagents"
     ]);
     expect(capabilities.find((capability) => capability.key === "mcp.web_search")?.outcome).toBe(
       "degraded"
     );
+  });
+
+  it("marks agent schedules as degraded until a runtime scheduler is emitted", () => {
+    const capabilities = createAgentCapabilities({
+      ...baseAgent,
+      schedule: {
+        cron: "0 5 * * *",
+        kind: "cron"
+      }
+    });
+
+    expect(capabilities.find((capability) => capability.key === "agent.schedule")).toMatchObject({
+      outcome: "degraded"
+    });
   });
 });

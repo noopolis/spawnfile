@@ -185,6 +185,60 @@ describe("createContainerArtifacts", () => {
     );
   });
 
+  it("renders workspace resource startup and report metadata", async () => {
+    const node = createAgentNode("openclaw", {
+      workspaceResources: [
+        {
+          branch: "main",
+          id: "project",
+          kind: "git",
+          mode: "mutable",
+          mount: "/work/project",
+          url: "https://example.com/project.git"
+        },
+        {
+          id: "cache",
+          kind: "volume",
+          mode: "readonly",
+          mount: "/cache"
+        }
+      ]
+    });
+    const compiled = await openClawAdapter.compileAgent(node);
+
+    const result = await createContainerArtifacts(createPlan(["openclaw"]), [
+      {
+        emittedFiles: compiled.files,
+        kind: "agent",
+        runtimeName: "openclaw",
+        slug: "assistant",
+        value: node
+      }
+    ]);
+    const dockerfile = result.files.find((file) => file.path === "Dockerfile")?.content ?? "";
+    const entrypoint = result.files.find((file) => file.path === "entrypoint.sh")?.content ?? "";
+
+    expect(dockerfile).toContain(" git ");
+    expect(entrypoint).toContain("prepare_volume_resource 'cache' '/cache' 'readonly'");
+    expect(entrypoint).toContain(
+      "prepare_git_resource 'project' '/work/project' 'https://example.com/project.git' 'branch' 'main' 'mutable'"
+    );
+    expect(result.report.workspace_resources).toEqual([
+      {
+        id: "cache",
+        kind: "volume",
+        mode: "readonly",
+        mount: "/cache"
+      },
+      {
+        id: "project",
+        kind: "git",
+        mode: "mutable",
+        mount: "/work/project"
+      }
+    ]);
+  });
+
   it("derives provider env vars and promotes duplicate secrets to required", async () => {
     const firstNode = createAgentNode("openclaw", {
       execution: {

@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 
+import type { TeamNetworkServer } from "../manifest/index.js";
+
 import { generateMoltnetArtifacts } from "./moltnetArtifacts.js";
 import type { CompilePlan, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
+
+const createManagedServer = (): Extract<TeamNetworkServer, { mode: "managed" }> => ({
+  auth: { mode: "none" },
+  listen: { bind: "127.0.0.1", port: 8787 },
+  mode: "managed",
+  store: { kind: "memory" }
+});
 
 const createPlan = (): CompilePlan => ({
   edges: [],
@@ -44,7 +53,8 @@ const createPlan = (): CompilePlan => ({
                 id: "research",
                 members: ["orchestrator", "researcher"]
               }
-            ]
+            ],
+            server: createManagedServer()
           }
         ],
         policyMode: null,
@@ -122,7 +132,7 @@ describe("moltnetArtifacts", () => {
   });
 
   it(
-    "generates server and bridge artifacts for team networks",
+    "generates server and node artifacts for team networks",
     async () => {
       const artifacts = await generateMoltnetArtifacts(createPlan());
 
@@ -131,6 +141,10 @@ describe("moltnetArtifacts", () => {
       expect(artifacts?.serverPlans).toEqual([
         {
           id: "research-cell-local_lab",
+          baseUrl: "http://127.0.0.1:8787",
+          configPath:
+            "/var/lib/spawnfile/moltnet/servers/research-cell-local_lab/Moltnet.json",
+          mode: "managed",
           name: "Local Lab",
           networkId: "local_lab",
           port: 8787,
@@ -140,31 +154,32 @@ describe("moltnetArtifacts", () => {
               members: ["orchestrator", "researcher"]
             }
           ],
+          secretPatches: [],
+          server: createManagedServer(),
           teamSource: "/tmp/team/Spawnfile"
         }
       ]);
       expect(artifacts?.publishedPorts).toEqual([]);
-      expect(artifacts?.bridgePlans).toEqual([
+      expect(artifacts?.nodePlans).toEqual([
         {
-          agentId: "orchestrator",
           configPath:
-            "/var/lib/spawnfile/moltnet/bridges/research-cell-local_lab-orchestrator.json",
-          networkId: "local_lab",
-          runtime: "openclaw"
+            "/var/lib/spawnfile/moltnet/nodes/research-cell-local_lab-orchestrator.json",
+          networkId: "local_lab"
         }
       ]);
-      expect(artifacts?.files).toHaveLength(1);
+      expect(artifacts?.files).toHaveLength(2);
 
-      const bridgeConfig = artifacts?.files.find((file) =>
+      const nodeConfig = artifacts?.files.find((file) =>
         file.path.endsWith("research-cell-local_lab-orchestrator.json")
       );
-      expect(bridgeConfig?.content).toContain(
+      expect(nodeConfig?.content).toContain('"version": "moltnet.node.v1"');
+      expect(nodeConfig?.content).toContain(
         '"gateway_url": "ws://127.0.0.1:18789"'
       );
-      expect(bridgeConfig?.content).toContain(
+      expect(nodeConfig?.content).toContain(
         '"home_path": "/var/lib/spawnfile/instances/openclaw/agent-orchestrator/home"'
       );
-      expect(bridgeConfig?.content).toContain('"network_id": "local_lab"');
+      expect(nodeConfig?.content).toContain('"network_id": "local_lab"');
     },
     15_000
   );
@@ -180,10 +195,10 @@ describe("moltnetArtifacts", () => {
     agent.surfaces = undefined;
 
     const artifacts = await generateMoltnetArtifacts(plan);
-    expect(artifacts?.bridgePlans).toEqual([]);
+    expect(artifacts?.nodePlans).toEqual([]);
     expect(artifacts?.serverPlans).toHaveLength(1);
     expect(artifacts?.publishedPorts).toEqual([]);
-    expect(artifacts?.files).toEqual([]);
+    expect(artifacts?.files).toHaveLength(1);
   });
 
   it("emits direct pico command and tinyclaw runtime ingress config", async () => {
@@ -287,7 +302,7 @@ describe("moltnetArtifacts", () => {
     );
   });
 
-  it("publishes only networks marked expose: true", async () => {
+  it("publishes only managed networks with human ingress enabled", async () => {
     const plan = createPlan();
     const teamNode = plan.nodes[0];
     if (!teamNode || teamNode.kind !== "team") {
@@ -295,8 +310,9 @@ describe("moltnetArtifacts", () => {
     }
 
     const team = teamNode.value as ResolvedTeamNode;
-    if (team.networks?.[0]) {
-      team.networks[0].expose = true;
+    const server = team.networks?.[0]?.server;
+    if (server?.mode === "managed") {
+      server.human_ingress = true;
     }
 
     const artifacts = await generateMoltnetArtifacts(plan);
@@ -338,7 +354,11 @@ describe("moltnetArtifacts", () => {
                   id: "quality",
                   members: ["reviewer"]
                 }
-              ]
+              ],
+              server: {
+                ...createManagedServer(),
+                human_ingress: true
+              }
             }
           ],
           policyMode: null,
@@ -406,11 +426,9 @@ describe("moltnetArtifacts", () => {
         members: ["orchestrator", "researcher"]
       }
     ]);
-    expect(artifacts?.bridgePlans).toContainEqual({
-      agentId: "reviewer",
-      configPath: "/var/lib/spawnfile/moltnet/bridges/quality-cell-local_lab-reviewer.json",
-      networkId: "local_lab",
-      runtime: "openclaw"
+    expect(artifacts?.nodePlans).toContainEqual({
+      configPath: "/var/lib/spawnfile/moltnet/nodes/quality-cell-local_lab-reviewer.json",
+      networkId: "local_lab"
     });
     expect(
       artifacts?.files.find((file) => file.path.endsWith("quality-cell-local_lab-reviewer.json"))
@@ -418,7 +436,7 @@ describe("moltnetArtifacts", () => {
     ).toContain('"base_url": "http://127.0.0.1:8787"');
   });
 
-  it("serializes room and dm policy details into bridge configs", async () => {
+  it("serializes room and dm policy details into node configs", async () => {
     const plan = createPlan();
     const agentNode = plan.nodes[1];
     if (!agentNode || agentNode.kind !== "agent") {
@@ -448,16 +466,148 @@ describe("moltnetArtifacts", () => {
     };
 
     const artifacts = await generateMoltnetArtifacts(plan);
-    const bridgeConfig = artifacts?.files.find((file) =>
+    const nodeConfig = artifacts?.files.find((file) =>
       file.path.endsWith("research-cell-local_lab-orchestrator.json")
     );
 
-    expect(bridgeConfig?.content).toContain('"rooms": [');
-    expect(bridgeConfig?.content).toContain('"read": "mentions"');
-    expect(bridgeConfig?.content).toContain('"reply": "auto"');
-    expect(bridgeConfig?.content).toContain('"reply": "never"');
-    expect(bridgeConfig?.content).not.toContain('"reply": "manual"');
-    expect(bridgeConfig?.content).toContain('"dms": {');
+    expect(nodeConfig?.content).toContain('"rooms": [');
+    expect(nodeConfig?.content).toContain('"read": "mentions"');
+    expect(nodeConfig?.content).toContain('"reply": "auto"');
+    expect(nodeConfig?.content).toContain('"reply": "never"');
+    expect(nodeConfig?.content).not.toContain('"reply": "manual"');
+    expect(nodeConfig?.content).toContain('"dms": {');
+  });
+
+  it("places generated open registration tokens on the attachment", async () => {
+    const plan = createPlan();
+    const teamNode = plan.nodes[0];
+    const agentNode = plan.nodes[1];
+    if (!teamNode || teamNode.kind !== "team" || !agentNode || agentNode.kind !== "agent") {
+      throw new Error("expected team and agent nodes");
+    }
+
+    const team = teamNode.value as ResolvedTeamNode;
+    const agent = agentNode.value as ResolvedAgentNode;
+    if (team.networks?.[0]) {
+      team.networks[0].server = {
+        ...createManagedServer(),
+        auth: { mode: "open" }
+      };
+    }
+    if (agent.surfaces?.moltnet?.[0]) {
+      agent.surfaces.moltnet[0].rooms = undefined;
+      agent.surfaces.moltnet[0].dms = undefined;
+    }
+
+    const artifacts = await generateMoltnetArtifacts(plan);
+    const nodeConfig = artifacts?.files.find((file) =>
+      file.path.endsWith("research-cell-local_lab-orchestrator.json")
+    );
+    const parsed = JSON.parse(nodeConfig?.content ?? "{}") as {
+      attachments?: Array<{ moltnet?: { token_path?: string }; rooms?: unknown }>;
+      moltnet?: { token_path?: string };
+    };
+
+    expect(parsed.moltnet?.token_path).toBeUndefined();
+    expect(parsed.attachments?.[0]?.moltnet?.token_path)
+      .toBe("/var/lib/spawnfile/moltnet/tokens/local_lab/orchestrator.token");
+    expect(parsed.attachments?.[0]?.rooms).toBeUndefined();
+  });
+
+  it("keeps external network plans out of managed server ports and configs", async () => {
+    const plan = createPlan();
+    const teamNode = plan.nodes[0];
+    if (!teamNode || teamNode.kind !== "team") {
+      throw new Error("expected team node");
+    }
+
+    const team = teamNode.value as ResolvedTeamNode;
+    team.networks?.push({
+      id: "remote_lab",
+      name: "Remote Lab",
+      provider: "moltnet",
+      rooms: [
+        {
+          id: "remote-room",
+          members: ["orchestrator"]
+        }
+      ],
+      server: {
+        auth: { mode: "none" },
+        mode: "external",
+        url: "https://remote.example.com"
+      }
+    });
+
+    const artifacts = await generateMoltnetArtifacts(plan);
+
+    expect(artifacts?.ports).toEqual([8787]);
+    expect(artifacts?.publishedPorts).toEqual([]);
+    expect(artifacts?.serverPlans.map((entry) => [entry.networkId, entry.mode, entry.baseUrl]))
+      .toEqual([
+        ["local_lab", "managed", "http://127.0.0.1:8787"],
+        ["remote_lab", "external", "https://remote.example.com"]
+      ]);
+    expect(artifacts?.files.some((file) => file.path.includes("remote_lab"))).toBe(false);
+  });
+
+  it("serializes external bearer token sources into node config", async () => {
+    const plan = createPlan();
+    const teamNode = plan.nodes[0];
+    if (!teamNode || teamNode.kind !== "team") {
+      throw new Error("expected team node");
+    }
+
+    const team = teamNode.value as ResolvedTeamNode;
+    if (team.networks?.[0]) {
+      team.networks[0].server = {
+        auth: {
+          client: { token_path: "/run/secrets/moltnet-token" },
+          mode: "bearer"
+        },
+        mode: "external",
+        url: "https://remote.example.com"
+      };
+    }
+
+    const artifacts = await generateMoltnetArtifacts(plan);
+    const nodeConfig = artifacts?.files.find((file) =>
+      file.path.endsWith("research-cell-local_lab-orchestrator.json")
+    );
+
+    expect(artifacts?.ports).toEqual([]);
+    expect(nodeConfig?.content).toContain('"base_url": "https://remote.example.com"');
+    expect(nodeConfig?.content).toContain('"auth_mode": "bearer"');
+    expect(nodeConfig?.content).toContain('"token_path": "/run/secrets/moltnet-token"');
+  });
+
+  it("serializes external token env sources into node config", async () => {
+    const plan = createPlan();
+    const teamNode = plan.nodes[0];
+    if (!teamNode || teamNode.kind !== "team") {
+      throw new Error("expected team node");
+    }
+
+    const team = teamNode.value as ResolvedTeamNode;
+    if (team.networks?.[0]) {
+      team.networks[0].server = {
+        auth: {
+          client: { static_token: true, token_env: "MOLTNET_STATIC_TOKEN" },
+          mode: "open"
+        },
+        mode: "external",
+        url: "https://remote.example.com"
+      };
+    }
+
+    const artifacts = await generateMoltnetArtifacts(plan);
+    const nodeConfig = artifacts?.files.find((file) =>
+      file.path.endsWith("research-cell-local_lab-orchestrator.json")
+    );
+
+    expect(nodeConfig?.content).toContain('"auth_mode": "open"');
+    expect(nodeConfig?.content).toContain('"static_token": true');
+    expect(nodeConfig?.content).toContain('"token_env": "MOLTNET_STATIC_TOKEN"');
   });
 
   it("rejects attachments without a resolved team context", async () => {
@@ -523,7 +673,7 @@ describe("moltnetArtifacts", () => {
     await expect(generateMoltnetArtifacts(plan)).rejects.toThrow(/Unable to find Moltnet network missing/);
   });
 
-  it("rejects duplicate bridge attachments for the same network member", async () => {
+  it("rejects duplicate node attachments for the same network member", async () => {
     const plan = createPlan();
     const agentNode = plan.nodes[1];
     if (!agentNode || agentNode.kind !== "agent") {
@@ -548,11 +698,28 @@ describe("moltnetArtifacts", () => {
     };
 
     await expect(generateMoltnetArtifacts(plan)).rejects.toThrow(
-      /Duplicate Moltnet bridge attachment/
+      /Duplicate Moltnet node attachment/
     );
   });
 
-  it("rejects direct moltnet bridge configs for unsupported runtimes", async () => {
+  it("rejects direct messages when the network disables them", async () => {
+    const plan = createPlan();
+    const teamNode = plan.nodes[0];
+    if (!teamNode || teamNode.kind !== "team") {
+      throw new Error("expected team node");
+    }
+
+    const team = teamNode.value as ResolvedTeamNode;
+    if (team.networks?.[0]?.server?.mode === "managed") {
+      team.networks[0].server.direct_messages = false;
+    }
+
+    await expect(generateMoltnetArtifacts(plan)).rejects.toThrow(
+      /disables direct messages/
+    );
+  });
+
+  it("rejects direct moltnet node configs for unsupported runtimes", async () => {
     const plan = createPlan();
     plan.nodes.push({
       id: "agent-unsupported",

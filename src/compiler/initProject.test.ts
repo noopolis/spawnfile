@@ -52,14 +52,13 @@ describe("initProject", () => {
     await expect(readUtf8File(path.join(directory, ".gitignore"))).resolves.toBe(".spawn/\n");
     expect(loadedManifest.manifest.kind).toBe("agent");
     expect(getRuntimeName(loadedManifest.manifest.runtime)).toBe("openclaw");
-    expect(loadedManifest.manifest.docs).toMatchObject({
+    expect(loadedManifest.manifest.workspace?.docs).toMatchObject({
       identity: "IDENTITY.md",
       soul: "SOUL.md",
       system: "AGENTS.md"
     });
     expect(loadedManifest.manifest.execution?.model?.primary.name).toBe("claude-opus-4-6");
     expect(loadedManifest.manifest.execution?.model?.primary.provider).toBe("anthropic");
-    expect(loadedManifest.manifest.execution?.workspace).toBeUndefined();
     expect(loadedManifest.manifest.execution?.sandbox).toBeUndefined();
   });
 
@@ -78,7 +77,6 @@ describe("initProject", () => {
     expect(loadedManifest.manifest.execution?.model?.auth).toBeUndefined();
     expect(loadedManifest.manifest.execution?.model?.primary.name).toBe("claude-sonnet-4-6");
     expect(loadedManifest.manifest.execution?.model?.primary.provider).toBe("anthropic");
-    expect(loadedManifest.manifest.execution?.workspace).toBeUndefined();
     expect(loadedManifest.manifest.execution?.sandbox).toBeUndefined();
   });
 
@@ -101,12 +99,11 @@ describe("initProject", () => {
     expect(loadedManifest.manifest.execution?.model?.auth?.method).toBe("claude-code");
     expect(loadedManifest.manifest.execution?.model?.primary.name).toBe("claude-sonnet-4-6");
     expect(loadedManifest.manifest.execution?.model?.primary.provider).toBe("anthropic");
-    expect(loadedManifest.manifest.docs).toMatchObject({
+    expect(loadedManifest.manifest.workspace?.docs).toMatchObject({
       soul: "SOUL.md",
       system: "AGENTS.md"
     });
-    expect(loadedManifest.manifest.docs?.identity).toBeUndefined();
-    expect(loadedManifest.manifest.execution?.workspace).toBeUndefined();
+    expect(loadedManifest.manifest.workspace?.docs?.identity).toBeUndefined();
     expect(loadedManifest.manifest.execution?.sandbox).toBeUndefined();
   });
 

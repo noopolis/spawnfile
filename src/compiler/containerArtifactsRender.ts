@@ -86,9 +86,13 @@ export const renderDockerfile = async (
   const needsJsonEnvWriter = runtimePlans.some(
     (plan) => (plan.configEnvBindings?.length ?? 0) > 0
   );
+  const needsGit = runtimePlans.some((plan) =>
+    (plan.resources ?? []).some((resource) => resource.kind === "git")
+  );
   const systemDeps = [
     ...new Set([
       ...runtimePlans.flatMap((plan) => plan.meta.systemDeps),
+      ...(needsGit ? ["git"] : []),
       ...(options.hasMoltnet && !options.hasStagedMoltnetBinaries
         ? ["ca-certificates", "curl", "tar"]
         : []),

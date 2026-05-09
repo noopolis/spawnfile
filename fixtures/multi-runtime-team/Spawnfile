@@ -6,8 +6,9 @@ description: "Research team that finds, analyzes, and writes up findings"
 mode: hierarchical
 lead: orchestrator
 
-docs:
-  system: TEAM.md
+workspace:
+  docs:
+    system: TEAM.md
 
 shared:
   skills:

@@ -60,6 +60,15 @@ const createNestedNetworkProject = async (): Promise<string> => {
     "  - id: shared",
     "    name: Shared Child",
     "    provider: moltnet",
+    "    server:",
+    "      mode: managed",
+    "      listen:",
+    "        bind: 127.0.0.1",
+    "        port: 8787",
+    "      store:",
+    "        kind: memory",
+    "      auth:",
+    "        mode: none",
     "    rooms:",
     "      - id: mission",
     "        members: [liaison]",
@@ -81,7 +90,16 @@ const createNestedNetworkProject = async (): Promise<string> => {
     "  - id: shared",
     "    name: Shared",
     "    provider: moltnet",
-    "    expose: true",
+    "    server:",
+    "      mode: managed",
+    "      listen:",
+    "        bind: 127.0.0.1",
+    "        port: 8787",
+    "      store:",
+    "        kind: memory",
+    "      auth:",
+    "        mode: none",
+    "      human_ingress: true",
     "    rooms:",
     "      - id: mission",
     "        members: [lead, platform]",
@@ -110,7 +128,9 @@ describe("organization view model", () => {
       "platform: team platform-core  mode=hierarchical lead=liaison external=liaison source=teams/platform/Spawnfile"
     );
     expect(tree).toContain("lead: agent lead [openclaw] runtime=openclaw source=agents/lead/Spawnfile");
-    expect(tree).toContain('network shared "Shared" exposed: mission [lead, platform]');
+    expect(tree).toContain(
+      'network shared "Shared" server=managed auth=none human_ingress: mission [lead, platform]'
+    );
     expect(tree).not.toContain(directory);
   });
 
@@ -129,9 +149,11 @@ describe("organization view model", () => {
     expect(network?.declarations?.map((declaration) => declaration.declaringTeamName))
       .toEqual(["parent", "platform-core"]);
     expect(output).toContain("`-- moltnet shared");
-    expect(output).toContain('shared "Shared" on parent exposed declared_source=Spawnfile');
     expect(output).toContain(
-      'shared "Shared Child" on platform-core declared_source=teams/platform/Spawnfile'
+      'shared "Shared" on parent server=managed auth=none human_ingress declared_source=Spawnfile'
+    );
+    expect(output).toContain(
+      'shared "Shared Child" on platform-core server=managed auth=none declared_source=teams/platform/Spawnfile'
     );
     expect(output).toContain("declared members: lead, platform");
     expect(output).toContain(

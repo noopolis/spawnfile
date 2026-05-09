@@ -30,18 +30,39 @@ describe("runCli", () => {
 
   it("validates a project", async () => {
     const stdout: string[] = [];
+    const buildCompilePlan = vi.fn(async () => ({
+      edges: [],
+      nodes: [],
+      root: "/tmp/project",
+      runtimes: {}
+    }));
+
     const exitCode = await runCli(["validate", path.join(fixturesRoot, "single-agent")], {
       stderr: () => undefined,
       stdout: (message) => stdout.push(message)
-    });
+    }, { buildCompilePlan });
 
+    expect(buildCompilePlan).toHaveBeenCalledWith(path.join(fixturesRoot, "single-agent"));
+    expect(stdout).toEqual([
+      "validation succeeded",
+      "root: /tmp/project\nnodes: 0\nruntimes: none"
+    ]);
     expect(exitCode).toBe(0);
-    expect(stdout[0]).toBe("validation succeeded");
   });
 
   it("compiles a project", async () => {
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-cli-"));
     temporaryDirectories.push(outputDirectory);
+    const compileProject = vi.fn(async () => ({
+      outputDirectory: "/tmp/spawnfile-compile-out",
+      report: {
+        diagnostics: [],
+        nodes: [],
+        root: path.join(fixturesRoot, "single-agent"),
+        spawnfile_version: "0.1" as const
+      },
+      reportPath: "/tmp/spawnfile-compile-out/spawnfile-report.json"
+    }));
 
     const stdout: string[] = [];
     const exitCode = await runCli(
@@ -49,10 +70,14 @@ describe("runCli", () => {
       {
         stderr: () => undefined,
         stdout: (message) => stdout.push(message)
-      }
+      },
+      { compileProject }
     );
 
     expect(exitCode).toBe(0);
+    expect(compileProject).toHaveBeenCalledWith(path.join(fixturesRoot, "single-agent"), {
+      outputDirectory
+    });
     expect(stdout[0]).toContain("compiled to");
   }, 30000);
 
@@ -88,6 +113,82 @@ describe("runCli", () => {
       "built image spawnfile-single-agent",
       "compiled to /tmp/spawnfile-build-out",
       "report: /tmp/spawnfile-build-out/spawnfile-report.json"
+    ]);
+  });
+
+  it("runs up for a project in detached mode", async () => {
+    const stdout: string[] = [];
+    const upProject = vi.fn(async () => ({
+      authProfileName: "dev",
+      containerName: "spawnfile-single-agent",
+      imageTag: "spawnfile-single-agent",
+      outputDirectory: "/tmp/spawnfile-up-out",
+      report: {
+        container: {
+          dockerfile: "Dockerfile",
+          entrypoint: "entrypoint.sh",
+          env_example: ".env.example",
+          model_secrets_required: ["ANTHROPIC_API_KEY"],
+          ports: [18789],
+          runtime_instances: [
+            {
+              config_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/openclaw.json",
+              home_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home",
+              id: "agent-assistant",
+              model_auth_methods: {
+                anthropic: "api_key" as const
+              },
+              model_secrets_required: ["ANTHROPIC_API_KEY"],
+              runtime: "openclaw"
+            }
+          ],
+          runtime_homes: ["/var/lib/spawnfile/instances/openclaw/agent-assistant/home"],
+          runtime_secrets_required: ["OPENCLAW_GATEWAY_TOKEN"],
+          runtimes_installed: ["openclaw"],
+          secrets_required: ["ANTHROPIC_API_KEY", "OPENCLAW_GATEWAY_TOKEN"]
+        },
+        diagnostics: [],
+        nodes: [],
+        root: path.join(fixturesRoot, "single-agent"),
+        spawnfile_version: "0.1" as const
+      },
+      reportPath: "/tmp/spawnfile-up-out/spawnfile-report.json"
+    }));
+
+    const exitCode = await runCli(
+      [
+        "up",
+        path.join(fixturesRoot, "single-agent"),
+        "--auth-profile",
+        "dev",
+        "--env-file",
+        "/tmp/dev.env",
+        "--detach",
+        "--out",
+        "/tmp/spawnfile-up-out"
+      ],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { upProject }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(upProject).toHaveBeenCalledWith(path.join(fixturesRoot, "single-agent"), {
+      authProfile: "dev",
+      containerName: undefined,
+      detach: true,
+      envFilePath: "/tmp/dev.env",
+      imageTag: undefined,
+      outputDirectory: "/tmp/spawnfile-up-out"
+    });
+    expect(stdout).toEqual([
+      "built image spawnfile-single-agent",
+      "compiled to /tmp/spawnfile-up-out",
+      "report: /tmp/spawnfile-up-out/spawnfile-report.json",
+      "running container spawnfile-single-agent",
+      "image: spawnfile-single-agent"
     ]);
   });
 

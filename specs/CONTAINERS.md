@@ -124,7 +124,8 @@ The entrypoint script is responsible for:
 1. Validating required env and required files
 2. Materializing env-backed secret files when a runtime expects file-based auth
 3. Materializing env-backed runtime config fields when a runtime stores auth in config
-4. Starting the runtime process(es)
+4. Preparing workspace resources and managed state before startup
+5. Starting any managed Moltnet services and runtime process(es)
 
 ### Single-Runtime
 
@@ -136,6 +137,7 @@ The entrypoint should then stay minimal:
 - validate that the compiled config exists at the expected final path
 - write env-backed secret files when needed
 - patch runtime-native config fields from env when needed
+- prepare workspace resources and managed Moltnet services
 - `exec` the runtime's start command
 
 ### Multi-Runtime
@@ -148,10 +150,25 @@ The entrypoint then:
 - writes env-backed secret files for each target when needed
 - patches runtime-native config fields from env when needed
 - starts each runtime process
+- prepares workspace resources and managed Moltnet services
 - traps signals and forwards them to all child processes
 - waits for all processes
 
 This follows the pattern used by existing multi-agent deployments (e.g. picoclaw multi-gateway entrypoints that spawn one process per agent and manage the process group).
+
+### Workspace Resource Lifecycle
+
+For each effective `workspace.resource` attached to a concrete agent lifecycle, startup must enforce mount behavior:
+
+- `volume` resources: create mount directories and verify ownership/permissions before first launch.
+- `git` resources:
+  - clone into empty targets using declared selector (`branch`, `tag`, or `ref`)
+  - reuse compatible existing checkouts when present
+  - fail fast when the target contains an incompatible checkout
+
+Compatibility uses exact remote URL match (after trim) and exact selector match.
+
+The compiler does not perform git mutation at build time.
 
 ### Single Agent vs Team vs Subagents
 
@@ -172,6 +189,7 @@ The compiler should emit a `.env.example` file listing all required and optional
 - model auth variables for providers that still use `api_key` auth (e.g. `ANTHROPIC_API_KEY`)
 - surface auth variables for declared communication surfaces (e.g. `DISCORD_BOT_TOKEN`)
 - runtime auth variables (e.g. `OPENCLAW_GATEWAY_TOKEN`)
+- Moltnet auth/store variables declared under managed/external server blocks (for example `MOLTNET_STORE_DSN` or static attachment token names)
 - any variables the entrypoint or runtime expects
 
 Actual secret values are never emitted. The `.env.example` contains variable names with empty values and comments describing their purpose.
@@ -189,6 +207,22 @@ Model auth intent itself is declared on each source model target under `executio
 - which provider/runtime instances still require `api_key` env at run time
 - which provider/runtime instances expect imported CLI credential stores such as `claude-code` or `codex`
 - which declared communication surfaces require env-backed secrets at run time
+
+## Moltnet Storage and Secret Materialization
+
+Container startup must support Moltnet server and node artifacts emitted from `team.networks[].server`:
+
+- `server.store.kind: sqlite` and `server.store.kind: json` create durable directories for the configured `path` before server start.
+- `server.store.kind: postgres` injects `server.store.dsn_secret` into runtime config and skips local path creation.
+- `server.store.kind: memory` creates no local persistence directory.
+
+Secret materialization rules:
+
+- `server.auth.tokens[].secret` is never written into source-controlled files.
+- `server.auth.tokens[].secret` is written into private Moltnet config values at runtime start.
+- `server.store.dsn_secret` is written as `storage.postgres.dsn` in managed server config.
+- `server.pairings[].token_secret` is written as `pairings[].token` in managed server config.
+- Generated open-mode token files for attach/self-claiming clients are runtime state files with private permissions (equivalent to `0600`), and token directories use private directory mode (equivalent to `0700`).
 
 ---
 
@@ -214,6 +248,19 @@ The compile report should include a `container` section:
     "model_secrets_required": ["ANTHROPIC_API_KEY"],
     "runtime_secrets_required": ["OPENCLAW_GATEWAY_TOKEN"],
     "runtime_homes": ["/var/lib/spawnfile/instances/openclaw/agent-analyst/home"],
+    "resource_bindings": [
+      {
+        "member_id": "worker",
+        "resources": [
+          {
+            "id": "project-repo",
+            "kind": "git",
+            "mount": "/workspaces/project",
+            "mode": "mutable"
+          }
+        ]
+      }
+    ],
     "secrets_required": ["SEARCH_API_KEY", "ANTHROPIC_API_KEY"],
     "ports": [3000],
     "runtime_instances": [

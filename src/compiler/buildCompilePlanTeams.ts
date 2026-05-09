@@ -27,16 +27,24 @@ export const resolveTeamExternalIds = (manifest: TeamManifest): string[] => {
 };
 
 export const resolveTeamNetworks = (manifest: TeamManifest): ResolvedTeamNetwork[] =>
-  (manifest.networks ?? []).map((network) => ({
-    expose: network.expose ?? false,
-    id: network.id,
-    name: network.name ?? network.id,
-    provider: network.provider,
-    rooms: network.rooms.map((room) => ({
-      id: room.id,
-      members: [...room.members]
-    }))
-  }));
+  (manifest.networks ?? []).map((network) => {
+    const resolved: ResolvedTeamNetwork = {
+      id: network.id,
+      name: network.name ?? network.id,
+      provider: network.provider,
+      rooms: network.rooms.map((room) => ({
+        id: room.id,
+        members: [...room.members],
+        ...(room.name ? { name: room.name } : {})
+      }))
+    };
+
+    if (network.server) {
+      resolved.server = network.server;
+    }
+
+    return resolved;
+  });
 
 export const validateTeamNetworkRooms = (teamNode: ResolvedTeamNode): void => {
   for (const network of teamNode.networks ?? []) {

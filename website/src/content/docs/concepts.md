@@ -135,7 +135,7 @@ policy:
 
 The compiler reports each capability as `supported`, `degraded`, or `unsupported`. Policy determines whether degradation fails the build.
 
-When omitted, the compiler defaults to permissive -- compilation always succeeds, but outcomes are still recorded in the report.
+When omitted, the compiler defaults to warnings -- compilation continues, but degraded or unsupported outcomes are surfaced in the report.
 
 ## Compile Report
 

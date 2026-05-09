@@ -64,10 +64,15 @@ const buildTreeNetworkSummaries = (
   }
 
   return (node.value.networks ?? []).map((network) => ({
-    expose: network.expose ?? false,
+    authMode: network.server?.auth.mode,
+    directMessages: network.server?.mode === "managed" ? network.server.direct_messages : undefined,
+    expose: network.server?.mode === "managed" ? network.server.human_ingress : undefined,
+    httpEnabled: network.server?.mode === "managed" ? network.server.human_ingress === true : false,
     id: network.id,
     name: network.name,
     provider: network.provider,
+    serverMode: network.server?.mode,
+    url: network.server?.url,
     rooms: network.rooms.map((room) => ({
       declaredMembers: [...room.members],
       id: room.id
@@ -176,10 +181,15 @@ const buildNetworkDeclaration = (
   network: ResolvedTeamNetwork,
   roomMemberships: ResolvedMoltnetRoomMembership[]
 ): OrganizationNetworkDeclarationView => ({
+  authMode: network.server?.auth.mode,
   declaringTeamName: teamNode.name,
   declaringTeamSource: teamNode.source,
-  expose: network.expose ?? false,
+  directMessages: network.server?.mode === "managed" ? network.server.direct_messages : undefined,
+  expose: network.server?.mode === "managed" ? network.server.human_ingress : undefined,
+  httpEnabled: network.server?.mode === "managed" ? network.server.human_ingress === true : false,
   name: network.name,
+  serverMode: network.server?.mode,
+  url: network.server?.url,
   rooms: network.rooms.map((room) => {
     const members = roomMemberships
       .filter((membership) =>
@@ -224,10 +234,15 @@ const buildNetworks = (
         declaringTeamName: declaration.declaringTeamName,
         declaringTeamSource: declaration.declaringTeamSource,
         declarations: [declaration],
+        authMode: declaration.authMode,
+        directMessages: declaration.directMessages,
         expose: declaration.expose,
+        httpEnabled: declaration.httpEnabled,
         id: network.id,
         name: declaration.name,
         provider: network.provider,
+        serverMode: declaration.serverMode,
+        url: declaration.url,
         rooms: declaration.rooms
       });
     }
@@ -239,8 +254,13 @@ const buildNetworks = (
     if (firstDeclaration) {
       network.declaringTeamName = firstDeclaration.declaringTeamName;
       network.declaringTeamSource = firstDeclaration.declaringTeamSource;
+      network.authMode = firstDeclaration.authMode;
+      network.directMessages = firstDeclaration.directMessages;
       network.expose = firstDeclaration.expose;
+      network.httpEnabled = firstDeclaration.httpEnabled;
       network.name = firstDeclaration.name;
+      network.serverMode = firstDeclaration.serverMode;
+      network.url = firstDeclaration.url;
       network.rooms = firstDeclaration.rooms;
     }
   }

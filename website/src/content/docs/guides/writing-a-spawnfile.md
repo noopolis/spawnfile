@@ -44,25 +44,46 @@ The short form is equivalent to the long form with an empty `options` map. The `
 
 For agents with subagents, the parent's runtime is inherited. Subagents must not declare a different runtime than their parent.
 
-## docs
+## workspace
 
-The `docs` block declares portable markdown surfaces that define the agent's identity, behavior, and operating context. All fields are optional.
+The `workspace` block declares portable markdown surfaces and attached working resources. `workspace.docs` defines the agent's identity, behavior, and operating context. All doc fields are optional.
 
 ```yaml
-docs:
-  identity: IDENTITY.md
-  soul: SOUL.md
-  system: AGENTS.md
-  memory: MEMORY.md
-  heartbeat: HEARTBEAT.md
-  extras:
-    user: USER.md
-    notes: docs/NOTES.md
+workspace:
+  docs:
+    identity: IDENTITY.md
+    soul: SOUL.md
+    system: AGENTS.md
+    memory: MEMORY.md
+    heartbeat: HEARTBEAT.md
+    extras:
+      user: USER.md
+      notes: docs/NOTES.md
 ```
 
 Each path must resolve to a UTF-8 Markdown file within the project root. See the [Agent Docs guide](/guides/agent-docs/) for what goes in each role.
 
 Paths must use forward slashes and must not escape the project root via `..` traversal. Symlinks are not followed during compilation.
+
+## schedule
+
+The `schedule` block declares agent-owned wake intent. It is valid only on agent manifests.
+
+```yaml
+schedule:
+  kind: cron
+  cron: "0 9 * * *"
+  timezone: UTC
+  prompt: "Read heartbeat context and complete one bounded research iteration."
+```
+
+Supported forms:
+
+- `kind: cron` with a non-empty `cron` expression.
+- `kind: every` with a non-empty interval such as `2h` or `24h`.
+- `kind: disabled` to declare that automatic wake is intentionally off.
+
+`cron` and `every` schedules may include `timezone` and `prompt`. The prompt should describe one bounded wake iteration and usually complements `workspace.docs.heartbeat`.
 
 ## skills
 
@@ -135,8 +156,6 @@ execution:
         endpoint:
           compatibility: openai
           base_url: http://host.docker.internal:11434/v1
-  workspace:
-    isolation: isolated    # isolated | shared
   sandbox:
     mode: workspace        # workspace | sandboxed | unrestricted
 ```
@@ -178,10 +197,9 @@ endpoint:
 
 The `compatibility` field tells the runtime which API format the endpoint speaks. The `base_url` is the endpoint URL. Built-in providers (`anthropic`, `openai`) must not declare `endpoint`.
 
-### Workspace
+### Workspace Resources
 
-- `isolation: isolated` means the agent gets its own workspace.
-- `isolation: shared` means the agent shares a workspace with others.
+`workspace.resources` may attach project resources to the generated runtime workspace. Resource entries are explicit mounts, not agent identity sources.
 
 ### Sandbox
 
@@ -229,12 +247,12 @@ spawnfile run . --auth-profile dev
 
 ## policy
 
-The `policy` block controls how strictly the compiler enforces capability preservation. It is optional and defaults to permissive mode.
+The `policy` block controls how strictly the compiler enforces capability preservation. It is optional and defaults to warning mode.
 
 ```yaml
 policy:
-  mode: strict      # strict | warn | permissive (default: permissive)
-  on_degrade: error  # error | warn | allow (default: allow)
+  mode: strict      # strict | warn | permissive (default: warn)
+  on_degrade: error  # error | warn | allow (default: warn)
 ```
 
 - `strict` -- the compiler fails on any capability it cannot verify or preserve.
@@ -461,17 +479,16 @@ execution:
         name: gpt-4o-mini
         auth:
           method: codex
-  workspace:
-    isolation: isolated
   sandbox:
     mode: workspace
 
-docs:
-  identity: IDENTITY.md
-  soul: SOUL.md
-  system: AGENTS.md
-  memory: MEMORY.md
-  heartbeat: HEARTBEAT.md
+workspace:
+  docs:
+    identity: IDENTITY.md
+    soul: SOUL.md
+    system: AGENTS.md
+    memory: MEMORY.md
+    heartbeat: HEARTBEAT.md
 
 skills:
   - ref: ./skills/web_search

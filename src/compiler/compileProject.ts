@@ -231,12 +231,30 @@ const enforcePolicy = (
           `Policy violation: ${capability.key} is unsupported for ${nodeReport.id} (strict mode)${capability.message ? `: ${capability.message}` : ""}`
         );
       }
+
+      if (policyMode === "warn") {
+        nodeReport.diagnostics.push(
+          createDiagnostic(
+            "warn",
+            `Policy warning: ${capability.key} is unsupported for ${nodeReport.id}${capability.message ? `: ${capability.message}` : ""}`
+          )
+        );
+      }
     }
 
     if (capability.outcome === "degraded") {
       if (onDegrade === "error") {
         throw new Error(
           `Policy violation: ${capability.key} is degraded for ${nodeReport.id} (on_degrade: error)${capability.message ? `: ${capability.message}` : ""}`
+        );
+      }
+
+      if (onDegrade === "warn") {
+        nodeReport.diagnostics.push(
+          createDiagnostic(
+            "warn",
+            `Policy warning: ${capability.key} is degraded for ${nodeReport.id}${capability.message ? `: ${capability.message}` : ""}`
+          )
         );
       }
     }
@@ -276,11 +294,24 @@ const createIdentityCapabilities = (
     : [])
 ];
 
+const createWorkspaceResourceCapabilities = (
+  node: ResolvedAgentNode | ResolvedTeamNode
+): CapabilityReport[] =>
+  (node.workspaceResources?.length ?? 0) > 0
+    ? [{
+        key: "workspace.resources",
+        message: `${node.workspaceResources?.length ?? 0} workspace resource(s) will be prepared at startup`,
+        outcome: "supported" as const
+      }]
+    : [];
+
 const augmentNodeReports = (
   compiledNodes: CompiledNodeResult[],
   support: TeamCompileSupport
 ): void => {
   for (const compiled of compiledNodes) {
+    compiled.report.capabilities.push(...createWorkspaceResourceCapabilities(compiled.value));
+
     if (compiled.value.kind === "team") {
       compiled.report.capabilities.push(
         ...(support.capabilitiesByTeamSource.get(compiled.value.source) ?? [])

@@ -71,11 +71,16 @@ const getDeclarations = (
 ): OrganizationNetworkDeclarationView[] =>
   network.declarations ?? [
     {
+      authMode: network.authMode,
       declaringTeamName: network.declaringTeamName,
       declaringTeamSource: network.declaringTeamSource,
+      directMessages: network.directMessages,
       expose: network.expose,
+      httpEnabled: network.httpEnabled,
       name: network.name,
-      rooms: network.rooms
+      rooms: network.rooms,
+      serverMode: network.serverMode,
+      url: network.url
     }
   ];
 
@@ -85,12 +90,18 @@ const formatDeclaration = (
   options: RenderOrganizationViewOptions,
   projectRoot: string | undefined
 ): string => {
-  const exposed = declaration.expose ? " exposed" : "";
+  const metadata = [
+    declaration.serverMode ? `server=${declaration.serverMode}` : undefined,
+    declaration.url ? `url=${declaration.url}` : undefined,
+    declaration.authMode ? `auth=${declaration.authMode}` : undefined,
+    declaration.directMessages === false ? "dms=disabled" : undefined,
+    declaration.expose === true || declaration.httpEnabled ? "human_ingress" : undefined
+  ].filter((entry): entry is string => entry !== undefined);
   const source = options.paths
     ? formatSourceMeta("declared_source", declaration.declaringTeamSource, projectRoot)
     : "";
 
-  return `${network.id} "${declaration.name}" on ${declaration.declaringTeamName}${exposed}${source}`;
+  return `${network.id} "${declaration.name}" on ${declaration.declaringTeamName}${metadata.length > 0 ? ` ${metadata.join(" ")}` : ""}${source}`;
 };
 
 export const renderOrganizationNetworks = (

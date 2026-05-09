@@ -4,8 +4,10 @@ import {
   getAgentFingerprint,
   getMcpNames,
   getTeamFingerprint,
+  listMoltnetNetworkSecretNames,
   validateEffectiveSkillRequirements
 } from "./compilePlanHelpers.js";
+import type { CompilePlanNode } from "./types.js";
 
 describe("compilePlanHelpers", () => {
   it("collects MCP server names", () => {
@@ -118,5 +120,123 @@ describe("compilePlanHelpers", () => {
         networks: []
       })
     );
+  });
+
+  it("collects Moltnet network secret names", () => {
+    const planNodes: CompilePlanNode[] = [
+      {
+        id: "team-node",
+        kind: "team" as const,
+        runtimeName: null,
+        slug: "team-node",
+        value: {
+          description: "",
+          docs: [],
+          external: [],
+          kind: "team" as const,
+          lead: "leader",
+          members: [],
+          mode: "hierarchical" as const,
+          name: "mesh",
+          networks: [
+            {
+              id: "managed-bearer",
+              name: "managed bearer",
+              provider: "moltnet",
+              rooms: [],
+              server: {
+                auth: {
+                  client: {
+                    token_id: "attach"
+                  },
+                  mode: "bearer",
+                  tokens: [
+                    {
+                      agents: ["leader"],
+                      id: "attach",
+                      secret: "MOLTNET_ATTACH_TOKEN",
+                      scopes: ["attach", "write", "observe"]
+                    }
+                  ]
+                },
+                direct_messages: false,
+                listen: {
+                  bind: "127.0.0.1",
+                  port: 8787
+                },
+                mode: "managed",
+                pairings: [
+                  {
+                    id: "remote-pairing",
+                    remote_base_url: "https://remote.example.com",
+                    remote_network_id: "remote",
+                    remote_network_name: "Remote",
+                    token_secret: "REMOTE_NET_PAIR_TOKEN"
+                  }
+                ],
+                store: {
+                  kind: "postgres",
+                  dsn_secret: "MOLTNET_DSN"
+                },
+                url: "http://127.0.0.1:8787"
+              }
+            },
+            {
+              id: "external-bearer",
+              name: "external bearer",
+              provider: "moltnet",
+              rooms: [],
+              server: {
+                auth: {
+                  client: {
+                    token_env: "MOLTNET_BEARER_ENV"
+                  },
+                  mode: "bearer"
+                },
+                mode: "external",
+                url: "https://moltnet.example.com"
+              }
+            },
+            {
+              id: "managed-open-self",
+              name: "managed open",
+              provider: "moltnet",
+              rooms: [],
+              server: {
+                auth: {
+                  mode: "open"
+                },
+                listen: {
+                  bind: "127.0.0.1",
+                  port: 8788
+                },
+                mode: "managed",
+                store: {
+                  kind: "postgres",
+                  dsn_secret: "OPEN_DSN"
+                }
+              }
+            }
+          ],
+          policyMode: null,
+          policyOnDegrade: null,
+          shared: {
+            env: {},
+            mcpServers: [],
+            secrets: [],
+            skills: []
+          },
+          source: "/tmp/team/Spawnfile"
+        }
+      }
+    ];
+
+    expect(listMoltnetNetworkSecretNames(planNodes)).toEqual([
+      "MOLTNET_ATTACH_TOKEN",
+      "MOLTNET_BEARER_ENV",
+      "MOLTNET_DSN",
+      "OPEN_DSN",
+      "REMOTE_NET_PAIR_TOKEN"
+    ]);
   });
 });

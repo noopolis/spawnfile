@@ -201,10 +201,10 @@ Example:
 
 The compiler reports on these keys:
 
-- `docs.identity`, `docs.soul`, `docs.system`, `docs.memory`, `docs.heartbeat`, `docs.extras.<name>`
+- `workspace.docs.identity`, `workspace.docs.soul`, `workspace.docs.system`, `workspace.docs.memory`, `workspace.docs.heartbeat`, `workspace.docs.extras.<name>`
 - `skills.<name-or-ref>`
 - `mcp.<name>`
-- `execution.model`, `execution.workspace`, `execution.sandbox`
+- `execution.model`, `execution.sandbox`, `workspace.docs`, `workspace.resources`
 - `agent.subagents`
 - `team.members`, `team.mode`, `team.lead`, `team.external`, `team.shared`, `team.nested`
 - `team.roster`, `team.context_orientation`, `team.representatives`, `team.networks`, `team.networks.<provider>`, `team.networks.<provider>.<network-id-key>`
@@ -214,7 +214,9 @@ Adapters may add runtime-specific keys under `runtime.options.*` and `runtime.na
 
 ## Policy Enforcement
 
-The compile report is always emitted regardless of policy. What changes is whether degradation stops the build:
+The compile report is always emitted regardless of policy. When `policy` is
+omitted, Spawnfile uses `mode: warn` and `on_degrade: warn`. What changes is
+whether degradation stops the build:
 
 - `policy.mode: permissive` -- continues, records outcomes
 - `policy.mode: warn` -- continues with warnings

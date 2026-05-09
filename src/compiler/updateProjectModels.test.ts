@@ -183,10 +183,11 @@ describe("addProjectModelFallback", () => {
       "      provider: anthropic",
       "      name: claude-opus-4-6",
       "",
-      "docs:",
-      "  identity: IDENTITY.md",
-      "  soul: SOUL.md",
-      "  system: AGENTS.md",
+      "workspace:",
+      "  docs:",
+      "    identity: IDENTITY.md",
+      "    soul: SOUL.md",
+      "    system: AGENTS.md",
       ""
     ].join("\n");
     await writeUtf8File(manifestPath, source);

@@ -8,7 +8,6 @@ import { ensureDirectory, removeDirectory, writeUtf8File } from "../filesystem/i
 import { isTeamManifest } from "./schemas.js";
 import { loadManifest, mergeExecution, normalizeRuntimeBinding } from "./loadManifest.js";
 
-const fixturesRoot = path.resolve(process.cwd(), "fixtures");
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
@@ -17,7 +16,24 @@ afterEach(async () => {
 
 describe("loadManifest", () => {
   it("loads a valid agent manifest", async () => {
-    const manifestPath = path.join(fixturesRoot, "single-agent", "Spawnfile");
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-valid-agent-"));
+    temporaryDirectories.push(directory);
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Analyst\n");
+    const manifestPath = path.join(directory, "Spawnfile");
+    await writeUtf8File(
+      manifestPath,
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: analyst",
+        "runtime: openclaw",
+        "",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md"
+      ].join("\n")
+    );
+
     const result = await loadManifest(manifestPath);
 
     expect(result.manifest.kind).toBe("agent");
@@ -25,7 +41,72 @@ describe("loadManifest", () => {
   });
 
   it("loads a valid team manifest", async () => {
-    const manifestPath = path.join(fixturesRoot, "multi-runtime-team", "Spawnfile");
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-valid-team-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "TEAM.md"), "# Team\n");
+    await ensureDirectory(path.join(directory, "agents", "lead"));
+    await ensureDirectory(path.join(directory, "agents", "member"));
+    await writeUtf8File(path.join(directory, "agents", "lead", "AGENTS.md"), "# Lead\n");
+    await writeUtf8File(path.join(directory, "agents", "member", "AGENTS.md"), "# Member\n");
+    await writeUtf8File(path.join(directory, "agents", "lead", "Spawnfile"), [
+      'spawnfile_version: "0.1"',
+      "kind: agent",
+      "name: lead",
+      "runtime: openclaw",
+      "",
+      "workspace:",
+      "  docs:",
+      "    system: AGENTS.md"
+    ].join("\n"));
+    await writeUtf8File(path.join(directory, "agents", "member", "Spawnfile"), [
+      'spawnfile_version: "0.1"',
+      "kind: agent",
+      "name: member",
+      "runtime: openclaw",
+      "",
+      "workspace:",
+      "  docs:",
+      "    system: AGENTS.md"
+    ].join("\n"));
+    const manifestPath = path.join(directory, "Spawnfile");
+    await writeUtf8File(
+      manifestPath,
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: team",
+        "mode: hierarchical",
+        "lead: lead",
+        "members:",
+        "  - id: lead",
+        "    ref: ./agents/lead",
+        "  - id: member",
+        "    ref: ./agents/member",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
+        "networks:",
+        "  - id: local_lab",
+        "    provider: moltnet",
+        "    server:",
+        "      mode: managed",
+        "      auth:",
+        "        mode: none",
+        "      listen:",
+        "        bind: 127.0.0.1",
+        "        port: 8787",
+        "      store:",
+        "        kind: sqlite",
+        "        path: /tmp/local-lab.sqlite",
+        "    rooms:",
+        "      - id: research",
+        "        members:",
+        "          - lead",
+        "          - member"
+      ].join("\n")
+    );
+
     const result = await loadManifest(manifestPath);
 
     expect(isTeamManifest(result.manifest)).toBe(true);
@@ -33,7 +114,7 @@ describe("loadManifest", () => {
       throw new Error("Expected team manifest");
     }
 
-    expect(result.manifest.members).toHaveLength(3);
+    expect(result.manifest.members).toHaveLength(2);
   });
 
   it("rejects missing documents", async () => {
@@ -42,7 +123,18 @@ describe("loadManifest", () => {
 
     await writeUtf8File(
       path.join(directory, "Spawnfile"),
-      ['spawnfile_version: "0.1"', "kind: agent", "name: broken", "", "runtime: openclaw", "", "docs:", "  system: AGENTS.md", ""].join("\n")
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: broken",
+        "",
+        "runtime: openclaw",
+        "",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
+        ""
+      ].join("\n")
     );
 
     await expect(loadManifest(path.join(directory, "Spawnfile"))).rejects.toThrow(/Document not found/);
@@ -62,8 +154,9 @@ describe("loadManifest", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: SYSTEM.txt",
+        "workspace:",
+        "  docs:",
+        "    system: SYSTEM.txt",
         ""
       ].join("\n")
     );
@@ -85,8 +178,9 @@ describe("loadManifest", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: docs\\AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: docs\\AGENTS.md",
         ""
       ].join("\n")
     );
@@ -113,8 +207,9 @@ describe("loadManifest", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         "",
         "skills:",
         "  - ref: ./skills/web_search",
@@ -142,8 +237,9 @@ describe("loadManifest", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         "",
         "skills:",
         "  - ref: ./skills/missing",
@@ -172,8 +268,9 @@ describe("loadManifest", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -187,8 +284,9 @@ describe("loadManifest", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         "",
         "subagents:",
         "  - id: worker",
@@ -216,8 +314,9 @@ describe("loadManifest", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -229,8 +328,9 @@ describe("loadManifest", () => {
         "kind: team",
         "name: broken-team",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: worker",
@@ -256,8 +356,9 @@ describe("loadManifest", () => {
         "kind: team",
         "name: broken-team",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: analyst",
@@ -301,8 +402,9 @@ describe("loadManifest", () => {
         "      methods:",
         "        openai: codex",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -328,8 +430,9 @@ describe("loadManifest", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -340,8 +443,9 @@ describe("loadManifest", () => {
         "kind: team",
         "name: broken-team",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: analyst",
@@ -374,8 +478,9 @@ describe("loadManifest", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -386,8 +491,9 @@ describe("loadManifest", () => {
         "kind: team",
         "name: broken-team",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: analyst",
@@ -457,15 +563,8 @@ describe("mergeExecution", () => {
   });
 
   it("returns the parent execution when there is no child", () => {
-    expect(
-      mergeExecution(
-        {
-          workspace: { isolation: "isolated" }
-        },
-        undefined
-      )
-    ).toEqual({
-      workspace: { isolation: "isolated" }
+    expect(mergeExecution({ sandbox: { mode: "workspace" } }, undefined)).toEqual({
+      sandbox: { mode: "workspace" }
     });
   });
 
@@ -473,16 +572,14 @@ describe("mergeExecution", () => {
     expect(
       mergeExecution(
         {
-          sandbox: { mode: "workspace" },
-          workspace: { isolation: "isolated" }
+          sandbox: { mode: "workspace" }
         },
         {
           sandbox: { mode: "sandboxed" }
         }
       )
     ).toEqual({
-      sandbox: { mode: "sandboxed" },
-      workspace: { isolation: "isolated" }
+      sandbox: { mode: "sandboxed" }
     });
   });
 
@@ -507,8 +604,7 @@ describe("mergeExecution", () => {
         fallback: [{ name: "claude-haiku", provider: "anthropic" }],
         primary: { name: "gpt-5", provider: "openai" }
       },
-      sandbox: undefined,
-      workspace: undefined
+      sandbox: undefined
     });
   });
 
@@ -541,8 +637,7 @@ describe("mergeExecution", () => {
         fallback: undefined,
         primary: { name: "claude-opus", provider: "anthropic" }
       },
-      sandbox: undefined,
-      workspace: undefined
+      sandbox: undefined
     });
   });
 
@@ -594,8 +689,7 @@ describe("mergeExecution", () => {
           provider: "custom"
         }
       },
-      sandbox: undefined,
-      workspace: undefined
+      sandbox: undefined
     });
   });
 
@@ -623,14 +717,4 @@ describe("mergeExecution", () => {
     ).toThrow(/sandbox is missing mode/);
   });
 
-  it("rejects merged execution workspaces without isolation", () => {
-    expect(() =>
-      mergeExecution(
-        {
-          workspace: {}
-        } as never,
-        {}
-      )
-    ).toThrow(/workspace is missing isolation/);
-  });
 });

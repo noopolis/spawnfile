@@ -12,10 +12,9 @@ execution:
       name: claude-sonnet-4-5
       auth:
         method: claude-code
-  workspace:
-    isolation: isolated
   sandbox:
     mode: workspace
 
-docs:
-  system: AGENTS.md
+workspace:
+  docs:
+    system: AGENTS.md

@@ -148,7 +148,9 @@ describe("view command", () => {
 
     expect(exitCode).toBe(0);
     expect(stdout.join("\n")).toContain("Moltnet networks");
-    expect(stdout.join("\n")).toContain("local_lab \"Local Lab\" on moltnet-team-chat exposed");
+    expect(stdout.join("\n")).toContain(
+      "local_lab \"Local Lab\" on moltnet-team-chat server=managed auth=none human_ingress"
+    );
   });
 
   it("accepts comma-separated --show layers", async () => {

@@ -8,8 +8,10 @@ import { manifestSchema } from "./schemas.js";
 describe("renderSpawnfile", () => {
   it("renders a valid agent manifest as YAML", () => {
     const source = renderSpawnfile({
-      docs: {
-        system: "AGENTS.md"
+      workspace: {
+        docs: {
+          system: "AGENTS.md"
+        }
       },
       expose: true,
       execution: {
@@ -24,9 +26,6 @@ describe("renderSpawnfile", () => {
         },
         sandbox: {
           mode: "workspace"
-        },
-        workspace: {
-          isolation: "isolated"
         }
       },
       kind: "agent",
@@ -65,26 +64,145 @@ describe("renderSpawnfile", () => {
     const nameIndex = source.indexOf("name: my-agent");
     const runtimeIndex = source.indexOf("runtime: openclaw");
     const executionIndex = source.indexOf("execution:");
-    const docsIndex = source.indexOf("docs:");
+    const workspaceIndex = source.indexOf("workspace:");
 
     expect(spawnfileVersionIndex).toBeGreaterThanOrEqual(0);
     expect(kindIndex).toBeGreaterThan(spawnfileVersionIndex);
     expect(nameIndex).toBeGreaterThan(kindIndex);
     expect(runtimeIndex).toBeGreaterThan(nameIndex);
     expect(executionIndex).toBeGreaterThan(runtimeIndex);
-    expect(docsIndex).toBeGreaterThan(executionIndex);
+    expect(workspaceIndex).toBeGreaterThan(executionIndex);
     expect(source).toContain("      name: claude-opus-4-6");
     expect(source).toContain("      provider: anthropic");
-    expect(source).not.toContain("  workspace:");
+    expect(source).toContain("\nworkspace:");
     expect(source).not.toContain("  sandbox:");
-    expect(source).toContain("  identity: IDENTITY.md");
-    expect(source).toContain("  soul: SOUL.md");
-    expect(source).toContain("  system: AGENTS.md");
+    expect(source).toContain("    identity: IDENTITY.md");
+    expect(source).toContain("    soul: SOUL.md");
+    expect(source).toContain("    system: AGENTS.md");
     expect(source).toContain('name: my-agent\n\nruntime: openclaw\n\nexecution:');
-    expect(source).toContain("      provider: anthropic\n      name: claude-opus-4-6\n\ndocs:");
+    expect(source).toContain("      provider: anthropic\n      name: claude-opus-4-6\n\nworkspace:");
   });
 
-  it("renders network exposure on team manifests", () => {
+  it("renders agent schedules after execution", () => {
+    const source = renderSpawnfile({
+      workspace: {
+        docs: {
+          heartbeat: "HEARTBEAT.md",
+          system: "AGENTS.md"
+        }
+      },
+      execution: {
+        model: {
+          primary: {
+            name: "gpt-5.5",
+            provider: "openai"
+          }
+        }
+      },
+      kind: "agent",
+      name: "scheduled-agent",
+      runtime: "picoclaw",
+      schedule: {
+        cron: "0 5 * * *",
+        kind: "cron",
+        prompt: "Perform one bounded iteration.",
+        timezone: "UTC"
+      },
+      spawnfile_version: "0.1"
+    });
+
+    const executionIndex = source.indexOf("execution:");
+    const scheduleIndex = source.indexOf("schedule:");
+    const workspaceIndex = source.indexOf("workspace:");
+
+    expect(scheduleIndex).toBeGreaterThan(executionIndex);
+    expect(workspaceIndex).toBeGreaterThan(scheduleIndex);
+    expect(source).toContain(
+      [
+        "schedule:",
+        "  kind: cron",
+        "  cron: 0 5 * * *",
+        "  timezone: UTC",
+        "  prompt: Perform one bounded iteration."
+      ].join("\n")
+    );
+    expect(manifestSchema.parse(YAML.parse(source) as unknown)).toMatchObject({
+      kind: "agent",
+      schedule: {
+        cron: "0 5 * * *",
+        kind: "cron"
+      }
+    });
+  });
+
+  it("renders workspace resources in canonical order", () => {
+    const source = renderSpawnfile({
+      kind: "agent",
+      name: "resource-agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1",
+      workspace: {
+        docs: {
+          system: "AGENTS.md"
+        },
+        resources: [
+          {
+            branch: "main",
+            id: "project",
+            kind: "git",
+            mode: "mutable",
+            mount: "/work/project",
+            url: "https://example.com/project.git"
+          },
+          {
+            id: "cache",
+            kind: "volume",
+            mode: "readonly",
+            mount: "/cache",
+            name: "agent-cache"
+          }
+        ]
+      }
+    });
+
+    expect(source).toContain(
+      [
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
+        "  resources:",
+        "    - id: project",
+        "      kind: git",
+        "      url: https://example.com/project.git",
+        "      branch: main",
+        "      mount: /work/project",
+        "      mode: mutable",
+        "    - id: cache",
+        "      kind: volume",
+        "      mount: /cache",
+        "      mode: readonly",
+        "      name: agent-cache"
+      ].join("\n")
+    );
+    expect(manifestSchema.parse(YAML.parse(source) as unknown)).toMatchObject({
+      workspace: {
+        resources: [
+          {
+            id: "project",
+            kind: "git",
+            mount: "/work/project"
+          },
+          {
+            id: "cache",
+            kind: "volume",
+            mount: "/cache"
+          }
+        ]
+      }
+    });
+  });
+
+  it("renders managed moltnet server settings on team manifests", () => {
     const source = renderSpawnfile({
       kind: "team",
       members: [
@@ -97,9 +215,23 @@ describe("renderSpawnfile", () => {
       name: "research-team",
       networks: [
         {
-          expose: true,
           id: "local_lab",
           provider: "moltnet",
+          server: {
+            mode: "managed",
+            auth: {
+              mode: "open"
+            },
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            },
+            store: {
+              kind: "sqlite",
+              path: "/tmp/local-lab.sqlite"
+            },
+            direct_messages: true
+          },
           rooms: [
             {
               id: "research",
@@ -111,24 +243,112 @@ describe("renderSpawnfile", () => {
       spawnfile_version: "0.1"
     });
 
-    expect(source).toContain("    expose: true");
+    expect(source).toContain("    server:");
+    expect(source).toContain("      mode: managed");
+    expect(source).toContain("      direct_messages: true");
+    expect(source).toContain("      port: 8787");
+    expect(source).toContain("      auth:");
+    expect(source).toContain("      store:");
     expect(manifestSchema.parse(YAML.parse(source) as unknown)).toMatchObject({
       kind: "team",
       networks: [
         {
-          expose: true,
-          id: "local_lab"
+          id: "local_lab",
+          server: {
+            mode: "managed",
+            auth: {
+              mode: "open"
+            },
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            },
+            store: {
+              kind: "sqlite",
+              path: "/tmp/local-lab.sqlite"
+            },
+            direct_messages: true
+          }
         }
       ]
     });
   });
 
+  it("redacts moltnet secret values when rendering", () => {
+    const source = renderSpawnfile({
+      kind: "team",
+      lead: "operator",
+      members: [
+        {
+          id: "operator",
+          ref: "./agents/operator"
+        }
+      ],
+      mode: "swarm",
+      name: "secure-team",
+      networks: [
+        {
+          id: "local_lab",
+          provider: "moltnet",
+          server: {
+            mode: "managed",
+            auth: {
+              client: {
+                token_id: "operator",
+                static_token: true
+              },
+              mode: "bearer",
+              tokens: [
+                {
+                  id: "operator",
+                  secret: "MOLTNET_OPERATOR_TOKEN",
+                  scopes: ["attach", "write"]
+                }
+              ]
+            },
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            },
+            store: {
+              kind: "sqlite",
+              path: "/tmp/local-lab.sqlite"
+            },
+            pairings: [
+              {
+                id: "pairing_one",
+                remote_base_url: "https://partner-net.example",
+                remote_network_id: "partner_net",
+                remote_network_name: "PartnerNet",
+                token_secret: "MOLTNET_PAIRING_TOKEN"
+              }
+            ],
+          },
+          rooms: [
+            {
+              id: "research",
+              members: ["operator"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(source).not.toContain("MOLTNET_OPERATOR_TOKEN");
+    expect(source).not.toContain("MOLTNET_PAIRING_TOKEN");
+    expect(source).toContain("id: operator");
+    expect(source).toContain("mode: bearer");
+  });
+
   it("renders rewritten agent manifests with subagents in canonical order", () => {
     const source = renderSpawnfile({
-      docs: {
-        identity: "IDENTITY.md",
-        soul: "SOUL.md",
-        system: "AGENTS.md"
+      workspace: {
+        docs: {
+          identity: "IDENTITY.md",
+          soul: "SOUL.md",
+          system: "AGENTS.md"
+        }
       },
       execution: {
         model: {
@@ -155,7 +375,7 @@ describe("renderSpawnfile", () => {
     const nameIndex = source.indexOf("name: my-agent");
     const runtimeIndex = source.indexOf("runtime: openclaw");
     const executionIndex = source.indexOf("execution:");
-    const docsIndex = source.indexOf("docs:");
+    const workspaceIndex = source.indexOf("workspace:");
     const subagentsIndex = source.indexOf("subagents:");
 
     expect(spawnfileVersionIndex).toBeGreaterThanOrEqual(0);
@@ -163,17 +383,19 @@ describe("renderSpawnfile", () => {
     expect(nameIndex).toBeGreaterThan(kindIndex);
     expect(runtimeIndex).toBeGreaterThan(nameIndex);
     expect(executionIndex).toBeGreaterThan(runtimeIndex);
-    expect(docsIndex).toBeGreaterThan(executionIndex);
-    expect(subagentsIndex).toBeGreaterThan(docsIndex);
+    expect(workspaceIndex).toBeGreaterThan(executionIndex);
+    expect(subagentsIndex).toBeGreaterThan(workspaceIndex);
     expect(source).toContain("name: my-agent\n\nruntime: openclaw\n\nexecution:");
-    expect(source).toContain("docs:\n  identity: IDENTITY.md");
+    expect(source).toContain("workspace:\n  docs:\n    identity: IDENTITY.md");
     expect(source).toContain("system: AGENTS.md\n\nsubagents:");
   });
 
   it("renders surfaces after docs in canonical order", () => {
     const source = renderSpawnfile({
-      docs: {
-        system: "AGENTS.md"
+      workspace: {
+        docs: {
+          system: "AGENTS.md"
+        }
       },
       execution: {
         model: {
@@ -200,11 +422,11 @@ describe("renderSpawnfile", () => {
       }
     });
 
-    const docsIndex = source.indexOf("docs:");
+    const workspaceIndex = source.indexOf("workspace:");
     const surfacesIndex = source.indexOf("surfaces:");
 
-    expect(docsIndex).toBeGreaterThanOrEqual(0);
-    expect(surfacesIndex).toBeGreaterThan(docsIndex);
+    expect(workspaceIndex).toBeGreaterThanOrEqual(0);
+    expect(surfacesIndex).toBeGreaterThan(workspaceIndex);
     expect(source).toContain(
       [
         "surfaces:",
@@ -224,8 +446,10 @@ describe("renderSpawnfile", () => {
 
   it("renders telegram surfaces after discord in canonical order", () => {
     const source = renderSpawnfile({
-      docs: {
-        system: "AGENTS.md"
+      workspace: {
+        docs: {
+          system: "AGENTS.md"
+        }
       },
       execution: {
         model: {
@@ -457,6 +681,20 @@ describe("renderSpawnfile", () => {
         {
           id: "local_lab",
           provider: "moltnet",
+          server: {
+            auth: {
+              mode: "open"
+            },
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            },
+            mode: "managed",
+            store: {
+              kind: "sqlite",
+              path: "/tmp/local_lab.sqlite"
+            }
+          },
           rooms: [
             {
               id: "research",

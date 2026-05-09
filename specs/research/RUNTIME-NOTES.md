@@ -171,7 +171,7 @@ Adapter target:
 
 Adapter target:
 
-- map `execution.workspace.isolation`
+- map generated runtime workspace paths and attached `workspace.resources`
 - map `execution.sandbox.mode`
 - treat per-session sandboxing semantics as adapter-defined
 

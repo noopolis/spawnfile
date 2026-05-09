@@ -3,8 +3,9 @@ kind: team
 name: moltnet-team-chat
 description: "E2E fixture for Moltnet representative team chat"
 
-docs:
-  system: TEAM.md
+workspace:
+  docs:
+    system: TEAM.md
 
 members:
   - id: coordinator
@@ -22,7 +23,16 @@ networks:
   - id: local_lab
     name: Local Lab
     provider: moltnet
-    expose: true
+    server:
+      mode: managed
+      listen:
+        bind: 127.0.0.1
+        port: 8787
+      store:
+        kind: memory
+      auth:
+        mode: none
+      human_ingress: true
     rooms:
       - id: mission-control
         members: [coordinator, field-team, analysis-team]

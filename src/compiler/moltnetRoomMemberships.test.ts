@@ -12,8 +12,16 @@ import {
   resolveMoltnetRoomMemberships
 } from "./moltnetRoomMemberships.js";
 import type { CompilePlan, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
+import type { TeamNetworkServer } from "../manifest/index.js";
 
 const temporaryDirectories: string[] = [];
+
+const createManagedServer = (): Extract<TeamNetworkServer, { mode: "managed" }> => ({
+  auth: { mode: "none" },
+  listen: { bind: "127.0.0.1", port: 8787 },
+  mode: "managed",
+  store: { kind: "memory" }
+});
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
@@ -331,6 +339,15 @@ describe("moltnetRoomMemberships", () => {
       "networks:",
       "  - id: org",
       "    provider: moltnet",
+      "    server:",
+      "      mode: managed",
+      "      listen:",
+      "        bind: 127.0.0.1",
+      "        port: 8787",
+      "      store:",
+      "        kind: memory",
+      "      auth:",
+      "        mode: none",
       "    rooms:",
       "      - id: general",
       "        members: [child]",
@@ -351,7 +368,7 @@ describe("moltnetRoomMemberships", () => {
     const rep = agent("rep");
     const parent = team("parent", {
       members: [{ id: "child", kind: "team", nodeSource: "/tmp/child/Spawnfile", runtimeName: null }],
-      networks: [{ id: "org", name: "Org", provider: "moltnet", rooms: [{ id: "room", members: ["child"] }] }]
+      networks: [{ id: "org", name: "Org", provider: "moltnet", rooms: [{ id: "room", members: ["child"] }], server: createManagedServer() }]
     });
     const artifactPlan = plan([node(rep), node(parent)]);
     artifactPlan.moltnetRoomMemberships = [

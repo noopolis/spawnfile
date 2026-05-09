@@ -32,17 +32,19 @@ The reference pipeline is:
 3. Walk the manifest graph through `members[*].ref` and `subagents[*].ref`.
 4. Detect cycles and incompatible duplicate references.
 5. Resolve effective `runtime` and `execution` for every graph node.
-6. Resolve `description` for every agent node (from manifest or derived from docs).
-7. Build a normalized intermediate representation.
-8. Group resolved nodes by runtime.
-9. Invoke runtime adapters.
-10. Resolve team representatives, team-context files, roster files, and team-network artifacts.
-11. Merge generated files into compiled workspaces.
-12. Place or point to generated team-context orientation through each runtime's system-instruction surface when possible.
-13. Attach compiler-owned capability outcomes and warning diagnostics.
-14. Enforce policy after report augmentation.
-15. Generate container artifacts from adapter container metadata.
-16. Emit `spawnfile-report.json`.
+6. Resolve `description` for every agent node (from manifest or derived from `workspace.docs.identity`).
+7. Resolve workspace resources and inheritance context for each concrete agent.
+8. Resolve schedule lowering constraints.
+9. Build a normalized intermediate representation.
+10. Group resolved nodes by runtime.
+11. Invoke runtime adapters.
+12. Resolve team representatives, team-context files, roster files, and team-network artifacts.
+13. Merge generated files into compiled workspaces.
+14. Place or point to generated team-context orientation through each runtime's system-instruction surface when possible.
+15. Attach compiler-owned capability outcomes and warning diagnostics.
+16. Enforce policy after report augmentation.
+17. Generate container artifacts from adapter container metadata.
+18. Emit `spawnfile-report.json`.
 
 The compiler should operate on resolved IR, not on raw YAML, after the graph phase.
 
@@ -117,7 +119,7 @@ even when authored as a shorthand string. This normalization happens once during
 
 ### Resolution Implementation
 
-The compiler resolves effective configuration during graph walking, not as a separate pass. Each node's effective runtime, execution, and surfaces are computed when the node is first visited, and the result is cached by canonical manifest path with a fingerprint to detect conflicting resolutions.
+The compiler resolves effective configuration during graph walking, not as a separate pass. Each node's effective runtime, execution, `workspace.docs`, `workspace.resources`, and schedule are computed when the node is first visited, and the result is cached by canonical manifest path with a fingerprint to detect conflicting resolutions.
 
 ---
 
@@ -161,7 +163,9 @@ surfaces:
         - "U1234567890"
     app_token_secret: SLACK_APP_TOKEN
     bot_token_secret: SLACK_BOT_TOKEN
-docs: {}
+workspace:
+  docs: {}
+  resources: []
 skills: []
 mcp_servers: []
 env: {}
@@ -177,7 +181,7 @@ The resolved agent IR also includes:
 description: "Research analyst that finds, evaluates, and synthesizes information"
 ```
 
-`description` is the agent's short summary. If the manifest does not declare one, the compiler derives it from `docs.identity` by extracting the first non-empty paragraph, truncated to 200 characters. If no `docs.identity` is declared, the description is left empty.
+`description` is the agent's short summary. If the manifest does not declare one, the compiler derives it from `workspace.docs.identity` by extracting the first non-empty paragraph, truncated to 200 characters. If no `workspace.docs.identity` is declared, the description is left empty.
 
 ### Resolved Team
 
@@ -186,7 +190,9 @@ kind: team
 id: team:research-cell
 source: /abs/path/to/Spawnfile
 description: "Research team that finds, analyzes, and writes up findings"
-docs: {}
+workspace:
+  docs: {}
+  resources: []
 shared:
   skills: []
   mcp_servers: []
@@ -224,16 +230,19 @@ When compiling a team, the compiler generates context-scoped team artifacts afte
 
 ### Compilation Steps
 
-1. Resolve each member's `description` from the agent manifest's `description` field, or derive it from `docs.identity` if available.
+1. Resolve each member's `description` from the agent manifest's `description` field, or derive it from `workspace.docs.identity` if available.
 2. Build membership-context records keyed by `(agent-source, team-source, member-slot-id)`. The same agent source may fill several team roles without merging those contexts.
 3. Resolve the representative interface for nested team slots using `external`, `lead`, and swarm fallback.
-4. Resolve team networks. Moltnet parent-room members that name child-team slots expand only to the child team's selected concrete representatives.
-5. Generate namespaced direct-membership `TEAM.md` files under `.spawnfile/team-contexts/<team-context-key>/TEAM.md`.
-6. Generate context-scoped roster YAML under `.spawnfile/rosters/<team-context-key>.yaml`.
-7. Generate representative parent-context `TEAM.md`, rosters, team cards, `.spawnfile/team-contexts.yaml`, and `.spawnfile/team-contexts.md` for selected representatives.
-8. Emit root `TEAM.md` and `.spawnfile/roster.yaml` aliases only when a compiled agent has exactly one direct team membership.
-9. Build coordination-graph diagnostics for each emitted team-context roster.
-10. Attach compiler-owned capability outcomes before policy enforcement.
+4. Resolve `workspace.resources` for each concrete member from team-local and direct inheritance.
+5. Resolve team networks. Moltnet parent-room members that name child-team slots expand only to the child team's selected concrete representatives.
+6. Emit a generated resource plan that lists mounted resources as work surfaces and path bindings for each agent.
+7. Generate namespaced direct-membership `TEAM.md` files under `.spawnfile/team-contexts/<team-context-key>/TEAM.md`.
+8. Generate context-scoped roster YAML under `.spawnfile/rosters/<team-context-key>.yaml`.
+9. Generate representative parent-context `TEAM.md`, rosters, team cards, `.spawnfile/team-contexts.yaml`, and `.spawnfile/team-contexts.md` for selected representatives.
+10. Emit root `TEAM.md` and `.spawnfile/roster.yaml` aliases only when a compiled agent has exactly one direct team membership.
+11. Build coordination-graph diagnostics for each emitted team-context roster.
+12. Build schedule-wake capability diagnostics for declared schedules against adapter wake contracts.
+13. Attach compiler-owned capability outcomes before policy enforcement.
 
 ### Roster Schema
 
@@ -298,7 +307,7 @@ Representative agents also receive parent-context artifacts:
 .spawnfile/team-cards/<team-context-key>/<parent-member-slot-id>.md
 ```
 
-`TEAM.md` is emitted literally from the team's `docs.system` source document. It bypasses runtime document-role mapping so it does not replace the agent's own system instructions. The compiler must not merge several `TEAM.md` files.
+`TEAM.md` is emitted literally from the team's `workspace.docs.system` source document. It bypasses runtime document-role mapping so it does not replace the agent's own system instructions. The compiler must not merge several `TEAM.md` files.
 
 `EmittedFile` remains a plain file-output contract:
 
@@ -331,8 +340,37 @@ Rules:
 - Direct child-team IDs expand through the child team's representative chain, not to arbitrary descendants.
 - The compiler synthesizes Moltnet room attachments for selected representatives because the parent room is declared organization membership, not a proxy.
 - Moltnet member IDs are direct member slot IDs and must be unique across the reachable nested team graph.
-- Reusing the same Moltnet `network` id across teams is allowed. Compatible duplicate attachments for the same `(network_id, member_id)` merge rooms; incompatible duplicates fail compilation.
+- The compiler resolves each concrete generated attachment into a process-group key and emits Moltnet node configuration using `MoltnetNode` topology where possible.
+- Default process-group key is one concrete agent.
+- The same Moltnet network-id may be reused across teams. Compatible duplicate attachments for the same `(network_id, member_id)` merge rooms; incompatible duplicates fail compilation.
 - Moltnet `reply` policy is `auto | never` in this alpha. `manual` is rejected or normalized out before generated config.
+- For each `(process group, network URL, network id, auth mode, token class)` tuple, one `MoltnetNode` may carry multiple attachments; different tuples require separate nodes.
+
+#### Moltnet Server/Auth/Store Lowering
+
+- `server` blocks are required for networks that are materialized locally and are normalized by `(provider, server.mode, server.url, server.listen, store, auth, pairings)` identity.
+- `server.mode: managed` lowerings generate a server config and a managed server process slot under the local lifecycle graph.
+- `server.mode: external` generates client/node config only.
+- Managed server config requires:
+  - explicit `server.listen`
+  - required `server.store`
+  - required `server.auth`
+- `server.store.kind` is mapped to Moltnet `storage` semantics:
+  - `sqlite` + `path`
+  - `json` + `path`
+  - `postgres` + `dsn_secret`
+  - `memory`
+- Secret-backed store fields (`sqlite`/`json` path on durable volumes, postgres DSN secret) are materialized into private runtime files at startup.
+- Auth token materialization is always private and source-controlled outputs never include inline token values.
+- In managed mode, `server.auth.tokens[]` drives server config; each token is emitted as a secret-backed token entry using declared secret names and scopes.
+- `server.auth.client` is normalized into one of `token_id`, `token_env`, or `token_path` and rejected if more than one is set.
+- `server.auth.mode` mapping:
+  - `none`: no client auth emitted.
+  - `bearer`: emits attach-capable client credentials for generated nodes.
+  - `open`: emits per-agent writable token paths unless a static token client source is provided.
+- Managed bearer mode requires `token_id` and requires the referenced token to include `attach` and `write` scopes.
+- Managed and external open static token mode requires `static_token: true` on the configured client source.
+- `server.pairings` entries are materialized into managed server config and rejected on non-managed networks.
 
 ### Coordination Diagnostics
 
@@ -484,17 +522,18 @@ The report should be JSON by default and written to `spawnfile-report.json`.
 
 The compiler should use these keys by default:
 
-- `docs.identity`
-- `docs.soul`
-- `docs.system`
-- `docs.memory`
-- `docs.heartbeat`
-- `docs.extras.<name>`
+- `workspace.docs.identity`
+- `workspace.docs.soul`
+- `workspace.docs.system`
+- `workspace.docs.memory`
+- `workspace.docs.heartbeat`
+- `workspace.docs.extras.<name>`
 - `skills.<name-or-ref>`
 - `mcp.<name>`
 - `execution.model`
-- `execution.workspace`
 - `execution.sandbox`
+- `agent.schedule`
+- `workspace.resources`
 - `agent.subagents`
 - `team.members`
 - `team.mode`
@@ -554,6 +593,11 @@ Validation should happen in three layers:
 - team network member references
 - duplicate Moltnet `member_id` detection across reachable nested teams
 - skill `requires.mcp` resolution
+- duplicate `workspace.resource` IDs and overlapping mounts within each concrete agent context
+- duplicate workspace resource identities within inherited resource sets and incompatible shared resource definitions
+- `team.networks[].server` normalization checks (mode/store/auth/client/path/token/pairings compatibility)
+- `team.networks[].server` mode/auth/store/dms and pairings compatibility checks
+- schedule lowering checks against declared adapter wake contracts
 
 ### 3. Adapter Validation
 
@@ -592,6 +636,16 @@ The E2E should compile, build, and run a fixture with a parent team, nested chil
 
 Slack, Discord, Telegram, and WhatsApp do not require equivalent team-chat E2Es for this contract because Spawnfile only carries their declared identity/roster metadata. Moltnet is the provider Spawnfile provisions and lowers.
 
+## Coverage Targets
+
+Compiler and adapter verification should target feature behavior, not statement/line counts.
+
+At minimum for v0.1:
+
+- 90% coverage of feature-behavior scenarios for schedules, resources, roster generation, and team-network lowering.
+- Line-based metrics are allowed for tooling only and are not an acceptance gate by themselves.
+- Any behavior in `specs/` not covered by tests is a blocker for feature completion.
+
 ---
 
 ## Deferred For Later Versions
@@ -603,7 +657,6 @@ These should stay out of the core compiler architecture for v0.1:
 - lockfile and reproducibility records
 - runtime-native auth bootstrap
 - runtime-native chat features outside declared portable surfaces
-- workflow schedulers
 - memory engine contracts
 - multi-container orchestration (Docker Compose, Kubernetes, etc.)
 

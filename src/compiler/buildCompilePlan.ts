@@ -41,6 +41,7 @@ import { resolvePlanMoltnetAttachments } from "./moltnetResolution.js";
 import { resolveMoltnetRoomMemberships } from "./moltnetRoomMemberships.js";
 import {
   normalizeDescription,
+  createRuntimeGroups,
   resolveDescription,
   resolveRuntime,
   type AgentVisitContext
@@ -50,12 +51,16 @@ import {
   resolveTeamNetworks,
   validateTeamNetworkRooms
 } from "./buildCompilePlanTeams.js";
+import { mergeWorkspaceResources } from "./workspaceResources.js";
 
 type InternalNode = {
   runtimeName: string | null;
   source: string;
   value: ResolvedAgentNode | ResolvedTeamNode;
 };
+
+const DEFAULT_POLICY_MODE = "warn";
+const DEFAULT_POLICY_ON_DEGRADE = "warn";
 
 export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> => {
   const rootManifestPath = getCanonicalManifestPath(getManifestPath(inputPath));
@@ -131,7 +136,12 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       skills
     );
 
-    const docs = await loadResolvedDocuments(canonicalPath, loadedManifest.manifest.docs);
+    const docs = await loadResolvedDocuments(canonicalPath, loadedManifest.manifest.workspace?.docs);
+    const workspaceResources = mergeWorkspaceResources(
+      context.inheritedResources,
+      loadedManifest.manifest.workspace?.resources,
+      loadedManifest.manifest.name
+    );
     const candidate: ResolvedAgentNode = {
       description: resolveDescription(loadedManifest.manifest.description, docs),
       docs,
@@ -141,14 +151,16 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       kind: "agent",
       mcpServers: sharedSurface.mcpServers,
       name: loadedManifest.manifest.name,
-      policyMode: loadedManifest.manifest.policy?.mode ?? null,
-      policyOnDegrade: loadedManifest.manifest.policy?.on_degrade ?? null,
+      policyMode: loadedManifest.manifest.policy?.mode ?? DEFAULT_POLICY_MODE,
+      policyOnDegrade: loadedManifest.manifest.policy?.on_degrade ?? DEFAULT_POLICY_ON_DEGRADE,
       runtime,
+      schedule: loadedManifest.manifest.schedule,
       secrets: sharedSurface.secrets,
       skills,
       source: canonicalPath,
       surfaces: resolveAgentSurfaces(loadedManifest.manifest.surfaces),
-      subagents: []
+      subagents: [],
+      workspaceResources
     };
     assertRuntimeSupportsAgentSurfaces(
       runtime.name,
@@ -182,6 +194,7 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       const childManifestPath = getManifestPath(resolveProjectPath(canonicalPath, subagent.ref));
       const resolvedSubagent = await visitAgent(childManifestPath, {
         inheritedExecution: execution,
+        inheritedResources: candidate.workspaceResources,
         inheritedRuntime: runtime,
         isSubagent: true
       });
@@ -202,7 +215,10 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
     return candidate;
   };
 
-  const visitTeam = async (manifestPath: string): Promise<ResolvedTeamNode> => {
+  const visitTeam = async (
+    manifestPath: string,
+    inheritedResources: ResolvedAgentNode["workspaceResources"] = []
+  ): Promise<ResolvedTeamNode> => {
     const canonicalPath = getCanonicalManifestPath(manifestPath);
     if (visitStack.includes(canonicalPath)) {
       throw new SpawnfileError(
@@ -228,7 +244,12 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
 
     const manifest = loadedManifest.manifest;
     const resolvedExternal = resolveTeamExternalIds(manifest);
-    const docs = await loadResolvedDocuments(canonicalPath, manifest.docs);
+    const docs = await loadResolvedDocuments(canonicalPath, manifest.workspace?.docs);
+    const workspaceResources = mergeWorkspaceResources(
+      inheritedResources,
+      manifest.workspace?.resources,
+      manifest.name
+    );
     const candidate: ResolvedTeamNode = {
       description: manifest.description ? normalizeDescription(manifest.description) : "",
       docs,
@@ -240,8 +261,9 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       mode: manifest.mode,
       name: manifest.name,
       networks: resolveTeamNetworks(manifest),
-      policyMode: manifest.policy?.mode ?? null,
-      policyOnDegrade: manifest.policy?.on_degrade ?? null,
+      policyMode: manifest.policy?.mode ?? DEFAULT_POLICY_MODE,
+      policyOnDegrade: manifest.policy?.on_degrade ?? DEFAULT_POLICY_ON_DEGRADE,
+      workspaceResources,
       shared: {
         env: manifest.shared?.env ?? {},
         mcpServers: manifest.shared?.mcp_servers ?? [],
@@ -284,6 +306,7 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
             manifestPath: canonicalPath,
             surface: loadedManifest.manifest.shared
           },
+          inheritedResources: candidate.workspaceResources,
           isSubagent: false
         });
 
@@ -303,7 +326,7 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
           }
         );
       } else {
-        const resolvedTeam = await visitTeam(childManifestPath);
+        const resolvedTeam = await visitTeam(childManifestPath, candidate.workspaceResources);
         resolvedMember = {
           id: member.id,
           kind: "team",
@@ -357,17 +380,6 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
     to: idBySource.get(edge.to) ?? edge.to
   }));
 
-  const runtimes = compilePlanNodes.reduce<Record<string, { nodeIds: string[] }>>((groups, node) => {
-    if (!node.runtimeName) {
-      return groups;
-    }
-
-    const group = groups[node.runtimeName] ?? { nodeIds: [] };
-    group.nodeIds.push(node.id);
-    groups[node.runtimeName] = group;
-    return groups;
-  }, {});
-
   const compilePlan: CompilePlan = {
     edges: compilePlanEdges,
     memberships: [...memberships.values()].sort((left, right) =>
@@ -377,7 +389,7 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
     ),
     nodes: compilePlanNodes,
     root: rootManifestPath,
-    runtimes
+    runtimes: createRuntimeGroups(compilePlanNodes)
   };
 
   compilePlan.moltnetRoomMemberships = resolveMoltnetRoomMemberships(compilePlan);

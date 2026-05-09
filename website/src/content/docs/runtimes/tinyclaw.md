@@ -53,7 +53,7 @@ Each agent has:
 - Separate config and history
 - Explicit workspace layout
 
-The adapter maps `execution.workspace.isolation` cleanly since each TinyClaw agent already has its own isolated workspace.
+The adapter maps `workspace.docs`, `workspace.resources`, and `execution.sandbox.mode` cleanly since each TinyClaw agent already has its own runtime workspace.
 
 ## Native Team Support
 
@@ -157,13 +157,12 @@ execution:
     primary:
       provider: anthropic
       name: claude-sonnet-4-5
-  workspace:
-    isolation: isolated
   sandbox:
     mode: workspace
 
-docs:
-  soul: SOUL.md
+workspace:
+  docs:
+    soul: SOUL.md
 ```
 
 And the team manifest that includes this agent:

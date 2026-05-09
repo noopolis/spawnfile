@@ -56,7 +56,6 @@ export const createAgentCapabilities = (
     mcpOutcome?: CapabilityReport["outcome"];
     sandboxOutcome?: CapabilityReport["outcome"];
     subagentOutcome?: CapabilityReport["outcome"];
-    workspaceOutcome?: CapabilityReport["outcome"];
   } = {}
 ): CapabilityReport[] => {
   const capabilities: CapabilityReport[] = [];
@@ -77,15 +76,19 @@ export const createAgentCapabilities = (
     capabilities.push(createCapability("execution.model", "supported"));
   }
 
-  if (node.execution?.workspace) {
-    capabilities.push(
-      createCapability("execution.workspace", options.workspaceOutcome ?? "supported")
-    );
-  }
-
   if (node.execution?.sandbox) {
     capabilities.push(
       createCapability("execution.sandbox", options.sandboxOutcome ?? "supported")
+    );
+  }
+
+  if (node.schedule) {
+    capabilities.push(
+      createCapability(
+        "agent.schedule",
+        "degraded",
+        "Schedule intent is validated but no runtime scheduler is emitted yet"
+      )
     );
   }
 

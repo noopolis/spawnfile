@@ -20,10 +20,15 @@ export interface OrganizationTreeNetworkRoomSummary {
 }
 
 export interface OrganizationTreeNetworkSummary {
-  expose: boolean;
+  authMode?: "bearer" | "none" | "open";
+  directMessages?: boolean;
+  expose?: boolean;
+  httpEnabled?: boolean;
   id: string;
   name: string;
   provider: "moltnet";
+  serverMode?: "external" | "managed";
+  url?: string;
   rooms: OrganizationTreeNetworkRoomSummary[];
 }
 
@@ -48,11 +53,16 @@ export interface OrganizationNetworkMemberView {
 }
 
 export interface OrganizationNetworkDeclarationView {
+  authMode?: "bearer" | "none" | "open";
   declaringTeamName: string;
   declaringTeamSource: string;
-  expose: boolean;
+  directMessages?: boolean;
+  expose?: boolean;
+  httpEnabled?: boolean;
   name: string;
   rooms: OrganizationNetworkRoomView[];
+  serverMode?: "external" | "managed";
+  url?: string;
 }
 
 export interface OrganizationNetworkRoomView {
@@ -62,13 +72,18 @@ export interface OrganizationNetworkRoomView {
 }
 
 export interface OrganizationNetworkView {
+  authMode?: "bearer" | "none" | "open";
   declaringTeamName: string;
   declaringTeamSource: string;
-  expose: boolean;
+  directMessages?: boolean;
+  expose?: boolean;
+  httpEnabled?: boolean;
   id: string;
   name: string;
   provider: "moltnet";
   rooms: OrganizationNetworkRoomView[];
+  serverMode?: "external" | "managed";
+  url?: string;
   declarations?: OrganizationNetworkDeclarationView[];
 }
 

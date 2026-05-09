@@ -19,6 +19,7 @@ import {
   clearProjectModelFallbacks,
   compileProject,
   initProject,
+  upProject,
   removeProjectSurface,
   runProject,
   setProjectPrimaryModel,
@@ -29,6 +30,7 @@ import {
 } from "../compiler/index.js";
 import { isSpawnfileError } from "../shared/index.js";
 import { listRuntimeAdapters } from "../runtime/index.js";
+import { registerLifecycleCommands } from "./lifecycleCommands.js";
 import { registerModelCommands } from "./modelCommands.js";
 import { registerRuntimeCommands } from "./runtimeCommands.js";
 import { registerSurfaceCommands } from "./surfaceCommands.js";
@@ -63,6 +65,7 @@ export interface CliHandlers {
   importEnvFile: typeof importEnvFile; initProject: typeof initProject;
   listRuntimeAdapters: typeof listRuntimeAdapters; removeProjectSurface: typeof removeProjectSurface;
   requireAuthProfile: typeof requireAuthProfile; runProject: typeof runProject;
+  upProject: typeof upProject;
   setProjectPrimaryModel: typeof setProjectPrimaryModel; setProjectRuntime: typeof setProjectRuntime;
   setProjectSurfaceAccess: typeof setProjectSurfaceAccess; showProjectSurfaces: typeof showProjectSurfaces;
   syncProjectAuth: typeof syncProjectAuth;
@@ -74,7 +77,7 @@ const createDefaultHandlers = (): CliHandlers => ({
   addSubagentProject, addTeamProject, clearProjectModelFallbacks,
   importClaudeCodeAuth, importCodexAuth, importEnvFile,
   initProject, listRuntimeAdapters, removeProjectSurface, requireAuthProfile,
-  runProject, setProjectPrimaryModel, setProjectRuntime,
+  runProject, setProjectPrimaryModel, setProjectRuntime, upProject,
   setProjectSurfaceAccess, showProjectSurfaces, syncProjectAuth
 });
 
@@ -170,67 +173,7 @@ export const runCli: RunCli = async (
     writeOut: (message) => writeCommanderOutput(streams.stdout, message)
   });
 
-  program
-    .command("compile")
-    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
-    .option("-o, --out <directory>", "Output directory")
-    .action(async (inputPath: string, options: { out?: string }) => {
-      const result = await handlers.compileProject(inputPath, { outputDirectory: options.out });
-      streams.stdout(`compiled to ${result.outputDirectory}`);
-      streams.stdout(`report: ${result.reportPath}`);
-    });
-
-  program
-    .command("build")
-    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
-    .option("-o, --out <directory>", "Output directory")
-    .option("-t, --tag <image>", "Docker image tag")
-    .action(async (inputPath: string, options: { out?: string; tag?: string }) => {
-      const result = await handlers.buildProject(inputPath, {
-        imageTag: options.tag,
-        outputDirectory: options.out
-      });
-      streams.stdout(`built image ${result.imageTag}`);
-      streams.stdout(`compiled to ${result.outputDirectory}`);
-      streams.stdout(`report: ${result.reportPath}`);
-    });
-
-  program
-    .command("run")
-    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
-    .option("-o, --out <directory>", "Output directory")
-    .option("-t, --tag <image>", "Docker image tag")
-    .option("--auth-profile <name>", "Local Spawnfile auth profile")
-    .option("--name <container>", "Docker container name")
-    .option("--env-file <file>", "Path to an env file for runtime secrets")
-    .option("-d, --detach", "Run the container in detached mode")
-    .action(
-      async (
-        inputPath: string,
-        options: {
-          authProfile?: string;
-          detach?: boolean;
-          envFile?: string;
-          name?: string;
-          out?: string;
-          tag?: string;
-        }
-      ) => {
-        const result = await handlers.runProject(inputPath, {
-          authProfile: options.authProfile,
-          containerName: options.name,
-          detach: options.detach,
-          envFilePath: options.envFile,
-          imageTag: options.tag,
-          outputDirectory: options.out
-        });
-
-        if (options.detach) {
-          streams.stdout(`running container ${result.containerName ?? "unknown"}`);
-          streams.stdout(`image: ${result.imageTag}`);
-        }
-      }
-    );
+  registerLifecycleCommands(program, handlers, streams);
 
   program
     .command("init")

@@ -6,8 +6,5 @@ export const applyExecutionDefaults = (
   model: execution?.model,
   sandbox: execution?.sandbox ?? {
     mode: "workspace"
-  },
-  workspace: execution?.workspace ?? {
-    isolation: "isolated"
   }
 });

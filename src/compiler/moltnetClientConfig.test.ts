@@ -8,17 +8,26 @@ import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import type { ResolvedAgentNode } from "./types.js";
 
 const createArtifacts = (): MoltnetArtifacts => ({
-  bridgePlans: [],
   files: [],
+  nodePlans: [],
   ports: [8787],
   publishedPorts: [],
   serverPlans: [
     {
+      baseUrl: "http://127.0.0.1:8787",
       id: "research-cell-local_lab",
+      mode: "managed",
       name: "Local Lab",
       networkId: "local_lab",
       port: 8787,
       rooms: [{ id: "research", members: ["orchestrator"] }],
+      server: {
+        auth: { mode: "none" },
+        listen: { bind: "127.0.0.1", port: 8787 },
+        mode: "managed",
+        store: { kind: "memory" }
+      },
+      secretPatches: [],
       teamSource: "/tmp/team/Spawnfile"
     }
   ]

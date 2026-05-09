@@ -239,8 +239,9 @@ describe("compileProject", () => {
         "kind: team",
         "name: research-cell",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: orchestrator",
@@ -252,10 +253,6 @@ describe("compileProject", () => {
         "",
         "mode: hierarchical",
         "lead: orchestrator",
-        "",
-        "policy:",
-        "  mode: warn",
-        "  on_degrade: warn",
         ""
       ].join("\n")
     );
@@ -266,6 +263,11 @@ describe("compileProject", () => {
     expect(teamNode?.capabilities.some((capability) => capability.outcome === "degraded")).toBe(
       true
     );
+    expect(teamNode?.diagnostics).toContainEqual({
+      level: "warn",
+      message:
+        "Policy warning: team.members is degraded for team:research-cell: Team spans multiple runtimes and cannot lower to one native team artifact in v0.1"
+    });
 
     const reportJson = await readUtf8File(result.reportPath);
     expect(reportJson).toContain("research-cell");
@@ -343,6 +345,67 @@ describe("compileProject", () => {
     expect(entrypoint).not.toContain("prepare_target");
   }, 30000);
 
+  it("reports workspace resources and startup preparation for compiled agents", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-resource-compile-src-"));
+    const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-resource-compile-"));
+    temporaryDirectories.push(directory);
+    temporaryDirectories.push(outputDirectory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: worker",
+        "runtime: openclaw",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
+        "  resources:",
+        "    - id: project",
+        "      kind: git",
+        "      url: https://example.com/project.git",
+        "      ref: abc123",
+        "      mount: /work/project",
+        "      mode: mutable",
+        "    - id: cache",
+        "      kind: volume",
+        "      mount: /cache",
+        "      mode: readonly",
+        ""
+      ].join("\n")
+    );
+
+    const result = await compileProject(directory, { outputDirectory });
+    const agentReport = result.report.nodes.find((node) => node.kind === "agent");
+    const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
+
+    expect(agentReport?.capabilities).toContainEqual({
+      key: "workspace.resources",
+      message: "2 workspace resource(s) will be prepared at startup",
+      outcome: "supported"
+    });
+    expect(result.report.container?.workspace_resources).toEqual([
+      {
+        id: "cache",
+        kind: "volume",
+        mode: "readonly",
+        mount: "/cache"
+      },
+      {
+        id: "project",
+        kind: "git",
+        mode: "mutable",
+        mount: "/work/project"
+      }
+    ]);
+    expect(entrypoint).toContain(
+      "prepare_git_resource 'project' '/work/project' 'https://example.com/project.git' 'ref' 'abc123' 'mutable'"
+    );
+    expect(entrypoint).toContain("prepare_volume_resource 'cache' '/cache' 'readonly'");
+  }, 30000);
+
   it("marks a single-runtime team as degraded when the runtime has no native team compiler", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-single-team-"));
     temporaryDirectories.push(directory);
@@ -354,11 +417,11 @@ describe("compileProject", () => {
     await writeUtf8File(path.join(directory, "agents", "b", "AGENTS.md"), "# B\n");
     await writeUtf8File(
       path.join(directory, "agents", "a", "Spawnfile"),
-      ['spawnfile_version: "0.1"', "kind: agent", "name: a", "", "runtime: openclaw", "", "docs:", "  system: AGENTS.md", ""].join("\n")
+      ['spawnfile_version: "0.1"', "kind: agent", "name: a", "", "runtime: openclaw", "", "workspace:", "  docs:", "    system: AGENTS.md", ""].join("\n")
     );
     await writeUtf8File(
       path.join(directory, "agents", "b", "Spawnfile"),
-      ['spawnfile_version: "0.1"', "kind: agent", "name: b", "", "runtime: openclaw", "", "docs:", "  system: AGENTS.md", ""].join("\n")
+      ['spawnfile_version: "0.1"', "kind: agent", "name: b", "", "runtime: openclaw", "", "workspace:", "  docs:", "    system: AGENTS.md", ""].join("\n")
     );
     await writeUtf8File(
       path.join(directory, "Spawnfile"),
@@ -367,8 +430,9 @@ describe("compileProject", () => {
         "kind: team",
         "name: team",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: a",
@@ -406,8 +470,9 @@ describe("compileProject", () => {
         "  options:",
         '    restrict_to_workspace: "yes"',
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -418,7 +483,7 @@ describe("compileProject", () => {
   });
 
   it(
-    "emits moltnet bridge configs and staged local container wiring for team networks",
+    "emits moltnet node configs and staged local container wiring for team networks",
     async () => {
       const previousCli = process.env.SPAWNFILE_MOLTNET_CLI;
       const previousReleaseDir = process.env.SPAWNFILE_MOLTNET_RELEASE_DIR;
@@ -444,8 +509,9 @@ describe("compileProject", () => {
             "",
             "runtime: openclaw",
             "",
-            "docs:",
-            "  system: AGENTS.md",
+            "workspace:",
+            "  docs:",
+            "    system: AGENTS.md",
             "",
             "surfaces:",
             "  moltnet:",
@@ -464,8 +530,9 @@ describe("compileProject", () => {
             "kind: team",
             "name: research-cell",
             "",
-            "docs:",
-            "  system: TEAM.md",
+            "workspace:",
+            "  docs:",
+            "    system: TEAM.md",
             "",
             "members:",
             "  - id: orchestrator",
@@ -477,7 +544,16 @@ describe("compileProject", () => {
             "networks:",
             "  - id: local_lab",
             "    provider: moltnet",
-            "    expose: true",
+            "    server:",
+            "      mode: managed",
+            "      listen:",
+            "        bind: 127.0.0.1",
+            "        port: 8787",
+            "      store:",
+            "        kind: memory",
+            "      auth:",
+            "        mode: none",
+            "      human_ingress: true",
             "    rooms:",
             "      - id: research",
             "        members: [orchestrator]",
@@ -491,7 +567,7 @@ describe("compileProject", () => {
         const result = await compileProject(directory, { outputDirectory });
         const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
         const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
-        const bridgeConfig = await readUtf8File(
+        const nodeConfig = await readUtf8File(
           path.join(
             outputDirectory,
             "container",
@@ -500,7 +576,7 @@ describe("compileProject", () => {
             "lib",
             "spawnfile",
             "moltnet",
-            "bridges",
+            "nodes",
             "research-cell-local_lab-orchestrator.json"
           )
         );
@@ -513,11 +589,12 @@ describe("compileProject", () => {
         expect(dockerfile).not.toContain("surface-router.js");
         expect(dockerfile).not.toContain("router-config.json");
         expect(entrypoint).toContain("/usr/local/bin/moltnet");
-        expect(entrypoint).toContain("/usr/local/bin/moltnet bridge");
-        expect(entrypoint).toContain("http://127.0.0.1:8787/v1/rooms");
+        expect(entrypoint).toContain("/usr/local/bin/moltnet node");
+        expect(entrypoint).toContain("http://127.0.0.1:8787/healthz");
         expect(entrypoint).not.toContain("surface-router.js");
-        expect(bridgeConfig).toContain('"gateway_url": "ws://127.0.0.1:18789"');
-        expect(bridgeConfig).toContain(
+        expect(nodeConfig).toContain('"version": "moltnet.node.v1"');
+        expect(nodeConfig).toContain('"gateway_url": "ws://127.0.0.1:18789"');
+        expect(nodeConfig).toContain(
           '"home_path": "/var/lib/spawnfile/instances/openclaw/agent-orchestrator-agent/home"'
         );
         expect(
@@ -721,8 +798,9 @@ describe("compileProject", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -735,8 +813,9 @@ describe("compileProject", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         "",
         "subagents:",
         "  - id: critic",
@@ -765,11 +844,11 @@ describe("compileProject", () => {
     await writeUtf8File(path.join(directory, "agents", "b", "AGENTS.md"), "# B\n");
     await writeUtf8File(
       path.join(directory, "agents", "a", "Spawnfile"),
-      ['spawnfile_version: "0.1"', "kind: agent", "name: a", "", "runtime: tinyclaw", "", "docs:", "  system: AGENTS.md", ""].join("\n")
+      ['spawnfile_version: "0.1"', "kind: agent", "name: a", "", "runtime: tinyclaw", "", "workspace:", "  docs:", "    system: AGENTS.md", ""].join("\n")
     );
     await writeUtf8File(
       path.join(directory, "agents", "b", "Spawnfile"),
-      ['spawnfile_version: "0.1"', "kind: agent", "name: b", "", "runtime: tinyclaw", "", "docs:", "  system: AGENTS.md", ""].join("\n")
+      ['spawnfile_version: "0.1"', "kind: agent", "name: b", "", "runtime: tinyclaw", "", "workspace:", "  docs:", "    system: AGENTS.md", ""].join("\n")
     );
     await writeUtf8File(
       path.join(directory, "Spawnfile"),
@@ -778,8 +857,9 @@ describe("compileProject", () => {
         "kind: team",
         "name: team",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: a",

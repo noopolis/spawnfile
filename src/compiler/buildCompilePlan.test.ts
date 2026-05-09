@@ -44,10 +44,11 @@ describe("buildCompilePlan", () => {
         "      provider: openai",
         "      name: gpt-5.4",
         "",
-        "docs:",
-        "  identity: IDENTITY.md",
-        "  soul: SOUL.md",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    identity: IDENTITY.md",
+        "    soul: SOUL.md",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -60,8 +61,9 @@ describe("buildCompilePlan", () => {
       throw new Error("Expected agent node");
     }
 
-    expect(agentNode.value.execution?.workspace).toEqual({ isolation: "isolated" });
     expect(agentNode.value.execution?.sandbox).toEqual({ mode: "workspace" });
+    expect(agentNode.value.policyMode).toBe("warn");
+    expect(agentNode.value.policyOnDegrade).toBe("warn");
   });
 
   it("derives missing agent descriptions from identity docs", async () => {
@@ -86,8 +88,9 @@ describe("buildCompilePlan", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  identity: IDENTITY.md",
+        "workspace:",
+        "  docs:",
+        "    identity: IDENTITY.md",
         ""
       ].join("\n")
     );
@@ -110,6 +113,136 @@ describe("buildCompilePlan", () => {
     expect(plan.edges.filter((edge) => edge.kind === "subagent")).toHaveLength(2);
   });
 
+  it("inherits team workspace resources into concrete agents", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-resources-"));
+    temporaryDirectories.push(directory);
+    await ensureDirectory(path.join(directory, "agents", "worker"));
+    await writeUtf8File(path.join(directory, "TEAM.md"), "# Team\n");
+    await writeUtf8File(path.join(directory, "agents", "worker", "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: lab",
+        "mode: hierarchical",
+        "lead: worker",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
+        "  resources:",
+        "    - id: project",
+        "      kind: git",
+        "      url: https://example.com/project.git",
+        "      branch: main",
+        "      mount: /work/project",
+        "      mode: mutable",
+        "members:",
+        "  - id: worker",
+        "    ref: ./agents/worker",
+        ""
+      ].join("\n")
+    );
+    await writeUtf8File(
+      path.join(directory, "agents", "worker", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: worker",
+        "runtime: openclaw",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
+        "  resources:",
+        "    - id: cache",
+        "      kind: volume",
+        "      mount: /cache",
+        "      mode: mutable",
+        ""
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const team = plan.nodes.find((node) => node.kind === "team");
+    const agent = plan.nodes.find((node) => node.kind === "agent");
+
+    expect(team?.value.workspaceResources).toEqual([
+      {
+        branch: "main",
+        id: "project",
+        kind: "git",
+        mode: "mutable",
+        mount: "/work/project",
+        url: "https://example.com/project.git"
+      }
+    ]);
+    expect(agent?.value.workspaceResources).toEqual([
+      {
+        id: "cache",
+        kind: "volume",
+        mode: "mutable",
+        mount: "/cache"
+      },
+      {
+        branch: "main",
+        id: "project",
+        kind: "git",
+        mode: "mutable",
+        mount: "/work/project",
+        url: "https://example.com/project.git"
+      }
+    ]);
+  });
+
+  it("rejects inherited workspace resources with overlapping agent mounts", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-resource-conflict-"));
+    temporaryDirectories.push(directory);
+    await ensureDirectory(path.join(directory, "agents", "worker"));
+    await writeUtf8File(path.join(directory, "agents", "worker", "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: lab",
+        "mode: hierarchical",
+        "lead: worker",
+        "workspace:",
+        "  resources:",
+        "    - id: project",
+        "      kind: volume",
+        "      mount: /work/project",
+        "      mode: mutable",
+        "members:",
+        "  - id: worker",
+        "    ref: ./agents/worker",
+        ""
+      ].join("\n")
+    );
+    await writeUtf8File(
+      path.join(directory, "agents", "worker", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: worker",
+        "runtime: openclaw",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
+        "  resources:",
+        "    - id: docs",
+        "      kind: volume",
+        "      mount: /work/project/docs",
+        "      mode: readonly",
+        ""
+      ].join("\n")
+    );
+
+    await expect(buildCompilePlan(directory)).rejects.toThrow(
+      /Workspace resources project and docs use overlapping mounts/
+    );
+  });
+
   it("resolves Discord surfaces with the default bot token secret", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-discord-surface-"));
     temporaryDirectories.push(directory);
@@ -130,8 +263,9 @@ describe("buildCompilePlan", () => {
         "      provider: anthropic",
         "      name: claude-opus-4-6",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         "",
         "surfaces:",
         "  discord: {}",
@@ -174,8 +308,9 @@ describe("buildCompilePlan", () => {
         '      guilds:',
         '        - "123456789012345678"',
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -213,8 +348,9 @@ describe("buildCompilePlan", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         "",
         "surfaces:",
         "  telegram: {}",
@@ -257,8 +393,9 @@ describe("buildCompilePlan", () => {
         "      chats:",
         '        - "-1001234567890"',
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -295,7 +432,7 @@ describe("buildCompilePlan", () => {
       await writeUtf8File(path.join(directory, "agents", id, "AGENTS.md"), `# ${id}\n`);
       await writeUtf8File(
         path.join(directory, "agents", id, "Spawnfile"),
-        ['spawnfile_version: "0.1"', "kind: agent", `name: ${id}`, "", `runtime: ${runtime}`, "", "docs:", "  system: AGENTS.md", ""].join("\n")
+        ['spawnfile_version: "0.1"', "kind: agent", `name: ${id}`, "", `runtime: ${runtime}`, "", "workspace:", "  docs:", "    system: AGENTS.md", ""].join("\n")
       );
     }
     await writeUtf8File(
@@ -305,8 +442,9 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: research-cell",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: orchestrator",
@@ -352,8 +490,9 @@ describe("buildCompilePlan", () => {
         "          read: mentions",
         "          reply: auto",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -364,8 +503,9 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: research-cell",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: researcher",
@@ -377,6 +517,15 @@ describe("buildCompilePlan", () => {
         "networks:",
         "  - id: local_lab",
         "    provider: moltnet",
+        "    server:",
+        "      mode: managed",
+        "      listen:",
+        "        bind: 127.0.0.1",
+        "        port: 8787",
+        "      store:",
+        "        kind: memory",
+        "      auth:",
+        "        mode: none",
         "    rooms:",
         "      - id: research",
         "        members: [researcher]",
@@ -394,9 +543,12 @@ describe("buildCompilePlan", () => {
       throw new Error("expected team and agent nodes");
     }
 
+    expect(teamNode.value.policyMode).toBe("warn");
+    expect(teamNode.value.policyOnDegrade).toBe("warn");
+    expect(agentNode.value.policyMode).toBe("warn");
+    expect(agentNode.value.policyOnDegrade).toBe("warn");
     expect(teamNode.value.networks).toEqual([
       {
-        expose: false,
         id: "local_lab",
         name: "local_lab",
         provider: "moltnet",
@@ -405,7 +557,13 @@ describe("buildCompilePlan", () => {
             id: "research",
             members: ["researcher"]
           }
-        ]
+        ],
+        server: {
+          auth: { mode: "none" },
+          listen: { bind: "127.0.0.1", port: 8787 },
+          mode: "managed",
+          store: { kind: "memory" }
+        }
       }
     ]);
     expect(agentNode.value.surfaces?.moltnet).toEqual([
@@ -446,8 +604,9 @@ describe("buildCompilePlan", () => {
         "      dms:",
         "        enabled: true",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -478,8 +637,9 @@ describe("buildCompilePlan", () => {
         "        missing:",
         "          read: mentions",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -490,8 +650,9 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: research-cell",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: researcher",
@@ -503,6 +664,15 @@ describe("buildCompilePlan", () => {
         "networks:",
         "  - id: local_lab",
         "    provider: moltnet",
+        "    server:",
+        "      mode: managed",
+        "      listen:",
+        "        bind: 127.0.0.1",
+        "        port: 8787",
+        "      store:",
+        "        kind: memory",
+        "      auth:",
+        "        mode: none",
         "    rooms:",
         "      - id: research",
         "        members: [researcher]",
@@ -524,7 +694,7 @@ describe("buildCompilePlan", () => {
       await writeUtf8File(path.join(directory, "teams", teamName, "agents", "rep", "AGENTS.md"), "# Rep\n");
       await writeUtf8File(
         path.join(directory, "teams", teamName, "agents", "rep", "Spawnfile"),
-        ['spawnfile_version: "0.1"', "kind: agent", `name: ${teamName}-rep`, "", "runtime: openclaw", "", "docs:", "  system: AGENTS.md", ""].join("\n")
+        ['spawnfile_version: "0.1"', "kind: agent", `name: ${teamName}-rep`, "", "runtime: openclaw", "", "workspace:", "  docs:", "    system: AGENTS.md", ""].join("\n")
       );
       await writeUtf8File(
         path.join(directory, "teams", teamName, "Spawnfile"),
@@ -533,8 +703,9 @@ describe("buildCompilePlan", () => {
           "kind: team",
           `name: ${teamName}`,
           "",
-          "docs:",
-          "  system: TEAM.md",
+          "workspace:",
+          "  docs:",
+          "    system: TEAM.md",
           "",
           "members:",
           "  - id: rep",
@@ -552,8 +723,9 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: collision",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: one",
@@ -566,6 +738,15 @@ describe("buildCompilePlan", () => {
         "networks:",
         "  - id: org",
         "    provider: moltnet",
+        "    server:",
+        "      mode: managed",
+        "      listen:",
+        "        bind: 127.0.0.1",
+        "        port: 8787",
+        "      store:",
+        "        kind: memory",
+        "      auth:",
+        "        mode: none",
         "    rooms:",
         "      - id: room",
         "        members: [one, two]",
@@ -594,8 +775,9 @@ describe("buildCompilePlan", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -606,8 +788,9 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: subteam",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: placeholder",
@@ -631,8 +814,9 @@ describe("buildCompilePlan", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -643,8 +827,9 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: research-cell",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: researcher",
@@ -658,6 +843,15 @@ describe("buildCompilePlan", () => {
         "networks:",
         "  - id: local_lab",
         "    provider: moltnet",
+        "    server:",
+        "      mode: managed",
+        "      listen:",
+        "        bind: 127.0.0.1",
+        "        port: 8787",
+        "      store:",
+        "        kind: memory",
+        "      auth:",
+        "        mode: none",
         "    rooms:",
         "      - id: research",
         "        members: [researcher, subteam]",
@@ -719,8 +913,9 @@ describe("buildCompilePlan", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         "",
         "subagents:",
         "  - id: loop",
@@ -737,8 +932,9 @@ describe("buildCompilePlan", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         "",
         "subagents:",
         "  - id: self",
@@ -759,7 +955,7 @@ describe("buildCompilePlan", () => {
     await writeUtf8File(path.join(directory, "agents", "shared", "AGENTS.md"), "# Agent\n");
     await writeUtf8File(
       path.join(directory, "agents", "shared", "Spawnfile"),
-      ['spawnfile_version: "0.1"', "kind: agent", "name: shared", "", "runtime: openclaw", "", "docs:", "  system: AGENTS.md", ""].join("\n")
+      ['spawnfile_version: "0.1"', "kind: agent", "name: shared", "", "runtime: openclaw", "", "workspace:", "  docs:", "    system: AGENTS.md", ""].join("\n")
     );
     await writeUtf8File(
       path.join(directory, "Spawnfile"),
@@ -768,8 +964,9 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: team",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: one",
@@ -793,7 +990,7 @@ describe("buildCompilePlan", () => {
     await writeUtf8File(path.join(directory, "AGENTS.md"), "# Root\n");
     await writeUtf8File(
       path.join(directory, "Spawnfile"),
-      ['spawnfile_version: "0.1"', "kind: agent", "name: root", "", "docs:", "  system: AGENTS.md", ""].join("\n")
+      ['spawnfile_version: "0.1"', "kind: agent", "name: root", "", "workspace:", "  docs:", "    system: AGENTS.md", ""].join("\n")
     );
 
     await expect(buildCompilePlan(directory)).rejects.toThrow(/does not declare a runtime/);
@@ -821,8 +1018,9 @@ describe("buildCompilePlan", () => {
         "    auth:",
         "      method: claude-code",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -853,8 +1051,9 @@ describe("buildCompilePlan", () => {
         '      users:',
         '        - "987654321098765432"',
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -886,8 +1085,9 @@ describe("buildCompilePlan", () => {
         "    access:",
         "      mode: pairing",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -931,8 +1131,9 @@ describe("buildCompilePlan", () => {
         "          compatibility: openai",
         "          base_url: http://host.docker.internal:11434/v1",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -955,8 +1156,9 @@ describe("buildCompilePlan", () => {
         "",
         "runtime: mysteryclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -978,8 +1180,9 @@ describe("buildCompilePlan", () => {
         "",
         "runtime: nullclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -1003,8 +1206,9 @@ describe("buildCompilePlan", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         "",
         "subagents:",
         "  - id: worker",
@@ -1021,8 +1225,9 @@ describe("buildCompilePlan", () => {
         "",
         "runtime: picoclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         ""
       ].join("\n")
     );
@@ -1046,8 +1251,9 @@ describe("buildCompilePlan", () => {
         "",
         "runtime: openclaw",
         "",
-        "docs:",
-        "  system: AGENTS.md",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
         "",
         "subagents:",
         "  - id: worker",
@@ -1062,8 +1268,9 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: nested-team",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members: []",
         "",
@@ -1085,7 +1292,7 @@ describe("buildCompilePlan", () => {
     await writeUtf8File(path.join(directory, "teams", "inner", "agents", "a", "AGENTS.md"), "# A\n");
     await writeUtf8File(
       path.join(directory, "teams", "inner", "agents", "a", "Spawnfile"),
-      ['spawnfile_version: "0.1"', "kind: agent", "name: a", "", "runtime: tinyclaw", "", "docs:", "  system: AGENTS.md", ""].join("\n")
+      ['spawnfile_version: "0.1"', "kind: agent", "name: a", "", "runtime: tinyclaw", "", "workspace:", "  docs:", "    system: AGENTS.md", ""].join("\n")
     );
     await writeUtf8File(
       path.join(directory, "teams", "inner", "Spawnfile"),
@@ -1094,8 +1301,9 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: inner",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: a",
@@ -1112,8 +1320,9 @@ describe("buildCompilePlan", () => {
         "kind: team",
         "name: outer",
         "",
-        "docs:",
-        "  system: TEAM.md",
+        "workspace:",
+        "  docs:",
+        "    system: TEAM.md",
         "",
         "members:",
         "  - id: one",

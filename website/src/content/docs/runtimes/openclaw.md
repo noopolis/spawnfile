@@ -75,7 +75,7 @@ ACPX runtime paths can inject named MCP server maps, which gives the adapter a t
 - Non-main sessions can be sandboxed in Docker
 - Workspace root is explicit and configurable
 
-The adapter maps `execution.workspace.isolation` and `execution.sandbox.mode` to OpenClaw's workspace and session sandboxing configuration.
+The adapter maps `workspace.docs`, `workspace.resources`, and `execution.sandbox.mode` to OpenClaw's workspace and session sandboxing configuration.
 
 ## Teams
 
@@ -197,17 +197,16 @@ execution:
     primary:
       provider: anthropic
       name: claude-sonnet-4-5
-  workspace:
-    isolation: isolated
   sandbox:
     mode: workspace
 
-docs:
-  identity: IDENTITY.md
-  soul: SOUL.md
-  system: AGENTS.md
-  memory: MEMORY.md
-  heartbeat: HEARTBEAT.md
+workspace:
+  docs:
+    identity: IDENTITY.md
+    soul: SOUL.md
+    system: AGENTS.md
+    memory: MEMORY.md
+    heartbeat: HEARTBEAT.md
 
 skills:
   - ref: ./skills/web_search

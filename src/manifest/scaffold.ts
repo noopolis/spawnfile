@@ -39,10 +39,12 @@ export const createAgentScaffoldManifest = (
         }
       }
     },
-    docs: {
-      ...(options.docs.identity ? { identity: options.docs.identity } : {}),
-      ...(options.docs.soul ? { soul: options.docs.soul } : {}),
-      system: options.docs.system
+    workspace: {
+      docs: {
+        ...(options.docs.identity ? { identity: options.docs.identity } : {}),
+        ...(options.docs.soul ? { soul: options.docs.soul } : {}),
+        system: options.docs.system
+      }
     }
   };
 };
@@ -51,8 +53,10 @@ export const createTeamScaffoldManifest = (): TeamManifest => ({
   spawnfile_version: "0.1" as const,
   kind: "team" as const,
   name: "my-team",
-  docs: {
-    system: "TEAM.md"
+  workspace: {
+    docs: {
+      system: "TEAM.md"
+    }
   },
   members: [],
   mode: "swarm" as const

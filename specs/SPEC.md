@@ -79,7 +79,7 @@ name: my-agent             # non-empty string, no whitespace
 
 `description` is OPTIONAL. It is a short, single-line, human-readable string (one or two sentences) that summarizes what this agent or team does. If a multi-line YAML scalar is used, the compiler MUST normalize it by collapsing newlines into spaces and trimming trailing whitespace.
 
-For agents, `description` is the primary signal used in team rosters — it tells teammates what this agent does. If `description` is omitted, the compiler SHOULD derive a description from the `docs.identity` document by extracting the first non-empty paragraph, truncated to 200 characters. If no `docs.identity` is declared, the description is left empty.
+For agents, `description` is the primary signal used in team rosters — it tells teammates what this agent does. If `description` is omitted, the compiler SHOULD derive a description from the `workspace.docs.identity` document by extracting the first non-empty paragraph, truncated to 200 characters. If no `workspace.docs.identity` is declared, the description is left empty.
 
 For teams, `description` summarizes the team's collective purpose.
 
@@ -114,18 +114,19 @@ Rules:
 
 ### 2.1 Document Roles
 
-The `docs` block declares portable markdown surfaces. Compilers map these roles to target-specific surfaces. Document contents are author text; this spec does not define their runtime behavior.
+The `workspace.docs` block declares portable markdown surfaces. Compilers map these roles to target-specific workspace surfaces. Document contents are author text; this spec does not define their runtime behavior.
 
 ```yaml
-docs:
-  identity: IDENTITY.md
-  soul: SOUL.md
-  system: AGENTS.md
-  memory: MEMORY.md
-  heartbeat: HEARTBEAT.md
-  extras:
-    user: USER.md
-    notes: docs/NOTES.md
+workspace:
+  docs:
+    identity: IDENTITY.md
+    soul: SOUL.md
+    system: AGENTS.md
+    memory: MEMORY.md
+    heartbeat: HEARTBEAT.md
+    extras:
+      user: USER.md
+      notes: docs/NOTES.md
 ```
 
 Built-in roles:
@@ -141,10 +142,55 @@ Built-in roles:
 
 Rules:
 
-- All `docs` fields are OPTIONAL.
-- Paths in `docs` MUST resolve to Markdown files within the project root.
+- `workspace` is OPTIONAL.
+- `workspace.docs` is OPTIONAL.
+- All `workspace.docs` fields are OPTIONAL.
+- Paths in `workspace.docs` MUST resolve to Markdown files within the project root.
 - A conforming compiler MUST treat document contents as opaque text and MUST NOT reinterpret them as structured schema.
-- Team-level `docs` describe the team manifest itself and MUST NOT automatically propagate to members.
+- Team-level `workspace.docs` describe the team manifest itself and MUST NOT automatically propagate to members.
+- Top-level `docs` is not part of v0.1 and MUST NOT be used as a shorthand.
+
+### 2.1.1 Workspace Resources
+
+`workspace.resources` declares mounted resources for a runtime workspace.
+
+```yaml
+workspace:
+  resources:
+    - id: project-repo
+      kind: git
+      url: https://github.com/example/project.git
+      branch: main
+      mount: /workspaces/project
+      mode: mutable
+    - id: agent-scratch
+      kind: volume
+      name: agent-scratch-vol
+      mount: /scratch
+      mode: mutable
+```
+
+Rules:
+
+- `workspace.resources` is OPTIONAL.
+- Each resource MUST have:
+  - `id`
+  - `kind` (`git` or `volume`)
+  - `mount`
+  - `mode`
+- `mode` MUST be `mutable` or `readonly`.
+- `mount` MUST be an absolute POSIX path.
+- `id` MUST be unique in the manifest.
+- `id`, `kind`, `mount`, `mode`, and kind-specific source fields make up resource identity.
+- `git` `url`, `branch`, `tag`, and `ref` values are normalized by trimming whitespace only.
+- `volume` resources MAY declare an explicit `name` for backing state naming. When omitted, the compiler derives a stable name from project identity, resource `id`, and effective execution context.
+- `git` resources MUST declare `url`.
+- `git` resources MAY declare optional one-of selectors: `branch`, `tag`, or `ref`.
+- At most one of `branch`, `tag`, or `ref` MAY be set on a single `git` resource.
+- `volume` resources MUST NOT declare `url`.
+- In a concrete agent context, effective resources MUST either be unique by identity or normalize to identical declarations where IDs collide.
+- In a concrete agent context, effective resource mounts MUST not overlap.
+- Team resources are inherited by direct concrete members and selected representatives through nested teams.
 
 ### 2.2 Skills
 
@@ -255,8 +301,6 @@ execution:
         endpoint:
           compatibility: openai
           base_url: http://host.docker.internal:11434/v1
-  workspace:
-    isolation: isolated    # isolated | shared
   sandbox:
     mode: workspace        # workspace | sandboxed | unrestricted
 ```
@@ -289,9 +333,7 @@ Rules:
 - `execution.model.auth` MUST declare exactly one of `method` or `methods`.
 - If `execution.model.auth.methods` is used, it MUST cover every declared provider in `primary` and `fallback`, and it MUST NOT declare providers that are not present in that model set.
 - Canonical Spawnfiles SHOULD declare `auth` inline on each model target instead of relying on legacy `execution.model.auth`.
-- `execution.workspace.isolation` MUST be one of: `isolated`, `shared`.
 - `execution.sandbox.mode` MUST be one of: `workspace`, `sandboxed`, `unrestricted`.
-- If `execution.workspace` is omitted, the effective isolation defaults to `isolated`.
 - If `execution.sandbox` is omitted, the effective sandbox mode defaults to `workspace`.
 - Compilers MUST treat these values as author intent and map them to runtime-native configuration.
 - Compilers MUST reject runtime/auth combinations that the selected runtime adapter does not support.
@@ -445,14 +487,22 @@ kind: agent
 name: analyst
 description: "Research analyst that finds, evaluates, and synthesizes information"
 
-docs:
-  identity: IDENTITY.md
-  soul: SOUL.md
-  system: AGENTS.md
-  memory: MEMORY.md
-  heartbeat: HEARTBEAT.md
-  extras:
-    notes: docs/NOTES.md
+workspace:
+  docs:
+    identity: IDENTITY.md
+    soul: SOUL.md
+    system: AGENTS.md
+    memory: MEMORY.md
+    heartbeat: HEARTBEAT.md
+    extras:
+      notes: docs/NOTES.md
+  resources:
+    - id: project-repo
+      kind: git
+      url: https://github.com/example/project.git
+      branch: main
+      mount: /workspaces/project
+      mode: mutable
 
 skills:
   - ref: ./skills/web_search
@@ -493,10 +543,14 @@ execution:
         name: gpt-4o-mini
         auth:
           method: codex
-  workspace:
-    isolation: isolated
   sandbox:
     mode: workspace
+
+schedule:
+  kind: cron
+  cron: "0 9 * * *"
+  timezone: UTC
+  prompt: "Read heartbeat context and complete one bounded research iteration."
 
 surfaces:
   discord:
@@ -543,7 +597,56 @@ For an agent manifest, skill `requires.mcp` names MUST be validated against that
 
 All blocks other than the top-level required fields are OPTIONAL unless otherwise stated by their own rules.
 
-### 3.3 Subagents
+### 3.3 Agent Schedule
+
+`schedule` is OPTIONAL and valid only on agent manifests. It declares agent-owned wake intent; deployment profiles and renderers may decide how to materialize it for a target environment.
+
+Runtimes that do not expose native wake scheduling must lower schedules through a Spawnfile-owned runner process only when:
+
+- the adapter explicitly exposes a wake contract, and
+- the command is started via `spawnfile up`.
+
+If neither native scheduling nor an adapter wake contract exists, `agent.schedule` reports `degraded`.
+
+Cron example:
+
+```yaml
+schedule:
+  kind: cron
+  cron: "0 9 * * *"
+  timezone: UTC
+  prompt: "Read heartbeat context and complete one bounded research iteration."
+```
+
+Interval example:
+
+```yaml
+schedule:
+  kind: every
+  every: 2h
+  prompt: "Read heartbeat context and complete one bounded maintenance step."
+```
+
+Disabled example:
+
+```yaml
+schedule:
+  kind: disabled
+```
+
+Rules:
+
+- `kind` MUST be one of `cron`, `every`, or `disabled`.
+- `cron` schedules MUST declare a non-empty `cron` expression.
+- `every` schedules MUST declare a non-empty `every` interval.
+- `every` intervals use explicit duration strings such as `15m`, `2h`, or `1d`.
+- `timezone` defaults to `UTC` when omitted.
+- `cron` and `every` schedules MAY declare `timezone` and `prompt`.
+- `disabled` schedules MUST NOT declare `cron`, `every`, `timezone`, or `prompt` fields.
+- A `disabled` schedule MUST not emit a spawn or wake registration.
+- Team manifests MUST NOT declare `schedule`.
+
+### 3.4 Subagents
 
 `subagents` is OPTIONAL. It declares helper agents owned by the parent agent.
 
@@ -565,7 +668,7 @@ Rules:
 - A subagent inherits the parent agent's effective `runtime` unless an adapter explicitly supports another lowering strategy.
 - If a target runtime has no native subagent concept, the compiler MAY lower subagents into delegate agents, runtime-native sessions, or spawned workers, but it MUST report `degraded` if semantics are not equivalent.
 
-### 3.4 Effective Subagent Resolution
+### 3.5 Effective Subagent Resolution
 
 For a subagent reference, the effective configuration is resolved as follows:
 
@@ -576,7 +679,7 @@ For a subagent reference, the effective configuration is resolved as follows:
   - object fields are merged recursively
   - scalar fields replace parent values
   - arrays replace parent values wholesale
-- Subagents do not implicitly inherit parent `docs`, `skills`, `mcp_servers`, `env`, or `secrets`. A subagent MAY declare any of these surfaces in its own Spawnfile manifest — they are simply not copied from the parent. Each subagent is a self-contained agent project that happens to be owned by a parent.
+- Subagents do not implicitly inherit parent `workspace.docs`, `skills`, `mcp_servers`, `env`, or `secrets`. A subagent MAY declare any of these surfaces in its own Spawnfile manifest — they are simply not copied from the parent. Each subagent is a self-contained agent project that happens to be owned by a parent.
 
 ---
 
@@ -589,7 +692,7 @@ A Spawnfile team is an organizational structure that defines:
 - who is in the team (`members`)
 - what they share (`shared`)
 - how the team is organized (`mode`, `lead`, `external`)
-- who the team is as a collective (`docs`)
+- who the team is as a collective (`workspace.docs`)
 - which provider-backed team networks exist (`networks`)
 - which context artifacts members receive (`TEAM.md`, rosters, team cards, and context indexes)
 
@@ -611,7 +714,7 @@ Spawnfile does not assume that every runtime has a native team config format, ne
 
 Adapters MAY lower a Spawnfile team into a native team object, a flat leader/member config, provider-backed rooms, generated context files, or another target-native surface. If a target cannot preserve the declared structure, the compiler MUST report `degraded` or `unsupported`.
 
-Coordination rules beyond what the manifest declares (handoff protocols, escalation paths, conflict resolution) belong in the team's `docs.system` document, where LLM agents can read and follow them as natural language instructions.
+Coordination rules beyond what the manifest declares (handoff protocols, escalation paths, conflict resolution) belong in the team's `workspace.docs.system` document, where LLM agents can read and follow them as natural language instructions.
 
 See `research/RUNTIME-NOTES.md` for per-runtime team lowering research.
 
@@ -626,8 +729,9 @@ description: "Research team that finds, analyzes, and writes up findings"
 mode: hierarchical
 lead: orchestrator
 
-docs:
-  system: TEAM.md
+workspace:
+  docs:
+    system: TEAM.md
 
 shared:
   skills:
@@ -779,9 +883,25 @@ Moltnet is the first provider for this contract:
 networks:
   - id: local_lab
     provider: moltnet
-    expose: true
+    server:
+      mode: managed
+      url: http://127.0.0.1:8787
+      listen:
+        bind: 127.0.0.1
+        port: 8787
+      human_ingress: true
+      direct_messages: false
+      trust_forwarded_proto: false
+      allowed_origins:
+        - http://localhost:8787
+      store:
+        kind: sqlite
+        path: /var/lib/moltnet/local_lab.sqlite
+      auth:
+        mode: open
     rooms:
       - id: org-council
+        name: Org Council
         members: [coordinator, research-team]
 ```
 
@@ -791,6 +911,42 @@ Rules:
 - In v0.1, `provider` MUST be `moltnet`.
 - Each network `id` MUST be unique within the team.
 - Each room `id` MUST be unique within the network.
+- `server` is REQUIRED. It MUST declare `mode`.
+- In v0.1, `server.mode` MUST be `managed` or `external`.
+- `server.mode: managed` means Spawnfile may provision and start the Moltnet server.
+- `server.mode: external` means Spawnfile emits only client/node config to connect to a remote URL.
+- `server.mode: managed` MUST include `listen`, `store`, and `auth`.
+- `server.mode: managed` may include `url` (explicit). If omitted, it derives from `listen`.
+- `server.listen.bind` is required for managed servers and must be a non-empty host string.
+- `server.listen.port` is required for managed servers and must be an integer from 1 to 65535.
+- Bracketed IPv6 literals in `server.listen.bind` are invalid in v0.1; use raw literals such as `::1` or `::`.
+- In managed mode, raw IPv6 bind values are accepted and must be bracketed when rendered into `url`.
+- `server.url` and `server.listen` may use IPv4, hostnames, or raw IPv6 literals.
+- `server.url` must be a valid URL.
+- `server.url` is required for `server.mode: external`.
+- `server.mode: external` MUST NOT include `listen`, `store`, `server.auth.tokens`, `server.pairings`, `human_ingress`, `direct_messages`, `trust_forwarded_proto`, or `allowed_origins`.
+- `server.auth.mode` MUST be one of `none`, `bearer`, or `open`.
+- For `server.auth.mode: none`, `server.auth` MUST NOT include `tokens` or `client`.
+- `server.mode: managed` with `server.auth.mode: bearer` requires `server.auth.tokens`.
+- `server.mode: external` with `server.auth.mode: bearer` requires `server.auth.client` with `token_env` or `token_path`.
+- For `server.auth.mode: open`, `server.auth.tokens` MAY be present but `server.auth.client` is optional.
+- `server.auth.client` MUST include exactly one token source field: `token_id`, `token_env`, or `token_path` when present.
+- `server.auth.client` for `managed` servers must use `token_id` and reference one declared token.
+- `server.auth.client` for `external` servers may use `token_env` or `token_path`.
+- `server.auth.client.static_token` is valid only for `server.auth.mode: open` and only when a client token source is declared.
+- `server.auth.client` for open mode must set `static_token: true`; open mode without a client emits per-agent generated token files.
+- For managed bearer mode, the managed `server.auth.client` token source must resolve a token with `attach` and `write` scope.
+- `server.auth.mode: none` rejects all token sources.
+- `server.pairings` is valid only for `server.mode: managed`.
+- Managed `server.pairings` entries use `id` and MAY include `remote_network_id`, `remote_network_name`, `remote_base_url`, and `token_secret`.
+- `server.pairings.id` MUST be unique within one managed server block.
+- `server.store` MUST be present for `server.mode: managed`.
+- `server.store.kind` MUST be `sqlite`, `json`, `postgres`, or `memory`.
+- `server.store.kind: sqlite` requires `server.store.path` and does not allow `dsn_secret`.
+- `server.store.kind: json` requires `server.store.path` and does not allow `dsn_secret`.
+- `server.store.kind: postgres` requires `server.store.dsn_secret`.
+- `server.store.kind: memory` must not include `path` or `dsn_secret`.
+- `server.direct_messages: false` means any `surfaces.moltnet[].dms` for that network is a validation error.
 - A room `members` list MAY name direct agent member IDs or direct child-team member IDs.
 - Direct child-team IDs in a parent room expand to the child team's concrete representatives for that parent context.
 - Parent networks do not generally propagate through nested team boundaries. Only explicit parent-room representative attachments propagate, and only to selected representatives.
@@ -801,7 +957,7 @@ Rules:
 
 ### 4.7 Team Docs And Context Artifacts
 
-The team's `docs.system` document (typically `TEAM.md`) describes who the team is as a collective — purpose, culture, identity. It is also the place for coordination rules that go beyond what the manifest captures:
+The team's `workspace.docs.system` document (typically `TEAM.md`) describes who the team is as a collective — purpose, culture, identity. It is also the place for coordination rules that go beyond what the manifest captures:
 
 - Handoff protocols between members
 - Escalation procedures
@@ -810,7 +966,7 @@ The team's `docs.system` document (typically `TEAM.md`) describes who the team i
 
 The team doc SHOULD reference member slot `id` values explicitly so agents can identify their role. Compilers MAY lint for drift between member IDs and the team doc content.
 
-The team doc stays local to the team boundary. When compiled into member workspaces, it is emitted as a literal generated artifact rather than passed through the normal runtime document-role mapping. The compiler MUST NOT rename a team `docs.system: TEAM.md` through `ROLE_FILE_NAMES` in a way that clobbers the member agent's own `AGENTS.md`.
+The team doc stays local to the team boundary. When compiled into member workspaces, it is emitted as a literal generated artifact rather than passed through the normal runtime document-role mapping. The compiler MUST NOT rename a team `workspace.docs.system: TEAM.md` through `ROLE_FILE_NAMES` in a way that clobbers the member agent's own `AGENTS.md`.
 
 Rules:
 
@@ -825,11 +981,11 @@ Rules:
 - The compiler MUST emit `.spawnfile/team-contexts.yaml` as the machine-readable context index and `.spawnfile/team-contexts.md` as the human/LLM-readable orientation.
 - Compiler post-processing MUST place or point to `.spawnfile/team-contexts.md` through the compiled runtime's system-instruction surface. Adjacent files alone do not satisfy discoverability when the runtime has a system-instruction surface.
 
-Parent rosters may reference team cards at `.spawnfile/team-cards/<team-context-key>/<parent-member-slot-id>.md`. A team card is a public description of a nested team in the parent context. It may include the child team's name, description, optional `docs.identity`, and resolved representatives. It MUST NOT include the child team's `TEAM.md`, internal roster, non-representative members, or descendants not reached by the representative chain.
+Parent rosters may reference team cards at `.spawnfile/team-cards/<team-context-key>/<parent-member-slot-id>.md`. A team card is a public description of a nested team in the parent context. It may include the child team's name, description, optional `workspace.docs.identity`, and resolved representatives. It MUST NOT include the child team's `TEAM.md`, internal roster, non-representative members, or descendants not reached by the representative chain.
 
 Team manifests MUST NOT declare `execution`. Model, sandbox, and workspace intent apply to agents and subagents, not to teams as organizational nodes.
 Team manifests MUST NOT declare `surfaces`. Communication surfaces belong to concrete agent manifests.
-Team manifests MUST NOT declare `auth`. The former team-level auth field authenticated removed router artifacts and is not part of this alpha contract.
+Team manifests MUST NOT declare `auth`. Team auth lowering is now driven by `networks[].server`.
 
 ### 4.8 Team Roster
 
@@ -892,7 +1048,7 @@ Rules:
 - If a hierarchical `lead` is a nested team that resolves to multiple concrete representatives, each lead delegate receives the parent roster view that the lead slot is entitled to.
 - In `swarm` mode, each reader sees all other visible members.
 - `lead` is the direct member slot id from the team manifest. If that slot is a nested team, the nested team entry uses `role: team` and `is_lead: true`; concrete delegates under `representatives` use `delegate_role: lead`.
-- Member descriptions come from each agent's `description` field. If an agent has no `description`, the compiler SHOULD derive one from `docs.identity`. The compiler SHOULD warn if no description can be derived.
+- Member descriptions come from each agent's `description` field. If an agent has no `description`, the compiler SHOULD derive one from `workspace.docs.identity`. The compiler SHOULD warn if no description can be derived.
 - Roster entries carry derivable per-surface `addresses`, not routed endpoints.
 - Moltnet FQIDs are derivable and are emitted when visible in the roster context.
 - Slack, Discord, Telegram, and WhatsApp addresses are emitted only when the corresponding `surfaces.<name>.identity` field is declared by the visible agent.
@@ -973,7 +1129,8 @@ For a runtime to be a valid Spawnfile target in v0.1, its adapter MUST be able t
 - install or expose declared skills, or report degradation
 - configure declared MCP servers, or report degradation
 - map execution model intent into runtime-native model selection, or report degradation
-- map execution workspace and sandbox intent into runtime-native execution policy, or report degradation
+- map execution sandbox intent into runtime-native execution policy, or report degradation
+- map agent schedules into scheduler-capable runtimes or report `degraded` where lowering is partial
 - for team manifests, lower member, representative, team-context, and team-network intent, or report `unsupported`
 
 ### 5.3 Compile Report
@@ -1004,12 +1161,12 @@ Consider: you declare an agent with MCP servers and compile it to a runtime that
 
 ### 6.2 Policy Declaration
 
-`policy` is OPTIONAL. When omitted, the compiler defaults to `permissive` mode with `on_degrade: allow` — compilation always succeeds, but capability outcomes are still recorded in the compile report.
+`policy` is OPTIONAL. When omitted, the compiler defaults to `warn` mode with `on_degrade: warn` — compilation continues, but degraded or unsupported capability outcomes are surfaced as warnings in the compile report.
 
 ```yaml
 policy:
-  mode: strict      # strict | warn | permissive (default: permissive)
-  on_degrade: error # error | warn | allow (default: allow)
+  mode: strict      # strict | warn | permissive (default: warn)
+  on_degrade: error # error | warn | allow (default: warn)
 ```
 
 `mode` controls how the compiler handles uncertainty or missing fidelity:
@@ -1036,7 +1193,7 @@ For every declared capability the compiler MUST report one of:
 | `degraded` | Partially mapped; runtime behavior may differ from declared intent |
 | `unsupported` | Cannot be expressed in the target |
 
-At minimum, compilers MUST report outcomes for declared docs, skills, MCP servers, execution model intent, execution workspace intent, execution sandbox intent, declared surfaces, and team context/network intent.
+At minimum, compilers MUST report outcomes for declared docs, skills, MCP servers, execution model intent, execution sandbox intent, schedules, workspace resources, declared surfaces, and team context/network intent.
 
 ### 6.4 How It Works In Practice
 
@@ -1134,8 +1291,9 @@ spawnfile model clear-fallbacks [path]
 spawnfile validate [path]
 spawnfile view [path]
 spawnfile compile [path] [--out <dir>]
+spawnfile up [path] [--out <dir>] [--auth-profile <name>] [--env-file <file>]
 spawnfile build [path] [--out <dir>] [--tag <image>]
-spawnfile run [path] [--out <dir>] [--tag <image>] [--auth-profile <name>]
+spawnfile run [path] [--out <dir>] [--tag <image>] [--auth-profile <name>] [--env-file <file>]
 ```
 
 #### `spawnfile init`
@@ -1288,6 +1446,22 @@ Compiles a Spawnfile project to runtime-specific output.
 - MUST enforce the project's `policy` block
 - Exits with code 0 on success, 1 on error
 
+#### `spawnfile up`
+
+Builds and starts a local lifecycle process set from source intent.
+`spawnfile up` is the required command for local lifecycle execution in v0.1.
+
+- `path` is the directory containing the Spawnfile (default: current directory)
+- `--out` sets the output directory (default: `./.spawn`)
+- `--auth-profile` selects a local Spawnfile auth profile
+- `--env-file` injects external env values for this local run
+- MAY prepare workspace resources and create/manage local runtime state paths
+- MUST validate and compile as part of startup
+- MUST prepare and enforce `workspace.resources` and workspace state before spawning runtime processes
+- MUST run adapter-native or managed Moltnet servers where declared
+- MUST start generated Moltnet nodes and agents in one coordinated lifecycle
+- Exits with code 0 on successful process start; stays attached unless otherwise specified
+
 #### `spawnfile build`
 
 Builds a Docker image from compiled output.
@@ -1326,7 +1500,6 @@ These are intentionally excluded from the v0.1 portable core. Adapters MAY suppo
 
 - Channel bindings (Slack, Discord, WhatsApp, etc.)
 - Memory engine configuration
-- Task schedulers and cron-style heartbeat engines
 - Package publishing and registry
 - Deployment orchestration (Kubernetes, ECS, etc.)
 - Agent lifecycle management (restart policies, health checks)

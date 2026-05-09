@@ -82,7 +82,7 @@ PicoClaw has a strong workspace-first model:
 - The same restriction is inherited by subagents and heartbeat tasks
 
 The adapter maps:
-- `execution.workspace.isolation` to workspace path configuration
+- `workspace.docs` and `workspace.resources` to workspace path configuration
 - `execution.sandbox.mode` to `restrict_to_workspace` and related settings
 
 ## Teams
@@ -204,13 +204,12 @@ execution:
     primary:
       provider: openai
       name: gpt-4o-mini
-  workspace:
-    isolation: isolated
   sandbox:
     mode: workspace
 
-docs:
-  system: AGENTS.md
+workspace:
+  docs:
+    system: AGENTS.md
 
 subagents:
   - id: researcher

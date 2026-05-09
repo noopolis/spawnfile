@@ -11,10 +11,9 @@ execution:
     primary:
       provider: openai
       name: gpt-5
-  workspace:
-    isolation: isolated
   sandbox:
     mode: workspace
 
-docs:
-  system: AGENTS.md
+workspace:
+  docs:
+    system: AGENTS.md

@@ -3,7 +3,7 @@ title: Agent Docs
 description: How document roles work in Spawnfile -- identity, soul, system, memory, heartbeat, and extras -- and what to put in each file.
 ---
 
-Spawnfile agents are built around a **markdown workspace**: a set of Markdown documents that define who the agent is, how it behaves, and what context it operates with. The `docs` block in a Spawnfile manifest maps these documents to portable roles that compilers translate into runtime-specific surfaces.
+Spawnfile agents are built around a **markdown workspace**: a set of Markdown documents that define who the agent is, how it behaves, and what context it operates with. The `workspace.docs` block in a Spawnfile manifest maps these documents to portable roles that compilers translate into runtime-specific surfaces.
 
 ## Document Roles
 
@@ -21,15 +21,16 @@ The spec defines six document roles. All are optional.
 ### Declaring Docs
 
 ```yaml
-docs:
-  identity: IDENTITY.md
-  soul: SOUL.md
-  system: AGENTS.md
-  memory: MEMORY.md
-  heartbeat: HEARTBEAT.md
-  extras:
-    user: USER.md
-    notes: docs/NOTES.md
+workspace:
+  docs:
+    identity: IDENTITY.md
+    soul: SOUL.md
+    system: AGENTS.md
+    memory: MEMORY.md
+    heartbeat: HEARTBEAT.md
+    extras:
+      user: USER.md
+      notes: docs/NOTES.md
 ```
 
 Paths are relative to the manifest directory and must point to UTF-8 Markdown files within the project root. Forward slashes are required regardless of host OS.
@@ -114,10 +115,11 @@ Runtimes with heartbeat or cron-like systems can use this to configure periodic 
 The `extras` map lets you attach arbitrary additional documents under author-defined keys.
 
 ```yaml
-docs:
-  extras:
-    user: USER.md
-    notes: docs/NOTES.md
+workspace:
+  docs:
+    extras:
+      user: USER.md
+      notes: docs/NOTES.md
 ```
 
 Use extras for project-specific context, reference material, or any document that does not fit the built-in roles.
@@ -135,14 +137,15 @@ If a runtime cannot use a particular document role, the compiler reports the cap
 
 ## Team Docs
 
-Teams also have a `docs` block, but team docs describe the team manifest itself -- purpose, coordination rules, decision-making norms. They do not automatically propagate to member agents.
+Teams also have a `workspace.docs` block, but team docs describe the team manifest itself -- purpose, coordination rules, decision-making norms. They do not automatically propagate to member agents.
 
 ```yaml
 kind: team
 name: research-cell
 
-docs:
-  system: TEAM.md
+workspace:
+  docs:
+    system: TEAM.md
 ```
 
 The team's `system` doc (typically `TEAM.md`) should reference member slot IDs explicitly so agents can identify their role. Example from the `multi-runtime-team` fixture:

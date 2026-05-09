@@ -47,10 +47,11 @@ kind: agent
 name: my-assistant
 runtime: openclaw
 
-docs:
-  identity: IDENTITY.md
-  soul: SOUL.md
-  system: AGENTS.md
+workspace:
+  docs:
+    identity: IDENTITY.md
+    soul: SOUL.md
+    system: AGENTS.md
 
 execution:
   model:
@@ -59,8 +60,6 @@ execution:
       name: claude-sonnet-4-5
       auth:
         method: claude-code
-  workspace:
-    isolation: isolated
   sandbox:
     mode: workspace
 ```

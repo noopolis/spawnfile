@@ -2,7 +2,7 @@ import YAML from "yaml";
 
 import type {
   AgentManifest,
-  DocsBlock,
+  AgentSchedule,
   DiscordSurfaceAccess,
   DiscordSurface,
   ExecutionBlock,
@@ -18,12 +18,13 @@ import type {
   SurfacesBlock,
   TelegramSurface,
   TelegramSurfaceAccess,
-  TeamNetwork,
   TeamManifest,
   WebhookSurface,
   WhatsAppSurface,
   WhatsAppSurfaceAccess
 } from "./schemas.js";
+import { orderTeamNetworks } from "./renderSpawnfileNetworks.js";
+import { orderWorkspace } from "./renderSpawnfileWorkspace.js";
 
 const withDefinedEntries = (entries: Array<[string, unknown]>): Record<string, unknown> =>
   Object.fromEntries(entries.filter((entry) => entry[1] !== undefined));
@@ -41,21 +42,6 @@ const orderRuntimeBinding = (
     ["name", runtime.name],
     ["options", runtime.options]
   ]) as unknown as RuntimeBinding;
-};
-
-const orderDocs = (docs: DocsBlock | undefined): DocsBlock | undefined => {
-  if (!docs) {
-    return undefined;
-  }
-
-  return withDefinedEntries([
-    ["identity", docs.identity],
-    ["soul", docs.soul],
-    ["system", docs.system],
-    ["memory", docs.memory],
-    ["heartbeat", docs.heartbeat],
-    ["extras", docs.extras]
-  ]) as unknown as DocsBlock;
 };
 
 const orderDiscordSurface = (
@@ -276,9 +262,36 @@ const orderExecution = (
           ])
         : undefined
     ],
-    ["workspace", execution.workspace],
     ["sandbox", execution.sandbox]
   ]) as unknown as ExecutionBlock;
+};
+
+const orderAgentSchedule = (
+  schedule: AgentSchedule | undefined
+): AgentSchedule | undefined => {
+  if (!schedule) {
+    return undefined;
+  }
+
+  if (schedule.kind === "cron") {
+    return withDefinedEntries([
+      ["kind", schedule.kind],
+      ["cron", schedule.cron],
+      ["timezone", schedule.timezone],
+      ["prompt", schedule.prompt]
+    ]) as AgentSchedule;
+  }
+
+  if (schedule.kind === "every") {
+    return withDefinedEntries([
+      ["kind", schedule.kind],
+      ["every", schedule.every],
+      ["timezone", schedule.timezone],
+      ["prompt", schedule.prompt]
+    ]) as AgentSchedule;
+  }
+
+  return { kind: schedule.kind };
 };
 
 const orderSharedSurface = (
@@ -313,27 +326,6 @@ const orderSurfaces = (
   ]) as unknown as SurfacesBlock;
 };
 
-const orderTeamNetworks = (
-  networks: TeamManifest["networks"]
-): TeamManifest["networks"] | undefined =>
-  networks?.map((network) =>
-    withDefinedEntries([
-      ["id", network.id],
-      ["provider", network.provider],
-      ["name", network.name],
-      ["expose", network.expose],
-      [
-        "rooms",
-        network.rooms.map((room) =>
-          withDefinedEntries([
-            ["id", room.id],
-            ["members", room.members]
-          ])
-        )
-      ]
-    ]) as TeamNetwork
-  );
-
 const renderSections = (sections: Record<string, unknown>[]): string =>
   sections
     .filter(hasEntries)
@@ -349,7 +341,8 @@ const orderAgentManifestSections = (manifest: AgentManifest): Record<string, unk
   ]),
   withDefinedEntries([["runtime", orderRuntimeBinding(manifest.runtime)]]),
   withDefinedEntries([["execution", orderExecution(manifest.execution)]]),
-  withDefinedEntries([["docs", orderDocs(manifest.docs)]]),
+  withDefinedEntries([["schedule", orderAgentSchedule(manifest.schedule)]]),
+  withDefinedEntries([["workspace", orderWorkspace(manifest.workspace)]]),
   withDefinedEntries([["surfaces", orderSurfaces(manifest.surfaces)]]),
   withDefinedEntries([
     ["skills", manifest.skills],
@@ -370,7 +363,7 @@ const orderTeamManifestSections = (manifest: TeamManifest): Record<string, unkno
   withDefinedEntries([["runtime", orderRuntimeBinding(manifest.runtime)]]),
   withDefinedEntries([["execution", orderExecution(manifest.execution)]]),
   withDefinedEntries([
-    ["docs", orderDocs(manifest.docs)],
+    ["workspace", orderWorkspace(manifest.workspace)],
     ["shared", orderSharedSurface(manifest.shared)],
     ["networks", orderTeamNetworks(manifest.networks)]
   ]),

@@ -25,6 +25,7 @@ import type {
   ContainerEnvVariable,
   RuntimeTargetPlan
 } from "./containerArtifactsTypes.js";
+import { mergeWorkspaceResourcePlans } from "./workspaceResources.js";
 
 const CONFIG_FILE_PLACEHOLDER = "<config-file>";
 const INSTANCE_ROOT_PLACEHOLDER = "<instance-root>";
@@ -252,6 +253,22 @@ const resolveTargetExposure = (
   );
 };
 
+const resolveTargetResources = (
+  target: ContainerTarget,
+  inputs: ContainerTargetInput[]
+) => {
+  const sourceIds = new Set(target.sourceIds ?? []);
+  if (sourceIds.size === 0) {
+    return [];
+  }
+
+  const resources = inputs.flatMap((input) =>
+    sourceIds.has(input.id) ? (input.value.workspaceResources ?? []) : []
+  );
+
+  return mergeWorkspaceResourcePlans(resources, `container target ${target.id}`);
+};
+
 export const createRuntimeTargetPlans = async (
   plan: CompilePlan,
   compiledNodes: CompiledNodeArtifact[]
@@ -295,6 +312,7 @@ export const createRuntimeTargetPlans = async (
           resolveTargetExposure(target, targetInputs) && adapter.container.port
             ? adapter.container.port + (index * portStride)
             : undefined,
+        resources: resolveTargetResources(target, targetInputs),
         runtimeName,
         runtimeRoot: recipe.runtimeRoot,
         targetConfigEnvBindings: target.configEnvBindings,

@@ -48,12 +48,18 @@ const formatNetworkSummary = (
   options: RenderOrganizationViewOptions
 ): string => {
   const id = color(network.id, "36", options);
-  const exposed = network.expose ? " exposed" : "";
+  const metadata = [
+    network.serverMode ? `server=${network.serverMode}` : undefined,
+    network.url ? `url=${network.url}` : undefined,
+    network.authMode ? `auth=${network.authMode}` : undefined,
+    network.directMessages === false ? "dms=disabled" : undefined,
+    network.expose === true || network.httpEnabled ? "human_ingress" : undefined
+  ].filter((entry): entry is string => entry !== undefined);
   const rooms = network.rooms
     .map((room) => `${room.id} [${room.declaredMembers.join(", ")}]`)
     .join("; ");
 
-  return `network ${id} "${network.name}"${exposed}: ${rooms}`;
+  return `network ${id} "${network.name}"${metadata.length > 0 ? ` ${metadata.join(" ")}` : ""}: ${rooms}`;
 };
 
 const renderChildren = (

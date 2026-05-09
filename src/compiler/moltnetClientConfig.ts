@@ -1,6 +1,7 @@
 import type { EmittedFile } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
+import { resolveMoltnetClientAuth } from "./moltnetConfigLowering.js";
 import type { MoltnetArtifacts, MoltnetServerPlan } from "./moltnetArtifacts.js";
 import type {
   ResolvedAgentNode,
@@ -13,7 +14,9 @@ const GENERATED_CONFIG_PATH = ".moltnet/config.json";
 interface MoltnetClientAttachmentConfig {
   agent_name: string;
   auth: {
-    mode: "none";
+    mode: "bearer" | "none" | "open";
+    token_env?: string;
+    token_path?: string;
   };
   base_url: string;
   dms?: {
@@ -89,10 +92,20 @@ const createAttachmentConfig = (
   }
 
   const serverPlan = findServerPlan(artifacts, attachment);
+  const auth = resolveMoltnetClientAuth(
+    serverPlan.server,
+    attachment.network,
+    attachment.memberId
+  );
+
   return {
     agent_name: node.name,
-    auth: { mode: "none" },
-    base_url: `http://127.0.0.1:${serverPlan.port}`,
+    auth: {
+      mode: auth.mode,
+      ...(auth.tokenEnv ? { token_env: auth.tokenEnv } : {}),
+      ...(auth.tokenPath ? { token_path: auth.tokenPath } : {})
+    },
+    base_url: serverPlan.baseUrl,
     ...(attachment.dms
       ? {
           dms: {

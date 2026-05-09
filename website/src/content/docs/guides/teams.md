@@ -19,8 +19,9 @@ spawnfile_version: "0.1"
 kind: team
 name: research-cell
 
-docs:
-  system: TEAM.md
+workspace:
+  docs:
+    system: TEAM.md
 
 mode: hierarchical
 lead: orchestrator
@@ -36,6 +37,16 @@ members:
 networks:
   - id: local_lab
     provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 127.0.0.1
+        port: 8787
+      store:
+        kind: memory
+      auth:
+        mode: none
+      human_ingress: true
     rooms:
       - id: research-room
         members: [orchestrator, researcher, writer]
@@ -82,12 +93,25 @@ external: [orchestrator, researcher]
 networks:
   - id: local_lab
     provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 127.0.0.1
+        port: 8787
+      store:
+        kind: sqlite
+        path: /var/lib/moltnet/local_lab.sqlite
+      auth:
+        mode: open
+      human_ingress: true
     rooms:
       - id: org-council
         members: [coordinator, research-team]
 ```
 
 Room members may name direct agent slots or direct child-team slots. Child-team slots expand through representatives only. Moltnet member IDs are direct agent member slot IDs and must be unique across the reachable nested team graph.
+
+Network server settings live on the network declaration. Use `server.mode: managed` to spawn Moltnet with `listen`, `store`, `auth`, and optional `human_ingress`. Use `server.mode: external` with `url` when the team connects to an already-running Moltnet.
 
 Moltnet `reply` policy is `auto | never` in this alpha. `manual` is not portable.
 
@@ -103,10 +127,10 @@ Default tree mode shows the authored organization shape and compact summaries of
 
 ```text
 team moltnet-team-chat  mode=hierarchical lead=coordinator external=coordinator
-├── network local_lab "Local Lab" exposed: mission-control [coordinator, field-team, analysis-team]
+├── network local_lab "Local Lab" server=managed auth=none human_ingress: mission-control [coordinator, field-team, analysis-team]
 ├── coordinator: agent coordinator [openclaw] runtime=openclaw
 ├── field-team: team field-team  mode=hierarchical lead=field-representative external=field-representative
-│   ├── network field_lab "Field Lab" exposed: field-room [field-representative, field-observer]
+│   ├── network field_lab "Field Lab" server=managed auth=none human_ingress: field-room [field-representative, field-observer]
 │   ├── field-representative: agent field-representative [openclaw] runtime=openclaw
 │   └── field-observer: agent field-observer [openclaw] runtime=openclaw
 └── analysis-team: team analysis-team  mode=hierarchical lead=analysis-representative external=analysis-representative
@@ -123,13 +147,13 @@ spawnfile view fixtures/e2e/moltnet-team-chat --mode networks
 ```text
 Moltnet networks
 ├── moltnet local_lab
-│   └── local_lab "Local Lab" on moltnet-team-chat exposed
+│   └── local_lab "Local Lab" on moltnet-team-chat server=managed auth=none human_ingress
 │       └── #mission-control
 │           ├── coordinator  team=moltnet-team-chat member=coordinator read=all reply=auto
 │           ├── field-representative  represents=field-team member=field-representative
 │           └── analysis-representative  represents=analysis-team member=analysis-representative
 └── moltnet field_lab
-    └── field_lab "Field Lab" on field-team exposed
+    └── field_lab "Field Lab" on field-team server=managed auth=none human_ingress
         └── #field-room
             ├── field-representative  team=field-team member=field-representative read=all reply=auto
             └── field-observer  team=field-team member=field-observer read=all reply=never
@@ -137,7 +161,7 @@ Moltnet networks
 
 ## TEAM.md And Context Files
 
-The team's `docs.system` document is typically `TEAM.md`. It describes the team as a collective and may include handoff protocols, escalation procedures, decision-making norms, and quality standards.
+The team's `workspace.docs.system` document is typically `TEAM.md`. It describes the team as a collective and may include handoff protocols, escalation procedures, decision-making norms, and quality standards.
 
 The compiler emits `TEAM.md` literally as generated team context. It does not pass it through runtime doc-role mapping and does not merge several team docs.
 

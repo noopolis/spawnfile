@@ -61,7 +61,7 @@ export const createContainerArtifacts = async (
         {
           moltnet: options.moltnet
             ? {
-                bridgePlans: options.moltnet.bridgePlans,
+                nodePlans: options.moltnet.nodePlans,
                 serverPlans: options.moltnet.serverPlans
               }
             : undefined
@@ -96,6 +96,21 @@ export const createContainerArtifacts = async (
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
   const runtimesInstalled = [...new Set(runtimePlans.map((plan) => plan.runtimeName))].sort();
+  const workspaceResources = [
+    ...new Map(
+      runtimePlans.flatMap((plan) =>
+        (plan.resources ?? []).map((resource) => [
+          `${resource.kind}:${resource.id}:${resource.mount}`,
+          {
+            id: resource.id,
+            kind: resource.kind,
+            mode: resource.mode,
+            mount: resource.mount
+          }
+        ])
+      )
+    ).values()
+  ].sort((left, right) => left.mount.localeCompare(right.mount) || left.id.localeCompare(right.id));
 
   return {
     executablePaths: ["entrypoint.sh"],
@@ -103,7 +118,7 @@ export const createContainerArtifacts = async (
     ...(options.moltnet
       ? {
           moltnet: {
-            bridgePlans: options.moltnet.bridgePlans,
+            nodePlans: options.moltnet.nodePlans,
             serverPlans: options.moltnet.serverPlans
           }
         }
@@ -118,7 +133,8 @@ export const createContainerArtifacts = async (
       runtime_homes: runtimeHomes,
       runtime_secrets_required: runtimeSecretsRequired,
       runtimes_installed: runtimesInstalled,
-      secrets_required: requiredSecrets
+      secrets_required: requiredSecrets,
+      ...(workspaceResources.length > 0 ? { workspace_resources: workspaceResources } : {})
     }
   };
 };

@@ -1,3 +1,4 @@
+/* v8 ignore file -- type-only module */
 import type { CapabilityReport, DiagnosticReport } from "../report/index.js";
 import type { EmittedFile } from "../runtime/index.js";
 

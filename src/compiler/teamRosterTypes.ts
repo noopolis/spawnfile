@@ -1,3 +1,4 @@
+/* v8 ignore file -- type-only module */
 import type { DiagnosticReport } from "../report/index.js";
 
 import type { ResolvedMemberRef } from "./types.js";

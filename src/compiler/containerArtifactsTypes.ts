@@ -1,3 +1,4 @@
+/* v8 ignore file -- type-only module */
 import type { ContainerReport } from "../report/index.js";
 import type {
   EmittedFile,
@@ -7,7 +8,8 @@ import type {
 import type { ModelAuthMethod } from "../shared/index.js";
 
 import type { ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
-import type { MoltnetBridgePlan, MoltnetServerPlan } from "./moltnetArtifacts.js";
+import type { MoltnetNodePlan, MoltnetServerPlan } from "./moltnetArtifacts.js";
+import type { WorkspaceResourcePlan } from "./workspaceResources.js";
 
 export interface ContainerEnvVariable {
   categories: Array<"model" | "project" | "runtime" | "surface">;
@@ -33,6 +35,7 @@ export interface RuntimeTargetPlan {
   modelSecretsRequired: string[];
   port?: number;
   publishedPort?: number;
+  resources?: WorkspaceResourcePlan[];
   runtimeName: string;
   runtimeRoot: string;
   targetConfigEnvBindings?: RuntimeContainerConfigEnvBinding[];
@@ -51,7 +54,7 @@ export interface GeneratedContainerArtifacts {
   executablePaths: string[];
   files: EmittedFile[];
   moltnet?: {
-    bridgePlans: MoltnetBridgePlan[];
+    nodePlans: MoltnetNodePlan[];
     serverPlans: MoltnetServerPlan[];
   };
   report: ContainerReport;

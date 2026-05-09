@@ -1,4 +1,12 @@
-import { ExecutionBlock, McpServer, ModelEndpoint, Secret } from "../manifest/index.js";
+import {
+  AgentSchedule,
+  ExecutionBlock,
+  McpServer,
+  ModelEndpoint,
+  Secret,
+  TeamNetworkServer,
+  TeamWorkspaceResource
+} from "../manifest/index.js";
 import { ModelAuthMethod, StringMap } from "../shared/index.js";
 
 export interface ResolvedDocument {
@@ -118,6 +126,7 @@ export interface ResolvedAgentSurfaces {
 export interface ResolvedTeamNetworkRoom {
   id: string;
   members: string[];
+  name?: string;
 }
 
 export interface ResolvedTeamNetwork {
@@ -126,6 +135,7 @@ export interface ResolvedTeamNetwork {
   name: string;
   provider: "moltnet";
   rooms: ResolvedTeamNetworkRoom[];
+  server?: TeamNetworkServer;
 }
 
 export interface EffectiveModelTarget {
@@ -162,11 +172,13 @@ export interface ResolvedAgentNode {
   policyMode: string | null;
   policyOnDegrade: string | null;
   runtime: ResolvedRuntime;
+  schedule?: AgentSchedule;
   secrets: Secret[];
   skills: ResolvedSkill[];
   source: string;
   surfaces?: ResolvedAgentSurfaces;
   subagents: ResolvedSubagentRef[];
+  workspaceResources?: TeamWorkspaceResource[];
 }
 
 export interface ResolvedTeamNode {
@@ -182,6 +194,7 @@ export interface ResolvedTeamNode {
   networks?: ResolvedTeamNetwork[];
   policyMode: string | null;
   policyOnDegrade: string | null;
+  workspaceResources?: TeamWorkspaceResource[];
   shared: {
     env: StringMap;
     mcpServers: McpServer[];

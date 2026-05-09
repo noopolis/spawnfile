@@ -48,7 +48,7 @@ NullClaw has:
 - Multiple sandbox backends
 - Allowlists and protected paths
 
-This is a strong fit for Spawnfile's `execution.workspace` and `execution.sandbox` intent.
+This is a strong fit for Spawnfile's `workspace` and `execution.sandbox` intent.
 
 ## Teams and Routing
 

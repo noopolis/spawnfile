@@ -12,5 +12,6 @@ execution:
   sandbox:
     mode: workspace
 
-docs:
-  system: AGENTS.md
+workspace:
+  docs:
+    system: AGENTS.md

@@ -134,7 +134,7 @@ describe("compiler view renderers", () => {
     const view = createView();
 
     expect(renderOrganizationTree(view)).toContain("├── coordinator: agent coordinator-agent");
-    expect(renderOrganizationTree(view)).toContain('network org "Org" exposed: general [coordinator, child]');
+    expect(renderOrganizationTree(view)).toContain('network org "Org" human_ingress: general [coordinator, child]');
     expect(renderOrganizationTree(view)).toContain("└── child: team child");
     expect(renderOrganizationTree(view, { ascii: true })).toContain("|-- coordinator: agent coordinator-agent");
   });
@@ -149,7 +149,7 @@ describe("compiler view renderers", () => {
   it("renders colored tree network summaries", () => {
     const output = renderOrganizationTree(createView(), { color: true });
 
-    expect(output).toContain('\u001b[36morg\u001b[0m "Org" exposed');
+    expect(output).toContain('\u001b[36morg\u001b[0m "Org" human_ingress');
   });
 
   it("renders declared network slots and paths when requested", () => {
@@ -158,7 +158,7 @@ describe("compiler view renderers", () => {
       paths: true
     });
 
-    expect(output).toContain("org \"Org\" on parent exposed </tmp/parent/Spawnfile>");
+    expect(output).toContain("org \"Org\" on parent human_ingress </tmp/parent/Spawnfile>");
     expect(output).toContain("declared members: coordinator, child");
     expect(output).toContain("rep-agent  represents=child member=rep </tmp/rep/Spawnfile>");
   });
@@ -273,6 +273,15 @@ describe("compiler view renderers", () => {
       "networks:",
       "  - id: org",
       "    provider: moltnet",
+      "    server:",
+      "      mode: managed",
+      "      listen:",
+      "        bind: 127.0.0.1",
+      "        port: 8787",
+      "      store:",
+      "        kind: memory",
+      "      auth:",
+      "        mode: none",
       "    rooms:",
       "      - id: shared",
       "        members: [rep]",
@@ -291,6 +300,15 @@ describe("compiler view renderers", () => {
       "networks:",
       "  - id: org",
       "    provider: moltnet",
+      "    server:",
+      "      mode: managed",
+      "      listen:",
+      "        bind: 127.0.0.1",
+      "        port: 8787",
+      "      store:",
+      "        kind: memory",
+      "      auth:",
+      "        mode: none",
       "    rooms:",
       "      - id: shared",
       "        members: [lead, child]",
@@ -313,7 +331,9 @@ describe("compiler view renderers", () => {
     expect(childNetwork?.rooms[0]?.declaredMembers).toEqual(["rep"]);
     expect(childNetwork?.rooms[0]?.members.map((member) => member.concreteMemberId))
       .toEqual(["rep"]);
-    expect(renderOrganizationTree(view)).toContain('network org "org": shared [lead, child]');
+    expect(renderOrganizationTree(view)).toContain(
+      'network org "org" server=managed auth=none: shared [lead, child]'
+    );
   });
 
   it("disambiguates duplicate node names in the view model", async () => {

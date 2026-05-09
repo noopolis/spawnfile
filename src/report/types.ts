@@ -23,6 +23,13 @@ export interface ContainerRuntimeInstanceReport {
   runtime: string;
 }
 
+export interface ContainerWorkspaceResourceReport {
+  id: string;
+  kind: "git" | "volume";
+  mode: "mutable" | "readonly";
+  mount: string;
+}
+
 export interface NodeReport {
   capabilities: CapabilityReport[];
   diagnostics: DiagnosticReport[];
@@ -46,6 +53,7 @@ export interface ContainerReport {
   runtime_secrets_required: string[];
   runtimes_installed: string[];
   secrets_required: string[];
+  workspace_resources?: ContainerWorkspaceResourceReport[];
 }
 
 export interface CompileReport {

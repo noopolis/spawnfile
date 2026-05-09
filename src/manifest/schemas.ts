@@ -1,106 +1,13 @@
 import { z } from "zod";
 
+import { agentScheduleSchema } from "./scheduleSchemas.js";
+import { executionSchema } from "./executionSchemas.js";
 import { surfacesSchema } from "./surfaceSchemas.js";
-
-const modelAuthMethodSchema = z.enum(["api_key", "claude-code", "codex", "none"]);
-const modelEndpointCompatibilitySchema = z.enum(["anthropic", "openai"]);
-
-const modelAuthSchema = z
-  .object({
-    method: modelAuthMethodSchema.optional(),
-    methods: z.record(z.string(), modelAuthMethodSchema).optional()
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (!value.method && !value.methods) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "model auth must declare method or methods"
-      });
-    }
-
-    if (value.method && value.methods) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "model auth must not declare both method and methods"
-      });
-    }
-
-    if (value.methods && Object.keys(value.methods).length === 0) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "model auth methods must not be empty"
-      });
-    }
-  });
-
-const modelEntryAuthMethodSchema = z.enum(["api_key", "claude-code", "codex", "none"]);
-
-const modelEntryAuthSchema = z
-  .object({
-    key: z.string().optional(),
-    method: modelEntryAuthMethodSchema.optional()
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (!value.method) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "model auth must declare method"
-      });
-    }
-
-    if (value.key && value.method !== "api_key") {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "model auth key is only valid for api_key auth"
-      });
-    }
-  });
-
-const modelEndpointSchema = z
-  .object({
-    base_url: z.string().min(1),
-    compatibility: modelEndpointCompatibilitySchema
-  })
-  .strict();
-
-const modelTargetSchema = z
-  .object({
-    auth: modelEntryAuthSchema.optional(),
-    endpoint: modelEndpointSchema.optional(),
-    name: z.string(),
-    provider: z.string()
-  })
-  .strict()
-  .superRefine((value, context) => {
-    const usesCustomEndpoint = value.provider === "custom" || value.provider === "local";
-
-    if (usesCustomEndpoint && !value.endpoint) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `${value.provider} models must declare endpoint`
-      });
-    }
-
-    if (!usesCustomEndpoint && value.endpoint) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "endpoint is only valid for custom or local models"
-      });
-    }
-  });
-
-const docsSchema = z
-  .object({
-    extras: z.record(z.string(), z.string()).optional(),
-    heartbeat: z.string().optional(),
-    identity: z.string().optional(),
-    memory: z.string().optional(),
-    soul: z.string().optional(),
-    system: z.string().optional()
-  })
-  .strict();
+import {
+  teamNetworkSchema,
+  teamWorkspaceDocsSchema,
+  teamWorkspaceSchema
+} from "./teamNetworkSchemas.js";
 
 const skillRequirementSchema = z
   .object({
@@ -148,83 +55,6 @@ const mcpServerSchema = z
     }
   });
 
-const executionSchema = z
-  .object({
-    model: z
-      .object({
-        auth: modelAuthSchema.optional(),
-        fallback: z.array(modelTargetSchema).optional(),
-        primary: modelTargetSchema
-      })
-      .superRefine((value, context) => {
-        const declaredProviders = new Set<string>([
-          value.primary.provider,
-          ...(value.fallback ?? []).map((model) => model.provider)
-        ]);
-
-        if (value.auth?.methods) {
-          for (const provider of declaredProviders) {
-            if (!(provider in value.auth.methods)) {
-              context.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `model auth methods must declare provider ${provider}`
-              });
-            }
-          }
-
-          for (const provider of Object.keys(value.auth.methods)) {
-            if (!declaredProviders.has(provider)) {
-              context.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `model auth methods declared unknown provider ${provider}`
-              });
-            }
-          }
-        }
-
-        for (const target of [value.primary, ...(value.fallback ?? [])]) {
-          const method =
-            target.auth?.method ??
-            value.auth?.methods?.[target.provider] ??
-            value.auth?.method ??
-            (target.provider === "local" ? "none" : undefined);
-
-          if (target.provider === "custom" && !method) {
-            context.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "custom models must declare auth.method or inherit legacy model auth"
-            });
-          }
-
-          if (
-            (target.provider === "custom" || target.provider === "local") &&
-            method === "api_key" &&
-            !target.auth?.key
-          ) {
-            context.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: `${target.provider} api_key auth must declare auth.key`
-            });
-          }
-        }
-      })
-      .strict()
-      .optional(),
-    sandbox: z
-      .object({
-        mode: z.enum(["sandboxed", "unrestricted", "workspace"])
-      })
-      .strict()
-      .optional(),
-    workspace: z
-      .object({
-        isolation: z.enum(["isolated", "shared"])
-      })
-      .strict()
-      .optional()
-  })
-  .strict();
-
 const runtimeBindingSchema = z.union([
   z.string().min(1),
   z
@@ -252,7 +82,7 @@ const policySchema = z
 const commonManifestSchema = z
   .object({
     description: z.string().optional(),
-    docs: docsSchema.optional(),
+    workspace: teamWorkspaceSchema.optional(),
     env: z.record(z.string(), z.string()).optional(),
     execution: executionSchema.optional(),
     kind: z.enum(["agent", "team"]),
@@ -293,36 +123,11 @@ const memberSchema = z
   })
   .strict();
 
-const teamNetworkRoomSchema = z
-  .object({
-    id: z.string().min(1),
-    members: z.array(z.string().min(1)).min(1)
-  })
-  .strict();
-
-const teamNetworkSchema = z
-  .object({
-    expose: z.boolean().optional(),
-    id: z.string().min(1),
-    name: z.string().min(1).optional(),
-    provider: z.literal("moltnet"),
-    rooms: z.array(teamNetworkRoomSchema).min(1)
-  })
-  .strict()
-  .superRefine((value, context) => {
-    const roomIds = value.rooms.map((room) => room.id);
-    if (new Set(roomIds).size !== roomIds.length) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `network ${value.id} declares duplicate room ids`
-      });
-    }
-  });
-
 const agentManifestSchema = commonManifestSchema
   .extend({
     expose: z.boolean().optional(),
     kind: z.literal("agent"),
+    schedule: agentScheduleSchema.optional(),
     subagents: z.array(subagentSchema).optional()
   })
   .strict();
@@ -396,21 +201,30 @@ export const manifestSchema = z.discriminatedUnion("kind", [
 ]);
 
 export type AgentManifest = z.infer<typeof agentManifestSchema>;
-export type DocsBlock = z.infer<typeof docsSchema>;
-export type ExecutionBlock = z.infer<typeof executionSchema>;
+export type { AgentSchedule } from "./scheduleSchemas.js";
+export type DocsBlock = z.infer<typeof teamWorkspaceDocsSchema>;
 export type Manifest = z.infer<typeof manifestSchema>;
 export type ManifestMember = z.infer<typeof memberSchema>;
 export type McpServer = z.infer<typeof mcpServerSchema>;
-export type ModelEndpoint = z.infer<typeof modelEndpointSchema>;
-export type ModelEntryAuth = z.infer<typeof modelEntryAuthSchema>;
-export type ModelTarget = z.infer<typeof modelTargetSchema>;
 export type RuntimeBinding = z.infer<typeof runtimeBindingSchema>;
 export type Secret = z.infer<typeof secretSchema>;
 export type SharedSurface = z.infer<typeof sharedSurfaceSchema>;
 export type SkillReference = z.infer<typeof skillReferenceSchema>;
 export type TeamManifest = z.infer<typeof teamManifestSchema>;
-export type TeamNetwork = z.infer<typeof teamNetworkSchema>;
-export type TeamNetworkRoom = z.infer<typeof teamNetworkRoomSchema>;
+export type {
+  ExecutionBlock,
+  ModelEndpoint,
+  ModelEntryAuth,
+  ModelTarget
+} from "./executionSchemas.js";
+
+export type {
+  TeamNetwork,
+  TeamNetworkRoom,
+  TeamNetworkServer,
+  TeamWorkspace,
+  TeamWorkspaceResource
+} from "./teamNetworkSchemas.js";
 
 export type {
   DiscordSurface,

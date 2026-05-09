@@ -8,9 +8,6 @@ describe("applyExecutionDefaults", () => {
       model: undefined,
       sandbox: {
         mode: "workspace"
-      },
-      workspace: {
-        isolation: "isolated"
       }
     });
   });
@@ -37,9 +34,6 @@ describe("applyExecutionDefaults", () => {
       },
       sandbox: {
         mode: "sandboxed"
-      },
-      workspace: {
-        isolation: "isolated"
       }
     });
   });

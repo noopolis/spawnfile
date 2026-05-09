@@ -2,16 +2,14 @@ import path from "node:path";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
+import {
+  createWorkspaceResourceCommands,
+  createWorkspaceResourceShellFunctions
+} from "./containerWorkspaceResourceRender.js";
 
 const MOLTNET_SERVER_DATA_DIRECTORY = "/var/lib/spawnfile/moltnet/servers";
 
 const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)}'`;
-
-const pathSafeSegment = (value: string): string =>
-  value.replace(/[^A-Za-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "") || "server";
-
-const createMoltnetServerDataPath = (serverId: string): string =>
-  `${MOLTNET_SERVER_DATA_DIRECTORY}/${pathSafeSegment(serverId)}.db`;
 
 const createEnvironmentAssignments = (plan: RuntimeTargetPlan): string[] => {
   const envAssignments: string[] = [];
@@ -106,7 +104,7 @@ export interface EntrypointOptions {
   hasMoltnet?: boolean;
   hasStagedMoltnetBinaries?: boolean;
   moltnet?: {
-    bridgePlans: MoltnetArtifacts["bridgePlans"];
+    nodePlans: MoltnetArtifacts["nodePlans"];
     serverPlans: MoltnetArtifacts["serverPlans"];
   };
   moltnetPublishedPorts?: number[];
@@ -171,13 +169,19 @@ export const renderEntrypoint = (
     "",
     "cursor = data",
     "for part in json_path[:-1]:",
+    "    if isinstance(cursor, list):",
+    "        cursor = cursor[int(part)]",
+    "        continue",
     "    child = cursor.get(part)",
-    "    if not isinstance(child, dict):",
+    "    if not isinstance(child, (dict, list)):",
     "        child = {}",
     "        cursor[part] = child",
     "    cursor = child",
     "",
-    "cursor[json_path[-1]] = value",
+    "if isinstance(cursor, list):",
+    "    cursor[int(json_path[-1])] = value",
+    "else:",
+    "    cursor[json_path[-1]] = value",
     "",
     "with open(target_path, 'w', encoding='utf-8') as handle:",
     "    json.dump(data, handle, indent=2)",
@@ -193,7 +197,8 @@ export const renderEntrypoint = (
     '  mkdir -p "$home_path/.codex"',
     '  printf "%s\\n" "${OPENAI_API_KEY:-}" | HOME="$home_path" CODEX_HOME="$home_path/.codex" codex login --with-api-key >/dev/null',
     "}",
-    ""
+    "",
+    ...createWorkspaceResourceShellFunctions()
   ];
 
   lines.push(
@@ -212,12 +217,12 @@ export const renderEntrypoint = (
   }
 
   const moltnetServerPlans = options.moltnet?.serverPlans ?? [];
-  const moltnetBridgePlans = options.moltnet?.bridgePlans ?? [];
+  const moltnetNodePlans = options.moltnet?.nodePlans ?? [];
 
   if (
     runtimePlans.length === 1 &&
     moltnetServerPlans.length === 0 &&
-    moltnetBridgePlans.length === 0
+    moltnetNodePlans.length === 0
   ) {
     const plan = runtimePlans[0]!;
     const commandTokens = resolveStartCommand(plan);
@@ -225,6 +230,7 @@ export const renderEntrypoint = (
 
     lines.push(
       `mkdir -p ${shellQuote(plan.instancePaths.workspacePath)}`,
+      ...createWorkspaceResourceCommands(plan),
       `require_file ${shellQuote(plan.instancePaths.configPath)}`,
       ...createEnvFileWrites(plan),
       ...createConfigEnvWrites(plan),
@@ -248,16 +254,36 @@ export const renderEntrypoint = (
     ""
   );
 
-  if (moltnetServerPlans.length > 0) {
+  const managedMoltnetServerPlans = moltnetServerPlans.filter((serverPlan) => serverPlan.mode === "managed");
+
+  if (managedMoltnetServerPlans.length > 0) {
     lines.push(`mkdir -p ${shellQuote(MOLTNET_SERVER_DATA_DIRECTORY)}`, "");
   }
 
-  for (const serverPlan of moltnetServerPlans) {
+  for (const serverPlan of managedMoltnetServerPlans) {
+    if (!serverPlan.configPath) {
+      continue;
+    }
+    for (const patch of serverPlan.secretPatches) {
+      lines.push(
+        `apply_json_env_value ${shellQuote(serverPlan.configPath)} ${shellQuote(patch.envName)} ${shellQuote(patch.jsonPath)}`
+      );
+    }
     lines.push(
-      `MOLTNET_DATA_PATH=${shellQuote(createMoltnetServerDataPath(serverPlan.id))} MOLTNET_LISTEN_ADDR=${shellQuote(`:${serverPlan.port}`)} MOLTNET_NETWORK_ID=${shellQuote(serverPlan.networkId)} MOLTNET_NETWORK_NAME=${shellQuote(serverPlan.name)} /usr/local/bin/moltnet &`,
+      `MOLTNET_CONFIG=${shellQuote(serverPlan.configPath)} /usr/local/bin/moltnet &`,
       'PIDS+=("$!")',
       ""
     );
+  }
+
+  for (const serverPlan of managedMoltnetServerPlans) {
+    if (!serverPlan.port) {
+      continue;
+    }
+    lines.push(
+      `until curl -sf ${shellQuote(`http://127.0.0.1:${serverPlan.port}/healthz`)} >/dev/null; do sleep 1; done`
+    );
+    lines.push("");
   }
 
   for (const plan of runtimePlans) {
@@ -266,6 +292,7 @@ export const renderEntrypoint = (
 
     lines.push(
       `mkdir -p ${shellQuote(plan.instancePaths.workspacePath)}`,
+      ...createWorkspaceResourceCommands(plan),
       `require_file ${shellQuote(plan.instancePaths.configPath)}`,
       ...createEnvFileWrites(plan),
       ...createConfigEnvWrites(plan),
@@ -277,28 +304,9 @@ export const renderEntrypoint = (
     );
   }
 
-  for (const serverPlan of moltnetServerPlans) {
+  for (const nodePlan of moltnetNodePlans) {
     lines.push(
-      `until curl -sf ${shellQuote(`http://127.0.0.1:${serverPlan.port}/healthz`)} >/dev/null; do sleep 1; done`
-    );
-
-    for (const room of serverPlan.rooms) {
-      lines.push(
-        `curl -sf -X POST -H 'Content-Type: application/json' -d ${shellQuote(
-          JSON.stringify({
-            id: room.id,
-            members: room.members
-          })
-        )} ${shellQuote(`http://127.0.0.1:${serverPlan.port}/v1/rooms`)} >/dev/null || true`
-      );
-    }
-
-    lines.push("");
-  }
-
-  for (const bridgePlan of moltnetBridgePlans) {
-    lines.push(
-      `/usr/local/bin/moltnet bridge ${shellQuote(bridgePlan.configPath)} &`,
+      `/usr/local/bin/moltnet node ${shellQuote(nodePlan.configPath)} &`,
       'PIDS+=("$!")',
       ""
     );

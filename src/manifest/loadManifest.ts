@@ -66,7 +66,7 @@ const assertMarkdownDocumentPath = (documentPath: string): void => {
 };
 
 const validateDocFiles = async (manifestPath: string, manifest: Manifest): Promise<void> => {
-  const docs = manifest.docs;
+  const docs = manifest.workspace?.docs;
   if (!docs) {
     return;
   }
@@ -315,21 +315,6 @@ export const mergeExecution = (
     );
   }
 
-  const workspace =
-    parentExecution.workspace || childExecution.workspace
-      ? {
-          ...parentExecution.workspace,
-          ...childExecution.workspace
-        }
-      : undefined;
-
-  if (workspace && !workspace.isolation) {
-    throw new SpawnfileError(
-      "validation_error",
-      "Merged execution workspace is missing isolation"
-    );
-  }
-
   const resolvedModel: NonNullable<ExecutionBlock["model"]> | undefined = model
     ? {
         auth: model.auth,
@@ -344,17 +329,10 @@ export const mergeExecution = (
       }
     : undefined;
 
-  const resolvedWorkspace: NonNullable<ExecutionBlock["workspace"]> | undefined = workspace
-    ? {
-        isolation: workspace.isolation!
-      }
-    : undefined;
-
   return {
     ...parentExecution,
     ...childExecution,
     model: resolvedModel,
-    sandbox: resolvedSandbox,
-    workspace: resolvedWorkspace
+    sandbox: resolvedSandbox
   };
 };

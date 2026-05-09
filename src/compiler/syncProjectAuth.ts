@@ -11,6 +11,7 @@ import { SpawnfileError } from "../shared/index.js";
 
 import { listAgentSurfaceSecretNames } from "./agentSurfaces.js";
 import { buildCompilePlan } from "./buildCompilePlan.js";
+import { listMoltnetNetworkSecretNames } from "./compilePlanHelpers.js";
 import {
   listExecutionModelSecretNames,
   resolveExecutionModelAuthMethods
@@ -48,6 +49,9 @@ const resolveAuthRequirements = async (
     if (node.value.kind !== "agent") {
       for (const secret of node.value.shared.secrets) {
         addProjectSecret(secret);
+      }
+      for (const secretName of listMoltnetNetworkSecretNames([node])) {
+        addProjectSecret({ name: secretName, required: true });
       }
       continue;
     }

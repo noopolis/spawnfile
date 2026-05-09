@@ -2,15 +2,17 @@ import {
   type AgentManifest,
   type ExecutionBlock,
   type SharedSurface,
+  type TeamWorkspaceResource,
   normalizeRuntimeBinding
 } from "../manifest/index.js";
 import { assertRuntimeCanCompile } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
-import type { ResolvedDocument, ResolvedRuntime } from "./types.js";
+import type { CompilePlanNode, ResolvedDocument, ResolvedRuntime } from "./types.js";
 
 export interface AgentVisitContext {
   inheritedExecution?: ExecutionBlock;
+  inheritedResources?: TeamWorkspaceResource[];
   inheritedShared?: {
     manifestPath: string;
     surface: SharedSurface | undefined;
@@ -85,3 +87,17 @@ export const resolveDescription = (
   description !== undefined
     ? normalizeDescription(description)
     : deriveDescriptionFromDocs(docs);
+
+export const createRuntimeGroups = (
+  nodes: CompilePlanNode[]
+): Record<string, { nodeIds: string[] }> =>
+  nodes.reduce<Record<string, { nodeIds: string[] }>>((groups, node) => {
+    if (!node.runtimeName) {
+      return groups;
+    }
+
+    const group = groups[node.runtimeName] ?? { nodeIds: [] };
+    group.nodeIds.push(node.id);
+    groups[node.runtimeName] = group;
+    return groups;
+  }, {});

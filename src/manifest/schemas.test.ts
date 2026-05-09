@@ -2,6 +2,50 @@ import { describe, expect, it } from "vitest";
 
 import { isAgentManifest, isTeamManifest, manifestSchema } from "./schemas.js";
 
+const issueHasPath = (
+  result: ReturnType<typeof manifestSchema.safeParse>,
+  expectedPath: string
+): boolean =>
+  result.error?.issues.some((issue) => issue.path.join(".") === expectedPath) ?? false;
+
+const createTeamWithNetwork = (
+  server: Record<string, unknown>
+): Record<string, unknown> => ({
+  kind: "team",
+  members: [
+    {
+      id: "worker",
+      ref: "./agents/worker"
+    }
+  ],
+  mode: "swarm",
+  name: "worker-cell",
+  networks: [
+    {
+      id: "team_net",
+      provider: "moltnet",
+      rooms: [
+        {
+          id: "workroom",
+          members: ["worker"]
+        }
+      ],
+      server
+    }
+  ],
+  spawnfile_version: "0.1"
+});
+
+const createManagedServer = (
+  overrides: Record<string, unknown>
+): Record<string, unknown> => ({
+  auth: { mode: "none" },
+  listen: { bind: "127.0.0.1", port: 8787 },
+  mode: "managed",
+  store: { kind: "memory" },
+  ...overrides
+});
+
 describe("manifestSchema", () => {
   it("accepts stdio MCP servers with a command", () => {
     const result = manifestSchema.parse({
@@ -112,6 +156,96 @@ describe("manifestSchema", () => {
     expect(result.expose).toBe(true);
   });
 
+  it("accepts agent-owned cron schedules", () => {
+    const result = manifestSchema.parse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      schedule: {
+        cron: "0 5 * * *",
+        kind: "cron",
+        prompt: "Wake, read context, and perform one bounded iteration.",
+        timezone: "UTC"
+      },
+      spawnfile_version: "0.1"
+    });
+
+    expect(isAgentManifest(result)).toBe(true);
+    if (!isAgentManifest(result)) {
+      throw new Error("expected agent manifest");
+    }
+    expect(result.schedule).toEqual({
+      cron: "0 5 * * *",
+      kind: "cron",
+      prompt: "Wake, read context, and perform one bounded iteration.",
+      timezone: "UTC"
+    });
+  });
+
+  it("accepts agent-owned interval and disabled schedules", () => {
+    expect(
+      manifestSchema.safeParse({
+        kind: "agent",
+        name: "agent",
+        runtime: "openclaw",
+        schedule: {
+          every: "2h",
+          kind: "every"
+        },
+        spawnfile_version: "0.1"
+      }).success
+    ).toBe(true);
+
+    expect(
+      manifestSchema.safeParse({
+        kind: "agent",
+        name: "agent",
+        runtime: "openclaw",
+        schedule: {
+          kind: "disabled"
+        },
+        spawnfile_version: "0.1"
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects malformed agent schedules", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      schedule: {
+        every: "24h",
+        kind: "cron"
+      },
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects schedules on team manifests", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "analyst",
+          ref: "./agents/analyst"
+        }
+      ],
+      mode: "swarm",
+      name: "research-team",
+      schedule: {
+        cron: "0 5 * * *",
+        kind: "cron"
+      },
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("Unrecognized key");
+  });
+
   it("accepts team networks and agent moltnet surfaces", () => {
     const team = manifestSchema.parse({
       kind: "team",
@@ -129,9 +263,23 @@ describe("manifestSchema", () => {
       name: "research-team",
       networks: [
         {
-          expose: true,
           id: "local_lab",
           provider: "moltnet",
+          server: {
+            mode: "managed",
+            auth: {
+              mode: "open"
+            },
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            },
+            store: {
+              kind: "sqlite",
+              path: "/tmp/local-lab.sqlite"
+            },
+            human_ingress: true
+          },
           rooms: [
             {
               id: "research",
@@ -168,7 +316,1036 @@ describe("manifestSchema", () => {
     if (!isTeamManifest(team)) {
       throw new Error("expected team manifest");
     }
-    expect(team.networks?.[0]?.expose).toBe(true);
+    const server = team.networks?.[0]?.server;
+    expect(server?.mode).toBe("managed");
+    if (server?.mode !== "managed") {
+      throw new Error("expected managed server");
+    }
+    expect(server.listen).toEqual({ bind: "127.0.0.1", port: 8787 });
+    expect(server.human_ingress).toBe(true);
+  });
+
+  it("accepts managed moltnet server mode with required network fields", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "team_net",
+          provider: "moltnet",
+          server: {
+            mode: "managed",
+            auth: {
+              mode: "bearer",
+              client: {
+                token_id: "attachments"
+              },
+              tokens: [
+                {
+                  id: "attachments",
+                  secret: "MOLTNET_ATTACH_TOKEN",
+                  scopes: ["attach", "write"]
+                }
+              ]
+            },
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            },
+            store: {
+              kind: "sqlite",
+              path: "/var/lib/moltnet/team_net.sqlite"
+            }
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects managed moltnet servers that omit listen", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "team_net",
+          provider: "moltnet",
+          server: {
+            mode: "managed",
+            auth: {
+              mode: "open"
+            },
+            store: {
+              kind: "sqlite",
+              path: "/var/lib/moltnet/team_net.sqlite"
+            }
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(
+      issueHasPath(result, "networks.0.server.listen") ||
+        issueHasPath(result, "networks.0.server")
+    ).toBe(true);
+  });
+
+  it("rejects managed moltnet servers that omit a store", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "team_net",
+          provider: "moltnet",
+          server: {
+            mode: "managed",
+            auth: {
+              mode: "open"
+            },
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            }
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(
+      issueHasPath(result, "networks.0.server.store") ||
+        issueHasPath(result, "networks.0.server")
+    ).toBe(true);
+  });
+
+  it("accepts external moltnet server mode with bearer auth", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "public_net",
+          provider: "moltnet",
+          server: {
+            mode: "external",
+            url: "https://public-net.example",
+            auth: {
+              mode: "bearer",
+              client: {
+                token_env: "MOLTNET_BEARER_TOKEN"
+              }
+            }
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts managed open auth with static token_id client", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "team_net",
+          provider: "moltnet",
+          server: {
+            mode: "managed",
+            auth: {
+              mode: "open",
+              client: {
+                token_id: "operator",
+                static_token: true
+              },
+              tokens: [
+                {
+                  id: "operator",
+                  secret: "MOLTNET_OPERATOR_TOKEN",
+                  scopes: ["admin"]
+                }
+              ]
+            },
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            },
+            store: {
+              kind: "sqlite",
+              path: "/tmp/team_net.sqlite"
+            }
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects managed open auth with non-token-id client source", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "team_net",
+          provider: "moltnet",
+          server: {
+            mode: "managed",
+            auth: {
+              mode: "open",
+              client: {
+                token_env: "MOLTNET_OPERATOR_TOKEN"
+              }
+            },
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            },
+            store: {
+              kind: "sqlite",
+              path: "/tmp/team_net.sqlite"
+            }
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(
+      result.error?.issues.some((issue) =>
+        issue.message.includes("token_id") || issue.message.includes("static_token")
+      )
+    ).toBe(true);
+  });
+
+  it("accepts external open auth with static token_env client", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "public_net",
+          provider: "moltnet",
+          server: {
+            mode: "external",
+            url: "https://public-net.example",
+            auth: {
+              mode: "open",
+              client: {
+                static_token: true,
+                token_env: "MOLTNET_OPEN_TOKEN"
+              }
+            }
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects external bearer auth with managed token_id client source", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "public_net",
+          provider: "moltnet",
+          server: {
+            mode: "external",
+            url: "https://public-net.example",
+            auth: {
+              mode: "bearer",
+              client: {
+                token_id: "should_not_work"
+              }
+            }
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("token_id");
+  });
+
+  it("rejects external moltnet servers with managed-only fields", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "public_net",
+          provider: "moltnet",
+          server: {
+            mode: "external",
+            url: "https://public-net.example",
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            },
+            store: {
+              kind: "sqlite",
+              path: "/tmp/net.sqlite"
+            },
+            auth: {
+              mode: "open"
+            }
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("listen");
+  });
+
+  it("accepts managed moltnet servers with pairings", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "team_net",
+          provider: "moltnet",
+          server: {
+            mode: "managed",
+            auth: {
+              mode: "open"
+            },
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            },
+            store: {
+              kind: "sqlite",
+              path: "/var/lib/moltnet/team_net.sqlite"
+            },
+            pairings: [
+              {
+                id: "partner",
+                remote_base_url: "https://partner-network.example",
+                remote_network_id: "partner_net",
+                remote_network_name: "PartnerNet",
+                token_secret: "REMOTE_PARTNER_TOKEN"
+              }
+            ]
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects external moltnet servers with pairings", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "public_net",
+          provider: "moltnet",
+          server: {
+            mode: "external",
+            url: "https://public-net.example",
+            auth: {
+              mode: "open"
+            },
+            pairings: [
+              {
+                id: "partner",
+                remote_base_url: "https://partner-network.example",
+                remote_network_id: "partner_net",
+                remote_network_name: "PartnerNet",
+                token_secret: "REMOTE_PARTNER_TOKEN"
+              }
+            ]
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("Unrecognized key");
+  });
+
+  it("rejects managed moltnet servers with bracketed IPv6 bind values", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "team_net",
+          provider: "moltnet",
+          server: {
+            mode: "managed",
+            auth: {
+              mode: "open"
+            },
+            listen: {
+              bind: "[::]",
+              port: 8787
+            },
+            store: {
+              kind: "sqlite",
+              path: "/var/lib/moltnet/team_net.sqlite"
+            }
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("unbracketed");
+  });
+
+  it("rejects managed moltnet servers with port outside 1..65535", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "team_net",
+          provider: "moltnet",
+          server: {
+            mode: "managed",
+            auth: {
+              mode: "open"
+            },
+            listen: {
+              bind: "0.0.0.0",
+              port: 70000
+            },
+            store: {
+              kind: "sqlite",
+              path: "/var/lib/moltnet/team_net.sqlite"
+            }
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(issueHasPath(result, "networks.0.server.listen.port")).toBe(true);
+  });
+
+  it("rejects top-level docs in manifests", () => {
+    const result = manifestSchema.safeParse({
+      docs: {
+        system: "AGENTS.md"
+      },
+      kind: "agent",
+      name: "worker",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("Unrecognized key");
+  });
+
+  it("accepts workspace resources with git and volume entries", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      workspace: {
+        resources: [
+          {
+            id: "project",
+            kind: "git",
+            url: "https://example.com/example/project.git",
+            branch: "main",
+            mount: "/workspaces/project",
+            mode: "mutable"
+          },
+          {
+            id: "scratch",
+            kind: "volume",
+            mount: "/scratch",
+            mode: "readonly"
+          }
+        ]
+      },
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "resource-cell",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts duplicate workspace resource ids when declarations are identical", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      workspace: {
+        resources: [
+          {
+            id: "scratch",
+            kind: "volume",
+            mount: "/scratch",
+            mode: "mutable"
+          },
+          {
+            id: "scratch",
+            kind: "volume",
+            mount: "/scratch",
+            mode: "mutable"
+          }
+        ]
+      },
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "resource-cell",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects duplicate workspace resource ids when declarations differ", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      workspace: {
+        resources: [
+          {
+            id: "project",
+            kind: "git",
+            url: "https://example.com/example/project.git",
+            branch: "main",
+            mount: "/workspaces/project",
+            mode: "mutable"
+          },
+          {
+            id: "project",
+            kind: "git",
+            url: "https://example.com/example/project.git",
+            tag: "v1",
+            mount: "/workspaces/project",
+            mode: "mutable"
+          }
+        ]
+      },
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "resource-cell",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("identical");
+  });
+
+  it("rejects overlapping workspace resource mounts", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      workspace: {
+        resources: [
+          {
+            id: "project",
+            kind: "git",
+            url: "https://example.com/example/project.git",
+            branch: "main",
+            mount: "/workspaces",
+            mode: "mutable"
+          },
+          {
+            id: "nested",
+            kind: "volume",
+            mount: "/workspaces/project",
+            mode: "readonly"
+          }
+        ]
+      },
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "resource-cell",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("overlapping mounts");
+  });
+
+  it("rejects invalid workspace resource mounts", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      workspace: {
+        resources: [
+          {
+            id: "scratch",
+            kind: "volume",
+            mount: "scratch",
+            mode: "mutable"
+          }
+        ]
+      },
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "resource-cell",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("absolute POSIX");
+  });
+
+  it("rejects invalid workspace resource mode values", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      workspace: {
+        resources: [
+          {
+            id: "scratch",
+            kind: "volume",
+            mount: "/scratch",
+            mode: "bogus"
+          }
+        ]
+      },
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "resource-cell",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(issueHasPath(result, "workspace.resources.0.mode")).toBe(true);
+  });
+
+  it("accepts postgres moltnet store configuration", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "team_net",
+          provider: "moltnet",
+          server: {
+            mode: "managed",
+            auth: {
+              mode: "open"
+            },
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            },
+            store: {
+              kind: "postgres",
+              dsn_secret: "MOLTNET_DATABASE_URL"
+            }
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects managed moltnet memory store with extra backend fields", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [
+        {
+          id: "team_net",
+          provider: "moltnet",
+          server: {
+            mode: "managed",
+            auth: {
+              mode: "open"
+            },
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            },
+            store: {
+              kind: "memory",
+              path: "/tmp/should-not-be-here"
+            }
+          },
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("Unrecognized key");
+  });
+
+  it("rejects invalid managed moltnet auth combinations", () => {
+    const cases = [
+      createManagedServer({
+        auth: {
+          mode: "none",
+          tokens: [{ id: "writer", scopes: ["write"], secret: "MOLTNET_TOKEN" }]
+        }
+      }),
+      createManagedServer({
+        auth: { client: { token_env: "MOLTNET_TOKEN" }, mode: "none" }
+      }),
+      createManagedServer({
+        auth: {
+          mode: "bearer",
+          tokens: [{ id: "writer", scopes: ["attach", "write"], secret: "MOLTNET_TOKEN" }]
+        }
+      }),
+      createManagedServer({
+        auth: { client: { token_id: "writer" }, mode: "bearer" }
+      }),
+      createManagedServer({
+        auth: {
+          client: { token_env: "MOLTNET_TOKEN" },
+          mode: "bearer",
+          tokens: [{ id: "writer", scopes: ["attach", "write"], secret: "MOLTNET_TOKEN" }]
+        }
+      }),
+      createManagedServer({
+        auth: {
+          client: { token_id: "missing" },
+          mode: "bearer",
+          tokens: [{ id: "writer", scopes: ["attach", "write"], secret: "MOLTNET_TOKEN" }]
+        }
+      }),
+      createManagedServer({
+        auth: {
+          client: { token_id: "writer" },
+          mode: "bearer",
+          tokens: [{ id: "writer", scopes: ["attach"], secret: "MOLTNET_TOKEN" }]
+        }
+      }),
+      createManagedServer({
+        auth: {
+          client: { token_id: "writer" },
+          mode: "open",
+          tokens: [{ id: "writer", scopes: ["attach", "write"], secret: "MOLTNET_TOKEN" }]
+        }
+      }),
+      createManagedServer({
+        auth: {
+          client: { static_token: true },
+          mode: "open",
+          tokens: [{ id: "writer", scopes: ["attach", "write"], secret: "MOLTNET_TOKEN" }]
+        }
+      }),
+      createManagedServer({
+        auth: {
+          client: { static_token: true, token_env: "MOLTNET_TOKEN" },
+          mode: "open",
+          tokens: [{ id: "writer", scopes: ["attach", "write"], secret: "MOLTNET_TOKEN" }]
+        }
+      }),
+      createManagedServer({
+        auth: {
+          mode: "bearer",
+          tokens: [
+            { id: "writer", scopes: ["attach", "write"], secret: "MOLTNET_TOKEN" },
+            { id: "writer", scopes: ["observe"], secret: "MOLTNET_OBSERVER_TOKEN" }
+          ],
+          client: { token_id: "writer" }
+        }
+      }),
+      createManagedServer({
+        listen: { bind: "[::1]", port: 8787 }
+      })
+    ];
+
+    for (const server of cases) {
+      expect(manifestSchema.safeParse(createTeamWithNetwork(server)).success).toBe(false);
+    }
+  });
+
+  it("rejects invalid external moltnet auth combinations", () => {
+    const cases = [
+      {
+        auth: {
+          mode: "bearer",
+          tokens: [{ id: "writer", scopes: ["write"], secret: "MOLTNET_TOKEN" }]
+        },
+        mode: "external",
+        url: "https://moltnet.example.com"
+      },
+      {
+        auth: { client: { token_env: "MOLTNET_TOKEN" }, mode: "none" },
+        mode: "external",
+        url: "https://moltnet.example.com"
+      },
+      {
+        auth: { client: { token_id: "writer" }, mode: "bearer" },
+        mode: "external",
+        url: "https://moltnet.example.com"
+      },
+      {
+        auth: { client: { token_env: "MOLTNET_TOKEN" }, mode: "open" },
+        mode: "external",
+        url: "https://moltnet.example.com"
+      },
+      {
+        auth: { client: { static_token: true }, mode: "open" },
+        mode: "external",
+        url: "https://moltnet.example.com"
+      },
+      {
+        auth: { client: { static_token: true, token_env: "ONE", token_path: "/run/two" }, mode: "open" },
+        mode: "external",
+        url: "https://moltnet.example.com"
+      },
+      {
+        auth: { client: { static_token: true }, mode: "bearer" },
+        mode: "external",
+        url: "https://moltnet.example.com"
+      }
+    ];
+
+    for (const server of cases) {
+      expect(manifestSchema.safeParse(createTeamWithNetwork(server)).success).toBe(false);
+    }
   });
 
   it("rejects expose on team manifests", () => {
@@ -230,6 +1407,20 @@ describe("manifestSchema", () => {
         {
           id: "local_lab",
           provider: "moltnet",
+          server: {
+            mode: "managed",
+            auth: {
+              mode: "open"
+            },
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            },
+            store: {
+              kind: "sqlite",
+              path: "/var/lib/moltnet/team_net.sqlite"
+            }
+          },
           rooms: [
             {
               id: "research",
@@ -557,6 +1748,82 @@ describe("manifestSchema", () => {
     expect(result.error?.issues[0]?.message).toContain("must declare auth.key");
   });
 
+  it("rejects inline model auth blocks without method", () => {
+    const result = manifestSchema.safeParse({
+      execution: {
+        model: {
+          primary: {
+            auth: {},
+            endpoint: {
+              base_url: "https://llm.example.com/v1",
+              compatibility: "openai"
+            },
+            name: "foo-large",
+            provider: "custom"
+          }
+        }
+      },
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("model auth must declare method");
+  });
+
+  it("rejects model auth keys for non-api-key methods", () => {
+    const result = manifestSchema.safeParse({
+      execution: {
+        model: {
+          primary: {
+            auth: {
+              key: "OPENAI_API_KEY",
+              method: "codex"
+            },
+            name: "gpt-5.4",
+            provider: "openai"
+          }
+        }
+      },
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain(
+      "model auth key is only valid for api_key auth"
+    );
+  });
+
+  it("rejects custom models without endpoint or auth method", () => {
+    const result = manifestSchema.safeParse({
+      execution: {
+        model: {
+          primary: {
+            name: "foo-large",
+            provider: "custom"
+          }
+        }
+      },
+      kind: "agent",
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.message)).toEqual(
+      expect.arrayContaining([
+        "custom models must declare endpoint",
+        "custom models must declare auth.method or inherit legacy model auth"
+      ])
+    );
+  });
+
   it("accepts local models with endpoint and implicit none auth", () => {
     const result = manifestSchema.parse({
       execution: {
@@ -578,6 +1845,26 @@ describe("manifestSchema", () => {
     });
 
     expect(isAgentManifest(result)).toBe(true);
+  });
+
+  it("rejects local models without endpoint", () => {
+    const result = manifestSchema.safeParse({
+      execution: {
+        model: {
+          primary: {
+            name: "qwen2.5:14b",
+            provider: "local"
+          }
+        }
+      },
+      kind: "agent",
+      name: "agent",
+      runtime: "picoclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("local models must declare endpoint");
   });
 
   it("rejects built-in providers with endpoint overrides", () => {

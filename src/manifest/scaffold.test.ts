@@ -16,10 +16,12 @@ describe("createAgentScaffoldManifest", () => {
         runtime: "openclaw"
       })
     ).toMatchObject({
-      docs: {
-        identity: "IDENTITY.md",
-        soul: "SOUL.md",
-        system: "AGENTS.md"
+      workspace: {
+        docs: {
+          identity: "IDENTITY.md",
+          soul: "SOUL.md",
+          system: "AGENTS.md"
+        }
       },
       execution: {
         model: {
@@ -42,7 +44,6 @@ describe("createAgentScaffoldManifest", () => {
       runtime: "openclaw"
     });
     expect(scaffold.execution?.model?.auth).toBe(undefined);
-    expect(scaffold.execution?.workspace).toBe(undefined);
     expect(scaffold.execution?.sandbox).toBe(undefined);
   });
 
@@ -77,8 +78,10 @@ describe("createAgentScaffoldManifest", () => {
 describe("createTeamScaffoldManifest", () => {
   it("builds the default team scaffold manifest", () => {
     expect(createTeamScaffoldManifest()).toMatchObject({
-      docs: {
-        system: "TEAM.md"
+      workspace: {
+        docs: {
+          system: "TEAM.md"
+        }
       },
       kind: "team",
       members: [],

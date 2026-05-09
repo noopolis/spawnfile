@@ -364,17 +364,18 @@ describe("renderEntrypoint", () => {
       {
         hasMoltnet: true,
         moltnet: {
-          bridgePlans: [
+          nodePlans: [
             {
-              agentId: "orchestrator",
-              configPath: "/var/lib/spawnfile/moltnet/bridges/research.json",
-              networkId: "local_lab",
-              runtime: "openclaw"
+              configPath: "/var/lib/spawnfile/moltnet/nodes/research.json",
+              networkId: "local_lab"
             }
           ],
           serverPlans: [
             {
+              baseUrl: "http://127.0.0.1:8787",
+              configPath: "/var/lib/spawnfile/moltnet/servers/local_lab/Moltnet.json",
               id: "local_lab",
+              mode: "managed",
               name: "Local Lab",
               networkId: "local_lab",
               port: 8787,
@@ -384,6 +385,13 @@ describe("renderEntrypoint", () => {
                   members: ["orchestrator", "researcher"]
                 }
               ],
+              server: {
+                auth: { mode: "none" },
+                listen: { bind: "127.0.0.1", port: 8787 },
+                mode: "managed",
+                store: { kind: "memory" }
+              },
+              secretPatches: [],
               teamSource: "/tmp/team/Spawnfile"
             }
           ]
@@ -393,13 +401,12 @@ describe("renderEntrypoint", () => {
 
     expect(entrypoint).toContain("mkdir -p '/var/lib/spawnfile/moltnet/servers'");
     expect(entrypoint).toContain(
-      "MOLTNET_DATA_PATH='/var/lib/spawnfile/moltnet/servers/local_lab.db'"
+      "MOLTNET_CONFIG='/var/lib/spawnfile/moltnet/servers/local_lab/Moltnet.json'"
     );
     expect(entrypoint).toContain("/usr/local/bin/moltnet &");
     expect(entrypoint).toContain("http://127.0.0.1:18789/healthz");
     expect(entrypoint).toContain("http://127.0.0.1:8787/healthz");
-    expect(entrypoint).toContain("http://127.0.0.1:8787/v1/rooms");
-    expect(entrypoint).toContain("/usr/local/bin/moltnet bridge '/var/lib/spawnfile/moltnet/bridges/research.json' &");
+    expect(entrypoint).toContain("/usr/local/bin/moltnet node '/var/lib/spawnfile/moltnet/nodes/research.json' &");
     expect(entrypoint).toContain('export OPENCLAW_HOOKS_TOKEN="hooks-${OPENCLAW_GATEWAY_TOKEN}"');
   });
 
@@ -453,17 +460,18 @@ describe("renderEntrypoint", () => {
       {
         hasMoltnet: true,
         moltnet: {
-          bridgePlans: [
+          nodePlans: [
             {
-              agentId: "orchestrator",
-              configPath: "/var/lib/spawnfile/moltnet/bridges/research.json",
-              networkId: "local_lab",
-              runtime: "openclaw"
+              configPath: "/var/lib/spawnfile/moltnet/nodes/research.json",
+              networkId: "local_lab"
             }
           ],
           serverPlans: [
             {
+              baseUrl: "http://127.0.0.1:8787",
+              configPath: "/var/lib/spawnfile/moltnet/servers/local_lab/Moltnet.json",
               id: "local_lab",
+              mode: "managed",
               name: "Local Lab",
               networkId: "local_lab",
               port: 8787,
@@ -473,6 +481,13 @@ describe("renderEntrypoint", () => {
                   members: ["orchestrator"]
                 }
               ],
+              server: {
+                auth: { mode: "none" },
+                listen: { bind: "127.0.0.1", port: 8787 },
+                mode: "managed",
+                store: { kind: "memory" }
+              },
+              secretPatches: [],
               teamSource: "/tmp/team/Spawnfile"
             }
           ]
@@ -483,12 +498,12 @@ describe("renderEntrypoint", () => {
     expect(entrypoint).not.toContain("surface-router.js");
     expect(entrypoint).not.toContain("router-config.json");
     expect(entrypoint).toContain(
-      "MOLTNET_DATA_PATH='/var/lib/spawnfile/moltnet/servers/local_lab.db'"
+      "MOLTNET_CONFIG='/var/lib/spawnfile/moltnet/servers/local_lab/Moltnet.json'"
     );
     expect(entrypoint).toContain("/usr/local/bin/moltnet &");
     expect(entrypoint).toContain("http://127.0.0.1:18789/healthz");
     expect(entrypoint).toContain("picoclaw");
-    expect(entrypoint).toContain("/usr/local/bin/moltnet bridge '/var/lib/spawnfile/moltnet/bridges/research.json' &");
+    expect(entrypoint).toContain("/usr/local/bin/moltnet node '/var/lib/spawnfile/moltnet/nodes/research.json' &");
   });
 });
 
