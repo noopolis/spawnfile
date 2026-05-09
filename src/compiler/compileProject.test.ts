@@ -367,11 +367,11 @@ describe("compileProject", () => {
         "      kind: git",
         "      url: https://example.com/project.git",
         "      ref: abc123",
-        "      mount: /work/project",
+        "      mount: ./repos/project",
         "      mode: mutable",
         "    - id: cache",
         "      kind: volume",
-        "      mount: /cache",
+        "      mount: ./cache",
         "      mode: readonly",
         ""
       ].join("\n")
@@ -388,22 +388,30 @@ describe("compileProject", () => {
     });
     expect(result.report.container?.workspace_resources).toEqual([
       {
+        backing_path: expect.stringContaining("/var/lib/spawnfile/resources/instances/agent-worker-"),
         id: "cache",
         kind: "volume",
+        link_path: "/var/lib/spawnfile/instances/openclaw/agent-worker/home/.openclaw/workspace/cache",
         mode: "readonly",
-        mount: "/cache"
+        mount: "./cache",
+        sharing: "per_agent"
       },
       {
+        backing_path: expect.stringContaining("/var/lib/spawnfile/resources/instances/agent-worker-"),
         id: "project",
         kind: "git",
+        link_path: "/var/lib/spawnfile/instances/openclaw/agent-worker/home/.openclaw/workspace/repos/project",
         mode: "mutable",
-        mount: "/work/project"
+        mount: "./repos/project",
+        sharing: "per_agent"
       }
     ]);
     expect(entrypoint).toContain(
-      "prepare_git_resource 'project' '/work/project' 'https://example.com/project.git' 'ref' 'abc123' 'mutable'"
+      "prepare_git_resource 'project' '/var/lib/spawnfile/instances/openclaw/agent-worker/home/.openclaw/workspace/repos/project' '/var/lib/spawnfile/resources/instances/agent-worker-"
     );
-    expect(entrypoint).toContain("prepare_volume_resource 'cache' '/cache' 'readonly'");
+    expect(entrypoint).toContain(
+      "prepare_volume_resource 'cache' '/var/lib/spawnfile/instances/openclaw/agent-worker/home/.openclaw/workspace/cache' '/var/lib/spawnfile/resources/instances/agent-worker-"
+    );
   }, 30000);
 
   it("marks a single-runtime team as degraded when the runtime has no native team compiler", async () => {

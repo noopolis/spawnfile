@@ -135,8 +135,13 @@ describe("buildCompilePlan", () => {
         "      kind: git",
         "      url: https://example.com/project.git",
         "      branch: main",
-        "      mount: /work/project",
+        "      mount: ./repos/project",
         "      mode: mutable",
+        "    - id: dropbox",
+        "      kind: volume",
+        "      mount: ./shared",
+        "      mode: mutable",
+        "      sharing: team",
         "members:",
         "  - id: worker",
         "    ref: ./agents/worker",
@@ -156,7 +161,7 @@ describe("buildCompilePlan", () => {
         "  resources:",
         "    - id: cache",
         "      kind: volume",
-        "      mount: /cache",
+        "      mount: ./cache",
         "      mode: mutable",
         ""
       ].join("\n")
@@ -167,30 +172,67 @@ describe("buildCompilePlan", () => {
     const agent = plan.nodes.find((node) => node.kind === "agent");
 
     expect(team?.value.workspaceResources).toEqual([
-      {
+      expect.objectContaining({
+        id: "dropbox",
+        kind: "volume",
+        mode: "mutable",
+        mount: "./shared",
+        sharing: "team",
+        scope: expect.objectContaining({
+          kind: "team",
+          name: "lab"
+        })
+      }),
+      expect.objectContaining({
         branch: "main",
         id: "project",
         kind: "git",
         mode: "mutable",
-        mount: "/work/project",
+        mount: "./repos/project",
+        sharing: "per_agent",
+        scope: expect.objectContaining({
+          kind: "team",
+          name: "lab"
+        }),
         url: "https://example.com/project.git"
-      }
+      })
     ]);
     expect(agent?.value.workspaceResources).toEqual([
-      {
+      expect.objectContaining({
         id: "cache",
         kind: "volume",
         mode: "mutable",
-        mount: "/cache"
-      },
-      {
+        mount: "./cache",
+        sharing: "per_agent",
+        scope: expect.objectContaining({
+          kind: "agent",
+          name: "worker"
+        })
+      }),
+      expect.objectContaining({
+        id: "dropbox",
+        kind: "volume",
+        mode: "mutable",
+        mount: "./shared",
+        sharing: "team",
+        scope: expect.objectContaining({
+          kind: "team",
+          name: "lab"
+        })
+      }),
+      expect.objectContaining({
         branch: "main",
         id: "project",
         kind: "git",
         mode: "mutable",
-        mount: "/work/project",
+        mount: "./repos/project",
+        sharing: "per_agent",
+        scope: expect.objectContaining({
+          kind: "team",
+          name: "lab"
+        }),
         url: "https://example.com/project.git"
-      }
+      })
     ]);
   });
 
@@ -211,7 +253,7 @@ describe("buildCompilePlan", () => {
         "  resources:",
         "    - id: project",
         "      kind: volume",
-        "      mount: /work/project",
+        "      mount: ./work/project",
         "      mode: mutable",
         "members:",
         "  - id: worker",
@@ -232,7 +274,7 @@ describe("buildCompilePlan", () => {
         "  resources:",
         "    - id: docs",
         "      kind: volume",
-        "      mount: /work/project/docs",
+        "      mount: ./work/project/docs",
         "      mode: readonly",
         ""
       ].join("\n")

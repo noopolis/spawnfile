@@ -160,15 +160,22 @@ This follows the pattern used by existing multi-agent deployments (e.g. picoclaw
 
 For each effective `workspace.resource` attached to a concrete agent lifecycle, startup must enforce mount behavior:
 
-- `volume` resources: create mount directories and verify ownership/permissions before first launch.
+- Resolve the declared `mount` to the agent-visible link path:
+  - `./path` and `${workspace}/path` resolve under the concrete runtime workspace.
+  - `/absolute/path` is used as an explicit container path.
+- Prepare the resource under Spawnfile-managed backing storage.
+- Expose the backing path at the agent-visible link path with a symlink before the runtime starts.
+- `volume` resources: create backing directories and verify ownership/permissions before first launch.
 - `git` resources:
-  - clone into empty targets using declared selector (`branch`, `tag`, or `ref`)
+  - clone into empty backing paths using declared selector (`branch`, `tag`, or `ref`)
   - reuse compatible existing checkouts when present
-  - fail fast when the target contains an incompatible checkout
+  - fail fast when the backing path contains an incompatible checkout
 
 Compatibility uses exact remote URL match (after trim) and exact selector match.
 
 The compiler does not perform git mutation at build time.
+
+`sharing: per_agent` resources use backing storage scoped to the concrete runtime target. `sharing: team` volume resources use backing storage scoped to the team where the resource was declared, so all inheriting concrete members see the same files at their own workspace-relative link paths.
 
 ### Single Agent vs Team vs Subagents
 
@@ -248,17 +255,15 @@ The compile report should include a `container` section:
     "model_secrets_required": ["ANTHROPIC_API_KEY"],
     "runtime_secrets_required": ["OPENCLAW_GATEWAY_TOKEN"],
     "runtime_homes": ["/var/lib/spawnfile/instances/openclaw/agent-analyst/home"],
-    "resource_bindings": [
+    "workspace_resources": [
       {
-        "member_id": "worker",
-        "resources": [
-          {
-            "id": "project-repo",
-            "kind": "git",
-            "mount": "/workspaces/project",
-            "mode": "mutable"
-          }
-        ]
+        "id": "project-repo",
+        "kind": "git",
+        "mount": "./repos/project",
+        "link_path": "/var/lib/spawnfile/instances/openclaw/agent-analyst/home/.openclaw/workspace/repos/project",
+        "backing_path": "/var/lib/spawnfile/resources/instances/agent-analyst-00000000/project-repo-00000000",
+        "mode": "mutable",
+        "sharing": "per_agent"
       }
     ],
     "secrets_required": ["SEARCH_API_KEY", "ANTHROPIC_API_KEY"],

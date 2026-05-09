@@ -4,10 +4,10 @@ import {
   McpServer,
   ModelEndpoint,
   Secret,
-  TeamNetworkServer,
-  TeamWorkspaceResource
+  TeamNetworkServer
 } from "../manifest/index.js";
 import { ModelAuthMethod, StringMap } from "../shared/index.js";
+import type { ResolvedWorkspaceResource } from "./workspaceResources.js";
 
 export interface ResolvedDocument {
   content: string;
@@ -178,7 +178,7 @@ export interface ResolvedAgentNode {
   source: string;
   surfaces?: ResolvedAgentSurfaces;
   subagents: ResolvedSubagentRef[];
-  workspaceResources?: TeamWorkspaceResource[];
+  workspaceResources?: ResolvedWorkspaceResource[];
 }
 
 export interface ResolvedTeamNode {
@@ -194,7 +194,7 @@ export interface ResolvedTeamNode {
   networks?: ResolvedTeamNetwork[];
   policyMode: string | null;
   policyOnDegrade: string | null;
-  workspaceResources?: TeamWorkspaceResource[];
+  workspaceResources?: ResolvedWorkspaceResource[];
   shared: {
     env: StringMap;
     mcpServers: McpServer[];

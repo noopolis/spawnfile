@@ -193,14 +193,26 @@ describe("createContainerArtifacts", () => {
           id: "project",
           kind: "git",
           mode: "mutable",
-          mount: "/work/project",
+          mount: "./repos/project",
+          scope: {
+            kind: "agent",
+            key: "/tmp/openclaw/Spawnfile",
+            name: "assistant"
+          },
+          sharing: "per_agent",
           url: "https://example.com/project.git"
         },
         {
           id: "cache",
           kind: "volume",
           mode: "readonly",
-          mount: "/cache"
+          mount: "./cache",
+          scope: {
+            kind: "agent",
+            key: "/tmp/openclaw/Spawnfile",
+            name: "assistant"
+          },
+          sharing: "per_agent"
         }
       ]
     });
@@ -219,22 +231,30 @@ describe("createContainerArtifacts", () => {
     const entrypoint = result.files.find((file) => file.path === "entrypoint.sh")?.content ?? "";
 
     expect(dockerfile).toContain(" git ");
-    expect(entrypoint).toContain("prepare_volume_resource 'cache' '/cache' 'readonly'");
     expect(entrypoint).toContain(
-      "prepare_git_resource 'project' '/work/project' 'https://example.com/project.git' 'branch' 'main' 'mutable'"
+      "prepare_volume_resource 'cache' '/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/workspace/cache' '/var/lib/spawnfile/resources/instances/agent-assistant-"
+    );
+    expect(entrypoint).toContain(
+      "prepare_git_resource 'project' '/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/workspace/repos/project' '/var/lib/spawnfile/resources/instances/agent-assistant-"
     );
     expect(result.report.workspace_resources).toEqual([
       {
+        backing_path: expect.stringContaining("/var/lib/spawnfile/resources/instances/agent-assistant-"),
         id: "cache",
         kind: "volume",
+        link_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/workspace/cache",
         mode: "readonly",
-        mount: "/cache"
+        mount: "./cache",
+        sharing: "per_agent"
       },
       {
+        backing_path: expect.stringContaining("/var/lib/spawnfile/resources/instances/agent-assistant-"),
         id: "project",
         kind: "git",
+        link_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/workspace/repos/project",
         mode: "mutable",
-        mount: "/work/project"
+        mount: "./repos/project",
+        sharing: "per_agent"
       }
     ]);
   });

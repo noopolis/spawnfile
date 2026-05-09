@@ -140,7 +140,12 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
     const workspaceResources = mergeWorkspaceResources(
       context.inheritedResources,
       loadedManifest.manifest.workspace?.resources,
-      loadedManifest.manifest.name
+      loadedManifest.manifest.name,
+      {
+        kind: "agent",
+        key: canonicalPath,
+        name: loadedManifest.manifest.name
+      }
     );
     const candidate: ResolvedAgentNode = {
       description: resolveDescription(loadedManifest.manifest.description, docs),
@@ -248,7 +253,12 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
     const workspaceResources = mergeWorkspaceResources(
       inheritedResources,
       manifest.workspace?.resources,
-      manifest.name
+      manifest.name,
+      {
+        kind: "team",
+        key: canonicalPath,
+        name: manifest.name
+      }
     );
     const candidate: ResolvedTeamNode = {
       description: manifest.description ? normalizeDescription(manifest.description) : "",

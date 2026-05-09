@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { CompilePlanNode } from "./types.js";
+import type { CompilePlanNode } from "./types.js";
 
 export const createShortHash = (value: string): string =>
   createHash("sha1").update(value).digest("hex").slice(0, 8);

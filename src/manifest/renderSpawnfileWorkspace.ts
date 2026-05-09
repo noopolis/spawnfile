@@ -30,7 +30,8 @@ const orderWorkspaceResource = (resource: WorkspaceResource): unknown => {
       ["ref", resource.ref],
       ["tag", resource.tag],
       ["mount", resource.mount],
-      ["mode", resource.mode]
+      ["mode", resource.mode],
+      ["sharing", resource.sharing]
     ]);
   }
 
@@ -39,7 +40,8 @@ const orderWorkspaceResource = (resource: WorkspaceResource): unknown => {
     ["kind", resource.kind],
     ["mount", resource.mount],
     ["mode", resource.mode],
-    ["name", resource.name]
+    ["name", resource.name],
+    ["sharing", resource.sharing]
   ]);
 };
 

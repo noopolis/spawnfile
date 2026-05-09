@@ -233,9 +233,9 @@ When compiling a team, the compiler generates context-scoped team artifacts afte
 1. Resolve each member's `description` from the agent manifest's `description` field, or derive it from `workspace.docs.identity` if available.
 2. Build membership-context records keyed by `(agent-source, team-source, member-slot-id)`. The same agent source may fill several team roles without merging those contexts.
 3. Resolve the representative interface for nested team slots using `external`, `lead`, and swarm fallback.
-4. Resolve `workspace.resources` for each concrete member from team-local and direct inheritance.
+4. Resolve `workspace.resources` for each concrete member from team-local and direct inheritance, preserving the manifest scope that declared each resource so team-shared backing storage can be scoped to that team.
 5. Resolve team networks. Moltnet parent-room members that name child-team slots expand only to the child team's selected concrete representatives.
-6. Emit a generated resource plan that lists mounted resources as work surfaces and path bindings for each agent.
+6. Emit a generated resource plan that lists each resource's declared mount, concrete agent-visible link path, backing path, and sharing mode.
 7. Generate namespaced direct-membership `TEAM.md` files under `.spawnfile/team-contexts/<team-context-key>/TEAM.md`.
 8. Generate context-scoped roster YAML under `.spawnfile/rosters/<team-context-key>.yaml`.
 9. Generate representative parent-context `TEAM.md`, rosters, team cards, `.spawnfile/team-contexts.yaml`, and `.spawnfile/team-contexts.md` for selected representatives.
@@ -593,7 +593,7 @@ Validation should happen in three layers:
 - team network member references
 - duplicate Moltnet `member_id` detection across reachable nested teams
 - skill `requires.mcp` resolution
-- duplicate `workspace.resource` IDs and overlapping mounts within each concrete agent context
+- duplicate `workspace.resource` IDs and overlapping agent-visible mounts within each concrete agent context
 - duplicate workspace resource identities within inherited resource sets and incompatible shared resource definitions
 - `team.networks[].server` normalization checks (mode/store/auth/client/path/token/pairings compatibility)
 - `team.networks[].server` mode/auth/store/dms and pairings compatibility checks

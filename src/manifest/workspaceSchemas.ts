@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const workspaceResourceModeSchema = z.enum(["mutable", "readonly"]);
+const workspaceResourceSharingSchema = z.enum(["per_agent", "team"]);
 
 export const teamWorkspaceDocsSchema = z
   .object({
@@ -14,19 +15,47 @@ export const teamWorkspaceDocsSchema = z
   .strict();
 
 const normalizeMount = (value: string): string => {
-  const collapsed = value.trim().replace(/\/+/g, "/");
+  const trimmed = value.trim();
+  const workspaceRelative = trimmed.startsWith("${workspace}/")
+    ? `./${trimmed.slice("${workspace}/".length)}`
+    : trimmed;
+  const collapsed = workspaceRelative.replace(/\/+/g, "/");
+  if (collapsed.startsWith("./")) {
+    const relativePath = collapsed.slice(2).replace(/\/+$/u, "");
+    return `./${relativePath}`;
+  }
   return collapsed.length > 1 ? collapsed.replace(/\/+$/u, "") : "/";
 };
+
+const mountHasParentSegment = (value: string): boolean =>
+  value.split("/").some((segment) => segment === "..");
 
 const resourceMountSchema = z
   .string()
   .trim()
   .min(1)
   .superRefine((value, context) => {
-    if (!value.startsWith("/")) {
+    const normalized = normalizeMount(value);
+    if (mountHasParentSegment(normalized)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "mount must be an absolute POSIX path"
+        message: "mount must not contain parent path segments"
+      });
+    }
+    if (normalized === "." || normalized === "./" || normalized === "${workspace}") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "mount must point inside the workspace, not at the workspace root"
+      });
+    }
+    if (
+      !normalized.startsWith("/") &&
+      !normalized.startsWith("./") &&
+      !normalized.startsWith("${workspace}/")
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "mount must be an absolute POSIX path, ./ workspace path, or ${workspace}/ path"
       });
     }
   });
@@ -39,6 +68,7 @@ const teamWorkspaceResourceGitSchema = z
     mount: resourceMountSchema,
     mode: workspaceResourceModeSchema,
     ref: z.string().trim().optional(),
+    sharing: workspaceResourceSharingSchema.optional(),
     tag: z.string().trim().optional(),
     url: z.string().trim().min(1)
   })
@@ -51,6 +81,12 @@ const teamWorkspaceResourceGitSchema = z
         message: "git resources may declare at most one of branch, tag, or ref"
       });
     }
+    if (value.sharing === "team") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "git resources do not support team sharing"
+      });
+    }
   });
 
 const teamWorkspaceResourceVolumeSchema = z
@@ -59,7 +95,8 @@ const teamWorkspaceResourceVolumeSchema = z
     kind: z.literal("volume"),
     mount: resourceMountSchema,
     mode: workspaceResourceModeSchema,
-    name: z.string().trim().optional()
+    name: z.string().trim().optional(),
+    sharing: workspaceResourceSharingSchema.optional()
   })
   .strict();
 
@@ -90,6 +127,7 @@ export const teamWorkspaceSchema = z
           mode: resource.mode,
           mount: normalizeMount(resource.mount),
           ref: resource.ref?.trim() ?? "",
+          sharing: resource.sharing ?? "per_agent",
           tag: resource.tag?.trim() ?? "",
           url: resource.url
         });
@@ -99,7 +137,8 @@ export const teamWorkspaceSchema = z
         kind: "volume",
         mode: resource.mode,
         mount: normalizeMount(resource.mount),
-        name: resource.name?.trim() ?? ""
+        name: resource.name?.trim() ?? "",
+        sharing: resource.sharing ?? "per_agent"
       });
     };
 

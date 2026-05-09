@@ -161,13 +161,18 @@ workspace:
       kind: git
       url: https://github.com/example/project.git
       branch: main
-      mount: /workspaces/project
+      mount: ./repos/project
       mode: mutable
     - id: agent-scratch
       kind: volume
       name: agent-scratch-vol
-      mount: /scratch
+      mount: ./scratch
       mode: mutable
+    - id: team-dropbox
+      kind: volume
+      mount: ./shared
+      mode: mutable
+      sharing: team
 ```
 
 Rules:
@@ -179,14 +184,24 @@ Rules:
   - `mount`
   - `mode`
 - `mode` MUST be `mutable` or `readonly`.
-- `mount` MUST be an absolute POSIX path.
+- `mount` is the path where the resource appears to the agent. It MUST be one of:
+  - `./path` for a path inside the concrete agent's runtime workspace.
+  - `${workspace}/path` as an explicit form of the same workspace-relative mount.
+  - `/absolute/path` for an explicit advanced container path.
+- `mount` MUST NOT point at the workspace root and MUST NOT contain `..` parent path segments.
+- The compiler prepares resources in Spawnfile-managed backing storage and exposes them at `mount` through a symlink.
+- `sharing` is OPTIONAL and defaults to `per_agent`.
+- `sharing` MUST be `per_agent` or `team`.
+- `sharing: per_agent` creates one backing resource per concrete runtime target.
+- `sharing: team` is currently valid only for `volume` resources and creates one backing resource for the team where the resource is declared.
 - `id` MUST be unique in the manifest.
-- `id`, `kind`, `mount`, `mode`, and kind-specific source fields make up resource identity.
+- `id`, `kind`, `mount`, `mode`, `sharing`, and kind-specific source fields make up resource identity.
 - `git` `url`, `branch`, `tag`, and `ref` values are normalized by trimming whitespace only.
 - `volume` resources MAY declare an explicit `name` for backing state naming. When omitted, the compiler derives a stable name from project identity, resource `id`, and effective execution context.
 - `git` resources MUST declare `url`.
 - `git` resources MAY declare optional one-of selectors: `branch`, `tag`, or `ref`.
 - At most one of `branch`, `tag`, or `ref` MAY be set on a single `git` resource.
+- `git` resources MUST NOT declare `sharing: team`.
 - `volume` resources MUST NOT declare `url`.
 - In a concrete agent context, effective resources MUST either be unique by identity or normalize to identical declarations where IDs collide.
 - In a concrete agent context, effective resource mounts MUST not overlap.
@@ -501,7 +516,7 @@ workspace:
       kind: git
       url: https://github.com/example/project.git
       branch: main
-      mount: /workspaces/project
+      mount: ./repos/project
       mode: mutable
 
 skills:

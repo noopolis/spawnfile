@@ -255,7 +255,8 @@ const resolveTargetExposure = (
 
 const resolveTargetResources = (
   target: ContainerTarget,
-  inputs: ContainerTargetInput[]
+  inputs: ContainerTargetInput[],
+  instancePaths: { workspacePath: string }
 ) => {
   const sourceIds = new Set(target.sourceIds ?? []);
   if (sourceIds.size === 0) {
@@ -266,7 +267,10 @@ const resolveTargetResources = (
     sourceIds.has(input.id) ? (input.value.workspaceResources ?? []) : []
   );
 
-  return mergeWorkspaceResourcePlans(resources, `container target ${target.id}`);
+  return mergeWorkspaceResourcePlans(resources, `container target ${target.id}`, {
+    targetId: target.id,
+    workspacePath: instancePaths.workspacePath
+  });
 };
 
 export const createRuntimeTargetPlans = async (
@@ -312,7 +316,7 @@ export const createRuntimeTargetPlans = async (
           resolveTargetExposure(target, targetInputs) && adapter.container.port
             ? adapter.container.port + (index * portStride)
             : undefined,
-        resources: resolveTargetResources(target, targetInputs),
+        resources: resolveTargetResources(target, targetInputs, instancePaths),
         runtimeName,
         runtimeRoot: recipe.runtimeRoot,
         targetConfigEnvBindings: target.configEnvBindings,

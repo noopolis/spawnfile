@@ -100,17 +100,20 @@ export const createContainerArtifacts = async (
     ...new Map(
       runtimePlans.flatMap((plan) =>
         (plan.resources ?? []).map((resource) => [
-          `${resource.kind}:${resource.id}:${resource.mount}`,
+          `${resource.kind}:${resource.id}:${resource.linkPath}`,
           {
+            backing_path: resource.backingPath,
             id: resource.id,
             kind: resource.kind,
+            link_path: resource.linkPath,
             mode: resource.mode,
-            mount: resource.mount
+            mount: resource.mount,
+            sharing: resource.sharing
           }
         ])
       )
     ).values()
-  ].sort((left, right) => left.mount.localeCompare(right.mount) || left.id.localeCompare(right.id));
+  ].sort((left, right) => left.link_path.localeCompare(right.link_path) || left.id.localeCompare(right.id));
 
   return {
     executablePaths: ["entrypoint.sh"],

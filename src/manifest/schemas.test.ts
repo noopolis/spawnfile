@@ -944,14 +944,15 @@ describe("manifestSchema", () => {
             kind: "git",
             url: "https://example.com/example/project.git",
             branch: "main",
-            mount: "/workspaces/project",
+            mount: "./repos/project",
             mode: "mutable"
           },
           {
             id: "scratch",
             kind: "volume",
-            mount: "/scratch",
-            mode: "readonly"
+            mount: "${workspace}/scratch",
+            mode: "readonly",
+            sharing: "team"
           }
         ]
       },
@@ -967,6 +968,37 @@ describe("manifestSchema", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it("rejects team-shared git workspace resources", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      workspace: {
+        resources: [
+          {
+            id: "project",
+            kind: "git",
+            url: "https://example.com/example/project.git",
+            branch: "main",
+            mount: "./repos/project",
+            mode: "mutable",
+            sharing: "team"
+          }
+        ]
+      },
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "resource-cell",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("git resources do not support team sharing");
   });
 
   it("accepts duplicate workspace resource ids when declarations are identical", () => {
@@ -1102,6 +1134,34 @@ describe("manifestSchema", () => {
 
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.message).toContain("absolute POSIX");
+  });
+
+  it("rejects workspace resource mounts at the workspace root", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      workspace: {
+        resources: [
+          {
+            id: "scratch",
+            kind: "volume",
+            mount: "${workspace}",
+            mode: "mutable"
+          }
+        ]
+      },
+      members: [
+        {
+          id: "worker",
+          ref: "./agents/worker"
+        }
+      ],
+      mode: "swarm",
+      name: "resource-cell",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("workspace root");
   });
 
   it("rejects invalid workspace resource mode values", () => {

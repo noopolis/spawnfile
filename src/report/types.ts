@@ -24,10 +24,13 @@ export interface ContainerRuntimeInstanceReport {
 }
 
 export interface ContainerWorkspaceResourceReport {
+  backing_path: string;
   id: string;
   kind: "git" | "volume";
+  link_path: string;
   mode: "mutable" | "readonly";
   mount: string;
+  sharing: "per_agent" | "team";
 }
 
 export interface NodeReport {

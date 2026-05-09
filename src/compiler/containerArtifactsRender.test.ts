@@ -1,5 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, readlink, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -563,6 +563,7 @@ describe("renderEntrypoint", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-volume-resource-"));
     temporaryDirectories.push(directory);
     const mountPath = path.join(directory, "resources", "cache");
+    const backingPath = path.join(directory, "backing", "cache");
     const proofPath = path.join(mountPath, "proof.txt");
     const { renderEntrypoint } = await loadRenderModule({});
     const plan = createResourceRuntimePlan(
@@ -572,8 +573,11 @@ describe("renderEntrypoint", () => {
         {
           id: "cache",
           kind: "volume",
+          backingPath,
+          linkPath: mountPath,
           mode: "mutable",
-          mount: mountPath
+          mount: "./resources/cache",
+          sharing: "per_agent"
         }
       ]
     );
@@ -587,6 +591,8 @@ describe("renderEntrypoint", () => {
     await execFile("bash", [entrypoint], { cwd: directory });
 
     await expect(readFile(proofPath, "utf8")).resolves.toBe("volume-ok");
+    await expect(lstat(mountPath).then((stats) => stats.isSymbolicLink())).resolves.toBe(true);
+    await expect(readlink(mountPath)).resolves.toBe(backingPath);
   });
 
   it("clones git resources into the declared mount path before starting the runtime", async () => {
@@ -594,6 +600,7 @@ describe("renderEntrypoint", () => {
     temporaryDirectories.push(directory);
     const originPath = path.join(directory, "origin");
     const clonePath = path.join(directory, "resources", "project");
+    const backingPath = path.join(directory, "backing", "project");
     await mkdir(originPath, { recursive: true });
     await execFile("git", ["init", originPath]);
     await writeFile(path.join(originPath, "README.md"), "hello from repo\n");
@@ -620,8 +627,11 @@ describe("renderEntrypoint", () => {
           branch: "main",
           id: "project",
           kind: "git",
+          backingPath,
+          linkPath: clonePath,
           mode: "mutable",
-          mount: clonePath,
+          mount: "./resources/project",
+          sharing: "per_agent",
           url: originPath
         }
       ]
@@ -636,6 +646,11 @@ describe("renderEntrypoint", () => {
     await execFile("bash", [entrypoint], { cwd: directory });
 
     await expect(readFile(path.join(clonePath, "README.md"), "utf8")).resolves.toBe(
+      "hello from repo\n"
+    );
+    await expect(lstat(clonePath).then((stats) => stats.isSymbolicLink())).resolves.toBe(true);
+    await expect(readlink(clonePath)).resolves.toBe(backingPath);
+    await expect(readFile(path.join(backingPath, "README.md"), "utf8")).resolves.toBe(
       "hello from repo\n"
     );
   });

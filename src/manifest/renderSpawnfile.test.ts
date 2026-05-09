@@ -159,7 +159,8 @@ describe("renderSpawnfile", () => {
             kind: "volume",
             mode: "readonly",
             mount: "/cache",
-            name: "agent-cache"
+            name: "agent-cache",
+            sharing: "team"
           }
         ]
       }
@@ -181,7 +182,8 @@ describe("renderSpawnfile", () => {
         "      kind: volume",
         "      mount: /cache",
         "      mode: readonly",
-        "      name: agent-cache"
+        "      name: agent-cache",
+        "      sharing: team"
       ].join("\n")
     );
     expect(manifestSchema.parse(YAML.parse(source) as unknown)).toMatchObject({
@@ -195,7 +197,8 @@ describe("renderSpawnfile", () => {
           {
             id: "cache",
             kind: "volume",
-            mount: "/cache"
+            mount: "/cache",
+            sharing: "team"
           }
         ]
       }

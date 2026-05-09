@@ -2,17 +2,17 @@ import {
   type AgentManifest,
   type ExecutionBlock,
   type SharedSurface,
-  type TeamWorkspaceResource,
   normalizeRuntimeBinding
 } from "../manifest/index.js";
 import { assertRuntimeCanCompile } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import type { CompilePlanNode, ResolvedDocument, ResolvedRuntime } from "./types.js";
+import type { ResolvedWorkspaceResource } from "./workspaceResources.js";
 
 export interface AgentVisitContext {
   inheritedExecution?: ExecutionBlock;
-  inheritedResources?: TeamWorkspaceResource[];
+  inheritedResources?: ResolvedWorkspaceResource[];
   inheritedShared?: {
     manifestPath: string;
     surface: SharedSurface | undefined;
