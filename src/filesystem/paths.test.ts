@@ -14,8 +14,8 @@ describe("paths", () => {
     expect(() => assertPortableRelativePath("/tmp/oops")).toThrowError(/Absolute paths/);
   });
 
-  it("rejects parent directory traversal", () => {
-    expect(() => assertPortableRelativePath("../oops")).toThrowError(/Path traversal/);
+  it("allows parent-relative portable paths", () => {
+    expect(() => assertPortableRelativePath("../skills/web")).not.toThrow();
   });
 
   it("rejects backslashes in portable relative paths", () => {
@@ -35,6 +35,12 @@ describe("paths", () => {
   it("resolves project-local relative paths", () => {
     expect(resolveProjectPath("/tmp/demo/Spawnfile", "skills/web")).toBe(
       path.resolve("/tmp/demo/skills/web")
+    );
+  });
+
+  it("resolves parent-relative paths from the manifest directory", () => {
+    expect(resolveProjectPath("/tmp/demo/agentic-org/Spawnfile", "../.claude/skills/web")).toBe(
+      path.resolve("/tmp/demo/.claude/skills/web")
     );
   });
 

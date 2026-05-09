@@ -33,7 +33,7 @@ workspace:
       notes: docs/NOTES.md
 ```
 
-Paths are relative to the manifest directory and must point to UTF-8 Markdown files within the project root. Forward slashes are required regardless of host OS.
+Paths are relative to the manifest directory and must point to UTF-8 Markdown files. Forward slashes are required regardless of host OS. Parent-relative paths such as `../shared/AGENTS.md` are valid when docs live next to a nested organization directory.
 
 ## What Goes In Each File
 

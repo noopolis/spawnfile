@@ -40,6 +40,43 @@ describe("loadManifest", () => {
     expect(result.manifest.name).toBe("analyst");
   });
 
+  it("loads documents and skills referenced from a parent directory", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-parent-refs-"));
+    temporaryDirectories.push(directory);
+    const orgDirectory = path.join(directory, "agentic-org");
+    const skillDirectory = path.join(directory, ".claude", "skills", "web_search");
+
+    await ensureDirectory(orgDirectory);
+    await ensureDirectory(path.join(directory, "shared-docs"));
+    await ensureDirectory(skillDirectory);
+    await writeUtf8File(path.join(directory, "shared-docs", "AGENTS.md"), "# Shared\n");
+    await writeUtf8File(
+      path.join(skillDirectory, "SKILL.md"),
+      ['---', "name: web_search", 'description: "Search"', "---", ""].join("\n")
+    );
+    const manifestPath = path.join(orgDirectory, "Spawnfile");
+    await writeUtf8File(
+      manifestPath,
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: analyst",
+        "runtime: openclaw",
+        "",
+        "workspace:",
+        "  docs:",
+        "    system: ../shared-docs/AGENTS.md",
+        "  skills:",
+        "    - ref: ../.claude/skills/web_search"
+      ].join("\n")
+    );
+
+    const result = await loadManifest(manifestPath);
+
+    expect(result.manifest.kind).toBe("agent");
+    expect(result.manifest.name).toBe("analyst");
+  });
+
   it("loads a valid team manifest", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-valid-team-"));
     temporaryDirectories.push(directory);

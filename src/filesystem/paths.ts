@@ -2,8 +2,6 @@ import path from "node:path";
 
 import { SpawnfileError } from "../shared/index.js";
 
-const INVALID_PATH_SEGMENT = "..";
-
 export const assertPortableRelativePath = (inputPath: string): void => {
   if (inputPath.includes("\\")) {
     throw new SpawnfileError(
@@ -16,14 +14,6 @@ export const assertPortableRelativePath = (inputPath: string): void => {
     throw new SpawnfileError(
       "validation_error",
       `Absolute paths are not allowed: ${inputPath}`
-    );
-  }
-
-  const segments = inputPath.split("/");
-  if (segments.includes(INVALID_PATH_SEGMENT)) {
-    throw new SpawnfileError(
-      "validation_error",
-      `Path traversal is not allowed: ${inputPath}`
     );
   }
 };
@@ -45,16 +35,7 @@ export const resolveProjectPath = (
 ): string => {
   assertPortableRelativePath(relativePath);
   const projectRoot = getProjectRoot(manifestPath);
-  const resolved = path.resolve(projectRoot, relativePath);
-
-  if (!resolved.startsWith(projectRoot + path.sep) && resolved !== projectRoot) {
-    throw new SpawnfileError(
-      "validation_error",
-      `Path escapes project root: ${relativePath}`
-    );
-  }
-
-  return resolved;
+  return path.resolve(projectRoot, relativePath);
 };
 
 export const toPosixPath = (value: string): string => value.split(path.sep).join("/");

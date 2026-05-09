@@ -64,9 +64,9 @@ workspace:
     - ref: ./skills/web_search
 ```
 
-Each path must resolve to a UTF-8 Markdown file within the project root. See the [Agent Docs guide](/guides/agent-docs/) for what goes in each role.
+Each doc path must resolve to a UTF-8 Markdown file. See the [Agent Docs guide](/guides/agent-docs/) for what goes in each role.
 
-Paths must use forward slashes and must not escape the project root via `..` traversal. Symlinks are not followed during compilation.
+Paths must use forward slashes. Parent-relative paths are valid when shared docs or skills live next to a nested organization directory, for example `../.claude/skills/web_search`. Symlinks are not followed during compilation.
 
 Teams declare shared workspace material under `shared.workspace` instead of `workspace`.
 

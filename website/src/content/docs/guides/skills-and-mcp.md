@@ -20,7 +20,7 @@ workspace:
           - web_search
 ```
 
-The `ref` path is relative to the manifest directory and must use forward slashes.
+The `ref` path is relative to the manifest directory and must use forward slashes. Parent-relative paths are valid, so a nested organization can reference a shared skill catalog such as `../.claude/skills/web_search`.
 
 ### SKILL.md Format
 

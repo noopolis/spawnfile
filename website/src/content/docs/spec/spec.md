@@ -94,11 +94,12 @@ For teams, `description` summarizes the team's collective purpose. If `descripti
 All `ref` values and document file paths in a manifest are relative paths resolved from the manifest's directory.
 
 - Paths MUST use forward slashes regardless of host OS.
-- Paths MUST NOT escape the project root via `..` traversal.
+- Paths MAY use `..` parent segments when the referenced file or directory intentionally lives next to, above, or outside a nested organization directory.
+- Absolute paths MUST NOT be used.
 - Symlinks MUST NOT be followed during compilation.
 - A skill `ref` MUST point to a directory containing a `SKILL.md`.
 - A member `ref` MUST point to a directory containing a `Spawnfile`.
-- A document path MUST point to a UTF-8 Markdown file within the project root.
+- A document path MUST point to a UTF-8 Markdown file.
 
 ### 1.4 Manifest Graph
 
@@ -154,7 +155,7 @@ Rules:
 - `shared.workspace` is OPTIONAL for teams.
 - `shared.workspace.docs` is OPTIONAL.
 - All `shared.workspace.docs` fields are OPTIONAL.
-- Paths in `workspace.docs` and `shared.workspace.docs` MUST resolve to Markdown files within the project root.
+- Paths in `workspace.docs` and `shared.workspace.docs` MUST resolve to Markdown files from the declaring manifest's directory.
 - A conforming compiler MUST treat document contents as opaque text and MUST NOT reinterpret them as structured schema.
 - Team-level `shared.workspace.docs` describe the team manifest itself and MUST NOT automatically propagate to members except through the declared team-context artifacts.
 - Top-level `docs` is not part of v0.1 and MUST NOT be used as a shorthand.
