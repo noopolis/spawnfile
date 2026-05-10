@@ -21,3 +21,4 @@ src/e2e/
 - Reuse compiler and auth APIs instead of shelling through the Spawnfile CLI.
 - Treat these flows as opt-in developer verification, not normal unit-test coverage.
 - Keep runtime-specific prompt logic obvious and isolated.
+- When an E2E expects live runtime replies, inject the required runtime/model credentials through `syncProjectAuth` or an explicit auth profile before interpreting failures. Missing credentials can make bridges attach successfully while agents never answer, which is an auth/setup failure rather than a Moltnet or compiler failure.

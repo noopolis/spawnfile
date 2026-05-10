@@ -42,6 +42,13 @@ npm run test:e2e:moltnet-team-chat
 npm run test:e2e:operational-smoke
 ```
 
+E2E scripts that expect live agent replies, such as `test:e2e:moltnet-team-chat`,
+must run with runtime/model credentials injected through `spawnfile auth sync`,
+`--auth-profile`, or the script's default auth-sync path. A run where Moltnet
+rooms attach but agents never answer is usually an auth/profile setup failure,
+not enough evidence by itself that Moltnet routing or container compilation is
+broken.
+
 `test:e2e:operational-smoke` runs `spawnfile up` against a real Docker
 container and verifies a scheduled TinyClaw agent, managed Moltnet attachment,
 and workspace resource links inside the running container. It does not require
