@@ -30,6 +30,7 @@ This repository is the reference implementation of the Spawnfile v0.1 compiler.
 - Use barrel exports for folder entry points.
 - Keep test files next to the files they cover: `file.ts` and `file.test.ts`.
 - Aim for 90% or better coverage.
+- For live Docker E2E work, read `src/e2e/CLAUDE.md` first. Do not reuse a developer's active Moltnet port; run isolated fixtures on alternate ports and inject real runtime auth before judging agent communication.
 - Do not reinvent well-understood workflows when a stable precedent exists. Learn from Docker-style ergonomics where it helps.
 
 ## Folder Rules
