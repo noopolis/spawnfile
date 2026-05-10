@@ -49,6 +49,15 @@ rooms attach but agents never answer is usually an auth/profile setup failure,
 not enough evidence by itself that Moltnet routing or container compilation is
 broken.
 
+For `test:e2e:moltnet-team-chat`, verify the selected profile imports Codex
+credentials before treating the live reply check as meaningful:
+
+```bash
+spawnfile auth sync fixtures/e2e/moltnet-team-chat --profile e2e
+```
+
+The output should include `imports: codex`.
+
 `test:e2e:operational-smoke` runs `spawnfile up` against a real Docker
 container and verifies a scheduled TinyClaw agent, managed Moltnet attachment,
 and workspace resource links inside the running container. It does not require

@@ -22,3 +22,4 @@ src/e2e/
 - Treat these flows as opt-in developer verification, not normal unit-test coverage.
 - Keep runtime-specific prompt logic obvious and isolated.
 - When an E2E expects live runtime replies, inject the required runtime/model credentials through `syncProjectAuth` or an explicit auth profile before interpreting failures. Missing credentials can make bridges attach successfully while agents never answer, which is an auth/setup failure rather than a Moltnet or compiler failure.
+- Before running `moltnet-team-chat`, verify the selected auth profile includes a Codex import because every OpenClaw agent in that fixture declares `execution.model.*.auth.method: codex`. A valid preflight is `spawnfile auth sync fixtures/e2e/moltnet-team-chat --profile <name>` followed by confirming the output includes `imports: codex`.
