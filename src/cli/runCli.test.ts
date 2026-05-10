@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { mkdtemp } from "node:fs/promises";
@@ -11,6 +12,8 @@ import { runCli } from "./runCli.js";
 
 const temporaryDirectories: string[] = [];
 const fixturesRoot = path.resolve(process.cwd(), "fixtures");
+const packageVersion = (JSON.parse(readFileSync("package.json", "utf8")) as { version: string })
+  .version;
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
@@ -25,7 +28,7 @@ describe("runCli", () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(stdout).toEqual(["0.1.6"]);
+    expect(stdout).toEqual([packageVersion]);
   });
 
   it("lists runtime adapters", async () => {
