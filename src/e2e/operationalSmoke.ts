@@ -283,6 +283,11 @@ const cleanup = async (
       .catch(() => undefined);
   }
 
+  for (const mount of input.buildResult?.report.container?.persistent_mounts ?? []) {
+    await input.runCommand(input.dockerCommand, ["volume", "rm", "-f", mount.volume_name])
+      .catch(() => undefined);
+  }
+
   if (input.buildResult?.supportDirectory) {
     await input.removeDirectory(input.buildResult.supportDirectory);
   }

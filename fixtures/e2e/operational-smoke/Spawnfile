@@ -32,7 +32,7 @@ networks:
         port: 19087
       store:
         kind: sqlite
-        path: /var/lib/spawnfile/moltnet/ops_lab.sqlite
+        path: /var/lib/spawnfile/moltnet/networks/ops_lab/moltnet.sqlite
       auth:
         mode: none
       human_ingress: true

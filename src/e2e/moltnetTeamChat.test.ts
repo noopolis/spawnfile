@@ -138,6 +138,16 @@ describe("moltnet team chat helpers", () => {
       assertExactRoomMembers({ id: "mission-control", members: [...scenario.parent.expectedMembers, "field-observer"] }, scenario.parent.expectedMembers)
     ).toThrow(/extra \[field-observer\]/);
   });
+
+  it("allows alternate host base URLs for occupied local ports", () => {
+    const scenario = createMoltnetTeamChatScenario({
+      childBaseUrl: "http://127.0.0.1:18788",
+      parentBaseUrl: "http://127.0.0.1:18787"
+    });
+
+    expect(scenario.parent.baseUrl).toBe("http://127.0.0.1:18787");
+    expect(scenario.child.baseUrl).toBe("http://127.0.0.1:18788");
+  });
 });
 
 describe("runMoltnetTeamChatConversation", () => {

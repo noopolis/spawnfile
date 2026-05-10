@@ -3,16 +3,19 @@ import { SpawnfileError } from "../shared/index.js";
 import type { TeamNetworkServer } from "../manifest/index.js";
 
 import {
+  createMoltnetOpenTokenDirectory,
   createMoltnetNativeServerConfig,
   createMoltnetNodeConfigPath,
   createMoltnetServerConfigPath,
   resolveMoltnetBaseUrl,
   resolveMoltnetClientAuth,
+  resolveMoltnetStorePersistenceMountPath,
   type MoltnetSecretPatch
 } from "./moltnetConfigLowering.js";
 import type { CompilePlan, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 import { listConcreteMoltnetRoomMemberIds } from "./moltnetRoomMemberships.js";
 import { resolveRuntimeConfig } from "./moltnetRuntimeConfig.js";
+import { createShortHash, slugify } from "./helpers.js";
 
 export interface MoltnetServerPlan {
   baseUrl: string;
@@ -37,9 +40,17 @@ export interface MoltnetNodePlan {
   networkId: string;
 }
 
+export interface MoltnetPersistentMount {
+  id: string;
+  mountPath: string;
+  reason: string;
+  volumeName: string;
+}
+
 export interface MoltnetArtifacts {
   files: EmittedFile[];
   nodePlans: MoltnetNodePlan[];
+  persistentMounts: MoltnetPersistentMount[];
   ports: number[];
   publishedPorts: number[];
   serverPlans: MoltnetServerPlan[];
@@ -49,6 +60,23 @@ const DEFAULT_MOLTNET_PORT = 8787;
 const ROOTFS_PREFIX = "container/rootfs";
 
 const createServerKey = (networkId: string): string => networkId;
+
+const truncateSegment = (value: string, maxLength: number): string =>
+  value.length > maxLength ? value.slice(0, maxLength).replace(/[-_.]+$/u, "") : value;
+
+const createPersistentVolumeName = (
+  planRoot: string,
+  id: string,
+  explicitName?: string
+): string => {
+  if (explicitName && explicitName.trim().length > 0) {
+    return explicitName.trim();
+  }
+
+  const project = truncateSegment(slugify(planRoot.split("/").slice(-2, -1)[0] ?? "project") || "project", 32);
+  const suffix = truncateSegment(slugify(id) || "state", 48);
+  return `spawnfile-${project}-${suffix}-${createShortHash(`${planRoot}:${id}`)}`;
+};
 
 const toContainerRootfsPath = (rootfsPath: string): string =>
   `/${rootfsPath.replace(`${ROOTFS_PREFIX}/`, "")}`;
@@ -155,6 +183,22 @@ export const generateMoltnetArtifacts = async (
   const nodePlans: MoltnetNodePlan[] = [];
   const nodePlanKeys = new Set<string>();
   const configFiles: EmittedFile[] = [];
+  const persistentMounts = new Map<string, MoltnetPersistentMount>();
+
+  const addPersistentMount = (mount: MoltnetPersistentMount): void => {
+    const existing = persistentMounts.get(mount.id);
+    if (!existing) {
+      persistentMounts.set(mount.id, mount);
+      return;
+    }
+
+    if (existing.mountPath !== mount.mountPath || existing.volumeName !== mount.volumeName) {
+      throw new SpawnfileError(
+        "validation_error",
+        `Moltnet persistent mount ${mount.id} resolves to conflicting targets`
+      );
+    }
+  };
 
   for (const teamNode of teamNodes) {
     for (const network of teamNode.value.networks ?? []) {
@@ -175,6 +219,28 @@ export const generateMoltnetArtifacts = async (
         mode: 0o600,
         path: createMoltnetServerConfigPath(serverPlan.id)
       });
+
+      const storeMountPath = resolveMoltnetStorePersistenceMountPath(
+        network.id,
+        network.server.store
+      );
+      if (storeMountPath) {
+        const mountId = `moltnet-${network.id}-store`;
+        const store = network.server.store;
+        const volumeName = store.kind === "sqlite" || store.kind === "json"
+          ? store.persistence?.name
+          : undefined;
+        addPersistentMount({
+          id: mountId,
+          mountPath: storeMountPath,
+          reason: `managed Moltnet ${network.server.store.kind} store for ${network.id}`,
+          volumeName: createPersistentVolumeName(
+            plan.root,
+            mountId,
+            volumeName
+          )
+        });
+      }
     }
   }
 
@@ -251,12 +317,23 @@ export const generateMoltnetArtifacts = async (
       const clientAuth = resolveMoltnetClientAuth(
         network.server,
         attachment.network,
-        attachment.memberId
+        attachment.memberId,
+        node.slug
       );
       const usesPerAttachmentOpenToken =
         clientAuth.mode === "open" &&
         clientAuth.staticToken !== true &&
         Boolean(clientAuth.tokenEnv || clientAuth.tokenPath);
+
+      if (usesPerAttachmentOpenToken && clientAuth.tokenPath) {
+        const mountId = `agent-${node.slug}-moltnet-tokens`;
+        addPersistentMount({
+          id: mountId,
+          mountPath: createMoltnetOpenTokenDirectory(node.slug),
+          reason: `Moltnet open-mode generated agent tokens for ${agentNode.name}`,
+          volumeName: createPersistentVolumeName(plan.root, mountId)
+        });
+      }
 
       configFiles.push({
         content:
@@ -346,6 +423,9 @@ export const generateMoltnetArtifacts = async (
   return {
     files: configFiles,
     nodePlans: nodePlans.sort((left, right) => left.configPath.localeCompare(right.configPath)),
+    persistentMounts: [...persistentMounts.values()].sort((left, right) =>
+      left.id.localeCompare(right.id)
+    ),
     ports: [...new Set(managedServerPlans.map((serverPlan) => serverPlan.port).filter((port): port is number => port !== undefined))].sort((left, right) => left - right),
     publishedPorts: [
       ...new Set(

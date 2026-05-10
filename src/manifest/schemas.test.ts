@@ -714,6 +714,50 @@ describe("manifestSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts managed Moltnet file store persistence declarations", () => {
+    const result = manifestSchema.safeParse(createTeamWithNetwork(createManagedServer({
+      store: {
+        kind: "sqlite",
+        persistence: {
+          mode: "durable",
+          mount: "/var/lib/spawnfile/moltnet/networks/team_net",
+          name: "team-net-state"
+        }
+      }
+    })));
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects invalid managed Moltnet file store persistence declarations", () => {
+    const cases = [
+      {
+        kind: "sqlite",
+        path: "relative.db"
+      },
+      {
+        kind: "sqlite",
+        path: "/var/lib/moltnet/team_net.sqlite",
+        persistence: {
+          mode: "durable",
+          mount: "/data/moltnet"
+        }
+      },
+      {
+        kind: "json",
+        persistence: {
+          mode: "ephemeral",
+          name: "should-not-exist"
+        }
+      }
+    ];
+
+    for (const store of cases) {
+      const result = manifestSchema.safeParse(createTeamWithNetwork(createManagedServer({ store })));
+      expect(result.success).toBe(false);
+    }
+  });
+
   it("rejects managed moltnet servers that omit listen", () => {
     const result = manifestSchema.safeParse({
       kind: "team",

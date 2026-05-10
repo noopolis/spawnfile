@@ -30,8 +30,65 @@ const pathSafeSegment = (value: string): string =>
 
 const isIpv6Literal = (value: string): boolean => value.includes(":");
 
-export const createMoltnetOpenTokenPath = (networkId: string, memberId: string): string =>
-  `/var/lib/spawnfile/moltnet/tokens/${pathSafeSegment(networkId)}/${pathSafeSegment(memberId)}.token`;
+const normalizePosixPath = (value: string): string =>
+  value.replace(/\/+/g, "/").replace(/\/+$/u, "") || "/";
+
+type ManagedMoltnetStore = Extract<TeamNetworkServer, { mode: "managed" }>["store"];
+
+export const createMoltnetOpenTokenDirectory = (agentSlug: string): string =>
+  `/var/lib/spawnfile/agents/${pathSafeSegment(agentSlug)}/state/moltnet`;
+
+export const createMoltnetOpenTokenPath = (
+  networkId: string,
+  memberId: string,
+  agentSlug: string = memberId
+): string =>
+  `${createMoltnetOpenTokenDirectory(agentSlug)}/${pathSafeSegment(networkId)}-${pathSafeSegment(memberId)}.token`;
+
+export const createMoltnetNetworkStateDirectory = (networkId: string): string =>
+  `/var/lib/spawnfile/moltnet/networks/${pathSafeSegment(networkId)}`;
+
+export const createDefaultMoltnetStorePath = (
+  networkId: string,
+  kind: "json" | "sqlite",
+  mountPath?: string
+): string => {
+  const directory = mountPath
+    ? normalizePosixPath(mountPath)
+    : createMoltnetNetworkStateDirectory(networkId);
+  return `${directory}/${kind === "sqlite" ? "moltnet.sqlite" : "state.json"}`;
+};
+
+export const resolveMoltnetStorePath = (
+  networkId: string,
+  store: ManagedMoltnetStore
+): string | null => {
+  if (store.kind !== "sqlite" && store.kind !== "json") {
+    return null;
+  }
+
+  return store.path ?? createDefaultMoltnetStorePath(networkId, store.kind, store.persistence?.mount);
+};
+
+export const resolveMoltnetStorePersistenceMountPath = (
+  networkId: string,
+  store: ManagedMoltnetStore
+): string | null => {
+  if (store.kind !== "sqlite" && store.kind !== "json") {
+    return null;
+  }
+
+  if (store.persistence?.mode === "ephemeral") {
+    return null;
+  }
+
+  if (store.persistence?.mount) {
+    return normalizePosixPath(store.persistence.mount);
+  }
+
+  const storePath = resolveMoltnetStorePath(networkId, store);
+  return storePath ? storePath.slice(0, storePath.lastIndexOf("/")) || "/" : null;
+};
 
 export const createMoltnetServerConfigPath = (serverId: string): string =>
   `container/rootfs/var/lib/spawnfile/moltnet/servers/${pathSafeSegment(serverId)}/Moltnet.json`;
@@ -71,7 +128,8 @@ export const resolveMoltnetBaseUrl = (server: TeamNetworkServer): string => {
 export const resolveMoltnetClientAuth = (
   server: TeamNetworkServer,
   networkId: string,
-  memberId: string
+  memberId: string,
+  agentSlug?: string
 ): MoltnetClientAuthPlan => {
   if (server.auth.mode === "none") {
     return { mode: "none" };
@@ -81,7 +139,7 @@ export const resolveMoltnetClientAuth = (
   if (server.auth.mode === "open" && !client) {
     return {
       mode: "open",
-      tokenPath: createMoltnetOpenTokenPath(networkId, memberId)
+      tokenPath: createMoltnetOpenTokenPath(networkId, memberId, agentSlug)
     };
   }
 
@@ -103,13 +161,14 @@ export const resolveMoltnetClientAuth = (
 };
 
 const storageConfigFor = (
+  networkId: string,
   store: Extract<TeamNetworkServer, { mode: "managed" }>["store"]
 ): Record<string, unknown> => {
   switch (store.kind) {
     case "sqlite":
-      return { kind: "sqlite", sqlite: { path: store.path } };
+      return { kind: "sqlite", sqlite: { path: resolveMoltnetStorePath(networkId, store) } };
     case "json":
-      return { kind: "json", json: { path: store.path } };
+      return { kind: "json", json: { path: resolveMoltnetStorePath(networkId, store) } };
     case "postgres":
       return { kind: "postgres", postgres: { dsn: "" } };
     case "memory":
@@ -180,7 +239,7 @@ export const createMoltnetNativeServerConfig = ({
         mode: server.auth.mode,
         ...(tokens.length > 0 ? { tokens } : {})
       },
-      storage: storageConfigFor(server.store),
+      storage: storageConfigFor(networkId, server.store),
       rooms: rooms.map((room) => ({
         id: room.id,
         ...(room.name ? { name: room.name } : {}),

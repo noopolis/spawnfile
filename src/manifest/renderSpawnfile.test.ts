@@ -308,7 +308,12 @@ describe("renderSpawnfile", () => {
             },
             store: {
               kind: "sqlite",
-              path: "/tmp/local-lab.sqlite"
+              path: "/tmp/local-lab.sqlite",
+              persistence: {
+                mode: "durable",
+                mount: "/tmp",
+                name: "local-lab-state"
+              }
             },
             direct_messages: true
           },
@@ -345,9 +350,67 @@ describe("renderSpawnfile", () => {
             },
             store: {
               kind: "sqlite",
-              path: "/tmp/local-lab.sqlite"
+              path: "/tmp/local-lab.sqlite",
+              persistence: {
+                mode: "durable",
+                mount: "/tmp",
+                name: "local-lab-state"
+              }
             },
             direct_messages: true
+          }
+        }
+      ]
+    });
+  });
+
+  it("renders external Moltnet servers without managed store fields", () => {
+    const source = renderSpawnfile({
+      kind: "team",
+      members: [
+        {
+          id: "analyst",
+          ref: "./agents/analyst"
+        }
+      ],
+      mode: "swarm",
+      name: "research-team",
+      networks: [
+        {
+          id: "remote_lab",
+          provider: "moltnet",
+          server: {
+            auth: {
+              client: {
+                token_env: "MOLTNET_TOKEN"
+              },
+              mode: "bearer"
+            },
+            mode: "external",
+            url: "https://moltnet.example.com"
+          },
+          rooms: [
+            {
+              id: "research",
+              members: ["analyst"]
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(source).toContain("      mode: external");
+    expect(source).toContain("      url: https://moltnet.example.com");
+    expect(source).not.toContain("      store:");
+    expect(manifestSchema.parse(YAML.parse(source) as unknown)).toMatchObject({
+      kind: "team",
+      networks: [
+        {
+          id: "remote_lab",
+          server: {
+            mode: "external",
+            url: "https://moltnet.example.com"
           }
         }
       ]

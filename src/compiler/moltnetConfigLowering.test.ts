@@ -4,12 +4,15 @@ import type { TeamNetworkServer } from "../manifest/index.js";
 
 import {
   createMoltnetNativeServerConfig,
+  createDefaultMoltnetStorePath,
   createMoltnetNodeConfigPath,
+  createMoltnetOpenTokenDirectory,
   createMoltnetOpenTokenPath,
   createMoltnetServerConfigPath,
   renderMoltnetListenAddr,
   resolveMoltnetBaseUrl,
-  resolveMoltnetClientAuth
+  resolveMoltnetClientAuth,
+  resolveMoltnetStorePersistenceMountPath
 } from "./moltnetConfigLowering.js";
 
 type ManagedServer = Extract<TeamNetworkServer, { mode: "managed" }>;
@@ -26,8 +29,10 @@ const createManagedServer = (
 
 describe("moltnetConfigLowering", () => {
   it("renders stable config and token paths", () => {
-    expect(createMoltnetOpenTokenPath("org net", "field/rep"))
-      .toBe("/var/lib/spawnfile/moltnet/tokens/org-net/field-rep.token");
+    expect(createMoltnetOpenTokenDirectory("field rep"))
+      .toBe("/var/lib/spawnfile/agents/field-rep/state/moltnet");
+    expect(createMoltnetOpenTokenPath("org net", "field/rep", "field rep"))
+      .toBe("/var/lib/spawnfile/agents/field-rep/state/moltnet/org-net-field-rep.token");
     expect(createMoltnetServerConfigPath("org net"))
       .toBe("container/rootfs/var/lib/spawnfile/moltnet/servers/org-net/Moltnet.json");
     expect(createMoltnetNodeConfigPath("root team", "org net", "field/rep"))
@@ -60,9 +65,9 @@ describe("moltnetConfigLowering", () => {
       .toEqual({ mode: "none" });
     expect(resolveMoltnetClientAuth(createManagedServer({
       auth: { mode: "open" }
-    }), "org", "agent")).toEqual({
+    }), "org", "agent", "agent-slug")).toEqual({
       mode: "open",
-      tokenPath: "/var/lib/spawnfile/moltnet/tokens/org/agent.token"
+      tokenPath: "/var/lib/spawnfile/agents/agent-slug/state/moltnet/org-agent.token"
     });
     expect(resolveMoltnetClientAuth(createManagedServer({
       auth: {
@@ -205,5 +210,24 @@ describe("moltnetConfigLowering", () => {
       storage: { json: { path: "/data/moltnet.json" }, kind: "json" }
     });
     expect(memory.config).toMatchObject({ storage: { kind: "memory" } });
+  });
+
+  it("defaults managed file store paths and persistence mount paths", () => {
+    expect(createDefaultMoltnetStorePath("org net", "sqlite"))
+      .toBe("/var/lib/spawnfile/moltnet/networks/org-net/moltnet.sqlite");
+    expect(createDefaultMoltnetStorePath("org net", "json", "/state/moltnet"))
+      .toBe("/state/moltnet/state.json");
+
+    expect(resolveMoltnetStorePersistenceMountPath("org net", { kind: "sqlite" }))
+      .toBe("/var/lib/spawnfile/moltnet/networks/org-net");
+    expect(resolveMoltnetStorePersistenceMountPath("org", {
+      kind: "json",
+      path: "/data/moltnet/state.json",
+      persistence: { mode: "durable", mount: "/data/moltnet" }
+    })).toBe("/data/moltnet");
+    expect(resolveMoltnetStorePersistenceMountPath("org", {
+      kind: "sqlite",
+      persistence: { mode: "ephemeral" }
+    })).toBeNull();
   });
 });

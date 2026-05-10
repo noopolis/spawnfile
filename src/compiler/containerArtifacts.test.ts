@@ -192,6 +192,42 @@ describe("createContainerArtifacts", () => {
     );
   });
 
+  it("reports Moltnet persistent mounts from generated artifacts", async () => {
+    const result = await createContainerArtifacts(createPlan([]), [], {
+      moltnet: {
+        files: [],
+        nodePlans: [],
+        persistentMounts: [
+          {
+            id: "moltnet-local-lab-store",
+            mountPath: "/var/lib/spawnfile/moltnet/networks/local-lab",
+            reason: "managed Moltnet sqlite store for local-lab",
+            volumeName: "spawnfile-local-lab-state"
+          }
+        ],
+        ports: [],
+        publishedPorts: [],
+        serverPlans: []
+      }
+    });
+    const dockerfile = result.files.find((file) => file.path === "Dockerfile")?.content ?? "";
+
+    expect(result.report.persistent_mounts).toEqual([
+      {
+        id: "moltnet-local-lab-store",
+        mount_path: "/var/lib/spawnfile/moltnet/networks/local-lab",
+        reason: "managed Moltnet sqlite store for local-lab",
+        volume_name: "spawnfile-local-lab-state"
+      }
+    ]);
+    expect(dockerfile).toContain(
+      "mkdir -p '/var/lib/spawnfile' '/var/lib/spawnfile/moltnet/networks/local-lab'"
+    );
+    expect(dockerfile).toContain(
+      "touch '/var/lib/spawnfile/moltnet/networks/local-lab/.spawnfile-volume-init'"
+    );
+  });
+
   it("renders workspace resource startup and report metadata", async () => {
     const node = createAgentNode("openclaw", {
       workspaceResources: [

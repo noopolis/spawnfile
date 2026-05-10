@@ -33,6 +33,13 @@ export interface ContainerWorkspaceResourceReport {
   sharing: "per_agent" | "team";
 }
 
+export interface ContainerPersistentMountReport {
+  id: string;
+  mount_path: string;
+  reason: string;
+  volume_name: string;
+}
+
 export interface NodeReport {
   capabilities: CapabilityReport[];
   diagnostics: DiagnosticReport[];
@@ -56,6 +63,7 @@ export interface ContainerReport {
   runtime_secrets_required: string[];
   runtimes_installed: string[];
   secrets_required: string[];
+  persistent_mounts?: ContainerPersistentMountReport[];
   workspace_resources?: ContainerWorkspaceResourceReport[];
 }
 

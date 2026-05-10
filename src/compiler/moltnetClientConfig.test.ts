@@ -10,6 +10,7 @@ import type { ResolvedAgentNode } from "./types.js";
 const createArtifacts = (): MoltnetArtifacts => ({
   files: [],
   nodePlans: [],
+  persistentMounts: [],
   ports: [8787],
   publishedPorts: [],
   serverPlans: [

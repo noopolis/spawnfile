@@ -260,6 +260,43 @@ describe("createDockerRunInvocation", () => {
     await removeDirectory(invocation.supportDirectory);
   });
 
+  it("mounts reported persistent state volumes", async () => {
+    const invocation = await createDockerRunInvocation(
+      {
+        outputDirectory: "/tmp/spawnfile-run-out",
+        report: createCompileReport({
+          dockerfile: "Dockerfile",
+          entrypoint: "entrypoint.sh",
+          env_example: ".env.example",
+          model_secrets_required: [],
+          persistent_mounts: [
+            {
+              id: "moltnet-local-lab-store",
+              mount_path: "/var/lib/spawnfile/moltnet/networks/local-lab",
+              reason: "managed Moltnet sqlite store for local-lab",
+              volume_name: "spawnfile-local-lab-state"
+            }
+          ],
+          ports: [],
+          runtime_instances: [],
+          runtime_homes: [],
+          runtime_secrets_required: [],
+          runtimes_installed: [],
+          secrets_required: []
+        }),
+        reportPath: "/tmp/spawnfile-run-out/spawnfile-report.json"
+      },
+      "spawnfile-single-agent"
+    );
+
+    expect(invocation.args).toContain("-v");
+    expect(invocation.args).toContain(
+      "spawnfile-local-lab-state:/var/lib/spawnfile/moltnet/networks/local-lab"
+    );
+
+    await removeDirectory(invocation.supportDirectory);
+  });
+
   it("fails when required model auth is missing", async () => {
     await expect(
       createDockerRunInvocation(

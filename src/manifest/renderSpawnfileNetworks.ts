@@ -27,6 +27,27 @@ const orderTeamAuthPairing = (pairing: {
     ["remote_network_name", pairing.remote_network_name]
   ]);
 
+const orderTeamStore = (
+  server: TeamNetworkServer
+): unknown =>
+  server.mode === "managed"
+    ? withDefinedEntries([
+        ["kind", server.store.kind],
+        ["path", server.store.kind === "sqlite" || server.store.kind === "json" ? server.store.path : undefined],
+        [
+          "persistence",
+          (server.store.kind === "sqlite" || server.store.kind === "json") && server.store.persistence
+            ? withDefinedEntries([
+                ["mode", server.store.persistence.mode],
+                ["name", server.store.persistence.name],
+                ["mount", server.store.persistence.mount]
+              ])
+            : undefined
+        ],
+        ["dsn_secret", server.store.kind === "postgres" ? server.store.dsn_secret : undefined]
+      ])
+    : undefined;
+
 const orderTeamAuth = (server: TeamNetworkServer): TeamNetworkServer =>
   withDefinedEntries([
     ["mode", server.mode],
@@ -50,7 +71,7 @@ const orderTeamAuth = (server: TeamNetworkServer): TeamNetworkServer =>
         ]
       ])
     ],
-    ["store", server.mode === "managed" ? server.store : undefined],
+    ["store", orderTeamStore(server)],
     [
       "pairings",
       server.mode === "managed" && server.pairings

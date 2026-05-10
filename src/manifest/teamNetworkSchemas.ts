@@ -17,6 +17,23 @@ const countTruthy = (
   value: unknown[]
 ): number => value.filter((entry) => Boolean(entry)).length;
 
+const absolutePosixPathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((value) => value.startsWith("/"), {
+    message: "path must be an absolute POSIX path"
+  });
+
+const normalizePosixPath = (value: string): string =>
+  value.replace(/\/+/g, "/").replace(/\/+$/u, "") || "/";
+
+const pathIsInsideMount = (filePath: string, mountPath: string): boolean => {
+  const normalizedPath = normalizePosixPath(filePath);
+  const normalizedMount = normalizePosixPath(mountPath);
+  return normalizedPath.startsWith(`${normalizedMount}/`);
+};
+
 const teamNetworkAuthTokenSchema = z
   .object({
     agents: z.array(z.string().trim().min(1)).optional(),
@@ -114,19 +131,44 @@ const teamNetworkAuthSchema = z
     }
   });
 
-const teamNetworkStoreSqliteSchema = z
+const teamNetworkStorePersistenceSchema = z
   .object({
-    kind: z.literal("sqlite"),
-    path: z.string().trim().min(1)
+    mode: z.enum(["durable", "ephemeral"]),
+    mount: absolutePosixPathSchema.optional(),
+    name: z.string().trim().min(1).optional()
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.mode === "ephemeral" && (value.mount || value.name)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "ephemeral persistence must not declare mount or name"
+      });
+    }
+  });
 
-const teamNetworkStoreJsonSchema = z
+const teamNetworkFileStoreSchema = z
   .object({
-    kind: z.literal("json"),
-    path: z.string().trim().min(1)
+    path: absolutePosixPathSchema.optional(),
+    persistence: teamNetworkStorePersistenceSchema.optional()
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.path && value.persistence?.mount && !pathIsInsideMount(value.path, value.persistence.mount)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "store.path must be inside persistence.mount"
+      });
+    }
+  });
+
+const teamNetworkStoreSqliteSchema = teamNetworkFileStoreSchema.extend({
+  kind: z.literal("sqlite")
+});
+
+const teamNetworkStoreJsonSchema = teamNetworkFileStoreSchema.extend({
+  kind: z.literal("json")
+});
 
 const teamNetworkStorePostgresSchema = z
   .object({

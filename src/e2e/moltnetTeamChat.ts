@@ -58,6 +58,7 @@ export interface MoltnetTeamChatConversationResult {
 }
 export interface RunMoltnetTeamChatE2EOptions {
   authProfileName?: string;
+  childBaseUrl?: string;
   claudeCodeDirectory?: string;
   codexDirectory?: string;
   containerName?: string;
@@ -69,6 +70,7 @@ export interface RunMoltnetTeamChatE2EOptions {
   keepImages?: boolean;
   logger?: MoltnetTeamChatLogger;
   outputDirectory?: string;
+  parentBaseUrl?: string;
   pollIntervalMs?: number;
   syncAuth?: boolean;
   timeoutMs?: number;
@@ -98,11 +100,11 @@ const loggerFor = (logger?: MoltnetTeamChatLogger): MoltnetTeamChatLogger =>
   logger ?? { info: (message) => console.log(message) };
 
 export const createMoltnetTeamChatScenario = (
-  options: Pick<RunMoltnetTeamChatE2EOptions, "fixtureDirectory"> = {}
+  options: Pick<RunMoltnetTeamChatE2EOptions, "childBaseUrl" | "fixtureDirectory" | "parentBaseUrl"> = {}
 ): MoltnetTeamChatScenario => ({
   child: {
     ackAuthorId: "field-representative",
-    baseUrl: DEFAULT_CHILD_BASE_URL,
+    baseUrl: options.childBaseUrl ?? DEFAULT_CHILD_BASE_URL,
     expectedMembers: ["field-observer", "field-representative"],
     networkId: "field_lab",
     roomId: "field-room",
@@ -111,7 +113,7 @@ export const createMoltnetTeamChatScenario = (
   fixtureDirectory: options.fixtureDirectory ?? DEFAULT_FIXTURE_DIRECTORY,
   parent: {
     ackAuthorId: "field-representative",
-    baseUrl: DEFAULT_PARENT_BASE_URL,
+    baseUrl: options.parentBaseUrl ?? DEFAULT_PARENT_BASE_URL,
     expectedMembers: ["analysis-representative", "coordinator", "field-representative"],
     networkId: "local_lab",
     requestAuthorId: "coordinator",
@@ -324,6 +326,9 @@ const cleanup = async (input: { buildResult?: BuildProjectResult; dockerCommand:
   const containerName = input.invocation?.containerName;
   if (containerName) await input.runCommand(input.dockerCommand, ["rm", "-f", containerName]).catch(() => undefined);
   if (input.buildResult && !input.keepImages) await input.runCommand(input.dockerCommand, ["image", "rm", "-f", input.buildResult.imageTag]).catch(() => undefined);
+  for (const mount of input.buildResult?.report.container?.persistent_mounts ?? []) {
+    await input.runCommand(input.dockerCommand, ["volume", "rm", "-f", mount.volume_name]).catch(() => undefined);
+  }
   if (input.invocation) await removeDirectory(input.invocation.supportDirectory);
 };
 
@@ -349,7 +354,11 @@ export const runMoltnetTeamChatE2E = async (options: RunMoltnetTeamChatE2EOption
     syncProjectAuth: dependencies.syncProjectAuth ?? syncProjectAuth
   };
   const logger = loggerFor(options.logger);
-  const scenario = createMoltnetTeamChatScenario({ fixtureDirectory: options.fixtureDirectory });
+  const scenario = createMoltnetTeamChatScenario({
+    childBaseUrl: options.childBaseUrl,
+    fixtureDirectory: options.fixtureDirectory,
+    parentBaseUrl: options.parentBaseUrl
+  });
   const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-e2e-moltnet-team-chat-"));
   const dockerCommand = options.dockerCommand ?? "docker";
   const outputDirectory = options.outputDirectory ?? path.join(root, "dist");

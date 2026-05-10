@@ -33,6 +33,27 @@ const createNpmPackageInstallCommand = (packages: string[]): string =>
 const createPipxPackageInstallCommand = (packages: string[]): string =>
   `RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install ${packages.join(" ")}`;
 
+const createStateOwnershipCommand = (persistentMountPaths: string[] = []): string => {
+  const mountPaths = [...new Set(persistentMountPaths)].sort();
+  const mkdirPaths = [...new Set(["/var/lib/spawnfile", ...mountPaths])].sort();
+  const markerCommands = mountPaths.map((mountPath) =>
+    `touch ${shellQuote(path.posix.join(mountPath, ".spawnfile-volume-init"))}`
+  );
+  const chownPaths = [
+    ...new Set([
+      "/var/lib/spawnfile",
+      "/opt/spawnfile",
+      ...mountPaths.filter((mountPath) => !mountPath.startsWith("/var/lib/spawnfile/"))
+    ])
+  ].sort();
+
+  return [
+    `mkdir -p ${mkdirPaths.map(shellQuote).join(" ")}`,
+    ...markerCommands,
+    `chown -R spawnfile:spawnfile ${chownPaths.map(shellQuote).join(" ")}`
+  ].join(" && ");
+};
+
 const dedupePackages = (packages: ResolvedPackage[]): ResolvedPackage[] => {
   const seen = new Map<string, ResolvedPackage>();
   for (const currentPackage of packages) {
@@ -285,9 +306,7 @@ export const renderDockerfile = async (
     "RUN chmod +x /opt/spawnfile/entrypoint.sh"
   );
 
-  lines.push(
-    "RUN mkdir -p /var/lib/spawnfile && chown -R spawnfile:spawnfile /var/lib/spawnfile /opt/spawnfile"
-  );
+  lines.push(`RUN ${createStateOwnershipCommand(options.persistentMountPaths)}`);
 
   if (exposedPorts.length > 0) {
     lines.push(`EXPOSE ${exposedPorts.join(" ")}`);

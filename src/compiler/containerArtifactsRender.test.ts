@@ -180,7 +180,7 @@ describe("renderDockerfile", () => {
     expect(dockerfile).not.toContain("https://deb.nodesource.com/node_24.x");
     expect(dockerfile).not.toContain("RUN corepack enable");
     expect(dockerfile).toContain(
-      "RUN mkdir -p /var/lib/spawnfile && chown -R spawnfile:spawnfile /var/lib/spawnfile /opt/spawnfile"
+      "RUN mkdir -p '/var/lib/spawnfile' && chown -R spawnfile:spawnfile '/opt/spawnfile' '/var/lib/spawnfile'"
     );
     expect(dockerfile).toContain("USER spawnfile");
     expect(dockerfile).toContain("EXPOSE 18789 18990");
@@ -551,7 +551,7 @@ describe("renderEntrypoint", () => {
                 auth: { mode: "none" },
                 listen: { bind: "127.0.0.1", port: 8787 },
                 mode: "managed",
-                store: { kind: "memory" }
+                store: { kind: "sqlite", path: "/var/lib/spawnfile/moltnet/networks/local_lab/moltnet.sqlite" }
               },
               secretPatches: [],
               teamSource: "/tmp/team/Spawnfile"
@@ -562,6 +562,7 @@ describe("renderEntrypoint", () => {
     );
 
     expect(entrypoint).toContain("mkdir -p '/var/lib/spawnfile/moltnet/servers'");
+    expect(entrypoint).toContain("mkdir -p '/var/lib/spawnfile/moltnet/networks/local_lab'");
     expect(entrypoint).toContain(
       "MOLTNET_CONFIG='/var/lib/spawnfile/moltnet/servers/local_lab/Moltnet.json'"
     );

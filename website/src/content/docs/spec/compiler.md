@@ -363,11 +363,13 @@ Rules:
   - required `server.store`
   - required `server.auth`
 - `server.store.kind` is mapped to Moltnet `storage` semantics:
-  - `sqlite` + `path`
-  - `json` + `path`
+  - `sqlite` + configured or default `path`
+  - `json` + configured or default `path`
   - `postgres` + `dsn_secret`
   - `memory`
-- Secret-backed store fields (`sqlite`/`json` path on durable volumes, postgres DSN secret) are materialized into private runtime files at startup.
+- Durable `sqlite`/`json` stores emit `container.persistent_mounts[]`; `spawnfile run` and `spawnfile up` mount them as Docker named volumes.
+- Generated open-mode agent token directories emit `container.persistent_mounts[]` so first-claim credentials survive container replacement.
+- Secret-backed store fields (postgres DSN secret) are materialized into private runtime files at startup.
 - Auth token materialization is always private and source-controlled outputs never include inline token values.
 - In managed mode, `server.auth.tokens[]` drives server config; each token is emitted as a secret-backed token entry using declared secret names and scopes.
 - `server.auth.client` is normalized into one of `token_id`, `token_env`, or `token_path` and rejected if more than one is set.

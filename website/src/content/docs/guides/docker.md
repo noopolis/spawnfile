@@ -200,7 +200,7 @@ The same commands apply regardless of project complexity. Use `up` for one-comma
 
 `spawnfile build` stays secrets-free by default. It compiles the project and then runs `docker build` against the emitted output directory. The generated Dockerfile installs pinned compiled runtime artifacts -- it does not rebuild runtime sources during image build.
 
-`spawnfile run` is the auth-aware wrapper over `docker run`. It validates declared model auth before container startup and mounts the right credential material from the selected profile.
+`spawnfile run` is the auth-aware wrapper over `docker run`. It validates declared model auth before container startup, mounts the right credential material from the selected profile, and attaches any persistent volumes reported by the compiler.
 
 Command boundaries:
 
@@ -208,6 +208,8 @@ Command boundaries:
 - `spawnfile build` runs `compile`, then builds a Docker image from the generated output.
 - `spawnfile run` runs `compile` again to derive current runtime wiring, then starts the selected image with ports, env, auth material, and workspace resources.
 - `spawnfile up` is the local one-command path. It builds the image and then runs it with the same auth and env options as `run`.
+
+Managed Moltnet SQLite/JSON stores and open-registration agent token directories appear in the compile report as `container.persistent_mounts[]`. `spawnfile run` and `spawnfile up` mount those entries as Docker named volumes so messages, registrations, and generated open-mode agent tokens survive container replacement.
 
 You can also pass an env file directly at run time:
 
@@ -269,6 +271,8 @@ cp .env.example .env
 # Fill in secret values...
 docker run --env-file .env -p 18789:18789 my-agent
 ```
+
+If the compile report includes `container.persistent_mounts[]`, add matching `-v <volume_name>:<mount_path>` arguments to manual `docker run` commands.
 
 ## Compile Report Container Section
 

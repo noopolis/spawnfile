@@ -283,6 +283,10 @@ export const createDockerRunInvocation = async (
       args.push("-p", `${port}:${port}`);
     }
 
+    for (const mount of containerReport.persistent_mounts ?? []) {
+      args.push("-v", `${mount.volume_name}:${mount.mount_path}`);
+    }
+
     args.push("--env-file", envFilePath);
     args.push(...(await resolveAuthMountArgs(containerReport, options.authProfile ?? null)));
     args.push(...preparedRuntimeAuth.mountArgs);

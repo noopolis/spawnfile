@@ -42,6 +42,14 @@ export const createContainerArtifacts = async (
     .filter((variable) => variable.required && variable.categories.includes("runtime"))
     .map((variable) => variable.name)
     .sort();
+  const persistentMounts = (options.moltnet?.persistentMounts ?? [])
+    .map((mount) => ({
+      id: mount.id,
+      mount_path: mount.mountPath,
+      reason: mount.reason,
+      volume_name: mount.volumeName
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
 
   const files: EmittedFile[] = [
     ...createRootfsFiles(runtimePlans),
@@ -50,7 +58,8 @@ export const createContainerArtifacts = async (
       content: await renderDockerfile(runtimePlans, {
         hasMoltnet: Boolean(options.moltnet),
         hasStagedMoltnetBinaries: options.hasStagedMoltnetBinaries,
-        moltnetPublishedPorts: options.moltnet?.publishedPorts ?? []
+        moltnetPublishedPorts: options.moltnet?.publishedPorts ?? [],
+        persistentMountPaths: persistentMounts.map((mount) => mount.mount_path)
       }),
       path: "Dockerfile"
     },
@@ -137,6 +146,7 @@ export const createContainerArtifacts = async (
       runtime_secrets_required: runtimeSecretsRequired,
       runtimes_installed: runtimesInstalled,
       secrets_required: requiredSecrets,
+      ...(persistentMounts.length > 0 ? { persistent_mounts: persistentMounts } : {}),
       ...(workspaceResources.length > 0 ? { workspace_resources: workspaceResources } : {})
     }
   };

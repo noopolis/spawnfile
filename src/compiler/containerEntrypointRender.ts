@@ -2,6 +2,7 @@ import path from "node:path";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
+import { resolveMoltnetStorePath } from "./moltnetConfigLowering.js";
 import {
   createWorkspaceResourceCommands,
   createWorkspaceResourceShellFunctions
@@ -72,6 +73,22 @@ const createAuthSetupCommands = (plan: RuntimeTargetPlan): string[] => {
   return [`configure_codex_api_key_auth ${shellQuote(plan.instancePaths.homePath)}`];
 };
 
+const createMoltnetStorePrepareCommands = (
+  serverPlan: MoltnetArtifacts["serverPlans"][number]
+): string[] => {
+  const server = serverPlan.server;
+  if (server.mode !== "managed" || server.store.kind === "memory" || server.store.kind === "postgres") {
+    return [];
+  }
+
+  const storePath = resolveMoltnetStorePath(serverPlan.networkId, server.store);
+  if (!storePath) {
+    return [];
+  }
+
+  return [`mkdir -p ${shellQuote(path.posix.dirname(storePath))}`];
+};
+
 const resolveStartCommand = (plan: RuntimeTargetPlan): string[] =>
   plan.meta.startCommand
     .map((token) =>
@@ -108,6 +125,7 @@ export interface EntrypointOptions {
     serverPlans: MoltnetArtifacts["serverPlans"];
   };
   moltnetPublishedPorts?: number[];
+  persistentMountPaths?: string[];
 }
 
 export const renderEntrypoint = (
@@ -270,6 +288,7 @@ export const renderEntrypoint = (
       );
     }
     lines.push(
+      ...createMoltnetStorePrepareCommands(serverPlan),
       `MOLTNET_CONFIG=${shellQuote(serverPlan.configPath)} /usr/local/bin/moltnet &`,
       'PIDS+=("$!")',
       ""

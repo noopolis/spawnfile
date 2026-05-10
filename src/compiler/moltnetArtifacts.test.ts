@@ -319,6 +319,42 @@ describe("moltnetArtifacts", () => {
     expect(artifacts?.publishedPorts).toEqual([8787]);
   });
 
+  it("reports persistent mounts for durable managed Moltnet stores", async () => {
+    const plan = createPlan();
+    const teamNode = plan.nodes[0];
+    if (!teamNode || teamNode.kind !== "team") {
+      throw new Error("expected team node");
+    }
+
+    const team = teamNode.value as ResolvedTeamNode;
+    if (team.networks?.[0]) {
+      team.networks[0].server = {
+        ...createManagedServer(),
+        store: {
+          kind: "sqlite",
+          persistence: { mode: "durable", name: "custom-local-lab-state" }
+        }
+      };
+    }
+
+    const artifacts = await generateMoltnetArtifacts(plan);
+    const serverConfig = artifacts?.files.find((file) =>
+      file.path.endsWith("Moltnet.json")
+    );
+
+    expect(serverConfig?.content).toContain(
+      '"/var/lib/spawnfile/moltnet/networks/local_lab/moltnet.sqlite"'
+    );
+    expect(artifacts?.persistentMounts).toEqual([
+      {
+        id: "moltnet-local_lab-store",
+        mountPath: "/var/lib/spawnfile/moltnet/networks/local_lab",
+        reason: "managed Moltnet sqlite store for local_lab",
+        volumeName: "custom-local-lab-state"
+      }
+    ]);
+  });
+
   it("merges teams that reuse the same moltnet network id into one server plan", async () => {
     const plan = createPlan();
     plan.nodes.push(
@@ -510,8 +546,15 @@ describe("moltnetArtifacts", () => {
 
     expect(parsed.moltnet?.token_path).toBeUndefined();
     expect(parsed.attachments?.[0]?.moltnet?.token_path)
-      .toBe("/var/lib/spawnfile/moltnet/tokens/local_lab/orchestrator.token");
+      .toBe("/var/lib/spawnfile/agents/orchestrator/state/moltnet/local_lab-orchestrator.token");
     expect(parsed.attachments?.[0]?.rooms).toBeUndefined();
+    expect(artifacts?.persistentMounts).toEqual([
+      expect.objectContaining({
+        id: "agent-orchestrator-moltnet-tokens",
+        mountPath: "/var/lib/spawnfile/agents/orchestrator/state/moltnet",
+        reason: "Moltnet open-mode generated agent tokens for orchestrator-agent"
+      })
+    ]);
   });
 
   it("keeps external network plans out of managed server ports and configs", async () => {

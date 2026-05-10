@@ -16,6 +16,14 @@ const createUpResult = (outputDirectory: string, imageTag: string): UpProjectRes
       entrypoint: "entrypoint.sh",
       env_example: ".env.example",
       model_secrets_required: [],
+      persistent_mounts: [
+        {
+          id: "moltnet-ops-lab-store",
+          mount_path: "/var/lib/spawnfile/moltnet/networks/ops_lab",
+          reason: "managed Moltnet sqlite store for ops_lab",
+          volume_name: "spawnfile-ops-lab-state"
+        }
+      ],
       ports: [3777, 19087],
       runtime_homes: [
         "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi"
@@ -100,6 +108,7 @@ describe("runOperationalSmokeE2E", () => {
     expect(dockerCalls).toContainEqual(expect.arrayContaining(["exec", "operational-container", "test", "-L"]));
     expect(dockerCalls).toContainEqual(["rm", "-f", "operational-container"]);
     expect(dockerCalls).toContainEqual(["image", "rm", "-f", "operational-image"]);
+    expect(dockerCalls).toContainEqual(["volume", "rm", "-f", "spawnfile-ops-lab-state"]);
     expect(removeDirectory).toHaveBeenCalledWith("/tmp/spawnfile-operational-support");
   });
 });

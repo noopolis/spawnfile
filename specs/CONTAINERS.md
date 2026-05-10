@@ -227,7 +227,9 @@ Model auth intent itself is declared on each source model target under `executio
 
 Container startup must support Moltnet server and node artifacts emitted from `team.networks[].server`:
 
-- `server.store.kind: sqlite` and `server.store.kind: json` create durable directories for the configured `path` before server start.
+- `server.store.kind: sqlite` and `server.store.kind: json` create the configured or default store directory before server start.
+- Durable `sqlite` and `json` stores emit `container.persistent_mounts[]` entries that `spawnfile run` and `spawnfile up` translate into Docker named volumes.
+- `server.store.persistence.mode: ephemeral` skips persistent mount emission but still creates the in-container store directory before server start.
 - `server.store.kind: postgres` injects `server.store.dsn_secret` into runtime config and skips local path creation.
 - `server.store.kind: memory` creates no local persistence directory.
 
@@ -238,6 +240,7 @@ Secret materialization rules:
 - `server.store.dsn_secret` is written as `storage.postgres.dsn` in managed server config.
 - `server.pairings[].token_secret` is written as `pairings[].token` in managed server config.
 - Generated open-mode token files for attach/self-claiming clients are runtime state files with private permissions (equivalent to `0600`), and token directories use private directory mode (equivalent to `0700`).
+- Generated open-mode token directories are reported as persistent mounts so claimed agent identities survive container replacement.
 
 ---
 
@@ -263,6 +266,14 @@ The compile report should include a `container` section:
     "model_secrets_required": ["ANTHROPIC_API_KEY"],
     "runtime_secrets_required": ["OPENCLAW_GATEWAY_TOKEN"],
     "runtime_homes": ["/var/lib/spawnfile/instances/openclaw/agent-analyst/home"],
+    "persistent_mounts": [
+      {
+        "id": "moltnet-local_lab-store",
+        "mount_path": "/var/lib/spawnfile/moltnet/networks/local_lab",
+        "volume_name": "spawnfile-project-moltnet-local-lab-store-00000000",
+        "reason": "managed Moltnet sqlite store for local_lab"
+      }
+    ],
     "workspace_resources": [
       {
         "id": "project-repo",

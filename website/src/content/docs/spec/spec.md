@@ -988,7 +988,9 @@ networks:
         - http://localhost:8787
       store:
         kind: sqlite
-        path: /var/lib/moltnet/local_lab.sqlite
+        path: /var/lib/spawnfile/moltnet/networks/local_lab/moltnet.sqlite
+        persistence:
+          mode: durable
       auth:
         mode: open
     rooms:
@@ -1034,10 +1036,19 @@ Rules:
 - `server.pairings.id` MUST be unique within one managed server block.
 - `server.store` MUST be present for `server.mode: managed`.
 - `server.store.kind` MUST be `sqlite`, `json`, `postgres`, or `memory`.
-- `server.store.kind: sqlite` requires `server.store.path` and does not allow `dsn_secret`.
-- `server.store.kind: json` requires `server.store.path` and does not allow `dsn_secret`.
+- `server.store.kind: sqlite` and `server.store.kind: json` MAY omit `path`; omitted paths default under `/var/lib/spawnfile/moltnet/networks/<network-id>/`.
+- `server.store.kind: sqlite` lowers to `moltnet.sqlite` by default and does not allow `dsn_secret`.
+- `server.store.kind: json` lowers to `state.json` by default and does not allow `dsn_secret`.
 - `server.store.kind: postgres` requires `server.store.dsn_secret`.
 - `server.store.kind: memory` must not include `path` or `dsn_secret`.
+- `server.store.persistence` is valid only for `sqlite` and `json`.
+- `server.store.persistence.mode` MUST be `durable` or `ephemeral`.
+- If `server.store.persistence` is omitted for `sqlite` or `json`, the compiler treats it as `durable`.
+- `server.store.persistence.mode: durable` emits a persistent runtime mount for the store directory.
+- `server.store.persistence.mode: ephemeral` emits no persistent runtime mount.
+- `server.store.persistence.name` MAY name the runtime volume for durable stores.
+- `server.store.persistence.mount` MAY override the durable container mount directory; when both `path` and `mount` are declared, `path` MUST be inside `mount`.
+- Open auth without `server.auth.client` emits per-agent generated token files under private agent runtime state and those token directories are durable runtime mounts.
 - `server.direct_messages: false` means any `surfaces.moltnet[].dms` for that network is a validation error.
 - A room `members` list MAY name direct agent member IDs or direct child-team member IDs.
 - Direct child-team IDs in a parent room expand to the child team's concrete representatives for that parent context.
