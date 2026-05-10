@@ -343,7 +343,9 @@ export const generateMoltnetArtifacts = async (
               moltnet: {
                 base_url: serverPlan.baseUrl,
                 network_id: attachment.network,
-                auth_mode: clientAuth.mode,
+                ...(clientAuth.mode === "none"
+                  ? {}
+                  : { auth_mode: clientAuth.mode }),
                 ...(clientAuth.staticToken
                   ? { static_token: true }
                   : {}),

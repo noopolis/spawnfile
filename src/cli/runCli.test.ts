@@ -17,6 +17,17 @@ afterEach(async () => {
 });
 
 describe("runCli", () => {
+  it("prints the package version", async () => {
+    const stdout: string[] = [];
+    const exitCode = await runCli(["--version"], {
+      stderr: () => undefined,
+      stdout: (message) => stdout.push(message)
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toEqual(["0.1.6"]);
+  });
+
   it("lists runtime adapters", async () => {
     const stdout: string[] = [];
     const exitCode = await runCli(["runtimes"], {

@@ -227,6 +227,7 @@ Model auth intent itself is declared on each source model target under `executio
 
 Container startup must support Moltnet server and node artifacts emitted from `team.networks[].server`:
 
+- When Moltnet binaries are not staged from a local release asset, the generated Dockerfile installs Moltnet from `https://moltnet.dev/install.sh` and includes the GitHub latest-release metadata as a prior Docker layer so Docker cache invalidates when Moltnet releases.
 - `server.store.kind: sqlite` and `server.store.kind: json` create the configured or default store directory before server start.
 - Durable `sqlite` and `json` stores emit `container.persistent_mounts[]` entries that `spawnfile run` and `spawnfile up` translate into Docker named volumes.
 - `server.store.persistence.mode: ephemeral` skips persistent mount emission but still creates the in-container store directory before server start.

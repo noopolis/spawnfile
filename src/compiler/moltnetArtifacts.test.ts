@@ -180,6 +180,7 @@ describe("moltnetArtifacts", () => {
         '"home_path": "/var/lib/spawnfile/instances/openclaw/agent-orchestrator/home"'
       );
       expect(nodeConfig?.content).toContain('"network_id": "local_lab"');
+      expect(nodeConfig?.content).not.toContain('"auth_mode"');
     },
     15_000
   );

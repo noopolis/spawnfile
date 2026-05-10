@@ -24,6 +24,7 @@ Pairs with [**Moltnet**](https://moltnet.dev) as the first provider for `team.ne
 
 ```bash
 npm install -g spawnfile
+spawnfile --version
 spawnfile --help
 ```
 

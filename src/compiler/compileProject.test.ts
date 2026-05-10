@@ -605,6 +605,7 @@ describe("compileProject", () => {
         expect(entrypoint).not.toContain("surface-router.js");
         expect(nodeConfig).toContain('"version": "moltnet.node.v1"');
         expect(nodeConfig).toContain('"gateway_url": "ws://127.0.0.1:18789"');
+        expect(nodeConfig).not.toContain('"auth_mode"');
         expect(nodeConfig).toContain(
           '"home_path": "/var/lib/spawnfile/instances/openclaw/agent-orchestrator-agent/home"'
         );

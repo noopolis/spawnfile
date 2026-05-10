@@ -17,6 +17,7 @@ import type { ResolvedPackage } from "./types.js";
 const CONTAINER_ROOTFS_ROOT = "container/rootfs";
 const GATEWAY_PORT_PLACEHOLDER = "<gateway-port>";
 const MOLTNET_INSTALL_SCRIPT_URL = "https://moltnet.dev/install.sh";
+const MOLTNET_RELEASE_METADATA_URL = "https://api.github.com/repos/noopolis/moltnet/releases/latest";
 const WORKSPACE_PLACEHOLDER = "<workspace-path>";
 
 const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)}'`;
@@ -279,7 +280,8 @@ export const renderDockerfile = async (
     );
   } else if (options.hasMoltnet) {
     lines.push(
-      `RUN MOLTNET_INSTALL_DIR=/usr/local/bin sh -c ${shellQuote(`curl -fsSL ${MOLTNET_INSTALL_SCRIPT_URL} | sh`)}`,
+      `ADD ${MOLTNET_RELEASE_METADATA_URL} /tmp/spawnfile-moltnet-release.json`,
+      `RUN MOLTNET_RELEASE="$${"("}sed -n 's/.*\\"tag_name\\": *\\"\\([^\\"]*\\)\\".*/\\1/p' /tmp/spawnfile-moltnet-release.json | head -n 1${")"}" && echo "Installing Moltnet $${"{MOLTNET_RELEASE:-latest}"}" && MOLTNET_INSTALL_DIR=/usr/local/bin sh -c ${shellQuote(`curl -fsSL ${MOLTNET_INSTALL_SCRIPT_URL} | sh`)}`,
       ""
     );
   }

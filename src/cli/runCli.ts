@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { Command } from "commander";
 
 import {
@@ -35,6 +37,15 @@ import { registerModelCommands } from "./modelCommands.js";
 import { registerRuntimeCommands } from "./runtimeCommands.js";
 import { registerSurfaceCommands } from "./surfaceCommands.js";
 import { registerViewCommand } from "./viewCommand.js";
+
+const packageJsonPath = new URL("../../package.json", import.meta.url);
+
+const readPackageVersion = (): string => {
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+    version?: unknown;
+  };
+  return typeof packageJson.version === "string" ? packageJson.version : "0.0.0";
+};
 
 export interface CliStreams { stderr: (message: string) => void; stdout: (message: string) => void; }
 
@@ -165,7 +176,7 @@ export const runCli: RunCli = async (
   const streams = cliOptions.streams;
   const handlers = { ...createDefaultHandlers(), ...cliOptions.handlers };
   const program = new Command();
-  program.name("spawnfile").description("Spawnfile v0.1 compiler");
+  program.name("spawnfile").description("Spawnfile v0.1 compiler").version(readPackageVersion());
   program.exitOverride();
   program.configureOutput({
     outputError: (message, write) => write(message),

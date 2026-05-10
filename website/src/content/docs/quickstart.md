@@ -12,6 +12,7 @@ npm install -g spawnfile
 Verify:
 
 ```bash
+spawnfile --version
 spawnfile --help
 ```
 

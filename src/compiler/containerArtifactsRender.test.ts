@@ -369,7 +369,10 @@ describe("renderDockerfile", () => {
       "RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl tar"
     );
     expect(dockerfile).toContain(
-      "RUN MOLTNET_INSTALL_DIR=/usr/local/bin sh -c 'curl -fsSL https://moltnet.dev/install.sh | sh'"
+      "ADD https://api.github.com/repos/noopolis/moltnet/releases/latest /tmp/spawnfile-moltnet-release.json"
+    );
+    expect(dockerfile).toContain(
+      "RUN MOLTNET_RELEASE=\"$(sed -n 's/.*\\\"tag_name\\\": *\\\"\\([^\\\"]*\\)\\\".*/\\1/p' /tmp/spawnfile-moltnet-release.json | head -n 1)\" && echo \"Installing Moltnet ${MOLTNET_RELEASE:-latest}\" && MOLTNET_INSTALL_DIR=/usr/local/bin sh -c 'curl -fsSL https://moltnet.dev/install.sh | sh'"
     );
   });
 
