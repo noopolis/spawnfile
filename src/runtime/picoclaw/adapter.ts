@@ -23,6 +23,11 @@ import {
 import { preparePicoClawRuntimeAuth } from "./runAuth.js";
 import { createPicoClawAgentScaffold } from "./scaffold.js";
 import {
+  createPicoClawCronStoreFile,
+  createScheduleDiagnostics,
+  scheduleOutcomeFor
+} from "./schedules.js";
+import {
   assertSupportedPicoClawSurfaces,
   buildPicoClawChannelConfig,
   buildPicoClawSurfaceEnvBindings
@@ -134,6 +139,12 @@ const buildPicoClawToolsConfig = (
   node: ResolvedAgentNode
 ): Record<string, unknown> | undefined => {
   const tools: Record<string, unknown> = {};
+
+  if (node.schedule?.kind === "cron") {
+    tools.cron = {
+      enabled: true
+    };
+  }
 
   if (node.surfaces?.moltnet) {
     tools.exec = {
@@ -271,12 +282,18 @@ export const picoClawAdapter: RuntimeAdapter = {
     }
   },
   async compileAgent(node): Promise<AdapterCompileResult> {
+    const scheduleOutcome = scheduleOutcomeFor(node);
+    const cronStoreFile = createPicoClawCronStoreFile(node);
     return {
-      capabilities: createAgentCapabilities(node),
-      diagnostics: [],
+      capabilities: createAgentCapabilities(node, {
+        scheduleMessage: scheduleOutcome.message,
+        scheduleOutcome: scheduleOutcome.outcome
+      }),
+      diagnostics: createScheduleDiagnostics(node),
       files: [
         ...createDocumentFiles("workspace", node.docs),
         ...createSkillFiles("workspace/skills", node.skills),
+        ...(cronStoreFile ? [cronStoreFile] : []),
         {
           content: buildPicoClawConfig(node),
           path: "config.json"

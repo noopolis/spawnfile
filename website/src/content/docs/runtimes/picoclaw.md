@@ -46,6 +46,17 @@ Provider-specific auth uses PicoClaw's native auth system (e.g. `picoclaw auth l
 
 At the pinned version, the compiled config uses `model_list[].api_key` with file references like `file://secrets/OPENAI_API_KEY`. The entrypoint materializes those files from environment variables before startup.
 
+## Schedule Handling
+
+PicoClaw supports Spawnfile `schedule.kind: cron` through its native cron service.
+The adapter emits a `workspace/cron/jobs.json` store and enables PicoClaw's
+`tools.cron` config so the gateway can wake the agent. `spawnfile up` starts
+PicoClaw with that job store in place, and each due job delivers the declared
+`schedule.prompt` as an agent turn.
+
+`schedule.kind: every` is validated but reported as degraded for PicoClaw in
+v0.1. `schedule.kind: disabled` emits no cron job.
+
 ## MCP Handling
 
 PicoClaw has a first-class MCP config surface, making it one of the best early targets for canonical MCP lowering:
@@ -170,6 +181,7 @@ For a single agent:
 - Workspace markdown files
 - Skill directories
 - MCP server configuration
+- A `workspace/cron/jobs.json` store when `schedule.kind: cron` is declared
 
 For container compilation:
 - Base image metadata and system dependencies
@@ -182,6 +194,7 @@ For container compilation:
 - The pinned version needs `workspace/` copied into `cmd/picoclaw/internal/onboard/workspace` before `go build` in a clean checkout.
 - Provider auth needs `model_list[].api_key` file references. The entrypoint materializes secret files from env before startup.
 - Clean container boot uses `picoclaw gateway --allow-empty`.
+- Cron schedules require `tools.cron.enabled` in the compiled config and a `workspace/cron/jobs.json` store.
 - Health endpoints: `/health` and `/ready`.
 - For multi-agent compilation, one PicoClaw gateway process runs per compiled target with ports incremented from the adapter base port.
 
