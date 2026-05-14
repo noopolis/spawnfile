@@ -10,6 +10,7 @@ src/e2e/
 ├── dockerAuth.ts       # Docker build/run orchestration for auth smoke scenarios
 ├── fixtures.ts         # Temporary project materialization from e2e fixtures
 ├── operationalSmoke.ts # spawnfile up smoke for schedules, Moltnet, and workspace resources
+├── operationalSmokePicoclaw.ts # PicoClaw-specific operational smoke helpers
 ├── runtimePrompts.ts   # Runtime-specific readiness and prompt checks
 ├── scenarios.ts        # Supported E2E scenario matrix
 └── *.test.ts           # Pure tests for fixture/scenario logic

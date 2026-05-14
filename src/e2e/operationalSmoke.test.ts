@@ -24,11 +24,22 @@ const createUpResult = (outputDirectory: string, imageTag: string): UpProjectRes
           volume_name: "spawnfile-ops-lab-state"
         }
       ],
-      ports: [3777, 19087],
+      ports: [3777, 18990, 19087],
       runtime_homes: [
+        "/var/lib/spawnfile/instances/picoclaw/agent-pico-scheduled/picoclaw",
         "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi"
       ],
       runtime_instances: [
+        {
+          config_path: "/var/lib/spawnfile/instances/picoclaw/agent-pico-scheduled/picoclaw/config.json",
+          home_path: "/var/lib/spawnfile/instances/picoclaw/agent-pico-scheduled/picoclaw",
+          id: "agent-pico-scheduled",
+          model_auth_methods: {
+            local: "none"
+          },
+          model_secrets_required: [],
+          runtime: "picoclaw"
+        },
         {
           config_path: "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/settings.json",
           home_path: "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi",
@@ -39,7 +50,7 @@ const createUpResult = (outputDirectory: string, imageTag: string): UpProjectRes
         }
       ],
       runtime_secrets_required: [],
-      runtimes_installed: ["tinyclaw"],
+      runtimes_installed: ["picoclaw", "tinyclaw"],
       secrets_required: []
     },
     diagnostics: [],
@@ -75,7 +86,10 @@ describe("runOperationalSmokeE2E", () => {
           const command = args.join(" ");
           if (command.includes("/v1/agents")) {
             return JSON.stringify({
-              agents: [{ id: "scheduled-agent", rooms: ["ops-room"] }]
+              agents: [
+                { id: "pico-scheduled", rooms: ["ops-room"] },
+                { id: "scheduled-agent", rooms: ["ops-room"] }
+              ]
             });
           }
           if (command.includes("/messages?limit=50")) {
@@ -104,8 +118,17 @@ describe("runOperationalSmokeE2E", () => {
       })
     );
     expect(dockerCalls).toContainEqual(expect.arrayContaining(["exec", "operational-container", "curl", "-sf", "http://127.0.0.1:3777/api/agents"]));
+    expect(dockerCalls).toContainEqual(expect.arrayContaining(["exec", "operational-container", "curl", "-sf", "http://127.0.0.1:18990/health"]));
+    expect(dockerCalls).toContainEqual(expect.arrayContaining(["exec", "operational-container", "curl", "-sf", "http://127.0.0.1:19123/health"]));
     expect(dockerCalls).toContainEqual(expect.arrayContaining(["exec", "operational-container", "curl", "-sf", "http://127.0.0.1:19087/healthz"]));
     expect(dockerCalls).toContainEqual(expect.arrayContaining(["exec", "operational-container", "test", "-L"]));
+    expect(dockerCalls).toContainEqual(expect.arrayContaining([
+      "exec",
+      "operational-container",
+      "test",
+      "-f",
+      "/var/lib/spawnfile/instances/picoclaw/agent-pico-scheduled/picoclaw/workspace/cron/jobs.json"
+    ]));
     expect(dockerCalls).toContainEqual(["rm", "-f", "operational-container"]);
     expect(dockerCalls).toContainEqual(["image", "rm", "-f", "operational-image"]);
     expect(dockerCalls).toContainEqual(["volume", "rm", "-f", "spawnfile-ops-lab-state"]);

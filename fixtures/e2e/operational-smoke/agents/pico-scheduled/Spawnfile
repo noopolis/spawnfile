@@ -1,0 +1,36 @@
+spawnfile_version: "0.1"
+kind: agent
+name: pico-scheduled
+
+runtime: picoclaw
+
+execution:
+  model:
+    primary:
+      provider: local
+      name: spawnfile-mock
+      endpoint:
+        compatibility: openai
+        base_url: http://127.0.0.1:19123
+      auth:
+        method: none
+  sandbox:
+    mode: workspace
+
+schedule:
+  kind: cron
+  cron: "* * * * *"
+  timezone: UTC
+  prompt: "SF-SPAWNFILE-OPERATIONAL-PICO-SCHEDULE-PROMPT"
+
+surfaces:
+  moltnet:
+    - network: ops_lab
+      rooms:
+        ops-room:
+          read: all
+          reply: never
+
+workspace:
+  docs:
+    system: AGENTS.md

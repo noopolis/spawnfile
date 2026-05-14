@@ -11,6 +11,12 @@ import {
 import { runCli } from "../cli/runCli.js";
 import { removeDirectory } from "../filesystem/index.js";
 import { isSpawnfileError, SpawnfileError } from "../shared/index.js";
+import {
+  assertPicoClawWorkspace,
+  PICOCLAW_PORT,
+  startPicoClawMockModelServer,
+  waitForPicoClawSchedule
+} from "./operationalSmokePicoclaw.js";
 
 const DEFAULT_FIXTURE_DIRECTORY = fileURLToPath(
   new URL("../../fixtures/e2e/operational-smoke", import.meta.url)
@@ -158,6 +164,7 @@ const assertWorkspaceLinks = async (
     "-f",
     path.posix.join(TINYCLAW_HOME, "schedules.json")
   ]);
+  await assertPicoClawWorkspace(runCommand, dockerCommand, containerName);
 };
 
 const waitForOperationalState = async (
@@ -172,6 +179,21 @@ const waitForOperationalState = async (
     await dockerCurl(runCommand, dockerCommand, containerName, `http://127.0.0.1:${TINYCLAW_PORT}/api/agents`);
     return true;
   });
+
+  logger.info("operational-smoke: waiting for PicoClaw API");
+  await poll("PicoClaw API", pollOptions, async () => {
+    await dockerCurl(runCommand, dockerCommand, containerName, `http://127.0.0.1:${PICOCLAW_PORT}/health`);
+    return true;
+  });
+
+  logger.info("operational-smoke: starting PicoClaw mock model");
+  await startPicoClawMockModelServer(
+    runCommand,
+    dockerCommand,
+    containerName,
+    pollOptions,
+    poll
+  );
 
   logger.info("operational-smoke: waiting for Moltnet API");
   await poll("Moltnet API", pollOptions, async () => {
@@ -193,6 +215,9 @@ const waitForOperationalState = async (
     );
     return agents?.some(
       (agent) => agent.id === "scheduled-agent" && (agent.rooms ?? []).includes("ops-room")
+    ) &&
+      agents?.some(
+        (agent) => agent.id === "pico-scheduled" && (agent.rooms ?? []).includes("ops-room")
     )
       ? true
       : null;
@@ -211,6 +236,9 @@ const waitForOperationalState = async (
     );
     return includesScheduledMessage(rawMessages) ? true : null;
   });
+
+  logger.info("operational-smoke: waiting for PicoClaw cron-fired agent reply");
+  await waitForPicoClawSchedule(runCommand, dockerCommand, containerName, pollOptions, poll);
 };
 
 const runSpawnfileUpCommand = async (
