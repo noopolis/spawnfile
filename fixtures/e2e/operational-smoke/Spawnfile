@@ -17,6 +17,8 @@ shared:
 members:
   - id: scheduled-agent
     ref: ./agents/scheduled
+  - id: pico-scheduled
+    ref: ./agents/pico-scheduled
 
 mode: hierarchical
 lead: scheduled-agent
@@ -39,4 +41,4 @@ networks:
       direct_messages: false
     rooms:
       - id: ops-room
-        members: [scheduled-agent]
+        members: [scheduled-agent, pico-scheduled]

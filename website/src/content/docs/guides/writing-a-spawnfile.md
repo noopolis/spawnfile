@@ -92,6 +92,10 @@ Supported forms:
 
 Schedule declarations are portable wake intent. In this alpha, runtimes may report schedule lowering as degraded when they validate the intent but do not emit a native scheduler yet.
 
+In v0.1, `schedule.kind: cron` lowers to native scheduler artifacts for TinyClaw
+and PicoClaw. `schedule.kind: every` is valid portable intent, but those
+adapters currently report it as degraded.
+
 ## skills
 
 The `workspace.skills` list declares skill directories available to the agent. Each entry must have a `ref` pointing to a directory that contains a `SKILL.md` file.
