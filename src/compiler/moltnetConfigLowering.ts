@@ -230,6 +230,7 @@ export const createMoltnetNativeServerConfig = ({
         listen_addr: renderMoltnetListenAddr(server),
         ...(server.human_ingress !== undefined ? { human_ingress: server.human_ingress } : {}),
         ...(server.direct_messages !== undefined ? { direct_messages: server.direct_messages } : {}),
+        ...(server.debug_events !== undefined ? { debug_events: server.debug_events } : {}),
         ...(server.trust_forwarded_proto !== undefined
           ? { trust_forwarded_proto: server.trust_forwarded_proto }
           : {}),

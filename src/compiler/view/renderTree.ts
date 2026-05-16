@@ -53,6 +53,7 @@ const formatNetworkSummary = (
     network.url ? `url=${network.url}` : undefined,
     network.authMode ? `auth=${network.authMode}` : undefined,
     network.directMessages === false ? "dms=disabled" : undefined,
+    network.debugEvents === true ? "debug_events" : undefined,
     network.expose === true || network.httpEnabled ? "human_ingress" : undefined
   ].filter((entry): entry is string => entry !== undefined);
   const rooms = network.rooms

@@ -65,6 +65,7 @@ const buildTreeNetworkSummaries = (
 
   return (node.value.networks ?? []).map((network) => ({
     authMode: network.server?.auth.mode,
+    debugEvents: network.server?.mode === "managed" ? network.server.debug_events : undefined,
     directMessages: network.server?.mode === "managed" ? network.server.direct_messages : undefined,
     expose: network.server?.mode === "managed" ? network.server.human_ingress : undefined,
     httpEnabled: network.server?.mode === "managed" ? network.server.human_ingress === true : false,
@@ -182,6 +183,7 @@ const buildNetworkDeclaration = (
   roomMemberships: ResolvedMoltnetRoomMembership[]
 ): OrganizationNetworkDeclarationView => ({
   authMode: network.server?.auth.mode,
+  debugEvents: network.server?.mode === "managed" ? network.server.debug_events : undefined,
   declaringTeamName: teamNode.name,
   declaringTeamSource: teamNode.source,
   directMessages: network.server?.mode === "managed" ? network.server.direct_messages : undefined,
@@ -235,6 +237,7 @@ const buildNetworks = (
         declaringTeamSource: declaration.declaringTeamSource,
         declarations: [declaration],
         authMode: declaration.authMode,
+        debugEvents: declaration.debugEvents,
         directMessages: declaration.directMessages,
         expose: declaration.expose,
         httpEnabled: declaration.httpEnabled,

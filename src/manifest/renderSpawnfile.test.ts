@@ -315,6 +315,7 @@ describe("renderSpawnfile", () => {
                 name: "local-lab-state"
               }
             },
+            debug_events: true,
             direct_messages: true
           },
           rooms: [
@@ -331,6 +332,7 @@ describe("renderSpawnfile", () => {
     expect(source).toContain("    server:");
     expect(source).toContain("      mode: managed");
     expect(source).toContain("      direct_messages: true");
+    expect(source).toContain("      debug_events: true");
     expect(source).toContain("      port: 8787");
     expect(source).toContain("      auth:");
     expect(source).toContain("      store:");
@@ -357,6 +359,7 @@ describe("renderSpawnfile", () => {
                 name: "local-lab-state"
               }
             },
+            debug_events: true,
             direct_messages: true
           }
         }
