@@ -24,6 +24,7 @@ const createView = (): OrganizationView => ({
     {
       declaringTeamName: "parent",
       declaringTeamSource: "/tmp/parent/Spawnfile",
+      debugEvents: true,
       expose: true,
       id: "org",
       name: "Org",
@@ -112,6 +113,7 @@ const createView = (): OrganizationView => ({
     networks: [
       {
         expose: true,
+        debugEvents: true,
         id: "org",
         name: "Org",
         provider: "moltnet",
@@ -134,7 +136,7 @@ describe("compiler view renderers", () => {
     const view = createView();
 
     expect(renderOrganizationTree(view)).toContain("├── coordinator: agent coordinator-agent");
-    expect(renderOrganizationTree(view)).toContain('network org "Org" human_ingress: general [coordinator, child]');
+    expect(renderOrganizationTree(view)).toContain('network org "Org" debug_events human_ingress: general [coordinator, child]');
     expect(renderOrganizationTree(view)).toContain("└── child: team child");
     expect(renderOrganizationTree(view, { ascii: true })).toContain("|-- coordinator: agent coordinator-agent");
   });
@@ -149,7 +151,7 @@ describe("compiler view renderers", () => {
   it("renders colored tree network summaries", () => {
     const output = renderOrganizationTree(createView(), { color: true });
 
-    expect(output).toContain('\u001b[36morg\u001b[0m "Org" human_ingress');
+    expect(output).toContain('\u001b[36morg\u001b[0m "Org" debug_events human_ingress');
   });
 
   it("renders declared network slots and paths when requested", () => {
@@ -158,7 +160,7 @@ describe("compiler view renderers", () => {
       paths: true
     });
 
-    expect(output).toContain("org \"Org\" on parent human_ingress </tmp/parent/Spawnfile>");
+    expect(output).toContain("org \"Org\" on parent debug_events human_ingress </tmp/parent/Spawnfile>");
     expect(output).toContain("declared members: coordinator, child");
     expect(output).toContain("rep-agent  represents=child member=rep </tmp/rep/Spawnfile>");
   });

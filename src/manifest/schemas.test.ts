@@ -614,6 +614,7 @@ describe("manifestSchema", () => {
               kind: "sqlite",
               path: "/tmp/local-lab.sqlite"
             },
+            debug_events: true,
             human_ingress: true
           },
           rooms: [
@@ -658,6 +659,7 @@ describe("manifestSchema", () => {
       throw new Error("expected managed server");
     }
     expect(server.listen).toEqual({ bind: "127.0.0.1", port: 8787 });
+    expect(server.debug_events).toBe(true);
     expect(server.human_ingress).toBe(true);
   });
 

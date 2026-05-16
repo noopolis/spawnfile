@@ -21,6 +21,7 @@ export interface OrganizationTreeNetworkRoomSummary {
 
 export interface OrganizationTreeNetworkSummary {
   authMode?: "bearer" | "none" | "open";
+  debugEvents?: boolean;
   directMessages?: boolean;
   expose?: boolean;
   httpEnabled?: boolean;
@@ -54,6 +55,7 @@ export interface OrganizationNetworkMemberView {
 
 export interface OrganizationNetworkDeclarationView {
   authMode?: "bearer" | "none" | "open";
+  debugEvents?: boolean;
   declaringTeamName: string;
   declaringTeamSource: string;
   directMessages?: boolean;
@@ -73,6 +75,7 @@ export interface OrganizationNetworkRoomView {
 
 export interface OrganizationNetworkView {
   authMode?: "bearer" | "none" | "open";
+  debugEvents?: boolean;
   declaringTeamName: string;
   declaringTeamSource: string;
   directMessages?: boolean;

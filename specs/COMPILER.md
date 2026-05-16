@@ -350,7 +350,7 @@ Rules:
 
 #### Moltnet Server/Auth/Store Lowering
 
-- `server` blocks are required for networks that are materialized locally and are normalized by `(provider, server.mode, server.url, server.listen, store, auth, pairings)` identity.
+- `server` blocks are required for networks that are materialized locally and are normalized by `(provider, server.mode, server.url, server.listen, store, auth, pairings, managed server flags)` identity.
 - `server.mode: managed` lowerings generate a server config and a managed server process slot under the local lifecycle graph.
 - `server.mode: external` generates client/node config only.
 - Managed server config requires:
@@ -375,6 +375,7 @@ Rules:
 - Managed bearer mode requires `token_id` and requires the referenced token to include `attach` and `write` scopes.
 - Managed and external open static token mode requires `static_token: true` on the configured client source.
 - `server.pairings` entries are materialized into managed server config and rejected on non-managed networks.
+- Managed `server.human_ingress`, `server.direct_messages`, `server.debug_events`, `server.trust_forwarded_proto`, and `server.allowed_origins` lower directly into the Moltnet native server config.
 
 ### Coordination Diagnostics
 

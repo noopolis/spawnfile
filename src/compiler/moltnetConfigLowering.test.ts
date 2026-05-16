@@ -128,6 +128,7 @@ describe("moltnetConfigLowering", () => {
             }
           ]
         },
+        debug_events: true,
         direct_messages: false,
         human_ingress: true,
         pairings: [
@@ -174,6 +175,7 @@ describe("moltnetConfigLowering", () => {
       rooms: [{ id: "agora", members: ["lead"], name: "Agora" }],
       server: {
         allowed_origins: ["https://console.example.com"],
+        debug_events: true,
         direct_messages: false,
         human_ingress: true,
         listen_addr: "127.0.0.1:8787",

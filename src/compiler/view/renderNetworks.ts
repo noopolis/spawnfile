@@ -74,6 +74,7 @@ const getDeclarations = (
       authMode: network.authMode,
       declaringTeamName: network.declaringTeamName,
       declaringTeamSource: network.declaringTeamSource,
+      debugEvents: network.debugEvents,
       directMessages: network.directMessages,
       expose: network.expose,
       httpEnabled: network.httpEnabled,
@@ -95,6 +96,7 @@ const formatDeclaration = (
     declaration.url ? `url=${declaration.url}` : undefined,
     declaration.authMode ? `auth=${declaration.authMode}` : undefined,
     declaration.directMessages === false ? "dms=disabled" : undefined,
+    declaration.debugEvents === true ? "debug_events" : undefined,
     declaration.expose === true || declaration.httpEnabled ? "human_ingress" : undefined
   ].filter((entry): entry is string => entry !== undefined);
   const source = options.paths

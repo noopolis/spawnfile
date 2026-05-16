@@ -983,6 +983,7 @@ networks:
         port: 8787
       human_ingress: true
       direct_messages: false
+      debug_events: false
       trust_forwarded_proto: false
       allowed_origins:
         - http://localhost:8787
@@ -1018,7 +1019,7 @@ Rules:
 - `server.url` and `server.listen` may use IPv4, hostnames, or raw IPv6 literals.
 - `server.url` must be a valid URL.
 - `server.url` is required for `server.mode: external`.
-- `server.mode: external` MUST NOT include `listen`, `store`, `server.auth.tokens`, `server.pairings`, `human_ingress`, `direct_messages`, `trust_forwarded_proto`, or `allowed_origins`.
+- `server.mode: external` MUST NOT include `listen`, `store`, `server.auth.tokens`, `server.pairings`, `human_ingress`, `direct_messages`, `debug_events`, `trust_forwarded_proto`, or `allowed_origins`.
 - `server.auth.mode` MUST be one of `none`, `bearer`, or `open`.
 - For `server.auth.mode: none`, `server.auth` MUST NOT include `tokens` or `client`.
 - `server.mode: managed` with `server.auth.mode: bearer` requires `server.auth.tokens`.
@@ -1050,6 +1051,7 @@ Rules:
 - `server.store.persistence.mount` MAY override the durable container mount directory; when both `path` and `mount` are declared, `path` MUST be inside `mount`.
 - Open auth without `server.auth.client` emits per-agent generated token files under private agent runtime state and those token directories are durable runtime mounts.
 - `server.direct_messages: false` means any `surfaces.moltnet[].dms` for that network is a validation error.
+- `server.debug_events: true` is valid only for managed Moltnet servers and lowers to Moltnet lifecycle diagnostics. It can expose disconnect reasons and bridge/runtime errors through events, so it is intended for operational debugging, not normal public network defaults.
 - A room `members` list MAY name direct agent member IDs or direct child-team member IDs.
 - Direct child-team IDs in a parent room expand to the child team's concrete representatives for that parent context.
 - Parent networks do not generally propagate through nested team boundaries. Only explicit parent-room representative attachments propagate, and only to selected representatives.

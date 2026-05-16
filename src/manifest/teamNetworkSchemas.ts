@@ -218,6 +218,7 @@ const teamNetworkManagedServerSchema = z
   .object({
     allowed_origins: z.array(z.string().trim().min(1)).optional(),
     auth: teamNetworkAuthSchema,
+    debug_events: z.boolean().optional(),
     direct_messages: z.boolean().optional(),
     human_ingress: z.boolean().optional(),
     listen: teamNetworkListenSchema,

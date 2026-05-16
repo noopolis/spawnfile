@@ -80,6 +80,7 @@ const orderTeamAuth = (server: TeamNetworkServer): TeamNetworkServer =>
     ],
     ["human_ingress", server.mode === "managed" ? server.human_ingress : undefined],
     ["direct_messages", server.mode === "managed" ? server.direct_messages : undefined],
+    ["debug_events", server.mode === "managed" ? server.debug_events : undefined],
     [
       "trust_forwarded_proto",
       server.mode === "managed" ? server.trust_forwarded_proto : undefined
