@@ -193,6 +193,29 @@ describe("moltnetClientConfig", () => {
     expect(files[0]?.content).toContain('"network_id": "local_lab"');
   });
 
+  it("uses the compiled agent slug for generated open-registration token paths", () => {
+    const artifacts = createArtifacts();
+    const [serverPlan] = artifacts.serverPlans;
+    if (serverPlan) {
+      serverPlan.server = {
+        ...serverPlan.server,
+        auth: {
+          mode: "bearer",
+          agent_registration: "open",
+          public_read: true
+        }
+      };
+    }
+    const agent = createAgent("openclaw");
+
+    const files = createMoltnetClientConfigFiles(agent, artifacts, "agent-slug");
+
+    expect(files[0]?.content)
+      .toContain('"token_path": "/var/lib/spawnfile/agents/agent-slug/state/moltnet/local_lab-orchestrator.token"');
+    expect(files[0]?.content)
+      .not.toContain("/var/lib/spawnfile/agents/orchestrator/state/moltnet/local_lab-orchestrator.token");
+  });
+
   it("fails when the runtime does not have a Moltnet workspace layout", () => {
     expect(() => resolveMoltnetWorkspaceLayout("zeroclaw", "orchestrator")).toThrow(
       /does not know how to emit files for runtime zeroclaw/

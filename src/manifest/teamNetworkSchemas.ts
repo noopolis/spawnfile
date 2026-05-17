@@ -3,22 +3,12 @@ import { z } from "zod";
 import { teamNetworkAgentRegistrationSchema, teamNetworkRoomVisibilitySchema, teamNetworkRoomWritePolicySchema } from "./teamNetworkAccessSchemas.js";
 import { teamNetworkConsoleSchema } from "./teamNetworkConsoleSchemas.js";
 
-export {
-  teamWorkspaceDocsSchema,
-  teamWorkspaceSchema
-} from "./workspaceSchemas.js";
-export type {
-  TeamWorkspace,
-  TeamWorkspaceDocs,
-  TeamWorkspaceResource,
-  TeamWorkspaceResource as TeamNetworkResource
-} from "./workspaceSchemas.js";
+export { teamWorkspaceDocsSchema, teamWorkspaceSchema } from "./workspaceSchemas.js";
+export type { TeamWorkspace, TeamWorkspaceDocs, TeamWorkspaceResource, TeamWorkspaceResource as TeamNetworkResource } from "./workspaceSchemas.js";
 
 const moltnetScopeSchema = z.enum(["observe", "write", "admin", "attach", "pair"]);
 
-const countTruthy = (
-  value: unknown[]
-): number => value.filter((entry) => Boolean(entry)).length;
+const countTruthy = (value: unknown[]): number => value.filter((entry) => Boolean(entry)).length;
 
 const absolutePosixPathSchema = z
   .string()
@@ -28,8 +18,7 @@ const absolutePosixPathSchema = z
     message: "path must be an absolute POSIX path"
   });
 
-const normalizePosixPath = (value: string): string =>
-  value.replace(/\/+/g, "/").replace(/\/+$/u, "") || "/";
+const normalizePosixPath = (value: string): string => value.replace(/\/+/g, "/").replace(/\/+$/u, "") || "/";
 
 const pathIsInsideMount = (filePath: string, mountPath: string): boolean => {
   const normalizedPath = normalizePosixPath(filePath);
@@ -123,6 +112,10 @@ const teamNetworkAuthSchema = z
           message: "open auth with auth.client requires exactly one token source"
         });
       }
+    }
+
+    if (value.mode === "open" && value.agent_registration && value.agent_registration !== "open") {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "auth.mode open requires agent_registration open when declared" });
     }
 
     if (value.tokens) {
@@ -289,6 +282,10 @@ const teamNetworkManagedServerSchema = z
           code: z.ZodIssueCode.custom,
           message: "managed open auth client token source must be token_id"
         });
+      }
+
+      if (value.auth.client.token_id && !value.auth.tokens?.some((token) => token.id === value.auth.client?.token_id)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `managed open auth references unknown token: ${value.auth.client.token_id}` });
       }
     }
   });

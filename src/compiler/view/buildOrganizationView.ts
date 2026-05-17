@@ -64,6 +64,7 @@ const buildTreeNetworkSummaries = (
   }
 
   return (node.value.networks ?? []).map((network) => ({
+    agentRegistration: network.server?.auth.agent_registration,
     authMode: network.server?.auth.mode,
     consoleAnalytics: network.server?.mode === "managed"
       ? network.server.console?.analytics?.provider
@@ -75,6 +76,7 @@ const buildTreeNetworkSummaries = (
     id: network.id,
     name: network.name,
     provider: network.provider,
+    publicRead: network.server?.auth.public_read,
     serverMode: network.server?.mode,
     url: network.server?.url,
     rooms: network.rooms.map((room) => ({
@@ -187,6 +189,7 @@ const buildNetworkDeclaration = (
   network: ResolvedTeamNetwork,
   roomMemberships: ResolvedMoltnetRoomMembership[]
 ): OrganizationNetworkDeclarationView => ({
+  agentRegistration: network.server?.auth.agent_registration,
   authMode: network.server?.auth.mode,
   consoleAnalytics: network.server?.mode === "managed"
     ? network.server.console?.analytics?.provider
@@ -198,6 +201,7 @@ const buildNetworkDeclaration = (
   expose: network.server?.mode === "managed" ? network.server.human_ingress : undefined,
   httpEnabled: network.server?.mode === "managed" ? network.server.human_ingress === true : false,
   name: network.name,
+  publicRead: network.server?.auth.public_read,
   serverMode: network.server?.mode,
   url: network.server?.url,
   rooms: network.rooms.map((room) => {
@@ -246,6 +250,7 @@ const buildNetworks = (
         declaringTeamName: declaration.declaringTeamName,
         declaringTeamSource: declaration.declaringTeamSource,
         declarations: [declaration],
+        agentRegistration: declaration.agentRegistration,
         authMode: declaration.authMode,
         consoleAnalytics: declaration.consoleAnalytics,
         debugEvents: declaration.debugEvents,
@@ -255,6 +260,7 @@ const buildNetworks = (
         id: network.id,
         name: declaration.name,
         provider: network.provider,
+        publicRead: declaration.publicRead,
         serverMode: declaration.serverMode,
         url: declaration.url,
         rooms: declaration.rooms
@@ -268,6 +274,7 @@ const buildNetworks = (
     if (firstDeclaration) {
       network.declaringTeamName = firstDeclaration.declaringTeamName;
       network.declaringTeamSource = firstDeclaration.declaringTeamSource;
+      network.agentRegistration = firstDeclaration.agentRegistration;
       network.authMode = firstDeclaration.authMode;
       network.consoleAnalytics = firstDeclaration.consoleAnalytics;
       network.debugEvents = firstDeclaration.debugEvents;
@@ -275,6 +282,7 @@ const buildNetworks = (
       network.expose = firstDeclaration.expose;
       network.httpEnabled = firstDeclaration.httpEnabled;
       network.name = firstDeclaration.name;
+      network.publicRead = firstDeclaration.publicRead;
       network.serverMode = firstDeclaration.serverMode;
       network.url = firstDeclaration.url;
       network.rooms = firstDeclaration.rooms;

@@ -72,6 +72,7 @@ const getDeclarations = (
   network.declarations ?? [
     {
       authMode: network.authMode,
+      agentRegistration: network.agentRegistration,
       consoleAnalytics: network.consoleAnalytics,
       declaringTeamName: network.declaringTeamName,
       declaringTeamSource: network.declaringTeamSource,
@@ -80,6 +81,7 @@ const getDeclarations = (
       expose: network.expose,
       httpEnabled: network.httpEnabled,
       name: network.name,
+      publicRead: network.publicRead,
       rooms: network.rooms,
       serverMode: network.serverMode,
       url: network.url
@@ -96,6 +98,8 @@ const formatDeclaration = (
     declaration.serverMode ? `server=${declaration.serverMode}` : undefined,
     declaration.url ? `url=${declaration.url}` : undefined,
     declaration.authMode ? `auth=${declaration.authMode}` : undefined,
+    declaration.publicRead !== undefined ? `public_read=${declaration.publicRead}` : undefined,
+    declaration.agentRegistration ? `registration=${declaration.agentRegistration}` : undefined,
     declaration.consoleAnalytics ? `analytics=${declaration.consoleAnalytics}` : undefined,
     declaration.directMessages === false ? "dms=disabled" : undefined,
     declaration.debugEvents === true ? "debug_events" : undefined,

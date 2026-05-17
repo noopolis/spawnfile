@@ -85,7 +85,8 @@ const findServerPlan = (
 const createAttachmentConfig = (
   node: ResolvedAgentNode,
   artifacts: MoltnetArtifacts,
-  attachment: ResolvedMoltnetAttachment
+  attachment: ResolvedMoltnetAttachment,
+  agentSlug?: string
 ): MoltnetClientAttachmentConfig => {
   if (!attachment.memberId) {
     throw new SpawnfileError(
@@ -98,7 +99,8 @@ const createAttachmentConfig = (
   const auth = resolveMoltnetClientAuth(
     serverPlan.server,
     attachment.network,
-    attachment.memberId
+    attachment.memberId,
+    agentSlug
   );
 
   return {
@@ -174,7 +176,8 @@ export const resolveMoltnetWorkspaceLayout = (
 
 export const createMoltnetClientConfigFiles = (
   node: ResolvedAgentNode,
-  artifacts: MoltnetArtifacts
+  artifacts: MoltnetArtifacts,
+  agentSlug?: string
 ): EmittedFile[] => {
   const attachments = node.surfaces?.moltnet;
   if (!attachments || attachments.length === 0) {
@@ -186,7 +189,9 @@ export const createMoltnetClientConfigFiles = (
     {
       content: createConfigContent(
         node,
-        attachments.map((attachment) => createAttachmentConfig(node, artifacts, attachment))
+        attachments.map((attachment) =>
+          createAttachmentConfig(node, artifacts, attachment, agentSlug)
+        )
       ),
       path: layout.clientConfigPath
     }

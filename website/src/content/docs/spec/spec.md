@@ -1033,8 +1033,9 @@ Rules:
 - `server.auth.agent_registration` is OPTIONAL and MUST be one of `disabled`, `token`, or `open` when present. It controls generated agent-token self-registration and does not grant room write access by itself.
 - For `server.auth.mode: none`, `server.auth` MUST NOT include `tokens` or `client`.
 - `server.mode: managed` with `server.auth.mode: bearer` requires `server.auth.tokens`.
-- `server.mode: external` with `server.auth.mode: bearer` requires `server.auth.client` with `token_env` or `token_path`.
+- `server.mode: external` with `server.auth.mode: bearer` requires `server.auth.client` with `token_env` or `token_path`, unless `server.auth.agent_registration: open` is declared and the generated node will self-register for an agent token.
 - For `server.auth.mode: open`, `server.auth.tokens` MAY be present but `server.auth.client` is optional.
+- For `server.auth.mode: open`, `server.auth.agent_registration` MUST be omitted or `open`; `disabled` and `token` are invalid because open mode is already a self-claiming registration mode.
 - `server.auth.client` MUST include exactly one token source field: `token_id`, `token_env`, or `token_path` when present.
 - `server.auth.client` for `managed` servers must use `token_id` and reference one declared token.
 - `server.auth.client` for `external` servers may use `token_env` or `token_path`.

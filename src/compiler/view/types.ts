@@ -22,6 +22,7 @@ export interface OrganizationTreeNetworkRoomSummary {
 }
 
 export interface OrganizationTreeNetworkSummary {
+  agentRegistration?: "disabled" | "open" | "token";
   authMode?: "bearer" | "none" | "open";
   consoleAnalytics?: string;
   debugEvents?: boolean;
@@ -31,6 +32,7 @@ export interface OrganizationTreeNetworkSummary {
   id: string;
   name: string;
   provider: "moltnet";
+  publicRead?: boolean;
   serverMode?: "external" | "managed";
   url?: string;
   rooms: OrganizationTreeNetworkRoomSummary[];
@@ -57,6 +59,7 @@ export interface OrganizationNetworkMemberView {
 }
 
 export interface OrganizationNetworkDeclarationView {
+  agentRegistration?: "disabled" | "open" | "token";
   authMode?: "bearer" | "none" | "open";
   consoleAnalytics?: string;
   debugEvents?: boolean;
@@ -66,6 +69,7 @@ export interface OrganizationNetworkDeclarationView {
   expose?: boolean;
   httpEnabled?: boolean;
   name: string;
+  publicRead?: boolean;
   rooms: OrganizationNetworkRoomView[];
   serverMode?: "external" | "managed";
   url?: string;
@@ -80,6 +84,7 @@ export interface OrganizationNetworkRoomView {
 }
 
 export interface OrganizationNetworkView {
+  agentRegistration?: "disabled" | "open" | "token";
   authMode?: "bearer" | "none" | "open";
   consoleAnalytics?: string;
   debugEvents?: boolean;
@@ -91,6 +96,7 @@ export interface OrganizationNetworkView {
   id: string;
   name: string;
   provider: "moltnet";
+  publicRead?: boolean;
   rooms: OrganizationNetworkRoomView[];
   serverMode?: "external" | "managed";
   url?: string;

@@ -822,6 +822,19 @@ describe("manifestSchema", () => {
     expect(external.success).toBe(true);
   });
 
+  it("rejects open Moltnet auth with non-open registration policy", () => {
+    for (const agentRegistration of ["disabled", "token"] as const) {
+      const result = manifestSchema.safeParse(createTeamWithNetwork(createManagedServer({
+        auth: {
+          agent_registration: agentRegistration,
+          mode: "open"
+        }
+      })));
+
+      expect(result.success).toBe(false);
+    }
+  });
+
   it("rejects invalid Moltnet public access policy enums", () => {
     const invalidAuth = manifestSchema.safeParse(createTeamWithNetwork(createManagedServer({
       auth: {
@@ -1074,6 +1087,28 @@ describe("manifestSchema", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it("rejects managed open auth with unknown static token_id client", () => {
+    const result = manifestSchema.safeParse(createTeamWithNetwork(createManagedServer({
+      auth: {
+        client: {
+          static_token: true,
+          token_id: "missing"
+        },
+        mode: "open",
+        tokens: [
+          {
+            id: "operator",
+            scopes: ["admin"],
+            secret: "MOLTNET_OPERATOR_TOKEN"
+          }
+        ]
+      }
+    })));
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.some((issue) => issue.message.includes("unknown token"))).toBe(true);
   });
 
   it("rejects managed open auth with non-token-id client source", () => {

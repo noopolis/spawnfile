@@ -52,6 +52,8 @@ const formatNetworkSummary = (
     network.serverMode ? `server=${network.serverMode}` : undefined,
     network.url ? `url=${network.url}` : undefined,
     network.authMode ? `auth=${network.authMode}` : undefined,
+    network.publicRead !== undefined ? `public_read=${network.publicRead}` : undefined,
+    network.agentRegistration ? `registration=${network.agentRegistration}` : undefined,
     network.consoleAnalytics ? `analytics=${network.consoleAnalytics}` : undefined,
     network.directMessages === false ? "dms=disabled" : undefined,
     network.debugEvents === true ? "debug_events" : undefined,
