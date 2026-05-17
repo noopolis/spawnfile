@@ -135,6 +135,8 @@ export interface ResolvedTeamNetworkRoom {
   id: string;
   members: string[];
   name?: string;
+  visibility?: "public" | "private";
+  write_policy?: "members" | "operators" | "registered_agents";
 }
 
 export interface ResolvedTeamNetwork {

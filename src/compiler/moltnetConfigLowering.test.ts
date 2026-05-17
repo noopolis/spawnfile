@@ -67,7 +67,39 @@ describe("moltnetConfigLowering", () => {
       auth: { mode: "open" }
     }), "org", "agent", "agent-slug")).toEqual({
       mode: "open",
+      registration: "open",
       tokenPath: "/var/lib/spawnfile/agents/agent-slug/state/moltnet/org-agent.token"
+    });
+    expect(resolveMoltnetClientAuth(createManagedServer({
+      auth: {
+        agent_registration: "open",
+        mode: "bearer",
+        public_read: true,
+        tokens: [
+          {
+            id: "admin",
+            scopes: ["admin", "write"],
+            secret: "MOLTNET_ADMIN_TOKEN"
+          }
+        ]
+      }
+    }), "org", "agent", "agent-slug")).toEqual({
+      mode: "open",
+      registration: "open",
+      tokenPath: "/var/lib/spawnfile/agents/agent-slug/state/moltnet/org-agent.token"
+    });
+    expect(resolveMoltnetClientAuth({
+      auth: {
+        agent_registration: "open",
+        mode: "bearer",
+        public_read: true
+      },
+      mode: "external",
+      url: "https://public.example.com"
+    }, "public", "guest", "guest-slug")).toEqual({
+      mode: "open",
+      registration: "open",
+      tokenPath: "/var/lib/spawnfile/agents/guest-slug/state/moltnet/public-guest.token"
     });
     expect(resolveMoltnetClientAuth(createManagedServer({
       auth: {
@@ -114,11 +146,21 @@ describe("moltnetConfigLowering", () => {
     const lowered = createMoltnetNativeServerConfig({
       networkId: "org",
       networkName: "Org",
-      rooms: [{ id: "agora", members: ["lead"], name: "Agora" }],
+      rooms: [
+        {
+          id: "agora",
+          members: ["lead"],
+          name: "Agora",
+          visibility: "public",
+          write_policy: "members"
+        }
+      ],
       server: createManagedServer({
         allowed_origins: ["https://console.example.com"],
         auth: {
+          agent_registration: "disabled",
           mode: "bearer",
+          public_read: true,
           tokens: [
             {
               agents: ["lead"],
@@ -127,6 +169,12 @@ describe("moltnetConfigLowering", () => {
               secret: "MOLTNET_WRITER_TOKEN"
             }
           ]
+        },
+        console: {
+          analytics: {
+            provider: "google",
+            measurement_id: "G-ABC123"
+          }
         },
         debug_events: true,
         direct_messages: false,
@@ -152,7 +200,9 @@ describe("moltnetConfigLowering", () => {
     ]);
     expect(lowered.config).toMatchObject({
       auth: {
+        agent_registration: "disabled",
         mode: "bearer",
+        public_read: true,
         tokens: [
           {
             agents: ["lead"],
@@ -172,9 +222,23 @@ describe("moltnetConfigLowering", () => {
           token: ""
         }
       ],
-      rooms: [{ id: "agora", members: ["lead"], name: "Agora" }],
+      rooms: [
+        {
+          id: "agora",
+          members: ["lead"],
+          name: "Agora",
+          visibility: "public",
+          write_policy: "members"
+        }
+      ],
       server: {
         allowed_origins: ["https://console.example.com"],
+        console: {
+          analytics: {
+            provider: "google",
+            measurement_id: "G-ABC123"
+          }
+        },
         debug_events: true,
         direct_messages: false,
         human_ingress: true,

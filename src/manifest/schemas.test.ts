@@ -604,7 +604,9 @@ describe("manifestSchema", () => {
           server: {
             mode: "managed",
             auth: {
-              mode: "open"
+              agent_registration: "open",
+              mode: "open",
+              public_read: true
             },
             listen: {
               bind: "127.0.0.1",
@@ -614,13 +616,21 @@ describe("manifestSchema", () => {
               kind: "sqlite",
               path: "/tmp/local-lab.sqlite"
             },
+            console: {
+              analytics: {
+                provider: "google",
+                measurement_id: "G-ABC123"
+              }
+            },
             debug_events: true,
             human_ingress: true
           },
           rooms: [
             {
               id: "research",
-              members: ["orchestrator", "researcher"]
+              members: ["orchestrator", "researcher"],
+              visibility: "public",
+              write_policy: "registered_agents"
             }
           ]
         }
@@ -659,8 +669,14 @@ describe("manifestSchema", () => {
       throw new Error("expected managed server");
     }
     expect(server.listen).toEqual({ bind: "127.0.0.1", port: 8787 });
+    expect(server.console?.analytics?.provider).toBe("google");
+    expect(server.console?.analytics?.measurement_id).toBe("G-ABC123");
+    expect(server.auth.public_read).toBe(true);
+    expect(server.auth.agent_registration).toBe("open");
     expect(server.debug_events).toBe(true);
     expect(server.human_ingress).toBe(true);
+    expect(team.networks?.[0]?.rooms[0]?.visibility).toBe("public");
+    expect(team.networks?.[0]?.rooms[0]?.write_policy).toBe("registered_agents");
   });
 
   it("accepts managed moltnet server mode with required network fields", () => {
@@ -714,6 +730,127 @@ describe("manifestSchema", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it("rejects unsupported managed moltnet console analytics providers", () => {
+    const result = manifestSchema.safeParse(createTeamWithNetwork(createManagedServer({
+      console: {
+        analytics: {
+          provider: "plausible",
+          measurement_id: "G-ABC123"
+        }
+      }
+    })));
+
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts Moltnet public read and room write policy declarations", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "operator",
+          ref: "./agents/operator"
+        }
+      ],
+      mode: "swarm",
+      name: "public-read-team",
+      networks: [
+        {
+          id: "public_net",
+          provider: "moltnet",
+          rooms: [
+            {
+              id: "operator-console",
+              members: [],
+              visibility: "private",
+              write_policy: "operators"
+            }
+          ],
+          server: createManagedServer({
+            auth: {
+              agent_registration: "disabled",
+              mode: "bearer",
+              public_read: true,
+              client: {
+                token_id: "operator"
+              },
+              tokens: [
+                {
+                  id: "operator",
+                  scopes: ["attach", "write", "admin"],
+                  secret: "MOLTNET_OPERATOR_TOKEN"
+                }
+              ]
+            }
+          })
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts bearer Moltnet self-registration without a client token", () => {
+    const managed = manifestSchema.safeParse(createTeamWithNetwork(createManagedServer({
+      auth: {
+        agent_registration: "open",
+        mode: "bearer",
+        public_read: true,
+        tokens: [
+          {
+            id: "operator",
+            scopes: ["admin", "write"],
+            secret: "MOLTNET_OPERATOR_TOKEN"
+          }
+        ]
+      }
+    })));
+    const external = manifestSchema.safeParse(createTeamWithNetwork({
+      auth: {
+        agent_registration: "open",
+        mode: "bearer",
+        public_read: true
+      },
+      mode: "external",
+      url: "https://public-net.example"
+    }));
+
+    expect(managed.success).toBe(true);
+    expect(external.success).toBe(true);
+  });
+
+  it("rejects invalid Moltnet public access policy enums", () => {
+    const invalidAuth = manifestSchema.safeParse(createTeamWithNetwork(createManagedServer({
+      auth: {
+        agent_registration: "invite-only",
+        mode: "none",
+        public_read: true
+      }
+    })));
+    const invalidRoom = manifestSchema.safeParse({
+      ...createTeamWithNetwork(createManagedServer({ auth: { mode: "none" } })),
+      networks: [
+        {
+          id: "team_net",
+          provider: "moltnet",
+          rooms: [
+            {
+              id: "workroom",
+              members: ["worker"],
+              visibility: "listed",
+              write_policy: "anonymous"
+            }
+          ],
+          server: createManagedServer({ auth: { mode: "none" } })
+        }
+      ]
+    });
+
+    expect(invalidAuth.success).toBe(false);
+    expect(invalidRoom.success).toBe(false);
   });
 
   it("accepts managed Moltnet file store persistence declarations", () => {
@@ -1766,6 +1903,11 @@ describe("manifestSchema", () => {
           mode: "bearer",
           tokens: [{ id: "writer", scopes: ["write"], secret: "MOLTNET_TOKEN" }]
         },
+        mode: "external",
+        url: "https://moltnet.example.com"
+      },
+      {
+        auth: { mode: "bearer" },
         mode: "external",
         url: "https://moltnet.example.com"
       },

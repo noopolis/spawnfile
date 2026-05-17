@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { teamNetworkAgentRegistrationSchema, teamNetworkRoomVisibilitySchema, teamNetworkRoomWritePolicySchema } from "./teamNetworkAccessSchemas.js";
+import { teamNetworkConsoleSchema } from "./teamNetworkConsoleSchemas.js";
+
 export {
   teamWorkspaceDocsSchema,
   teamWorkspaceSchema
@@ -70,8 +73,10 @@ const teamNetworkAuthClientSchema = z
 
 const teamNetworkAuthSchema = z
   .object({
+    agent_registration: teamNetworkAgentRegistrationSchema.optional(),
     client: teamNetworkAuthClientSchema.optional(),
     mode: z.enum(["none", "bearer", "open"]),
+    public_read: z.boolean().optional(),
     tokens: z.array(teamNetworkAuthTokenSchema).optional()
   })
   .strict()
@@ -93,10 +98,10 @@ const teamNetworkAuthSchema = z
       return;
     }
 
-    if (value.mode === "bearer" && !value.client) {
+    if (value.mode === "bearer" && !value.client && value.agent_registration !== "open") {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "auth.mode bearer requires auth.client"
+        message: "auth.mode bearer requires auth.client unless agent_registration is open"
       });
     }
 
@@ -218,6 +223,7 @@ const teamNetworkManagedServerSchema = z
   .object({
     allowed_origins: z.array(z.string().trim().min(1)).optional(),
     auth: teamNetworkAuthSchema,
+    console: teamNetworkConsoleSchema.optional(),
     debug_events: z.boolean().optional(),
     direct_messages: z.boolean().optional(),
     human_ingress: z.boolean().optional(),
@@ -238,14 +244,14 @@ const teamNetworkManagedServerSchema = z
         });
       }
 
-      if (!value.auth.client?.token_id) {
+      if (value.auth.client && !value.auth.client.token_id) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
           message: "managed bearer auth requires auth.client.token_id"
         });
       }
 
-      if (value.auth.client?.token_env || value.auth.client?.token_path) {
+      if (value.auth.client && (value.auth.client.token_env || value.auth.client.token_path)) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
           message: "managed bearer auth requires auth.client.token_id"
@@ -337,7 +343,7 @@ const teamNetworkExternalServerSchema = z
       });
     }
 
-    if (value.auth.mode === "bearer") {
+    if (value.auth.mode === "bearer" && value.auth.client) {
       const sourceCount = countTruthy([
         value.auth.client.token_id,
         value.auth.client.token_env,
@@ -360,8 +366,10 @@ const teamNetworkServerSchema = z.discriminatedUnion("mode", [
 const teamNetworkRoomSchema = z
   .object({
     id: z.string().trim().min(1),
-    members: z.array(z.string().trim().min(1)).min(1),
-    name: z.string().trim().min(1).optional()
+    members: z.array(z.string().trim().min(1)),
+    name: z.string().trim().min(1).optional(),
+    visibility: teamNetworkRoomVisibilitySchema.optional(),
+    write_policy: teamNetworkRoomWritePolicySchema.optional()
   })
   .strict();
 

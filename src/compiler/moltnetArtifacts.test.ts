@@ -51,7 +51,9 @@ const createPlan = (): CompilePlan => ({
             rooms: [
               {
                 id: "research",
-                members: ["orchestrator", "researcher"]
+                members: ["orchestrator", "researcher"],
+                visibility: "public",
+                write_policy: "members"
               }
             ],
             server: createManagedServer()
@@ -151,7 +153,9 @@ describe("moltnetArtifacts", () => {
           rooms: [
             {
               id: "research",
-              members: ["orchestrator", "researcher"]
+              members: ["orchestrator", "researcher"],
+              visibility: "public",
+              write_policy: "members"
             }
           ],
           secretPatches: [],
@@ -460,7 +464,9 @@ describe("moltnetArtifacts", () => {
       },
       {
         id: "research",
-        members: ["orchestrator", "researcher"]
+        members: ["orchestrator", "researcher"],
+        visibility: "public",
+        write_policy: "members"
       }
     ]);
     expect(artifacts?.nodePlans).toContainEqual({
@@ -508,6 +514,8 @@ describe("moltnetArtifacts", () => {
     );
 
     expect(nodeConfig?.content).toContain('"rooms": [');
+    expect(nodeConfig?.content).toContain('"visibility": "public"');
+    expect(nodeConfig?.content).toContain('"write_policy": "members"');
     expect(nodeConfig?.content).toContain('"read": "mentions"');
     expect(nodeConfig?.content).toContain('"reply": "auto"');
     expect(nodeConfig?.content).toContain('"reply": "never"');
@@ -542,10 +550,11 @@ describe("moltnetArtifacts", () => {
     );
     const parsed = JSON.parse(nodeConfig?.content ?? "{}") as {
       attachments?: Array<{ moltnet?: { token_path?: string }; rooms?: unknown }>;
-      moltnet?: { token_path?: string };
+      moltnet?: { registration?: string; token_path?: string };
     };
 
     expect(parsed.moltnet?.token_path).toBeUndefined();
+    expect(parsed.moltnet?.registration).toBe("open");
     expect(parsed.attachments?.[0]?.moltnet?.token_path)
       .toBe("/var/lib/spawnfile/agents/orchestrator/state/moltnet/local_lab-orchestrator.token");
     expect(parsed.attachments?.[0]?.rooms).toBeUndefined();
@@ -556,6 +565,47 @@ describe("moltnetArtifacts", () => {
         reason: "Moltnet open-mode generated agent tokens for orchestrator-agent"
       })
     ]);
+  });
+
+  it("uses open self-claiming node auth for bearer servers with open registration", async () => {
+    const plan = createPlan();
+    const teamNode = plan.nodes[0];
+    if (!teamNode || teamNode.kind !== "team") {
+      throw new Error("expected team node");
+    }
+
+    const team = teamNode.value as ResolvedTeamNode;
+    if (team.networks?.[0]) {
+      team.networks[0].server = {
+        ...createManagedServer(),
+        auth: {
+          agent_registration: "open",
+          mode: "bearer",
+          public_read: true,
+          tokens: [
+            {
+              id: "operator",
+              scopes: ["admin", "write"],
+              secret: "MOLTNET_OPERATOR_TOKEN"
+            }
+          ]
+        }
+      };
+    }
+
+    const artifacts = await generateMoltnetArtifacts(plan);
+    const nodeConfig = artifacts?.files.find((file) =>
+      file.path.endsWith("research-cell-local_lab-orchestrator.json")
+    );
+    const parsed = JSON.parse(nodeConfig?.content ?? "{}") as {
+      attachments?: Array<{ moltnet?: { token_path?: string } }>;
+      moltnet?: { auth_mode?: string; registration?: string };
+    };
+
+    expect(parsed.moltnet?.auth_mode).toBe("open");
+    expect(parsed.moltnet?.registration).toBe("open");
+    expect(parsed.attachments?.[0]?.moltnet?.token_path)
+      .toBe("/var/lib/spawnfile/agents/orchestrator/state/moltnet/local_lab-orchestrator.token");
   });
 
   it("keeps external network plans out of managed server ports and configs", async () => {

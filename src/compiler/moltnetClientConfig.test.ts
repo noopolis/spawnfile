@@ -21,7 +21,14 @@ const createArtifacts = (): MoltnetArtifacts => ({
       name: "Local Lab",
       networkId: "local_lab",
       port: 8787,
-      rooms: [{ id: "research", members: ["orchestrator"] }],
+      rooms: [
+        {
+          id: "research",
+          members: ["orchestrator"],
+          visibility: "public",
+          write_policy: "members"
+        }
+      ],
       server: {
         auth: { mode: "none" },
         listen: { bind: "127.0.0.1", port: 8787 },
@@ -78,6 +85,8 @@ describe("moltnetClientConfig", () => {
     expect(files.map((file) => file.path)).toEqual(["workspace/.moltnet/config.json"]);
     expect(files[0]?.content).toContain('"base_url": "http://127.0.0.1:8787"');
     expect(files[0]?.content).toContain('"member_id": "orchestrator"');
+    expect(files[0]?.content).toContain('"visibility": "public"');
+    expect(files[0]?.content).toContain('"write_policy": "members"');
   });
 
   it("resolves runtime-specific skill and config layout for tinyclaw", () => {

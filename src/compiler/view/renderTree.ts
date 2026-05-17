@@ -52,12 +52,19 @@ const formatNetworkSummary = (
     network.serverMode ? `server=${network.serverMode}` : undefined,
     network.url ? `url=${network.url}` : undefined,
     network.authMode ? `auth=${network.authMode}` : undefined,
+    network.consoleAnalytics ? `analytics=${network.consoleAnalytics}` : undefined,
     network.directMessages === false ? "dms=disabled" : undefined,
     network.debugEvents === true ? "debug_events" : undefined,
     network.expose === true || network.httpEnabled ? "human_ingress" : undefined
   ].filter((entry): entry is string => entry !== undefined);
   const rooms = network.rooms
-    .map((room) => `${room.id} [${room.declaredMembers.join(", ")}]`)
+    .map((room) => {
+      const roomMetadata = [
+        room.visibility ? `visibility=${room.visibility}` : undefined,
+        room.writePolicy ? `write=${room.writePolicy}` : undefined
+      ].filter((entry): entry is string => entry !== undefined);
+      return `${room.id}${roomMetadata.length > 0 ? ` ${roomMetadata.join(" ")}` : ""} [${room.declaredMembers.join(", ")}]`;
+    })
     .join("; ");
 
   return `network ${id} "${network.name}"${metadata.length > 0 ? ` ${metadata.join(" ")}` : ""}: ${rooms}`;

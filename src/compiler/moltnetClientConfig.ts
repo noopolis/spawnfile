@@ -15,6 +15,7 @@ interface MoltnetClientAttachmentConfig {
   agent_name: string;
   auth: {
     mode: "bearer" | "none" | "open";
+    registration?: "disabled" | "open" | "token";
     token_env?: string;
     token_path?: string;
   };
@@ -31,6 +32,8 @@ interface MoltnetClientAttachmentConfig {
     id: string;
     read?: "all" | "mentions" | "thread_only";
     reply?: "auto" | "never";
+    visibility?: "public" | "private";
+    write_policy?: "members" | "operators" | "registered_agents";
   }>;
 }
 
@@ -102,6 +105,7 @@ const createAttachmentConfig = (
     agent_name: node.name,
     auth: {
       mode: auth.mode,
+      ...(auth.registration ? { registration: auth.registration } : {}),
       ...(auth.tokenEnv ? { token_env: auth.tokenEnv } : {}),
       ...(auth.tokenPath ? { token_path: auth.tokenPath } : {})
     },
@@ -122,11 +126,16 @@ const createAttachmentConfig = (
       ? {
           rooms: Object.entries(attachment.rooms)
             .sort(([left], [right]) => left.localeCompare(right))
-            .map(([roomId, policy]) => ({
-              id: roomId,
-              ...(policy.read ? { read: policy.read } : {}),
-              ...(policy.reply ? { reply: policy.reply } : {})
-            }))
+            .map(([roomId, policy]) => {
+              const room = serverPlan.rooms.find((entry) => entry.id === roomId);
+              return {
+                id: roomId,
+                ...(room?.visibility ? { visibility: room.visibility } : {}),
+                ...(room?.write_policy ? { write_policy: room.write_policy } : {}),
+                ...(policy.read ? { read: policy.read } : {}),
+                ...(policy.reply ? { reply: policy.reply } : {})
+              };
+            })
         }
       : {})
   };

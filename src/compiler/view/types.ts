@@ -17,10 +17,13 @@ export interface OrganizationViewTreeNode {
 export interface OrganizationTreeNetworkRoomSummary {
   declaredMembers: string[];
   id: string;
+  visibility?: "public" | "private";
+  writePolicy?: "members" | "operators" | "registered_agents";
 }
 
 export interface OrganizationTreeNetworkSummary {
   authMode?: "bearer" | "none" | "open";
+  consoleAnalytics?: string;
   debugEvents?: boolean;
   directMessages?: boolean;
   expose?: boolean;
@@ -55,6 +58,7 @@ export interface OrganizationNetworkMemberView {
 
 export interface OrganizationNetworkDeclarationView {
   authMode?: "bearer" | "none" | "open";
+  consoleAnalytics?: string;
   debugEvents?: boolean;
   declaringTeamName: string;
   declaringTeamSource: string;
@@ -71,10 +75,13 @@ export interface OrganizationNetworkRoomView {
   declaredMembers: string[];
   id: string;
   members: OrganizationNetworkMemberView[];
+  visibility?: "public" | "private";
+  writePolicy?: "members" | "operators" | "registered_agents";
 }
 
 export interface OrganizationNetworkView {
   authMode?: "bearer" | "none" | "open";
+  consoleAnalytics?: string;
   debugEvents?: boolean;
   declaringTeamName: string;
   declaringTeamSource: string;

@@ -72,6 +72,7 @@ const getDeclarations = (
   network.declarations ?? [
     {
       authMode: network.authMode,
+      consoleAnalytics: network.consoleAnalytics,
       declaringTeamName: network.declaringTeamName,
       declaringTeamSource: network.declaringTeamSource,
       debugEvents: network.debugEvents,
@@ -95,6 +96,7 @@ const formatDeclaration = (
     declaration.serverMode ? `server=${declaration.serverMode}` : undefined,
     declaration.url ? `url=${declaration.url}` : undefined,
     declaration.authMode ? `auth=${declaration.authMode}` : undefined,
+    declaration.consoleAnalytics ? `analytics=${declaration.consoleAnalytics}` : undefined,
     declaration.directMessages === false ? "dms=disabled" : undefined,
     declaration.debugEvents === true ? "debug_events" : undefined,
     declaration.expose === true || declaration.httpEnabled ? "human_ingress" : undefined
@@ -138,8 +140,12 @@ export const renderOrganizationNetworks = (
         const legacyDeclared = options.declared && !view.projectRoot
           ? ` room ${room.id} declared [${room.declaredMembers.join(", ")}]`
           : "";
+        const roomMetadata = [
+          room.visibility ? `visibility=${room.visibility}` : undefined,
+          room.writePolicy ? `write=${room.writePolicy}` : undefined
+        ].filter((entry): entry is string => entry !== undefined);
         lines.push(
-          `${declarationPrefix}${roomLast ? glyphs.last : glyphs.branch}#${room.id}${legacyDeclared}`
+          `${declarationPrefix}${roomLast ? glyphs.last : glyphs.branch}#${room.id}${roomMetadata.length > 0 ? ` ${roomMetadata.join(" ")}` : ""}${legacyDeclared}`
         );
 
         if (options.declared) {

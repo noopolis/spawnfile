@@ -8,13 +8,12 @@ import {
   createMoltnetNodeConfigPath,
   createMoltnetServerConfigPath,
   resolveMoltnetBaseUrl,
-  resolveMoltnetClientAuth,
   resolveMoltnetStorePersistenceMountPath,
   type MoltnetSecretPatch
 } from "./moltnetConfigLowering.js";
 import type { CompilePlan, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 import { listConcreteMoltnetRoomMemberIds } from "./moltnetRoomMemberships.js";
-import { resolveRuntimeConfig } from "./moltnetRuntimeConfig.js";
+import { createMoltnetNodeConfigContent } from "./moltnetNodeConfig.js";
 import { createShortHash, slugify } from "./helpers.js";
 
 export interface MoltnetServerPlan {
@@ -29,6 +28,8 @@ export interface MoltnetServerPlan {
     id: string;
     members: string[];
     name?: string;
+    visibility?: "public" | "private";
+    write_policy?: "members" | "operators" | "registered_agents";
   }>;
   server: TeamNetworkServer;
   secretPatches: MoltnetSecretPatch[];
@@ -137,11 +138,15 @@ export const generateMoltnetArtifacts = async (
             existingRoom.members = [
               ...new Set([...existingRoom.members, ...concreteMembers])
             ].sort();
+            existingRoom.visibility ??= room.visibility;
+            existingRoom.write_policy ??= room.write_policy;
           } else {
             existingPlan.rooms.push({
               id: room.id,
               members: concreteMembers,
-              ...(room.name ? { name: room.name } : {})
+              ...(room.name ? { name: room.name } : {}),
+              ...(room.visibility ? { visibility: room.visibility } : {}),
+              ...(room.write_policy ? { write_policy: room.write_policy } : {})
             });
           }
         }
@@ -167,7 +172,9 @@ export const generateMoltnetArtifacts = async (
               network.id,
               room
             ),
-            ...(room.name ? { name: room.name } : {})
+            ...(room.name ? { name: room.name } : {}),
+            ...(room.visibility ? { visibility: room.visibility } : {}),
+            ...(room.write_policy ? { write_policy: room.write_policy } : {})
           })),
           server,
           secretPatches: [],
@@ -314,16 +321,15 @@ export const generateMoltnetArtifacts = async (
       }
       nodePlanKeys.add(nodePlanKey);
 
-      const clientAuth = resolveMoltnetClientAuth(
-        network.server,
-        attachment.network,
-        attachment.memberId,
-        node.slug
-      );
-      const usesPerAttachmentOpenToken =
-        clientAuth.mode === "open" &&
-        clientAuth.staticToken !== true &&
-        Boolean(clientAuth.tokenEnv || clientAuth.tokenPath);
+      const nodeConfig = createMoltnetNodeConfigContent({
+        agentNode,
+        attachment: { ...attachment, memberId: attachment.memberId },
+        networkServer: network.server,
+        nodeSlug: node.slug,
+        plan,
+        serverPlan
+      });
+      const { clientAuth, usesPerAttachmentOpenToken } = nodeConfig;
 
       if (usesPerAttachmentOpenToken && clientAuth.tokenPath) {
         const mountId = `agent-${node.slug}-moltnet-tokens`;
@@ -336,77 +342,7 @@ export const generateMoltnetArtifacts = async (
       }
 
       configFiles.push({
-        content:
-          `${JSON.stringify(
-            {
-              version: "moltnet.node.v1",
-              moltnet: {
-                base_url: serverPlan.baseUrl,
-                network_id: attachment.network,
-                ...(clientAuth.mode === "none"
-                  ? {}
-                  : { auth_mode: clientAuth.mode }),
-                ...(clientAuth.staticToken
-                  ? { static_token: true }
-                  : {}),
-                ...(!usesPerAttachmentOpenToken && clientAuth.tokenEnv
-                  ? {
-                      token_env: clientAuth.tokenEnv
-                    }
-                  : {}),
-                ...(!usesPerAttachmentOpenToken && clientAuth.tokenPath
-                  ? {
-                      token_path: clientAuth.tokenPath
-                    }
-                  : {})
-              },
-              attachments: [
-                {
-                  agent: {
-                    id: attachment.memberId,
-                    name: agentNode.name
-                  },
-                  ...(usesPerAttachmentOpenToken
-                    ? {
-                        moltnet: {
-                          ...(clientAuth.tokenEnv ? { token_env: clientAuth.tokenEnv } : {}),
-                          ...(clientAuth.tokenPath ? { token_path: clientAuth.tokenPath } : {})
-                        }
-                      }
-                    : {}),
-                  runtime: resolveRuntimeConfig(
-                    plan,
-                    agentNode,
-                    node.slug,
-                    attachment.network,
-                    attachment.memberId
-                  ),
-                  ...(attachment.rooms
-                    ? {
-                        rooms: Object.entries(attachment.rooms)
-                          .sort(([left], [right]) => left.localeCompare(right))
-                          .map(([roomId, policy]) => ({
-                            id: roomId,
-                            ...(policy.read ? { read: policy.read } : {}),
-                            ...(policy.reply ? { reply: policy.reply } : {})
-                          }))
-                      }
-                    : {}),
-                  ...(attachment.dms
-                    ? {
-                        dms: {
-                          enabled: attachment.dms.enabled,
-                          ...(attachment.dms.read ? { read: attachment.dms.read } : {}),
-                          ...(attachment.dms.reply ? { reply: attachment.dms.reply } : {})
-                        }
-                      }
-                    : {})
-                }
-              ]
-            },
-            null,
-            2
-          )}\n`,
+        content: nodeConfig.content,
         mode: 0o600,
         path: configPath
       });

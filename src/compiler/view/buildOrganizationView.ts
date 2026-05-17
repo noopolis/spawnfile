@@ -65,6 +65,9 @@ const buildTreeNetworkSummaries = (
 
   return (node.value.networks ?? []).map((network) => ({
     authMode: network.server?.auth.mode,
+    consoleAnalytics: network.server?.mode === "managed"
+      ? network.server.console?.analytics?.provider
+      : undefined,
     debugEvents: network.server?.mode === "managed" ? network.server.debug_events : undefined,
     directMessages: network.server?.mode === "managed" ? network.server.direct_messages : undefined,
     expose: network.server?.mode === "managed" ? network.server.human_ingress : undefined,
@@ -76,7 +79,9 @@ const buildTreeNetworkSummaries = (
     url: network.server?.url,
     rooms: network.rooms.map((room) => ({
       declaredMembers: [...room.members],
-      id: room.id
+      id: room.id,
+      ...(room.visibility ? { visibility: room.visibility } : {}),
+      ...(room.write_policy ? { writePolicy: room.write_policy } : {})
     }))
   }));
 };
@@ -183,6 +188,9 @@ const buildNetworkDeclaration = (
   roomMemberships: ResolvedMoltnetRoomMembership[]
 ): OrganizationNetworkDeclarationView => ({
   authMode: network.server?.auth.mode,
+  consoleAnalytics: network.server?.mode === "managed"
+    ? network.server.console?.analytics?.provider
+    : undefined,
   debugEvents: network.server?.mode === "managed" ? network.server.debug_events : undefined,
   declaringTeamName: teamNode.name,
   declaringTeamSource: teamNode.source,
@@ -204,7 +212,9 @@ const buildNetworkDeclaration = (
     return {
       declaredMembers: [...room.members],
       id: room.id,
-      members: sortNetworkMembers(room.members, members)
+      members: sortNetworkMembers(room.members, members),
+      ...(room.visibility ? { visibility: room.visibility } : {}),
+      ...(room.write_policy ? { writePolicy: room.write_policy } : {})
     };
   })
 });
@@ -237,6 +247,7 @@ const buildNetworks = (
         declaringTeamSource: declaration.declaringTeamSource,
         declarations: [declaration],
         authMode: declaration.authMode,
+        consoleAnalytics: declaration.consoleAnalytics,
         debugEvents: declaration.debugEvents,
         directMessages: declaration.directMessages,
         expose: declaration.expose,
@@ -258,6 +269,8 @@ const buildNetworks = (
       network.declaringTeamName = firstDeclaration.declaringTeamName;
       network.declaringTeamSource = firstDeclaration.declaringTeamSource;
       network.authMode = firstDeclaration.authMode;
+      network.consoleAnalytics = firstDeclaration.consoleAnalytics;
+      network.debugEvents = firstDeclaration.debugEvents;
       network.directMessages = firstDeclaration.directMessages;
       network.expose = firstDeclaration.expose;
       network.httpEnabled = firstDeclaration.httpEnabled;

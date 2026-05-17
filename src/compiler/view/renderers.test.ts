@@ -24,6 +24,7 @@ const createView = (): OrganizationView => ({
     {
       declaringTeamName: "parent",
       declaringTeamSource: "/tmp/parent/Spawnfile",
+      consoleAnalytics: "google",
       debugEvents: true,
       expose: true,
       id: "org",
@@ -33,6 +34,8 @@ const createView = (): OrganizationView => ({
         {
           declaredMembers: ["coordinator", "child"],
           id: "general",
+          visibility: "public",
+          writePolicy: "members",
           members: [
             {
               agentName: "coordinator-agent",
@@ -113,6 +116,7 @@ const createView = (): OrganizationView => ({
     networks: [
       {
         expose: true,
+        consoleAnalytics: "google",
         debugEvents: true,
         id: "org",
         name: "Org",
@@ -120,7 +124,9 @@ const createView = (): OrganizationView => ({
         rooms: [
           {
             declaredMembers: ["coordinator", "child"],
-            id: "general"
+            id: "general",
+            visibility: "public",
+            writePolicy: "members"
           }
         ]
       }
@@ -136,7 +142,7 @@ describe("compiler view renderers", () => {
     const view = createView();
 
     expect(renderOrganizationTree(view)).toContain("├── coordinator: agent coordinator-agent");
-    expect(renderOrganizationTree(view)).toContain('network org "Org" debug_events human_ingress: general [coordinator, child]');
+    expect(renderOrganizationTree(view)).toContain('network org "Org" analytics=google debug_events human_ingress: general visibility=public write=members [coordinator, child]');
     expect(renderOrganizationTree(view)).toContain("└── child: team child");
     expect(renderOrganizationTree(view, { ascii: true })).toContain("|-- coordinator: agent coordinator-agent");
   });
@@ -151,7 +157,8 @@ describe("compiler view renderers", () => {
   it("renders colored tree network summaries", () => {
     const output = renderOrganizationTree(createView(), { color: true });
 
-    expect(output).toContain('\u001b[36morg\u001b[0m "Org" debug_events human_ingress');
+    expect(output).toContain('\u001b[36morg\u001b[0m "Org" analytics=google debug_events human_ingress');
+    expect(output).toContain("general visibility=public write=members");
   });
 
   it("renders declared network slots and paths when requested", () => {
@@ -160,7 +167,8 @@ describe("compiler view renderers", () => {
       paths: true
     });
 
-    expect(output).toContain("org \"Org\" on parent debug_events human_ingress </tmp/parent/Spawnfile>");
+    expect(output).toContain("org \"Org\" on parent analytics=google debug_events human_ingress </tmp/parent/Spawnfile>");
+    expect(output).toContain("#general visibility=public write=members");
     expect(output).toContain("declared members: coordinator, child");
     expect(output).toContain("rep-agent  represents=child member=rep </tmp/rep/Spawnfile>");
   });

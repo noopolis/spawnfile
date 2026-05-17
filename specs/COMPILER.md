@@ -372,10 +372,12 @@ Rules:
   - `none`: no client auth emitted.
   - `bearer`: emits attach-capable client credentials for generated nodes.
   - `open`: emits per-agent writable token paths unless a static token client source is provided.
+- `server.auth.public_read` and `server.auth.agent_registration` lower into native Moltnet auth config without changing generated node room authority.
 - Managed bearer mode requires `token_id` and requires the referenced token to include `attach` and `write` scopes.
 - Managed and external open static token mode requires `static_token: true` on the configured client source.
 - `server.pairings` entries are materialized into managed server config and rejected on non-managed networks.
-- Managed `server.human_ingress`, `server.direct_messages`, `server.debug_events`, `server.trust_forwarded_proto`, and `server.allowed_origins` lower directly into the Moltnet native server config.
+- Managed `server.human_ingress`, `server.direct_messages`, `server.debug_events`, `server.console.analytics`, `server.trust_forwarded_proto`, and `server.allowed_origins` lower directly into the Moltnet native server config.
+- `networks[].rooms[].visibility` and `networks[].rooms[].write_policy` lower directly into native Moltnet room config after representative expansion. Member expansion still controls concrete room membership; room write policy controls who may send.
 
 ### Coordination Diagnostics
 

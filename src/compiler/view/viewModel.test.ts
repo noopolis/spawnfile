@@ -99,9 +99,15 @@ const createNestedNetworkProject = async (): Promise<string> => {
     "        kind: memory",
     "      auth:",
     "        mode: none",
+    "      console:",
+    "        analytics:",
+    "          provider: google",
+    "          measurement_id: G-ABC123",
     "      human_ingress: true",
     "    rooms:",
     "      - id: mission",
+    "        visibility: public",
+    "        write_policy: members",
     "        members: [lead, platform]",
     ""
   ].join("\n"));
@@ -129,7 +135,7 @@ describe("organization view model", () => {
     );
     expect(tree).toContain("lead: agent lead [openclaw] runtime=openclaw source=agents/lead/Spawnfile");
     expect(tree).toContain(
-      'network shared "Shared" server=managed auth=none human_ingress: mission [lead, platform]'
+      'network shared "Shared" server=managed auth=none analytics=google human_ingress: mission visibility=public write=members [lead, platform]'
     );
     expect(tree).not.toContain(directory);
   });
@@ -150,8 +156,9 @@ describe("organization view model", () => {
       .toEqual(["parent", "platform-core"]);
     expect(output).toContain("`-- moltnet shared");
     expect(output).toContain(
-      'shared "Shared" on parent server=managed auth=none human_ingress declared_source=Spawnfile'
+      'shared "Shared" on parent server=managed auth=none analytics=google human_ingress declared_source=Spawnfile'
     );
+    expect(output).toContain("#mission visibility=public write=members");
     expect(output).toContain(
       'shared "Shared Child" on platform-core server=managed auth=none declared_source=teams/platform/Spawnfile'
     );

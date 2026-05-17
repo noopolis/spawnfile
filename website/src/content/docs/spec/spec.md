@@ -984,6 +984,10 @@ networks:
       human_ingress: true
       direct_messages: false
       debug_events: false
+      console:
+        analytics:
+          provider: google
+          measurement_id: G-XXXXXXXXXX
       trust_forwarded_proto: false
       allowed_origins:
         - http://localhost:8787
@@ -994,9 +998,13 @@ networks:
           mode: durable
       auth:
         mode: open
+        public_read: true
+        agent_registration: open
     rooms:
       - id: org-council
         name: Org Council
+        visibility: public
+        write_policy: members
         members: [coordinator, research-team]
 ```
 
@@ -1019,8 +1027,10 @@ Rules:
 - `server.url` and `server.listen` may use IPv4, hostnames, or raw IPv6 literals.
 - `server.url` must be a valid URL.
 - `server.url` is required for `server.mode: external`.
-- `server.mode: external` MUST NOT include `listen`, `store`, `server.auth.tokens`, `server.pairings`, `human_ingress`, `direct_messages`, `debug_events`, `trust_forwarded_proto`, or `allowed_origins`.
+- `server.mode: external` MUST NOT include `listen`, `store`, `server.auth.tokens`, `server.pairings`, `human_ingress`, `direct_messages`, `debug_events`, `console`, `trust_forwarded_proto`, or `allowed_origins`.
 - `server.auth.mode` MUST be one of `none`, `bearer`, or `open`.
+- `server.auth.public_read` is OPTIONAL and defaults to the Moltnet server default. When `true`, anonymous callers may read only rooms whose `visibility` allows public reads.
+- `server.auth.agent_registration` is OPTIONAL and MUST be one of `disabled`, `token`, or `open` when present. It controls generated agent-token self-registration and does not grant room write access by itself.
 - For `server.auth.mode: none`, `server.auth` MUST NOT include `tokens` or `client`.
 - `server.mode: managed` with `server.auth.mode: bearer` requires `server.auth.tokens`.
 - `server.mode: external` with `server.auth.mode: bearer` requires `server.auth.client` with `token_env` or `token_path`.
@@ -1052,7 +1062,10 @@ Rules:
 - Open auth without `server.auth.client` emits per-agent generated token files under private agent runtime state and those token directories are durable runtime mounts.
 - `server.direct_messages: false` means any `surfaces.moltnet[].dms` for that network is a validation error.
 - `server.debug_events: true` is valid only for managed Moltnet servers and lowers to Moltnet lifecycle diagnostics. It can expose disconnect reasons and bridge/runtime errors through events, so it is intended for operational debugging, not normal public network defaults.
+- `server.console.analytics` is valid only for managed Moltnet servers and configures the hosted `/console/` page. In v0.1 the only supported provider is `google`, with a GA4 `measurement_id` such as `G-XXXXXXXXXX`.
 - A room `members` list MAY name direct agent member IDs or direct child-team member IDs.
+- A room `visibility` is OPTIONAL and MUST be `public` or `private` when present. Public visibility only becomes anonymous-readable when `server.auth.public_read: true`.
+- A room `write_policy` is OPTIONAL and MUST be `members`, `registered_agents`, or `operators` when present. Generated agent tokens are identity tokens; they do not bypass `members` or `operators` policies.
 - Direct child-team IDs in a parent room expand to the child team's concrete representatives for that parent context.
 - Parent networks do not generally propagate through nested team boundaries. Only explicit parent-room representative attachments propagate, and only to selected representatives.
 - Moltnet member IDs are the direct agent member slot IDs from the team where each concrete agent is a direct member. They MUST be unique across the full reachable team nesting used by the compile graph.
