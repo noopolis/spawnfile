@@ -21,7 +21,14 @@ const createArtifacts = (): MoltnetArtifacts => ({
       name: "Local Lab",
       networkId: "local_lab",
       port: 8787,
-      rooms: [{ id: "research", members: ["orchestrator"] }],
+      rooms: [
+        {
+          id: "research",
+          members: ["orchestrator"],
+          visibility: "public",
+          write_policy: "members"
+        }
+      ],
       server: {
         auth: { mode: "none" },
         listen: { bind: "127.0.0.1", port: 8787 },
@@ -78,6 +85,8 @@ describe("moltnetClientConfig", () => {
     expect(files.map((file) => file.path)).toEqual(["workspace/.moltnet/config.json"]);
     expect(files[0]?.content).toContain('"base_url": "http://127.0.0.1:8787"');
     expect(files[0]?.content).toContain('"member_id": "orchestrator"');
+    expect(files[0]?.content).toContain('"visibility": "public"');
+    expect(files[0]?.content).toContain('"write_policy": "members"');
   });
 
   it("resolves runtime-specific skill and config layout for tinyclaw", () => {
@@ -182,6 +191,29 @@ describe("moltnetClientConfig", () => {
 
     expect(files[0]?.content).toContain('"base_url": "http://127.0.0.1:8787"');
     expect(files[0]?.content).toContain('"network_id": "local_lab"');
+  });
+
+  it("uses the compiled agent slug for generated open-registration token paths", () => {
+    const artifacts = createArtifacts();
+    const [serverPlan] = artifacts.serverPlans;
+    if (serverPlan) {
+      serverPlan.server = {
+        ...serverPlan.server,
+        auth: {
+          mode: "bearer",
+          agent_registration: "open",
+          public_read: true
+        }
+      };
+    }
+    const agent = createAgent("openclaw");
+
+    const files = createMoltnetClientConfigFiles(agent, artifacts, "agent-slug");
+
+    expect(files[0]?.content)
+      .toContain('"token_path": "/var/lib/spawnfile/agents/agent-slug/state/moltnet/local_lab-orchestrator.token"');
+    expect(files[0]?.content)
+      .not.toContain("/var/lib/spawnfile/agents/orchestrator/state/moltnet/local_lab-orchestrator.token");
   });
 
   it("fails when the runtime does not have a Moltnet workspace layout", () => {

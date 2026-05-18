@@ -35,7 +35,9 @@ export const resolveTeamNetworks = (manifest: TeamManifest): ResolvedTeamNetwork
       rooms: network.rooms.map((room) => ({
         id: room.id,
         members: [...room.members],
-        ...(room.name ? { name: room.name } : {})
+        ...(room.name ? { name: room.name } : {}),
+        ...(room.visibility ? { visibility: room.visibility } : {}),
+        ...(room.write_policy ? { write_policy: room.write_policy } : {})
       }))
     };
 

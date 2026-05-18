@@ -51,7 +51,9 @@ const createPlan = (): CompilePlan => ({
             rooms: [
               {
                 id: "research",
-                members: ["orchestrator", "researcher"]
+                members: ["orchestrator", "researcher"],
+                visibility: "public",
+                write_policy: "members"
               }
             ],
             server: createManagedServer()
@@ -151,7 +153,9 @@ describe("moltnetArtifacts", () => {
           rooms: [
             {
               id: "research",
-              members: ["orchestrator", "researcher"]
+              members: ["orchestrator", "researcher"],
+              visibility: "public",
+              write_policy: "members"
             }
           ],
           secretPatches: [],
@@ -358,6 +362,14 @@ describe("moltnetArtifacts", () => {
 
   it("merges teams that reuse the same moltnet network id into one server plan", async () => {
     const plan = createPlan();
+    const rootTeam = plan.nodes[0];
+    if (!rootTeam || rootTeam.kind !== "team") {
+      throw new Error("expected root team node");
+    }
+    const rootNetwork = (rootTeam.value as ResolvedTeamNode).networks?.[0];
+    if (rootNetwork?.server?.mode === "managed") {
+      rootNetwork.server.human_ingress = true;
+    }
     plan.nodes.push(
       {
         id: "team-2",
@@ -453,6 +465,7 @@ describe("moltnetArtifacts", () => {
     expect(artifacts?.ports).toEqual([8787]);
     expect(artifacts?.publishedPorts).toEqual([8787]);
     expect(artifacts?.serverPlans).toHaveLength(1);
+    expect(artifacts?.files.filter((file) => file.path.endsWith("Moltnet.json"))).toHaveLength(1);
     expect(artifacts?.serverPlans[0]?.rooms).toEqual([
       {
         id: "quality",
@@ -460,7 +473,9 @@ describe("moltnetArtifacts", () => {
       },
       {
         id: "research",
-        members: ["orchestrator", "researcher"]
+        members: ["orchestrator", "researcher"],
+        visibility: "public",
+        write_policy: "members"
       }
     ]);
     expect(artifacts?.nodePlans).toContainEqual({
@@ -508,6 +523,8 @@ describe("moltnetArtifacts", () => {
     );
 
     expect(nodeConfig?.content).toContain('"rooms": [');
+    expect(nodeConfig?.content).toContain('"visibility": "public"');
+    expect(nodeConfig?.content).toContain('"write_policy": "members"');
     expect(nodeConfig?.content).toContain('"read": "mentions"');
     expect(nodeConfig?.content).toContain('"reply": "auto"');
     expect(nodeConfig?.content).toContain('"reply": "never"');
@@ -542,10 +559,11 @@ describe("moltnetArtifacts", () => {
     );
     const parsed = JSON.parse(nodeConfig?.content ?? "{}") as {
       attachments?: Array<{ moltnet?: { token_path?: string }; rooms?: unknown }>;
-      moltnet?: { token_path?: string };
+      moltnet?: { registration?: string; token_path?: string };
     };
 
     expect(parsed.moltnet?.token_path).toBeUndefined();
+    expect(parsed.moltnet?.registration).toBe("open");
     expect(parsed.attachments?.[0]?.moltnet?.token_path)
       .toBe("/var/lib/spawnfile/agents/orchestrator/state/moltnet/local_lab-orchestrator.token");
     expect(parsed.attachments?.[0]?.rooms).toBeUndefined();
@@ -556,6 +574,233 @@ describe("moltnetArtifacts", () => {
         reason: "Moltnet open-mode generated agent tokens for orchestrator-agent"
       })
     ]);
+  });
+
+  it("uses open self-claiming node auth for bearer servers with open registration", async () => {
+    const plan = createPlan();
+    const teamNode = plan.nodes[0];
+    if (!teamNode || teamNode.kind !== "team") {
+      throw new Error("expected team node");
+    }
+
+    const team = teamNode.value as ResolvedTeamNode;
+    if (team.networks?.[0]) {
+      team.networks[0].server = {
+        ...createManagedServer(),
+        auth: {
+          agent_registration: "open",
+          mode: "bearer",
+          public_read: true,
+          tokens: [
+            {
+              id: "operator",
+              scopes: ["admin", "write"],
+              secret: "MOLTNET_OPERATOR_TOKEN"
+            }
+          ]
+        }
+      };
+    }
+
+    const artifacts = await generateMoltnetArtifacts(plan);
+    const nodeConfig = artifacts?.files.find((file) =>
+      file.path.endsWith("research-cell-local_lab-orchestrator.json")
+    );
+    const parsed = JSON.parse(nodeConfig?.content ?? "{}") as {
+      attachments?: Array<{ moltnet?: { token_path?: string } }>;
+      moltnet?: { auth_mode?: string; registration?: string };
+    };
+
+    expect(parsed.moltnet?.auth_mode).toBe("open");
+    expect(parsed.moltnet?.registration).toBe("open");
+    expect(parsed.attachments?.[0]?.moltnet?.token_path)
+      .toBe("/var/lib/spawnfile/agents/orchestrator/state/moltnet/local_lab-orchestrator.token");
+  });
+
+  it("rejects reused network rooms with conflicting access policy", async () => {
+    const plan = createPlan();
+    plan.nodes.push({
+      id: "team-2",
+      kind: "team",
+      runtimeName: null,
+      slug: "observer-cell",
+      value: {
+        description: "",
+        docs: [],
+        external: [],
+        kind: "team",
+        lead: null,
+        members: [],
+        mode: "swarm",
+        name: "observer-cell",
+        networks: [
+          {
+            id: "local_lab",
+            name: "Local Lab",
+            provider: "moltnet",
+            rooms: [
+              {
+                id: "research",
+                members: [],
+                visibility: "private",
+                write_policy: "operators"
+              }
+            ],
+            server: createManagedServer()
+          }
+        ],
+        policyMode: null,
+        policyOnDegrade: null,
+        shared: {
+          env: {},
+          mcpServers: [],
+          secrets: [],
+          skills: []
+        },
+        source: "/tmp/observer/Spawnfile"
+      }
+    });
+
+    await expect(generateMoltnetArtifacts(plan)).rejects.toThrow(
+      /conflicting visibility: public vs private/
+    );
+  });
+
+  it("rejects reused networks with conflicting server auth policy", async () => {
+    const cases = [
+      {
+        auth: { mode: "open" as const },
+        message: /conflicting server\.auth policy/
+      },
+      {
+        auth: { mode: "none" as const, public_read: false },
+        message: /conflicting server\.auth policy/
+      },
+      {
+        auth: { mode: "none" as const, agent_registration: "open" as const },
+        message: /conflicting server\.auth policy/
+      }
+    ];
+
+    for (const testCase of cases) {
+      const plan = createPlan();
+      plan.nodes.push({
+        id: "team-2",
+        kind: "team",
+        runtimeName: null,
+        slug: "observer-cell",
+        value: {
+          description: "",
+          docs: [],
+          external: [],
+          kind: "team",
+          lead: null,
+          members: [],
+          mode: "swarm",
+          name: "observer-cell",
+          networks: [
+            {
+              id: "local_lab",
+              name: "Local Lab",
+              provider: "moltnet",
+              rooms: [{ id: "research", members: [] }],
+              server: { ...createManagedServer(), auth: testCase.auth }
+            }
+          ],
+          policyMode: null,
+          policyOnDegrade: null,
+          shared: {
+            env: {},
+            mcpServers: [],
+            secrets: [],
+            skills: []
+          },
+          source: "/tmp/observer/Spawnfile"
+        }
+      });
+
+      await expect(generateMoltnetArtifacts(plan)).rejects.toThrow(testCase.message);
+    }
+  });
+
+  it("rejects reused networks with conflicting managed server definitions", async () => {
+    const cases: Array<{
+      name: string;
+      networkName?: string;
+      server: Extract<TeamNetworkServer, { mode: "managed" }>;
+      message: RegExp;
+    }> = [
+      {
+        name: "listen",
+        server: {
+          ...createManagedServer(),
+          listen: { bind: "127.0.0.1", port: 8788 }
+        },
+        message: /conflicting server URL/
+      },
+      {
+        name: "direct messages",
+        server: {
+          ...createManagedServer(),
+          direct_messages: false
+        },
+        message: /conflicting server definition/
+      },
+      {
+        name: "store",
+        server: {
+          ...createManagedServer(),
+          store: { kind: "sqlite", path: "/var/lib/moltnet/other.sqlite" }
+        },
+        message: /conflicting server definition/
+      },
+      {
+        name: "name",
+        networkName: "Different Lab",
+        server: createManagedServer(),
+        message: /conflicting network name/
+      }
+    ];
+
+    for (const testCase of cases) {
+      const plan = createPlan();
+      plan.nodes.push({
+        id: "team-2",
+        kind: "team",
+        runtimeName: null,
+        slug: "observer-cell",
+        value: {
+          description: "",
+          docs: [],
+          external: [],
+          kind: "team",
+          lead: null,
+          members: [],
+          mode: "swarm",
+          name: "observer-cell",
+          networks: [
+            {
+              id: "local_lab",
+              name: testCase.networkName ?? "Local Lab",
+              provider: "moltnet",
+              rooms: [{ id: "observation", members: [] }],
+              server: testCase.server
+            }
+          ],
+          policyMode: null,
+          policyOnDegrade: null,
+          shared: {
+            env: {},
+            mcpServers: [],
+            secrets: [],
+            skills: []
+          },
+          source: "/tmp/observer/Spawnfile"
+        }
+      });
+
+      await expect(generateMoltnetArtifacts(plan), testCase.name).rejects.toThrow(testCase.message);
+    }
   });
 
   it("keeps external network plans out of managed server ports and configs", async () => {

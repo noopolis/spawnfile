@@ -10,6 +10,8 @@ src/manifest/
 ├── schemas.ts                # Zod schema and manifest type exports
 ├── scaffold.ts               # Typed manifest scaffold builders
 ├── renderSpawnfile.ts        # YAML rendering for authored Spawnfiles
+├── teamNetworkAccessSchemas.ts # Public-read and room-access team network schema fragments
+├── teamNetworkConsoleSchemas.ts # Console-specific team network schema fragments
 ├── skillFrontmatter.ts       # `SKILL.md` frontmatter parsing
 ├── loadManifest.ts           # YAML loading and local manifest validation
 ├── scaffold.test.ts          # Scaffold builder tests

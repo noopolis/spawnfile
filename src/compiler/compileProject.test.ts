@@ -563,7 +563,13 @@ describe("compileProject", () => {
             "      store:",
             "        kind: memory",
             "      auth:",
-            "        mode: none",
+            "        mode: bearer",
+            "        public_read: true",
+            "        agent_registration: open",
+            "        tokens:",
+            "          - id: operator",
+            "            secret: MOLTNET_OPERATOR_TOKEN",
+            "            scopes: [admin, write]",
             "      human_ingress: true",
             "    rooms:",
             "      - id: research",
@@ -605,7 +611,11 @@ describe("compileProject", () => {
         expect(entrypoint).not.toContain("surface-router.js");
         expect(nodeConfig).toContain('"version": "moltnet.node.v1"');
         expect(nodeConfig).toContain('"gateway_url": "ws://127.0.0.1:18789"');
-        expect(nodeConfig).not.toContain('"auth_mode"');
+        expect(nodeConfig).toContain('"auth_mode": "open"');
+        expect(nodeConfig).toContain('"registration": "open"');
+        expect(nodeConfig).toContain(
+          '"token_path": "/var/lib/spawnfile/agents/orchestrator-agent/state/moltnet/local_lab-orchestrator.token"'
+        );
         expect(nodeConfig).toContain(
           '"home_path": "/var/lib/spawnfile/instances/openclaw/agent-orchestrator-agent/home"'
         );
@@ -764,20 +774,23 @@ describe("compileProject", () => {
             )
           )
         ).toContain("Moltnet is a transport, not an implicit reply channel.");
-        expect(
-          await readUtf8File(
-            path.join(
-              outputDirectory,
-              "runtimes",
-              "openclaw",
-              "agents",
-              "orchestrator-agent",
-              "workspace",
-              ".moltnet",
-              "config.json"
-            )
+        const clientConfig = await readUtf8File(
+          path.join(
+            outputDirectory,
+            "runtimes",
+            "openclaw",
+            "agents",
+            "orchestrator-agent",
+            "workspace",
+            ".moltnet",
+            "config.json"
           )
-        ).toContain('"base_url": "http://127.0.0.1:8787"');
+        );
+        expect(clientConfig).toContain('"base_url": "http://127.0.0.1:8787"');
+        expect(clientConfig).toContain('"mode": "open"');
+        expect(clientConfig).toContain(
+          '"token_path": "/var/lib/spawnfile/agents/orchestrator-agent/state/moltnet/local_lab-orchestrator.token"'
+        );
       } finally {
         if (previousCli === undefined) {
           delete process.env.SPAWNFILE_MOLTNET_CLI;

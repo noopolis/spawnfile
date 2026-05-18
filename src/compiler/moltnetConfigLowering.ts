@@ -7,6 +7,7 @@ export interface MoltnetSecretPatch {
 
 export interface MoltnetClientAuthPlan {
   mode: "bearer" | "none" | "open";
+  registration?: "disabled" | "open" | "token";
   staticToken?: boolean;
   tokenEnv?: string;
   tokenPath?: string;
@@ -16,6 +17,8 @@ export interface MoltnetNativeRoomConfig {
   id: string;
   members: string[];
   name?: string;
+  visibility?: "public" | "private";
+  write_policy?: "members" | "operators" | "registered_agents";
 }
 
 export interface MoltnetNativeServerConfigInput {
@@ -136,15 +139,20 @@ export const resolveMoltnetClientAuth = (
   }
 
   const client = server.auth.client;
-  if (server.auth.mode === "open" && !client) {
+  const registrationOpen = server.auth.mode === "open" || server.auth.agent_registration === "open";
+  if (registrationOpen && !client) {
     return {
       mode: "open",
+      registration: "open",
       tokenPath: createMoltnetOpenTokenPath(networkId, memberId, agentSlug)
     };
   }
 
   if (!client) {
-    return { mode: server.auth.mode };
+    return {
+      mode: server.auth.mode,
+      ...(server.auth.agent_registration ? { registration: server.auth.agent_registration } : {})
+    };
   }
 
   const tokenEnv = client.token_env
@@ -154,6 +162,7 @@ export const resolveMoltnetClientAuth = (
 
   return {
     mode: server.auth.mode,
+    ...(server.auth.agent_registration ? { registration: server.auth.agent_registration } : {}),
     ...(client.static_token ? { staticToken: true } : {}),
     ...(tokenEnv ? { tokenEnv } : {}),
     ...(client.token_path ? { tokenPath: client.token_path } : {})
@@ -228,6 +237,7 @@ export const createMoltnetNativeServerConfig = ({
       },
       server: {
         listen_addr: renderMoltnetListenAddr(server),
+        ...(server.console ? { console: server.console } : {}),
         ...(server.human_ingress !== undefined ? { human_ingress: server.human_ingress } : {}),
         ...(server.direct_messages !== undefined ? { direct_messages: server.direct_messages } : {}),
         ...(server.debug_events !== undefined ? { debug_events: server.debug_events } : {}),
@@ -238,12 +248,16 @@ export const createMoltnetNativeServerConfig = ({
       },
       auth: {
         mode: server.auth.mode,
+        ...(server.auth.public_read !== undefined ? { public_read: server.auth.public_read } : {}),
+        ...(server.auth.agent_registration ? { agent_registration: server.auth.agent_registration } : {}),
         ...(tokens.length > 0 ? { tokens } : {})
       },
       storage: storageConfigFor(networkId, server.store),
       rooms: rooms.map((room) => ({
         id: room.id,
         ...(room.name ? { name: room.name } : {}),
+        ...(room.visibility ? { visibility: room.visibility } : {}),
+        ...(room.write_policy ? { write_policy: room.write_policy } : {}),
         members: room.members
       })),
       ...(pairings.length > 0 ? { pairings } : {})
