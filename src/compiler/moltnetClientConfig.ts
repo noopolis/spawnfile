@@ -15,6 +15,7 @@ interface MoltnetClientAttachmentConfig {
   agent_name: string;
   auth: {
     mode: "bearer" | "none" | "open";
+    registration?: "disabled" | "open" | "token";
     token_env?: string;
     token_path?: string;
   };
@@ -31,6 +32,8 @@ interface MoltnetClientAttachmentConfig {
     id: string;
     read?: "all" | "mentions" | "thread_only";
     reply?: "auto" | "never";
+    visibility?: "public" | "private";
+    write_policy?: "members" | "operators" | "registered_agents";
   }>;
 }
 
@@ -82,7 +85,8 @@ const findServerPlan = (
 const createAttachmentConfig = (
   node: ResolvedAgentNode,
   artifacts: MoltnetArtifacts,
-  attachment: ResolvedMoltnetAttachment
+  attachment: ResolvedMoltnetAttachment,
+  agentSlug?: string
 ): MoltnetClientAttachmentConfig => {
   if (!attachment.memberId) {
     throw new SpawnfileError(
@@ -95,13 +99,15 @@ const createAttachmentConfig = (
   const auth = resolveMoltnetClientAuth(
     serverPlan.server,
     attachment.network,
-    attachment.memberId
+    attachment.memberId,
+    agentSlug
   );
 
   return {
     agent_name: node.name,
     auth: {
       mode: auth.mode,
+      ...(auth.registration ? { registration: auth.registration } : {}),
       ...(auth.tokenEnv ? { token_env: auth.tokenEnv } : {}),
       ...(auth.tokenPath ? { token_path: auth.tokenPath } : {})
     },
@@ -122,11 +128,16 @@ const createAttachmentConfig = (
       ? {
           rooms: Object.entries(attachment.rooms)
             .sort(([left], [right]) => left.localeCompare(right))
-            .map(([roomId, policy]) => ({
-              id: roomId,
-              ...(policy.read ? { read: policy.read } : {}),
-              ...(policy.reply ? { reply: policy.reply } : {})
-            }))
+            .map(([roomId, policy]) => {
+              const room = serverPlan.rooms.find((entry) => entry.id === roomId);
+              return {
+                id: roomId,
+                ...(room?.visibility ? { visibility: room.visibility } : {}),
+                ...(room?.write_policy ? { write_policy: room.write_policy } : {}),
+                ...(policy.read ? { read: policy.read } : {}),
+                ...(policy.reply ? { reply: policy.reply } : {})
+              };
+            })
         }
       : {})
   };
@@ -165,7 +176,8 @@ export const resolveMoltnetWorkspaceLayout = (
 
 export const createMoltnetClientConfigFiles = (
   node: ResolvedAgentNode,
-  artifacts: MoltnetArtifacts
+  artifacts: MoltnetArtifacts,
+  agentSlug?: string
 ): EmittedFile[] => {
   const attachments = node.surfaces?.moltnet;
   if (!attachments || attachments.length === 0) {
@@ -177,7 +189,9 @@ export const createMoltnetClientConfigFiles = (
     {
       content: createConfigContent(
         node,
-        attachments.map((attachment) => createAttachmentConfig(node, artifacts, attachment))
+        attachments.map((attachment) =>
+          createAttachmentConfig(node, artifacts, attachment, agentSlug)
+        )
       ),
       path: layout.clientConfigPath
     }

@@ -1,21 +1,14 @@
 import { z } from "zod";
 
-export {
-  teamWorkspaceDocsSchema,
-  teamWorkspaceSchema
-} from "./workspaceSchemas.js";
-export type {
-  TeamWorkspace,
-  TeamWorkspaceDocs,
-  TeamWorkspaceResource,
-  TeamWorkspaceResource as TeamNetworkResource
-} from "./workspaceSchemas.js";
+import { teamNetworkAgentRegistrationSchema, teamNetworkRoomVisibilitySchema, teamNetworkRoomWritePolicySchema } from "./teamNetworkAccessSchemas.js";
+import { teamNetworkConsoleSchema } from "./teamNetworkConsoleSchemas.js";
+
+export { teamWorkspaceDocsSchema, teamWorkspaceSchema } from "./workspaceSchemas.js";
+export type { TeamWorkspace, TeamWorkspaceDocs, TeamWorkspaceResource, TeamWorkspaceResource as TeamNetworkResource } from "./workspaceSchemas.js";
 
 const moltnetScopeSchema = z.enum(["observe", "write", "admin", "attach", "pair"]);
 
-const countTruthy = (
-  value: unknown[]
-): number => value.filter((entry) => Boolean(entry)).length;
+const countTruthy = (value: unknown[]): number => value.filter((entry) => Boolean(entry)).length;
 
 const absolutePosixPathSchema = z
   .string()
@@ -25,8 +18,7 @@ const absolutePosixPathSchema = z
     message: "path must be an absolute POSIX path"
   });
 
-const normalizePosixPath = (value: string): string =>
-  value.replace(/\/+/g, "/").replace(/\/+$/u, "") || "/";
+const normalizePosixPath = (value: string): string => value.replace(/\/+/g, "/").replace(/\/+$/u, "") || "/";
 
 const pathIsInsideMount = (filePath: string, mountPath: string): boolean => {
   const normalizedPath = normalizePosixPath(filePath);
@@ -70,8 +62,10 @@ const teamNetworkAuthClientSchema = z
 
 const teamNetworkAuthSchema = z
   .object({
+    agent_registration: teamNetworkAgentRegistrationSchema.optional(),
     client: teamNetworkAuthClientSchema.optional(),
     mode: z.enum(["none", "bearer", "open"]),
+    public_read: z.boolean().optional(),
     tokens: z.array(teamNetworkAuthTokenSchema).optional()
   })
   .strict()
@@ -93,10 +87,10 @@ const teamNetworkAuthSchema = z
       return;
     }
 
-    if (value.mode === "bearer" && !value.client) {
+    if (value.mode === "bearer" && !value.client && value.agent_registration !== "open") {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "auth.mode bearer requires auth.client"
+        message: "auth.mode bearer requires auth.client unless agent_registration is open"
       });
     }
 
@@ -118,6 +112,10 @@ const teamNetworkAuthSchema = z
           message: "open auth with auth.client requires exactly one token source"
         });
       }
+    }
+
+    if (value.mode === "open" && value.agent_registration && value.agent_registration !== "open") {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: "auth.mode open requires agent_registration open when declared" });
     }
 
     if (value.tokens) {
@@ -218,6 +216,7 @@ const teamNetworkManagedServerSchema = z
   .object({
     allowed_origins: z.array(z.string().trim().min(1)).optional(),
     auth: teamNetworkAuthSchema,
+    console: teamNetworkConsoleSchema.optional(),
     debug_events: z.boolean().optional(),
     direct_messages: z.boolean().optional(),
     human_ingress: z.boolean().optional(),
@@ -238,14 +237,14 @@ const teamNetworkManagedServerSchema = z
         });
       }
 
-      if (!value.auth.client?.token_id) {
+      if (value.auth.client && !value.auth.client.token_id) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
           message: "managed bearer auth requires auth.client.token_id"
         });
       }
 
-      if (value.auth.client?.token_env || value.auth.client?.token_path) {
+      if (value.auth.client && (value.auth.client.token_env || value.auth.client.token_path)) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
           message: "managed bearer auth requires auth.client.token_id"
@@ -283,6 +282,10 @@ const teamNetworkManagedServerSchema = z
           code: z.ZodIssueCode.custom,
           message: "managed open auth client token source must be token_id"
         });
+      }
+
+      if (value.auth.client.token_id && !value.auth.tokens?.some((token) => token.id === value.auth.client?.token_id)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: `managed open auth references unknown token: ${value.auth.client.token_id}` });
       }
     }
   });
@@ -337,7 +340,7 @@ const teamNetworkExternalServerSchema = z
       });
     }
 
-    if (value.auth.mode === "bearer") {
+    if (value.auth.mode === "bearer" && value.auth.client) {
       const sourceCount = countTruthy([
         value.auth.client.token_id,
         value.auth.client.token_env,
@@ -360,8 +363,10 @@ const teamNetworkServerSchema = z.discriminatedUnion("mode", [
 const teamNetworkRoomSchema = z
   .object({
     id: z.string().trim().min(1),
-    members: z.array(z.string().trim().min(1)).min(1),
-    name: z.string().trim().min(1).optional()
+    members: z.array(z.string().trim().min(1)),
+    name: z.string().trim().min(1).optional(),
+    visibility: teamNetworkRoomVisibilitySchema.optional(),
+    write_policy: teamNetworkRoomWritePolicySchema.optional()
   })
   .strict();
 

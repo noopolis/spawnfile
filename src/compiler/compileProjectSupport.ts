@@ -27,6 +27,7 @@ export interface CompiledNodeOutput {
   report: {
     output_dir: string | null;
   };
+  slug?: string;
   value: ResolvedAgentNode | ResolvedTeamNode;
 }
 
@@ -161,7 +162,11 @@ export const injectMoltnetWorkspaceFiles = async (
     }
 
     const runtimeOutputDirectory = path.join(outputDirectory, compiled.report.output_dir);
-    const moltnetClientConfigFiles = createMoltnetClientConfigFiles(compiled.value, artifacts);
+    const moltnetClientConfigFiles = createMoltnetClientConfigFiles(
+      compiled.value,
+      artifacts,
+      compiled.slug
+    );
     if (moltnetClientConfigFiles.length === 0) {
       continue;
     }

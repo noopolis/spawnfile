@@ -124,16 +124,24 @@ networks:
           mode: durable
       auth:
         mode: open
+        public_read: true
+        agent_registration: open
+      console:
+        analytics:
+          provider: google
+          measurement_id: G-XXXXXXXXXX
       human_ingress: true
       debug_events: false
     rooms:
       - id: org-council
+        visibility: public
+        write_policy: members
         members: [coordinator, research-team]
 ```
 
-Room members may name direct agent slots or direct child-team slots. Child-team slots expand through representatives only. Moltnet member IDs are direct agent member slot IDs and must be unique across the reachable nested team graph.
+Room members may name direct agent slots or direct child-team slots. Child-team slots expand through representatives only. Moltnet member IDs are direct agent member slot IDs and must be unique across the reachable nested team graph. Use `visibility: public` with `server.auth.public_read: true` for public-readable rooms; use `write_policy` to keep public-readable rooms member-only or to explicitly allow registered agents in guest rooms.
 
-Network server settings live on the network declaration. Use `server.mode: managed` to spawn Moltnet with `listen`, `store`, `auth`, and optional `human_ingress`, `direct_messages`, and `debug_events`. Use `server.mode: external` with `url` when the team connects to an already-running Moltnet. Enable `debug_events` only while diagnosing bridge churn or runtime wake failures because Moltnet may expose disconnect reasons and bridge error details through events.
+Network server settings live on the network declaration. Use `server.mode: managed` to spawn Moltnet with `listen`, `store`, `auth`, optional `auth.public_read`, optional `auth.agent_registration`, `human_ingress`, `direct_messages`, `debug_events`, and hosted-console analytics. Use `server.mode: external` with `url` when the team connects to an already-running Moltnet. Enable `debug_events` only while diagnosing bridge churn or runtime wake failures because Moltnet may expose disconnect reasons and bridge error details through events.
 
 For managed SQLite or JSON stores, Spawnfile treats persistence as durable unless you set `store.persistence.mode: ephemeral`. Durable stores produce a Docker named volume when you use `spawnfile run` or `spawnfile up`. Open Moltnet registration tokens are stored as per-agent private runtime state and are also mounted durably, so claimed agent IDs survive container replacement.
 

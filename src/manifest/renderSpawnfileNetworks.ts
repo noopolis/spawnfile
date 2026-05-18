@@ -57,6 +57,8 @@ const orderTeamAuth = (server: TeamNetworkServer): TeamNetworkServer =>
       "auth",
       withDefinedEntries([
         ["mode", server.auth.mode],
+        ["public_read", server.auth.public_read],
+        ["agent_registration", server.auth.agent_registration],
         ["tokens", server.auth.tokens?.map(orderTeamAuthToken)],
         [
           "client",
@@ -71,6 +73,7 @@ const orderTeamAuth = (server: TeamNetworkServer): TeamNetworkServer =>
         ]
       ])
     ],
+    ["console", server.mode === "managed" ? server.console : undefined],
     ["store", orderTeamStore(server)],
     [
       "pairings",
@@ -103,6 +106,8 @@ export const orderTeamNetworks = (
           withDefinedEntries([
             ["id", room.id],
             ["name", room.name],
+            ["visibility", room.visibility],
+            ["write_policy", room.write_policy],
             ["members", room.members]
           ])
         )

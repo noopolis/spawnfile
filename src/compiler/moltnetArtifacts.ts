@@ -8,13 +8,13 @@ import {
   createMoltnetNodeConfigPath,
   createMoltnetServerConfigPath,
   resolveMoltnetBaseUrl,
-  resolveMoltnetClientAuth,
   resolveMoltnetStorePersistenceMountPath,
   type MoltnetSecretPatch
 } from "./moltnetConfigLowering.js";
 import type { CompilePlan, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 import { listConcreteMoltnetRoomMemberIds } from "./moltnetRoomMemberships.js";
-import { resolveRuntimeConfig } from "./moltnetRuntimeConfig.js";
+import { assertCompatibleMoltnetNetworkName, assertCompatibleMoltnetRoomPolicy, assertCompatibleMoltnetServer } from "./moltnetRoomPolicyCompatibility.js";
+import { createMoltnetNodeConfigContent } from "./moltnetNodeConfig.js";
 import { createShortHash, slugify } from "./helpers.js";
 
 export interface MoltnetServerPlan {
@@ -29,6 +29,8 @@ export interface MoltnetServerPlan {
     id: string;
     members: string[];
     name?: string;
+    visibility?: "public" | "private";
+    write_policy?: "members" | "operators" | "registered_agents";
   }>;
   server: TeamNetworkServer;
   secretPatches: MoltnetSecretPatch[];
@@ -64,11 +66,7 @@ const createServerKey = (networkId: string): string => networkId;
 const truncateSegment = (value: string, maxLength: number): string =>
   value.length > maxLength ? value.slice(0, maxLength).replace(/[-_.]+$/u, "") : value;
 
-const createPersistentVolumeName = (
-  planRoot: string,
-  id: string,
-  explicitName?: string
-): string => {
+const createPersistentVolumeName = (planRoot: string, id: string, explicitName?: string): string => {
   if (explicitName && explicitName.trim().length > 0) {
     return explicitName.trim();
   }
@@ -124,6 +122,8 @@ export const generateMoltnetArtifacts = async (
             `Duplicate Moltnet network ${network.id} declares conflicting server URL`
           );
         }
+        assertCompatibleMoltnetNetworkName(network.id, existingPlan.name, network.name);
+        assertCompatibleMoltnetServer(network.id, existingPlan.server, server);
 
         for (const room of network.rooms) {
           const concreteMembers = listConcreteMoltnetRoomMemberIds(
@@ -137,11 +137,29 @@ export const generateMoltnetArtifacts = async (
             existingRoom.members = [
               ...new Set([...existingRoom.members, ...concreteMembers])
             ].sort();
+            assertCompatibleMoltnetRoomPolicy(
+              network.id,
+              room.id,
+              "visibility",
+              existingRoom.visibility,
+              room.visibility
+            );
+            assertCompatibleMoltnetRoomPolicy(
+              network.id,
+              room.id,
+              "write_policy",
+              existingRoom.write_policy,
+              room.write_policy
+            );
+            existingRoom.visibility ??= room.visibility;
+            existingRoom.write_policy ??= room.write_policy;
           } else {
             existingPlan.rooms.push({
               id: room.id,
               members: concreteMembers,
-              ...(room.name ? { name: room.name } : {})
+              ...(room.name ? { name: room.name } : {}),
+              ...(room.visibility ? { visibility: room.visibility } : {}),
+              ...(room.write_policy ? { write_policy: room.write_policy } : {})
             });
           }
         }
@@ -167,7 +185,9 @@ export const generateMoltnetArtifacts = async (
               network.id,
               room
             ),
-            ...(room.name ? { name: room.name } : {})
+            ...(room.name ? { name: room.name } : {}),
+            ...(room.visibility ? { visibility: room.visibility } : {}),
+            ...(room.write_policy ? { write_policy: room.write_policy } : {})
           })),
           server,
           secretPatches: [],
@@ -200,47 +220,44 @@ export const generateMoltnetArtifacts = async (
     }
   };
 
-  for (const teamNode of teamNodes) {
-    for (const network of teamNode.value.networks ?? []) {
-      const serverPlan = serverPlans.get(createServerKey(network.id));
-      if (!serverPlan || !network.server || network.server.mode !== "managed" || !serverPlan.configPath) {
-        continue;
-      }
+  for (const serverPlan of serverPlans.values()) {
+    if (serverPlan.mode !== "managed" || serverPlan.server.mode !== "managed" || !serverPlan.configPath) {
+      continue;
+    }
 
-      const native = createMoltnetNativeServerConfig({
-        networkId: network.id,
-        networkName: network.name,
-        rooms: serverPlan.rooms,
-        server: network.server
-      });
-      serverPlan.secretPatches = native.secretPatches;
-      configFiles.push({
-        content: `${JSON.stringify(native.config, null, 2)}\n`,
-        mode: 0o600,
-        path: createMoltnetServerConfigPath(serverPlan.id)
-      });
+    const native = createMoltnetNativeServerConfig({
+      networkId: serverPlan.networkId,
+      networkName: serverPlan.name,
+      rooms: serverPlan.rooms,
+      server: serverPlan.server
+    });
+    serverPlan.secretPatches = native.secretPatches;
+    configFiles.push({
+      content: `${JSON.stringify(native.config, null, 2)}\n`,
+      mode: 0o600,
+      path: createMoltnetServerConfigPath(serverPlan.id)
+    });
 
-      const storeMountPath = resolveMoltnetStorePersistenceMountPath(
-        network.id,
-        network.server.store
-      );
-      if (storeMountPath) {
-        const mountId = `moltnet-${network.id}-store`;
-        const store = network.server.store;
-        const volumeName = store.kind === "sqlite" || store.kind === "json"
-          ? store.persistence?.name
-          : undefined;
-        addPersistentMount({
-          id: mountId,
-          mountPath: storeMountPath,
-          reason: `managed Moltnet ${network.server.store.kind} store for ${network.id}`,
-          volumeName: createPersistentVolumeName(
-            plan.root,
-            mountId,
-            volumeName
-          )
-        });
-      }
+    const storeMountPath = resolveMoltnetStorePersistenceMountPath(
+      serverPlan.networkId,
+      serverPlan.server.store
+    );
+    if (storeMountPath) {
+      const mountId = `moltnet-${serverPlan.networkId}-store`;
+      const store = serverPlan.server.store;
+      const volumeName = store.kind === "sqlite" || store.kind === "json"
+        ? store.persistence?.name
+        : undefined;
+      addPersistentMount({
+        id: mountId,
+        mountPath: storeMountPath,
+        reason: `managed Moltnet ${serverPlan.server.store.kind} store for ${serverPlan.networkId}`,
+        volumeName: createPersistentVolumeName(
+          plan.root,
+          mountId,
+          volumeName
+        )
+      });
     }
   }
 
@@ -314,16 +331,15 @@ export const generateMoltnetArtifacts = async (
       }
       nodePlanKeys.add(nodePlanKey);
 
-      const clientAuth = resolveMoltnetClientAuth(
-        network.server,
-        attachment.network,
-        attachment.memberId,
-        node.slug
-      );
-      const usesPerAttachmentOpenToken =
-        clientAuth.mode === "open" &&
-        clientAuth.staticToken !== true &&
-        Boolean(clientAuth.tokenEnv || clientAuth.tokenPath);
+      const nodeConfig = createMoltnetNodeConfigContent({
+        agentNode,
+        attachment: { ...attachment, memberId: attachment.memberId },
+        networkServer: serverPlan.server,
+        nodeSlug: node.slug,
+        plan,
+        serverPlan
+      });
+      const { clientAuth, usesPerAttachmentOpenToken } = nodeConfig;
 
       if (usesPerAttachmentOpenToken && clientAuth.tokenPath) {
         const mountId = `agent-${node.slug}-moltnet-tokens`;
@@ -336,77 +352,7 @@ export const generateMoltnetArtifacts = async (
       }
 
       configFiles.push({
-        content:
-          `${JSON.stringify(
-            {
-              version: "moltnet.node.v1",
-              moltnet: {
-                base_url: serverPlan.baseUrl,
-                network_id: attachment.network,
-                ...(clientAuth.mode === "none"
-                  ? {}
-                  : { auth_mode: clientAuth.mode }),
-                ...(clientAuth.staticToken
-                  ? { static_token: true }
-                  : {}),
-                ...(!usesPerAttachmentOpenToken && clientAuth.tokenEnv
-                  ? {
-                      token_env: clientAuth.tokenEnv
-                    }
-                  : {}),
-                ...(!usesPerAttachmentOpenToken && clientAuth.tokenPath
-                  ? {
-                      token_path: clientAuth.tokenPath
-                    }
-                  : {})
-              },
-              attachments: [
-                {
-                  agent: {
-                    id: attachment.memberId,
-                    name: agentNode.name
-                  },
-                  ...(usesPerAttachmentOpenToken
-                    ? {
-                        moltnet: {
-                          ...(clientAuth.tokenEnv ? { token_env: clientAuth.tokenEnv } : {}),
-                          ...(clientAuth.tokenPath ? { token_path: clientAuth.tokenPath } : {})
-                        }
-                      }
-                    : {}),
-                  runtime: resolveRuntimeConfig(
-                    plan,
-                    agentNode,
-                    node.slug,
-                    attachment.network,
-                    attachment.memberId
-                  ),
-                  ...(attachment.rooms
-                    ? {
-                        rooms: Object.entries(attachment.rooms)
-                          .sort(([left], [right]) => left.localeCompare(right))
-                          .map(([roomId, policy]) => ({
-                            id: roomId,
-                            ...(policy.read ? { read: policy.read } : {}),
-                            ...(policy.reply ? { reply: policy.reply } : {})
-                          }))
-                      }
-                    : {}),
-                  ...(attachment.dms
-                    ? {
-                        dms: {
-                          enabled: attachment.dms.enabled,
-                          ...(attachment.dms.read ? { read: attachment.dms.read } : {}),
-                          ...(attachment.dms.reply ? { reply: attachment.dms.reply } : {})
-                        }
-                      }
-                    : {})
-                }
-              ]
-            },
-            null,
-            2
-          )}\n`,
+        content: nodeConfig.content,
         mode: 0o600,
         path: configPath
       });

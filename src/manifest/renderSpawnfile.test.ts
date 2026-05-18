@@ -300,7 +300,70 @@ describe("renderSpawnfile", () => {
           server: {
             mode: "managed",
             auth: {
-              mode: "open"
+              agent_registration: "open",
+              mode: "open",
+              public_read: true
+            },
+            listen: {
+              bind: "127.0.0.1",
+              port: 8787
+            },
+            store: {
+              kind: "sqlite",
+              path: "/tmp/local-lab.sqlite",
+              persistence: {
+                mode: "durable",
+                mount: "/tmp",
+                name: "local-lab-state"
+              }
+            },
+            console: {
+              analytics: {
+                provider: "google",
+                measurement_id: "G-ABC123"
+              }
+            },
+            debug_events: true,
+            direct_messages: true
+          },
+          rooms: [
+            {
+              id: "research",
+              members: ["analyst"],
+              visibility: "public",
+              write_policy: "members"
+            }
+          ]
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(source).toContain("    server:");
+    expect(source).toContain("      mode: managed");
+    expect(source).toContain("      direct_messages: true");
+    expect(source).toContain("      debug_events: true");
+    expect(source).toContain("      console:");
+    expect(source).toContain("        provider: google");
+    expect(source).toContain("        measurement_id: G-ABC123");
+    expect(source).toContain("      port: 8787");
+    expect(source).toContain("      auth:");
+    expect(source).toContain("        public_read: true");
+    expect(source).toContain("        agent_registration: open");
+    expect(source).toContain("      store:");
+    expect(source).toContain("        visibility: public");
+    expect(source).toContain("        write_policy: members");
+    expect(manifestSchema.parse(YAML.parse(source) as unknown)).toMatchObject({
+      kind: "team",
+      networks: [
+        {
+          id: "local_lab",
+          server: {
+            mode: "managed",
+            auth: {
+              agent_registration: "open",
+              mode: "open",
+              public_read: true
             },
             listen: {
               bind: "127.0.0.1",
@@ -321,47 +384,10 @@ describe("renderSpawnfile", () => {
           rooms: [
             {
               id: "research",
-              members: ["analyst"]
+              visibility: "public",
+              write_policy: "members"
             }
           ]
-        }
-      ],
-      spawnfile_version: "0.1"
-    });
-
-    expect(source).toContain("    server:");
-    expect(source).toContain("      mode: managed");
-    expect(source).toContain("      direct_messages: true");
-    expect(source).toContain("      debug_events: true");
-    expect(source).toContain("      port: 8787");
-    expect(source).toContain("      auth:");
-    expect(source).toContain("      store:");
-    expect(manifestSchema.parse(YAML.parse(source) as unknown)).toMatchObject({
-      kind: "team",
-      networks: [
-        {
-          id: "local_lab",
-          server: {
-            mode: "managed",
-            auth: {
-              mode: "open"
-            },
-            listen: {
-              bind: "127.0.0.1",
-              port: 8787
-            },
-            store: {
-              kind: "sqlite",
-              path: "/tmp/local-lab.sqlite",
-              persistence: {
-                mode: "durable",
-                mount: "/tmp",
-                name: "local-lab-state"
-              }
-            },
-            debug_events: true,
-            direct_messages: true
-          }
         }
       ]
     });
