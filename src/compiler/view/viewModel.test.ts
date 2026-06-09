@@ -40,11 +40,10 @@ const createNestedNetworkProject = async (): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-view-model-"));
   temporaryDirectories.push(directory);
   await writeAgent(path.join(directory, "agents", "lead"), "lead", [
-    "          read: all",
-    "          reply: auto"
+    "          wake: all"
   ].join("\n"));
   await writeAgent(path.join(directory, "teams", "platform", "agents", "lead"), "platform-lead", [
-    "          read: mentions"
+    "          wake: mentions"
   ].join("\n"));
   await writeUtf8File(path.join(directory, "teams", "platform", "Spawnfile"), [
     'spawnfile_version: "0.1"',
@@ -164,13 +163,13 @@ describe("organization view model", () => {
     );
     expect(output).toContain("declared members: lead, platform");
     expect(output).toContain(
-      "lead  team=parent member=lead read=all reply=auto source=agents/lead/Spawnfile"
+      "lead  team=parent member=lead wake=all source=agents/lead/Spawnfile"
     );
     expect(output).toContain(
       "platform-lead  represents=platform team=platform-core member=liaison source=teams/platform/agents/lead/Spawnfile"
     );
     expect(output).toContain(
-      "platform-lead  team=platform-core member=liaison read=mentions source=teams/platform/agents/lead/Spawnfile"
+      "platform-lead  team=platform-core member=liaison wake=mentions source=teams/platform/agents/lead/Spawnfile"
     );
     expect(output).not.toContain(directory);
   });

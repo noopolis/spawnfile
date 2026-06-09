@@ -113,8 +113,7 @@ describe("moltnetResolution", () => {
             network: "local_lab",
             rooms: {
               research: {
-                read: "mentions",
-                reply: "auto"
+                wake: "mentions"
               }
             },
             teamSource: null
@@ -146,8 +145,7 @@ describe("moltnetResolution", () => {
         network: "local_lab",
         rooms: {
           research: {
-            read: "mentions",
-            reply: "auto"
+            wake: "mentions"
           }
         },
         teamSource: "/tmp/team/Spawnfile"
@@ -180,7 +178,7 @@ describe("moltnetResolution", () => {
             network: "local_lab",
             rooms: {
               research: {
-                read: "mentions"
+                wake: "mentions"
               }
             },
             teamSource: null
@@ -242,7 +240,7 @@ describe("moltnetResolution", () => {
             network: "local_lab",
             rooms: {
               missing: {
-                read: "all"
+                wake: "all"
               }
             },
             teamSource: null
@@ -279,7 +277,7 @@ describe("moltnetResolution", () => {
           network: "org",
           rooms: {
             child_room: {
-              read: "mentions"
+              wake: "mentions"
             }
           },
           teamSource: null
@@ -360,7 +358,7 @@ describe("moltnetResolution", () => {
         network: "org",
         rooms: {
           child_room: {
-            read: "mentions"
+            wake: "mentions"
           },
           parent_room: {}
         },
@@ -376,13 +374,13 @@ describe("moltnetResolution", () => {
         {
           memberId: null,
           network: "org",
-          rooms: { room: { read: "all" } },
+          rooms: { room: { wake: "all" } },
           teamSource: null
         },
         {
           memberId: null,
           network: "org",
-          rooms: { room: { read: "mentions" } },
+          rooms: { room: { wake: "mentions" } },
           teamSource: null
         }
       ]
@@ -430,13 +428,13 @@ describe("moltnetResolution", () => {
     const agent = createAgent({
       moltnet: [
         {
-          dms: { enabled: true, read: "all" },
+          dms: { enabled: true, wake: "all" },
           memberId: null,
           network: "org",
           teamSource: null
         },
         {
-          dms: { enabled: true, read: "mentions" },
+          dms: { enabled: true, wake: "mentions" },
           memberId: null,
           network: "org",
           teamSource: null

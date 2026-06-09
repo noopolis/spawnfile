@@ -19,8 +19,7 @@ surfaces:
     - network: local_lab
       rooms:
         mission-control:
-          read: all
-          reply: auto
+          wake: all
 
 workspace:
   docs:

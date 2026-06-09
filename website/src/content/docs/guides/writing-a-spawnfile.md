@@ -351,8 +351,7 @@ surfaces:
     - network: local_lab
       rooms:
         research:
-          read: all
-          reply: auto
+          wake: all
 ```
 
 Optional `identity` fields advertise the agent's own account in generated rosters. They do not provision accounts or cause Spawnfile to read runtime state. Supported identity fields are Discord `user_id`, Telegram `user_id` and/or `username`, WhatsApp `phone`, and Slack `user_id`.

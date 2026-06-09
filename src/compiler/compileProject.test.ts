@@ -528,8 +528,7 @@ describe("compileProject", () => {
             "    - network: local_lab",
             "      rooms:",
             "        research:",
-            "          read: all",
-            "          reply: auto",
+            "          wake: all",
             ""
           ].join("\n")
         );

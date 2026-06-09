@@ -102,7 +102,7 @@ const roomPolicyKey = (policy: unknown): string =>
 const hasRoomPolicy = (
   policy: NonNullable<ResolvedMoltnetAttachment["rooms"]>[string]
 ): boolean =>
-  policy.read !== undefined || policy.reply !== undefined;
+  policy.wake !== undefined;
 
 const mergeAttachment = (
   target: ResolvedMoltnetAttachment,

@@ -99,8 +99,7 @@ export const createMoltnetNodeConfigContent = ({
                           id: roomId,
                           ...(room?.visibility ? { visibility: room.visibility } : {}),
                           ...(room?.write_policy ? { write_policy: room.write_policy } : {}),
-                          ...(policy.read ? { read: policy.read } : {}),
-                          ...(policy.reply ? { reply: policy.reply } : {})
+                          ...(policy.wake ? { wake: policy.wake } : {})
                         };
                       })
                   }
@@ -109,8 +108,7 @@ export const createMoltnetNodeConfigContent = ({
                 ? {
                     dms: {
                       enabled: attachment.dms.enabled,
-                      ...(attachment.dms.read ? { read: attachment.dms.read } : {}),
-                      ...(attachment.dms.reply ? { reply: attachment.dms.reply } : {})
+                      ...(attachment.dms.wake ? { wake: attachment.dms.wake } : {})
                     }
                   }
                 : {})

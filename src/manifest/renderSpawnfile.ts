@@ -123,8 +123,7 @@ const orderMoltnetRoomBehavior = (
   }
 
   return withDefinedEntries([
-    ["read", behavior.read],
-    ["reply", behavior.reply]
+    ["wake", behavior.wake]
   ]) as MoltnetRoomBehavior;
 };
 
@@ -135,8 +134,7 @@ const orderMoltnetDm = (dms: MoltnetDM | undefined): MoltnetDM | undefined => {
 
   return withDefinedEntries([
     ["enabled", dms.enabled],
-    ["read", dms.read],
-    ["reply", dms.reply]
+    ["wake", dms.wake]
   ]) as MoltnetDM;
 };
 

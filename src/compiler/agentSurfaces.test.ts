@@ -21,14 +21,12 @@ describe("agentSurfaces", () => {
           {
             dms: {
               enabled: true,
-              read: "all",
-              reply: "auto"
+              wake: "all"
             },
             network: "local_lab",
             rooms: {
               research: {
-                read: "mentions",
-                reply: "never"
+                wake: "never"
               }
             }
           }
@@ -63,15 +61,13 @@ describe("agentSurfaces", () => {
         {
           dms: {
             enabled: true,
-            read: "all",
-            reply: "auto"
+            wake: "all"
           },
           memberId: null,
           network: "local_lab",
           rooms: {
             research: {
-              read: "mentions",
-              reply: "never"
+              wake: "never"
             }
           },
           teamSource: null

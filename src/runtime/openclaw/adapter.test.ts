@@ -353,8 +353,7 @@ describe("openClawAdapter", () => {
             network: "stage_lights",
             rooms: {
               "green-room": {
-                read: "all" as const,
-                reply: "never" as const
+                wake: "never" as const
               }
             },
             teamSource: "/tmp/team/Spawnfile"

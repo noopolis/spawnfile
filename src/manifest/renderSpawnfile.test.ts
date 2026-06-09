@@ -879,14 +879,12 @@ describe("renderSpawnfile", () => {
             network: "local_lab",
             rooms: {
               research: {
-                read: "mentions",
-                reply: "auto"
+                wake: "mentions"
               }
             },
             dms: {
               enabled: true,
-              read: "all",
-              reply: "never"
+              wake: "never"
             }
           }
         ]
@@ -937,8 +935,8 @@ describe("renderSpawnfile", () => {
     expect(agentSource).toContain("    - network: local_lab");
     expect(agentSource).toContain("      rooms:");
     expect(agentSource).toContain("        research:");
-    expect(agentSource).toContain("          read: mentions");
-    expect(agentSource).toContain("          reply: auto");
+    expect(agentSource).toContain("          wake: mentions");
+    expect(agentSource).toContain("        wake: never");
     expect(agentSource).toContain("        enabled: true");
     expect(teamSource).toContain("networks:");
     expect(teamSource).toContain("  - id: local_lab");

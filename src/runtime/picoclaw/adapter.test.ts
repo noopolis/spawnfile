@@ -234,8 +234,7 @@ describe("picoClawAdapter", () => {
             network: "pasadena_net",
             rooms: {
               "apartment-4a": {
-                read: "all",
-                reply: "never"
+                wake: "never"
               }
             },
             teamSource: "/tmp/Spawnfile"

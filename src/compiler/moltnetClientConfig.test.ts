@@ -60,15 +60,13 @@ const createAgent = (runtime: "openclaw" | "picoclaw" | "tinyclaw"): ResolvedAge
       {
         dms: {
           enabled: true,
-          read: "all",
-          reply: "never"
+          wake: "never"
         },
         memberId: "orchestrator",
         network: "local_lab",
         rooms: {
           research: {
-            read: "all",
-            reply: "auto"
+            wake: "all"
           }
         },
         teamSource: "/tmp/team/Spawnfile"

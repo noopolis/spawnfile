@@ -19,8 +19,7 @@ surfaces:
     - network: field_lab
       rooms:
         field-room:
-          read: all
-          reply: auto
+          wake: all
 
 workspace:
   docs:

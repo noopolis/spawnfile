@@ -94,15 +94,13 @@ const createPlan = (): CompilePlan => ({
             {
               dms: {
                 enabled: true,
-                read: "all",
-                reply: "auto"
+                wake: "all"
               },
               memberId: "orchestrator",
               network: "local_lab",
               rooms: {
                 research: {
-                  read: "all",
-                  reply: "auto"
+                  wake: "all"
                 }
               },
               teamSource: "/tmp/team/Spawnfile"
@@ -235,8 +233,7 @@ describe("moltnetArtifacts", () => {
                 network: "local_lab",
                 rooms: {
                   research: {
-                    read: "all",
-                    reply: "auto"
+                    wake: "all"
                   }
                 },
                 teamSource: "/tmp/team/Spawnfile"
@@ -272,8 +269,7 @@ describe("moltnetArtifacts", () => {
                 network: "local_lab",
                 rooms: {
                   research: {
-                    read: "all",
-                    reply: "auto"
+                    wake: "all"
                   }
                 },
                 teamSource: "/tmp/team/Spawnfile"
@@ -447,7 +443,7 @@ describe("moltnetArtifacts", () => {
                 network: "local_lab",
                 rooms: {
                   quality: {
-                    read: "all"
+                    wake: "all"
                   }
                 },
                 teamSource: "/tmp/quality/Spawnfile"
@@ -501,15 +497,13 @@ describe("moltnetArtifacts", () => {
         {
           dms: {
             enabled: true,
-            read: "mentions",
-            reply: "never"
+            wake: "never"
           },
           memberId: "orchestrator",
           network: "local_lab",
           rooms: {
             research: {
-              read: "mentions",
-              reply: "auto"
+              wake: "mentions"
             }
           },
           teamSource: "/tmp/team/Spawnfile"
@@ -525,10 +519,9 @@ describe("moltnetArtifacts", () => {
     expect(nodeConfig?.content).toContain('"rooms": [');
     expect(nodeConfig?.content).toContain('"visibility": "public"');
     expect(nodeConfig?.content).toContain('"write_policy": "members"');
-    expect(nodeConfig?.content).toContain('"read": "mentions"');
-    expect(nodeConfig?.content).toContain('"reply": "auto"');
-    expect(nodeConfig?.content).toContain('"reply": "never"');
-    expect(nodeConfig?.content).not.toContain('"reply": "manual"');
+    expect(nodeConfig?.content).toContain('"wake": "mentions"');
+    expect(nodeConfig?.content).toContain('"wake": "never"');
+    expect(nodeConfig?.content).not.toContain('"reply"');
     expect(nodeConfig?.content).toContain('"dms": {');
   });
 

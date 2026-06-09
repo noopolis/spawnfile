@@ -28,8 +28,7 @@ surfaces:
     - network: ops_lab
       rooms:
         ops-room:
-          read: all
-          reply: never
+          wake: never
 
 workspace:
   docs:

@@ -181,14 +181,14 @@ Moltnet networks
 ├── moltnet local_lab
 │   └── local_lab "Local Lab" on moltnet-team-chat server=managed auth=none human_ingress
 │       └── #mission-control
-│           ├── coordinator  team=moltnet-team-chat member=coordinator read=all reply=auto
+│           ├── coordinator  team=moltnet-team-chat member=coordinator wake=all
 │           ├── field-representative  represents=field-team member=field-representative
 │           └── analysis-representative  represents=analysis-team member=analysis-representative
 └── moltnet field_lab
     └── field_lab "Field Lab" on field-team server=managed auth=none human_ingress
         └── #field-room
-            ├── field-representative  team=field-team member=field-representative read=all reply=auto
-            └── field-observer  team=field-team member=field-observer read=all reply=never
+            ├── field-representative  team=field-team member=field-representative wake=all
+            └── field-observer  team=field-team member=field-observer wake=never
 ```
 
 ## TEAM.md And Context Files

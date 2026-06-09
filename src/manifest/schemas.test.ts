@@ -649,8 +649,7 @@ describe("manifestSchema", () => {
             network: "local_lab",
             rooms: {
               research: {
-                read: "mentions",
-                reply: "auto"
+                wake: "mentions"
               }
             }
           }
