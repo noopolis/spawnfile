@@ -46,7 +46,7 @@ const createView = (): OrganizationView => ({
               declaredSlot: "coordinator",
               directTeamName: "parent",
               directTeamSource: "/tmp/parent/Spawnfile",
-              policy: { read: "all", reply: "auto" }
+              policy: { wake: "all" }
             },
             {
               agentName: "rep-agent",
@@ -259,9 +259,8 @@ describe("compiler view renderers", () => {
     const coordinatorLine = output.split("\n").find((line) => line.includes("coordinator-agent"));
     const representativeLine = output.split("\n").find((line) => line.includes("rep-agent"));
 
-    expect(coordinatorLine).toContain("read=all reply=auto");
-    expect(representativeLine).not.toContain("read=");
-    expect(representativeLine).not.toContain("reply=");
+    expect(coordinatorLine).toContain("wake=all");
+    expect(representativeLine).not.toContain("wake=");
   });
 
   it("builds declared and concrete network views from nested Spawnfiles", async () => {
@@ -286,7 +285,7 @@ describe("compiler view renderers", () => {
       "    - network: org",
       "      rooms:",
       "        shared:",
-      "          read: mentions",
+      "          wake: mentions",
       ""
     ].join("\n"));
     await writeUtf8File(path.join(directory, "teams", "child", "Spawnfile"), [

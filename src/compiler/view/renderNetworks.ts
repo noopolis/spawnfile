@@ -24,8 +24,7 @@ const formatPolicy = (member: OrganizationNetworkMemberView): string[] => {
   }
 
   return [
-    member.policy.read ? `read=${member.policy.read}` : undefined,
-    member.policy.reply ? `reply=${member.policy.reply}` : undefined
+    member.policy.wake ? `wake=${member.policy.wake}` : undefined
   ].filter((entry): entry is string => entry !== undefined);
 };
 

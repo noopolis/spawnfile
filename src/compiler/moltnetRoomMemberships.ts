@@ -46,8 +46,7 @@ const findTeamBySource = (
 const clonePolicy = (
   policy: ResolvedMoltnetRoomPolicy
 ): ResolvedMoltnetRoomPolicy => ({
-  ...(policy.read ? { read: policy.read } : {}),
-  ...(policy.reply ? { reply: policy.reply } : {})
+  ...(policy.wake ? { wake: policy.wake } : {})
 });
 
 const findDirectRoomPolicy = (

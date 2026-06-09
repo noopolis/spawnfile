@@ -103,7 +103,7 @@ describe("moltnetRoomMemberships", () => {
         {
           memberId: null,
           network: "org",
-          rooms: { general: { read: "all", reply: "auto" } },
+          rooms: { general: { wake: "all" } },
           teamSource: null
         }
       ]
@@ -122,7 +122,7 @@ describe("moltnetRoomMemberships", () => {
         declaringTeamSource: org.source,
         directTeamSource: org.source,
         networkId: "org",
-        policy: { read: "all", reply: "auto" },
+        policy: { wake: "all" },
         roomId: "general"
       })
     ]);
@@ -134,7 +134,7 @@ describe("moltnetRoomMemberships", () => {
         {
           memberId: null,
           network: "org",
-          rooms: { general: { read: "mentions" } },
+          rooms: { general: { wake: "mentions" } },
           teamSource: null
         }
       ]
@@ -163,7 +163,7 @@ describe("moltnetRoomMemberships", () => {
     });
     expect(parentRow).not.toHaveProperty("policy");
     expect(rows.find((row) => row.declaringTeamSource === child.source)?.policy).toEqual({
-      read: "mentions"
+      wake: "mentions"
     });
   });
 
@@ -234,19 +234,19 @@ describe("moltnetRoomMemberships", () => {
         {
           memberId: null,
           network: "other",
-          rooms: { room: { read: "all" } },
+          rooms: { room: { wake: "all" } },
           teamSource: null
         },
         {
           memberId: "other-member",
           network: "org",
-          rooms: { room: { reply: "auto" } },
+          rooms: { room: { wake: "all" } },
           teamSource: null
         },
         {
           memberId: null,
           network: "org",
-          rooms: { other_room: { read: "mentions" } },
+          rooms: { other_room: { wake: "mentions" } },
           teamSource: "/tmp/other-team/Spawnfile"
         }
       ]

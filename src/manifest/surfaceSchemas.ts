@@ -205,21 +205,18 @@ const webhookSurfaceSchema = z
   })
   .strict();
 
-const moltnetReadSchema = z.enum(["all", "mentions", "thread_only"]);
-const moltnetReplySchema = z.enum(["auto", "never"]);
+const moltnetWakeSchema = z.enum(["all", "mentions", "thread_only", "never"]);
 
 const moltnetRoomBehaviorSchema = z
   .object({
-    read: moltnetReadSchema.optional(),
-    reply: moltnetReplySchema.optional()
+    wake: moltnetWakeSchema.optional()
   })
   .strict();
 
 const moltnetDmSchema = z
   .object({
     enabled: z.boolean(),
-    read: moltnetReadSchema.optional(),
-    reply: moltnetReplySchema.optional()
+    wake: moltnetWakeSchema.optional()
   })
   .strict();
 
@@ -274,10 +271,9 @@ export type HttpSurfaceAuth = never;
 export type HttpSurface = never;
 export type MoltnetAttachment = z.infer<typeof moltnetAttachmentSchema>;
 export type MoltnetDM = z.infer<typeof moltnetDmSchema>;
-export type MoltnetRead = z.infer<typeof moltnetReadSchema>;
-export type MoltnetReply = z.infer<typeof moltnetReplySchema>;
 export type MoltnetRoomBehavior = z.infer<typeof moltnetRoomBehaviorSchema>;
 export type MoltnetSurface = z.infer<typeof moltnetSurfaceSchema>;
+export type MoltnetWake = z.infer<typeof moltnetWakeSchema>;
 export type SlackSurfaceAccess = z.infer<typeof slackSurfaceAccessSchema>;
 export type SlackSurface = z.infer<typeof slackSurfaceSchema>;
 export type TelegramSurfaceAccess = z.infer<typeof telegramSurfaceAccessSchema>;

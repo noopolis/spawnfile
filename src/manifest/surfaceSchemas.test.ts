@@ -256,7 +256,7 @@ describe("surfaceSchemas", () => {
     );
   });
 
-  it("accepts moltnet surfaces and rejects empty attachments or manual replies", () => {
+  it("accepts moltnet surfaces and rejects empty attachments or invalid wake policies", () => {
     expect(
       manifestSchema.parse({
         kind: "agent",
@@ -269,8 +269,7 @@ describe("surfaceSchemas", () => {
               network: "local_lab",
               rooms: {
                 research: {
-                  read: "mentions",
-                  reply: "auto"
+                  wake: "mentions"
                 }
               }
             }
@@ -298,7 +297,7 @@ describe("surfaceSchemas", () => {
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.message).toContain("must declare rooms or dms");
 
-    const manualReply = manifestSchema.safeParse({
+    const invalidWake = manifestSchema.safeParse({
       kind: "agent",
       name: "agent",
       runtime: "openclaw",
@@ -308,7 +307,7 @@ describe("surfaceSchemas", () => {
           {
             dms: {
               enabled: true,
-              reply: "manual"
+              wake: "manual"
             },
             network: "local_lab"
           }
@@ -316,8 +315,8 @@ describe("surfaceSchemas", () => {
       }
     });
 
-    expect(manualReply.success).toBe(false);
-    expect(manualReply.error?.issues[0]?.message).toContain("auto");
-    expect(manualReply.error?.issues[0]?.message).toContain("never");
+    expect(invalidWake.success).toBe(false);
+    expect(invalidWake.error?.issues[0]?.message).toContain("all");
+    expect(invalidWake.error?.issues[0]?.message).toContain("never");
   });
 });

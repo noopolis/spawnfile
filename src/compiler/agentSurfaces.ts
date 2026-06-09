@@ -46,8 +46,7 @@ export const resolveAgentSurfaces = (
         ? {
             dms: {
               enabled: attachment.dms.enabled,
-              ...(attachment.dms.read ? { read: attachment.dms.read } : {}),
-              ...(attachment.dms.reply ? { reply: attachment.dms.reply } : {})
+              ...(attachment.dms.wake ? { wake: attachment.dms.wake } : {})
             }
           }
         : {}),
@@ -61,8 +60,7 @@ export const resolveAgentSurfaces = (
                 .map(([roomId, behavior]) => [
                   roomId,
                   {
-                    ...(behavior.read ? { read: behavior.read } : {}),
-                    ...(behavior.reply ? { reply: behavior.reply } : {})
+                    ...(behavior.wake ? { wake: behavior.wake } : {})
                   }
                 ])
             )

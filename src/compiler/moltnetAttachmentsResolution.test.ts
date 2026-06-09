@@ -24,8 +24,7 @@ const createAgent = (): ResolvedAgentNode => ({
         network: "org",
         rooms: {
           shared: {
-            read: "mentions",
-            reply: "auto"
+            wake: "mentions"
           }
         },
         teamSource: null
@@ -141,8 +140,7 @@ describe("moltnet attachment resolution", () => {
         network: "org",
         rooms: {
           shared: {
-            read: "mentions",
-            reply: "auto"
+            wake: "mentions"
           }
         },
         teamSource: childTeam.source

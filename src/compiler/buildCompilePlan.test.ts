@@ -732,8 +732,7 @@ describe("buildCompilePlan", () => {
         "    - network: local_lab",
         "      rooms:",
         "        research:",
-        "          read: mentions",
-        "          reply: auto",
+        "          wake: mentions",
         "",
         "workspace:",
         "  docs:",
@@ -821,8 +820,7 @@ describe("buildCompilePlan", () => {
         network: "local_lab",
         rooms: {
           research: {
-            read: "mentions",
-            reply: "auto"
+            wake: "mentions"
           }
         },
         teamSource: teamNode.value.source
@@ -881,7 +879,7 @@ describe("buildCompilePlan", () => {
         "    - network: local_lab",
         "      rooms:",
         "        missing:",
-        "          read: mentions",
+        "          wake: mentions",
         "",
         "workspace:",
         "  docs:",

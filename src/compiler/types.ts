@@ -99,8 +99,7 @@ export interface ResolvedHttpSurface {
 }
 
 export interface ResolvedMoltnetRoomPolicy {
-  read?: "all" | "mentions" | "thread_only";
-  reply?: "auto" | "never";
+  wake?: "all" | "mentions" | "thread_only" | "never";
 }
 
 export interface ResolvedMoltnetDMConfig extends ResolvedMoltnetRoomPolicy {

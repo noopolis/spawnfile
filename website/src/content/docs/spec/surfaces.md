@@ -78,12 +78,10 @@ surfaces:
     - network: local_lab
       rooms:
         research:
-          read: all
-          reply: auto
+          wake: all
       dms:
         enabled: true
-        read: mentions
-        reply: never
+        wake: never
   webhook:
     url: "https://my-service.example.com/callbacks"
     signing_secret: WEBHOOK_SECRET
@@ -132,12 +130,10 @@ surfaces:
     - network: local_lab
       rooms:
         research:
-          read: all
-          reply: auto
+          wake: all
       dms:
         enabled: true
-        read: mentions
-        reply: never
+        wake: never
 ```
 
 Team-side network:
