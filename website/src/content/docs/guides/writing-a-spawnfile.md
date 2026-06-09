@@ -92,9 +92,9 @@ Supported forms:
 
 Schedule declarations are portable wake intent. In this alpha, runtimes may report schedule lowering as degraded when they validate the intent but do not emit a native scheduler yet.
 
-In v0.1, `schedule.kind: cron` lowers to native scheduler artifacts for TinyClaw
-and PicoClaw. `schedule.kind: every` is valid portable intent, but those
-adapters currently report it as degraded.
+In v0.1, `schedule.kind: cron` lowers to native scheduler artifacts for PicoClaw.
+`schedule.kind: every` is valid portable intent, but the active adapters
+currently report it as degraded.
 
 ## skills
 
@@ -419,22 +419,18 @@ Not all runtimes support all access shapes for every surface:
 **Discord:**
 - `openclaw` supports `pairing`, `allowlist`, and `open`.
 - `picoclaw` supports `open` and user allowlists.
-- `tinyclaw` supports `pairing` only (DM-oriented).
 
 **Telegram:**
 - `openclaw` supports `pairing`, `allowlist`, and `open`.
 - `picoclaw` supports `open` and user allowlists.
-- `tinyclaw` supports `pairing` only.
 
 **WhatsApp:**
 - `openclaw` supports `pairing`, `allowlist`, and `open`.
 - `picoclaw` supports `open` and user allowlists.
-- `tinyclaw` supports `pairing` only.
 
 **Slack:**
 - `openclaw` supports `pairing`, `allowlist`, and `open`.
 - `picoclaw` supports `open` and user allowlists.
-- `tinyclaw` does not support Slack.
 
 The compiler validates the declared surface against the selected runtime and fails early on unsupported combinations.
 

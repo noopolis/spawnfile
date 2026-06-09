@@ -53,14 +53,16 @@ These runtimes have working adapters:
 
 1. **[OpenClaw](/runtimes/openclaw/)** -- JSON config, rich workspace layout, MCP through mcporter bridge, native multi-agent sessions.
 2. **[PicoClaw](/runtimes/picoclaw/)** -- JSON config, workspace-first model, first-class MCP surface, spawned subagents.
-3. **[TinyClaw](/runtimes/tinyclaw/)** -- Multi-agent/multi-team runtime with the strongest native team support.
 
 ## Exploratory Runtimes
 
-These runtimes have a confirmed config + markdown workspace model but no adapter yet:
+These runtimes are tracked as adapter research targets but have no bundled adapter yet:
 
-4. **[NullClaw](/runtimes/nullclaw/)** -- JSON config, OpenClaw-compatible structure, stdio-first MCP, delegate agents.
-5. **[ZeroClaw](/runtimes/zeroclaw/)** -- TOML config, strong auth story, named delegate sub-agents.
+3. **[NullClaw](/runtimes/nullclaw/)** -- JSON config, OpenClaw-compatible structure, stdio-first MCP, delegate agents.
+4. **[ZeroClaw](/runtimes/zeroclaw/)** -- TOML config, strong auth story, named delegate sub-agents.
+5. **[OpenFang](https://github.com/RightNow-AI/openfang)** -- declarative config and agent templates, not mapped to a Spawnfile adapter yet.
+6. **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** -- active harness candidate; config, workspace, and skill surfaces still need research.
+7. **[OpenCode](https://github.com/anomalyco/opencode)** -- active coding-agent harness candidate; long-running runtime behavior still needs research.
 
 ## Version Pinning
 
@@ -93,7 +95,7 @@ Cloned repositories live in `runtimes/` at the repo root (gitignored). These are
 
 ## Blueprints
 
-Blueprints are frozen reference layouts that capture the expected config and workspace structure for each compatible runtime at its pinned version. All five supported runtimes share the core pattern: a JSON or TOML config file plus separate markdown docs in a workspace directory.
+Blueprints are frozen reference layouts that capture the expected config and workspace structure for each compatible runtime at its pinned version. Active and exploratory runtimes share the core pattern: a JSON or TOML config file plus separate markdown docs in a workspace directory.
 
 Blueprints serve as the ground truth for adapter implementation. They document exactly what files the adapter should emit and where they should be placed for a given runtime version.
 
@@ -116,12 +118,10 @@ If a runtime cannot preserve part of this surface exactly, the adapter reports `
 |---------|------|--------|-----|--------|---------|-------|---------|----------|----------|-------|
 | OpenClaw | Strong | Strong | Bridge | Strong | Strong | Native sessions | Full | Full | Full | Full |
 | PicoClaw | Strong | Strong | Strong | Strong | Strong | Spawned subagents | Partial | Partial | Partial | Partial |
-| TinyClaw | Strong | Present | No clear surface | Strong | Strong | Native teams | Pairing only | Pairing only | Pairing only | Unsupported |
 | NullClaw | Strong | Strong | stdio-first | Strong | Strong | Delegate agents | -- | -- | -- | -- |
 | ZeroClaw | Strong | Strong | Mixed | Strong | Strong | Delegate sub-agents | -- | -- | -- | -- |
 
 **Surface support key:**
 - **Full** -- supports pairing, allowlist, and open access modes.
 - **Partial** -- supports open and user allowlists; guild/channel/chat/group allowlists are not lowered in v0.1.
-- **Pairing only** -- DM-oriented pairing mode only; richer access shapes are rejected at compile time.
 - **Unsupported** -- the runtime does not support this surface in Spawnfile v0.1.

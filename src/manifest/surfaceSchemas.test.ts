@@ -7,7 +7,7 @@ describe("surfaceSchemas", () => {
     const result = manifestSchema.safeParse({
       kind: "agent",
       name: "agent",
-      runtime: "tinyclaw",
+      runtime: "openclaw",
       spawnfile_version: "0.1",
       surfaces: {
         http: {

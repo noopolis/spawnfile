@@ -45,12 +45,7 @@ const createFakeMoltnetCli = async (): Promise<string> => {
       "  const runtime = flags.get('--runtime');",
       "  const workspace = flags.get('--workspace');",
       "  const content = '# name: moltnet\\nMoltnet is a transport, not an implicit reply channel.\\n';",
-      "  const targets = runtime === 'tinyclaw'",
-      "    ? [",
-      "        path.join(workspace, '.agents', 'skills', 'moltnet', 'SKILL.md'),",
-      "        path.join(workspace, '.claude', 'skills', 'moltnet', 'SKILL.md')",
-      "      ]",
-      "    : [path.join(workspace, 'skills', 'moltnet', 'SKILL.md')];",
+      "  const targets = [path.join(workspace, 'skills', 'moltnet', 'SKILL.md')];",
       "  for (const target of targets) {",
       "    fs.mkdirSync(path.dirname(target), { recursive: true });",
       "    fs.writeFileSync(target, content);",
@@ -123,7 +118,7 @@ describe("compileProject", () => {
     ).resolves.toBe(true);
 
     const agentNode = result.report.nodes.find((node) => node.kind === "agent");
-    expect(agentNode?.runtime_ref).toBe("v2026.3.13-1");
+    expect(agentNode?.runtime_ref).toBe("v2026.6.5");
     expect(agentNode?.runtime_status).toBe("active");
     expect(result.report.container).toEqual({
       dockerfile: "Dockerfile",
@@ -153,7 +148,7 @@ describe("compileProject", () => {
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain("USER root");
     expect(dockerfile).toContain(
-      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.3.13"
+      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.5"
     );
     expect(dockerfile).toContain("COPY container/rootfs/ /");
     expect(dockerfile).not.toContain("COPY . /opt/spawnfile");
@@ -209,7 +204,7 @@ describe("compileProject", () => {
     for (const [id, runtime] of [
       ["orchestrator", "openclaw"],
       ["researcher", "picoclaw"],
-      ["writer", "tinyclaw"]
+      ["writer", "picoclaw"]
     ] as const) {
       await ensureDirectory(path.join(directory, "agents", id));
       await writeUtf8File(
@@ -300,23 +295,23 @@ describe("compileProject", () => {
           runtime: "picoclaw"
         },
         {
-          config_path: "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/settings.json",
-          home_path: "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi",
-          id: "tinyclaw-runtime",
+          config_path: "/var/lib/spawnfile/instances/picoclaw/agent-writer/picoclaw/config.json",
+          home_path: "/var/lib/spawnfile/instances/picoclaw/agent-writer/picoclaw",
+          id: "agent-writer",
           model_auth_methods: {
             anthropic: "claude-code"
           },
           model_secrets_required: [],
-          runtime: "tinyclaw"
+          runtime: "picoclaw"
         }
       ],
       runtime_homes: [
         "/var/lib/spawnfile/instances/openclaw/agent-orchestrator/home",
         "/var/lib/spawnfile/instances/picoclaw/agent-researcher/picoclaw",
-        "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi"
+        "/var/lib/spawnfile/instances/picoclaw/agent-writer/picoclaw"
       ],
       runtime_secrets_required: ["OPENCLAW_GATEWAY_TOKEN"],
-      runtimes_installed: ["openclaw", "picoclaw", "tinyclaw"],
+      runtimes_installed: ["openclaw", "picoclaw"],
       secrets_required: ["OPENCLAW_GATEWAY_TOKEN"]
     });
 
@@ -324,13 +319,10 @@ describe("compileProject", () => {
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain("USER root");
     expect(dockerfile).toContain(
-      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.3.13"
+      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.5"
     );
     expect(dockerfile).toContain(
-      "https://github.com/sipeed/picoclaw/releases/download/v0.2.5/$asset"
-    );
-    expect(dockerfile).toContain(
-      "https://github.com/TinyAGI/tinyagi/releases/download/v0.0.20/tinyagi-bundle.tar.gz"
+      "https://github.com/sipeed/picoclaw/releases/download/v0.2.9/$asset"
     );
     expect(dockerfile).not.toContain("runtime-sources");
     expect(dockerfile).not.toContain("go build -o /usr/local/bin/picoclaw");
@@ -341,8 +333,6 @@ describe("compileProject", () => {
     const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
     expect(entrypoint).toContain("OPENCLAW_HOME=");
     expect(entrypoint).toContain("PICOCLAW_HOME=");
-    expect(entrypoint).toContain("TINYAGI_HOME=");
-    expect(entrypoint).toContain("/opt/spawnfile/runtime-installs/tinyclaw/packages/main/dist/index.js");
     expect(entrypoint).not.toContain("prepare_target");
   }, 30000);
 
@@ -856,94 +846,6 @@ describe("compileProject", () => {
       compileProject(directory, { outputDirectory: path.join(directory, "dist") })
     ).rejects.toThrow(/on_degrade: error/);
   });
-
-  it("emits a native team artifact when the runtime adapter supports teams", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-native-team-"));
-    temporaryDirectories.push(directory);
-
-    await ensureDirectory(path.join(directory, "agents", "a"));
-    await ensureDirectory(path.join(directory, "agents", "b"));
-    await writeUtf8File(path.join(directory, "TEAM.md"), "# Team\n");
-    await writeUtf8File(path.join(directory, "agents", "a", "AGENTS.md"), "# A\n");
-    await writeUtf8File(path.join(directory, "agents", "b", "AGENTS.md"), "# B\n");
-    await writeUtf8File(
-      path.join(directory, "agents", "a", "Spawnfile"),
-      ['spawnfile_version: "0.1"', "kind: agent", "name: a", "", "runtime: tinyclaw", "", "workspace:", "  docs:", "    system: AGENTS.md", ""].join("\n")
-    );
-    await writeUtf8File(
-      path.join(directory, "agents", "b", "Spawnfile"),
-      ['spawnfile_version: "0.1"', "kind: agent", "name: b", "", "runtime: tinyclaw", "", "workspace:", "  docs:", "    system: AGENTS.md", ""].join("\n")
-    );
-    await writeUtf8File(
-      path.join(directory, "Spawnfile"),
-      [
-        'spawnfile_version: "0.1"',
-        "kind: team",
-        "name: team",
-        "",
-        "shared:",
-        "  workspace:",
-        "    docs:",
-        "      system: TEAM.md",
-        "",
-        "members:",
-        "  - id: a",
-        "    ref: ./agents/a",
-        "  - id: b",
-        "    ref: ./agents/b",
-        "",
-        "mode: hierarchical",
-        "lead: a",
-        ""
-      ].join("\n")
-    );
-
-    const outputDirectory = path.join(directory, "out");
-    const result = await compileProject(directory, { outputDirectory });
-    const teamNode = result.report.nodes.find((node) => node.kind === "team");
-
-    expect(teamNode?.output_dir).toBe("runtimes/tinyclaw/teams/team");
-    await expect(
-      fileExists(path.join(outputDirectory, "runtimes", "tinyclaw", "teams", "team", "tinyclaw-team.json"))
-    ).resolves.toBe(true);
-    await expect(
-      fileExists(
-        path.join(
-          outputDirectory,
-          "container",
-          "rootfs",
-          "var",
-          "lib",
-          "spawnfile",
-          "instances",
-          "tinyclaw",
-          "tinyclaw-runtime",
-          "tinyagi",
-          "settings.json"
-        )
-      )
-    ).resolves.toBe(true);
-
-    const mergedSettings = JSON.parse(
-      await readUtf8File(
-        path.join(
-          outputDirectory,
-          "container",
-          "rootfs",
-          "var",
-          "lib",
-          "spawnfile",
-          "instances",
-          "tinyclaw",
-          "tinyclaw-runtime",
-          "tinyagi",
-          "settings.json"
-        )
-      )
-    );
-    expect(Object.keys(mergedSettings.agents)).toEqual(["a", "b"]);
-    expect(mergedSettings.teams.team.leader_agent).toBe("a");
-  }, 30000);
 
   it("preserves existing output files when clean is disabled", async () => {
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-no-clean-"));

@@ -1,6 +1,6 @@
 import type { ModelAuthMethod } from "../shared/index.js";
 
-export type E2ERuntime = "openclaw" | "picoclaw" | "tinyclaw";
+export type E2ERuntime = "openclaw" | "picoclaw";
 export type E2EFixtureKind = "agent" | "team";
 export type E2EScenarioKind = "single-agent" | "team";
 

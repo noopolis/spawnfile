@@ -670,7 +670,7 @@ describe("buildCompilePlan", () => {
     for (const [id, runtime] of [
       ["orchestrator", "openclaw"],
       ["researcher", "picoclaw"],
-      ["writer", "tinyclaw"]
+      ["writer", "picoclaw"]
     ] as const) {
       await ensureDirectory(path.join(directory, "agents", id));
       await writeUtf8File(path.join(directory, "agents", id, "AGENTS.md"), `# ${id}\n`);
@@ -707,7 +707,7 @@ describe("buildCompilePlan", () => {
 
     const plan = await buildCompilePlan(directory);
 
-    expect(Object.keys(plan.runtimes).sort()).toEqual(["openclaw", "picoclaw", "tinyclaw"]);
+    expect(Object.keys(plan.runtimes).sort()).toEqual(["openclaw", "picoclaw"]);
     expect(plan.nodes.find((node) => node.kind === "team")).toBeTruthy();
   });
 
@@ -1258,7 +1258,7 @@ describe("buildCompilePlan", () => {
         "kind: agent",
         "name: root",
         "",
-        "runtime: tinyclaw",
+        "runtime: picoclaw",
         "",
         "execution:",
         "  model:",
@@ -1292,14 +1292,12 @@ describe("buildCompilePlan", () => {
         "kind: agent",
         "name: root",
         "",
-        "runtime: tinyclaw",
+        "runtime: picoclaw",
         "",
         "surfaces:",
         "  discord:",
         "    access:",
-        "      mode: allowlist",
-        '      users:',
-        '        - "987654321098765432"',
+        "      mode: pairing",
         "",
         "workspace:",
         "  docs:",
@@ -1309,11 +1307,11 @@ describe("buildCompilePlan", () => {
     );
 
     await expect(buildCompilePlan(directory)).rejects.toThrow(
-      /TinyClaw Discord only supports pairing access/
+      /PicoClaw Discord does not support pairing access/
     );
   });
 
-  it("rejects runtimes that cannot preserve multiple interactive conversation scopes", async () => {
+  it("rejects removed runtime bindings", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-interactive-scopes-"));
     temporaryDirectories.push(directory);
 
@@ -1327,14 +1325,6 @@ describe("buildCompilePlan", () => {
         "",
         "runtime: tinyclaw",
         "",
-        "surfaces:",
-        "  discord:",
-        "    access:",
-        "      mode: pairing",
-        "  telegram:",
-        "    access:",
-        "      mode: pairing",
-        "",
         "workspace:",
         "  docs:",
         "    system: AGENTS.md",
@@ -1343,7 +1333,7 @@ describe("buildCompilePlan", () => {
     );
 
     await expect(buildCompilePlan(directory)).rejects.toThrow(
-      /only one interactive conversation scope/
+      /Unknown runtime binding: tinyclaw/
     );
   });
 
@@ -1543,7 +1533,7 @@ describe("buildCompilePlan", () => {
     await writeUtf8File(path.join(directory, "teams", "inner", "agents", "a", "AGENTS.md"), "# A\n");
     await writeUtf8File(
       path.join(directory, "teams", "inner", "agents", "a", "Spawnfile"),
-      ['spawnfile_version: "0.1"', "kind: agent", "name: a", "", "runtime: tinyclaw", "", "workspace:", "  docs:", "    system: AGENTS.md", ""].join("\n")
+      ['spawnfile_version: "0.1"', "kind: agent", "name: a", "", "runtime: picoclaw", "", "workspace:", "  docs:", "    system: AGENTS.md", ""].join("\n")
     );
     await writeUtf8File(
       path.join(directory, "teams", "inner", "Spawnfile"),

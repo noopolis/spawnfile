@@ -14,6 +14,7 @@ import { isSpawnfileError, SpawnfileError } from "../shared/index.js";
 import {
   assertPicoClawWorkspace,
   PICOCLAW_PORT,
+  PICOCLAW_WORKSPACE,
   startPicoClawMockModelServer,
   waitForPicoClawSchedule
 } from "./operationalSmokePicoclaw.js";
@@ -22,11 +23,6 @@ const DEFAULT_FIXTURE_DIRECTORY = fileURLToPath(
   new URL("../../fixtures/e2e/operational-smoke", import.meta.url)
 );
 const MOLTNET_PORT = 19087;
-const TINYCLAW_PORT = 3777;
-const SCHEDULE_SENTINEL = "SF-SPAWNFILE-OPERATIONAL-SCHEDULE";
-const TINYCLAW_HOME = "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi";
-const TINYCLAW_WORKSPACE =
-  "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/workspace/scheduled-agent";
 
 export interface OperationalSmokeLogger {
   info(message: string): void;
@@ -136,16 +132,13 @@ const parseJson = <T>(value: string, description: string): T => {
   }
 };
 
-const includesScheduledMessage = (raw: string): boolean =>
-  raw.includes(SCHEDULE_SENTINEL);
-
 const assertWorkspaceLinks = async (
   runCommand: DockerCommandRunner,
   dockerCommand: string,
   containerName: string
 ): Promise<void> => {
   for (const relativePath of ["scratch", "team-dropbox"]) {
-    const linkPath = path.posix.join(TINYCLAW_WORKSPACE, relativePath);
+    const linkPath = path.posix.join(PICOCLAW_WORKSPACE, relativePath);
     await dockerExec(runCommand, dockerCommand, containerName, ["test", "-L", linkPath]);
     await dockerExec(runCommand, dockerCommand, containerName, [
       "sh",
@@ -157,12 +150,7 @@ const assertWorkspaceLinks = async (
   await dockerExec(runCommand, dockerCommand, containerName, [
     "test",
     "-f",
-    path.posix.join(TINYCLAW_WORKSPACE, "AGENTS.md")
-  ]);
-  await dockerExec(runCommand, dockerCommand, containerName, [
-    "test",
-    "-f",
-    path.posix.join(TINYCLAW_HOME, "schedules.json")
+    path.posix.join(PICOCLAW_WORKSPACE, "AGENTS.md")
   ]);
   await assertPicoClawWorkspace(runCommand, dockerCommand, containerName);
 };
@@ -174,12 +162,6 @@ const waitForOperationalState = async (
   pollOptions: PollOptions,
   logger: OperationalSmokeLogger
 ): Promise<void> => {
-  logger.info("operational-smoke: waiting for TinyClaw API");
-  await poll("TinyClaw API", pollOptions, async () => {
-    await dockerCurl(runCommand, dockerCommand, containerName, `http://127.0.0.1:${TINYCLAW_PORT}/api/agents`);
-    return true;
-  });
-
   logger.info("operational-smoke: waiting for PicoClaw API");
   await poll("PicoClaw API", pollOptions, async () => {
     await dockerCurl(runCommand, dockerCommand, containerName, `http://127.0.0.1:${PICOCLAW_PORT}/health`);
@@ -214,10 +196,7 @@ const waitForOperationalState = async (
       "Moltnet agents"
     );
     return agents?.some(
-      (agent) => agent.id === "scheduled-agent" && (agent.rooms ?? []).includes("ops-room")
-    ) &&
-      agents?.some(
-        (agent) => agent.id === "pico-scheduled" && (agent.rooms ?? []).includes("ops-room")
+      (agent) => agent.id === "pico-scheduled" && (agent.rooms ?? []).includes("ops-room")
     )
       ? true
       : null;
@@ -225,17 +204,6 @@ const waitForOperationalState = async (
 
   logger.info("operational-smoke: checking workspace links");
   await assertWorkspaceLinks(runCommand, dockerCommand, containerName);
-
-  logger.info("operational-smoke: waiting for cron-fired agent message");
-  await poll("TinyClaw scheduled message", pollOptions, async () => {
-    const rawMessages = await dockerCurl(
-      runCommand,
-      dockerCommand,
-      containerName,
-      `http://127.0.0.1:${TINYCLAW_PORT}/api/agents/scheduled-agent/messages?limit=50`
-    );
-    return includesScheduledMessage(rawMessages) ? true : null;
-  });
 
   logger.info("operational-smoke: waiting for PicoClaw cron-fired agent reply");
   await waitForPicoClawSchedule(runCommand, dockerCommand, containerName, pollOptions, poll);

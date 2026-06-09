@@ -178,37 +178,6 @@ describe("runtime install selection with mocked registry data", () => {
     });
   });
 
-  it("resolves a pinned release bundle install when the runtime opts into it", async () => {
-    const registryEntries: RuntimeRegistryEntry[] = [
-      {
-        defaultBranch: "main",
-        install: {
-          asset: "tinyagi-bundle.tar.gz",
-          kind: "github_release_bundle",
-          repository: "TinyAGI/tinyagi",
-          tag: "v0.0.20"
-        },
-        name: "tinyclaw",
-        ref: "v0.0.20",
-        remote: "git@github.com:TinyAGI/tinyclaw.git",
-        status: "active"
-      }
-    ];
-    const { resolveRuntimeInstallSelection } = await loadInstallModule(registryEntries);
-
-    await expect(resolveRuntimeInstallSelection("tinyclaw")).resolves.toEqual({
-      asset: "tinyagi-bundle.tar.gz",
-      ecosystem: "node",
-      installHint: "Download the pinned TinyClaw bundle artifact from the release.",
-      kind: "github_release_bundle",
-      repository: "TinyAGI/tinyagi",
-      runtimeName: "tinyclaw",
-      runtimeRef: "v0.0.20",
-      selectionSource: "runtime_registry_install",
-      tag: "v0.0.20"
-    });
-  });
-
   it("fails when a compileable runtime has no install profile", async () => {
     const registryEntries: RuntimeRegistryEntry[] = [
       {

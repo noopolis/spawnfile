@@ -1320,7 +1320,7 @@ Given this manifest:
 
 ```yaml
 runtime:
-  name: tinyclaw
+  name: openclaw
 
 environment:
   mcp_servers:
@@ -1333,7 +1333,7 @@ policy:
   on_degrade: error
 ```
 
-TinyClaw has no clear MCP surface, so the adapter reports `mcp.web_search` as `degraded`. Because `on_degrade` is `error`, the compiler fails the build and tells you exactly which capability could not be preserved.
+OpenClaw MCP currently goes through the mcporter bridge, so the adapter reports `mcp.web_search` as `degraded`. Because `on_degrade` is `error`, the compiler fails the build and tells you exactly which capability could not be preserved.
 
 Change `on_degrade` to `warn` and the build succeeds — but the compile report still records the degradation so you know what was lost.
 

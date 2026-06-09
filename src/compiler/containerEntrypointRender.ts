@@ -19,13 +19,11 @@ const createEnvironmentAssignments = (plan: RuntimeTargetPlan): string[] => {
     envAssignments.push(`HOME=${shellQuote(plan.instancePaths.homePath)}`);
   }
 
-  if (plan.instancePaths.homePath && (
-    (
-      plan.runtimeName === "tinyclaw" &&
-      (plan.modelAuthMethods.openai === "api_key" || plan.modelAuthMethods.openai === "codex")
-    ) ||
-    (plan.runtimeName === "picoclaw" && plan.modelAuthMethods.openai === "codex")
-  )) {
+  if (
+    plan.instancePaths.homePath &&
+    plan.runtimeName === "picoclaw" &&
+    plan.modelAuthMethods.openai === "codex"
+  ) {
     envAssignments.push(`CODEX_HOME=${shellQuote(path.posix.join(plan.instancePaths.homePath, ".codex"))}`);
   }
 
@@ -60,18 +58,6 @@ const createConfigEnvWrites = (plan: RuntimeTargetPlan): string[] =>
     (binding) =>
       `apply_json_env_value ${shellQuote(plan.instancePaths.configPath)} ${shellQuote(binding.envName)} ${shellQuote(binding.jsonPath)}`
   );
-
-const createAuthSetupCommands = (plan: RuntimeTargetPlan): string[] => {
-  if (
-    plan.runtimeName !== "tinyclaw" ||
-    !plan.instancePaths.homePath ||
-    plan.modelAuthMethods.openai !== "api_key"
-  ) {
-    return [];
-  }
-
-  return [`configure_codex_api_key_auth ${shellQuote(plan.instancePaths.homePath)}`];
-};
 
 const createMoltnetStorePrepareCommands = (
   serverPlan: MoltnetArtifacts["serverPlans"][number]
@@ -207,15 +193,6 @@ export const renderEntrypoint = (
     "PY",
     "}",
     "",
-    "configure_codex_api_key_auth() {",
-    '  local home_path="$1"',
-    '  if [ -z "${OPENAI_API_KEY:-}" ]; then',
-    "    return",
-    "  fi",
-    '  mkdir -p "$home_path/.codex"',
-    '  printf "%s\\n" "${OPENAI_API_KEY:-}" | HOME="$home_path" CODEX_HOME="$home_path/.codex" codex login --with-api-key >/dev/null',
-    "}",
-    "",
     ...createWorkspaceResourceShellFunctions()
   ];
 
@@ -252,7 +229,6 @@ export const renderEntrypoint = (
       `require_file ${shellQuote(plan.instancePaths.configPath)}`,
       ...createEnvFileWrites(plan),
       ...createConfigEnvWrites(plan),
-      ...createAuthSetupCommands(plan),
       `${envAssignments.join(" ")} exec ${commandTokens.map(shellQuote).join(" ")}`
     );
 
@@ -315,7 +291,6 @@ export const renderEntrypoint = (
       `require_file ${shellQuote(plan.instancePaths.configPath)}`,
       ...createEnvFileWrites(plan),
       ...createConfigEnvWrites(plan),
-      ...createAuthSetupCommands(plan),
       `${envAssignments.join(" ")} ${commandTokens.map(shellQuote).join(" ")} &`,
       'PIDS+=("$!")',
       "",

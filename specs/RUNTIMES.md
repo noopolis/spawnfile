@@ -27,7 +27,7 @@ runtimes:
     ref: <pinned git ref — tag, SHA, or branch>
     default_branch: <main | master>
     install:
-      kind: <container_image | npm | github_release_archive | github_release_bundle | source_repo>
+      kind: <container_image | npm | github_release_archive | source_repo>
     status: <active | exploratory | deprecated>
 ```
 
@@ -52,7 +52,6 @@ Supported kinds in v0.1 are:
 | `container_image` | `image`, `tag` | Install from a pinned runtime container image |
 | `npm` | `package`, `version` | Install a pinned npm package version |
 | `github_release_archive` | `repository`, `tag`, `binary`, `assets` | Download a pinned release archive and install a platform-specific binary |
-| `github_release_bundle` | `repository`, `tag`, `asset` | Download a pinned release bundle tarball |
 | `source_repo` | none | Fallback install from the pinned source repo ref |
 
 `install` is OPTIONAL at the schema level because exploratory runtimes may not yet have a verified build story. Active runtimes intended for `spawnfile build` SHOULD provide a verified install strategy.

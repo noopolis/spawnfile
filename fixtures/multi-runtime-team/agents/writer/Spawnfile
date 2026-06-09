@@ -3,7 +3,7 @@ kind: agent
 name: writer
 description: "Writes reports, articles, and summaries from research findings"
 
-runtime: tinyclaw
+runtime: picoclaw
 
 execution:
   model:

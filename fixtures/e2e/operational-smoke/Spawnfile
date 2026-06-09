@@ -15,13 +15,11 @@ shared:
         sharing: team
 
 members:
-  - id: scheduled-agent
-    ref: ./agents/scheduled
   - id: pico-scheduled
     ref: ./agents/pico-scheduled
 
 mode: hierarchical
-lead: scheduled-agent
+lead: pico-scheduled
 
 networks:
   - id: ops_lab
@@ -41,4 +39,4 @@ networks:
       direct_messages: false
     rooms:
       - id: ops-room
-        members: [scheduled-agent, pico-scheduled]
+        members: [pico-scheduled]

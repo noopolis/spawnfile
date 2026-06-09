@@ -100,39 +100,6 @@ blueprint_picoclaw() {
   echo "  done"
 }
 
-# --- TINYCLAW (npm — extract defaults from source) ---
-blueprint_tinyclaw() {
-  echo "Generating tinyclaw blueprint..."
-  ensure_runtime tinyclaw || return
-
-  local dest="$BLUEPRINTS/tinyclaw"
-  rm -rf "$dest"
-  mkdir -p "$dest/workspace/default/.agents/skills" "$dest/workspace/default/.claude/skills"
-
-  node --input-type=module -e "
-import { DEFAULT_SETTINGS } from '$RUNTIMES/tinyclaw/packages/cli/lib/defaults.mjs';
-var s = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
-s.workspace.path = '<workspace-path>';
-s.workspace.name = 'workspace';
-if (s.agents && s.agents.default) s.agents.default.working_directory = '<workspace-path>/default';
-s.teams = { 'example-team': { name: 'Example Team', agents: ['default'], leader_agent: 'default' } };
-process.stdout.write(JSON.stringify(s, null, 2) + '\n');
-" > "$dest/settings.json" 2>/dev/null || {
-    echo "  WARNING: Could not extract defaults, using fallback"
-    node -e "
-var s={workspace:{path:'<workspace-path>',name:'workspace'},channels:{enabled:[]},agents:{default:{name:'Agent',provider:'anthropic',model:'opus',working_directory:'<workspace-path>/default'}},teams:{'example-team':{name:'Example Team',agents:['default'],leader_agent:'default'}},models:{provider:'anthropic'},monitoring:{heartbeat_interval:3600}};
-process.stdout.write(JSON.stringify(s, null, 2) + '\n');
-" > "$dest/settings.json"
-  }
-
-  for doc in AGENTS.md SOUL.md heartbeat.md; do
-    printf '# %s\n\nTinyClaw reads this from the agent working directory.\n' "$doc" > "$dest/workspace/default/$doc"
-  done
-
-  (cd "$dest" && find . -type f | sort) > "$dest/TREE.txt"
-  echo "  done"
-}
-
 # --- NULLCLAW (Zig — use shipped example config) ---
 blueprint_nullclaw() {
   echo "Generating nullclaw blueprint..."
@@ -189,7 +156,7 @@ blueprint_zeroclaw() {
 # --- MAIN ---
 
 FILTER="${1:-}"
-ALL_RUNTIMES="openclaw picoclaw tinyclaw nullclaw zeroclaw"
+ALL_RUNTIMES="openclaw picoclaw nullclaw zeroclaw"
 
 for rt in $ALL_RUNTIMES; do
   if [ -z "$FILTER" ] || [ "$FILTER" = "$rt" ]; then

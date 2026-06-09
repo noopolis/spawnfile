@@ -33,3 +33,8 @@ surfaces:
 workspace:
   docs:
     system: AGENTS.md
+  resources:
+    - id: agent-scratch
+      kind: volume
+      mount: ./scratch
+      mode: mutable

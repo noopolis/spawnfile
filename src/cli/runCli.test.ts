@@ -708,7 +708,7 @@ describe("runCli", () => {
 
     const stdout: string[] = [];
     const exitCode = await runCli(
-      ["init", directory, "--runtime", "tinyclaw"],
+      ["init", directory, "--runtime", "picoclaw"],
       {
         stderr: () => undefined,
         stdout: (message) => stdout.push(message)
@@ -719,7 +719,7 @@ describe("runCli", () => {
     expect(exitCode).toBe(0);
     expect(initProject).toHaveBeenCalledWith({
       directory,
-      runtime: "tinyclaw",
+      runtime: "picoclaw",
       team: undefined
     });
     expect(stdout[0]).toContain("initialized");
@@ -770,7 +770,7 @@ describe("runCli", () => {
 
     const stdout: string[] = [];
     const exitCode = await runCli(
-      ["add", "agent", "writer", "/tmp/project", "--runtime", "tinyclaw"],
+      ["add", "agent", "writer", "/tmp/project", "--runtime", "picoclaw"],
       {
         stderr: () => undefined,
         stdout: (message) => stdout.push(message)
@@ -782,7 +782,7 @@ describe("runCli", () => {
     expect(addAgentProject).toHaveBeenCalledWith({
       id: "writer",
       path: "/tmp/project",
-      runtime: "tinyclaw"
+      runtime: "picoclaw"
     });
     expect(stdout).toEqual([
       "updated /tmp/project/Spawnfile",

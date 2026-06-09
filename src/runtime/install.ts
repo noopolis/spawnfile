@@ -29,17 +29,6 @@ export type RuntimeInstallSelection =
       versionedAssets: Record<string, string>;
     }
   | {
-      asset: string;
-      ecosystem: "node";
-      installHint: string;
-      kind: "github_release_bundle";
-      repository: string;
-      runtimeName: string;
-      runtimeRef: string;
-      selectionSource: "runtime_registry_install";
-      tag: string;
-    }
-  | {
       ecosystem: "node";
       installHint: string;
       kind: "npm";
@@ -92,10 +81,6 @@ const installHints = new Map<
         ecosystem: "node",
         installHint: "Download the pinned OpenClaw artifact archive from the release."
       },
-      github_release_bundle: {
-        ecosystem: "node",
-        installHint: "Download the pinned OpenClaw bundle artifact from the release."
-      },
       npm: {
         ecosystem: "node",
         installHint: "Install the pinned OpenClaw package version from npm."
@@ -117,10 +102,6 @@ const installHints = new Map<
         ecosystem: "go",
         installHint: "Download the pinned PicoClaw release archive for the target platform."
       },
-      github_release_bundle: {
-        ecosystem: "node",
-        installHint: "Download the pinned PicoClaw bundle artifact from the release."
-      },
       npm: {
         ecosystem: "node",
         installHint: "Install the pinned PicoClaw package version from npm."
@@ -128,31 +109,6 @@ const installHints = new Map<
       source_repo: {
         ecosystem: "go",
         installHint: "Checkout the pinned repo ref and build/install from the repository root."
-      }
-    }
-  ],
-  [
-    "tinyclaw",
-    {
-      container_image: {
-        ecosystem: "node",
-        installHint: "Copy the pinned TinyClaw runtime files from the official container image."
-      },
-      github_release_archive: {
-        ecosystem: "go",
-        installHint: "Download the pinned TinyClaw release archive for the target platform."
-      },
-      github_release_bundle: {
-        ecosystem: "node",
-        installHint: "Download the pinned TinyClaw bundle artifact from the release."
-      },
-      npm: {
-        ecosystem: "node",
-        installHint: "Install the pinned TinyClaw package version from npm."
-      },
-      source_repo: {
-        ecosystem: "node",
-        installHint: "Checkout the pinned repo ref and run the TinyAGI install flow from the repository root."
       }
     }
   ]
@@ -206,18 +162,6 @@ export const resolveRuntimeInstallSelection = async (
         selectionSource: "runtime_registry_install",
         tag: runtime.install.tag,
         versionedAssets: runtime.install.assets
-      };
-    case "github_release_bundle":
-      return {
-        ecosystem: "node",
-        installHint: installProfile.github_release_bundle.installHint,
-        asset: runtime.install.asset,
-        kind: "github_release_bundle",
-        repository: runtime.install.repository,
-        runtimeName: runtime.name,
-        runtimeRef: runtime.ref,
-        selectionSource: "runtime_registry_install",
-        tag: runtime.install.tag
       };
     case "source_repo":
     case undefined:

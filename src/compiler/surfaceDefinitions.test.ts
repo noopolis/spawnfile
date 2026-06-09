@@ -36,7 +36,7 @@ const createTeamManifest = (overrides: Partial<TeamManifest> = {}): TeamManifest
 describe("surfaceDefinitions", () => {
   it("reads runtime names from string and object bindings", () => {
     expect(getRuntimeName("openclaw")).toBe("openclaw");
-    expect(getRuntimeName({ name: "tinyclaw" })).toBe("tinyclaw");
+    expect(getRuntimeName({ name: "picoclaw" })).toBe("picoclaw");
   });
 
   it("allows agent mutations, skips recursive teams, and rejects direct team writes", () => {
@@ -407,20 +407,8 @@ describe("surfaceDefinitions", () => {
     expect(() =>
       validateAgentSurfaceSupport(
         createAgentManifest({
-          name: "tiny",
-          runtime: "tinyclaw",
-          surfaces: {
-            slack: {}
-          }
-        })
-      )
-    ).toThrow(/TinyClaw does not support Slack/i);
-
-    expect(() =>
-      validateAgentSurfaceSupport(
-        createAgentManifest({
-          name: "tiny",
-          runtime: "tinyclaw",
+          name: "pico",
+          runtime: "picoclaw",
           surfaces: {
             discord: {
               access: {
@@ -429,18 +417,11 @@ describe("surfaceDefinitions", () => {
                 mode: "pairing",
                 users: []
               }
-            },
-            telegram: {
-              access: {
-                chats: [],
-                mode: "pairing",
-                users: []
-              }
             }
           }
         })
       )
-    ).toThrow(/only one interactive conversation scope/i);
+    ).toThrow(/PicoClaw Discord does not support pairing access/i);
 
     expect(() =>
       validateAgentSurfaceSupport(

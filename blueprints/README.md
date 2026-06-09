@@ -19,7 +19,6 @@ On a version bump: update `runtimes.yaml` → run `./scripts/runtimes.sh` → ru
 |---------|------|--------|----------------|--------|
 | OpenClaw | npm | `openclaw.json` | AGENTS, BOOTSTRAP, HEARTBEAT, IDENTITY, SOUL, TOOLS, USER | `openclaw onboard` |
 | PicoClaw | Go | `config.json` | AGENTS, SOUL, USER, IDENTITY, HEARTBEAT, memory/MEMORY | `config.example.json` |
-| TinyClaw | npm | `settings.json` | AGENTS, SOUL, heartbeat (per-agent dir) | `defaults.mjs` |
 | NullClaw | Zig | `config.json` | AGENTS, SOUL, IDENTITY | `config.example.json` |
 | ZeroClaw | Rust | `config.toml` | AGENTS, SOUL, IDENTITY | `config-reference.md` |
 
@@ -29,6 +28,10 @@ These were evaluated but are fundamentally incompatible with Spawnfile's config 
 
 - **IronClaw** — env-vars-only orchestrator/worker system, no agent config files
 - **NanoClaw** — code-driven via Claude Code skills, no declarative config surface
-- **OpenFang** — inline system_prompt in TOML, no markdown workspace
-
 See `specs/research/RUNTIME-NOTES.md` for the full research on each.
+
+## Adapter Candidates
+
+- **OpenFang** — current releases expose declarative config and agent templates, but Spawnfile has not mapped the adapter contract yet.
+- **Hermes Agent** — tracked as exploratory; config, workspace, and skill surfaces need research before an adapter.
+- **OpenCode** — tracked as exploratory; install and long-running agent surfaces need research before an adapter.

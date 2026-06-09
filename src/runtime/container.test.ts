@@ -10,7 +10,7 @@ describe("runtime container install recipes", () => {
     expect(recipe.runtimeRoot).toBe("/usr/local/lib/node_modules/openclaw");
     expect(recipe.copyCommands).toEqual([]);
     expect(recipe.commands).toEqual([
-      "npm install -g --omit=dev --no-fund --no-audit openclaw@2026.3.13"
+      "npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.5"
     ]);
   });
 
@@ -21,7 +21,7 @@ describe("runtime container install recipes", () => {
     expect(recipe.copyCommands).toEqual([]);
     expect(recipe.commands).toContain(`mkdir -p ${RUNTIME_INSTALL_ROOT}/picoclaw/bin`);
     expect(recipe.commands[1]).toContain(
-      "https://github.com/sipeed/picoclaw/releases/download/v0.2.5/$asset"
+      "https://github.com/sipeed/picoclaw/releases/download/v0.2.9/$asset"
     );
     expect(recipe.commands[1]).toContain(
       `install -m 0755 "$binary_path" ${RUNTIME_INSTALL_ROOT}/picoclaw/bin/picoclaw`
@@ -31,15 +31,4 @@ describe("runtime container install recipes", () => {
     );
   });
 
-  it("creates a TinyClaw bundle-install recipe from the pinned runtime version", async () => {
-    const recipe = await createRuntimeInstallRecipe("tinyclaw");
-
-    expect(recipe.runtimeRoot).toBe(`${RUNTIME_INSTALL_ROOT}/tinyclaw`);
-    expect(recipe.copyCommands).toEqual([]);
-    expect(recipe.commands).toEqual([
-      `mkdir -p ${RUNTIME_INSTALL_ROOT}/tinyclaw`,
-      `curl -fsSL "https://github.com/TinyAGI/tinyagi/releases/download/v0.0.20/tinyagi-bundle.tar.gz" | tar -xz --strip-components=1 -C ${RUNTIME_INSTALL_ROOT}/tinyclaw`,
-      `cd ${RUNTIME_INSTALL_ROOT}/tinyclaw && npm rebuild better-sqlite3 --silent`
-    ]);
-  });
 });

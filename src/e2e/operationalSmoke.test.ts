@@ -24,10 +24,9 @@ const createUpResult = (outputDirectory: string, imageTag: string): UpProjectRes
           volume_name: "spawnfile-ops-lab-state"
         }
       ],
-      ports: [3777, 18990, 19087],
+      ports: [18990, 19087],
       runtime_homes: [
-        "/var/lib/spawnfile/instances/picoclaw/agent-pico-scheduled/picoclaw",
-        "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi"
+        "/var/lib/spawnfile/instances/picoclaw/agent-pico-scheduled/picoclaw"
       ],
       runtime_instances: [
         {
@@ -39,18 +38,10 @@ const createUpResult = (outputDirectory: string, imageTag: string): UpProjectRes
           },
           model_secrets_required: [],
           runtime: "picoclaw"
-        },
-        {
-          config_path: "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/settings.json",
-          home_path: "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi",
-          id: "tinyclaw-runtime",
-          model_auth_methods: {},
-          model_secrets_required: [],
-          runtime: "tinyclaw"
         }
       ],
       runtime_secrets_required: [],
-      runtimes_installed: ["picoclaw", "tinyclaw"],
+      runtimes_installed: ["picoclaw"],
       secrets_required: []
     },
     diagnostics: [],
@@ -87,18 +78,9 @@ describe("runOperationalSmokeE2E", () => {
           if (command.includes("/v1/agents")) {
             return JSON.stringify({
               agents: [
-                { id: "pico-scheduled", rooms: ["ops-room"] },
-                { id: "scheduled-agent", rooms: ["ops-room"] }
+                { id: "pico-scheduled", rooms: ["ops-room"] }
               ]
             });
-          }
-          if (command.includes("/messages?limit=50")) {
-            return JSON.stringify([
-              {
-                content: "SF-SPAWNFILE-OPERATIONAL-SCHEDULE",
-                role: "user"
-              }
-            ]);
           }
           return "";
         },
@@ -117,7 +99,6 @@ describe("runOperationalSmokeE2E", () => {
         imageTag: "operational-image"
       })
     );
-    expect(dockerCalls).toContainEqual(expect.arrayContaining(["exec", "operational-container", "curl", "-sf", "http://127.0.0.1:3777/api/agents"]));
     expect(dockerCalls).toContainEqual(expect.arrayContaining(["exec", "operational-container", "curl", "-sf", "http://127.0.0.1:18990/health"]));
     expect(dockerCalls).toContainEqual(expect.arrayContaining(["exec", "operational-container", "curl", "-sf", "http://127.0.0.1:19123/health"]));
     expect(dockerCalls).toContainEqual(expect.arrayContaining(["exec", "operational-container", "curl", "-sf", "http://127.0.0.1:19087/healthz"]));

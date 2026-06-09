@@ -461,30 +461,30 @@ describe("renderEntrypoint", () => {
 
   it("replaces every runtime-root placeholder inside a start-command token", async () => {
     const { renderEntrypoint } = await loadRenderModule({
-      tinyclaw: {
+      openclaw: {
         commands: [],
         copyCommands: [],
-        runtimeName: "tinyclaw",
-        runtimeRoot: "/opt/runtime/tinyclaw"
+        runtimeName: "openclaw",
+        runtimeRoot: "/opt/runtime/openclaw"
       }
     });
 
     const entrypoint = renderEntrypoint(
       [
-        createRuntimePlan("tinyclaw", {
+        createRuntimePlan("openclaw", {
           meta: {
-            configFileName: "settings.json",
-            homeEnv: "TINYAGI_HOME",
+            configFileName: "openclaw.json",
+            homeEnv: "OPENCLAW_HOME",
             instancePaths: {
-              configPathTemplate: "<instance-root>/settings.json",
-              homePathTemplate: "<instance-root>/tinyagi",
+              configPathTemplate: "<instance-root>/openclaw.json",
+              homePathTemplate: "<instance-root>/home",
               workspacePathTemplate: "<instance-root>/workspace"
             },
             standaloneBaseImage: "node:22-bookworm-slim",
             startCommand: [
               "bash",
               "-lc",
-              "node <runtime-root>/main.js && node <runtime-root>/discord.js"
+              "node <runtime-root>/openclaw.mjs && node <runtime-root>/gateway.mjs"
             ],
             systemDeps: []
           }
@@ -494,8 +494,8 @@ describe("renderEntrypoint", () => {
     );
 
     expect(entrypoint).not.toContain("<runtime-root>");
-    expect(entrypoint).toContain("/opt/runtime/tinyclaw/main.js");
-    expect(entrypoint).toContain("/opt/runtime/tinyclaw/discord.js");
+    expect(entrypoint).toContain("/opt/runtime/openclaw/openclaw.mjs");
+    expect(entrypoint).toContain("/opt/runtime/openclaw/gateway.mjs");
   });
 
   it("starts moltnet servers and nodes before waiting on child processes", async () => {

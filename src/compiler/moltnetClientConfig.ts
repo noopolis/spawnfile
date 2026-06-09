@@ -141,7 +141,7 @@ const createAttachmentConfig = (
 
 export const resolveMoltnetWorkspaceLayout = (
   runtimeName: string,
-  agentName: string
+  _agentName: string
 ): MoltnetWorkspaceLayout => {
   if (runtimeName === "openclaw" || runtimeName === "picoclaw") {
     return {
@@ -149,18 +149,6 @@ export const resolveMoltnetWorkspaceLayout = (
       cliRuntime: runtimeName,
       skillPaths: [`workspace/skills/${GENERATED_SKILL_NAME}/SKILL.md`],
       workspaceRootPath: "workspace"
-    };
-  }
-
-  if (runtimeName === "tinyclaw") {
-    return {
-      clientConfigPath: `workspace/${agentName}/${GENERATED_CONFIG_PATH}`,
-      cliRuntime: runtimeName,
-      skillPaths: [
-        `workspace/${agentName}/.agents/skills/${GENERATED_SKILL_NAME}/SKILL.md`,
-        `workspace/${agentName}/.claude/skills/${GENERATED_SKILL_NAME}/SKILL.md`
-      ],
-      workspaceRootPath: `workspace/${agentName}`
     };
   }
 
