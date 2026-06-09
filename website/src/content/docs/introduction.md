@@ -7,7 +7,7 @@ Spawnfile is a spec and compiler for **autonomous agent runtimes** -- systems th
 
 ## The Problem
 
-Every autonomous agent runtime has its own config format. OpenClaw, PicoClaw, and TinyClaw each expect different runtime config, workspace layout, skill wiring, and MCP wiring.
+Every autonomous agent runtime has its own config format. OpenClaw and PicoClaw each expect different runtime config, workspace layout, skill wiring, and MCP wiring.
 
 Your agent's identity -- its personality, instructions, skills, and tool connections -- gets locked into one runtime's conventions.
 
@@ -63,9 +63,11 @@ This is not for coding assistants, chat CLIs, or one-shot tools. Those may share
 |---------|----------|--------|
 | [OpenClaw](https://github.com/openclaw/openclaw) | Node.js | Active |
 | [PicoClaw](https://github.com/sipeed/picoclaw) | Go | Active |
-| [TinyClaw](https://github.com/TinyAGI/tinyclaw) | Node.js | Active |
 | [NullClaw](https://github.com/nullclaw/nullclaw) | Zig | Exploratory |
 | [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) | Rust | Exploratory |
+| [OpenFang](https://github.com/RightNow-AI/openfang) | Rust | Exploratory |
+| [Hermes Agent](https://github.com/NousResearch/hermes-agent) | Node.js | Exploratory |
+| [OpenCode](https://github.com/anomalyco/opencode) | TypeScript | Exploratory |
 
 ## Open Source
 

@@ -131,7 +131,6 @@ The compiler treats document contents as opaque text. It does not interpret or r
 For example:
 - OpenClaw has workspace files like `AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `HEARTBEAT.md`, and `MEMORY.md` that map directly to Spawnfile roles.
 - PicoClaw uses a similar workspace layout with `AGENTS.md`, `HEARTBEAT.md`, `IDENTITY.md`, `SOUL.md`, and a `memory/` directory.
-- TinyClaw gives each agent its own working directory where docs are placed.
 
 If a runtime cannot use a particular document role, the compiler reports the capability as `degraded` or `unsupported` according to the project's policy settings.
 

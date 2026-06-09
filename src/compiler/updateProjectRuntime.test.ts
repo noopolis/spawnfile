@@ -99,7 +99,7 @@ describe("setProjectRuntime", () => {
     ).rejects.toThrow(/Unknown runtime binding: ghostclaw/);
   });
 
-  it("rewrites to TinyClaw when the model auth is supported", async () => {
+  it("rejects removed runtime bindings", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-runtime-model-guard-"));
     temporaryDirectories.push(directory);
 
@@ -129,15 +129,11 @@ describe("setProjectRuntime", () => {
       ].join("\n")
     );
 
-    const result = await setProjectRuntime({
-      path: directory,
-      runtime: "tinyclaw"
-    });
-
-    const nextSource = await readUtf8File(manifestPath);
-
-    expect(result.updatedFiles).toEqual([manifestPath]);
-    expect(nextSource).toContain("runtime: tinyclaw");
-    expect(nextSource).not.toContain("runtime: openclaw");
+    await expect(
+      setProjectRuntime({
+        path: directory,
+        runtime: "tinyclaw"
+      })
+    ).rejects.toThrow(/Unknown runtime binding: tinyclaw/);
   });
 });

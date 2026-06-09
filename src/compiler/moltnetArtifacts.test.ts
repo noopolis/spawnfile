@@ -204,89 +204,48 @@ describe("moltnetArtifacts", () => {
     expect(artifacts?.files).toHaveLength(1);
   });
 
-  it("emits direct pico command and tinyclaw runtime ingress config", async () => {
+  it("emits direct PicoClaw runtime command config", async () => {
     const plan = createPlan();
-    plan.nodes.push(
-      {
-        id: "agent-2",
+    plan.nodes.push({
+      id: "agent-2",
+      kind: "agent",
+      runtimeName: "picoclaw",
+      slug: "researcher",
+      value: {
+        description: "",
+        docs: [],
+        env: {},
+        execution: undefined,
         kind: "agent",
-        runtimeName: "picoclaw",
-        slug: "researcher",
-        value: {
-          description: "",
-          docs: [],
-          env: {},
-          execution: undefined,
-          kind: "agent",
-          mcpServers: [],
-          name: "researcher-agent",
-          policyMode: null,
-          policyOnDegrade: null,
-          runtime: { name: "picoclaw", options: {} },
-          secrets: [],
-          skills: [],
-          source: "/tmp/agents/researcher/Spawnfile",
-          surfaces: {
-            moltnet: [
-              {
-                memberId: "researcher",
-                network: "local_lab",
-                rooms: {
-                  research: {
-                    wake: "all"
-                  }
-                },
-                teamSource: "/tmp/team/Spawnfile"
-              }
-            ]
-          },
-          subagents: []
-        }
-      },
-      {
-        id: "agent-3",
-        kind: "agent",
-        runtimeName: "tinyclaw",
-        slug: "assistant",
-        value: {
-          description: "",
-          docs: [],
-          env: {},
-          execution: undefined,
-          kind: "agent",
-          mcpServers: [],
-          name: "assistant-agent",
-          policyMode: null,
-          policyOnDegrade: null,
-          runtime: { name: "tinyclaw", options: {} },
-          secrets: [],
-          skills: [],
-          source: "/tmp/agents/assistant/Spawnfile",
-          surfaces: {
-            moltnet: [
-              {
-                memberId: "assistant",
-                network: "local_lab",
-                rooms: {
-                  research: {
-                    wake: "all"
-                  }
-                },
-                teamSource: "/tmp/team/Spawnfile"
-              }
-            ]
-          },
-          subagents: []
-        }
+        mcpServers: [],
+        name: "researcher-agent",
+        policyMode: null,
+        policyOnDegrade: null,
+        runtime: { name: "picoclaw", options: {} },
+        secrets: [],
+        skills: [],
+        source: "/tmp/agents/researcher/Spawnfile",
+        surfaces: {
+          moltnet: [
+            {
+              memberId: "researcher",
+              network: "local_lab",
+              rooms: {
+                research: {
+                  wake: "all"
+                }
+              },
+              teamSource: "/tmp/team/Spawnfile"
+            }
+          ]
+        },
+        subagents: []
       }
-    );
+    });
 
     const artifacts = await generateMoltnetArtifacts(plan);
     const researcherConfig = artifacts?.files.find((file) =>
       file.path.endsWith("research-cell-local_lab-researcher.json")
-    );
-    const assistantConfig = artifacts?.files.find((file) =>
-      file.path.endsWith("research-cell-local_lab-assistant.json")
     );
 
     expect(researcherConfig?.content).toContain('"command": "/usr/local/bin/picoclaw"');
@@ -295,11 +254,6 @@ describe("moltnetArtifacts", () => {
     );
     expect(researcherConfig?.content).toContain(
       '"home_path": "/var/lib/spawnfile/instances/picoclaw/agent-researcher/picoclaw"'
-    );
-    expect(assistantConfig?.content).toContain('"inbound_url": "http://127.0.0.1:3777/api/message"');
-    expect(assistantConfig?.content).toContain('"ack_url": "http://127.0.0.1:3777/api/responses"');
-    expect(assistantConfig?.content).toContain(
-      '"outbound_url": "http://127.0.0.1:3777/api/responses/pending?channel=moltnet%3Alocal_lab%3Aassistant"'
     );
   });
 

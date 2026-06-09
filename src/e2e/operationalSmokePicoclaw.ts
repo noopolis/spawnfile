@@ -4,7 +4,7 @@ const PICOCLAW_MOCK_MODEL_PORT = 19123;
 export const PICOCLAW_PORT = 18990;
 const PICOCLAW_SCHEDULE_REPLY_SENTINEL = "SF-SPAWNFILE-OPERATIONAL-PICO-SCHEDULE-REPLY";
 const PICOCLAW_CRON_JOB_ID = "spawnfile-pico-scheduled";
-const PICOCLAW_WORKSPACE =
+export const PICOCLAW_WORKSPACE =
   "/var/lib/spawnfile/instances/picoclaw/agent-pico-scheduled/picoclaw/workspace";
 const PICOCLAW_CRON_STORE = path.posix.join(PICOCLAW_WORKSPACE, "cron", "jobs.json");
 const PICOCLAW_SESSIONS_DIR = path.posix.join(PICOCLAW_WORKSPACE, "sessions");

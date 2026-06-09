@@ -54,19 +54,19 @@ describe("materializeDockerAuthFixture", () => {
 
     await materializeDockerAuthFixture(scenario, directory);
 
-    const tinyManifest = YAML.parse(
-      await readUtf8File(path.join(directory, "agents", "tinyclaw", "Spawnfile"))
+    const picoManifest = YAML.parse(
+      await readUtf8File(path.join(directory, "agents", "picoclaw", "Spawnfile"))
     ) as Record<string, unknown>;
-    const execution = tinyManifest.execution as Record<string, unknown>;
+    const execution = picoManifest.execution as Record<string, unknown>;
     const model = execution.model as Record<string, unknown>;
 
-    expect(tinyManifest.runtime).toBe("tinyclaw");
+    expect(picoManifest.runtime).toBe("picoclaw");
     expect(model.primary).toEqual({
       name: "gpt-5",
       provider: "openai"
     });
     expect(model.auth).toEqual({
-      method: "codex"
+      method: "api_key"
     });
   });
 });

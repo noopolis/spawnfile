@@ -39,10 +39,7 @@ const SINGLE_AGENT_SCENARIOS: DockerAuthE2EScenario[] = [
   createSingleAgentScenario("openclaw", "anthropic", "claude-sonnet-4-5", "claude-code"),
   createSingleAgentScenario("picoclaw", "openai", "gpt-5", "api_key"),
   createSingleAgentScenario("picoclaw", "openai", "gpt-5", "codex"),
-  createSingleAgentScenario("picoclaw", "anthropic", "claude-sonnet-4-5", "claude-code"),
-  createSingleAgentScenario("tinyclaw", "openai", "gpt-5", "api_key"),
-  createSingleAgentScenario("tinyclaw", "openai", "gpt-5", "codex"),
-  createSingleAgentScenario("tinyclaw", "anthropic", "claude-sonnet-4-5", "claude-code")
+  createSingleAgentScenario("picoclaw", "anthropic", "claude-sonnet-4-5", "claude-code")
 ];
 
 const TEAM_SCENARIOS: DockerAuthE2EScenario[] = [
@@ -63,14 +60,6 @@ const TEAM_SCENARIOS: DockerAuthE2EScenario[] = [
         name: "picoclaw",
         provider: "openai",
         runtime: "picoclaw"
-      },
-      {
-        authMethod: "codex",
-        directoryName: "tinyclaw",
-        modelName: "gpt-5",
-        name: "tinyclaw",
-        provider: "openai",
-        runtime: "tinyclaw"
       }
     ],
     description: "multi-runtime Docker auth smoke team",
@@ -79,8 +68,7 @@ const TEAM_SCENARIOS: DockerAuthE2EScenario[] = [
     kind: "team",
     promptChecks: [
       { runtime: "openclaw" },
-      { runtime: "picoclaw" },
-      { agentName: "tinyclaw", runtime: "tinyclaw" }
+      { runtime: "picoclaw" }
     ]
   }
 ];

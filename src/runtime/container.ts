@@ -11,12 +11,6 @@ export interface RuntimeInstallRecipe {
   runtimeRoot: string;
 }
 
-const createGitHubReleaseUrl = (
-  repository: string,
-  tag: string,
-  asset: string
-): string => `https://github.com/${repository}/releases/download/${tag}/${asset}`;
-
 const assertArtifactInstallSelection = (
   runtimeName: string,
   selection: Awaited<ReturnType<typeof resolveRuntimeInstallSelection>>
@@ -91,27 +85,6 @@ export const createRuntimeInstallRecipe = async (
 
       return {
         commands: createPicoClawArchiveInstallCommands(installRoot, selection),
-        copyCommands: [],
-        runtimeName,
-        runtimeRoot: installRoot
-      };
-    }
-    case "tinyclaw": {
-      if (selection.kind !== "github_release_bundle") {
-        throw new SpawnfileError(
-          "runtime_error",
-          `Runtime ${runtimeName} has no compiled artifact recipe for ${selection.kind}`
-        );
-      }
-
-      return {
-        commands: [
-          `mkdir -p ${installRoot}`,
-          `curl -fsSL ${JSON.stringify(
-            createGitHubReleaseUrl(selection.repository, selection.tag, selection.asset)
-          )} | tar -xz --strip-components=1 -C ${installRoot}`,
-          `cd ${installRoot} && npm rebuild better-sqlite3 --silent`
-        ],
         copyCommands: [],
         runtimeName,
         runtimeRoot: installRoot

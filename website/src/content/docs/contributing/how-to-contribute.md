@@ -59,9 +59,9 @@ spawnfile auth sync fixtures/e2e/moltnet-team-chat --profile e2e
 The output should include `imports: codex`.
 
 `test:e2e:operational-smoke` runs `spawnfile up` against a real Docker
-container and verifies scheduled TinyClaw and PicoClaw agents, managed Moltnet
-attachment, and workspace resource links inside the running container. It does
-not require model credentials.
+container and verifies a scheduled PicoClaw agent, managed Moltnet attachment,
+and workspace resource links inside the running container. It does not require
+model credentials.
 
 For website or normative docs changes, build the docs site:
 

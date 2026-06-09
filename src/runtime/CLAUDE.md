@@ -13,7 +13,6 @@ src/runtime/
 ├── registry.ts            # Bundled adapter registration and lookup
 ├── openclaw/              # OpenClaw adapter implementation
 ├── picoclaw/              # PicoClaw adapter implementation
-├── tinyclaw/              # TinyClaw adapter implementation
 ├── common.test.ts         # Shared runtime helper tests
 └── registry.test.ts       # Adapter registry tests
 ```

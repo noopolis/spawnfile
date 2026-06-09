@@ -16,47 +16,54 @@
 runtimes:
   openclaw:
     remote: git@github.com:openclaw/openclaw.git
-    ref: v2026.3.13-1
+    ref: v2026.6.5
     default_branch: main
     install:
       kind: npm
       package: openclaw
-      version: 2026.3.13
+      version: 2026.6.5
     status: active
 
   picoclaw:
     remote: git@github.com:sipeed/picoclaw.git
-    ref: v0.2.5
+    ref: v0.2.9
     default_branch: main
     install:
       kind: github_release_archive
       repository: sipeed/picoclaw
-      tag: v0.2.5
+      tag: v0.2.9
       binary: picoclaw
       assets:
         linux_amd64: picoclaw_Linux_x86_64.tar.gz
         linux_arm64: picoclaw_Linux_arm64.tar.gz
     status: active
 
-  tinyclaw:
-    remote: git@github.com:TinyAGI/tinyclaw.git
-    ref: v0.0.20
+  hermes-agent:
+    remote: git@github.com:NousResearch/hermes-agent.git
+    ref: v2026.6.5
     default_branch: main
-    install:
-      kind: github_release_bundle
-      repository: TinyAGI/tinyagi
-      tag: v0.0.20
-      asset: tinyagi-bundle.tar.gz
-    status: active
+    status: exploratory
 
   nullclaw:
     remote: git@github.com:nullclaw/nullclaw.git
-    ref: v2026.3.17
+    ref: v2026.5.29
+    default_branch: main
+    status: exploratory
+
+  opencode:
+    remote: git@github.com:anomalyco/opencode.git
+    ref: v1.16.2
+    default_branch: dev
+    status: exploratory
+
+  openfang:
+    remote: git@github.com:RightNow-AI/openfang.git
+    ref: v0.6.9
     default_branch: main
     status: exploratory
 
   zeroclaw:
     remote: git@github.com:zeroclaw-labs/zeroclaw.git
-    ref: v0.5.0
+    ref: v0.7.5
     default_branch: master
     status: exploratory

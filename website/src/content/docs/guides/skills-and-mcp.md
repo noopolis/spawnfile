@@ -134,7 +134,6 @@ Adapters map logical MCP declarations into runtime-native MCP configuration. The
 - **PicoClaw** has a first-class MCP config surface (`tools.mcp.servers`) and supports stdio, SSE, and HTTP transports.
 - **OpenClaw** supports MCP through an `mcporter` bridge layer.
 - **NullClaw** supports MCP with a stdio-first approach. Remote URLs may require a local bridge.
-- **TinyClaw** does not have a clear first-class MCP surface at this time.
 
 If a runtime cannot preserve an MCP declaration, the compiler reports it as `degraded` or `unsupported` based on your policy settings.
 

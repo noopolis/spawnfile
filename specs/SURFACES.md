@@ -165,7 +165,6 @@ The portable schema is broader than any single runtime. A conforming compiler va
 |---|---|---|
 | `openclaw` | `pairing`, `allowlist`, `open` | Supports user, guild, and channel policy lowering. Channel allowlists currently require exactly one guild in Spawnfile lowering. |
 | `picoclaw` | `open`, `allowlist` | Supports Discord token wiring and user allowlists. Guild/channel allowlists are not lowered in v0.1. |
-| `tinyclaw` | `pairing` | DM-oriented and pairing-gated. Declarative user/guild/channel allowlists are not supported in Spawnfile v0.1. |
 
 ### Telegram
 
@@ -173,7 +172,6 @@ The portable schema is broader than any single runtime. A conforming compiler va
 |---|---|---|
 | `openclaw` | `pairing`, `allowlist`, `open` | Supports DM and group/chat policy lowering. |
 | `picoclaw` | `open`, `allowlist` | Supports Telegram token wiring and user allowlists. Chat allowlists are not lowered in v0.1. |
-| `tinyclaw` | `pairing` | Pairing-gated. Declarative user/chat allowlists are not supported in Spawnfile v0.1. |
 
 ### WhatsApp
 
@@ -181,7 +179,6 @@ The portable schema is broader than any single runtime. A conforming compiler va
 |---|---|---|
 | `openclaw` | `pairing`, `allowlist`, `open` | Supports DM and group policy lowering. |
 | `picoclaw` | `open`, `allowlist` | Supports user allowlists. Portable group allowlists are not lowered in Spawnfile v0.1. |
-| `tinyclaw` | `pairing` | Pairing-gated. Declarative user/group allowlists are not supported in Spawnfile v0.1. |
 
 ### Slack
 
@@ -189,7 +186,6 @@ The portable schema is broader than any single runtime. A conforming compiler va
 |---|---|---|
 | `openclaw` | `pairing`, `allowlist`, `open` | Requires both bot and app/socket tokens. Supports DM and channel policy lowering. |
 | `picoclaw` | `open`, `allowlist` | Requires both bot and app/socket tokens. Portable channel allowlists are not lowered in Spawnfile v0.1. |
-| `tinyclaw` | unsupported | TinyClaw does not support Slack in Spawnfile v0.1. |
 
 ### Moltnet
 
@@ -197,7 +193,6 @@ The portable schema is broader than any single runtime. A conforming compiler va
 |---|---|---|
 | `openclaw` | team-network attachments | Lowers generated Moltnet client config and skill installation when artifacts are available. |
 | `picoclaw` | team-network attachments | Lowers generated Moltnet client config and skill installation when artifacts are available. |
-| `tinyclaw` | constrained by interactive scope limits | TinyClaw preserves fewer independent scopes, so multi-room attachments may be rejected or degraded. |
 
 ### Webhook
 
@@ -205,7 +200,6 @@ The portable schema is broader than any single runtime. A conforming compiler va
 |---|---|---|
 | `openclaw` | not yet | Webhook delivery support is planned. |
 | `picoclaw` | not yet | Webhook delivery support is planned. |
-| `tinyclaw` | not yet | Webhook delivery support is planned. |
 
 Webhook is a push surface: the agent delivers events to a caller-owned callback URL. Delivery is fire-and-forget. When `signing_secret` is configured, payloads are signed with HMAC-SHA256.
 

@@ -35,7 +35,7 @@ my-agent/
 To scaffold for a specific runtime:
 
 ```bash
-spawnfile init --runtime tinyclaw
+spawnfile init --runtime picoclaw
 ```
 
 ## Edit the Spawnfile

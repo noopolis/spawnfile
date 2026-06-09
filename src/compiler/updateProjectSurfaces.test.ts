@@ -52,7 +52,7 @@ describe("addProjectSurface", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-surface-add-http-"));
     temporaryDirectories.push(directory);
 
-    await initProject({ directory, runtime: "tinyclaw" });
+    await initProject({ directory, runtime: "openclaw" });
 
     await expect(
       addProjectSurface({
@@ -95,20 +95,6 @@ describe("addProjectSurface", () => {
     }
     expect(writerManifest.manifest.surfaces?.telegram).toEqual({});
     expect(criticManifest.manifest.surfaces?.telegram).toEqual({});
-  });
-
-  it("rejects unsupported runtime and surface combinations", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-surface-add-unsupported-"));
-    temporaryDirectories.push(directory);
-
-    await initProject({ directory, runtime: "tinyclaw" });
-
-    await expect(
-      addProjectSurface({
-        path: directory,
-        surface: "slack"
-      })
-    ).rejects.toThrow(/TinyClaw does not support Slack/);
   });
 
   it("rejects non-recursive surface updates on team manifests", async () => {
@@ -157,7 +143,7 @@ describe("setProjectSurfaceAccess", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-surface-access-http-"));
     temporaryDirectories.push(directory);
 
-    await initProject({ directory, runtime: "tinyclaw" });
+    await initProject({ directory, runtime: "openclaw" });
 
     await expect(
       setProjectSurfaceAccess({

@@ -3,7 +3,6 @@ import { SpawnfileError } from "../shared/index.js";
 
 import type { CompilePlan, ResolvedAgentNode } from "./types.js";
 
-const DEFAULT_TINYCLAW_PORT = 3777;
 const INSTANCE_ROOT_PLACEHOLDER = "<instance-root>";
 const CONFIG_FILE_PLACEHOLDER = "<config-file>";
 
@@ -28,9 +27,6 @@ const resolveSequentialRuntimePort = (
 
   return basePort + (index * (adapter.container.portStride ?? 1));
 };
-
-const createTinyClawChannel = (networkId: string, agentId: string): string =>
-  `moltnet:${networkId}:${agentId}`;
 
 const replaceContainerPathTemplate = (
   template: string,
@@ -68,8 +64,8 @@ export const resolveRuntimeConfig = (
   plan: CompilePlan,
   agentNode: ResolvedAgentNode,
   nodeSlug: string,
-  networkId: string,
-  agentId: string
+  _networkId: string,
+  _agentId: string
 ): Record<string, string> => {
   switch (agentNode.runtime.name) {
     case "openclaw": {
@@ -96,17 +92,6 @@ export const resolveRuntimeConfig = (
         config_path: instancePaths.configPath,
         ...(instancePaths.homePath ? { home_path: instancePaths.homePath } : {}),
         kind: "picoclaw"
-      };
-    }
-    case "tinyclaw": {
-      const channel = createTinyClawChannel(networkId, agentId);
-      return {
-        ack_url: `http://127.0.0.1:${DEFAULT_TINYCLAW_PORT}/api/responses`,
-        channel,
-        inbound_url: `http://127.0.0.1:${DEFAULT_TINYCLAW_PORT}/api/message`,
-        kind: "tinyclaw",
-        outbound_url:
-          `http://127.0.0.1:${DEFAULT_TINYCLAW_PORT}/api/responses/pending?channel=${encodeURIComponent(channel)}`
       };
     }
     default:

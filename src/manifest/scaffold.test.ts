@@ -57,7 +57,7 @@ describe("createAgentScaffoldManifest", () => {
         },
         modelName: "claude-sonnet-4-6",
         provider: "anthropic",
-        runtime: "tinyclaw"
+        runtime: "picoclaw"
       })
     ).toMatchObject({
       execution: {

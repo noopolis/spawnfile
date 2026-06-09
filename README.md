@@ -91,9 +91,11 @@ v0.1 targets autonomous agent runtimes that share a markdown workspace identity 
 |-----------|---------------|---------|-----------------------------------------------|
 | OpenClaw  | active        | ✅      | Discord, Telegram, WhatsApp, Slack            |
 | PicoClaw  | active        |         | Discord, Telegram, Slack (WhatsApp blocked)   |
-| TinyClaw  | active        |         | Discord, Telegram, WhatsApp (pairing-gated)   |
 | NullClaw  | exploratory   |         | No active adapter yet                         |
 | ZeroClaw  | exploratory   |         | No active adapter yet                         |
+| OpenFang  | exploratory   |         | No active adapter yet                         |
+| Hermes Agent | exploratory |        | No active adapter yet                         |
+| OpenCode  | exploratory   |         | No active adapter yet                         |
 
 Each adapter maps the portable schema into its native forms. The compiler reports a machine-readable `spawnfile-report.json` with the resolved graph, chosen runtimes, and capability outcomes (`supported`, `degraded`, `unsupported`). See [`specs/RUNTIMES.md`](specs/RUNTIMES.md) for the live matrix and pinned versions, or [`runtimes.yaml`](runtimes.yaml) for the registry source of truth.
 

@@ -41,7 +41,7 @@ const createArtifacts = (): MoltnetArtifacts => ({
   ]
 });
 
-const createAgent = (runtime: "openclaw" | "picoclaw" | "tinyclaw"): ResolvedAgentNode => ({
+const createAgent = (runtime: "openclaw" | "picoclaw"): ResolvedAgentNode => ({
   description: "",
   docs: [],
   env: {},
@@ -85,18 +85,6 @@ describe("moltnetClientConfig", () => {
     expect(files[0]?.content).toContain('"member_id": "orchestrator"');
     expect(files[0]?.content).toContain('"visibility": "public"');
     expect(files[0]?.content).toContain('"write_policy": "members"');
-  });
-
-  it("resolves runtime-specific skill and config layout for tinyclaw", () => {
-    expect(resolveMoltnetWorkspaceLayout("tinyclaw", "orchestrator")).toEqual({
-      clientConfigPath: "workspace/orchestrator/.moltnet/config.json",
-      cliRuntime: "tinyclaw",
-      skillPaths: [
-        "workspace/orchestrator/.agents/skills/moltnet/SKILL.md",
-        "workspace/orchestrator/.claude/skills/moltnet/SKILL.md"
-      ],
-      workspaceRootPath: "workspace/orchestrator"
-    });
   });
 
   it("resolves the workspace skill layout for picoclaw", () => {

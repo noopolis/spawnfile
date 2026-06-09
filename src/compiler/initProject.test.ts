@@ -86,36 +86,6 @@ describe("initProject", () => {
     expect(loadedManifest.manifest.execution?.sandbox).toBeUndefined();
   });
 
-  it("scaffolds a TinyClaw agent project with explicit supported auth", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-tinyclaw-init-"));
-    temporaryDirectories.push(directory);
-
-    const result = await initProject({ directory, runtime: "tinyclaw" });
-    const loadedManifest = await loadManifest(path.join(directory, "Spawnfile"));
-
-    expect(result.createdFiles).toHaveLength(4);
-    if (loadedManifest.manifest.kind !== "agent") {
-      throw new Error("Expected agent manifest");
-    }
-    expect(getRuntimeName(loadedManifest.manifest.runtime)).toBe("tinyclaw");
-    await expect(fileExists(path.join(directory, "IDENTITY.md"))).resolves.toBe(false);
-    await expect(readUtf8File(path.join(directory, "AGENTS.md"))).resolves.toContain(
-      "TinyAGI - Multi-team Personal Assistants"
-    );
-    await expect(readUtf8File(path.join(directory, "SOUL.md"))).resolves.toContain(
-      "This is your soul file. It defines WHO you are."
-    );
-    expect(loadedManifest.manifest.execution?.model?.auth?.method).toBe("claude-code");
-    expect(loadedManifest.manifest.execution?.model?.primary.name).toBe("claude-sonnet-4-6");
-    expect(loadedManifest.manifest.execution?.model?.primary.provider).toBe("anthropic");
-    expect(loadedManifest.manifest.workspace?.docs).toMatchObject({
-      soul: "SOUL.md",
-      system: "AGENTS.md"
-    });
-    expect(loadedManifest.manifest.workspace?.docs?.identity).toBeUndefined();
-    expect(loadedManifest.manifest.execution?.sandbox).toBeUndefined();
-  });
-
   it("scaffolds a team project", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-team-init-"));
     temporaryDirectories.push(directory);
@@ -165,7 +135,7 @@ describe("initProject", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-team-runtime-init-"));
     temporaryDirectories.push(directory);
 
-    await expect(initProject({ directory, runtime: "tinyclaw", team: true })).rejects.toThrow(
+    await expect(initProject({ directory, runtime: "picoclaw", team: true })).rejects.toThrow(
       /do not accept --runtime/
     );
   });

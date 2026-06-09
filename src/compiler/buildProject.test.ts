@@ -51,7 +51,7 @@ describe("buildProject", () => {
 
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
     expect(dockerfile).toContain(
-      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.3.13"
+      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.5"
     );
     expect(dockerfile).not.toContain("runtime-sources");
   }, 30000);
@@ -76,13 +76,10 @@ describe("buildProject", () => {
 
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
     expect(dockerfile).toContain(
-      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.3.13"
+      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.5"
     );
     expect(dockerfile).toContain(
-      "https://github.com/sipeed/picoclaw/releases/download/v0.2.5/$asset"
-    );
-    expect(dockerfile).toContain(
-      "https://github.com/TinyAGI/tinyagi/releases/download/v0.0.20/tinyagi-bundle.tar.gz"
+      "https://github.com/sipeed/picoclaw/releases/download/v0.2.9/$asset"
     );
     expect(dockerfile).not.toContain("go build -o /usr/local/bin/picoclaw");
     expect(dockerfile).not.toContain("pnpm install");

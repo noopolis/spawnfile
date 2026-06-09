@@ -148,7 +148,7 @@ describe("addSubagentProject", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-add-subagent-"));
     temporaryDirectories.push(directory);
 
-    await initProject({ directory, runtime: "tinyclaw" });
+    await initProject({ directory, runtime: "picoclaw" });
 
     const result = await addSubagentProject({
       id: "critic",
@@ -170,15 +170,15 @@ describe("addSubagentProject", () => {
       id: "critic",
       ref: "./subagents/critic"
     });
-    expect(parentSource.indexOf("runtime: tinyclaw")).toBeLessThan(parentSource.indexOf("execution:"));
+    expect(parentSource.indexOf("runtime: picoclaw")).toBeLessThan(parentSource.indexOf("execution:"));
     expect(parentSource.indexOf("execution:")).toBeLessThan(parentSource.indexOf("docs:"));
     expect(parentSource.indexOf("docs:")).toBeLessThan(parentSource.indexOf("subagents:"));
     expect(isAgentManifest(childManifest.manifest)).toBe(true);
     if (!isAgentManifest(childManifest.manifest)) {
       throw new Error("expected child agent manifest");
     }
-    expect(getRuntimeName(childManifest.manifest.runtime)).toBe("tinyclaw");
-    expect(childManifest.manifest.execution?.model?.auth?.method).toBe("claude-code");
+    expect(getRuntimeName(childManifest.manifest.runtime)).toBe("picoclaw");
+    expect(childManifest.manifest.execution?.model?.primary.name).toBe("claude-sonnet-4-6");
   });
 
   it("rejects subagent addition outside of an agent project", async () => {

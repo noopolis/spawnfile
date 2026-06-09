@@ -7,7 +7,6 @@ import { createContainerArtifacts } from "./containerArtifacts.js";
 import { createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
 import { openClawAdapter } from "../runtime/openclaw/adapter.js";
 import { picoClawAdapter } from "../runtime/picoclaw/adapter.js";
-import { tinyClawAdapter } from "../runtime/tinyclaw/adapter.js";
 
 const createPlan = (runtimeNames: string[]): CompilePlan => ({
   edges: [],
@@ -17,7 +16,7 @@ const createPlan = (runtimeNames: string[]): CompilePlan => ({
 });
 
 const createAgentNode = (
-  runtimeName: "openclaw" | "picoclaw" | "tinyclaw",
+  runtimeName: "openclaw" | "picoclaw",
   overrides: Partial<ResolvedAgentNode> = {}
 ): ResolvedAgentNode => ({
   description: "",
@@ -459,7 +458,7 @@ describe("createContainerArtifacts", () => {
 
     expect(dockerfile).toContain("FROM debian:bookworm-slim");
     expect(dockerfile).toContain(
-      "https://github.com/sipeed/picoclaw/releases/download/v0.2.5/$asset"
+      "https://github.com/sipeed/picoclaw/releases/download/v0.2.9/$asset"
     );
     expect(dockerfile).toContain(
       'ln -sf /opt/spawnfile/runtime-installs/picoclaw/bin/picoclaw /usr/local/bin/picoclaw'
@@ -561,7 +560,7 @@ describe("createContainerArtifacts", () => {
 
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain("USER root");
-    expect(dockerfile).toContain("RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.3.13");
+    expect(dockerfile).toContain("RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.5");
     expect(dockerfile).not.toContain("ghcr.io/openclaw/openclaw");
     expect(dockerfile).not.toContain("runtime-sources");
     expect(dockerfile).not.toContain("pnpm build:docker");
@@ -601,103 +600,6 @@ describe("createContainerArtifacts", () => {
     expect(envExample).toContain("OPENAI_API_KEY=");
     expect(entrypoint).not.toContain("require_env 'OPENAI_API_KEY'");
     expect(entrypoint).toContain("require_env 'OPENCLAW_GATEWAY_TOKEN'");
-  });
-
-  it("patches TinyClaw auth tokens from env into settings.json at startup", async () => {
-    const node = createAgentNode("tinyclaw", {
-      execution: {
-        model: {
-          primary: {
-            name: "claude-sonnet-4-6",
-            provider: "anthropic"
-          }
-        }
-      }
-    });
-    const compiled = await tinyClawAdapter.compileAgent(node);
-
-    const result = await createContainerArtifacts(createPlan(["tinyclaw"]), [
-      {
-        emittedFiles: compiled.files,
-        kind: "agent",
-        runtimeName: "tinyclaw",
-        slug: "assistant",
-        value: node
-      }
-    ]);
-
-    const entrypoint = result.files.find((file) => file.path === "entrypoint.sh")?.content ?? "";
-
-    expect(result.report.model_secrets_required).toEqual(["ANTHROPIC_API_KEY"]);
-    expect(result.report.runtime_instances).toEqual([
-      {
-        config_path: "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/settings.json",
-        home_path: "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi",
-        id: "tinyclaw-runtime",
-        model_auth_methods: {
-          anthropic: "api_key"
-        },
-        model_secrets_required: ["ANTHROPIC_API_KEY"],
-        runtime: "tinyclaw"
-      }
-    ]);
-    expect(result.report.runtime_homes).toEqual([
-      "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi"
-    ]);
-    expect(entrypoint).toContain("apply_json_env_value");
-    expect(entrypoint).toContain(
-      "apply_json_env_value '/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/settings.json' 'ANTHROPIC_API_KEY' 'models.anthropic.api_key'"
-    );
-  });
-
-  it("initializes Codex auth for TinyClaw OpenAI API-key models at startup", async () => {
-    const node = createAgentNode("tinyclaw", {
-      execution: {
-        model: {
-          primary: {
-            name: "gpt-5.3-codex",
-            provider: "openai"
-          }
-        }
-      }
-    });
-    const compiled = await tinyClawAdapter.compileAgent(node);
-
-    const result = await createContainerArtifacts(createPlan(["tinyclaw"]), [
-      {
-        emittedFiles: compiled.files,
-        kind: "agent",
-        runtimeName: "tinyclaw",
-        slug: "assistant",
-        value: node
-      }
-    ]);
-
-    const entrypoint = result.files.find((file) => file.path === "entrypoint.sh")?.content ?? "";
-
-    expect(result.report.model_secrets_required).toEqual(["OPENAI_API_KEY"]);
-    expect(result.report.runtime_instances).toEqual([
-      {
-        config_path: "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/settings.json",
-        home_path: "/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi",
-        id: "tinyclaw-runtime",
-        model_auth_methods: {
-          openai: "api_key"
-        },
-        model_secrets_required: ["OPENAI_API_KEY"],
-        runtime: "tinyclaw"
-      }
-    ]);
-    expect(entrypoint).toContain(
-      "apply_json_env_value '/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/settings.json' 'OPENAI_API_KEY' 'models.openai.api_key'"
-    );
-    expect(entrypoint).toContain("codex login --with-api-key");
-    expect(entrypoint).toContain(
-      "configure_codex_api_key_auth '/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi'"
-    );
-    expect(entrypoint).toContain(
-      "CODEX_HOME='/var/lib/spawnfile/instances/tinyclaw/tinyclaw-runtime/tinyagi/.codex'"
-    );
   });
 
   it("fails when a runtime emits files outside config or workspace", async () => {

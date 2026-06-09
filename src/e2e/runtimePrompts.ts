@@ -81,20 +81,10 @@ const runCommand = async (
     });
   });
 
-const fetchText = async (url: string): Promise<{ body: string; status: number }> => {
-  const response = await fetch(url);
-  return {
-    body: await response.text(),
-    status: response.status
-  };
-};
-
 const getHealthUrl = (runtime: E2ERuntime): string =>
   runtime === "openclaw"
     ? "http://127.0.0.1:18789/healthz"
-    : runtime === "picoclaw"
-      ? "http://127.0.0.1:18990/health"
-      : "http://127.0.0.1:3777/api/agents";
+    : "http://127.0.0.1:18990/health";
 
 export const waitForRuntimeReady = async (
   runtime: E2ERuntime,
@@ -164,50 +154,10 @@ const promptPicoClaw = async (options: RuntimePromptOptions): Promise<string> =>
   return `${result.stdout}\n${result.stderr}`;
 };
 
-const promptTinyClaw = async (options: RuntimePromptOptions): Promise<string> => {
-  const enqueueResponse = await fetch("http://127.0.0.1:3777/api/message", {
-    body: JSON.stringify({
-      ...(options.agentName ? { agent: options.agentName } : {}),
-      channel: "spawnfile-e2e",
-      message: options.prompt,
-      sender: "spawnfile-e2e"
-    }),
-    headers: {
-      "Content-Type": "application/json"
-    },
-    method: "POST"
-  });
-
-  if (!enqueueResponse.ok) {
-    throw new SpawnfileError(
-      "runtime_error",
-      `TinyClaw enqueue failed with status ${enqueueResponse.status}`
-    );
-  }
-
-  const startedAt = Date.now();
-  const timeoutMs = options.timeoutMs ?? 180_000;
-
-  while (Date.now() - startedAt <= timeoutMs) {
-    const { body, status } = await fetchText("http://127.0.0.1:3777/api/responses?limit=20");
-    if (status === 200 && body.includes(options.prompt.replace("Reply with exactly ", "").replace(" and nothing else.", ""))) {
-      return body;
-    }
-    await wait(2_000);
-  }
-
-  throw new SpawnfileError(
-    "runtime_error",
-    `TinyClaw did not return a response within ${timeoutMs}ms`
-  );
-};
-
 export const promptRuntime = async (
   runtime: E2ERuntime,
   options: RuntimePromptOptions
 ): Promise<string> =>
   runtime === "openclaw"
     ? promptOpenClaw(options)
-    : runtime === "picoclaw"
-      ? promptPicoClaw(options)
-      : promptTinyClaw(options);
+    : promptPicoClaw(options);

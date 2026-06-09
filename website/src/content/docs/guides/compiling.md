@@ -235,13 +235,13 @@ whether degradation stops the build:
 spawnfile init
 
 # Scaffold for a specific runtime
-spawnfile init --runtime tinyclaw
+spawnfile init --runtime picoclaw
 
 # Scaffold a new team project
 spawnfile init --team
 
 # Add a member agent to a team
-spawnfile add agent writer ./my-team --runtime tinyclaw
+spawnfile add agent writer ./my-team --runtime picoclaw
 
 # Add a subagent to an agent
 spawnfile add subagent critic ./my-agent

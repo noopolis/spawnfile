@@ -9,13 +9,11 @@ import { SpawnfileError } from "../shared/index.js";
 
 import { openClawAdapter } from "./openclaw/adapter.js";
 import { picoClawAdapter } from "./picoclaw/adapter.js";
-import { tinyClawAdapter } from "./tinyclaw/adapter.js";
 import type { RuntimeAdapter } from "./types.js";
 
 const runtimeAdapters = new Map<string, RuntimeAdapter>([
   [openClawAdapter.name, openClawAdapter],
-  [picoClawAdapter.name, picoClawAdapter],
-  [tinyClawAdapter.name, tinyClawAdapter]
+  [picoClawAdapter.name, picoClawAdapter]
 ]);
 
 const runtimeInstallSchema = z.discriminatedUnion("kind", [
@@ -38,14 +36,6 @@ const runtimeInstallSchema = z.discriminatedUnion("kind", [
       assets: z.record(z.string(), z.string().min(1)),
       binary: z.string().min(1),
       kind: z.literal("github_release_archive"),
-      repository: z.string().min(1),
-      tag: z.string().min(1)
-    })
-    .strict(),
-  z
-    .object({
-      asset: z.string().min(1),
-      kind: z.literal("github_release_bundle"),
       repository: z.string().min(1),
       tag: z.string().min(1)
     })
@@ -88,12 +78,6 @@ export type RuntimeRegistryInstall =
       kind: "github_release_archive";
       assets: Record<string, string>;
       binary: string;
-      repository: string;
-      tag: string;
-    }
-  | {
-      kind: "github_release_bundle";
-      asset: string;
       repository: string;
       tag: string;
     }
