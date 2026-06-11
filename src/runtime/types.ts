@@ -8,6 +8,7 @@ import type { ResolvedAuthProfile } from "../auth/index.js";
 import type { AgentManifest } from "../manifest/index.js";
 import type { CapabilityReport, DiagnosticReport } from "../report/index.js";
 import type { ContainerRuntimeInstanceReport } from "../report/index.js";
+import type { DeploymentRecord, DockerUnitInspection } from "../deployment/index.js";
 
 export interface EmittedFile {
   content: string;
@@ -87,6 +88,48 @@ export interface RuntimeAuthPreparationResult {
   mountArgs: string[];
 }
 
+export interface RuntimeProbeExecResult {
+  stderr: string;
+  stdout: string;
+}
+
+export interface RuntimeProbeHttpResult {
+  body: string;
+  error?: string;
+  ok: boolean;
+}
+
+export interface RuntimeProbeGateway {
+  exec(command: string[]): Promise<RuntimeProbeExecResult>;
+  httpGet(
+    port: number,
+    requestPath: string,
+    headers?: Record<string, string>
+  ): Promise<RuntimeProbeHttpResult>;
+  inspectUnit(): Promise<DockerUnitInspection>;
+}
+
+export interface RuntimeProbeObservation {
+  details?: Record<string, unknown>;
+  key: string;
+  message: string;
+  severity: "error" | "ok" | "unknown" | "warn";
+}
+
+export interface RuntimeStatusProbeContext {
+  deployment: DeploymentRecord;
+  instance: ContainerRuntimeInstanceReport;
+  manager: RuntimeProbeGateway;
+  timeoutMs: number;
+  unit: DeploymentRecord["units"][number];
+}
+
+export interface RuntimeStatusProbe {
+  id: string;
+  label: string;
+  run(context: RuntimeStatusProbeContext): Promise<RuntimeProbeObservation[]>;
+}
+
 export interface RuntimeSystemInstructionSurfaceInput {
   node: ResolvedAgentNode;
 }
@@ -119,6 +162,7 @@ export interface RuntimeAdapter {
     input: RuntimeAuthPreparationInput
   ): Promise<RuntimeAuthPreparationResult>;
   scaffoldAgentProject?(): RuntimeAgentScaffold;
+  statusProbes?: RuntimeStatusProbe[];
   systemInstructionSurface?: RuntimeSystemInstructionSurface;
   validateRuntimeOptions?(options: Record<string, unknown>): DiagnosticReport[];
 }

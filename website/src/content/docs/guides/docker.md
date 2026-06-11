@@ -175,7 +175,8 @@ For local development, `spawnfile up` is the one-command path after auth is sync
 # Sync declared model auth into a local profile
 spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
 
-spawnfile up fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev
+spawnfile up fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev --detach
+spawnfile status fixtures/single-agent --out ./bundle/single-agent --live
 ```
 
 Use the split-step `build` and `run` flow when you want to inspect, extend, or publish the image between steps:
@@ -185,7 +186,8 @@ Use the split-step `build` and `run` flow when you want to inspect, extend, or p
 spawnfile build fixtures/single-agent --out ./bundle/single-agent --tag my-agent
 
 # Run with the local auth profile
-spawnfile run fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev
+spawnfile run fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev --detach
+spawnfile status fixtures/single-agent --out ./bundle/single-agent --live
 ```
 
 For teams:
@@ -193,7 +195,8 @@ For teams:
 ```bash
 spawnfile auth sync fixtures/multi-runtime-team --profile dev --env-file ./.env
 spawnfile build fixtures/multi-runtime-team --out ./bundle/team --tag my-team
-spawnfile run fixtures/multi-runtime-team --out ./bundle/team --tag my-team --auth-profile dev
+spawnfile run fixtures/multi-runtime-team --out ./bundle/team --tag my-team --auth-profile dev --detach --deployment dev
+spawnfile status fixtures/multi-runtime-team --out ./bundle/team --live --deployment dev
 ```
 
 The same commands apply regardless of project complexity. Use `up` for one-command local startup, or use `build` and `run` when you want explicit image staging.
@@ -208,8 +211,38 @@ Command boundaries:
 - `spawnfile build` runs `compile`, then builds a Docker image from the generated output.
 - `spawnfile run` runs `compile` again to derive current runtime wiring, then starts the selected image with ports, env, auth material, and workspace resources.
 - `spawnfile up` is the local one-command path. It builds the image and then runs it with the same auth and env options as `run`.
+- `spawnfile status` reads the authored graph and compile report by default. With `--live`, it reads the detached deployment record and inspects the recorded Docker target.
 
 Managed Moltnet SQLite/JSON stores and open-registration agent token directories appear in the compile report as `container.persistent_mounts[]`. `spawnfile run` and `spawnfile up` mount those entries as Docker named volumes so messages, registrations, and generated open-mode agent tokens survive container replacement.
+
+### Detached Deployments
+
+Detached `run` and `up` write deployment records only after the container starts successfully:
+
+```bash
+spawnfile up . --detach --deployment dev --auth-profile dev
+spawnfile status . --live --deployment dev
+```
+
+Records live under `.spawn/deployments/` and store the deployment manager, target, compile fingerprint, image/container ids, hosted agents, runtime instances, and user-provided env-file path. They never store secret values.
+
+If you start the same deployment name again, Spawnfile reuses the recorded target, auth profile, image tag, container name, and user env file unless the command explicitly overrides them. The new successful detached start then replaces the record:
+
+```bash
+spawnfile up . --detach --deployment dev
+```
+
+### Remote Docker Contexts
+
+Use Docker contexts when the deployment runs on a remote machine:
+
+```bash
+docker context create vm1 --docker "host=ssh://ops@example-vm"
+spawnfile up . --detach --deployment prod --context vm1 --auth-profile prod
+spawnfile status . --live --deployment prod
+```
+
+The deployment record stores the resolved Docker target. Context targets store the context name plus a fingerprint of the resolved daemon endpoint; `DOCKER_HOST` deployments store a host target. If a recorded context later points somewhere else, live status reports drift instead of falling back to the local daemon.
 
 You can also pass an env file directly at run time:
 

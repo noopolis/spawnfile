@@ -18,6 +18,7 @@ import {
   startPicoClawMockModelServer,
   waitForPicoClawSchedule
 } from "./operationalSmokePicoclaw.js";
+import { assertOperationalSmokeStatusLive } from "./operationalSmokeStatus.js";
 
 const DEFAULT_FIXTURE_DIRECTORY = fileURLToPath(
   new URL("../../fixtures/e2e/operational-smoke", import.meta.url)
@@ -301,6 +302,7 @@ export const runOperationalSmokeE2E = async (
     upProject: dependencies.upProject ?? upProject
   };
   const logger = loggerFor(options.logger);
+  const fixtureDirectory = options.fixtureDirectory ?? DEFAULT_FIXTURE_DIRECTORY;
   const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-e2e-operational-smoke-"));
   const dockerCommand = options.dockerCommand ?? "docker";
   const outputDirectory = options.outputDirectory ?? path.join(root, "dist");
@@ -311,7 +313,7 @@ export const runOperationalSmokeE2E = async (
     buildResult = await runSpawnfileUpCommand({
       containerName: options.containerName ?? "spawnfile-e2e-operational-smoke",
       dockerCommand,
-      fixtureDirectory: options.fixtureDirectory ?? DEFAULT_FIXTURE_DIRECTORY,
+      fixtureDirectory,
       imageTag: options.imageTag ?? `spawnfile-e2e-operational-smoke-${Date.now()}`,
       logger,
       outputDirectory
@@ -332,6 +334,13 @@ export const runOperationalSmokeE2E = async (
       },
       logger
     );
+
+    logger.info("operational-smoke: checking spawnfile status --live");
+    await assertOperationalSmokeStatusLive({
+      fixtureDirectory,
+      logger,
+      outputDirectory
+    }, deps);
 
     return {
       containerName: buildResult.containerName,

@@ -318,7 +318,7 @@ export const createRuntimeTargetPlans = async (
       .map(
         (node): ContainerTargetInput => ({
           emittedFiles: node.emittedFiles,
-          id: `${node.kind}:${node.slug}`,
+          id: node.id ?? `${node.kind}:${node.slug}`,
           kind: node.kind,
           slug: node.slug,
           value: node.value
@@ -355,6 +355,7 @@ export const createRuntimeTargetPlans = async (
         ),
         runtimeName,
         runtimeRoot: recipe.runtimeRoot,
+        sourceIds: [...(target.sourceIds ?? [])].sort(),
         targetConfigEnvBindings: target.configEnvBindings,
         targetFiles: target.files
       });

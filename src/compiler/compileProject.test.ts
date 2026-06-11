@@ -124,18 +124,25 @@ describe("compileProject", () => {
       dockerfile: "Dockerfile",
       entrypoint: "entrypoint.sh",
       env_example: ".env.example",
+      internal_ports: [18789],
       model_secrets_required: ["ANTHROPIC_API_KEY"],
+      port_mappings: [],
       ports: [],
+      published_ports: [],
       runtime_instances: [
         {
           config_path: "/var/lib/spawnfile/instances/openclaw/agent-analyst/home/.openclaw/openclaw.json",
           home_path: "/var/lib/spawnfile/instances/openclaw/agent-analyst/home",
           id: "agent-analyst",
+          internal_port: 18789,
           model_auth_methods: {
             anthropic: "api_key"
           },
           model_secrets_required: ["ANTHROPIC_API_KEY"],
-          runtime: "openclaw"
+          node_ids: ["agent:analyst"],
+          published_port: null,
+          runtime: "openclaw",
+          workspace_path: "/var/lib/spawnfile/instances/openclaw/agent-analyst/home/.openclaw/workspace"
         }
       ],
       runtime_homes: ["/var/lib/spawnfile/instances/openclaw/agent-analyst/home"],
@@ -271,38 +278,53 @@ describe("compileProject", () => {
       dockerfile: "Dockerfile",
       entrypoint: "entrypoint.sh",
       env_example: ".env.example",
+      internal_ports: [18789, 18990, 18991],
       model_secrets_required: [],
+      port_mappings: [],
       ports: [],
+      published_ports: [],
       runtime_instances: [
         {
           config_path: "/var/lib/spawnfile/instances/openclaw/agent-orchestrator/home/.openclaw/openclaw.json",
           home_path: "/var/lib/spawnfile/instances/openclaw/agent-orchestrator/home",
           id: "agent-orchestrator",
+          internal_port: 18789,
           model_auth_methods: {
             anthropic: "claude-code"
           },
           model_secrets_required: [],
-          runtime: "openclaw"
+          node_ids: ["agent:orchestrator"],
+          published_port: null,
+          runtime: "openclaw",
+          workspace_path: "/var/lib/spawnfile/instances/openclaw/agent-orchestrator/home/.openclaw/workspace"
         },
         {
           config_path: "/var/lib/spawnfile/instances/picoclaw/agent-researcher/picoclaw/config.json",
           home_path: "/var/lib/spawnfile/instances/picoclaw/agent-researcher/picoclaw",
           id: "agent-researcher",
+          internal_port: 18990,
           model_auth_methods: {
             anthropic: "claude-code"
           },
           model_secrets_required: [],
-          runtime: "picoclaw"
+          node_ids: ["agent:researcher"],
+          published_port: null,
+          runtime: "picoclaw",
+          workspace_path: "/var/lib/spawnfile/instances/picoclaw/agent-researcher/picoclaw/workspace"
         },
         {
           config_path: "/var/lib/spawnfile/instances/picoclaw/agent-writer/picoclaw/config.json",
           home_path: "/var/lib/spawnfile/instances/picoclaw/agent-writer/picoclaw",
           id: "agent-writer",
+          internal_port: 18991,
           model_auth_methods: {
             anthropic: "claude-code"
           },
           model_secrets_required: [],
-          runtime: "picoclaw"
+          node_ids: ["agent:writer"],
+          published_port: null,
+          runtime: "picoclaw",
+          workspace_path: "/var/lib/spawnfile/instances/picoclaw/agent-writer/picoclaw/workspace"
         }
       ],
       runtime_homes: [

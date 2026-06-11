@@ -37,12 +37,16 @@ spawnfile init                                   # scaffold an agent (defaults t
 spawnfile validate                               # check the graph
 spawnfile view .                                 # read-only graph view; writes no files
 spawnfile compile                                # lower to runtime-native output
+spawnfile status .                               # read declared/compiled status
 spawnfile auth sync --profile dev --env-file .env
 spawnfile build  --tag my-agent                  # compile + docker build
-spawnfile run    --tag my-agent --auth-profile dev
+spawnfile run    --tag my-agent --auth-profile dev --detach
+spawnfile status . --live                        # inspect the detached deployment
 ```
 
 Compiled output lands under `.spawn/` by default, including a `Dockerfile`, `entrypoint.sh`, `.env.example`, and a prebuilt `container/rootfs/` tree. `spawnfile build` uses the pinned runtime artifacts from `runtimes.yaml`; it does not rebuild runtimes from source.
+
+`spawnfile status` is read-only. By default it shows authored and compiled state without Docker, runtime, or Moltnet calls. With `--live`, it reads the selected detached deployment record, inspects the recorded Docker target, runs adapter-owned runtime probes, and checks Moltnet metadata without reading message bodies. Add `--logs` for a redacted Docker log tail, or `--watch` to refresh status continuously.
 
 Declare external credentials in `secrets:` and provide values through an ignored env file or the shell environment. `spawnfile auth sync --env-file .env` stores declared model auth and project secrets in a local auth profile; `spawnfile run --env-file .env` can inject the same values directly for a single run. This is the intended pattern for credentials like `GH_TOKEN`, MCP tokens, and provider API keys.
 
@@ -115,6 +119,7 @@ The source-of-truth specs live in this repo:
 - [`specs/CONTAINERS.md`](specs/CONTAINERS.md) — container compilation
 - [`specs/RUNTIMES.md`](specs/RUNTIMES.md) — runtime registry and version pinning
 - [`specs/SURFACES.md`](specs/SURFACES.md) — messaging surface model
+- [`specs/STATUS.md`](specs/STATUS.md) — static and live operational status
 - [`fixtures/`](fixtures/) — canonical example projects
 
 ## From source

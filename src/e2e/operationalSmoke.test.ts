@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { upProject as realUpProject } from "../compiler/index.js";
 import type { UpProjectResult } from "../compiler/index.js";
 
-import { runOperationalSmokeE2E } from "./operationalSmoke.js";
+import { runOperationalSmokeE2E, type OperationalSmokeDependencies } from "./operationalSmoke.js";
 
 const createUpResult = (outputDirectory: string, imageTag: string): UpProjectResult => ({
   authProfileName: null,
@@ -59,6 +59,84 @@ describe("runOperationalSmokeE2E", () => {
     const upProject: typeof realUpProject = vi.fn(async (_inputPath, options = {}) =>
       createUpResult(options.outputDirectory ?? "/tmp/out", options.imageTag ?? "image")
     );
+    const runCli = vi.fn(async (
+      argv: string[],
+      streamsOrOptions?: unknown,
+      handlerOverrides?: { upProject?: typeof realUpProject }
+    ) => {
+      if (argv[0] === "up") {
+        const valueAfter = (flag: string): string | undefined => {
+          const index = argv.indexOf(flag);
+          return index >= 0 ? argv[index + 1] : undefined;
+        };
+        await handlerOverrides?.upProject?.(argv[1]!, {
+          containerName: valueAfter("--name"),
+          detach: argv.includes("--detach"),
+          imageTag: valueAfter("--tag"),
+          outputDirectory: valueAfter("--out")
+        });
+        return 0;
+      }
+      if (argv[0] === "status") {
+        const streams = streamsOrOptions as { stdout?: (message: string) => void };
+        streams.stdout?.(JSON.stringify({
+          deployments: [
+            {
+              units: [
+                {
+                  id: "default-container",
+                  live: {
+                    checked: true,
+                    running: true,
+                    severity: "ok"
+                  }
+                }
+              ]
+            }
+          ],
+          observations: [
+            {
+              key: "runtime.health",
+              severity: "ok",
+              source: "runtime",
+              subject: "runtime-instance:agent-pico-scheduled"
+            },
+            {
+              key: "runtime.ready",
+              severity: "ok",
+              source: "runtime",
+              subject: "runtime-instance:agent-pico-scheduled"
+            },
+            {
+              key: "schedule.next_run",
+              severity: "ok",
+              source: "runtime",
+              subject: "runtime-instance:agent-pico-scheduled"
+            },
+            {
+              key: "network.reachable",
+              severity: "ok",
+              source: "network",
+              subject: "network:ops_lab"
+            },
+            {
+              key: "network.room",
+              severity: "ok",
+              source: "network",
+              subject: "room:ops_lab:ops-room"
+            },
+            {
+              key: "network.agent.connected",
+              severity: "ok",
+              source: "network",
+              subject: "agent:pico-scheduled"
+            }
+          ]
+        }));
+        return 0;
+      }
+      return 2;
+    }) as unknown as NonNullable<OperationalSmokeDependencies["runCli"]>;
     const removeDirectory = vi.fn(async () => undefined);
 
     const result = await runOperationalSmokeE2E(
@@ -72,6 +150,7 @@ describe("runOperationalSmokeE2E", () => {
       },
       {
         removeDirectory,
+        runCli,
         runDockerCommand: async (_dockerCommand, args) => {
           dockerCalls.push(args);
           const command = args.join(" ");
@@ -99,6 +178,16 @@ describe("runOperationalSmokeE2E", () => {
         imageTag: "operational-image"
       })
     );
+    expect(runCli).toHaveBeenCalledWith([
+      "status",
+      "/fixture",
+      "--out",
+      expect.any(String),
+      "--live",
+      "--deployment",
+      "default",
+      "--json"
+    ], expect.any(Object));
     expect(dockerCalls).toContainEqual(expect.arrayContaining(["exec", "operational-container", "curl", "-sf", "http://127.0.0.1:18990/health"]));
     expect(dockerCalls).toContainEqual(expect.arrayContaining(["exec", "operational-container", "curl", "-sf", "http://127.0.0.1:19123/health"]));
     expect(dockerCalls).toContainEqual(expect.arrayContaining(["exec", "operational-container", "curl", "-sf", "http://127.0.0.1:19087/healthz"]));

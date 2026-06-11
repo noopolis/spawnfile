@@ -4,12 +4,29 @@ import { createCompileReport } from "./createReport.js";
 
 describe("createCompileReport", () => {
   it("builds a v0.1 compile report", () => {
-    expect(createCompileReport("/tmp/Spawnfile", [])).toEqual({
+    expect(createCompileReport("/tmp/Spawnfile", [], [], undefined, {
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      outputDirectory: "/tmp/.spawn"
+    })).toEqual({
+      compile_fingerprint: "sf1:ac07cc88b986",
       diagnostics: [],
+      generated_at: "2026-01-01T00:00:00.000Z",
       nodes: [],
+      output_directory: "/tmp/.spawn",
       root: "/tmp/Spawnfile",
       spawnfile_version: "0.1"
     });
+  });
+
+  it("keeps the compile fingerprint stable across timestamps", () => {
+    const first = createCompileReport("/tmp/Spawnfile", [], [], undefined, {
+      generatedAt: "2026-01-01T00:00:00.000Z"
+    });
+    const second = createCompileReport("/tmp/Spawnfile", [], [], undefined, {
+      generatedAt: "2026-02-01T00:00:00.000Z"
+    });
+
+    expect(first.compile_fingerprint).toBe(second.compile_fingerprint);
   });
 
   it("includes container metadata when provided", () => {
@@ -40,9 +57,13 @@ describe("createCompileReport", () => {
           runtime_secrets_required: ["OPENCLAW_GATEWAY_TOKEN"],
           runtimes_installed: ["openclaw"],
           secrets_required: ["ANTHROPIC_API_KEY", "OPENCLAW_GATEWAY_TOKEN"]
+        },
+        {
+          generatedAt: "2026-01-01T00:00:00.000Z"
         }
       )
     ).toEqual({
+      compile_fingerprint: "sf1:519f91f17f91",
       container: {
         dockerfile: "Dockerfile",
         entrypoint: "entrypoint.sh",
@@ -67,6 +88,7 @@ describe("createCompileReport", () => {
         secrets_required: ["ANTHROPIC_API_KEY", "OPENCLAW_GATEWAY_TOKEN"]
       },
       diagnostics: [],
+      generated_at: "2026-01-01T00:00:00.000Z",
       nodes: [],
       root: "/tmp/Spawnfile",
       spawnfile_version: "0.1"

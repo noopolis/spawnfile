@@ -13,6 +13,14 @@ const color = (
   options: RenderOrganizationViewOptions
 ): string => options.color ? `\u001b[${code}m${value}\u001b[0m` : value;
 
+const formatAnnotations = (
+  subjectKey: string,
+  options: RenderOrganizationViewOptions
+): string => {
+  const annotations = options.annotationFor?.(subjectKey) ?? [];
+  return annotations.length > 0 ? `  ${annotations.join(" ")}` : "";
+};
+
 const formatNode = (
   node: OrganizationViewTreeNode,
   options: RenderOrganizationViewOptions,
@@ -35,7 +43,7 @@ const formatNode = (
   const source = options.paths ? formatSourceMeta("source", node.source, projectRoot) : "";
   const separator = details[0]?.startsWith("[") ? " " : "  ";
 
-  return `${kind} ${node.displayName}${details.length > 0 ? `${separator}${details.join(" ")}` : ""}${source}`;
+  return `${kind} ${node.displayName}${details.length > 0 ? `${separator}${details.join(" ")}` : ""}${source}${formatAnnotations(node.id, options)}`;
 };
 
 const formatEdgeLabel = (edge: OrganizationViewTreeEdge): string =>
@@ -69,7 +77,7 @@ const formatNetworkSummary = (
     })
     .join("; ");
 
-  return `network ${id} "${network.name}"${metadata.length > 0 ? ` ${metadata.join(" ")}` : ""}: ${rooms}`;
+  return `network ${id} "${network.name}"${metadata.length > 0 ? ` ${metadata.join(" ")}` : ""}: ${rooms}${formatAnnotations(`network:${network.id}`, options)}`;
 };
 
 const renderChildren = (

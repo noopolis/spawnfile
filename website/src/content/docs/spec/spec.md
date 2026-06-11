@@ -55,6 +55,8 @@ Spawnfile is a compiler/canonicalizer. It may write generated files, runtime-nat
 
 Spawnfile MUST NOT read spawned runtimes, containers, runtime homes, or agent workspaces to discover identity, infer organization state, rewrite rosters, or maintain live coordination state. Runtime adapters MUST NOT observe a running runtime and feed discovered identities back into generated rosters as part of the v0.1 alpha contract.
 
+`spawnfile status --live` is the narrow read-only diagnostic exception. It may read deployment managers, adapter-owned runtime health probes, and Moltnet metadata as specified in `STATUS.md`, but those observations are never source of truth and MUST NOT be written back into authored manifests, rosters, generated identity files, or team membership.
+
 If an agent or runtime learns new facts after spawn, such as a Slack user ID, Discord account ID, or updated team document, those facts must become authored input through the organization's workflow: commit to the repository, update an authored Spawnfile, write to a declared state store, or ask an operator to persist the change. Spawnfile can then reflect those authored inputs on the next compile or run.
 
 ### 0.4 Non-Target Systems
@@ -475,7 +477,7 @@ Rules:
 - `surfaces.slack.identity.user_id` is OPTIONAL. If present, it is the Slack user ID advertised in generated rosters where this agent is visible.
 - Surface `identity` fields are opt-in roster metadata. They do not provision accounts, validate provider-side membership, or cause Spawnfile to read runtime state.
 - `surfaces.moltnet` is a list of Moltnet attachments. Each attachment MUST declare `network` and at least one of `rooms` or `dms`.
-- Moltnet room and DM `read` policy MAY be `all`, `mentions`, or `thread_only`.
+- Moltnet room and DM `wake` policy MAY be `all`, `mentions`, `thread_only`, or `never`.
 - Moltnet room and DM `reply` policy MAY be only `auto` or `never` in this alpha. `manual` is not part of the portable v0.1 contract.
 - Moltnet attachments are valid only when the agent participates in a team context whose `team.networks[]` declares the named network and rooms.
 - `surfaces.webhook.url` is REQUIRED when `surfaces.webhook` is present. It MUST be a valid URL.
@@ -1413,9 +1415,10 @@ spawnfile model clear-fallbacks [path]
 spawnfile validate [path]
 spawnfile view [path]
 spawnfile compile [path] [--out <dir>]
-spawnfile up [path] [--out <dir>] [--auth-profile <name>] [--env-file <file>]
+spawnfile status [path] [--out <dir>] [--live] [--deployment <name>]
+spawnfile up [path] [--out <dir>] [--auth-profile <name>] [--env-file <file>] [--detach] [--deployment <name>] [--context <name>]
 spawnfile build [path] [--out <dir>] [--tag <image>]
-spawnfile run [path] [--out <dir>] [--tag <image>] [--auth-profile <name>] [--env-file <file>]
+spawnfile run [path] [--out <dir>] [--tag <image>] [--auth-profile <name>] [--env-file <file>] [--detach] [--deployment <name>] [--context <name>]
 ```
 
 #### `spawnfile init`
@@ -1568,6 +1571,22 @@ Compiles a Spawnfile project to runtime-specific output.
 - MUST enforce the project's `policy` block
 - Exits with code 0 on success, 1 on error
 
+#### `spawnfile status`
+
+Renders read-only static and live status for a Spawnfile project. The detailed status contract is defined in `STATUS.md`.
+
+- `path` is the directory containing the Spawnfile or the Spawnfile path itself (default: current directory)
+- `--out` sets the output directory used to read `spawnfile-report.json` and deployment records (default: `./.spawn`)
+- Without `--live`, MUST load the authored graph and MAY load the compile report if present
+- Without `--live`, MUST NOT inspect Docker, run runtime health probes, call Moltnet, or read runtime homes
+- `--live` reads deployment records and asks the recorded deployment manager for live observations
+- `--deployment <name>` selects the deployment record for `--live`; if multiple records exist and `--live` is used without an explicit name, the command MUST fail with the known names
+- `--context` MUST be rejected unless `--recover` is also present; with a record, the recorded target is the only live target
+- `--json` MUST emit a stable envelope with a status schema version
+- `--quiet` MUST emit only the summary and non-ok observations
+- Missing compile output is `unknown` by default
+- Exit code `0` means no `error` observations, `1` means at least one `error` observation, and `2` means usage or input failure
+
 #### `spawnfile up`
 
 Builds and starts a local lifecycle process set from source intent.
@@ -1577,11 +1596,15 @@ Builds and starts a local lifecycle process set from source intent.
 - `--out` sets the output directory (default: `./.spawn`)
 - `--auth-profile` selects a local Spawnfile auth profile
 - `--env-file` injects external env values for this local run
+- `--detach` starts the generated container lifecycle in the background and writes a deployment record after successful start
+- `--deployment <name>` names the detached deployment record; it defaults to `default` when detached
+- `--context <name>` selects a Docker context for detached Docker execution and is recorded in the deployment record
 - MAY prepare workspace resources and create/manage local runtime state paths
 - MUST validate and compile as part of startup
 - MUST prepare and enforce `workspace.resources`, `environment.packages`, and workspace state before spawning runtime processes
 - MUST run adapter-native or managed Moltnet servers where declared
 - MUST start generated Moltnet nodes and agents in one coordinated lifecycle
+- MUST write `.spawn/deployments/<name>.json` only after successful detached start
 - Exits with code 0 on successful process start; stays attached unless otherwise specified
 
 #### `spawnfile build`
@@ -1603,8 +1626,12 @@ Runs a previously built image with the compiled project's published ports and au
 - `--tag` selects the Docker image tag
 - `--auth-profile` selects a local Spawnfile auth profile
 - `--env-file` injects external env values into the generated Docker run environment
+- `--detach` starts the container in the background and writes a deployment record after successful start
+- `--deployment <name>` names the detached deployment record; it defaults to `default` when detached
+- `--context <name>` selects a Docker context for detached Docker execution and is recorded in the deployment record
 - MUST compile the project before deriving runtime wiring
 - MUST apply model/runtime auth at run time, not build time
+- MUST write `.spawn/deployments/<name>.json` only after successful detached start
 
 #### `spawnfile auth`
 
@@ -1623,14 +1650,14 @@ These are intentionally excluded from the v0.1 portable core. Adapters MAY suppo
 - Channel bindings (Slack, Discord, WhatsApp, etc.)
 - Memory engine configuration
 - Package publishing and registry
-- Deployment orchestration (Kubernetes, ECS, etc.)
-- Agent lifecycle management (restart policies, health checks)
+- Deployment orchestration beyond Docker detached records (Kubernetes, ECS, etc.)
+- Agent lifecycle management beyond detached start/status diagnostics (restart policies, scaling, stop/down lifecycle)
 - Persistent storage declarations
 - UI surfaces
 - Runtime-native auth bootstrap (onboarding flows)
 - Agent-to-agent protocol definitions beyond declared surfaces and team networks
 - Resource constraints (compute, memory, token budgets)
-- Observability hooks (probes, structured logging)
+- Observability beyond `spawnfile status` metadata probes (structured logs, metrics, tracing)
 - Dependency versioning and lock files for skills and MCP servers
 
 ---

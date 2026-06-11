@@ -33,6 +33,7 @@ import {
   buildPicoClawSurfaceEnvBindings
 } from "./surfaces.js";
 import { PICOCLAW_GATEWAY_BASE_PORT, PICOCLAW_INTERNAL_PICO_TOKEN } from "./pico.js";
+import { picoClawStatusProbes } from "./statusProbes.js";
 
 const formatModelName = (node: ResolvedAgentNode): string | null => {
   const primary = node.execution?.model?.primary;
@@ -307,6 +308,7 @@ export const picoClawAdapter: RuntimeAdapter = {
   name: "picoclaw",
   prepareRuntimeAuth: preparePicoClawRuntimeAuth,
   scaffoldAgentProject: createPicoClawAgentScaffold,
+  statusProbes: picoClawStatusProbes,
   validateRuntimeOptions(options) {
     if (
       "restrict_to_workspace" in options &&

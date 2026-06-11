@@ -7,7 +7,7 @@ import {
   renderEntrypoint,
   renderEnvExample
 } from "./containerArtifactsRender.js";
-import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
+import type { MoltnetArtifacts, MoltnetServerPlan } from "./moltnetArtifacts.js";
 import type {
   CompiledNodeArtifact,
   GeneratedContainerArtifacts
@@ -20,6 +20,73 @@ export interface ContainerArtifactOptions {
   hasStagedMoltnetBinaries?: boolean;
   moltnet?: MoltnetArtifacts | null;
 }
+
+const resolveMoltnetOperatorTokenSecret = (
+  plan: MoltnetServerPlan
+): string | undefined => {
+  const client = plan.server.auth.client;
+  if (!client) {
+    return undefined;
+  }
+
+  if (client.token_env) {
+    return client.token_env;
+  }
+
+  if (client.token_path) {
+    return client.token_path;
+  }
+
+  if (!client.token_id) {
+    return undefined;
+  }
+
+  return plan.server.auth.tokens?.find((token) => token.id === client.token_id)?.secret;
+};
+
+const createMoltnetSummary = (
+  moltnet: MoltnetArtifacts | undefined | null
+): GeneratedContainerArtifacts["report"]["moltnet"] | undefined => {
+  if (!moltnet) {
+    return undefined;
+  }
+
+  return {
+    node_plans: moltnet.nodePlans.map((plan) => ({
+      config_path: plan.configPath,
+      network_id: plan.networkId
+    })),
+    server_plans: moltnet.serverPlans.map((plan) => {
+      const operatorTokenSecret = resolveMoltnetOperatorTokenSecret(plan);
+
+      return {
+        auth_mode: plan.server.auth.mode,
+        base_url: plan.baseUrl,
+        ...(plan.configPath ? { config_path: plan.configPath } : {}),
+        ...(plan.server.mode === "managed"
+          ? { direct_messages: plan.server.direct_messages }
+          : {}),
+        id: plan.id,
+        mode: plan.mode,
+        network_id: plan.networkId,
+        ...(operatorTokenSecret ? { operator_token_secret: operatorTokenSecret } : {}),
+        ...(plan.port ? { port: plan.port } : {}),
+        ...(plan.server.auth.public_read !== undefined
+          ? { public_read: plan.server.auth.public_read }
+          : {}),
+        rooms: plan.rooms.map((room) => ({
+          id: room.id,
+          members: [...room.members],
+          ...(room.visibility ? { visibility: room.visibility } : {}),
+          ...(room.write_policy ? { write_policy: room.write_policy } : {})
+        })),
+        ...(plan.server.mode === "managed"
+          ? { store_kind: plan.server.store.kind }
+          : {})
+      };
+    })
+  };
+};
 
 export const createContainerArtifacts = async (
   plan: CompilePlan,
@@ -84,13 +151,28 @@ export const createContainerArtifacts = async (
     }
   ];
 
-  const runtimePorts = runtimePlans.flatMap((plan) =>
-    plan.publishedPort ? [plan.publishedPort] : []
+  const runtimeInternalPorts = runtimePlans.flatMap((plan) =>
+    plan.port ? [plan.port] : []
   );
-  const moltnetPorts = options.moltnet?.publishedPorts ?? [];
-  const ports = [...new Set([...runtimePorts, ...moltnetPorts])].sort(
+  const internalPorts = [...new Set([...runtimeInternalPorts, ...(options.moltnet?.ports ?? [])])].sort(
     (left, right) => left - right
   );
+  const runtimePublishedPorts = runtimePlans.flatMap((plan) =>
+    plan.publishedPort ? [plan.publishedPort] : []
+  );
+  const publishedPorts = [
+    ...new Set([...runtimePublishedPorts, ...(options.moltnet?.publishedPorts ?? [])])
+  ].sort((left, right) => left - right);
+  const portMappings = runtimePlans
+    .flatMap((plan) =>
+      plan.port && plan.publishedPort
+        ? [{ internal_port: plan.port, published_port: plan.publishedPort }]
+        : []
+    )
+    .sort((left, right) =>
+      left.published_port - right.published_port
+      || left.internal_port - right.internal_port
+    );
   const runtimeHomes = [
     ...new Set(runtimePlans.flatMap((plan) => (plan.instancePaths.homePath ? [plan.instancePaths.homePath] : [])))
   ].sort();
@@ -99,9 +181,13 @@ export const createContainerArtifacts = async (
       config_path: plan.instancePaths.configPath,
       home_path: plan.instancePaths.homePath ?? null,
       id: plan.id,
+      internal_port: plan.port ?? null,
       model_auth_methods: plan.modelAuthMethods,
       model_secrets_required: plan.modelSecretsRequired,
-      runtime: plan.runtimeName
+      node_ids: [...(plan.sourceIds ?? [])],
+      published_port: plan.publishedPort ?? null,
+      runtime: plan.runtimeName,
+      workspace_path: plan.instancePaths.workspacePath
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
   const runtimesInstalled = [...new Set(runtimePlans.map((plan) => plan.runtimeName))].sort();
@@ -123,6 +209,7 @@ export const createContainerArtifacts = async (
       )
     ).values()
   ].sort((left, right) => left.link_path.localeCompare(right.link_path) || left.id.localeCompare(right.id));
+  const moltnetSummary = createMoltnetSummary(options.moltnet);
 
   return {
     executablePaths: ["entrypoint.sh"],
@@ -139,8 +226,12 @@ export const createContainerArtifacts = async (
       dockerfile: "Dockerfile",
       entrypoint: "entrypoint.sh",
       env_example: ".env.example",
+      internal_ports: internalPorts,
       model_secrets_required: modelSecretsRequired,
-      ports,
+      ...(moltnetSummary ? { moltnet: moltnetSummary } : {}),
+      port_mappings: portMappings,
+      ports: publishedPorts,
+      published_ports: publishedPorts,
       runtime_instances: runtimeInstances,
       runtime_homes: runtimeHomes,
       runtime_secrets_required: runtimeSecretsRequired,

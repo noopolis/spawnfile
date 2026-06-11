@@ -72,6 +72,15 @@ describe("openClawAdapter", () => {
     );
   });
 
+  it("declares adapter-owned live status probes", () => {
+    expect(openClawAdapter.statusProbes?.map((probe) => probe.id)).toEqual([
+      "home",
+      "workspace",
+      "config",
+      "healthz"
+    ]);
+  });
+
   it("emits config with agents.defaults and gateway", async () => {
     const result = await openClawAdapter.compileAgent(createNode());
     const configFile = result.files.find((file) => file.path === "openclaw.json");

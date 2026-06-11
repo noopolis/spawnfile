@@ -120,6 +120,7 @@ describe("runCli", () => {
 
     expect(exitCode).toBe(0);
     expect(buildProject).toHaveBeenCalledWith(path.join(fixturesRoot, "single-agent"), {
+      dockerCommand: undefined,
       imageTag: undefined,
       outputDirectory: "/tmp/spawnfile-build-out"
     });
@@ -178,6 +179,10 @@ describe("runCli", () => {
         "dev",
         "--env-file",
         "/tmp/dev.env",
+        "--deployment",
+        "prod-eu",
+        "--context",
+        "hetzner",
         "--detach",
         "--out",
         "/tmp/spawnfile-up-out"
@@ -193,7 +198,10 @@ describe("runCli", () => {
     expect(upProject).toHaveBeenCalledWith(path.join(fixturesRoot, "single-agent"), {
       authProfile: "dev",
       containerName: undefined,
+      deploymentName: "prod-eu",
       detach: true,
+      dockerCommand: undefined,
+      dockerContext: "hetzner",
       envFilePath: "/tmp/dev.env",
       imageTag: undefined,
       outputDirectory: "/tmp/spawnfile-up-out"
@@ -254,6 +262,10 @@ describe("runCli", () => {
         "dev",
         "--env-file",
         "/tmp/dev.env",
+        "--deployment",
+        "prod-eu",
+        "--context",
+        "hetzner",
         "--detach",
         "--out",
         "/tmp/spawnfile-run-out"
@@ -269,7 +281,10 @@ describe("runCli", () => {
     expect(runProject).toHaveBeenCalledWith(path.join(fixturesRoot, "single-agent"), {
       authProfile: "dev",
       containerName: undefined,
+      deploymentName: "prod-eu",
       detach: true,
+      dockerCommand: undefined,
+      dockerContext: "hetzner",
       envFilePath: "/tmp/dev.env",
       imageTag: undefined,
       outputDirectory: "/tmp/spawnfile-run-out"

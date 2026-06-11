@@ -40,6 +40,8 @@ export const registerLifecycleCommands = (
     .option("-o, --out <directory>", "Output directory")
     .option("-t, --tag <image>", "Docker image tag")
     .option("--auth-profile <name>", "Local Spawnfile auth profile")
+    .option("--context <name>", "Docker context for the deployment target")
+    .option("--deployment <name>", "Detached deployment record name")
     .option("--docker-command <command>", "Docker command")
     .option("--name <container>", "Docker container name")
     .option("--env-file <file>", "Path to an env file for runtime secrets")
@@ -49,7 +51,9 @@ export const registerLifecycleCommands = (
         inputPath: string,
         options: {
           authProfile?: string;
+          context?: string;
           detach?: boolean;
+          deployment?: string;
           dockerCommand?: string;
           envFile?: string;
           name?: string;
@@ -61,7 +65,9 @@ export const registerLifecycleCommands = (
           authProfile: options.authProfile,
           containerName: options.name,
           detach: options.detach,
+          deploymentName: options.deployment,
           dockerCommand: options.dockerCommand,
+          dockerContext: options.context,
           envFilePath: options.envFile,
           imageTag: options.tag,
           outputDirectory: options.out
@@ -80,6 +86,8 @@ export const registerLifecycleCommands = (
     .option("-o, --out <directory>", "Output directory")
     .option("-t, --tag <image>", "Docker image tag")
     .option("--auth-profile <name>", "Local Spawnfile auth profile")
+    .option("--context <name>", "Docker context for the deployment target")
+    .option("--deployment <name>", "Detached deployment record name")
     .option("--docker-command <command>", "Docker command")
     .option("--name <container>", "Docker container name")
     .option("--env-file <file>", "Path to an env file for runtime secrets")
@@ -89,7 +97,9 @@ export const registerLifecycleCommands = (
         inputPath: string,
         options: {
           authProfile?: string;
+          context?: string;
           detach?: boolean;
+          deployment?: string;
           dockerCommand?: string;
           envFile?: string;
           name?: string;
@@ -101,7 +111,9 @@ export const registerLifecycleCommands = (
           authProfile: options.authProfile,
           containerName: options.name,
           detach: options.detach,
+          deploymentName: options.deployment,
           dockerCommand: options.dockerCommand,
+          dockerContext: options.context,
           envFilePath: options.envFile,
           imageTag: options.tag,
           outputDirectory: options.out
