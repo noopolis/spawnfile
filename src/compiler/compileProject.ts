@@ -49,6 +49,7 @@ export interface CompileProjectResult {
 
 interface CompiledNodeResult {
   emittedFiles: Array<{ content: string; path: string }>;
+  id: string;
   kind: "agent" | "team";
   report: NodeReport;
   runtimeName: string | null;
@@ -85,9 +86,7 @@ const compileAgentNode = async (
 ): Promise<CompiledNodeResult> => {
   const runtime = await assertRuntimeCanCompile(node.runtimeName ?? node.value.runtime.name);
   const adapter = getRuntimeAdapter(runtime.name);
-  const diagnostics: DiagnosticReport[] = [
-    ...createRuntimeLifecycleDiagnostics(runtime)
-  ];
+  const diagnostics: DiagnosticReport[] = [...createRuntimeLifecycleDiagnostics(runtime)];
 
   for (const diagnostic of adapter.validateRuntimeOptions?.(node.value.runtime.options) ?? []) {
     diagnostics.push(diagnostic);
@@ -104,6 +103,7 @@ const compileAgentNode = async (
 
   return {
     emittedFiles: result.files,
+    id: node.id,
     kind: node.kind,
     report: {
       capabilities: result.capabilities,
@@ -135,6 +135,7 @@ const compileTeamNode = async (
   if (!runtimeName) {
     return {
       emittedFiles: [],
+      id: node.id,
       kind: node.kind,
       report: {
         capabilities: createTeamCapabilities(
@@ -168,6 +169,7 @@ const compileTeamNode = async (
   if (!adapter.compileTeam) {
     return {
       emittedFiles: [],
+      id: node.id,
       kind: node.kind,
       report: {
         capabilities: createTeamCapabilities(
@@ -201,6 +203,7 @@ const compileTeamNode = async (
 
   return {
     emittedFiles: result.files,
+    id: node.id,
     kind: node.kind,
     report: {
       capabilities: result.capabilities,
@@ -385,12 +388,10 @@ export const compileProject = async (
     )
   );
 
-  const report = createCompileReport(plan.root, nodeReports, [], containerArtifacts.report);
+  const report = createCompileReport(plan.root, nodeReports, [], containerArtifacts.report, {
+    outputDirectory
+  });
   const reportPath = await writeCompileReport(outputDirectory, report);
 
-  return {
-    outputDirectory,
-    report,
-    reportPath
-  };
+  return { outputDirectory, report, reportPath };
 };

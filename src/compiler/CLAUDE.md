@@ -23,6 +23,7 @@ src/compiler/
 ├── containerTargetResources.ts # Per-runtime workspace resource placement for container targets
 ├── teamRoster.ts               # Context-scoped team roster generation and diagnostics
 ├── runProject.ts               # `spawnfile run` docker-run planning and execution
+├── runProjectDocker.ts         # Docker run process runner and detached container metadata capture
 ├── initProject.ts              # `spawnfile init` orchestration around runtime-owned scaffolds
 ├── addProjectNode.ts           # `spawnfile add ...` graph-editing helpers
 ├── updateProjectModels.ts      # `spawnfile model ...` manifest-editing helpers

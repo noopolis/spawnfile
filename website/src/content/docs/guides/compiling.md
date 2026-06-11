@@ -66,7 +66,7 @@ spawnfile view ./my-team --mode networks
 spawnfile view ./my-team --paths
 ```
 
-`validate` answers whether the project is structurally valid. `view` shows what Spawnfile resolved from that valid project while staying read-only. `compile` performs validation, invokes runtime adapters, writes runtime-native output, and emits the compile report.
+`validate` answers whether the project is structurally valid. `view` shows what Spawnfile resolved from that valid project while staying read-only. `compile` performs validation, invokes runtime adapters, writes runtime-native output, and emits the compile report. `status` reuses the same resolved graph to show declared and compiled state without running live probes unless you pass `--live`.
 
 ## Graph Resolution
 
@@ -156,10 +156,16 @@ The compiler emits a JSON report at `spawnfile-report.json` in the output root.
 {
   "spawnfile_version": "0.1",
   "root": "/abs/path/to/Spawnfile",
+  "generated_at": "2026-06-10T00:00:00.000Z",
+  "output_directory": "/abs/path/to/project/.spawn",
+  "compile_fingerprint": "sf1:9c4e2b...",
   "nodes": [],
-  "diagnostics": []
+  "diagnostics": [],
+  "container": {}
 }
 ```
+
+The top-level `generated_at`, `output_directory`, and `compile_fingerprint` fields let `spawnfile status` detect stale compiles and deployment drift.
 
 ### Node Entry
 
@@ -211,6 +217,19 @@ The compiler reports on these keys:
 - `surfaces.<name>.identity`
 
 Adapters may add runtime-specific keys under `runtime.options.*` and `runtime.native.*`.
+
+### Status-Oriented Report Fields
+
+When container output is emitted, the report also carries enough data for `spawnfile status` to map live deployment units back to compiled agents:
+
+- runtime instance ids
+- runtime instance config, home, and workspace paths
+- compile node ids served by each runtime instance
+- internal and published ports as separate fields
+- persistent mounts and workspace resource backing paths
+- sanitized Moltnet node/server plan summaries
+
+The report never includes secret values, generated token values, or secret-bearing Moltnet patches. It may include required-secret names and paths.
 
 ## Policy Enforcement
 

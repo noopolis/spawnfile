@@ -7,7 +7,7 @@ description: How the Spawnfile compiler emits Docker container artifacts -- Dock
 
 This document specifies how the Spawnfile compiler emits container artifacts alongside runtime-specific config and workspace files.
 
-The goal is simple: `spawnfile compile` should produce output that can be built and run with `docker build` and `docker run`, giving developers and operators a way to verify that compiled output actually works against the real runtime.
+The goal is simple: `spawnfile compile` should produce output that can be built and run with `docker build` and `docker run`, giving developers and operators a way to verify that compiled output actually works against the real runtime. `STATUS.md` defines the read-only status layer over detached Docker deployments created from these artifacts.
 
 ---
 
@@ -250,6 +250,55 @@ Secret materialization rules:
 
 ---
 
+## Detached Deployment Records
+
+`spawnfile run --detach` and `spawnfile up --detach` write deployment records after a container starts successfully. Records live under the selected output directory:
+
+```text
+.spawn/deployments/default.json
+.spawn/deployments/<name>.json
+```
+
+Deployment names are operator-local kebab-case slugs. They are not declared in Spawnfile source.
+
+The Docker deployment record schema and behavior are defined in `STATUS.md`. Container compilation must provide the fields that records need:
+
+- `compile_fingerprint`
+- `output_directory`
+- runtime instance ids and the compile node ids each instance serves
+- image tag/id and container name/id after successful start
+- Docker target information for context execution
+- persistent mounts and published ports
+
+A failed detached start MUST NOT write a record. Redeploying the same deployment name MUST replace the record atomically only after the new detached start succeeds.
+
+### Docker Targets
+
+Detached Docker execution may run against the default Docker context, an explicit `--context <name>`, or `DOCKER_HOST`. The deployment record must store the Docker target actually used:
+
+```json
+{ "kind": "context", "name": "vm1", "endpoint_fingerprint": "sha256:4be91d2b0d4f3a7c99e8123400aa55cc" }
+{ "kind": "host", "value": "ssh://ops@my-vm" }
+```
+
+`endpoint_fingerprint` is a hash of the resolved Docker context endpoint. Status must re-resolve the context and report endpoint drift as an error instead of falling back to the local daemon.
+
+### Docker Labels
+
+Detached containers should receive non-secret status/deployment labels:
+
+```text
+com.spawnfile.version=0.1
+com.spawnfile.project=<project-slug>
+com.spawnfile.deployment=<deployment-name>
+com.spawnfile.unit=<unit-id>
+com.spawnfile.compile_fingerprint=<compile-fingerprint>
+```
+
+Labels are identifiers only. They must not include absolute paths, usernames, hostnames, auth profile names, env values, generated token values, or secrets.
+
+---
+
 ## Adapter Container Contract
 
 Each runtime adapter should expose container metadata as part of its adapter interface, plus optional per-target container overrides such as env-backed secret files.
@@ -292,13 +341,40 @@ The compile report should include a `container` section:
       }
     ],
     "secrets_required": ["SEARCH_API_KEY", "ANTHROPIC_API_KEY"],
-    "ports": [3000],
+    "ports": [
+      {
+        "id": "openclaw-gateway",
+        "internal": 3000,
+        "published": 3000
+      }
+    ],
+    "moltnet": {
+      "servers": [
+        {
+          "network_id": "local_lab",
+          "mode": "managed",
+          "auth_mode": "open",
+          "rooms": ["research"],
+          "listen_port": 8787,
+          "published_port": 8787
+        }
+      ],
+      "nodes": [
+        {
+          "network_id": "local_lab",
+          "agent_ids": ["analyst"],
+          "rooms": ["research"]
+        }
+      ]
+    },
     "runtime_instances": [
       {
         "id": "agent-analyst",
+        "node_ids": ["agent:analyst"],
         "runtime": "openclaw",
         "config_path": "/var/lib/spawnfile/instances/openclaw/agent-analyst/home/.openclaw/openclaw.json",
         "home_path": "/var/lib/spawnfile/instances/openclaw/agent-analyst/home",
+        "workspace_path": "/var/lib/spawnfile/instances/openclaw/agent-analyst/home/.openclaw/workspace",
         "model_auth_methods": {
           "anthropic": "claude-code"
         },
@@ -309,6 +385,8 @@ The compile report should include a `container` section:
 }
 ```
 
+The `moltnet` report data is sanitized. It records ids, modes, rooms, and ports only; it must not include operator tokens, agent tokens, pairing tokens, generated token file contents, or secret-bearing config patches.
+
 ---
 
 ## What This Does Not Cover
@@ -316,11 +394,11 @@ The compile report should include a `container` section:
 These are explicitly out of scope for v0.1 container compilation:
 
 - Docker Compose generation for multi-container topologies
-- Orchestration (Kubernetes, ECS, Fly, etc.)
+- Orchestration beyond the Docker detached record model (Kubernetes, ECS, Fly, etc.)
 - Image publishing and registry
 - Runtime-native auth bootstrap (onboarding flows stay manual)
-- emitted Docker `HEALTHCHECK` instructions or richer readiness contracts
-- Volume management and persistence strategy
+- emitted Docker `HEALTHCHECK` instructions or richer readiness contracts beyond adapter-owned status probes
+- General volume orchestration beyond compiler-reported persistent mounts
 - Network topology between containers
 - CI/CD integration
 
@@ -360,8 +438,9 @@ spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
 # compile and build the container
 spawnfile build fixtures/single-agent --out ./bundle/single-agent --tag my-agent
 
-# run with the local auth profile
-spawnfile run fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev
+# run with the local auth profile and inspect live status
+spawnfile run fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev --detach
+spawnfile status fixtures/single-agent --out ./bundle/single-agent --live
 ```
 
 For teams:
@@ -369,10 +448,11 @@ For teams:
 ```bash
 spawnfile auth sync fixtures/multi-runtime-team --profile dev --env-file ./.env
 spawnfile build fixtures/multi-runtime-team --out ./bundle/team --tag my-team
-spawnfile run fixtures/multi-runtime-team --out ./bundle/team --tag my-team --auth-profile dev
+spawnfile run fixtures/multi-runtime-team --out ./bundle/team --tag my-team --auth-profile dev --detach --deployment dev
+spawnfile status fixtures/multi-runtime-team --out ./bundle/team --live --deployment dev
 ```
 
-Same flow regardless of project complexity. One compile, one build, one run.
+Same flow regardless of project complexity. One compile, one build, one detached run, one live status check.
 
 `spawnfile compile` still emits a standard Docker build context, so manual `docker build` remains supported when developers want to inspect or tweak the emitted output before building the image.
 

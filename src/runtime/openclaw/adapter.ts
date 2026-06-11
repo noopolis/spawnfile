@@ -27,6 +27,7 @@ import {
   buildOpenClawMoltnetEnvBindings,
   validateOpenClawMoltnetRuntimeOptions
 } from "./moltnet.js";
+import { openClawStatusProbes } from "./statusProbes.js";
 
 const buildEnvSecretRef = (envName: string): Record<string, string> => ({
   id: envName,
@@ -270,6 +271,7 @@ export const openClawAdapter: RuntimeAdapter = {
   name: "openclaw",
   prepareRuntimeAuth: prepareOpenClawRuntimeAuth,
   scaffoldAgentProject: createOpenClawAgentScaffold,
+  statusProbes: openClawStatusProbes,
   validateRuntimeOptions(options) {
     const diagnostics = validateOpenClawMoltnetRuntimeOptions(options).map((message) =>
       createDiagnostic("error", message)

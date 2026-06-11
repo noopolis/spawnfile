@@ -40,12 +40,14 @@ export interface RuntimeTargetPlan {
   resources?: WorkspaceResourcePlan[];
   runtimeName: string;
   runtimeRoot: string;
+  sourceIds?: string[];
   targetConfigEnvBindings?: RuntimeContainerConfigEnvBinding[];
   targetFiles: EmittedFile[];
 }
 
 export interface CompiledNodeArtifact {
   emittedFiles: EmittedFile[];
+  id?: string;
   kind: "agent" | "team";
   runtimeName: string | null;
   slug: string;

@@ -59,6 +59,17 @@ describe("picoClawAdapter", () => {
     );
   });
 
+  it("declares adapter-owned live status probes", () => {
+    expect(picoClawAdapter.statusProbes?.map((probe) => probe.id)).toEqual([
+      "home",
+      "workspace",
+      "config",
+      "health",
+      "ready",
+      "schedule-next-run"
+    ]);
+  });
+
   it("emits config with agents.defaults and model_list", async () => {
     const result = await picoClawAdapter.compileAgent(node);
     const configFile = result.files.find((file) => file.path === "config.json");

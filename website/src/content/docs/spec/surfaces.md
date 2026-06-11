@@ -23,7 +23,7 @@ A **team network** is a team-level organizational communication topology under `
 
 Team manifests do not declare `surfaces`. Concrete agent manifests declare `surfaces`; team manifests declare `networks`.
 
-Spawnfile has a write-only runtime boundary. It does not read spawned runtimes to discover account IDs, infer live membership, or update rosters from runtime state. Roster addresses are emitted only when they are derivable from the manifest or explicitly authored through `identity`.
+Spawnfile has a write-only runtime boundary. It does not read spawned runtimes to discover account IDs, infer live membership, or update rosters from runtime state. Roster addresses are emitted only when they are derivable from the manifest or explicitly authored through `identity`. `spawnfile status --live` may read declared provider metadata for diagnostics, as defined in `STATUS.md`, but those observations never update rosters or source.
 
 ---
 
@@ -150,13 +150,15 @@ networks:
 Rules:
 
 - Agent attachments reference team-declared networks and rooms.
-- `read` may be `all`, `mentions`, or `thread_only`.
+- `wake` may be `all`, `mentions`, `thread_only`, or `never`.
 - `reply` may be only `auto` or `never` in this alpha. `manual` is not portable.
 - Moltnet FQIDs are derivable and should be emitted into context-scoped rosters.
 - A parent room member may name a direct child-team slot. The compiler expands that slot through the child team's representative chain and attaches only selected concrete representatives.
 - Parent networks do not autojoin every descendant. Non-representative child members do not receive parent room attachments.
 - Moltnet member IDs are direct agent member slot IDs and must be unique across the reachable nested team graph.
 - Reusing the same network id across teams is allowed. Compatible duplicate attachments for the same `(network_id, member_id)` merge rooms; incompatible duplicates fail compilation.
+- `spawnfile status --live` may inspect Moltnet metadata for declared networks: rooms, expected members, live participants, connected/disconnected bridge state, and direct-message capability. Wake delivered/failed events and debug lifecycle events are future metadata extensions, after Moltnet exposes a bounded metadata endpoint; debug events also require debug mode to be declared.
+- Moltnet status inspection is metadata-only. It must not request or render message bodies, and missing operator credentials render the network layer `unknown` instead of attempting anonymous access.
 
 ---
 

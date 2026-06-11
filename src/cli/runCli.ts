@@ -36,6 +36,7 @@ import { registerLifecycleCommands } from "./lifecycleCommands.js";
 import { registerModelCommands } from "./modelCommands.js";
 import { registerRuntimeCommands } from "./runtimeCommands.js";
 import { registerSurfaceCommands } from "./surfaceCommands.js";
+import { registerStatusCommand } from "./statusCommand.js";
 import { registerViewCommand } from "./viewCommand.js";
 
 const packageJsonPath = new URL("../../package.json", import.meta.url);
@@ -175,6 +176,7 @@ export const runCli: RunCli = async (
   const cliOptions = normalizeRunCliOptions(optionsOrStreams, handlerOverrides);
   const streams = cliOptions.streams;
   const handlers = { ...createDefaultHandlers(), ...cliOptions.handlers };
+  let commandExitCode: 0 | 1 | 2 = 0;
   const program = new Command();
   program.name("spawnfile").description("Spawnfile v0.1 compiler").version(readPackageVersion());
   program.exitOverride();
@@ -247,6 +249,9 @@ export const runCli: RunCli = async (
   registerModelCommands(program, handlers, streams);
   registerRuntimeCommands(program, handlers, streams);
   registerSurfaceCommands(program, handlers, streams);
+  registerStatusCommand(program, handlers, streams, (exitCode) => {
+    commandExitCode = exitCode;
+  });
   registerViewCommand(program, handlers, streams, cliOptions.renderEnvironment);
 
   program
@@ -336,7 +341,7 @@ export const runCli: RunCli = async (
 
   try {
     await program.parseAsync(argv, { from: "user" });
-    return 0;
+    return commandExitCode;
   } catch (error: unknown) {
     if (isCommanderError(error)) {
       return error.exitCode === 0 ? 0 : 1;

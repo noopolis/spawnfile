@@ -1,19 +1,31 @@
 import os from "node:os";
 import path from "node:path";
 import { mkdtemp } from "node:fs/promises";
-import { randomBytes } from "node:crypto";
-import { spawn } from "node:child_process";
 
-import { parseEnvFile, requireAuthProfile, type ResolvedAuthProfile } from "../auth/index.js";
+import { requireAuthProfile, type ResolvedAuthProfile } from "../auth/index.js";
 import {
   ensureDirectory,
   fileExists,
-  readUtf8File,
   removeDirectory,
   writeUtf8File
 } from "../filesystem/index.js";
 import type { ContainerReport } from "../report/index.js";
-import { SpawnfileError } from "../shared/index.js";
+import {
+  appendDockerLabelArgs,
+  createDockerDeploymentLabels,
+  createDockerDeploymentUnitId,
+  createDockerProjectLabel,
+  dockerContextNameForTarget,
+  dockerHostValueForTarget,
+  normalizeDeploymentName,
+  readDeploymentRecordFromOutput,
+  resolveDeploymentRecordPath,
+  type DeploymentRecord,
+  type DockerTargetExecFile,
+  verifyDockerDeploymentTarget,
+  writeDockerDeploymentRecordForRun
+} from "../deployment/index.js";
+import { DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
 
 import {
   compileProject,
@@ -23,36 +35,42 @@ import {
 import { createDefaultImageTag } from "./buildProject.js";
 import { slugify } from "./helpers.js";
 import {
+  runDockerContainer,
+  type DockerRunInvocation,
+  type DockerRunResult,
+  type DockerRunRunner
+} from "./runProjectDocker.js";
+import {
   assertDeclaredModelAuthSatisfied,
-  prepareRuntimeAuthMounts
+  assertRunEnvironmentSatisfied,
+  prepareRuntimeAuthMounts,
+  readRunEnvFile,
+  renderDockerEnvFile,
+  resolveAuthMountArgs,
+  resolveRunEnvironment
 } from "./runProjectAuth.js";
 
-export interface DockerRunInvocation {
-  args: string[];
-  command: string;
-  containerName: string | null;
-  cwd: string;
-  detach: boolean;
-  envFilePath: string;
-  imageTag: string;
-  supportDirectory: string;
-}
-
-export type DockerRunRunner = (invocation: DockerRunInvocation) => Promise<void>;
+export { runDockerContainer };
+export type { DockerRunInvocation, DockerRunResult, DockerRunRunner };
 
 export interface RunProjectOptions extends CompileProjectOptions {
   authProfile?: string;
   containerName?: string;
   detach?: boolean;
+  deploymentName?: string;
   dockerCommand?: string;
+  dockerContext?: string;
+  dockerHost?: string;
   envFilePath?: string;
   imageTag?: string;
   runRunner?: DockerRunRunner;
+  targetExecFile?: DockerTargetExecFile;
 }
 
 export interface RunProjectResult extends CompileProjectResult {
   authProfileName: string | null;
   containerName: string | null;
+  deploymentRecordPath?: string | null;
   imageTag: string;
 }
 
@@ -68,165 +86,6 @@ const createDefaultContainerName = (imageTag: string): string => {
   return containerName || "spawnfile-run";
 };
 
-const getImportMountTargetName = (kind: keyof ResolvedAuthProfile["imports"]): string =>
-  kind === "claude-code" ? ".claude" : ".codex";
-
-const createGeneratedRuntimeSecret = (secretName: string): string | null => {
-  if (secretName === "OPENCLAW_GATEWAY_TOKEN" || secretName === "OPENCLAW_HOOKS_TOKEN") {
-    return randomBytes(24).toString("hex");
-  }
-
-  return null;
-};
-
-const hasEnvValue = (env: Record<string, string>, name: string): boolean =>
-  typeof env[name] === "string" && env[name]!.length > 0;
-
-const collectMissingRequiredSecrets = (
-  containerReport: ContainerReport,
-  env: Record<string, string>,
-  coveredModelSecrets: Set<string>
-): string[] => {
-  const missing = new Set<string>();
-
-  for (const secretName of containerReport.secrets_required) {
-    if (hasEnvValue(env, secretName)) {
-      continue;
-    }
-
-    if (!containerReport.model_secrets_required.includes(secretName)) {
-      missing.add(secretName);
-      continue;
-    }
-
-    const requiredInstances = (containerReport.runtime_instances ?? []).filter((instance) =>
-      instance.model_secrets_required.includes(secretName)
-    );
-    const isCoveredEverywhere =
-      requiredInstances.length > 0 &&
-      requiredInstances.every((instance) => coveredModelSecrets.has(`${instance.id}:${secretName}`));
-
-    if (!isCoveredEverywhere) {
-      missing.add(secretName);
-    }
-  }
-
-  return [...missing].sort();
-};
-
-const resolveRunEnvironment = (
-  containerReport: ContainerReport,
-  authProfile: ResolvedAuthProfile | null,
-  envFileEnv: Record<string, string> = {}
-): Record<string, string> => {
-  const env: Record<string, string> = {
-    ...(authProfile?.env ?? {}),
-    ...envFileEnv
-  };
-
-  for (const name of new Set([...Object.keys(env), ...containerReport.secrets_required])) {
-    const processValue = process.env[name];
-    if (typeof processValue === "string" && processValue.length > 0) {
-      env[name] = processValue;
-    }
-  }
-
-  for (const name of containerReport.runtime_secrets_required) {
-    if (hasEnvValue(env, name)) {
-      continue;
-    }
-
-    const generatedValue = createGeneratedRuntimeSecret(name);
-    if (generatedValue) {
-      env[name] = generatedValue;
-    }
-  }
-
-  for (const [name, value] of Object.entries(env)) {
-    if (value.includes("\n")) {
-      throw new SpawnfileError(
-        "validation_error",
-        `Env value for ${name} contains a newline and cannot be written to a Docker env file`
-      );
-    }
-  }
-
-  return env;
-};
-
-const assertRunEnvironmentSatisfied = (
-  containerReport: ContainerReport,
-  env: Record<string, string>,
-  coveredModelSecrets: Set<string>
-): void => {
-  const missing = collectMissingRequiredSecrets(containerReport, env, coveredModelSecrets);
-  if (missing.length > 0) {
-    throw new SpawnfileError(
-      "validation_error",
-      `Missing required runtime env: ${missing.sort().join(", ")}`
-    );
-  }
-};
-
-const renderDockerEnvFile = (env: Record<string, string>): string =>
-  `${Object.entries(env)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([name, value]) => `${name}=${value}`)
-    .join("\n")}\n`;
-
-const readRunEnvFile = async (
-  envFilePath: string | undefined
-): Promise<Record<string, string>> => {
-  if (!envFilePath) {
-    return {};
-  }
-
-  try {
-    return parseEnvFile(await readUtf8File(envFilePath));
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new SpawnfileError(
-      "validation_error",
-      `Unable to read env file ${envFilePath}: ${reason}`
-    );
-  }
-};
-
-const resolveAuthMountArgs = async (
-  containerReport: ContainerReport,
-  authProfile: ResolvedAuthProfile | null
-): Promise<string[]> => {
-  if (!authProfile || containerReport.runtime_homes.length === 0) {
-    return [];
-  }
-
-  const args: string[] = [];
-
-  for (const [kind, entry] of Object.entries(authProfile.imports) as Array<
-    [
-      keyof ResolvedAuthProfile["imports"],
-      ResolvedAuthProfile["imports"][keyof ResolvedAuthProfile["imports"]]
-    ]
-  >) {
-    if (!entry) {
-      continue;
-    }
-
-    if (!(await fileExists(entry.path))) {
-      throw new SpawnfileError(
-        "validation_error",
-        `Imported auth path for ${kind} does not exist: ${entry.path}`
-      );
-    }
-
-    for (const runtimeHome of containerReport.runtime_homes) {
-      args.push("-v", `${entry.path}:${path.posix.join(runtimeHome, getImportMountTargetName(kind))}`);
-    }
-  }
-
-  return args;
-};
-
 export const createDockerRunInvocation = async (
   compileResult: CompileProjectResult,
   imageTag: string,
@@ -234,7 +93,10 @@ export const createDockerRunInvocation = async (
     authProfile?: ResolvedAuthProfile | null;
     containerName?: string;
     detach?: boolean;
+    deploymentName?: string;
     dockerCommand?: string;
+    dockerContext?: string;
+    dockerHost?: string;
     envFilePath?: string;
   } = {}
 ): Promise<DockerRunInvocation> => {
@@ -268,8 +130,17 @@ export const createDockerRunInvocation = async (
     await ensureDirectory(supportDirectory);
     await writeUtf8File(envFilePath, renderDockerEnvFile(env));
 
+    const deploymentName = options.deploymentName
+      ? normalizeDeploymentName(options.deploymentName)
+      : options.detach
+        ? normalizeDeploymentName(undefined)
+        : null;
     const containerName = options.containerName ?? createDefaultContainerName(imageTag);
-    const args = ["run"];
+    const args = options.dockerContext
+      ? ["--context", options.dockerContext, "run"]
+      : options.dockerHost
+        ? ["--host", options.dockerHost, "run"]
+        : ["run"];
 
     if (options.detach) {
       args.push("-d");
@@ -287,6 +158,20 @@ export const createDockerRunInvocation = async (
       args.push("-v", `${mount.volume_name}:${mount.mount_path}`);
     }
 
+    if (options.detach && deploymentName) {
+      const compileFingerprint = compileResult.report.compile_fingerprint ?? "sf1:unknown";
+      appendDockerLabelArgs(
+        args,
+        createDockerDeploymentLabels({
+          compileFingerprint,
+          deployment: deploymentName,
+          project: createDockerProjectLabel(compileResult.report.root),
+          unit: createDockerDeploymentUnitId(deploymentName),
+          version: compileResult.report.spawnfile_version
+        })
+      );
+    }
+
     args.push("--env-file", envFilePath);
     args.push(...(await resolveAuthMountArgs(containerReport, options.authProfile ?? null)));
     args.push(...preparedRuntimeAuth.mountArgs);
@@ -298,6 +183,9 @@ export const createDockerRunInvocation = async (
       containerName,
       cwd: compileResult.outputDirectory,
       detach: options.detach ?? false,
+      deploymentName,
+      dockerContext: options.dockerContext ?? null,
+      dockerHost: options.dockerHost ?? null,
       envFilePath,
       imageTag,
       supportDirectory
@@ -308,73 +196,135 @@ export const createDockerRunInvocation = async (
   }
 };
 
-export const runDockerContainer: DockerRunRunner = async (
-  invocation: DockerRunInvocation
-): Promise<void> =>
-  new Promise<void>((resolve, reject) => {
-    const child = spawn(invocation.command, invocation.args, {
-      cwd: invocation.cwd,
-      stdio: "inherit"
-    });
+interface ResolvedRunDeploymentOptions {
+  authProfile?: string;
+  containerName?: string;
+  deploymentName?: string;
+  dockerCommand?: string;
+  dockerContext?: string;
+  dockerHost?: string;
+  envFilePath?: string;
+  imageTag?: string;
+  targetExecFile?: DockerTargetExecFile;
+}
 
-    child.once("error", (error) => {
-      reject(
-        new SpawnfileError(
-          "runtime_error",
-          `Unable to start docker run for ${invocation.imageTag}: ${error.message}`
-        )
-      );
-    });
+const readExistingDeploymentRecord = async (
+  outputDirectory: string,
+  deploymentName: string
+): Promise<DeploymentRecord | null> => {
+  const recordPath = resolveDeploymentRecordPath(outputDirectory, deploymentName);
+  if (!await fileExists(recordPath)) {
+    return null;
+  }
+  return readDeploymentRecordFromOutput(outputDirectory, deploymentName);
+};
 
-    child.once("exit", (code, signal) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
+const firstDeploymentUnit = (
+  record: DeploymentRecord
+): DeploymentRecord["units"][number] | null =>
+  record.units[0] ?? null;
 
-      reject(
-        new SpawnfileError(
-          "runtime_error",
-          signal
-            ? `Docker run for ${invocation.imageTag} exited from signal ${signal}`
-            : `Docker run for ${invocation.imageTag} failed with exit code ${code ?? "unknown"}`
-        )
-      );
+export const resolveDetachedDeploymentOptions = async (
+  outputDirectory: string,
+  options: ResolvedRunDeploymentOptions & { detach?: boolean }
+): Promise<ResolvedRunDeploymentOptions> => {
+  if (!options.detach) {
+    return options;
+  }
+
+  const deploymentName = normalizeDeploymentName(options.deploymentName);
+  const record = await readExistingDeploymentRecord(outputDirectory, deploymentName);
+  if (!record) {
+    return {
+      ...options,
+      deploymentName
+    };
+  }
+
+  const unit = firstDeploymentUnit(record);
+  if (!options.dockerContext && !options.dockerHost) {
+    await verifyDockerDeploymentTarget(record.target, {
+      dockerCommand: options.dockerCommand,
+      execFile: options.targetExecFile
     });
-  });
+  }
+
+  return {
+    authProfile: options.authProfile ?? record.auth_profile ?? undefined,
+    containerName: options.containerName ?? unit?.container_name ?? undefined,
+    deploymentName,
+    dockerContext: options.dockerContext ?? dockerContextNameForTarget(record.target) ?? undefined,
+    dockerHost: options.dockerHost ?? dockerHostValueForTarget(record.target) ?? undefined,
+    envFilePath: options.envFilePath ?? record.env_file,
+    imageTag: options.imageTag ?? unit?.image_tag
+  };
+};
 
 export const runProject = async (
   inputPath: string,
   options: RunProjectOptions = {}
 ): Promise<RunProjectResult> => {
+  const resolvedOptions = await resolveDetachedDeploymentOptions(
+    path.resolve(options.outputDirectory ?? DEFAULT_OUTPUT_DIRECTORY),
+    {
+      authProfile: options.authProfile,
+      containerName: options.containerName,
+      deploymentName: options.deploymentName,
+      detach: options.detach,
+      dockerCommand: options.dockerCommand,
+      dockerContext: options.dockerContext,
+      dockerHost: options.dockerHost,
+      envFilePath: options.envFilePath,
+      imageTag: options.imageTag,
+      targetExecFile: options.targetExecFile
+    }
+  );
   const compileResult = await compileProject(inputPath, {
     clean: options.clean,
     outputDirectory: options.outputDirectory
   });
-  const imageTag = options.imageTag ?? createDefaultImageTag(resolveImageTagRoot(inputPath));
-  const authProfile = options.authProfile
-    ? await requireAuthProfile(options.authProfile)
+  const imageTag = resolvedOptions.imageTag ?? createDefaultImageTag(resolveImageTagRoot(inputPath));
+  const authProfile = resolvedOptions.authProfile
+    ? await requireAuthProfile(resolvedOptions.authProfile)
     : null;
   const invocation = await createDockerRunInvocation(compileResult, imageTag, {
     authProfile,
-    containerName: options.containerName,
+    containerName: resolvedOptions.containerName,
     detach: options.detach,
+    deploymentName: resolvedOptions.deploymentName,
     dockerCommand: options.dockerCommand,
-    envFilePath: options.envFilePath
+    dockerContext: resolvedOptions.dockerContext,
+    dockerHost: resolvedOptions.dockerHost,
+    envFilePath: resolvedOptions.envFilePath
   });
 
+  let runMetadata: DockerRunResult | void;
   try {
-    await (options.runRunner ?? runDockerContainer)(invocation);
+    runMetadata = await (options.runRunner ?? runDockerContainer)(invocation);
   } finally {
     if (!invocation.detach) {
       await removeDirectory(invocation.supportDirectory);
     }
   }
 
+  const deploymentRecordPath = invocation.detach && invocation.deploymentName
+    ? await writeDockerDeploymentRecordForRun({
+        authProfileName: authProfile?.name ?? null,
+        envFilePath: resolvedOptions.envFilePath,
+        imageTag,
+        invocation,
+        outputDirectory: compileResult.outputDirectory,
+        report: compileResult.report,
+        runMetadata: runMetadata ?? undefined,
+        targetExecFile: options.targetExecFile
+      })
+    : null;
+
   return {
     ...compileResult,
     authProfileName: authProfile?.name ?? null,
     containerName: invocation.containerName,
+    deploymentRecordPath,
     imageTag
   };
 };

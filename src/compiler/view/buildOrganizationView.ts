@@ -20,6 +20,7 @@ import type {
   OrganizationView,
   OrganizationViewTreeNode
 } from "./types.js";
+import { buildDeclaredNodeView, buildRuntimeViews } from "./declarations.js";
 
 const createNameCounts = (plan: CompilePlan): Map<string, number> => {
   const counts = new Map<string, number>();
@@ -138,7 +139,9 @@ const buildTreeNode = (
     kind: node.kind,
     name: node.value.name,
     networks: buildTreeNetworkSummaries(node),
+    declared: buildDeclaredNodeView(node),
     runtimeName: node.runtimeName,
+    slug: node.slug,
     source: node.value.source
   };
 };
@@ -319,6 +322,6 @@ export const buildOrganizationView = async (
     networks: buildNetworks(plan),
     projectRoot: path.dirname(plan.root),
     root,
-    runtimes: []
+    runtimes: buildRuntimeViews(plan)
   };
 };

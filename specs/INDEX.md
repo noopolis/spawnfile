@@ -15,6 +15,7 @@ These are the source of truth. Implementation in `src/` must stay aligned with t
 | [CONTAINERS.md](CONTAINERS.md) | evolving | Container compilation — Dockerfile and entrypoint generation, run-time auth wiring, adapter container contract |
 | [SURFACES.md](SURFACES.md) | evolving | Communication surfaces — platform messaging, HTTP, webhook, runtime support matrix, and lowering notes |
 | [RUNTIMES.md](RUNTIMES.md) | evolving | Runtime registry model — version pinning, status tracking, adapter lifecycle |
+| [STATUS.md](STATUS.md) | evolving | Operational status — static and live status, deployment records, Docker targets, runtime probes, and Moltnet metadata-only diagnostics |
 
 ## Research
 
@@ -36,7 +37,8 @@ SPEC.md                    ← canonical schema, everything depends on this
   ├── COMPILER.md           ← how to compile what SPEC defines
   │   └── CONTAINERS.md    ← container layer on top of compiler output
   ├── SURFACES.md          ← portable communication-surface contract and runtime support matrix
-  └── RUNTIMES.md          ← which runtimes exist and how they're tracked
+  ├── RUNTIMES.md          ← which runtimes exist and how they're tracked
+  └── STATUS.md            ← operational status contract over authored, compiled, deployed, runtime, and network layers
 
 research/RUNTIME-NOTES.md  ← informs adapter implementation and RUNTIMES.md
 research/AUTH-NOTES.md     ← informs auth/profile UX, per-model auth/endpoint config, and future surface provisioning

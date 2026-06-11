@@ -346,24 +346,38 @@ describe("createContainerArtifacts", () => {
     ]);
     expect(result.report.model_secrets_required).toEqual(["PROXY_API_API_KEY"]);
     expect(result.report.ports).toEqual([18789, 18809]);
+    expect(result.report.internal_ports).toEqual([18789, 18809]);
+    expect(result.report.published_ports).toEqual([18789, 18809]);
+    expect(result.report.port_mappings).toEqual([
+      { internal_port: 18789, published_port: 18789 },
+      { internal_port: 18809, published_port: 18809 }
+    ]);
     expect(result.report.runtime_instances).toEqual([
       {
         config_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/openclaw.json",
         home_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home",
         id: "agent-assistant",
+        internal_port: 18789,
         model_auth_methods: {
           "proxy-api": "api_key"
         },
         model_secrets_required: ["PROXY_API_API_KEY"],
-        runtime: "openclaw"
+        node_ids: ["agent:assistant"],
+        published_port: 18789,
+        runtime: "openclaw",
+        workspace_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/workspace"
       },
       {
         config_path: "/var/lib/spawnfile/instances/openclaw/agent-writer/home/.openclaw/openclaw.json",
         home_path: "/var/lib/spawnfile/instances/openclaw/agent-writer/home",
         id: "agent-writer",
+        internal_port: 18809,
         model_auth_methods: {},
         model_secrets_required: [],
-        runtime: "openclaw"
+        node_ids: ["agent:writer"],
+        published_port: 18809,
+        runtime: "openclaw",
+        workspace_path: "/var/lib/spawnfile/instances/openclaw/agent-writer/home/.openclaw/workspace"
       }
     ]);
     expect(result.report.runtime_homes).toEqual([
@@ -516,11 +530,15 @@ describe("createContainerArtifacts", () => {
         config_path: "/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw/config.json",
         home_path: "/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw",
         id: "agent-assistant",
+        internal_port: 18990,
         model_auth_methods: {
           openai: "codex"
         },
         model_secrets_required: [],
-        runtime: "picoclaw"
+        node_ids: ["agent:assistant"],
+        published_port: null,
+        runtime: "picoclaw",
+        workspace_path: "/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw/workspace"
       }
     ]);
     expect(configFile?.content).toContain("\"model\": \"codex-cli/gpt-5.5\"");

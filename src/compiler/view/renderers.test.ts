@@ -1,20 +1,8 @@
-import os from "node:os";
-import path from "node:path";
-import { mkdtemp } from "node:fs/promises";
+import { describe, expect, it } from "vitest";
 
-import { afterEach, describe, expect, it } from "vitest";
-
-import { ensureDirectory, removeDirectory, writeUtf8File } from "../../filesystem/index.js";
-import { buildOrganizationView } from "./buildOrganizationView.js";
 import { renderOrganizationNetworks } from "./renderNetworks.js";
 import { renderOrganizationTree } from "./renderTree.js";
 import type { OrganizationView } from "./types.js";
-
-const temporaryDirectories: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
-});
 
 const createView = (): OrganizationView => ({
   contexts: [],
@@ -165,6 +153,15 @@ describe("compiler view renderers", () => {
     expect(output).toContain("general visibility=public write=members");
   });
 
+  it("renders subject-keyed tree annotations", () => {
+    const output = renderOrganizationTree(createView(), {
+      annotationFor: (subject) => subject === "agent:coordinator-agent" ? ["compiled=warn"] : []
+    });
+
+    expect(output).toContain("coordinator: agent coordinator-agent [openclaw] runtime=openclaw  compiled=warn");
+    expect(output).not.toContain("rep-agent [openclaw] runtime=openclaw  compiled=warn");
+  });
+
   it("renders declared network slots and paths when requested", () => {
     const output = renderOrganizationNetworks(createView(), {
       declared: true,
@@ -263,143 +260,4 @@ describe("compiler view renderers", () => {
     expect(representativeLine).not.toContain("wake=");
   });
 
-  it("builds declared and concrete network views from nested Spawnfiles", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-view-networks-"));
-    temporaryDirectories.push(directory);
-    await ensureDirectory(path.join(directory, "agents", "lead"));
-    await ensureDirectory(path.join(directory, "teams", "child", "agents", "rep"));
-    await writeUtf8File(path.join(directory, "agents", "lead", "Spawnfile"), [
-      'spawnfile_version: "0.1"',
-      "kind: agent",
-      "name: lead",
-      "runtime: openclaw",
-      ""
-    ].join("\n"));
-    await writeUtf8File(path.join(directory, "teams", "child", "agents", "rep", "Spawnfile"), [
-      'spawnfile_version: "0.1"',
-      "kind: agent",
-      "name: rep",
-      "runtime: openclaw",
-      "surfaces:",
-      "  moltnet:",
-      "    - network: org",
-      "      rooms:",
-      "        shared:",
-      "          wake: mentions",
-      ""
-    ].join("\n"));
-    await writeUtf8File(path.join(directory, "teams", "child", "Spawnfile"), [
-      'spawnfile_version: "0.1"',
-      "kind: team",
-      "name: child",
-      "members:",
-      "  - id: rep",
-      "    ref: ./agents/rep",
-      "mode: hierarchical",
-      "lead: rep",
-      "external: [rep]",
-      "networks:",
-      "  - id: org",
-      "    provider: moltnet",
-      "    server:",
-      "      mode: managed",
-      "      listen:",
-      "        bind: 127.0.0.1",
-      "        port: 8787",
-      "      store:",
-      "        kind: memory",
-      "      auth:",
-      "        mode: none",
-      "    rooms:",
-      "      - id: shared",
-      "        members: [rep]",
-      ""
-    ].join("\n"));
-    await writeUtf8File(path.join(directory, "Spawnfile"), [
-      'spawnfile_version: "0.1"',
-      "kind: team",
-      "name: parent",
-      "members:",
-      "  - id: lead",
-      "    ref: ./agents/lead",
-      "  - id: child",
-      "    ref: ./teams/child",
-      "mode: swarm",
-      "networks:",
-      "  - id: org",
-      "    provider: moltnet",
-      "    server:",
-      "      mode: managed",
-      "      listen:",
-      "        bind: 127.0.0.1",
-      "        port: 8787",
-      "      store:",
-      "        kind: memory",
-      "      auth:",
-      "        mode: none",
-      "    rooms:",
-      "      - id: shared",
-      "        members: [lead, child]",
-      ""
-    ].join("\n"));
-
-    const view = await buildOrganizationView(directory);
-    const sharedNetwork = view.networks.find((network) => network.id === "org");
-    const parentNetwork = sharedNetwork?.declarations?.find((declaration) =>
-      declaration.declaringTeamName === "parent"
-    );
-    const childNetwork = sharedNetwork?.declarations?.find((declaration) =>
-      declaration.declaringTeamName === "child"
-    );
-
-    expect(view.networks).toHaveLength(1);
-    expect(parentNetwork?.rooms[0]?.declaredMembers).toEqual(["lead", "child"]);
-    expect(parentNetwork?.rooms[0]?.members.map((member) => member.concreteMemberId))
-      .toEqual(["lead", "rep"]);
-    expect(childNetwork?.rooms[0]?.declaredMembers).toEqual(["rep"]);
-    expect(childNetwork?.rooms[0]?.members.map((member) => member.concreteMemberId))
-      .toEqual(["rep"]);
-    expect(renderOrganizationTree(view)).toContain(
-      'network org "org" server=managed auth=none: shared [lead, child]'
-    );
-  });
-
-  it("disambiguates duplicate node names in the view model", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-view-duplicates-"));
-    temporaryDirectories.push(directory);
-    await ensureDirectory(path.join(directory, "agents", "first"));
-    await ensureDirectory(path.join(directory, "agents", "second"));
-    for (const agentDirectory of ["first", "second"]) {
-      await writeUtf8File(path.join(directory, "agents", agentDirectory, "Spawnfile"), [
-        'spawnfile_version: "0.1"',
-        "kind: agent",
-        "name: worker",
-        "runtime: openclaw",
-        ""
-      ].join("\n"));
-    }
-    await writeUtf8File(path.join(directory, "Spawnfile"), [
-      'spawnfile_version: "0.1"',
-      "kind: team",
-      "name: root",
-      "members:",
-      "  - id: first",
-      "    ref: ./agents/first",
-      "  - id: second",
-      "    ref: ./agents/second",
-      "mode: swarm",
-      ""
-    ].join("\n"));
-
-    const view = await buildOrganizationView(directory);
-    const output = renderOrganizationTree(view);
-
-    expect(view.contexts).toEqual([]);
-    expect(view.runtimes).toEqual([]);
-    expect(view.diagnostics).toEqual([]);
-    expect(view.networks).toEqual([]);
-    expect(view.root.networks).toEqual([]);
-    expect(output).toContain("worker [agent:worker]");
-    expect(output).toMatch(/worker \[agent:worker#[a-f0-9]{8}\]/);
-  });
 });

@@ -11,6 +11,7 @@ src/e2e/
 ├── fixtures.ts         # Temporary project materialization from e2e fixtures
 ├── operationalSmoke.ts # spawnfile up smoke for schedules, Moltnet, and workspace resources
 ├── operationalSmokePicoclaw.ts # PicoClaw-specific operational smoke helpers
+├── operationalSmokeStatus.ts # Assertions for operational spawnfile status --live JSON output
 ├── runtimePrompts.ts   # Runtime-specific readiness and prompt checks
 ├── scenarios.ts        # Supported E2E scenario matrix
 └── *.test.ts           # Pure tests for fixture/scenario logic

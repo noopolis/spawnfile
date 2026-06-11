@@ -46,6 +46,7 @@ export default defineConfig({
             { label: 'Teams', slug: 'guides/teams' },
             { label: 'Compiling', slug: 'guides/compiling' },
             { label: 'Docker Packaging', slug: 'guides/docker' },
+            { label: 'Status', slug: 'guides/status' },
           ],
         },
         {
@@ -66,6 +67,7 @@ export default defineConfig({
             { label: 'CONTAINERS.md', slug: 'spec/containers' },
             { label: 'SURFACES.md', slug: 'spec/surfaces' },
             { label: 'RUNTIMES.md', slug: 'spec/runtimes' },
+            { label: 'STATUS.md', slug: 'spec/status' },
           ],
         },
         {

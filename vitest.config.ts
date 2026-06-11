@@ -7,6 +7,7 @@ export default defineConfig({
       exclude: [
         "src/e2e/**",
         "src/**/index.ts",
+        "src/**/*Types.ts",
         "src/**/types.ts",
         "src/cli/index.ts"
       ],

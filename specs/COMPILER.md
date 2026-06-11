@@ -4,7 +4,7 @@ This document is the implementation companion to `SPEC.md`.
 
 `SPEC.md` defines the canonical source format. This file defines the reference compiler shape for v0.1 so the project can move into implementation.
 
-Related specs: `CONTAINERS.md` (container compilation), `SURFACES.md` (portable communication surfaces), `RUNTIMES.md` (runtime registry and version pinning).
+Related specs: `CONTAINERS.md` (container compilation), `SURFACES.md` (portable communication surfaces), `RUNTIMES.md` (runtime registry and version pinning), `STATUS.md` (static/live status and operational diagnostics).
 
 ---
 
@@ -19,7 +19,7 @@ The v0.1 compiler should do four things well:
 
 It should not try to solve packaging, publishing, deployment orchestration, runtime-native channel setup, or runtime coordination in v0.1. The compiler does not inject custom MCP tools, proxy/router processes, or team-internal RPC mechanisms.
 
-The compiler has a write-only runtime boundary. It may write generated files, config, env files, mounted credential stores, generated secrets, and future explicit operator-triggered updates. It must not read spawned runtimes, containers, runtime homes, or agent workspaces to discover identity, infer organization state, rewrite rosters, or maintain live coordination state.
+The compiler has a write-only runtime boundary. It may write generated files, config, env files, mounted credential stores, generated secrets, and future explicit operator-triggered updates. It must not read spawned runtimes, containers, runtime homes, or agent workspaces to discover identity, infer organization state, rewrite rosters, or maintain live coordination state. `spawnfile status --live` is a separate read-only diagnostic command defined in `STATUS.md`; its observations never feed back into compiler identity or roster generation.
 
 ---
 
@@ -484,6 +484,30 @@ If a runtime adapter emits nothing for a team node, the report should still reco
 
 ---
 
+## Status View Projection
+
+`spawnfile view` and `spawnfile status` share one declared-graph projection. Status MUST NOT build a second resolver over raw YAML.
+
+The `OrganizationView` projection should carry enough declared information for static status:
+
+- team and agent tree shape
+- member slots, leads, representatives, and external members
+- runtime names and runtime options
+- workspace doc roles
+- workspace skills
+- workspace resources with id, mount, mode, and sharing
+- environment packages
+- MCP server names and transports
+- execution model provider/name/auth method, without credential material
+- schedule kind and expression
+- declared surfaces and scopes
+- team networks, rooms, and declared/expanded membership
+- policy mode and `on_degrade`
+
+Renderers stay pure. Status computes observations separately and passes them to the shared tree renderer through subject-keyed annotations. Subject keys SHOULD use compile node ids where available (`agent:<id>`, `team:<id>`) and provider-specific keys for non-node subjects (`network:moltnet:<network-id>`, `room:moltnet:<network-id>:<room-id>`, `runtime-instance:<instance-id>`, `deployment-unit:<unit-id>`).
+
+---
+
 ## Compile Report
 
 The report should be JSON by default and written to `spawnfile-report.json`.
@@ -494,11 +518,21 @@ The report should be JSON by default and written to `spawnfile-report.json`.
 {
   "spawnfile_version": "0.1",
   "root": "/abs/path/to/Spawnfile",
+  "generated_at": "2026-06-10T00:00:00.000Z",
+  "output_directory": "/abs/path/to/project/.spawn",
+  "compile_fingerprint": "sf1:9c4e2b...",
   "nodes": [],
   "diagnostics": [],
   "container": {}
 }
 ```
+
+Top-level report rules:
+
+- `generated_at` is a UTC timestamp for stale-compile diagnostics.
+- `output_directory` is the absolute compile output root.
+- `compile_fingerprint` is a stable fingerprint of the compile output used by deployment records and drift detection.
+- The report MUST NOT include secret values, generated token values, or secret-bearing Moltnet config patches.
 
 ### Node Entry Shape
 
@@ -576,10 +610,15 @@ At minimum, this should cover:
 
 - generated root files (`Dockerfile`, `entrypoint.sh`, `.env.example`)
 - installed runtimes
-- published ports
+- internal runtime ports and published host ports as separate data
 - required model/runtime secrets
-- runtime instance config/home paths
+- runtime instance config/home/workspace paths
+- runtime instance `node_ids`, using compile `NodeReport.id` values
 - effective model auth methods per runtime instance
+- persistent mounts and workspace resource backing/link paths
+- sanitized Moltnet node/server plan summaries, including network ids, room ids, server mode, listen/published ports, and auth mode names
+
+The container report is the bridge from compile output to `STATUS.md` deployment records. Runtime instance ids, node ids, and port splits MUST be stable enough for status to answer "which unit hosts this agent?" without inspecting runtime state.
 
 ---
 
@@ -663,6 +702,7 @@ verify the running container rather than only inspecting compile output:
 - a cron schedule wakes the agent through runtime-native scheduling
 - agent-owned workspace resources are linked inside the agent's runtime working directory
 - team-shared workspace resources are linked inside the agent's runtime working directory
+- `spawnfile status --live` can read the detached deployment record, see the container unit, run runtime health probes, and inspect managed Moltnet metadata without reading message bodies
 - model credentials are not required for the smoke path
 
 ## Coverage Targets

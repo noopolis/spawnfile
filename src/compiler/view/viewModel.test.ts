@@ -173,4 +173,228 @@ describe("organization view model", () => {
     );
     expect(output).not.toContain(directory);
   });
+
+  it("builds declared and concrete network views from nested Spawnfiles", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-view-networks-"));
+    temporaryDirectories.push(directory);
+    await ensureDirectory(path.join(directory, "agents", "lead"));
+    await ensureDirectory(path.join(directory, "teams", "child", "agents", "rep"));
+    await writeUtf8File(path.join(directory, "agents", "lead", "Spawnfile"), [
+      'spawnfile_version: "0.1"',
+      "kind: agent",
+      "name: lead",
+      "runtime: openclaw",
+      ""
+    ].join("\n"));
+    await writeUtf8File(path.join(directory, "teams", "child", "agents", "rep", "Spawnfile"), [
+      'spawnfile_version: "0.1"',
+      "kind: agent",
+      "name: rep",
+      "runtime: openclaw",
+      "surfaces:",
+      "  moltnet:",
+      "    - network: org",
+      "      rooms:",
+      "        shared:",
+      "          wake: mentions",
+      ""
+    ].join("\n"));
+    await writeUtf8File(path.join(directory, "teams", "child", "Spawnfile"), [
+      'spawnfile_version: "0.1"',
+      "kind: team",
+      "name: child",
+      "members:",
+      "  - id: rep",
+      "    ref: ./agents/rep",
+      "mode: hierarchical",
+      "lead: rep",
+      "external: [rep]",
+      "networks:",
+      "  - id: org",
+      "    provider: moltnet",
+      "    server:",
+      "      mode: managed",
+      "      listen:",
+      "        bind: 127.0.0.1",
+      "        port: 8787",
+      "      store:",
+      "        kind: memory",
+      "      auth:",
+      "        mode: none",
+      "    rooms:",
+      "      - id: shared",
+      "        members: [rep]",
+      ""
+    ].join("\n"));
+    await writeUtf8File(path.join(directory, "Spawnfile"), [
+      'spawnfile_version: "0.1"',
+      "kind: team",
+      "name: parent",
+      "members:",
+      "  - id: lead",
+      "    ref: ./agents/lead",
+      "  - id: child",
+      "    ref: ./teams/child",
+      "mode: swarm",
+      "networks:",
+      "  - id: org",
+      "    provider: moltnet",
+      "    server:",
+      "      mode: managed",
+      "      listen:",
+      "        bind: 127.0.0.1",
+      "        port: 8787",
+      "      store:",
+      "        kind: memory",
+      "      auth:",
+      "        mode: none",
+      "    rooms:",
+      "      - id: shared",
+      "        members: [lead, child]",
+      ""
+    ].join("\n"));
+
+    const view = await buildOrganizationView(directory);
+    const sharedNetwork = view.networks.find((network) => network.id === "org");
+    const parentNetwork = sharedNetwork?.declarations?.find((declaration) =>
+      declaration.declaringTeamName === "parent"
+    );
+    const childNetwork = sharedNetwork?.declarations?.find((declaration) =>
+      declaration.declaringTeamName === "child"
+    );
+
+    expect(view.networks).toHaveLength(1);
+    expect(parentNetwork?.rooms[0]?.declaredMembers).toEqual(["lead", "child"]);
+    expect(parentNetwork?.rooms[0]?.members.map((member) => member.concreteMemberId))
+      .toEqual(["lead", "rep"]);
+    expect(childNetwork?.rooms[0]?.declaredMembers).toEqual(["rep"]);
+    expect(childNetwork?.rooms[0]?.members.map((member) => member.concreteMemberId))
+      .toEqual(["rep"]);
+    expect(renderOrganizationTree(view)).toContain(
+      'network org "org" server=managed auth=none: shared [lead, child]'
+    );
+  });
+
+  it("disambiguates duplicate node names in the view model", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-view-duplicates-"));
+    temporaryDirectories.push(directory);
+    await ensureDirectory(path.join(directory, "agents", "first"));
+    await ensureDirectory(path.join(directory, "agents", "second"));
+    for (const agentDirectory of ["first", "second"]) {
+      await writeUtf8File(path.join(directory, "agents", agentDirectory, "Spawnfile"), [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: worker",
+        "runtime: openclaw",
+        ""
+      ].join("\n"));
+    }
+    await writeUtf8File(path.join(directory, "Spawnfile"), [
+      'spawnfile_version: "0.1"',
+      "kind: team",
+      "name: root",
+      "members:",
+      "  - id: first",
+      "    ref: ./agents/first",
+      "  - id: second",
+      "    ref: ./agents/second",
+      "mode: swarm",
+      ""
+    ].join("\n"));
+
+    const view = await buildOrganizationView(directory);
+    const output = renderOrganizationTree(view);
+
+    expect(view.contexts).toEqual([]);
+    expect(view.runtimes).toEqual([
+      {
+        name: "openclaw",
+        nodeIds: ["agent:worker", expect.stringMatching(/^agent:worker#[a-f0-9]{8}$/)]
+      }
+    ]);
+    expect(view.diagnostics).toEqual([]);
+    expect(view.networks).toEqual([]);
+    expect(view.root.networks).toEqual([]);
+    expect(output).toContain("worker [agent:worker]");
+    expect(output).toMatch(/worker \[agent:worker#[a-f0-9]{8}\]/);
+  });
+
+  it("projects declared agent details needed by status", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-view-details-"));
+    temporaryDirectories.push(directory);
+    await ensureDirectory(path.join(directory, "skills", "moltnet"));
+    await writeUtf8File(path.join(directory, "IDENTITY.md"), "identity\n");
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "system\n");
+    await writeUtf8File(path.join(directory, "skills", "moltnet", "SKILL.md"), [
+      "---",
+      "name: moltnet",
+      "description: Moltnet skill",
+      "---",
+      "# Moltnet",
+      ""
+    ].join("\n"));
+    await writeUtf8File(path.join(directory, "Spawnfile"), [
+      'spawnfile_version: "0.1"',
+      "kind: agent",
+      "name: analyst",
+      "runtime:",
+      "  name: openclaw",
+      "execution:",
+      "  model:",
+      "    primary:",
+      "      provider: openai",
+      "      name: gpt-5",
+      "      auth:",
+      "        method: api_key",
+      "        key: OPENAI_API_KEY",
+      "policy:",
+      "  mode: warn",
+      "  on_degrade: warn",
+      "schedule:",
+      "  kind: cron",
+      "  cron: \"0 9 * * *\"",
+      "  timezone: UTC",
+      "workspace:",
+      "  docs:",
+      "    identity: IDENTITY.md",
+      "    system: AGENTS.md",
+      "  skills:",
+      "    - ref: ./skills/moltnet",
+      "  resources:",
+      "    - id: product",
+      "      kind: git",
+      "      url: https://example.com/product.git",
+      "      mount: ./repos/product",
+      "      mode: readonly",
+      "environment:",
+      "  packages:",
+      "    - id: gh",
+      "      manager: apt",
+      "      name: gh",
+      "  mcp_servers:",
+      "    - name: search",
+      "      transport: stdio",
+      "      command: search",
+      "surfaces:",
+      "  discord:",
+      "    access:",
+      "      mode: open",
+      ""
+    ].join("\n"));
+
+    const view = await buildOrganizationView(directory);
+
+    expect(view.runtimes).toEqual([{ name: "openclaw", nodeIds: ["agent:analyst"] }]);
+    expect(view.root.declared).toMatchObject({
+      docs: [{ role: "identity" }, { role: "system" }],
+      mcpServers: [{ name: "search", transport: "stdio" }],
+      model: { authMethod: "api_key", name: "gpt-5", provider: "openai" },
+      packages: [{ id: "gh", manager: "apt", name: "gh" }],
+      policy: { mode: "warn", onDegrade: "warn" },
+      resources: [{ id: "product", kind: "git", mode: "readonly", mount: "./repos/product", sharing: "per_agent" }],
+      schedule: { expression: "0 9 * * *", kind: "cron", timezone: "UTC" },
+      skills: [{ name: "moltnet", ref: "./skills/moltnet", requiresMcp: [] }],
+      surfaces: [{ name: "discord", scopes: ["discord"] }]
+    });
+  });
 });

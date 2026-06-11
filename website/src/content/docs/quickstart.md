@@ -118,6 +118,14 @@ The compiler emits runtime-native config and workspace files:
 \-- spawnfile-report.json
 ```
 
+## Check Status
+
+```bash
+spawnfile status .
+```
+
+This reads the authored graph and the compile report without touching Docker, runtimes, or Moltnet. Use it to verify what Spawnfile sees before you run the agent.
+
 ## Build and Run
 
 Once compiled, you can build a Docker image and run it with auth:
@@ -125,10 +133,11 @@ Once compiled, you can build a Docker image and run it with auth:
 ```bash
 spawnfile auth sync --profile dev --env-file .env
 spawnfile build --tag my-assistant
-spawnfile run --tag my-assistant --auth-profile dev
+spawnfile run --tag my-assistant --auth-profile dev --detach
+spawnfile status . --live
 ```
 
-See [Docker Packaging](/guides/docker/) for the full build and auth workflow.
+Live status reads the detached deployment record, inspects the recorded Docker target, runs adapter-owned runtime probes, and checks Moltnet metadata without reading message bodies. See [Docker Packaging](/guides/docker/) for the full build and auth workflow, and [Status](/guides/status/) for operational checks.
 
 ## What's Next
 
@@ -138,3 +147,4 @@ See [Docker Packaging](/guides/docker/) for the full build and auth workflow.
 - [Teams](/guides/teams/) -- define multi-agent teams
 - [Compiling](/guides/compiling/) -- understand the compile pipeline
 - [Docker Packaging](/guides/docker/) -- build and run containers with auth
+- [Status](/guides/status/) -- inspect static and live deployment health

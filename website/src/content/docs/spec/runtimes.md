@@ -147,10 +147,35 @@ Current standardized communication-surface support and access-mode differences s
 
 ---
 
+## Runtime Status Probes
+
+`spawnfile status --live` may ask runtime adapters for health observations. The status command core MUST NOT hard-code runtime names or call runtime-native CLIs directly.
+
+An active runtime adapter may expose status probes. A probe receives the deployment record, the deployment unit, the compile report runtime-instance entry, a deployment-manager gateway, and a timeout budget.
+
+The gateway is the only live-system handle. It supports manager-mediated operations such as:
+
+- `exec(command)` inside the deployment unit
+- `httpGet(port, path)` to a port inside the deployment unit
+- `inspectUnit()` for manager-level unit state
+
+Probe rules:
+
+- Runtime probes may check runtime homes, workspace paths, config paths, scheduler stores, health endpoints, ready endpoints, and runtime-specific daemon state.
+- Probes MUST use the gateway. They MUST NOT create their own Docker client, assume published ports are reachable from the operator host, or inspect unrelated containers.
+- Probes MAY run runtime-local commands through the gateway when that is the runtime's stable health surface.
+- Failed and timed-out probes return `unknown` or `error` observations according to `STATUS.md`; they must not crash the status command.
+- Runtimes without probes render runtime health as `unknown`.
+
+Promoting a runtime to `active` SHOULD include at least one live status probe when the runtime exposes a stable health or readiness surface. If no stable live probe exists, the adapter must document that limitation.
+
+---
+
 ## Relationship To Other Specs
 
 - `SPEC.md` defines the `runtime` field in manifests — the name must match a registered runtime
 - `COMPILER.md` defines how runtime adapters are invoked and how output is grouped by runtime
 - `CONTAINERS.md` defines how runtime container metadata is used to generate Dockerfiles
 - `SURFACES.md` defines the current portable communication-surface contract and runtime support matrix
+- `STATUS.md` defines the adapter-owned live status probe contract
 - `research/RUNTIME-NOTES.md` contains the per-runtime research that informs adapter design

@@ -1,7 +1,74 @@
 import type { ResolvedMoltnetRoomPolicy } from "../types.js";
 
+export interface OrganizationViewDocSummary {
+  role: string;
+  source: string;
+}
+
+export interface OrganizationViewSkillSummary {
+  name: string;
+  ref: string;
+  requiresMcp: string[];
+}
+
+export interface OrganizationViewResourceSummary {
+  id: string;
+  kind: "git" | "volume";
+  mode: "mutable" | "readonly";
+  mount: string;
+  sharing: "per_agent" | "team";
+}
+
+export interface OrganizationViewPackageSummary {
+  id: string;
+  manager: string;
+  name: string;
+  scope?: string;
+  version?: string;
+}
+
+export interface OrganizationViewMcpSummary {
+  name: string;
+  transport: "sse" | "stdio" | "streamable_http";
+}
+
+export interface OrganizationViewModelSummary {
+  authMethod: string;
+  name: string;
+  provider: string;
+}
+
+export interface OrganizationViewScheduleSummary {
+  expression?: string;
+  kind: "cron" | "disabled" | "every";
+  timezone?: string;
+}
+
+export interface OrganizationViewSurfaceSummary {
+  name: string;
+  scopes: string[];
+}
+
+export interface OrganizationViewPolicySummary {
+  mode: string | null;
+  onDegrade: string | null;
+}
+
+export interface OrganizationViewDeclaredSummary {
+  docs: OrganizationViewDocSummary[];
+  mcpServers: OrganizationViewMcpSummary[];
+  model: OrganizationViewModelSummary | null;
+  packages: OrganizationViewPackageSummary[];
+  policy: OrganizationViewPolicySummary;
+  resources: OrganizationViewResourceSummary[];
+  schedule: OrganizationViewScheduleSummary | null;
+  skills: OrganizationViewSkillSummary[];
+  surfaces: OrganizationViewSurfaceSummary[];
+}
+
 export interface OrganizationViewTreeNode {
   children: OrganizationViewTreeEdge[];
+  declared?: OrganizationViewDeclaredSummary;
   displayName: string;
   external?: string[];
   id: string;
@@ -11,6 +78,7 @@ export interface OrganizationViewTreeNode {
   name: string;
   networks?: OrganizationTreeNetworkSummary[];
   runtimeName: string | null;
+  slug?: string;
   source: string;
 }
 
@@ -103,6 +171,11 @@ export interface OrganizationNetworkView {
   declarations?: OrganizationNetworkDeclarationView[];
 }
 
+export interface OrganizationRuntimeView {
+  name: string;
+  nodeIds: string[];
+}
+
 export interface OrganizationView {
   contexts: [];
   diagnostics: [];
@@ -110,10 +183,11 @@ export interface OrganizationView {
   networks: OrganizationNetworkView[];
   projectRoot?: string;
   root: OrganizationViewTreeNode;
-  runtimes: [];
+  runtimes: OrganizationRuntimeView[];
 }
 
 export interface RenderOrganizationViewOptions {
+  annotationFor?: (subjectKey: string) => string[];
   ascii?: boolean;
   color?: boolean;
   declared?: boolean;

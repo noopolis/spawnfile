@@ -47,6 +47,8 @@ execution:
 
 Set `runtime.name` to an adapter-supported runtime and run `spawnfile compile`. The compiler emits that runtime's native files and reports any capability that is degraded or unsupported.
 
+After compile, `spawnfile status` gives a read-only view of declared and compiled state. After a detached `run` or `up`, `spawnfile status --live` inspects the recorded Docker target, runs adapter-owned runtime probes, and checks Moltnet metadata without treating live systems as source of truth.
+
 ## What Spawnfile Targets
 
 Spawnfile targets **autonomous agent runtimes** -- systems that:
