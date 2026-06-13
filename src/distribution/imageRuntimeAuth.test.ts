@@ -95,6 +95,25 @@ describe("prepareImageRuntimeAuthMounts", () => {
     expect(result.mountArgs).toContain(`${importDir}:${home}/.claude`);
   });
 
+  it("throws when an imported auth path does not exist", async () => {
+    const profile: ResolvedAuthProfile = {
+      authHome: "/auth",
+      env: {},
+      imports: { "claude-code": { kind: "claude-code", path: "/no/such/import/dir" } },
+      name: "me",
+      profileDirectory: "/auth/me",
+      profilePath: "/auth/me/profile.json",
+      version: 1
+    };
+    await expect(
+      prepareImageRuntimeAuthMounts({
+        authProfile: profile,
+        report: report(),
+        tempRoot: await tempDir()
+      })
+    ).rejects.toThrow(/Imported auth path for claude-code does not exist/);
+  });
+
   it("produces no mounts when the profile has no matching import", async () => {
     const profile: ResolvedAuthProfile = {
       authHome: "/auth",

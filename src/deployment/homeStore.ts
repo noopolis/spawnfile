@@ -1,5 +1,5 @@
 import path from "node:path";
-import { readdir, rename, writeFile } from "node:fs/promises";
+import { open, readdir, rename, rm, writeFile } from "node:fs/promises";
 
 import { resolveSpawnfileHome } from "../auth/index.js";
 import type { DistributionReport } from "../distribution/index.js";
@@ -20,6 +20,35 @@ export const resolveHomeRecordPath = (deploymentName: string): string =>
 
 export const resolveHomeReportPath = (deploymentName: string): string =>
   path.join(resolveHomeDeploymentDirectory(deploymentName), "spawnfile-report.json");
+
+/**
+ * Acquires an exclusive lock for a home deployment so concurrent `up`
+ * invocations cannot race on the same record (and orphan each other's
+ * containers). Returns a release function. Throws if the deployment is already
+ * locked by another in-flight operation.
+ */
+export const acquireHomeDeploymentLock = async (
+  deploymentName: string
+): Promise<() => Promise<void>> => {
+  const directory = resolveHomeDeploymentDirectory(deploymentName);
+  await ensureDirectory(directory);
+  const lockPath = path.join(directory, ".lock");
+  try {
+    const handle = await open(lockPath, "wx");
+    await handle.close();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new SpawnfileError(
+        "runtime_error",
+        `Deployment "${normalizeDeploymentName(deploymentName)}" is already being modified by another operation`
+      );
+    }
+    throw error;
+  }
+  return async () => {
+    await rm(lockPath, { force: true });
+  };
+};
 
 const writeAtomic = async (filePath: string, content: string): Promise<void> => {
   const temporaryPath = path.join(
