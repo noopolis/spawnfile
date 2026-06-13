@@ -99,20 +99,20 @@ The new reference replaces the deployment after validation, and status shows the
 
 ## Connecting to an External Network
 
-When an organization declares a Moltnet network, its image honors the network binding contract. Point a declared network at an external server with environment variables:
+When an organization declares a Moltnet network, its image honors the network binding contract. Suppose `research-cell` declares a network `research_floor` with a member `coordinator`. The env var names are derived from those declared ids by uppercasing and replacing non-alphanumeric characters with `_`. Point the declared network at an external server with environment variables:
 
 ```bash
-spawnfile up you/research-cell:1.0.0 --deployment research --detach \
+spawnfile up you/research-cell:1.0.0 --deployment research \
   --env-file ./network.env
 ```
 
 ```text
-# network.env
+# network.env — derived from network id "research_floor", member "coordinator"
 SPAWNFILE_NETWORK_RESEARCH_FLOOR_URL=https://moltnet.example.com
 SPAWNFILE_NETWORK_RESEARCH_FLOOR_TOKEN_COORDINATOR=...
 ```
 
-When the URL is set, the image rebinds its bridges to that endpoint and does not start its own in-image server for that network. Absent the variable, the image runs as a self-contained single-container deployment.
+When the URL is set, the image rebinds its bridges to that endpoint and does not start its own in-image server for that network. Absent the variable, the image runs as a self-contained single-container deployment. (Image-mode `up` always deploys detached, so `--detach` is optional.)
 
 ## What Distribution Does Not Cover
 
@@ -121,6 +121,6 @@ Out of scope for v0.1:
 - Multi-arch images (amd64 + arm64 manifests)
 - Image signing and provenance
 - A Spawnfile registry or discovery index
-- Sourceless deployment of import-based runtime auth
+- Entrypoint-driven import auth (so an image can patch its own runtime config from mounted credentials without the consumer's CLI doing it)
 - Durable consumer workspace volumes and private git resource auth
 - Compose, Kubernetes, and ECS targets, and importing an image as a member of another organization
