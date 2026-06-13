@@ -867,15 +867,15 @@ describe("runCli", () => {
     ]);
   });
 
-  it("returns a non-zero exit code on errors", async () => {
+  it("exits 2 with friendly guidance when the Spawnfile path does not exist", async () => {
     const stderr: string[] = [];
     const exitCode = await runCli(["validate", path.join(fixturesRoot, "does-not-exist")], {
       stderr: (message) => stderr.push(message),
       stdout: () => undefined
     });
 
-    expect(exitCode).toBe(1);
-    expect(stderr[0]).toBeTruthy();
+    expect(exitCode).toBe(2);
+    expect(stderr[0]).toContain("No Spawnfile found");
   });
 
   it("formats Spawnfile errors without leaking the internal code", async () => {

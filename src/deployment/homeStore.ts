@@ -27,24 +27,57 @@ export const resolveHomeReportPath = (deploymentName: string): string =>
  * containers). Returns a release function. Throws if the deployment is already
  * locked by another in-flight operation.
  */
+const isProcessAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // ESRCH means no such process (stale); EPERM means it exists but is ours to
+    // not signal — treat as alive to stay safe.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
+
 export const acquireHomeDeploymentLock = async (
   deploymentName: string
 ): Promise<() => Promise<void>> => {
   const directory = resolveHomeDeploymentDirectory(deploymentName);
   await ensureDirectory(directory);
   const lockPath = path.join(directory, ".lock");
-  try {
+
+  const write = async (): Promise<void> => {
     const handle = await open(lockPath, "wx");
-    await handle.close();
+    try {
+      await handle.write(JSON.stringify({ pid: process.pid }));
+    } finally {
+      await handle.close();
+    }
+  };
+
+  try {
+    await write();
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+      throw error;
+    }
+    // A lock exists. Reclaim it only if the owning process is gone (a crashed
+    // deploy must not lock the deployment forever); otherwise it is genuinely busy.
+    let ownerPid: number | null = null;
+    try {
+      ownerPid = (JSON.parse(await readUtf8File(lockPath)) as { pid?: number }).pid ?? null;
+    } catch {
+      ownerPid = null;
+    }
+    if (ownerPid !== null && isProcessAlive(ownerPid)) {
       throw new SpawnfileError(
         "runtime_error",
         `Deployment "${normalizeDeploymentName(deploymentName)}" is already being modified by another operation`
       );
     }
-    throw error;
+    await rm(lockPath, { force: true });
+    await write();
   }
+
   return async () => {
     await rm(lockPath, { force: true });
   };
