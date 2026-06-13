@@ -125,6 +125,28 @@ describe("picoClawAdapter", () => {
     });
   });
 
+  it("bakes claude-cli auth models at compile time for Claude Code", async () => {
+    const result = await picoClawAdapter.compileAgent({
+      ...node,
+      execution: {
+        model: {
+          primary: {
+            auth: { method: "claude-code" },
+            name: "claude-sonnet-4.5",
+            provider: "anthropic"
+          }
+        }
+      }
+    });
+
+    const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
+    expect(config.model_list[0]).toEqual({
+      model: "claude-cli/claude-sonnet-4-5",
+      model_name: "claude-sonnet-4.5"
+    });
+    expect(config.model_list[0].api_key).toBeUndefined();
+  });
+
   it("emits Discord channel config and token binding when Discord is declared", async () => {
     const discordNode: ResolvedAgentNode = {
       ...node,

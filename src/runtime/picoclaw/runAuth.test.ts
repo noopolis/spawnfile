@@ -9,12 +9,7 @@ import {
   requireAuthProfile,
   setAuthProfileEnv
 } from "../../auth/index.js";
-import {
-  ensureDirectory,
-  readUtf8File,
-  removeDirectory,
-  writeUtf8File
-} from "../../filesystem/index.js";
+import { removeDirectory, writeUtf8File } from "../../filesystem/index.js";
 
 import { preparePicoClawRuntimeAuth } from "./runAuth.js";
 
@@ -27,27 +22,6 @@ const createTempDirectory = async (prefix: string): Promise<string> => {
   return directory;
 };
 
-const createContainerConfig = async (
-  outputDirectory: string,
-  configPath: string,
-  content: Record<string, unknown>
-): Promise<void> => {
-  const hostPath = path.join(
-    outputDirectory,
-    "container",
-    "rootfs",
-    ...path.posix.relative("/", configPath).split("/")
-  );
-  await ensureDirectory(path.dirname(hostPath));
-  await writeUtf8File(hostPath, `${JSON.stringify(content, null, 2)}\n`);
-};
-
-const getMountedHostPath = (mountArgs: string[], containerPath: string): string => {
-  const mountIndex = mountArgs.findIndex((value) => value.endsWith(`:${containerPath}`));
-  expect(mountIndex).toBeGreaterThanOrEqual(0);
-  return mountArgs[mountIndex].slice(0, -1 * (containerPath.length + 1));
-};
-
 afterEach(async () => {
   if (previousSpawnfileHome === undefined) {
     delete process.env.SPAWNFILE_HOME;
@@ -58,14 +32,23 @@ afterEach(async () => {
 });
 
 describe("preparePicoClawRuntimeAuth", () => {
-  it("mounts a patched home for Claude Code without rewriting Codex CLI models", async () => {
+  const instance = (overrides: Record<string, unknown> = {}) => ({
+    config_path:
+      "/var/lib/spawnfile/instances/picoclaw/agent-router/picoclaw/config.json",
+    home_path: "/var/lib/spawnfile/instances/picoclaw/agent-router/picoclaw",
+    id: "agent-router",
+    model_auth_methods: { anthropic: "claude-code" as const },
+    model_secrets_required: [],
+    runtime: "picoclaw",
+    ...overrides
+  });
+
+  it("reports the covered model secret for Claude Code without mounting a patched home", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
-    const outputDirectory = await createTempDirectory("spawnfile-picoclaw-out-");
     const tempRoot = await createTempDirectory("spawnfile-picoclaw-run-");
     process.env.SPAWNFILE_HOME = spawnfileHome;
 
     const claudeImport = await registerImportedAuth("dev", "claude-code");
-    const codexImport = await registerImportedAuth("dev", "codex");
     await writeUtf8File(
       path.join(claudeImport.directory, ".credentials.json"),
       JSON.stringify({
@@ -76,260 +59,53 @@ describe("preparePicoClawRuntimeAuth", () => {
         }
       })
     );
-    await writeUtf8File(
-      path.join(codexImport.directory, "auth.json"),
-      JSON.stringify({
-        tokens: {
-          access_token: "codex-access",
-          refresh_token: "codex-refresh"
-        }
-      })
-    );
-
-    const configPath = "/var/lib/spawnfile/instances/picoclaw/agent-router/picoclaw/config.json";
-    const homePath = "/var/lib/spawnfile/instances/picoclaw/agent-router/picoclaw";
-    await createContainerConfig(outputDirectory, configPath, {
-      model_list: [
-        {
-          api_key: "file://secrets/ANTHROPIC_API_KEY",
-          model: "anthropic/claude-sonnet-4",
-          model_name: "claude-sonnet-4"
-        },
-        {
-          model: "codex-cli/gpt-5",
-          model_name: "gpt-5"
-        }
-      ]
-    });
 
     const prepared = await preparePicoClawRuntimeAuth({
       authProfile: await requireAuthProfile("dev"),
       env: {},
-      instance: {
-        config_path: configPath,
-        home_path: homePath,
-        id: "agent-router",
-        model_auth_methods: {
-          anthropic: "claude-code",
-          openai: "codex"
-        },
-        model_secrets_required: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
-        runtime: "picoclaw"
-      },
-      outputDirectory,
+      instance: instance(),
+      outputDirectory: "",
       tempRoot
     });
 
-    expect(prepared.coveredModelSecrets.sort()).toEqual([
-      "ANTHROPIC_API_KEY"
-    ]);
-    expect(prepared.mountArgs).toHaveLength(2);
-
-    const mountedHomePath = getMountedHostPath(prepared.mountArgs, homePath);
-    await expect(readUtf8File(path.join(mountedHomePath, "auth.json"))).rejects.toThrow();
-
-    const patchedConfig = await readUtf8File(path.join(mountedHomePath, "config.json"));
-    expect(patchedConfig).toContain("\"model\": \"claude-cli/claude-sonnet-4\"");
-    expect(patchedConfig).toContain("\"model\": \"codex-cli/gpt-5\"");
-    expect(patchedConfig).not.toContain("\"auth_method\": \"oauth\"");
-    expect(patchedConfig).not.toContain("\"api_key\": \"file://secrets/ANTHROPIC_API_KEY\"");
+    // The claude-cli config is baked into the image at compile time, so run-time
+    // auth only declares the covered secret; the credential import is mounted by
+    // the caller. No source rootfs is read.
+    expect(prepared.coveredModelSecrets).toEqual(["ANTHROPIC_API_KEY"]);
+    expect(prepared.mountArgs).toEqual([]);
   });
 
-  it("returns no mounts when imported auth is not needed", async () => {
+  it("returns no mounts when the profile has no Claude Code import", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
-    const outputDirectory = await createTempDirectory("spawnfile-picoclaw-out-");
     const tempRoot = await createTempDirectory("spawnfile-picoclaw-run-");
     process.env.SPAWNFILE_HOME = spawnfileHome;
-    await setAuthProfileEnv("dev", {});
+    await setAuthProfileEnv("dev", { ANTHROPIC_API_KEY: "already-set" });
 
     const prepared = await preparePicoClawRuntimeAuth({
       authProfile: await requireAuthProfile("dev"),
-      env: { OPENAI_API_KEY: "already-set" },
-      instance: {
-        config_path: "/var/lib/spawnfile/instances/picoclaw/agent-router/picoclaw/config.json",
-        home_path: "/var/lib/spawnfile/instances/picoclaw/agent-router/picoclaw",
-        id: "agent-router",
-        model_auth_methods: {
-          openai: "api_key"
-        },
-        model_secrets_required: ["OPENAI_API_KEY"],
-        runtime: "picoclaw"
-      },
-      outputDirectory,
+      env: { ANTHROPIC_API_KEY: "already-set" },
+      instance: instance(),
+      outputDirectory: "",
       tempRoot
     });
 
-    expect(prepared).toEqual({
-      coveredModelSecrets: [],
-      mountArgs: []
-    });
+    expect(prepared).toEqual({ coveredModelSecrets: [], mountArgs: [] });
   });
 
-  it("leaves Codex-only PicoClaw auth to the mounted .codex import", async () => {
+  it("returns no mounts when the instance has no home path", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
-    const outputDirectory = await createTempDirectory("spawnfile-picoclaw-out-");
     const tempRoot = await createTempDirectory("spawnfile-picoclaw-run-");
     process.env.SPAWNFILE_HOME = spawnfileHome;
-
-    const codexImport = await registerImportedAuth("dev", "codex");
-    await writeUtf8File(
-      path.join(codexImport.directory, "auth.json"),
-      JSON.stringify({
-        tokens: {
-          access_token: "codex-access",
-          refresh_token: "codex-refresh"
-        }
-      })
-    );
+    await registerImportedAuth("dev", "claude-code");
 
     const prepared = await preparePicoClawRuntimeAuth({
       authProfile: await requireAuthProfile("dev"),
       env: {},
-      instance: {
-        config_path: "/var/lib/spawnfile/instances/picoclaw/agent-router/picoclaw/config.json",
-        home_path: "/var/lib/spawnfile/instances/picoclaw/agent-router/picoclaw",
-        id: "agent-router",
-        model_auth_methods: {
-          openai: "codex"
-        },
-        model_secrets_required: [],
-        runtime: "picoclaw"
-      },
-      outputDirectory,
+      instance: instance({ home_path: null }),
+      outputDirectory: "",
       tempRoot
     });
 
-    expect(prepared).toEqual({
-      coveredModelSecrets: [],
-      mountArgs: []
-    });
-  });
-
-  it("supports token-style Claude credentials and ignores non-object model_list entries", async () => {
-    const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
-    const outputDirectory = await createTempDirectory("spawnfile-picoclaw-out-");
-    const tempRoot = await createTempDirectory("spawnfile-picoclaw-run-");
-    process.env.SPAWNFILE_HOME = spawnfileHome;
-
-    const claudeImport = await registerImportedAuth("dev", "claude-code");
-    await writeUtf8File(
-      path.join(claudeImport.directory, ".credentials.json"),
-      JSON.stringify({
-        claudeAiOauth: {
-          accessToken: "claude-access",
-          expiresAt: 1_800_000_000_000
-        }
-      })
-    );
-
-    const configPath = "/var/lib/spawnfile/instances/picoclaw/agent-router/picoclaw/config.json";
-    const homePath = "/var/lib/spawnfile/instances/picoclaw/agent-router/picoclaw";
-    await createContainerConfig(outputDirectory, configPath, {
-      model_list: [
-        null,
-        {
-          api_key: "file://secrets/ANTHROPIC_API_KEY",
-          model: "anthropic/claude-sonnet-4-5",
-          model_name: "claude-sonnet-4-5"
-        }
-      ]
-    });
-
-    const prepared = await preparePicoClawRuntimeAuth({
-      authProfile: await requireAuthProfile("dev"),
-      env: {},
-      instance: {
-        config_path: configPath,
-        home_path: homePath,
-        id: "agent-router",
-        model_auth_methods: {
-          anthropic: "claude-code"
-        },
-        model_secrets_required: ["ANTHROPIC_API_KEY"],
-        runtime: "picoclaw"
-      },
-      outputDirectory,
-      tempRoot
-    });
-
-    const mountedHomePath = getMountedHostPath(prepared.mountArgs, homePath);
-    const patchedConfig = await readUtf8File(path.join(mountedHomePath, "config.json"));
-    expect(patchedConfig).toContain("\"model\": \"claude-cli/claude-sonnet-4-5\"");
-    expect(patchedConfig).not.toContain("\"auth_method\": \"oauth\"");
-    expect(patchedConfig).toContain("null");
-    await expect(readUtf8File(path.join(mountedHomePath, "auth.json"))).rejects.toThrow();
-
-    await expect(
-      preparePicoClawRuntimeAuth({
-        authProfile: await requireAuthProfile("dev"),
-        env: {},
-        instance: {
-          config_path: configPath,
-          home_path: null,
-          id: "agent-router",
-          model_auth_methods: {
-            anthropic: "claude-code"
-          },
-          model_secrets_required: ["ANTHROPIC_API_KEY"],
-          runtime: "picoclaw"
-        },
-        outputDirectory,
-        tempRoot
-      })
-    ).resolves.toEqual({
-      coveredModelSecrets: [],
-      mountArgs: []
-    });
-  });
-
-  it("normalizes dotted Claude model names for claude-cli", async () => {
-    const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
-    const outputDirectory = await createTempDirectory("spawnfile-picoclaw-out-");
-    const tempRoot = await createTempDirectory("spawnfile-picoclaw-run-");
-    process.env.SPAWNFILE_HOME = spawnfileHome;
-
-    const claudeImport = await registerImportedAuth("dev", "claude-code");
-    await writeUtf8File(
-      path.join(claudeImport.directory, ".credentials.json"),
-      JSON.stringify({
-        claudeAiOauth: {
-          accessToken: "claude-access",
-          expiresAt: 1_800_000_000_000
-        }
-      })
-    );
-
-    const configPath = "/var/lib/spawnfile/instances/picoclaw/agent-router/picoclaw/config.json";
-    const homePath = "/var/lib/spawnfile/instances/picoclaw/agent-router/picoclaw";
-    await createContainerConfig(outputDirectory, configPath, {
-      model_list: [
-        {
-          api_key: "file://secrets/ANTHROPIC_API_KEY",
-          model: "anthropic/claude-sonnet-4.6",
-          model_name: "claude-sonnet-4.6"
-        }
-      ]
-    });
-
-    const prepared = await preparePicoClawRuntimeAuth({
-      authProfile: await requireAuthProfile("dev"),
-      env: {},
-      instance: {
-        config_path: configPath,
-        home_path: homePath,
-        id: "agent-router",
-        model_auth_methods: {
-          anthropic: "claude-code"
-        },
-        model_secrets_required: ["ANTHROPIC_API_KEY"],
-        runtime: "picoclaw"
-      },
-      outputDirectory,
-      tempRoot
-    });
-
-    const mountedHomePath = getMountedHostPath(prepared.mountArgs, homePath);
-    const patchedConfig = await readUtf8File(path.join(mountedHomePath, "config.json"));
-    expect(patchedConfig).toContain("\"model\": \"claude-cli/claude-sonnet-4-6\"");
+    expect(prepared).toEqual({ coveredModelSecrets: [], mountArgs: [] });
   });
 });
