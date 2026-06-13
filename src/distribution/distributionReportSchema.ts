@@ -83,7 +83,9 @@ export const distributionReportSchema = z.object({
   }).strict(),
   persistent_mounts: z.array(z.object({
     durability: z.literal("persistent"),
-    id: z.string().min(1),
+    // Sanitized by deriveVolumeName before use, but constrained here too so the
+    // schema alone keeps the volume-name source clean (defense in depth).
+    id: instanceIdSchema,
     kind: z.literal("volume"),
     target: containerPathSchema
   }).strict()),
