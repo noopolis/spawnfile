@@ -31,6 +31,7 @@ import {
   showProjectSurfaces,
   syncProjectAuth
 } from "../compiler/index.js";
+import { consumeImageUp } from "../distribution/index.js";
 import { isSpawnfileError } from "../shared/index.js";
 import { listRuntimeAdapters } from "../runtime/index.js";
 import { registerLifecycleCommands } from "./lifecycleCommands.js";
@@ -80,6 +81,7 @@ export interface CliHandlers {
   listRuntimeAdapters: typeof listRuntimeAdapters; removeProjectSurface: typeof removeProjectSurface;
   requireAuthProfile: typeof requireAuthProfile; runProject: typeof runProject;
   upProject: typeof upProject;
+  consumeImageUp: typeof consumeImageUp;
   setProjectPrimaryModel: typeof setProjectPrimaryModel; setProjectRuntime: typeof setProjectRuntime;
   setProjectSurfaceAccess: typeof setProjectSurfaceAccess; showProjectSurfaces: typeof showProjectSurfaces;
   syncProjectAuth: typeof syncProjectAuth;
@@ -91,7 +93,7 @@ const createDefaultHandlers = (): CliHandlers => ({
   addSubagentProject, addTeamProject, clearProjectModelFallbacks,
   importClaudeCodeAuth, importCodexAuth, importEnvFile,
   initProject, listRuntimeAdapters, removeProjectSurface, requireAuthProfile,
-  runProject, setProjectPrimaryModel, setProjectRuntime, upProject,
+  runProject, setProjectPrimaryModel, setProjectRuntime, upProject, consumeImageUp,
   setProjectSurfaceAccess, showProjectSurfaces, syncProjectAuth
 });
 

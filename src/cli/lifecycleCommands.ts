@@ -1,6 +1,5 @@
 import type { Command } from "commander";
 
-import { consumeImageUp } from "../distribution/index.js";
 import { readRunEnvFile } from "../compiler/runProjectAuth.js";
 import { SpawnfileError } from "../shared/index.js";
 
@@ -184,13 +183,12 @@ export const registerLifecycleCommands = (
           );
         }
 
-        /* v8 ignore start -- sourceless image up is covered by distribution E2E */
         if (upInput.kind === "image") {
           const [authProfile, envFileEnv] = await Promise.all([
             resolveAuthProfileForImage(handlers, options.authProfile),
             readRunEnvFile(options.envFile)
           ]);
-          const consumed = await consumeImageUp(upInput.ref, {
+          const consumed = await handlers.consumeImageUp(upInput.ref, {
             authProfile,
             authProfileName: options.authProfile ?? null,
             authValues: authProfile?.env ?? {},
@@ -207,7 +205,6 @@ export const registerLifecycleCommands = (
           streams.stdout(`record: ${consumed.recordPath}`);
           return;
         }
-        /* v8 ignore stop */
 
         const result = await handlers.upProject(inputPath, {
           authProfile: options.authProfile,
