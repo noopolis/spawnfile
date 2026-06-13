@@ -17,6 +17,7 @@ import {
   renderImageInterface
 } from "../distribution/index.js";
 import { collectRegistryDriftObservations } from "../status/index.js";
+import { resolveProjectOutputDirectory } from "../filesystem/index.js";
 import { DEFAULT_OUTPUT_DIRECTORY } from "../shared/index.js";
 
 import { resolveCommandInput } from "./resolveCommandInput.js";
@@ -405,7 +406,11 @@ export const executeStatusCommand = async (
     return selectorInput;
   }
 
-  const outputDirectory = path.resolve(options.out ?? DEFAULT_OUTPUT_DIRECTORY);
+  const outputDirectory = resolveProjectOutputDirectory(
+    inputPath,
+    options.out,
+    DEFAULT_OUTPUT_DIRECTORY
+  );
   const view = await handlers.buildOrganizationView(inputPath);
   const selectorResult = resolveStatusSelector(view, selectorInput);
   if (selectorResult?.kind === "failure") {
@@ -499,7 +504,7 @@ export const registerStatusCommand = (
     .command("status")
     .description("Show static Spawnfile organization status")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
-    .option("--out <dir>", "Compile output directory", DEFAULT_OUTPUT_DIRECTORY)
+    .option("--out <dir>", "Compile output directory")
     .option("--json", "Render machine-readable JSON")
     .option("--pretty", "Render human output")
     .option("--quiet", "Render only summary and non-ok observations")

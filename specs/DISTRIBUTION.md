@@ -94,7 +94,7 @@ Image and project deployments share `spawnfile.deployment.v2`. A v1 read-compati
 
 ## Record Stores
 
-- Project deployments live under the project's `.spawn/deployments/`.
+- Project deployments live under the project's `.spawn/deployments/`. The default output directory resolves under the resolved project argument, not the process working directory, so `spawnfile compile ./org` and `spawnfile status ./org` agree on `./org/.spawn`. An explicit `--out` overrides this.
 - Image deployments live under the Spawnfile home (`SPAWNFILE_HOME`, default `~/.spawnfile`) at `deployments/<name>/record.json` plus the cached `spawnfile-report.json`.
 - Store selection follows the argument: a project path reads the project store; an image ref or a bare `--deployment` reads the home store. Bare `status --deployment <name>` reads the home store; project-store status requires an explicit path. Errors name only the searched store.
 

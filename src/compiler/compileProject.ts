@@ -334,7 +334,11 @@ export const compileProject = async (
   options: CompileProjectOptions = {}
 ): Promise<CompileProjectResult> => {
   const plan = await buildCompilePlan(inputPath);
-  const outputDirectory = path.resolve(options.outputDirectory ?? DEFAULT_OUTPUT_DIRECTORY);
+  // The default output directory lives under the resolved project root, not the
+  // process working directory, so `spawnfile compile ./org` writes ./org/.spawn.
+  const outputDirectory = options.outputDirectory
+    ? path.resolve(options.outputDirectory)
+    : path.join(path.dirname(plan.root), DEFAULT_OUTPUT_DIRECTORY);
 
   if (options.clean ?? true) {
     await removeDirectory(outputDirectory);

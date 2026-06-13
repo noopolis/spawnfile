@@ -29,6 +29,22 @@ export const getManifestPath = (inputPath: string): string =>
 export const getProjectRoot = (manifestPath: string): string =>
   path.dirname(manifestPath);
 
+/**
+ * Resolves the output/record directory for a project argument. An explicit
+ * `--out` is honored as given; otherwise the default lives under the resolved
+ * project root, not the process working directory.
+ */
+export const resolveProjectOutputDirectory = (
+  inputPath: string,
+  outOption: string | undefined,
+  defaultOutputName: string
+): string => {
+  if (outOption) {
+    return path.resolve(outOption);
+  }
+  return path.join(getProjectRoot(getManifestPath(inputPath)), defaultOutputName);
+};
+
 export const resolveProjectPath = (
   manifestPath: string,
   relativePath: string

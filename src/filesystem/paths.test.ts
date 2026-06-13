@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertPortableRelativePath,
   getManifestPath,
+  resolveProjectOutputDirectory,
   resolveProjectPath,
   toPosixPath
 } from "./paths.js";
@@ -46,5 +47,25 @@ describe("paths", () => {
 
   it("normalizes separators to posix form", () => {
     expect(toPosixPath(path.join("a", "b"))).toBe("a/b");
+  });
+
+  describe("resolveProjectOutputDirectory", () => {
+    it("defaults to .spawn under the resolved project directory", () => {
+      expect(resolveProjectOutputDirectory("/abs/org", undefined, ".spawn")).toBe(
+        path.join("/abs/org", ".spawn")
+      );
+    });
+
+    it("resolves the project root from a Spawnfile path argument", () => {
+      expect(resolveProjectOutputDirectory("/abs/org/Spawnfile", undefined, ".spawn")).toBe(
+        path.join("/abs/org", ".spawn")
+      );
+    });
+
+    it("honors an explicit --out resolved against cwd", () => {
+      expect(resolveProjectOutputDirectory("/abs/org", "build/out", ".spawn")).toBe(
+        path.resolve("build/out")
+      );
+    });
   });
 });
