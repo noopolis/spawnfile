@@ -1422,6 +1422,16 @@ spawnfile run [path] [--out <dir>] [--tag <image>] [--auth-profile <name>] [--en
 spawnfile publish [path] --tag <image-ref> [--out <dir>]
 ```
 
+#### Exit Codes
+
+All commands share one convention:
+
+- `0` — success.
+- `2` — usage or input error: bad flags or arguments, a missing or unresolvable project path or image reference, and invalid or malformed manifests.
+- `1` — runtime failure: a compile, build, Docker, or other operation that failed after input validation passed.
+
+Per-command notes reference this convention rather than restating exit numbers.
+
 #### `spawnfile init`
 
 Scaffolds a new Spawnfile project in the current directory.
@@ -1537,7 +1547,7 @@ Validates a Spawnfile project without compiling.
 - MUST perform schema validation and file reference checks
 - MUST walk the manifest graph and detect cycles
 - MUST NOT invoke runtime adapters or emit output files
-- Exit codes: 0 success; 2 usage/input errors (invalid manifest, missing/unresolvable path); 1 runtime failures
+- Exit codes follow the shared convention (see Exit Codes above): invalid input or a missing path exits 2; runtime failures exit 1
 
 #### `spawnfile view`
 
@@ -1570,7 +1580,7 @@ Compiles a Spawnfile project to runtime-specific output.
 - MUST perform all validation, then invoke adapters and emit output
 - MUST emit a compile report
 - MUST enforce the project's `policy` block
-- Exit codes: 0 success; 2 usage/input errors; 1 runtime failures
+- Exit codes follow the shared convention (see Exit Codes above)
 
 #### `spawnfile status`
 
@@ -1633,6 +1643,16 @@ Runs a previously built image with the compiled project's published ports and au
 - MUST compile the project before deriving runtime wiring
 - MUST apply model/runtime auth at run time, not build time
 - MUST write `.spawn/deployments/<name>.json` only after successful detached start
+
+#### `spawnfile publish`
+
+Compiles, builds, verifies, and pushes the organization image to an OCI registry. Operates on a project path, not an image reference. See `DISTRIBUTION.md`.
+
+- `--tag` is required and is the registry image reference to push
+- MUST verify the embedded distribution report is path-free and secret-free before pushing
+- Prints the pushed digest on success
+
+`spawnfile up` and `spawnfile status` additionally accept an image reference in place of a project path (with `--image` to force image interpretation, `--pull` to refresh, and `--pull-check` on status for registry drift); `DISTRIBUTION.md` is the normative source for that surface. Image-mode `up` is always detached.
 
 #### `spawnfile auth`
 

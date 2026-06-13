@@ -1,6 +1,10 @@
 import path from "node:path";
 
 import type { ResolvedAuthProfile } from "../auth/index.js";
+import {
+  loadImportedClaudeCodeCredential,
+  loadImportedCodexCredential
+} from "../auth/index.js";
 import { fileExists } from "../filesystem/index.js";
 import { getRuntimeAdapter } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
@@ -74,6 +78,21 @@ export const prepareImageRuntimeAuthMounts = async (
       throw new SpawnfileError(
         "validation_error",
         `Imported auth path for ${kind} does not exist: ${entry.path}`
+      );
+    }
+    // The directory existing is not enough: a registered import whose credential
+    // file is missing, expired, or malformed would mount cleanly but produce a
+    // container that cannot authenticate. Load it now so the failure surfaces
+    // before the container starts, mirroring the project-deployment path.
+    const credential =
+      kind === "claude-code"
+        ? await loadImportedClaudeCodeCredential(entry.path)
+        : await loadImportedCodexCredential(entry.path);
+    if (!credential) {
+      throw new SpawnfileError(
+        "validation_error",
+        `Imported ${kind} auth at ${entry.path} has no usable credential. ` +
+          `Re-run the ${kind} login (or re-import) before deploying this image.`
       );
     }
     for (const home of runtimeHomes) {

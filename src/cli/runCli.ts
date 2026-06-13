@@ -32,7 +32,7 @@ import {
   syncProjectAuth
 } from "../compiler/index.js";
 import { consumeImageUp } from "../distribution/index.js";
-import { isSpawnfileError } from "../shared/index.js";
+import { errorExitCode, isSpawnfileError } from "../shared/index.js";
 import { listRuntimeAdapters } from "../runtime/index.js";
 import { registerLifecycleCommands } from "./lifecycleCommands.js";
 import { registerModelCommands } from "./modelCommands.js";
@@ -141,11 +141,6 @@ const isCommanderError = (error: unknown): error is { code: string; exitCode: nu
     && typeof candidate.exitCode === "number";
 };
 
-// Usage/input failures exit 2; runtime failures exit 1.
-const USAGE_ERROR_CODES = new Set(["validation_error", "invalid_manifest"]);
-
-const cliErrorExitCode = (error: unknown): number =>
-  isSpawnfileError(error) && USAGE_ERROR_CODES.has(error.code) ? 2 : 1;
 
 const formatCliErrorMessage = (error: unknown): string => {
   if (isSpawnfileError(error)) {
@@ -382,6 +377,6 @@ export const runCli: RunCli = async (
     streams.stderr(`error: ${formatCliErrorMessage(error)}`);
     // Usage/input errors exit 2; runtime failures exit 1, matching the
     // documented status exit-code contract across all commands.
-    return cliErrorExitCode(error);
+    return errorExitCode(error);
   }
 };

@@ -57,6 +57,27 @@ describe("renderImageInterface", () => {
     expect(text).toContain("agent:coordinator  openclaw");
     expect(text).toContain("ANTHROPIC_API_KEY");
     expect(text).toContain("Published ports: 8080");
+    expect(text).toContain("next: spawnfile up you/org:1.0.0 --auth-profile <profile>");
+    expect(text).toContain("supply the required secrets above");
+  });
+
+  it("omits the secret-supply hint when no secrets are required", () => {
+    const noSecretReport = buildDistributionReport({
+      envVariables: [],
+      generatedAt: "2026-06-13T00:00:00.000Z",
+      internalPorts: [],
+      modelAuthMethods: { anthropic: "api_key" },
+      moltnetNetworks: [],
+      organization: { agents: [], project: "bare", teams: [] },
+      persistentMounts: [],
+      portMappings: [],
+      publishedPorts: [],
+      resources: [],
+      runtimeInstances: []
+    });
+    const text = renderImageInterface(noSecretReport, { imageRef: "you/bare:1.0.0" });
+    expect(text).toContain("next: spawnfile up you/bare:1.0.0 --auth-profile <profile>");
+    expect(text).not.toContain("supply the required secrets above");
   });
 
   it("renders machine JSON when requested", () => {

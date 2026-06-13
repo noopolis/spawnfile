@@ -110,5 +110,11 @@ export const renderImageInterface = (
     lines.push(`Published ports: ${summary.ports.join(", ")}`);
   }
 
+  lines.push("");
+  lines.push(`next: spawnfile up ${summary.imageRef} --auth-profile <profile>`);
+  if (summary.requiredSecrets.length > 0) {
+    lines.push("  supply the required secrets above via that profile or --env-file");
+  }
+
   return lines.join("\n");
 };

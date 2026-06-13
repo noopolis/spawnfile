@@ -50,6 +50,8 @@ export interface ConsumeImageUpResult {
   containerName: string;
   deploymentName: string;
   imageRef: string;
+  /** The ref/digest this redeploy replaced, or null for a first deploy. */
+  previous: { digest: string | null; ref: string } | null;
   record: DeploymentRecord;
   recordPath: string;
 }
@@ -162,7 +164,9 @@ const consumeImageUpLocked = async (
   if (alreadyExists && !isExplicitName) {
     throw new SpawnfileError(
       "validation_error",
-      `Deployment "${deploymentName}" already exists; pass --deployment to redeploy it explicitly`
+      `Deployment "${deploymentName}" already exists (derived from image ${imageRef}). ` +
+        `To redeploy it, re-run with --deployment ${deploymentName}; ` +
+        "to create a separate one, pass a different --deployment <name>."
     );
   }
 
@@ -196,6 +200,10 @@ const consumeImageUpLocked = async (
 
   const target = await resolveExistingOrNewTarget(deploymentName, alreadyExists, options);
 
+  // Capture what this redeploy replaces so the caller can show previous → new
+  // ref/digest, per specs/DISTRIBUTION.md. Null on a first deploy.
+  const previous = alreadyExists ? await readPreviousSource(deploymentName) : null;
+
   const runDocker = options.runDocker ?? createConsumerDockerRunner(dockerCommand, baseArgs);
   const containerName = containerNameFor(deploymentName);
   const projectSlug = normalizeProjectLabelSlug(report.organization.project);
@@ -212,6 +220,22 @@ const consumeImageUpLocked = async (
   try {
     await writeFile(envFilePath, renderEnvFileContent(env), "utf8");
 
+    // Prepare import-based model auth (the consumer's Claude/Codex login) and
+    // validate its credentials BEFORE the destructive swap below. The OAuth-mode
+    // config is already baked into the image; this only resolves the credential
+    // mounts. Doing it first guarantees an unusable import fails while the live
+    // container is still untouched, never mid-swap.
+    const authMountArgs: string[] =
+      options.authProfile && availableImports.length > 0
+        ? (
+            await prepareImageRuntimeAuthMounts({
+              authProfile: options.authProfile,
+              report,
+              tempRoot: workDir
+            })
+          ).mountArgs
+        : [];
+
     const liveExists = await containerExists(runDocker, containerName);
     if (liveExists) {
       await runDocker(["rename", containerName, backupName]);
@@ -225,16 +249,7 @@ const consumeImageUpLocked = async (
     for (const mount of report.persistent_mounts) {
       runArgs.push("-v", `${deriveVolumeName(deploymentName, mount.id)}:${mount.target}`);
     }
-    // Inject import-based model auth (the consumer's Claude/Codex login) when the
-    // profile provides it. The OAuth-mode config is already baked into the image.
-    if (options.authProfile && availableImports.length > 0) {
-      const auth = await prepareImageRuntimeAuthMounts({
-        authProfile: options.authProfile,
-        report,
-        tempRoot: workDir
-      });
-      runArgs.push(...auth.mountArgs);
-    }
+    runArgs.push(...authMountArgs);
     const labels = createDockerDeploymentLabels({
       compileFingerprint: inspection.compileFingerprint,
       deployment: deploymentName,
@@ -299,11 +314,26 @@ const consumeImageUpLocked = async (
       containerName,
       deploymentName,
       imageRef,
+      previous,
       record,
       recordPath: written.recordPath
     };
   } finally {
     await rm(workDir, { force: true, recursive: true }).catch(() => undefined);
+  }
+};
+
+const readPreviousSource = async (
+  deploymentName: string
+): Promise<{ digest: string | null; ref: string } | null> => {
+  try {
+    const existing = await readHomeDeploymentRecord(deploymentName);
+    if (existing.source.kind !== "image") {
+      return null;
+    }
+    return { digest: existing.source.digest, ref: existing.source.ref };
+  } catch {
+    return null;
   }
 };
 
