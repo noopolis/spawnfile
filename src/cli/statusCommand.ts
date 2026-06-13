@@ -18,7 +18,7 @@ import {
 } from "../distribution/index.js";
 import { collectRegistryDriftObservations } from "../status/index.js";
 import { resolveProjectOutputDirectory } from "../filesystem/index.js";
-import { DEFAULT_OUTPUT_DIRECTORY, errorExitCode } from "../shared/index.js";
+import { DEFAULT_OUTPUT_DIRECTORY, errorExitCode, SpawnfileError } from "../shared/index.js";
 
 import { resolveCommandInput } from "./resolveCommandInput.js";
 import { loadedImageCompileReport } from "../status/index.js";
@@ -292,7 +292,20 @@ const runHomeDeploymentStatus = async (
   try {
     const record = await readHomeDeploymentRecord(targetName);
     void record;
-    report = parseDistributionReport(JSON.parse(await readHomeDeploymentReport(targetName)));
+    const raw = await readHomeDeploymentReport(targetName);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      // A corrupt cached report is bad input, not a runtime failure: exit 2.
+      throw new SpawnfileError(
+        "validation_error",
+        `Cached report for "${targetName}" is not valid JSON: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+    report = parseDistributionReport(parsed);
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error), exitCode: errorExitCode(error) };
   }

@@ -11,23 +11,43 @@ const secretEntrySchema = z.object({
   required: z.boolean()
 }).strict();
 
+// Path fields from an untrusted image flow into `docker run -v` mount specs. A
+// crafted value containing `:` would inject extra mount fields (e.g. drop `:ro`
+// or add options), and `..` could redirect the mount target. Constrain every
+// path the consumer interpolates to a clean absolute POSIX path so a hostile
+// report is rejected up front; a legitimately compiled image always satisfies this.
+const containerPathSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) =>
+      value.startsWith("/") &&
+      !value.includes(":") &&
+      !/\s/.test(value) &&
+      !value.split("/").includes(".."),
+    { message: "must be a clean absolute POSIX path (no ':', whitespace, or '..' segment)" }
+  );
+
+// Ports are interpolated into `-p host:container`; bound them to the valid TCP range.
+const portSchema = z.number().int().min(1).max(65535);
+
 const runtimeInstanceSchema = z.object({
-  config_path: z.string(),
-  home_path: z.string().nullable(),
+  config_path: containerPathSchema,
+  home_path: containerPathSchema.nullable(),
   id: z.string().min(1),
-  internal_port: z.number().nullable(),
+  internal_port: portSchema.nullable(),
   model_auth_methods: z.record(z.string(), z.string()),
   model_secrets_required: z.array(z.string()),
   node_ids: z.array(z.string()),
-  published_port: z.number().nullable(),
+  published_port: portSchema.nullable(),
   runtime: z.string().min(1),
-  workspace_path: z.string()
+  workspace_path: containerPathSchema
 }).strict();
 
 export const distributionReportSchema = z.object({
   compile_fingerprint: z.string().min(1),
   generated_at: z.string().min(1),
-  internal_ports: z.array(z.number()),
+  internal_ports: z.array(portSchema),
   model_auth_methods: z.record(z.string(), z.string()),
   moltnet: z.object({
     networks: z.array(z.object({
@@ -54,13 +74,13 @@ export const distributionReportSchema = z.object({
     durability: z.literal("persistent"),
     id: z.string().min(1),
     kind: z.literal("volume"),
-    target: z.string().min(1)
+    target: containerPathSchema
   }).strict()),
   port_mappings: z.array(z.object({
-    internal_port: z.number(),
-    published_port: z.number()
+    internal_port: portSchema,
+    published_port: portSchema
   }).strict()),
-  ports: z.array(z.number()),
+  ports: z.array(portSchema),
   resources: z.array(z.object({
     id: z.string().min(1),
     kind: z.union([z.literal("git"), z.literal("volume")]),

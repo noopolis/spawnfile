@@ -47,4 +47,37 @@ describe("parseDistributionReport", () => {
     (report.secrets.model as unknown) = [{ name: "X" }];
     expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/);
   });
+
+  it("rejects a mount target with a colon (mount-spec injection)", () => {
+    const report = validReport();
+    report.persistent_mounts = [
+      { durability: "persistent", id: "store", kind: "volume", target: "/data:ro,z" }
+    ];
+    expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/);
+  });
+
+  it("rejects a runtime home_path containing '..'", () => {
+    const report = validReport();
+    report.runtime_instances = [
+      {
+        config_path: "/var/lib/spawnfile/x/openclaw.json",
+        home_path: "/var/lib/../../etc",
+        id: "agent-x",
+        internal_port: null,
+        model_auth_methods: { anthropic: "api_key" },
+        model_secrets_required: [],
+        node_ids: ["agent:x"],
+        published_port: null,
+        runtime: "openclaw",
+        workspace_path: "/w"
+      }
+    ];
+    expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/);
+  });
+
+  it("rejects an out-of-range published port", () => {
+    const report = validReport();
+    report.ports = [70000];
+    expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/);
+  });
 });
