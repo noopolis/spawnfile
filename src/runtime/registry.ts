@@ -161,7 +161,7 @@ export const assertRuntimeCanCompile = async (
   const registeredRuntime = await getRegisteredRuntime(runtimeName);
   if (!registeredRuntime) {
     throw new SpawnfileError(
-      "runtime_error",
+      "validation_error",
       `Unknown runtime binding: ${runtimeName}`
     );
   }

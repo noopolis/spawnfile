@@ -71,7 +71,7 @@ A directory wins over a same-spelled ref unless `--image` is set. Image-mode `ru
 
 ## Consumer Flow
 
-`spawnfile up <image-ref> --detach` never compiles or builds. It:
+Image-mode `up` is always detached (it records a deployment and returns), so `--detach` is optional for an image reference. `spawnfile up <image-ref>` never compiles or builds. It:
 
 1. Pulls the image if needed (`--pull` forces a refresh).
 2. Inspects labels and verifies `com.spawnfile.image_contract`.
