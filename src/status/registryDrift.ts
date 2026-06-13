@@ -36,16 +36,20 @@ const defaultResolveDigest: RegistryDigestResolver = async (imageRef, baseArgs) 
       }
       try {
         const parsed = JSON.parse(stdout.join("")) as unknown;
-        const entries = Array.isArray(parsed) ? parsed : [parsed];
-        for (const entry of entries) {
-          const digest = (entry as { Descriptor?: { digest?: string } }).Descriptor?.digest
-            ?? (entry as { digest?: string }).digest;
-          if (typeof digest === "string" && digest.length > 0) {
-            resolve(digest);
-            return;
-          }
+        // A single-arch tag resolves to one manifest object whose
+        // `Descriptor.digest` equals the digest RepoDigests records at deploy
+        // time. A multi-arch tag resolves to a JSON ARRAY of per-platform
+        // manifests; each `Descriptor.digest` is a CHILD digest, never the
+        // manifest-list (index) digest that was recorded — comparing one would
+        // report drift on every check. We cannot derive the index digest from
+        // this command, so report "unknown" rather than a false positive.
+        if (Array.isArray(parsed)) {
+          resolve(null);
+          return;
         }
-        resolve(null);
+        const digest = (parsed as { Descriptor?: { digest?: string } }).Descriptor?.digest
+          ?? (parsed as { digest?: string }).digest;
+        resolve(typeof digest === "string" && digest.length > 0 ? digest : null);
       } catch {
         resolve(null);
       }

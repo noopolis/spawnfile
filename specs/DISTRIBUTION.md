@@ -67,7 +67,7 @@ SPAWNFILE_NETWORK_<ID>_TOKEN[_<MEMBER>]=<admission credential>
 3. `--image` forces image interpretation (including bare names).
 4. Anything else is a usage error (exit 2).
 
-A directory wins over a same-spelled ref unless `--image` is set. Image-mode `run` is unsupported and exits 2 pointing to `up <image-ref> --detach`.
+A directory wins over a same-spelled ref unless `--image` is set. Image-mode `run` is unsupported and exits 2 pointing to `up <image-ref> --auth-profile <profile>` (image deployments always detach; `--env-file` adds extra secrets).
 
 ## Consumer Flow
 
@@ -110,7 +110,7 @@ Explicit `up <new-ref> --detach --deployment <name>` replaces an existing deploy
 
 ## Registry Drift
 
-Behind `--pull-check` (networked, never default), status compares the recorded `source.digest` against the digest the tag currently resolves to: `warn` on a newer published build, `ok` on a match, `unknown` on a null recorded digest, and a digest-pinned ref skips the lookup as `ok`.
+Behind `--pull-check` (networked, never default), status compares the recorded `source.digest` against the digest the tag currently resolves to: `warn` on a newer published build, `ok` on a match, `unknown` on a null recorded digest, and a digest-pinned ref skips the lookup as `ok`. A multi-arch tag (manifest list) also resolves to `unknown`: the recorded digest is the index digest, which cannot be derived from the per-platform manifests the lookup returns, so drift is reported as undeterminable rather than as a false positive.
 
 ## Creator Flow
 
