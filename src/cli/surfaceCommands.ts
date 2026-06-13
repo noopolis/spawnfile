@@ -39,6 +39,7 @@ export const registerSurfaceCommands = (
 
   surfaceCommand
     .command("add")
+    .description("Attach a surface to an agent")
     .argument("<surface>", "Surface name")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .option("--bot-token-secret <env>", "Override the bot token env var name")
@@ -71,6 +72,7 @@ export const registerSurfaceCommands = (
 
   surfaceCommand
     .command("remove")
+    .description("Detach a surface from an agent")
     .argument("<surface>", "Surface name")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .option("--recursive", "Update the target project and its descendants")
@@ -89,6 +91,7 @@ export const registerSurfaceCommands = (
 
   surfaceCommand
     .command("set-access")
+    .description("Set an agent's access mode for a surface")
     .argument("<surface>", "Surface name")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .requiredOption("--mode <mode>", "Access mode")
@@ -133,6 +136,7 @@ export const registerSurfaceCommands = (
 
   surfaceCommand
     .command("show")
+    .description("Show an agent's resolved surfaces")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .option("--recursive", "Show descendant agent surfaces too")
     .action(async (inputPath: string, options: { recursive?: boolean }) => {
