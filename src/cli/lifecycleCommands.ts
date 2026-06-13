@@ -1,6 +1,22 @@
 import type { Command } from "commander";
 
+import { consumeImageUp } from "../distribution/index.js";
+import { readRunEnvFile } from "../compiler/runProjectAuth.js";
+import { SpawnfileError } from "../shared/index.js";
+
+import { resolveCommandInput } from "./resolveCommandInput.js";
 import type { CliHandlers, CliStreams } from "./runCli.js";
+
+const resolveAuthValuesForImage = async (
+  handlers: CliHandlers,
+  authProfile: string | undefined
+): Promise<Record<string, string>> => {
+  if (!authProfile || !handlers.requireAuthProfile) {
+    return {};
+  }
+  const profile = await handlers.requireAuthProfile(authProfile);
+  return profile.env ?? {};
+};
 
 export const registerLifecycleCommands = (
   program: Command,
@@ -45,6 +61,7 @@ export const registerLifecycleCommands = (
     .option("--docker-command <command>", "Docker command")
     .option("--name <container>", "Docker container name")
     .option("--env-file <file>", "Path to an env file for runtime secrets")
+    .option("--image", "Interpret the argument as an image reference")
     .option("-d, --detach", "Run the container in detached mode")
     .action(
       async (
@@ -56,11 +73,25 @@ export const registerLifecycleCommands = (
           deployment?: string;
           dockerCommand?: string;
           envFile?: string;
+          image?: boolean;
           name?: string;
           out?: string;
           tag?: string;
         }
       ) => {
+        const runInput = resolveCommandInput(inputPath, { forceImage: options.image });
+        if (runInput.kind === "image" || (runInput.kind === "invalid" && options.image)) {
+          throw new SpawnfileError(
+            "validation_error",
+            `Image-mode run is not supported. Use: spawnfile up ${inputPath} --detach`
+          );
+        }
+        if (runInput.kind === "invalid") {
+          throw new SpawnfileError(
+            "validation_error",
+            `Cannot resolve ${inputPath} as a project path or image reference`
+          );
+        }
         const result = await handlers.runProject(inputPath, {
           authProfile: options.authProfile,
           containerName: options.name,
@@ -82,7 +113,7 @@ export const registerLifecycleCommands = (
 
   program
     .command("up")
-    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
+    .argument("[path]", "Project directory, Spawnfile path, or image reference", process.cwd())
     .option("-o, --out <directory>", "Output directory")
     .option("-t, --tag <image>", "Docker image tag")
     .option("--auth-profile <name>", "Local Spawnfile auth profile")
@@ -91,6 +122,8 @@ export const registerLifecycleCommands = (
     .option("--docker-command <command>", "Docker command")
     .option("--name <container>", "Docker container name")
     .option("--env-file <file>", "Path to an env file for runtime secrets")
+    .option("--image", "Interpret the argument as an image reference")
+    .option("--pull", "Pull the image before deploying")
     .option("-d, --detach", "Run the container in detached mode")
     .action(
       async (
@@ -102,11 +135,43 @@ export const registerLifecycleCommands = (
           deployment?: string;
           dockerCommand?: string;
           envFile?: string;
+          image?: boolean;
           name?: string;
           out?: string;
+          pull?: boolean;
           tag?: string;
         }
       ) => {
+        const upInput = resolveCommandInput(inputPath, { forceImage: options.image });
+        if (upInput.kind === "invalid") {
+          throw new SpawnfileError(
+            "validation_error",
+            `Cannot resolve ${inputPath} as a project path or image reference`
+          );
+        }
+
+        if (upInput.kind === "image") {
+          const [authValues, envFileEnv] = await Promise.all([
+            resolveAuthValuesForImage(handlers, options.authProfile),
+            readRunEnvFile(options.envFile)
+          ]);
+          const consumed = await consumeImageUp(upInput.ref, {
+            authProfileName: options.authProfile ?? null,
+            authValues,
+            deploymentName: options.deployment,
+            dockerCommand: options.dockerCommand,
+            dockerContext: options.context,
+            envFileEnv,
+            envFilePath: options.envFile ?? null,
+            pull: options.pull
+          });
+          streams.stdout(`deployed image ${consumed.imageRef}`);
+          streams.stdout(`deployment: ${consumed.deploymentName}`);
+          streams.stdout(`running container ${consumed.containerName}`);
+          streams.stdout(`record: ${consumed.recordPath}`);
+          return;
+        }
+
         const result = await handlers.upProject(inputPath, {
           authProfile: options.authProfile,
           containerName: options.name,
