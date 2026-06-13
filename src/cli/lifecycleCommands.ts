@@ -16,6 +16,24 @@ const resolveAuthProfileForImage = async (
   return handlers.requireAuthProfile(authProfile);
 };
 
+const shortDigest = (digest: string | null): string =>
+  digest ? digest.replace(/^sha256:/, "").slice(0, 12) : "unknown";
+
+/** Summarizes a redeploy as previous → new ref/digest, per specs/DISTRIBUTION.md. */
+const formatRedeploySummary = (
+  previous: { digest: string | null; ref: string },
+  newRef: string,
+  newDigest: string | null
+): string => {
+  if (previous.ref === newRef && previous.digest === newDigest) {
+    return `redeployed image ${newRef} (digest unchanged ${shortDigest(newDigest)})`;
+  }
+  return (
+    `redeployed image: ${previous.ref} (${shortDigest(previous.digest)}) ` +
+    `→ ${newRef} (${shortDigest(newDigest)})`
+  );
+};
+
 export const registerLifecycleCommands = (
   program: Command,
   handlers: CliHandlers,
@@ -84,7 +102,9 @@ export const registerLifecycleCommands = (
         if (runInput.kind === "image" || (runInput.kind === "invalid" && options.image)) {
           throw new SpawnfileError(
             "validation_error",
-            `Image-mode run is not supported. Use: spawnfile up ${inputPath} --detach`
+            `Image-mode run is not supported. Deploy the image with: ` +
+              `spawnfile up ${inputPath} --auth-profile <profile> ` +
+              "(add --env-file for any extra secrets; image deployments always detach)."
           );
         }
         if (runInput.kind === "invalid") {
@@ -200,7 +220,15 @@ export const registerLifecycleCommands = (
             envFilePath: options.envFile ?? null,
             pull: options.pull
           });
-          streams.stdout(`deployed image ${consumed.imageRef}`);
+          if (consumed.previous) {
+            const newDigest =
+              consumed.record.source.kind === "image" ? consumed.record.source.digest : null;
+            streams.stdout(
+              formatRedeploySummary(consumed.previous, consumed.imageRef, newDigest)
+            );
+          } else {
+            streams.stdout(`deployed image ${consumed.imageRef}`);
+          }
           streams.stdout(`deployment: ${consumed.deploymentName}`);
           streams.stdout(`running container ${consumed.containerName}`);
           streams.stdout(`record: ${consumed.recordPath}`);

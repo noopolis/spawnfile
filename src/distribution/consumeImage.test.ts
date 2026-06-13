@@ -282,6 +282,39 @@ describe("consumeImageUp", () => {
     expect(state.calls).toContainEqual(["rm", "-f", backup!]);
   });
 
+  it("reports the previous ref/digest when explicitly redeploying", async () => {
+    const auth = { ANTHROPIC_API_KEY: "sk", DIST_REQUIRED_TOKEN: "x" };
+    const first = await consumeImageUp("you/org:1.0.0", {
+      authValues: auth,
+      deploymentName: "evolve",
+      runDocker: createFakeDocker({ calls: [] })
+    });
+    expect(first.previous).toBeNull();
+
+    const second = await consumeImageUp("you/org:2.0.0", {
+      authValues: auth,
+      deploymentName: "evolve",
+      runDocker: createFakeDocker({ calls: [] }, undefined, { liveExists: true })
+    });
+    expect(second.previous?.ref).toBe("you/org:1.0.0");
+  });
+
+  it("names the derived deployment when an implicit-name redeploy collides", async () => {
+    const auth = { ANTHROPIC_API_KEY: "sk", DIST_REQUIRED_TOKEN: "x" };
+    await consumeImageUp("you/org:1.0.0", {
+      authValues: auth,
+      deploymentName: "org",
+      runDocker: createFakeDocker({ calls: [] })
+    });
+    // No --deployment: the name is derived as "org" and already exists.
+    await expect(
+      consumeImageUp("you/org:1.0.0", {
+        authValues: auth,
+        runDocker: createFakeDocker({ calls: [] })
+      })
+    ).rejects.toThrow(/already exists \(derived from image you\/org:1.0.0\).*--deployment org/s);
+  });
+
   it("refuses a concurrent operation on the same deployment via the lock", async () => {
     const { acquireHomeDeploymentLock } = await import("../deployment/index.js");
     const release = await acquireHomeDeploymentLock("locked");

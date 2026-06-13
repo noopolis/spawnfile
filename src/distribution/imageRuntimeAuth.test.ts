@@ -114,6 +114,28 @@ describe("prepareImageRuntimeAuthMounts", () => {
     ).rejects.toThrow(/Imported auth path for claude-code does not exist/);
   });
 
+  it("throws when the imported directory exists but holds no usable credential", async () => {
+    // A registered import whose credential file is absent/expired would otherwise
+    // mount cleanly and produce a container that cannot authenticate.
+    const emptyImport = await tempDir();
+    const profile: ResolvedAuthProfile = {
+      authHome: "/auth",
+      env: {},
+      imports: { "claude-code": { kind: "claude-code", path: emptyImport } },
+      name: "me",
+      profileDirectory: "/auth/me",
+      profilePath: "/auth/me/profile.json",
+      version: 1
+    };
+    await expect(
+      prepareImageRuntimeAuthMounts({
+        authProfile: profile,
+        report: report(),
+        tempRoot: await tempDir()
+      })
+    ).rejects.toThrow(/no usable credential/);
+  });
+
   it("produces no mounts when the profile has no matching import", async () => {
     const profile: ResolvedAuthProfile = {
       authHome: "/auth",

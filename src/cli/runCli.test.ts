@@ -1022,4 +1022,45 @@ describe("runCli", () => {
     expect(stdout.join("\n")).toContain("deployed image you/org:1.0.0");
     expect(stdout.join("\n")).toContain("record: /home/.spawnfile/deployments/prod/record.json");
   });
+
+  it("summarizes the previous → new ref/digest when redeploying an image", async () => {
+    const stdout: string[] = [];
+    const consumeImageUp = vi.fn(async () => ({
+      containerName: "spawnfile-prod",
+      deploymentName: "prod",
+      imageRef: "you/org:2.0.0",
+      previous: { digest: "sha256:" + "a".repeat(64), ref: "you/org:1.0.0" },
+      record: { source: { digest: "sha256:" + "b".repeat(64), kind: "image", ref: "you/org:2.0.0" } } as never,
+      recordPath: "/home/.spawnfile/deployments/prod/record.json"
+    }));
+    const exitCode = await runCli(
+      ["up", "you/org:2.0.0", "--deployment", "prod"],
+      { stderr: () => undefined, stdout: (message) => stdout.push(message) },
+      { consumeImageUp: consumeImageUp as never }
+    );
+    expect(exitCode).toBe(0);
+    const out = stdout.join("\n");
+    expect(out).toContain("redeployed image: you/org:1.0.0 (aaaaaaaaaaaa) → you/org:2.0.0 (bbbbbbbbbbbb)");
+    expect(out).not.toContain("deployed image you/org:2.0.0");
+  });
+
+  it("reports an unchanged digest when redeploying the same ref and digest", async () => {
+    const stdout: string[] = [];
+    const digest = "sha256:" + "c".repeat(64);
+    const consumeImageUp = vi.fn(async () => ({
+      containerName: "spawnfile-prod",
+      deploymentName: "prod",
+      imageRef: "you/org:1.0.0",
+      previous: { digest, ref: "you/org:1.0.0" },
+      record: { source: { digest, kind: "image", ref: "you/org:1.0.0" } } as never,
+      recordPath: "/home/.spawnfile/deployments/prod/record.json"
+    }));
+    const exitCode = await runCli(
+      ["up", "you/org:1.0.0", "--deployment", "prod"],
+      { stderr: () => undefined, stdout: (message) => stdout.push(message) },
+      { consumeImageUp: consumeImageUp as never }
+    );
+    expect(exitCode).toBe(0);
+    expect(stdout.join("\n")).toContain("redeployed image you/org:1.0.0 (digest unchanged cccccccccccc)");
+  });
 });

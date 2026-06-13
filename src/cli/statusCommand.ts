@@ -18,7 +18,7 @@ import {
 } from "../distribution/index.js";
 import { collectRegistryDriftObservations } from "../status/index.js";
 import { resolveProjectOutputDirectory } from "../filesystem/index.js";
-import { DEFAULT_OUTPUT_DIRECTORY } from "../shared/index.js";
+import { DEFAULT_OUTPUT_DIRECTORY, errorExitCode } from "../shared/index.js";
 
 import { resolveCommandInput } from "./resolveCommandInput.js";
 import { loadedImageCompileReport } from "../status/index.js";
@@ -247,9 +247,11 @@ const runStaticImageStatus = async (
       output: renderImageInterface(inspection.report, { imageRef, json })
     };
   } catch (error) {
+    // Input errors (bad labels, non-JSON report, fingerprint mismatch) exit 2;
+    // Docker/runtime failures (daemon down, pull/create failure) exit 1.
     return {
       error: error instanceof Error ? error.message : String(error),
-      exitCode: 2
+      exitCode: errorExitCode(error)
     };
   }
 };
@@ -265,7 +267,7 @@ const runHomeDeploymentStatus = async (
   try {
     records = await listHomeDeploymentRecords();
   } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error), exitCode: 2 };
+    return { error: error instanceof Error ? error.message : String(error), exitCode: errorExitCode(error) };
   }
 
   if (!options.deployment) {
@@ -292,7 +294,7 @@ const runHomeDeploymentStatus = async (
     void record;
     report = parseDistributionReport(JSON.parse(await readHomeDeploymentReport(targetName)));
   } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error), exitCode: 2 };
+    return { error: error instanceof Error ? error.message : String(error), exitCode: errorExitCode(error) };
   }
 
   const view = projectImageOrganizationView(report, match.record.source.kind === "image"
