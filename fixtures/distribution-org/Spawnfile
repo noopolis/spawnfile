@@ -1,0 +1,43 @@
+spawnfile_version: "0.1"
+kind: team
+name: distribution-org
+description: "Distribution fixture: api_key auth, declared network, required and optional secrets"
+
+mode: hierarchical
+lead: coordinator
+
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
+  environment:
+    secrets:
+      - name: DIST_REQUIRED_TOKEN
+        required: true
+      - name: DIST_OPTIONAL_TOKEN
+        required: false
+
+members:
+  - id: coordinator
+    ref: ./agents/coordinator
+  - id: researcher
+    ref: ./agents/researcher
+
+networks:
+  - id: dist_lab
+    name: Dist Lab
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 0.0.0.0
+        port: 19187
+      store:
+        kind: sqlite
+        path: /var/lib/spawnfile/moltnet/networks/dist_lab/moltnet.sqlite
+      auth:
+        mode: none
+      direct_messages: false
+    rooms:
+      - id: dist-room
+        members: [coordinator, researcher]
