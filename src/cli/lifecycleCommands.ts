@@ -139,6 +139,7 @@ export const registerLifecycleCommands = (
         });
         streams.stdout(`published ${result.imageTag}`);
         streams.stdout(`digest: ${result.digest ?? "unknown"}`);
+        streams.stdout(`next: spawnfile up ${result.imageTag} --detach --auth-profile <profile>`);
       }
     );
 
@@ -203,6 +204,7 @@ export const registerLifecycleCommands = (
           streams.stdout(`deployment: ${consumed.deploymentName}`);
           streams.stdout(`running container ${consumed.containerName}`);
           streams.stdout(`record: ${consumed.recordPath}`);
+          streams.stdout(`next: spawnfile status --deployment ${consumed.deploymentName} --live`);
           return;
         }
 

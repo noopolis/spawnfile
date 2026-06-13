@@ -95,7 +95,7 @@ describe("status renderer", () => {
   it("renders quiet output with summary and non-ok observations only", () => {
     const output = renderStatus(createStatus(), { mode: "quiet" });
 
-    expect(output).toContain("Summary: 1 agents");
+    expect(output).toContain("Summary: 1 agent, 0 teams");
     expect(output).toContain("[unknown] compile compile.report");
     expect(output).not.toContain("analyst is declared");
   });
