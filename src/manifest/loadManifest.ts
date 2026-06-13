@@ -232,8 +232,18 @@ const validateLocalTeamManifest = async (
 };
 
 const parseManifest = (source: string): Manifest => {
+  let parsed: unknown;
   try {
-    return manifestSchema.parse(parseYaml(source));
+    parsed = parseYaml(source);
+  } catch (error) {
+    // A YAML syntax error is a malformed manifest, not a runtime failure — wrap
+    // it so it exits as a usage error instead of leaking the parser's wording.
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new SpawnfileError("invalid_manifest", `Invalid Spawnfile manifest: ${reason}`);
+  }
+
+  try {
+    return manifestSchema.parse(parsed);
   } catch (error) {
     if (error instanceof z.ZodError) {
       const issue = error.issues[0];
@@ -248,7 +258,19 @@ const parseManifest = (source: string): Manifest => {
 };
 
 export const loadManifest = async (manifestPath: string): Promise<LoadedManifest> => {
-  const source = await readUtf8File(manifestPath);
+  let source: string;
+  try {
+    source = await readUtf8File(manifestPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      // A missing Spawnfile is a usage/input error, not a runtime failure.
+      throw new SpawnfileError(
+        "validation_error",
+        `No Spawnfile found at ${manifestPath}. Pass a project directory or Spawnfile path, or run 'spawnfile init'.`
+      );
+    }
+    throw error;
+  }
   const manifest = parseManifest(source);
 
   if (isAgentManifest(manifest)) {

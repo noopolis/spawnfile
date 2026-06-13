@@ -85,6 +85,18 @@ const resolveRegistryDigest = async (
   }
 };
 
+const containerExists = async (
+  runDocker: DockerCommandRunner,
+  containerName: string
+): Promise<boolean> => {
+  try {
+    await runDocker(["container", "inspect", containerName]);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const resolveLocalImageId = async (
   imageRef: string,
   runDocker: DockerCommandRunner
@@ -190,16 +202,23 @@ const consumeImageUpLocked = async (
 
   const workDir = await mkdtemp(path.join(os.tmpdir(), "spawnfile-consume-"));
   const envFilePath = path.join(workDir, "container.env");
-  // Start the new container under a staging name and only swap it over the live
-  // one after it has started, so a failed redeploy never destroys the running
-  // deployment. The staging name is unique per attempt.
-  const stagingName = `${containerName}-staging-${Date.now().toString(36)}`;
+  // A redeploy reuses the live container's published host ports, and Docker
+  // cannot bind a host port twice. So when a live container exists we move it
+  // aside (rename + stop) to free its name and ports, start the new container,
+  // and on failure restore the old one — non-destructive without needing a free
+  // port for two containers at once. There is a brief restart gap, unavoidable
+  // when reusing host ports without a proxy.
+  const backupName = `${containerName}-previous-${Date.now().toString(36)}`;
   try {
     await writeFile(envFilePath, renderEnvFileContent(env), "utf8");
 
-    await runDocker(["rm", "-f", stagingName]).catch(() => undefined);
+    const liveExists = await containerExists(runDocker, containerName);
+    if (liveExists) {
+      await runDocker(["rename", containerName, backupName]);
+      await runDocker(["stop", backupName]).catch(() => undefined);
+    }
 
-    const runArgs = ["run", "-d", "--name", stagingName, "--env-file", envFilePath];
+    const runArgs = ["run", "-d", "--name", containerName, "--env-file", envFilePath];
     for (const port of report.ports) {
       runArgs.push("-p", `${port}:${port}`);
     }
@@ -232,15 +251,20 @@ const consumeImageUpLocked = async (
     try {
       runOutput = (await runDocker(runArgs)).toString("utf8").trim();
     } catch (error) {
-      // The new container failed to start; tear down the staging container and
-      // leave any existing live deployment untouched.
-      await runDocker(["rm", "-f", stagingName]).catch(() => undefined);
+      // The new container failed to start; remove the failed attempt and restore
+      // the previous deployment so a failed redeploy never loses the live one.
+      await runDocker(["rm", "-f", containerName]).catch(() => undefined);
+      if (liveExists) {
+        await runDocker(["rename", backupName, containerName]).catch(() => undefined);
+        await runDocker(["start", containerName]).catch(() => undefined);
+      }
       throw error;
     }
 
-    // The new container is up — now replace the live container with it.
-    await runDocker(["rm", "-f", containerName]).catch(() => undefined);
-    await runDocker(["rename", stagingName, containerName]).catch(() => undefined);
+    // The new container is up — discard the previous one.
+    if (liveExists) {
+      await runDocker(["rm", "-f", backupName]).catch(() => undefined);
+    }
     const containerId = runOutput.split("\n").pop()?.trim() || null;
     const imageId = await resolveLocalImageId(imageRef, runDocker);
     const digest = await resolveRegistryDigest(imageRef, runDocker);

@@ -65,7 +65,11 @@ interface FakeDockerState {
   calls: string[][];
 }
 
-const createFakeDocker = (state: FakeDockerState, customReport?: ReturnType<typeof report>) => {
+const createFakeDocker = (
+  state: FakeDockerState,
+  customReport?: ReturnType<typeof report>,
+  options: { liveExists?: boolean } = {}
+) => {
   const distributionReport = customReport ?? report();
   const labels = {
     "com.spawnfile.compile_fingerprint": distributionReport.compile_fingerprint,
@@ -86,6 +90,13 @@ const createFakeDocker = (state: FakeDockerState, customReport?: ReturnType<type
     }
     if (args[0] === "image" && args[1] === "inspect" && args.includes("{{json .RepoDigests}}")) {
       return Buffer.from(JSON.stringify(["you/org@sha256:remotedigest"]));
+    }
+    if (args[0] === "container" && args[1] === "inspect") {
+      // Reports whether a live container exists for the redeploy swap.
+      if (options.liveExists) {
+        return Buffer.from("[{}]");
+      }
+      throw new Error("No such container");
     }
     if (args[0] === "run") {
       return Buffer.from("container-id-123\n");
@@ -226,16 +237,13 @@ describe("consumeImageUp", () => {
     expect(runCall?.join(" ")).toContain("auth-profiles.json");
   });
 
-  it("does not remove the live container when the new container fails to start", async () => {
-    const removed: string[] = [];
+  it("restores the previous container when a redeploy's new container fails to start", async () => {
+    const calls: string[][] = [];
+    const base = createFakeDocker({ calls: [] }, undefined, { liveExists: true });
     const runDocker = async (args: string[]): Promise<Buffer> => {
-      const base = createFakeDocker({ calls: [] });
-      if (args[0] === "rm") {
-        removed.push(args[args.length - 1]!);
-        return Buffer.from("");
-      }
+      calls.push(args);
       if (args[0] === "run") {
-        throw new Error("port is already allocated");
+        throw new Error("new image crashed on boot");
       }
       return base(args);
     };
@@ -245,12 +253,33 @@ describe("consumeImageUp", () => {
         deploymentName: "rollback",
         runDocker
       })
-    ).rejects.toThrow(/already allocated/);
-    // The live container name is never force-removed on a failed start, so a
-    // failed redeploy cannot destroy a running deployment. (Staging and the
-    // metadata helper container may be cleaned up.)
-    expect(removed).not.toContain("spawnfile-rollback");
-    expect(removed.some((name) => name.includes("-staging-"))).toBe(true);
+    ).rejects.toThrow(/crashed on boot/);
+
+    const live = "spawnfile-rollback";
+    const renames = calls.filter((c) => c[0] === "rename");
+    // The live container was moved aside to a backup before the new run...
+    const movedAside = renames.find((c) => c[1] === live);
+    expect(movedAside).toBeDefined();
+    const backup = movedAside![2]!;
+    // ...and restored from that backup after the new container failed.
+    expect(renames).toContainEqual(["rename", backup, live]);
+    expect(calls).toContainEqual(["start", live]);
+    // The backup (the previous deployment) is never force-removed on failure.
+    expect(calls.some((c) => c[0] === "rm" && c.includes(backup))).toBe(false);
+  });
+
+  it("discards the previous container after a successful redeploy", async () => {
+    const state: FakeDockerState = { calls: [] };
+    await consumeImageUp("you/org:1.0.0", {
+      authValues: { ANTHROPIC_API_KEY: "sk", DIST_REQUIRED_TOKEN: "x" },
+      deploymentName: "swap",
+      runDocker: createFakeDocker(state, undefined, { liveExists: true })
+    });
+    const live = "spawnfile-swap";
+    const backup = state.calls.find((c) => c[0] === "rename" && c[1] === live)?.[2];
+    expect(backup).toBeDefined();
+    // On success the previous container is force-removed.
+    expect(state.calls).toContainEqual(["rm", "-f", backup!]);
   });
 
   it("refuses a concurrent operation on the same deployment via the lock", async () => {

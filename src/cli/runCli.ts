@@ -153,11 +153,6 @@ const formatCliErrorMessage = (error: unknown): string => {
     return error.message;
   }
   if (error instanceof Error) {
-    // Turn a raw missing-Spawnfile fs error into actionable guidance.
-    const errno = error as NodeJS.ErrnoException;
-    if (errno.code === "ENOENT" && /Spawnfile/.test(error.message)) {
-      return "No Spawnfile found at that path. Pass a project directory or Spawnfile path, or run 'spawnfile init'.";
-    }
     return error.message;
   }
   return String(error);

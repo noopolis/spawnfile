@@ -109,4 +109,14 @@ describe("home store", () => {
     const release2 = await acquireHomeDeploymentLock("research");
     await release2();
   });
+
+  it("reclaims a stale lock left by a dead process", async () => {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const lockDir = path.join(homeDirectory, "deployments", "research");
+    await mkdir(lockDir, { recursive: true });
+    // A lock owned by a pid that is not running (crashed deploy) must not block forever.
+    await writeFile(path.join(lockDir, ".lock"), JSON.stringify({ pid: 2_147_483_646 }));
+    const release = await acquireHomeDeploymentLock("research");
+    await release();
+  });
 });
