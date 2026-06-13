@@ -20,6 +20,15 @@ export {
 } from "./consumeImageSupport.js";
 export { createConsumerDockerRunner } from "./dockerRunner.js";
 export { runImagePreflight } from "./preflight.js";
+export { projectImageOrganizationView } from "./projectImageView.js";
+export {
+  buildImageInterfaceSummary,
+  renderImageInterface
+} from "./renderImageInterface.js";
+export type {
+  ImageInterfaceSummary,
+  RenderImageInterfaceOptions
+} from "./renderImageInterface.js";
 export type { PreflightInput, PreflightResult } from "./preflight.js";
 export { extractSingleFileFromTar } from "./tarReader.js";
 

@@ -7,7 +7,13 @@ import {
   listDeploymentRecords,
   type DockerInspectionResult
 } from "../deployment/index.js";
+import {
+  extractImageReport,
+  renderImageInterface
+} from "../distribution/index.js";
 import { DEFAULT_OUTPUT_DIRECTORY } from "../shared/index.js";
+
+import { resolveCommandInput } from "./resolveCommandInput.js";
 import {
   createStaticStatus,
   createDeploymentSummaries,
@@ -38,12 +44,15 @@ export interface StatusCommandOptions {
   agent?: string;
   context?: string;
   deployment?: string;
+  dockerCommand?: string;
+  image?: boolean;
   json?: boolean;
   live?: boolean;
   logs?: boolean;
   network?: string;
   out?: string;
   pretty?: boolean;
+  pull?: boolean;
   quiet?: boolean;
   recover?: boolean;
   runtime?: string;
@@ -212,6 +221,29 @@ export const executeStatusWatch = async (
   }
 };
 
+const runStaticImageStatus = async (
+  imageRef: string,
+  options: StatusCommandOptions,
+  json: boolean
+): Promise<StatusCommandResult> => {
+  try {
+    const inspection = await extractImageReport(imageRef, {
+      dockerCommand: options.dockerCommand,
+      dockerContext: options.context,
+      pull: options.pull
+    });
+    return {
+      exitCode: 0,
+      output: renderImageInterface(inspection.report, { imageRef, json })
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : String(error),
+      exitCode: 2
+    };
+  }
+};
+
 export const executeStatusCommand = async (
   inputPath: string,
   options: StatusCommandOptions,
@@ -221,6 +253,14 @@ export const executeStatusCommand = async (
   if (typeof mode !== "string") {
     return mode;
   }
+
+  // A positional image reference renders the static interface from the embedded
+  // report. Project-path arguments fall through to project status below.
+  const commandInput = resolveCommandInput(inputPath, { forceImage: options.image });
+  if (commandInput.kind === "image") {
+    return runStaticImageStatus(commandInput.ref, options, mode === "json");
+  }
+
   if (options.context && !options.recover) {
     return inputFailure("status accepts --context only with --recover");
   }
@@ -343,6 +383,9 @@ export const registerStatusCommand = (
     .option("--quiet", "Render only summary and non-ok observations")
     .option("--live", "Inspect the recorded live deployment")
     .option("--deployment <name>", "Deployment record name")
+    .option("--image", "Interpret the argument as an image reference")
+    .option("--pull", "Pull the image before inspecting (image references only)")
+    .option("--docker-command <command>", "Docker command")
     .option("--context <name>", "Docker context for label recovery only")
     .option("--recover", "Recover live status from labels instead of a deployment record")
     .option("--logs", "Include redacted logs when supported")

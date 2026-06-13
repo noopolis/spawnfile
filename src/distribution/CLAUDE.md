@@ -11,6 +11,15 @@ src/distribution/
 ├── buildDistributionReport.ts   # Pure report builder and image-label factory
 ├── fingerprint.ts               # Stable compile fingerprint over the path-free report
 ├── imageRef.ts                  # Image reference grammar and implicit-mode detection rules
+├── distributionReportSchema.ts  # Zod parser for untrusted extracted reports
+├── tarReader.ts                 # Adversarial single-file tar extraction (size cap, no symlinks)
+├── extractImage.ts              # Helper-container report extraction with cleanup
+├── dockerRunner.ts              # Shared spawn-based docker command runner
+├── preflight.ts                 # api_key-only auth and required-secret preflight
+├── consumeImage.ts              # up <image-ref> orchestration
+├── consumeImageSupport.ts       # Name/volume derivation and env resolution
+├── projectImageView.ts          # DistributionReport to OrganizationView projection
+├── renderImageInterface.ts      # Static status <image-ref> interface renderer
 ├── projectName.ts               # Manifest-name to label-slug normalization
 └── *.test.ts                    # Tests next to the modules they cover
 ```
