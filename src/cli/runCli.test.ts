@@ -1000,4 +1000,26 @@ describe("runCli", () => {
     expect(exitCode).toBe(2);
     expect(stderr.join("\n")).toContain("operates on a project path");
   });
+
+  it("deploys an image reference through the consumeImageUp handler", async () => {
+    const stdout: string[] = [];
+    const consumeImageUp = vi.fn(async () => ({
+      containerName: "spawnfile-prod",
+      deploymentName: "prod",
+      imageRef: "you/org:1.0.0",
+      record: {} as never,
+      recordPath: "/home/.spawnfile/deployments/prod/record.json"
+    }));
+    const exitCode = await runCli(
+      ["up", "you/org:1.0.0", "--deployment", "prod", "--detach"],
+      { stderr: () => undefined, stdout: (message) => stdout.push(message) },
+      { consumeImageUp: consumeImageUp as never }
+    );
+    expect(exitCode).toBe(0);
+    expect(consumeImageUp).toHaveBeenCalledWith("you/org:1.0.0", expect.objectContaining({
+      deploymentName: "prod"
+    }));
+    expect(stdout.join("\n")).toContain("deployed image you/org:1.0.0");
+    expect(stdout.join("\n")).toContain("record: /home/.spawnfile/deployments/prod/record.json");
+  });
 });

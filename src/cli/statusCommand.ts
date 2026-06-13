@@ -371,6 +371,9 @@ export const executeStatusCommand = async (
   // A positional image reference without --deployment renders the static
   // interface from the embedded report. Image ref with --deployment, or a bare
   // --deployment on the default path, reads the home store.
+  // A clear image reference (tag/digest/registry, or forced with --image)
+  // without --deployment renders the static interface; any other positional is
+  // treated as a project path (the view builder reports a missing path).
   const commandInput = resolveCommandInput(inputPath, { forceImage: options.image });
   const usedDefaultPath = inputPath === process.cwd();
   if (commandInput.kind === "image" && !options.deployment) {
