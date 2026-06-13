@@ -95,6 +95,15 @@ const buildModelList = (node: ResolvedAgentNode): Array<Record<string, unknown>>
       };
     }
 
+    // Bake claude-cli (Claude Code subscription) auth at compile time so the
+    // image is self-sufficient; only the credential import is mounted at run.
+    if (target.provider === "anthropic" && target.auth.method === "claude-code") {
+      return {
+        model: `claude-cli/${target.name.replaceAll(".", "-")}`,
+        model_name: target.name
+      };
+    }
+
     return {
       ...(target.auth.method === "api_key"
         ? {
