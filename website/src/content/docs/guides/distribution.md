@@ -59,7 +59,17 @@ spawnfile up you/research-cell:1.0.0 --deployment research --detach --auth-profi
 
 `up` pulls the image, reads the embedded report, checks that every required secret is available before starting anything, runs the container, and records the deployment under your Spawnfile home (`~/.spawnfile/deployments/research/`). If a required secret is missing, it fails before any container starts and tells you which.
 
-Only `api_key` model auth is supported for sourceless images today. Organizations whose runtimes use import-based auth (Codex, Claude Code) must be deployed from source.
+## Running on Your Own Subscription
+
+Agents can authenticate with an API key (`api_key`) or by reusing your logged-in Claude Code / Codex session (`claude-code`, `codex`). Both work sourceless. If a published image's agents use subscription auth, deploy it with an auth profile that has the matching import:
+
+```bash
+spawnfile auth import claude-code --profile me   # one-time, from your local Claude Code login
+
+spawnfile up you/research-cell:1.0.0 --deployment research --detach --auth-profile me
+```
+
+The image already carries the OAuth-mode config; spawnfile injects your credential at start, so the agents run on your subscription rather than a pay-per-token key. If you provide neither an API key nor the matching import, preflight fails before anything starts and tells you exactly which runtime and method it needs.
 
 ## Check a Sourceless Deployment
 

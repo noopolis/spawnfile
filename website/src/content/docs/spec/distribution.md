@@ -33,7 +33,7 @@ An existing directory or file is a project path; an implicit image reference nee
 
 ## Consumer Flow
 
-`up <image-ref> --detach` pulls the image, verifies the contract label, extracts the report through a stopped helper container without starting the entrypoint, validates secret coverage and auth methods, starts the container, and writes a home-store deployment record with a cached report. Missing required non-generated secrets, unsupported auth, invalid labels, or invalid reports fail before the organization container starts. Sourceless deployment supports `api_key` auth; import-based auth fails with a clear message.
+`up <image-ref> --detach` pulls the image, verifies the contract label, extracts the report through a stopped helper container without starting the entrypoint, validates secret coverage and auth methods, starts the container, and writes a home-store deployment record with a cached report. Missing required non-generated secrets, unsupported auth, invalid labels, or invalid reports fail before the organization container starts. Sourceless deployment supports `api_key` auth and import-based auth (Claude Code, Codex) when the consumer supplies the matching credential import — the OAuth-mode config is baked into the image at compile time, so consumers run agents on their own subscription.
 
 The cp tar stream is parsed defensively (single regular file, size cap, no symlinks or traversal). Persistent mounts get per-deployment volume names so two deployments never share a store.
 

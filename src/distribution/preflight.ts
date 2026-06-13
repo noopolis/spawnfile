@@ -5,10 +5,18 @@ import type {
   DistributionSecretCategory
 } from "./types.js";
 
-const SUPPORTED_SOURCELESS_AUTH_METHODS = new Set(["api_key", "none"]);
+const ENV_BASED_AUTH_METHODS = new Set(["api_key", "none"]);
+
+// Import-based auth methods are satisfiable sourceless when the consumer has the
+// matching local credential import (their logged-in Claude Code / Codex session).
+const IMPORT_AUTH_METHOD_KINDS: Record<string, string> = {
+  "claude-code": "claude-code",
+  codex: "codex"
+};
 
 export interface PreflightInput {
   authValues: Record<string, string>;
+  availableImports?: string[];
   report: DistributionReport;
 }
 
@@ -18,14 +26,20 @@ export interface PreflightResult {
 }
 
 const collectUnsupportedAuth = (
-  report: DistributionReport
+  report: DistributionReport,
+  availableImports: Set<string>
 ): Array<{ instance: string; method: string; provider: string; runtime: string }> => {
   const unsupported: Array<{ instance: string; method: string; provider: string; runtime: string }> = [];
   for (const instance of report.runtime_instances) {
     for (const [provider, method] of Object.entries(instance.model_auth_methods)) {
-      if (!SUPPORTED_SOURCELESS_AUTH_METHODS.has(method)) {
-        unsupported.push({ instance: instance.id, method, provider, runtime: instance.runtime });
+      if (ENV_BASED_AUTH_METHODS.has(method)) {
+        continue;
       }
+      const importKind = IMPORT_AUTH_METHOD_KINDS[method];
+      if (importKind && availableImports.has(importKind)) {
+        continue;
+      }
+      unsupported.push({ instance: instance.id, method, provider, runtime: instance.runtime });
     }
   }
   return unsupported;
@@ -33,8 +47,9 @@ const collectUnsupportedAuth = (
 
 export const runImagePreflight = (input: PreflightInput): PreflightResult => {
   const { authValues, report } = input;
+  const availableImports = new Set(input.availableImports ?? []);
 
-  const unsupportedAuth = collectUnsupportedAuth(report);
+  const unsupportedAuth = collectUnsupportedAuth(report, availableImports);
   if (unsupportedAuth.length > 0) {
     const detail = unsupportedAuth
       .map((entry) => `${entry.runtime}/${entry.instance} (${entry.provider}: ${entry.method})`)
@@ -42,8 +57,8 @@ export const runImagePreflight = (input: PreflightInput): PreflightResult => {
       .join(", ");
     throw new SpawnfileError(
       "validation_error",
-      `Sourceless image deployment supports only api_key model auth. Unsupported: ${detail}. ` +
-        "Deploy from project source instead."
+      `This image needs model auth this deployment cannot provide: ${detail}. ` +
+        "Provide an api_key secret, or an auth profile with the matching claude-code/codex import."
     );
   }
 

@@ -1,16 +1,8 @@
 import path from "node:path";
 
 import { loadImportedClaudeCodeCredential, loadImportedCodexCredential } from "../../auth/index.js";
-import { ensureDirectory, readUtf8File, writeUtf8File } from "../../filesystem/index.js";
+import { ensureDirectory, writeUtf8File } from "../../filesystem/index.js";
 import type { RuntimeAuthPreparationInput, RuntimeAuthPreparationResult } from "../types.js";
-
-const resolveRootfsSourcePath = (outputDirectory: string, containerPath: string): string =>
-  path.join(
-    outputDirectory,
-    "container",
-    "rootfs",
-    ...path.posix.relative("/", containerPath).split("/")
-  );
 
 const writeJsonFile = async (
   tempRoot: string,
@@ -56,56 +48,12 @@ const createOpenClawCredential = (
         type: "oauth"
       };
 
-const normalizeOpenClawCodexModel = (model: string): string => {
-  const modelName = model.slice("openai/".length);
-  return modelName === "gpt-5" ? "gpt-5.4" : modelName;
-};
-
-const patchOpenClawConfig = (
-  config: Record<string, unknown>,
-  options: { useClaudeCode: boolean; useCodex: boolean }
-): Record<string, unknown> => {
-  const agents = (config.agents as Record<string, unknown> | undefined) ?? {};
-  const defaults = (agents.defaults as Record<string, unknown> | undefined) ?? {};
-  const model = defaults.model;
-  const auth = (config.auth as Record<string, unknown> | undefined) ?? {};
-  const profiles = (auth.profiles as Record<string, unknown> | undefined) ?? {};
-  const order = (auth.order as Record<string, unknown> | undefined) ?? {};
-
-  if (options.useCodex && typeof model === "string" && model.startsWith("openai/")) {
-    defaults.model = `openai-codex/${normalizeOpenClawCodexModel(model)}`;
-  }
-
-  if (options.useClaudeCode) {
-    profiles["anthropic:default"] = {
-      mode: "oauth",
-      provider: "anthropic"
-    };
-    order.anthropic = ["anthropic:default"];
-  }
-
-  if (options.useCodex) {
-    profiles["openai-codex:default"] = {
-      mode: "oauth",
-      provider: "openai-codex"
-    };
-    order["openai-codex"] = ["openai-codex:default"];
-  }
-
-  return {
-    ...config,
-    agents: {
-      ...agents,
-      defaults
-    },
-    auth: {
-      ...auth,
-      order,
-      profiles
-    }
-  };
-};
-
+/**
+ * Injects the consumer's imported OAuth credentials for an OpenClaw instance.
+ * The OAuth-mode config is already baked into the image at compile time, so this
+ * only materializes and mounts the credential tokens — no source rootfs needed,
+ * which is what lets it run for both project deployments and sourceless images.
+ */
 export const prepareOpenClawRuntimeAuth = async (
   input: RuntimeAuthPreparationInput
 ): Promise<RuntimeAuthPreparationResult> => {
@@ -122,7 +70,6 @@ export const prepareOpenClawRuntimeAuth = async (
 
   const coveredModelSecrets: string[] = [];
   const authProfiles: Record<string, unknown> = {};
-  let patchedConfig: Record<string, unknown> | null = null;
   const useClaudeCode = input.instance.model_auth_methods.anthropic === "claude-code" && claudeCode;
   const useCodex = input.instance.model_auth_methods.openai === "codex" && codex;
 
@@ -134,16 +81,6 @@ export const prepareOpenClawRuntimeAuth = async (
   if (useCodex) {
     authProfiles["openai-codex:default"] = createOpenClawCredential("openai-codex", codex);
     coveredModelSecrets.push("OPENAI_API_KEY");
-  }
-
-  if (useClaudeCode || useCodex) {
-    const sourceConfig = JSON.parse(
-      await readUtf8File(resolveRootfsSourcePath(input.outputDirectory, input.instance.config_path))
-    ) as Record<string, unknown>;
-    patchedConfig = patchOpenClawConfig(sourceConfig, {
-      useClaudeCode: Boolean(useClaudeCode),
-      useCodex: Boolean(useCodex)
-    });
   }
 
   const mountArgs: string[] = [];
@@ -170,15 +107,6 @@ export const prepareOpenClawRuntimeAuth = async (
         )
       )
     );
-  }
-
-  if (patchedConfig) {
-    const patchedConfigPath = await writeJsonFile(
-      input.tempRoot,
-      path.join("runtime-auth", "openclaw", input.instance.id, "openclaw.json"),
-      patchedConfig
-    );
-    mountArgs.push(...createMountArgs(patchedConfigPath, input.instance.config_path));
   }
 
   return {

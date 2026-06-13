@@ -7,15 +7,14 @@ import { SpawnfileError } from "../shared/index.js";
 import { resolveCommandInput } from "./resolveCommandInput.js";
 import type { CliHandlers, CliStreams } from "./runCli.js";
 
-const resolveAuthValuesForImage = async (
+const resolveAuthProfileForImage = async (
   handlers: CliHandlers,
   authProfile: string | undefined
-): Promise<Record<string, string>> => {
+): Promise<Awaited<ReturnType<CliHandlers["requireAuthProfile"]>> | null> => {
   if (!authProfile || !handlers.requireAuthProfile) {
-    return {};
+    return null;
   }
-  const profile = await handlers.requireAuthProfile(authProfile);
-  return profile.env ?? {};
+  return handlers.requireAuthProfile(authProfile);
 };
 
 export const registerLifecycleCommands = (
@@ -180,13 +179,14 @@ export const registerLifecycleCommands = (
 
         /* v8 ignore start -- sourceless image up is covered by distribution E2E */
         if (upInput.kind === "image") {
-          const [authValues, envFileEnv] = await Promise.all([
-            resolveAuthValuesForImage(handlers, options.authProfile),
+          const [authProfile, envFileEnv] = await Promise.all([
+            resolveAuthProfileForImage(handlers, options.authProfile),
             readRunEnvFile(options.envFile)
           ]);
           const consumed = await consumeImageUp(upInput.ref, {
+            authProfile,
             authProfileName: options.authProfile ?? null,
-            authValues,
+            authValues: authProfile?.env ?? {},
             deploymentName: options.deployment,
             dockerCommand: options.dockerCommand,
             dockerContext: options.context,

@@ -80,7 +80,7 @@ A directory wins over a same-spelled ref unless `--image` is set. Image-mode `ru
 5. Starts the container with standard env wiring and labels; persistent mounts get per-deployment volume names (`spawnfile_<deployment>_<mount-id>`).
 6. Writes a deployment record and caches the report atomically beside it.
 
-Auth scope: sourceless deployment supports `api_key` model auth. Import-based auth (Codex, Claude Code) is not available sourceless and fails with a clear message naming the runtime, agent, and method.
+Auth scope: sourceless deployment supports `api_key` model auth and import-based auth (Claude Code, Codex) when the consumer supplies the matching local credential import in their auth profile. The OAuth-mode runtime config is baked into the image at compile time, so the consumer only provides their logged-in credential — the same one a project deployment uses. An instance whose auth method the consumer cannot satisfy (no api_key secret and no matching import) fails preflight with a clear message naming the runtime, agent, and method.
 
 ## Deployment Record v2
 
@@ -118,4 +118,4 @@ Behind `--pull-check` (networked, never default), status compares the recorded `
 
 ## Deferred
 
-Multi-arch builds, image signing, the registry discovery index, entrypoint-driven import auth, durable workspace volumes, private git resource auth, registry-API metadata extraction, compose/k8s/ecs compile targets and the org index, and composition (image members). The network binding report entries ship now so these can layer on without a schema or fingerprint change.
+Multi-arch builds, image signing, the registry discovery index, durable workspace volumes, private git resource auth, registry-API metadata extraction, compose/k8s/ecs compile targets and the org index, and composition (image members). The network binding report entries ship now so these can layer on without a schema or fingerprint change.

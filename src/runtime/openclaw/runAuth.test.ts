@@ -117,8 +117,10 @@ describe("prepareOpenClawRuntimeAuth", () => {
       tempRoot
     });
 
+    // The OAuth-mode config is baked into the image at compile time, so run-time
+    // auth only materializes and mounts the credential tokens (auth-profiles.json).
     expect(prepared.coveredModelSecrets).toEqual(["ANTHROPIC_API_KEY", "OPENAI_API_KEY"]);
-    expect(prepared.mountArgs).toHaveLength(4);
+    expect(prepared.mountArgs).toHaveLength(2);
 
     const authProfilesPath = getMountedHostPath(
       prepared.mountArgs,
@@ -127,62 +129,8 @@ describe("prepareOpenClawRuntimeAuth", () => {
     await expect(readUtf8File(authProfilesPath)).resolves.toContain("\"anthropic:default\"");
     await expect(readUtf8File(authProfilesPath)).resolves.toContain("\"openai-codex:default\"");
 
-    const patchedConfigPath = getMountedHostPath(prepared.mountArgs, configPath);
-    const patchedConfig = await readUtf8File(patchedConfigPath);
-    expect(patchedConfig).toContain("\"model\": \"openai-codex/gpt-4.1\"");
-    expect(patchedConfig).toContain("\"openai-codex:default\"");
-    expect(patchedConfig).toContain("\"provider\": \"openai-codex\"");
-  });
-
-  it("normalizes gpt-5 to OpenClaw's supported Codex model id", async () => {
-    const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
-    const outputDirectory = await createTempDirectory("spawnfile-openclaw-out-");
-    const tempRoot = await createTempDirectory("spawnfile-openclaw-run-");
-    process.env.SPAWNFILE_HOME = spawnfileHome;
-
-    const codexImport = await registerImportedAuth("dev", "codex");
-    await writeUtf8File(
-      path.join(codexImport.directory, "auth.json"),
-      JSON.stringify({
-        tokens: {
-          access_token: "codex-access",
-          refresh_token: "codex-refresh"
-        }
-      })
-    );
-
-    const configPath =
-      "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/openclaw.json";
-    await createContainerConfig(outputDirectory, configPath, {
-      agents: {
-        defaults: {
-          model: "openai/gpt-5",
-          workspace: "/workspace"
-        }
-      }
-    });
-
-    const prepared = await prepareOpenClawRuntimeAuth({
-      authProfile: await requireAuthProfile("dev"),
-      env: {},
-      instance: {
-        config_path: configPath,
-        home_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home",
-        id: "agent-assistant",
-        model_auth_methods: {
-          openai: "codex"
-        },
-        model_secrets_required: ["OPENAI_API_KEY"],
-        runtime: "openclaw"
-      },
-      outputDirectory,
-      tempRoot
-    });
-
-    const patchedConfigPath = getMountedHostPath(prepared.mountArgs, configPath);
-    await expect(readUtf8File(patchedConfigPath)).resolves.toContain(
-      "\"model\": \"openai-codex/gpt-5.4\""
-    );
+    // Run-time auth must not mount a patched config over the in-image one.
+    expect(prepared.mountArgs.some((arg) => arg.endsWith(`:${configPath}`))).toBe(false);
   });
 
   it("skips imported auth when env already satisfies the model secret", async () => {

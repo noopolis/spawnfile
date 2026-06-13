@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -65,8 +65,8 @@ interface FakeDockerState {
   calls: string[][];
 }
 
-const createFakeDocker = (state: FakeDockerState) => {
-  const distributionReport = report();
+const createFakeDocker = (state: FakeDockerState, customReport?: ReturnType<typeof report>) => {
+  const distributionReport = customReport ?? report();
   const labels = {
     "com.spawnfile.compile_fingerprint": distributionReport.compile_fingerprint,
     "com.spawnfile.image_contract": "spawnfile.image.v1",
@@ -162,6 +162,68 @@ describe("consumeImageUp", () => {
       })
     ).rejects.toThrow(/ANTHROPIC_API_KEY/);
     expect(state.calls.some((call) => call[0] === "run")).toBe(false);
+  });
+
+  it("injects import-based auth mounts when the consumer profile provides the import", async () => {
+    const importDir = path.join(homeDirectory, "import", ".claude");
+    await mkdir(importDir, { recursive: true });
+    await writeFile(
+      path.join(importDir, ".credentials.json"),
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "a",
+          expiresAt: 1_800_000_000_000,
+          refreshToken: "r"
+        }
+      })
+    );
+    const claudeReport = buildDistributionReport({
+      envVariables: [],
+      generatedAt: "2026-06-13T00:00:00.000Z",
+      internalPorts: [],
+      modelAuthMethods: { anthropic: "claude-code" },
+      moltnetNetworks: [],
+      organization: {
+        agents: [{ id: "agent:assistant", name: "assistant", runtime: "openclaw", teams: [] }],
+        project: "distribution-org",
+        teams: []
+      },
+      persistentMounts: [],
+      portMappings: [],
+      publishedPorts: [],
+      resources: [],
+      runtimeInstances: [
+        {
+          config_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/openclaw.json",
+          home_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home",
+          id: "agent-assistant",
+          internal_port: null,
+          model_auth_methods: { anthropic: "claude-code" },
+          model_secrets_required: [],
+          node_ids: ["agent:assistant"],
+          published_port: null,
+          runtime: "openclaw",
+          workspace_path: "/w"
+        }
+      ]
+    });
+    const state: FakeDockerState = { calls: [] };
+    await consumeImageUp("you/org:1.0.0", {
+      authProfile: {
+        authHome: "/auth",
+        env: {},
+        imports: { "claude-code": { kind: "claude-code", path: importDir } },
+        name: "me",
+        profileDirectory: "/auth/me",
+        profilePath: "/auth/me/profile.json",
+        version: 1
+      },
+      deploymentName: "claude-deploy",
+      runDocker: createFakeDocker(state, claudeReport)
+    });
+    const runCall = state.calls.find((call) => call[0] === "run");
+    expect(runCall?.join(" ")).toContain(`${importDir}:`);
+    expect(runCall?.join(" ")).toContain("auth-profiles.json");
   });
 
   it("rejects an invalid image reference before touching docker", async () => {

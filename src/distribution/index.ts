@@ -19,6 +19,7 @@ export {
   resolveImageEnvironment
 } from "./consumeImageSupport.js";
 export { createConsumerDockerRunner } from "./dockerRunner.js";
+export { prepareImageRuntimeAuthMounts } from "./imageRuntimeAuth.js";
 export { runImagePreflight } from "./preflight.js";
 export { verifyDistributionReport } from "./verifyDistributionReport.js";
 export type { VerifyDistributionReportInput } from "./verifyDistributionReport.js";
