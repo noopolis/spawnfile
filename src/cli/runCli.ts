@@ -139,6 +139,28 @@ const isCommanderError = (error: unknown): error is { code: string; exitCode: nu
     && typeof candidate.exitCode === "number";
 };
 
+// Usage/input failures exit 2; runtime failures exit 1.
+const USAGE_ERROR_CODES = new Set(["validation_error", "invalid_manifest"]);
+
+const cliErrorExitCode = (error: unknown): number =>
+  isSpawnfileError(error) && USAGE_ERROR_CODES.has(error.code) ? 2 : 1;
+
+const formatCliErrorMessage = (error: unknown): string => {
+  if (isSpawnfileError(error)) {
+    // Surface the human message only; the internal code is not user-facing.
+    return error.message;
+  }
+  if (error instanceof Error) {
+    // Turn a raw missing-Spawnfile fs error into actionable guidance.
+    const errno = error as NodeJS.ErrnoException;
+    if (errno.code === "ENOENT" && /Spawnfile/.test(error.message)) {
+      return "No Spawnfile found at that path. Pass a project directory or Spawnfile path, or run 'spawnfile init'.";
+    }
+    return error.message;
+  }
+  return String(error);
+};
+
 const formatPlanSummary = (plan: Awaited<ReturnType<typeof buildCompilePlan>>): string =>
   [
     `root: ${plan.root}`,
@@ -346,16 +368,13 @@ export const runCli: RunCli = async (
     return commandExitCode;
   } catch (error: unknown) {
     if (isCommanderError(error)) {
-      return error.exitCode === 0 ? 0 : 1;
+      // Commander prints its own usage message; usage errors exit 2.
+      return error.exitCode === 0 ? 0 : 2;
     }
 
-    const message = isSpawnfileError(error)
-      ? `${error.code}: ${error.message}`
-      : error instanceof Error
-        ? error.message
-        : String(error);
-
-    streams.stderr(message);
-    return 1;
+    streams.stderr(`error: ${formatCliErrorMessage(error)}`);
+    // Usage/input errors exit 2; runtime failures exit 1, matching the
+    // documented status exit-code contract across all commands.
+    return cliErrorExitCode(error);
   }
 };

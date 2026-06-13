@@ -24,6 +24,7 @@ export const registerLifecycleCommands = (
 ): void => {
   program
     .command("compile")
+    .description("Compile a project into runtime-native output under .spawn")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .option("-o, --out <directory>", "Output directory")
     .action(async (inputPath: string, options: { out?: string }) => {
@@ -34,6 +35,7 @@ export const registerLifecycleCommands = (
 
   program
     .command("build")
+    .description("Compile and build the organization Docker image")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .option("--docker-command <command>", "Docker command")
     .option("-o, --out <directory>", "Output directory")
@@ -51,6 +53,7 @@ export const registerLifecycleCommands = (
 
   program
     .command("run")
+    .description("Compile, build, and run the organization container locally")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .option("-o, --out <directory>", "Output directory")
     .option("-t, --tag <image>", "Docker image tag")
@@ -88,7 +91,8 @@ export const registerLifecycleCommands = (
         if (runInput.kind === "invalid") {
           throw new SpawnfileError(
             "validation_error",
-            `Cannot resolve ${inputPath} as a project path or image reference`
+            `Cannot resolve "${inputPath}" as a project path or image reference. ` +
+              "Pass a project directory, a Spawnfile path, or an image like 'name:tag' (use --image to force image mode)."
           );
         }
         const result = await handlers.runProject(inputPath, {
@@ -112,6 +116,7 @@ export const registerLifecycleCommands = (
 
   program
     .command("publish")
+    .description("Compile, build, verify, and push the organization image to a registry")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .requiredOption("-t, --tag <image>", "Registry image reference to push")
     .option("-o, --out <directory>", "Output directory")
@@ -140,6 +145,7 @@ export const registerLifecycleCommands = (
 
   program
     .command("up")
+    .description("Deploy an organization from a project or a published image reference")
     .argument("[path]", "Project directory, Spawnfile path, or image reference", process.cwd())
     .option("-o, --out <directory>", "Output directory")
     .option("-t, --tag <image>", "Docker image tag")
@@ -173,7 +179,8 @@ export const registerLifecycleCommands = (
         if (upInput.kind === "invalid") {
           throw new SpawnfileError(
             "validation_error",
-            `Cannot resolve ${inputPath} as a project path or image reference`
+            `Cannot resolve "${inputPath}" as a project path or image reference. ` +
+              "Pass a project directory, a Spawnfile path, or an image like 'name:tag' (use --image to force image mode)."
           );
         }
 

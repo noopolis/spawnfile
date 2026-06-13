@@ -511,7 +511,7 @@ describe("runCli", () => {
       { setProjectSurfaceAccess }
     );
 
-    expect(exitCode).toBe(1);
+    expect(exitCode).toBe(2);
     expect(setProjectSurfaceAccess).not.toHaveBeenCalled();
     expect(stderr[0]).toMatch(/unsupported portable surface http/i);
   });
@@ -878,7 +878,7 @@ describe("runCli", () => {
     expect(stderr[0]).toBeTruthy();
   });
 
-  it("formats Spawnfile errors with their error code", async () => {
+  it("formats Spawnfile errors without leaking the internal code", async () => {
     const stderr: string[] = [];
     const exitCode = await runCli(
       ["validate", path.join(fixturesRoot, "single-agent")],
@@ -893,8 +893,8 @@ describe("runCli", () => {
       }
     );
 
-    expect(exitCode).toBe(1);
-    expect(stderr).toEqual(["validation_error: bad auth"]);
+    expect(exitCode).toBe(2);
+    expect(stderr).toEqual(["error: bad auth"]);
   });
 
   it("formats non-Error failures using String(value)", async () => {
@@ -913,7 +913,7 @@ describe("runCli", () => {
     );
 
     expect(exitCode).toBe(1);
-    expect(stderr).toEqual(["plain failure"]);
+    expect(stderr).toEqual(["error: plain failure"]);
   });
 
   it("uses default process streams when custom streams are not provided", async () => {
@@ -935,7 +935,7 @@ describe("runCli", () => {
     try {
       const exitCode = await runCli(["unknown-command"]);
 
-      expect(exitCode).toBe(1);
+      expect(exitCode).toBe(2);
       expect(stderrSpy).toHaveBeenCalled();
     } finally {
       stderrSpy.mockRestore();
@@ -948,7 +948,7 @@ describe("runCli", () => {
       stderr: (message) => stderr.push(message),
       stdout: () => undefined
     });
-    expect(exitCode).toBe(1);
+    expect(exitCode).toBe(2);
     expect(stderr.join("\n")).toContain("Image-mode run is not supported");
   });
 
@@ -958,7 +958,7 @@ describe("runCli", () => {
       stderr: (message) => stderr.push(message),
       stdout: () => undefined
     });
-    expect(exitCode).toBe(1);
+    expect(exitCode).toBe(2);
     expect(stderr.join("\n")).toContain("Cannot resolve");
   });
 
@@ -968,7 +968,7 @@ describe("runCli", () => {
       stderr: (message) => stderr.push(message),
       stdout: () => undefined
     });
-    expect(exitCode).toBe(1);
+    expect(exitCode).toBe(2);
     expect(stderr.join("\n")).toContain("Image-mode run is not supported");
   });
 
@@ -997,7 +997,7 @@ describe("runCli", () => {
       ["publish", "you/org:1.0.0", "--tag", "you/org:1.0.0"],
       { stderr: (message) => stderr.push(message), stdout: () => undefined }
     );
-    expect(exitCode).toBe(1);
+    expect(exitCode).toBe(2);
     expect(stderr.join("\n")).toContain("operates on a project path");
   });
 });
