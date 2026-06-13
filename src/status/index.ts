@@ -11,3 +11,4 @@ export * from "./selectors.js";
 export * from "./traversal.js";
 export * from "./types.js";
 export * from "./imageStatusReport.js";
+export * from "./registryDrift.js";

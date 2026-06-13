@@ -16,6 +16,7 @@ import {
   projectImageOrganizationView,
   renderImageInterface
 } from "../distribution/index.js";
+import { collectRegistryDriftObservations } from "../status/index.js";
 import { DEFAULT_OUTPUT_DIRECTORY } from "../shared/index.js";
 
 import { resolveCommandInput } from "./resolveCommandInput.js";
@@ -59,6 +60,7 @@ export interface StatusCommandOptions {
   out?: string;
   pretty?: boolean;
   pull?: boolean;
+  pullCheck?: boolean;
   quiet?: boolean;
   recover?: boolean;
   runtime?: string;
@@ -322,6 +324,13 @@ const runHomeDeploymentStatus = async (
         }),
         ...(options.logs
           ? await collectDeploymentLogs({ deployments: recordValues, loadedReport, timeoutMs })
+          : []),
+        ...(options.pullCheck
+          ? await collectRegistryDriftObservations({
+            deployments: recordValues,
+            dockerCommand: options.dockerCommand,
+            timeoutMs
+          })
           : [])
       ]
     : [];
@@ -498,6 +507,7 @@ export const registerStatusCommand = (
     .option("--deployment <name>", "Deployment record name")
     .option("--image", "Interpret the argument as an image reference")
     .option("--pull", "Pull the image before inspecting (image references only)")
+    .option("--pull-check", "Check the registry for a newer image digest (networked)")
     .option("--docker-command <command>", "Docker command")
     .option("--context <name>", "Docker context for label recovery only")
     .option("--recover", "Recover live status from labels instead of a deployment record")

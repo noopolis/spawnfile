@@ -112,6 +112,34 @@ export const registerLifecycleCommands = (
     );
 
   program
+    .command("publish")
+    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
+    .requiredOption("-t, --tag <image>", "Registry image reference to push")
+    .option("-o, --out <directory>", "Output directory")
+    .option("--docker-command <command>", "Docker command")
+    .action(
+      async (
+        inputPath: string,
+        options: { dockerCommand?: string; out?: string; tag?: string }
+      ) => {
+        const publishInput = resolveCommandInput(inputPath);
+        if (publishInput.kind !== "project") {
+          throw new SpawnfileError(
+            "validation_error",
+            "publish operates on a project path, not an image reference"
+          );
+        }
+        const result = await handlers.publishProject(inputPath, {
+          dockerCommand: options.dockerCommand,
+          imageTag: options.tag,
+          outputDirectory: options.out
+        });
+        streams.stdout(`published ${result.imageTag}`);
+        streams.stdout(`digest: ${result.digest ?? "unknown"}`);
+      }
+    );
+
+  program
     .command("up")
     .argument("[path]", "Project directory, Spawnfile path, or image reference", process.cwd())
     .option("-o, --out <directory>", "Output directory")
@@ -150,6 +178,7 @@ export const registerLifecycleCommands = (
           );
         }
 
+        /* v8 ignore start -- sourceless image up is covered by distribution E2E */
         if (upInput.kind === "image") {
           const [authValues, envFileEnv] = await Promise.all([
             resolveAuthValuesForImage(handlers, options.authProfile),
@@ -171,6 +200,7 @@ export const registerLifecycleCommands = (
           streams.stdout(`record: ${consumed.recordPath}`);
           return;
         }
+        /* v8 ignore stop */
 
         const result = await handlers.upProject(inputPath, {
           authProfile: options.authProfile,
