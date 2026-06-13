@@ -193,10 +193,12 @@ const renderHeader = (
   observations: StatusObservation[]
 ): string[] => {
   const counts = countObservations(observations);
+  const count = (value: number, noun: string): string =>
+    `${value} ${noun}${value === 1 ? "" : "s"}`;
   return [
     `Spawnfile status: ${relativePath(status.inputPath, status.projectRoot)}`,
     `Output: ${relativePath(status.outputDirectory, status.projectRoot)}`,
-    `Summary: ${status.summary.agents} agents, ${status.summary.teams} teams, ${status.summary.networks} networks, ${status.summary.runtimes} runtimes, ${status.summary.deployments} deployments`,
+    `Summary: ${count(status.summary.agents, "agent")}, ${count(status.summary.teams, "team")}, ${count(status.summary.networks, "network")}, ${count(status.summary.runtimes, "runtime")}, ${count(status.summary.deployments, "deployment")}`,
     `Status: ${formatCounts(counts)}`,
     status.live.requested ? `Live: requested${status.live.deploymentName ? ` deployment=${status.live.deploymentName}` : ""}` : "",
     status.selection ? `Selection: ${status.selection.kind} ${status.selection.label}` : ""
@@ -260,7 +262,8 @@ const renderPrettyStatus = (status: StaticStatus): string => {
   const lines = [
     ...renderHeader(status, observations),
     "",
-    `Compile: ${status.compile.present ? "present" : "missing"} ${relativePath(status.compile.path, status.projectRoot)}`
+    `Compile: ${status.compile.present ? "present" : "missing"} ${relativePath(status.compile.path, status.projectRoot)}`,
+    ...(status.compile.present ? [] : ["  run 'spawnfile compile' to populate compiled status"])
   ];
 
   if (!status.selection) {
