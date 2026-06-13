@@ -10,6 +10,7 @@ src/distribution/
 ├── types.ts                     # Distribution report schema and image-contract constants
 ├── buildDistributionReport.ts   # Pure report builder and image-label factory
 ├── fingerprint.ts               # Stable compile fingerprint over the path-free report
+├── imageRef.ts                  # Image reference grammar and implicit-mode detection rules
 ├── projectName.ts               # Manifest-name to label-slug normalization
 └── *.test.ts                    # Tests next to the modules they cover
 ```

@@ -7,6 +7,12 @@ export type {
   DistributionEnvVariableInput
 } from "./buildDistributionReport.js";
 export { createDistributionFingerprint } from "./fingerprint.js";
+export {
+  hasRegistryComponent,
+  parseImageReference,
+  parseImplicitImageReference
+} from "./imageRef.js";
+export type { ParsedImageReference } from "./imageRef.js";
 export { normalizeProjectLabelSlug } from "./projectName.js";
 export {
   DISTRIBUTION_REPORT_IMAGE_PATH,

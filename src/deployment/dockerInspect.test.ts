@@ -10,7 +10,7 @@ const createRecord = (): DeploymentRecord => ({
   manager: "docker",
   name: "default",
   output_directory: "/project/.spawn",
-  project_root: "/project",
+  source: { kind: "project", root: "/project" },
   target: {
     name: "hetzner",
     endpoint_fingerprint: "sha256:0123456789abcdef0123456789abcdef",
@@ -28,7 +28,7 @@ const createRecord = (): DeploymentRecord => ({
       runtime_instances: ["agent-analyst"]
     }
   ],
-  version: "spawnfile.deployment.v1"
+  version: "spawnfile.deployment.v2"
 });
 
 describe("docker deployment inspection", () => {

@@ -94,4 +94,15 @@ describe("createCompileReport", () => {
       spawnfile_version: "0.1"
     });
   });
+
+  it("uses the provided compile fingerprint and project name when supplied", () => {
+    const report = createCompileReport("/tmp/Spawnfile", [], [], undefined, {
+      compileFingerprint: "sf1:abcdef123456",
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      projectName: "research-cell"
+    });
+
+    expect(report.compile_fingerprint).toBe("sf1:abcdef123456");
+    expect(report.project_name).toBe("research-cell");
+  });
 });

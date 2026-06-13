@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { normalizeProjectLabelSlug } from "../distribution/index.js";
+import type { DeploymentRecordSource } from "./record.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { normalizeDeploymentName } from "./names.js";
@@ -51,6 +52,7 @@ export interface WriteDockerDeploymentRecordInput {
   projectRoot: string;
   runMetadata?: DockerDeploymentRunMetadata;
   runtimeInstanceIds: string[];
+  source?: DeploymentRecordSource;
   target: DockerDeploymentTarget;
 }
 
@@ -79,7 +81,7 @@ export const createDockerDeploymentRecord = (
     manager: "docker",
     name,
     output_directory: path.resolve(input.outputDirectory),
-    project_root: path.resolve(input.projectRoot),
+    source: input.source ?? { kind: "project", root: path.resolve(input.projectRoot) },
     target: input.target,
     units: [
       {
@@ -93,7 +95,7 @@ export const createDockerDeploymentRecord = (
         runtime_instances: [...input.runtimeInstanceIds].sort()
       }
     ],
-    version: "spawnfile.deployment.v1"
+    version: "spawnfile.deployment.v2"
   };
 };
 

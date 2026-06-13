@@ -31,7 +31,8 @@
     "test:e2e:moltnet-team-chat": "tsx src/e2e/cli.ts moltnet-team-chat",
     "test:e2e:operational-smoke": "tsx src/e2e/cli.ts operational-smoke",
     "test": "vitest run",
-    "typecheck": "tsc --project tsconfig.json --noEmit"
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test:e2e:distribution-image": "tsx src/e2e/cli.ts distribution-image"
   },
   "dependencies": {
     "commander": "^14.0.1",

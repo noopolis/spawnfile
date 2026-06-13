@@ -17,7 +17,7 @@ const deployment = (): DeploymentRecord => ({
   manager: "docker",
   name: "default",
   output_directory: "/project/.spawn",
-  project_root: "/project",
+  source: { kind: "project", root: "/project" },
   target: {
     endpoint_fingerprint: "sha256:0123456789abcdef0123456789abcdef",
     kind: "context",
@@ -35,7 +35,7 @@ const deployment = (): DeploymentRecord => ({
       runtime_instances: ["agent-analyst"]
     }
   ],
-  version: "spawnfile.deployment.v1"
+  version: "spawnfile.deployment.v2"
 });
 
 const loadedReport = (): LoadedCompileReport => ({

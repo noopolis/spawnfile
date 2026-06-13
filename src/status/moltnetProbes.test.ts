@@ -64,7 +64,7 @@ const deployment = (): DeploymentRecord => ({
   manager: "docker",
   name: "default",
   output_directory: "/project/.spawn",
-  project_root: "/project",
+  source: { kind: "project", root: "/project" },
   target: { kind: "host", value: "ssh://ops@example" },
   units: [
     {
@@ -78,7 +78,7 @@ const deployment = (): DeploymentRecord => ({
       runtime_instances: []
     }
   ],
-  version: "spawnfile.deployment.v1"
+  version: "spawnfile.deployment.v2"
 });
 
 const runningInspection = (): DockerInspectionResult => new Map([
