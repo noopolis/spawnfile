@@ -72,6 +72,12 @@ describe("docker deployment manager foundations", () => {
     expect(createDockerProjectLabel("/Users/apresmoi/Documents/project/Spawnfile")).toBe("project");
   });
 
+  it("prefers the manifest project name over the checkout directory when provided", () => {
+    expect(
+      createDockerProjectLabel("/Users/apresmoi/Documents/project/Spawnfile", "Research Cell")
+    ).toBe("Research-Cell");
+  });
+
   it("writes the assembled record", async () => {
     const outputDirectory = await createTempDirectory();
     const recordPath = await writeDockerDeploymentRecord({

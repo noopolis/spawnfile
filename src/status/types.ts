@@ -83,7 +83,7 @@ export interface StatusDeploymentSummary {
   authProfile: string | null;
   compileFingerprint: string;
   createdAt: string;
-  manager: "docker";
+  manager: string;
   name: string;
   recordPath: string;
   target: string;
