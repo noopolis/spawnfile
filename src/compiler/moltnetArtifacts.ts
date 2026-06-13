@@ -12,6 +12,7 @@ import {
   type MoltnetSecretPatch
 } from "./moltnetConfigLowering.js";
 import type { CompilePlan, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
+import { assertNetworkBindingEnvUniqueness } from "./networkBinding.js";
 import { listConcreteMoltnetRoomMemberIds } from "./moltnetRoomMemberships.js";
 import { assertCompatibleMoltnetNetworkName, assertCompatibleMoltnetRoomPolicy, assertCompatibleMoltnetServer } from "./moltnetRoomPolicyCompatibility.js";
 import { createMoltnetNodeConfigContent } from "./moltnetNodeConfig.js";
@@ -366,6 +367,13 @@ export const generateMoltnetArtifacts = async (
 
   const managedServerPlans = [...serverPlans.values()].filter(
     (serverPlan) => serverPlan.mode === "managed"
+  );
+
+  assertNetworkBindingEnvUniqueness(
+    [...serverPlans.values()].map((serverPlan) => ({
+      id: serverPlan.networkId,
+      members: [...new Set(serverPlan.rooms.flatMap((room) => room.members))]
+    }))
   );
 
   return {

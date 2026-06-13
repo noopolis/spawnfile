@@ -3,6 +3,7 @@ import path from "node:path";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import { resolveMoltnetStorePath } from "./moltnetConfigLowering.js";
+import { networkUrlEnvName } from "./networkBinding.js";
 import {
   createWorkspaceResourceCommands,
   createWorkspaceResourceShellFunctions
@@ -258,27 +259,30 @@ export const renderEntrypoint = (
     if (!serverPlan.configPath) {
       continue;
     }
+    const urlEnv = networkUrlEnvName(serverPlan.networkId);
+    const serverLines: string[] = [];
     for (const patch of serverPlan.secretPatches) {
-      lines.push(
+      serverLines.push(
         `apply_json_env_value ${shellQuote(serverPlan.configPath)} ${shellQuote(patch.envName)} ${shellQuote(patch.jsonPath)}`
       );
     }
-    lines.push(
+    serverLines.push(
       ...createMoltnetStorePrepareCommands(serverPlan),
       `MOLTNET_CONFIG=${shellQuote(serverPlan.configPath)} /usr/local/bin/moltnet &`,
-      'PIDS+=("$!")',
+      'PIDS+=("$!")'
+    );
+    if (serverPlan.port) {
+      serverLines.push(
+        `until curl -sf ${shellQuote(`http://127.0.0.1:${serverPlan.port}/healthz`)} >/dev/null; do sleep 1; done`
+      );
+    }
+    // Suppress the in-image managed server when an external endpoint is bound.
+    lines.push(
+      `if [ -z "\${${urlEnv}:-}" ]; then`,
+      ...serverLines.map((line) => `  ${line}`),
+      "fi",
       ""
     );
-  }
-
-  for (const serverPlan of managedMoltnetServerPlans) {
-    if (!serverPlan.port) {
-      continue;
-    }
-    lines.push(
-      `until curl -sf ${shellQuote(`http://127.0.0.1:${serverPlan.port}/healthz`)} >/dev/null; do sleep 1; done`
-    );
-    lines.push("");
   }
 
   for (const plan of runtimePlans) {
@@ -299,7 +303,12 @@ export const renderEntrypoint = (
   }
 
   for (const nodePlan of moltnetNodePlans) {
+    const urlEnv = networkUrlEnvName(nodePlan.networkId);
     lines.push(
+      // Rebind the bridge endpoint when an external network URL is provided.
+      `if [ -n "\${${urlEnv}:-}" ]; then`,
+      `  apply_json_env_value ${shellQuote(nodePlan.configPath)} ${shellQuote(urlEnv)} ${shellQuote("moltnet.base_url")}`,
+      "fi",
       `/usr/local/bin/moltnet node ${shellQuote(nodePlan.configPath)} &`,
       'PIDS+=("$!")',
       ""
