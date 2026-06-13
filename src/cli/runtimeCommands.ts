@@ -13,6 +13,7 @@ export const registerRuntimeCommands = (
 
   runtimeCommand
     .command("set")
+    .description("Set an agent's runtime binding")
     .argument("<name>", "Runtime name")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .option("--recursive", "Update the target project and its descendants")

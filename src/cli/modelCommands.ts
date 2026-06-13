@@ -13,6 +13,7 @@ export const registerModelCommands = (
 
   modelCommand
     .command("set")
+    .description("Set an agent's primary model")
     .argument("<provider>", "Model provider")
     .argument("<name>", "Model name")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
@@ -53,6 +54,7 @@ export const registerModelCommands = (
 
   modelCommand
     .command("add-fallback")
+    .description("Append a fallback model to an agent")
     .argument("<provider>", "Model provider")
     .argument("<name>", "Model name")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
@@ -93,6 +95,7 @@ export const registerModelCommands = (
 
   modelCommand
     .command("clear-fallbacks")
+    .description("Remove all fallback models from an agent")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .option("--recursive", "Update the target project and its descendants")
     .action(async (inputPath: string, options: { recursive?: boolean }) => {

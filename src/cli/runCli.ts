@@ -229,6 +229,7 @@ export const runCli: RunCli = async (
 
   addCommand
     .command("agent")
+    .description("Add an agent member to a team project")
     .argument("<id>", "Agent member id")
     .argument("[path]", "Team project directory or Spawnfile path", process.cwd())
     .option("--runtime <name>", "Runtime for the new agent member")
@@ -244,6 +245,7 @@ export const runCli: RunCli = async (
 
   addCommand
     .command("subagent")
+    .description("Add a subagent to an agent project")
     .argument("<id>", "Subagent id")
     .argument("[path]", "Agent project directory or Spawnfile path", process.cwd())
     .action(async (id: string, inputPath: string) => {
@@ -257,6 +259,7 @@ export const runCli: RunCli = async (
 
   addCommand
     .command("team")
+    .description("Add a nested team to a team project")
     .argument("<id>", "Nested team id")
     .argument("[path]", "Team project directory or Spawnfile path", process.cwd())
     .action(async (id: string, inputPath: string) => {
@@ -302,6 +305,7 @@ export const runCli: RunCli = async (
 
   authImportCommand
     .command("env")
+    .description("Import secrets from an env file into a profile")
     .argument("<file>", "Path to an env file")
     .option("-p, --profile <name>", "Auth profile name", "default")
     .action(async (filePath: string, options: { profile: string }) => {
@@ -311,6 +315,7 @@ export const runCli: RunCli = async (
 
   authImportCommand
     .command("claude-code")
+    .description("Import Claude Code subscription credentials into a profile")
     .option("-p, --profile <name>", "Auth profile name", "default")
     .option("--from <directory>", "Source Claude Code config directory")
     .action(async (options: { from?: string; profile: string }) => {
@@ -320,6 +325,7 @@ export const runCli: RunCli = async (
 
   authImportCommand
     .command("codex")
+    .description("Import Codex subscription credentials into a profile")
     .option("-p, --profile <name>", "Auth profile name", "default")
     .option("--from <directory>", "Source Codex config directory")
     .action(async (options: { from?: string; profile: string }) => {
@@ -329,6 +335,7 @@ export const runCli: RunCli = async (
 
   authCommand
     .command("sync")
+    .description("Provision auth material a project requires into a profile")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .option("-p, --profile <name>", "Auth profile name", "default")
     .option("--env-file <file>", "Path to an env file with model keys and runtime secrets")
@@ -356,6 +363,7 @@ export const runCli: RunCli = async (
 
   authCommand
     .command("show")
+    .description("Show the contents of a local auth profile")
     .option("-p, --profile <name>", "Auth profile name", "default")
     .action(async (options: { profile: string }) => {
       const profile = await handlers.requireAuthProfile(options.profile);
