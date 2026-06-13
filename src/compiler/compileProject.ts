@@ -377,7 +377,9 @@ export const compileProject = async (
     ? await stageMoltnetBinaries(outputDirectory)
     : false;
   await injectMoltnetWorkspaceFiles(outputDirectory, compiledNodes, moltnetArtifacts);
+  const generatedAt = new Date().toISOString();
   const containerArtifacts = await createContainerArtifacts(plan, compiledNodes, {
+    generatedAt,
     hasStagedMoltnetBinaries,
     moltnet: moltnetArtifacts
   });
@@ -389,7 +391,10 @@ export const compileProject = async (
   );
 
   const report = createCompileReport(plan.root, nodeReports, [], containerArtifacts.report, {
-    outputDirectory
+    compileFingerprint: containerArtifacts.distribution.fingerprint,
+    generatedAt,
+    outputDirectory,
+    projectName: containerArtifacts.distribution.report.organization.project
   });
   const reportPath = await writeCompileReport(outputDirectory, report);
 

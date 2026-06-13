@@ -51,6 +51,7 @@ export interface RuntimeContainerInstancePaths {
 
 export interface RuntimeContainerConfigEnvBinding {
   envName: string;
+  generated?: boolean;
   jsonPath: string;
 }
 
@@ -60,6 +61,7 @@ export interface RuntimeContainerMeta {
   configPathEnv?: string;
   env?: Array<{
     description: string;
+    generated?: boolean;
     name: string;
     required: boolean;
   }>;

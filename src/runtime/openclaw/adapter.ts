@@ -152,6 +152,7 @@ const createContainerTargets = async (
         ? [
             {
               envName: "OPENCLAW_HOOKS_TOKEN",
+              generated: true,
               jsonPath: "hooks.token"
             }
           ]
@@ -207,6 +208,7 @@ export const openClawAdapter: RuntimeAdapter = {
     env: [
       {
         description: "Gateway auth token required for non-loopback OpenClaw access",
+        generated: true,
         name: "OPENCLAW_GATEWAY_TOKEN",
         required: true
       }

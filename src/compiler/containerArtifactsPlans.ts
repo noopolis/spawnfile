@@ -163,13 +163,15 @@ export const createEnvVariableMap = (
     name: string,
     required: boolean,
     description: string,
-    category: "model" | "project" | "runtime" | "surface"
+    category: "model" | "project" | "runtime" | "surface",
+    generated = false
   ): void => {
     const current = variables.get(name);
     if (!current) {
       variables.set(name, {
         categories: [category],
         description,
+        generated,
         name,
         required
       });
@@ -179,6 +181,7 @@ export const createEnvVariableMap = (
     variables.set(name, {
       ...current,
       categories: [...new Set([...current.categories, category])],
+      generated: current.generated && generated,
       required: current.required || required
     });
   };
@@ -215,7 +218,13 @@ export const createEnvVariableMap = (
 
   for (const runtimePlan of runtimePlans) {
     for (const variable of runtimePlan.meta.env ?? []) {
-      register(variable.name, variable.required, variable.description, "runtime");
+      register(
+        variable.name,
+        variable.required,
+        variable.description,
+        "runtime",
+        variable.generated ?? false
+      );
     }
 
     for (const binding of runtimePlan.targetConfigEnvBindings ?? []) {
@@ -223,7 +232,8 @@ export const createEnvVariableMap = (
         binding.envName,
         true,
         `Injected into ${runtimePlan.runtimeName} runtime config`,
-        "runtime"
+        "runtime",
+        binding.generated ?? false
       );
     }
   }

@@ -117,6 +117,7 @@ export interface CompileReport {
   generated_at?: string;
   nodes: NodeReport[];
   output_directory?: string;
+  project_name?: string;
   root: string;
   spawnfile_version: "0.1";
 }

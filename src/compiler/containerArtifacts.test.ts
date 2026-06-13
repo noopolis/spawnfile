@@ -192,7 +192,18 @@ describe("createContainerArtifacts", () => {
   });
 
   it("reports Moltnet persistent mounts from generated artifacts", async () => {
-    const result = await createContainerArtifacts(createPlan([]), [], {
+    const moltnetNode = createAgentNode("picoclaw");
+    const moltnetCompiled = { capabilities: [], diagnostics: [], files: [] };
+    void moltnetCompiled;
+    const result = await createContainerArtifacts(createPlan(["picoclaw"]), [
+      {
+        emittedFiles: [],
+        kind: "agent",
+        runtimeName: "picoclaw",
+        slug: "assistant",
+        value: moltnetNode
+      }
+    ], {
       moltnet: {
         files: [],
         nodePlans: [],
@@ -700,5 +711,93 @@ describe("createContainerArtifacts", () => {
     ).rejects.toThrow(
       "Container target openclaw-shared declares conflicting package definitions for apt package curl"
     );
+  });
+});
+
+describe("createContainerArtifacts distribution contract", () => {
+  const compileDistributionFixture = async () => {
+    const node = createAgentNode("openclaw", { name: "Research Cell" });
+    const compiled = await openClawAdapter.compileAgent(node);
+    return createContainerArtifacts(
+      createPlan(["openclaw"]),
+      [
+        {
+          emittedFiles: compiled.files,
+          id: "agent:research-cell",
+          kind: "agent",
+          runtimeName: "openclaw",
+          slug: "research-cell",
+          value: node
+        }
+      ],
+      { generatedAt: "2026-06-13T00:00:00.000Z" }
+    );
+  };
+
+  it("emits the distribution report file and labeled Dockerfile COPY", async () => {
+    const result = await compileDistributionFixture();
+    const reportFile = result.files.find((file) => file.path === "distribution-report.json");
+    const dockerfile = result.files.find((file) => file.path === "Dockerfile");
+
+    expect(reportFile).toBeDefined();
+    expect(dockerfile?.content).toContain(
+      "COPY distribution-report.json /spawnfile/spawnfile-report.json"
+    );
+    expect(dockerfile?.content).toContain(
+      "LABEL com.spawnfile.image_contract='spawnfile.image.v1'"
+    );
+    expect(dockerfile?.content).toContain("LABEL com.spawnfile.project='Research-Cell'");
+    expect(dockerfile?.content).toContain(
+      `LABEL com.spawnfile.compile_fingerprint='${result.distribution.fingerprint}'`
+    );
+    expect(dockerfile?.content).toContain(
+      "LABEL com.spawnfile.report='/spawnfile/spawnfile-report.json'"
+    );
+  });
+
+  it("keeps the embedded report secret-free and creator-path-free", async () => {
+    const result = await compileDistributionFixture();
+    const serialized = JSON.stringify(result.distribution.report);
+
+    expect(serialized).not.toContain("/tmp/");
+    expect(serialized).not.toContain("/Users/");
+    expect(serialized).not.toContain(".spawn");
+    expect(serialized).not.toContain("volume_name");
+  });
+
+  it("derives the project from the manifest name, not the checkout directory", async () => {
+    const result = await compileDistributionFixture();
+    expect(result.distribution.report.organization.project).toBe("Research Cell");
+    expect(result.distribution.labels["com.spawnfile.project"]).toBe("Research-Cell");
+  });
+
+  it("marks generated runtime secrets and keeps category alignment", async () => {
+    const result = await compileDistributionFixture();
+    const runtimeSecrets = result.distribution.report.secrets.runtime;
+    const gateway = runtimeSecrets.find((entry) => entry.name === "OPENCLAW_GATEWAY_TOKEN");
+
+    expect(gateway).toEqual({ generated: true, name: "OPENCLAW_GATEWAY_TOKEN", required: true });
+    expect(Object.keys(result.distribution.report.secrets).sort()).toEqual([
+      "model",
+      "project",
+      "runtime",
+      "surface"
+    ]);
+  });
+
+  it("reuses the distribution fingerprint as the compile fingerprint source", async () => {
+    const result = await compileDistributionFixture();
+    expect(result.distribution.fingerprint).toBe(
+      result.distribution.report.compile_fingerprint
+    );
+    expect(result.distribution.fingerprint).toMatch(/^sf1:[0-9a-f]{12}$/);
+  });
+
+  it("lists runtime instances with node ids and provider-keyed auth methods", async () => {
+    const result = await compileDistributionFixture();
+    const instance = result.distribution.report.runtime_instances[0];
+
+    expect(instance?.node_ids).toEqual(["agent:research-cell"]);
+    expect(Array.isArray(instance?.model_auth_methods)).toBe(false);
   });
 });

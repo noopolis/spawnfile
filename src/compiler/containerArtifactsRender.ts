@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { DISTRIBUTION_REPORT_IMAGE_PATH } from "../distribution/index.js";
 import { createRuntimeInstallRecipe } from "../runtime/index.js";
 import type { EmittedFile } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
@@ -203,9 +204,14 @@ export const renderEnvExample = (variables: ContainerEnvVariable[]): string => {
   return `${lines.join("\n").trimEnd()}\n`;
 };
 
+export interface DockerfileDistributionOptions {
+  labels: Record<string, string>;
+  reportOutputFile: string;
+}
+
 export const renderDockerfile = async (
   runtimePlans: RuntimeTargetPlan[],
-  options: EntrypointOptions = {}
+  options: EntrypointOptions & { distribution?: DockerfileDistributionOptions } = {}
 ): Promise<string> => {
   const runtimeNames = [...new Set(runtimePlans.map((plan) => plan.runtimeName))];
   const runtimeRecipes = await Promise.all(
@@ -307,6 +313,16 @@ export const renderDockerfile = async (
     'COPY entrypoint.sh /opt/spawnfile/entrypoint.sh',
     "RUN chmod +x /opt/spawnfile/entrypoint.sh"
   );
+
+  if (options.distribution) {
+    lines.push(
+      "",
+      `COPY ${options.distribution.reportOutputFile} ${DISTRIBUTION_REPORT_IMAGE_PATH}`,
+      ...Object.entries(options.distribution.labels)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([name, value]) => `LABEL ${name}=${shellQuote(value)}`)
+    );
+  }
 
   lines.push(`RUN ${createStateOwnershipCommand(options.persistentMountPaths)}`);
 
