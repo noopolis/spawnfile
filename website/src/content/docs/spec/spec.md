@@ -1415,10 +1415,11 @@ spawnfile model clear-fallbacks [path]
 spawnfile validate [path]
 spawnfile view [path]
 spawnfile compile [path] [--out <dir>]
-spawnfile status [path] [--out <dir>] [--live] [--deployment <name>]
-spawnfile up [path] [--out <dir>] [--auth-profile <name>] [--env-file <file>] [--detach] [--deployment <name>] [--context <name>]
+spawnfile status [path | <image-ref>] [--out <dir>] [--live] [--deployment <name>] [--image] [--pull] [--pull-check]
+spawnfile up [path | <image-ref>] [--out <dir>] [--auth-profile <name>] [--env-file <file>] [--detach] [--deployment <name>] [--context <name>] [--image] [--pull]
 spawnfile build [path] [--out <dir>] [--tag <image>]
 spawnfile run [path] [--out <dir>] [--tag <image>] [--auth-profile <name>] [--env-file <file>] [--detach] [--deployment <name>] [--context <name>]
+spawnfile publish [path] --tag <image-ref> [--out <dir>]
 ```
 
 #### `spawnfile init`
@@ -1536,7 +1537,7 @@ Validates a Spawnfile project without compiling.
 - MUST perform schema validation and file reference checks
 - MUST walk the manifest graph and detect cycles
 - MUST NOT invoke runtime adapters or emit output files
-- Exits with code 0 on success, 1 on validation failure
+- Exit codes: 0 success; 2 usage/input errors (invalid manifest, missing/unresolvable path); 1 runtime failures
 
 #### `spawnfile view`
 
@@ -1569,7 +1570,7 @@ Compiles a Spawnfile project to runtime-specific output.
 - MUST perform all validation, then invoke adapters and emit output
 - MUST emit a compile report
 - MUST enforce the project's `policy` block
-- Exits with code 0 on success, 1 on error
+- Exit codes: 0 success; 2 usage/input errors; 1 runtime failures
 
 #### `spawnfile status`
 
@@ -1649,7 +1650,7 @@ These are intentionally excluded from the v0.1 portable core. Adapters MAY suppo
 
 - Channel bindings (Slack, Discord, WhatsApp, etc.)
 - Memory engine configuration
-- Package publishing and registry
+- A Spawnfile package registry or discovery index (image publishing to OCI registries is supported via `spawnfile publish`; see `DISTRIBUTION.md`)
 - Deployment orchestration beyond Docker detached records (Kubernetes, ECS, etc.)
 - Agent lifecycle management beyond detached start/status diagnostics (restart policies, scaling, stop/down lifecycle)
 - Persistent storage declarations

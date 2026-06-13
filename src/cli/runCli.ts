@@ -211,6 +211,7 @@ export const runCli: RunCli = async (
 
   program
     .command("init")
+    .description("Scaffold a new Spawnfile project or team in a directory")
     .argument("[path]", "Directory to initialize", process.cwd())
     .option("--team", "Initialize a team project")
     .option("--runtime <name>", "Runtime for agent scaffolds")
@@ -277,6 +278,7 @@ export const runCli: RunCli = async (
 
   program
     .command("validate")
+    .description("Validate a Spawnfile and report the resolved compile plan")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .action(async (inputPath: string) => {
       const plan = await handlers.buildCompilePlan(inputPath);
