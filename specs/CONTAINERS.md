@@ -388,9 +388,10 @@ The `moltnet` report data is sanitized. It records ids, modes, rooms, and ports 
 
 These are explicitly out of scope for v0.1 container compilation:
 
+Image publishing and sourceless run are covered separately by `DISTRIBUTION.md`.
+
 - Docker Compose generation for multi-container topologies
 - Orchestration beyond the Docker detached record model (Kubernetes, ECS, Fly, etc.)
-- Image publishing and registry
 - Runtime-native auth bootstrap (onboarding flows stay manual)
 - emitted Docker `HEALTHCHECK` instructions or richer readiness contracts beyond adapter-owned status probes
 - General volume orchestration beyond compiler-reported persistent mounts

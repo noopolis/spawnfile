@@ -328,9 +328,10 @@ The compile report includes a `container` section:
 
 These are out of scope for v0.1:
 
+Image publishing and sourceless run are covered separately in the Distribution guide.
+
 - Docker Compose generation for multi-container topologies
 - Orchestration (Kubernetes, ECS, Fly, etc.)
-- Image publishing and registry
 - Runtime-native auth bootstrap (onboarding flows stay manual)
 - `HEALTHCHECK` instructions or readiness contracts
 - Volume management and persistence strategy
