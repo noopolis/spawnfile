@@ -7,6 +7,22 @@ export type {
   DistributionEnvVariableInput
 } from "./buildDistributionReport.js";
 export { createDistributionFingerprint } from "./fingerprint.js";
+export { extractImageReport, resolveDockerBaseArgs } from "./extractImage.js";
+export type { DockerCommandRunner, ExtractImageOptions, ImageInspection } from "./extractImage.js";
+export { parseDistributionReport } from "./distributionReportSchema.js";
+export { consumeImageUp } from "./consumeImage.js";
+export type { ConsumeImageUpOptions, ConsumeImageUpResult } from "./consumeImage.js";
+export {
+  deriveDeploymentName,
+  deriveVolumeName,
+  renderEnvFileContent,
+  resolveImageEnvironment
+} from "./consumeImageSupport.js";
+export { createConsumerDockerRunner } from "./dockerRunner.js";
+export { runImagePreflight } from "./preflight.js";
+export type { PreflightInput, PreflightResult } from "./preflight.js";
+export { extractSingleFileFromTar } from "./tarReader.js";
+
 export {
   hasRegistryComponent,
   parseImageReference,
