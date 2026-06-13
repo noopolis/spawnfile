@@ -16,6 +16,7 @@ These are the source of truth. Implementation in `src/` must stay aligned with t
 | [SURFACES.md](SURFACES.md) | evolving | Communication surfaces — platform messaging, HTTP, webhook, runtime support matrix, and lowering notes |
 | [RUNTIMES.md](RUNTIMES.md) | evolving | Runtime registry model — version pinning, status tracking, adapter lifecycle |
 | [STATUS.md](STATUS.md) | evolving | Operational status — static and live status, deployment records, Docker targets, runtime probes, and Moltnet metadata-only diagnostics |
+| [DISTRIBUTION.md](DISTRIBUTION.md) | evolving | Image distribution — self-describing images, sourceless run/status, deployment record v2, publish, registry drift, and the network binding contract |
 
 ## Research
 
