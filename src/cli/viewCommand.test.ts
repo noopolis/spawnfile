@@ -230,7 +230,7 @@ describe("view command", () => {
         streams
       });
 
-      expect(exitCode).toBe(1);
+      expect(exitCode).toBe(2);
       expect(buildOrganizationView).not.toHaveBeenCalled();
       expect(stderr.join("\n")).toContain("spawnfile view --mode networks");
     });
@@ -268,7 +268,7 @@ describe("view command", () => {
       streams
     });
 
-    expect(exitCode).toBe(1);
+    expect(exitCode).toBe(2);
     expect(buildOrganizationView).not.toHaveBeenCalled();
     expect(stderr.join("\n")).toMatch(new RegExp(value));
   });
@@ -286,7 +286,7 @@ describe("view command", () => {
       streams
     });
 
-    expect(exitCode).toBe(1);
+    expect(exitCode).toBe(2);
     expect(buildOrganizationView).not.toHaveBeenCalled();
     expect(stderr.join("\n")).toContain(invalidLayer);
   });
@@ -344,7 +344,7 @@ describe("view command", () => {
       const errorExitCode = await runCli(["view", "--color", "sometimes"], { streams });
 
       expect(helpExitCode).toBe(0);
-      expect(errorExitCode).toBe(1);
+      expect(errorExitCode).toBe(2);
       expect(stdout.join("\n")).toContain("Usage: spawnfile view");
       expect(stderr.join("\n")).toContain("sometimes");
       expect(stdoutSpy).not.toHaveBeenCalled();

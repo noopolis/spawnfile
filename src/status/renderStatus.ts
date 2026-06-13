@@ -19,8 +19,15 @@ import { flattenOrganizationNodes } from "./traversal.js";
 
 const SEVERITY_ORDER: StatusSeverity[] = ["error", "warn", "unknown", "ok"];
 
-const relativePath = (value: string, root: string | null): string =>
-  root ? path.relative(root, value) || "." : value;
+const relativePath = (value: string, root: string | null): string => {
+  if (!root) {
+    return value;
+  }
+  const relative = path.relative(root, value) || ".";
+  // A relative path that escapes the project root (e.g. an --out under /tmp) is
+  // never more readable than the absolute path — show the absolute one instead.
+  return relative.startsWith("..") ? value : relative;
+};
 
 const formatCounts = (counts: StatusObservationCounts): string =>
   `${counts.ok} ok, ${counts.warn} warn, ${counts.error} error, ${counts.unknown} unknown`;

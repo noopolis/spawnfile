@@ -220,7 +220,7 @@ export const executeStatusWatch = async (
     const result = await executeStatusCommand(inputPath, options, handlers);
     setExitCode(result.exitCode);
     if (result.error) {
-      streams.stderr(result.error);
+      streams.stderr(`error: ${result.error}`);
       return;
     }
     if (result.output) {
@@ -531,7 +531,7 @@ export const registerStatusCommand = (
       const result = await executeStatusCommand(inputPath, options, handlers);
       setExitCode(result.exitCode);
       if (result.error) {
-        streams.stderr(result.error);
+        streams.stderr(`error: ${result.error}`);
       }
       if (result.output) {
         emitOutput(streams, result.output);

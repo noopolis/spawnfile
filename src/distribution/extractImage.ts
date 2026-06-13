@@ -84,13 +84,25 @@ export const extractImageReport = async (
     await runDocker(["pull", imageRef]);
   }
 
-  const labelsRaw = (await runDocker([
-    "image",
-    "inspect",
-    "--format",
-    "{{json .Config.Labels}}",
-    imageRef
-  ])).toString("utf8").trim();
+  let labelsRaw: string;
+  try {
+    labelsRaw = (await runDocker([
+      "image",
+      "inspect",
+      "--format",
+      "{{json .Config.Labels}}",
+      imageRef
+    ])).toString("utf8").trim();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/No such image|not found/i.test(message)) {
+      throw new SpawnfileError(
+        "validation_error",
+        `Image ${imageRef} is not available locally. Pull it first with --pull, or publish it with 'spawnfile publish'.`
+      );
+    }
+    throw error;
+  }
   let labels: Record<string, string>;
   try {
     labels = (JSON.parse(labelsRaw) as Record<string, string> | null) ?? {};
