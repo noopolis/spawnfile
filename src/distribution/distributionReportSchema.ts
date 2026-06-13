@@ -31,10 +31,21 @@ const containerPathSchema = z
 // Ports are interpolated into `-p host:container`; bound them to the valid TCP range.
 const portSchema = z.number().int().min(1).max(65535);
 
+// A runtime instance id is interpolated into a host path (the auth-profiles temp
+// file) and then into a `docker run -v` source by the runtime adapters, so an
+// unconstrained value could traverse with `..` or inject mount fields with `:`.
+// Legitimate ids are compile-generated `<kind>-<slug>` identifiers.
+const instanceIdSchema = z
+  .string()
+  .min(1)
+  .refine((value) => /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(value) && !value.includes(".."), {
+    message: "must be an identifier (letters, digits, '_', '.', '-'; no '/', ':', whitespace, or '..')"
+  });
+
 const runtimeInstanceSchema = z.object({
   config_path: containerPathSchema,
   home_path: containerPathSchema.nullable(),
-  id: z.string().min(1),
+  id: instanceIdSchema,
   internal_port: portSchema.nullable(),
   model_auth_methods: z.record(z.string(), z.string()),
   model_secrets_required: z.array(z.string()),
