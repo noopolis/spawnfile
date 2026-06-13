@@ -71,6 +71,10 @@ const createFakeDocker = (
   options: { liveExists?: boolean } = {}
 ) => {
   const distributionReport = customReport ?? report();
+  // Names created (via run/rename-to) and names removed/renamed-away; together
+  // with options.liveExists these model real container existence across a swap.
+  const present = new Set<string>();
+  const gone = new Set<string>();
   const labels = {
     "com.spawnfile.compile_fingerprint": distributionReport.compile_fingerprint,
     "com.spawnfile.image_contract": "spawnfile.image.v1",
@@ -91,14 +95,36 @@ const createFakeDocker = (
     if (args[0] === "image" && args[1] === "inspect" && args.includes("{{json .RepoDigests}}")) {
       return Buffer.from(JSON.stringify(["you/org@sha256:remotedigest"]));
     }
+    // Track container existence statefully so the swap/rollback sequence is
+    // modelled faithfully: a `container inspect` reflects prior rename/run/rm
+    // calls, not a static flag. `present`/`gone` override the initial liveExists.
+    if (args[0] === "rename") {
+      gone.add(args[1]!);
+      gone.delete(args[2]!);
+      present.add(args[2]!);
+      present.delete(args[1]!);
+      return Buffer.from("");
+    }
+    if (args[0] === "rm") {
+      const name = args[args.length - 1]!;
+      gone.add(name);
+      present.delete(name);
+      return Buffer.from("");
+    }
     if (args[0] === "container" && args[1] === "inspect") {
-      // Reports whether a live container exists for the redeploy swap.
-      if (options.liveExists) {
+      const name = args[2]!;
+      const exists = present.has(name) || (Boolean(options.liveExists) && !gone.has(name));
+      if (exists) {
         return Buffer.from("[{}]");
       }
       throw new Error("No such container");
     }
     if (args[0] === "run") {
+      const nameIndex = args.indexOf("--name");
+      if (nameIndex >= 0) {
+        present.add(args[nameIndex + 1]!);
+        gone.delete(args[nameIndex + 1]!);
+      }
       return Buffer.from("container-id-123\n");
     }
     return Buffer.from("");
@@ -264,6 +290,12 @@ describe("consumeImageUp", () => {
     // ...and restored from that backup after the new container failed.
     expect(renames).toContainEqual(["rename", backup, live]);
     expect(calls).toContainEqual(["start", live]);
+    // The failed new container must be force-removed BEFORE the backup is renamed
+    // back, or the rename would collide with the leftover on a real daemon.
+    const failedRemovedAt = calls.findIndex((c) => c[0] === "rm" && c[1] === "-f" && c[2] === live);
+    const restoredAt = calls.findIndex((c) => c[0] === "rename" && c[1] === backup && c[2] === live);
+    expect(failedRemovedAt).toBeGreaterThanOrEqual(0);
+    expect(failedRemovedAt).toBeLessThan(restoredAt);
     // The backup (the previous deployment) is never force-removed on failure.
     expect(calls.some((c) => c[0] === "rm" && c.includes(backup))).toBe(false);
   });

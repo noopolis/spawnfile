@@ -111,12 +111,16 @@ describe("home store", () => {
   });
 
   it("reclaims a stale lock left by a dead process", async () => {
-    const { mkdir, writeFile } = await import("node:fs/promises");
+    const { mkdir, writeFile, readFile } = await import("node:fs/promises");
     const lockDir = path.join(homeDirectory, "deployments", "research");
     await mkdir(lockDir, { recursive: true });
+    const lockPath = path.join(lockDir, ".lock");
     // A lock owned by a pid that is not running (crashed deploy) must not block forever.
-    await writeFile(path.join(lockDir, ".lock"), JSON.stringify({ pid: 2_147_483_646 }));
+    await writeFile(lockPath, JSON.stringify({ pid: 2_147_483_646 }));
     const release = await acquireHomeDeploymentLock("research");
+    // Reclamation (not a no-op bypass): the lock is now owned by THIS process.
+    const owner = JSON.parse(await readFile(lockPath, "utf8")) as { pid: number };
+    expect(owner.pid).toBe(process.pid);
     await release();
   });
 });

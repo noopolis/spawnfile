@@ -20,7 +20,33 @@ export interface RegistryDriftInput {
   timeoutMs?: number;
 }
 
-/* v8 ignore start -- docker manifest inspect is covered by distribution E2E */
+/**
+ * Extracts the comparable digest from `docker manifest inspect --verbose` output.
+ *
+ * A single-arch tag resolves to one manifest object whose `Descriptor.digest`
+ * equals the digest RepoDigests records at deploy time. A multi-arch tag resolves
+ * to a JSON ARRAY of per-platform manifests; each `Descriptor.digest` is a CHILD
+ * digest, never the manifest-list (index) digest that was recorded — comparing one
+ * would report drift on every check. We cannot derive the index digest from this
+ * command, so multi-arch (and any unparseable output) yields null → "unknown"
+ * rather than a false positive.
+ */
+export const parseManifestInspectDigest = (output: string): string | null => {
+  try {
+    const parsed = JSON.parse(output) as unknown;
+    if (Array.isArray(parsed)) {
+      return null;
+    }
+    const digest =
+      (parsed as { Descriptor?: { digest?: string } }).Descriptor?.digest ??
+      (parsed as { digest?: string }).digest;
+    return typeof digest === "string" && digest.length > 0 ? digest : null;
+  } catch {
+    return null;
+  }
+};
+
+/* v8 ignore start -- the docker spawn boundary is covered by distribution E2E */
 const defaultResolveDigest: RegistryDigestResolver = async (imageRef, baseArgs) =>
   new Promise<string | null>((resolve) => {
     const child = spawn("docker", [...baseArgs, "manifest", "inspect", "--verbose", imageRef], {
@@ -30,29 +56,7 @@ const defaultResolveDigest: RegistryDigestResolver = async (imageRef, baseArgs) 
     child.stdout.on("data", (chunk: Buffer | string) => stdout.push(String(chunk)));
     child.on("error", () => resolve(null));
     child.on("close", (code) => {
-      if (code !== 0) {
-        resolve(null);
-        return;
-      }
-      try {
-        const parsed = JSON.parse(stdout.join("")) as unknown;
-        // A single-arch tag resolves to one manifest object whose
-        // `Descriptor.digest` equals the digest RepoDigests records at deploy
-        // time. A multi-arch tag resolves to a JSON ARRAY of per-platform
-        // manifests; each `Descriptor.digest` is a CHILD digest, never the
-        // manifest-list (index) digest that was recorded — comparing one would
-        // report drift on every check. We cannot derive the index digest from
-        // this command, so report "unknown" rather than a false positive.
-        if (Array.isArray(parsed)) {
-          resolve(null);
-          return;
-        }
-        const digest = (parsed as { Descriptor?: { digest?: string } }).Descriptor?.digest
-          ?? (parsed as { digest?: string }).digest;
-        resolve(typeof digest === "string" && digest.length > 0 ? digest : null);
-      } catch {
-        resolve(null);
-      }
+      resolve(code === 0 ? parseManifestInspectDigest(stdout.join("")) : null);
     });
   });
 /* v8 ignore stop */
