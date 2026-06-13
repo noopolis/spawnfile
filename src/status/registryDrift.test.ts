@@ -2,7 +2,32 @@ import { describe, expect, it } from "vitest";
 
 import type { DeploymentRecord } from "../deployment/index.js";
 
-import { collectRegistryDriftObservations } from "./registryDrift.js";
+import { collectRegistryDriftObservations, parseManifestInspectDigest } from "./registryDrift.js";
+
+describe("parseManifestInspectDigest", () => {
+  it("returns the descriptor digest for a single-arch manifest object", () => {
+    const out = JSON.stringify({ Descriptor: { digest: "sha256:single" } });
+    expect(parseManifestInspectDigest(out)).toBe("sha256:single");
+  });
+
+  it("falls back to a top-level digest field", () => {
+    expect(parseManifestInspectDigest(JSON.stringify({ digest: "sha256:top" }))).toBe("sha256:top");
+  });
+
+  it("returns null for a multi-arch manifest list (array) to avoid false drift", () => {
+    // Per-platform child digests are not the recorded index digest.
+    const out = JSON.stringify([
+      { Descriptor: { digest: "sha256:amd64" } },
+      { Descriptor: { digest: "sha256:arm64" } }
+    ]);
+    expect(parseManifestInspectDigest(out)).toBeNull();
+  });
+
+  it("returns null for malformed JSON or a missing digest", () => {
+    expect(parseManifestInspectDigest("not json")).toBeNull();
+    expect(parseManifestInspectDigest(JSON.stringify({ Descriptor: {} }))).toBeNull();
+  });
+});
 
 const imageRecord = (
   overrides: { digest?: string | null; ref?: string } = {}
