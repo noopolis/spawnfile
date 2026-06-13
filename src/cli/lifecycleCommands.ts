@@ -25,7 +25,9 @@ const formatRedeploySummary = (
   newRef: string,
   newDigest: string | null
 ): string => {
-  if (previous.ref === newRef && previous.digest === newDigest) {
+  // Only claim "unchanged" when we actually resolved a matching digest; two null
+  // digests (local-only images) are unknown, not provably identical.
+  if (previous.ref === newRef && newDigest !== null && previous.digest === newDigest) {
     return `redeployed image ${newRef} (digest unchanged ${shortDigest(newDigest)})`;
   }
   return (
