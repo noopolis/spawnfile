@@ -95,6 +95,53 @@ describe("openClawAdapter", () => {
     expect(config.agent).toBeUndefined();
   });
 
+  it("bakes claude-code OAuth profiles into the compiled config", async () => {
+    const result = await openClawAdapter.compileAgent({
+      ...createNode(),
+      execution: {
+        model: {
+          primary: {
+            auth: { method: "claude-code" },
+            name: "claude-sonnet-4-5",
+            provider: "anthropic"
+          }
+        }
+      }
+    } as never);
+    const config = JSON.parse(
+      result.files.find((file) => file.path === "openclaw.json")!.content
+    );
+    expect(config.auth.profiles["anthropic:default"]).toEqual({
+      mode: "oauth",
+      provider: "anthropic"
+    });
+    expect(config.auth.order.anthropic).toEqual(["anthropic:default"]);
+  });
+
+  it("bakes codex OAuth config and renames the model at compile time", async () => {
+    const result = await openClawAdapter.compileAgent({
+      ...createNode(),
+      execution: {
+        model: {
+          primary: {
+            auth: { method: "codex" },
+            name: "gpt-5",
+            provider: "openai"
+          }
+        }
+      }
+    } as never);
+    const config = JSON.parse(
+      result.files.find((file) => file.path === "openclaw.json")!.content
+    );
+    expect(config.agents.defaults.model).toBe("openai-codex/gpt-5.4");
+    expect(config.auth.profiles["openai-codex:default"]).toEqual({
+      mode: "oauth",
+      provider: "openai-codex"
+    });
+    expect(config.auth.order["openai-codex"]).toEqual(["openai-codex:default"]);
+  });
+
   it("warns when subagents degrade to routed sessions", async () => {
     const result = await openClawAdapter.compileAgent(createNode());
 

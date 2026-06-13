@@ -15,6 +15,7 @@ import {
   createSkillFiles
 } from "../common.js";
 import { SpawnfileError } from "../../shared/index.js";
+import { applyOpenClawImportAuthConfig, resolveOpenClawImportAuthModes } from "./configAuth.js";
 import { prepareOpenClawRuntimeAuth } from "./runAuth.js";
 import { createOpenClawAgentScaffold } from "./scaffold.js";
 import {
@@ -126,7 +127,14 @@ const buildOpenClawConfig = (node: ResolvedAgentNode): string => {
     config.moltnet = moltnet;
   }
 
-  return `${JSON.stringify(config, null, 2)}\n`;
+  // Bake the import-auth (claude-code/codex) OAuth structure at compile time so
+  // the image is self-sufficient; only the credential tokens are injected later.
+  const authBaked = applyOpenClawImportAuthConfig(
+    config,
+    resolveOpenClawImportAuthModes(node)
+  );
+
+  return `${JSON.stringify(authBaked, null, 2)}\n`;
 };
 
 const createOpenClawStateFiles = (): Array<{ content: string; path: string }> => [

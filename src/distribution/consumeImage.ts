@@ -25,11 +25,14 @@ import { createConsumerDockerRunner } from "./dockerRunner.js";
 import type { DockerCommandRunner } from "./dockerRunner.js";
 import { extractImageReport, resolveDockerBaseArgs } from "./extractImage.js";
 import { parseImageReference } from "./imageRef.js";
+import { prepareImageRuntimeAuthMounts } from "./imageRuntimeAuth.js";
 import { runImagePreflight } from "./preflight.js";
 import { normalizeProjectLabelSlug } from "./projectName.js";
 import type { DistributionReport } from "./types.js";
+import type { ResolvedAuthProfile } from "../auth/index.js";
 
 export interface ConsumeImageUpOptions {
+  authProfile?: ResolvedAuthProfile | null;
   authValues?: Record<string, string>;
   authProfileName?: string | null;
   deploymentName?: string;
@@ -154,7 +157,10 @@ export const consumeImageUp = async (
     envFileEnv: options.envFileEnv,
     report
   });
-  runImagePreflight({ authValues: env, report });
+  const availableImports = options.authProfile
+    ? (["claude-code", "codex"] as const).filter((kind) => options.authProfile!.imports[kind])
+    : [];
+  runImagePreflight({ authValues: env, availableImports, report });
 
   const target = await resolveExistingOrNewTarget(deploymentName, alreadyExists, options);
 
@@ -175,6 +181,16 @@ export const consumeImageUp = async (
     }
     for (const mount of report.persistent_mounts) {
       runArgs.push("-v", `${deriveVolumeName(deploymentName, mount.id)}:${mount.target}`);
+    }
+    // Inject import-based model auth (the consumer's Claude/Codex login) when the
+    // profile provides it. The OAuth-mode config is already baked into the image.
+    if (options.authProfile && availableImports.length > 0) {
+      const auth = await prepareImageRuntimeAuthMounts({
+        authProfile: options.authProfile,
+        report,
+        tempRoot: workDir
+      });
+      runArgs.push(...auth.mountArgs);
     }
     const labels = createDockerDeploymentLabels({
       compileFingerprint: inspection.compileFingerprint,

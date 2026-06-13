@@ -77,8 +77,10 @@ describe("runImagePreflight", () => {
     ).not.toThrow();
   });
 
-  it("rejects unsupported import-based auth before deployment", () => {
-    const report = createReport({
+  // A claude-code agent registers no api_key model secret, so the report lists
+  // only project/runtime secrets; auth comes from the consumer's import.
+  const importReport = () =>
+    createReport({
       runtime_instances: [
         {
           config_path: "/c",
@@ -92,10 +94,28 @@ describe("runImagePreflight", () => {
           runtime: "openclaw",
           workspace_path: "/w"
         }
-      ]
+      ],
+      secrets: {
+        model: [],
+        project: [{ generated: false, name: "DIST_REQUIRED_TOKEN", required: true }],
+        runtime: [{ generated: true, name: "OPENCLAW_GATEWAY_TOKEN", required: true }],
+        surface: []
+      }
     });
-    expect(() => runImagePreflight({ authValues: {}, report })).toThrow(
-      /only api_key model auth.*openclaw\/agent-coordinator \(anthropic: claude-code\)/
-    );
+
+  it("rejects import-based auth when the consumer lacks the matching import", () => {
+    expect(() =>
+      runImagePreflight({ authValues: { DIST_REQUIRED_TOKEN: "y" }, report: importReport() })
+    ).toThrow(/openclaw\/agent-coordinator \(anthropic: claude-code\)/);
+  });
+
+  it("accepts import-based auth from the consumer import with no api key", () => {
+    expect(() =>
+      runImagePreflight({
+        authValues: { DIST_REQUIRED_TOKEN: "y" },
+        availableImports: ["claude-code"],
+        report: importReport()
+      })
+    ).not.toThrow();
   });
 });
