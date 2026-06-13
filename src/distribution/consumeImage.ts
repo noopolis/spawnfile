@@ -3,6 +3,7 @@ import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 
 import {
+  acquireHomeDeploymentLock,
   createDockerDeploymentLabels,
   homeDeploymentExists,
   normalizeDeploymentName,
@@ -126,6 +127,25 @@ export const consumeImageUp = async (
     options.deploymentName ?? deriveDeploymentName(parsedRef)
   );
   const isExplicitName = Boolean(options.deploymentName);
+
+  // Hold an exclusive lock for the whole operation so a concurrent `up` for the
+  // same deployment cannot race on the record or orphan a container.
+  const releaseLock = await acquireHomeDeploymentLock(deploymentName);
+  try {
+    return await consumeImageUpLocked(imageRef, parsedRef, deploymentName, isExplicitName, options);
+  } finally {
+    await releaseLock();
+  }
+};
+
+const consumeImageUpLocked = async (
+  imageRef: string,
+  parsedRef: ReturnType<typeof parseImageReference>,
+  deploymentName: string,
+  isExplicitName: boolean,
+  options: ConsumeImageUpOptions
+): Promise<ConsumeImageUpResult> => {
+  void parsedRef;
   const alreadyExists = await homeDeploymentExists(deploymentName);
   if (alreadyExists && !isExplicitName) {
     throw new SpawnfileError(
@@ -170,12 +190,16 @@ export const consumeImageUp = async (
 
   const workDir = await mkdtemp(path.join(os.tmpdir(), "spawnfile-consume-"));
   const envFilePath = path.join(workDir, "container.env");
+  // Start the new container under a staging name and only swap it over the live
+  // one after it has started, so a failed redeploy never destroys the running
+  // deployment. The staging name is unique per attempt.
+  const stagingName = `${containerName}-staging-${Date.now().toString(36)}`;
   try {
     await writeFile(envFilePath, renderEnvFileContent(env), "utf8");
 
-    await runDocker(["rm", "-f", containerName]).catch(() => undefined);
+    await runDocker(["rm", "-f", stagingName]).catch(() => undefined);
 
-    const runArgs = ["run", "-d", "--name", containerName, "--env-file", envFilePath];
+    const runArgs = ["run", "-d", "--name", stagingName, "--env-file", envFilePath];
     for (const port of report.ports) {
       runArgs.push("-p", `${port}:${port}`);
     }
@@ -204,7 +228,19 @@ export const consumeImageUp = async (
     }
     runArgs.push(imageRef);
 
-    const runOutput = (await runDocker(runArgs)).toString("utf8").trim();
+    let runOutput: string;
+    try {
+      runOutput = (await runDocker(runArgs)).toString("utf8").trim();
+    } catch (error) {
+      // The new container failed to start; tear down the staging container and
+      // leave any existing live deployment untouched.
+      await runDocker(["rm", "-f", stagingName]).catch(() => undefined);
+      throw error;
+    }
+
+    // The new container is up — now replace the live container with it.
+    await runDocker(["rm", "-f", containerName]).catch(() => undefined);
+    await runDocker(["rename", stagingName, containerName]).catch(() => undefined);
     const containerId = runOutput.split("\n").pop()?.trim() || null;
     const imageId = await resolveLocalImageId(imageRef, runDocker);
     const digest = await resolveRegistryDigest(imageRef, runDocker);

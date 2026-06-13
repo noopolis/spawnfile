@@ -1,8 +1,9 @@
 import path from "node:path";
 
 import type { ResolvedAuthProfile } from "../auth/index.js";
-import type { ContainerRuntimeInstanceReport } from "../report/index.js";
+import { fileExists } from "../filesystem/index.js";
 import { getRuntimeAdapter } from "../runtime/index.js";
+import { SpawnfileError } from "../shared/index.js";
 
 import type { DistributionReport } from "./types.js";
 
@@ -45,7 +46,14 @@ export const prepareImageRuntimeAuthMounts = async (
     const prepared = await adapter.prepareRuntimeAuth({
       authProfile: input.authProfile,
       env: {},
-      instance: instance as unknown as ContainerRuntimeInstanceReport,
+      instance: {
+        config_path: instance.config_path,
+        home_path: instance.home_path,
+        id: instance.id,
+        model_auth_methods: instance.model_auth_methods,
+        model_secrets_required: instance.model_secrets_required,
+        runtime: instance.runtime
+      },
       outputDirectory: "",
       tempRoot: input.tempRoot
     });
@@ -61,6 +69,12 @@ export const prepareImageRuntimeAuthMounts = async (
     const entry = input.authProfile.imports[kind];
     if (!entry) {
       continue;
+    }
+    if (!(await fileExists(entry.path))) {
+      throw new SpawnfileError(
+        "validation_error",
+        `Imported auth path for ${kind} does not exist: ${entry.path}`
+      );
     }
     for (const home of runtimeHomes) {
       mountArgs.push("-v", `${entry.path}:${path.posix.join(home, importMountTargetName(kind))}`);

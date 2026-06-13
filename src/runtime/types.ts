@@ -9,6 +9,7 @@ import type { AgentManifest } from "../manifest/index.js";
 import type { CapabilityReport, DiagnosticReport } from "../report/index.js";
 import type { ContainerRuntimeInstanceReport } from "../report/index.js";
 import type { DeploymentRecord, DockerUnitInspection } from "../deployment/index.js";
+import type { ModelAuthMethod } from "../shared/index.js";
 
 export interface EmittedFile {
   content: string;
@@ -77,10 +78,25 @@ export interface RuntimeContainerMeta {
   systemDeps: string[];
 }
 
+/**
+ * The minimal runtime-instance shape an auth preparer needs. Both the compile
+ * report's `ContainerRuntimeInstanceReport` and the distribution report's
+ * runtime instances structurally satisfy this, so sourceless image consumption
+ * can reuse the same preparers without casting through compiler-only types.
+ */
+export interface RuntimeAuthInstance {
+  config_path: string;
+  home_path: string | null;
+  id: string;
+  model_auth_methods: Record<string, ModelAuthMethod>;
+  model_secrets_required: string[];
+  runtime: string;
+}
+
 export interface RuntimeAuthPreparationInput {
   authProfile: ResolvedAuthProfile;
   env: Record<string, string>;
-  instance: ContainerRuntimeInstanceReport;
+  instance: RuntimeAuthInstance;
   outputDirectory: string;
   tempRoot: string;
 }

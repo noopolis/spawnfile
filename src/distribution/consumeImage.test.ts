@@ -226,6 +226,49 @@ describe("consumeImageUp", () => {
     expect(runCall?.join(" ")).toContain("auth-profiles.json");
   });
 
+  it("does not remove the live container when the new container fails to start", async () => {
+    const removed: string[] = [];
+    const runDocker = async (args: string[]): Promise<Buffer> => {
+      const base = createFakeDocker({ calls: [] });
+      if (args[0] === "rm") {
+        removed.push(args[args.length - 1]!);
+        return Buffer.from("");
+      }
+      if (args[0] === "run") {
+        throw new Error("port is already allocated");
+      }
+      return base(args);
+    };
+    await expect(
+      consumeImageUp("you/org:1.0.0", {
+        authValues: { ANTHROPIC_API_KEY: "sk", DIST_REQUIRED_TOKEN: "x" },
+        deploymentName: "rollback",
+        runDocker
+      })
+    ).rejects.toThrow(/already allocated/);
+    // The live container name is never force-removed on a failed start, so a
+    // failed redeploy cannot destroy a running deployment. (Staging and the
+    // metadata helper container may be cleaned up.)
+    expect(removed).not.toContain("spawnfile-rollback");
+    expect(removed.some((name) => name.includes("-staging-"))).toBe(true);
+  });
+
+  it("refuses a concurrent operation on the same deployment via the lock", async () => {
+    const { acquireHomeDeploymentLock } = await import("../deployment/index.js");
+    const release = await acquireHomeDeploymentLock("locked");
+    try {
+      await expect(
+        consumeImageUp("you/org:1.0.0", {
+          authValues: { ANTHROPIC_API_KEY: "sk", DIST_REQUIRED_TOKEN: "x" },
+          deploymentName: "locked",
+          runDocker: createFakeDocker({ calls: [] })
+        })
+      ).rejects.toThrow(/already being modified/);
+    } finally {
+      await release();
+    }
+  });
+
   it("rejects an invalid image reference before touching docker", async () => {
     const state: FakeDockerState = { calls: [] };
     await expect(

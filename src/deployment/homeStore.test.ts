@@ -8,6 +8,7 @@ import { buildDistributionReport } from "../distribution/index.js";
 import { removeDirectory } from "../filesystem/index.js";
 
 import {
+  acquireHomeDeploymentLock,
   homeDeploymentExists,
   listHomeDeploymentRecords,
   readHomeDeploymentRecord,
@@ -98,5 +99,14 @@ describe("home store", () => {
   it("returns an empty list when the store is absent", async () => {
     await removeDirectory(homeDirectory);
     expect(await listHomeDeploymentRecords()).toEqual([]);
+  });
+
+  it("grants an exclusive deployment lock and blocks a second acquire", async () => {
+    const release = await acquireHomeDeploymentLock("research");
+    await expect(acquireHomeDeploymentLock("research")).rejects.toThrow(/already being modified/);
+    await release();
+    // After release the lock can be acquired again.
+    const release2 = await acquireHomeDeploymentLock("research");
+    await release2();
   });
 });
