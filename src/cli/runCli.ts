@@ -21,6 +21,7 @@ import {
   clearProjectModelFallbacks,
   compileProject,
   initProject,
+  publishProject,
   upProject,
   removeProjectSurface,
   runProject,
@@ -70,6 +71,7 @@ const createDefaultRenderEnvironment = (): CliRenderEnvironment => ({
 export interface CliHandlers {
   buildCompilePlan: typeof buildCompilePlan; buildOrganizationView: typeof buildOrganizationView;
   buildProject: typeof buildProject; compileProject: typeof compileProject;
+  publishProject: typeof publishProject;
   addAgentProject: typeof addAgentProject; addProjectModelFallback: typeof addProjectModelFallback;
   addProjectSurface: typeof addProjectSurface; addSubagentProject: typeof addSubagentProject;
   addTeamProject: typeof addTeamProject; clearProjectModelFallbacks: typeof clearProjectModelFallbacks;
@@ -84,7 +86,7 @@ export interface CliHandlers {
 }
 
 const createDefaultHandlers = (): CliHandlers => ({
-  buildCompilePlan, buildOrganizationView, buildProject, compileProject,
+  buildCompilePlan, buildOrganizationView, buildProject, compileProject, publishProject,
   addAgentProject, addProjectModelFallback, addProjectSurface,
   addSubagentProject, addTeamProject, clearProjectModelFallbacks,
   importClaudeCodeAuth, importCodexAuth, importEnvFile,

@@ -1,6 +1,7 @@
 export * from "./addProjectNode.js";
 export * from "./buildCompilePlan.js";
 export * from "./buildProject.js";
+export * from "./publishProject.js";
 export * from "./upProject.js";
 export * from "./compileProject.js";
 export * from "./initProject.js";

@@ -20,6 +20,8 @@ export {
 } from "./consumeImageSupport.js";
 export { createConsumerDockerRunner } from "./dockerRunner.js";
 export { runImagePreflight } from "./preflight.js";
+export { verifyDistributionReport } from "./verifyDistributionReport.js";
+export type { VerifyDistributionReportInput } from "./verifyDistributionReport.js";
 export { projectImageOrganizationView } from "./projectImageView.js";
 export {
   buildImageInterfaceSummary,

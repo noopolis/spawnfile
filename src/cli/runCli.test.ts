@@ -971,4 +971,33 @@ describe("runCli", () => {
     expect(exitCode).toBe(1);
     expect(stderr.join("\n")).toContain("Image-mode run is not supported");
   });
+
+  it("publishes a project and prints the digest", async () => {
+    const stdout: string[] = [];
+    const publishProject = vi.fn(async () => ({
+      digest: "sha256:pushed",
+      imageTag: "localhost:5000/org:1.0.0",
+      outputDirectory: "/tmp/.spawn",
+      report: {} as never,
+      reportPath: "/tmp/.spawn/spawnfile-report.json"
+    }));
+    const exitCode = await runCli(
+      ["publish", "fixtures/single-agent", "--tag", "localhost:5000/org:1.0.0"],
+      { stderr: () => undefined, stdout: (message) => stdout.push(message) },
+      { publishProject: publishProject as never }
+    );
+    expect(exitCode).toBe(0);
+    expect(publishProject).toHaveBeenCalled();
+    expect(stdout.join("\n")).toContain("digest: sha256:pushed");
+  });
+
+  it("rejects publish of an image reference", async () => {
+    const stderr: string[] = [];
+    const exitCode = await runCli(
+      ["publish", "you/org:1.0.0", "--tag", "you/org:1.0.0"],
+      { stderr: (message) => stderr.push(message), stdout: () => undefined }
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr.join("\n")).toContain("operates on a project path");
+  });
 });

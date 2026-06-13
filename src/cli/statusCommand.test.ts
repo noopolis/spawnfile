@@ -692,4 +692,30 @@ describe("executeStatusCommand home store", () => {
     expect(result.exitCode).toBe(2);
     expect(result.error).toContain("Unknown deployment");
   });
+
+  it("collects live observations for a home deployment", async () => {
+    await setupHome(["research"]);
+    const inspectDockerDeployment = vi.fn(async () => new Map());
+    const collectRuntimeProbeObservations = vi.fn(async () => [{
+      key: "runtime.health",
+      label: "OK runtime.health",
+      message: "runtime ok",
+      severity: "ok" as const,
+      source: "runtime" as const,
+      subject: "runtime-instance:picoclaw-a"
+    }]);
+    const collectMoltnetProbeObservations = vi.fn(async () => []);
+    const result = await executeStatusCommand(
+      process.cwd(),
+      { deployment: "research", live: true, pullCheck: true },
+      {
+        buildOrganizationView: vi.fn(async () => createView()),
+        collectMoltnetProbeObservations,
+        collectRuntimeProbeObservations,
+        inspectDockerDeployment
+      }
+    );
+    expect(result.exitCode).toBeDefined();
+    expect(collectRuntimeProbeObservations).toHaveBeenCalled();
+  });
 });
