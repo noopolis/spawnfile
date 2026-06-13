@@ -1,4 +1,5 @@
 /* v8 ignore file -- type-only module */
+import type { DistributionReport } from "../distribution/index.js";
 import type { ContainerReport } from "../report/index.js";
 import type {
   EmittedFile,
@@ -14,6 +15,7 @@ import type { WorkspaceResourcePlan } from "./workspaceResources.js";
 export interface ContainerEnvVariable {
   categories: Array<"model" | "project" | "runtime" | "surface">;
   description: string;
+  generated: boolean;
   name: string;
   required: boolean;
 }
@@ -55,6 +57,11 @@ export interface CompiledNodeArtifact {
 }
 
 export interface GeneratedContainerArtifacts {
+  distribution: {
+    fingerprint: string;
+    labels: Record<string, string>;
+    report: DistributionReport;
+  };
   executablePaths: string[];
   files: EmittedFile[];
   moltnet?: {

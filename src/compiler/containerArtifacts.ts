@@ -1,4 +1,15 @@
+import {
+  buildDistributionReport,
+  createDistributionImageLabels,
+  DISTRIBUTION_REPORT_OUTPUT_FILE,
+  normalizeProjectLabelSlug
+} from "../distribution/index.js";
+import type {
+  DistributionOrganizationSummary,
+  DistributionReport
+} from "../distribution/index.js";
 import type { EmittedFile } from "../runtime/index.js";
+import { SpawnfileError } from "../shared/index.js";
 
 import { createEnvVariableMap, createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
 import {
@@ -17,9 +28,65 @@ import type { CompilePlan } from "./types.js";
 export type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./containerArtifactsTypes.js";
 
 export interface ContainerArtifactOptions {
+  generatedAt?: string;
   hasStagedMoltnetBinaries?: boolean;
   moltnet?: MoltnetArtifacts | null;
 }
+
+const createOrganizationSummary = (
+  plan: CompilePlan,
+  compiledNodes: CompiledNodeArtifact[]
+): DistributionOrganizationSummary => {
+  const nodes = compiledNodes.map((node) => ({
+    id: node.id ?? `${node.kind}:${node.slug}`,
+    kind: node.kind,
+    name: node.value.name,
+    runtimeName: node.runtimeName,
+    source: node.value.source
+  }));
+  const rootNode =
+    nodes.find((node) => node.source === plan.root)
+    ?? nodes.find((node) => !plan.edges.some((edge) => edge.to === node.id))
+    ?? nodes[0];
+  if (!rootNode) {
+    throw new SpawnfileError(
+      "compile_error",
+      `Unable to resolve the root node for ${plan.root}`
+    );
+  }
+
+  const memberEdges = plan.edges.filter((edge) => edge.kind === "team_member");
+  const teamsByAgent = new Map<string, string[]>();
+  for (const edge of memberEdges) {
+    teamsByAgent.set(edge.to, [...(teamsByAgent.get(edge.to) ?? []), edge.from]);
+  }
+
+  const agentNodes = nodes.filter((node) => node.kind === "agent");
+  const teamNodes = nodes.filter((node) => node.kind === "team");
+  const agentIds = new Set(agentNodes.map((node) => node.id));
+
+  return {
+    agents: agentNodes
+      .map((node) => ({
+        id: node.id,
+        name: node.name,
+        runtime: node.runtimeName,
+        teams: [...(teamsByAgent.get(node.id) ?? [])].sort()
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+    project: rootNode.name,
+    teams: teamNodes
+      .map((node) => ({
+        agents: memberEdges
+          .filter((edge) => edge.from === node.id && agentIds.has(edge.to))
+          .map((edge) => edge.to)
+          .sort(),
+        id: node.id,
+        name: node.name
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id))
+  };
+};
 
 const resolveMoltnetOperatorTokenSecret = (
   plan: MoltnetServerPlan
@@ -118,39 +185,6 @@ export const createContainerArtifacts = async (
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
 
-  const files: EmittedFile[] = [
-    ...createRootfsFiles(runtimePlans),
-    ...(options.moltnet?.files ?? []),
-    {
-      content: await renderDockerfile(runtimePlans, {
-        hasMoltnet: Boolean(options.moltnet),
-        hasStagedMoltnetBinaries: options.hasStagedMoltnetBinaries,
-        moltnetPublishedPorts: options.moltnet?.publishedPorts ?? [],
-        persistentMountPaths: persistentMounts.map((mount) => mount.mount_path)
-      }),
-      path: "Dockerfile"
-    },
-    {
-      content: renderEntrypoint(
-        runtimePlans,
-        requiredSecrets.filter((secretName) => !modelSecretsRequired.includes(secretName)),
-        {
-          moltnet: options.moltnet
-            ? {
-                nodePlans: options.moltnet.nodePlans,
-                serverPlans: options.moltnet.serverPlans
-              }
-            : undefined
-        }
-      ),
-      path: "entrypoint.sh"
-    },
-    {
-      content: renderEnvExample(envVariables),
-      path: ".env.example"
-    }
-  ];
-
   const runtimeInternalPorts = runtimePlans.flatMap((plan) =>
     plan.port ? [plan.port] : []
   );
@@ -211,7 +245,106 @@ export const createContainerArtifacts = async (
   ].sort((left, right) => left.link_path.localeCompare(right.link_path) || left.id.localeCompare(right.id));
   const moltnetSummary = createMoltnetSummary(options.moltnet);
 
+  const organization = createOrganizationSummary(plan, compiledNodes);
+  const projectSlug = normalizeProjectLabelSlug(organization.project);
+  const mergedModelAuthMethods = Object.assign(
+    {},
+    ...runtimePlans.map((runtimePlan) => runtimePlan.modelAuthMethods)
+  ) as DistributionReport["model_auth_methods"];
+  const moltnetNetworks = [
+    ...new Map(
+      (options.moltnet?.serverPlans ?? []).map((serverPlan) => [
+        serverPlan.networkId,
+        {
+          binding: "env" as const,
+          id: serverPlan.networkId,
+          server_mode: serverPlan.mode
+        }
+      ])
+    ).values()
+  ];
+  const distributionReport = buildDistributionReport({
+    envVariables: envVariables.map((variable) => ({
+      categories: variable.categories,
+      generated: variable.generated,
+      name: variable.name,
+      required: variable.required
+    })),
+    generatedAt: options.generatedAt ?? new Date().toISOString(),
+    internalPorts,
+    modelAuthMethods: mergedModelAuthMethods,
+    moltnetNetworks,
+    organization,
+    persistentMounts: persistentMounts.map((mount) => ({
+      durability: "persistent" as const,
+      id: mount.id,
+      kind: "volume" as const,
+      target: mount.mount_path
+    })),
+    portMappings,
+    publishedPorts,
+    resources: workspaceResources.map((resource) => ({
+      id: resource.id,
+      kind: resource.kind,
+      link_path: resource.link_path,
+      mode: resource.mode,
+      mount: resource.mount,
+      sharing: resource.sharing
+    })),
+    runtimeInstances
+  });
+  const distributionLabels = createDistributionImageLabels(
+    projectSlug,
+    distributionReport.compile_fingerprint
+  );
+
+  const files: EmittedFile[] = [
+    ...createRootfsFiles(runtimePlans),
+    ...(options.moltnet?.files ?? []),
+    {
+      content: `${JSON.stringify(distributionReport, null, 2)}\n`,
+      path: DISTRIBUTION_REPORT_OUTPUT_FILE
+    },
+    {
+      content: await renderDockerfile(runtimePlans, {
+        distribution: {
+          labels: distributionLabels,
+          reportOutputFile: DISTRIBUTION_REPORT_OUTPUT_FILE
+        },
+        hasMoltnet: Boolean(options.moltnet),
+        hasStagedMoltnetBinaries: options.hasStagedMoltnetBinaries,
+        moltnetPublishedPorts: options.moltnet?.publishedPorts ?? [],
+        persistentMountPaths: persistentMounts.map((mount) => mount.mount_path)
+      }),
+      path: "Dockerfile"
+    },
+    {
+      content: renderEntrypoint(
+        runtimePlans,
+        requiredSecrets.filter((secretName) => !modelSecretsRequired.includes(secretName)),
+        {
+          moltnet: options.moltnet
+            ? {
+                nodePlans: options.moltnet.nodePlans,
+                serverPlans: options.moltnet.serverPlans
+              }
+            : undefined
+        }
+      ),
+      path: "entrypoint.sh"
+    },
+    {
+      content: renderEnvExample(envVariables),
+      path: ".env.example"
+    }
+  ];
+
   return {
+    distribution: {
+      fingerprint: distributionReport.compile_fingerprint,
+      labels: distributionLabels,
+      report: distributionReport
+    },
     executablePaths: ["entrypoint.sh"],
     files,
     ...(options.moltnet

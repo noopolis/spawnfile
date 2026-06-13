@@ -165,7 +165,10 @@ export const createDockerRunInvocation = async (
         createDockerDeploymentLabels({
           compileFingerprint,
           deployment: deploymentName,
-          project: createDockerProjectLabel(compileResult.report.root),
+          project: createDockerProjectLabel(
+            compileResult.report.root,
+            compileResult.report.project_name
+          ),
           unit: createDockerDeploymentUnitId(deploymentName),
           version: compileResult.report.spawnfile_version
         })

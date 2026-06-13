@@ -3,8 +3,10 @@ import { createHash } from "node:crypto";
 import { CompileReport, ContainerReport, DiagnosticReport, NodeReport } from "./types.js";
 
 export interface CreateCompileReportOptions {
+  compileFingerprint?: string;
   generatedAt?: string;
   outputDirectory?: string;
+  projectName?: string;
 }
 
 const stableStringify = (value: unknown): string => {
@@ -45,12 +47,14 @@ export const createCompileReport = (
   container?: ContainerReport,
   options: CreateCompileReportOptions = {}
 ): CompileReport => ({
-  compile_fingerprint: createCompileFingerprint(root, nodes, diagnostics, container),
+  compile_fingerprint:
+    options.compileFingerprint ?? createCompileFingerprint(root, nodes, diagnostics, container),
   ...(container ? { container } : {}),
   diagnostics,
   generated_at: options.generatedAt ?? new Date().toISOString(),
   nodes,
   ...(options.outputDirectory ? { output_directory: options.outputDirectory } : {}),
+  ...(options.projectName ? { project_name: options.projectName } : {}),
   root,
   spawnfile_version: "0.1"
 });

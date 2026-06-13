@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { normalizeProjectLabelSlug } from "../distribution/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { normalizeDeploymentName } from "./names.js";
@@ -96,8 +97,11 @@ export const createDockerDeploymentRecord = (
   };
 };
 
-export const createDockerProjectLabel = (projectRoot: string): string =>
-  resolveProjectSlug(projectRoot);
+export const createDockerProjectLabel = (
+  projectRoot: string,
+  projectName?: string
+): string =>
+  projectName ? normalizeProjectLabelSlug(projectName) : resolveProjectSlug(projectRoot);
 
 const requireCompileFingerprint = (fingerprint: string | undefined): string => {
   if (!fingerprint) {
