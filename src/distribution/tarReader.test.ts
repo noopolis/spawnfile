@@ -75,6 +75,25 @@ describe("extractSingleFileFromTar", () => {
     );
   });
 
+  it("rejects a malformed numeric size field", () => {
+    const header = Buffer.alloc(BLOCK);
+    header.write("report.json", 0, "ascii");
+    header.write("99zz9\0", 124, "ascii");
+    header.write("0", 156, "ascii");
+    const tar = Buffer.concat([header, Buffer.alloc(BLOCK), Buffer.alloc(BLOCK * 2)]);
+    expect(() => extractSingleFileFromTar(tar, { maxBytes: 1024 })).toThrow(/invalid numeric field/);
+  });
+
+  it("rejects a truncated content payload", () => {
+    const header = Buffer.alloc(BLOCK);
+    header.write("report.json", 0, "ascii");
+    header.write((600).toString(8).padStart(11, "0") + "\0", 124, "ascii");
+    header.write("0", 156, "ascii");
+    // Declares 600 bytes but only provides part of one content block.
+    const tar = Buffer.concat([header, Buffer.alloc(256)]);
+    expect(() => extractSingleFileFromTar(tar, { maxBytes: 1024 })).toThrow(/Truncated/);
+  });
+
   it("skips pax metadata entries before the payload", () => {
     const content = Buffer.from("payload");
     const tar = buildTar([

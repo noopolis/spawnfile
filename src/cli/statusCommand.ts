@@ -5,15 +5,21 @@ import { Command } from "commander";
 import {
   inspectDockerDeployment,
   listDeploymentRecords,
+  listHomeDeploymentRecords,
+  readHomeDeploymentRecord,
+  readHomeDeploymentReport,
   type DockerInspectionResult
 } from "../deployment/index.js";
 import {
   extractImageReport,
+  parseDistributionReport,
+  projectImageOrganizationView,
   renderImageInterface
 } from "../distribution/index.js";
 import { DEFAULT_OUTPUT_DIRECTORY } from "../shared/index.js";
 
 import { resolveCommandInput } from "./resolveCommandInput.js";
+import { loadedImageCompileReport } from "../status/index.js";
 import {
   createStaticStatus,
   createDeploymentSummaries,
@@ -221,6 +227,7 @@ export const executeStatusWatch = async (
   }
 };
 
+/* v8 ignore start -- docker extraction is covered by distribution E2E */
 const runStaticImageStatus = async (
   imageRef: string,
   options: StatusCommandOptions,
@@ -243,6 +250,99 @@ const runStaticImageStatus = async (
     };
   }
 };
+/* v8 ignore stop */
+
+const runHomeDeploymentStatus = async (
+  options: StatusCommandOptions,
+  handlers: StatusCommandHandlersWithLive,
+  mode: StatusOutputMode,
+  timeoutMs: number | undefined
+): Promise<StatusCommandResult> => {
+  let records: Awaited<ReturnType<typeof listHomeDeploymentRecords>>;
+  try {
+    records = await listHomeDeploymentRecords();
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error), exitCode: 2 };
+  }
+
+  if (!options.deployment) {
+    if (records.length === 0) {
+      return inputFailure("No image deployments found in the home store");
+    }
+    if (records.length > 1) {
+      return inputFailure(`status --deployment is required: ${
+        records.map((entry) => entry.record.name).sort().join(", ")
+      }`);
+    }
+  }
+  const targetName = options.deployment ?? records[0]!.record.name;
+  const match = records.find((entry) => entry.record.name === targetName);
+  if (!match) {
+    return inputFailure(`Unknown deployment "${targetName}". Valid deployments: ${
+      records.map((entry) => entry.record.name).sort().join(", ") || "none"
+    }`);
+  }
+
+  let report;
+  try {
+    const record = await readHomeDeploymentRecord(targetName);
+    void record;
+    report = parseDistributionReport(JSON.parse(await readHomeDeploymentReport(targetName)));
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error), exitCode: 2 };
+  }
+
+  const view = projectImageOrganizationView(report, match.record.source.kind === "image"
+    ? match.record.source.ref
+    : targetName);
+  const reportPath = match.path.replace(/record\.json$/, "spawnfile-report.json");
+  const loadedReport = loadedImageCompileReport(report, reportPath);
+  const selectedRecords = [match];
+
+  const deploymentInspections = await inspectDeployments(selectedRecords, handlers, options, timeoutMs);
+  const recordValues = selectedRecords.map(({ record }) => record);
+  const authValues = options.live ? await resolveAuthValues(selectedRecords, handlers) : {};
+  const collectRuntimeProbes = handlers.collectRuntimeProbeObservations ?? collectRuntimeProbeObservations;
+  const collectMoltnetProbes = handlers.collectMoltnetProbeObservations ?? collectMoltnetProbeObservations;
+  const collectDeploymentLogs = handlers.collectDeploymentLogObservations ?? collectDeploymentLogObservations;
+  const liveObservations = options.live && !options.recover
+    ? [
+        ...await collectRuntimeProbes({
+          deployments: recordValues,
+          inspections: deploymentInspections,
+          loadedReport,
+          timeoutMs
+        }),
+        ...await collectMoltnetProbes({
+          authValues,
+          deployments: recordValues,
+          inspections: deploymentInspections,
+          loadedReport,
+          timeoutMs
+        }),
+        ...(options.logs
+          ? await collectDeploymentLogs({ deployments: recordValues, loadedReport, timeoutMs })
+          : [])
+      ]
+    : [];
+
+  const status = createStaticStatus(view, loadedReport, {
+    deployments: createDeploymentSummaries(selectedRecords, deploymentInspections),
+    inputPath: view.inputPath,
+    live: {
+      context: null,
+      deploymentName: targetName,
+      logs: options.logs ?? false,
+      recover: false,
+      requested: options.live ?? false
+    },
+    liveObservations,
+    outputDirectory: "",
+    selection: null
+  });
+
+  return { exitCode: exitCodeForStatus(status), output: renderStatus(status, { mode }), status };
+};
 
 export const executeStatusCommand = async (
   inputPath: string,
@@ -254,11 +354,24 @@ export const executeStatusCommand = async (
     return mode;
   }
 
-  // A positional image reference renders the static interface from the embedded
-  // report. Project-path arguments fall through to project status below.
+  if (options.logs && !options.live) {
+    return inputFailure("status --logs requires --live");
+  }
+
+  // A positional image reference without --deployment renders the static
+  // interface from the embedded report. Image ref with --deployment, or a bare
+  // --deployment on the default path, reads the home store.
   const commandInput = resolveCommandInput(inputPath, { forceImage: options.image });
-  if (commandInput.kind === "image") {
+  const usedDefaultPath = inputPath === process.cwd();
+  if (commandInput.kind === "image" && !options.deployment) {
     return runStaticImageStatus(commandInput.ref, options, mode === "json");
+  }
+  if (options.deployment && (commandInput.kind === "image" || usedDefaultPath)) {
+    const timeoutForHome = resolveTimeoutMs(options);
+    if (typeof timeoutForHome !== "number" && timeoutForHome !== undefined) {
+      return timeoutForHome;
+    }
+    return runHomeDeploymentStatus(options, handlers, mode, timeoutForHome);
   }
 
   if (options.context && !options.recover) {

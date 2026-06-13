@@ -146,16 +146,17 @@ export const consumeImageUp = async (
   });
   const report = inspection.report;
 
-  const authValues = options.authValues ?? {};
-  runImagePreflight({ authValues, report });
-
-  const target = await resolveExistingOrNewTarget(deploymentName, alreadyExists, options);
-
+  // Resolve the full environment first (auth profile, env file, process-env
+  // overrides, and generated runtime tokens), then preflight against it so
+  // required secrets supplied via any of those sources satisfy the check.
   const env = resolveImageEnvironment({
-    authValues,
+    authValues: options.authValues ?? {},
     envFileEnv: options.envFileEnv,
     report
   });
+  runImagePreflight({ authValues: env, report });
+
+  const target = await resolveExistingOrNewTarget(deploymentName, alreadyExists, options);
 
   const runDocker = options.runDocker ?? createConsumerDockerRunner(dockerCommand, baseArgs);
   const containerName = containerNameFor(deploymentName);

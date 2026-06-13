@@ -941,4 +941,34 @@ describe("runCli", () => {
       stderrSpy.mockRestore();
     }
   });
+
+  it("rejects image-mode run with guidance to use up", async () => {
+    const stderr: string[] = [];
+    const exitCode = await runCli(["run", "you/org:1.0.0"], {
+      stderr: (message) => stderr.push(message),
+      stdout: () => undefined
+    });
+    expect(exitCode).toBe(1);
+    expect(stderr.join("\n")).toContain("Image-mode run is not supported");
+  });
+
+  it("rejects an unresolvable up argument", async () => {
+    const stderr: string[] = [];
+    const exitCode = await runCli(["up", "not-a-project-or-ref"], {
+      stderr: (message) => stderr.push(message),
+      stdout: () => undefined
+    });
+    expect(exitCode).toBe(1);
+    expect(stderr.join("\n")).toContain("Cannot resolve");
+  });
+
+  it("rejects image-mode run forced with --image", async () => {
+    const stderr: string[] = [];
+    const exitCode = await runCli(["run", "bare-name", "--image"], {
+      stderr: (message) => stderr.push(message),
+      stdout: () => undefined
+    });
+    expect(exitCode).toBe(1);
+    expect(stderr.join("\n")).toContain("Image-mode run is not supported");
+  });
 });
