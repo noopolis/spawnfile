@@ -32,7 +32,8 @@
     "test:e2e:operational-smoke": "tsx src/e2e/cli.ts operational-smoke",
     "test": "vitest run",
     "typecheck": "tsc --project tsconfig.json --noEmit",
-    "test:e2e:distribution-image": "tsx src/e2e/cli.ts distribution-image"
+    "test:e2e:distribution-image": "tsx src/e2e/cli.ts distribution-image",
+    "test:e2e:distribution-roundtrip": "tsx src/e2e/cli.ts distribution-roundtrip"
   },
   "dependencies": {
     "commander": "^14.0.1",

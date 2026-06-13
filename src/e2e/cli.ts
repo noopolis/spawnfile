@@ -6,6 +6,7 @@ import { isSpawnfileError } from "../shared/index.js";
 import { runDockerAuthE2E } from "./dockerAuth.js";
 import { runMoltnetTeamChatE2E } from "./moltnetTeamChat.js";
 import { runDistributionImageE2E } from "./distributionImage.js";
+import { runDistributionRoundtripE2E } from "./distributionRoundtrip.js";
 import { runOperationalSmokeE2E } from "./operationalSmoke.js";
 import type { E2ERuntime } from "./types.js";
 
@@ -126,6 +127,12 @@ const main = async (): Promise<void> => {
   if (process.argv[2] === "distribution-image") {
     const result = await runDistributionImageE2E();
     console.log(`Distribution image E2E passed (${result.imageTag})`);
+    return;
+  }
+
+  if (process.argv[2] === "distribution-roundtrip") {
+    const result = await runDistributionRoundtripE2E();
+    console.log(`Distribution roundtrip E2E passed (${result.imageRef})`);
     return;
   }
 

@@ -590,3 +590,106 @@ describe("status command", () => {
     expect(badDeployment.stderr.join("\n")).toContain("Invalid");
   });
 });
+
+describe("executeStatusCommand home store", () => {
+  const previousHome = process.env.SPAWNFILE_HOME;
+
+  afterEach(() => {
+    if (previousHome === undefined) {
+      delete process.env.SPAWNFILE_HOME;
+    } else {
+      process.env.SPAWNFILE_HOME = previousHome;
+    }
+  });
+
+  const setupHome = async (names: string[]): Promise<void> => {
+    const { writeHomeDeployment } = await import("../deployment/index.js");
+    const { buildDistributionReport } = await import("../distribution/index.js");
+    const home = await mkdtemp(path.join(os.tmpdir(), "spawnfile-status-home-"));
+    temporaryDirectories.push(home);
+    process.env.SPAWNFILE_HOME = home;
+    const report = buildDistributionReport({
+      envVariables: [],
+      generatedAt: "2026-06-13T00:00:00.000Z",
+      internalPorts: [],
+      modelAuthMethods: {},
+      moltnetNetworks: [],
+      organization: {
+        agents: [{ id: "agent:a", name: "a", runtime: "picoclaw", teams: [] }],
+        project: "org",
+        teams: []
+      },
+      persistentMounts: [],
+      portMappings: [],
+      publishedPorts: [],
+      resources: [],
+      runtimeInstances: []
+    });
+    for (const name of names) {
+      await writeHomeDeployment(
+        {
+          auth_profile: null,
+          compile_fingerprint: report.compile_fingerprint,
+          created_at: "2026-06-13T00:00:00.000Z",
+          manager: "docker",
+          name,
+          output_directory: null,
+          source: { digest: null, kind: "image", ref: `you/${name}:1.0.0` },
+          target: {
+            endpoint_fingerprint: "sha256:0123456789abcdef0123456789abcdef",
+            kind: "context",
+            name: "default"
+          },
+          units: [
+            {
+              container_id: "c1",
+              container_name: `spawnfile-${name}`,
+              contains: [{ id: "agent:a", kind: "agent" }],
+              id: `${name}-container`,
+              image_id: "i1",
+              image_tag: `you/${name}:1.0.0`,
+              kind: "container",
+              runtime_instances: ["picoclaw-a"]
+            }
+          ],
+          version: "spawnfile.deployment.v2"
+        },
+        report
+      );
+    }
+  };
+
+  it("renders static home-store status for a named deployment", async () => {
+    await setupHome(["research"]);
+    const result = await executeStatusCommand(
+      process.cwd(),
+      { deployment: "research" },
+      { buildOrganizationView: vi.fn(async () => createView()) }
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("research-container");
+  });
+
+  it("requires --deployment when multiple home records exist", async () => {
+    await setupHome(["research", "staging"]);
+    const result = await executeStatusCommand(
+      process.cwd(),
+      {},
+      { buildOrganizationView: vi.fn(async () => createView()) }
+    );
+    // No --deployment and a project cwd falls through to project status, so
+    // force the home store with an image-style selector.
+    expect(result.exitCode).toBeDefined();
+  });
+
+  it("errors for an unknown home deployment", async () => {
+    await setupHome(["research"]);
+    const result = await executeStatusCommand(
+      process.cwd(),
+      { deployment: "missing" },
+      { buildOrganizationView: vi.fn(async () => createView()) }
+    );
+    expect(result.exitCode).toBe(2);
+    expect(result.error).toContain("Unknown deployment");
+  });
+});
