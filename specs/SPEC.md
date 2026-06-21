@@ -1592,9 +1592,9 @@ Renders read-only static and live status for a Spawnfile project. The detailed s
 - `--out` sets the output directory used to read `spawnfile-report.json` and deployment records (default: `./.spawn`)
 - Without `--live`, MUST load the authored graph and MAY load the compile report if present
 - Without `--live`, MUST NOT inspect Docker, run runtime health probes, call Moltnet, or read runtime homes
-- `--live` reads deployment records and asks the recorded deployment manager for live observations
-- `--deployment <name>` selects the deployment record for `--live`; if multiple records exist and `--live` is used without an explicit name, the command MUST fail with the known names
-- `--context` MUST be rejected unless `--recover` is also present; with a record, the recorded target is the only live target
+- `--live` reads deployment records or context-recovered deployment labels and asks the deployment manager for live observations
+- `--deployment <name>` selects the deployment for `--live`; if multiple deployments exist and `--live` is used without an explicit name, the command MUST fail with the known names
+- `--context <name>` is valid only with `--live`; it recovers remote deployments from Spawnfile Docker labels on that context instead of reading local deployment records
 - `--json` MUST emit a stable envelope with a status schema version
 - `--quiet` MUST emit only the summary and non-ok observations
 - Missing compile output is `unknown` by default

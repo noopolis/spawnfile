@@ -35,9 +35,10 @@ spawnfile up . --detach --deployment dev --auth-profile dev
 spawnfile status . --live --deployment dev
 spawnfile status . --live --deployment dev --logs
 spawnfile status . --live --deployment dev --watch
+spawnfile status . --live --context gpu-4090 --deployment dev --logs
 ```
 
-Live status reads the selected record under `.spawn/deployments/`, then asks the recorded deployment manager for status. For Docker deployments, that means Spawnfile inspects the recorded Docker target and container unit instead of guessing from local containers.
+Live status reads the selected record under `.spawn/deployments/`, or recovers a remote deployment from Spawnfile labels when `--context <name>` is supplied, then asks the deployment manager for status. For Docker deployments, that means Spawnfile inspects the recorded or recovered Docker target and container unit instead of guessing from local containers.
 
 The current implementation shows:
 
@@ -77,11 +78,12 @@ Use Docker contexts for remote machines:
 docker context create vm1 --docker "host=ssh://ops@example-vm"
 spawnfile up . --detach --deployment prod --context vm1 --auth-profile prod
 spawnfile status . --live --deployment prod
+spawnfile status . --live --context vm1 --deployment prod --logs
 ```
 
 The deployment record stores the Docker context name plus a fingerprint of the resolved daemon endpoint. If the context later points somewhere else, live status reports drift instead of falling back to the local daemon.
 
-`status` does not accept `--context` for normal record-backed checks. The recorded target is the target. `--context` is only valid with explicit recovery when a record was lost. Current recovery renders `unknown`; label-based recovery is future work.
+When the local record is present, the recorded target is the target. When the local record is missing, pass `--context <name>` with `--live`; status scans Spawnfile Docker labels on that context, creates an in-memory recovered deployment record, and can still inspect containers and read redacted logs. Recovery is read-only and does not rewrite `.spawn/deployments/`.
 
 ## Logs
 

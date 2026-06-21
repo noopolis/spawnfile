@@ -236,7 +236,6 @@ describe("status command", () => {
     const selectors = createStreams();
     const timeout = createStreams();
     const logs = createStreams();
-    const recoverLogs = createStreams();
 
     const modeExit = await runCli([
       "status",
@@ -271,28 +270,15 @@ describe("status command", () => {
       outputDirectory,
       "--logs"
     ], { handlers: { buildOrganizationView }, streams: logs.streams });
-    const recoverLogsExit = await runCli([
-      "status",
-      "/project",
-      "--out",
-      outputDirectory,
-      "--live",
-      "--recover",
-      "--context",
-      "remote",
-      "--logs"
-    ], { handlers: { buildOrganizationView }, streams: recoverLogs.streams });
 
     expect(modeExit).toBe(2);
     expect(selectorExit).toBe(2);
     expect(timeoutExit).toBe(2);
     expect(logsExit).toBe(2);
-    expect(recoverLogsExit).toBe(2);
     expect(modes.stderr.join("\n")).toContain("Choose only one status output mode");
     expect(selectors.stderr.join("\n")).toContain("Choose only one status selector");
     expect(timeout.stderr.join("\n")).toContain("status --timeout must be a positive integer");
     expect(logs.stderr.join("\n")).toContain("status --logs requires --live");
-    expect(recoverLogs.stderr.join("\n")).toContain("status --logs is not available with --recover");
   });
 
   it("runs watch mode through repeated bounded status iterations", async () => {
@@ -490,7 +476,7 @@ describe("status command", () => {
     ]));
   });
 
-  it("rejects unknown deployments and context without recovery", async () => {
+  it("rejects unknown deployments and context without live status", async () => {
     const outputDirectory = await createOutputDirectory();
     await writeDeploymentRecord(outputDirectory, "default");
     const unknown = createStreams();
@@ -522,13 +508,12 @@ describe("status command", () => {
     expect(unknownExit).toBe(2);
     expect(unknown.stderr.join("\n")).toContain("Unknown deployment");
     expect(contextExit).toBe(2);
-    expect(context.stderr.join("\n")).toContain("status accepts --context only with --recover");
+    expect(context.stderr.join("\n")).toContain("status --context requires --live");
   });
 
-  it("requires explicit recovery context and renders recovery mode without inspecting docker", async () => {
+  it("requires recovery context when explicitly requested", async () => {
     const outputDirectory = await createOutputDirectory();
     const missingContext = createStreams();
-    const { streams, stdout } = createStreams();
 
     const missingContextExit = await runCli([
       "status",
@@ -542,25 +527,105 @@ describe("status command", () => {
       streams: missingContext.streams
     });
 
-    const exitCode = await runCli([
-      "status",
-      "/project",
-      "--out",
-      outputDirectory,
-      "--live",
-      "--recover",
-      "--context",
-      "remote",
-      "--quiet"
-    ], {
-      handlers: { buildOrganizationView: vi.fn(async () => createView()) },
-      streams
-    });
-
     expect(missingContextExit).toBe(2);
     expect(missingContext.stderr.join("\n")).toContain("status --recover requires --context");
-    expect(exitCode).toBe(0);
-    expect(stdout.join("\n")).toContain("deployment.recover");
+  });
+
+  it("recovers context deployments and reads logs through the status pipeline", async () => {
+    const outputDirectory = await createOutputDirectory();
+    await writeCompileReport(outputDirectory);
+    const { streams, stdout } = createStreams();
+    const recoveredRecord = {
+      auth_profile: null,
+      compile_fingerprint: "sf1:abc",
+      created_at: "2026-06-21T16:00:00.000Z",
+      manager: "docker",
+      name: "prod",
+      output_directory: outputDirectory,
+      source: { kind: "project" as const, root: "/project/Spawnfile" },
+      target: {
+        endpoint_fingerprint: "sha256:0123456789abcdef0123456789abcdef",
+        kind: "context" as const,
+        name: "remote"
+      },
+      units: [
+        {
+          container_id: "abc123",
+          container_name: "prod-container",
+          contains: [{ id: "agent:analyst" as const, kind: "agent" as const }],
+          id: "prod-container",
+          image_id: "image-123",
+          image_tag: "project:latest",
+          kind: "container" as const,
+          runtime_instances: ["agent-analyst"]
+        }
+      ],
+      version: "spawnfile.deployment.v2" as const
+    };
+    const recoverDockerDeploymentRecords = vi.fn(async () => [
+      { path: "docker-context://remote/prod", record: recoveredRecord }
+    ]);
+    const inspectDockerDeployment = vi.fn(async () => new Map([
+      ["prod-container", {
+        containerId: "abc123",
+        drift: [],
+        exists: true,
+        exitCode: null,
+        finishedAt: null,
+        imageId: "image-123",
+        message: "container is running (running)",
+        restartCount: 0,
+        running: true,
+        severity: "ok" as const,
+        startedAt: "2026-06-21T16:00:00.000Z",
+        status: "running",
+        unitId: "prod-container"
+      }]
+    ]));
+    const collectDeploymentLogObservations = vi.fn(async () => [
+      {
+        details: { log_tail: "remote log line\n" },
+        key: "deployment.logs",
+        label: "OK deployment.logs",
+        message: "prod/prod-container: logs collected",
+        severity: "ok" as const,
+        source: "deployment" as const,
+        subject: "deployment-unit:prod:prod-container"
+      }
+    ]);
+
+    const result = await executeStatusCommand("/project", {
+      context: "remote",
+      deployment: "prod",
+      live: true,
+      logs: true,
+      out: outputDirectory
+    }, {
+      buildOrganizationView: vi.fn(async () => createView()),
+      collectDeploymentLogObservations,
+      collectMoltnetProbeObservations: vi.fn(async () => []),
+      collectRuntimeProbeObservations: vi.fn(async () => []),
+      inspectDockerDeployment,
+      recoverDockerDeploymentRecords
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(recoverDockerDeploymentRecords).toHaveBeenCalledWith(expect.objectContaining({
+      context: "remote",
+      projectLabel: "analyst",
+      runtimeInstanceIds: ["agent-analyst"],
+      sourceRoot: "/project/Spawnfile"
+    }));
+    expect(inspectDockerDeployment).toHaveBeenCalledWith(recoveredRecord, {
+      dockerCommand: undefined,
+      timeoutMs: undefined
+    });
+    expect(collectDeploymentLogObservations).toHaveBeenCalledWith(expect.objectContaining({
+      deployments: [recoveredRecord],
+      loadedReport: expect.objectContaining({ kind: "loaded" })
+    }));
+    expect(result.output).toContain("docker context remote");
+    expect(result.output).toContain("remote log line");
   });
 
   it("returns exit 2 for malformed compile and deployment records", async () => {

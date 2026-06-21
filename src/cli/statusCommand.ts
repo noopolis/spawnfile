@@ -8,15 +8,18 @@ import {
   listHomeDeploymentRecords,
   readHomeDeploymentRecord,
   readHomeDeploymentReport,
+  recoverDockerDeploymentRecords,
   type DockerInspectionResult
 } from "../deployment/index.js";
 import {
   extractImageReport,
+  normalizeProjectLabelSlug,
   parseDistributionReport,
   projectImageOrganizationView,
   renderImageInterface
 } from "../distribution/index.js";
 import { collectRegistryDriftObservations } from "../status/index.js";
+import type { OrganizationView } from "../compiler/index.js";
 import { resolveProjectOutputDirectory } from "../filesystem/index.js";
 import { DEFAULT_OUTPUT_DIRECTORY, errorExitCode, SpawnfileError } from "../shared/index.js";
 
@@ -29,6 +32,7 @@ import {
   collectMoltnetProbeObservations,
   collectRuntimeProbeObservations,
   exitCodeForStatus,
+  flattenOrganizationNodes,
   loadCompileReport,
   renderStatus,
   resolveStatusSelector,
@@ -45,6 +49,7 @@ type StatusCommandLiveHandlers = {
   collectMoltnetProbeObservations?: typeof collectMoltnetProbeObservations;
   collectRuntimeProbeObservations?: typeof collectRuntimeProbeObservations;
   inspectDockerDeployment?: typeof inspectDockerDeployment;
+  recoverDockerDeploymentRecords?: typeof recoverDockerDeploymentRecords;
 };
 type StatusCommandHandlersWithLive = StatusCommandHandlers & StatusCommandLiveHandlers;
 
@@ -149,16 +154,54 @@ const inspectDeployments = async (
   options: StatusCommandOptions,
   timeoutMs: number | undefined
 ): Promise<Map<string, DockerInspectionResult>> => {
-  if (!options.live || options.recover) {
+  if (!options.live) {
     return new Map();
   }
 
   const inspect = handlers.inspectDockerDeployment ?? inspectDockerDeployment;
   const inspections = await Promise.all(records.map(async ({ record }) => [
     record.name,
-    await inspect(record, { timeoutMs })
+    await inspect(record, {
+      dockerCommand: options.dockerCommand,
+      timeoutMs
+    })
   ] as const));
   return new Map(inspections);
+};
+
+const containsFromView = (view: OrganizationView): Array<{ id: string; kind: "agent" | "team" }> =>
+  flattenOrganizationNodes(view).map((node) => ({ id: node.id, kind: node.kind }));
+
+const runtimeInstanceIdsFromReport = (
+  loadedReport: Awaited<ReturnType<typeof loadCompileReport>>
+): string[] =>
+  loadedReport.kind === "loaded"
+    ? loadedReport.report.runtimeInstances.map((instance) => instance.id).sort()
+    : [];
+
+const recoverContextDeployments = async (
+  input: {
+    handlers: StatusCommandLiveHandlers;
+    loadedReport: Awaited<ReturnType<typeof loadCompileReport>>;
+    options: StatusCommandOptions;
+    outputDirectory: string;
+    projectLabel: string;
+    sourceRoot: string;
+    timeoutMs: number | undefined;
+    view: OrganizationView;
+  }
+): Promise<LoadedDeploymentRecord[]> => {
+  const recover = input.handlers.recoverDockerDeploymentRecords ?? recoverDockerDeploymentRecords;
+  return recover({
+    contains: containsFromView(input.view),
+    context: input.options.context!,
+    dockerCommand: input.options.dockerCommand,
+    outputDirectory: input.outputDirectory,
+    projectLabel: input.projectLabel,
+    runtimeInstanceIds: runtimeInstanceIdsFromReport(input.loadedReport),
+    sourceRoot: input.sourceRoot,
+    timeoutMs: input.timeoutMs
+  });
 };
 
 const resolveAuthValues = async (
@@ -339,7 +382,12 @@ const runHomeDeploymentStatus = async (
           timeoutMs
         }),
         ...(options.logs
-          ? await collectDeploymentLogs({ deployments: recordValues, loadedReport, timeoutMs })
+          ? await collectDeploymentLogs({
+            deployments: recordValues,
+            dockerCommand: options.dockerCommand,
+            loadedReport,
+            timeoutMs
+          })
           : []),
         ...(options.pullCheck
           ? await collectRegistryDriftObservations({
@@ -394,7 +442,7 @@ export const executeStatusCommand = async (
   if (commandInput.kind === "image" && !options.deployment) {
     return runStaticImageStatus(commandInput.ref, options, mode === "json");
   }
-  if (options.deployment && (commandInput.kind === "image" || usedDefaultPath)) {
+  if (options.deployment && !options.context && (commandInput.kind === "image" || usedDefaultPath)) {
     const timeoutForHome = resolveTimeoutMs(options);
     if (typeof timeoutForHome !== "number" && timeoutForHome !== undefined) {
       return timeoutForHome;
@@ -402,14 +450,11 @@ export const executeStatusCommand = async (
     return runHomeDeploymentStatus(options, handlers, mode, timeoutForHome);
   }
 
-  if (options.context && !options.recover) {
-    return inputFailure("status accepts --context only with --recover");
+  if (options.context && !options.live) {
+    return inputFailure("status --context requires --live");
   }
   if (options.logs && !options.live) {
     return inputFailure("status --logs requires --live");
-  }
-  if (options.logs && options.recover) {
-    return inputFailure("status --logs is not available with --recover");
   }
   if (options.recover && !options.context) {
     return inputFailure("status --recover requires --context");
@@ -441,11 +486,22 @@ export const executeStatusCommand = async (
   }
   let deploymentRecords: LoadedDeploymentRecord[];
   try {
-    deploymentRecords = await listDeploymentRecords(outputDirectory);
+    deploymentRecords = options.context
+      ? await recoverContextDeployments({
+          handlers,
+          loadedReport,
+          options,
+          outputDirectory,
+          projectLabel: normalizeProjectLabelSlug(view.root.name),
+          sourceRoot: view.root.source,
+          timeoutMs,
+          view
+        })
+      : await listDeploymentRecords(outputDirectory);
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : String(error),
-      exitCode: 2
+      exitCode: errorExitCode(error)
     };
   }
   const selectedDeploymentRecords = resolveDeploymentRecords(deploymentRecords, options);
@@ -483,6 +539,7 @@ export const executeStatusCommand = async (
         ...(options.logs
           ? await collectDeploymentLogs({
             deployments: selectedDeploymentRecordValues,
+            dockerCommand: options.dockerCommand,
             loadedReport,
             timeoutMs
           })
@@ -497,7 +554,7 @@ export const executeStatusCommand = async (
       context: options.context ?? null,
       deploymentName: options.deployment ?? null,
       logs: options.logs ?? false,
-      recover: options.recover ?? false,
+      recover: options.recover === true || Boolean(options.context),
       requested: options.live ?? false
     },
     liveObservations,
@@ -532,7 +589,7 @@ export const registerStatusCommand = (
     .option("--pull", "Pull the image before inspecting (image references only)")
     .option("--pull-check", "Check the registry for a newer image digest (networked)")
     .option("--docker-command <command>", "Docker command")
-    .option("--context <name>", "Docker context for label recovery only")
+    .option("--context <name>", "Docker context for live remote deployment recovery")
     .option("--recover", "Recover live status from labels instead of a deployment record")
     .option("--logs", "Include redacted logs when supported")
     .option("--timeout <ms>", "Bound live Docker/runtime checks in milliseconds")

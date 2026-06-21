@@ -119,21 +119,13 @@ export const createDeploymentObservations = (
 ): StatusObservation[] => {
   const observations: StatusObservation[] = [];
 
-  if (deployments.length === 0 && options.liveRequested && !options.recover) {
+  if (deployments.length === 0 && options.liveRequested) {
     observations.push(createObservation({
-      key: "deployment.record",
-      message: `No deployment records found under ${options.outputDirectory}`,
+      key: options.recover ? "deployment.recover" : "deployment.record",
+      message: options.recover
+        ? `No recoverable deployment labels found for ${options.outputDirectory}`
+        : `No deployment records found under ${options.outputDirectory}`,
       severity: "warn",
-      source: "deployment",
-      subject: "deployment"
-    }));
-  }
-
-  if (options.recover) {
-    observations.push(createObservation({
-      key: "deployment.recover",
-      message: "Label recovery is not implemented yet; use record-backed status for live checks",
-      severity: "unknown",
       source: "deployment",
       subject: "deployment"
     }));

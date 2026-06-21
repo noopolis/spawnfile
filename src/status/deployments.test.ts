@@ -116,7 +116,7 @@ describe("status deployment summaries", () => {
     }));
   });
 
-  it("reports missing live records, recovery mode, and non-error unit states", () => {
+  it("reports missing live records, missing recovered records, and non-error unit states", () => {
     expect(createDeploymentObservations([], {
       compileFingerprint: null,
       liveRequested: true,
@@ -135,7 +135,7 @@ describe("status deployment summaries", () => {
       recover: true
     })).toContainEqual(expect.objectContaining({
       key: "deployment.recover",
-      severity: "unknown",
+      severity: "warn",
       subject: "deployment"
     }));
 

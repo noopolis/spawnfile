@@ -45,15 +45,16 @@ spawnfile status [path] --live
 spawnfile status [path] --live --deployment <name>
 spawnfile status [path] --live --deployment <name> --logs
 spawnfile status [path] --live --deployment <name> --watch
+spawnfile status [path] --live --context <name> --deployment <name> --logs
 ```
 
-Live status includes static status, then reads the selected deployment record and asks the recorded deployment manager for live observations. If more than one deployment record exists, `--live` MUST require `--deployment <name>` and error with the known deployment names when omitted.
+Live status includes static status, then reads the selected deployment record or recovers matching remote deployment labels from an explicit Docker context, and asks the deployment manager for live observations. If more than one deployment exists, `--live` MUST require `--deployment <name>` and error with the known deployment names when omitted.
 
 Every live operation MUST be bounded by timeouts. Failed or timed-out probes produce `unknown` observations and MUST NOT suppress successful observations from other layers.
 
 `--watch` repeats the same status request until interrupted. Each iteration reuses the same flag validation and timeout rules; timeouts apply per iteration.
 
-`--logs` is valid only with record-backed `--live` status. It adds redacted Docker log-tail observations for recorded deployment units. It is not valid in static status or recovery mode.
+`--logs` is valid only with `--live` status. It adds redacted Docker log-tail observations for recorded or context-recovered deployment units. It is not valid in static status.
 
 ### Selectors
 
@@ -219,15 +220,14 @@ Current target forms:
 
 `endpoint_fingerprint` is a hash of the resolved Docker context endpoint. Status re-resolves the context and reports endpoint drift as an `error`. Spawnfile must not fall back to the local Docker daemon when a recorded target fails.
 
-`status` rejects `--context` unless `--recover` is also present. With a record, the recorded target is the only target. Recovery is explicit and read-only:
+Without `--context`, live status uses local deployment records and the recorded target is the only target. With `--context <name>`, live status treats that context as a remote deployment source and recovers containers from Spawnfile labels. `--recover` is an explicit alias for that context-backed path and remains read-only:
 
 ```bash
 spawnfile status . --live --recover --context vm1
+spawnfile status . --live --context vm1 --deployment prod --logs
 ```
 
-Current recovery is a guarded placeholder: `--context` is accepted only with `--recover`, and recovery renders an `unknown` observation instead of scanning labels.
-
-Future recovery may match containers by Docker labels:
+Context recovery matches containers by Docker labels:
 
 ```text
 com.spawnfile.version=0.1
@@ -237,7 +237,7 @@ com.spawnfile.unit=<unit-id>
 com.spawnfile.compile_fingerprint=<compile-fingerprint>
 ```
 
-Labels MUST contain identifiers only. They MUST NOT contain absolute paths, usernames, hostnames, env values, auth profile names, or secret values. When label recovery is implemented, if multiple containers match, recovery MUST error with candidates instead of guessing. Recovery MUST NOT rewrite the deployment record.
+Labels MUST contain identifiers only. They MUST NOT contain absolute paths, usernames, hostnames, env values, auth profile names, or secret values. If multiple containers match the same recovered deployment unit, recovery MUST error instead of guessing. Recovery MUST NOT rewrite the deployment record.
 
 Logs are never shown by default. `--logs` may show a redacted tail in `details.log_tail`.
 Known required-secret values and obvious token-shaped strings are masked. There is no raw-log status mode.
@@ -319,7 +319,7 @@ Current scope:
 - same-name detached starts reuse compatible recorded settings and replace records after success
 - Docker context and host target recording
 - Docker labels contain identifiers only
-- current recovery requires `--recover --context` and renders `unknown`; future label recovery errors on ambiguous matches
+- context recovery scans label-bearing containers and errors on ambiguous recovered units
 - endpoint fingerprint drift reports `error` and does not fall back to the local daemon
 - probe timeout/failure normalization
 - runtime probes through adapter-owned probes and no runtime-name switch in the status core
@@ -330,8 +330,6 @@ Current scope:
 - live E2E with isolated ports: compile, detached start, `status --live --json`, runtime health, managed Moltnet metadata, plus direct workspace-resource link checks
 
 Future scope:
-
-- label recovery ambiguity handling
 - bounded Moltnet lifecycle, wake, and debug metadata when Moltnet exposes a metadata endpoint for them
 - disconnected bridge drift based on bounded Moltnet lifecycle metadata
 

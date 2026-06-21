@@ -3,6 +3,7 @@ export * from "./dockerInspect.js";
 export * from "./dockerLogs.js";
 export * from "./dockerManager.js";
 export * from "./dockerProbeGateway.js";
+export * from "./dockerRecover.js";
 export * from "./homeStore.js";
 export * from "./names.js";
 export * from "./record.js";
