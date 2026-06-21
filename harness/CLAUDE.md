@@ -1,10 +1,10 @@
-# Harness Package Guide
+# Daimon Package Guide
 
-This folder is a local incubation package for a reusable Noopolis harness.
+This repository contains Daimon, the Noopolis-native per-agent runtime harness.
 
 It must stay detached from the Spawnfile compiler implementation. Spawnfile owns
 teams, org graphs, Moltnet wiring, schedules, workspace compilation, and
-deployment. This package owns only the per-agent harness boundary.
+deployment. Daimon owns only the per-agent runtime boundary.
 
 ## Structure
 

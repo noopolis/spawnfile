@@ -29,7 +29,7 @@ describe("runtime container install recipe fallbacks", () => {
         kind: "source_repo",
         remote: "https://github.com/openclaw/openclaw.git",
         runtimeName: "openclaw",
-        runtimeRef: "v2026.6.5",
+        runtimeRef: "v2026.6.8",
         selectionSource: "runtime_registry_ref"
       }
     });
@@ -47,9 +47,9 @@ describe("runtime container install recipe fallbacks", () => {
         kind: "npm",
         packageName: "openclaw",
         runtimeName: "openclaw",
-        runtimeRef: "v2026.6.5",
+        runtimeRef: "v2026.6.8",
         selectionSource: "runtime_registry_install",
-        version: "2026.6.5"
+        version: "2026.6.8"
       }
     });
     const recipe = await createRuntimeInstallRecipe("openclaw");
@@ -57,7 +57,7 @@ describe("runtime container install recipe fallbacks", () => {
     expect(recipe.runtimeRoot).toBe("/usr/local/lib/node_modules/openclaw");
     expect(recipe.copyCommands).toEqual([]);
     expect(recipe.commands).toEqual([
-      "npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.5"
+      "npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.8"
     ]);
   });
 
@@ -69,9 +69,9 @@ describe("runtime container install recipe fallbacks", () => {
         installHint: "Copy the pinned OpenClaw runtime files from the official container image.",
         kind: "container_image",
         runtimeName: "openclaw",
-        runtimeRef: "v2026.6.5",
+        runtimeRef: "v2026.6.8",
         selectionSource: "runtime_registry_install",
-        tag: "2026.6.5"
+        tag: "2026.6.8"
       }
     });
     const recipe = await createRuntimeInstallRecipe("openclaw");
@@ -79,7 +79,7 @@ describe("runtime container install recipe fallbacks", () => {
     expect(recipe.runtimeRoot).toBe(`${RUNTIME_INSTALL_ROOT}/openclaw`);
     expect(recipe.commands).toEqual([]);
     expect(recipe.copyCommands).toEqual([
-      "COPY --from=registry.example/spawnfile/openclaw-source:2026.6.5 /app /opt/spawnfile/runtime-installs/openclaw"
+      "COPY --from=registry.example/spawnfile/openclaw-source:2026.6.8 /app /opt/spawnfile/runtime-installs/openclaw"
     ]);
   });
 

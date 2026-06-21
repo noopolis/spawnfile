@@ -94,12 +94,13 @@ export const resolveRuntimeConfig = (
         kind: "picoclaw"
       };
     }
+    case "daimon":
     case "pi": {
-      const port = getRuntimeAdapter("pi").container.port;
+      const port = getRuntimeAdapter(agentNode.runtime.name).container.port;
       if (!port) {
         throw new SpawnfileError(
           "compile_error",
-          `Unable to resolve Pi control port for Moltnet agent ${agentNode.name}`
+          `Unable to resolve ${agentNode.runtime.name} control port for Moltnet agent ${agentNode.name}`
         );
       }
 

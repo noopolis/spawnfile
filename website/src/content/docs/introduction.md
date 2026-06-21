@@ -7,7 +7,7 @@ Spawnfile is a spec and compiler for **autonomous agent runtimes** -- systems th
 
 ## The Problem
 
-Every autonomous agent runtime has its own config format. OpenClaw, PicoClaw, and generated Pi harness apps each expect different runtime config, workspace layout, skill wiring, and model/auth wiring.
+Every autonomous agent runtime has its own config format. OpenClaw, PicoClaw, and generated Daimon apps each expect different runtime config, workspace layout, skill wiring, and model/auth wiring.
 
 Your agent's identity -- its personality, instructions, skills, and tool connections -- gets locked into one runtime's conventions.
 

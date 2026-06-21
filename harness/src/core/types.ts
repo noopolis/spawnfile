@@ -9,6 +9,21 @@ export interface AgentStartInput {
   tools?: string[];
 }
 
+export interface HarnessModelEndpoint {
+  baseUrl: string;
+  compatibility: "anthropic" | "openai";
+}
+
+export interface HarnessModelSpec {
+  auth?: {
+    keyEnv?: string;
+    method: "api_key" | "claude-code" | "codex" | "none";
+  };
+  endpoint?: HarnessModelEndpoint;
+  name: string;
+  provider: string;
+}
+
 export interface WakeEvent {
   id: string;
   kind: "manual" | "message" | "schedule";

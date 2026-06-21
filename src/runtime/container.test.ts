@@ -4,6 +4,7 @@ import { createRuntimeInstallRecipe, RUNTIME_INSTALL_ROOT } from "./container.js
 
 describe("runtime container install recipes", () => {
   afterEach(() => {
+    delete process.env.SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE;
     delete process.env.SPAWNFILE_PI_RUNTIME_BASE_IMAGE;
   });
 
@@ -14,7 +15,7 @@ describe("runtime container install recipes", () => {
     expect(recipe.runtimeRoot).toBe("/usr/local/lib/node_modules/openclaw");
     expect(recipe.copyCommands).toEqual([]);
     expect(recipe.commands).toEqual([
-      "npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.5"
+      "npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.8"
     ]);
   });
 
@@ -47,6 +48,18 @@ describe("runtime container install recipes", () => {
     ]);
   });
 
+  it("creates a Daimon generated-app install root from the pinned runtime version", async () => {
+    const recipe = await createRuntimeInstallRecipe("daimon");
+
+    expect(recipe.runtimeName).toBe("daimon");
+    expect(recipe.runtimeRoot).toBe(`${RUNTIME_INSTALL_ROOT}/daimon`);
+    expect(recipe.copyCommands).toEqual([]);
+    expect(recipe.commands).toEqual([
+      `mkdir -p ${RUNTIME_INSTALL_ROOT}/daimon`,
+      `cd ${RUNTIME_INSTALL_ROOT}/daimon && npm install --omit=dev --no-fund --no-audit @noopolis/daimon@0.1.0 @earendil-works/pi-coding-agent@0.79.9 @earendil-works/pi-ai@0.79.9`
+    ]);
+  });
+
   it("uses a prebuilt Pi runtime base image when configured", async () => {
     process.env.SPAWNFILE_PI_RUNTIME_BASE_IMAGE = "noopolis/spawnfile-pi-runtime:test";
 
@@ -54,5 +67,14 @@ describe("runtime container install recipes", () => {
 
     expect(recipe.baseImage).toBe("noopolis/spawnfile-pi-runtime:test");
     expect(recipe.commands).toEqual([`mkdir -p ${RUNTIME_INSTALL_ROOT}/pi`]);
+  });
+
+  it("uses a prebuilt Daimon runtime base image when configured", async () => {
+    process.env.SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE = "noopolis/spawnfile-daimon-runtime:test";
+
+    const recipe = await createRuntimeInstallRecipe("daimon");
+
+    expect(recipe.baseImage).toBe("noopolis/spawnfile-daimon-runtime:test");
+    expect(recipe.commands).toEqual([`mkdir -p ${RUNTIME_INSTALL_ROOT}/daimon`]);
   });
 });

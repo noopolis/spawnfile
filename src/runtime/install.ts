@@ -70,6 +70,27 @@ const installHints = new Map<
   >
 >([
   [
+    "daimon",
+    {
+      container_image: {
+        ecosystem: "node",
+        installHint: "Copy a pinned Daimon runtime image."
+      },
+      github_release_archive: {
+        ecosystem: "node",
+        installHint: "Download a pinned Daimon runtime release archive."
+      },
+      npm: {
+        ecosystem: "node",
+        installHint: "Install the pinned Daimon package and Pi SDK dependencies inside the generated runtime app."
+      },
+      source_repo: {
+        ecosystem: "node",
+        installHint: "Checkout the pinned Daimon repo ref and install from the repository root."
+      }
+    }
+  ],
+  [
     "openclaw",
     {
       container_image: {

@@ -165,34 +165,43 @@ The portable schema is broader than any single runtime. A conforming compiler va
 
 | Runtime | Supported Access | Notes |
 |---|---|---|
+| `daimon` | rejected | Daimon only supports Moltnet surfaces in v0.1. |
 | `openclaw` | `pairing`, `allowlist`, `open` | Supports user, guild, and channel policy lowering. Channel allowlists currently require exactly one guild in Spawnfile lowering. |
 | `picoclaw` | `open`, `allowlist` | Supports Discord token wiring and user allowlists. Guild/channel allowlists are not lowered in v0.1. |
+| `pi` | rejected | The generated Pi harness only supports Moltnet surfaces in v0.1. |
 
 ### Telegram
 
 | Runtime | Supported Access | Notes |
 |---|---|---|
+| `daimon` | rejected | Daimon only supports Moltnet surfaces in v0.1. |
 | `openclaw` | `pairing`, `allowlist`, `open` | Supports DM and group/chat policy lowering. |
 | `picoclaw` | `open`, `allowlist` | Supports Telegram token wiring and user allowlists. Chat allowlists are not lowered in v0.1. |
+| `pi` | rejected | The generated Pi harness only supports Moltnet surfaces in v0.1. |
 
 ### WhatsApp
 
 | Runtime | Supported Access | Notes |
 |---|---|---|
+| `daimon` | rejected | Daimon only supports Moltnet surfaces in v0.1. |
 | `openclaw` | `pairing`, `allowlist`, `open` | Supports DM and group policy lowering. |
 | `picoclaw` | `open`, `allowlist` | Supports user allowlists. Portable group allowlists are not lowered in Spawnfile v0.1. |
+| `pi` | rejected | The generated Pi harness only supports Moltnet surfaces in v0.1. |
 
 ### Slack
 
 | Runtime | Supported Access | Notes |
 |---|---|---|
+| `daimon` | rejected | Daimon only supports Moltnet surfaces in v0.1. |
 | `openclaw` | `pairing`, `allowlist`, `open` | Requires both bot and app/socket tokens. Supports DM and channel policy lowering. |
 | `picoclaw` | `open`, `allowlist` | Requires both bot and app/socket tokens. Portable channel allowlists are not lowered in Spawnfile v0.1. |
+| `pi` | rejected | The generated Pi harness only supports Moltnet surfaces in v0.1. |
 
 ### Moltnet
 
 | Runtime | Supported Shape | Notes |
 |---|---|---|
+| `daimon` | supported | Lowers generated Moltnet client config, skill installation, persistent open-token directories, and `moltnet node` bridge configs that deliver wakes through the generated Daimon app control endpoint. |
 | `openclaw` | team-network attachments | Lowers generated Moltnet client config and skill installation when artifacts are available. |
 | `picoclaw` | team-network attachments | Lowers generated Moltnet client config and skill installation when artifacts are available. |
 | `pi` | supported | Lowers generated Moltnet client config, skill installation, persistent open-token directories, and `moltnet node` bridge configs that deliver wakes through the generated Pi app control endpoint. |
@@ -201,8 +210,10 @@ The portable schema is broader than any single runtime. A conforming compiler va
 
 | Runtime | Supported | Notes |
 |---|---|---|
+| `daimon` | rejected | Daimon only supports Moltnet surfaces in v0.1. |
 | `openclaw` | not yet | Webhook delivery support is planned. |
 | `picoclaw` | not yet | Webhook delivery support is planned. |
+| `pi` | rejected | The generated Pi harness only supports Moltnet surfaces in v0.1. |
 
 Webhook is a push surface: the agent delivers events to a caller-owned callback URL. Delivery is fire-and-forget. When `signing_secret` is configured, payloads are signed with HMAC-SHA256.
 

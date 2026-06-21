@@ -10,10 +10,24 @@ describe("runtime install selection", () => {
   it("covers all compileable runtimes from runtimes.yaml", async () => {
     await expect(assertInstallSelectionsCoverCompileableRuntimes()).resolves.toBeUndefined();
     await expect(listInstallSelectionRuntimes()).resolves.toEqual([
+      "daimon",
       "openclaw",
       "pi",
       "picoclaw"
     ]);
+  });
+
+  it("resolves Daimon install selection from the pinned npm package", async () => {
+    await expect(resolveRuntimeInstallSelection("daimon")).resolves.toEqual({
+      ecosystem: "node",
+      installHint: "Install the pinned Daimon package and Pi SDK dependencies inside the generated runtime app.",
+      kind: "npm",
+      packageName: "@noopolis/daimon",
+      runtimeName: "daimon",
+      runtimeRef: "v0.1.0",
+      selectionSource: "runtime_registry_install",
+      version: "0.1.0"
+    });
   });
 
   it("resolves OpenClaw install selection from the pinned npm package", async () => {
@@ -23,9 +37,9 @@ describe("runtime install selection", () => {
       kind: "npm",
       packageName: "openclaw",
       runtimeName: "openclaw",
-      runtimeRef: "v2026.6.5",
+      runtimeRef: "v2026.6.8",
       selectionSource: "runtime_registry_install",
-      version: "2026.6.5"
+      version: "2026.6.8"
     });
   });
 

@@ -1,0 +1,35 @@
+spawnfile_version: "0.1"
+kind: agent
+name: localist
+description: "Daimon agent configured for a local OpenAI-compatible model"
+
+runtime: daimon
+
+execution:
+  model:
+    primary:
+      provider: local
+      name: llama3.2
+      auth:
+        method: none
+      endpoint:
+        compatibility: openai
+        base_url: http://host.docker.internal:11434/v1
+  sandbox:
+    mode: workspace
+
+schedule:
+  kind: every
+  every: 10s
+  prompt: "Append one short line to ./shared-log/localist.md proving Daimon can use shared resources."
+
+surfaces:
+  moltnet:
+    - network: mixed_lab
+      rooms:
+        floor:
+          wake: mentions
+
+workspace:
+  docs:
+    system: AGENTS.md

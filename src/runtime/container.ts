@@ -4,7 +4,10 @@ import { resolveRuntimeInstallSelection } from "./install.js";
 
 export const RUNTIME_INSTALL_ROOT = "/opt/spawnfile/runtime-installs";
 const PI_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_PI_RUNTIME_BASE_IMAGE";
+const DAIMON_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE";
 const PI_AI_PACKAGE_NAME = "@earendil-works/pi-ai";
+const PI_CODING_AGENT_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
+const PI_PACKAGE_VERSION = "0.79.9";
 
 export interface RuntimeInstallRecipe {
   baseImage?: string;
@@ -93,6 +96,7 @@ export const createRuntimeInstallRecipe = async (
         runtimeRoot: installRoot
       };
     }
+    case "daimon":
     case "pi": {
       if (selection.kind !== "npm") {
         throw new SpawnfileError(
@@ -100,7 +104,19 @@ export const createRuntimeInstallRecipe = async (
           `Runtime ${runtimeName} has no compiled artifact recipe for ${selection.kind}`
         );
       }
-      const prebuiltBaseImage = process.env[PI_RUNTIME_BASE_IMAGE_ENV]?.trim();
+      const prebuiltBaseImage = (runtimeName === "daimon"
+        ? process.env[DAIMON_RUNTIME_BASE_IMAGE_ENV]?.trim()
+        : process.env[PI_RUNTIME_BASE_IMAGE_ENV]?.trim()) || undefined;
+      const npmPackages = runtimeName === "daimon"
+        ? [
+            `${selection.packageName}@${selection.version}`,
+            `${PI_CODING_AGENT_PACKAGE_NAME}@${PI_PACKAGE_VERSION}`,
+            `${PI_AI_PACKAGE_NAME}@${PI_PACKAGE_VERSION}`
+          ]
+        : [
+            `${selection.packageName}@${selection.version}`,
+            `${PI_AI_PACKAGE_NAME}@${selection.version}`
+          ];
 
       return {
         ...(prebuiltBaseImage ? { baseImage: prebuiltBaseImage } : {}),
@@ -108,7 +124,7 @@ export const createRuntimeInstallRecipe = async (
           ? [`mkdir -p ${installRoot}`]
           : [
               `mkdir -p ${installRoot}`,
-              `cd ${installRoot} && npm install --omit=dev --no-fund --no-audit ${selection.packageName}@${selection.version} ${PI_AI_PACKAGE_NAME}@${selection.version}`
+              `cd ${installRoot} && npm install --omit=dev --no-fund --no-audit ${npmPackages.join(" ")}`
             ],
         copyCommands: [],
         runtimeName,

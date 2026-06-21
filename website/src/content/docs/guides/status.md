@@ -85,6 +85,23 @@ The deployment record stores the Docker context name plus a fingerprint of the r
 
 When the local record is present, the recorded target is the target. When the local record is missing, pass `--context <name>` with `--live`; status scans Spawnfile Docker labels on that context, creates an in-memory recovered deployment record, and can still inspect containers and read redacted logs. Recovery is read-only and does not rewrite `.spawn/deployments/`.
 
+### Remote Context Recovery
+
+Use context recovery when a deployment is already running on a remote Docker context, but the current checkout does not have its `.spawn/deployments/<name>.json` record. This commonly happens when the deployment was created from another machine, after a fresh clone, or after copying only the source tree locally.
+
+```bash
+spawnfile status . \
+  --live \
+  --context gpu-4090 \
+  --deployment hotadd \
+  --logs \
+  --timeout 5000
+```
+
+In this mode, the Docker context acts as the remote deployment source. Spawnfile scans containers on that context for its deployment labels, filters them to the current project slug, reconstructs an in-memory deployment record, and then runs the normal live status path against the recovered units. This gives you the same container state and redacted log tail you would get from a local record, without writing a replacement record locally.
+
+The local Spawnfile project still matters. It supplies the authored organization view, the project slug used for label filtering, and any local compile report available under `--out`. If the compile report is missing, status can still recover containers and logs, but some runtime or Moltnet probes may render `unknown` because their compiled metadata is not available locally.
+
 ## Logs
 
 Logs are never shown by default because agent containers can carry prompts, model output, and leaked credentials. `--logs` is valid only with `--live` and prints a redacted Docker log tail. Spawnfile masks known required secret values and obvious token-shaped strings, and it does not provide a raw-log mode.

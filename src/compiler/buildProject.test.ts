@@ -89,7 +89,7 @@ describe("buildProject", () => {
 
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
     expect(dockerfile).toContain(
-      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.5"
+      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.8"
     );
     expect(dockerfile).not.toContain("runtime-sources");
   }, 30000);
@@ -115,7 +115,7 @@ describe("buildProject", () => {
 
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
     expect(dockerfile).toContain(
-      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.5"
+      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.8"
     );
     expect(dockerfile).toContain(
       "https://github.com/sipeed/picoclaw/releases/download/v0.2.9/$asset"

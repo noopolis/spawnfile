@@ -1641,13 +1641,13 @@ from normal `.spawn/` output and defaults to `.spawn-dev/`.
 - MUST target a project-backed dev deployment record
 - MUST recompile source into the dev output directory without deleting the deployment record
 - MUST hot-apply exactly one agent selected by id, slug, or name
-- For Pi runtime agents, MUST copy the updated Pi app config, selected agent workspace, every matching Moltnet node config, and managed Moltnet server configs into the recorded running container, then call the generated Pi control endpoint to load the agent
+- For Daimon runtime agents, MUST copy the updated Daimon app config, selected agent workspace, every matching Moltnet node config, and managed Moltnet server configs into the recorded running container, then call the generated Daimon control endpoint to load the agent
 - For a new Pi agent with Moltnet node configs, MUST start only that agent's Moltnet node processes; existing agents and the container MUST NOT be restarted
 - For an existing Pi agent, MUST reload the in-memory Pi agent and MUST NOT start a duplicate Moltnet node
 - Running managed Moltnet servers keep their current in-memory room membership until the copied server config is reconciled through an operator-token `moltnet apply` or a server restart
 - MUST fail clearly for unsupported runtimes or deployments without a live Pi control endpoint
 
-`spawnfile dev activity` reads the generated Pi app's bounded
+`spawnfile dev activity` reads the generated Daimon app's bounded
 `spawnfile.activity.v1` buffer from the running dev container and prints JSON
 lines. It MAY filter by agent id, slug, or name, and MUST NOT read Moltnet
 message bodies or expose hidden reasoning.

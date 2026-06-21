@@ -2,7 +2,6 @@ export const renderPiPreludeSource = (): string => String.raw`import path from "
 import { createServer } from "node:http";
 import { mkdir, readFile } from "node:fs/promises";
 
-import { getModels } from "@earendil-works/pi-ai";
 import { AuthStorage, createAgentSession, DefaultResourceLoader, ModelRegistry, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 const maxControlBodyBytes = 1 << 20;
@@ -94,7 +93,9 @@ const readRequestJson = (request) => new Promise((resolve, reject) => {
 });
 
 const controlEventText = (payload) => [
-  "Moltnet control wake.",
+  "Moltnet coordination event.",
+  "This message was delivered from a Moltnet conversation into your Spawnfile Daimon runtime.",
+  "Treat it as context first. Act or reply only when addressed, when your local instructions require it, or when useful coordination is needed.",
   typeof payload.context_id === "string" ? "Context ID: " + payload.context_id : "",
   typeof payload.from === "string" ? "From: " + payload.from : "",
   typeof payload.message === "string" ? payload.message : ""

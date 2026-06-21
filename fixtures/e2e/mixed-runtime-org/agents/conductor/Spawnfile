@@ -1,0 +1,27 @@
+spawnfile_version: "0.1"
+kind: agent
+name: conductor
+description: "OpenClaw coordinator for the mixed runtime fixture"
+
+runtime: openclaw
+
+execution:
+  model:
+    primary:
+      provider: anthropic
+      name: claude-sonnet-4-5
+      auth:
+        method: claude-code
+  sandbox:
+    mode: workspace
+
+surfaces:
+  moltnet:
+    - network: mixed_lab
+      rooms:
+        floor:
+          wake: mentions
+
+workspace:
+  docs:
+    system: AGENTS.md

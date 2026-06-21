@@ -4,7 +4,7 @@ import {
   listEffectiveExecutionModelTargets,
   listExecutionModelSecretNames
 } from "../../compiler/modelEnv.js";
-import type { ResolvedAgentNode } from "../../compiler/types.js";
+import type { ResolvedAgentNode, ResolvedAgentSurfaces } from "../../compiler/types.js";
 import { SpawnfileError } from "../../shared/index.js";
 import {
   createAgentCapabilities,
@@ -26,12 +26,14 @@ import {
   PI_PACKAGE_VERSION,
   renderPiApp,
   renderPiAppConfig,
+  renderPiModelsConfig,
   renderPiPackageJson
 } from "./appTemplate.js";
 import { preparePiRuntimeAuth } from "./runAuth.js";
 
 const PI_CONFIG_FILE = "pi-app.json";
 const PI_CONTROL_PORT = 19690;
+const PI_MODELS_FILE = "home/.pi/agent/models.json";
 
 const moveWorkspaceFileToAgentWorkspace = (
   file: EmittedFile,
@@ -86,6 +88,10 @@ const createContainerTargets = async (
         {
           content: renderPiAppConfig(agents),
           path: PI_CONFIG_FILE
+        },
+        {
+          content: renderPiModelsConfig(agentInputs.map((input) => input.value)),
+          path: PI_MODELS_FILE
         },
         {
           content: renderPiPackageJson(),
@@ -145,12 +151,45 @@ const moltnetCapabilityOptions = (node: ResolvedAgentNode) =>
       }
     : {};
 
+const assertSupportedPiSurfaces = (surfaces: ResolvedAgentSurfaces | undefined): void => {
+  if (!surfaces) {
+    return;
+  }
+
+  const unsupported = [
+    surfaces.discord ? "discord" : null,
+    surfaces.http ? "http" : null,
+    surfaces.slack ? "slack" : null,
+    surfaces.telegram ? "telegram" : null,
+    surfaces.webhook ? "webhook" : null,
+    surfaces.whatsapp ? "whatsapp" : null
+  ].filter((surface): surface is string => surface !== null);
+
+  if (unsupported.length > 0) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Pi runtime only supports Moltnet surfaces in Spawnfile v0.1; unsupported surfaces: ${unsupported.join(", ")}`
+    );
+  }
+};
+
 export const piAdapter: RuntimeAdapter = {
   assertSupportedModelTarget(target) {
     if (target.endpoint) {
+      if (target.provider !== "custom" && target.provider !== "local") {
+        throw new SpawnfileError(
+          "validation_error",
+          "Pi runtime only supports endpoints on custom or local model providers"
+        );
+      }
+
+      if (target.auth.method === "none" || target.auth.method === "api_key") {
+        return;
+      }
+
       throw new SpawnfileError(
         "validation_error",
-        "Pi runtime does not support custom or local model endpoints yet"
+        `Pi runtime endpoint models only support none or api_key auth, got ${target.auth.method}`
       );
     }
 
@@ -164,10 +203,17 @@ export const piAdapter: RuntimeAdapter = {
       return;
     }
 
+    if (target.provider === "anthropic" && target.auth.method === "claude-code") {
+      return;
+    }
+
     throw new SpawnfileError(
       "validation_error",
       `Pi runtime does not support model auth method ${target.auth.method} for provider ${target.provider}`
     );
+  },
+  assertSupportedSurfaces(surfaces) {
+    assertSupportedPiSurfaces(surfaces);
   },
   container: {
     configFileName: PI_CONFIG_FILE,
@@ -196,10 +242,24 @@ export const piAdapter: RuntimeAdapter = {
     return {
       capabilities: createAgentCapabilities(node, {
         ...moltnetCapabilityOptions(node),
+        mcpOutcome: node.mcpServers.length > 0 ? "degraded" : "supported",
+        sandboxOutcome: node.execution?.sandbox ? "degraded" : "supported",
         scheduleMessage: scheduleOutcome.message,
-        scheduleOutcome: scheduleOutcome.outcome
+        scheduleOutcome: scheduleOutcome.outcome,
+        subagentOutcome: node.subagents.length > 0 ? "degraded" : "supported"
       }),
-      diagnostics: createScheduleDiagnostics(node),
+      diagnostics: [
+        ...createScheduleDiagnostics(node),
+        ...(node.execution?.sandbox
+          ? [createDiagnostic("warn", "Pi runtime relies on container and workspace isolation; Pi itself is not a sandbox engine")]
+          : []),
+        ...(node.mcpServers.length > 0
+          ? [createDiagnostic("warn", "Pi runtime does not lower MCP server declarations in Spawnfile v0.1")]
+          : []),
+        ...(node.subagents.length > 0
+          ? [createDiagnostic("warn", "Pi runtime groups compiled agents but does not preserve native parent-owned subagent semantics in v0.1")]
+          : [])
+      ],
       files: [
         ...createDocumentFiles("workspace", node.docs),
         ...createSkillFiles("workspace/skills", node.skills)
@@ -219,6 +279,11 @@ export const piAdapter: RuntimeAdapter = {
     }
     return diagnostics;
   }
+};
+
+export const daimonAdapter: RuntimeAdapter = {
+  ...piAdapter,
+  name: "daimon"
 };
 
 export const PI_RUNTIME_PACKAGE = `${PI_PACKAGE_NAME}@${PI_PACKAGE_VERSION}`;

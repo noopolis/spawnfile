@@ -1,7 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { getModels, type KnownProvider } from "@earendil-works/pi-ai";
 import {
   AuthStorage,
   createAgentSession,
@@ -17,19 +16,48 @@ import type {
   AgentHarnessAdapter,
   AgentStartInput,
   AgentStatus,
+  HarnessModelSpec,
   WakeEvent,
   WakeResult
 } from "../core/types.js";
+
+import { resolvePiHarnessModel } from "./modelConfig.js";
 
 type TextBlock = { type: "text"; text: string };
 
 export interface PiHarnessOptions {
   authPath: string;
   model?: {
+    auth?: HarnessModelSpec["auth"];
+    endpoint?: HarnessModelSpec["endpoint"];
     provider: string;
     name: string;
   };
+  modelsPath?: string;
 }
+
+const createModelRegistry = (
+  authStorage: AuthStorage,
+  options: PiHarnessOptions
+): ModelRegistry => {
+  const registry = options.modelsPath
+    ? ModelRegistry.create(authStorage, options.modelsPath)
+    : ModelRegistry.inMemory(authStorage);
+
+  if (!options.modelsPath && options.model?.endpoint) {
+    const { modelsConfig } = resolvePiHarnessModel(options.model);
+    for (const [provider, config] of Object.entries(modelsConfig.providers)) {
+      registry.registerProvider(provider, {
+        api: config.api,
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
+        models: config.models
+      });
+    }
+  }
+
+  return registry;
+};
 
 class PiAgentHandle implements AgentHandle {
   private state: AgentStatus["state"] = "idle";
@@ -136,15 +164,21 @@ export class PiHarnessAdapter implements AgentHarnessAdapter {
 
   constructor(private readonly options: PiHarnessOptions) {
     this.authStorage = AuthStorage.create(options.authPath);
-    this.modelRegistry = ModelRegistry.inMemory(this.authStorage);
+    this.modelRegistry = createModelRegistry(this.authStorage, options);
   }
 
   async startAgent(input: AgentStartInput): Promise<AgentHandle> {
     await mkdir(input.runtimeHomePath, { recursive: true });
-    const modelSpec = this.options.model ?? { provider: "openai-codex", name: "gpt-5.4-mini" };
-    const model = getModels(modelSpec.provider as KnownProvider).find((candidate) => candidate.id === modelSpec.name);
+    await mkdir(input.workspacePath, { recursive: true });
+    const modelSpec = this.options.model ?? {
+      auth: { method: "codex" as const },
+      provider: "openai",
+      name: "gpt-5.4-mini"
+    };
+    const resolvedModel = resolvePiHarnessModel(modelSpec).model;
+    const model = this.modelRegistry.find(resolvedModel.provider, resolvedModel.name);
     if (!model) {
-      throw new Error(`Pi model not found: ${modelSpec.provider}/${modelSpec.name}`);
+      throw new Error(`Pi model not found: ${resolvedModel.provider}/${resolvedModel.name}`);
     }
 
     const { session } = await createAgentSession({

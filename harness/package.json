@@ -1,11 +1,35 @@
 {
-  "name": "@noopolis/harness-local",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@noopolis/daimon",
+  "version": "0.1.0",
+  "description": "Noopolis native per-agent runtime harness built on Pi.",
+  "license": "MIT",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/noopolis/daimon.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc --project tsconfig.json",
+    "build": "rm -rf dist && tsc --project tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test",
     "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "e2e:pi-agent": "tsx src/examples/pi-agent.ts"
   },
   "engines": {

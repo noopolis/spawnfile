@@ -112,9 +112,7 @@ class PiManagedAgent {
   async start() {
     await mkdir(this.paths.workspacePath, { recursive: true });
     await mkdir(this.paths.runtimeHomePath, { recursive: true });
-    const model = getModels(this.config.model.provider).find(
-      (candidate) => candidate.id === this.config.model.name
-    );
+    const model = this.services.modelRegistry.find(this.config.model.provider, this.config.model.name);
     if (!model) {
       throw new Error("Pi model not found for " + this.config.id + ": " + this.config.model.provider + "/" + this.config.model.name);
     }
@@ -270,7 +268,7 @@ const main = async () => {
   const instanceRoot = path.resolve(path.dirname(configPath), "..");
   const homePath = path.join(instanceRoot, "home");
   const authStorage = AuthStorage.create(path.join(homePath, ".pi", "agent", "auth.json"));
-  const modelRegistry = ModelRegistry.inMemory(authStorage);
+  const modelRegistry = ModelRegistry.create(authStorage, path.join(homePath, ".pi", "agent", "models.json"));
   const activity = createActivityBroker();
   const services = { activity, authStorage, modelRegistry };
   const agents = [];
