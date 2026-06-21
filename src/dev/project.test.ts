@@ -11,7 +11,7 @@ import {
 } from "../filesystem/index.js";
 import { type DeploymentRecord, writeDeploymentRecord } from "../deployment/index.js";
 
-import { devApplyProject, devRestartProject, devStopProject, devUpProject } from "./project.js";
+import { devActivityProject, devApplyProject, devRestartProject, devStopProject, devUpProject } from "./index.js";
 
 const fixturesRoot = path.resolve(process.cwd(), "fixtures");
 const temporaryDirectories: string[] = [];
@@ -603,6 +603,70 @@ describe("devApplyProject", () => {
         outputDirectory
       })
     ).resolves.toMatchObject({ deploymentName: "dev" });
+  });
+
+  it("reads the Pi activity buffer from the running dev container", async () => {
+    const projectDirectory = await createMinimalPiProject();
+    const outputDirectory = path.join(projectDirectory, ".spawn-dev");
+    await seedDeploymentRecord(outputDirectory, projectDirectory);
+    const execFile = vi.fn(async (_file: string, args: string[]) => {
+      expect(args).toEqual([
+        "--host",
+        "unix:///var/run/docker.sock",
+        "exec",
+        "spawnfile-pi-dev",
+        "curl",
+        "-fsS",
+        "http://127.0.0.1:19690/spawnfile/activity?agent=mapper&tail=5"
+      ]);
+      return {
+        stderr: "",
+        stdout: JSON.stringify({
+          events: [
+            {
+              agent_id: "agent:mapper",
+              sequence: 1,
+              type: "agent.turn.started",
+              version: "spawnfile.activity.v1"
+            }
+          ]
+        })
+      };
+    });
+
+    await expect(devActivityProject(projectDirectory, {
+      agent: "mapper",
+      deploymentName: "dev",
+      execFile,
+      outputDirectory,
+      tail: 5
+    })).resolves.toMatchObject({
+      containerName: "spawnfile-pi-dev",
+      deploymentName: "dev",
+      events: [
+        expect.objectContaining({
+          agent_id: "agent:mapper",
+          type: "agent.turn.started"
+        })
+      ],
+      outputDirectory
+    });
+  });
+
+  it("rejects malformed Pi activity endpoint responses", async () => {
+    const projectDirectory = await createMinimalPiProject();
+    const outputDirectory = path.join(projectDirectory, ".spawn-dev");
+    await seedDeploymentRecord(outputDirectory, projectDirectory);
+    const execFile = vi.fn(async () => ({
+      stderr: "",
+      stdout: JSON.stringify({ status: "ok" })
+    }));
+
+    await expect(devActivityProject(projectDirectory, {
+      deploymentName: "dev",
+      execFile,
+      outputDirectory
+    })).rejects.toThrow(/events array/);
   });
 
   it("starts a detached dev deployment in .spawn-dev by default", async () => {

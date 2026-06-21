@@ -3,10 +3,11 @@
 This folder owns interactive development workflows that operate on already-running
 Spawnfile deployments.
 
-`project.ts` contains the public command handlers used by the CLI. `docker.ts`
-contains Docker target resolution, copying, ownership fixes, and compile
-architecture probing. Keep workflow logic in this folder, not in CLI command
-handlers.
+`project.ts` contains the public command handlers used by the CLI for hot
+agent apply workflows. `activity.ts` reads the bounded runtime activity buffer
+from a running dev container. `docker.ts` contains Docker target resolution,
+copying, ownership fixes, and compile architecture probing. Keep workflow logic
+in this folder, not in CLI command handlers.
 
 Dev mode is intentionally narrower than the normal lifecycle commands:
 

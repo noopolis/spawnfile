@@ -28,7 +28,7 @@ import {
 
 const DEV_OUTPUT_DIRECTORY = ".spawn-dev";
 const PI_APP_CONFIG_PATH = "/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json";
-const PI_CONTROL_URL = "http://127.0.0.1:19690";
+export const PI_CONTROL_URL = "http://127.0.0.1:19690";
 
 export interface DevProjectOptions {
   deploymentName?: string;
@@ -75,7 +75,7 @@ interface MoltnetServerPlan {
   mode?: string;
 }
 
-const resolveDevOutputDirectory = async (
+export const resolveDevOutputDirectory = async (
   inputPath: string,
   outputDirectory?: string
 ): Promise<string> => {
@@ -95,7 +95,7 @@ export const devUpProject = async (
   outputDirectory: await resolveDevOutputDirectory(inputPath, options.outputDirectory)
 });
 
-const selectDeploymentRecord = async (
+export const selectDeploymentRecord = async (
   outputDirectory: string,
   deploymentName?: string
 ): Promise<DeploymentRecord> => {

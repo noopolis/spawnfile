@@ -1420,6 +1420,7 @@ spawnfile up [path | <image-ref>] [--out <dir>] [--auth-profile <name>] [--env-f
 spawnfile dev up [path] [--out <dir>] [--auth-profile <name>] [--env-file <file>] [--deployment <name>] [--context <name>]
 spawnfile dev apply [path] --agent <id> [--out <dir>] [--deployment <name>]
 spawnfile dev restart [path] --agent <id> [--out <dir>] [--deployment <name>]
+spawnfile dev activity [path] [--agent <id>] [--tail <count>] [--out <dir>] [--deployment <name>]
 spawnfile dev stop [path] [--out <dir>] [--deployment <name>]
 spawnfile build [path] [--out <dir>] [--tag <image>] [--context <name>]
 spawnfile run [path] [--out <dir>] [--tag <image>] [--auth-profile <name>] [--env-file <file>] [--detach] [--deployment <name>] [--context <name>]
@@ -1645,6 +1646,11 @@ from normal `.spawn/` output and defaults to `.spawn-dev/`.
 - For an existing Pi agent, MUST reload the in-memory Pi agent and MUST NOT start a duplicate Moltnet node
 - Running managed Moltnet servers keep their current in-memory room membership until the copied server config is reconciled through an operator-token `moltnet apply` or a server restart
 - MUST fail clearly for unsupported runtimes or deployments without a live Pi control endpoint
+
+`spawnfile dev activity` reads the generated Pi app's bounded
+`spawnfile.activity.v1` buffer from the running dev container and prints JSON
+lines. It MAY filter by agent id, slug, or name, and MUST NOT read Moltnet
+message bodies or expose hidden reasoning.
 
 `spawnfile dev restart --agent <id>` reloads an already-running agent through the
 same hot-apply path. `spawnfile dev stop` stops the recorded dev container. Dev

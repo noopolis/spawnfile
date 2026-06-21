@@ -181,6 +181,24 @@ Promoting a runtime to `active` SHOULD include at least one live status probe wh
 
 ---
 
+## Runtime Activity Streams
+
+Runtime activity is separate from Moltnet conversation state. Moltnet records messages, room lifecycle, attachment presence, and wake delivery/failure. Runtime activity records what a spawned runtime is doing while handling a wake.
+
+When a runtime adapter exposes activity, it SHOULD normalize events to `spawnfile.activity.v1` objects with:
+
+- `type`: a stable event type such as `agent.wake.queued`, `agent.turn.started`, `agent.runtime.event`, `agent.output.completed`, `agent.turn.completed`, or `agent.turn.failed`
+- `agent_id`, `agent_slug`, and `agent_name` when the event belongs to a concrete agent
+- `wake_id` and `wake_kind` when the event is tied to a wake
+- `sequence` and `created_at` from the runtime activity broker
+- small metadata fields such as `duration_ms`, `queue_length`, `runtime_event_type`, `output_length`, and redacted errors
+
+Activity streams MUST NOT expose hidden reasoning. They MAY expose assistant-visible output, tool/action metadata, timing, queue state, and failures.
+
+Pi emits a bounded in-memory activity buffer and SSE stream through its generated control server. OpenClaw and PicoClaw may later map their runtime-native session or gateway events into the same event shape; until then, their activity support is limited to status probes and deployment logs.
+
+---
+
 ## Relationship To Other Specs
 
 - `SPEC.md` defines the `runtime` field in manifests — the name must match a registered runtime
