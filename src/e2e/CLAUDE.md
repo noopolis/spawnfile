@@ -12,6 +12,7 @@ src/e2e/
 ├── operationalSmoke.ts # spawnfile up smoke for schedules, Moltnet, and workspace resources
 ├── operationalSmokePicoclaw.ts # PicoClaw-specific operational smoke helpers
 ├── operationalSmokeStatus.ts # Assertions for operational spawnfile status --live JSON output
+├── piHarnessOrg.ts    # Local generated Pi harness app smoke with real Codex auth
 ├── runtimePrompts.ts   # Runtime-specific readiness and prompt checks
 ├── scenarios.ts        # Supported E2E scenario matrix
 └── *.test.ts           # Pure tests for fixture/scenario logic
@@ -44,4 +45,11 @@ src/e2e/
   ```
 
 - A passing live agent communication run prints `Moltnet team-chat E2E passed (...)`. This means the generated container started Moltnet, attached the bridges, woke the OpenClaw/Codex agents, and observed both the parent request/ACK and child ACK messages.
+- The Pi harness org E2E compiles `fixtures/e2e/pi-harness-org`, injects real Codex OAuth into the generated Pi home, installs the generated Pi runtime package, runs the generated app once, and asserts that two Pi agents wrote through a shared workspace resource. Pi currently requires Node 22.19+; a known-good command is:
+
+  ```bash
+  PATH="$HOME/.nvm/versions/node/v22.22.1/bin:$PATH" \
+    npm run test:e2e:pi-harness-org -- --keep-artifacts
+  ```
+
 - After any interrupted live run, clean up the isolated container/image and confirm the developer's active containers are still present: `docker rm -f spawnfile-team-chat-retry || true`, `docker image rm -f spawnfile-team-chat-retry || true`, then `docker ps --format '{{.Names}} {{.Ports}}'`.

@@ -80,13 +80,16 @@ const resolveStartCommand = (plan: RuntimeTargetPlan): string[] =>
   plan.meta.startCommand
     .map((token) =>
       token
+        .replaceAll("<config-path>", plan.instancePaths.configPath)
+        .replaceAll("<home-path>", plan.instancePaths.homePath ?? "")
         .replaceAll("<runtime-root>", plan.runtimeRoot)
+        .replaceAll("<workspace-path>", plan.instancePaths.workspacePath)
         .replaceAll("<port>", plan.port ? String(plan.port) : "")
     )
     .filter((token) => token.length > 0);
 
 const createRuntimeReadinessWait = (plan: RuntimeTargetPlan): string[] => {
-  if (plan.runtimeName !== "openclaw" || !plan.port) {
+  if (!["openclaw", "pi"].includes(plan.runtimeName) || !plan.port) {
     return [];
   }
 

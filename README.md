@@ -40,14 +40,19 @@ spawnfile compile                                # lower to runtime-native outpu
 spawnfile status .                               # read declared/compiled status
 spawnfile auth sync --profile dev --env-file .env
 spawnfile build  --tag my-agent                  # compile + docker build
+spawnfile up . --context gpu-4090 --detach       # build and run on a Docker context
+spawnfile dev up . --auth-profile dev            # detached dev loop in .spawn-dev
+spawnfile dev apply . --agent researcher         # hot-add/reload one Pi agent
 spawnfile run    --tag my-agent --auth-profile dev --detach
 spawnfile status . --live                        # inspect the detached deployment
 spawnfile publish . --tag you/my-agent:1.0.0     # compile + build + verify + push
 ```
 
-Compiled output lands under `.spawn/` by default, including a `Dockerfile`, `entrypoint.sh`, `.env.example`, and a prebuilt `container/rootfs/` tree. `spawnfile build` uses the pinned runtime artifacts from `runtimes.yaml`; it does not rebuild runtimes from source.
+Compiled output lands under `.spawn/` by default, including a `Dockerfile`, `entrypoint.sh`, `.env.example`, and a prebuilt `container/rootfs/` tree. `spawnfile build` uses the pinned runtime artifacts from `runtimes.yaml`; it does not rebuild runtimes from source. For Pi-heavy orgs, build a reusable runtime base with `npm run runtime:pi-base -- noopolis/spawnfile-pi-runtime:0.79.9-node24`, then set `SPAWNFILE_PI_RUNTIME_BASE_IMAGE` during `spawnfile up` so normal prompt/config edits reuse the dependency layer. For `build`/`up` on a docker `--context`, Moltnet release assets are staged for that context's architecture (`amd64` or `arm64`); for local-only manual compile targeting a fixed architecture, set `SPAWNFILE_MOLTNET_TARGET_ARCH=amd64|arm64`.
 
 `spawnfile status` is read-only. By default it shows authored and compiled state without Docker, runtime, or Moltnet calls. With `--live`, it reads the selected detached deployment record, inspects the recorded Docker target, runs adapter-owned runtime probes, and checks Moltnet metadata without reading message bodies. Add `--logs` for a redacted Docker log tail, or `--watch` to refresh status continuously.
+
+`spawnfile dev` is the source-backed interactive loop. It uses `.spawn-dev/` by default, starts a detached dev deployment with `spawnfile dev up`, and can hot-apply one Pi runtime agent with `spawnfile dev apply --agent <id>` without restarting the rest of the org. Hot apply recompiles source, copies the selected agent workspace, Pi config, matching Moltnet node configs, and managed Moltnet server configs into the running container, loads it through the Pi control endpoint, and starts only that agent's Moltnet bridges when it is new. Running managed Moltnet servers keep their current in-memory room membership until an operator-token `moltnet apply` or server restart reconciles the copied server config.
 
 Compiled images are self-describing: `spawnfile publish` pushes one to any OCI registry, and anyone can run it with no source — `spawnfile up you/my-agent:1.0.0 --deployment prod --detach --auth-profile me` — or inspect what it needs first with `spawnfile status you/my-agent:1.0.0`. See [`specs/DISTRIBUTION.md`](specs/DISTRIBUTION.md).
 
@@ -98,6 +103,7 @@ v0.1 targets autonomous agent runtimes that share a markdown workspace identity 
 |-----------|---------------|---------|-----------------------------------------------|
 | OpenClaw  | active        | ✅      | Discord, Telegram, WhatsApp, Slack            |
 | PicoClaw  | active        |         | Discord, Telegram, Slack (WhatsApp blocked)   |
+| Pi        | active        |         | Embedded org app, Moltnet client config       |
 | NullClaw  | exploratory   |         | No active adapter yet                         |
 | ZeroClaw  | exploratory   |         | No active adapter yet                         |
 | OpenFang  | exploratory   |         | No active adapter yet                         |

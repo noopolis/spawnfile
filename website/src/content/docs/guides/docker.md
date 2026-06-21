@@ -211,9 +211,29 @@ Command boundaries:
 - `spawnfile build` runs `compile`, then builds a Docker image from the generated output.
 - `spawnfile run` runs `compile` again to derive current runtime wiring, then starts the selected image with ports, env, auth material, and workspace resources.
 - `spawnfile up` is the local one-command path. It builds the image and then runs it with the same auth and env options as `run`.
+- `spawnfile dev up` starts a detached development deployment under `.spawn-dev`; `spawnfile dev apply --agent <id>` hot-loads one Pi agent into that running container without rebuilding or restarting the rest of the org.
 - `spawnfile status` reads the authored graph and compile report by default. With `--live`, it reads the detached deployment record and inspects the recorded Docker target.
 
 Managed Moltnet SQLite/JSON stores and open-registration agent token directories appear in the compile report as `container.persistent_mounts[]`. `spawnfile run` and `spawnfile up` mount those entries as Docker named volumes so messages, registrations, and generated open-mode agent tokens survive container replacement.
+
+### Dev Hot Apply
+
+Use dev mode when you are adding or editing Pi agents and want a tight feedback loop:
+
+```bash
+spawnfile auth sync fixtures/e2e/pi-harness-org --profile dev --env-file ./.env
+spawnfile dev up fixtures/e2e/pi-harness-org --auth-profile dev --deployment dev
+spawnfile dev apply fixtures/e2e/pi-harness-org --agent observer --deployment dev
+```
+
+`dev up` is a normal detached Docker deployment, but its default output root is
+`.spawn-dev`. `dev apply` recompiles source into that dev output root without
+deleting the record, copies the selected Pi agent workspace/config, matching
+Moltnet node configs, and managed Moltnet server configs into the recorded
+container, asks the generated Pi app to load it, and starts only that new
+agent's Moltnet bridges. Existing agents keep running. Running managed Moltnet
+servers keep current room membership until an operator-token `moltnet apply` or
+server restart reconciles the copied server config.
 
 ### Detached Deployments
 

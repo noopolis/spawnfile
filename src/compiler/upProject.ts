@@ -63,6 +63,7 @@ export const upProject = async (
   const buildResult = await buildProject(inputPath, {
     buildRunner: options.buildRunner,
     clean: options.clean,
+    dockerContext: resolvedOptions.dockerContext,
     dockerCommand: options.dockerCommand,
     imageTag: resolvedOptions.imageTag,
     outputDirectory: options.outputDirectory

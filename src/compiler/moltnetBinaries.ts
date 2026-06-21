@@ -10,13 +10,43 @@ const execFile = promisify(execFileCallback);
 
 const MOLTNET_CLI_ENV = "SPAWNFILE_MOLTNET_CLI";
 const MOLTNET_RELEASE_DIR_ENV = "SPAWNFILE_MOLTNET_RELEASE_DIR";
+const MOLTNET_TARGET_ARCH_ENV = "SPAWNFILE_MOLTNET_TARGET_ARCH";
 const LOCAL_MOLTNET_CLI_PATH = path.resolve(process.cwd(), "moltnet", "bin", "moltnet");
 const MOLTNET_TARGET_OS = "linux";
 
 export const MOLTNET_BIN_DIRECTORY = "moltnet-bin";
 export const MOLTNET_BINARY_NAMES = ["moltnet"] as const;
+export type MoltnetTargetArchitecture = "amd64" | "arm64";
 
-const resolveTargetArchitecture = (): string => {
+const normalizeTargetArchitecture = (architecture: string): MoltnetTargetArchitecture => {
+  switch (architecture) {
+    case "amd64":
+    case "x86_64":
+    case "x64":
+      return "amd64";
+    case "aarch64":
+    case "arm64":
+      return "arm64";
+    default:
+      throw new SpawnfileError(
+        "compile_error",
+        `Moltnet container installs do not support target architecture ${architecture}`
+      );
+  }
+};
+
+const resolveTargetArchitecture = (
+  architecture?: MoltnetTargetArchitecture
+): MoltnetTargetArchitecture => {
+  if (architecture) {
+    return architecture;
+  }
+
+  const configuredArchitecture = process.env[MOLTNET_TARGET_ARCH_ENV]?.trim();
+  if (configuredArchitecture) {
+    return normalizeTargetArchitecture(configuredArchitecture);
+  }
+
   switch (process.arch) {
     case "arm64":
       return "arm64";
@@ -105,13 +135,16 @@ export const resolveMoltnetCliCommand = async (): Promise<string> => {
   return validateMoltnetCli("moltnet", "PATH");
 };
 
-export const stageMoltnetBinaries = async (outputDirectory: string): Promise<boolean> => {
+export const stageMoltnetBinaries = async (
+  outputDirectory: string,
+  options: { architecture?: MoltnetTargetArchitecture } = {}
+): Promise<boolean> => {
   const releaseDirectory = await resolveConfiguredReleaseDirectory();
   if (!releaseDirectory) {
     return false;
   }
 
-  const architecture = resolveTargetArchitecture();
+  const architecture = resolveTargetArchitecture(options.architecture);
   const releaseAssetPath = path.join(
     releaseDirectory,
     createReleaseAssetName(architecture)

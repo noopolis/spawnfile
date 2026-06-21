@@ -1,0 +1,37 @@
+spawnfile_version: "0.1"
+kind: agent
+name: reviewer
+description: "Reviews generated shared workspace notes."
+
+runtime: pi
+
+execution:
+  model:
+    primary:
+      provider: openai
+      name: gpt-5.4-mini
+      auth:
+        method: codex
+  sandbox:
+    mode: workspace
+
+schedule:
+  kind: every
+  every: 1s
+  prompt: "Create ./shared-lab/reviewer-note.md with one sentence proving reviewer can write to the shared resource."
+
+surfaces:
+  moltnet:
+    - network: pi_lab
+      rooms:
+        lab-floor:
+          wake: mentions
+
+workspace:
+  docs:
+    system: AGENTS.md
+  resources:
+    - id: reviewer-scratch
+      kind: volume
+      mount: ./scratch
+      mode: mutable

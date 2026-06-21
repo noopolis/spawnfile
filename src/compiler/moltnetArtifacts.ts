@@ -7,6 +7,7 @@ import {
   createMoltnetNativeServerConfig,
   createMoltnetNodeConfigPath,
   createMoltnetServerConfigPath,
+  resolveMoltnetClientAuth,
   resolveMoltnetBaseUrl,
   resolveMoltnetStorePersistenceMountPath,
   type MoltnetSecretPatch
@@ -331,6 +332,29 @@ export const generateMoltnetArtifacts = async (
         );
       }
       nodePlanKeys.add(nodePlanKey);
+
+      if (agentNode.runtime.name === "pi") {
+        const clientAuth = resolveMoltnetClientAuth(
+          serverPlan.server,
+          attachment.network,
+          attachment.memberId,
+          node.slug
+        );
+        const usesPerAttachmentOpenToken =
+          clientAuth.mode === "open" &&
+          clientAuth.staticToken !== true &&
+          Boolean(clientAuth.tokenEnv || clientAuth.tokenPath);
+
+        if (usesPerAttachmentOpenToken && clientAuth.tokenPath) {
+          const mountId = `agent-${node.slug}-moltnet-tokens`;
+          addPersistentMount({
+            id: mountId,
+            mountPath: createMoltnetOpenTokenDirectory(node.slug),
+            reason: `Moltnet open-mode generated agent tokens for ${agentNode.name}`,
+            volumeName: createPersistentVolumeName(plan.root, mountId)
+          });
+        }
+      }
 
       const nodeConfig = createMoltnetNodeConfigContent({
         agentNode,

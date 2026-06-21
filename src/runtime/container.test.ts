@@ -1,8 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { createRuntimeInstallRecipe, RUNTIME_INSTALL_ROOT } from "./container.js";
 
 describe("runtime container install recipes", () => {
+  afterEach(() => {
+    delete process.env.SPAWNFILE_PI_RUNTIME_BASE_IMAGE;
+  });
+
   it("creates an OpenClaw npm recipe from the pinned runtime version", async () => {
     const recipe = await createRuntimeInstallRecipe("openclaw");
 
@@ -31,4 +35,24 @@ describe("runtime container install recipes", () => {
     );
   });
 
+  it("creates a Pi generated-app install root from the pinned runtime version", async () => {
+    const recipe = await createRuntimeInstallRecipe("pi");
+
+    expect(recipe.runtimeName).toBe("pi");
+    expect(recipe.runtimeRoot).toBe(`${RUNTIME_INSTALL_ROOT}/pi`);
+    expect(recipe.copyCommands).toEqual([]);
+    expect(recipe.commands).toEqual([
+      `mkdir -p ${RUNTIME_INSTALL_ROOT}/pi`,
+      `cd ${RUNTIME_INSTALL_ROOT}/pi && npm install --omit=dev --no-fund --no-audit @earendil-works/pi-coding-agent@0.79.9 @earendil-works/pi-ai@0.79.9`
+    ]);
+  });
+
+  it("uses a prebuilt Pi runtime base image when configured", async () => {
+    process.env.SPAWNFILE_PI_RUNTIME_BASE_IMAGE = "noopolis/spawnfile-pi-runtime:test";
+
+    const recipe = await createRuntimeInstallRecipe("pi");
+
+    expect(recipe.baseImage).toBe("noopolis/spawnfile-pi-runtime:test");
+    expect(recipe.commands).toEqual([`mkdir -p ${RUNTIME_INSTALL_ROOT}/pi`]);
+  });
 });

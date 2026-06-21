@@ -200,6 +200,7 @@ The portable schema is broader than any single runtime. A conforming compiler va
 |---|---|---|
 | `openclaw` | team-network attachments | Lowers generated Moltnet client config and skill installation when artifacts are available. |
 | `picoclaw` | team-network attachments | Lowers generated Moltnet client config and skill installation when artifacts are available. |
+| `pi` | supported | Lowers generated Moltnet client config, skill installation, persistent open-token directories, and `moltnet node` bridge configs that deliver wakes through the generated Pi app control endpoint. |
 
 ### Webhook
 
@@ -207,6 +208,7 @@ The portable schema is broader than any single runtime. A conforming compiler va
 |---|---|---|
 | `openclaw` | not yet | Webhook delivery support is planned. |
 | `picoclaw` | not yet | Webhook delivery support is planned. |
+| `pi` | not yet | Webhook delivery support is planned. |
 
 Webhook is a push surface: the agent delivers events to a caller-owned callback URL. Delivery is fire-and-forget. When `signing_secret` is configured, payloads are signed with HMAC-SHA256.
 

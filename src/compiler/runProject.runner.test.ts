@@ -136,6 +136,96 @@ describe("runDockerContainer", () => {
     );
   });
 
+  it("stages bind mounts for SSH docker contexts before running remotely", async () => {
+    const child = createFakeDetachedChild();
+    const { execFile, runDockerContainer, spawn } = await loadRunProjectModule(
+      child,
+      (file, args, _options, callback) => {
+        if (file === "docker" && args[0] === "context") {
+          callback(null, { stderr: "", stdout: "\"ssh://deploy@example.com\"\n" });
+          return;
+        }
+        if (file === "ssh" && args.at(-1)?.startsWith("mktemp")) {
+          callback(null, { stderr: "", stdout: "/tmp/spawnfile-run-remote\n" });
+          return;
+        }
+        if (file === "scp") {
+          callback(null, { stderr: "", stdout: "" });
+          return;
+        }
+        if (file === "docker" && args.includes("inspect")) {
+          callback(null, { stderr: "", stdout: "sha256:image-123\n" });
+          return;
+        }
+        callback(new Error(`unexpected execFile ${file} ${args.join(" ")}`), {
+          stderr: "",
+          stdout: ""
+        });
+      }
+    );
+
+    const promise = runDockerContainer({
+      args: [
+        "--context",
+        "remote",
+        "run",
+        "-d",
+        "-v",
+        "/tmp/spawnfile-auth:/var/lib/spawnfile/auth",
+        "--name",
+        "spawnfile-agent",
+        "spawnfile-agent"
+      ],
+      command: "docker",
+      containerName: "spawnfile-agent",
+      cwd: "/tmp/spawnfile-run",
+      detach: true,
+      deploymentName: "default",
+      dockerContext: "remote",
+      dockerHost: null,
+      envFilePath: "/tmp/spawnfile-run.env",
+      imageTag: "spawnfile-agent",
+      supportDirectory: "/tmp/spawnfile-run"
+    });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    child.stdout?.emit("data", "container-123\n");
+    child.emit("exit", 0, null);
+
+    await expect(promise).resolves.toEqual({
+      containerId: "container-123",
+      imageId: "sha256:image-123"
+    });
+    expect(execFile).toHaveBeenCalledWith(
+      "scp",
+      [
+        "-r",
+        "/tmp/spawnfile-auth",
+        "deploy@example.com:/tmp/spawnfile-run-remote/0-spawnfile-auth"
+      ],
+      { timeout: 120_000 },
+      expect.any(Function)
+    );
+    expect(spawn).toHaveBeenCalledWith(
+      "docker",
+      [
+        "--context",
+        "remote",
+        "run",
+        "-d",
+        "-v",
+        "/tmp/spawnfile-run-remote/0-spawnfile-auth:/var/lib/spawnfile/auth",
+        "--name",
+        "spawnfile-agent",
+        "spawnfile-agent"
+      ],
+      {
+        cwd: "/tmp/spawnfile-run",
+        stdio: ["ignore", "pipe", "inherit"]
+      }
+    );
+  });
+
   it("fails detached runs when image id inspection fails", async () => {
     const child = createFakeDetachedChild();
     const { runDockerContainer } = await loadRunProjectModule(

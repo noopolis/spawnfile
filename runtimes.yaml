@@ -38,6 +38,16 @@ runtimes:
         linux_arm64: picoclaw_Linux_arm64.tar.gz
     status: active
 
+  pi:
+    remote: git@github.com:earendil-works/pi.git
+    ref: v0.79.9
+    default_branch: main
+    install:
+      kind: npm
+      package: "@earendil-works/pi-coding-agent"
+      version: 0.79.9
+    status: active
+
   hermes-agent:
     remote: git@github.com:NousResearch/hermes-agent.git
     ref: v2026.6.5

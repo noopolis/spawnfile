@@ -85,10 +85,14 @@ interface RuntimeContainerMeta {
   instancePaths: {
     configPathTemplate: string;
     homePathTemplate?: string;
+    sourceWorkspacePathTemplate?: string;
     workspacePathTemplate: string;
   };
+  globalNpmPackages?: string[];
   port?: number;
+  portStride?: number;
   portEnv?: string;
+  postRootfsCommands?: string[];
   standaloneBaseImage: string;
   startCommand: string[];
   staticEnv?: Record<string, string>;
@@ -96,16 +100,25 @@ interface RuntimeContainerMeta {
 }
 
 interface ContainerTarget {
+  configEnvBindings?: Array<{
+    envName: string;
+    jsonPath: string;
+  }>;
   id: string;
   files: EmittedFile[];
   envFiles?: Array<{
     envName: string;
     relativePath: string;
   }>;
+  sourceIds?: string[];
 }
 ```
 
 The compiler uses this metadata to compose the Dockerfile and entrypoint. Adapters own their runtime's container story; the compiler just stitches them together.
+
+`sourceWorkspacePathTemplate` is used by grouped runtimes where one process hosts several concrete source agents but each source still needs its own workspace directory. `sourceIds` records which compile nodes a grouped container target serves. Files emitted under the reserved `runtime/` target path are placed in the adapter's runtime install root; adapters may use this for generated harness apps that are installed alongside pinned runtime packages.
+
+`postRootfsCommands` run in the generated Dockerfile after `container/rootfs/` has been copied into the image. They are only for adapter-owned install steps that truly depend on generated rootfs files. Runtime package installs SHOULD run before `container/rootfs/` is copied so Docker can reuse the expensive dependency layer when only agent prompts, docs, skills, or generated configs change.
 
 ### Pinned Versions
 
@@ -119,6 +132,13 @@ The v0.1 reference implementation uses pinned compiled runtime artifacts:
 - release archives or bundles where the runtime ships them
 
 Generated Dockerfiles must not clone runtime repositories or rebuild runtime sources during image build.
+
+Runtimes MAY provide a reusable base image that already contains their pinned runtime package dependencies. The Pi adapter supports this with `SPAWNFILE_PI_RUNTIME_BASE_IMAGE`; when set, generated Dockerfiles use that image as the base and skip the Pi npm dependency install. Build the reference Pi base image with:
+
+```bash
+npm run runtime:pi-base -- noopolis/spawnfile-pi-runtime:0.79.9-node24
+SPAWNFILE_PI_RUNTIME_BASE_IMAGE=noopolis/spawnfile-pi-runtime:0.79.9-node24 spawnfile up ./org --detach
+```
 
 Declared `environment.packages` are installed into the generated image before runtime startup:
 
@@ -232,6 +252,7 @@ Model auth intent itself is declared on each source model target under `executio
 
 Container startup must support Moltnet server and node artifacts emitted from `team.networks[].server`:
 
+- For `spawnfile build` / `spawnfile up` with `--context`, the compiler resolves the docker context architecture before staging Moltnet artifacts and selects `moltnet_linux_<architecture>.tar.gz` for that architecture. For manual compile without `--context`, you can force the target with `SPAWNFILE_MOLTNET_TARGET_ARCH=amd64|arm64` (or `x86_64`/`aarch64` aliases).
 - When Moltnet binaries are not staged from a local release asset, the generated Dockerfile installs Moltnet from `https://moltnet.dev/install.sh` and includes the GitHub latest-release metadata as a prior Docker layer so Docker cache invalidates when Moltnet releases.
 - `server.store.kind: sqlite` and `server.store.kind: json` create the configured or default store directory before server start.
 - Durable `sqlite` and `json` stores emit `container.persistent_mounts[]` entries that `spawnfile run` and `spawnfile up` translate into Docker named volumes.
@@ -271,6 +292,19 @@ The Docker deployment record schema and behavior are defined in `STATUS.md`. Con
 - persistent mounts and published ports
 
 A failed detached start MUST NOT write a record. Redeploying the same deployment name MUST replace the record atomically only after the new detached start succeeds.
+
+`spawnfile dev up` writes the same record shape under `.spawn-dev/deployments/`
+by default. `spawnfile dev apply --agent <id>` reads that record to find the
+running Docker target and container, recompiles into `.spawn-dev` without
+removing records, and mutates the running development container in place. The
+v0.1 hot-apply path is Pi-only: it copies the refreshed Pi app config, the
+selected agent workspace, every matching Moltnet node config, and managed
+Moltnet server configs into the container, then calls the generated Pi control
+endpoint to load or reload that agent. New-agent Moltnet nodes are started as
+that agent is applied. Existing agents and the container are not restarted.
+Running managed Moltnet servers keep their current in-memory room membership
+until the copied server config is reconciled by an operator-token `moltnet
+apply` or a server restart.
 
 ### Docker Targets
 
@@ -454,6 +488,20 @@ spawnfile status fixtures/multi-runtime-team --out ./bundle/team --live --deploy
 ```
 
 Same flow regardless of project complexity. One compile, one build, one detached run, one live status check.
+
+For interactive Pi org development, use the dev loop:
+
+```bash
+spawnfile auth sync fixtures/e2e/pi-harness-org --profile dev --env-file ./.env
+spawnfile dev up fixtures/e2e/pi-harness-org --auth-profile dev --deployment dev
+spawnfile dev apply fixtures/e2e/pi-harness-org --agent new-agent --deployment dev
+```
+
+Dev mode uses `.spawn-dev` by default and keeps the deployment record there.
+`dev apply` is intentionally source-backed and Pi-specific in v0.1. It does not
+rebuild the image or restart the container; it updates one generated Pi agent in
+the running container and starts that agent's Moltnet bridges only when the
+agent is new.
 
 `spawnfile compile` still emits a standard Docker build context, so manual `docker build` remains supported when developers want to inspect or tweak the emitted output before building the image.
 

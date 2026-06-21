@@ -1,0 +1,23 @@
+{
+  "name": "@noopolis/harness-local",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "e2e:pi-agent": "tsx src/examples/pi-agent.ts"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "^0.79.9",
+    "@earendil-works/pi-coding-agent": "^0.79.9"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,49 @@
+spawnfile_version: "0.1"
+kind: team
+name: pi-harness-org
+description: "Spawnfile-owned org compiled into a single generated Pi harness app"
+
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
+    skills:
+      - ref: ./shared/skills/file-note
+    resources:
+      - id: shared-lab
+        kind: volume
+        mount: ./shared-lab
+        mode: mutable
+        sharing: team
+
+members:
+  - id: mapper
+    ref: ./agents/mapper
+  - id: review
+    ref: ./teams/review
+
+mode: hierarchical
+lead: mapper
+
+networks:
+  - id: pi_lab
+    name: Pi Lab
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 0.0.0.0
+        port: 19877
+      store:
+        kind: sqlite
+        path: /var/lib/spawnfile/moltnet/networks/pi_lab/moltnet.sqlite
+      auth:
+        mode: open
+        public_read: true
+      human_ingress: true
+      direct_messages: false
+    rooms:
+      - id: lab-floor
+        members: [mapper, review]
+        visibility: public
+        write_policy: registered_agents

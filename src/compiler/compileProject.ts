@@ -31,13 +31,14 @@ import {
 } from "./compileProjectSupport.js";
 import { CompilePlanNode, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 import { generateMoltnetArtifacts } from "./moltnetArtifacts.js";
-import { stageMoltnetBinaries } from "./moltnetBinaries.js";
+import { stageMoltnetBinaries, type MoltnetTargetArchitecture } from "./moltnetBinaries.js";
 
 type PolicyMode = NonNullable<Manifest["policy"]>["mode"];
 type OnDegrade = NonNullable<Manifest["policy"]>["on_degrade"];
 
 export interface CompileProjectOptions {
   clean?: boolean;
+  containerArchitecture?: MoltnetTargetArchitecture;
   outputDirectory?: string;
 }
 
@@ -378,7 +379,9 @@ export const compileProject = async (
 
   const moltnetArtifacts = await generateMoltnetArtifacts(plan);
   const hasStagedMoltnetBinaries = moltnetArtifacts
-    ? await stageMoltnetBinaries(outputDirectory)
+    ? await stageMoltnetBinaries(outputDirectory, {
+        architecture: options.containerArchitecture
+      })
     : false;
   await injectMoltnetWorkspaceFiles(outputDirectory, compiledNodes, moltnetArtifacts);
   const generatedAt = new Date().toISOString();

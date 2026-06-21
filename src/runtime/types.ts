@@ -72,6 +72,7 @@ export interface RuntimeContainerMeta {
   port?: number;
   portStride?: number;
   portEnv?: string;
+  postRootfsCommands?: string[];
   standaloneBaseImage: string;
   startCommand: string[];
   staticEnv?: Record<string, string>;

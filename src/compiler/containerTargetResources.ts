@@ -16,6 +16,7 @@ import {
 const CONFIG_FILE_PLACEHOLDER = "<config-file>";
 const INSTANCE_ROOT_PLACEHOLDER = "<instance-root>";
 const SOURCE_AGENT_PLACEHOLDER = "<agent-name>";
+const SOURCE_SLUG_PLACEHOLDER = "<source-slug>";
 
 const replaceSourceWorkspacePathTemplate = (
   template: string,
@@ -29,7 +30,8 @@ const replaceSourceWorkspacePathTemplate = (
   return template
     .replaceAll(INSTANCE_ROOT_PLACEHOLDER, instanceRoot)
     .replaceAll(CONFIG_FILE_PLACEHOLDER, meta.configFileName)
-    .replaceAll(SOURCE_AGENT_PLACEHOLDER, agentName);
+    .replaceAll(SOURCE_AGENT_PLACEHOLDER, agentName)
+    .replaceAll(SOURCE_SLUG_PLACEHOLDER, input.slug);
 };
 
 const resolveSourceWorkspacePath = (

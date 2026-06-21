@@ -48,7 +48,7 @@ skills/
     SKILL.md
 ```
 
-The compiler reads the `SKILL.md` and maps the skill into the runtime's native skill surface. For example, OpenClaw and PicoClaw both have workspace skill directories where the compiled skill is placed.
+The compiler reads the `SKILL.md` and maps the skill into the runtime's native skill surface. OpenClaw, PicoClaw, and Pi all receive workspace skill directories where the compiled skill is placed.
 
 ### requires.mcp
 
@@ -133,6 +133,7 @@ Adapters map logical MCP declarations into runtime-native MCP configuration. The
 
 - **PicoClaw** has a first-class MCP config surface (`tools.mcp.servers`) and supports stdio, SSE, and HTTP transports.
 - **OpenClaw** supports MCP through an `mcporter` bridge layer.
+- **Pi** loads compiled skills, but Spawnfile does not lower MCP server declarations into the generated Pi app in v0.1.
 - **NullClaw** supports MCP with a stdio-first approach. Remote URLs may require a local bridge.
 
 If a runtime cannot preserve an MCP declaration, the compiler reports it as `degraded` or `unsupported` based on your policy settings.

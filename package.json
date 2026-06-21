@@ -25,6 +25,7 @@
     "release:patch": "npm version patch && npm publish",
     "release:minor": "npm version minor && npm publish",
     "release:major": "npm version major && npm publish",
+    "runtime:pi-base": "./scripts/build-pi-runtime-base.sh",
     "runtimes": "./scripts/runtimes.sh",
     "runtimes:sync": "./scripts/runtimes.sh && ./scripts/blueprints.sh",
     "test:e2e:docker-auth": "tsx src/e2e/cli.ts",
@@ -33,7 +34,8 @@
     "test": "vitest run",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "test:e2e:distribution-image": "tsx src/e2e/cli.ts distribution-image",
-    "test:e2e:distribution-roundtrip": "tsx src/e2e/cli.ts distribution-roundtrip"
+    "test:e2e:distribution-roundtrip": "tsx src/e2e/cli.ts distribution-roundtrip",
+    "test:e2e:pi-harness-org": "tsx src/e2e/cli.ts pi-harness-org"
   },
   "dependencies": {
     "commander": "^14.0.1",

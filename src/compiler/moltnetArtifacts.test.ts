@@ -187,6 +187,113 @@ describe("moltnetArtifacts", () => {
     15_000
   );
 
+  it("generates Moltnet node bridge configs for Pi agents", async () => {
+    const plan = createPlan();
+    const [teamNode] = plan.nodes;
+    if (!teamNode || teamNode.kind !== "team") {
+      throw new Error("expected team node");
+    }
+
+    const team = teamNode.value as ResolvedTeamNode;
+    team.members = [
+      {
+        id: "assistant",
+        kind: "agent",
+        nodeSource: "/tmp/agents/assistant/Spawnfile",
+        runtimeName: "pi"
+      }
+    ];
+    if (!team.networks?.[0]?.rooms[0]) {
+      throw new Error("expected network room");
+    }
+    team.networks[0].rooms[0].members = ["assistant"];
+    team.networks[0].server = {
+      ...createManagedServer(),
+      auth: {
+        mode: "open",
+        public_read: true
+      }
+    };
+
+    const piAgent: ResolvedAgentNode = {
+      description: "",
+      docs: [],
+      env: {},
+      execution: undefined,
+      kind: "agent",
+      mcpServers: [],
+      name: "pi-assistant",
+      policyMode: null,
+      policyOnDegrade: null,
+      runtime: { name: "pi", options: {} },
+      secrets: [],
+      skills: [],
+      source: "/tmp/agents/assistant/Spawnfile",
+      surfaces: {
+        moltnet: [
+          {
+            memberId: "assistant",
+            network: "local_lab",
+            rooms: {
+              research: {
+                wake: "never"
+              }
+            },
+            teamSource: "/tmp/team/Spawnfile"
+          }
+        ]
+      },
+      subagents: []
+    };
+    plan.nodes = [
+      teamNode,
+      {
+        id: "agent-pi",
+        kind: "agent",
+        runtimeName: "pi",
+        slug: "pi-assistant",
+        value: piAgent
+      }
+    ];
+    plan.runtimes = {
+      pi: { nodeIds: ["agent-pi"] }
+    };
+
+    const artifacts = await generateMoltnetArtifacts(plan);
+
+    expect(artifacts?.nodePlans).toEqual([
+      {
+        configPath:
+          "/var/lib/spawnfile/moltnet/nodes/research-cell-local_lab-assistant.json",
+        networkId: "local_lab"
+      }
+    ]);
+    expect(artifacts?.files.map((file) => file.path).sort()).toEqual([
+      "container/rootfs/var/lib/spawnfile/moltnet/nodes/research-cell-local_lab-assistant.json",
+      "container/rootfs/var/lib/spawnfile/moltnet/servers/research-cell-local_lab/Moltnet.json"
+    ]);
+    const nodeConfig = artifacts?.files.find((file) =>
+      file.path.endsWith("research-cell-local_lab-assistant.json")
+    );
+    expect(nodeConfig?.content).toContain('"kind": "pi"');
+    expect(nodeConfig?.content).toContain(
+      '"control_url": "http://127.0.0.1:19690/agents/pi-assistant/wake"'
+    );
+    expect(
+      artifacts?.persistentMounts
+        .map((mount) => ({
+          id: mount.id,
+          mountPath: mount.mountPath
+        }))
+        .sort((left, right) => left.id.localeCompare(right.id))
+    ).toEqual([
+      {
+        id: "agent-pi-assistant-moltnet-tokens",
+        mountPath: "/var/lib/spawnfile/agents/pi-assistant/state/moltnet"
+      }
+    ]);
+  });
+
   it("still emits network sources when no agents attach to moltnet", async () => {
     const plan = createPlan();
     const agentNode = plan.nodes[1];

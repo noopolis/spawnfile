@@ -1412,7 +1412,11 @@ spawnfile view [path]
 spawnfile compile [path] [--out <dir>]
 spawnfile status [path | <image-ref>] [--out <dir>] [--live] [--deployment <name>] [--image] [--pull] [--pull-check]
 spawnfile up [path | <image-ref>] [--out <dir>] [--auth-profile <name>] [--env-file <file>] [--detach] [--deployment <name>] [--context <name>] [--image] [--pull]
-spawnfile build [path] [--out <dir>] [--tag <image>]
+spawnfile dev up [path] [--out <dir>] [--auth-profile <name>] [--env-file <file>] [--deployment <name>] [--context <name>]
+spawnfile dev apply [path] --agent <id> [--out <dir>] [--deployment <name>]
+spawnfile dev restart [path] --agent <id> [--out <dir>] [--deployment <name>]
+spawnfile dev stop [path] [--out <dir>] [--deployment <name>]
+spawnfile build [path] [--out <dir>] [--tag <image>] [--context <name>]
 spawnfile run [path] [--out <dir>] [--tag <image>] [--auth-profile <name>] [--env-file <file>] [--detach] [--deployment <name>] [--context <name>]
 spawnfile publish [path] --tag <image-ref> [--out <dir>]
 ```
@@ -1606,14 +1610,43 @@ Builds and starts a local lifecycle process set from source intent.
 - `--env-file` injects external env values for this local run
 - `--detach` starts the generated container lifecycle in the background and writes a deployment record after successful start
 - `--deployment <name>` names the detached deployment record; it defaults to `default` when detached
-- `--context <name>` selects a Docker context for detached Docker execution and is recorded in the deployment record
+- `--context <name>` selects a Docker context for Docker build and execution and is recorded in the deployment record
 - MAY prepare workspace resources and create/manage local runtime state paths
 - MUST validate and compile as part of startup
 - MUST prepare and enforce `workspace.resources`, `environment.packages`, and workspace state before spawning runtime processes
 - MUST run adapter-native or managed Moltnet servers where declared
-- MUST start generated Moltnet nodes and agents in one coordinated lifecycle
+- MUST start generated Moltnet nodes when node plans are emitted, and MUST start generated agents in one coordinated lifecycle
 - MUST write `.spawn/deployments/<name>.json` only after successful detached start
 - Exits with code 0 on successful process start; stays attached unless otherwise specified
+
+#### `spawnfile dev`
+
+Runs a source-backed interactive development deployment. Dev mode is separate
+from normal `.spawn/` output and defaults to `.spawn-dev/`.
+
+`spawnfile dev up`
+
+- MUST compile, build, and run the project as a detached Docker deployment
+- MUST use `.spawn-dev` as the default output directory
+- MUST write a normal detached deployment record under `.spawn-dev/deployments/`
+- MUST accept the same auth, env-file, deployment, Docker context, Docker command, image tag, and container-name options as project-mode `spawnfile up`
+- MUST NOT support image-reference deployments in v0.1
+
+`spawnfile dev apply --agent <id>`
+
+- MUST target a project-backed dev deployment record
+- MUST recompile source into the dev output directory without deleting the deployment record
+- MUST hot-apply exactly one agent selected by id, slug, or name
+- For Pi runtime agents, MUST copy the updated Pi app config, selected agent workspace, every matching Moltnet node config, and managed Moltnet server configs into the recorded running container, then call the generated Pi control endpoint to load the agent
+- For a new Pi agent with Moltnet node configs, MUST start only that agent's Moltnet node processes; existing agents and the container MUST NOT be restarted
+- For an existing Pi agent, MUST reload the in-memory Pi agent and MUST NOT start a duplicate Moltnet node
+- Running managed Moltnet servers keep their current in-memory room membership until the copied server config is reconciled through an operator-token `moltnet apply` or a server restart
+- MUST fail clearly for unsupported runtimes or deployments without a live Pi control endpoint
+
+`spawnfile dev restart --agent <id>` reloads an already-running agent through the
+same hot-apply path. `spawnfile dev stop` stops the recorded dev container. Dev
+mode is for local and remote Docker development loops; production rollouts still
+use `spawnfile up`/`publish` and deployment-manager records.
 
 #### `spawnfile build`
 
@@ -1623,6 +1656,7 @@ Builds a Docker image from compiled output.
 - `--out` sets the output directory (default: `./.spawn`)
 - `--tag` sets the Docker image tag
 - MUST compile the project before invoking Docker build
+- `--context <name>` selects the Docker context where the image is built
 - MUST keep build output secrets-free by default
 
 #### `spawnfile run`
@@ -1636,7 +1670,7 @@ Runs a previously built image with the compiled project's published ports and au
 - `--env-file` injects external env values into the generated Docker run environment
 - `--detach` starts the container in the background and writes a deployment record after successful start
 - `--deployment <name>` names the detached deployment record; it defaults to `default` when detached
-- `--context <name>` selects a Docker context for detached Docker execution and is recorded in the deployment record
+- `--context <name>` selects a Docker context for Docker build and execution and is recorded in the deployment record
 - MUST compile the project before deriving runtime wiring
 - MUST apply model/runtime auth at run time, not build time
 - MUST write `.spawn/deployments/<name>.json` only after successful detached start

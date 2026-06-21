@@ -93,8 +93,8 @@ Supported forms:
 Schedule declarations are portable wake intent. In this alpha, runtimes may report schedule lowering as degraded when they validate the intent but do not emit a native scheduler yet.
 
 In v0.1, `schedule.kind: cron` lowers to native scheduler artifacts for PicoClaw.
-`schedule.kind: every` is valid portable intent, but the active adapters
-currently report it as degraded.
+`schedule.kind: every` lowers to the generated in-process scheduler for Pi.
+Other runtime/schedule combinations are validated but may report as degraded.
 
 ## skills
 

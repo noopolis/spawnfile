@@ -91,4 +91,31 @@ describe("runtime common helpers", () => {
       outcome: "degraded"
     });
   });
+
+  it("allows adapters to override Moltnet surface capability outcomes", () => {
+    const capabilities = createAgentCapabilities({
+      ...baseAgent,
+      surfaces: {
+        moltnet: [
+          {
+            memberId: "assistant",
+            network: "local_lab",
+            rooms: {
+              agora: { wake: "mentions" }
+            },
+            teamSource: "/tmp/Spawnfile"
+          }
+        ]
+      }
+    }, {
+      moltnetMessage: "client config only",
+      moltnetOutcome: "degraded"
+    });
+
+    expect(capabilities.find((capability) => capability.key === "surfaces.moltnet")).toEqual({
+      key: "surfaces.moltnet",
+      message: "client config only",
+      outcome: "degraded"
+    });
+  });
 });

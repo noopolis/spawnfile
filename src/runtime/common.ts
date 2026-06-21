@@ -54,6 +54,8 @@ export const createAgentCapabilities = (
   node: ResolvedAgentNode,
   options: {
     mcpOutcome?: CapabilityReport["outcome"];
+    moltnetMessage?: string;
+    moltnetOutcome?: CapabilityReport["outcome"];
     sandboxOutcome?: CapabilityReport["outcome"];
     scheduleMessage?: string;
     scheduleOutcome?: CapabilityReport["outcome"];
@@ -99,7 +101,13 @@ export const createAgentCapabilities = (
   }
 
   if (node.surfaces?.moltnet) {
-    capabilities.push(createCapability("surfaces.moltnet", "supported"));
+    capabilities.push(
+      createCapability(
+        "surfaces.moltnet",
+        options.moltnetOutcome ?? "supported",
+        options.moltnetMessage
+      )
+    );
   }
 
   if (node.surfaces?.telegram) {

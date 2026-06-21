@@ -120,6 +120,7 @@ describe("runCli", () => {
 
     expect(exitCode).toBe(0);
     expect(buildProject).toHaveBeenCalledWith(path.join(fixturesRoot, "single-agent"), {
+      dockerContext: undefined,
       dockerCommand: undefined,
       imageTag: undefined,
       outputDirectory: "/tmp/spawnfile-build-out"
@@ -212,6 +213,171 @@ describe("runCli", () => {
       "report: /tmp/spawnfile-up-out/spawnfile-report.json",
       "running container spawnfile-single-agent",
       "image: spawnfile-single-agent"
+    ]);
+  });
+
+  it("starts a dev deployment under the dev output directory", async () => {
+    const stdout: string[] = [];
+    const devUpProject = vi.fn(async () => ({
+      authProfileName: "dev",
+      containerName: "spawnfile-pi-dev",
+      deploymentRecordPath: "/tmp/org/.spawn-dev/deployments/dev.json",
+      imageTag: "spawnfile-pi-dev",
+      outputDirectory: "/tmp/org/.spawn-dev",
+      report: {
+        diagnostics: [],
+        nodes: [],
+        root: path.join(fixturesRoot, "e2e", "pi-harness-org"),
+        spawnfile_version: "0.1" as const
+      },
+      reportPath: "/tmp/org/.spawn-dev/spawnfile-report.json",
+      supportDirectory: "/tmp/spawnfile-run-support"
+    }));
+
+    const exitCode = await runCli(
+      [
+        "dev",
+        "up",
+        path.join(fixturesRoot, "e2e", "pi-harness-org"),
+        "--auth-profile",
+        "dev",
+        "--deployment",
+        "dev",
+        "--context",
+        "gpu-4090",
+        "--out",
+        "/tmp/org/.spawn-dev"
+      ],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { devUpProject }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(devUpProject).toHaveBeenCalledWith(path.join(fixturesRoot, "e2e", "pi-harness-org"), {
+      authProfile: "dev",
+      containerName: undefined,
+      deploymentName: "dev",
+      dockerCommand: undefined,
+      dockerContext: "gpu-4090",
+      envFilePath: undefined,
+      imageTag: undefined,
+      outputDirectory: "/tmp/org/.spawn-dev"
+    });
+    expect(stdout).toEqual([
+      "dev deployment: spawnfile-pi-dev",
+      "image: spawnfile-pi-dev",
+      "compiled to /tmp/org/.spawn-dev",
+      "record: /tmp/org/.spawn-dev/deployments/dev.json"
+    ]);
+  });
+
+  it("hot-applies one agent into a dev deployment", async () => {
+    const stdout: string[] = [];
+    const devApplyProject = vi.fn(async () => ({
+      agentId: "agent:observer",
+      bridgeStarted: true,
+      containerName: "spawnfile-pi-dev",
+      deploymentName: "dev",
+      existingAgent: false,
+      outputDirectory: "/tmp/org/.spawn-dev"
+    }));
+
+    const exitCode = await runCli(
+      [
+        "dev",
+        "apply",
+        path.join(fixturesRoot, "e2e", "pi-harness-org"),
+        "--agent",
+        "observer",
+        "--deployment",
+        "dev",
+        "--out",
+        "/tmp/org/.spawn-dev"
+      ],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { devApplyProject }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(devApplyProject).toHaveBeenCalledWith(path.join(fixturesRoot, "e2e", "pi-harness-org"), {
+      agent: "observer",
+      deploymentName: "dev",
+      dockerCommand: undefined,
+      outputDirectory: "/tmp/org/.spawn-dev"
+    });
+    expect(stdout).toEqual([
+      "applied agent agent:observer",
+      "container: spawnfile-pi-dev",
+      "bridge: started"
+    ]);
+  });
+
+  it("restarts one agent in a dev deployment", async () => {
+    const stdout: string[] = [];
+    const devRestartProject = vi.fn(async () => ({
+      agentId: "agent:mapper",
+      bridgeStarted: false,
+      containerName: "spawnfile-pi-dev",
+      deploymentName: "dev",
+      existingAgent: true,
+      outputDirectory: "/tmp/org/.spawn-dev"
+    }));
+
+    const exitCode = await runCli(
+      ["dev", "restart", "/tmp/org", "--agent", "mapper", "--deployment", "dev"],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { devRestartProject }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(devRestartProject).toHaveBeenCalledWith("/tmp/org", {
+      agent: "mapper",
+      deploymentName: "dev",
+      dockerCommand: undefined,
+      outputDirectory: undefined
+    });
+    expect(stdout).toEqual([
+      "restarted agent agent:mapper",
+      "container: spawnfile-pi-dev",
+      "bridge: unchanged"
+    ]);
+  });
+
+  it("stops a dev deployment", async () => {
+    const stdout: string[] = [];
+    const devStopProject = vi.fn(async () => ({
+      containerName: "spawnfile-pi-dev",
+      deploymentName: "dev",
+      outputDirectory: "/tmp/org/.spawn-dev"
+    }));
+
+    const exitCode = await runCli(
+      ["dev", "stop", "/tmp/org", "--deployment", "dev"],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { devStopProject }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(devStopProject).toHaveBeenCalledWith("/tmp/org", {
+      deploymentName: "dev",
+      dockerCommand: undefined,
+      outputDirectory: undefined
+    });
+    expect(stdout).toEqual([
+      "stopped dev deployment dev",
+      "container: spawnfile-pi-dev"
     ]);
   });
 

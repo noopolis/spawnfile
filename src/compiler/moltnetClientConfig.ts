@@ -143,6 +143,18 @@ export const resolveMoltnetWorkspaceLayout = (
   runtimeName: string,
   _agentName: string
 ): MoltnetWorkspaceLayout => {
+  if (runtimeName === "pi") {
+    return {
+      clientConfigPath: `workspace/.moltnet/config.json`,
+      cliRuntime: "codex",
+      skillPaths: [
+        `workspace/.agents/skills/${GENERATED_SKILL_NAME}/SKILL.md`,
+        `workspace/.codex/skills/${GENERATED_SKILL_NAME}/SKILL.md`
+      ],
+      workspaceRootPath: "workspace"
+    };
+  }
+
   if (runtimeName === "openclaw" || runtimeName === "picoclaw") {
     return {
       clientConfigPath: `workspace/${GENERATED_CONFIG_PATH}`,

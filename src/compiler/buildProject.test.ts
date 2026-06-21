@@ -1,12 +1,16 @@
 import path from "node:path";
 import os from "node:os";
-import { mkdtemp } from "node:fs/promises";
+import { chmod, mkdtemp } from "node:fs/promises";
+import { execFile as execFileCallback } from "node:child_process";
+import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   fileExists,
+  writeUtf8File,
   readUtf8File,
+  ensureDirectory,
   removeDirectory
 } from "../filesystem/index.js";
 
@@ -17,10 +21,43 @@ import {
   type DockerBuildInvocation
 } from "./buildProject.js";
 
+const execFile = promisify(execFileCallback);
 const temporaryDirectories: string[] = [];
 const fixturesRoot = path.resolve(process.cwd(), "fixtures");
 
+const createFakeDockerInfoCommand = async (architecture: string): Promise<string> => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-fake-docker-"));
+  temporaryDirectories.push(directory);
+  const commandPath = path.join(directory, "docker");
+  const safeArchitecture = JSON.stringify(architecture);
+  await writeUtf8File(
+    commandPath,
+    `#!/usr/bin/env sh
+printf '%s\\n' ${safeArchitecture}
+`
+  );
+  await chmod(commandPath, 0o755);
+  return commandPath;
+};
+
+const createFakeMoltnetReleaseDirectory = async (
+  architecture = "amd64"
+): Promise<string> => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moltnet-release-"));
+  const payloadDirectory = path.join(directory, "payload");
+  temporaryDirectories.push(directory);
+
+  await ensureDirectory(payloadDirectory);
+  await writeUtf8File(path.join(payloadDirectory, "moltnet"), "#!/usr/bin/env sh\necho moltnet\n");
+  await chmod(path.join(payloadDirectory, "moltnet"), 0o755);
+  const assetName = `moltnet_linux_${architecture}.tar.gz`;
+  await execFile("tar", ["-C", payloadDirectory, "-czf", path.join(directory, assetName), "."]);
+
+  return directory;
+};
+
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
 });
 
@@ -43,6 +80,7 @@ describe("buildProject", () => {
         args: ["build", "-t", "spawnfile-single-agent", "."],
         command: "docker",
         cwd: outputDirectory,
+        dockerContext: null,
         imageTag: "spawnfile-single-agent"
       }
     ]);
@@ -71,6 +109,7 @@ describe("buildProject", () => {
       args: ["build", "-t", "spawnfile-multi-runtime-team", "."],
       command: "docker",
       cwd: outputDirectory,
+      dockerContext: null,
       imageTag: "spawnfile-multi-runtime-team"
     });
 
@@ -101,6 +140,7 @@ describe("buildProject", () => {
       args: ["build", "-t", "custom-image:dev", "."],
       command: "docker",
       cwd: outputDirectory,
+      dockerContext: null,
       imageTag: "custom-image:dev"
     });
   }, 30000);
@@ -120,8 +160,37 @@ describe("buildProject", () => {
       args: ["build", "-t", "spawnfile-single-agent", "."],
       command: "docker",
       cwd: outputDirectory,
+      dockerContext: null,
       imageTag: "spawnfile-single-agent"
     });
+  }, 30000);
+
+  it("resolves Moltnet binary architecture from a docker context and stages matching assets", async () => {
+    const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-build-context-arch-"));
+    temporaryDirectories.push(outputDirectory);
+    const releaseDirectory = await createFakeMoltnetReleaseDirectory("arm64");
+    const dockerCommand = await createFakeDockerInfoCommand("arm64");
+    const buildRunner = vi.fn(async () => undefined);
+    vi.stubEnv("SPAWNFILE_MOLTNET_RELEASE_DIR", releaseDirectory);
+    vi.stubEnv("SPAWNFILE_MOLTNET_TARGET_ARCH", "amd64");
+
+    const result = await buildProject(path.join(fixturesRoot, "e2e", "moltnet-team-chat"), {
+      buildRunner,
+      dockerContext: "remote-pi",
+      dockerCommand,
+      outputDirectory
+    });
+
+    expect(result.imageTag).toBe("spawnfile-moltnet-team-chat");
+    expect(buildRunner).toHaveBeenCalledWith({
+      args: ["--context", "remote-pi", "build", "-t", result.imageTag, "."],
+      command: dockerCommand,
+      cwd: outputDirectory,
+      dockerContext: "remote-pi",
+      imageTag: result.imageTag
+    });
+
+    await expect(fileExists(path.join(outputDirectory, "moltnet-bin", "moltnet"))).resolves.toBe(true);
   }, 30000);
 });
 
@@ -136,6 +205,7 @@ describe("buildProject helpers", () => {
       args: ["build", "-t", "spawnfile-agent", "."],
       command: "docker",
       cwd: "/tmp/dist",
+      dockerContext: null,
       imageTag: "spawnfile-agent"
     });
 
@@ -143,6 +213,17 @@ describe("buildProject helpers", () => {
       args: ["build", "-t", "spawnfile-agent", "."],
       command: "podman",
       cwd: "/tmp/dist",
+      dockerContext: null,
+      imageTag: "spawnfile-agent"
+    });
+
+    expect(createDockerBuildInvocation("/tmp/dist", "spawnfile-agent", {
+      dockerContext: "gpu-4090"
+    })).toEqual({
+      args: ["--context", "gpu-4090", "build", "-t", "spawnfile-agent", "."],
+      command: "docker",
+      cwd: "/tmp/dist",
+      dockerContext: "gpu-4090",
       imageTag: "spawnfile-agent"
     });
   });
