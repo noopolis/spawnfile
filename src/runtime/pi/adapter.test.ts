@@ -227,10 +227,15 @@ describe("piAdapter", () => {
     expect(target?.files.map((file) => file.path).sort()).toContain("workspace/agents/reviewer/AGENTS.md");
     const appSource = target?.files.find((file) => file.path === "runtime/app.mjs")?.content ?? "";
     expect(appSource).toContain("const collapseExactDouble = (text) => {");
+    expect(appSource).toContain("const createActivityBroker = () => {");
     expect(appSource).toContain("const message = await agent.wake({");
     expect(appSource).toContain("next.resolve(await this.runWake(next.event));");
     expect(appSource).toContain('url.pathname === "/spawnfile/agents"');
+    expect(appSource).toContain('url.pathname === "/spawnfile/activity/stream"');
     expect(appSource).toContain('url.pathname === "/spawnfile/agents/load"');
+    expect(appSource).toContain('this.publish("agent.turn.started"');
+    expect(appSource).toContain("wake_kind: event.kind");
+    expect(appSource).toContain("const formatActivityError = (error) => redactActivityText");
 
     const config = JSON.parse(target?.files.find((file) => file.path === "pi-app.json")?.content ?? "{}");
     expect(config.agents.map((agent: { id: string; model: { provider: string } }) => ({

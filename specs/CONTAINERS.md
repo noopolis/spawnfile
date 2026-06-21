@@ -301,6 +301,10 @@ Running managed Moltnet servers keep their current in-memory room membership
 until the copied server config is reconciled by an operator-token `moltnet
 apply` or a server restart.
 
+`spawnfile dev activity` uses the same deployment record to read the generated
+Pi app's bounded activity buffer from the running container. It is a runtime
+diagnostic surface, not a Moltnet message reader.
+
 ### Docker Targets
 
 Detached Docker execution may run against the default Docker context, an explicit `--context <name>`, or `DOCKER_HOST`. The deployment record must store the Docker target actually used:
@@ -488,6 +492,7 @@ For interactive Pi org development, use the dev loop:
 spawnfile auth sync fixtures/e2e/pi-harness-org --profile dev --env-file ./.env
 spawnfile dev up fixtures/e2e/pi-harness-org --auth-profile dev --deployment dev
 spawnfile dev apply fixtures/e2e/pi-harness-org --agent new-agent --deployment dev
+spawnfile dev activity fixtures/e2e/pi-harness-org --agent new-agent --deployment dev
 ```
 
 Dev mode uses `.spawn-dev` by default and keeps the deployment record there.

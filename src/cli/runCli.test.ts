@@ -352,6 +352,77 @@ describe("runCli", () => {
     ]);
   });
 
+  it("prints dev activity as JSON lines", async () => {
+    const stdout: string[] = [];
+    const devActivityProject = vi.fn(async () => ({
+      containerName: "spawnfile-pi-dev",
+      deploymentName: "dev",
+      events: [
+        {
+          agent_id: "agent:mapper",
+          sequence: 7,
+          type: "agent.turn.started",
+          version: "spawnfile.activity.v1"
+        }
+      ],
+      outputDirectory: "/tmp/org/.spawn-dev"
+    }));
+
+    const exitCode = await runCli(
+      [
+        "dev",
+        "activity",
+        "/tmp/org",
+        "--agent",
+        "mapper",
+        "--deployment",
+        "dev",
+        "--tail",
+        "5"
+      ],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message)
+      },
+      { devActivityProject }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(devActivityProject).toHaveBeenCalledWith("/tmp/org", {
+      agent: "mapper",
+      deploymentName: "dev",
+      dockerCommand: undefined,
+      outputDirectory: undefined,
+      tail: 5
+    });
+    expect(stdout).toEqual([
+      JSON.stringify({
+        agent_id: "agent:mapper",
+        sequence: 7,
+        type: "agent.turn.started",
+        version: "spawnfile.activity.v1"
+      })
+    ]);
+  });
+
+  it("rejects invalid dev activity tail values", async () => {
+    const stderr: string[] = [];
+    const devActivityProject = vi.fn();
+
+    const exitCode = await runCli(
+      ["dev", "activity", "/tmp/org", "--tail", "5abc"],
+      {
+        stderr: (message) => stderr.push(message),
+        stdout: () => undefined
+      },
+      { devActivityProject }
+    );
+
+    expect(exitCode).toBe(2);
+    expect(devActivityProject).not.toHaveBeenCalled();
+    expect(stderr.join("\n")).toContain("must be a positive integer");
+  });
+
   it("stops a dev deployment", async () => {
     const stdout: string[] = [];
     const devStopProject = vi.fn(async () => ({
