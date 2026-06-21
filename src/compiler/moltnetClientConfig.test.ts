@@ -41,7 +41,7 @@ const createArtifacts = (): MoltnetArtifacts => ({
   ]
 });
 
-const createAgent = (runtime: "openclaw" | "picoclaw"): ResolvedAgentNode => ({
+const createAgent = (runtime: "openclaw" | "picoclaw" | "pi"): ResolvedAgentNode => ({
   description: "",
   docs: [],
   env: {},
@@ -94,6 +94,22 @@ describe("moltnetClientConfig", () => {
       skillPaths: ["workspace/skills/moltnet/SKILL.md"],
       workspaceRootPath: "workspace"
     });
+  });
+
+  it("resolves the Codex-style workspace skill layout for pi", () => {
+    expect(resolveMoltnetWorkspaceLayout("pi", "orchestrator")).toEqual({
+      clientConfigPath: "workspace/.moltnet/config.json",
+      cliRuntime: "codex",
+      skillPaths: [
+        "workspace/.agents/skills/moltnet/SKILL.md",
+        "workspace/.codex/skills/moltnet/SKILL.md"
+      ],
+      workspaceRootPath: "workspace"
+    });
+
+    const files = createMoltnetClientConfigFiles(createAgent("pi"), createArtifacts());
+    expect(files.map((file) => file.path)).toEqual(["workspace/.moltnet/config.json"]);
+    expect(files[0]?.content).toContain('"runtime": "pi"');
   });
 
   it("returns no files when the agent has no moltnet attachments", () => {

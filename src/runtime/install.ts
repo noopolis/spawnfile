@@ -111,6 +111,27 @@ const installHints = new Map<
         installHint: "Checkout the pinned repo ref and build/install from the repository root."
       }
     }
+  ],
+  [
+    "pi",
+    {
+      container_image: {
+        ecosystem: "node",
+        installHint: "Copy a pinned Pi harness runtime image."
+      },
+      github_release_archive: {
+        ecosystem: "node",
+        installHint: "Download a pinned Pi harness release archive."
+      },
+      npm: {
+        ecosystem: "node",
+        installHint: "Install pinned Pi SDK dependencies inside the generated runtime app."
+      },
+      source_repo: {
+        ecosystem: "node",
+        installHint: "Checkout the pinned Pi repo ref and install from the repository root."
+      }
+    }
   ]
 ]);
 

@@ -1,0 +1,37 @@
+spawnfile_version: "0.1"
+kind: agent
+name: mapper
+description: "Maps shared workspace state for the Pi harness org."
+
+runtime: pi
+
+execution:
+  model:
+    primary:
+      provider: openai
+      name: gpt-5.4-mini
+      auth:
+        method: codex
+  sandbox:
+    mode: workspace
+
+schedule:
+  kind: every
+  every: 1s
+  prompt: "Create ./shared-lab/mapper-note.md with one sentence proving mapper can write to the shared resource."
+
+surfaces:
+  moltnet:
+    - network: pi_lab
+      rooms:
+        lab-floor:
+          wake: mentions
+
+workspace:
+  docs:
+    system: AGENTS.md
+  resources:
+    - id: mapper-scratch
+      kind: volume
+      mount: ./scratch
+      mode: mutable

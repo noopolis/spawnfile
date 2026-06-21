@@ -53,16 +53,17 @@ These runtimes have working adapters:
 
 1. **[OpenClaw](/runtimes/openclaw/)** -- JSON config, rich workspace layout, MCP through mcporter bridge, native multi-agent sessions.
 2. **[PicoClaw](/runtimes/picoclaw/)** -- JSON config, workspace-first model, first-class MCP surface, spawned subagents.
+3. **[Pi](/runtimes/pi/)** -- generated embedded harness app, grouped team agents, Codex OAuth support, shared workspace resources.
 
 ## Exploratory Runtimes
 
 These runtimes are tracked as adapter research targets but have no bundled adapter yet:
 
-3. **[NullClaw](/runtimes/nullclaw/)** -- JSON config, OpenClaw-compatible structure, stdio-first MCP, delegate agents.
-4. **[ZeroClaw](/runtimes/zeroclaw/)** -- TOML config, strong auth story, named delegate sub-agents.
-5. **[OpenFang](https://github.com/RightNow-AI/openfang)** -- declarative config and agent templates, not mapped to a Spawnfile adapter yet.
-6. **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** -- active harness candidate; config, workspace, and skill surfaces still need research.
-7. **[OpenCode](https://github.com/anomalyco/opencode)** -- active coding-agent harness candidate; long-running runtime behavior still needs research.
+4. **[NullClaw](/runtimes/nullclaw/)** -- JSON config, OpenClaw-compatible structure, stdio-first MCP, delegate agents.
+5. **[ZeroClaw](/runtimes/zeroclaw/)** -- TOML config, strong auth story, named delegate sub-agents.
+6. **[OpenFang](https://github.com/RightNow-AI/openfang)** -- declarative config and agent templates, not mapped to a Spawnfile adapter yet.
+7. **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** -- active harness candidate; config, workspace, and skill surfaces still need research.
+8. **[OpenCode](https://github.com/anomalyco/opencode)** -- active coding-agent harness candidate; long-running runtime behavior still needs research.
 
 ## Version Pinning
 
@@ -118,6 +119,7 @@ If a runtime cannot preserve part of this surface exactly, the adapter reports `
 |---------|------|--------|-----|--------|---------|-------|---------|----------|----------|-------|
 | OpenClaw | Strong | Strong | Bridge | Strong | Strong | Native sessions | Full | Full | Full | Full |
 | PicoClaw | Strong | Strong | Strong | Strong | Strong | Spawned subagents | Partial | Partial | Partial | Partial |
+| Pi | Strong | Strong | Not lowered yet | Strong | Container-only | Generated app group | Unsupported | Unsupported | Unsupported | Unsupported |
 | NullClaw | Strong | Strong | stdio-first | Strong | Strong | Delegate agents | -- | -- | -- | -- |
 | ZeroClaw | Strong | Strong | Mixed | Strong | Strong | Delegate sub-agents | -- | -- | -- | -- |
 

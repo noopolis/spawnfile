@@ -176,6 +176,7 @@ describe("upProject", () => {
     expect(buildProject).toHaveBeenCalledWith("/tmp/project", {
       buildRunner: expect.any(Function),
       clean: undefined,
+      dockerContext: undefined,
       dockerCommand: undefined,
       imageTag: "spawnfile-up-container",
       outputDirectory: undefined
@@ -447,6 +448,7 @@ describe("upProject", () => {
     });
 
     expect(buildProject).toHaveBeenCalledWith("/tmp/project", expect.objectContaining({
+      dockerContext: "hetzner",
       imageTag: "spawnfile-first"
     }));
     expect(requireAuthProfile).toHaveBeenCalledWith("prod");

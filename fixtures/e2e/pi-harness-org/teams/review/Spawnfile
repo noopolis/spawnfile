@@ -1,0 +1,34 @@
+spawnfile_version: "0.1"
+kind: team
+name: pi-review-team
+description: "Nested review team for the generated Pi app fixture"
+
+members:
+  - id: reviewer
+    ref: ./agents/reviewer
+
+mode: hierarchical
+lead: reviewer
+
+networks:
+  - id: pi_lab
+    name: Pi Lab
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 0.0.0.0
+        port: 19877
+      store:
+        kind: sqlite
+        path: /var/lib/spawnfile/moltnet/networks/pi_lab/moltnet.sqlite
+      auth:
+        mode: open
+        public_read: true
+      human_ingress: true
+      direct_messages: false
+    rooms:
+      - id: lab-floor
+        members: [reviewer]
+        visibility: public
+        write_policy: registered_agents

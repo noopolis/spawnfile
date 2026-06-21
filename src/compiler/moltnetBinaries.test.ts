@@ -50,7 +50,8 @@ const createFakeMoltnetCli = async (): Promise<string> => {
 };
 
 const createFakeReleaseDirectory = async (
-  binaryNames: string[] = ["moltnet"]
+  binaryNames: string[] = ["moltnet"],
+  architecture = process.arch === "arm64" ? "arm64" : "amd64"
 ): Promise<string> => {
   const directory = await createTempDirectory("spawnfile-moltnet-release-");
   const payloadDirectory = path.join(directory, "payload");
@@ -62,7 +63,7 @@ const createFakeReleaseDirectory = async (
     await chmod(binaryPath, 0o755);
   }
 
-  const assetName = `moltnet_linux_${process.arch === "arm64" ? "arm64" : "amd64"}.tar.gz`;
+  const assetName = `moltnet_linux_${architecture}.tar.gz`;
   await execFile("tar", ["-C", payloadDirectory, "-czf", path.join(directory, assetName), "."]);
 
   return directory;
@@ -121,6 +122,42 @@ describe("moltnetBinaries", () => {
     const binaryPath = path.join(outputDirectory, MOLTNET_BIN_DIRECTORY, "moltnet");
     await expect(fileExists(binaryPath)).resolves.toBe(true);
     await expect(readUtf8File(binaryPath)).resolves.toContain("moltnet");
+  });
+
+  it("uses a manually configured target architecture for Moltnet staging", async () => {
+    const releaseDirectory = await createFakeReleaseDirectory(["moltnet"], "amd64");
+    const outputDirectory = await createTempDirectory("spawnfile-moltnet-out-");
+    vi.stubEnv("SPAWNFILE_MOLTNET_RELEASE_DIR", releaseDirectory);
+    vi.stubEnv("SPAWNFILE_MOLTNET_TARGET_ARCH", "x86_64");
+
+    await expect(stageMoltnetBinaries(outputDirectory)).resolves.toBe(true);
+
+    const binaryPath = path.join(outputDirectory, MOLTNET_BIN_DIRECTORY, "moltnet");
+    await expect(fileExists(binaryPath)).resolves.toBe(true);
+  });
+
+  it("rejects unsupported manual Moltnet architecture values", async () => {
+    const releaseDirectory = await createFakeReleaseDirectory(["moltnet"], "amd64");
+    const outputDirectory = await createTempDirectory("spawnfile-moltnet-out-");
+    vi.stubEnv("SPAWNFILE_MOLTNET_RELEASE_DIR", releaseDirectory);
+    vi.stubEnv("SPAWNFILE_MOLTNET_TARGET_ARCH", "armv7");
+
+    await expect(stageMoltnetBinaries(outputDirectory)).rejects.toThrow(
+      /Moltnet container installs do not support target architecture armv7/
+    );
+  });
+
+  it("can stage a Moltnet release asset for an explicit target architecture", async () => {
+    const releaseDirectory = await createFakeReleaseDirectory(["moltnet"], "amd64");
+    const outputDirectory = await createTempDirectory("spawnfile-moltnet-out-");
+    vi.stubEnv("SPAWNFILE_MOLTNET_RELEASE_DIR", releaseDirectory);
+
+    await expect(
+      stageMoltnetBinaries(outputDirectory, { architecture: "amd64" })
+    ).resolves.toBe(true);
+
+    const binaryPath = path.join(outputDirectory, MOLTNET_BIN_DIRECTORY, "moltnet");
+    await expect(fileExists(binaryPath)).resolves.toBe(true);
   });
 
   it("rejects missing configured release directories and assets", async () => {

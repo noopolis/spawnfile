@@ -11,6 +11,7 @@ describe("runtime install selection", () => {
     await expect(assertInstallSelectionsCoverCompileableRuntimes()).resolves.toBeUndefined();
     await expect(listInstallSelectionRuntimes()).resolves.toEqual([
       "openclaw",
+      "pi",
       "picoclaw"
     ]);
   });
@@ -43,6 +44,19 @@ describe("runtime install selection", () => {
         linux_amd64: "picoclaw_Linux_x86_64.tar.gz",
         linux_arm64: "picoclaw_Linux_arm64.tar.gz"
       }
+    });
+  });
+
+  it("resolves Pi install selection from the pinned npm package", async () => {
+    await expect(resolveRuntimeInstallSelection("pi")).resolves.toEqual({
+      ecosystem: "node",
+      installHint: "Install pinned Pi SDK dependencies inside the generated runtime app.",
+      kind: "npm",
+      packageName: "@earendil-works/pi-coding-agent",
+      runtimeName: "pi",
+      runtimeRef: "v0.79.9",
+      selectionSource: "runtime_registry_install",
+      version: "0.79.9"
     });
   });
 

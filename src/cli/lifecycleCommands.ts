@@ -56,11 +56,13 @@ export const registerLifecycleCommands = (
     .command("build")
     .description("Compile and build the organization Docker image")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
+    .option("--context <name>", "Docker context for the build target")
     .option("--docker-command <command>", "Docker command")
     .option("-o, --out <directory>", "Output directory")
     .option("-t, --tag <image>", "Docker image tag")
-    .action(async (inputPath: string, options: { dockerCommand?: string; out?: string; tag?: string }) => {
+    .action(async (inputPath: string, options: { context?: string; dockerCommand?: string; out?: string; tag?: string }) => {
       const result = await handlers.buildProject(inputPath, {
+        dockerContext: options.context,
         dockerCommand: options.dockerCommand,
         imageTag: options.tag,
         outputDirectory: options.out

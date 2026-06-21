@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { DISTRIBUTION_REPORT_IMAGE_PATH } from "../distribution/index.js";
 import { createRuntimeInstallRecipe } from "../runtime/index.js";
-import type { EmittedFile } from "../runtime/index.js";
+import type { EmittedFile, RuntimeInstallRecipe } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import type {
@@ -13,27 +13,28 @@ import type { EntrypointOptions } from "./containerEntrypointRender.js";
 export { renderEntrypoint } from "./containerEntrypointRender.js";
 export type { EntrypointOptions } from "./containerEntrypointRender.js";
 import { MOLTNET_BIN_DIRECTORY, MOLTNET_BINARY_NAMES } from "./moltnetBinaries.js";
-import type { ResolvedPackage } from "./types.js";
+import {
+  collectPackagesByManager,
+  createAptPackageInstallItem,
+  createNpmPackageInstallCommand,
+  createNpmPackageInstallItem,
+  createPackageInstallCommand,
+  createPipxPackageInstallCommand,
+  createPipxPackageInstallItem,
+  getNpmInstallItemName
+} from "./containerPackageRender.js";
 
 const CONTAINER_ROOTFS_ROOT = "container/rootfs";
 const GATEWAY_PORT_PLACEHOLDER = "<gateway-port>";
 const MOLTNET_INSTALL_SCRIPT_URL = "https://moltnet.dev/install.sh";
 const MOLTNET_RELEASE_METADATA_URL = "https://api.github.com/repos/noopolis/moltnet/releases/latest";
 const WORKSPACE_PLACEHOLDER = "<workspace-path>";
+const RUNTIME_ROOT_PLACEHOLDER = "<runtime-root>";
 
 const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)}'`;
 
 const extractNodeMajorVersion = (image: string): number =>
   Number(image.match(/^node:(\d+)/)?.[1] ?? "0");
-
-const createPackageInstallCommand = (packages: string[]): string =>
-  `RUN apt-get update && apt-get install -y --no-install-recommends ${packages.join(" ")} && rm -rf /var/lib/apt/lists/*`;
-
-const createNpmPackageInstallCommand = (packages: string[]): string =>
-  `RUN npm install -g --omit=dev --no-fund --no-audit ${packages.join(" ")}`;
-
-const createPipxPackageInstallCommand = (packages: string[]): string =>
-  `RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install ${packages.join(" ")}`;
 
 const createStateOwnershipCommand = (persistentMountPaths: string[] = []): string => {
   const mountPaths = [...new Set(persistentMountPaths)].sort();
@@ -44,7 +45,6 @@ const createStateOwnershipCommand = (persistentMountPaths: string[] = []): strin
   const chownPaths = [
     ...new Set([
       "/var/lib/spawnfile",
-      "/opt/spawnfile",
       ...mountPaths.filter((mountPath) => !mountPath.startsWith("/var/lib/spawnfile/"))
     ])
   ].sort();
@@ -56,110 +56,17 @@ const createStateOwnershipCommand = (persistentMountPaths: string[] = []): strin
   ].join(" && ");
 };
 
-const dedupePackages = (packages: ResolvedPackage[]): ResolvedPackage[] => {
-  const seen = new Map<string, ResolvedPackage>();
-  for (const currentPackage of packages) {
-    seen.set(
-      `${currentPackage.manager}\u0000${currentPackage.name}\u0000${currentPackage.version ?? ""}\u0000${currentPackage.scope ?? ""}`,
-      currentPackage
-    );
+const selectBaseImage = (
+  runtimePlans: RuntimeTargetPlan[],
+  runtimeRecipes: RuntimeInstallRecipe[]
+): string => {
+  const recipeBaseImages = [
+    ...new Set(runtimeRecipes.flatMap((recipe) => recipe.baseImage ? [recipe.baseImage] : []))
+  ];
+  if (recipeBaseImages.length === 1 && runtimePlans.length === runtimeRecipes.length) {
+    return recipeBaseImages[0]!;
   }
 
-  return [...seen.values()].sort((left, right) =>
-    `${left.manager}\u0000${left.name}\u0000${left.version ?? ""}\u0000${left.scope ?? ""}`.localeCompare(
-      `${right.manager}\u0000${right.name}\u0000${right.version ?? ""}\u0000${right.scope ?? ""}`
-    )
-  );
-};
-
-const createPackageIdentity = (pkg: ResolvedPackage): string =>
-  `${pkg.manager}\u0000${pkg.name}\u0000${pkg.version ?? ""}\u0000${pkg.scope ?? ""}`;
-
-const createPackageConflictIdentity = (pkg: ResolvedPackage): string =>
-  `${pkg.manager}\u0000${pkg.name}`;
-
-const assertImagePackageCompatibility = (packages: ResolvedPackage[]): void => {
-  const byName = new Map<string, ResolvedPackage>();
-  for (const currentPackage of packages) {
-    const conflictIdentity = createPackageConflictIdentity(currentPackage);
-    const existingPackage = byName.get(conflictIdentity);
-    if (!existingPackage) {
-      byName.set(conflictIdentity, currentPackage);
-      continue;
-    }
-
-    if (createPackageIdentity(existingPackage) !== createPackageIdentity(currentPackage)) {
-      throw new SpawnfileError(
-        "validation_error",
-        `Generated container declares conflicting package definitions for ${currentPackage.manager} package ${currentPackage.name}`
-      );
-    }
-  }
-};
-
-const createAptPackageInstallItem = (pkg: ResolvedPackage): string =>
-  pkg.version ? `${pkg.name}=${pkg.version}` : pkg.name;
-
-const createNpmPackageInstallItem = (pkg: ResolvedPackage): string =>
-  pkg.version ? `${pkg.name}@${pkg.version}` : pkg.name;
-
-const createPipxPackageInstallItem = (pkg: ResolvedPackage): string =>
-  pkg.version ? `${pkg.name}==${pkg.version}` : pkg.name;
-
-const getNpmInstallItemName = (item: string): string => {
-  if (!item.startsWith("@")) {
-    const versionMarker = item.indexOf("@");
-    return versionMarker === -1 ? item : item.slice(0, versionMarker);
-  }
-
-  const slashIndex = item.indexOf("/");
-  if (slashIndex === -1) {
-    return item;
-  }
-
-  const versionMarker = item.indexOf("@", slashIndex);
-  return versionMarker === -1 ? item : item.slice(0, versionMarker);
-};
-
-const collectPackagesByManager = (runtimePlans: RuntimeTargetPlan[]): {
-  apt: ResolvedPackage[];
-  npm: ResolvedPackage[];
-  pipx: ResolvedPackage[];
-} => {
-  const packagesByManager: {
-    apt: ResolvedPackage[];
-    npm: ResolvedPackage[];
-    pipx: ResolvedPackage[];
-  } = {
-    apt: [],
-    npm: [],
-    pipx: []
-  };
-  const imagePackages = runtimePlans.flatMap((plan) => plan.packages ?? []);
-  assertImagePackageCompatibility(imagePackages);
-  const resolvedPackages = dedupePackages(imagePackages);
-
-  for (const packageConfig of resolvedPackages) {
-    if (packageConfig.manager === "apt") {
-      packagesByManager.apt.push(packageConfig);
-      continue;
-    }
-
-    if (packageConfig.manager === "npm") {
-      packagesByManager.npm.push(packageConfig);
-      continue;
-    }
-
-    if (packageConfig.manager === "pipx") {
-      packagesByManager.pipx.push(packageConfig);
-      continue;
-    }
-  }
-
-  return packagesByManager;
-};
-
-const selectBaseImage = (runtimePlans: RuntimeTargetPlan[]): string => {
   const firstRuntimeMeta = runtimePlans[0]?.meta;
 
   if (runtimePlans.length <= 1) {
@@ -217,7 +124,10 @@ export const renderDockerfile = async (
   const runtimeRecipes = await Promise.all(
     runtimeNames.map((runtimeName) => createRuntimeInstallRecipe(runtimeName))
   );
-  const baseImage = selectBaseImage(runtimePlans);
+  const recipeByRuntimeName = new Map(
+    runtimeRecipes.map((recipe) => [recipe.runtimeName, recipe])
+  );
+  const baseImage = selectBaseImage(runtimePlans, runtimeRecipes);
   const needsJsonEnvWriter = runtimePlans.some(
     (plan) => (plan.configEnvBindings?.length ?? 0) > 0
   );
@@ -226,7 +136,9 @@ export const renderDockerfile = async (
   );
   const systemDeps = [
     ...new Set([
-      ...runtimePlans.flatMap((plan) => plan.meta.systemDeps),
+      ...runtimePlans.flatMap((plan) =>
+        recipeByRuntimeName.get(plan.runtimeName)?.baseImage ? [] : plan.meta.systemDeps
+      ),
       ...(needsGit ? ["git"] : []),
       ...(options.hasMoltnet && !options.hasStagedMoltnetBinaries
         ? ["ca-certificates", "curl", "tar"]
@@ -314,6 +226,13 @@ export const renderDockerfile = async (
     "RUN chmod +x /opt/spawnfile/entrypoint.sh"
   );
 
+  const postRootfsCommands = [
+    ...new Set(runtimePlans.flatMap((plan) => plan.meta.postRootfsCommands ?? []))
+  ];
+  for (const command of postRootfsCommands) {
+    lines.push(`RUN ${command}`);
+  }
+
   if (options.distribution) {
     lines.push(
       "",
@@ -342,12 +261,24 @@ export const createRootfsFiles = (runtimePlans: RuntimeTargetPlan[]): EmittedFil
         return {
           content: file.content
             .replaceAll(WORKSPACE_PLACEHOLDER, plan.instancePaths.workspacePath)
+            .replaceAll(RUNTIME_ROOT_PLACEHOLDER, plan.runtimeRoot)
             .replaceAll(
               `"${GATEWAY_PORT_PLACEHOLDER}"`,
               plan.port ? String(plan.port) : "0"
             )
             .replaceAll(GATEWAY_PORT_PLACEHOLDER, plan.port ? String(plan.port) : ""),
           path: `${CONTAINER_ROOTFS_ROOT}${plan.instancePaths.configPath}`
+        };
+      }
+
+      if (file.path.startsWith("runtime/")) {
+        const relativeRuntimePath = file.path.slice("runtime/".length);
+        return {
+          content: file.content,
+          path: `${CONTAINER_ROOTFS_ROOT}${path.posix.join(
+            plan.runtimeRoot,
+            relativeRuntimePath
+          )}`
         };
       }
 

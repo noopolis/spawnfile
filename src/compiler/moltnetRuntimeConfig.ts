@@ -94,6 +94,20 @@ export const resolveRuntimeConfig = (
         kind: "picoclaw"
       };
     }
+    case "pi": {
+      const port = getRuntimeAdapter("pi").container.port;
+      if (!port) {
+        throw new SpawnfileError(
+          "compile_error",
+          `Unable to resolve Pi control port for Moltnet agent ${agentNode.name}`
+        );
+      }
+
+      return {
+        control_url: `http://127.0.0.1:${port}/agents/${nodeSlug}/wake`,
+        kind: "pi"
+      };
+    }
     default:
       throw new SpawnfileError(
         "compile_error",

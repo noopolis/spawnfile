@@ -69,6 +69,16 @@ Supported kinds in v0.1 are:
 | `exploratory` | Research exists in `specs/research/RUNTIME-NOTES.md` but no adapter yet |
 | `deprecated` | Was previously active, adapter is no longer maintained |
 
+### Current Active Runtimes
+
+The active v0.1 adapters are:
+
+| Runtime | Install Strategy | Adapter Shape |
+|---------|------------------|---------------|
+| `openclaw` | npm package | Runtime-native gateway and workspace config |
+| `picoclaw` | GitHub release archive | Runtime-native gateway and workspace config |
+| `pi` | npm package | Generated embedded harness app for grouped agents |
+
 ---
 
 ## Version Pinning

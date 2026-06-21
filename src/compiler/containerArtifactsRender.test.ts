@@ -23,6 +23,7 @@ const loadRenderModule = async (
   recipeByRuntime: Record<
     string,
     {
+      baseImage?: string;
       commands: string[];
       copyCommands: string[];
       runtimeName: string;
@@ -180,7 +181,7 @@ describe("renderDockerfile", () => {
     expect(dockerfile).not.toContain("https://deb.nodesource.com/node_24.x");
     expect(dockerfile).not.toContain("RUN corepack enable");
     expect(dockerfile).toContain(
-      "RUN mkdir -p '/var/lib/spawnfile' && chown -R spawnfile:spawnfile '/opt/spawnfile' '/var/lib/spawnfile'"
+      "RUN mkdir -p '/var/lib/spawnfile' && chown -R spawnfile:spawnfile '/var/lib/spawnfile'"
     );
     expect(dockerfile).toContain("USER spawnfile");
     expect(dockerfile).toContain("EXPOSE 18789 18990");
@@ -410,6 +411,71 @@ describe("renderDockerfile", () => {
     expect(dockerfile).not.toContain("https://moltnet.dev/install.sh");
     expect(dockerfile).not.toContain("ca-certificates curl tar");
   });
+
+  it("renders runtime post-rootfs commands after copying generated files", async () => {
+    const { renderDockerfile } = await loadRenderModule({
+      pi: {
+        commands: ["mkdir -p /opt/runtime/pi"],
+        copyCommands: [],
+        runtimeName: "pi",
+        runtimeRoot: "/opt/runtime/pi"
+      }
+    });
+
+    const dockerfile = await renderDockerfile([
+      createRuntimePlan("pi", {
+        meta: {
+          configFileName: "pi-app.json",
+          instancePaths: {
+            configPathTemplate: "<instance-root>/pi-app.json",
+            homePathTemplate: "<instance-root>/home",
+            workspacePathTemplate: "<instance-root>/workspace"
+          },
+          postRootfsCommands: ["cd /opt/runtime/pi && npm install --omit=dev"],
+          standaloneBaseImage: "node:24-bookworm-slim",
+          startCommand: ["node", "<runtime-root>/app.mjs"],
+          systemDeps: []
+        }
+      })
+    ]);
+
+    expect(dockerfile.indexOf("COPY container/rootfs/ /")).toBeLessThan(
+      dockerfile.indexOf("RUN cd /opt/runtime/pi && npm install --omit=dev")
+    );
+  });
+
+  it("uses prebuilt runtime base images without reinstalling provided runtime deps", async () => {
+    const { renderDockerfile } = await loadRenderModule({
+      pi: {
+        baseImage: "noopolis/spawnfile-pi-runtime:test",
+        commands: ["mkdir -p /opt/runtime/pi"],
+        copyCommands: [],
+        runtimeName: "pi",
+        runtimeRoot: "/opt/runtime/pi"
+      }
+    });
+
+    const dockerfile = await renderDockerfile([
+      createRuntimePlan("pi", {
+        meta: {
+          configFileName: "pi-app.json",
+          instancePaths: {
+            configPathTemplate: "<instance-root>/pi-app.json",
+            homePathTemplate: "<instance-root>/home",
+            workspacePathTemplate: "<instance-root>/workspace"
+          },
+          standaloneBaseImage: "node:24-bookworm-slim",
+          startCommand: ["node", "<runtime-root>/app.mjs"],
+          systemDeps: ["bash", "curl", "git"]
+        }
+      })
+    ]);
+
+    expect(dockerfile).toContain("FROM noopolis/spawnfile-pi-runtime:test");
+    expect(dockerfile).toContain("RUN mkdir -p /opt/runtime/pi");
+    expect(dockerfile).not.toContain("apt-get install -y --no-install-recommends bash curl git");
+    expect(dockerfile).not.toContain("npm install --omit=dev --no-fund --no-audit @earendil-works/pi-coding-agent");
+  });
 });
 
 describe("renderEntrypoint", () => {
@@ -459,7 +525,7 @@ describe("renderEntrypoint", () => {
     expect(entrypoint).toContain('printf %s "${!name:-}" > "$target"');
   });
 
-  it("replaces every runtime-root placeholder inside a start-command token", async () => {
+  it("replaces runtime start-command placeholders", async () => {
     const { renderEntrypoint } = await loadRenderModule({
       openclaw: {
         commands: [],
@@ -484,7 +550,7 @@ describe("renderEntrypoint", () => {
             startCommand: [
               "bash",
               "-lc",
-              "node <runtime-root>/openclaw.mjs && node <runtime-root>/gateway.mjs"
+              "node <runtime-root>/openclaw.mjs --config <config-path> --home <home-path> --workspace <workspace-path>"
             ],
             systemDeps: []
           }
@@ -494,8 +560,13 @@ describe("renderEntrypoint", () => {
     );
 
     expect(entrypoint).not.toContain("<runtime-root>");
+    expect(entrypoint).not.toContain("<config-path>");
+    expect(entrypoint).not.toContain("<home-path>");
+    expect(entrypoint).not.toContain("<workspace-path>");
     expect(entrypoint).toContain("/opt/runtime/openclaw/openclaw.mjs");
-    expect(entrypoint).toContain("/opt/runtime/openclaw/gateway.mjs");
+    expect(entrypoint).toContain("--config /var/lib/spawnfile/openclaw/config.json");
+    expect(entrypoint).toContain("--home /var/lib/spawnfile/openclaw/home");
+    expect(entrypoint).toContain("--workspace /var/lib/spawnfile/openclaw/workspace");
   });
 
   it("starts moltnet servers and nodes before waiting on child processes", async () => {
@@ -811,6 +882,36 @@ describe("createRootfsFiles", () => {
       {
         content: "",
         path: "container/rootfs/var/lib/spawnfile/openclaw/home/.openclaw/agents/main/sessions/.keep"
+      }
+    ]);
+  });
+
+  it("maps runtime-scoped files into the runtime install root", async () => {
+    const { createRootfsFiles } = await loadRenderModule({
+      pi: {
+        commands: [],
+        copyCommands: [],
+        runtimeName: "pi",
+        runtimeRoot: "/opt/runtime/pi"
+      }
+    });
+
+    const files = createRootfsFiles([
+      createRuntimePlan("pi", {
+        runtimeRoot: "/opt/runtime/pi",
+        targetFiles: [
+          {
+            content: "console.log('pi')\n",
+            path: "runtime/app.mjs"
+          }
+        ]
+      })
+    ]);
+
+    expect(files).toEqual([
+      {
+        content: "console.log('pi')\n",
+        path: "container/rootfs/opt/runtime/pi/app.mjs"
       }
     ]);
   });

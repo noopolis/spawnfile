@@ -11,7 +11,7 @@ import {
 
 describe("runtime registry", () => {
   it("lists available runtime adapters", () => {
-    expect(listRuntimeAdapters()).toEqual(["openclaw", "picoclaw"]);
+    expect(listRuntimeAdapters()).toEqual(["openclaw", "pi", "picoclaw"]);
   });
 
   it("loads runtimes from runtimes.yaml", async () => {
@@ -41,6 +41,7 @@ describe("runtime registry", () => {
 
   it("returns a runtime adapter by name", () => {
     expect(getRuntimeAdapter("openclaw").name).toBe("openclaw");
+    expect(getRuntimeAdapter("pi").name).toBe("pi");
   });
 
   it("throws on unknown runtime adapters", () => {

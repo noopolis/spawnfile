@@ -8,6 +8,7 @@ import { runMoltnetTeamChatE2E } from "./moltnetTeamChat.js";
 import { runDistributionImageE2E } from "./distributionImage.js";
 import { runDistributionRoundtripE2E } from "./distributionRoundtrip.js";
 import { runOperationalSmokeE2E } from "./operationalSmoke.js";
+import { runPiHarnessOrgE2E } from "./piHarnessOrg.js";
 import type { E2ERuntime } from "./types.js";
 
 const collect = (value: string, previous: string[]): string[] => [...previous, value];
@@ -113,6 +114,40 @@ const runOperationalSmokeCli = async (argv: string[]): Promise<void> => {
   console.log(`Operational smoke E2E passed (${result.containerName})`);
 };
 
+const runPiHarnessOrgCli = async (argv: string[]): Promise<void> => {
+  const command = new Command();
+  command
+    .name("spawnfile-e2e pi-harness-org")
+    .description("Run the opt-in Pi harness organization E2E against real Codex auth")
+    .option("--codex-auth-path <path>", "Codex auth.json path")
+    .option("--fixture <path>", "Fixture directory override")
+    .option("--keep-artifacts", "Keep temporary compile output")
+    .option("--node-command <command>", "Node command", "node")
+    .option("--npm-command <command>", "npm command", "npm")
+    .option("--out <path>", "Compile output directory");
+
+  await command.parseAsync(argv, { from: "user" });
+  const options = command.opts<{
+    codexAuthPath?: string;
+    fixture?: string;
+    keepArtifacts?: boolean;
+    nodeCommand?: string;
+    npmCommand?: string;
+    out?: string;
+  }>();
+
+  const result = await runPiHarnessOrgE2E({
+    codexAuthPath: options.codexAuthPath,
+    fixtureDirectory: options.fixture,
+    keepArtifacts: options.keepArtifacts,
+    nodeCommand: options.nodeCommand,
+    npmCommand: options.npmCommand,
+    outputDirectory: options.out
+  });
+
+  console.log(`Pi harness org E2E passed (${result.mapperNotePath}, ${result.reviewerNotePath})`);
+};
+
 const main = async (): Promise<void> => {
   if (process.argv[2] === "moltnet-team-chat") {
     await runMoltnetTeamChatCli(process.argv.slice(3));
@@ -121,6 +156,11 @@ const main = async (): Promise<void> => {
 
   if (process.argv[2] === "operational-smoke") {
     await runOperationalSmokeCli(process.argv.slice(3));
+    return;
+  }
+
+  if (process.argv[2] === "pi-harness-org") {
+    await runPiHarnessOrgCli(process.argv.slice(3));
     return;
   }
 

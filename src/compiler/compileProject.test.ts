@@ -45,7 +45,12 @@ const createFakeMoltnetCli = async (): Promise<string> => {
       "  const runtime = flags.get('--runtime');",
       "  const workspace = flags.get('--workspace');",
       "  const content = '# name: moltnet\\nMoltnet is a transport, not an implicit reply channel.\\n';",
-      "  const targets = [path.join(workspace, 'skills', 'moltnet', 'SKILL.md')];",
+      "  const targets = runtime === 'codex'",
+      "    ? [",
+      "        path.join(workspace, '.agents', 'skills', 'moltnet', 'SKILL.md'),",
+      "        path.join(workspace, '.codex', 'skills', 'moltnet', 'SKILL.md')",
+      "      ]",
+      "    : [path.join(workspace, 'skills', 'moltnet', 'SKILL.md')];",
       "  for (const target of targets) {",
       "    fs.mkdirSync(path.dirname(target), { recursive: true });",
       "    fs.writeFileSync(target, content);",
@@ -802,6 +807,169 @@ describe("compileProject", () => {
         expect(clientConfig).toContain(
           '"token_path": "/var/lib/spawnfile/agents/orchestrator-agent/state/moltnet/local_lab-orchestrator.token"'
         );
+      } finally {
+        if (previousCli === undefined) {
+          delete process.env.SPAWNFILE_MOLTNET_CLI;
+        } else {
+          process.env.SPAWNFILE_MOLTNET_CLI = previousCli;
+        }
+        if (previousReleaseDir === undefined) {
+          delete process.env.SPAWNFILE_MOLTNET_RELEASE_DIR;
+        } else {
+          process.env.SPAWNFILE_MOLTNET_RELEASE_DIR = previousReleaseDir;
+        }
+      }
+    },
+    40_000
+  );
+
+  it(
+    "compiles a Spawnfile-owned Pi harness org into one generated app",
+    async () => {
+      const previousCli = process.env.SPAWNFILE_MOLTNET_CLI;
+      const previousReleaseDir = process.env.SPAWNFILE_MOLTNET_RELEASE_DIR;
+      process.env.SPAWNFILE_MOLTNET_CLI = await createFakeMoltnetCli();
+      process.env.SPAWNFILE_MOLTNET_RELEASE_DIR = await createFakeMoltnetReleaseDirectory();
+
+      try {
+        const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-pi-org-out-"));
+        temporaryDirectories.push(outputDirectory);
+
+        const result = await compileProject(path.join(fixturesRoot, "e2e", "pi-harness-org"), {
+          outputDirectory
+        });
+        const container = result.report.container;
+        const mapperReport = result.report.nodes.find(
+          (node) => node.kind === "agent" && node.id === "agent:mapper"
+        );
+        expect(mapperReport?.capabilities).toContainEqual({
+          key: "surfaces.moltnet",
+          message:
+            "Pi generated runtime app exposes a control endpoint for Moltnet bridge wake delivery",
+          outcome: "supported"
+        });
+        expect(container?.runtimes_installed).toEqual(["pi"]);
+        expect(container?.runtime_instances).toEqual([
+          {
+            config_path: "/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json",
+            home_path: "/var/lib/spawnfile/instances/pi/pi-app/home",
+            id: "pi-app",
+            internal_port: 19690,
+            model_auth_methods: {
+              openai: "codex"
+            },
+            model_secrets_required: [],
+            node_ids: ["agent:mapper", "agent:reviewer"],
+            published_port: null,
+            runtime: "pi",
+            workspace_path: "/var/lib/spawnfile/instances/pi/pi-app/workspace"
+          }
+        ]);
+        expect(container?.runtime_homes).toEqual([
+          "/var/lib/spawnfile/instances/pi/pi-app/home"
+        ]);
+        expect(container?.moltnet?.node_plans).toEqual([
+          {
+            config_path:
+              "/var/lib/spawnfile/moltnet/nodes/pi-harness-org-pi_lab-mapper.json",
+            network_id: "pi_lab"
+          },
+          {
+            config_path:
+              "/var/lib/spawnfile/moltnet/nodes/pi-review-team-pi_lab-reviewer.json",
+            network_id: "pi_lab"
+          }
+        ]);
+        expect(container?.moltnet?.server_plans[0]).toMatchObject({
+          auth_mode: "open",
+          mode: "managed",
+          network_id: "pi_lab",
+          rooms: [
+            {
+              id: "lab-floor",
+              members: ["mapper", "reviewer"],
+              visibility: "public",
+              write_policy: "registered_agents"
+            }
+          ]
+        });
+        expect(container?.persistent_mounts?.map((mount) => mount.id).sort()).toEqual([
+          "agent-mapper-moltnet-tokens",
+          "agent-reviewer-moltnet-tokens",
+          "moltnet-pi_lab-store"
+        ]);
+
+        const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
+        expect(dockerfile).toContain("FROM node:24-bookworm-slim");
+        expect(dockerfile).toContain("RUN mkdir -p /opt/spawnfile/runtime-installs/pi");
+        expect(dockerfile).toContain(
+          "RUN cd /opt/spawnfile/runtime-installs/pi && npm install --omit=dev --no-fund --no-audit"
+        );
+
+        const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
+        expect(entrypoint).toContain("/usr/local/bin/moltnet &");
+        expect(entrypoint).toContain("/usr/local/bin/moltnet node");
+        expect(entrypoint).toContain("http://127.0.0.1:19690/healthz");
+        expect(entrypoint).toContain(
+          "'node' '/opt/spawnfile/runtime-installs/pi/app.mjs' '/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json'"
+        );
+        expect(entrypoint).toContain(
+          "prepare_volume_resource 'shared-lab' '/var/lib/spawnfile/instances/pi/pi-app/workspace/agents/mapper/shared-lab'"
+        );
+        expect(entrypoint).toContain(
+          "prepare_volume_resource 'shared-lab' '/var/lib/spawnfile/instances/pi/pi-app/workspace/agents/reviewer/shared-lab'"
+        );
+
+        const appConfig = JSON.parse(
+          await readUtf8File(
+            path.join(
+              outputDirectory,
+              "container",
+              "rootfs",
+              "var",
+              "lib",
+              "spawnfile",
+              "instances",
+              "pi",
+              "pi-app",
+              "pi",
+              "pi-app.json"
+            )
+          )
+        );
+        expect(appConfig.agents.map((agent: { id: string; slug: string; schedule?: { kind: string } }) => ({
+          id: agent.id,
+          schedule: agent.schedule?.kind,
+          slug: agent.slug
+        }))).toEqual([
+          { id: "agent:mapper", schedule: "every", slug: "mapper" },
+          { id: "agent:reviewer", schedule: "every", slug: "reviewer" }
+        ]);
+
+        for (const slug of ["mapper", "reviewer"]) {
+          const workspace = path.join(
+            outputDirectory,
+            "container",
+            "rootfs",
+            "var",
+            "lib",
+            "spawnfile",
+            "instances",
+            "pi",
+            "pi-app",
+            "workspace",
+            "agents",
+            slug
+          );
+          await expect(fileExists(path.join(workspace, "AGENTS.md"))).resolves.toBe(true);
+          await expect(fileExists(path.join(workspace, ".moltnet", "config.json"))).resolves.toBe(true);
+          await expect(
+            fileExists(path.join(workspace, ".agents", "skills", "moltnet", "SKILL.md"))
+          ).resolves.toBe(true);
+          await expect(
+            fileExists(path.join(workspace, ".codex", "skills", "moltnet", "SKILL.md"))
+          ).resolves.toBe(true);
+        }
       } finally {
         if (previousCli === undefined) {
           delete process.env.SPAWNFILE_MOLTNET_CLI;

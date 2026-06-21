@@ -3,8 +3,11 @@ import { SpawnfileError } from "../shared/index.js";
 import { resolveRuntimeInstallSelection } from "./install.js";
 
 export const RUNTIME_INSTALL_ROOT = "/opt/spawnfile/runtime-installs";
+const PI_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_PI_RUNTIME_BASE_IMAGE";
+const PI_AI_PACKAGE_NAME = "@earendil-works/pi-ai";
 
 export interface RuntimeInstallRecipe {
+  baseImage?: string;
   commands: string[];
   copyCommands: string[];
   runtimeName: string;
@@ -85,6 +88,28 @@ export const createRuntimeInstallRecipe = async (
 
       return {
         commands: createPicoClawArchiveInstallCommands(installRoot, selection),
+        copyCommands: [],
+        runtimeName,
+        runtimeRoot: installRoot
+      };
+    }
+    case "pi": {
+      if (selection.kind !== "npm") {
+        throw new SpawnfileError(
+          "runtime_error",
+          `Runtime ${runtimeName} has no compiled artifact recipe for ${selection.kind}`
+        );
+      }
+      const prebuiltBaseImage = process.env[PI_RUNTIME_BASE_IMAGE_ENV]?.trim();
+
+      return {
+        ...(prebuiltBaseImage ? { baseImage: prebuiltBaseImage } : {}),
+        commands: prebuiltBaseImage
+          ? [`mkdir -p ${installRoot}`]
+          : [
+              `mkdir -p ${installRoot}`,
+              `cd ${installRoot} && npm install --omit=dev --no-fund --no-audit ${selection.packageName}@${selection.version} ${PI_AI_PACKAGE_NAME}@${selection.version}`
+            ],
         copyCommands: [],
         runtimeName,
         runtimeRoot: installRoot

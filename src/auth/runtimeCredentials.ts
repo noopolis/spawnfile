@@ -34,6 +34,24 @@ const parseJson = (filePath: string, content: string): Record<string, unknown> =
   }
 };
 
+const decodeJwtExpiry = (token: string): number | null => {
+  const payload = token.split(".")[1];
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+      exp?: unknown;
+    };
+    return typeof decoded.exp === "number" && Number.isFinite(decoded.exp)
+      ? decoded.exp * 1000
+      : null;
+  } catch {
+    return null;
+  }
+};
+
 export const loadImportedClaudeCodeCredential = async (
   sourceDirectory: string
 ): Promise<ClaudeCodeImportedCredential | null> => {
@@ -103,12 +121,13 @@ export const loadImportedCodexCredential = async (
     return null;
   }
 
-  const fileStats = await stat(authPath);
+  const jwtExpiry = decodeJwtExpiry(access);
+  const expires = jwtExpiry ?? (await stat(authPath)).mtimeMs + 60 * 60 * 1000;
 
   return {
     access,
     ...(typeof accountId === "string" && accountId.length > 0 ? { accountId } : {}),
-    expires: fileStats.mtimeMs + 60 * 60 * 1000,
+    expires,
     refresh
   };
 };

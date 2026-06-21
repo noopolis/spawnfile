@@ -566,6 +566,7 @@ describe("runProject", () => {
 
     const result = await runProject(path.join(fixturesRoot, "single-agent"), {
       authProfile: "dev",
+      containerArchitecture: "amd64",
       deploymentName: "prod-eu",
       detach: true,
       dockerContext: "hetzner",
@@ -641,6 +642,7 @@ describe("runProject", () => {
     const outputDirectory = await createTempDirectory("spawnfile-run-out-");
     await runProject(path.join(fixturesRoot, "single-agent"), {
       authProfile: "dev",
+      containerArchitecture: "amd64",
       deploymentName: "prod",
       detach: true,
       dockerContext: "hetzner",
@@ -655,6 +657,7 @@ describe("runProject", () => {
     await runProject(path.join(fixturesRoot, "single-agent"), {
       deploymentName: "prod",
       detach: true,
+      containerArchitecture: "amd64",
       outputDirectory,
       runRunner: async (invocation) => {
         expect(invocation.args.slice(0, 3)).toEqual(["--context", "hetzner", "run"]);

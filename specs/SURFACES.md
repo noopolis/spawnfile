@@ -195,6 +195,7 @@ The portable schema is broader than any single runtime. A conforming compiler va
 |---|---|---|
 | `openclaw` | team-network attachments | Lowers generated Moltnet client config and skill installation when artifacts are available. |
 | `picoclaw` | team-network attachments | Lowers generated Moltnet client config and skill installation when artifacts are available. |
+| `pi` | supported | Lowers generated Moltnet client config, skill installation, persistent open-token directories, and `moltnet node` bridge configs that deliver wakes through the generated Pi app control endpoint. |
 
 ### Webhook
 

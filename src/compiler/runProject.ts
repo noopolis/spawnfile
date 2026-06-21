@@ -32,7 +32,7 @@ import {
   type CompileProjectOptions,
   type CompileProjectResult
 } from "./compileProject.js";
-import { createDefaultImageTag } from "./buildProject.js";
+import { createDefaultImageTag, resolveDockerBuildArchitecture } from "./buildProject.js";
 import { slugify } from "./helpers.js";
 import {
   runDockerContainer,
@@ -282,8 +282,15 @@ export const runProject = async (
       targetExecFile: options.targetExecFile
     }
   );
+  const targetArchitecture =
+    options.containerArchitecture ??
+    await resolveDockerBuildArchitecture({
+      dockerCommand: options.dockerCommand,
+      dockerContext: resolvedOptions.dockerContext
+    });
   const compileResult = await compileProject(inputPath, {
     clean: options.clean,
+    containerArchitecture: targetArchitecture,
     outputDirectory: options.outputDirectory
   });
   const imageTag = resolvedOptions.imageTag ?? createDefaultImageTag(resolveImageTagRoot(inputPath));

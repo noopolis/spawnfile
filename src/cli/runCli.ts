@@ -31,9 +31,16 @@ import {
   showProjectSurfaces,
   syncProjectAuth
 } from "../compiler/index.js";
+import {
+  devApplyProject,
+  devRestartProject,
+  devStopProject,
+  devUpProject
+} from "../dev/index.js";
 import { consumeImageUp } from "../distribution/index.js";
 import { errorExitCode, isSpawnfileError } from "../shared/index.js";
 import { listRuntimeAdapters } from "../runtime/index.js";
+import { registerDevCommands } from "./devCommands.js";
 import { registerLifecycleCommands } from "./lifecycleCommands.js";
 import { registerModelCommands } from "./modelCommands.js";
 import { registerRuntimeCommands } from "./runtimeCommands.js";
@@ -82,6 +89,10 @@ export interface CliHandlers {
   requireAuthProfile: typeof requireAuthProfile; runProject: typeof runProject;
   upProject: typeof upProject;
   consumeImageUp: typeof consumeImageUp;
+  devApplyProject: typeof devApplyProject;
+  devRestartProject: typeof devRestartProject;
+  devStopProject: typeof devStopProject;
+  devUpProject: typeof devUpProject;
   setProjectPrimaryModel: typeof setProjectPrimaryModel; setProjectRuntime: typeof setProjectRuntime;
   setProjectSurfaceAccess: typeof setProjectSurfaceAccess; showProjectSurfaces: typeof showProjectSurfaces;
   syncProjectAuth: typeof syncProjectAuth;
@@ -94,6 +105,7 @@ const createDefaultHandlers = (): CliHandlers => ({
   importClaudeCodeAuth, importCodexAuth, importEnvFile,
   initProject, listRuntimeAdapters, removeProjectSurface, requireAuthProfile,
   runProject, setProjectPrimaryModel, setProjectRuntime, upProject, consumeImageUp,
+  devApplyProject, devRestartProject, devStopProject, devUpProject,
   setProjectSurfaceAccess, showProjectSurfaces, syncProjectAuth
 });
 
@@ -203,6 +215,7 @@ export const runCli: RunCli = async (
   });
 
   registerLifecycleCommands(program, handlers, streams);
+  registerDevCommands(program, handlers, streams);
 
   program
     .command("init")

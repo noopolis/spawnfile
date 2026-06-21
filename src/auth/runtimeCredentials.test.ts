@@ -19,6 +19,13 @@ const createTempDirectory = async (prefix: string): Promise<string> => {
   return directory;
 };
 
+const createJwt = (payload: Record<string, unknown>): string =>
+  [
+    Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url"),
+    Buffer.from(JSON.stringify(payload)).toString("base64url"),
+    "signature"
+  ].join(".");
+
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
 });
@@ -64,13 +71,14 @@ describe("runtimeCredentials", () => {
     });
   });
 
-  it("loads Codex credentials and derives expiry from file metadata", async () => {
+  it("loads Codex credentials and derives expiry from the access token", async () => {
     const codexHome = await createTempDirectory("spawnfile-codex-creds-");
+    const expires = 1_900_000_000_000;
     await writeUtf8File(
       path.join(codexHome, "auth.json"),
       JSON.stringify({
         tokens: {
-          access_token: "codex-access",
+          access_token: createJwt({ exp: expires / 1000 }),
           account_id: "acct-123",
           refresh_token: "codex-refresh"
         }
@@ -80,10 +88,27 @@ describe("runtimeCredentials", () => {
     const credential = await loadImportedCodexCredential(codexHome);
 
     expect(credential).toMatchObject({
-      access: "codex-access",
+      access: createJwt({ exp: expires / 1000 }),
       accountId: "acct-123",
+      expires,
       refresh: "codex-refresh"
     });
+  });
+
+  it("falls back to file metadata when Codex access token expiry cannot be decoded", async () => {
+    const codexHome = await createTempDirectory("spawnfile-codex-creds-");
+    await writeUtf8File(
+      path.join(codexHome, "auth.json"),
+      JSON.stringify({
+        tokens: {
+          access_token: "codex-access",
+          refresh_token: "codex-refresh"
+        }
+      })
+    );
+
+    const credential = await loadImportedCodexCredential(codexHome);
+
     expect(credential?.expires).toBeGreaterThan(Date.now());
   });
 
