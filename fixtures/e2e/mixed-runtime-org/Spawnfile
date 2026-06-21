@@ -1,0 +1,49 @@
+spawnfile_version: "0.1"
+kind: team
+name: mixed-runtime-org
+description: "Mixed OpenClaw, PicoClaw, and Daimon runtime fixture"
+
+mode: hierarchical
+lead: conductor
+
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
+    resources:
+      - id: shared-log
+        kind: volume
+        mount: ./shared-log
+        mode: mutable
+        sharing: team
+
+members:
+  - id: conductor
+    ref: ./agents/conductor
+  - id: analyst
+    ref: ./agents/analyst
+  - id: localist
+    ref: ./agents/localist
+
+networks:
+  - id: mixed_lab
+    name: Mixed Runtime Lab
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 0.0.0.0
+        port: 19878
+      store:
+        kind: sqlite
+        path: /var/lib/spawnfile/moltnet/networks/mixed_lab/moltnet.sqlite
+      auth:
+        mode: open
+        public_read: true
+      human_ingress: true
+      direct_messages: false
+    rooms:
+      - id: floor
+        members: [conductor, analyst, localist]
+        visibility: public
+        write_policy: registered_agents

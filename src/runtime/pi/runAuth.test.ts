@@ -76,18 +76,61 @@ describe("preparePiRuntimeAuth", () => {
       tempRoot
     });
 
-    expect(prepared.coveredModelSecrets).toEqual([]);
+    expect(prepared.coveredModelSecrets).toEqual(["OPENAI_API_KEY"]);
     expect(prepared.mountArgs).toHaveLength(2);
-    const hostAuthDirectory = getMountedHostPath(
+    const hostAuthPath = getMountedHostPath(
       prepared.mountArgs,
-      `${homePath}/.pi/agent`
+      `${homePath}/.pi/agent/auth.json`
     );
-    const hostAuthPath = path.join(hostAuthDirectory, "auth.json");
     await expect(readUtf8File(hostAuthPath)).resolves.toContain('"openai-codex"');
     await expect(readUtf8File(hostAuthPath)).resolves.toContain('"accountId": "acct-123"');
-    expect(prepared.mountArgs).toContain(`${hostAuthDirectory}:${homePath}/.pi/agent`);
-    expect((await stat(hostAuthDirectory)).mode & 0o777).toBe(0o777);
-    expect((await stat(hostAuthPath)).mode & 0o777).toBe(0o666);
+    expect(prepared.mountArgs).toContain(`${hostAuthPath}:${homePath}/.pi/agent/auth.json`);
+    expect((await stat(path.dirname(hostAuthPath))).mode & 0o777).toBe(0o700);
+    expect((await stat(hostAuthPath)).mode & 0o777).toBe(0o644);
+  });
+
+  it("materializes Pi Anthropic auth from Claude Code imports", async () => {
+    const spawnfileHome = await createTempDirectory("spawnfile-pi-auth-home-");
+    const tempRoot = await createTempDirectory("spawnfile-pi-run-");
+    process.env.SPAWNFILE_HOME = spawnfileHome;
+
+    const claudeImport = await registerImportedAuth("dev", "claude-code");
+    await writeUtf8File(
+      path.join(claudeImport.directory, ".credentials.json"),
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "claude-access",
+          expiresAt: 1_800_000_000_000,
+          refreshToken: "claude-refresh"
+        }
+      })
+    );
+
+    const homePath = "/var/lib/spawnfile/instances/pi/pi-app/home";
+    const prepared = await preparePiRuntimeAuth({
+      authProfile: await requireAuthProfile("dev"),
+      env: {},
+      instance: {
+        config_path: "/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json",
+        home_path: homePath,
+        id: "pi-app",
+        model_auth_methods: {
+          anthropic: "claude-code"
+        },
+        model_secrets_required: ["ANTHROPIC_API_KEY"],
+        runtime: "pi"
+      },
+      outputDirectory: "/tmp/out",
+      tempRoot
+    });
+
+    expect(prepared.coveredModelSecrets).toEqual(["ANTHROPIC_API_KEY"]);
+    const hostAuthPath = getMountedHostPath(
+      prepared.mountArgs,
+      `${homePath}/.pi/agent/auth.json`
+    );
+    await expect(readUtf8File(hostAuthPath)).resolves.toContain('"anthropic"');
+    await expect(readUtf8File(hostAuthPath)).resolves.toContain('"refresh": "claude-refresh"');
   });
 
   it("skips auth preparation when the Pi instance does not use Codex auth", async () => {

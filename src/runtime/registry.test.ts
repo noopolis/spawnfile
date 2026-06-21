@@ -11,7 +11,7 @@ import {
 
 describe("runtime registry", () => {
   it("lists available runtime adapters", () => {
-    expect(listRuntimeAdapters()).toEqual(["openclaw", "pi", "picoclaw"]);
+    expect(listRuntimeAdapters()).toEqual(["daimon", "openclaw", "pi", "picoclaw"]);
   });
 
   it("loads runtimes from runtimes.yaml", async () => {
@@ -21,10 +21,10 @@ describe("runtime registry", () => {
       install: {
         kind: "npm",
         package: "openclaw",
-        version: "2026.6.5"
+        version: "2026.6.8"
       },
       name: "openclaw",
-      ref: "v2026.6.5",
+      ref: "v2026.6.8",
       status: "active"
     });
   });
@@ -40,6 +40,7 @@ describe("runtime registry", () => {
   });
 
   it("returns a runtime adapter by name", () => {
+    expect(getRuntimeAdapter("daimon").name).toBe("daimon");
     expect(getRuntimeAdapter("openclaw").name).toBe("openclaw");
     expect(getRuntimeAdapter("pi").name).toBe("pi");
   });

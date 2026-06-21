@@ -23,7 +23,8 @@ const createNode = (
         name: "gpt-5.4-mini",
         provider: "openai"
       }
-    }
+    },
+    sandbox: { mode: "workspace" }
   },
   kind: "agent",
   mcpServers: [],
@@ -66,7 +67,7 @@ describe("piAdapter", () => {
     expect(piAdapter.container.postRootfsCommands).toBeUndefined();
   });
 
-  it("supports OpenAI Codex auth and rejects custom endpoints", () => {
+  it("supports OpenAI Codex auth and local OpenAI-compatible endpoints", () => {
     expect(() =>
       piAdapter.assertSupportedModelTarget({
         auth: { method: "codex" },
@@ -85,7 +86,7 @@ describe("piAdapter", () => {
         name: "local-model",
         provider: "local"
       })
-    ).toThrow(/custom or local model endpoints/);
+    ).not.toThrow();
   });
 
   it("supports API-key provider paths and rejects unsupported auth combinations", () => {
@@ -111,7 +112,19 @@ describe("piAdapter", () => {
         name: "claude-sonnet-4-5",
         provider: "anthropic"
       })
-    ).toThrow(/does not support model auth method claude-code/);
+    ).not.toThrow();
+
+    expect(() =>
+      piAdapter.assertSupportedModelTarget({
+        auth: { method: "codex" },
+        endpoint: {
+          base_url: "http://127.0.0.1:11434/v1",
+          compatibility: "openai"
+        },
+        name: "llama3.2",
+        provider: "local"
+      })
+    ).toThrow(/endpoint models only support none or api_key auth/);
   });
 
   it("emits workspace docs and supports every schedules", async () => {
@@ -131,6 +144,15 @@ describe("piAdapter", () => {
       key: "agent.schedule",
       message: "Pi generated runtime app owns this schedule",
       outcome: "supported"
+    });
+    expect(compiled.capabilities).toContainEqual({
+      key: "execution.sandbox",
+      message: "",
+      outcome: "degraded"
+    });
+    expect(compiled.diagnostics).toContainEqual({
+      level: "warn",
+      message: "Pi runtime relies on container and workspace isolation; Pi itself is not a sandbox engine"
     });
   });
 
@@ -222,6 +244,7 @@ describe("piAdapter", () => {
     expect(target?.sourceIds).toEqual(["agent:mapper", "agent:reviewer"]);
     expect(target?.files.map((file) => file.path).sort()).toContain("runtime/app.mjs");
     expect(target?.files.map((file) => file.path).sort()).toContain("runtime/package.json");
+    expect(target?.files.map((file) => file.path).sort()).toContain("home/.pi/agent/models.json");
     expect(target?.files.map((file) => file.path).sort()).toContain("pi-app.json");
     expect(target?.files.map((file) => file.path).sort()).toContain("workspace/agents/mapper/AGENTS.md");
     expect(target?.files.map((file) => file.path).sort()).toContain("workspace/agents/reviewer/AGENTS.md");
@@ -230,12 +253,17 @@ describe("piAdapter", () => {
     expect(appSource).toContain("const createActivityBroker = () => {");
     expect(appSource).toContain("const message = await agent.wake({");
     expect(appSource).toContain("next.resolve(await this.runWake(next.event));");
+    expect(appSource).toContain("Moltnet coordination event.");
+    expect(appSource).toContain("Treat it as context first.");
     expect(appSource).toContain('url.pathname === "/spawnfile/agents"');
     expect(appSource).toContain('url.pathname === "/spawnfile/activity/stream"');
     expect(appSource).toContain('url.pathname === "/spawnfile/agents/load"');
     expect(appSource).toContain('this.publish("agent.turn.started"');
     expect(appSource).toContain("wake_kind: event.kind");
     expect(appSource).toContain("const formatActivityError = (error) => redactActivityText");
+    expect(appSource).toContain(
+      "ModelRegistry.create(authStorage, path.join(homePath, \".pi\", \"agent\", \"models.json\"))"
+    );
 
     const config = JSON.parse(target?.files.find((file) => file.path === "pi-app.json")?.content ?? "{}");
     expect(config.agents.map((agent: { id: string; model: { provider: string } }) => ({
@@ -245,6 +273,55 @@ describe("piAdapter", () => {
       { id: "agent:mapper", provider: "openai-codex" },
       { id: "agent:reviewer", provider: "openai-codex" }
     ]);
+  });
+
+  it("emits Pi models.json for local Ollama-compatible endpoints", async () => {
+    const local = createNode({
+      execution: {
+        model: {
+          primary: {
+            auth: { method: "none" },
+            endpoint: {
+              base_url: "http://127.0.0.1:11434/v1",
+              compatibility: "openai"
+            },
+            name: "llama3.2",
+            provider: "local"
+          }
+        },
+        sandbox: { mode: "workspace" }
+      }
+    });
+    const compiled = await piAdapter.compileAgent(local);
+    const targets = await piAdapter.createContainerTargets?.([
+      {
+        emittedFiles: compiled.files,
+        id: "agent:assistant",
+        kind: "agent",
+        slug: "assistant",
+        value: local
+      }
+    ]);
+
+    const config = JSON.parse(targets?.[0]?.files.find((file) => file.path === "pi-app.json")?.content ?? "{}");
+    const models = JSON.parse(
+      targets?.[0]?.files.find((file) => file.path === "home/.pi/agent/models.json")?.content ?? "{}"
+    );
+    const provider = config.agents[0]?.model.provider as string;
+    expect(provider).toMatch(/^local-openai-llama3-2-[a-f0-9]{8}$/);
+    expect(config.agents[0]?.model.name).toBe("llama3.2");
+    expect(models.providers[provider]).toMatchObject({
+      api: "openai-completions",
+      apiKey: "ollama",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      models: [
+        {
+          api: "openai-completions",
+          baseUrl: "http://127.0.0.1:11434/v1",
+          id: "llama3.2"
+        }
+      ]
+    });
   });
 
   it("skips container targets when no agent inputs are present", async () => {

@@ -589,7 +589,7 @@ describe("createContainerArtifacts", () => {
 
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain("USER root");
-    expect(dockerfile).toContain("RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.5");
+    expect(dockerfile).toContain("RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.8");
     expect(dockerfile).not.toContain("ghcr.io/openclaw/openclaw");
     expect(dockerfile).not.toContain("runtime-sources");
     expect(dockerfile).not.toContain("pnpm build:docker");

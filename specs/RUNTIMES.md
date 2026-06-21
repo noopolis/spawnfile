@@ -70,9 +70,57 @@ The active v0.1 adapters are:
 
 | Runtime | Install Strategy | Adapter Shape |
 |---------|------------------|---------------|
+| `daimon` | npm package | Noopolis-native generated harness app backed by Pi |
 | `openclaw` | npm package | Runtime-native gateway and workspace config |
 | `picoclaw` | GitHub release archive | Runtime-native gateway and workspace config |
-| `pi` | npm package | Generated embedded harness app for grouped agents |
+| `pi` | npm package | Compatibility alias for the Daimon generated app path |
+
+### Active Runtime Capability Matrix
+
+Support levels:
+
+- **Supported** means the adapter preserves the Spawnfile declaration in the generated runtime.
+- **Degraded** means the project still compiles, but the compile report warns that runtime behavior is partial or different.
+- **Rejected** means validation fails at compile-plan time.
+- **Compiler-owned** means Spawnfile container/startup logic owns the behavior, then mounts or writes the artifact into the runtime workspace.
+
+#### Core Manifest Surface
+
+| Spawnfile feature | OpenClaw | PicoClaw | Daimon |
+|-------------------|----------|----------|------------|
+| Adapter shape | One gateway target per agent | One gateway target per agent | One generated app target for all Daimon agents in the compile graph |
+| `workspace.docs` | Supported as role files under the runtime workspace | Supported as role files under the runtime workspace | Supported per concrete agent workspace, plus a harness-owned operating contract |
+| `workspace.skills` | Supported under `workspace/skills` | Supported under `workspace/skills` | Supported per concrete agent workspace |
+| `workspace.resources` `volume` | Compiler-owned symlink/backing directory | Compiler-owned symlink/backing directory | Compiler-owned symlink/backing directory per concrete agent workspace |
+| `workspace.resources` `git` | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup |
+| `environment.env`, `environment.secrets`, `environment.packages` | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior |
+| `environment.mcp_servers` | Degraded through OpenClaw bridge path | Supported through PicoClaw MCP config | Degraded; not lowered into the generated Daimon app yet |
+| `execution.sandbox.mode` | Supported through OpenClaw runtime/container workspace behavior | Supported through `restrict_to_workspace` and container workspace behavior | Degraded; container/workspace isolation only, Pi itself is not a sandbox engine |
+| `subagents` | Degraded; routed sessions do not preserve full parent-owned semantics | Supported through PicoClaw subagent behavior | Degraded; grouped app agents do not preserve parent-owned subagent semantics |
+
+#### Model, Schedule, And Surface Support
+
+| Spawnfile feature | OpenClaw | PicoClaw | Daimon |
+|-------------------|----------|----------|------------|
+| OpenAI `api_key` / `codex` auth | Supported | Supported | Supported |
+| Anthropic `api_key` auth | Supported | Supported | Supported |
+| Anthropic `claude-code` auth | Supported | Supported | Supported through Pi's Anthropic OAuth auth store |
+| `custom` or `local` endpoint | Supported except subscription-import auth | Supported for compatible endpoint/auth pairs | Supported for `api_key` and `none` auth through generated Pi `models.json` |
+| `schedule.kind: cron` | Degraded | Supported through `workspace/cron/jobs.json` | Degraded |
+| `schedule.kind: every` | Degraded | Degraded | Supported by the generated app scheduler |
+| `surfaces.moltnet` | Supported through generated MoltnetNode bridge | Supported through generated MoltnetNode bridge | Supported through generated MoltnetNode bridge and Daimon control endpoint |
+| Discord, Telegram, WhatsApp, Slack | Supported with OpenClaw access-mode coverage | Partial: open and user allowlists; pairing and richer allowlists rejected | Rejected |
+| Webhook | Parsed, not lowered by active adapters in v0.1 | Parsed, not lowered by active adapters in v0.1 | Rejected |
+
+#### Operational Support
+
+| Spawnfile feature | OpenClaw | PicoClaw | Daimon |
+|-------------------|----------|----------|------------|
+| `spawnfile compile`, `build`, `run`, `up` | Supported | Supported | Supported |
+| `spawnfile status --live` runtime probes | Supported | Supported | Limited; runtime health probes are not implemented yet |
+| Runtime activity stream | Not normalized yet | Not normalized yet | Supported through `spawnfile.activity.v1` buffer and SSE endpoint |
+| `spawnfile dev apply --agent` hot-add | Not supported in v0.1 | Not supported in v0.1 | Supported for Daimon app agents and their Moltnet bridge |
+| Managed Moltnet servers and durable Moltnet state | Compiler-owned and runtime-independent | Compiler-owned and runtime-independent | Compiler-owned and runtime-independent |
 
 ---
 

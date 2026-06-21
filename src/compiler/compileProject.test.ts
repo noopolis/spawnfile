@@ -123,7 +123,7 @@ describe("compileProject", () => {
     ).resolves.toBe(true);
 
     const agentNode = result.report.nodes.find((node) => node.kind === "agent");
-    expect(agentNode?.runtime_ref).toBe("v2026.6.5");
+    expect(agentNode?.runtime_ref).toBe("v2026.6.8");
     expect(agentNode?.runtime_status).toBe("active");
     expect(result.report.container).toEqual({
       dockerfile: "Dockerfile",
@@ -160,7 +160,7 @@ describe("compileProject", () => {
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain("USER root");
     expect(dockerfile).toContain(
-      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.5"
+      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.8"
     );
     expect(dockerfile).toContain("COPY container/rootfs/ /");
     expect(dockerfile).not.toContain("COPY . /opt/spawnfile");
@@ -346,7 +346,7 @@ describe("compileProject", () => {
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain("USER root");
     expect(dockerfile).toContain(
-      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.5"
+      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.8"
     );
     expect(dockerfile).toContain(
       "https://github.com/sipeed/picoclaw/releases/download/v0.2.9/$asset"

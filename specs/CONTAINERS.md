@@ -294,7 +294,7 @@ running Docker target and container, recompiles into `.spawn-dev` without
 removing records, and mutates the running development container in place. The
 v0.1 hot-apply path is Pi-only: it copies the refreshed Pi app config, the
 selected agent workspace, every matching Moltnet node config, and managed
-Moltnet server configs into the container, then calls the generated Pi control
+Moltnet server configs into the container, then calls the generated Daimon control
 endpoint to load or reload that agent. New-agent Moltnet nodes are started as
 that agent is applied. Existing agents and the container are not restarted.
 Running managed Moltnet servers keep their current in-memory room membership
@@ -497,7 +497,7 @@ spawnfile dev activity fixtures/e2e/pi-harness-org --agent new-agent --deploymen
 
 Dev mode uses `.spawn-dev` by default and keeps the deployment record there.
 `dev apply` is intentionally source-backed and Pi-specific in v0.1. It does not
-rebuild the image or restart the container; it updates one generated Pi agent in
+rebuild the image or restart the container; it updates one generated Daimon agent in
 the running container and starts that agent's Moltnet bridges only when the
 agent is new.
 

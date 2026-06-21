@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 interface CodexAuthFile {
@@ -6,6 +6,14 @@ interface CodexAuthFile {
     access_token?: string;
     refresh_token?: string;
     account_id?: string;
+  };
+}
+
+interface ClaudeCodeAuthFile {
+  claudeAiOauth?: {
+    accessToken?: string;
+    expiresAt?: number;
+    refreshToken?: string;
   };
 }
 
@@ -27,12 +35,33 @@ const resolveExpires = (accessToken: string): number => {
   return typeof exp === "number" ? exp * 1000 : Date.now() + 30 * 60 * 1000;
 };
 
+const readJsonFile = async <T>(filePath: string): Promise<T> =>
+  JSON.parse(await readFile(filePath, "utf8")) as T;
+
+const readPiAuth = async (piAuthPath: string): Promise<Record<string, unknown>> => {
+  try {
+    return await readJsonFile<Record<string, unknown>>(piAuthPath);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return {};
+    }
+    throw error;
+  }
+};
+
+const writePiAuth = async (
+  piAuthPath: string,
+  next: Record<string, unknown>
+): Promise<void> => {
+  await mkdir(path.dirname(piAuthPath), { recursive: true });
+  await writeFile(piAuthPath, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+};
+
 export async function seedPiOpenAICodexAuthFromCodex(input: {
   codexAuthPath: string;
   piAuthPath: string;
 }): Promise<void> {
-  const raw = await import("node:fs/promises").then((fs) => fs.readFile(input.codexAuthPath, "utf8"));
-  const codex = JSON.parse(raw) as CodexAuthFile;
+  const codex = await readJsonFile<CodexAuthFile>(input.codexAuthPath);
   const access = codex.tokens?.access_token;
   const refresh = codex.tokens?.refresh_token;
   const accountId = codex.tokens?.account_id;
@@ -41,16 +70,76 @@ export async function seedPiOpenAICodexAuthFromCodex(input: {
     throw new Error(`Codex auth file is missing access_token, refresh_token, or account_id: ${input.codexAuthPath}`);
   }
 
-  await mkdir(path.dirname(input.piAuthPath), { recursive: true });
-  const piAuth = {
-    "openai-codex": {
-      type: "oauth",
-      access,
-      refresh,
-      expires: resolveExpires(access),
-      accountId
-    }
+  const piAuth = await readPiAuth(input.piAuthPath);
+  piAuth["openai-codex"] = {
+    type: "oauth",
+    access,
+    refresh,
+    expires: resolveExpires(access),
+    accountId
   };
-  await writeFile(input.piAuthPath, `${JSON.stringify(piAuth, null, 2)}\n`, { mode: 0o600 });
+  await writePiAuth(input.piAuthPath, piAuth);
 }
 
+export async function seedPiAnthropicAuthFromClaudeCode(input: {
+  claudeCredentialsPath: string;
+  piAuthPath: string;
+}): Promise<void> {
+  const claude = await readJsonFile<ClaudeCodeAuthFile>(input.claudeCredentialsPath);
+  const access = claude.claudeAiOauth?.accessToken;
+  const refresh = claude.claudeAiOauth?.refreshToken;
+  const expires = claude.claudeAiOauth?.expiresAt;
+
+  if (!access || typeof expires !== "number") {
+    throw new Error(`Claude Code credentials are missing accessToken or expiresAt: ${input.claudeCredentialsPath}`);
+  }
+
+  const piAuth = await readPiAuth(input.piAuthPath);
+  piAuth.anthropic = refresh
+    ? {
+        type: "oauth",
+        access,
+        refresh,
+        expires
+      }
+    : {
+        type: "api_key",
+        key: access
+      };
+  await writePiAuth(input.piAuthPath, piAuth);
+}
+
+export async function seedPiApiKeyAuth(input: {
+  apiKey: string;
+  env?: Record<string, string>;
+  piAuthPath: string;
+  provider: string;
+}): Promise<void> {
+  if (input.apiKey.length === 0) {
+    throw new Error(`API key for ${input.provider} must not be empty`);
+  }
+
+  const piAuth = await readPiAuth(input.piAuthPath);
+  piAuth[input.provider] = {
+    type: "api_key",
+    key: input.apiKey,
+    ...(input.env ? { env: input.env } : {})
+  };
+  await writePiAuth(input.piAuthPath, piAuth);
+}
+
+export function createPiOpenAICodexAuthFromCodexToken(input: {
+  access: string;
+  accountId?: string;
+  refresh: string;
+}): Record<string, unknown> {
+  return {
+    "openai-codex": {
+      type: "oauth",
+      access: input.access,
+      refresh: input.refresh,
+      expires: resolveExpires(input.access),
+      ...(input.accountId ? { accountId: input.accountId } : {})
+    }
+  };
+}

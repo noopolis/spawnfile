@@ -8,11 +8,12 @@ import type { RuntimeLifecycleStatus } from "../shared/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { openClawAdapter } from "./openclaw/adapter.js";
-import { piAdapter } from "./pi/adapter.js";
+import { daimonAdapter, piAdapter } from "./pi/adapter.js";
 import { picoClawAdapter } from "./picoclaw/adapter.js";
 import type { RuntimeAdapter } from "./types.js";
 
 const runtimeAdapters = new Map<string, RuntimeAdapter>([
+  [daimonAdapter.name, daimonAdapter],
   [openClawAdapter.name, openClawAdapter],
   [piAdapter.name, piAdapter],
   [picoClawAdapter.name, picoClawAdapter]

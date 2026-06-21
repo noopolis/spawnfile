@@ -14,14 +14,24 @@
 # pinned refs.
 
 runtimes:
+  daimon:
+    remote: git@github.com:noopolis/daimon.git
+    ref: v0.1.0
+    default_branch: main
+    install:
+      kind: npm
+      package: "@noopolis/daimon"
+      version: 0.1.0
+    status: active
+
   openclaw:
     remote: git@github.com:openclaw/openclaw.git
-    ref: v2026.6.5
+    ref: v2026.6.8
     default_branch: main
     install:
       kind: npm
       package: openclaw
-      version: 2026.6.5
+      version: 2026.6.8
     status: active
 
   picoclaw:

@@ -230,7 +230,7 @@ spawnfile dev apply fixtures/e2e/pi-harness-org --agent observer --deployment de
 `.spawn-dev`. `dev apply` recompiles source into that dev output root without
 deleting the record, copies the selected Pi agent workspace/config, matching
 Moltnet node configs, and managed Moltnet server configs into the recorded
-container, asks the generated Pi app to load it, and starts only that new
+container, asks the generated Daimon app to load it, and starts only that new
 agent's Moltnet bridges. Existing agents keep running. Running managed Moltnet
 servers keep current room membership until an operator-token `moltnet apply` or
 server restart reconciles the copied server config.

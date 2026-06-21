@@ -143,7 +143,7 @@ export const resolveMoltnetWorkspaceLayout = (
   runtimeName: string,
   _agentName: string
 ): MoltnetWorkspaceLayout => {
-  if (runtimeName === "pi") {
+  if (runtimeName === "daimon" || runtimeName === "pi") {
     return {
       clientConfigPath: `workspace/.moltnet/config.json`,
       cliRuntime: "codex",

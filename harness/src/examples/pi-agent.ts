@@ -7,8 +7,8 @@ import { seedPiOpenAICodexAuthFromCodex } from "../pi/auth.js";
 import { PiHarnessAdapter } from "../pi/piHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const harnessRoot = path.resolve(__dirname, "../..");
-const runtimeRoot = path.join(harnessRoot, ".runtime", "pi-agent");
+const daimonRoot = path.resolve(__dirname, "../..");
+const runtimeRoot = path.join(daimonRoot, ".runtime", "pi-agent");
 const sharedProjectPath = path.join(runtimeRoot, "shared", "product");
 const piAuthPath = path.join(runtimeRoot, "auth", "auth.json");
 const codexAuthPath = path.join(process.env.HOME ?? "", ".codex", "auth.json");
@@ -31,7 +31,7 @@ const prepareWorkspace = async (agentId: string): Promise<{ workspacePath: strin
   await mkdir(runtimeHomePath, { recursive: true });
   await writeFile(
     path.join(workspacePath, "AGENTS.md"),
-    `# ${agentId}\n\nThis workspace was prepared by caller code, not by the harness package.\n`
+    `# ${agentId}\n\nThis workspace was prepared by caller code, not by the Daimon package.\n`
   );
   await symlink(sharedProjectPath, path.join(workspacePath, "repos", "product"));
   return { workspacePath, runtimeHomePath };
@@ -43,9 +43,9 @@ const setupRuntime = async (): Promise<void> => {
   await writeFile(
     path.join(sharedProjectPath, "source.txt"),
     [
-      "Pi harness E2E source file.",
-      "The caller prepares shared files and the harness runs agent turns.",
-      "Expected marker: pi-harness-e2e"
+      "Daimon E2E source file.",
+      "The caller prepares shared files and Daimon runs agent turns.",
+      "Expected marker: daimon-e2e"
     ].join("\n")
   );
   await seedPiOpenAICodexAuthFromCodex({ codexAuthPath, piAuthPath });
@@ -99,7 +99,7 @@ const run = async (): Promise<void> => {
       text: [
         "Read repos/product/source.txt.",
         "Create repos/product/agent-output/mapper.md.",
-        "The file must contain the exact marker MAPPER_OK and the phrase pi-harness-e2e.",
+        "The file must contain the exact marker MAPPER_OK and the phrase daimon-e2e.",
         "Reply with one short sentence naming the file."
       ].join("\n")
     });
@@ -121,7 +121,7 @@ const run = async (): Promise<void> => {
     const mapperFile = path.join(sharedProjectPath, "agent-output", "mapper.md");
     const reviewFile = path.join(sharedProjectPath, "agent-output", "review.md");
     assertContains(await ensureFile(mapperFile), "MAPPER_OK", mapperFile);
-    assertContains(await ensureFile(mapperFile), "pi-harness-e2e", mapperFile);
+    assertContains(await ensureFile(mapperFile), "daimon-e2e", mapperFile);
     assertContains(await ensureFile(reviewFile), "REVIEW_OK", reviewFile);
     assertContains(await ensureFile(reviewFile), "MAPPER_OK", reviewFile);
 
@@ -136,4 +136,3 @@ run().catch((error: unknown) => {
   console.error(error instanceof Error ? error.stack ?? error.message : String(error));
   process.exitCode = 1;
 });
-
