@@ -161,7 +161,7 @@ com.spawnfile.compile_fingerprint=sf1:9c4e2b...
 com.spawnfile.report=/spawnfile/spawnfile-report.json
 ```
 
-Labels follow the same identifier-only rule as container labels from `specs/STATUS.md`: no host paths, no secrets. `com.spawnfile.report` is an in-image path, not a host path, and exists so the report location is advertised rather than frozen forever. These labels intentionally overlap with managed container labels where the concepts match, so future label-based recovery must still match on deployment/unit labels when looking for running containers; image labels alone are not enough to identify a managed deployment.
+Labels follow the same identifier-only rule as container labels from `specs/STATUS.md`: no host paths, no secrets. `com.spawnfile.report` is an in-image path, not a host path, and exists so the report location is advertised rather than frozen forever. These labels intentionally overlap with managed container labels where the concepts match, so context label recovery must still match on deployment/unit labels when looking for running containers; image labels alone are not enough to identify a managed deployment.
 
 For now, `com.spawnfile.image_contract` is exact-match only. If the local CLI does not support the literal contract value, it fails before container start with exit 2. Major/minor compatibility can be designed later.
 

@@ -36,13 +36,14 @@ Static mode loads the authored graph and the compile report under `--out` when p
 spawnfile status [path] --live --deployment <name>
 spawnfile status [path] --live --deployment <name> --logs
 spawnfile status [path] --live --deployment <name> --watch
+spawnfile status [path] --live --context <name> --deployment <name> --logs
 ```
 
-Live mode reads the selected deployment record and asks the recorded manager for observations. If more than one record exists, `--live` requires an explicit deployment name.
+Live mode reads the selected deployment record or recovers matching remote deployment labels from an explicit Docker context, then asks the manager for observations. If more than one deployment exists, `--live` requires an explicit deployment name.
 
 Every live call is bounded by timeouts. Failed or timed-out probes produce `unknown` observations and must not hide successful observations from other layers. `--watch` repeats the same status request until interrupted, and the timeout applies per iteration.
 
-Live status inspects Docker deployment units from records, runs adapter-owned runtime probes through the deployment manager, and checks Moltnet metadata without requesting message bodies. `--logs` is valid only with record-backed `--live` status and adds redacted Docker log-tail observations.
+Live status inspects Docker deployment units from records or context-recovered labels, runs adapter-owned runtime probes through the deployment manager, and checks Moltnet metadata without requesting message bodies. `--logs` is valid only with `--live` status and adds redacted Docker log-tail observations.
 
 ## Compile Report Additions
 
@@ -89,13 +90,14 @@ Docker deployments record the target actually used:
 
 Context targets store a hash of the resolved Docker daemon endpoint. Live status re-resolves the context and reports endpoint drift as an error instead of falling back to the local Docker daemon.
 
-Docker status recovery is currently a guarded placeholder. The supported shape is explicit and read-only:
+Docker status recovery is explicit and read-only:
 
 ```bash
 spawnfile status . --live --recover --context vm1
+spawnfile status . --live --context vm1 --deployment prod --logs
 ```
 
-Today recovery renders an `unknown` observation instead of scanning labels. Future recovery may match Docker labels, but labels contain identifiers only: Spawnfile version, project slug, deployment name, unit id, and compile fingerprint.
+Recovery scans Docker labels on the selected context and builds an in-memory deployment record. Labels contain identifiers only: Spawnfile version, project slug, deployment name, unit id, and compile fingerprint. Recovery does not rewrite `.spawn/deployments/`.
 
 ## Runtime Probes
 

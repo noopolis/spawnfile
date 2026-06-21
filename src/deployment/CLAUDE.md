@@ -13,6 +13,7 @@ src/deployment/
 ├── dockerInspect.ts # Bounded Docker container inspection for status --live
 ├── dockerLogs.ts    # Bounded Docker log collection with redaction for status --logs
 ├── dockerProbeGateway.ts # Manager-mediated exec/HTTP gateway for runtime status probes
+├── dockerRecover.ts # Docker label recovery for context-backed remote status
 ├── record.ts        # Deployment record schema, parser, reader, and writer
 └── dockerManager.ts # Docker deployment record assembly
 ```
