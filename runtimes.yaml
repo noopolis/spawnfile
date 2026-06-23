@@ -19,9 +19,9 @@ runtimes:
     ref: v0.1.0
     default_branch: main
     install:
-      kind: npm
-      package: "@noopolis/daimon"
-      version: 0.1.0
+      kind: container_image
+      image: noopolis/spawnfile-runtime-daimon
+      tag: 0.1.0
     status: active
 
   openclaw:

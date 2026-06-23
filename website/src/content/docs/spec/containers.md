@@ -133,7 +133,18 @@ The v0.1 reference implementation uses pinned compiled runtime artifacts:
 
 Generated Dockerfiles must not clone runtime repositories or rebuild runtime sources during image build.
 
-Runtimes MAY provide a reusable base image that already contains their pinned runtime package dependencies. The Pi adapter supports this with `SPAWNFILE_PI_RUNTIME_BASE_IMAGE`; when set, generated Dockerfiles use that image as the base and skip the Pi npm dependency install. Build the reference Pi base image with:
+Runtimes MAY provide a reusable artifact image that already contains their pinned runtime package dependencies. Copyable artifact images are preferred for runtimes that may appear in mixed-runtime organizations, because generated Dockerfiles can compose them with `COPY --from` instead of requiring one base image for every runtime combination.
+
+The Daimon adapter uses the published `noopolis/spawnfile-runtime-daimon:0.1.0` artifact image by default. Generated Dockerfiles copy `/opt/spawnfile/runtime-installs/daimon` from that image and skip the Daimon/Pi npm dependency install. To test a local runtime artifact instead:
+
+```bash
+cd daimon
+npm run image:runtime:local
+cd ..
+SPAWNFILE_DAIMON_RUNTIME_IMAGE=noopolis/spawnfile-runtime-daimon:0.1.0-local spawnfile up ./org --detach
+```
+
+The Pi compatibility adapter still supports a reusable base image with `SPAWNFILE_PI_RUNTIME_BASE_IMAGE`; when set, generated Dockerfiles use that image as the base and skip the Pi npm dependency install. Build the reference Pi base image with:
 
 ```bash
 npm run runtime:pi-base -- noopolis/spawnfile-pi-runtime:0.79.9-node24

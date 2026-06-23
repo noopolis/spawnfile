@@ -40,6 +40,50 @@ printf '%s\\n' ${safeArchitecture}
   return commandPath;
 };
 
+const createFakeMoltnetCli = async (): Promise<string> => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-fake-moltnet-cli-"));
+  temporaryDirectories.push(directory);
+  const commandPath = path.join(directory, "moltnet");
+  await writeUtf8File(
+    commandPath,
+    [
+      "#!/usr/bin/env node",
+      "const fs = require('node:fs');",
+      "const path = require('node:path');",
+      "const args = process.argv.slice(2);",
+      "if (args[0] === 'version') {",
+      "  process.stdout.write('0.0.0-test\\n');",
+      "  process.exit(0);",
+      "}",
+      "if (args[0] === 'skill' && args[1] === 'install') {",
+      "  const flags = new Map();",
+      "  for (let index = 2; index < args.length; index += 2) {",
+      "    flags.set(args[index], args[index + 1]);",
+      "  }",
+      "  const runtime = flags.get('--runtime');",
+      "  const workspace = flags.get('--workspace');",
+      "  const content = '# name: moltnet\\nMoltnet is a transport, not an implicit reply channel.\\n';",
+      "  const targets = runtime === 'codex'",
+      "    ? [",
+      "        path.join(workspace, '.agents', 'skills', 'moltnet', 'SKILL.md'),",
+      "        path.join(workspace, '.codex', 'skills', 'moltnet', 'SKILL.md')",
+      "      ]",
+      "    : [path.join(workspace, 'skills', 'moltnet', 'SKILL.md')];",
+      "  for (const target of targets) {",
+      "    fs.mkdirSync(path.dirname(target), { recursive: true });",
+      "    fs.writeFileSync(target, content);",
+      "  }",
+      "  process.stdout.write(`${targets.join(', ')}\\n`);",
+      "  process.exit(0);",
+      "}",
+      "process.stderr.write(`unexpected args: ${args.join(' ')}\\n`);",
+      "process.exit(1);"
+    ].join("\n") + "\n"
+  );
+  await chmod(commandPath, 0o755);
+  return commandPath;
+};
+
 const createFakeMoltnetReleaseDirectory = async (
   architecture = "amd64"
 ): Promise<string> => {
@@ -170,7 +214,9 @@ describe("buildProject", () => {
     temporaryDirectories.push(outputDirectory);
     const releaseDirectory = await createFakeMoltnetReleaseDirectory("arm64");
     const dockerCommand = await createFakeDockerInfoCommand("arm64");
+    const moltnetCli = await createFakeMoltnetCli();
     const buildRunner = vi.fn(async () => undefined);
+    vi.stubEnv("SPAWNFILE_MOLTNET_CLI", moltnetCli);
     vi.stubEnv("SPAWNFILE_MOLTNET_RELEASE_DIR", releaseDirectory);
     vi.stubEnv("SPAWNFILE_MOLTNET_TARGET_ARCH", "amd64");
 
