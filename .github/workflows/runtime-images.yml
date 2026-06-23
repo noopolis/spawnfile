@@ -1,0 +1,121 @@
+name: runtime images
+
+on:
+  pull_request:
+    paths:
+      - "runtime-images/**"
+      - "runtimes.yaml"
+      - "src/runtime/container.ts"
+      - "src/runtime/install.ts"
+      - ".github/workflows/runtime-images.yml"
+  push:
+    branches: [main]
+    paths:
+      - "runtime-images/**"
+      - "runtimes.yaml"
+      - "src/runtime/container.ts"
+      - "src/runtime/install.ts"
+      - ".github/workflows/runtime-images.yml"
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      push:
+        description: "Push runtime images to Docker Hub"
+        required: true
+        default: "false"
+        type: boolean
+      push_latest:
+        description: "Also publish/update the latest tag"
+        required: true
+        default: "false"
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime: openclaw
+            image: noopolis/spawnfile-runtime-openclaw
+            version: 2026.6.8
+            context: runtime-images/openclaw
+            build_arg_name: OPENCLAW_VERSION
+            build_arg_value: 2026.6.8
+          - runtime: picoclaw
+            image: noopolis/spawnfile-runtime-picoclaw
+            version: 0.2.9
+            context: runtime-images/picoclaw
+            build_arg_name: PICOCLAW_VERSION
+            build_arg_value: v0.2.9
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve publishing mode
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          should_push=false
+          push_latest=false
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            should_push=true
+            push_latest=true
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${{ inputs.push }}" == "true" ]]; then
+              should_push=true
+            fi
+            if [[ "${{ inputs.push_latest }}" == "true" ]]; then
+              push_latest=true
+            fi
+          fi
+
+          tags="${{ matrix.image }}:${{ matrix.version }}"
+          if [[ "${push_latest}" == "true" ]]; then
+            tags="${tags}"$'\n'"${{ matrix.image }}:latest"
+          fi
+
+          {
+            echo "push=${should_push}"
+            echo "tags<<EOF"
+            echo "${tags}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Log in to Docker Hub
+        if: steps.publish.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ steps.publish.outputs.push == 'true' }}
+          tags: ${{ steps.publish.outputs.tags }}
+          build-args: |
+            ${{ matrix.build_arg_name }}=${{ matrix.build_arg_value }}

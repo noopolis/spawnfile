@@ -488,10 +488,12 @@ describe("renderDockerfile", () => {
         runtimeRoot: "/opt/spawnfile/runtime-installs/daimon"
       },
       openclaw: {
-        commands: ["npm install -g openclaw@2026.6.8"],
-        copyCommands: [],
+        commands: [],
+        copyCommands: [
+          "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.8 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
+        ],
         runtimeName: "openclaw",
-        runtimeRoot: "/usr/local/lib/node_modules/openclaw"
+        runtimeRoot: "/opt/spawnfile/runtime-installs/openclaw"
       }
     });
 
@@ -528,9 +530,14 @@ describe("renderDockerfile", () => {
     expect(dockerfile).toContain(
       "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.0 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
     );
-    expect(dockerfile).toContain("RUN npm install -g openclaw@2026.6.8");
+    expect(dockerfile).toContain(
+      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.8 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
+    );
     expect(dockerfile).not.toContain("npm install --omit=dev --no-fund --no-audit @noopolis/daimon");
     expect(dockerfile.indexOf("COPY --from=noopolis/spawnfile-runtime-daimon")).toBeLessThan(
+      dockerfile.indexOf("COPY container/rootfs/ /")
+    );
+    expect(dockerfile.indexOf("COPY --from=noopolis/spawnfile-runtime-openclaw")).toBeLessThan(
       dockerfile.indexOf("COPY container/rootfs/ /")
     );
   });

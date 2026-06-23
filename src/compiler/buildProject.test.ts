@@ -133,7 +133,7 @@ describe("buildProject", () => {
 
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
     expect(dockerfile).toContain(
-      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.8"
+      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.8 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
     );
     expect(dockerfile).not.toContain("runtime-sources");
   }, 30000);
@@ -159,10 +159,13 @@ describe("buildProject", () => {
 
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
     expect(dockerfile).toContain(
-      "RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.8"
+      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.8 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
     );
     expect(dockerfile).toContain(
-      "https://github.com/sipeed/picoclaw/releases/download/v0.2.9/$asset"
+      "COPY --from=noopolis/spawnfile-runtime-picoclaw:0.2.9 /opt/spawnfile/runtime-installs/picoclaw /opt/spawnfile/runtime-installs/picoclaw"
+    );
+    expect(dockerfile).toContain(
+      "RUN mkdir -p /usr/local/bin && ln -sf /opt/spawnfile/runtime-installs/picoclaw/bin/picoclaw /usr/local/bin/picoclaw"
     );
     expect(dockerfile).not.toContain("go build -o /usr/local/bin/picoclaw");
     expect(dockerfile).not.toContain("pnpm install");
