@@ -75,8 +75,8 @@ The active v0.1 adapters are:
 
 | Runtime | Install Strategy | Adapter Shape |
 |---------|------------------|---------------|
-| `openclaw` | npm package | Runtime-native gateway and workspace config |
-| `picoclaw` | GitHub release archive | Runtime-native gateway and workspace config |
+| `openclaw` | Runtime artifact image | Runtime-native gateway and workspace config |
+| `picoclaw` | Runtime artifact image | Runtime-native gateway and workspace config |
 | `pi` | npm package | Generated embedded harness app for grouped agents |
 
 ---

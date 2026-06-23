@@ -169,10 +169,20 @@ For a single agent, the adapter emits:
 
 For container compilation, the adapter provides container metadata including:
 - The standalone base image
+- A copy from the pinned OpenClaw runtime artifact image
 - System dependencies
 - Config and workspace paths inside the container
 - The start command
 - Port and environment configuration
+
+OpenClaw uses `noopolis/spawnfile-runtime-openclaw:2026.6.8` by default.
+Generated Dockerfiles copy `/opt/spawnfile/runtime-installs/openclaw` from
+that image. To test a local runtime artifact instead:
+
+```bash
+SPAWNFILE_OPENCLAW_RUNTIME_IMAGE=noopolis/spawnfile-runtime-openclaw:2026.6.8-local \
+  spawnfile build ./agentic-org
+```
 
 ## Container Notes
 

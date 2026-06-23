@@ -6,6 +6,8 @@ export const RUNTIME_INSTALL_ROOT = "/opt/spawnfile/runtime-installs";
 const PI_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_PI_RUNTIME_BASE_IMAGE";
 const DAIMON_RUNTIME_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_IMAGE";
 const DAIMON_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE";
+const OPENCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_OPENCLAW_RUNTIME_IMAGE";
+const PICOCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_PICOCLAW_RUNTIME_IMAGE";
 const PI_AI_PACKAGE_NAME = "@earendil-works/pi-ai";
 const PI_CODING_AGENT_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
 const PI_PACKAGE_VERSION = "0.79.9";
@@ -54,6 +56,15 @@ const createRuntimeImageCopyCommand = (
   runtimeRoot: string
 ): string => `COPY --from=${imageRef} ${runtimeRoot} ${runtimeRoot}`;
 
+const resolveRuntimeImageRef = (
+  envName: string,
+  selection: Awaited<ReturnType<typeof resolveRuntimeInstallSelection>>
+): string | undefined =>
+  process.env[envName]?.trim() ||
+  (selection.kind === "container_image"
+    ? `${selection.image}:${selection.tag}`
+    : undefined);
+
 export const createRuntimeInstallRecipe = async (
   runtimeName: string
 ): Promise<RuntimeInstallRecipe> => {
@@ -64,7 +75,17 @@ export const createRuntimeInstallRecipe = async (
 
   switch (runtimeName) {
     case "openclaw": {
-      if (selection.kind !== "container_image" && selection.kind !== "npm") {
+      const openClawRuntimeImage = resolveRuntimeImageRef(OPENCLAW_RUNTIME_IMAGE_ENV, selection);
+      if (openClawRuntimeImage) {
+        return {
+          commands: [],
+          copyCommands: [createRuntimeImageCopyCommand(openClawRuntimeImage, installRoot)],
+          runtimeName,
+          runtimeRoot: installRoot
+        };
+      }
+
+      if (selection.kind !== "npm") {
         throw new SpawnfileError(
           "runtime_error",
           `Runtime ${runtimeName} has no compiled artifact recipe for ${selection.kind}`
@@ -72,22 +93,27 @@ export const createRuntimeInstallRecipe = async (
       }
 
       return {
-        commands:
-          selection.kind === "container_image"
-            ? []
-            : [`npm install -g --omit=dev --no-fund --no-audit ${selection.packageName}@${selection.version}`],
-        copyCommands:
-          selection.kind === "container_image"
-            ? [`COPY --from=${selection.image}:${selection.tag} /app ${installRoot}`]
-            : [],
+        commands: [
+          `npm install -g --omit=dev --no-fund --no-audit ${selection.packageName}@${selection.version}`
+        ],
+        copyCommands: [],
         runtimeName,
-        runtimeRoot:
-          selection.kind === "container_image"
-            ? installRoot
-            : `/usr/local/lib/node_modules/${selection.packageName}`
+        runtimeRoot: `/usr/local/lib/node_modules/${selection.packageName}`
       };
     }
     case "picoclaw": {
+      const picoClawRuntimeImage = resolveRuntimeImageRef(PICOCLAW_RUNTIME_IMAGE_ENV, selection);
+      if (picoClawRuntimeImage) {
+        return {
+          commands: [
+            `mkdir -p /usr/local/bin && ln -sf ${installRoot}/bin/picoclaw /usr/local/bin/picoclaw`
+          ],
+          copyCommands: [createRuntimeImageCopyCommand(picoClawRuntimeImage, installRoot)],
+          runtimeName,
+          runtimeRoot: installRoot
+        };
+      }
+
       if (selection.kind !== "github_release_archive") {
         throw new SpawnfileError(
           "runtime_error",

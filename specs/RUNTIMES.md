@@ -70,9 +70,9 @@ The active v0.1 adapters are:
 
 | Runtime | Install Strategy | Adapter Shape |
 |---------|------------------|---------------|
-| `daimon` | npm package | Noopolis-native generated harness app backed by Pi |
-| `openclaw` | npm package | Runtime-native gateway and workspace config |
-| `picoclaw` | GitHub release archive | Runtime-native gateway and workspace config |
+| `daimon` | Runtime artifact image | Noopolis-native generated harness app backed by Pi |
+| `openclaw` | Runtime artifact image | Runtime-native gateway and workspace config |
+| `picoclaw` | Runtime artifact image | Runtime-native gateway and workspace config |
 | `pi` | npm package | Compatibility alias for the Daimon generated app path |
 
 ### Active Runtime Capability Matrix

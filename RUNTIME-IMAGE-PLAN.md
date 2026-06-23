@@ -1,8 +1,7 @@
 # Spawnfile Runtime Image Plan
 
 This note describes the runtime image plan for faster Spawnfile builds and
-deployments. Daimon is the first runtime using this model; OpenClaw and PicoClaw
-can move to the same pattern later.
+deployments. Daimon, OpenClaw, and PicoClaw use this model.
 
 ## Goal
 
@@ -144,6 +143,14 @@ noopolis/spawnfile-runtime-picoclaw:<picoclaw-version>-local
 
 Do not push these local tags.
 
+Spawnfile provides local build scripts for the runtime artifacts it owns:
+
+```bash
+npm run runtime:openclaw-image
+npm run runtime:picoclaw-image
+npm run runtime:images
+```
+
 Public tags should not include `-local`:
 
 ```text
@@ -169,17 +176,23 @@ DOCKERHUB_TOKEN=<docker-access-token>
 
 ## Current Implementation
 
-Spawnfile uses the Daimon runtime artifact image declared in `runtimes.yaml` by
-default. Generated Dockerfiles copy `/opt/spawnfile/runtime-installs/daimon`
-from `noopolis/spawnfile-runtime-daimon:0.1.0` and skip the Daimon/Pi npm
-dependency install.
+Spawnfile uses the Daimon, OpenClaw, and PicoClaw runtime artifact images
+declared in `runtimes.yaml` by default. Generated Dockerfiles copy
+`/opt/spawnfile/runtime-installs/<runtime>` from each image and skip runtime
+npm/archive installs during organization builds.
 
-Local builds can override that artifact with `SPAWNFILE_DAIMON_RUNTIME_IMAGE`.
+Local builds can override those artifacts with:
+
+```text
+SPAWNFILE_DAIMON_RUNTIME_IMAGE
+SPAWNFILE_OPENCLAW_RUNTIME_IMAGE
+SPAWNFILE_PICOCLAW_RUNTIME_IMAGE
+```
 
 The legacy `SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE` environment variable is treated
 as a compatibility alias for the same copyable artifact path. New usage should
 prefer `SPAWNFILE_DAIMON_RUNTIME_IMAGE`.
 
-The remaining compiler work is to expose copyable artifact image stages for
-OpenClaw and PicoClaw too, so every active runtime follows the same composition
-model.
+The runtime-image workflow in this repository builds and publishes the OpenClaw
+and PicoClaw artifact images. The Daimon artifact image is built by the Daimon
+repository because Daimon is a separate Noopolis package.

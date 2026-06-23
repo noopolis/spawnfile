@@ -19,9 +19,9 @@ describe("runtime registry", () => {
 
     expect(openClaw).toMatchObject({
       install: {
-        kind: "npm",
-        package: "openclaw",
-        version: "2026.6.8"
+        image: "noopolis/spawnfile-runtime-openclaw",
+        kind: "container_image",
+        tag: "2026.6.8"
       },
       name: "openclaw",
       ref: "v2026.6.8",

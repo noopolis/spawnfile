@@ -185,13 +185,23 @@ For a single agent:
 
 For container compilation:
 - Base image metadata and system dependencies
+- A copy from the pinned PicoClaw runtime artifact image
 - Config and workspace path templates
 - Port configuration (health on `/health` and `/ready`)
 - Start command (`picoclaw gateway --allow-empty`)
 
+PicoClaw uses `noopolis/spawnfile-runtime-picoclaw:0.2.9` by default.
+Generated Dockerfiles copy `/opt/spawnfile/runtime-installs/picoclaw` from
+that image and create `/usr/local/bin/picoclaw` as a symlink to the copied
+binary. To test a local runtime artifact instead:
+
+```bash
+SPAWNFILE_PICOCLAW_RUNTIME_IMAGE=noopolis/spawnfile-runtime-picoclaw:0.2.9-local \
+  spawnfile build ./agentic-org
+```
+
 ## Container Notes
 
-- The pinned version needs `workspace/` copied into `cmd/picoclaw/internal/onboard/workspace` before `go build` in a clean checkout.
 - Provider auth needs `model_list[].api_key` file references. The entrypoint materializes secret files from env before startup.
 - Clean container boot uses `picoclaw gateway --allow-empty`.
 - Cron schedules require `tools.cron.enabled` in the compiled config and a `workspace/cron/jobs.json` store.

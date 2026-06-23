@@ -79,7 +79,7 @@ describe("runtime container install recipe fallbacks", () => {
     expect(recipe.runtimeRoot).toBe(`${RUNTIME_INSTALL_ROOT}/openclaw`);
     expect(recipe.commands).toEqual([]);
     expect(recipe.copyCommands).toEqual([
-      "COPY --from=registry.example/spawnfile/openclaw-source:2026.6.8 /app /opt/spawnfile/runtime-installs/openclaw"
+      "COPY --from=registry.example/spawnfile/openclaw-source:2026.6.8 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
     ]);
   });
 

@@ -135,13 +135,30 @@ Generated Dockerfiles must not clone runtime repositories or rebuild runtime sou
 
 Runtimes MAY provide a reusable artifact image that already contains their pinned runtime package dependencies. Copyable artifact images are preferred for runtimes that may appear in mixed-runtime organizations, because generated Dockerfiles can compose them with `COPY --from` instead of requiring one base image for every runtime combination.
 
-The Daimon adapter uses the published `noopolis/spawnfile-runtime-daimon:0.1.0` artifact image by default. Generated Dockerfiles copy `/opt/spawnfile/runtime-installs/daimon` from that image and skip the Daimon/Pi npm dependency install. To test a local runtime artifact instead:
+The Daimon, OpenClaw, and PicoClaw adapters use published runtime artifact images by default. Generated Dockerfiles copy each runtime from `/opt/spawnfile/runtime-installs/<runtime>` and skip runtime npm/archive installs during organization builds.
+
+Current default images:
+
+```text
+noopolis/spawnfile-runtime-daimon:0.1.0
+noopolis/spawnfile-runtime-openclaw:2026.6.8
+noopolis/spawnfile-runtime-picoclaw:0.2.9
+```
+
+To test a local Daimon runtime artifact instead:
 
 ```bash
 cd daimon
 npm run image:runtime:local
 cd ..
 SPAWNFILE_DAIMON_RUNTIME_IMAGE=noopolis/spawnfile-runtime-daimon:0.1.0-local spawnfile up ./org --detach
+```
+
+OpenClaw and PicoClaw have equivalent overrides:
+
+```bash
+SPAWNFILE_OPENCLAW_RUNTIME_IMAGE=noopolis/spawnfile-runtime-openclaw:2026.6.8-local spawnfile up ./org --detach
+SPAWNFILE_PICOCLAW_RUNTIME_IMAGE=noopolis/spawnfile-runtime-picoclaw:0.2.9-local spawnfile up ./org --detach
 ```
 
 The Pi compatibility adapter still supports a reusable base image with `SPAWNFILE_PI_RUNTIME_BASE_IMAGE`; when set, generated Dockerfiles use that image as the base and skip the Pi npm dependency install. Build the reference Pi base image with:

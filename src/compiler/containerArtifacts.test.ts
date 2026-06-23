@@ -483,10 +483,10 @@ describe("createContainerArtifacts", () => {
 
     expect(dockerfile).toContain("FROM debian:bookworm-slim");
     expect(dockerfile).toContain(
-      "https://github.com/sipeed/picoclaw/releases/download/v0.2.9/$asset"
+      "COPY --from=noopolis/spawnfile-runtime-picoclaw:0.2.9 /opt/spawnfile/runtime-installs/picoclaw /opt/spawnfile/runtime-installs/picoclaw"
     );
     expect(dockerfile).toContain(
-      'ln -sf /opt/spawnfile/runtime-installs/picoclaw/bin/picoclaw /usr/local/bin/picoclaw'
+      "RUN mkdir -p /usr/local/bin && ln -sf /opt/spawnfile/runtime-installs/picoclaw/bin/picoclaw /usr/local/bin/picoclaw"
     );
     expect(dockerfile).not.toContain("runtime-sources");
     expect(dockerfile).not.toContain("go build -o /usr/local/bin/picoclaw");
@@ -565,7 +565,7 @@ describe("createContainerArtifacts", () => {
     );
   });
 
-  it("builds OpenClaw from the pinned npm package", async () => {
+  it("builds OpenClaw from the pinned runtime artifact image", async () => {
     const node = createAgentNode("openclaw");
     const compiled = await openClawAdapter.compileAgent(node);
 
@@ -589,12 +589,14 @@ describe("createContainerArtifacts", () => {
 
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain("USER root");
-    expect(dockerfile).toContain("RUN npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.8");
+    expect(dockerfile).toContain(
+      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.8 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
+    );
     expect(dockerfile).not.toContain("ghcr.io/openclaw/openclaw");
     expect(dockerfile).not.toContain("runtime-sources");
     expect(dockerfile).not.toContain("pnpm build:docker");
     expect(entrypoint).toContain(
-      "'/usr/local/lib/node_modules/openclaw/openclaw.mjs'"
+      "'/opt/spawnfile/runtime-installs/openclaw/openclaw.mjs'"
     );
     expect(stateKeepFile?.content).toBe("");
   });

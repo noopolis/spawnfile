@@ -30,34 +30,29 @@ describe("runtime install selection", () => {
     });
   });
 
-  it("resolves OpenClaw install selection from the pinned npm package", async () => {
+  it("resolves OpenClaw install selection from the pinned runtime image", async () => {
     await expect(resolveRuntimeInstallSelection("openclaw")).resolves.toEqual({
       ecosystem: "node",
-      installHint: "Install the pinned OpenClaw package version from npm.",
-      kind: "npm",
-      packageName: "openclaw",
+      image: "noopolis/spawnfile-runtime-openclaw",
+      installHint: "Copy the pinned OpenClaw runtime files from the official container image.",
+      kind: "container_image",
       runtimeName: "openclaw",
       runtimeRef: "v2026.6.8",
       selectionSource: "runtime_registry_install",
-      version: "2026.6.8"
+      tag: "2026.6.8"
     });
   });
 
-  it("resolves PicoClaw install selection from the pinned release archive", async () => {
+  it("resolves PicoClaw install selection from the pinned runtime image", async () => {
     await expect(resolveRuntimeInstallSelection("picoclaw")).resolves.toEqual({
-      binaryName: "picoclaw",
       ecosystem: "go",
-      installHint: "Download the pinned PicoClaw release archive for the target platform.",
-      kind: "github_release_archive",
-      repository: "sipeed/picoclaw",
+      image: "noopolis/spawnfile-runtime-picoclaw",
+      installHint: "Copy the pinned PicoClaw runtime files from the official container image.",
+      kind: "container_image",
       runtimeName: "picoclaw",
       runtimeRef: "v0.2.9",
       selectionSource: "runtime_registry_install",
-      tag: "v0.2.9",
-      versionedAssets: {
-        linux_amd64: "picoclaw_Linux_x86_64.tar.gz",
-        linux_arm64: "picoclaw_Linux_arm64.tar.gz"
-      }
+      tag: "0.2.9"
     });
   });
 
