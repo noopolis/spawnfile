@@ -5,6 +5,7 @@ import { createRuntimeInstallRecipe, RUNTIME_INSTALL_ROOT } from "./container.js
 describe("runtime container install recipes", () => {
   afterEach(() => {
     delete process.env.SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE;
+    delete process.env.SPAWNFILE_DAIMON_RUNTIME_IMAGE;
     delete process.env.SPAWNFILE_PI_RUNTIME_BASE_IMAGE;
   });
 
@@ -48,15 +49,14 @@ describe("runtime container install recipes", () => {
     ]);
   });
 
-  it("creates a Daimon generated-app install root from the pinned runtime version", async () => {
+  it("creates a Daimon image-copy recipe from the pinned runtime image", async () => {
     const recipe = await createRuntimeInstallRecipe("daimon");
 
     expect(recipe.runtimeName).toBe("daimon");
     expect(recipe.runtimeRoot).toBe(`${RUNTIME_INSTALL_ROOT}/daimon`);
-    expect(recipe.copyCommands).toEqual([]);
-    expect(recipe.commands).toEqual([
-      `mkdir -p ${RUNTIME_INSTALL_ROOT}/daimon`,
-      `cd ${RUNTIME_INSTALL_ROOT}/daimon && npm install --omit=dev --no-fund --no-audit @noopolis/daimon@0.1.0 @earendil-works/pi-coding-agent@0.79.9 @earendil-works/pi-ai@0.79.9`
+    expect(recipe.commands).toEqual([]);
+    expect(recipe.copyCommands).toEqual([
+      `COPY --from=noopolis/spawnfile-runtime-daimon:0.1.0 ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
     ]);
   });
 
@@ -69,12 +69,27 @@ describe("runtime container install recipes", () => {
     expect(recipe.commands).toEqual([`mkdir -p ${RUNTIME_INSTALL_ROOT}/pi`]);
   });
 
-  it("uses a prebuilt Daimon runtime base image when configured", async () => {
-    process.env.SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE = "noopolis/spawnfile-daimon-runtime:test";
+  it("uses a prebuilt Daimon runtime artifact image when configured", async () => {
+    process.env.SPAWNFILE_DAIMON_RUNTIME_IMAGE = "noopolis/spawnfile-runtime-daimon:test";
 
     const recipe = await createRuntimeInstallRecipe("daimon");
 
-    expect(recipe.baseImage).toBe("noopolis/spawnfile-daimon-runtime:test");
-    expect(recipe.commands).toEqual([`mkdir -p ${RUNTIME_INSTALL_ROOT}/daimon`]);
+    expect(recipe.baseImage).toBeUndefined();
+    expect(recipe.commands).toEqual([]);
+    expect(recipe.copyCommands).toEqual([
+      `COPY --from=noopolis/spawnfile-runtime-daimon:test ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
+    ]);
+  });
+
+  it("treats the legacy Daimon base-image env as a copyable artifact", async () => {
+    process.env.SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE = "noopolis/spawnfile-runtime-daimon:legacy";
+
+    const recipe = await createRuntimeInstallRecipe("daimon");
+
+    expect(recipe.baseImage).toBeUndefined();
+    expect(recipe.commands).toEqual([]);
+    expect(recipe.copyCommands).toEqual([
+      `COPY --from=noopolis/spawnfile-runtime-daimon:legacy ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
+    ]);
   });
 });

@@ -4,6 +4,7 @@ import { resolveRuntimeInstallSelection } from "./install.js";
 
 export const RUNTIME_INSTALL_ROOT = "/opt/spawnfile/runtime-installs";
 const PI_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_PI_RUNTIME_BASE_IMAGE";
+const DAIMON_RUNTIME_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_IMAGE";
 const DAIMON_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE";
 const PI_AI_PACKAGE_NAME = "@earendil-works/pi-ai";
 const PI_CODING_AGENT_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
@@ -47,6 +48,11 @@ const createPicoClawArchiveInstallCommands = (
     selection.binaryName
   )} | head -n 1)" && [ -n "$binary_path" ] && install -m 0755 "$binary_path" ${runtimeRoot}/bin/${selection.binaryName} && ln -sf ${runtimeRoot}/bin/${selection.binaryName} /usr/local/bin/${selection.binaryName} && rm -rf /tmp/picoclaw.tar.gz /tmp/picoclaw-extract`
 ];
+
+const createRuntimeImageCopyCommand = (
+  imageRef: string,
+  runtimeRoot: string
+): string => `COPY --from=${imageRef} ${runtimeRoot} ${runtimeRoot}`;
 
 export const createRuntimeInstallRecipe = async (
   runtimeName: string
@@ -96,7 +102,46 @@ export const createRuntimeInstallRecipe = async (
         runtimeRoot: installRoot
       };
     }
-    case "daimon":
+    case "daimon": {
+      const daimonRuntimeImage =
+        process.env[DAIMON_RUNTIME_IMAGE_ENV]?.trim() ||
+        process.env[DAIMON_RUNTIME_BASE_IMAGE_ENV]?.trim() ||
+        (selection.kind === "container_image"
+          ? `${selection.image}:${selection.tag}`
+          : undefined);
+
+      if (daimonRuntimeImage) {
+        return {
+          commands: [],
+          copyCommands: [createRuntimeImageCopyCommand(daimonRuntimeImage, installRoot)],
+          runtimeName,
+          runtimeRoot: installRoot
+        };
+      }
+
+      if (selection.kind !== "npm") {
+        throw new SpawnfileError(
+          "runtime_error",
+          `Runtime ${runtimeName} has no compiled artifact recipe for ${selection.kind}`
+        );
+      }
+
+      const npmPackages = [
+        `${selection.packageName}@${selection.version}`,
+        `${PI_CODING_AGENT_PACKAGE_NAME}@${PI_PACKAGE_VERSION}`,
+        `${PI_AI_PACKAGE_NAME}@${PI_PACKAGE_VERSION}`
+      ];
+
+      return {
+        commands: [
+          `mkdir -p ${installRoot}`,
+          `cd ${installRoot} && npm install --omit=dev --no-fund --no-audit ${npmPackages.join(" ")}`
+        ],
+        copyCommands: [],
+        runtimeName,
+        runtimeRoot: installRoot
+      };
+    }
     case "pi": {
       if (selection.kind !== "npm") {
         throw new SpawnfileError(
@@ -104,19 +149,12 @@ export const createRuntimeInstallRecipe = async (
           `Runtime ${runtimeName} has no compiled artifact recipe for ${selection.kind}`
         );
       }
-      const prebuiltBaseImage = (runtimeName === "daimon"
-        ? process.env[DAIMON_RUNTIME_BASE_IMAGE_ENV]?.trim()
-        : process.env[PI_RUNTIME_BASE_IMAGE_ENV]?.trim()) || undefined;
-      const npmPackages = runtimeName === "daimon"
-        ? [
-            `${selection.packageName}@${selection.version}`,
-            `${PI_CODING_AGENT_PACKAGE_NAME}@${PI_PACKAGE_VERSION}`,
-            `${PI_AI_PACKAGE_NAME}@${PI_PACKAGE_VERSION}`
-          ]
-        : [
-            `${selection.packageName}@${selection.version}`,
-            `${PI_AI_PACKAGE_NAME}@${selection.version}`
-          ];
+
+      const prebuiltBaseImage = process.env[PI_RUNTIME_BASE_IMAGE_ENV]?.trim() || undefined;
+      const npmPackages = [
+        `${selection.packageName}@${selection.version}`,
+        `${PI_AI_PACKAGE_NAME}@${selection.version}`
+      ];
 
       return {
         ...(prebuiltBaseImage ? { baseImage: prebuiltBaseImage } : {}),

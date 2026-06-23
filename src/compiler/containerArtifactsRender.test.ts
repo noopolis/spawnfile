@@ -476,6 +476,64 @@ describe("renderDockerfile", () => {
     expect(dockerfile).not.toContain("apt-get install -y --no-install-recommends bash curl git");
     expect(dockerfile).not.toContain("npm install --omit=dev --no-fund --no-audit @earendil-works/pi-coding-agent");
   });
+
+  it("copies runtime artifact images into mixed-runtime builds", async () => {
+    const { renderDockerfile } = await loadRenderModule({
+      daimon: {
+        commands: [],
+        copyCommands: [
+          "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.0 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
+        ],
+        runtimeName: "daimon",
+        runtimeRoot: "/opt/spawnfile/runtime-installs/daimon"
+      },
+      openclaw: {
+        commands: ["npm install -g openclaw@2026.6.8"],
+        copyCommands: [],
+        runtimeName: "openclaw",
+        runtimeRoot: "/usr/local/lib/node_modules/openclaw"
+      }
+    });
+
+    const dockerfile = await renderDockerfile([
+      createRuntimePlan("daimon", {
+        meta: {
+          configFileName: "pi-app.json",
+          instancePaths: {
+            configPathTemplate: "<instance-root>/pi-app.json",
+            homePathTemplate: "<instance-root>/home",
+            workspacePathTemplate: "<instance-root>/workspace"
+          },
+          standaloneBaseImage: "node:22-bookworm-slim",
+          startCommand: ["node", "<runtime-root>/app.mjs"],
+          systemDeps: ["bash", "git"]
+        }
+      }),
+      createRuntimePlan("openclaw", {
+        meta: {
+          configFileName: "openclaw.json",
+          instancePaths: {
+            configPathTemplate: "<instance-root>/openclaw.json",
+            homePathTemplate: "<instance-root>/home",
+            workspacePathTemplate: "<instance-root>/workspace"
+          },
+          standaloneBaseImage: "node:24-bookworm-slim",
+          startCommand: ["node", "<runtime-root>/openclaw.mjs"],
+          systemDeps: ["curl"]
+        }
+      })
+    ]);
+
+    expect(dockerfile).toContain("FROM node:24-bookworm-slim");
+    expect(dockerfile).toContain(
+      "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.0 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
+    );
+    expect(dockerfile).toContain("RUN npm install -g openclaw@2026.6.8");
+    expect(dockerfile).not.toContain("npm install --omit=dev --no-fund --no-audit @noopolis/daimon");
+    expect(dockerfile.indexOf("COPY --from=noopolis/spawnfile-runtime-daimon")).toBeLessThan(
+      dockerfile.indexOf("COPY container/rootfs/ /")
+    );
+  });
 });
 
 describe("renderEntrypoint", () => {

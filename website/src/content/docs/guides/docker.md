@@ -43,7 +43,7 @@ Each runtime adapter declares container metadata including:
 - Expected config and workspace paths inside the container
 - The start command and required runtime environment
 
-For single-runtime compiles, the Dockerfile uses that runtime's base image directly. For multi-runtime compiles, the Dockerfile uses a common base and installs each runtime.
+For single-runtime compiles, the Dockerfile may use that runtime's base image directly. For multi-runtime compiles, the Dockerfile uses a common base and either installs each runtime or copies prebuilt runtime artifact images with `COPY --from`.
 
 ### Pinned Versions
 

@@ -17,16 +17,16 @@ describe("runtime install selection", () => {
     ]);
   });
 
-  it("resolves Daimon install selection from the pinned npm package", async () => {
+  it("resolves Daimon install selection from the pinned runtime image", async () => {
     await expect(resolveRuntimeInstallSelection("daimon")).resolves.toEqual({
       ecosystem: "node",
-      installHint: "Install the pinned Daimon package and Pi SDK dependencies inside the generated runtime app.",
-      kind: "npm",
-      packageName: "@noopolis/daimon",
+      image: "noopolis/spawnfile-runtime-daimon",
+      installHint: "Copy a pinned Daimon runtime image.",
+      kind: "container_image",
       runtimeName: "daimon",
       runtimeRef: "v0.1.0",
       selectionSource: "runtime_registry_install",
-      version: "0.1.0"
+      tag: "0.1.0"
     });
   });
 

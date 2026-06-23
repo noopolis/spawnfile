@@ -145,9 +145,24 @@ For a Daimon runtime group:
 For container compilation:
 
 - A Node.js base image
-- Runtime install commands for the pinned Daimon and Pi npm packages
+- A copy from the pinned Daimon runtime artifact image
 - Config, home, and workspace paths under `/var/lib/spawnfile/instances/daimon/pi-app`
 - A start command that runs the generated app
+
+Daimon uses `noopolis/spawnfile-runtime-daimon:0.1.0` by default. To test a
+local runtime artifact instead:
+
+```bash
+cd daimon
+npm run image:runtime:local
+cd ..
+SPAWNFILE_DAIMON_RUNTIME_IMAGE=noopolis/spawnfile-runtime-daimon:0.1.0-local \
+  spawnfile build ./agentic-org
+```
+
+Unlike a runtime-specific base image, this artifact image works for
+mixed-runtime organizations. Generated Dockerfiles copy Daimon from the artifact
+image and can independently install or copy any other runtime the org uses.
 
 ## Example
 
