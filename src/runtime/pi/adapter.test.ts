@@ -249,7 +249,7 @@ describe("piAdapter", () => {
     expect(target?.files.map((file) => file.path).sort()).toContain("workspace/agents/mapper/AGENTS.md");
     expect(target?.files.map((file) => file.path).sort()).toContain("workspace/agents/reviewer/AGENTS.md");
     const appSource = target?.files.find((file) => file.path === "runtime/app.mjs")?.content ?? "";
-    expect(appSource).toContain("const collapseExactDouble = (text) => {");
+    expect(appSource).toContain("new PiHarnessAdapter({");
     expect(appSource).toContain("const createActivityBroker = () => {");
     expect(appSource).toContain("const message = await agent.wake({");
     expect(appSource).toContain("next.resolve(await this.runWake(next.event));");
@@ -261,9 +261,7 @@ describe("piAdapter", () => {
     expect(appSource).toContain('this.publish("agent.turn.started"');
     expect(appSource).toContain("wake_kind: event.kind");
     expect(appSource).toContain("const formatActivityError = (error) => redactActivityText");
-    expect(appSource).toContain(
-      "ModelRegistry.create(authStorage, path.join(homePath, \".pi\", \"agent\", \"models.json\"))"
-    );
+    expect(appSource).toContain("startAgent({\n      id: this.config.id,");
 
     const config = JSON.parse(target?.files.find((file) => file.path === "pi-app.json")?.content ?? "{}");
     expect(config.agents.map((agent: { id: string; model: { provider: string } }) => ({

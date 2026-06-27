@@ -1,6 +1,51 @@
-export const renderPiCoreSource = (): string => String.raw`const registerAgentKeys = (map, agent) => { map.set(agent.config.id, agent); map.set(agent.config.slug, agent); map.set(agent.config.name, agent); };
-const rebuildAgentKeys = (agents) => { const map = new Map(); for (const agent of agents) registerAgentKeys(map, agent); return map; };
-const loadManagedAgent = async (agents, configPath, slug, instanceRoot, services) => { const config = await readJson(configPath); const agentConfig = (config.agents ?? []).find((agent) => agent.slug === slug || agent.id === slug || agent.name === slug); if (!agentConfig) throw new Error("unknown agent " + slug); const oldIndex = agents.findIndex((agent) => agent.config.slug === agentConfig.slug || agent.config.id === agentConfig.id || agent.config.name === agentConfig.name); if (oldIndex >= 0) { agents[oldIndex].stop(); agents.splice(oldIndex, 1); } const managed = new PiManagedAgent(agentConfig, { runtimeHomePath: path.join(instanceRoot, "runtime", "agents", agentConfig.slug), workspacePath: path.join(instanceRoot, "workspace", "agents", agentConfig.slug) }, services); await managed.start(); agents.push(managed); return managed; };
+export const renderPiCoreSource = (): string => String.raw`const createConfigModel = (agentConfig) => ({
+  provider: typeof agentConfig?.model?.provider === "string"
+    ? agentConfig.model.provider
+    : "openai-codex",
+  name: typeof agentConfig?.model?.name === "string"
+    ? agentConfig.model.name
+    : "gpt-5.4-mini"
+});
+
+const normalizeWakeKind = (value) => {
+  return value === "manual" || value === "message" || value === "schedule"
+    ? value
+    : "message";
+};
+
+const formatControlEventId = (payload, fallbackPrefix) => {
+  if (typeof payload.event_id === "string" && payload.event_id.length > 0) {
+    return payload.event_id;
+  }
+  if (typeof payload.context_id === "string" && payload.context_id.length > 0) {
+    return payload.context_id + ":" + Date.now();
+  }
+  return fallbackPrefix + Date.now();
+};
+
+const loadManagedAgent = async (agents, configPath, slug, instanceRoot, services) => {
+  const config = await readJson(configPath);
+  const agentConfig = (config.agents ?? []).find((agent) => agent.slug === slug || agent.id === slug || agent.name === slug);
+  if (!agentConfig) {
+    throw new Error("unknown agent " + slug);
+  }
+
+  const oldIndex = agents.findIndex((agent) => agent.config.slug === agentConfig.slug || agent.config.id === agentConfig.id || agent.config.name === agentConfig.name);
+  if (oldIndex >= 0) {
+    agents[oldIndex].stop();
+    agents.splice(oldIndex, 1);
+  }
+
+  const managed = new PiManagedAgent(agentConfig, {
+    runtimeHomePath: path.join(instanceRoot, "runtime", "agents", agentConfig.slug),
+    homePath: path.join(instanceRoot, "home"),
+    workspacePath: path.join(instanceRoot, "workspace", "agents", agentConfig.slug)
+  }, services);
+  await managed.start();
+  agents.push(managed);
+  return managed;
+};
+
 const startControlServer = async (agents, portValue, configPath, instanceRoot, services) => {
   if (!portValue) {
     return null;
@@ -22,7 +67,13 @@ const startControlServer = async (agents, portValue, configPath, instanceRoot, s
     }
 
     if (request.method === "GET" && url.pathname === "/spawnfile/agents") {
-      sendJson(response, 200, { agents: agents.map((agent) => ({ id: agent.config.id, name: agent.config.name, slug: agent.config.slug })) });
+      sendJson(response, 200, {
+        agents: agents.map((agent) => ({
+          id: agent.config.id,
+          name: agent.config.name,
+          slug: agent.config.slug
+        }))
+      });
       return;
     }
 
@@ -48,7 +99,19 @@ const startControlServer = async (agents, portValue, configPath, instanceRoot, s
     }
 
     if (request.method === "POST" && (url.pathname === "/spawnfile/agents/load" || url.pathname === "/spawnfile/agents/restart")) {
-      try { const payload = await readRequestJson(request); const slug = typeof payload.slug === "string" ? payload.slug : typeof payload.agent === "string" ? payload.agent : ""; const agent = await loadManagedAgent(agents, configPath, slug, instanceRoot, services); agentsByKey = rebuildAgentKeys(agents); sendJson(response, 200, { id: agent.config.id, loaded: true, name: agent.config.name, slug: agent.config.slug }); } catch (error) { sendJson(response, 400, { error: error instanceof Error ? error.message : String(error) }); }
+      try {
+        const payload = await readRequestJson(request);
+        const slug = typeof payload.slug === "string"
+          ? payload.slug
+          : typeof payload.agent === "string"
+            ? payload.agent
+            : "";
+        const agent = await loadManagedAgent(agents, configPath, slug, instanceRoot, services);
+        agentsByKey = rebuildAgentKeys(agents);
+        sendJson(response, 200, { id: agent.config.id, loaded: true, name: agent.config.name, slug: agent.config.slug });
+      } catch (error) {
+        sendJson(response, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
 
@@ -67,14 +130,14 @@ const startControlServer = async (agents, portValue, configPath, instanceRoot, s
 
     try {
       const payload = await readRequestJson(request);
-      const eventId =
-        typeof payload.event_id === "string" ? payload.event_id :
-        typeof payload.context_id === "string" ? payload.context_id + ":" + Date.now() :
-        "moltnet-" + Date.now();
-
+      const eventId = formatControlEventId(
+        payload,
+        "message-"
+      );
       const message = await agent.wake({
         id: eventId,
-        kind: "moltnet",
+        kind: normalizeWakeKind(typeof payload.wake_kind === "string" ? payload.wake_kind : payload.kind),
+        from: typeof payload.from === "string" ? payload.from : "moltnet",
         text: controlEventText(payload)
       });
 
@@ -83,9 +146,7 @@ const startControlServer = async (agents, portValue, configPath, instanceRoot, s
         message
       });
     } catch (error) {
-      sendJson(response, 400, {
-        error: error instanceof Error ? error.message : String(error)
-      });
+      sendJson(response, 400, { error: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -105,51 +166,25 @@ class PiManagedAgent {
     this.config = config;
     this.paths = paths;
     this.services = services;
+    this.adapter = new PiHarnessAdapter({
+      authPath: path.join(paths.homePath, ".pi", "agent", "auth.json"),
+      modelsPath: path.join(paths.homePath, ".pi", "agent", "models.json"),
+      model: createConfigModel(config)
+    });
     this.running = false;
     this.queued = [];
   }
 
   async start() {
-    await mkdir(this.paths.workspacePath, { recursive: true });
-    await mkdir(this.paths.runtimeHomePath, { recursive: true });
-    const model = this.services.modelRegistry.find(this.config.model.provider, this.config.model.name);
-    if (!model) {
-      throw new Error("Pi model not found for " + this.config.id + ": " + this.config.model.provider + "/" + this.config.model.name);
-    }
-
-    const loader = new DefaultResourceLoader({
-      agentDir: this.paths.runtimeHomePath,
-      additionalSkillPaths: [
-        path.join(this.paths.workspacePath, "skills"),
-        path.join(this.paths.workspacePath, ".agents", "skills"),
-        path.join(this.paths.workspacePath, ".codex", "skills")
-      ],
-      appendSystemPrompt: [createIdentityPrompt(this.config, this.paths.workspacePath)],
-      cwd: this.paths.workspacePath,
-      noExtensions: true
+    const identityPrompt = createIdentityPrompt(this.config, this.paths.workspacePath);
+    this.handle = await this.adapter.startAgent({
+      id: this.config.id,
+      name: this.config.name,
+      instructions: this.config.instructions + "\n\n" + identityPrompt,
+      runtimeHomePath: this.paths.runtimeHomePath,
+      tools: this.config.tools,
+      workspacePath: this.paths.workspacePath
     });
-    await loader.reload();
-
-    const { session } = await createAgentSession({
-      agentDir: this.paths.runtimeHomePath,
-      authStorage: this.services.authStorage,
-      cwd: this.paths.workspacePath,
-      model,
-      modelRegistry: this.services.modelRegistry,
-      resourceLoader: loader,
-      sessionManager: SessionManager.create(
-        this.paths.workspacePath,
-        path.join(this.paths.runtimeHomePath, "sessions")
-      ),
-      settingsManager: SettingsManager.inMemory({
-        compaction: { enabled: false },
-        retry: { enabled: true, maxRetries: 1 }
-      }),
-      thinkingLevel: "off",
-      tools: this.config.tools
-    });
-
-    this.session = session;
     this.publish("agent.loaded");
   }
 
@@ -197,43 +232,28 @@ class PiManagedAgent {
 
   async runWake(event) {
     const startedAt = Date.now();
-    const chunks = [];
-    console.log("[pi:" + this.config.id + "] wake " + event.kind + " " + event.id);
     this.publish("agent.turn.started", {
       wake_id: event.id,
       wake_kind: event.kind
     });
-    const unsubscribe = this.session.subscribe((piEvent) => {
-      this.publish("agent.runtime.event", {
-        runtime_event_type: typeof piEvent.type === "string" ? piEvent.type : "unknown",
-        wake_id: event.id,
-        wake_kind: event.kind
-      });
-      if (piEvent.type === "turn_end") {
-        const text = textFromMessage(piEvent.message).trim();
-        if (text.length > 0) {
-          chunks.push(text);
-          this.publish("agent.output.completed", {
-            text,
-            wake_id: event.id,
-            wake_kind: event.kind
-          });
-        }
-      }
-    });
     try {
-      await this.session.prompt([
-        "Wake event: " + event.kind,
-        "Event id: " + event.id,
-        event.text
-      ].join("\n\n"), { expandPromptTemplates: false });
-      const finalText = collapseExactDouble(chunks.join("\n").trim());
-      console.log("[pi:" + this.config.id + "] completed " + event.id + " in " + (Date.now() - startedAt) + "ms");
+      const result = await this.handle.wake({
+        id: event.id,
+        kind: event.kind,
+        from: event.from,
+        text: event.text
+      });
+      const finalText = typeof result.text === "string" ? result.text.trim() : "";
+      console.log("[pi:" + this.config.id + "] " + finalText);
       if (finalText.length > 0) {
-        console.log("[pi:" + this.config.id + "] " + finalText);
+        this.publish("agent.output.completed", {
+          text: finalText,
+          wake_id: event.id,
+          wake_kind: event.kind
+        });
       }
       this.publish("agent.turn.completed", {
-        duration_ms: Date.now() - startedAt,
+        duration_ms: result.durationMs ?? (Date.now() - startedAt),
         output_length: finalText.length,
         wake_id: event.id,
         wake_kind: event.kind
@@ -248,13 +268,11 @@ class PiManagedAgent {
         wake_kind: event.kind
       });
       throw error;
-    } finally {
-      unsubscribe();
     }
   }
 
   stop() {
-    this.session?.dispose();
+    this.handle?.stop();
     this.publish("agent.stopped");
   }
 }
@@ -264,20 +282,19 @@ const main = async () => {
   if (!configPath) {
     throw new Error("Usage: node app.mjs <pi-app.json>");
   }
+
   const config = await readJson(configPath);
   const instanceRoot = path.resolve(path.dirname(configPath), "..");
-  const homePath = path.join(instanceRoot, "home");
-  const authStorage = AuthStorage.create(path.join(homePath, ".pi", "agent", "auth.json"));
-  const modelRegistry = ModelRegistry.create(authStorage, path.join(homePath, ".pi", "agent", "models.json"));
   const activity = createActivityBroker();
-  const services = { activity, authStorage, modelRegistry };
+  const services = { activity };
   const agents = [];
 
   for (const agentConfig of config.agents ?? []) {
     const managed = new PiManagedAgent(
       agentConfig,
       {
-        runtimeHomePath: path.join(instanceRoot, "runtime", "agents", agentConfig.slug),
+      runtimeHomePath: path.join(instanceRoot, "runtime", "agents", agentConfig.slug),
+        homePath: path.join(instanceRoot, "home"),
         workspacePath: path.join(instanceRoot, "workspace", "agents", agentConfig.slug)
       },
       services
@@ -291,28 +308,34 @@ const main = async () => {
   const controlServer = runOnce
     ? null
     : await startControlServer(agents, process.env.SPAWNFILE_PI_CONTROL_PORT, configPath, instanceRoot, services);
+
   let scheduledCount = 0;
   for (const agent of agents) {
     if (agent.config.schedule?.kind !== "every" || !agent.config.schedule.every) {
       continue;
     }
+
     const intervalMs = parseEveryMs(agent.config.schedule.every);
     const createEvent = () => ({
       id: "schedule-" + agent.config.id + "-" + Date.now(),
       kind: "schedule",
+      from: "scheduler",
       text: agent.config.schedule.prompt ?? "Run the scheduled Spawnfile task."
     });
     scheduledCount += 1;
+
     if (runOnce) {
       await agent.wake(createEvent());
       continue;
     }
+
     const timer = setInterval(() => {
       void agent.wake(createEvent()).catch((error) => {
         console.error("[pi:" + agent.config.id + "] scheduled wake error: " + (error instanceof Error ? error.message : String(error)));
       });
     }, intervalMs);
     timers.push(timer);
+
     setTimeout(() => {
       void agent.wake(createEvent()).catch((error) => {
         console.error("[pi:" + agent.config.id + "] initial wake error: " + (error instanceof Error ? error.message : String(error)));
