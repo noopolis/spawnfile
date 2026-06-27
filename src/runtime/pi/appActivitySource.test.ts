@@ -34,7 +34,7 @@ describe("renderPiActivitySource", () => {
       agent_slug: "reviewer",
       type: "agent.turn.started",
       wake_id: "wake-1",
-      wake_kind: "moltnet"
+      wake_kind: "message"
     });
     broker.publish({
       agent_id: "agent:mapper",
@@ -59,7 +59,7 @@ describe("renderPiActivitySource", () => {
       expect.objectContaining({
         agent_slug: "reviewer",
         sequence: 2,
-        wake_kind: "moltnet"
+        wake_kind: "message"
       })
     ]);
     expect(typeof broker.list(null, null)[0]?.created_at).toBe("string");
