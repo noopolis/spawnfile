@@ -135,7 +135,7 @@ The Daimon, OpenClaw, and PicoClaw adapters use published runtime artifact image
 Current default images:
 
 ```text
-noopolis/spawnfile-runtime-daimon:0.1.0
+noopolis/spawnfile-runtime-daimon:0.1.1
 noopolis/spawnfile-runtime-openclaw:2026.6.8
 noopolis/spawnfile-runtime-picoclaw:0.2.9
 ```
@@ -146,7 +146,7 @@ To test a local Daimon runtime artifact instead:
 cd daimon
 npm run image:runtime:local
 cd ..
-SPAWNFILE_DAIMON_RUNTIME_IMAGE=noopolis/spawnfile-runtime-daimon:0.1.0-local spawnfile up ./org --detach
+SPAWNFILE_DAIMON_RUNTIME_IMAGE=noopolis/spawnfile-runtime-daimon:0.1.1-local spawnfile up ./org --detach
 ```
 
 OpenClaw and PicoClaw have equivalent overrides:
@@ -159,8 +159,8 @@ SPAWNFILE_PICOCLAW_RUNTIME_IMAGE=noopolis/spawnfile-runtime-picoclaw:0.2.9-local
 The Pi compatibility adapter still supports a reusable base image with `SPAWNFILE_PI_RUNTIME_BASE_IMAGE`; when set, generated Dockerfiles use that image as the base and skip the Pi npm dependency install. Build the reference Pi base image with:
 
 ```bash
-npm run runtime:pi-base -- noopolis/spawnfile-pi-runtime:0.79.9-node24
-SPAWNFILE_PI_RUNTIME_BASE_IMAGE=noopolis/spawnfile-pi-runtime:0.79.9-node24 spawnfile up ./org --detach
+npm run runtime:pi-base -- noopolis/spawnfile-pi-runtime:0.79.10-node24
+SPAWNFILE_PI_RUNTIME_BASE_IMAGE=noopolis/spawnfile-pi-runtime:0.79.10-node24 spawnfile up ./org --detach
 ```
 
 Declared `environment.packages` are installed into the generated image before runtime startup:

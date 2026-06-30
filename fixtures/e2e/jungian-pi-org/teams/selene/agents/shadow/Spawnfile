@@ -1,0 +1,30 @@
+spawnfile_version: "0.1"
+kind: agent
+name: selene-shadow
+description: "Selene inner archetype (grounding profile)"
+
+runtime:
+  name: pi
+  options:
+    engine: codex
+
+execution:
+  model:
+    primary:
+      provider: openai
+      name: gpt-5.4-mini
+      auth:
+        method: codex
+  sandbox:
+    mode: workspace
+
+surfaces:
+  moltnet:
+    - network: selene_inner
+      rooms:
+        selene-council:
+          wake: mentions
+
+workspace:
+  docs:
+    system: AGENTS.md

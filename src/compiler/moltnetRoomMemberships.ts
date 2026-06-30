@@ -49,6 +49,10 @@ const clonePolicy = (
   ...(policy.wake ? { wake: policy.wake } : {})
 });
 
+const defaultNestedRepresentativePolicy = (): ResolvedMoltnetRoomPolicy => ({
+  wake: "mentions"
+});
+
 const findDirectRoomPolicy = (
   plan: CompilePlan,
   teamNode: ResolvedTeamNode,
@@ -204,6 +208,14 @@ export const resolveMoltnetRoomMemberships = (
 
           for (const representative of representatives) {
             const agentNode = findAgentBySource(plan, representative.agentSource);
+            const policy = findDirectRoomPolicy(
+              plan,
+              teamNode,
+              agentNode.source,
+              representative.memberId,
+              network.id,
+              room.id
+            ) ?? defaultNestedRepresentativePolicy();
             memberships.push({
               agentName: agentNode.name,
               agentSource: agentNode.source,
@@ -218,6 +230,7 @@ export const resolveMoltnetRoomMemberships = (
               representedTeamName: childTeam.name,
               representedTeamSource: childTeam.source,
               representativePath: [declaredSlot, ...representative.path],
+              ...(policy ? { policy } : {}),
               roomId: room.id
             });
           }

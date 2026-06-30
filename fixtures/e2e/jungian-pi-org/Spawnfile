@@ -1,0 +1,41 @@
+spawnfile_version: "0.1"
+kind: team
+name: jungian-pi-org
+description: "Two Jungian selves with nested council teams for Moltnet wake-path testing."
+
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
+
+members:
+  - id: luna
+    ref: ./teams/luna
+  - id: selene
+    ref: ./teams/selene
+
+mode: hierarchical
+lead: luna
+
+networks:
+  - id: psyche-floor
+    name: Jungian Floor
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 0.0.0.0
+        port: 19901
+      store:
+        kind: sqlite
+        path: /var/lib/spawnfile/moltnet/networks/psyche-floor/moltnet.sqlite
+      auth:
+        mode: open
+        public_read: true
+      human_ingress: true
+      direct_messages: false
+    rooms:
+      - id: commons
+        members: [luna, selene]
+        visibility: public
+        write_policy: registered_agents

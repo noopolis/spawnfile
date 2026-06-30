@@ -8,9 +8,13 @@ const DAIMON_RUNTIME_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_IMAGE";
 const DAIMON_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE";
 const OPENCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_OPENCLAW_RUNTIME_IMAGE";
 const PICOCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_PICOCLAW_RUNTIME_IMAGE";
+const DAIMON_PACKAGE_NAME = "@noopolis/daimon";
+const DAIMON_PACKAGE_VERSION = "0.1.1";
+const MNEME_PACKAGE_NAME = "@noopolis/mneme";
+const MNEME_PACKAGE_VERSION = "0.1.0";
 const PI_AI_PACKAGE_NAME = "@earendil-works/pi-ai";
 const PI_CODING_AGENT_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
-const PI_PACKAGE_VERSION = "0.79.9";
+const PI_PACKAGE_VERSION = "0.79.10";
 
 export interface RuntimeInstallRecipe {
   baseImage?: string;
@@ -154,6 +158,7 @@ export const createRuntimeInstallRecipe = async (
 
       const npmPackages = [
         `${selection.packageName}@${selection.version}`,
+        `${MNEME_PACKAGE_NAME}@${MNEME_PACKAGE_VERSION}`,
         `${PI_CODING_AGENT_PACKAGE_NAME}@${PI_PACKAGE_VERSION}`,
         `${PI_AI_PACKAGE_NAME}@${PI_PACKAGE_VERSION}`
       ];
@@ -178,6 +183,8 @@ export const createRuntimeInstallRecipe = async (
 
       const prebuiltBaseImage = process.env[PI_RUNTIME_BASE_IMAGE_ENV]?.trim() || undefined;
       const npmPackages = [
+        `${DAIMON_PACKAGE_NAME}@${DAIMON_PACKAGE_VERSION}`,
+        `${MNEME_PACKAGE_NAME}@${MNEME_PACKAGE_VERSION}`,
         `${selection.packageName}@${selection.version}`,
         `${PI_AI_PACKAGE_NAME}@${selection.version}`
       ];

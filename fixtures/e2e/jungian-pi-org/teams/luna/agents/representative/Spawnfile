@@ -1,0 +1,30 @@
+spawnfile_version: "0.1"
+kind: agent
+name: luna-representative
+description: "Luna representative (Codex engine)"
+
+runtime:
+  name: pi
+  options:
+    engine: codex
+
+execution:
+  model:
+    primary:
+      provider: openai
+      name: gpt-5.4-mini
+      auth:
+        method: codex
+  sandbox:
+    mode: workspace
+
+surfaces:
+  moltnet:
+    - network: luna_inner
+      rooms:
+        luna-council:
+          wake: mentions
+
+workspace:
+  docs:
+    system: AGENTS.md

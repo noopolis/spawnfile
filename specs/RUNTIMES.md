@@ -95,6 +95,7 @@ Support levels:
 | `workspace.resources` `git` | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup |
 | `environment.env`, `environment.secrets`, `environment.packages` | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior |
 | `environment.mcp_servers` | Degraded through OpenClaw bridge path | Supported through PicoClaw MCP config | Degraded; not lowered into the generated Daimon app yet |
+| `memory` | Planned through compiler-generated memory MCP; currently degraded until adapter lowering lands | Planned through compiler-generated memory MCP; currently degraded until adapter lowering lands | Planned through in-process memory kernel; currently degraded until Spawnfile lowering lands |
 | `execution.sandbox.mode` | Supported through OpenClaw runtime/container workspace behavior | Supported through `restrict_to_workspace` and container workspace behavior | Degraded; container/workspace isolation only, Pi itself is not a sandbox engine |
 | `subagents` | Degraded; routed sessions do not preserve full parent-owned semantics | Supported through PicoClaw subagent behavior | Degraded; grouped app agents do not preserve parent-owned subagent semantics |
 
@@ -121,6 +122,31 @@ Support levels:
 | Runtime activity stream | Not normalized yet | Not normalized yet | Supported through `spawnfile.activity.v1` buffer and SSE endpoint |
 | `spawnfile dev apply --agent` hot-add | Not supported in v0.1 | Not supported in v0.1 | Supported for Daimon app agents and their Moltnet bridge |
 | Managed Moltnet servers and durable Moltnet state | Compiler-owned and runtime-independent | Compiler-owned and runtime-independent | Compiler-owned and runtime-independent |
+
+---
+
+### Memory Support Dimensions
+
+Memory support is not a single boolean. Adapters should report each dimension in
+the compile report so operators can see whether a memory bank is usable,
+persisted, searchable, and policy-enforced.
+
+| Dimension | OpenClaw | PicoClaw | Daimon |
+|-----------|----------|----------|--------|
+| Store lowering (`sqlite`, `json`) | Planned through generated MCP sidecar | Planned through generated MCP sidecar | Planned through in-process kernel |
+| Store lowering (`postgres`) | Planned, requires DSN secret materialization | Planned, requires DSN secret materialization | Planned, requires DSN secret materialization |
+| Durable persistent mounts | Compiler-owned | Compiler-owned | Compiler-owned |
+| Tool coverage (`search`, `locate`, `register`, `summarize`, `forget`) | Planned through MCP | Planned through MCP | Planned direct, MCP bridge optional |
+| Principal/scope enforcement | Planned in generated memory service | Planned in generated memory service | Planned in memory kernel |
+| Lexical index | Planned | Planned | Planned/default |
+| Vector index | Optional/degraded unless configured | Optional/degraded unless configured | Optional/degraded unless configured |
+| Graph/temporal index | Optional/degraded unless configured | Optional/degraded unless configured | Optional/degraded unless configured |
+| Activity/audit events | Planned through generated memory service metadata | Planned through generated memory service metadata | Planned through `spawnfile.activity.v1` |
+| Raw memory visibility to runtime files | Must be denied | Must be denied | Must be denied |
+
+If a runtime cannot preserve scope/principal enforcement, the memory bank is
+`unsupported`, not merely degraded. If it can preserve storage but not a
+requested index or consolidation mode, that specific capability is `degraded`.
 
 ---
 

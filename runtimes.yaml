@@ -16,12 +16,12 @@
 runtimes:
   daimon:
     remote: git@github.com:noopolis/daimon.git
-    ref: v0.1.0
+    ref: v0.1.1
     default_branch: main
     install:
       kind: container_image
       image: noopolis/spawnfile-runtime-daimon
-      tag: 0.1.0
+      tag: 0.1.1
     status: active
 
   openclaw:
@@ -46,12 +46,12 @@ runtimes:
 
   pi:
     remote: git@github.com:earendil-works/pi.git
-    ref: v0.79.9
+    ref: v0.79.10
     default_branch: main
     install:
       kind: npm
       package: "@earendil-works/pi-coding-agent"
-      version: 0.79.9
+      version: 0.79.10
     status: active
 
   hermes-agent:

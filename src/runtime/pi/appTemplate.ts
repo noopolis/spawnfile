@@ -9,10 +9,13 @@ import { SpawnfileError } from "../../shared/index.js";
 export { renderPiApp } from "./appSource.js";
 
 export const DAIMON_PACKAGE_NAME = "@noopolis/daimon";
-export const DAIMON_PACKAGE_VERSION = "0.1.0";
+export const DAIMON_PACKAGE_VERSION = "0.1.1";
+export const MNEME_PACKAGE_NAME = "@noopolis/mneme";
+export const MNEME_PACKAGE_VERSION = "0.1.0";
 export const PI_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
 export const PI_AI_PACKAGE_NAME = "@earendil-works/pi-ai";
-export const PI_PACKAGE_VERSION = "0.79.9";
+export const PI_PACKAGE_VERSION = "0.79.10";
+export const PI_ENGINE_KINDS = ["agy", "codex", "grok", "pi"] as const;
 export const PI_HARNESS_SYSTEM_PROMPT = [
   "## Daimon Runtime Contract",
   "You are running inside a Spawnfile-generated Daimon application backed by Pi.",
@@ -29,6 +32,9 @@ export const PI_HARNESS_SYSTEM_PROMPT = [
 ].join("\n");
 
 export interface PiGeneratedAgent {
+  engine: {
+    kind: typeof PI_ENGINE_KINDS[number];
+  };
   id: string;
   instructions: string;
   model: {
@@ -68,6 +74,9 @@ interface PiModelProviderConfig {
 }
 
 const serializeJson = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
+
+const isPiEngineKind = (value: unknown): value is typeof PI_ENGINE_KINDS[number] =>
+  typeof value === "string" && (PI_ENGINE_KINDS as readonly string[]).includes(value);
 
 const formatDocumentInstructions = (node: ResolvedAgentNode): string =>
   node.docs
@@ -125,6 +134,24 @@ const resolvePiModel = (node: ResolvedAgentNode): PiGeneratedAgent["model"] => {
     name: target.name,
     provider: target.provider
   };
+};
+
+export const resolvePiEngine = (
+  node: ResolvedAgentNode
+): PiGeneratedAgent["engine"] => {
+  const value = node.runtime.options.engine;
+  if (value === undefined) {
+    return { kind: "pi" };
+  }
+
+  if (isPiEngineKind(value)) {
+    return { kind: value };
+  }
+
+  throw new SpawnfileError(
+    "validation_error",
+    `Pi runtime option engine must be one of ${PI_ENGINE_KINDS.join(", ")}`
+  );
 };
 
 export const renderPiModelsConfig = (nodes: ResolvedAgentNode[]): string => {
@@ -198,6 +225,7 @@ export const createPiAgentConfig = (
   slug: string,
   id: string
 ): PiGeneratedAgent => ({
+  engine: resolvePiEngine(node),
   id,
   instructions: [
     `You are ${node.name}.`,
@@ -216,6 +244,7 @@ export const renderPiPackageJson = (): string =>
   serializeJson({
     dependencies: {
       [DAIMON_PACKAGE_NAME]: DAIMON_PACKAGE_VERSION,
+      [MNEME_PACKAGE_NAME]: MNEME_PACKAGE_VERSION,
       [PI_AI_PACKAGE_NAME]: PI_PACKAGE_VERSION,
       [PI_PACKAGE_NAME]: PI_PACKAGE_VERSION
     },

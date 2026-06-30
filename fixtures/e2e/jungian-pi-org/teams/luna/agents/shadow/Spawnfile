@@ -1,0 +1,33 @@
+spawnfile_version: "0.1"
+kind: agent
+name: luna-shadow
+description: "Luna inner archetype (Grok CLI engine)"
+
+runtime:
+  name: pi
+  options:
+    engine: grok
+
+execution:
+  model:
+    primary:
+      provider: local
+      name: grok-cli
+      auth:
+        method: none
+      endpoint:
+        compatibility: openai
+        base_url: http://127.0.0.1:11434/v1
+  sandbox:
+    mode: workspace
+
+surfaces:
+  moltnet:
+    - network: luna_inner
+      rooms:
+        luna-council:
+          wake: mentions
+
+workspace:
+  docs:
+    system: AGENTS.md

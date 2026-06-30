@@ -1139,7 +1139,9 @@ describe("buildCompilePlan", () => {
         memberId: "placeholder",
         network: "local_lab",
         rooms: {
-          research: {}
+          research: {
+            wake: "mentions"
+          }
         },
         teamSource: parentTeam.value.source
       }

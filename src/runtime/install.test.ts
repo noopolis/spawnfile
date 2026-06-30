@@ -24,9 +24,9 @@ describe("runtime install selection", () => {
       installHint: "Copy a pinned Daimon runtime image.",
       kind: "container_image",
       runtimeName: "daimon",
-      runtimeRef: "v0.1.0",
+      runtimeRef: "v0.1.1",
       selectionSource: "runtime_registry_install",
-      tag: "0.1.0"
+      tag: "0.1.1"
     });
   });
 
@@ -63,9 +63,9 @@ describe("runtime install selection", () => {
       kind: "npm",
       packageName: "@earendil-works/pi-coding-agent",
       runtimeName: "pi",
-      runtimeRef: "v0.79.9",
+      runtimeRef: "v0.79.10",
       selectionSource: "runtime_registry_install",
-      version: "0.79.9"
+      version: "0.79.10"
     });
   });
 

@@ -17,7 +17,7 @@ The v0.1 compiler should do four things well:
 - hand resolved nodes to runtime adapters
 - emit stable runtime-native outputs, generated team-context artifacts, container artifacts, and a machine-readable compile report
 
-It should not try to solve packaging, publishing, deployment orchestration, runtime-native channel setup, or runtime coordination in v0.1. The compiler does not inject custom MCP tools, proxy/router processes, or team-internal RPC mechanisms.
+It should not try to solve packaging, publishing, deployment orchestration, runtime-native channel setup, or runtime coordination in v0.1. The compiler does not inject custom MCP tools, proxy/router processes, or team-internal RPC mechanisms except for compiler-owned generated MCP services required to preserve explicitly declared Spawnfile systems such as `memory`.
 
 The compiler has a write-only runtime boundary. It may write generated files, config, env files, mounted credential stores, generated secrets, and future explicit operator-triggered updates. It must not read spawned runtimes, containers, runtime homes, or agent workspaces to discover identity, infer organization state, rewrite rosters, or maintain live coordination state. `spawnfile status --live` is a separate read-only diagnostic command defined in `STATUS.md`; its observations never feed back into compiler identity or roster generation.
 
@@ -34,17 +34,18 @@ The reference pipeline is:
 5. Resolve effective `runtime` and `execution` for every graph node.
 6. Resolve `description` for every agent node (from manifest or derived from `workspace.docs.identity`).
 7. Resolve workspace, skills, and environment inheritance context for each concrete agent.
-8. Resolve schedule lowering constraints.
-9. Build a normalized intermediate representation.
-10. Group resolved nodes by runtime.
-11. Invoke runtime adapters.
-12. Resolve team representatives, team-context files, roster files, and team-network artifacts.
-13. Merge generated files into compiled workspaces.
-14. Place or point to generated team-context orientation through each runtime's system-instruction surface when possible.
-15. Attach compiler-owned capability outcomes and warning diagnostics.
-16. Enforce policy after report augmentation.
-17. Generate container artifacts from adapter container metadata.
-18. Emit `spawnfile-report.json`.
+8. Resolve declared memory banks and concrete member access.
+9. Resolve schedule lowering constraints.
+10. Build a normalized intermediate representation.
+11. Group resolved nodes by runtime.
+12. Invoke runtime adapters.
+13. Resolve team representatives, team-context files, roster files, and team-network artifacts.
+14. Merge generated files into compiled workspaces.
+15. Place or point to generated team-context orientation through each runtime's system-instruction surface when possible.
+16. Attach compiler-owned capability outcomes and warning diagnostics.
+17. Enforce policy after report augmentation.
+18. Generate container artifacts from adapter container metadata.
+19. Emit `spawnfile-report.json`.
 
 The compiler should operate on resolved IR, not on raw YAML, after the graph phase.
 
@@ -236,15 +237,17 @@ When compiling a team, the compiler generates context-scoped team artifacts afte
 2. Build membership-context records keyed by `(agent-source, team-source, member-slot-id)`. The same agent source may fill several team roles without merging those contexts.
 3. Resolve the representative interface for nested team slots using `external`, `lead`, and swarm fallback.
 4. Resolve `workspace.resources`, `workspace.skills`, and `environment` for each concrete member from team-local and direct inheritance, preserving the manifest scope that declared each resource so team-shared backing storage can be scoped to that team.
-5. Resolve team networks. Moltnet parent-room members that name child-team slots expand only to the child team's selected concrete representatives.
-6. Emit a generated resource plan that lists each resource's declared mount, concrete agent-visible link path, backing path, and sharing mode.
-7. Generate namespaced direct-membership `TEAM.md` files under `.spawnfile/team-contexts/<team-context-key>/TEAM.md`.
-8. Generate context-scoped roster YAML under `.spawnfile/rosters/<team-context-key>.yaml`.
-9. Generate representative parent-context `TEAM.md`, rosters, team cards, `.spawnfile/team-contexts.yaml`, and `.spawnfile/team-contexts.md` for selected representatives.
-10. Emit root `TEAM.md` and `.spawnfile/roster.yaml` aliases only when a compiled agent has exactly one direct team membership.
-11. Build coordination-graph diagnostics for each emitted team-context roster.
-12. Build schedule-wake capability diagnostics for declared schedules against adapter wake contracts.
-13. Attach compiler-owned capability outcomes before policy enforcement.
+5. Resolve team memory banks and concrete member access. Team memory banks apply to direct concrete members by default, may be restricted by `memory[*].access.members`, and do not cross nested team boundaries unless a future explicit rule says so. Resolution also canonicalizes store, index, write, consolidation, and retention defaults before any runtime adapter sees the plan.
+6. Resolve team networks. Moltnet parent-room members that name child-team slots expand only to the child team's selected concrete representatives.
+7. Emit a generated resource plan that lists each resource's declared mount, concrete agent-visible link path, backing path, and sharing mode.
+8. Emit a generated memory plan that lists each concrete agent's accessible memory banks, backing store, persistence mode, index intent, write mode, consolidation mode, retention policy, and adapter transport (`direct`, `mcp`, or `unsupported`).
+9. Generate namespaced direct-membership `TEAM.md` files under `.spawnfile/team-contexts/<team-context-key>/TEAM.md`.
+10. Generate context-scoped roster YAML under `.spawnfile/rosters/<team-context-key>.yaml`.
+11. Generate representative parent-context `TEAM.md`, rosters, team cards, `.spawnfile/team-contexts.yaml`, and `.spawnfile/team-contexts.md` for selected representatives.
+12. Emit root `TEAM.md` and `.spawnfile/roster.yaml` aliases only when a compiled agent has exactly one direct team membership.
+13. Build coordination-graph diagnostics for each emitted team-context roster.
+14. Build schedule-wake capability diagnostics for declared schedules against adapter wake contracts.
+15. Attach compiler-owned capability outcomes before policy enforcement.
 
 ### Roster Schema
 
@@ -502,6 +505,7 @@ The `OrganizationView` projection should carry enough declared information for s
 - schedule kind and expression
 - declared surfaces and scopes
 - team networks, rooms, and declared/expanded membership
+- declared memory banks with id, store kind, persistence, index modes, write mode, consolidation mode, retention mode, and accessible member slots
 - policy mode and `on_degrade`
 
 Renderers stay pure. Status computes observations separately and passes them to the shared tree renderer through subject-keyed annotations. Subject keys SHOULD use compile node ids where available (`agent:<id>`, `team:<id>`) and provider-specific keys for non-node subjects (`network:moltnet:<network-id>`, `room:moltnet:<network-id>:<room-id>`, `runtime-instance:<instance-id>`, `deployment-unit:<unit-id>`).
@@ -533,6 +537,58 @@ Top-level report rules:
 - `output_directory` is the absolute compile output root.
 - `compile_fingerprint` is a stable fingerprint of the compile output used by deployment records and drift detection.
 - The report MUST NOT include secret values, generated token values, or secret-bearing Moltnet config patches.
+
+### Memory Report Extension
+
+The compile report should include a memory plan when any manifest declares
+`memory`.
+
+```json
+{
+  "memory": [
+    {
+      "id": "self",
+      "declaring_node_id": "team:luna-self",
+      "accessible_node_ids": ["agent:luna-representative", "agent:luna-shadow"],
+      "store": {
+        "kind": "sqlite",
+        "path": "/var/lib/spawnfile/memory/luna-self/memory.sqlite",
+        "persistence": "durable",
+        "persistent_mount_id": "memory-luna-self"
+      },
+      "index": {
+        "lexical": { "enabled": true, "engine": "sqlite_fts" },
+        "vector": { "enabled": false },
+        "graph": { "enabled": false },
+        "rerank": { "enabled": false }
+      },
+      "write": { "mode": "tool" },
+      "consolidation": { "mode": "disabled" },
+      "retention": { "forgetting": "manual" },
+      "transport_by_node_id": {
+        "agent:luna-representative": "direct",
+        "agent:luna-shadow": "mcp"
+      }
+    }
+  ]
+}
+```
+
+Rules:
+
+- The memory report is sanitized: it may include generated container paths and
+  secret names, but never secret values, raw memory content, tool results, or
+  model outputs.
+- Durable sqlite/json memory stores emit matching `container.persistent_mounts[]`
+  entries.
+- `persistent_mount_id` is a logical mount identifier. Deployment managers
+  derive concrete volume names per deployment, not from creator host paths.
+- `transport_by_node_id` MUST use `direct`, `mcp`, or `unsupported`.
+- When an adapter uses generated MCP, the generated server name must be
+  derivable from the report as `spawnfile.memory.<memory-id>` without exposing
+  it as an author-declared MCP dependency.
+- `status` may report memory capability, mount presence, index mode, and last
+  probe status, but it MUST NOT read message bodies or raw memory content.
 
 ### Node Entry Shape
 
@@ -572,6 +628,8 @@ The compiler should use these keys by default:
 - `workspace.docs.extras.<name>`
 - `workspace.skills.<name-or-ref>`
 - `mcp.<name>`
+- `memory`
+- `memory.<memory-id>`
 - `execution.model`
 - `execution.sandbox`
 - `agent.schedule`
@@ -583,6 +641,8 @@ The compiler should use these keys by default:
 - `team.mode`
 - `team.lead`
 - `team.external`
+- `team.memory`
+- `team.memory.<memory-id>`
 - `team.roster`
 - `team.context_orientation`
 - `team.representatives`
@@ -649,6 +709,7 @@ Validation should happen in three layers:
 - `team.networks[].server` normalization checks (mode/store/auth/client/path/token/pairings compatibility)
 - `team.networks[].server` mode/auth/store/dms and pairings compatibility checks
 - schedule lowering checks against declared adapter wake contracts
+- memory bank id uniqueness, store/index/write/consolidation/retention normalization, access member references, and generated-memory MCP name reservation
 
 ### 3. Adapter Validation
 
@@ -726,7 +787,6 @@ These should stay out of the core compiler architecture for v0.1:
 - lockfile and reproducibility records
 - runtime-native auth bootstrap
 - runtime-native chat features outside declared portable surfaces
-- memory engine contracts
 - multi-container orchestration (Docker Compose, Kubernetes, etc.)
 
 ---

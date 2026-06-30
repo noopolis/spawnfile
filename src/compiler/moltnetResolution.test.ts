@@ -360,7 +360,9 @@ describe("moltnetResolution", () => {
           child_room: {
             wake: "mentions"
           },
-          parent_room: {}
+          parent_room: {
+            wake: "mentions"
+          }
         },
         teamSource: childTeam.source
       }

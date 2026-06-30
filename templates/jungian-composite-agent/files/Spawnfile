@@ -1,0 +1,54 @@
+spawnfile_version: "0.1"
+kind: team
+name: "{{agent_id}}"
+description: "{{display_name}} is a composite agent with one external voice and an internal Jungian council."
+
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
+
+members:
+  - id: "{{agent_id}}-representative"
+    ref: ./agents/representative
+  - id: "{{agent_id}}-persona"
+    ref: ./agents/persona
+  - id: "{{agent_id}}-shadow"
+    ref: ./agents/shadow
+  - id: "{{agent_id}}-memory"
+    ref: ./agents/memory-keeper
+  - id: "{{agent_id}}-judge"
+    ref: ./agents/judge
+
+mode: hierarchical
+lead: "{{agent_id}}-representative"
+external: ["{{agent_id}}-representative"]
+
+networks:
+  - id: "{{self_network_id}}"
+    name: "{{display_name}} Self"
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 0.0.0.0
+        port: {{self_port}}
+      store:
+        kind: memory
+      auth:
+        mode: none
+      human_ingress: false
+      direct_messages: false
+    rooms:
+      - id: "{{council_room_id}}"
+        members:
+          - "{{agent_id}}-representative"
+          - "{{agent_id}}-persona"
+          - "{{agent_id}}-shadow"
+          - "{{agent_id}}-memory"
+          - "{{agent_id}}-judge"
+        visibility: private
+
+policy:
+  mode: warn
+  on_degrade: warn
