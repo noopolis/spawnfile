@@ -1,0 +1,39 @@
+spawnfile_version: "0.1"
+kind: team
+name: luna
+description: "Luna self with a representative and inner archetypes."
+
+members:
+  - id: luna-representative
+    ref: ./agents/representative
+  - id: luna-animus
+    ref: ./agents/animus
+  - id: luna-shadow
+    ref: ./agents/shadow
+
+mode: hierarchical
+lead: luna-representative
+external: [luna-representative]
+
+networks:
+  - id: luna_inner
+    name: Luna Council
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 0.0.0.0
+        port: 19902
+      store:
+        kind: sqlite
+        path: /var/lib/spawnfile/moltnet/networks/luna-inner/moltnet.sqlite
+      auth:
+        mode: open
+        public_read: true
+      human_ingress: true
+      direct_messages: false
+    rooms:
+      - id: luna-council
+        members: [luna-representative, luna-animus, luna-shadow]
+        visibility: public
+        write_policy: registered_agents

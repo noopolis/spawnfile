@@ -166,7 +166,7 @@ describe("organization view model", () => {
       "lead  team=parent member=lead wake=all source=agents/lead/Spawnfile"
     );
     expect(output).toContain(
-      "platform-lead  represents=platform team=platform-core member=liaison source=teams/platform/agents/lead/Spawnfile"
+      "platform-lead  represents=platform team=platform-core member=liaison wake=mentions source=teams/platform/agents/lead/Spawnfile"
     );
     expect(output).toContain(
       "platform-lead  team=platform-core member=liaison wake=mentions source=teams/platform/agents/lead/Spawnfile"

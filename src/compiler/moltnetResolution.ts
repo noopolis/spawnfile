@@ -91,7 +91,7 @@ const synthesizeRepresentativeAttachments = (
       memberId: membership.concreteMemberId,
       network: membership.networkId,
       rooms: {
-        [membership.roomId]: {}
+        [membership.roomId]: membership.policy ? { ...membership.policy } : {}
       },
       teamSource: membership.declaringTeamSource
     }));
@@ -120,7 +120,9 @@ const mergeAttachment = (
     );
   }
 
-  target.dms ??= next.dms ? { ...next.dms } : undefined;
+  if (!target.dms && next.dms) {
+    target.dms = { ...next.dms };
+  }
   target.teamSource ??= next.teamSource;
   target.rooms ??= {};
 

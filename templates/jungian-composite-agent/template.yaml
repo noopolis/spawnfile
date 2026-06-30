@@ -1,0 +1,40 @@
+kind: spawnfile.template.v1
+name: "@noopolis/jungian-composite-agent"
+type: team
+version: "0.1.0"
+description: "Composite agent with one external representative and an internal Jungian council."
+
+parameters:
+  - name: agent_id
+    description: "Stable lowercase id for the composite agent."
+    required: true
+    pattern: "^[a-z0-9][a-z0-9-]*$"
+  - name: display_name
+    description: "Human-readable composite agent name."
+    required: true
+  - name: runtime
+    description: "Runtime used by the internal council agents."
+    default: daimon
+  - name: model_provider
+    description: "Model provider for the internal council agents."
+    default: openai
+  - name: model_name
+    description: "Model name for the internal council agents."
+    default: gpt-5.4-mini
+  - name: model_auth_method
+    description: "Model authentication method."
+    default: codex
+  - name: self_network_id
+    description: "Private Moltnet network id for the internal council."
+    default: "{{agent_id}}_self"
+  - name: self_port
+    description: "Managed Moltnet port for the internal council network."
+    required: true
+  - name: council_room_id
+    description: "Private Moltnet room id where archetypes consult."
+    default: council
+
+outputs:
+  root: files
+  kind: team
+  exported_member: "{{agent_id}}-representative"

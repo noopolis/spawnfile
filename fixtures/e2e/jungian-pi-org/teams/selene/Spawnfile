@@ -1,0 +1,39 @@
+spawnfile_version: "0.1"
+kind: team
+name: selene
+description: "Selene self with a representative and inner archetypes."
+
+members:
+  - id: selene-representative
+    ref: ./agents/representative
+  - id: selene-animus
+    ref: ./agents/animus
+  - id: selene-shadow
+    ref: ./agents/shadow
+
+mode: hierarchical
+lead: selene-representative
+external: [selene-representative]
+
+networks:
+  - id: selene_inner
+    name: Selene Council
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 0.0.0.0
+        port: 19903
+      store:
+        kind: sqlite
+        path: /var/lib/spawnfile/moltnet/networks/selene-inner/moltnet.sqlite
+      auth:
+        mode: open
+        public_read: true
+      human_ingress: true
+      direct_messages: false
+    rooms:
+      - id: selene-council
+        members: [selene-representative, selene-animus, selene-shadow]
+        visibility: public
+        write_policy: registered_agents

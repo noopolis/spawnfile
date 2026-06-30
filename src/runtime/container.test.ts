@@ -42,7 +42,7 @@ describe("runtime container install recipes", () => {
     expect(recipe.copyCommands).toEqual([]);
     expect(recipe.commands).toEqual([
       `mkdir -p ${RUNTIME_INSTALL_ROOT}/pi`,
-      `cd ${RUNTIME_INSTALL_ROOT}/pi && npm install --omit=dev --no-fund --no-audit @earendil-works/pi-coding-agent@0.79.9 @earendil-works/pi-ai@0.79.9`
+      `cd ${RUNTIME_INSTALL_ROOT}/pi && npm install --omit=dev --no-fund --no-audit @noopolis/daimon@0.1.1 @noopolis/mneme@0.1.0 @earendil-works/pi-coding-agent@0.79.10 @earendil-works/pi-ai@0.79.10`
     ]);
   });
 
@@ -53,7 +53,7 @@ describe("runtime container install recipes", () => {
     expect(recipe.runtimeRoot).toBe(`${RUNTIME_INSTALL_ROOT}/daimon`);
     expect(recipe.commands).toEqual([]);
     expect(recipe.copyCommands).toEqual([
-      `COPY --from=noopolis/spawnfile-runtime-daimon:0.1.0 ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
+      `COPY --from=noopolis/spawnfile-runtime-daimon:0.1.1 ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
     ]);
   });
 

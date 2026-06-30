@@ -267,7 +267,156 @@ environment:
 Rules:
 
 - `auth.secret` SHOULD be an environment variable name, not a literal credential value.
+- User-authored MCP server names beginning with `spawnfile.` are reserved for compiler-owned generated services and MUST be rejected.
 - Adapters MAY lower a logical MCP declaration into a runtime's native MCP config format.
+- Compiler-owned generated MCP services are not authored under `environment.mcp_servers`, are not visible to `workspace.skills[*].requires.mcp`, and MUST be namespaced under `spawnfile.` when exposed in runtime-native MCP config.
+
+### 2.3.1 Memory Banks
+
+The top-level `memory` block declares Spawnfile-owned memory banks. A memory bank is portable state and a tool surface for remembering, searching, locating, summarizing, redacting, and forgetting memory events. It is not a natural-language `workspace.docs.memory` document, and it is not a Moltnet network.
+
+Memory banks may be declared on agents or teams:
+
+```yaml
+memory:
+  - id: self
+    store:
+      kind: sqlite
+      path: /var/lib/spawnfile/memory/self.sqlite
+```
+
+Team declarations may restrict which direct member slots can access the bank:
+
+```yaml
+memory:
+  - id: self
+    store:
+      kind: sqlite
+      path: /var/lib/spawnfile/memory/self.sqlite
+    access:
+      members: [representative, critic, worker]
+```
+
+Memory banks may also declare indexing, write, consolidation, and retention
+intent. These fields are portable intent; adapters report degraded or
+unsupported when they cannot preserve them.
+
+```yaml
+memory:
+  - id: self
+    store:
+      kind: sqlite
+      persistence:
+        mode: durable
+    index:
+      lexical:
+        enabled: true
+        engine: sqlite_fts
+      vector:
+        enabled: false
+      graph:
+        enabled: false
+      rerank:
+        enabled: false
+    write:
+      mode: tool
+    consolidation:
+      mode: on_threshold
+      summarize_after_events: 100
+    retention:
+      forgetting: manual
+```
+
+Rules:
+
+- `memory` is OPTIONAL.
+- `memory[*].id` MUST be unique within the declaring manifest.
+- `memory[*].id` values MUST be report-key safe: `[A-Za-z0-9_-]+`.
+- `memory[*].store` is REQUIRED.
+- `memory[*].store.kind` MUST be `sqlite`, `json`, `postgres`, or `memory`.
+- `memory[*].store.kind: sqlite` and `memory[*].store.kind: json` MAY omit `path`; omitted paths default under `/var/lib/spawnfile/memory/<manifest-slug>/<memory-id>/`.
+- `memory[*].store.kind: sqlite` lowers to `memory.sqlite` by default and does not allow `dsn_secret`.
+- `memory[*].store.kind: json` lowers to `memory.jsonl` by default and does not allow `dsn_secret`.
+- `memory[*].store.kind: postgres` requires `dsn_secret` and MUST NOT include `path`.
+- `memory[*].store.kind: memory` MUST NOT include `path` or `dsn_secret`.
+- `memory[*].store.persistence` is valid only for `sqlite` and `json`.
+- `memory[*].store.persistence.mode` MUST be `durable` or `ephemeral`.
+- If `memory[*].store.persistence` is omitted for `sqlite` or `json`, the compiler treats it as `durable`.
+- `memory[*].store.persistence.mode: durable` emits a persistent runtime mount for the store directory.
+- `memory[*].index` is OPTIONAL.
+- If `memory[*].index` is omitted, the effective index intent is lexical enabled, vector disabled, graph disabled, and rerank disabled.
+- `memory[*].index.lexical.enabled` defaults to `true`.
+- `memory[*].index.lexical.engine` MAY be `sqlite_fts` or `bm25`; if omitted, the compiler chooses the adapter default.
+- `memory[*].index.vector.enabled` defaults to `false`.
+- If `memory[*].index.vector.enabled` is `true`, the entry MUST declare `memory[*].index.vector.model`.
+- `memory[*].index.vector.provider` MAY declare the embedding provider when it differs from the adapter default.
+- `memory[*].index.vector.dimensions` MAY declare the expected embedding dimensionality.
+- `memory[*].index.graph.enabled` defaults to `false`.
+- `memory[*].index.graph.kind` MAY be `entity_graph` or `temporal_kg`; if omitted and graph is enabled, the adapter default applies.
+- `memory[*].index.rerank.enabled` defaults to `false`.
+- `memory[*].write` is OPTIONAL.
+- `memory[*].write.mode` MUST be `tool`, `automatic`, or `disabled`; if omitted, it defaults to `tool`.
+- `memory[*].write.mode: tool` means durable memories are created only through explicit memory tools or compiler/runtime audit events.
+- `memory[*].write.mode: automatic` allows the adapter to extract candidate memories from configured runtime events.
+- `memory[*].write.auto_capture` MAY list `messages`, `tool_calls`, `decisions`, `artifacts`, or `lifecycle`.
+- `memory[*].write.auto_capture` is valid only when `memory[*].write.mode` is `automatic`.
+- `memory[*].consolidation` is OPTIONAL.
+- `memory[*].consolidation.mode` MUST be `disabled`, `on_threshold`, or `scheduled`; if omitted, it defaults to `disabled`.
+- `memory[*].consolidation.summarize_after_events` MAY declare the threshold for `on_threshold` consolidation.
+- `memory[*].consolidation.schedule` MAY declare a runtime-supported schedule expression for `scheduled` consolidation.
+- `memory[*].retention` is OPTIONAL.
+- `memory[*].retention.forgetting` MUST be `manual`, `decay`, or `ttl`; if omitted, it defaults to `manual`.
+- `memory[*].retention.ttl` MAY declare a duration when `forgetting: ttl`.
+- Agent-level memory banks are available only to that agent.
+- Team-level memory banks are available to all direct concrete members of that team by default.
+- `memory[*].access.members` MAY restrict a team-level bank to the listed direct member slots.
+- `memory[*].access.members` MUST name direct member slots of the declaring team.
+- Team-level memory banks do not automatically cross nested team boundaries.
+- A parent team may expose a child team's representatives through `external`, `lead`, or swarm fallback, but that does not grant the parent memory access to the child team's memory bank.
+- Memory access principals and scopes MUST be derived from trusted compile/runtime context: concrete agent id, direct team context, current room, current pair, current task, and current artifact context. The model MUST NOT be trusted to declare its own principal.
+- Runtimes with native or in-process memory tooling MAY receive direct memory-kernel access.
+- Runtimes that need MCP access MUST receive compiler-generated runtime-private MCP wiring. Authors MUST NOT manually declare Spawnfile-owned memory MCP servers.
+- Generated memory MCP servers MUST use names under `spawnfile.memory.<memory-id>` and MUST resolve active scope aliases such as `current`, `current_room`, `current_pair`, and `current_task` from a trusted wake binding rather than from model-supplied identity.
+- If an adapter cannot preserve the declared memory bank and its access rules, it MUST report `degraded` or `unsupported` according to policy.
+- Memory stores MUST be append-only at the source-of-truth layer. Indexes, summaries, claims, graph edges, and embeddings are projections and MUST be rebuildable from the source ledger plus tombstone/redaction events.
+- Memory retrieval MUST resolve the active principal and allowed scopes before lexical, vector, graph, temporal, or rerank retrieval runs.
+- Memory results MUST include provenance or derived-source references. Derived summaries and claims MUST cite source event ids.
+- Forgetting, redaction, expiry, and supersession MUST be represented as explicit memory events; adapters MUST NOT silently erase provenance as the only record of change.
+
+Portable memory tools are:
+
+```text
+memory.search(scope, query, limit)
+memory.locate(query, limit)
+memory.register(scope, kind, content, evidence)
+memory.summarize(scope, horizon)
+memory.forget(scope, event_ids, reason)
+```
+
+`memory.search` and `memory.locate` MAY accept optional filters for memory
+record types, entities, tags, artifact paths, observed time range, valid time,
+and supersession handling. Tombstoned or redacted content MUST NOT be returned
+as raw content even if a filter asks for it. Superseded records SHOULD be
+excluded by default unless a query explicitly asks for historical records.
+
+Memory record types are:
+
+- `raw_event`
+- `episodic`
+- `semantic`
+- `procedural`
+- `relationship`
+- `artifact`
+- `narrative`
+- `tombstone`
+
+Memory access policy MUST apply separately to search, locate, register,
+summarize, and forget. Locate results are disclosures: returning that a private
+memory exists requires policy approval even when no raw content is returned.
+Promotion between private, pair, team, room, global, and public scopes MUST be
+explicit and evidence-backed.
+
+Memory access policy and output judgment are separate. The memory system enforces mechanical access to stored events. Deliberation, policy judgment, and consultation between agents remain normal agent behavior through declared communication surfaces such as Moltnet rooms.
 
 ### 2.4 Runtime Binding
 
@@ -597,6 +746,12 @@ schedule:
   timezone: UTC
   prompt: "Read heartbeat context and complete one bounded research iteration."
 
+memory:
+  - id: personal
+    store:
+      kind: sqlite
+      path: /var/lib/spawnfile/memory/analyst.sqlite
+
 surfaces:
   discord:
     access:
@@ -755,6 +910,7 @@ A Spawnfile team is an organizational structure that defines:
 - how the team is organized (`mode`, `lead`, `external`)
 - who the team is as a collective (`shared.workspace.docs`)
 - which provider-backed team networks exist (`networks`)
+- which Spawnfile-owned memory banks exist (`memory`)
 - which context artifacts members receive (`TEAM.md`, rosters, team cards, and context indexes)
 
 The distinction between `agent` and `team` is deliberate:
@@ -769,9 +925,9 @@ Teams are:
 - potentially multi-runtime
 - coordination-aware through declared agent surfaces and declared team networks
 
-Direct protocol surfaces belong to agents, not teams. A team does not cause Spawnfile to inject a custom message router, MCP tool, proxy process, team-secret route, or other runtime coordination primitive. How agents reach each other is a function of the surfaces they share and the addresses the manifest makes knowable at compile time.
+Direct protocol surfaces belong to agents, not teams. A team does not cause Spawnfile to inject a custom message router, proxy process, team-secret route, or other runtime coordination primitive. How agents reach each other is a function of the surfaces they share and the addresses the manifest makes knowable at compile time. The exception is declared `memory`: adapters may emit compiler-owned generated MCP wiring or direct runtime tooling so authorized members can access the declared memory bank.
 
-Spawnfile does not assume that every runtime has a native team config format, nested teams, shared team memory, or durable team lifecycle APIs.
+Spawnfile does not assume that every runtime has a native team config format, nested teams, or durable team lifecycle APIs. Shared memory exists only when declared through `memory`, and unsupported runtimes must report loss of fidelity.
 
 Adapters MAY lower a Spawnfile team into a native team object, a flat leader/member config, provider-backed rooms, generated context files, or another target-native surface. If a target cannot preserve the declared structure, the compiler MUST report `degraded` or `unsupported`.
 
@@ -839,6 +995,12 @@ members:
     ref: ./agents/researcher
   - id: writer
     ref: ./agents/writer
+
+memory:
+  - id: research-memory
+    store:
+      kind: sqlite
+      path: /var/lib/spawnfile/memory/research-cell.sqlite
 
 networks:
   - id: local_lab
@@ -1187,6 +1349,7 @@ For team manifests, a conforming compiler MUST preserve the following author int
 - the team mode and lead
 - which members form the representative interface
 - which workspace and environment inputs are shared versus member-local
+- declared team memory banks, backing stores, and access restrictions
 - declared team networks and provider-backed rooms
 - context-scoped team docs, rosters, context indexes, and team cards
 
@@ -1209,6 +1372,8 @@ Compilers MUST report capability outcomes for at least:
 - `team.roster`
 - `team.context_orientation`
 - `team.representatives`
+- `team.memory`
+- `team.memory.<memory-id>`
 - `team.networks`
 - `team.networks.<provider>`
 - `team.networks.<provider>.<network-id-key>`
@@ -1248,6 +1413,7 @@ For a runtime to be a valid Spawnfile target in v0.1, its adapter MUST be able t
 - map execution sandbox intent into runtime-native execution policy, or report degradation
 - map agent schedules into scheduler-capable runtimes or report `degraded` where lowering is partial
 - for team manifests, lower member, representative, team-context, and team-network intent, or report `unsupported`
+- lower declared memory banks to direct runtime tooling or compiler-owned generated MCP wiring, or report degradation
 
 ### 5.3 Compile Report
 
@@ -1309,7 +1475,7 @@ For every declared capability the compiler MUST report one of:
 | `degraded` | Partially mapped; runtime behavior may differ from declared intent |
 | `unsupported` | Cannot be expressed in the target |
 
-At minimum, compilers MUST report outcomes for declared docs, workspace skills, MCP servers, execution model intent, execution sandbox intent, schedules, workspace resources, environment inputs, declared surfaces, and team context/network intent.
+At minimum, compilers MUST report outcomes for declared docs, workspace skills, MCP servers, execution model intent, execution sandbox intent, schedules, workspace resources, memory banks, environment inputs, declared surfaces, and team context/network intent.
 
 ### 6.4 How It Works In Practice
 
@@ -1706,11 +1872,9 @@ Manages local Spawnfile auth profiles.
 These are intentionally excluded from the v0.1 portable core. Adapters MAY support them through runtime-specific `options` or adapter-specific extensions, but they are outside this spec.
 
 - Channel bindings (Slack, Discord, WhatsApp, etc.)
-- Memory engine configuration
 - A Spawnfile package registry or discovery index (image publishing to OCI registries is supported via `spawnfile publish`; see `DISTRIBUTION.md`)
 - Deployment orchestration beyond Docker detached records (Kubernetes, ECS, etc.)
 - Agent lifecycle management beyond detached start/status diagnostics (restart policies, scaling, stop/down lifecycle)
-- Persistent storage declarations
 - UI surfaces
 - Runtime-native auth bootstrap (onboarding flows)
 - Agent-to-agent protocol definitions beyond declared surfaces and team networks

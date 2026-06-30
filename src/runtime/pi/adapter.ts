@@ -22,6 +22,7 @@ import type {
 
 import {
   createPiAgentConfig,
+  PI_ENGINE_KINDS,
   PI_PACKAGE_NAME,
   PI_PACKAGE_VERSION,
   renderPiApp,
@@ -227,9 +228,15 @@ export const piAdapter: RuntimeAdapter = {
     },
     port: PI_CONTROL_PORT,
     portEnv: "SPAWNFILE_PI_CONTROL_PORT",
+    globalNpmPackages: ["@openai/codex@0.142.3"],
+    postRootfsCommands: [
+      "curl -fsSL https://x.ai/cli/install.sh | GROK_BIN_DIR=/usr/local/bin bash",
+      "if [ -L /usr/local/bin/grok ]; then cp -L /usr/local/bin/grok /usr/local/bin/grok.real && mv /usr/local/bin/grok.real /usr/local/bin/grok && chmod 0755 /usr/local/bin/grok && ln -sf /usr/local/bin/grok /usr/local/bin/agent; fi",
+      "curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin"
+    ],
     standaloneBaseImage: "node:24-bookworm-slim",
     startCommand: ["node", "<runtime-root>/app.mjs", "<config-path>"],
-    systemDeps: ["bash", "ca-certificates", "curl", "git", "procps"]
+    systemDeps: ["bash", "ca-certificates", "curl", "git", "procps", "tar"]
   },
   systemInstructionSurface: {
     placement: "append_pointer",
@@ -273,7 +280,19 @@ export const piAdapter: RuntimeAdapter = {
   prepareRuntimeAuth: preparePiRuntimeAuth,
   validateRuntimeOptions(options) {
     const diagnostics = [];
-    const unsupported = Object.keys(options).filter((key) => key !== "restrict_to_workspace");
+    if (
+      options.engine !== undefined &&
+      (typeof options.engine !== "string" ||
+        !(PI_ENGINE_KINDS as readonly string[]).includes(options.engine))
+    ) {
+      diagnostics.push(createDiagnostic(
+        "error",
+        `Pi runtime option engine must be one of ${PI_ENGINE_KINDS.join(", ")}`
+      ));
+    }
+    const unsupported = Object.keys(options).filter((key) =>
+      key !== "restrict_to_workspace" && key !== "engine"
+    );
     for (const key of unsupported) {
       diagnostics.push(createDiagnostic("warn", `Pi runtime option ${key} is not used yet`));
     }

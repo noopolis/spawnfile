@@ -1,8 +1,12 @@
 export const renderPiPreludeSource = (): string => String.raw`import path from "node:path";
+import { execFile, spawn } from "node:child_process";
+import { closeSync, openSync } from "node:fs";
 import { createServer } from "node:http";
-import { mkdir, readFile } from "node:fs/promises";
-import { PiHarnessAdapter } from "@noopolis/daimon";
+import { cp, mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { promisify } from "node:util";
+import { PiHarnessAdapter } from "@noopolis/daimon/pi";
 
+const execFileAsync = promisify(execFile);
 const maxControlBodyBytes = 1 << 20;
 
 const readJson = async (filePath) => JSON.parse(await readFile(filePath, "utf8"));

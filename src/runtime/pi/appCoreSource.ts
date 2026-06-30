@@ -13,6 +13,26 @@ const normalizeWakeKind = (value) => {
     : "message";
 };
 
+const rebuildAgentKeys = (agents) => {
+  const keys = new Map();
+  for (const agent of agents) {
+    const candidates = [
+      agent.config.id,
+      agent.config.name,
+      agent.config.slug,
+      typeof agent.config.id === "string" && agent.config.id.startsWith("agent:")
+        ? agent.config.id.slice("agent:".length)
+        : ""
+    ];
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.length > 0) {
+        keys.set(candidate, agent);
+      }
+    }
+  }
+  return keys;
+};
+
 const formatControlEventId = (payload, fallbackPrefix) => {
   if (typeof payload.event_id === "string" && payload.event_id.length > 0) {
     return payload.event_id;
@@ -50,7 +70,6 @@ const startControlServer = async (agents, portValue, configPath, instanceRoot, s
   if (!portValue) {
     return null;
   }
-
   const port = Number(portValue);
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
     throw new Error("Invalid SPAWNFILE_PI_CONTROL_PORT: " + portValue);
@@ -130,10 +149,11 @@ const startControlServer = async (agents, portValue, configPath, instanceRoot, s
 
     try {
       const payload = await readRequestJson(request);
-      const eventId = formatControlEventId(
-        payload,
-        "message-"
-      );
+      if (typeof payload.message !== "string" || payload.message.trim().length === 0) {
+        sendJson(response, 200, { from: agent.config.id, message: "" });
+        return;
+      }
+      const eventId = formatControlEventId(payload, "message-");
       const message = await agent.wake({
         id: eventId,
         kind: normalizeWakeKind(typeof payload.wake_kind === "string" ? payload.wake_kind : payload.kind),
@@ -166,38 +186,43 @@ class PiManagedAgent {
     this.config = config;
     this.paths = paths;
     this.services = services;
-    this.adapter = new PiHarnessAdapter({
-      authPath: path.join(paths.homePath, ".pi", "agent", "auth.json"),
-      modelsPath: path.join(paths.homePath, ".pi", "agent", "models.json"),
-      model: createConfigModel(config)
-    });
+    this.engine = normalizeAgentEngineKind(config);
+    this.adapter = this.engine === "pi"
+      ? new PiHarnessAdapter({
+          authPath: path.join(paths.homePath, ".pi", "agent", "auth.json"),
+          modelsPath: path.join(paths.homePath, ".pi", "agent", "models.json"),
+          model: createConfigModel(config)
+        })
+      : null;
     this.running = false;
     this.queued = [];
   }
-
   async start() {
-    const identityPrompt = createIdentityPrompt(this.config, this.paths.workspacePath);
-    this.handle = await this.adapter.startAgent({
-      id: this.config.id,
-      name: this.config.name,
-      instructions: this.config.instructions + "\n\n" + identityPrompt,
-      runtimeHomePath: this.paths.runtimeHomePath,
-      tools: this.config.tools,
-      workspacePath: this.paths.workspacePath
-    });
-    this.publish("agent.loaded");
+    if (this.engine === "pi") {
+      const identityPrompt = createIdentityPrompt(this.config, this.paths.workspacePath);
+      this.handle = await this.adapter.startAgent({
+        id: this.config.id,
+        name: this.config.name,
+        instructions: this.config.instructions + "\n\n" + identityPrompt,
+        runtimeHomePath: this.paths.runtimeHomePath,
+        tools: this.config.tools,
+        workspacePath: this.paths.workspacePath
+      });
+    } else {
+      this.handle = new CliEngineAgentHandle(this.config, this.paths);
+    }
+    this.publish("agent.loaded", { engine: this.engine });
   }
-
   publish(type, fields = {}) {
     this.services.activity?.publish({
       type,
       agent_id: this.config.id,
       agent_name: this.config.name,
       agent_slug: this.config.slug,
+      engine: this.engine,
       ...fields
     });
   }
-
   async wake(event) {
     return new Promise((resolve, reject) => {
       this.queued.push({ event, reject, resolve });
@@ -209,7 +234,6 @@ class PiManagedAgent {
       void this.drainQueue();
     });
   }
-
   async drainQueue() {
     if (this.running) {
       return;
@@ -229,7 +253,6 @@ class PiManagedAgent {
       this.running = false;
     }
   }
-
   async runWake(event) {
     const startedAt = Date.now();
     this.publish("agent.turn.started", {
@@ -270,7 +293,6 @@ class PiManagedAgent {
       throw error;
     }
   }
-
   stop() {
     this.handle?.stop();
     this.publish("agent.stopped");

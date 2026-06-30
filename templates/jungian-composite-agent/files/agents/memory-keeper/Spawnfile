@@ -1,0 +1,33 @@
+spawnfile_version: "0.1"
+kind: agent
+name: "{{agent_id}}-memory"
+description: "Memory keeper for {{display_name}}."
+
+runtime: "{{runtime}}"
+
+execution:
+  model:
+    auth:
+      method: "{{model_auth_method}}"
+    primary:
+      provider: "{{model_provider}}"
+      name: "{{model_name}}"
+  sandbox:
+    mode: workspace
+
+surfaces:
+  moltnet:
+    - network: "{{self_network_id}}"
+      rooms:
+        "{{council_room_id}}":
+          wake: all
+
+workspace:
+  docs:
+    system: AGENTS.md
+    memory: MEMORY.md
+  resources:
+    - id: "{{agent_id}}-memory-store"
+      kind: volume
+      mount: ./memory
+      mode: mutable

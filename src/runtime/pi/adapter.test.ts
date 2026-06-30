@@ -1,51 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { ResolvedAgentNode } from "../../compiler/types.js";
-
 import { piAdapter } from "./adapter.js";
-
-const createNode = (
-  overrides: Partial<ResolvedAgentNode> = {}
-): ResolvedAgentNode => ({
-  description: "Pi test agent",
-  docs: [
-    {
-      content: "# Instructions\n",
-      role: "system",
-      sourcePath: "/tmp/AGENTS.md"
-    }
-  ],
-  env: {},
-  execution: {
-    model: {
-      primary: {
-        auth: { method: "codex" },
-        name: "gpt-5.4-mini",
-        provider: "openai"
-      }
-    },
-    sandbox: { mode: "workspace" }
-  },
-  kind: "agent",
-  mcpServers: [],
-  name: "assistant",
-  policyMode: null,
-  policyOnDegrade: null,
-  runtime: { name: "pi", options: {} },
-  secrets: [],
-  skills: [
-    {
-      content: "---\nname: note\ndescription: Note\n---\n\nCreate notes.\n",
-      name: "note",
-      ref: "./skills/note",
-      requiresMcp: [],
-      sourcePath: "/tmp/skills/note/SKILL.md"
-    }
-  ],
-  source: "/tmp/agent/Spawnfile",
-  subagents: [],
-  ...overrides
-});
+import { createPiTestNode } from "./testHelpers.js";
 
 describe("piAdapter", () => {
   it("exposes generated app container metadata", () => {
@@ -62,9 +18,15 @@ describe("piAdapter", () => {
       port: 19690,
       portEnv: "SPAWNFILE_PI_CONTROL_PORT",
       standaloneBaseImage: "node:24-bookworm-slim",
-      startCommand: ["node", "<runtime-root>/app.mjs", "<config-path>"]
+      startCommand: ["node", "<runtime-root>/app.mjs", "<config-path>"],
+      globalNpmPackages: ["@openai/codex@0.142.3"],
+      postRootfsCommands: [
+        "curl -fsSL https://x.ai/cli/install.sh | GROK_BIN_DIR=/usr/local/bin bash",
+        "if [ -L /usr/local/bin/grok ]; then cp -L /usr/local/bin/grok /usr/local/bin/grok.real && mv /usr/local/bin/grok.real /usr/local/bin/grok && chmod 0755 /usr/local/bin/grok && ln -sf /usr/local/bin/grok /usr/local/bin/agent; fi",
+        "curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin"
+      ],
+      systemDeps: ["bash", "ca-certificates", "curl", "git", "procps", "tar"]
     });
-    expect(piAdapter.container.postRootfsCommands).toBeUndefined();
   });
 
   it("supports OpenAI Codex auth and local OpenAI-compatible endpoints", () => {
@@ -128,7 +90,7 @@ describe("piAdapter", () => {
   });
 
   it("emits workspace docs and supports every schedules", async () => {
-    const compiled = await piAdapter.compileAgent(createNode({
+    const compiled = await piAdapter.compileAgent(createPiTestNode({
       schedule: {
         every: "1s",
         kind: "every",
@@ -157,7 +119,7 @@ describe("piAdapter", () => {
   });
 
   it("reports cron schedules as degraded with a diagnostic", async () => {
-    const compiled = await piAdapter.compileAgent(createNode({
+    const compiled = await piAdapter.compileAgent(createPiTestNode({
       schedule: {
         cron: "* * * * *",
         kind: "cron",
@@ -178,7 +140,7 @@ describe("piAdapter", () => {
   });
 
   it("accepts disabled schedules as supported", async () => {
-    const compiled = await piAdapter.compileAgent(createNode({
+    const compiled = await piAdapter.compileAgent(createPiTestNode({
       schedule: {
         kind: "disabled"
       }
@@ -192,7 +154,7 @@ describe("piAdapter", () => {
   });
 
   it("reports Moltnet bridge wake delivery as supported", async () => {
-    const compiled = await piAdapter.compileAgent(createNode({
+    const compiled = await piAdapter.compileAgent(createPiTestNode({
       surfaces: {
         moltnet: [
           {
@@ -216,8 +178,8 @@ describe("piAdapter", () => {
   });
 
   it("merges agents into one generated Pi app target", async () => {
-    const mapper = createNode({ name: "mapper", source: "/tmp/mapper/Spawnfile" });
-    const reviewer = createNode({ name: "reviewer", source: "/tmp/reviewer/Spawnfile" });
+    const mapper = createPiTestNode({ name: "mapper", source: "/tmp/mapper/Spawnfile" });
+    const reviewer = createPiTestNode({ name: "reviewer", source: "/tmp/reviewer/Spawnfile" });
     const mapperCompiled = await piAdapter.compileAgent(mapper);
     const reviewerCompiled = await piAdapter.compileAgent(reviewer);
 
@@ -250,7 +212,23 @@ describe("piAdapter", () => {
     expect(target?.files.map((file) => file.path).sort()).toContain("workspace/agents/reviewer/AGENTS.md");
     const appSource = target?.files.find((file) => file.path === "runtime/app.mjs")?.content ?? "";
     expect(appSource).toContain("new PiHarnessAdapter({");
+    expect(appSource).toContain("class CliEngineAgentHandle");
+    expect(appSource).toContain("const runCodexEngine = async");
+    expect(appSource).toContain("const runGrokEngine = async");
+    expect(appSource).toContain("const runAgyEngine = async");
+    expect(appSource).toContain("const cleanCliFinalText = (value) => {");
+    expect(appSource).toContain('process.env.DAIMON_GROK_MAX_TURNS ?? "8"');
+    expect(appSource).toContain('"--allow",');
+    expect(appSource).toContain('"Bash"');
+    expect(appSource).toContain("const grokHomePreparations = new Map();");
+    expect(appSource).toContain("const getSharedGrokHome = (paths) => {");
+    expect(appSource).toContain("GROK_HOME: sharedGrok.grokHomePath");
+    expect(appSource).toContain("The Daimon runtime publishes your final CLI output as your reply to the wake source.");
+    expect(appSource).toContain("Return only the exact message body that should be published.");
+    expect(appSource).toContain("Do not return progress reports such as");
+    expect(appSource).toContain("If your instructions include an exact shell command");
     expect(appSource).toContain("const createActivityBroker = () => {");
+    expect(appSource).toContain("const rebuildAgentKeys = (agents) => {");
     expect(appSource).toContain("const message = await agent.wake({");
     expect(appSource).toContain("next.resolve(await this.runWake(next.event));");
     expect(appSource).toContain("Moltnet coordination event.");
@@ -261,7 +239,8 @@ describe("piAdapter", () => {
     expect(appSource).toContain('this.publish("agent.turn.started"');
     expect(appSource).toContain("wake_kind: event.kind");
     expect(appSource).toContain("const formatActivityError = (error) => redactActivityText");
-    expect(appSource).toContain("startAgent({\n      id: this.config.id,");
+    expect(appSource).toContain("this.handle = await this.adapter.startAgent({");
+    expect(appSource).toContain("id: this.config.id,");
 
     const config = JSON.parse(target?.files.find((file) => file.path === "pi-app.json")?.content ?? "{}");
     expect(config.agents.map((agent: { id: string; model: { provider: string } }) => ({
@@ -273,8 +252,60 @@ describe("piAdapter", () => {
     ]);
   });
 
+  it("serializes runtime engine options for mixed CLI-backed Pi agents", async () => {
+    const codexAgent = createPiTestNode({
+      name: "codex-agent",
+      runtime: { name: "pi", options: { engine: "codex" } },
+      source: "/tmp/codex/Spawnfile"
+    });
+    const grokAgent = createPiTestNode({
+      name: "grok-agent",
+      runtime: { name: "pi", options: { engine: "grok" } },
+      source: "/tmp/grok/Spawnfile"
+    });
+    const agyAgent = createPiTestNode({
+      name: "agy-agent",
+      runtime: { name: "pi", options: { engine: "agy" } },
+      source: "/tmp/agy/Spawnfile"
+    });
+
+    const targets = await piAdapter.createContainerTargets?.([
+      {
+        emittedFiles: (await piAdapter.compileAgent(codexAgent)).files,
+        id: "agent:codex",
+        kind: "agent",
+        slug: "codex",
+        value: codexAgent
+      },
+      {
+        emittedFiles: (await piAdapter.compileAgent(grokAgent)).files,
+        id: "agent:grok",
+        kind: "agent",
+        slug: "grok",
+        value: grokAgent
+      },
+      {
+        emittedFiles: (await piAdapter.compileAgent(agyAgent)).files,
+        id: "agent:agy",
+        kind: "agent",
+        slug: "agy",
+        value: agyAgent
+      }
+    ]);
+
+    const config = JSON.parse(targets?.[0]?.files.find((file) => file.path === "pi-app.json")?.content ?? "{}");
+    expect(config.agents.map((agent: { engine: { kind: string }; id: string }) => ({
+      engine: agent.engine.kind,
+      id: agent.id
+    }))).toEqual([
+      { engine: "codex", id: "agent:codex" },
+      { engine: "grok", id: "agent:grok" },
+      { engine: "agy", id: "agent:agy" }
+    ]);
+  });
+
   it("emits Pi models.json for local Ollama-compatible endpoints", async () => {
-    const local = createNode({
+    const local = createPiTestNode({
       execution: {
         model: {
           primary: {
@@ -328,12 +359,24 @@ describe("piAdapter", () => {
 
   it("warns for unused runtime options", () => {
     expect(piAdapter.validateRuntimeOptions?.({
+      engine: "codex",
       experimental: true,
       restrict_to_workspace: true
     })).toEqual([
       {
         level: "warn",
         message: "Pi runtime option experimental is not used yet"
+      }
+    ]);
+  });
+
+  it("rejects unsupported Pi engine options", () => {
+    expect(piAdapter.validateRuntimeOptions?.({
+      engine: "unknown"
+    })).toEqual([
+      {
+        level: "error",
+        message: "Pi runtime option engine must be one of agy, codex, grok, pi"
       }
     ]);
   });

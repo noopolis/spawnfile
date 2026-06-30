@@ -883,6 +883,20 @@ describe("compileProject", () => {
             network_id: "pi_lab"
           }
         ]);
+        const nodeConfig = await readUtf8File(
+          path.join(
+            outputDirectory,
+            "container",
+            "rootfs",
+            "var",
+            "lib",
+            "spawnfile",
+            "moltnet",
+            "nodes",
+            "pi-harness-org-pi_lab-mapper.json"
+          )
+        );
+        expect(nodeConfig).toContain('"kind": "pi"');
         expect(container?.moltnet?.server_plans[0]).toMatchObject({
           auth_mode: "open",
           mode: "managed",
@@ -908,6 +922,9 @@ describe("compileProject", () => {
         expect(dockerfile).toContain(
           "RUN cd /opt/spawnfile/runtime-installs/pi && npm install --omit=dev --no-fund --no-audit"
         );
+        expect(dockerfile).toContain("@noopolis/daimon@0.1.1");
+        expect(dockerfile).toContain("@noopolis/mneme@0.1.0");
+        expect(dockerfile).toContain("@earendil-works/pi-coding-agent@0.79.10");
 
         const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
         expect(entrypoint).toContain("/usr/local/bin/moltnet &");

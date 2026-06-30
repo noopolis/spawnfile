@@ -482,7 +482,7 @@ describe("renderDockerfile", () => {
       daimon: {
         commands: [],
         copyCommands: [
-          "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.0 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
+          "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.1 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
         ],
         runtimeName: "daimon",
         runtimeRoot: "/opt/spawnfile/runtime-installs/daimon"
@@ -528,7 +528,7 @@ describe("renderDockerfile", () => {
 
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain(
-      "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.0 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
+      "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.1 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
     );
     expect(dockerfile).toContain(
       "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.8 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"

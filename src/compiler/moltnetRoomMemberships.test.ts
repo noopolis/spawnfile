@@ -128,7 +128,7 @@ describe("moltnetRoomMemberships", () => {
     ]);
   });
 
-  it("resolves nested representatives while omitting synthesized policy", () => {
+  it("resolves nested representatives while preserving authored room policy", () => {
     const rep = agent("rep", {
       moltnet: [
         {
@@ -157,11 +157,11 @@ describe("moltnetRoomMemberships", () => {
       concreteMemberId: "rep",
       declaredSlot: "child",
       directTeamSource: child.source,
+      policy: { wake: "mentions" },
       representedSlot: "child",
       representedTeamSource: child.source,
       representativePath: ["child", "rep"]
     });
-    expect(parentRow).not.toHaveProperty("policy");
     expect(rows.find((row) => row.declaringTeamSource === child.source)?.policy).toEqual({
       wake: "mentions"
     });
@@ -188,6 +188,7 @@ describe("moltnetRoomMemberships", () => {
       .toMatchObject({
         concreteMemberId: "rep",
         directTeamSource: child.source,
+        policy: { wake: "mentions" },
         representedTeamSource: middle.source,
         representativePath: ["middle", "child", "rep"]
       });
