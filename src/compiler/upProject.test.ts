@@ -20,6 +20,7 @@ import type {
 } from "../report/index.js";
 
 const temporaryDirectories: string[] = [];
+const previousCodexHome = process.env.CODEX_HOME;
 
 const createTempDirectory = async (prefix: string): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
@@ -156,10 +157,37 @@ afterEach(async () => {
   vi.doUnmock("../deployment/index.js");
   vi.doUnmock("./buildProject.js");
   vi.doUnmock("./runProject.js");
+  delete process.env.NOOPOLIS_RUN_ID;
+  if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
+  else process.env.CODEX_HOME = previousCodexHome;
   await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
 });
 
 describe("upProject", () => {
+  it("fails loudly when the host CLI credential source is missing", async () => {
+    const { upProject, buildProject } = await loadUpProjectModule();
+    const codexHome = await createTempDirectory("spawnfile-missing-codex-");
+    process.env.CODEX_HOME = codexHome;
+    buildProject.mockResolvedValueOnce({
+      ...createCompileResult("/tmp/spawnfile-build-out"),
+      imageTag: "spawnfile-up-container",
+      report: createFakeReport({
+        runtime_instances: [{
+          config_path: "/var/lib/spawnfile/instances/daimon/agent/home/config.json",
+          home_path: "/var/lib/spawnfile/instances/daimon/agent/home",
+          id: "agent",
+          model_auth_methods: { openai: "codex" },
+          model_secrets_required: ["SPAWNFILE_CLI_AUTH_JSON"],
+          runtime: "daimon"
+        }]
+      })
+    });
+
+    const failure = upProject("/tmp/project", { imageTag: "spawnfile-up-container" });
+    await expect(failure).rejects.toThrow(`SPAWNFILE_CLI_AUTH_JSON`);
+    await expect(failure).rejects.toThrow(path.join(codexHome, "auth.json"));
+  });
+
   it("builds then runs using injected runners", async () => {
     const { upProject, buildProject, createDockerRunInvocation } = await loadUpProjectModule();
     const runRunner = vi.fn(async (invocation: { args: string[] }) => {
@@ -198,6 +226,50 @@ describe("upProject", () => {
     expect(result.containerName).toBe("up-container");
     expect(result.authProfileName).toBeNull();
     expect(result.supportDirectory).toBe("/tmp/spawnfile-run-support");
+  });
+
+  it("generates a NOOPOLIS_RUN_ID before building when the host env did not provide one", async () => {
+    delete process.env.NOOPOLIS_RUN_ID;
+    const { upProject, buildProject } = await loadUpProjectModule();
+    let runIdDuringBuild: string | undefined;
+    buildProject.mockImplementationOnce(async (inputPath: string, options: Record<string, unknown>) => {
+      runIdDuringBuild = process.env.NOOPOLIS_RUN_ID;
+      return {
+        ...createCompileResult("/tmp/spawnfile-build-out"),
+        imageTag: options.imageTag as string | undefined
+      };
+    });
+
+    await upProject("/tmp/project", {
+      containerName: "up-container",
+      imageTag: "spawnfile-up-container",
+      runRunner: async () => undefined
+    });
+
+    expect(runIdDuringBuild).toBeTruthy();
+    expect(process.env.NOOPOLIS_RUN_ID).toBe(runIdDuringBuild);
+  });
+
+  it("reuses an already-set NOOPOLIS_RUN_ID instead of generating a new one", async () => {
+    process.env.NOOPOLIS_RUN_ID = "run-from-host";
+    const { upProject, buildProject } = await loadUpProjectModule();
+    let runIdDuringBuild: string | undefined;
+    buildProject.mockImplementationOnce(async (inputPath: string, options: Record<string, unknown>) => {
+      runIdDuringBuild = process.env.NOOPOLIS_RUN_ID;
+      return {
+        ...createCompileResult("/tmp/spawnfile-build-out"),
+        imageTag: options.imageTag as string | undefined
+      };
+    });
+
+    await upProject("/tmp/project", {
+      containerName: "up-container",
+      imageTag: "spawnfile-up-container",
+      runRunner: async () => undefined
+    });
+
+    expect(runIdDuringBuild).toBe("run-from-host");
+    expect(process.env.NOOPOLIS_RUN_ID).toBe("run-from-host");
   });
 
   it("does not start runtime when planning fails", async () => {

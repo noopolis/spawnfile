@@ -61,6 +61,7 @@ const runningInspection = (): DockerInspectionResult => new Map([
     exists: true,
     exitCode: 0,
     finishedAt: null,
+    identity: null,
     imageId: "image-123",
     message: "running",
     restartCount: 0,
@@ -77,7 +78,7 @@ describe("runtime probe collection", () => {
     const record = deployment();
     const execFile = vi.fn(async (_file: string, args: string[]) => ({
       stderr: "",
-      stdout: args.includes("curl") ? "{\"status\":\"ok\"}\n" : ""
+      stdout: args.includes("curl") ? "{\"status\":\"ok\"}\n200" : ""
     }));
 
     const observations = await collectRuntimeProbeObservations({
@@ -96,7 +97,23 @@ describe("runtime probe collection", () => {
     }));
     expect(execFile).toHaveBeenCalledWith(
       "docker",
-      ["--host", "ssh://ops@example", "exec", "container-123", "curl", "-fsS", "http://127.0.0.1:18789/healthz"],
+      [
+        "--host",
+        "ssh://ops@example",
+        "run",
+        "--rm",
+        "--network",
+        "container:container-123",
+        "--entrypoint",
+        "curl",
+        "image-123",
+        "-sS",
+        "--output",
+        "-",
+        "--write-out",
+        "\\n%{http_code}",
+        "http://127.0.0.1:18789/healthz"
+      ],
       { timeout: 25 }
     );
   });
@@ -118,7 +135,7 @@ describe("runtime probe collection", () => {
           })
         };
       }
-      return { stderr: "", stdout: args.includes("curl") ? "{\"status\":\"ok\"}\n" : "" };
+      return { stderr: "", stdout: args.includes("curl") ? "{\"status\":\"ok\"}\n200" : "" };
     });
 
     const observations = await collectRuntimeProbeObservations({

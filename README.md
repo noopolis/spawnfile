@@ -20,6 +20,26 @@ It's not a runtime-to-runtime translator. The compiler starts from the canonical
 
 Pairs with [**Moltnet**](https://moltnet.dev) as the first provider for `team.networks[]`, letting compiled agents share declared rooms, DMs, and history across runtimes without Spawnfile injecting its own message router.
 
+For a Simfile linked to a Spawnfile, the product entrypoint is owned by
+Simfile:
+
+```bash
+simfile run ./Simfile --view
+```
+
+That command delegates only organization lifecycle operations to Spawnfile's
+public CLI and versioned receipts. Spawnfile prepares target resources,
+deploys the organization, records the pinned Pi-bridge Moltnet identity,
+exports evidence, and cleans up; it does not carry simulation behavior or
+trigger cognition. The world reaches paused/pristine readiness first, the
+organization starts second, and one attested activation releases independent
+world ticks and organization-owned schedules. A separately manifested
+`simfile.world-decision-claim.v1` capability may extend the base world-sidecar
+ABI without changing it. See
+[`specs/ECOSYSTEM_RUNTIME_BOUNDARIES.md`](specs/ECOSYSTEM_RUNTIME_BOUNDARIES.md)
+for ownership and [`specs/TARGETS.md`](specs/TARGETS.md) for target, auth,
+Moltnet pinning, recovery, and cleanup contracts.
+
 ## Install
 
 ```bash
@@ -49,13 +69,40 @@ spawnfile status . --live                        # inspect the detached deployme
 spawnfile publish . --tag you/my-agent:1.0.0     # compile + build + verify + push
 ```
 
-Compiled output lands under `.spawn/` by default, including a `Dockerfile`, `entrypoint.sh`, `.env.example`, and a prebuilt `container/rootfs/` tree. `spawnfile build` uses the pinned runtime artifacts from `runtimes.yaml`; it does not rebuild runtimes from source. Daimon, OpenClaw, and PicoClaw use published copyable artifact images by default, so normal prompt/config edits reuse their dependency layers. To test a local runtime artifact instead, set `SPAWNFILE_DAIMON_RUNTIME_IMAGE`, `SPAWNFILE_OPENCLAW_RUNTIME_IMAGE`, or `SPAWNFILE_PICOCLAW_RUNTIME_IMAGE` to a local image tag. For Pi-heavy orgs, build a reusable runtime base with `npm run runtime:pi-base -- noopolis/spawnfile-pi-runtime:0.79.9-node24`, then set `SPAWNFILE_PI_RUNTIME_BASE_IMAGE` during `spawnfile up`. For `build`/`up` on a docker `--context`, Moltnet release assets are staged for that context's architecture (`amd64` or `arm64`); for local-only manual compile targeting a fixed architecture, set `SPAWNFILE_MOLTNET_TARGET_ARCH=amd64|arm64`.
+Compiled output lands under `.spawn/` by default, including a `Dockerfile`, `entrypoint.sh`, `.env.example`, and a prebuilt `container/rootfs/` tree. `spawnfile build` uses the pinned runtime artifacts from `runtimes.yaml`; it does not rebuild runtimes from source. Daimon, OpenClaw, and PicoClaw use published copyable artifact images by default, so normal prompt/config edits reuse their dependency layers. To test a local runtime artifact instead, set `SPAWNFILE_DAIMON_RUNTIME_IMAGE`, `SPAWNFILE_OPENCLAW_RUNTIME_IMAGE`, or `SPAWNFILE_PICOCLAW_RUNTIME_IMAGE` to a local image tag. For `build`/`up` on a docker `--context`, Moltnet release assets are staged for that context's architecture (`amd64` or `arm64`); for local-only manual compile targeting a fixed architecture, set `SPAWNFILE_MOLTNET_TARGET_ARCH=amd64|arm64`.
 
 `spawnfile status` is read-only. By default it shows authored and compiled state without Docker, runtime, or Moltnet calls. With `--live`, it reads the selected detached deployment record, inspects the recorded Docker target, runs adapter-owned runtime probes, and checks Moltnet metadata without reading message bodies. Add `--logs` for a redacted Docker log tail, or `--watch` to refresh status continuously. For a remote Docker context where the local record is missing, pass `--context <name>` with `--live` to recover the deployment from Spawnfile container labels.
 
 `spawnfile dev` is the source-backed interactive loop. It uses `.spawn-dev/` by default, starts a detached dev deployment with `spawnfile dev up`, and can hot-apply one Daimon runtime agent with `spawnfile dev apply --agent <id>` without restarting the rest of the org. Hot apply recompiles source, copies the selected agent workspace, Daimon config, matching Moltnet node configs, and managed Moltnet server configs into the running container, loads it through the Daimon control endpoint, and starts only that agent's Moltnet bridges when it is new. `spawnfile dev activity` reads the generated Daimon app's bounded activity buffer as JSON lines so operators can see queued wakes, turn starts/completions, runtime event types, output completions, and errors without mixing those diagnostics into Moltnet chat. Running managed Moltnet servers keep their current in-memory room membership until an operator-token `moltnet apply` or server restart reconciles the copied server config.
 
 Compiled images are self-describing: `spawnfile publish` pushes one to any OCI registry, and anyone can run it with no source — `spawnfile up you/my-agent:1.0.0 --deployment prod --detach --auth-profile me` — or inspect what it needs first with `spawnfile status you/my-agent:1.0.0`. See [`specs/DISTRIBUTION.md`](specs/DISTRIBUTION.md).
+
+### Target adapter CLI
+
+`spawnfile target` is the explicit, non-interactive target-adapter boundary for
+an external orchestrator. It takes one absolute request JSON file and one
+strict private configuration object on standard input — never a configuration
+path or inline configuration:
+
+```bash
+target-config-producer | spawnfile target --config - create_data_network /absolute/path/request.json
+```
+
+On success it writes exactly one canonical JSON receipt followed by a newline.
+
+For a crash-safe machine caller handoff, project-mode `up --json`, `artifacts export
+--json`, and `down --json` accept `--lifecycle-invocation lci_<stable-id>`. Spawnfile
+binds that id to the exact operation, correlation, and request policy, atomically stores
+the exact JSON bytes after the owner returns and before stdout, and rejects reuse with
+drift. `spawnfile lifecycle lookup <id>` is read-only and returns one versioned state:
+`not_applied`, `pending`, `completed`, or `ambiguous`, without Docker/provider
+inspection. Recovery only resumes an operation when that command verifies exact durable
+evidence that resumption is safe; otherwise it seals `ambiguous` and fails closed.
+It writes no secret values to output or diagnostics. The full verb list,
+request/receipt contract, and exit behavior are in [`specs/TARGETS.md`](specs/TARGETS.md).
+`target lookup_operation` accepts the original mutation request with a minimal
+read-only context config and reports `completed`, `pending`, or `not_applied`
+without calling the target provider or changing its journal.
 
 Declare external credentials in `secrets:` and provide values through an ignored env file or the shell environment. `spawnfile auth sync --env-file .env` stores declared model auth and project secrets in a local auth profile; `spawnfile run --env-file .env` can inject the same values directly for a single run. This is the intended pattern for credentials like `GH_TOKEN`, MCP tokens, and provider API keys.
 
@@ -105,8 +152,6 @@ v0.1 targets autonomous agent runtimes that share a markdown workspace identity 
 | OpenClaw  | active        | ✅      | Discord, Telegram, WhatsApp, Slack            |
 | PicoClaw  | active        |         | Discord, Telegram, Slack (WhatsApp blocked)   |
 | Pi        | active        |         | Embedded org app, Moltnet client config       |
-| NullClaw  | exploratory   |         | No active adapter yet                         |
-| ZeroClaw  | exploratory   |         | No active adapter yet                         |
 | OpenFang  | exploratory   |         | No active adapter yet                         |
 | Hermes Agent | exploratory |        | No active adapter yet                         |
 | OpenCode  | exploratory   |         | No active adapter yet                         |
@@ -131,7 +176,7 @@ The source-of-truth specs live in this repo:
 - [`specs/SURFACES.md`](specs/SURFACES.md) — messaging surface model
 - [`specs/STATUS.md`](specs/STATUS.md) — static and live operational status
 - [`specs/DISTRIBUTION.md`](specs/DISTRIBUTION.md) — image distribution, publish, and sourceless run
-- [`fixtures/`](fixtures/) — canonical example projects
+- [`test/fixtures/`](test/fixtures/) — canonical example projects
 
 ## From source
 
@@ -144,16 +189,10 @@ npm run build
 npm link
 ```
 
-To clone pinned runtimes and generate reference blueprints:
-
-```bash
-npm run runtimes:sync
-```
-
 For local development without linking globally:
 
 ```bash
-npm run dev -- validate fixtures/single-agent
+npm run dev -- validate test/fixtures/single-agent
 ```
 
 ## Contributing

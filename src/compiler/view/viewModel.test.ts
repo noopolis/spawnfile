@@ -139,6 +139,36 @@ describe("organization view model", () => {
     expect(tree).not.toContain(directory);
   });
 
+  it("renders inline agents with their stable member source", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-view-inline-"));
+    temporaryDirectories.push(directory);
+    await writeUtf8File(path.join(directory, "red.md"), "# Red\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: inline-team",
+        "mode: swarm",
+        "members:",
+        "  - id: red",
+        "    runtime: openclaw",
+        "    workspace:",
+        "      docs:",
+        "        system: red.md",
+        ""
+      ].join("\n")
+    );
+
+    const view = await buildOrganizationView(directory);
+    const tree = renderOrganizationTree(view, { paths: true });
+
+    expect(view.root.children[0]?.node.source).toBe(
+      `${path.join(directory, "Spawnfile")}#member=red`
+    );
+    expect(tree).toContain("red: agent red [openclaw] runtime=openclaw source=Spawnfile#member=red");
+  });
+
   it("groups reused provider network ids and renders network member metadata", async () => {
     const directory = await createNestedNetworkProject();
     const view = await buildOrganizationView(directory);

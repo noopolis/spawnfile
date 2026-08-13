@@ -17,6 +17,9 @@ These are the source of truth. Implementation in `src/` must stay aligned with t
 | [RUNTIMES.md](RUNTIMES.md) | evolving | Runtime registry model — version pinning, status tracking, adapter lifecycle |
 | [STATUS.md](STATUS.md) | evolving | Operational status — static and live status, deployment records, Docker targets, runtime probes, and Moltnet metadata-only diagnostics |
 | [DISTRIBUTION.md](DISTRIBUTION.md) | evolving | Image distribution — self-describing images, sourceless run/status, deployment record v2, publish, registry drift, and the network binding contract |
+| [CAUSAL.md](CAUSAL.md) | evolving | Causal event envelope — producer wire rules plus the shared Stele read/verify and reconciliation contract |
+| [TARGETS.md](TARGETS.md) | evolving | Project-neutral target-resource public contracts and staged target-adapter boundary |
+| [ECOSYSTEM_RUNTIME_BOUNDARIES.md](ECOSYSTEM_RUNTIME_BOUNDARIES.md) | normative, evolving | Cross-project runtime authority — lifecycle composition, autonomous agents, world execution, provider ownership, Stele verification, senses/actions/MCP, and enforcement gates |
 
 ## Research
 
@@ -27,6 +30,7 @@ Working notes and analysis. Informative, not normative. These inform spec decisi
 | [research/AUTH-NOTES.md](research/AUTH-NOTES.md) | Auth research and implementation notes — provider credentials, channel auth, CLI credential stores, and Spawnfile auth profile UX |
 | [research/DIRECT-SURFACES.md](research/DIRECT-SURFACES.md) | Direct protocol surface research — `http`, `webhook`, `a2a`, shared envelope design, and future shared-network compatibility rules |
 | [research/DIRECTION.md](research/DIRECTION.md) | Design direction and roadmap — consolidated findings from 21 design discussions, feature status, implementation priority |
+| [research/MEMORY-BACKENDS.md](research/MEMORY-BACKENDS.md) | Portable memory-backend research and adapter tradeoffs |
 | [research/RUNTIME-NOTES.md](research/RUNTIME-NOTES.md) | Per-runtime research — config surfaces, capabilities, overlap analysis, team lowering patterns, adapter strategies |
 
 ---
@@ -41,8 +45,16 @@ SPEC.md                    ← canonical schema, everything depends on this
   ├── RUNTIMES.md          ← which runtimes exist and how they're tracked
   └── STATUS.md            ← operational status contract over authored, compiled, deployed, runtime, and network layers
 
+CAUSAL.md                  ← producer wire contract for simfile, moltnet, mneme,
+                              and daimon; shared read/verify contract for Stele
+
+ECOSYSTEM_RUNTIME_BOUNDARIES.md
+                           ← normative ownership constraints across Spawnfile,
+                              Simfile, Daimon, Moltnet, Mneme, and Stele
+
 research/RUNTIME-NOTES.md  ← informs adapter implementation and RUNTIMES.md
 research/AUTH-NOTES.md     ← informs auth/profile UX, per-model auth/endpoint config, and future surface provisioning
 research/DIRECT-SURFACES.md ← informs direct `http` / `webhook` / `a2a` surface design and future shared-network compatibility
+research/MEMORY-BACKENDS.md ← informs portable memory adapter choices
 research/DIRECTION.md      ← consolidated design direction and roadmap from 21 discussions
 ```

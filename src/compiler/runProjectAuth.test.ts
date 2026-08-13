@@ -18,7 +18,10 @@ import type { ContainerReport } from "../report/index.js";
 
 import {
   assertDeclaredModelAuthSatisfied,
-  prepareRuntimeAuthMounts
+  assertMoltnetCredentialValuesDistinct,
+  prepareRuntimeAuthMounts,
+  resolveAuthMountArgs,
+  resolveRunEnvironment
 } from "./runProjectAuth.js";
 
 const previousSpawnfileHome = process.env.SPAWNFILE_HOME;
@@ -77,13 +80,48 @@ afterEach(async () => {
 });
 
 describe("prepareRuntimeAuthMounts", () => {
-  it("returns empty mounts when no auth profile is provided", async () => {
+  it("returns empty mounts when no auth profile is provided and the adapter needs no host credentials", async () => {
     await expect(
       prepareRuntimeAuthMounts("/tmp/out", createContainerReport("openclaw"), null, {}, "/tmp/run")
     ).resolves.toEqual({
       coveredModelSecrets: new Set(),
       mountArgs: []
     });
+  });
+
+  it("still stages a real-engine host CLI home (e.g. grok) for a pi instance when no auth profile is provided", async () => {
+    // This is the composed real-engine regression case: `spawnfile up` (via
+    // the simfile driver) never passes `--auth-profile`, since simfile's
+    // charter forbids it from handling auth. The Pi adapter's optional
+    // grok/codex/antigravity CLI-home staging (mirroring the e2e harness's
+    // `stageGrokHome`) must not be gated behind an auth profile that has
+    // nothing to do with those host credentials.
+    const grokHome = await createTempDirectory("spawnfile-grok-home-");
+    const tempRoot = await createTempDirectory("spawnfile-run-auth-");
+    const previousGrokHome = process.env.GROK_HOME;
+    process.env.GROK_HOME = grokHome;
+    await writeUtf8File(path.join(grokHome, "auth.json"), "{\"token\":\"grok\"}\n");
+
+    try {
+      const prepared = await prepareRuntimeAuthMounts(
+        "/tmp/out",
+        createContainerReport("pi"),
+        null,
+        {},
+        tempRoot
+      );
+
+      expect(prepared.coveredModelSecrets).toEqual(new Set());
+      const grokMount = prepared.mountArgs.find((value) => value.endsWith("/.grok"));
+      expect(grokMount).toBeDefined();
+      expect(grokMount).toContain(`:${"/var/lib/spawnfile/instances/pi/instance/home"}/.grok`);
+    } finally {
+      if (previousGrokHome === undefined) {
+        delete process.env.GROK_HOME;
+      } else {
+        process.env.GROK_HOME = previousGrokHome;
+      }
+    }
   });
 
   it("delegates runtime auth preparation to adapters with declared auth methods", async () => {
@@ -138,6 +176,20 @@ describe("prepareRuntimeAuthMounts", () => {
 
     expect(prepared.coveredModelSecrets).toEqual(new Set(["openclaw-instance:OPENAI_API_KEY"]));
     expect(prepared.mountArgs.length).toBeGreaterThan(0);
+  });
+});
+
+describe("resolveAuthMountArgs", () => {
+  it.each(["pi", "daimon"])("leaves %s runtime homes to the Pi auth adapter", async (runtime) => {
+    const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
+    process.env.SPAWNFILE_HOME = spawnfileHome;
+    await registerImportedAuth("dev", "codex");
+    const homePath = `/var/lib/spawnfile/instances/${runtime}/instance/home`;
+
+    await expect(resolveAuthMountArgs({
+      ...createContainerReport(runtime),
+      runtime_homes: [homePath]
+    }, await requireAuthProfile("dev"))).resolves.toEqual([]);
   });
 });
 
@@ -213,5 +265,58 @@ describe("assertDeclaredModelAuthSatisfied", () => {
         profile
       )
     ).toThrow(/missing required auth imports: claude-code/);
+  });
+});
+
+describe("assertMoltnetCredentialValuesDistinct", () => {
+  const report = {
+    ...createContainerReport("pi"),
+    moltnet: {
+      node_plans: [],
+      server_plans: [{
+        auth_mode: "bearer" as const,
+        auth_tokens: [
+          { agents: ["red"], id: "red", scopes: ["attach" as const, "write" as const], secret: "RED_TOKEN" },
+          { agents: ["blue"], id: "blue", scopes: ["attach" as const, "write" as const], secret: "BLUE_TOKEN" },
+          { agents: ["world"], id: "world", scopes: ["admin" as const, "observe" as const, "write" as const], secret: "WORLD_TOKEN" }
+        ],
+        base_url: "http://127.0.0.1:19971",
+        id: "pitch",
+        mode: "managed" as const,
+        network_id: "pitch",
+        rooms: []
+      }]
+    }
+  };
+
+  it("accepts three distinct bearer values", () => {
+    expect(() => assertMoltnetCredentialValuesDistinct(report, {
+      BLUE_TOKEN: "blue-secret",
+      RED_TOKEN: "red-secret",
+      WORLD_TOKEN: "world-secret"
+    })).not.toThrow();
+  });
+
+  it("provisions missing managed bearer values without exposing a shared token", () => {
+    const env = resolveRunEnvironment({
+      ...report,
+      secrets_required: ["BLUE_TOKEN", "RED_TOKEN", "WORLD_TOKEN"]
+    }, null);
+    expect(Object.keys(env).sort()).toEqual(["BLUE_TOKEN", "RED_TOKEN", "WORLD_TOKEN"]);
+    expect(new Set(Object.values(env)).size).toBe(3);
+    expect(Object.values(env).every((value) => value.length >= 32)).toBe(true);
+  });
+
+  it("rejects equal or whitespace-equivalent bearer values", () => {
+    expect(() => assertMoltnetCredentialValuesDistinct(report, {
+      BLUE_TOKEN: "shared",
+      RED_TOKEN: "shared",
+      WORLD_TOKEN: "world-secret"
+    })).toThrow(/requires distinct credential values/);
+    expect(() => assertMoltnetCredentialValuesDistinct(report, {
+      BLUE_TOKEN: " blue-secret ",
+      RED_TOKEN: "red-secret",
+      WORLD_TOKEN: "world-secret"
+    })).toThrow(/must not contain leading or trailing whitespace/);
   });
 });

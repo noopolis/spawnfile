@@ -3,7 +3,7 @@
 ARG NODE_VERSION=24
 FROM node:${NODE_VERSION}-bookworm-slim AS build
 
-ARG OPENCLAW_VERSION=2026.6.8
+ARG OPENCLAW_VERSION=2026.6.11
 ARG RUNTIME_ROOT=/opt/spawnfile/runtime-installs/openclaw
 
 RUN mkdir -p /tmp/openclaw-install \

@@ -1,0 +1,39 @@
+spawnfile_version: "0.1"
+kind: team
+name: moltnet-memetics
+description: "E2E fixture for one live Eleanor<->Sam Moltnet conversation over real Codex"
+
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
+
+members:
+  - id: eleanor
+    ref: ./agents/eleanor
+  - id: sam
+    ref: ./agents/sam
+
+mode: swarm
+
+networks:
+  - id: memetics_lab
+    name: Memetics Lab
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 0.0.0.0
+        port: 8787
+      store:
+        kind: memory
+      auth:
+        mode: none
+      human_ingress: true
+    rooms:
+      - id: eleanor-home
+        members: [eleanor, sam]
+
+policy:
+  mode: warn
+  on_degrade: warn

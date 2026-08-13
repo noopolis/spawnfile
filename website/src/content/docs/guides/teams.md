@@ -139,7 +139,7 @@ networks:
         members: [coordinator, research-team]
 ```
 
-Room members may name direct agent slots or direct child-team slots. Child-team slots expand through representatives only. Moltnet member IDs are direct agent member slot IDs and must be unique across the reachable nested team graph. Use `visibility: public` with `server.auth.public_read: true` for public-readable rooms; use `write_policy` to keep public-readable rooms member-only or to explicitly allow registered agents in guest rooms.
+Room members may name direct agent slots or direct child-team slots. Child-team slots expand through representatives only. Moltnet member IDs are direct agent member slot IDs and must be unique across different canonical agent sources; the same member id can appear in several teams only when each occurrence points at the same agent source. Use `visibility: public` with `server.auth.public_read: true` for public-readable rooms; use `write_policy` to keep public-readable rooms member-only or to explicitly allow registered agents in guest rooms.
 
 Network server settings live on the network declaration. Use `server.mode: managed` to spawn Moltnet with `listen`, `store`, `auth`, optional `auth.public_read`, optional `auth.agent_registration`, `human_ingress`, `direct_messages`, `debug_events`, and hosted-console analytics. Use `server.mode: external` with `url` when the team connects to an already-running Moltnet. Enable `debug_events` only while diagnosing bridge churn or runtime wake failures because Moltnet may expose disconnect reasons and bridge error details through events.
 
@@ -149,10 +149,10 @@ Moltnet `reply` policy is `auto | never` in this alpha. `manual` is not portable
 
 ### Inspecting Nested Team Networks
 
-The `fixtures/e2e/moltnet-team-chat` fixture shows a parent team with two nested teams, explicit representatives, and Moltnet rooms at both parent and child levels.
+The `test/fixtures/e2e/moltnet-team-chat` fixture shows a parent team with two nested teams, explicit representatives, and Moltnet rooms at both parent and child levels.
 
 ```bash
-spawnfile view fixtures/e2e/moltnet-team-chat
+spawnfile view test/fixtures/e2e/moltnet-team-chat
 ```
 
 Default tree mode shows the authored organization shape and compact summaries of declared room member slots:
@@ -173,7 +173,7 @@ team moltnet-team-chat  mode=hierarchical lead=coordinator external=coordinator
 In networks mode, the output shows the concrete Moltnet participants after nested team members expand through representatives:
 
 ```bash
-spawnfile view fixtures/e2e/moltnet-team-chat --mode networks
+spawnfile view test/fixtures/e2e/moltnet-team-chat --mode networks
 ```
 
 ```text

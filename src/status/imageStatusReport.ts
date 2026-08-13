@@ -13,8 +13,14 @@ export const distributionReportToStatusReport = (
   reportPath: string
 ): StatusReport => ({
   compileFingerprint: report.compile_fingerprint,
+  // A distribution/image report has no on-disk compiled output tree to read
+  // an entrypoint script or Moltnet node config from (see B38's
+  // lifecycle/wiring probes) — falls back to unknown/not-checked, same
+  // shape as moltnetServers below.
+  entrypointPath: null,
   generatedAt: report.generated_at,
   internalPorts: report.internal_ports,
+  moltnetNodePlans: [],
   moltnetServers: [],
   nodes: [
     ...report.organization.agents.map((agent) => ({

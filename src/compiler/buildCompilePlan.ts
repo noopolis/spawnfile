@@ -10,12 +10,15 @@ import {
 import { assignStableNodeIds } from "./helpers.js";
 import { CompilePlan, CompilePlanEdge, CompilePlanNode, ResolvedTeamMembershipContext } from "./types.js";
 import { resolvePlanMoltnetAttachments } from "./moltnetResolution.js";
+import { resolvePlanMemoryAccess } from "./memoryResolution.js";
 import { resolveMoltnetRoomMemberships } from "./moltnetRoomMemberships.js";
 import { createRuntimeGroups } from "./buildCompilePlanRuntime.js";
+import { validateAllowedWakeSenders } from "./moltnetAllowedWakeSendersValidation.js";
 import {
   createCompilePlanTraversal,
   type InternalNode
 } from "./buildCompilePlanTraversal.js";
+import { resolveMoltnetExternalParticipantIntents, resolveOrganizationIdentity, validateB31MoltnetAuth } from "./organizationIdentity.js";
 
 export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> => {
   const rootManifestPath = getCanonicalManifestPath(getManifestPath(inputPath));
@@ -86,8 +89,20 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
     runtimes: createRuntimeGroups(compilePlanNodes)
   };
 
+  const organizationIdentity = resolveOrganizationIdentity(compilePlan);
+  if (organizationIdentity) compilePlan.organizationIdentity = organizationIdentity;
+  // Reject duplicate or invalid authored actor selections before attachment
+  // synthesis can merge them into a single canonical attachment.
+  validateB31MoltnetAuth(compilePlan);
+  const externalParticipantIntents = resolveMoltnetExternalParticipantIntents(compilePlan);
+  if (organizationIdentity) compilePlan.moltnetExternalParticipantIntents = externalParticipantIntents;
   compilePlan.moltnetRoomMemberships = resolveMoltnetRoomMemberships(compilePlan);
+  resolvePlanMemoryAccess(compilePlan);
   resolvePlanMoltnetAttachments(compilePlan);
+  // Recheck the actual canonical attachments emitted after representative
+  // synthesis and duplicate merging.
+  validateB31MoltnetAuth(compilePlan);
+  validateAllowedWakeSenders(compilePlan);
 
   return compilePlan;
 };

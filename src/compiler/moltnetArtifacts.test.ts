@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { TeamNetworkServer } from "../manifest/index.js";
 
 import { generateMoltnetArtifacts } from "./moltnetArtifacts.js";
+import { createPersistentVolumeName } from "./moltnetArtifactPaths.js";
 import type { CompilePlan, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 
 const createManagedServer = (): Extract<TeamNetworkServer, { mode: "managed" }> => ({
@@ -166,6 +167,7 @@ describe("moltnetArtifacts", () => {
         {
           configPath:
             "/var/lib/spawnfile/moltnet/nodes/research-cell-local_lab-orchestrator.json",
+          memberId: "orchestrator",
           networkId: "local_lab"
         }
       ]);
@@ -265,6 +267,7 @@ describe("moltnetArtifacts", () => {
       {
         configPath:
           "/var/lib/spawnfile/moltnet/nodes/research-cell-local_lab-assistant.json",
+        memberId: "assistant",
         networkId: "local_lab"
       }
     ]);
@@ -290,6 +293,10 @@ describe("moltnetArtifacts", () => {
       {
         id: "agent-pi-assistant-moltnet-tokens",
         mountPath: "/var/lib/spawnfile/agents/pi-assistant/state/moltnet"
+      },
+      {
+        id: "moltnet-local_lab-causal",
+        mountPath: "/var/lib/spawnfile/moltnet/servers/research-cell-local_lab/causal"
       }
     ]);
   });
@@ -408,6 +415,12 @@ describe("moltnetArtifacts", () => {
       '"/var/lib/spawnfile/moltnet/networks/local_lab/moltnet.sqlite"'
     );
     expect(artifacts?.persistentMounts).toEqual([
+      {
+        id: "moltnet-local_lab-causal",
+        mountPath: "/var/lib/spawnfile/moltnet/servers/research-cell-local_lab/causal",
+        reason: "managed Moltnet causal event log for local_lab",
+        volumeName: createPersistentVolumeName("/tmp/team/Spawnfile", "moltnet-local_lab-causal")
+      },
       {
         id: "moltnet-local_lab-store",
         mountPath: "/var/lib/spawnfile/moltnet/networks/local_lab",
@@ -537,6 +550,7 @@ describe("moltnetArtifacts", () => {
     ]);
     expect(artifacts?.nodePlans).toContainEqual({
       configPath: "/var/lib/spawnfile/moltnet/nodes/quality-cell-local_lab-reviewer.json",
+      memberId: "reviewer",
       networkId: "local_lab"
     });
     expect(
@@ -626,6 +640,11 @@ describe("moltnetArtifacts", () => {
         id: "agent-orchestrator-moltnet-tokens",
         mountPath: "/var/lib/spawnfile/agents/orchestrator/state/moltnet",
         reason: "Moltnet open-mode generated agent tokens for orchestrator-agent"
+      }),
+      expect.objectContaining({
+        id: "moltnet-local_lab-causal",
+        mountPath: "/var/lib/spawnfile/moltnet/servers/research-cell-local_lab/causal",
+        reason: "managed Moltnet causal event log for local_lab"
       })
     ]);
   });
@@ -716,7 +735,11 @@ describe("moltnetArtifacts", () => {
     });
 
     await expect(generateMoltnetArtifacts(plan)).rejects.toThrow(
-      /conflicting visibility: public vs private/
+      /conflicting visibility: private vs public/
+    );
+    plan.nodes.reverse();
+    await expect(generateMoltnetArtifacts(plan)).rejects.toThrow(
+      /conflicting visibility: private vs public/
     );
   });
 
@@ -1067,7 +1090,7 @@ describe("moltnetArtifacts", () => {
     plan.nodes.push({
       id: "agent-unsupported",
       kind: "agent",
-      runtimeName: "zeroclaw",
+      runtimeName: "mysteryclaw",
       slug: "unsupported",
       value: {
         description: "",
@@ -1079,7 +1102,7 @@ describe("moltnetArtifacts", () => {
         name: "unsupported-agent",
         policyMode: null,
         policyOnDegrade: null,
-        runtime: { name: "zeroclaw", options: {} },
+        runtime: { name: "mysteryclaw", options: {} },
         secrets: [],
         skills: [],
         source: "/tmp/agents/unsupported/Spawnfile",
@@ -1100,7 +1123,7 @@ describe("moltnetArtifacts", () => {
     });
 
     await expect(generateMoltnetArtifacts(plan)).rejects.toThrow(
-      /does not know how to attach runtime zeroclaw/
+      /does not know how to attach runtime mysteryclaw/
     );
   });
 });

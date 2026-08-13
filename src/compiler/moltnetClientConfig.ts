@@ -23,6 +23,7 @@ interface MoltnetClientAttachmentConfig {
   dms?: {
     enabled: boolean;
     wake?: "all" | "mentions" | "thread_only" | "never";
+    allowed_wake_senders?: string[];
   };
   member_id: string;
   network_id: string;
@@ -98,7 +99,8 @@ const createAttachmentConfig = (
     serverPlan.server,
     attachment.network,
     attachment.memberId,
-    agentSlug
+    agentSlug,
+    attachment.auth?.tokenId
   );
 
   return {
@@ -114,7 +116,12 @@ const createAttachmentConfig = (
       ? {
           dms: {
             enabled: attachment.dms.enabled,
-            ...(attachment.dms.wake ? { wake: attachment.dms.wake } : {})
+            ...(attachment.dms.wake ? { wake: attachment.dms.wake } : {}),
+            ...(attachment.dms.allowedWakeSenders !== undefined
+              ? {
+                  allowed_wake_senders: [...attachment.dms.allowedWakeSenders]
+                }
+              : {})
           }
         }
       : {}),

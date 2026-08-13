@@ -5,7 +5,12 @@ import { mkdtemp } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { readUtf8File, removeDirectory, writeUtf8File } from "../filesystem/index.js";
-import { isAgentManifest, isTeamManifest, loadManifest } from "../manifest/index.js";
+import {
+  isAgentManifest,
+  isInlineAgentMember,
+  isTeamManifest,
+  loadManifest
+} from "../manifest/index.js";
 
 import { addAgentProject, addSubagentProject } from "./addProjectNode.js";
 import { initProject } from "./initProject.js";
@@ -84,6 +89,65 @@ describe("setProjectPrimaryModel", () => {
     expect(rootManifest.manifest.execution).toBeUndefined();
     expect(writerManifest.manifest.execution?.model?.primary.name).toBe("gpt-5.4");
     expect(criticManifest.manifest.execution?.model?.primary.auth?.method).toBe("codex");
+  });
+
+  it("updates inline agent models in their declaring team file", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-model-inline-"));
+    temporaryDirectories.push(directory);
+    const manifestPath = path.join(directory, "Spawnfile");
+
+    await writeUtf8File(path.join(directory, "red.md"), "# Red\n");
+    await writeUtf8File(
+      manifestPath,
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: inline-team",
+        "mode: swarm",
+        "members:",
+        "  - id: red",
+        "    runtime: openclaw",
+        "    workspace:",
+        "      docs:",
+        "        system: red.md",
+        ""
+      ].join("\n")
+    );
+
+    const result = await setProjectPrimaryModel({
+      authMethod: "codex",
+      name: "gpt-5.4",
+      path: directory,
+      provider: "openai",
+      recursive: true
+    });
+    await addProjectModelFallback({
+      authMethod: "claude-code",
+      name: "claude-opus-4-6",
+      path: directory,
+      provider: "anthropic",
+      recursive: true
+    });
+    const withFallback = await loadManifest(manifestPath);
+    await clearProjectModelFallbacks({ path: directory, recursive: true });
+    const cleared = await loadManifest(manifestPath);
+
+    expect(result.updatedFiles).toEqual([manifestPath]);
+    expect(withFallback.manifest.kind).toBe("team");
+    expect(cleared.manifest.kind).toBe("team");
+    if (withFallback.manifest.kind !== "team" || cleared.manifest.kind !== "team") {
+      throw new Error("expected team manifests");
+    }
+    const withFallbackMember = withFallback.manifest.members[0];
+    const clearedMember = cleared.manifest.members[0];
+    expect(isInlineAgentMember(withFallbackMember)).toBe(true);
+    expect(isInlineAgentMember(clearedMember)).toBe(true);
+    if (!isInlineAgentMember(withFallbackMember) || !isInlineAgentMember(clearedMember)) {
+      throw new Error("expected inline agent members");
+    }
+    expect(withFallbackMember.execution?.model?.primary.name).toBe("gpt-5.4");
+    expect(withFallbackMember.execution?.model?.fallback?.[0]?.name).toBe("claude-opus-4-6");
+    expect(clearedMember.execution?.model?.fallback).toBeUndefined();
   });
 
   it("rejects non-recursive model updates on team manifests", async () => {

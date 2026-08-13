@@ -1,95 +1,36 @@
 import type { EmittedFile } from "../runtime/index.js";
+import { resolveNoopolisRunId } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
-import type { TeamNetworkServer } from "../manifest/index.js";
 
 import {
+  createMoltnetCausalDirectory,
+  createMoltnetServerConfigPath,
   createMoltnetOpenTokenDirectory,
   createMoltnetNativeServerConfig,
   createMoltnetNodeConfigPath,
-  createMoltnetServerConfigPath,
   resolveMoltnetClientAuth,
-  resolveMoltnetBaseUrl,
-  resolveMoltnetStorePersistenceMountPath,
-  type MoltnetSecretPatch
+  resolveMoltnetStorePersistenceMountPath
 } from "./moltnetConfigLowering.js";
+import type { MoltnetArtifacts, MoltnetNodePlan, MoltnetPersistentMount, MoltnetServerPlan } from "./moltnetArtifactTypes.js";
 import type { CompilePlan, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 import { assertNetworkBindingEnvUniqueness } from "./networkBinding.js";
-import { listConcreteMoltnetRoomMemberIds } from "./moltnetRoomMemberships.js";
-import { assertCompatibleMoltnetNetworkName, assertCompatibleMoltnetRoomPolicy, assertCompatibleMoltnetServer } from "./moltnetRoomPolicyCompatibility.js";
 import { createMoltnetNodeConfigContent } from "./moltnetNodeConfig.js";
-import { createShortHash, slugify } from "./helpers.js";
+import {
+  createPersistentVolumeName,
+  isNetworkHttpEnabled,
+  toContainerRootfsPath
+} from "./moltnetArtifactPaths.js";
+import { createMoltnetExternalParticipantArtifactFiles } from "./moltnetExternalParticipantArtifact.js";
+import { resolveMoltnetServerPlans } from "./moltnetServerPlans.js";
 
-export interface MoltnetServerPlan {
-  baseUrl: string;
-  configPath?: string;
-  id: string;
-  mode: "external" | "managed";
-  name: string;
-  networkId: string;
-  port?: number;
-  rooms: Array<{
-    id: string;
-    members: string[];
-    name?: string;
-    visibility?: "public" | "private";
-    write_policy?: "members" | "operators" | "registered_agents";
-  }>;
-  server: TeamNetworkServer;
-  secretPatches: MoltnetSecretPatch[];
-  teamSource: string;
-}
-
-export interface MoltnetNodePlan {
-  configPath: string;
-  networkId: string;
-}
-
-export interface MoltnetPersistentMount {
-  id: string;
-  mountPath: string;
-  reason: string;
-  volumeName: string;
-}
-
-export interface MoltnetArtifacts {
-  files: EmittedFile[];
-  nodePlans: MoltnetNodePlan[];
-  persistentMounts: MoltnetPersistentMount[];
-  ports: number[];
-  publishedPorts: number[];
-  serverPlans: MoltnetServerPlan[];
-}
-
-const DEFAULT_MOLTNET_PORT = 8787;
-const ROOTFS_PREFIX = "container/rootfs";
+export type {
+  MoltnetArtifacts,
+  MoltnetNodePlan,
+  MoltnetPersistentMount,
+  MoltnetServerPlan
+} from "./moltnetArtifactTypes.js";
 
 const createServerKey = (networkId: string): string => networkId;
-
-const truncateSegment = (value: string, maxLength: number): string =>
-  value.length > maxLength ? value.slice(0, maxLength).replace(/[-_.]+$/u, "") : value;
-
-const createPersistentVolumeName = (planRoot: string, id: string, explicitName?: string): string => {
-  if (explicitName && explicitName.trim().length > 0) {
-    return explicitName.trim();
-  }
-
-  const project = truncateSegment(slugify(planRoot.split("/").slice(-2, -1)[0] ?? "project") || "project", 32);
-  const suffix = truncateSegment(slugify(id) || "state", 48);
-  return `spawnfile-${project}-${suffix}-${createShortHash(`${planRoot}:${id}`)}`;
-};
-
-const toContainerRootfsPath = (rootfsPath: string): string =>
-  `/${rootfsPath.replace(`${ROOTFS_PREFIX}/`, "")}`;
-
-const isNetworkHttpEnabled = (
-  network: NonNullable<ResolvedTeamNode["networks"]>[number]
-): boolean => network.server?.mode === "managed" && network.server.human_ingress === true;
-
-const resolveNetworkPort = (
-  network: NonNullable<ResolvedTeamNode["networks"]>[number],
-  fallbackPort: number
-): number =>
-  network.server?.mode === "managed" ? network.server.listen.port : fallbackPort;
 
 export const generateMoltnetArtifacts = async (
   plan: CompilePlan
@@ -102,110 +43,19 @@ export const generateMoltnetArtifacts = async (
     return null;
   }
 
-  const serverPlans = new Map<string, MoltnetServerPlan>();
-  let nextPort = DEFAULT_MOLTNET_PORT;
+  // Run-scoping key for every persistent volume name derived below (see
+  // createPersistentVolumeName's doc comment). Read once per compile so
+  // every mount in this compile agrees on the same value.
+  const runId = resolveNoopolisRunId(process.env);
 
-  for (const teamNode of teamNodes) {
-    for (const network of teamNode.value.networks ?? []) {
-      const server = network.server;
-      if (!server) {
-        throw new SpawnfileError(
-          "validation_error",
-          `Moltnet network ${network.id} must declare server`
-        );
-      }
-
-      const serverKey = createServerKey(network.id);
-      const existingPlan = serverPlans.get(serverKey);
-      if (existingPlan) {
-        if (existingPlan.baseUrl !== resolveMoltnetBaseUrl(server)) {
-          throw new SpawnfileError(
-            "validation_error",
-            `Duplicate Moltnet network ${network.id} declares conflicting server URL`
-          );
-        }
-        assertCompatibleMoltnetNetworkName(network.id, existingPlan.name, network.name);
-        assertCompatibleMoltnetServer(network.id, existingPlan.server, server);
-
-        for (const room of network.rooms) {
-          const concreteMembers = listConcreteMoltnetRoomMemberIds(
-            plan,
-            teamNode.value,
-            network.id,
-            room
-          );
-          const existingRoom = existingPlan.rooms.find((entry) => entry.id === room.id);
-          if (existingRoom) {
-            existingRoom.members = [
-              ...new Set([...existingRoom.members, ...concreteMembers])
-            ].sort();
-            assertCompatibleMoltnetRoomPolicy(
-              network.id,
-              room.id,
-              "visibility",
-              existingRoom.visibility,
-              room.visibility
-            );
-            assertCompatibleMoltnetRoomPolicy(
-              network.id,
-              room.id,
-              "write_policy",
-              existingRoom.write_policy,
-              room.write_policy
-            );
-            existingRoom.visibility ??= room.visibility;
-            existingRoom.write_policy ??= room.write_policy;
-          } else {
-            existingPlan.rooms.push({
-              id: room.id,
-              members: concreteMembers,
-              ...(room.name ? { name: room.name } : {}),
-              ...(room.visibility ? { visibility: room.visibility } : {}),
-              ...(room.write_policy ? { write_policy: room.write_policy } : {})
-            });
-          }
-        }
-        existingPlan.rooms.sort((left, right) => left.id.localeCompare(right.id));
-      } else {
-        const port = server.mode === "managed" ? resolveNetworkPort(network, nextPort) : undefined;
-        const serverId = `${teamNode.slug}-${network.id}`;
-        serverPlans.set(serverKey, {
-          baseUrl: resolveMoltnetBaseUrl(server),
-          ...(server.mode === "managed"
-            ? { configPath: toContainerRootfsPath(createMoltnetServerConfigPath(serverId)) }
-            : {}),
-          id: serverId,
-          mode: server.mode,
-          name: network.name,
-          networkId: network.id,
-          ...(port ? { port } : {}),
-          rooms: network.rooms.map((room) => ({
-            id: room.id,
-            members: listConcreteMoltnetRoomMemberIds(
-              plan,
-              teamNode.value,
-              network.id,
-              room
-            ),
-            ...(room.name ? { name: room.name } : {}),
-            ...(room.visibility ? { visibility: room.visibility } : {}),
-            ...(room.write_policy ? { write_policy: room.write_policy } : {})
-          })),
-          server,
-          secretPatches: [],
-          teamSource: teamNode.value.source
-        });
-        if (port) {
-          nextPort = Math.max(nextPort, port + 1);
-        }
-      }
-    }
-  }
+  const serverPlans = resolveMoltnetServerPlans(plan, teamNodes);
 
   const nodePlans: MoltnetNodePlan[] = [];
   const nodePlanKeys = new Set<string>();
   const configFiles: EmittedFile[] = [];
   const persistentMounts = new Map<string, MoltnetPersistentMount>();
+  const external = createMoltnetExternalParticipantArtifactFiles(plan.moltnetExternalParticipantIntents ?? []);
+  configFiles.push(...external.files);
 
   const addPersistentMount = (mount: MoltnetPersistentMount): void => {
     const existing = persistentMounts.get(mount.id);
@@ -240,6 +90,21 @@ export const generateMoltnetArtifacts = async (
       path: createMoltnetServerConfigPath(serverPlan.id)
     });
 
+    // Always mounted, independent of the network's store.kind/persistence:
+    // this is the causal/social record (message.accepted/message.denied
+    // events), the A5/memetics ground truth for what happened in a run, and
+    // it must survive container teardown even for a purely in-memory
+    // (non-durable) room store — e.g. office-sim's fixture. Lives in its own
+    // `causal/` subdirectory, never the server config's own directory, so
+    // this volume never shadows a rebuilt image's Moltnet.json.
+    const causalMountId = `moltnet-${serverPlan.networkId}-causal`;
+    addPersistentMount({
+      id: causalMountId,
+      mountPath: createMoltnetCausalDirectory(serverPlan.configPath),
+      reason: `managed Moltnet causal event log for ${serverPlan.networkId}`,
+      volumeName: createPersistentVolumeName(plan.root, causalMountId, undefined, runId)
+    });
+
     const storeMountPath = resolveMoltnetStorePersistenceMountPath(
       serverPlan.networkId,
       serverPlan.server.store
@@ -247,7 +112,7 @@ export const generateMoltnetArtifacts = async (
     if (storeMountPath) {
       const mountId = `moltnet-${serverPlan.networkId}-store`;
       const store = serverPlan.server.store;
-      const volumeName = store.kind === "sqlite" || store.kind === "json"
+      const explicitVolumeName = store.kind === "sqlite" || store.kind === "json"
         ? store.persistence?.name
         : undefined;
       addPersistentMount({
@@ -257,7 +122,8 @@ export const generateMoltnetArtifacts = async (
         volumeName: createPersistentVolumeName(
           plan.root,
           mountId,
-          volumeName
+          explicitVolumeName,
+          runId
         )
       });
     }
@@ -305,17 +171,14 @@ export const generateMoltnetArtifacts = async (
         );
       }
 
-      if (network.server?.mode === "managed" && network.server.direct_messages === false && attachment.dms) {
+      if (
+        serverPlan.server.mode === "managed" &&
+        serverPlan.server.direct_messages === false &&
+        attachment.dms
+      ) {
         throw new SpawnfileError(
           "validation_error",
           `Moltnet network ${attachment.network} disables direct messages but ${agentNode.name} declares dms`
-        );
-      }
-
-      if (!network.server) {
-        throw new SpawnfileError(
-          "validation_error",
-          `Moltnet network ${attachment.network} must declare server`
         );
       }
 
@@ -338,7 +201,8 @@ export const generateMoltnetArtifacts = async (
           serverPlan.server,
           attachment.network,
           attachment.memberId,
-          node.slug
+          node.slug,
+          attachment.auth?.tokenId
         );
         const usesPerAttachmentOpenToken =
           clientAuth.mode === "open" &&
@@ -351,7 +215,7 @@ export const generateMoltnetArtifacts = async (
             id: mountId,
             mountPath: createMoltnetOpenTokenDirectory(node.slug),
             reason: `Moltnet open-mode generated agent tokens for ${agentNode.name}`,
-            volumeName: createPersistentVolumeName(plan.root, mountId)
+            volumeName: createPersistentVolumeName(plan.root, mountId, undefined, runId)
           });
         }
       }
@@ -372,7 +236,7 @@ export const generateMoltnetArtifacts = async (
           id: mountId,
           mountPath: createMoltnetOpenTokenDirectory(node.slug),
           reason: `Moltnet open-mode generated agent tokens for ${agentNode.name}`,
-          volumeName: createPersistentVolumeName(plan.root, mountId)
+          volumeName: createPersistentVolumeName(plan.root, mountId, undefined, runId)
         });
       }
 
@@ -384,6 +248,12 @@ export const generateMoltnetArtifacts = async (
 
       nodePlans.push({
         configPath: toContainerRootfsPath(configPath),
+        ...(clientAuth.credentialAgentId
+          ? { credentialAgentId: clientAuth.credentialAgentId }
+          : {}),
+        ...(clientAuth.credentialId ? { credentialId: clientAuth.credentialId } : {}),
+        ...(clientAuth.tokenEnv ? { credentialSecret: clientAuth.tokenEnv } : {}),
+        memberId: attachment.memberId,
         networkId: attachment.network
       });
     }
@@ -402,6 +272,9 @@ export const generateMoltnetArtifacts = async (
 
   return {
     files: configFiles,
+    ...(external.artifacts.length > 0
+      ? { externalParticipantArtifacts: external.artifacts }
+      : {}),
     nodePlans: nodePlans.sort((left, right) => left.configPath.localeCompare(right.configPath)),
     persistentMounts: [...persistentMounts.values()].sort((left, right) =>
       left.id.localeCompare(right.id)

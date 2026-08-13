@@ -1,0 +1,212 @@
+{
+  "version": "spawnfile.root-ownership-boundary.v2",
+  "scope": "src",
+  "token": "football",
+  "records": [
+    {
+      "path": "src/cli/runCli.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/cli/runCli.test.ts"
+    },
+    {
+      "path": "src/compiler/buildCompilePlan.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/compiler/buildCompilePlan.test.ts"
+    },
+    {
+      "path": "src/compiler/moltnetClientConfig.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/compiler/moltnetClientConfig.test.ts"
+    },
+    {
+      "path": "src/compiler/moltnetExternalParticipantArtifact.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/compiler/moltnetExternalParticipantArtifact.test.ts"
+    },
+    {
+      "path": "src/compiler/moltnetNestedOrganization.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/compiler/moltnetNestedOrganization.test.ts"
+    },
+    {
+      "path": "src/compiler/moltnetServerPlans.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/compiler/moltnetServerPlans.test.ts"
+    },
+    {
+      "path": "src/compiler/organizationIdentity.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/compiler/organizationIdentity.test.ts"
+    },
+    {
+      "path": "src/compiler/runProjectDocker.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/compiler/runProjectDocker.test.ts"
+    },
+    {
+      "path": "src/compiler/upProjectOrganizationHandoff.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/compiler/upProjectOrganizationHandoff.test.ts"
+    },
+    {
+      "path": "src/compiler/upProjectOrganizationReady.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/compiler/upProjectOrganizationReady.test.ts"
+    },
+    {
+      "path": "src/compiler/upReceiptOrganizationHandoff.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/compiler/upReceiptOrganizationHandoff.test.ts"
+    },
+    {
+      "path": "src/compiler/upReceiptOrganizationReady.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/compiler/upReceiptOrganizationReady.test.ts"
+    },
+    {
+      "path": "src/compiler/worldBindings.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/compiler/worldBindings.test.ts"
+    },
+    {
+      "path": "src/compiler/worldBindingsContainer.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/compiler/worldBindingsContainer.test.ts"
+    },
+    {
+      "path": "src/deployment/dockerManager.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/deployment/dockerManager.test.ts"
+    },
+    {
+      "path": "src/deployment/organizationHandoffAuthorityStore.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/deployment/organizationHandoffAuthorityStore.test.ts"
+    },
+    {
+      "path": "src/deployment/organizationHandoffDownClose.integration.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/deployment/organizationHandoffDownClose.integration.test.ts"
+    },
+    {
+      "path": "src/deployment/organizationHandoffExportDown.integration.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/deployment/organizationHandoffExportDown.integration.test.ts"
+    },
+    {
+      "path": "src/deployment/organizationReady.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/deployment/organizationReady.test.ts"
+    },
+    {
+      "path": "src/deployment/providerRuntimeBoundary.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/deployment/providerRuntimeBoundary.test.ts"
+    },
+    {
+      "path": "src/deployment/upReceiptOrganizationHandoff.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/deployment/upReceiptOrganizationHandoff.test.ts"
+    },
+    {
+      "path": "src/deployment/upReceiptTypes.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/deployment/upReceiptTypes.test.ts"
+    },
+    {
+      "path": "src/manifest/externalParticipantRender.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/manifest/externalParticipantRender.test.ts"
+    },
+    {
+      "path": "src/manifest/loadManifest.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/manifest/loadManifest.test.ts"
+    },
+    {
+      "path": "src/manifest/renderSpawnfile.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/manifest/renderSpawnfile.test.ts"
+    },
+    {
+      "path": "src/manifest/schemas.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/manifest/schemas.test.ts"
+    },
+    {
+      "path": "src/ownership/rootOwnershipBoundary.test.ts",
+      "owner": "B106",
+      "disposition": "retain",
+      "destination": "src/ownership/rootOwnershipBoundary.test.ts"
+    },
+    {
+      "path": "src/target/containerBundleArchive.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/target/containerBundleArchive.test.ts"
+    },
+    {
+      "path": "src/target/organizationAttachment.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/target/organizationAttachment.test.ts"
+    },
+    {
+      "path": "src/target/organizationAttachmentAuthority.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/target/organizationAttachmentAuthority.test.ts"
+    },
+    {
+      "path": "src/target/organizationAttachmentLifecycle.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/target/organizationAttachmentLifecycle.test.ts"
+    },
+    {
+      "path": "src/target/organizationAttachmentProvider.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/target/organizationAttachmentProvider.test.ts"
+    },
+    {
+      "path": "src/target/organizationAttachmentRecovery.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/target/organizationAttachmentRecovery.test.ts"
+    },
+    {
+      "path": "src/target/organizationAttachmentStore.test.ts",
+      "owner": "Spawnfile",
+      "disposition": "retain",
+      "destination": "src/target/organizationAttachmentStore.test.ts"
+    }
+  ],
+  "production_implementation_paths": []
+}

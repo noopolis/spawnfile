@@ -41,6 +41,7 @@ describe("openClawAdapter", () => {
           required: true
         }
       ],
+      globalNpmPackages: ["@noopolis/mneme@0.1.1"],
       homeEnv: "OPENCLAW_HOME",
       instancePaths: {
         configPathTemplate: "<instance-root>/home/.openclaw/<config-file>",
@@ -373,6 +374,105 @@ describe("openClawAdapter", () => {
       enabled: true,
       networkId: "local_lab",
       timeoutMs: 15000
+    });
+  });
+
+  it("keeps legacy MCP headers and scopes bearer bindings to Authorization", async () => {
+    const node = {
+      ...createNode(),
+      mcpServers: [
+        {
+          auth: { secret: "LEGACY_MCP_TOKEN" },
+          name: "legacy",
+          transport: "sse" as const,
+          url: "https://legacy.example/mcp"
+        },
+        {
+          auth: { mode: "bearer" as const, secret: "BEARER_MCP_TOKEN" },
+          name: "bearer",
+          transport: "streamable_http" as const,
+          url: "https://bearer.example/mcp"
+        }
+      ]
+    };
+    const result = await openClawAdapter.compileAgent(node);
+    const config = JSON.parse(result.files.find((file) => file.path === "openclaw.json")!.content);
+    const [target] = await openClawAdapter.createContainerTargets!([
+      {
+        emittedFiles: result.files,
+        id: "agent:assistant",
+        kind: "agent",
+        slug: "assistant",
+        value: node
+      }
+    ]);
+
+    expect(config.mcp.servers.legacy.headers).toEqual({ LEGACY_MCP_TOKEN: "" });
+    expect(config.mcp.servers.bearer.headers).toEqual({ Authorization: "" });
+    expect(target?.configEnvBindings).toEqual([
+      {
+        envName: "LEGACY_MCP_TOKEN",
+        jsonPath: ["mcp", "servers", "legacy", "headers", "LEGACY_MCP_TOKEN"]
+      },
+      {
+        envName: "BEARER_MCP_TOKEN",
+        jsonPath: ["mcp", "servers", "bearer", "headers", "Authorization"],
+        transform: "bearer"
+      }
+    ]);
+  });
+
+  it("preserves legacy stdio auth and rejects explicit bearer stdio auth", async () => {
+    const legacy = {
+      ...createNode(),
+      mcpServers: [
+        {
+          auth: { secret: "STDIO_TOKEN" },
+          command: "uvx",
+          name: "legacy-stdio",
+          transport: "stdio" as const
+        }
+      ]
+    };
+    const legacyResult = await openClawAdapter.compileAgent(legacy);
+    const legacyConfig = JSON.parse(
+      legacyResult.files.find((file) => file.path === "openclaw.json")!.content
+    );
+    expect(legacyConfig.mcp.servers["legacy-stdio"]).toEqual({
+      command: "uvx",
+      enabled: true,
+      transport: "stdio"
+    });
+
+    await expect(
+      openClawAdapter.compileAgent({
+        ...legacy,
+        mcpServers: [{ ...legacy.mcpServers[0], auth: { mode: "bearer", secret: "STDIO_TOKEN" } }]
+      })
+    ).rejects.toThrow("stdio MCP servers do not support bearer auth");
+  });
+
+  it("addresses dotted MCP names with structured binding paths", async () => {
+    const agent = {
+      ...createNode(),
+      mcpServers: [
+        {
+          auth: { mode: "bearer" as const, secret: "DOTTED_TOKEN" },
+          name: "a.b",
+          transport: "sse" as const,
+          url: "https://example.test/mcp"
+        }
+      ]
+    };
+    const result = await openClawAdapter.compileAgent(agent);
+    const [target] = await openClawAdapter.createContainerTargets!([
+      { emittedFiles: result.files, id: "agent:assistant", kind: "agent", slug: "assistant", value: agent }
+    ]);
+
+    expect(target?.configEnvBindings).toContainEqual({
+      envName: "DOTTED_TOKEN",
+      jsonPath: ["mcp", "servers", "a.b", "headers", "Authorization"],
+      transform: "bearer"
     });
   });
 

@@ -210,7 +210,7 @@ Sequencing matters here more than anywhere else in this design: images published
 
 `up` and `status` accept an image reference where they accept a project path today. Detection is deterministic:
 
-1. If the argument resolves to an existing directory or file, it is a project path. This preserves documented inputs such as `spawnfile up ./fixtures/single-agent/Spawnfile`.
+1. If the argument resolves to an existing directory or file, it is a project path. This preserves documented inputs such as `spawnfile up ./test/fixtures/single-agent/Spawnfile`.
 2. Otherwise, implicit image mode accepts only refs with a tag, digest, or registry component: `name:tag`, `registry/name:tag`, `registry/name@sha256:...`, `localhost:5000/name:tag`.
 3. `--image` forces image-reference interpretation; useful when a local directory shadows a ref or when the user intentionally wants Docker's bare-name behavior.
 4. Anything else is a usage error (exit 2).
@@ -620,7 +620,7 @@ Per-phase bullets below list contract and unit tests. This section defines the t
 ### E2E Infrastructure
 
 - A local `registry:2` container on an isolated port is the only registry any test touches. No test pushes to real registries.
-- Phase 1 commits a dedicated `fixtures/distribution-org` fixture, because the existing fixtures cannot run the scenarios: `multi-runtime-team` declares `claude-code` auth on every agent (which sourceless `up` refuses by design) and no existing non-e2e fixture declares networks. `distribution-org` uses `api_key` auth across two runtimes, declares one managed network with rooms, and declares both a required and an optional project secret. `fixtures/single-agent` stays the minimal no-network case.
+- Phase 1 commits a dedicated `test/fixtures/distribution-org` fixture, because the existing fixtures cannot run the scenarios: `multi-runtime-team` declares `claude-code` auth on every agent (which sourceless `up` refuses by design) and no existing non-e2e fixture declares networks. `distribution-org` uses `api_key` auth across two runtimes, declares one managed network with rooms, and declares both a required and an optional project secret. `test/fixtures/single-agent` stays the minimal no-network case.
 - A fake external manager (a small script speaking the verb protocol) is committed as a test fixture: it satisfies conformance, records its invocations, and can simulate missing capabilities, failures, secret-bearing facts, and record-write attempts.
 - One throwaway consumer environment per run: a temp dir with no project, its own `SPAWNFILE_HOME`, so sourceless flows are tested genuinely sourceless. The test creates an auth profile inside that throwaway home, because the headline consumer flow is profile-based and an empty home has none.
 - Second image versions are produced the way the existing e2e rules already model mutation: copy the fixture to a temp dir, change content, rebuild. Rebuilding unchanged content is not assumed to change the digest.

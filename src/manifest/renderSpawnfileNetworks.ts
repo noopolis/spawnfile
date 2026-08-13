@@ -6,11 +6,13 @@ const withDefinedEntries = (entries: Array<[string, unknown]>): Record<string, u
 const orderTeamAuthToken = (token: {
   agents?: string[];
   id: string;
+  secret: string;
   scopes: string[];
 }): unknown =>
   withDefinedEntries([
     ["id", token.id],
     ["agents", token.agents],
+    ["secret", token.secret],
     ["scopes", token.scopes]
   ]);
 
@@ -19,12 +21,14 @@ const orderTeamAuthPairing = (pairing: {
   remote_base_url: string;
   remote_network_id: string;
   remote_network_name: string;
+  token_secret: string;
 }): unknown =>
   withDefinedEntries([
     ["id", pairing.id],
     ["remote_base_url", pairing.remote_base_url],
     ["remote_network_id", pairing.remote_network_id],
-    ["remote_network_name", pairing.remote_network_name]
+    ["remote_network_name", pairing.remote_network_name],
+    ["token_secret", pairing.token_secret]
   ]);
 
 const orderTeamStore = (
@@ -99,7 +103,12 @@ export const orderTeamNetworks = (
       ["id", network.id],
       ["provider", network.provider],
       ["name", network.name],
-      ["server", orderTeamAuth(network.server)],
+      [
+        "server",
+        network.server
+          ? orderTeamAuth(network.server)
+          : undefined
+      ],
       [
         "rooms",
         network.rooms.map((room) =>

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ensureDirectory, removeDirectory, writeUtf8File } from "../filesystem/index.js";
 import { buildCompilePlan } from "./buildCompilePlan.js";
 
-const fixturesRoot = path.resolve(process.cwd(), "fixtures");
+const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures");
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
@@ -55,6 +55,122 @@ describe("buildCompilePlan", () => {
 
     expect(plan.nodes).toHaveLength(1);
     expect(plan.runtimes.openclaw.nodeIds).toHaveLength(1);
+  });
+
+  it("compiles mixed inline and referenced agents with stable identities", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-inline-agents-"));
+    temporaryDirectories.push(directory);
+
+    await ensureDirectory(path.join(directory, "agents", "coach"));
+    await ensureDirectory(path.join(directory, "characters"));
+    await writeUtf8File(path.join(directory, "characters", "red.md"), "# Red player\n");
+    await writeUtf8File(path.join(directory, "characters", "blue.md"), "# Blue player\n");
+    await writeUtf8File(path.join(directory, "agents", "coach", "AGENTS.md"), "# Coach\n");
+    await writeUtf8File(
+      path.join(directory, "agents", "coach", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: coach",
+        "runtime: openclaw",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: tiny-football",
+        "mode: swarm",
+        "shared:",
+        "  environment:",
+        "    env:",
+        "      MATCH: training",
+        "members:",
+        "  - id: red",
+        "    runtime: openclaw",
+        "    workspace:",
+        "      docs:",
+        "        system: ./characters/red.md",
+        "    environment:",
+        "      env:",
+        "        COLOR: red",
+        "    surfaces:",
+        "      moltnet:",
+        "        - network: pitch",
+        "          rooms:",
+        "            field:",
+        "              wake: mentions",
+        "  - id: blue",
+        "    runtime: daimon",
+        "    workspace:",
+        "      docs:",
+        "        system: ./characters/blue.md",
+        "    surfaces:",
+        "      moltnet:",
+        "        - network: pitch",
+        "          rooms:",
+        "            field:",
+        "              wake: mentions",
+        "  - id: coach",
+        "    ref: ./agents/coach",
+        "memory:",
+        "  - id: match-memory",
+        "    access:",
+        "      members: [red, blue]",
+        "    store:",
+        "      kind: memory",
+        "networks:",
+        "  - id: pitch",
+        "    name: Match Pitch",
+        "    provider: moltnet",
+        "    server:",
+        "      mode: external",
+        "      url: http://127.0.0.1:8787",
+        "      auth:",
+        "        mode: none",
+        "    rooms:",
+        "      - id: field",
+        "        members: [red, blue]",
+        ""
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const repeatedPlan = await buildCompilePlan(directory);
+    const teamSource = path.join(directory, "Spawnfile");
+    const red = plan.nodes.find((node) => node.value.name === "red");
+    const blue = plan.nodes.find((node) => node.value.name === "blue");
+    const coach = plan.nodes.find((node) => node.value.name === "coach");
+
+    expect(repeatedPlan).toEqual(plan);
+    expect(plan.nodes).toHaveLength(4);
+    expect(plan.runtimes.openclaw.nodeIds).toHaveLength(2);
+    expect(plan.runtimes.daimon.nodeIds).toHaveLength(1);
+    expect(red?.value).toMatchObject({
+      docs: [{ content: "# Red player\n", role: "system" }],
+      env: { COLOR: "red", MATCH: "training" },
+      source: `${teamSource}#member=red`,
+      sourcePath: teamSource
+    });
+    expect(blue?.value).toMatchObject({
+      docs: [{ content: "# Blue player\n", role: "system" }],
+      source: `${teamSource}#member=blue`,
+      sourcePath: teamSource
+    });
+    expect(coach?.value.source).toBe(path.join(directory, "agents", "coach", "Spawnfile"));
+    expect(plan.memoryAccess?.map((access) => access.agentSource).sort()).toEqual([
+      `${teamSource}#member=blue`,
+      `${teamSource}#member=red`
+    ]);
+    expect(plan.moltnetRoomMemberships?.map((entry) => entry.agentSource).sort()).toEqual([
+      `${teamSource}#member=blue`,
+      `${teamSource}#member=red`
+    ]);
   });
 
   it("applies default workspace and sandbox execution intent when omitted", async () => {
@@ -368,6 +484,319 @@ describe("buildCompilePlan", () => {
         scope: "global"
       }
     ]);
+  });
+
+  it("compiles one canonical agent imported by multiple nested teams into Moltnet rooms", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-canonical-imports-"));
+    temporaryDirectories.push(directory);
+
+    await ensureDirectory(path.join(directory, "agents", "eleanor"));
+    for (const team of ["office", "eleanor-family", "friends-group"]) {
+      await ensureDirectory(path.join(directory, "teams", team));
+      await writeUtf8File(path.join(directory, "teams", team, "TEAM.md"), `# ${team}\n`);
+      await writeUtf8File(
+        path.join(directory, "teams", team, "Spawnfile"),
+        [
+          'spawnfile_version: "0.1"',
+          "kind: team",
+          `name: ${team}`,
+          "shared:",
+          "  workspace:",
+          "    docs:",
+          "      system: TEAM.md",
+          "members:",
+          "  - id: eleanor",
+          "    ref: ../../agents/eleanor",
+          "mode: swarm",
+          "external: [eleanor]"
+        ].join("\n")
+      );
+    }
+    await writeUtf8File(path.join(directory, "agents", "eleanor", "AGENTS.md"), "# Eleanor\n");
+    await writeUtf8File(
+      path.join(directory, "agents", "eleanor", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: eleanor",
+        "runtime: openclaw",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md"
+      ].join("\n")
+    );
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: office-sim",
+        "members:",
+        "  - id: office",
+        "    ref: ./teams/office",
+        "  - id: eleanor-family",
+        "    ref: ./teams/eleanor-family",
+        "  - id: friends-group",
+        "    ref: ./teams/friends-group",
+        "mode: swarm",
+        "networks:",
+        "  - id: social-world",
+        "    name: Social World",
+        "    provider: moltnet",
+        "    server:",
+        "      mode: managed",
+        "      listen:",
+        "        bind: 127.0.0.1",
+        "        port: 19910",
+        "      store:",
+        "        kind: sqlite",
+        "      auth:",
+        "        mode: open",
+        "        public_read: true",
+        "    rooms:",
+        "      - id: office-hall",
+        "        members: [office]",
+        "      - id: eleanor-home",
+        "        members: [eleanor-family]",
+        "      - id: after-work-chat",
+        "        members: [friends-group]"
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const eleanorNodes = plan.nodes.filter((node) =>
+      node.kind === "agent" && node.value.name === "eleanor"
+    );
+    const eleanor = eleanorNodes[0]?.value;
+
+    expect(eleanorNodes).toHaveLength(1);
+    expect(eleanor.kind === "agent" ? eleanor.docs.map((doc) => doc.content) : []).toEqual([
+      "# Eleanor\n"
+    ]);
+    expect(plan.memberships?.filter((entry) => entry.memberId === "eleanor")).toHaveLength(3);
+    expect(plan.moltnetRoomMemberships?.filter((entry) =>
+      entry.concreteMemberId === "eleanor"
+    ).map((entry) => entry.roomId).sort()).toEqual([
+      "after-work-chat",
+      "eleanor-home",
+      "office-hall"
+    ]);
+    expect(eleanor.kind === "agent" ? eleanor.surfaces?.moltnet : undefined).toEqual([
+      expect.objectContaining({
+        memberId: "eleanor",
+        network: "social-world",
+        rooms: expect.objectContaining({
+          "after-work-chat": expect.any(Object),
+          "eleanor-home": expect.any(Object),
+          "office-hall": expect.any(Object)
+        })
+      })
+    ]);
+  });
+
+  it("merges compatible shared resources when the same agent is imported by multiple teams", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-canonical-resource-imports-"));
+    temporaryDirectories.push(directory);
+
+    await ensureDirectory(path.join(directory, "agents", "eleanor"));
+    await writeUtf8File(path.join(directory, "agents", "eleanor", "AGENTS.md"), "# Eleanor\n");
+    await writeUtf8File(
+      path.join(directory, "agents", "eleanor", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: eleanor",
+        "runtime: openclaw",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md"
+      ].join("\n")
+    );
+
+    for (const [team, resource, mount] of [
+      ["office", "office-notes", "./office-notes"],
+      ["family", "family-notes", "./family-notes"]
+    ] as const) {
+      await ensureDirectory(path.join(directory, "teams", team));
+      await writeUtf8File(path.join(directory, "teams", team, "TEAM.md"), `# ${team}\n`);
+      await writeUtf8File(
+        path.join(directory, "teams", team, "Spawnfile"),
+        [
+          'spawnfile_version: "0.1"',
+          "kind: team",
+          `name: ${team}`,
+          "shared:",
+          "  workspace:",
+          "    docs:",
+          "      system: TEAM.md",
+          "    resources:",
+          `      - id: ${resource}`,
+          "        kind: volume",
+          `        mount: ${mount}`,
+          "        mode: mutable",
+          "members:",
+          "  - id: eleanor",
+          "    ref: ../../agents/eleanor",
+          "mode: swarm"
+        ].join("\n")
+      );
+    }
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: social-root",
+        "members:",
+        "  - id: office",
+        "    ref: ./teams/office",
+        "  - id: family",
+        "    ref: ./teams/family",
+        "mode: swarm"
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const eleanor = plan.nodes.find((node) =>
+      node.kind === "agent" && node.value.name === "eleanor"
+    );
+
+    expect(eleanor?.value.workspaceResources?.map((resource) => resource.id).sort()).toEqual([
+      "family-notes",
+      "office-notes"
+    ]);
+  });
+
+  it("rejects conflicting shared resources for the same imported agent", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-canonical-conflict-"));
+    temporaryDirectories.push(directory);
+
+    await ensureDirectory(path.join(directory, "agents", "eleanor"));
+    await writeUtf8File(path.join(directory, "agents", "eleanor", "AGENTS.md"), "# Eleanor\n");
+    await writeUtf8File(
+      path.join(directory, "agents", "eleanor", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: eleanor",
+        "runtime: openclaw",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md"
+      ].join("\n")
+    );
+
+    for (const [team, mount] of [
+      ["office", "./office-notes"],
+      ["family", "./family-notes"]
+    ] as const) {
+      await ensureDirectory(path.join(directory, "teams", team));
+      await writeUtf8File(path.join(directory, "teams", team, "TEAM.md"), `# ${team}\n`);
+      await writeUtf8File(
+        path.join(directory, "teams", team, "Spawnfile"),
+        [
+          'spawnfile_version: "0.1"',
+          "kind: team",
+          `name: ${team}`,
+          "shared:",
+          "  workspace:",
+          "    docs:",
+          "      system: TEAM.md",
+          "    resources:",
+          "      - id: notes",
+          "        kind: volume",
+          `        mount: ${mount}`,
+          "        mode: mutable",
+          "members:",
+          "  - id: eleanor",
+          "    ref: ../../agents/eleanor",
+          "mode: swarm"
+        ].join("\n")
+      );
+    }
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: social-root",
+        "members:",
+        "  - id: office",
+        "    ref: ./teams/office",
+        "  - id: family",
+        "    ref: ./teams/family",
+        "mode: swarm"
+      ].join("\n")
+    );
+
+    await expect(buildCompilePlan(directory)).rejects.toThrow(
+      /Workspace resource notes resolves differently/
+    );
+  });
+
+  it("rejects conflicting shared environment for the same imported agent", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-canonical-env-conflict-"));
+    temporaryDirectories.push(directory);
+
+    await ensureDirectory(path.join(directory, "agents", "eleanor"));
+    await writeUtf8File(path.join(directory, "agents", "eleanor", "AGENTS.md"), "# Eleanor\n");
+    await writeUtf8File(
+      path.join(directory, "agents", "eleanor", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: eleanor",
+        "runtime: openclaw",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md"
+      ].join("\n")
+    );
+
+    for (const [team, mood] of [
+      ["office", "work"],
+      ["family", "home"]
+    ] as const) {
+      await ensureDirectory(path.join(directory, "teams", team));
+      await writeUtf8File(path.join(directory, "teams", team, "TEAM.md"), `# ${team}\n`);
+      await writeUtf8File(
+        path.join(directory, "teams", team, "Spawnfile"),
+        [
+          'spawnfile_version: "0.1"',
+          "kind: team",
+          `name: ${team}`,
+          "shared:",
+          "  workspace:",
+          "    docs:",
+          "      system: TEAM.md",
+          "  environment:",
+          "    env:",
+          `      MOOD: ${mood}`,
+          "members:",
+          "  - id: eleanor",
+          "    ref: ../../agents/eleanor",
+          "mode: swarm"
+        ].join("\n")
+      );
+    }
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: social-root",
+        "members:",
+        "  - id: office",
+        "    ref: ./teams/office",
+        "  - id: family",
+        "    ref: ./teams/family",
+        "mode: swarm"
+      ].join("\n")
+    );
+
+    await expect(buildCompilePlan(directory)).rejects.toThrow(
+      /conflicting environment variable MOOD/
+    );
   });
 
   it("allows local environment packages to override inherited package versions", async () => {
@@ -711,6 +1140,326 @@ describe("buildCompilePlan", () => {
     expect(plan.nodes.find((node) => node.kind === "team")).toBeTruthy();
   });
 
+  it("attaches agent-level memory declarations to agent access", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-agent-memory-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: root",
+        "",
+        "runtime: openclaw",
+        "",
+        "memory:",
+        "  - id: self",
+        "    store:",
+        "      kind: sqlite",
+        "      path: /var/lib/spawnfile/memory/self.sqlite",
+        "",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md"
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const agent = plan.nodes.find((node) => node.kind === "agent");
+    const memoryAccess = plan.memoryAccess?.filter((entry) => entry.bank.id === "self");
+
+    expect(agent).toBeDefined();
+    expect(memoryAccess).toHaveLength(1);
+    expect(memoryAccess?.[0]).toMatchObject({
+      agentSource: agent?.value.source,
+      declaringKind: "agent",
+      source: agent?.value.source,
+      bank: {
+        id: "self",
+        declaredBy: "agent",
+        store: {
+          kind: "sqlite",
+          path: "/var/lib/spawnfile/memory/self.sqlite"
+        }
+      }
+    });
+  });
+
+  it("canonicalizes sqlite memory defaults in resolved bank entries", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-agent-memory-defaults-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Agent\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: root",
+        "",
+        "runtime: openclaw",
+        "",
+        "memory:",
+        "  - id: self",
+        "    store:",
+        "      kind: sqlite",
+        "",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md"
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const memoryAccess = plan.memoryAccess?.filter((entry) => entry.bank.id === "self");
+
+    expect(memoryAccess).toHaveLength(1);
+    expect(memoryAccess?.[0]).toMatchObject({
+      bank: {
+        store: {
+          kind: "sqlite",
+          persistence: {
+            mode: "durable"
+          },
+          path: "/var/lib/spawnfile/memory/root/self/memory.sqlite"
+        }
+      }
+    });
+  });
+
+  it("defaults team memory access to direct concrete member slots only", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-team-memory-default-"));
+    temporaryDirectories.push(directory);
+
+    await ensureDirectory(path.join(directory, "agents", "worker"));
+    await ensureDirectory(path.join(directory, "teams", "nested"));
+    await ensureDirectory(path.join(directory, "teams", "nested", "agents", "nested-agent"));
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Worker\n");
+    await writeUtf8File(path.join(directory, "agents", "worker", "AGENTS.md"), "# Worker\n");
+    await writeUtf8File(
+      path.join(directory, "agents", "worker", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: worker",
+        "",
+        "runtime: openclaw",
+        "",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md"
+      ].join("\n")
+    );
+    await writeUtf8File(path.join(directory, "teams", "nested", "AGENTS.md"), "# Nested Team\n");
+    await writeUtf8File(path.join(directory, "teams", "nested", "agents", "nested-agent", "AGENTS.md"), "# Delegate\n");
+    await writeUtf8File(
+      path.join(directory, "teams", "nested", "agents", "nested-agent", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: nested-agent",
+        "runtime: openclaw",
+        "",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md"
+      ].join("\n")
+    );
+    await writeUtf8File(
+      path.join(directory, "teams", "nested", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: nested",
+        "",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: AGENTS.md",
+        "members:",
+        "  - id: nested-member",
+        "    ref: ./agents/nested-agent",
+        "mode: swarm"
+      ].join("\n")
+    );
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: outer",
+        "",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: AGENTS.md",
+        "members:",
+        "  - id: worker",
+        "    ref: ./agents/worker",
+        "  - id: nested",
+        "    ref: ./teams/nested",
+        "memory:",
+        "  - id: shared",
+        "    store:",
+        "      kind: json",
+        "      path: /var/lib/spawnfile/memory/shared.jsonl",
+        "mode: swarm"
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const outerTeam = plan.nodes.find((node) => node.kind === "team" && node.value.name === "outer");
+    if (!outerTeam) {
+      throw new Error("expected outer team node");
+    }
+
+    const memoryAccess = (plan.memoryAccess ?? []).filter((entry) => entry.bank.id === "shared");
+    const workerAgentNode = plan.nodes.find((node) => node.kind === "agent" && node.value.name === "worker");
+    const nestedAgentNode = plan.nodes.find((node) => node.kind === "agent" && node.value.name === "nested-agent");
+    if (!workerAgentNode || !nestedAgentNode) {
+      throw new Error("expected both agent nodes");
+    }
+
+    expect(memoryAccess).toHaveLength(1);
+    expect(memoryAccess[0]?.agentSource).toBe(workerAgentNode.value.source);
+    expect(memoryAccess[0]?.declaringKind).toBe("team");
+    expect(memoryAccess[0]?.slotId).toBe("worker");
+    expect(memoryAccess[0]?.source).toBe(outerTeam.value.source);
+
+    const agentSourceSet = new Set(memoryAccess.map((entry) => entry.agentSource));
+    expect(agentSourceSet).toEqual(new Set([workerAgentNode.value.source]));
+  });
+
+  it("applies team memory access lists to only listed direct slots", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-team-memory-filter-"));
+    temporaryDirectories.push(directory);
+
+    await ensureDirectory(path.join(directory, "agents", "researcher"));
+    await ensureDirectory(path.join(directory, "agents", "critic"));
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Team\n");
+    await writeUtf8File(
+      path.join(directory, "agents", "researcher", "AGENTS.md"),
+      "# Researcher\n"
+    );
+    await writeUtf8File(
+      path.join(directory, "agents", "critic", "AGENTS.md"),
+      "# Critic\n"
+    );
+    await writeUtf8File(
+      path.join(directory, "agents", "researcher", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: researcher",
+        "runtime: openclaw",
+        "",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md"
+      ].join("\n")
+    );
+    await writeUtf8File(
+      path.join(directory, "agents", "critic", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: critic",
+        "runtime: openclaw",
+        "",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md"
+      ].join("\n")
+    );
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: review-cell",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: AGENTS.md",
+        "members:",
+        "  - id: researcher",
+        "    ref: ./agents/researcher",
+        "  - id: critic",
+        "    ref: ./agents/critic",
+        "memory:",
+        "  - id: reviews",
+        "    access:",
+        "      members: [critic]",
+        "    store:",
+        "      kind: memory",
+        "mode: swarm"
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    const criticNode = plan.nodes.find((node) => node.kind === "agent" && node.value.name === "critic");
+    const researcherNode = plan.nodes.find((node) => node.kind === "agent" && node.value.name === "researcher");
+    if (!criticNode || !researcherNode) {
+      throw new Error("expected both agent nodes");
+    }
+
+    const access = (plan.memoryAccess ?? []).filter((entry) => entry.bank.id === "reviews");
+    expect(access).toHaveLength(1);
+    expect(access[0]?.agentSource).toBe(criticNode.value.source);
+    expect(access[0]?.slotId).toBe("critic");
+    expect(access[0]?.agentSource).not.toBe(researcherNode.value.source);
+  });
+
+  it("rejects team memory access entries that reference unknown member slots", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-team-memory-invalid-slot-"));
+    temporaryDirectories.push(directory);
+
+    await ensureDirectory(path.join(directory, "agents", "worker"));
+    await writeUtf8File(path.join(directory, "AGENTS.md"), "# Team\n");
+    await writeUtf8File(path.join(directory, "agents", "worker", "AGENTS.md"), "# Worker\n");
+    await writeUtf8File(
+      path.join(directory, "agents", "worker", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: worker",
+        "runtime: openclaw",
+        "",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md"
+      ].join("\n")
+    );
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: bad-team",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: AGENTS.md",
+        "members:",
+        "  - id: worker",
+        "    ref: ./agents/worker",
+        "memory:",
+        "  - id: bad",
+        "    access:",
+        "      members: [ghost]",
+        "    store:",
+        "      kind: memory",
+        "mode: swarm"
+      ].join("\n")
+    );
+
+    await expect(buildCompilePlan(directory)).rejects.toThrow(
+      /references unknown member ghost/
+    );
+  });
+
   it("resolves team networks and team-scoped moltnet attachments", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moltnet-plan-"));
     temporaryDirectories.push(directory);
@@ -1002,6 +1751,100 @@ describe("buildCompilePlan", () => {
     );
 
     await expect(buildCompilePlan(directory)).rejects.toThrow(/Moltnet member_id rep/);
+  });
+
+  it("allows duplicate member ids across teams when slots resolve to one canonical agent source", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-canonical-agent-across-teams-"));
+    temporaryDirectories.push(directory);
+
+    await writeUtf8File(path.join(directory, "TEAM.md"), "# Root\n");
+
+    await ensureDirectory(path.join(directory, "agents", "eleanor"));
+    await writeUtf8File(path.join(directory, "agents", "eleanor", "AGENTS.md"), "# Eleanor\n");
+    await writeUtf8File(
+      path.join(directory, "agents", "eleanor", "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: agent",
+        "name: canonical-eleanor",
+        "runtime: openclaw",
+        "workspace:",
+        "  docs:",
+        "    system: AGENTS.md",
+        ""
+      ].join("\n")
+    );
+
+    for (const team of ["office", "family", "friends"]) {
+      await ensureDirectory(path.join(directory, "teams", team));
+      await writeUtf8File(path.join(directory, "teams", team, "TEAM.md"), `# ${team}\n`);
+      await writeUtf8File(
+        path.join(directory, `teams/${team}/Spawnfile`),
+        [
+          'spawnfile_version: "0.1"',
+          "kind: team",
+          `name: ${team}`,
+          "",
+          "shared:",
+          "  workspace:",
+          "    docs:",
+          "      system: TEAM.md",
+          "",
+          "members:",
+          "  - id: eleanor",
+          "    ref: ../../agents/eleanor",
+          "",
+          "mode: swarm",
+          "networks:",
+          "  - id: org",
+          "    provider: moltnet",
+          "    server:",
+          "      mode: managed",
+          "      listen:",
+          "        bind: 127.0.0.1",
+          "        port: 8787",
+          "      store:",
+          "        kind: memory",
+          "      auth:",
+          "        mode: none",
+          "    rooms:",
+          "      - id: main",
+          "        members: [eleanor]",
+          ""
+        ].join("\n")
+      );
+    }
+
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: mesh",
+        "",
+        "shared:",
+        "  workspace:",
+        "    docs:",
+        "      system: TEAM.md",
+        "",
+        "members:",
+        "  - id: office",
+        "    ref: ./teams/office",
+        "  - id: family",
+        "    ref: ./teams/family",
+        "  - id: friends",
+        "    ref: ./teams/friends",
+        "",
+        "mode: swarm",
+        ""
+      ].join("\n")
+    );
+
+    const plan = await buildCompilePlan(directory);
+    expect(plan.nodes.filter((node) => node.kind === "agent")).toHaveLength(1);
+    expect(plan.memberships?.filter((membership) => membership.memberId === "eleanor")).toHaveLength(3);
+    const agentSource = path.join(directory, "agents", "eleanor", "Spawnfile");
+    expect(plan.memberships?.every((membership) => membership.agentSource === agentSource)).toBeTruthy();
   });
 
   it("preserves authored team network slots for nested representatives", async () => {
@@ -1420,7 +2263,7 @@ describe("buildCompilePlan", () => {
         "kind: agent",
         "name: root",
         "",
-        "runtime: nullclaw",
+        "runtime: openfang",
         "",
         "workspace:",
         "  docs:",

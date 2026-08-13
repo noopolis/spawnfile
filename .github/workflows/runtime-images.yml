@@ -47,16 +47,16 @@ jobs:
         include:
           - runtime: openclaw
             image: noopolis/spawnfile-runtime-openclaw
-            version: 2026.6.8
+            version: 2026.6.11
             context: runtime-images/openclaw
             build_arg_name: OPENCLAW_VERSION
-            build_arg_value: 2026.6.8
+            build_arg_value: 2026.6.11
           - runtime: picoclaw
             image: noopolis/spawnfile-runtime-picoclaw
-            version: 0.2.9
+            version: 0.3.1
             context: runtime-images/picoclaw
             build_arg_name: PICOCLAW_VERSION
-            build_arg_value: v0.2.9
+            build_arg_value: v0.3.1
     steps:
       - name: Check out
         uses: actions/checkout@v4

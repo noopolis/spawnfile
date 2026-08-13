@@ -1,14 +1,13 @@
 import path from "node:path";
 
 import {
-  getCanonicalManifestPath,
   getManifestPath,
-  getProjectRoot,
   writeUtf8File
 } from "../filesystem/index.js";
 import {
   type AgentManifest,
   type ExecutionBlock,
+  type InlineAgentMember,
   type ModelTarget,
   type TeamManifest,
   loadManifest,
@@ -21,8 +20,14 @@ import {
 } from "../shared/index.js";
 
 import { resolveEffectiveModelTarget } from "./modelEnv.js";
+import {
+  collectProjectManifestPaths,
+  createInlineAgentSource,
+  rewriteInlineAgentMembers
+} from "./projectManifestGraph.js";
 
 type ProjectManifest = AgentManifest | TeamManifest;
+type AgentModelDeclaration = AgentManifest | InlineAgentMember;
 
 export interface ProjectModelTargetOptions {
   authKey?: string;
@@ -152,44 +157,10 @@ const buildModelTarget = (options: ProjectModelTargetOptions): ModelTarget => {
   };
 };
 
-const collectManifestPaths = async (
-  manifestPath: string,
-  recursive: boolean,
-  visited = new Set<string>()
-): Promise<string[]> => {
-  const canonicalPath = getCanonicalManifestPath(manifestPath);
-  if (visited.has(canonicalPath)) {
-    return [];
-  }
-
-  visited.add(canonicalPath);
-  if (!recursive) {
-    return [canonicalPath];
-  }
-
-  const loadedManifest = await loadManifest(canonicalPath);
-  const childRefs =
-    loadedManifest.manifest.kind === "team"
-      ? loadedManifest.manifest.members.map((member) => member.ref)
-      : (loadedManifest.manifest.subagents ?? []).map((subagent) => subagent.ref);
-
-  const nestedPaths = await Promise.all(
-    childRefs.map((ref) =>
-      collectManifestPaths(
-        getManifestPath(path.resolve(getProjectRoot(canonicalPath), ref)),
-        true,
-        visited
-      )
-    )
-  );
-
-  return [canonicalPath, ...nestedPaths.flat()];
-};
-
 const updateManifestExecution = (
-  manifest: ProjectManifest,
+  manifest: AgentModelDeclaration,
   model: ExecutionBlock["model"]
-): ProjectManifest => ({
+): AgentModelDeclaration => ({
   ...manifest,
   execution: {
     ...manifest.execution,
@@ -200,19 +171,29 @@ const updateManifestExecution = (
 const manifestChanged = (current: ProjectManifest, next: ProjectManifest): boolean =>
   JSON.stringify(current) !== JSON.stringify(next);
 
-const assertModelMutationAllowed = (
+const mutateAgentDeclarations = (
   manifest: ProjectManifest,
-  recursive: boolean
-): manifest is AgentManifest => {
+  manifestPath: string,
+  recursive: boolean,
+  mutate: (
+    declaration: AgentModelDeclaration,
+    source: string
+  ) => AgentModelDeclaration | null
+): ProjectManifest | null => {
   if (manifest.kind === "agent") {
-    return true;
+    return mutate(manifest, manifestPath) as AgentManifest | null;
   }
 
-  if (recursive) {
-    return false;
+  if (!recursive) {
+    throw new SpawnfileError("validation_error", TEAM_MODEL_COMMAND_ERROR);
   }
 
-  throw new SpawnfileError("validation_error", TEAM_MODEL_COMMAND_ERROR);
+  return rewriteInlineAgentMembers(manifest, (member) =>
+    (mutate(
+      member,
+      createInlineAgentSource(manifestPath, member.id)
+    ) as InlineAgentMember | null) ?? member
+  );
 };
 
 const rewriteTouchedManifests = async (
@@ -240,20 +221,18 @@ export const setProjectPrimaryModel = async (
 ): Promise<UpdateProjectModelsResult> => {
   const modelTarget = buildModelTarget(options);
   const recursive = options.recursive ?? false;
-  const manifestPaths = await collectManifestPaths(
+  const manifestPaths = await collectProjectManifestPaths(
     resolveTargetManifestPath(options.path),
     recursive
   );
 
-  return rewriteTouchedManifests(manifestPaths, (manifest) => {
-    if (!assertModelMutationAllowed(manifest, recursive)) {
-      return null;
-    }
-
-    const normalizedModel = normalizeExecutionModel(manifest.execution);
-    return updateManifestExecution(manifest, {
-      ...(normalizedModel?.fallback ? { fallback: normalizedModel.fallback } : {}),
-      primary: modelTarget
+  return rewriteTouchedManifests(manifestPaths, (manifest, manifestPath) => {
+    return mutateAgentDeclarations(manifest, manifestPath, recursive, (declaration) => {
+      const normalizedModel = normalizeExecutionModel(declaration.execution);
+      return updateManifestExecution(declaration, {
+        ...(normalizedModel?.fallback ? { fallback: normalizedModel.fallback } : {}),
+        primary: modelTarget
+      });
     });
   });
 };
@@ -263,35 +242,36 @@ export const addProjectModelFallback = async (
 ): Promise<UpdateProjectModelsResult> => {
   const modelTarget = buildModelTarget(options);
   const recursive = options.recursive ?? false;
-  const manifestPaths = await collectManifestPaths(resolveTargetManifestPath(options.path), recursive);
+  const manifestPaths = await collectProjectManifestPaths(
+    resolveTargetManifestPath(options.path),
+    recursive
+  );
 
   return rewriteTouchedManifests(manifestPaths, (manifest, manifestPath) => {
-    if (!assertModelMutationAllowed(manifest, recursive)) {
-      return null;
-    }
+    return mutateAgentDeclarations(manifest, manifestPath, recursive, (declaration, source) => {
+      const normalizedModel = normalizeExecutionModel(declaration.execution);
+      if (!normalizedModel) {
+        if (recursive) {
+          return null;
+        }
 
-    const normalizedModel = normalizeExecutionModel(manifest.execution);
-    if (!normalizedModel) {
-      if (recursive) {
-        return null;
+        throw new SpawnfileError(
+          "validation_error",
+          `Manifest at ${source} must declare a primary model before adding fallback models`
+        );
       }
 
-      throw new SpawnfileError(
-        "validation_error",
-        `Manifest at ${manifestPath} must declare a primary model before adding fallback models`
-      );
-    }
+      const existingFallback = normalizedModel.fallback ?? [];
+      const nextFallback = existingFallback.some(
+        (entry) => JSON.stringify(entry) === JSON.stringify(modelTarget)
+      )
+        ? existingFallback
+        : [...existingFallback, modelTarget];
 
-    const existingFallback = normalizedModel.fallback ?? [];
-    const nextFallback = existingFallback.some(
-      (entry) => JSON.stringify(entry) === JSON.stringify(modelTarget)
-    )
-      ? existingFallback
-      : [...existingFallback, modelTarget];
-
-    return updateManifestExecution(manifest, {
-      fallback: nextFallback,
-      primary: normalizedModel.primary
+      return updateManifestExecution(declaration, {
+        fallback: nextFallback,
+        primary: normalizedModel.primary
+      });
     });
   });
 };
@@ -301,27 +281,28 @@ export const clearProjectModelFallbacks = async (options: {
   recursive?: boolean;
 } = {}): Promise<UpdateProjectModelsResult> => {
   const recursive = options.recursive ?? false;
-  const manifestPaths = await collectManifestPaths(resolveTargetManifestPath(options.path), recursive);
+  const manifestPaths = await collectProjectManifestPaths(
+    resolveTargetManifestPath(options.path),
+    recursive
+  );
 
   return rewriteTouchedManifests(manifestPaths, (manifest, manifestPath) => {
-    if (!assertModelMutationAllowed(manifest, recursive)) {
-      return null;
-    }
+    return mutateAgentDeclarations(manifest, manifestPath, recursive, (declaration, source) => {
+      const normalizedModel = normalizeExecutionModel(declaration.execution);
+      if (!normalizedModel) {
+        if (recursive) {
+          return null;
+        }
 
-    const normalizedModel = normalizeExecutionModel(manifest.execution);
-    if (!normalizedModel) {
-      if (recursive) {
-        return null;
+        throw new SpawnfileError(
+          "validation_error",
+          `Manifest at ${source} does not declare any execution model`
+        );
       }
 
-      throw new SpawnfileError(
-        "validation_error",
-        `Manifest at ${manifestPath} does not declare any execution model`
-      );
-    }
-
-    return updateManifestExecution(manifest, {
-      primary: normalizedModel.primary
+      return updateManifestExecution(declaration, {
+        primary: normalizedModel.primary
+      });
     });
   });
 };

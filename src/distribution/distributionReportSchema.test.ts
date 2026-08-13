@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildDistributionReport } from "./buildDistributionReport.js";
+import {
+  buildDistributionReport,
+  type BuildDistributionReportInput
+} from "./buildDistributionReport.js";
 import { parseDistributionReport } from "./distributionReportSchema.js";
 
-const validReport = () =>
+const validReport = (worldBindings?: BuildDistributionReportInput["worldBindings"]) =>
   buildDistributionReport({
     envVariables: [
       { categories: ["model"], generated: false, name: "OPENAI_API_KEY", required: true }
@@ -17,13 +20,27 @@ const validReport = () =>
     portMappings: [],
     publishedPorts: [],
     resources: [],
-    runtimeInstances: []
+    runtimeInstances: [],
+    ...(worldBindings ? { worldBindings } : {})
   });
 
 describe("parseDistributionReport", () => {
   it("accepts a freshly built report", () => {
     const report = validReport();
     expect(parseDistributionReport(report)).toEqual(report);
+  });
+
+  it("accepts binding evidence and fingerprints its canonical artifact digest", () => {
+    const evidence = {
+      artifact_path: "/spawnfile/world-bindings.json" as const,
+      digest: `sha256:${"a".repeat(64)}`,
+      schema: "simfile.world-bindings.v1" as const
+    };
+    const report = validReport(evidence);
+    expect(parseDistributionReport(report).world_bindings).toEqual(evidence);
+    expect(report.compile_fingerprint).not.toBe(validReport().compile_fingerprint);
+    report.world_bindings = { ...evidence, digest: "not-a-digest" };
+    expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/u);
   });
 
   it("rejects a wrong schema version", () => {

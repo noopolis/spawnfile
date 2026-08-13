@@ -10,38 +10,35 @@
 #   install         Pinned install strategy for the verified runtime version
 #   status          active (has adapter) | exploratory (research only)
 #
-# Run ./scripts/runtimes.sh to clone or update all entries to their
-# pinned refs.
-
 runtimes:
   daimon:
     remote: git@github.com:noopolis/daimon.git
-    ref: v0.1.1
+    ref: v0.1.2
     default_branch: main
     install:
       kind: container_image
       image: noopolis/spawnfile-runtime-daimon
-      tag: 0.1.1
+      tag: 0.1.2
     status: active
 
   openclaw:
     remote: git@github.com:openclaw/openclaw.git
-    ref: v2026.6.8
+    ref: v2026.6.11
     default_branch: main
     install:
       kind: container_image
       image: noopolis/spawnfile-runtime-openclaw
-      tag: 2026.6.8
+      tag: 2026.6.11
     status: active
 
   picoclaw:
     remote: git@github.com:sipeed/picoclaw.git
-    ref: v0.2.9
+    ref: v0.3.1
     default_branch: main
     install:
       kind: container_image
       image: noopolis/spawnfile-runtime-picoclaw
-      tag: 0.2.9
+      tag: 0.3.1
     status: active
 
   pi:
@@ -60,12 +57,6 @@ runtimes:
     default_branch: main
     status: exploratory
 
-  nullclaw:
-    remote: git@github.com:nullclaw/nullclaw.git
-    ref: v2026.5.29
-    default_branch: main
-    status: exploratory
-
   opencode:
     remote: git@github.com:anomalyco/opencode.git
     ref: v1.16.2
@@ -76,10 +67,4 @@ runtimes:
     remote: git@github.com:RightNow-AI/openfang.git
     ref: v0.6.9
     default_branch: main
-    status: exploratory
-
-  zeroclaw:
-    remote: git@github.com:zeroclaw-labs/zeroclaw.git
-    ref: v0.7.5
-    default_branch: master
     status: exploratory

@@ -1,0 +1,33 @@
+spawnfile_version: "0.1"
+kind: agent
+name: eleanor
+description: "Eleanor is a Jungian self-like managing partner coordinating law office operations."
+
+runtime:
+  name: pi
+  options:
+    engine: grok
+
+execution:
+  model:
+    primary:
+      provider: local
+      name: grok-cli
+      auth:
+        method: none
+      endpoint:
+        compatibility: openai
+        base_url: http://127.0.0.1:11434/v1
+  sandbox:
+    mode: workspace
+
+surfaces:
+  moltnet:
+    - network: memetics_lab
+      rooms:
+        eleanor-home:
+          wake: mentions
+
+workspace:
+  docs:
+    system: AGENTS.md

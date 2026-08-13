@@ -33,7 +33,7 @@ describe("picoClawAdapter", () => {
     expect(picoClawAdapter.container).toEqual({
       configFileName: "config.json",
       configPathEnv: "PICOCLAW_CONFIG",
-      globalNpmPackages: ["@anthropic-ai/claude-code", "@openai/codex"],
+      globalNpmPackages: ["@anthropic-ai/claude-code", "@openai/codex", "@noopolis/mneme@0.1.1"],
       homeEnv: "PICOCLAW_HOME",
       instancePaths: {
         configPathTemplate: "<instance-root>/picoclaw/<config-file>",
@@ -256,6 +256,80 @@ describe("picoClawAdapter", () => {
     expect(config.tools.mcp.servers.local.command).toBe("node");
   });
 
+  it("emits generated Mneme MCP servers for file-backed memory banks", async () => {
+    const result = await picoClawAdapter.compileAgent({
+      ...node,
+      mcpServers: [],
+      memoryAccess: [
+        {
+          agentSource: "/tmp/Spawnfile",
+          bank: {
+            consolidation: { mode: "disabled" },
+            declaredBy: "team",
+            declaredName: "lab",
+            id: "shared",
+            index: {
+              graph: { enabled: false },
+              lexical: { enabled: true },
+              rerank: { enabled: false },
+              vector: {
+                base_url: "http://127.0.0.1:11435",
+                dimensions: 1024,
+                enabled: true,
+                model: "qwen3-embedding:0.6b",
+                provider: "ollama",
+                timeout_ms: 2500
+              }
+            },
+            retention: { forgetting: "manual" },
+            source: "/tmp/team/Spawnfile",
+            store: {
+              kind: "sqlite",
+              path: "/var/lib/spawnfile/memory/lab/shared/memory.sqlite",
+              persistence: { mode: "durable" }
+            }
+          },
+          declaringKind: "team",
+          slotId: "assistant",
+          source: "/tmp/team/Spawnfile"
+        }
+      ]
+    });
+    const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
+
+    expect(config.tools.mcp.enabled).toBe(true);
+    expect(config.tools.mcp.servers["mneme-shared"]).toEqual({
+      enabled: true,
+      command: "mneme",
+      args: [
+        "mcp",
+        "--runtime-home",
+        "/var/lib/spawnfile/memory/lab/shared",
+	        "--agent-id",
+	        "assistant",
+	        "--mode",
+	        "awake",
+	        "--source",
+        "spawnfile:team:shared",
+        "--embedding-provider",
+        "ollama",
+        "--embedding-model",
+        "qwen3-embedding:0.6b",
+        "--embedding-base-url",
+        "http://127.0.0.1:11435",
+        "--embedding-dimensions",
+        "1024",
+        "--embedding-timeout-ms",
+        "2500"
+      ]
+    });
+    expect(result.capabilities).toContainEqual({
+      key: "memory.shared",
+      message: "PicoClaw accesses Mneme memory through generated MCP servers",
+      outcome: "supported"
+    });
+  });
+
   it("enables exec when Moltnet is attached", async () => {
     const result = await picoClawAdapter.compileAgent({
       ...node,
@@ -310,12 +384,156 @@ describe("picoClawAdapter", () => {
     });
 
     const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
+    const [target] = await picoClawAdapter.createContainerTargets!([
+      {
+        emittedFiles: result.files,
+        id: "agent:assistant",
+        kind: "agent" as const,
+        slug: "assistant",
+        value: {
+          ...node,
+          mcpServers: [
+            {
+              auth: { secret: "SEARCH_API_KEY" },
+              name: "web",
+              transport: "streamable_http",
+              url: "https://example.com/mcp"
+            }
+          ]
+        }
+      }
+    ]);
+
     expect(config.model_list).toHaveLength(2);
     expect(config.model_list[1].model).toBe("anthropic/claude-sonnet-4-5");
     expect(config.model_list[1].api_key).toBe("file://secrets/ANTHROPIC_API_KEY");
     expect(config.tools.mcp.servers.web.type).toBe("http");
     expect(config.tools.mcp.servers.web.url).toBe("https://example.com/mcp");
     expect(config.tools.mcp.servers.web.headers.SEARCH_API_KEY).toBe("");
+    expect(target?.configEnvBindings).toContainEqual({
+      envName: "SEARCH_API_KEY",
+        jsonPath: ["tools", "mcp", "servers", "web", "headers", "SEARCH_API_KEY"]
+    });
+  });
+
+  it("keeps legacy MCP headers and scopes bearer bindings to Authorization", async () => {
+    const mcpServers = [
+      {
+        auth: { secret: "LEGACY_MCP_TOKEN" },
+        name: "legacy",
+        transport: "sse" as const,
+        url: "https://legacy.example/mcp"
+      },
+      {
+        auth: { mode: "bearer" as const, secret: "BEARER_MCP_TOKEN" },
+        name: "bearer",
+        transport: "streamable_http" as const,
+        url: "https://bearer.example/mcp"
+      }
+    ];
+    const agent = { ...node, mcpServers };
+    const result = await picoClawAdapter.compileAgent(agent);
+    const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
+    const [target] = await picoClawAdapter.createContainerTargets!([
+      {
+        emittedFiles: result.files,
+        id: "agent:assistant",
+        kind: "agent",
+        slug: "assistant",
+        value: agent
+      }
+    ]);
+
+    expect(config.tools.mcp.servers.legacy.headers).toEqual({ LEGACY_MCP_TOKEN: "" });
+    expect(config.tools.mcp.servers.bearer.headers).toEqual({ Authorization: "" });
+    expect(target?.configEnvBindings).toEqual([
+      {
+        envName: "LEGACY_MCP_TOKEN",
+        jsonPath: ["tools", "mcp", "servers", "legacy", "headers", "LEGACY_MCP_TOKEN"]
+      },
+      {
+        envName: "BEARER_MCP_TOKEN",
+        jsonPath: ["tools", "mcp", "servers", "bearer", "headers", "Authorization"],
+        transform: "bearer"
+      }
+    ]);
+  });
+
+  it("preserves legacy stdio auth and rejects explicit bearer stdio auth", async () => {
+    const legacy = {
+      ...node,
+      mcpServers: [
+        {
+          auth: { secret: "STDIO_TOKEN" },
+          command: "uvx",
+          name: "legacy-stdio",
+          transport: "stdio" as const
+        }
+      ]
+    };
+    const legacyResult = await picoClawAdapter.compileAgent(legacy);
+    const legacyConfig = JSON.parse(
+      legacyResult.files.find((file) => file.path === "config.json")!.content
+    );
+    expect(legacyConfig.tools.mcp.servers["legacy-stdio"].headers).toEqual({
+      STDIO_TOKEN: ""
+    });
+
+    await expect(
+      picoClawAdapter.compileAgent({
+        ...legacy,
+        mcpServers: [{ ...legacy.mcpServers[0], auth: { mode: "bearer", secret: "STDIO_TOKEN" } }]
+      })
+    ).rejects.toThrow("stdio MCP servers do not support bearer auth");
+  });
+
+  it("addresses dotted MCP names with structured binding paths", async () => {
+    const agent = {
+      ...node,
+      mcpServers: [
+        {
+          auth: { mode: "bearer" as const, secret: "DOTTED_TOKEN" },
+          name: "a.b",
+          transport: "sse" as const,
+          url: "https://example.test/mcp"
+        }
+      ]
+    };
+    const result = await picoClawAdapter.compileAgent(agent);
+    const [target] = await picoClawAdapter.createContainerTargets!([
+      { emittedFiles: result.files, id: "agent:assistant", kind: "agent", slug: "assistant", value: agent }
+    ]);
+
+    expect(target?.configEnvBindings).toContainEqual({
+      envName: "DOTTED_TOKEN",
+      jsonPath: ["tools", "mcp", "servers", "a.b", "headers", "Authorization"],
+      transform: "bearer"
+    });
+  });
+
+  it("serializes __proto__ as an authored bearer server with a structured binding", async () => {
+    const agent = {
+      ...node,
+      mcpServers: [{
+        auth: { mode: "bearer" as const, secret: "PROTO_TOKEN" },
+        name: "__proto__",
+        transport: "sse" as const,
+        url: "https://example.test/mcp"
+      }]
+    };
+    const result = await picoClawAdapter.compileAgent(agent);
+    const config = JSON.parse(result.files.find((file) => file.path === "config.json")!.content);
+    const [target] = await picoClawAdapter.createContainerTargets!([
+      { emittedFiles: result.files, id: "agent:assistant", kind: "agent", slug: "assistant", value: agent }
+    ]);
+
+    expect(Object.prototype.hasOwnProperty.call(config.tools.mcp.servers, "__proto__")).toBe(true);
+    expect(config.tools.mcp.servers["__proto__"].headers).toEqual({ Authorization: "" });
+    expect(target?.configEnvBindings).toContainEqual({
+      envName: "PROTO_TOKEN",
+      jsonPath: ["tools", "mcp", "servers", "__proto__", "headers", "Authorization"],
+      transform: "bearer"
+    });
   });
 
   it("emits custom and local endpoint models with explicit compatibility", async () => {

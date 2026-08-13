@@ -26,6 +26,7 @@ import {
   writeDockerDeploymentRecordForRun
 } from "../deployment/index.js";
 import { DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
+import { ensureNoopolisRunId, resolveNoopolisRunId } from "../runtime/index.js";
 
 import {
   compileProject,
@@ -40,8 +41,10 @@ import {
   type DockerRunResult,
   type DockerRunRunner
 } from "./runProjectDocker.js";
+import { executeDockerRunWithSupportCleanup } from "./runProjectLifecycle.js";
 import {
   assertDeclaredModelAuthSatisfied,
+  assertMoltnetCredentialValuesDistinct,
   assertRunEnvironmentSatisfied,
   prepareRuntimeAuthMounts,
   readRunEnvFile,
@@ -91,6 +94,7 @@ export const createDockerRunInvocation = async (
   imageTag: string,
   options: {
     authProfile?: ResolvedAuthProfile | null;
+    cliCredential?: { name: string; value: string };
     containerName?: string;
     detach?: boolean;
     deploymentName?: string;
@@ -112,11 +116,18 @@ export const createDockerRunInvocation = async (
   const envFilePath = path.join(supportDirectory, "run.env");
 
   try {
-    assertDeclaredModelAuthSatisfied(containerReport, options.authProfile ?? null);
+    assertDeclaredModelAuthSatisfied(
+      containerReport,
+      options.authProfile ?? null,
+      options.cliCredential !== undefined
+    );
     const env = resolveRunEnvironment(
       containerReport,
       options.authProfile ?? null,
-      await readRunEnvFile(options.envFilePath)
+      {
+        ...(await readRunEnvFile(options.envFilePath)),
+        ...(options.cliCredential ? { [options.cliCredential.name]: options.cliCredential.value } : {})
+      }
     );
     const preparedRuntimeAuth = await prepareRuntimeAuthMounts(
       compileResult.outputDirectory,
@@ -126,6 +137,7 @@ export const createDockerRunInvocation = async (
       supportDirectory
     );
     assertRunEnvironmentSatisfied(containerReport, env, preparedRuntimeAuth.coveredModelSecrets);
+    assertMoltnetCredentialValuesDistinct(containerReport, env);
 
     await ensureDirectory(supportDirectory);
     await writeUtf8File(envFilePath, renderDockerEnvFile(env));
@@ -158,22 +170,15 @@ export const createDockerRunInvocation = async (
       args.push("-v", `${mount.volume_name}:${mount.mount_path}`);
     }
 
-    if (options.detach && deploymentName) {
+    const deploymentLabels = options.detach && deploymentName ? (() => {
       const compileFingerprint = compileResult.report.compile_fingerprint ?? "sf1:unknown";
-      appendDockerLabelArgs(
-        args,
-        createDockerDeploymentLabels({
-          compileFingerprint,
-          deployment: deploymentName,
-          project: createDockerProjectLabel(
-            compileResult.report.root,
-            compileResult.report.project_name
-          ),
-          unit: createDockerDeploymentUnitId(deploymentName),
-          version: compileResult.report.spawnfile_version
-        })
-      );
-    }
+      const runId = resolveNoopolisRunId(process.env);
+      if (!runId) throw new SpawnfileError("runtime_error", "Detached deployment requires a run id for deployment labels");
+      return createDockerDeploymentLabels({ compileFingerprint, deployment: deploymentName,
+        project: createDockerProjectLabel(compileResult.report.root, compileResult.report.project_name),
+        runId, unit: createDockerDeploymentUnitId(deploymentName), version: compileResult.report.spawnfile_version });
+    })() : undefined;
+    if (deploymentLabels) appendDockerLabelArgs(args, deploymentLabels);
 
     args.push("--env-file", envFilePath);
     args.push(...(await resolveAuthMountArgs(containerReport, options.authProfile ?? null)));
@@ -187,6 +192,7 @@ export const createDockerRunInvocation = async (
       cwd: compileResult.outputDirectory,
       detach: options.detach ?? false,
       deploymentName,
+      ...(deploymentLabels ? { deploymentLabels } : {}),
       dockerContext: options.dockerContext ?? null,
       dockerHost: options.dockerHost ?? null,
       envFilePath,
@@ -288,10 +294,19 @@ export const runProject = async (
       dockerCommand: options.dockerCommand,
       dockerContext: resolvedOptions.dockerContext
     });
+  // Every authority container compiled for this run must stamp causal
+  // events under the same real run id (see specs/CAUSAL.md). compileProject
+  // itself stays a deterministic function of the host env; this only fills
+  // in a generated id when the host did not already provide one, before the
+  // compile step that bakes it into the entrypoint/recipe env.
+  ensureNoopolisRunId();
   const compileResult = await compileProject(inputPath, {
     clean: options.clean,
     containerArchitecture: targetArchitecture,
-    outputDirectory: options.outputDirectory
+    outputDirectory: options.outputDirectory,
+    ...(options.worldBindingsPath !== undefined
+      ? { worldBindingsPath: options.worldBindingsPath }
+      : {})
   });
   const imageTag = resolvedOptions.imageTag ?? createDefaultImageTag(resolveImageTagRoot(inputPath));
   const authProfile = resolvedOptions.authProfile
@@ -308,14 +323,11 @@ export const runProject = async (
     envFilePath: resolvedOptions.envFilePath
   });
 
-  let runMetadata: DockerRunResult | void;
-  try {
-    runMetadata = await (options.runRunner ?? runDockerContainer)(invocation);
-  } finally {
-    if (!invocation.detach) {
-      await removeDirectory(invocation.supportDirectory);
-    }
-  }
+  const runMetadata: DockerRunResult | void =
+    await executeDockerRunWithSupportCleanup(
+      invocation,
+      options.runRunner ?? runDockerContainer
+    );
 
   const deploymentRecordPath = invocation.detach && invocation.deploymentName
     ? await writeDockerDeploymentRecordForRun({

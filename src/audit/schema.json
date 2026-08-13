@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://noopolis.dev/schemas/spawnfile.audit.v1.json",
+  "title": "spawnfile.audit.v1",
+  "description": "Deterministic offline security-audit report contract. See src/audit/AGENTS.md and readAudit.ts (the zod schema this file mirrors).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "run_id", "generated_at", "checks", "summary"],
+  "properties": {
+    "schema": {
+      "const": "spawnfile.audit.v1"
+    },
+    "run_id": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Diagnostic only — excluded from determinism comparisons."
+    },
+    "checks": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/auditCheck" }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "failed", "na"],
+      "properties": {
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "na": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "definitions": {
+    "auditCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "category", "status", "severity", "evidence"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "category": {
+          "type": "string",
+          "enum": ["causal", "container", "control", "memory", "network", "provenance"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pass", "fail", "not_applicable"]
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["critical", "high", "medium"]
+        },
+        "evidence": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

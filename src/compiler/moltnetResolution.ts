@@ -12,6 +12,7 @@ import {
   resolveMoltnetAttachments,
   resolveTeamRepresentatives
 } from "./moltnetRepresentativeResolution.js";
+import { resolveCanonicalAgentMemberId } from "./organizationIdentity.js";
 export {
   resolveMoltnetAttachments,
   resolveTeamRepresentatives,
@@ -48,7 +49,7 @@ const validateGlobalMemberIds = (plan: CompilePlan): void => {
     return;
   }
 
-  const seen = new Map<string, string>();
+  const seen = new Map<string, { agentSource: string; label: string }>();
   const uniqueContexts = new Map(
     (plan.memberships ?? []).map((context) => [
       `${context.teamSource}::${context.memberId}::${context.agentSource}`,
@@ -57,16 +58,33 @@ const validateGlobalMemberIds = (plan: CompilePlan): void => {
   );
 
   for (const context of uniqueContexts.values()) {
-    const previous = seen.get(context.memberId);
+    let memberId = context.memberId;
+    if (plan.organizationIdentity) {
+      const canonicalMemberId = resolveCanonicalAgentMemberId(plan, context.agentSource);
+      const matches = plan.organizationIdentity.agentMembers.filter(
+        (member) => member.memberId === canonicalMemberId
+      );
+      if (!canonicalMemberId || matches.length !== 1) {
+        throw new SpawnfileError(
+          "validation_error",
+          `Unable to resolve exactly one canonical Moltnet member id for ${context.agentSource}`
+        );
+      }
+      memberId = canonicalMemberId;
+    }
+    const previous = seen.get(memberId);
     const label = `${context.teamName} (${context.teamSource}) member ${context.memberId}`;
-    if (previous && previous !== label) {
+    if (
+      previous &&
+      previous.agentSource !== context.agentSource
+    ) {
       throw new SpawnfileError(
         "validation_error",
-        `Moltnet member_id ${context.memberId} is declared by multiple direct agent member slots: ${previous}; ${label}`
+        `Moltnet member_id ${memberId} is declared by multiple direct agent member slots: ${previous.label}; ${label}`
       );
     }
 
-    seen.set(context.memberId, label);
+    seen.set(memberId, { agentSource: context.agentSource, label });
   }
 };
 
@@ -79,30 +97,74 @@ const getRoomMemberships = (
   return memberships;
 };
 
+interface SynthesizedRepresentativeAttachment {
+  agentSource: string;
+  attachment: ResolvedMoltnetAttachment;
+  directTeamSource: string;
+}
+
 const synthesizeRepresentativeAttachments = (
   memberships: ResolvedMoltnetRoomMembership[]
-): ResolvedMoltnetAttachment[] =>
+): SynthesizedRepresentativeAttachment[] =>
   memberships
     .filter((membership) => membership.representedSlot !== undefined)
     .map((membership) => ({
-      contextRooms: {
-        [membership.declaringTeamSource]: [membership.roomId]
-      },
-      memberId: membership.concreteMemberId,
-      network: membership.networkId,
-      rooms: {
-        [membership.roomId]: membership.policy ? { ...membership.policy } : {}
-      },
-      teamSource: membership.declaringTeamSource
+      agentSource: membership.agentSource,
+      directTeamSource: membership.directTeamSource,
+      attachment: {
+        contextRooms: {
+          [membership.declaringTeamSource]: [membership.roomId]
+        },
+        memberId: membership.concreteMemberId,
+        network: membership.networkId,
+        rooms: {
+          [membership.roomId]: membership.policy ? { ...membership.policy } : {}
+        },
+        teamSource: membership.declaringTeamSource
+      }
     }));
 
-const roomPolicyKey = (policy: unknown): string =>
-  JSON.stringify(policy ?? {});
+const areEquivalentDmPolicy = (
+  left: NonNullable<ResolvedMoltnetAttachment["dms"]>,
+  right: NonNullable<ResolvedMoltnetAttachment["dms"]>
+): boolean => {
+  if (left.enabled !== right.enabled || left.wake !== right.wake) {
+    return false;
+  }
+
+  const leftSenders = left.allowedWakeSenders;
+  const rightSenders = right.allowedWakeSenders;
+  if (leftSenders === undefined || rightSenders === undefined) {
+    return leftSenders === rightSenders;
+  }
+
+  if (leftSenders.length !== rightSenders.length) {
+    return false;
+  }
+
+  return leftSenders.every((sender, index) =>
+    sender === rightSenders[index]
+  );
+};
+
+const areEquivalentRoomPolicy = (
+  left: NonNullable<ResolvedMoltnetAttachment["rooms"]>[string],
+  right: NonNullable<ResolvedMoltnetAttachment["rooms"]>[string]
+): boolean => left.wake === right.wake;
 
 const hasRoomPolicy = (
   policy: NonNullable<ResolvedMoltnetAttachment["rooms"]>[string]
 ): boolean =>
   policy.wake !== undefined;
+
+const cloneMoltnetDm = (
+  dms: NonNullable<ResolvedMoltnetAttachment["dms"]>
+): NonNullable<ResolvedMoltnetAttachment["dms"]> => ({
+  ...dms,
+  ...(dms.allowedWakeSenders !== undefined
+    ? { allowedWakeSenders: [...dms.allowedWakeSenders] }
+    : {})
+});
 
 const mergeAttachment = (
   target: ResolvedMoltnetAttachment,
@@ -110,9 +172,23 @@ const mergeAttachment = (
   nodeName: string
 ): void => {
   if (
+    target.auth &&
+    next.auth &&
+    target.auth.tokenId !== next.auth.tokenId
+  ) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Agent ${nodeName} declares incompatible Moltnet auth for ${next.network}/${next.memberId ?? "unknown"}`
+    );
+  }
+  if (!target.auth && next.auth) {
+    target.auth = { ...next.auth };
+  }
+
+  if (
     target.dms &&
     next.dms &&
-    roomPolicyKey(target.dms) !== roomPolicyKey(next.dms)
+    !areEquivalentDmPolicy(target.dms, next.dms)
   ) {
     throw new SpawnfileError(
       "validation_error",
@@ -121,7 +197,7 @@ const mergeAttachment = (
   }
 
   if (!target.dms && next.dms) {
-    target.dms = { ...next.dms };
+    target.dms = cloneMoltnetDm(next.dms);
   }
   target.teamSource ??= next.teamSource;
   target.rooms ??= {};
@@ -133,7 +209,7 @@ const mergeAttachment = (
     if (
       existingHasPolicy &&
       nextHasPolicy &&
-      roomPolicyKey(existingPolicy) !== roomPolicyKey(policy)
+      !areEquivalentRoomPolicy(existingPolicy, policy)
     ) {
       throw new SpawnfileError(
         "validation_error",
@@ -179,6 +255,7 @@ const mergeAgentAttachments = (
     }
 
     merged.set(key, {
+      ...(attachment.auth ? { auth: { ...attachment.auth } } : {}),
       contextRooms: attachment.contextRooms
         ? Object.fromEntries(
             Object.entries(attachment.contextRooms).map(([teamSource, roomIds]) => [
@@ -189,7 +266,7 @@ const mergeAgentAttachments = (
         : attachment.teamSource
           ? { [attachment.teamSource]: Object.keys(attachment.rooms ?? {}).sort() }
           : undefined,
-      ...(attachment.dms ? { dms: { ...attachment.dms } } : {}),
+      ...(attachment.dms ? { dms: cloneMoltnetDm(attachment.dms) } : {}),
       memberId: attachment.memberId,
       network: attachment.network,
       ...(attachment.rooms
@@ -217,9 +294,13 @@ export const resolvePlanMoltnetAttachments = (plan: CompilePlan): void => {
   const synthesizedAttachments = synthesizeRepresentativeAttachments(roomMemberships);
   const synthesizedByAgent = new Map<string, ResolvedMoltnetAttachment[]>();
 
-  for (const attachment of synthesizedAttachments) {
-    const representativeContext = (plan.memberships ?? []).find(
-      (context) => context.memberId === attachment.memberId
+  for (const synthesized of synthesizedAttachments) {
+    const { agentSource, attachment, directTeamSource } = synthesized;
+    const representativeContext = (plan.memberships ?? []).find((context) =>
+      context.agentSource === agentSource &&
+      (plan.organizationIdentity
+        ? context.teamSource === directTeamSource
+        : context.memberId === attachment.memberId)
     );
     if (!representativeContext) {
       throw new SpawnfileError(
@@ -258,11 +339,14 @@ export const resolvePlanMoltnetAttachments = (plan: CompilePlan): void => {
       }
 
       const teamNode = findTeamBySource(plan, context.teamSource);
+      const canonicalMemberId =
+        resolveCanonicalAgentMemberId(plan, context.agentSource) ?? context.memberId;
       const resolved = resolveMoltnetAttachments(
         declaredAttachments,
         {
           memberId: context.memberId,
           networks: teamNode.networks ?? [],
+          resolvedMemberId: canonicalMemberId,
           teamName: context.teamName,
           teamSource: context.teamSource
         },

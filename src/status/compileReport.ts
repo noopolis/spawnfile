@@ -42,6 +42,11 @@ export interface StatusReportMoltnetRoom {
   writePolicy: string | null;
 }
 
+export interface StatusReportMoltnetNodePlan {
+  configPath: string;
+  networkId: string;
+}
+
 export interface StatusReportMoltnetServerPlan {
   authMode: string | null;
   baseUrl: string;
@@ -80,8 +85,26 @@ export interface StatusReportWorkspaceResource {
 
 export interface StatusReport {
   compileFingerprint: string | null;
+  /**
+   * Absolute physical path to the compiled `container/entrypoint` script
+   * (B93), resolved against the output directory a given
+   * `loadCompileReport`/`loadedImageCompileReport` call was actually handed
+   * — never a path baked into the report JSON's own `output_directory`
+   * field, which can be stale relative to the current invocation. `null`
+   * when the report has no `container.entrypoint` field, or (image/home
+   * deployment reports) when there is no on-disk compiled output at all.
+   */
+  entrypointPath?: string | null;
   generatedAt: string | null;
   internalPorts?: number[];
+  /**
+   * Parsed `container.moltnet.node_plans[]` (B38): `configPath` is the
+   * container-absolute path from the compiled report (see
+   * `toContainerRootfsPath` in `src/compiler/moltnetArtifactPaths.ts`), not
+   * yet resolved onto disk — join it under `<output dir>/container/rootfs`.
+   * Optional, like `moltnetServers` below, for the same pre-B38 reason.
+   */
+  moltnetNodePlans?: StatusReportMoltnetNodePlan[];
   moltnetServers?: StatusReportMoltnetServerPlan[];
   nodes: StatusReportNode[];
   outputDirectory: string | null;
@@ -207,6 +230,15 @@ const normalizeMoltnetRoom = (value: unknown): StatusReportMoltnetRoom | null =>
   };
 };
 
+const normalizeMoltnetNodePlan = (value: unknown): StatusReportMoltnetNodePlan | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const configPath = toStringOrNull(value.config_path);
+  const networkId = toStringOrNull(value.network_id);
+  return configPath && networkId ? { configPath, networkId } : null;
+};
+
 const normalizeMoltnetServer = (value: unknown): StatusReportMoltnetServerPlan | null => {
   if (!isRecord(value)) {
     return null;
@@ -275,7 +307,8 @@ const normalizeWorkspaceResource = (value: unknown): StatusReportWorkspaceResour
 
 const normalizeReport = (
   value: unknown,
-  reportPath: string
+  reportPath: string,
+  outputDirectory: string
 ): StatusReport | null => {
   if (!isRecord(value) || !Array.isArray(value.nodes)) {
     return null;
@@ -287,11 +320,17 @@ const normalizeReport = (
     : [];
   const moltnet = isRecord(container.moltnet) ? container.moltnet : {};
   const moltnetServers = Array.isArray(moltnet.server_plans) ? moltnet.server_plans : [];
+  const moltnetNodePlans = Array.isArray(moltnet.node_plans) ? moltnet.node_plans : [];
+  const entrypoint = toStringOrNull(container.entrypoint);
 
   return {
     compileFingerprint: toStringOrNull(value.compile_fingerprint),
+    entrypointPath: entrypoint ? path.join(outputDirectory, entrypoint) : null,
     generatedAt: toStringOrNull(value.generated_at),
     internalPorts: toNumberArray(container.internal_ports),
+    moltnetNodePlans: moltnetNodePlans
+      .map(normalizeMoltnetNodePlan)
+      .filter((entry): entry is StatusReportMoltnetNodePlan => entry !== null),
     moltnetServers: moltnetServers
       .map(normalizeMoltnetServer)
       .filter((entry): entry is StatusReportMoltnetServerPlan => entry !== null),
@@ -349,7 +388,7 @@ export const loadCompileReport = async (
     };
   }
 
-  const report = normalizeReport(parsed, reportPath);
+  const report = normalizeReport(parsed, reportPath, outputDirectory);
   return report
     ? { kind: "loaded", report, reportPath }
     : {

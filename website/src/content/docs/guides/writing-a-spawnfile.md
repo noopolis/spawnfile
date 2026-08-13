@@ -250,7 +250,7 @@ environment:
   secrets:
     - name: SEARCH_API_KEY
       required: true
-    - name: MEMORY_API_KEY
+    - name: INDEX_API_KEY
       required: false
   packages:
     - id: github-cli

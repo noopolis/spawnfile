@@ -18,6 +18,7 @@ import type {
   ContainerRuntimeInstanceReport
 } from "../report/index.js";
 import { SpawnfileError } from "../shared/index.js";
+import type { OrganizationReadinessEvidence } from "./organizationReadyEvidence.js";
 
 import {
   createDockerRunInvocation,
@@ -25,12 +26,17 @@ import {
   type RunProjectResult
 } from "./runProject.js";
 
-const fixturesRoot = path.resolve(process.cwd(), "fixtures");
+const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures");
 const temporaryDirectories: string[] = [];
 const previousSpawnfileHome = process.env.SPAWNFILE_HOME;
 const previousAnthropicKey = process.env.ANTHROPIC_API_KEY;
 const previousSearchKey = process.env.SEARCH_API_KEY;
 const previousGithubToken = process.env.GH_TOKEN;
+const genericOrganizationReadinessEvidence: OrganizationReadinessEvidence = {
+  compileFingerprint: "sf1:000000000000", compileVersion: "0.1", hasExternalMoltnet: false,
+  networks: [], organizationMembers: [], projectLabel: "generic",
+  version: "spawnfile.organization-ready-evidence.v1", worldBindings: null
+};
 
 const createTempDirectory = async (prefix: string): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
@@ -114,6 +120,7 @@ afterEach(async () => {
   } else {
     process.env.GH_TOKEN = previousGithubToken;
   }
+  delete process.env.NOOPOLIS_RUN_ID;
   await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
 });
 
@@ -133,6 +140,7 @@ describe("createDockerRunInvocation", () => {
 
     const invocation = await createDockerRunInvocation(
       {
+        organizationReadinessEvidence: genericOrganizationReadinessEvidence,
         outputDirectory: "/tmp/spawnfile-run-out",
         report: createCompileReport({
           dockerfile: "Dockerfile",
@@ -201,6 +209,7 @@ describe("createDockerRunInvocation", () => {
     await expect(
       createDockerRunInvocation(
         {
+          organizationReadinessEvidence: genericOrganizationReadinessEvidence,
           outputDirectory: "/tmp/spawnfile-run-out",
           report: createCompileReport({
             dockerfile: "Dockerfile",
@@ -237,6 +246,7 @@ describe("createDockerRunInvocation", () => {
   });
 
   it("supports detached runs with an explicit container name", async () => {
+    process.env.NOOPOLIS_RUN_ID = "run-detached-explicit-name";
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
     process.env.SPAWNFILE_HOME = spawnfileHome;
     await setAuthProfileEnv("dev", {
@@ -246,6 +256,7 @@ describe("createDockerRunInvocation", () => {
 
     const invocation = await createDockerRunInvocation(
       {
+        organizationReadinessEvidence: genericOrganizationReadinessEvidence,
         outputDirectory: "/tmp/spawnfile-run-out",
         report: createCompileReport({
           dockerfile: "Dockerfile",
@@ -281,8 +292,10 @@ describe("createDockerRunInvocation", () => {
   });
 
   it("adds docker context and identifier labels for detached deployments", async () => {
+    process.env.NOOPOLIS_RUN_ID = "run-detached-labels";
     const invocation = await createDockerRunInvocation(
       {
+        organizationReadinessEvidence: genericOrganizationReadinessEvidence,
         outputDirectory: "/tmp/spawnfile-run-out",
         report: createCompileReport({
           model_secrets_required: [],
@@ -320,6 +333,7 @@ describe("createDockerRunInvocation", () => {
 
     const invocation = await createDockerRunInvocation(
       {
+        organizationReadinessEvidence: genericOrganizationReadinessEvidence,
         outputDirectory: "/tmp/spawnfile-run-out",
         report: createCompileReport({
           dockerfile: "Dockerfile",
@@ -349,6 +363,7 @@ describe("createDockerRunInvocation", () => {
   it("mounts reported persistent state volumes", async () => {
     const invocation = await createDockerRunInvocation(
       {
+        organizationReadinessEvidence: genericOrganizationReadinessEvidence,
         outputDirectory: "/tmp/spawnfile-run-out",
         report: createCompileReport({
           dockerfile: "Dockerfile",
@@ -387,6 +402,7 @@ describe("createDockerRunInvocation", () => {
     await expect(
       createDockerRunInvocation(
         {
+          organizationReadinessEvidence: genericOrganizationReadinessEvidence,
           outputDirectory: "/tmp/spawnfile-run-out",
           report: createCompileReport({
             dockerfile: "Dockerfile",
@@ -425,6 +441,7 @@ describe("createDockerRunInvocation", () => {
     await expect(
       createDockerRunInvocation(
         {
+          organizationReadinessEvidence: genericOrganizationReadinessEvidence,
           outputDirectory: "/tmp/spawnfile-run-out",
           report: {
             compile_fingerprint: "sf1:test123",
@@ -522,7 +539,40 @@ describe("runProject", () => {
     expect(result.authProfileName).toBeNull();
   }, 30000);
 
-  it("keeps detached support files so runtime auth mounts remain available", async () => {
+  it("generates a run id and stamps it into the compiled entrypoint when the host env didn't provide one", async () => {
+    delete process.env.NOOPOLIS_RUN_ID;
+    process.env.ANTHROPIC_API_KEY = "process-ant";
+    process.env.SEARCH_API_KEY = "search-key";
+
+    const outputDirectory = await createTempDirectory("spawnfile-run-out-");
+    await runProject(path.join(fixturesRoot, "single-agent"), {
+      imageTag: "spawnfile-single-agent",
+      outputDirectory,
+      runRunner: async () => undefined
+    });
+
+    expect(process.env.NOOPOLIS_RUN_ID).toBeTruthy();
+    const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
+    expect(entrypoint).toContain(`NOOPOLIS_RUN_ID='${process.env.NOOPOLIS_RUN_ID}'`);
+  }, 30000);
+
+  it("reuses an already-set NOOPOLIS_RUN_ID instead of generating a new one", async () => {
+    process.env.NOOPOLIS_RUN_ID = "run-from-host-real";
+    process.env.ANTHROPIC_API_KEY = "process-ant";
+    process.env.SEARCH_API_KEY = "search-key";
+
+    const outputDirectory = await createTempDirectory("spawnfile-run-out-");
+    await runProject(path.join(fixturesRoot, "single-agent"), {
+      imageTag: "spawnfile-single-agent",
+      outputDirectory,
+      runRunner: async () => undefined
+    });
+
+    const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
+    expect(entrypoint).toContain("NOOPOLIS_RUN_ID='run-from-host-real'");
+  }, 30000);
+
+  it("removes the generated detached env file after Docker consumes it", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
     process.env.SPAWNFILE_HOME = spawnfileHome;
     await setAuthProfileEnv("dev", {
@@ -547,7 +597,7 @@ describe("runProject", () => {
       targetExecFile: createTargetExecFile()
     });
 
-    expect(await fileExists(path.join(supportDirectory, "run.env"))).toBe(true);
+    expect(await fileExists(path.join(supportDirectory, "run.env"))).toBe(false);
     await removeDirectory(supportDirectory);
   }, 30000);
 

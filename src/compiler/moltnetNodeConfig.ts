@@ -42,7 +42,8 @@ export const createMoltnetNodeConfigContent = ({
     networkServer,
     attachment.network,
     attachment.memberId,
-    nodeSlug
+    nodeSlug,
+    attachment.auth?.tokenId
   );
   const usesPerAttachmentOpenToken =
     clientAuth.mode === "open" &&
@@ -108,7 +109,12 @@ export const createMoltnetNodeConfigContent = ({
                 ? {
                     dms: {
                       enabled: attachment.dms.enabled,
-                      ...(attachment.dms.wake ? { wake: attachment.dms.wake } : {})
+                      ...(attachment.dms.wake ? { wake: attachment.dms.wake } : {}),
+                      ...(attachment.dms.allowedWakeSenders !== undefined
+                        ? {
+                            allowed_wake_senders: [...attachment.dms.allowedWakeSenders]
+                          }
+                        : {})
                     }
                   }
                 : {})

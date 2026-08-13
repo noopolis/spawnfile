@@ -85,6 +85,24 @@ Supported transports:
 
 Each server can have `enabled`, `command`, `args`, `env`, `env_file`, `type`, `url`, and `headers` fields.
 
+## Memory Handling
+
+PicoClaw supports file-backed Spawnfile memory banks through compiler-generated
+Mneme MCP servers. A durable sqlite/json memory bank emits a persistent
+container mount for its store directory, installs the `mneme` CLI in the
+runtime image, and adds a `mneme-<memory-id>` stdio server under
+`tools.mcp.servers` with `--mode awake`; if an agent sees two banks with the
+same id, Spawnfile appends a compiler-owned discriminator to keep the names
+distinct. If the bank declares scheduled consolidation, Spawnfile also emits a
+matching `-dream` server with `--mode dream` and pre-seeds PicoClaw's native
+cron store with an isolated memory-maintenance wake. When the memory bank
+declares `index.vector` with the `ollama` provider, Spawnfile passes the
+embedding model, base URL, dimensions, and timeout into the generated Mneme MCP
+servers.
+
+Postgres and pure in-memory stores are reported in the compile report but do
+not receive generated Mneme MCP wiring in v0.1.
+
 ## Workspace and Sandbox
 
 PicoClaw has a strong workspace-first model:
@@ -190,13 +208,13 @@ For container compilation:
 - Port configuration (health on `/health` and `/ready`)
 - Start command (`picoclaw gateway --allow-empty`)
 
-PicoClaw uses `noopolis/spawnfile-runtime-picoclaw:0.2.9` by default.
+PicoClaw uses `noopolis/spawnfile-runtime-picoclaw:0.3.1` by default.
 Generated Dockerfiles copy `/opt/spawnfile/runtime-installs/picoclaw` from
 that image and create `/usr/local/bin/picoclaw` as a symlink to the copied
 binary. To test a local runtime artifact instead:
 
 ```bash
-SPAWNFILE_PICOCLAW_RUNTIME_IMAGE=noopolis/spawnfile-runtime-picoclaw:0.2.9-local \
+SPAWNFILE_PICOCLAW_RUNTIME_IMAGE=noopolis/spawnfile-runtime-picoclaw:0.3.1-local \
   spawnfile build ./agentic-org
 ```
 

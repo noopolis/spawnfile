@@ -27,7 +27,6 @@ import {
 } from "./docker.js";
 
 const DEV_OUTPUT_DIRECTORY = ".spawn-dev";
-const PI_APP_CONFIG_PATH = "/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json";
 export const PI_CONTROL_URL = "http://127.0.0.1:19690";
 
 export interface DevProjectOptions {
@@ -136,21 +135,40 @@ const matchesAgent = (agent: PiAgentConfig, input: string): boolean =>
   agent.slug === input || agent.id === input || agent.name === input || agent.id === `agent:${input}`;
 
 const selectPiAgent = async (
-  outputDirectory: string,
+  compileResult: CompileProjectResult,
   agentInput: string
-): Promise<{ agent: PiAgentConfig; configPath: string; workspacePath: string }> => {
-  const configPath = rootfsPath(outputDirectory, PI_APP_CONFIG_PATH);
+): Promise<{
+  agent: PiAgentConfig;
+  configPath: string;
+  instanceRoot: string;
+  remoteConfigPath: string;
+  remoteWorkspaceRoot: string;
+  workspacePath: string;
+}> => {
+  const instance = compileResult.report.container?.runtime_instances.find(
+    (candidate) => candidate.id === "pi-app" && ["daimon", "pi"].includes(candidate.runtime)
+  );
+  if (!instance?.config_path || !instance.workspace_path || !instance.home_path) {
+    throw new SpawnfileError(
+      "runtime_error",
+      "Compiled output does not contain a generated Daimon runtime instance"
+    );
+  }
+  const configPath = rootfsPath(compileResult.outputDirectory, instance.config_path);
   const config = await readJson<{ agents?: PiAgentConfig[] }>(configPath);
   const agent = (config.agents ?? []).find((candidate) => matchesAgent(candidate, agentInput));
   if (!agent) {
-    throw new SpawnfileError("validation_error", `Pi agent "${agentInput}" was not found in compiled output`);
+    throw new SpawnfileError("validation_error", `Daimon agent "${agentInput}" was not found in compiled output`);
   }
   return {
     agent,
     configPath,
+    instanceRoot: path.posix.dirname(instance.home_path),
+    remoteConfigPath: instance.config_path,
+    remoteWorkspaceRoot: `${instance.workspace_path}/agents`,
     workspacePath: rootfsPath(
-      outputDirectory,
-      `/var/lib/spawnfile/instances/pi/pi-app/workspace/agents/${agent.slug}`
+      compileResult.outputDirectory,
+      `${instance.workspace_path}/agents/${agent.slug}`
     )
   };
 };
@@ -260,17 +278,24 @@ export const devApplyProject = async (
     dockerCommand,
     execFileImpl
   );
-  const { agent, configPath, workspacePath } = await selectPiAgent(outputDirectory, options.agent);
+  const {
+    agent,
+    configPath,
+    instanceRoot,
+    remoteConfigPath,
+    remoteWorkspaceRoot,
+    workspacePath
+  } = await selectPiAgent(compileResult, options.agent);
   const nodes = await selectMoltnetNodes(compileResult, agent);
   const serverConfigs = selectManagedMoltnetServers(compileResult);
   const existingAgent = existingAgents.some((candidate) => matchesAgent(candidate, agent.slug));
 
-  await copyIntoContainer(dockerCommand, dockerPrefix, configPath, `${containerName}:${PI_APP_CONFIG_PATH}`, execFileImpl);
+  await copyIntoContainer(dockerCommand, dockerPrefix, configPath, `${containerName}:${remoteConfigPath}`, execFileImpl);
   await copyIntoContainer(
     dockerCommand,
     dockerPrefix,
     workspacePath,
-    `${containerName}:/var/lib/spawnfile/instances/pi/pi-app/workspace/agents`,
+    `${containerName}:${remoteWorkspaceRoot}`,
     execFileImpl
   );
   for (const node of nodes) {
@@ -296,7 +321,7 @@ export const devApplyProject = async (
     execFileImpl
   );
   await chownContainerPaths(dockerCommand, dockerPrefix, containerName, [
-    "/var/lib/spawnfile/instances/pi/pi-app",
+    instanceRoot,
     ...nodes.flatMap((node) => [
       node.remotePath,
       ...(node.tokenDirectory ? [node.tokenDirectory] : [])

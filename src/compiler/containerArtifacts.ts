@@ -1,29 +1,39 @@
+import { createHash } from "node:crypto";
+
 import {
   buildDistributionReport,
   createDistributionImageLabels,
   DISTRIBUTION_REPORT_OUTPUT_FILE,
-  normalizeProjectLabelSlug
+  normalizeProjectLabelSlug,
+  WORLD_BINDINGS_IMAGE_PATH
 } from "../distribution/index.js";
-import type {
-  DistributionOrganizationSummary,
-  DistributionReport
-} from "../distribution/index.js";
-import type { EmittedFile } from "../runtime/index.js";
+import type { DistributionReport } from "../distribution/index.js";
+import type { EmittedFile, RuntimeContainerPackageOverrides } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
+import { createMoltnetSummary, createOrganizationSummary } from "./containerArtifactSummaries.js";
 import { createEnvVariableMap, createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
+import { createDockerIgnoreContent } from "./dockerBuildContext.js";
+import { createDaimonTelemetryArtifacts } from "./daimonTelemetryArtifacts.js";
 import {
   createRootfsFiles,
   renderDockerfile,
   renderEntrypoint,
   renderEnvExample
 } from "./containerArtifactsRender.js";
-import type { MoltnetArtifacts, MoltnetServerPlan } from "./moltnetArtifacts.js";
+import { createMemoryArtifactBundle } from "./memoryArtifacts.js";
+import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
+import type { MoltnetReleaseIdentity } from "./moltnetBinaries.js";
 import type {
   CompiledNodeArtifact,
   GeneratedContainerArtifacts
 } from "./containerArtifactsTypes.js";
 import type { CompilePlan } from "./types.js";
+import {
+  SIMFILE_WORLD_BINDINGS_VERSION,
+  WORLD_BINDINGS_OUTPUT_FILE,
+  type ResolvedWorldBindings
+} from "./worldBindings.js";
 
 export type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./containerArtifactsTypes.js";
 
@@ -31,137 +41,55 @@ export interface ContainerArtifactOptions {
   generatedAt?: string;
   hasStagedMoltnetBinaries?: boolean;
   moltnet?: MoltnetArtifacts | null;
+  moltnetRelease?: MoltnetReleaseIdentity;
+  worldBindings?: ResolvedWorldBindings;
+  /** Resolved local overrides for runtime install npm packages, produced by
+   * stageRuntimePackageOverrides.ts from a compile-time-only
+   * RuntimePackageOverrideRequest (see compileProject.ts). Undefined for a
+   * standard compile. */
+  runtimePackageOverrides?: RuntimeContainerPackageOverrides;
 }
-
-const createOrganizationSummary = (
-  plan: CompilePlan,
-  compiledNodes: CompiledNodeArtifact[]
-): DistributionOrganizationSummary => {
-  const nodes = compiledNodes.map((node) => ({
-    id: node.id ?? `${node.kind}:${node.slug}`,
-    kind: node.kind,
-    name: node.value.name,
-    runtimeName: node.runtimeName,
-    source: node.value.source
-  }));
-  const rootNode =
-    nodes.find((node) => node.source === plan.root)
-    ?? nodes.find((node) => !plan.edges.some((edge) => edge.to === node.id))
-    ?? nodes[0];
-  if (!rootNode) {
-    throw new SpawnfileError(
-      "compile_error",
-      `Unable to resolve the root node for ${plan.root}`
-    );
-  }
-
-  const memberEdges = plan.edges.filter((edge) => edge.kind === "team_member");
-  const teamsByAgent = new Map<string, string[]>();
-  for (const edge of memberEdges) {
-    teamsByAgent.set(edge.to, [...(teamsByAgent.get(edge.to) ?? []), edge.from]);
-  }
-
-  const agentNodes = nodes.filter((node) => node.kind === "agent");
-  const teamNodes = nodes.filter((node) => node.kind === "team");
-  const agentIds = new Set(agentNodes.map((node) => node.id));
-
-  return {
-    agents: agentNodes
-      .map((node) => ({
-        id: node.id,
-        name: node.name,
-        runtime: node.runtimeName,
-        teams: [...(teamsByAgent.get(node.id) ?? [])].sort()
-      }))
-      .sort((left, right) => left.id.localeCompare(right.id)),
-    project: rootNode.name,
-    teams: teamNodes
-      .map((node) => ({
-        agents: memberEdges
-          .filter((edge) => edge.from === node.id && agentIds.has(edge.to))
-          .map((edge) => edge.to)
-          .sort(),
-        id: node.id,
-        name: node.name
-      }))
-      .sort((left, right) => left.id.localeCompare(right.id))
-  };
-};
-
-const resolveMoltnetOperatorTokenSecret = (
-  plan: MoltnetServerPlan
-): string | undefined => {
-  const client = plan.server.auth.client;
-  if (!client) {
-    return undefined;
-  }
-
-  if (client.token_env) {
-    return client.token_env;
-  }
-
-  if (client.token_path) {
-    return client.token_path;
-  }
-
-  if (!client.token_id) {
-    return undefined;
-  }
-
-  return plan.server.auth.tokens?.find((token) => token.id === client.token_id)?.secret;
-};
-
-const createMoltnetSummary = (
-  moltnet: MoltnetArtifacts | undefined | null
-): GeneratedContainerArtifacts["report"]["moltnet"] | undefined => {
-  if (!moltnet) {
-    return undefined;
-  }
-
-  return {
-    node_plans: moltnet.nodePlans.map((plan) => ({
-      config_path: plan.configPath,
-      network_id: plan.networkId
-    })),
-    server_plans: moltnet.serverPlans.map((plan) => {
-      const operatorTokenSecret = resolveMoltnetOperatorTokenSecret(plan);
-
-      return {
-        auth_mode: plan.server.auth.mode,
-        base_url: plan.baseUrl,
-        ...(plan.configPath ? { config_path: plan.configPath } : {}),
-        ...(plan.server.mode === "managed"
-          ? { direct_messages: plan.server.direct_messages }
-          : {}),
-        id: plan.id,
-        mode: plan.mode,
-        network_id: plan.networkId,
-        ...(operatorTokenSecret ? { operator_token_secret: operatorTokenSecret } : {}),
-        ...(plan.port ? { port: plan.port } : {}),
-        ...(plan.server.auth.public_read !== undefined
-          ? { public_read: plan.server.auth.public_read }
-          : {}),
-        rooms: plan.rooms.map((room) => ({
-          id: room.id,
-          members: [...room.members],
-          ...(room.visibility ? { visibility: room.visibility } : {}),
-          ...(room.write_policy ? { write_policy: room.write_policy } : {})
-        })),
-        ...(plan.server.mode === "managed"
-          ? { store_kind: plan.server.store.kind }
-          : {})
-      };
-    })
-  };
-};
 
 export const createContainerArtifacts = async (
   plan: CompilePlan,
   compiledNodes: CompiledNodeArtifact[],
   options: ContainerArtifactOptions = {}
 ): Promise<GeneratedContainerArtifacts> => {
-  const runtimePlans = await createRuntimeTargetPlans(plan, compiledNodes);
-  const envVariables = [...createEnvVariableMap(compiledNodes, runtimePlans).values()].sort(
+  const runtimePlans = await createRuntimeTargetPlans(plan, compiledNodes, options.worldBindings);
+  const daimonTelemetryArtifacts = createDaimonTelemetryArtifacts(plan, runtimePlans, compiledNodes);
+  const envVariableMap = createEnvVariableMap(compiledNodes, runtimePlans, options.moltnet);
+  const projectedWorldTokenEnvNames = [...new Set(
+    runtimePlans.flatMap((runtimePlan) => runtimePlan.worldTokenEnvNames ?? [])
+  )].sort();
+  const worldTokenEnvNames = (options.worldBindings?.artifact.bindings ?? [])
+    .map((binding) => binding.token_env)
+    .sort();
+  const recipeEnvNames = new Set(
+    runtimePlans.flatMap((runtimePlan) => Object.keys(runtimePlan.recipeEnv ?? {}))
+  );
+  const moltnetSecretEnvNames = new Set(
+    (options.moltnet?.serverPlans ?? []).flatMap((serverPlan) =>
+      serverPlan.secretPatches.map((patch) => patch.envName)
+    )
+  );
+  for (const name of worldTokenEnvNames) {
+    if (envVariableMap.has(name) || recipeEnvNames.has(name) || moltnetSecretEnvNames.has(name)) {
+      throw new SpawnfileError(
+        "validation_error",
+        `World token env ${name} conflicts with an existing environment authority`
+      );
+    }
+  }
+  for (const name of projectedWorldTokenEnvNames) {
+    envVariableMap.set(name, {
+      categories: ["runtime"],
+      description: "World bearer token for a native runtime projection",
+      generated: false,
+      name,
+      required: true
+    });
+  }
+  const envVariables = [...envVariableMap.values()].sort(
     (left, right) => left.name.localeCompare(right.name)
   );
   const requiredSecrets = envVariables
@@ -176,14 +104,58 @@ export const createContainerArtifacts = async (
     .filter((variable) => variable.required && variable.categories.includes("runtime"))
     .map((variable) => variable.name)
     .sort();
-  const persistentMounts = (options.moltnet?.persistentMounts ?? [])
-    .map((mount) => ({
+  const memoryArtifacts = createMemoryArtifactBundle(plan);
+  const persistentMountsById = new Map<string, { mount_path: string; reason: string; volume_name: string }>();
+  for (const mount of memoryArtifacts.mounts) {
+    const existing = persistentMountsById.get(mount.id);
+    if (existing) {
+      if (existing.mount_path !== mount.mount_path || existing.volume_name !== mount.volume_name) {
+        throw new Error(
+          `Container persistent mount ${mount.id} resolves to conflicting targets`
+        );
+      }
+      continue;
+    }
+    persistentMountsById.set(mount.id, {
+      mount_path: mount.mount_path,
+      reason: mount.reason,
+      volume_name: mount.volume_name
+    });
+  }
+
+  const persistentMounts = [
+    ...memoryArtifacts.mounts,
+    ...daimonTelemetryArtifacts.mounts,
+    ...((options.moltnet?.persistentMounts ?? []).map((mount) => ({
       id: mount.id,
       mount_path: mount.mountPath,
       reason: mount.reason,
       volume_name: mount.volumeName
-    }))
-    .sort((left, right) => left.id.localeCompare(right.id));
+    })))
+  ]
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .filter((mount) => {
+      const existing = persistentMountsById.get(mount.id);
+      if (existing) {
+        if (
+          existing.mount_path === mount.mount_path &&
+          existing.volume_name === mount.volume_name &&
+          existing.reason === mount.reason
+        ) {
+          return true;
+        }
+
+        throw new Error(
+          `Container persistent mount ${mount.id} resolves to conflicting targets`
+        );
+      }
+      persistentMountsById.set(mount.id, {
+        mount_path: mount.mount_path,
+        reason: mount.reason,
+        volume_name: mount.volume_name
+      });
+      return true;
+    });
 
   const runtimeInternalPorts = runtimePlans.flatMap((plan) =>
     plan.port ? [plan.port] : []
@@ -211,18 +183,25 @@ export const createContainerArtifacts = async (
     ...new Set(runtimePlans.flatMap((plan) => (plan.instancePaths.homePath ? [plan.instancePaths.homePath] : [])))
   ].sort();
   const runtimeInstances = runtimePlans
-    .map((plan) => ({
-      config_path: plan.instancePaths.configPath,
-      home_path: plan.instancePaths.homePath ?? null,
-      id: plan.id,
-      internal_port: plan.port ?? null,
-      model_auth_methods: plan.modelAuthMethods,
-      model_secrets_required: plan.modelSecretsRequired,
-      node_ids: [...(plan.sourceIds ?? [])],
-      published_port: plan.publishedPort ?? null,
-      runtime: plan.runtimeName,
-      workspace_path: plan.instancePaths.workspacePath
-    }))
+    .map((plan) => {
+      const telemetryMountIds = daimonTelemetryArtifacts.telemetryMountIdsByInstance.get(plan.id);
+      return {
+        config_path: plan.instancePaths.configPath,
+        home_path: plan.instancePaths.homePath ?? null,
+        id: plan.id,
+        internal_port: plan.port ?? null,
+        model_auth_methods: plan.modelAuthMethods,
+        model_secrets_required: plan.modelSecretsRequired,
+        ...(plan.engineByNodeId && Object.keys(plan.engineByNodeId).length > 0
+          ? { engine_by_node_id: plan.engineByNodeId }
+          : {}),
+        node_ids: [...(plan.sourceIds ?? [])],
+        published_port: plan.publishedPort ?? null,
+        runtime: plan.runtimeName,
+        ...(telemetryMountIds ? { telemetry_mount_ids: telemetryMountIds } : {}),
+        workspace_path: plan.instancePaths.workspacePath
+      };
+    })
     .sort((left, right) => left.id.localeCompare(right.id));
   const runtimesInstalled = [...new Set(runtimePlans.map((plan) => plan.runtimeName))].sort();
   const workspaceResources = [
@@ -243,7 +222,7 @@ export const createContainerArtifacts = async (
       )
     ).values()
   ].sort((left, right) => left.link_path.localeCompare(right.link_path) || left.id.localeCompare(right.id));
-  const moltnetSummary = createMoltnetSummary(options.moltnet);
+  const moltnetSummary = createMoltnetSummary(options.moltnet, options.moltnetRelease);
 
   const organization = createOrganizationSummary(plan, compiledNodes);
   const projectSlug = normalizeProjectLabelSlug(organization.project);
@@ -263,6 +242,13 @@ export const createContainerArtifacts = async (
       ])
     ).values()
   ];
+  const worldBindingsEvidence = options.worldBindings
+    ? {
+        artifact_path: WORLD_BINDINGS_IMAGE_PATH,
+        digest: `sha256:${createHash("sha256").update(options.worldBindings.canonicalBytes).digest("hex")}`,
+        schema: SIMFILE_WORLD_BINDINGS_VERSION
+      } as const
+    : undefined;
   const distributionReport = buildDistributionReport({
     envVariables: envVariables.map((variable) => ({
       categories: variable.categories,
@@ -291,7 +277,8 @@ export const createContainerArtifacts = async (
       mount: resource.mount,
       sharing: resource.sharing
     })),
-    runtimeInstances
+    runtimeInstances,
+    ...(worldBindingsEvidence ? { worldBindings: worldBindingsEvidence } : {})
   });
   const distributionLabels = createDistributionImageLabels(
     projectSlug,
@@ -301,6 +288,9 @@ export const createContainerArtifacts = async (
   const files: EmittedFile[] = [
     ...createRootfsFiles(runtimePlans),
     ...(options.moltnet?.files ?? []),
+    ...(options.worldBindings
+      ? [{ content: options.worldBindings.canonicalBytes, mode: 0o600, path: WORLD_BINDINGS_OUTPUT_FILE }]
+      : []),
     {
       content: `${JSON.stringify(distributionReport, null, 2)}\n`,
       path: DISTRIBUTION_REPORT_OUTPUT_FILE
@@ -309,12 +299,24 @@ export const createContainerArtifacts = async (
       content: await renderDockerfile(runtimePlans, {
         distribution: {
           labels: distributionLabels,
-          reportOutputFile: DISTRIBUTION_REPORT_OUTPUT_FILE
+          reportOutputFile: DISTRIBUTION_REPORT_OUTPUT_FILE,
+          ...(options.worldBindings
+            ? { worldBindingsOutputFile: WORLD_BINDINGS_OUTPUT_FILE }
+            : {})
         },
         hasMoltnet: Boolean(options.moltnet),
         hasStagedMoltnetBinaries: options.hasStagedMoltnetBinaries,
+        ...(options.moltnet
+          ? {
+              moltnet: {
+                nodePlans: options.moltnet.nodePlans,
+                serverPlans: options.moltnet.serverPlans
+              }
+            }
+          : {}),
         moltnetPublishedPorts: options.moltnet?.publishedPorts ?? [],
-        persistentMountPaths: persistentMounts.map((mount) => mount.mount_path)
+        persistentMountPaths: persistentMounts.map((mount) => mount.mount_path),
+        runtimePackageOverrides: options.runtimePackageOverrides
       }),
       path: "Dockerfile"
     },
@@ -325,6 +327,7 @@ export const createContainerArtifacts = async (
         {
           moltnet: options.moltnet
             ? {
+                externalParticipantArtifacts: options.moltnet.externalParticipantArtifacts ?? [],
                 nodePlans: options.moltnet.nodePlans,
                 serverPlans: options.moltnet.serverPlans
               }
@@ -336,6 +339,10 @@ export const createContainerArtifacts = async (
     {
       content: renderEnvExample(envVariables),
       path: ".env.example"
+    },
+    {
+      content: createDockerIgnoreContent(),
+      path: ".dockerignore"
     }
   ];
 
@@ -370,6 +377,7 @@ export const createContainerArtifacts = async (
       runtime_secrets_required: runtimeSecretsRequired,
       runtimes_installed: runtimesInstalled,
       secrets_required: requiredSecrets,
+      ...(memoryArtifacts.memories.length > 0 ? { memory: memoryArtifacts.memories } : {}),
       ...(persistentMounts.length > 0 ? { persistent_mounts: persistentMounts } : {}),
       ...(workspaceResources.length > 0 ? { workspace_resources: workspaceResources } : {})
     }

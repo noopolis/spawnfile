@@ -1,17 +1,15 @@
 # Blueprints
 
-Frozen reference layouts for each runtime at the version pinned in `runtimes.yaml`. Generated mechanically by `./scripts/blueprints.sh`.
+Frozen reference layouts for each runtime at the version pinned in `runtimes.yaml`.
 
 Each blueprint shows exactly what a runtime expects when you set up a bot — config files, workspace structure, doc locations, skill directories.
 
-## Regenerating
+## Updating
 
-```bash
-./scripts/blueprints.sh              # all runtimes
-./scripts/blueprints.sh openclaw     # one runtime
-```
-
-On a version bump: update `runtimes.yaml` → run `./scripts/runtimes.sh` → run `./scripts/blueprints.sh` → diff the output.
+On a version bump, update `runtimes.yaml`, regenerate the runtime's canonical
+configuration with the pinned upstream CLI or reference config, and diff the
+captured layout. The blueprint change and adapter verification belong in the
+same review.
 
 ## Runtimes
 
@@ -19,8 +17,6 @@ On a version bump: update `runtimes.yaml` → run `./scripts/runtimes.sh` → ru
 |---------|------|--------|----------------|--------|
 | OpenClaw | npm | `openclaw.json` | AGENTS, BOOTSTRAP, HEARTBEAT, IDENTITY, SOUL, TOOLS, USER | `openclaw onboard` |
 | PicoClaw | Go | `config.json` | AGENTS, SOUL, USER, IDENTITY, HEARTBEAT, memory/MEMORY | `config.example.json` |
-| NullClaw | Zig | `config.json` | AGENTS, SOUL, IDENTITY | `config.example.json` |
-| ZeroClaw | Rust | `config.toml` | AGENTS, SOUL, IDENTITY | `config-reference.md` |
 
 ## Incompatible Runtimes
 

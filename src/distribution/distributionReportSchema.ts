@@ -2,7 +2,10 @@ import { z } from "zod";
 
 import { SpawnfileError } from "../shared/index.js";
 
-import { DISTRIBUTION_REPORT_VERSION } from "./types.js";
+import {
+  DISTRIBUTION_REPORT_VERSION,
+  WORLD_BINDINGS_IMAGE_PATH
+} from "./types.js";
 import type { DistributionReport } from "./types.js";
 
 const secretEntrySchema = z.object({
@@ -109,7 +112,12 @@ export const distributionReportSchema = z.object({
     runtime: z.array(secretEntrySchema),
     surface: z.array(secretEntrySchema)
   }).strict(),
-  version: z.literal(DISTRIBUTION_REPORT_VERSION)
+  version: z.literal(DISTRIBUTION_REPORT_VERSION),
+  world_bindings: z.object({
+    artifact_path: z.literal(WORLD_BINDINGS_IMAGE_PATH),
+    digest: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+    schema: z.literal("simfile.world-bindings.v1")
+  }).strict().optional()
 }).strict();
 
 export const parseDistributionReport = (

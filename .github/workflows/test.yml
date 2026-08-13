@@ -5,15 +5,167 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  root:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out Spawnfile
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run coverage
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Boundary tests
+        run: npm run test:boundaries
+
+      - name: Coverage
+        run: npm run coverage
+
+  simfile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Simfile
+        uses: actions/checkout@v4
+        with:
+          repository: noopolis/simfile
+          path: ecosystem/simfile
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ecosystem/simfile/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ecosystem/simfile
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: ecosystem/simfile
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: ecosystem/simfile
+        run: npm test
+
+  daimon:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Daimon
+        uses: actions/checkout@v4
+        with:
+          repository: noopolis/daimon
+          path: ecosystem/daimon
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ecosystem/daimon/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ecosystem/daimon
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: ecosystem/daimon
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: ecosystem/daimon
+        run: npm test
+
+  mneme:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Mneme
+        uses: actions/checkout@v4
+        with:
+          repository: noopolis/mneme
+          path: ecosystem/mneme
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ecosystem/mneme/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ecosystem/mneme
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: ecosystem/mneme
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: ecosystem/mneme
+        run: npm test
+
+  stele:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Stele
+        uses: actions/checkout@v4
+        with:
+          repository: noopolis/stele
+          path: ecosystem/stele
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ecosystem/stele/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ecosystem/stele
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: ecosystem/stele
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: ecosystem/stele
+        run: npm test
+
+  moltnet:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Moltnet
+        uses: actions/checkout@v4
+        with:
+          repository: noopolis/moltnet
+          path: ecosystem/moltnet
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ecosystem/moltnet/go.mod
+
+      - name: Test
+        working-directory: ecosystem/moltnet
+        run: go test ./...

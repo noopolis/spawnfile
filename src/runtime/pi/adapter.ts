@@ -1,10 +1,6 @@
-import path from "node:path";
-
-import {
-  listEffectiveExecutionModelTargets,
-  listExecutionModelSecretNames
-} from "../../compiler/modelEnv.js";
+import { listEffectiveExecutionModelTargets } from "../../compiler/modelEnv.js";
 import type { ResolvedAgentNode, ResolvedAgentSurfaces } from "../../compiler/types.js";
+import { readUtf8File, resolveProjectPath } from "../../filesystem/index.js";
 import { SpawnfileError } from "../../shared/index.js";
 import {
   createAgentCapabilities,
@@ -15,97 +11,59 @@ import {
 import type {
   AdapterCompileResult,
   ContainerTarget,
-  ContainerTargetInput,
   EmittedFile,
   RuntimeAdapter
 } from "../types.js";
 
 import {
-  createPiAgentConfig,
+  resolveScriptedEngineCommandOption,
+  resolveScriptedEngineStagedPath
+} from "./appScriptedEngine.js";
+import {
+  isPiEveryScheduleValue,
+  PI_BUILTIN_TOOLS,
   PI_ENGINE_KINDS,
   PI_PACKAGE_NAME,
   PI_PACKAGE_VERSION,
-  renderPiApp,
-  renderPiAppConfig,
-  renderPiModelsConfig,
-  renderPiPackageJson
+  PI_THINKING_FORMATS,
+  PI_THINKING_LEVELS,
+  resolvePiEngine
 } from "./appTemplate.js";
+import {
+  createPiContainerTargets,
+  PI_CONFIG_FILE,
+  PI_CONTROL_PORT,
+} from "./containerTargets.js";
 import { preparePiRuntimeAuth } from "./runAuth.js";
 
-const PI_CONFIG_FILE = "pi-app.json";
-const PI_CONTROL_PORT = 19690;
-const PI_MODELS_FILE = "home/.pi/agent/models.json";
-
-const moveWorkspaceFileToAgentWorkspace = (
-  file: EmittedFile,
-  agentSlug: string
-): EmittedFile => {
-  if (!file.path.startsWith("workspace/")) {
-    return file;
-  }
-
-  const relativePath = file.path.slice("workspace/".length);
-  return {
-    ...file,
-    path: path.posix.join("workspace", "agents", agentSlug, relativePath)
-  };
-};
-
-const createContainerTargets = async (
-  inputs: ContainerTargetInput[]
-): Promise<ContainerTarget[]> => {
-  const agentInputs = inputs.filter(
-    (input): input is ContainerTargetInput & { value: ResolvedAgentNode } =>
-      input.kind === "agent" && input.value.kind === "agent"
-  );
-
-  if (agentInputs.length === 0) {
+/**
+ * Stages a `scripted`-engine's `engine_command` script into this agent's
+ * emitted workspace files, the same way `createDocumentFiles`/
+ * `createSkillFiles` stage docs/skills: read once at compile time (relative
+ * to the declaring manifest, via `resolveProjectPath(node.sourcePath ?? node.source, ...)`,
+ * mirroring `surfaces.ts`'s `loadResolvedDocuments`) and emitted as a
+ * `workspace/...` file, which `createContainerTargets` below relocates to
+ * `workspace/agents/<slug>/...` (`moveWorkspaceFileToAgentWorkspace`) just
+ * like every other per-agent workspace file. Returns `[]` for every engine
+ * other than `scripted` (and defensively for a `scripted` engine missing
+ * `engine_command`, though `validateRuntimeOptions` below already rejects
+ * that before `compileAgent` ever runs).
+ */
+const createScriptedEngineFiles = async (node: ResolvedAgentNode): Promise<EmittedFile[]> => {
+  const option = resolveScriptedEngineCommandOption(node);
+  const stagedPath = resolveScriptedEngineStagedPath(node);
+  if (!option || !stagedPath) {
     return [];
   }
 
-  const agents = agentInputs.map((input) =>
-    createPiAgentConfig(input.value, input.slug, input.id)
-  );
-  const envFiles = [
-    ...new Set(
-      agentInputs.flatMap((input) =>
-        listExecutionModelSecretNames(input.value.execution)
-      )
-    )
-  ].map((secretName) => ({
-    envName: secretName,
-    relativePath: `secrets/${secretName}`
-  }));
+  const sourcePath = resolveProjectPath(node.sourcePath ?? node.source, option);
+  const content = await readUtf8File(sourcePath);
 
   return [
     {
-      envFiles,
-      files: [
-        ...agentInputs.flatMap((input) =>
-          input.emittedFiles.map((file) =>
-            moveWorkspaceFileToAgentWorkspace(file, input.slug)
-          )
-        ),
-        {
-          content: renderPiAppConfig(agents),
-          path: PI_CONFIG_FILE
-        },
-        {
-          content: renderPiModelsConfig(agentInputs.map((input) => input.value)),
-          path: PI_MODELS_FILE
-        },
-        {
-          content: renderPiPackageJson(),
-          path: "runtime/package.json"
-        },
-        {
-          content: renderPiApp(),
-          mode: 0o755,
-          path: "runtime/app.mjs"
-        }
-      ],
-      id: "pi-app",
-      sourceIds: agentInputs.map((input) => input.id).sort()
+      content,
+      mode: 0o755,
+      path: `workspace/${stagedPath}`
     }
   ];
 };
@@ -141,7 +99,21 @@ const createScheduleDiagnostics = (node: ResolvedAgentNode) =>
           "Pi generated runtime app supports every schedules in Spawnfile v0.1; cron schedules are degraded"
         )
       ]
-    : [];
+	    : [];
+
+const createMemoryConsolidationDiagnostics = (node: ResolvedAgentNode) =>
+  (node.memoryAccess ?? []).flatMap((access) =>
+    access.bank.consolidation.mode === "scheduled" &&
+    access.bank.consolidation.schedule &&
+    !isPiEveryScheduleValue(access.bank.consolidation.schedule)
+      ? [
+          createDiagnostic(
+            "warn",
+            `Pi generated runtime app supports every memory consolidation schedules in Spawnfile v0.1; memory bank ${access.bank.id} consolidation is degraded`
+          )
+        ]
+      : []
+  );
 
 const moltnetCapabilityOptions = (node: ResolvedAgentNode) =>
   node.surfaces?.moltnet
@@ -228,7 +200,7 @@ export const piAdapter: RuntimeAdapter = {
     },
     port: PI_CONTROL_PORT,
     portEnv: "SPAWNFILE_PI_CONTROL_PORT",
-    globalNpmPackages: ["@openai/codex@0.142.3"],
+    globalNpmPackages: ["@anthropic-ai/claude-code", "@openai/codex@0.142.3"],
     postRootfsCommands: [
       "curl -fsSL https://x.ai/cli/install.sh | GROK_BIN_DIR=/usr/local/bin bash",
       "if [ -L /usr/local/bin/grok ]; then cp -L /usr/local/bin/grok /usr/local/bin/grok.real && mv /usr/local/bin/grok.real /usr/local/bin/grok && chmod 0755 /usr/local/bin/grok && ln -sf /usr/local/bin/grok /usr/local/bin/agent; fi",
@@ -248,6 +220,8 @@ export const piAdapter: RuntimeAdapter = {
     const scheduleOutcome = scheduleOutcomeFor(node);
     return {
       capabilities: createAgentCapabilities(node, {
+        memoryMessage: "Daimon exposes Mneme memory through generated runtime turns",
+        memoryOutcome: "supported",
         ...moltnetCapabilityOptions(node),
         mcpOutcome: node.mcpServers.length > 0 ? "degraded" : "supported",
         sandboxOutcome: node.execution?.sandbox ? "degraded" : "supported",
@@ -255,9 +229,10 @@ export const piAdapter: RuntimeAdapter = {
         scheduleOutcome: scheduleOutcome.outcome,
         subagentOutcome: node.subagents.length > 0 ? "degraded" : "supported"
       }),
-      diagnostics: [
-        ...createScheduleDiagnostics(node),
-        ...(node.execution?.sandbox
+	      diagnostics: [
+	        ...createScheduleDiagnostics(node),
+	        ...createMemoryConsolidationDiagnostics(node),
+	        ...(node.execution?.sandbox
           ? [createDiagnostic("warn", "Pi runtime relies on container and workspace isolation; Pi itself is not a sandbox engine")]
           : []),
         ...(node.mcpServers.length > 0
@@ -269,12 +244,13 @@ export const piAdapter: RuntimeAdapter = {
       ],
       files: [
         ...createDocumentFiles("workspace", node.docs),
-        ...createSkillFiles("workspace/skills", node.skills)
+        ...createSkillFiles("workspace/skills", node.skills),
+        ...(await createScriptedEngineFiles(node))
       ]
     };
   },
   async createContainerTargets(inputs): Promise<ContainerTarget[]> {
-    return createContainerTargets(inputs);
+    return createPiContainerTargets(inputs);
   },
   name: "pi",
   prepareRuntimeAuth: preparePiRuntimeAuth,
@@ -290,8 +266,68 @@ export const piAdapter: RuntimeAdapter = {
         `Pi runtime option engine must be one of ${PI_ENGINE_KINDS.join(", ")}`
       ));
     }
+    if (
+      options.engine === "scripted" &&
+      (typeof options.engine_command !== "string" || options.engine_command.trim().length === 0)
+    ) {
+      diagnostics.push(createDiagnostic(
+        "error",
+        "Pi runtime option engine_command is required (a fixture-relative script path) when engine is scripted"
+      ));
+    }
+    if (
+      options.thinking !== undefined &&
+      (typeof options.thinking !== "string" ||
+        !(PI_THINKING_LEVELS as readonly string[]).includes(options.thinking))
+    ) {
+      diagnostics.push(createDiagnostic(
+        "error",
+        `Pi runtime option thinking must be one of ${PI_THINKING_LEVELS.join(", ")}`
+      ));
+    }
+    if (
+      options.thinking_format !== undefined &&
+      (typeof options.thinking_format !== "string" ||
+        !(PI_THINKING_FORMATS as readonly string[]).includes(options.thinking_format))
+    ) {
+      diagnostics.push(createDiagnostic(
+        "error",
+        `Pi runtime option thinking_format must be one of ${PI_THINKING_FORMATS.join(", ")}`
+      ));
+    }
+    if (
+      options.tools !== undefined &&
+      (!Array.isArray(options.tools)
+        || options.tools.some((item) =>
+          typeof item !== "string"
+          || !(PI_BUILTIN_TOOLS as readonly string[]).includes(item))
+        || new Set(options.tools).size !== options.tools.length)
+    ) {
+      diagnostics.push(createDiagnostic(
+        "error",
+        `Pi runtime option tools must contain unique values from ${PI_BUILTIN_TOOLS.join(", ")}`
+      ));
+    }
+    if (
+      options.raw_training_capture_turns !== undefined
+      && (!Number.isSafeInteger(options.raw_training_capture_turns)
+        || typeof options.raw_training_capture_turns !== "number"
+        || options.raw_training_capture_turns < 1
+        || options.raw_training_capture_turns > 100_000)
+    ) {
+      diagnostics.push(createDiagnostic(
+        "error",
+        "Pi runtime option raw_training_capture_turns must be an integer between 1 and 100000"
+      ));
+    }
     const unsupported = Object.keys(options).filter((key) =>
-      key !== "restrict_to_workspace" && key !== "engine"
+      key !== "restrict_to_workspace"
+      && key !== "engine"
+      && key !== "engine_command"
+      && key !== "thinking"
+      && key !== "thinking_format"
+      && key !== "tools"
+      && key !== "raw_training_capture_turns"
     );
     for (const key of unsupported) {
       diagnostics.push(createDiagnostic("warn", `Pi runtime option ${key} is not used yet`));

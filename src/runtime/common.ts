@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { ResolvedAgentNode, ResolvedDocument, ResolvedSkill } from "../compiler/types.js";
 import type { CapabilityReport, DiagnosticReport } from "../report/index.js";
 
@@ -9,6 +11,55 @@ const ROLE_FILE_NAMES: Record<string, string> = {
   memory: "MEMORY.md",
   soul: "SOUL.md",
   system: "AGENTS.md"
+};
+
+/**
+ * Container env var name every generated runtime container is stamped with,
+ * so every authority (moltnet, mneme, daimon, and root's own runtime
+ * containers) agrees on a single run identifier for causal event envelopes
+ * (see specs/CAUSAL.md). Adapters and containers must read run_id from this
+ * environment variable — never from model output.
+ */
+export const NOOPOLIS_RUN_ID_ENV = "NOOPOLIS_RUN_ID";
+
+/**
+ * Resolves the shared NOOPOLIS_RUN_ID value from the host/process
+ * environment. Returns undefined when unset so callers can decide whether
+ * to omit the variable entirely rather than stamp an empty value.
+ */
+export const resolveNoopolisRunId = (
+  env: NodeJS.ProcessEnv = process.env
+): string | undefined => env[NOOPOLIS_RUN_ID_ENV]?.trim() || undefined;
+
+/**
+ * Ensures `env` carries a NOOPOLIS_RUN_ID: returns the host-provided value
+ * untouched when one is already set, otherwise generates a fresh run id,
+ * stamps it onto `env`, and returns it. This is the one place a run id is
+ * ever generated — every other reader (createRuntimeContainerEnv here,
+ * mneme's resolveCausalRunId, daimon's resolveRunId, moltnet's
+ * causalRunIDEnv lookup) only ever reads what is already in the process
+ * env, so a run id absent from the host env would otherwise leave moltnet
+ * causal events with no run_id to stamp (see specs/CAUSAL.md).
+ *
+ * Callers: only the `run`/`up` execution entrypoints (`runProject.ts`,
+ * `upProject.ts`) and their equivalents in opt-in E2E harnesses that build
+ * a container directly (e.g. `src/e2e/officeSim.ts`) — never
+ * `compileProject.ts`/`buildProject.ts` themselves, which must stay
+ * deterministic functions of their inputs. Called once per run/up
+ * invocation, before the compile step, so every authority container
+ * compiled during that invocation is stamped with the same real id.
+ */
+export const ensureNoopolisRunId = (
+  env: NodeJS.ProcessEnv = process.env
+): string => {
+  const existing = resolveNoopolisRunId(env);
+  if (existing) {
+    return existing;
+  }
+
+  const generated = `run-${randomUUID().replaceAll("-", "")}`;
+  env[NOOPOLIS_RUN_ID_ENV] = generated;
+  return generated;
 };
 
 export const createCapability = (
@@ -54,6 +105,8 @@ export const createAgentCapabilities = (
   node: ResolvedAgentNode,
   options: {
     mcpOutcome?: CapabilityReport["outcome"];
+    memoryMessage?: string;
+    memoryOutcome?: CapabilityReport["outcome"];
     moltnetMessage?: string;
     moltnetOutcome?: CapabilityReport["outcome"];
     sandboxOutcome?: CapabilityReport["outcome"];
@@ -74,6 +127,22 @@ export const createAgentCapabilities = (
 
   for (const server of node.mcpServers) {
     capabilities.push(createCapability(`mcp.${server.name}`, options.mcpOutcome ?? "supported"));
+  }
+
+  const memoryAccess = node.memoryAccess ?? [];
+  if (memoryAccess.length > 0) {
+    const uniqueBanks = new Map(
+      memoryAccess.map((access) => [
+        `${access.source}:${access.bank.id}`,
+        access.bank
+      ])
+    );
+    const outcome = options.memoryOutcome ?? "supported";
+    const message = options.memoryMessage ?? "Memory access is available to this runtime";
+    capabilities.push(createCapability("memory", outcome, message));
+    for (const bank of [...uniqueBanks.values()].sort((left, right) => left.id.localeCompare(right.id))) {
+      capabilities.push(createCapability(`memory.${bank.id}`, outcome, message));
+    }
   }
 
   if (node.execution?.model) {

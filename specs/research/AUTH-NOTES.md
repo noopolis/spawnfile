@@ -92,10 +92,10 @@ OpenClaw has the most mature auth system of the three runtimes.
 
 Useful evidence:
 
-- [README.md](../../runtimes/openclaw/README.md)
-- [authentication.md](../../runtimes/openclaw/docs/gateway/authentication.md)
-- [secrets.md](../../runtimes/openclaw/docs/gateway/secrets.md)
-- [cli-credentials.ts](../../runtimes/openclaw/src/agents/cli-credentials.ts)
+- [README.md](https://github.com/openclaw/openclaw/blob/main/README.md)
+- [authentication.md](https://github.com/openclaw/openclaw/blob/main/docs/gateway/authentication.md)
+- [secrets.md](https://github.com/openclaw/openclaw/blob/main/docs/gateway/secrets.md)
+- [cli-credentials.ts](https://github.com/openclaw/openclaw/blob/main/src/agents/cli-credentials.ts)
 
 ### CLI Credential Imports
 
@@ -155,8 +155,8 @@ PicoClaw supports both static-key and runtime-managed auth patterns.
 
 Useful evidence:
 
-- [README.md](../../runtimes/picoclaw/README.md)
-- [ANTIGRAVITY_AUTH.md](../../runtimes/picoclaw/docs/ANTIGRAVITY_AUTH.md)
+- [README.md](https://github.com/sipeed/picoclaw/blob/main/README.md)
+- [ANTIGRAVITY_AUTH.md](https://github.com/sipeed/picoclaw/blob/main/docs/ANTIGRAVITY_AUTH.md)
 
 It also supports credential encryption for stored `api_key` entries, which is useful operationally but is still conceptually a config-backed secret.
 
@@ -171,8 +171,8 @@ The code explicitly reads Codex credentials from `~/.codex/auth.json` or `CODEX_
 
 Useful evidence:
 
-- [codex_cli_credentials.go](../../runtimes/picoclaw/pkg/providers/codex_cli_credentials.go)
-- [factory.go](../../runtimes/picoclaw/pkg/providers/factory.go)
+- [codex_cli_credentials.go](https://github.com/sipeed/picoclaw/blob/main/pkg/providers/codex_cli_credentials.go)
+- [factory.go](https://github.com/sipeed/picoclaw/blob/main/pkg/providers/factory.go)
 
 ### Gateway Auth
 
@@ -196,8 +196,8 @@ Examples:
 
 Useful evidence:
 
-- [README.md](../../runtimes/picoclaw/README.md)
-- [gateway.go](../../runtimes/picoclaw/pkg/gateway/gateway.go)
+- [README.md](https://github.com/sipeed/picoclaw/blob/main/README.md)
+- [gateway.go](https://github.com/sipeed/picoclaw/blob/main/pkg/gateway/gateway.go)
 
 ### PicoClaw Takeaway
 
@@ -222,8 +222,8 @@ TinyClaw is the simplest auth model conceptually, but not the smallest operation
 
 Useful evidence:
 
-- [README.md](../../runtimes/tinyclaw/README.md)
-- [invoke.ts](../../runtimes/tinyclaw/packages/core/src/invoke.ts)
+- [README.md](https://github.com/TinyAGI/tinyclaw/blob/main/README.md)
+- [invoke.ts](https://github.com/TinyAGI/tinyclaw/blob/main/packages/core/src/invoke.ts)
 
 ### CLI Credential Dependencies
 
@@ -236,8 +236,8 @@ So even when TinyClaw stores provider tokens in `settings.json`, its real execut
 
 Useful evidence:
 
-- [INSTALL.md](../../runtimes/tinyclaw/docs/INSTALL.md)
-- [README.md](../../runtimes/tinyclaw/README.md)
+- [INSTALL.md](https://github.com/TinyAGI/tinyclaw/blob/main/docs/INSTALL.md)
+- [README.md](https://github.com/TinyAGI/tinyclaw/blob/main/README.md)
 
 ### Channel Auth
 
@@ -251,9 +251,9 @@ At runtime the daemon writes selected tokens into `.env` for the Node channel cl
 
 Useful evidence:
 
-- [README.md](../../runtimes/tinyclaw/README.md)
-- [common.sh](../../runtimes/tinyclaw/lib/common.sh)
-- [daemon.sh](../../runtimes/tinyclaw/lib/daemon.sh)
+- [README.md](https://github.com/TinyAGI/tinyclaw/blob/main/README.md)
+- [common.sh](https://github.com/TinyAGI/tinyclaw/blob/main/lib/common.sh)
+- [daemon.sh](https://github.com/TinyAGI/tinyclaw/blob/main/lib/daemon.sh)
 
 ### TinyClaw Takeaway
 

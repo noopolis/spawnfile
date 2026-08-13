@@ -19,6 +19,7 @@ import { preparePiRuntimeAuth } from "./runAuth.js";
 
 const previousSpawnfileHome = process.env.SPAWNFILE_HOME;
 const previousGrokHome = process.env.GROK_HOME;
+const previousCodexHome = process.env.CODEX_HOME;
 const previousAntigravityHome = process.env.ANTIGRAVITY_HOME;
 const previousAntigravityCliHome = process.env.ANTIGRAVITY_CLI_HOME;
 const previousAgyHome = process.env.AGY_HOME;
@@ -38,6 +39,7 @@ const getMountedHostPath = (mountArgs: string[], containerPath: string): string 
 
 const disableCliHomeDiscovery = (root: string): void => {
   process.env.GROK_HOME = path.join(root, "missing-grok");
+  process.env.CODEX_HOME = path.join(root, "missing-codex");
   process.env.ANTIGRAVITY_HOME = path.join(root, "missing-antigravity");
   process.env.ANTIGRAVITY_CLI_HOME = path.join(root, "missing-antigravity-cli");
   delete process.env.AGY_HOME;
@@ -53,6 +55,11 @@ afterEach(async () => {
     delete process.env.GROK_HOME;
   } else {
     process.env.GROK_HOME = previousGrokHome;
+  }
+  if (previousCodexHome === undefined) {
+    delete process.env.CODEX_HOME;
+  } else {
+    process.env.CODEX_HOME = previousCodexHome;
   }
   if (previousAntigravityHome === undefined) {
     delete process.env.ANTIGRAVITY_HOME;
@@ -120,6 +127,58 @@ describe("preparePiRuntimeAuth", () => {
     expect(prepared.mountArgs).toContain(`${hostAuthPath}:${homePath}/.pi/agent/auth.json`);
     expect((await stat(path.dirname(hostAuthPath))).mode & 0o777).toBe(0o700);
     expect((await stat(hostAuthPath)).mode & 0o777).toBe(0o644);
+  });
+
+  it("does not stage the implicit host Codex home when a profile imports Codex", async () => {
+    const spawnfileHome = await createTempDirectory("spawnfile-pi-auth-home-");
+    const tempRoot = await createTempDirectory("spawnfile-pi-run-");
+    const hostCodexHome = await createTempDirectory("spawnfile-host-codex-");
+    process.env.SPAWNFILE_HOME = spawnfileHome;
+    process.env.GROK_HOME = path.join(tempRoot, "missing-grok");
+    process.env.CODEX_HOME = hostCodexHome;
+    process.env.ANTIGRAVITY_HOME = path.join(tempRoot, "missing-antigravity");
+    process.env.ANTIGRAVITY_CLI_HOME = path.join(tempRoot, "missing-antigravity-cli");
+    await writeUtf8File(
+      path.join(hostCodexHome, "auth.json"),
+      "{\"tokens\":{\"access_token\":\"implicit-host-token\"}}\n"
+    );
+
+    const codexImport = await registerImportedAuth("explicit", "codex");
+    await writeUtf8File(
+      path.join(codexImport.directory, "auth.json"),
+      JSON.stringify({
+        tokens: {
+          access_token: "explicit-profile-token",
+          refresh_token: "explicit-profile-refresh"
+        }
+      })
+    );
+
+    const homePath = "/var/lib/spawnfile/instances/pi/pi-app/home";
+    const prepared = await preparePiRuntimeAuth({
+      authProfile: await requireAuthProfile("explicit"),
+      env: {},
+      instance: {
+        config_path: "/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json",
+        home_path: homePath,
+        id: "pi-app",
+        model_auth_methods: { openai: "codex" },
+        model_secrets_required: ["OPENAI_API_KEY"],
+        runtime: "pi"
+      },
+      outputDirectory: "/tmp/out",
+      tempRoot
+    });
+
+    expect(
+      prepared.mountArgs.filter((value) => value.endsWith(`:${homePath}/.codex`))
+    ).toEqual([]);
+    const piAuthPath = getMountedHostPath(
+      prepared.mountArgs,
+      `${homePath}/.pi/agent/auth.json`
+    );
+    await expect(readUtf8File(piAuthPath)).resolves.toContain("explicit-profile-token");
+    await expect(readUtf8File(piAuthPath)).resolves.not.toContain("implicit-host-token");
   });
 
   it("materializes Pi Anthropic auth from Claude Code imports", async () => {
@@ -197,17 +256,20 @@ describe("preparePiRuntimeAuth", () => {
     });
   });
 
-  it("mounts explicit Grok and Antigravity CLI homes into the Pi runtime home", async () => {
+  it("mounts explicit Grok, Codex, and Antigravity CLI homes into the Pi runtime home", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-pi-auth-home-");
     const tempRoot = await createTempDirectory("spawnfile-pi-run-");
     const grokHome = await createTempDirectory("spawnfile-grok-home-");
+    const codexHome = await createTempDirectory("spawnfile-codex-home-");
     const antigravityHome = await createTempDirectory("spawnfile-agy-home-");
     const antigravityCliHome = await createTempDirectory("spawnfile-agy-cli-home-");
     process.env.SPAWNFILE_HOME = spawnfileHome;
     process.env.GROK_HOME = grokHome;
+    process.env.CODEX_HOME = codexHome;
     process.env.ANTIGRAVITY_HOME = antigravityHome;
     process.env.ANTIGRAVITY_CLI_HOME = antigravityCliHome;
-    await registerImportedAuth("dev", "codex");
+    await writeUtf8File(path.join(codexHome, "auth.json"), "{\"tokens\":{\"access_token\":\"codex-cli\"}}\n");
+    await writeUtf8File(path.join(codexHome, "config.toml"), "model = \"gpt-5.4-mini\"\n");
     await writeUtf8File(path.join(grokHome, "version.json"), "{\"version\":\"test\"}\n");
     await writeUtf8File(path.join(grokHome, "auth.json"), "{\"token\":\"grok\"}\n");
     await writeUtf8File(path.join(grokHome, "config.toml"), "model = \"grok-code-fast-1\"\n");
@@ -228,7 +290,7 @@ describe("preparePiRuntimeAuth", () => {
 
     const homePath = "/var/lib/spawnfile/instances/pi/pi-app/home";
     const prepared = await preparePiRuntimeAuth({
-      authProfile: await requireAuthProfile("dev"),
+      authProfile: null,
       env: {},
       instance: {
         config_path: "/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json",
@@ -243,20 +305,18 @@ describe("preparePiRuntimeAuth", () => {
     });
 
     expect(prepared.coveredModelSecrets).toEqual([]);
-    expect(prepared.mountArgs[0]).toBe("-v");
-    expect(prepared.mountArgs[2]).toBe("-v");
-    expect(prepared.mountArgs[4]).toBe("-v");
-    expect(prepared.mountArgs[1]).toMatch(new RegExp(`^${tempRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
-    expect(prepared.mountArgs[3]).toMatch(new RegExp(`^${tempRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
-    expect(prepared.mountArgs[5]).toMatch(new RegExp(`^${tempRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
     expect(prepared.mountArgs.map((mount) => mount.replace(tempRoot, "<tmp>"))).toEqual([
       "-v",
       `<tmp>/runtime-auth/pi/grok-home:${homePath}/.grok`,
+      "-v",
+      `<tmp>/runtime-auth/pi/codex-home:${homePath}/.codex`,
       "-v",
       `<tmp>/runtime-auth/pi/antigravity-home:${homePath}/.config/Antigravity`,
       "-v",
       `<tmp>/runtime-auth/pi/antigravity-cli-home:${homePath}/.gemini/antigravity-cli`
     ]);
+    await expect(readUtf8File(path.join(tempRoot, "runtime-auth", "pi", "codex-home", "auth.json"))).resolves.toContain("codex-cli");
+    await expect(stat(path.join(tempRoot, "runtime-auth", "pi", "codex-home", "config.toml"))).rejects.toThrow();
     await expect(readUtf8File(path.join(tempRoot, "runtime-auth", "pi", "grok-home", "version.json"))).resolves.toContain("test");
     await expect(readUtf8File(path.join(tempRoot, "runtime-auth", "pi", "grok-home", "auth.json"))).resolves.toContain("grok");
     await expect(readUtf8File(path.join(tempRoot, "runtime-auth", "pi", "grok-home", "config.toml"))).resolves.toContain("grok-code-fast-1");

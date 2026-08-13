@@ -1,3 +1,4 @@
+import os from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 
@@ -10,6 +11,10 @@ import {
 import type { ContainerReport } from "../report/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import { getRuntimeAdapter } from "../runtime/index.js";
+import {
+  CLI_CREDENTIAL_SECRET_NAME,
+  modelAuthMethodNeedsCliCredential
+} from "./modelEnv.js";
 
 interface PreparedRunAuth {
   coveredModelSecrets: Set<string>;
@@ -21,6 +26,51 @@ const MODEL_AUTH_IMPORT_KINDS: Record<string, ImportedAuthKind | null> = {
   "claude-code": "claude-code",
   codex: "codex",
   none: null
+};
+
+export const resolveHostCliCredential = async (
+  containerReport: ContainerReport
+): Promise<{ name: string; sourcePath: string; value: string } | null> => {
+  const needsCredential = containerReport.runtime_instances.some((instance) =>
+    Object.values(instance.model_auth_methods).some(modelAuthMethodNeedsCliCredential)
+  );
+  if (!needsCredential) {
+    return null;
+  }
+
+  const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
+  const sourcePath = path.join(codexHome, "auth.json");
+  if (!await fileExists(sourcePath)) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Missing ${CLI_CREDENTIAL_SECRET_NAME}; host CLI credential source does not exist: ${sourcePath}`
+    );
+  }
+
+  let value: string;
+  try {
+    value = await readUtf8File(sourcePath);
+  } catch (error) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Unable to read ${CLI_CREDENTIAL_SECRET_NAME} from host CLI credential source ${sourcePath}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  if (value.trim().length === 0) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Missing ${CLI_CREDENTIAL_SECRET_NAME}; host CLI credential source is empty: ${sourcePath}`
+    );
+  }
+
+  try {
+    return { name: CLI_CREDENTIAL_SECRET_NAME, sourcePath, value: JSON.stringify(JSON.parse(value)) };
+  } catch (error) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Unable to read ${CLI_CREDENTIAL_SECRET_NAME} from host CLI credential source ${sourcePath}: invalid JSON (${error instanceof Error ? error.message : String(error)})`
+    );
+  }
 };
 
 const addCoveredModelSecrets = (
@@ -40,10 +90,13 @@ export const prepareRuntimeAuthMounts = async (
   env: Record<string, string>,
   tempRoot: string
 ): Promise<PreparedRunAuth> => {
-  if (!authProfile) {
-    return { coveredModelSecrets: new Set(), mountArgs: [] };
-  }
-
+  // No early return when `authProfile` is null: an adapter's
+  // `prepareRuntimeAuth` may still have host-credential staging to do that
+  // does not depend on an imported Spawnfile auth profile (e.g. the Pi
+  // adapter mounting the host's `~/.grok`/`~/.codex`/antigravity CLI homes
+  // for a real-engine org — see `src/runtime/pi/runAuth.ts`). Each adapter is
+  // responsible for treating a `null` `authProfile` as "no profile-derived
+  // imports available" rather than failing.
   const coveredModelSecrets = new Set<string>();
   const mountArgs: string[] = [];
 
@@ -70,7 +123,8 @@ export const prepareRuntimeAuthMounts = async (
 
 export const assertDeclaredModelAuthSatisfied = (
   containerReport: ContainerReport,
-  authProfile: ResolvedAuthProfile | null
+  authProfile: ResolvedAuthProfile | null,
+  cliCredentialProvided = false
 ): void => {
   const requiredImportKinds = new Set<ImportedAuthKind>();
 
@@ -87,11 +141,19 @@ export const assertDeclaredModelAuthSatisfied = (
     return;
   }
 
-  if (!authProfile) {
+  if (!authProfile && !cliCredentialProvided) {
     throw new SpawnfileError(
       "validation_error",
       `Auth profile is required for declared model auth methods: ${[...requiredImportKinds].sort().join(", ")}`
     );
+  }
+
+  if (cliCredentialProvided) {
+    return;
+  }
+
+  if (!authProfile) {
+    return;
   }
 
   const missingImportKinds = [...requiredImportKinds]
@@ -108,9 +170,15 @@ export const assertDeclaredModelAuthSatisfied = (
 const getImportMountTargetName = (kind: keyof ResolvedAuthProfile["imports"]): string =>
   kind === "claude-code" ? ".claude" : ".codex";
 
-const createGeneratedRuntimeSecret = (secretName: string): string | null => {
+const createGeneratedRuntimeSecret = (
+  secretName: string,
+  generatedMoltnetSecrets: Set<string>
+): string | null => {
   if (secretName === "OPENCLAW_GATEWAY_TOKEN" || secretName === "OPENCLAW_HOOKS_TOKEN") {
     return randomBytes(24).toString("hex");
+  }
+  if (generatedMoltnetSecrets.has(secretName)) {
+    return randomBytes(32).toString("base64url");
   }
 
   return null;
@@ -160,6 +228,11 @@ export const resolveRunEnvironment = (
     ...(authProfile?.env ?? {}),
     ...envFileEnv
   };
+  const generatedMoltnetSecrets = new Set(
+    (containerReport.moltnet?.server_plans ?? [])
+      .filter((server) => server.mode === "managed" && server.auth_mode === "bearer")
+      .flatMap((server) => (server.auth_tokens ?? []).map((token) => token.secret))
+  );
 
   for (const name of new Set([...Object.keys(env), ...containerReport.secrets_required])) {
     const processValue = process.env[name];
@@ -168,12 +241,15 @@ export const resolveRunEnvironment = (
     }
   }
 
-  for (const name of containerReport.runtime_secrets_required) {
+  for (const name of new Set([
+    ...containerReport.runtime_secrets_required,
+    ...generatedMoltnetSecrets
+  ])) {
     if (hasEnvValue(env, name)) {
       continue;
     }
 
-    const generatedValue = createGeneratedRuntimeSecret(name);
+    const generatedValue = createGeneratedRuntimeSecret(name, generatedMoltnetSecrets);
     if (generatedValue) {
       env[name] = generatedValue;
     }
@@ -202,6 +278,37 @@ export const assertRunEnvironmentSatisfied = (
       "validation_error",
       `Missing required runtime env: ${missing.sort().join(", ")}`
     );
+  }
+};
+
+export const assertMoltnetCredentialValuesDistinct = (
+  containerReport: ContainerReport,
+  env: Record<string, string>
+): void => {
+  for (const server of containerReport.moltnet?.server_plans ?? []) {
+    if (server.mode !== "managed" || server.auth_mode !== "bearer") {
+      continue;
+    }
+    const secretNames = (server.auth_tokens ?? []).map((token) => token.secret);
+    const normalizedValues = secretNames.map((name) => {
+      const value = env[name];
+      if (typeof value !== "string" || value.trim().length === 0) {
+        return null;
+      }
+      if (value !== value.trim()) {
+        throw new SpawnfileError(
+          "validation_error",
+          `Moltnet credential ${name} must not contain leading or trailing whitespace`
+        );
+      }
+      return value;
+    }).filter((value): value is string => value !== null);
+    if (new Set(normalizedValues).size !== normalizedValues.length) {
+      throw new SpawnfileError(
+        "validation_error",
+        `Moltnet network ${server.network_id} requires distinct credential values`
+      );
+    }
   }
 };
 
@@ -238,6 +345,17 @@ export const resolveAuthMountArgs = async (
   }
 
   const args: string[] = [];
+  // Pi owns its model and CLI-engine auth projection in preparePiRuntimeAuth.
+  // Mounting the generic imported home onto the same destination would create
+  // duplicate Docker mount points and bypass the adapter's minimal-file staging.
+  const piRuntimeHomes = new Set(
+    containerReport.runtime_instances
+      .filter((instance) => instance.runtime === "pi" || instance.runtime === "daimon")
+      .map((instance) => instance.home_path)
+      .filter((homePath): homePath is string => homePath !== null)
+  );
+  const genericRuntimeHomes = containerReport.runtime_homes
+    .filter((runtimeHome) => !piRuntimeHomes.has(runtimeHome));
 
   for (const [kind, entry] of Object.entries(authProfile.imports) as Array<
     [
@@ -248,7 +366,6 @@ export const resolveAuthMountArgs = async (
     if (!entry) {
       continue;
     }
-
     if (!(await fileExists(entry.path))) {
       throw new SpawnfileError(
         "validation_error",
@@ -256,7 +373,7 @@ export const resolveAuthMountArgs = async (
       );
     }
 
-    for (const runtimeHome of containerReport.runtime_homes) {
+    for (const runtimeHome of genericRuntimeHomes) {
       args.push("-v", `${entry.path}:${path.posix.join(runtimeHome, getImportMountTargetName(kind))}`);
     }
   }

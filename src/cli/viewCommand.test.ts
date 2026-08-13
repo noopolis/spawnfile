@@ -9,7 +9,7 @@ import { removeDirectory } from "../filesystem/index.js";
 import { runCli, type CliHandlers } from "./runCli.js";
 
 const repositoryRoot = process.cwd();
-const fixturesRoot = path.resolve(repositoryRoot, "fixtures");
+const fixturesRoot = path.resolve(repositoryRoot, "test", "fixtures");
 const temporaryDirectories: string[] = [];
 
 const createStreams = (): {

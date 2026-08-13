@@ -1,6 +1,0 @@
-./CONFIG-REFERENCE.md
-./config.toml
-./TREE.txt
-./workspace/AGENTS.md
-./workspace/IDENTITY.md
-./workspace/SOUL.md

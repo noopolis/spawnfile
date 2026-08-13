@@ -8,6 +8,7 @@ import {
   type BuildProjectResult,
   type DockerRunInvocation
 } from "../compiler/index.js";
+import type { OrganizationReadinessEvidence } from "../compiler/organizationReadyEvidence.js";
 
 import {
   assertExactRoomMembers,
@@ -25,9 +26,19 @@ const createMessage = (id: string, authorId: string, text: string): MoltnetMessa
   id,
   parts: [{ kind: "text", text }]
 });
+const textOf = (message: MoltnetMessage): string =>
+  message.parts.map((part) => part.text ?? "").join("\n");
+type SendRoomMessageInput = Parameters<MoltnetTeamChatApiClient["sendRoomMessage"]>[0];
+interface BusyTurnState {
+  roomId?: string;
+  responseSentinel?: string;
+  step2Marker?: string;
+  step3Marker?: string;
+}
 
 class FakeMoltnetApi implements MoltnetTeamChatApiClient {
   public readonly sent: Array<{ roomId: string; text: string }> = [];
+  private readonly busyTurn: BusyTurnState = {};
   private readonly messages = new Map<string, MoltnetMessage[]>();
 
   public constructor(private readonly scenario: MoltnetTeamChatScenario) {
@@ -46,6 +57,7 @@ class FakeMoltnetApi implements MoltnetTeamChatApiClient {
 
   public async listAgents(_baseUrl: string) {
     return [...this.scenario.parent.expectedMembers, ...this.scenario.child.expectedMembers].map((id) => ({
+      connected: true,
       id,
       rooms: [
         ...(this.scenario.parent.expectedMembers.includes(id) ? [this.scenario.parent.roomId] : []),
@@ -58,8 +70,9 @@ class FakeMoltnetApi implements MoltnetTeamChatApiClient {
     return this.messages.get(roomId) ?? [];
   }
 
-  public async sendRoomMessage(input: { roomId: string; text: string }) {
+  public async sendRoomMessage(input: SendRoomMessageInput) {
     this.sent.push({ roomId: input.roomId, text: input.text });
+    if (this.captureBusyTurnBurst(input)) return;
     const request = input.text.match(/request=(SF-[A-Za-z0-9-]+)/)?.[1];
     const ack = input.text.match(/ack=(SF-[A-Za-z0-9-]+)/)?.[1];
     if (!request || !ack) return;
@@ -73,6 +86,39 @@ class FakeMoltnetApi implements MoltnetTeamChatApiClient {
     }
     this.messages.set(input.roomId, roomMessages);
   }
+
+  private captureBusyTurnBurst(input: SendRoomMessageInput): boolean {
+    const step = Number(input.text.match(/SF-MOLTNET-E2E-B20 burst=[A-Za-z0-9-]+ step=(\d+)/)?.[1] ?? "0");
+    const ack = input.text.match(/ack=(SF-MOLTNET-E2E-B20-ACK-[A-Za-z0-9-]+)/)?.[1];
+    if (!step) return false;
+
+    this.busyTurn.roomId = input.roomId;
+    if (ack) this.busyTurn.responseSentinel = ack;
+
+    if (step === 1) {
+      return true;
+    }
+
+    if (step === 2) {
+      this.busyTurn.step2Marker = input.text.match(/marker=(SF-MOLTNET-E2E-B20-STEP2-[A-Za-z0-9-]+)/)?.[1];
+      return true;
+    }
+
+    if (step === 3) {
+      this.busyTurn.step3Marker = input.text.match(/marker=(SF-MOLTNET-E2E-B20-STEP3-[A-Za-z0-9-]+)/)?.[1];
+      if (!ack || !this.busyTurn.step2Marker || !this.busyTurn.step3Marker) return true;
+      const roomMessages = this.messages.get(input.roomId) ?? [];
+      roomMessages.push(createMessage(
+        "msg-b20-ack",
+        this.scenario.parent.ackAuthorId,
+        `${ack} ${this.busyTurn.step2Marker} ${this.busyTurn.step3Marker}`
+      ));
+      this.messages.set(input.roomId, roomMessages);
+      return true;
+    }
+
+    return true;
+  }
 }
 
 const authProfile: ResolvedAuthProfile = {
@@ -84,9 +130,15 @@ const authProfile: ResolvedAuthProfile = {
   profilePath: "/tmp/auth/profiles/e2e/profile.json",
   version: 1
 };
+const genericOrganizationReadinessEvidence: OrganizationReadinessEvidence = {
+  compileFingerprint: "sf1:000000000000", compileVersion: "0.1", hasExternalMoltnet: false,
+  networks: [], organizationMembers: [], projectLabel: "generic",
+  version: "spawnfile.organization-ready-evidence.v1", worldBindings: null
+};
 
 const createBuildResult = (outputDirectory: string, imageTag: string): BuildProjectResult => ({
   imageTag,
+  organizationReadinessEvidence: genericOrganizationReadinessEvidence,
   outputDirectory,
   report: {
     container: {
@@ -163,10 +215,52 @@ describe("runMoltnetTeamChatConversation", () => {
       timeoutMs: 1
     });
 
-    expect(apiClient.sent.map((message) => message.roomId)).toEqual(["mission-control", "field-room"]);
+    expect(apiClient.sent.map((message) => message.roomId)).toEqual([
+      "mission-control",
+      "mission-control",
+      "mission-control",
+      "mission-control",
+      "field-room"
+    ]);
     expect(result.parentRequestMessage.from.id).toBe("coordinator");
+    expect(result.busyTurnAckMessage.from.id).toBe("field-representative");
     expect(result.parentAckMessage.from.id).toBe("field-representative");
     expect(result.childAckMessage.from.id).toBe("field-representative");
+  });
+
+  it("creates a busy-turn burst and proves only one B20 ack is emitted after step 3", async () => {
+    const scenario = createMoltnetTeamChatScenario();
+    const apiClient = new FakeMoltnetApi(scenario);
+
+    const result = await runMoltnetTeamChatConversation(scenario, {
+      apiClient,
+      logger: { info: vi.fn() },
+      pollIntervalMs: 1,
+      sleep: async () => undefined,
+      timeoutMs: 1
+    });
+
+    const b20Messages = apiClient.sent.slice(0, 3).map((item) => item.text);
+    const b20Steps = b20Messages.map((text) => Number(text.match(/step=(\d)/)?.[1] ?? "0"));
+    expect(b20Steps).toEqual([1, 2, 3]);
+    expect(b20Messages[0]).toContain("step=1");
+    expect(b20Messages[0]).not.toContain(result.sentinels.busyTurnAck);
+    expect(b20Messages[0]).toContain("active turn");
+    expect(b20Messages[1]).toContain("queued update");
+    expect(b20Messages[1]).toContain(result.sentinels.busyTurnStep2);
+    expect(b20Messages[1]).not.toContain(result.sentinels.busyTurnAck);
+    expect(b20Messages[2]).toContain("queued final update");
+    expect(b20Messages[2]).toContain(`ack=${result.sentinels.busyTurnAck}`);
+    expect(b20Messages[2]).toContain(result.sentinels.busyTurnStep3);
+
+    const parentMessages = await apiClient.listRoomMessages(scenario.parent.baseUrl, scenario.parent.roomId);
+    const busyTurnAcks = parentMessages.filter((message) =>
+      message.from.id === scenario.parent.ackAuthorId && textOf(message).includes(result.sentinels.busyTurnAck)
+    );
+    expect(busyTurnAcks).toHaveLength(1);
+    expect(result.busyTurnAckMessage).toBe(busyTurnAcks[0]);
+    expect(textOf(result.busyTurnAckMessage)).toContain(result.sentinels.busyTurnStep2);
+    expect(textOf(result.busyTurnAckMessage)).toContain(result.sentinels.busyTurnStep3);
   });
 });
 

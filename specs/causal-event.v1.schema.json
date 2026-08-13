@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://noopolis.dev/schemas/causal-event.v1.schema.json",
+  "title": "Noopolis Causal Event v1",
+  "description": "Canonical wire envelope for a causal event emitted by any Noopolis authority (simfile, moltnet, mneme, daimon). See specs/CAUSAL.md for semantics.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "run_id",
+    "event_id",
+    "emitter",
+    "type",
+    "principal_id",
+    "recorded_at",
+    "cause_event_ids",
+    "payload"
+  ],
+  "properties": {
+    "version": {
+      "const": "noopolis.causal-event.v1",
+      "description": "Envelope schema version. Always the literal noopolis.causal-event.v1 for this schema."
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier shared by every authority participating in a single run. Sourced from the NOOPOLIS_RUN_ID environment variable stamped into every container, never from model output."
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^[^:]+:.+$",
+      "description": "Globally unique, immutable identifier in the form <system>:<local>, where <system> matches emitter.system."
+    },
+    "emitter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "stream_id", "seq"],
+      "properties": {
+        "system": {
+          "enum": ["simfile", "moltnet", "mneme", "daimon"],
+          "description": "The authority that emitted this event."
+        },
+        "stream_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Logical stream this event belongs to within the emitting system (for example network:<networkID> or agent:<agentId>)."
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-based sequence number, contiguous within (run_id, stream_id)."
+        }
+      }
+    },
+    "type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Event type, for example message.accepted, turn.input.submitted, turn.output.completed, memory.recalled."
+    },
+    "principal_id": {
+      "type": "string",
+      "pattern": "^(agent|operator|system):.+",
+      "description": "Authenticated principal that caused this event, in the form <agent|operator|system>:<id> (see specs/CAUSAL.md §3 for the normative grammar). Never sourced from request.From, tool arguments, or model output; minted only by a trusted layer (root container env, per-agent harness config, an authn claim)."
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp. Diagnostics only; reconciliation never uses this field to order or trust events."
+    },
+    "cause_event_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Direct parent event_ids only. The conforming final wire form is <namespace>:<local>, and foreign namespaces are legal. A nonconforming cause id is reported by the conformance harness rather than rejected at ingest. This rule is deliberately not expressed as an items pattern so it can never act as an admission gate before stitching. No trace_id or transitive closure is carried in the envelope."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-type-specific fact payload. Each event type defines its own minimum required keys, enforced by the conformance harness rather than this schema."
+    }
+  }
+}

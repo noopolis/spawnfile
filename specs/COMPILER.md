@@ -237,10 +237,10 @@ When compiling a team, the compiler generates context-scoped team artifacts afte
 2. Build membership-context records keyed by `(agent-source, team-source, member-slot-id)`. The same agent source may fill several team roles without merging those contexts.
 3. Resolve the representative interface for nested team slots using `external`, `lead`, and swarm fallback.
 4. Resolve `workspace.resources`, `workspace.skills`, and `environment` for each concrete member from team-local and direct inheritance, preserving the manifest scope that declared each resource so team-shared backing storage can be scoped to that team.
-5. Resolve team memory banks and concrete member access. Team memory banks apply to direct concrete members by default, may be restricted by `memory[*].access.members`, and do not cross nested team boundaries unless a future explicit rule says so. Resolution also canonicalizes store, index, write, consolidation, and retention defaults before any runtime adapter sees the plan.
+5. Resolve team memory banks and concrete member access. Team memory banks apply to direct concrete members by default, may be restricted by `memory[*].access.members`, and do not cross nested team boundaries unless a future explicit rule says so. Resolution also canonicalizes store, index, consolidation, and retention defaults before any runtime adapter sees the plan.
 6. Resolve team networks. Moltnet parent-room members that name child-team slots expand only to the child team's selected concrete representatives.
 7. Emit a generated resource plan that lists each resource's declared mount, concrete agent-visible link path, backing path, and sharing mode.
-8. Emit a generated memory plan that lists each concrete agent's accessible memory banks, backing store, persistence mode, index intent, write mode, consolidation mode, retention policy, and adapter transport (`direct`, `mcp`, or `unsupported`).
+8. Emit a generated memory plan that lists each concrete agent's accessible memory banks, backing store, persistence mode, index intent, consolidation mode, retention policy, and adapter transport (`direct`, `mcp`, `degraded_mcp`, `degraded`, or `unsupported`).
 9. Generate namespaced direct-membership `TEAM.md` files under `.spawnfile/team-contexts/<team-context-key>/TEAM.md`.
 10. Generate context-scoped roster YAML under `.spawnfile/rosters/<team-context-key>.yaml`.
 11. Generate representative parent-context `TEAM.md`, rosters, team cards, `.spawnfile/team-contexts.yaml`, and `.spawnfile/team-contexts.md` for selected representatives.
@@ -344,7 +344,7 @@ Rules:
 - A parent team's `networks[].rooms[].members` list may name direct agent member IDs or direct child-team member IDs.
 - Direct child-team IDs expand through the child team's representative chain, not to arbitrary descendants.
 - The compiler synthesizes Moltnet room attachments for selected representatives because the parent room is declared organization membership, not a proxy.
-- Moltnet member IDs are direct member slot IDs and must be unique across the reachable nested team graph.
+- Moltnet member IDs are direct member slot IDs and must be unique across different canonical agent sources in the reachable nested team graph. Reusing the same member id is valid only when every duplicate resolves to the same canonical agent source.
 - The compiler resolves each concrete generated attachment into a process-group key and emits Moltnet node configuration using `MoltnetNode` topology where possible.
 - Default process-group key is one concrete agent.
 - The same Moltnet network-id may be reused across teams. Compatible duplicate attachments for the same `(network_id, member_id)` merge rooms; incompatible duplicates fail compilation.
@@ -353,7 +353,9 @@ Rules:
 
 #### Moltnet Server/Auth/Store Lowering
 
-- `server` blocks are required for networks that are materialized locally and are normalized by `(provider, server.mode, server.url, server.listen, store, auth, pairings, managed server flags)` identity.
+- A server-bearing declaration owns its network server and is normalized by `(provider, server.mode, server.url, server.listen, store, auth, pairings, managed server flags)` identity.
+- A nested declaration may omit `server` only when the same reachable organization graph contains a compatible server-bearing declaration for that network id. Ownerless declarations contribute rooms and attachments but never server processes, configs, or secrets.
+- The compiler resolves effective server owners in a deterministic first pass, then merges rooms and attachments in a second pass. Equivalent declaration order therefore produces the same server plan. Missing owners and conflicting server-bearing declarations are validation errors; compatible repeated owners preserve one effective server plan.
 - `server.mode: managed` lowerings generate a server config and a managed server process slot under the local lifecycle graph.
 - `server.mode: external` generates client/node config only.
 - Managed server config requires:
@@ -373,11 +375,12 @@ Rules:
 - `server.auth.client` is normalized into one of `token_id`, `token_env`, or `token_path` and rejected if more than one is set.
 - `server.auth.mode` mapping:
   - `none`: no client auth emitted.
-  - `bearer`: emits attach-capable client credentials for generated nodes. When `server.auth.agent_registration: open` is declared without a client credential, generated node/client config lowers to `auth_mode: open`, `registration: open`, and per-agent writable token paths.
+  - `bearer`: emits each generated node's resolved attachment credential. A managed attachment may select its own declared token with `surfaces.moltnet[].auth.token_id`; an attach-capable `server.auth.client` remains the fallback when it is valid for that member. When `server.auth.agent_registration: open` is declared without a client credential, generated node/client config lowers to `auth_mode: open`, `registration: open`, and per-agent writable token paths.
   - `open`: emits `auth_mode: open`, `registration: open`, and per-agent writable token paths unless a static token client source is provided.
 - `server.auth.public_read` and `server.auth.agent_registration` lower into native Moltnet auth config without changing generated node room authority.
 - Per-agent writable token paths are derived from the compiled agent slug and Moltnet member id so the generated `MoltnetNode` and generated `.moltnet/config.json` point to the same durable credential file.
-- Managed bearer mode requires `token_id` and requires the referenced token to include `attach` and `write` scopes.
+- Managed bearer `server.auth.client` requires `token_id`; the referenced server-level client or operator token must include `write` and at least one of `attach` or `observe`.
+- Managed bearer `surfaces.moltnet[].auth.token_id` resolves independently per attachment. The referenced token must include `attach` and `write` and must bind exactly one `agents` entry equal to the attachment's resolved Moltnet member ID.
 - Managed and external open static token mode requires `static_token: true` on the configured client source.
 - `server.pairings` entries are materialized into managed server config and rejected on non-managed networks.
 - Managed `server.human_ingress`, `server.direct_messages`, `server.debug_events`, `server.console.analytics`, `server.trust_forwarded_proto`, and `server.allowed_origins` lower directly into the Moltnet native server config.
@@ -505,7 +508,7 @@ The `OrganizationView` projection should carry enough declared information for s
 - schedule kind and expression
 - declared surfaces and scopes
 - team networks, rooms, and declared/expanded membership
-- declared memory banks with id, store kind, persistence, index modes, write mode, consolidation mode, retention mode, and accessible member slots
+- declared memory banks with id, store kind, persistence, index modes, consolidation mode, retention mode, and accessible member slots
 - policy mode and `on_degrade`
 
 Renderers stay pure. Status computes observations separately and passes them to the shared tree renderer through subject-keyed annotations. Subject keys SHOULD use compile node ids where available (`agent:<id>`, `team:<id>`) and provider-specific keys for non-node subjects (`network:moltnet:<network-id>`, `room:moltnet:<network-id>:<room-id>`, `runtime-instance:<instance-id>`, `deployment-unit:<unit-id>`).
@@ -540,37 +543,38 @@ Top-level report rules:
 
 ### Memory Report Extension
 
-The compile report should include a memory plan when any manifest declares
-`memory`.
+The container compile report should include `container.memory` when any manifest
+declares `memory`.
 
 ```json
 {
-  "memory": [
-    {
-      "id": "self",
-      "declaring_node_id": "team:luna-self",
-      "accessible_node_ids": ["agent:luna-representative", "agent:luna-shadow"],
-      "store": {
-        "kind": "sqlite",
-        "path": "/var/lib/spawnfile/memory/luna-self/memory.sqlite",
-        "persistence": "durable",
-        "persistent_mount_id": "memory-luna-self"
-      },
-      "index": {
-        "lexical": { "enabled": true, "engine": "sqlite_fts" },
-        "vector": { "enabled": false },
-        "graph": { "enabled": false },
-        "rerank": { "enabled": false }
-      },
-      "write": { "mode": "tool" },
-      "consolidation": { "mode": "disabled" },
-      "retention": { "forgetting": "manual" },
-      "transport_by_node_id": {
-        "agent:luna-representative": "direct",
-        "agent:luna-shadow": "mcp"
+  "container": {
+    "memory": [
+      {
+        "id": "self",
+        "declaring_node_id": "team:luna-self",
+        "accessible_node_ids": ["agent:luna-representative", "agent:luna-shadow"],
+        "store": {
+          "kind": "sqlite",
+          "path": "/var/lib/spawnfile/memory/luna-self/self/memory.sqlite",
+          "persistence": "durable",
+          "persistent_mount_id": "memory-var-lib-spawnfile-memory-luna-self-self"
+        },
+        "index": {
+          "lexical": { "enabled": true, "engine": "sqlite_fts" },
+          "vector": { "enabled": false },
+          "graph": { "enabled": false },
+          "rerank": { "enabled": false }
+        },
+        "consolidation": { "mode": "disabled" },
+        "retention": { "forgetting": "manual" },
+        "transport_by_node_id": {
+          "agent:luna-representative": "direct",
+          "agent:luna-shadow": "mcp"
+        }
       }
-    }
-  ]
+    ]
+  }
 }
 ```
 
@@ -583,10 +587,17 @@ Rules:
   entries.
 - `persistent_mount_id` is a logical mount identifier. Deployment managers
   derive concrete volume names per deployment, not from creator host paths.
-- `transport_by_node_id` MUST use `direct`, `mcp`, or `unsupported`.
+- `transport_by_node_id` MUST use `direct`, `mcp`, `degraded_mcp`,
+  `degraded`, or `unsupported`.
 - When an adapter uses generated MCP, the generated server name must be
-  derivable from the report as `spawnfile.memory.<memory-id>` without exposing
-  it as an author-declared MCP dependency.
+  compiler-owned and must not appear as an author-declared MCP dependency.
+  OpenClaw and PicoClaw v0.1 use `mneme-<memory-id>` for file-backed banks in
+  awake mode when the id is unique for that agent, and append a compiler-owned
+  source discriminator when two declaring manifests expose the same memory id.
+- Daimon `engine: pi` agents use direct Mneme tools. The generated app switches
+  between awake and dream Mneme instruction/tool mode per wake. Scheduled
+  consolidation lowers to dream wakes only when the runtime supports the
+  declared schedule expression.
 - `status` may report memory capability, mount presence, index mode, and last
   probe status, but it MUST NOT read message bodies or raw memory content.
 
@@ -702,14 +713,14 @@ Validation should happen in three layers:
 - team mode/lead/external references
 - team representative resolution
 - team network member references
-- duplicate Moltnet `member_id` detection across reachable nested teams
+- duplicate Moltnet `member_id` detection across reachable nested teams, allowing duplicates only when they resolve to the same canonical agent source
 - skill `requires.mcp` resolution
 - duplicate `workspace.resource` IDs and overlapping agent-visible mounts within each concrete agent context
 - duplicate workspace resource identities within inherited resource sets and incompatible shared resource definitions
 - `team.networks[].server` normalization checks (mode/store/auth/client/path/token/pairings compatibility)
 - `team.networks[].server` mode/auth/store/dms and pairings compatibility checks
 - schedule lowering checks against declared adapter wake contracts
-- memory bank id uniqueness, store/index/write/consolidation/retention normalization, access member references, and generated-memory MCP name reservation
+- memory bank id uniqueness, store/index/consolidation/retention normalization, access member references, and generated-memory MCP name reservation
 
 ### 3. Adapter Validation
 

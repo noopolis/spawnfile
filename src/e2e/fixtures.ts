@@ -9,7 +9,7 @@ import type { DockerAuthE2EScenario, E2EAgentSpec } from "./types.js";
 
 type MutableJson = Record<string, unknown>;
 
-const FIXTURES_ROOT = fileURLToPath(new URL("../../fixtures/e2e", import.meta.url));
+const FIXTURES_ROOT = fileURLToPath(new URL("../../test/fixtures/e2e", import.meta.url));
 
 const readYamlFile = async (filePath: string): Promise<MutableJson> =>
   YAML.parse(await readUtf8File(filePath)) as MutableJson;
@@ -65,7 +65,7 @@ export const materializeDockerAuthFixture = async (
   const sourceDirectory = path.join(FIXTURES_ROOT, scenario.fixture);
   await copyDirectory(sourceDirectory, destinationDirectory);
 
-  if (scenario.fixture === "agent") {
+  if (scenario.fixture === "docker-auth-agent") {
     await patchSingleAgentFixture(destinationDirectory, scenario);
     return;
   }

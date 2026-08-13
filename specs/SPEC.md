@@ -95,7 +95,7 @@ All `ref` values and document file paths in a manifest are relative paths resolv
 - Absolute paths MUST NOT be used.
 - Symlinks MUST NOT be followed during compilation.
 - A skill `ref` MUST point to a directory containing a `SKILL.md`.
-- A member `ref` MUST point to a directory containing a `Spawnfile`.
+- When a member declares `ref`, it MUST point to a directory containing a `Spawnfile`.
 - A document path MUST point to a UTF-8 Markdown file.
 
 ### 1.4 Manifest Graph
@@ -103,6 +103,7 @@ All `ref` values and document file paths in a manifest are relative paths resolv
 The compile graph is formed by following:
 
 - team `members[*].ref`
+- team inline member declarations
 - agent `subagents[*].ref`
 
 Rules:
@@ -111,6 +112,42 @@ Rules:
 - A conforming compiler MUST detect cycles and fail compilation.
 - Graph nodes are identified by their canonical manifest path.
 - The same manifest path MAY be referenced more than once in a graph, but all such references MUST resolve to the same effective `runtime` and `execution`. Otherwise the compiler MUST fail.
+
+### 1.5 Team Member Forms
+
+A team member MUST use exactly one of two forms.
+
+The referenced form points at an independently authored agent or team project:
+
+```yaml
+members:
+  - id: coach
+    ref: ./agents/coach
+```
+
+The inline form removes one manifest-directory nesting level for a simple agent. The
+member `id` supplies the agent name, while the remaining fields use the same meanings
+as an agent manifest. Inline agents MUST declare `workspace.docs.system` and MUST NOT
+declare `ref`, manifest headers (`spawnfile_version`, `kind`, or `name`), or
+`subagents`:
+
+```yaml
+members:
+  - id: red
+    runtime: daimon
+    workspace:
+      docs:
+        system: ./characters/red.md
+```
+
+Inline document, skill, and other authored file paths resolve from the declaring team
+manifest's directory. The source Markdown file does not need to be named `AGENTS.md`;
+the compiler maps the `system` role to the selected runtime's native instruction
+surface. Absolute paths and symlinks remain prohibited.
+
+Inline agents are compile-graph nodes with stable identities distinct from both the
+declaring team and sibling members. They are not prompt invocations: scheduled or
+message wake text remains separate from their standing system instructions.
 
 ---
 
@@ -267,9 +304,9 @@ environment:
 Rules:
 
 - `auth.secret` SHOULD be an environment variable name, not a literal credential value.
-- User-authored MCP server names beginning with `spawnfile.` are reserved for compiler-owned generated services and MUST be rejected.
+- User-authored MCP server names beginning with `spawnfile.` or `mneme-` are reserved for compiler-owned generated services and MUST be rejected.
 - Adapters MAY lower a logical MCP declaration into a runtime's native MCP config format.
-- Compiler-owned generated MCP services are not authored under `environment.mcp_servers`, are not visible to `workspace.skills[*].requires.mcp`, and MUST be namespaced under `spawnfile.` when exposed in runtime-native MCP config.
+- Compiler-owned generated MCP services are not authored under `environment.mcp_servers`, are not visible to `workspace.skills[*].requires.mcp`, and MUST use reserved, collision-free names when exposed in runtime-native MCP config.
 
 ### 2.3.1 Memory Banks
 
@@ -297,7 +334,7 @@ memory:
       members: [representative, critic, worker]
 ```
 
-Memory banks may also declare indexing, write, consolidation, and retention
+Memory banks may also declare indexing, consolidation, and retention
 intent. These fields are portable intent; adapters report degraded or
 unsupported when they cannot preserve them.
 
@@ -318,8 +355,6 @@ memory:
         enabled: false
       rerank:
         enabled: false
-    write:
-      mode: tool
     consolidation:
       mode: on_threshold
       summarize_after_events: 100
@@ -349,21 +384,23 @@ Rules:
 - `memory[*].index.lexical.engine` MAY be `sqlite_fts` or `bm25`; if omitted, the compiler chooses the adapter default.
 - `memory[*].index.vector.enabled` defaults to `false`.
 - If `memory[*].index.vector.enabled` is `true`, the entry MUST declare `memory[*].index.vector.model`.
-- `memory[*].index.vector.provider` MAY declare the embedding provider when it differs from the adapter default.
+- `memory[*].index.vector.provider` MAY declare the embedding provider when it differs from the adapter default. Spawnfile v0.1 supports `ollama`.
+- `memory[*].index.vector.base_url` MAY declare the embedding provider base URL. If omitted, generated runtimes use their provider default or `MNEME_OLLAMA_BASE_URL`.
 - `memory[*].index.vector.dimensions` MAY declare the expected embedding dimensionality.
+- `memory[*].index.vector.timeout_ms` MAY declare the embedding request timeout.
 - `memory[*].index.graph.enabled` defaults to `false`.
 - `memory[*].index.graph.kind` MAY be `entity_graph` or `temporal_kg`; if omitted and graph is enabled, the adapter default applies.
 - `memory[*].index.rerank.enabled` defaults to `false`.
-- `memory[*].write` is OPTIONAL.
-- `memory[*].write.mode` MUST be `tool`, `automatic`, or `disabled`; if omitted, it defaults to `tool`.
-- `memory[*].write.mode: tool` means durable memories are created only through explicit memory tools or compiler/runtime audit events.
-- `memory[*].write.mode: automatic` allows the adapter to extract candidate memories from configured runtime events.
-- `memory[*].write.auto_capture` MAY list `messages`, `tool_calls`, `decisions`, `artifacts`, or `lifecycle`.
-- `memory[*].write.auto_capture` is valid only when `memory[*].write.mode` is `automatic`.
 - `memory[*].consolidation` is OPTIONAL.
 - `memory[*].consolidation.mode` MUST be `disabled`, `on_threshold`, or `scheduled`; if omitted, it defaults to `disabled`.
 - `memory[*].consolidation.summarize_after_events` MAY declare the threshold for `on_threshold` consolidation.
 - `memory[*].consolidation.schedule` MAY declare a runtime-supported schedule expression for `scheduled` consolidation.
+- Scheduled consolidation is lowered as a wake for the agent that owns access to
+  the memory bank, not as a separate hidden summarizer. The wake MUST run in
+  `dream` mode when the runtime supports wake modes.
+- A dream wake MUST use a fresh one-off conversation/session id with a
+  collision-resistant suffix. Dream sessions MUST NOT reuse the normal awake
+  room/thread session and SHOULD be discarded after the wake completes.
 - `memory[*].retention` is OPTIONAL.
 - `memory[*].retention.forgetting` MUST be `manual`, `decay`, or `ttl`; if omitted, it defaults to `manual`.
 - `memory[*].retention.ttl` MAY declare a duration when `forgetting: ttl`.
@@ -376,12 +413,28 @@ Rules:
 - Memory access principals and scopes MUST be derived from trusted compile/runtime context: concrete agent id, direct team context, current room, current pair, current task, and current artifact context. The model MUST NOT be trusted to declare its own principal.
 - Runtimes with native or in-process memory tooling MAY receive direct memory-kernel access.
 - Runtimes that need MCP access MUST receive compiler-generated runtime-private MCP wiring. Authors MUST NOT manually declare Spawnfile-owned memory MCP servers.
-- Generated memory MCP servers MUST use names under `spawnfile.memory.<memory-id>` and MUST resolve active scope aliases such as `current`, `current_room`, `current_pair`, and `current_task` from a trusted wake binding rather than from model-supplied identity.
+- Generated memory MCP servers MUST use compiler-owned names that cannot
+  collide with authored MCP servers or with other generated memory servers for
+  the same agent. OpenClaw and PicoClaw v0.1 lower file-backed banks as
+  `mneme-<memory-id>` stdio servers when the id is unique for that agent, and
+  append a compiler-owned discriminator when needed. Generated servers MUST
+  resolve active scope aliases such as `current`, `current_room`,
+  `current_pair`, `current_task`, and `all` from a trusted wake binding rather
+  than from model-supplied identity.
+- Mneme mode is a tool/session mode, not a second server. Generated Mneme MCP
+  servers MUST use one MCP binary/transport and pass `--mode awake` or
+  `--mode dream` when the runtime can choose the mode. Mode selects the
+  instruction surface and tool descriptions; it does not create a separate
+  memory store.
 - If an adapter cannot preserve the declared memory bank and its access rules, it MUST report `degraded` or `unsupported` according to policy.
 - Memory stores MUST be append-only at the source-of-truth layer. Indexes, summaries, claims, graph edges, and embeddings are projections and MUST be rebuildable from the source ledger plus tombstone/redaction events.
 - Memory retrieval MUST resolve the active principal and allowed scopes before lexical, vector, graph, temporal, or rerank retrieval runs.
 - Memory results MUST include provenance or derived-source references. Derived summaries and claims MUST cite source event ids.
 - Forgetting, redaction, expiry, and supersession MUST be represented as explicit memory events; adapters MUST NOT silently erase provenance as the only record of change.
+- Spawnfile v0.1 does not define memory `write` or `auto_capture` configuration.
+  Agents decide what is worth remembering by calling memory tools. Runtime
+  adapters MUST NOT silently register every wake, message, tool call, or turn as
+  a memory event.
 
 Portable memory tools are:
 
@@ -454,6 +507,21 @@ runtime:
   options:
     profile: default
 ```
+
+Daimon accepts an optional runtime engine selector:
+
+```yaml
+runtime:
+  name: daimon
+  options:
+    engine: pi
+```
+
+For `runtime.name: daimon`, `runtime.options.engine` MAY be `pi`, `codex`,
+`claude`, `grok`, or `agy`. If omitted, the compiler MUST use `pi`. `engine:
+pi` runs the in-process Daimon/Pi harness. The other values run the generated
+Daimon CLI-engine wrapper for that tool while keeping Spawnfile workspace,
+Moltnet, schedule, and Mneme memory wiring in the generated Daimon app.
 
 ### 2.5 Execution Intent
 
@@ -621,6 +689,7 @@ Rules:
 - `surfaces.slack.identity.user_id` is OPTIONAL. If present, it is the Slack user ID advertised in generated rosters where this agent is visible.
 - Surface `identity` fields are opt-in roster metadata. They do not provision accounts, validate provider-side membership, or cause Spawnfile to read runtime state.
 - `surfaces.moltnet` is a list of Moltnet attachments. Each attachment MUST declare `network` and at least one of `rooms` or `dms`.
+- `surfaces.moltnet[].auth.token_id` is OPTIONAL and is valid only for a managed bearer network. It MUST reference one declared server token whose scopes include `attach` and `write` and whose `agents` list contains exactly that attachment's resolved Moltnet member ID.
 - Moltnet room and DM `wake` policy MAY be `all`, `mentions`, `thread_only`, or `never`.
 - Moltnet room and DM `reply` policy MAY be only `auto` or `never` in this alpha. `manual` is not part of the portable v0.1 contract.
 - Moltnet attachments are valid only when the agent participates in a team context whose `team.networks[]` declares the named network and rooms.
@@ -781,15 +850,15 @@ environment:
       url: https://search.mcp.example.com/mcp
       auth:
         secret: SEARCH_API_KEY
-    - name: memory_store
+    - name: private_index
       transport: streamable_http
-      url: https://memory.mcp.example.com/mcp
+      url: https://index.mcp.example.com/mcp
       auth:
-        secret: MEMORY_API_KEY
+        secret: INDEX_API_KEY
   secrets:
     - name: SEARCH_API_KEY
       required: true
-    - name: MEMORY_API_KEY
+    - name: INDEX_API_KEY
       required: false
   packages:
     - id: playwright
@@ -815,12 +884,16 @@ All blocks other than the top-level required fields are OPTIONAL unless otherwis
 
 ### 3.3 Agent Schedule
 
-`schedule` is OPTIONAL and valid only on agent manifests. It declares agent-owned wake intent; deployment profiles and renderers may decide how to materialize it for a target environment.
+`schedule` is OPTIONAL and valid only on agent manifests. It declares
+organization-authored, agent-scoped wake intent. Spawnfile validates and
+compiles that intent, while the selected runtime or generated organization app
+executes it; Spawnfile itself does not become the live scheduler.
 
-Runtimes that do not expose native wake scheduling must lower schedules through a Spawnfile-owned runner process only when:
+Runtimes that do not expose native wake scheduling may lower schedules through
+their generated organization app only when:
 
-- the adapter explicitly exposes a wake contract, and
-- the command is started via `spawnfile up`.
+- the adapter explicitly exposes a runtime-owned wake contract, and
+- the generated app is started through the normal organization lifecycle.
 
 If neither native scheduling nor an adapter wake contract exists, `agent.schedule` reports `degraded`.
 
@@ -1170,7 +1243,19 @@ Rules:
 - In v0.1, `provider` MUST be `moltnet`.
 - Each network `id` MUST be unique within the team.
 - Each room `id` MUST be unique within the network.
-- `server` is REQUIRED. It MUST declare `mode`.
+- A network declaration that owns its Moltnet server MUST include `server`, and
+  `server` MUST declare `mode`.
+- A nested-team declaration MAY omit `server` only when another declaration in
+  the same reachable organization graph uses the same network `id` and owns a
+  compatible server. An ownerless declaration is an overlay: it contributes
+  rooms and attachments but MUST NOT create a server process, server config, or
+  server secrets.
+- Every declared network `id` MUST resolve to at least one server-bearing
+  declaration. Compatible repeated server declarations resolve to one effective
+  server plan; conflicting server declarations MUST fail compilation.
+- Server ownership MUST be resolved before rooms and attachments are merged so
+  equivalent manifests compile independently of team/declaration traversal
+  order.
 - In v0.1, `server.mode` MUST be `managed` or `external`.
 - `server.mode: managed` means Spawnfile may provision and start the Moltnet server.
 - `server.mode: external` means Spawnfile emits only client/node config to connect to a remote URL.
@@ -1197,7 +1282,8 @@ Rules:
 - `server.auth.client` for `external` servers may use `token_env` or `token_path`.
 - `server.auth.client.static_token` is valid only for `server.auth.mode: open` and only when a client token source is declared.
 - `server.auth.client` for open mode must set `static_token: true`; open mode without a client emits per-agent generated token files.
-- For managed bearer mode, the managed `server.auth.client` token source must resolve a token with `attach` and `write` scope.
+- For managed bearer mode, `server.auth.client` is the server-level client or operator credential. Its `token_id` MUST resolve a declared token with `write` and at least one of `attach` or `observe`; it is not implicitly the credential for every generated attachment.
+- A managed bearer attachment that declares `surfaces.moltnet[].auth.token_id` MUST use its referenced per-attachment token instead of `server.auth.client`. That token MUST include `attach` and `write` and MUST declare exactly `agents: [<resolved-member-id>]`.
 - `server.auth.mode: none` rejects all token sources.
 - `server.pairings` is valid only for `server.mode: managed`.
 - Managed `server.pairings` entries use `id` and MAY include `remote_network_id`, `remote_network_name`, `remote_base_url`, and `token_secret`.
@@ -1225,10 +1311,74 @@ Rules:
 - A room `write_policy` is OPTIONAL and MUST be `members`, `registered_agents`, or `operators` when present. Generated agent tokens are identity tokens; they do not bypass `members` or `operators` policies.
 - Direct child-team IDs in a parent room expand to the child team's concrete representatives for that parent context.
 - Parent networks do not generally propagate through nested team boundaries. Only explicit parent-room representative attachments propagate, and only to selected representatives.
-- Moltnet member IDs are the direct agent member slot IDs from the team where each concrete agent is a direct member. They MUST be unique across the full reachable team nesting used by the compile graph.
-- If two direct agent member slots anywhere in the reachable nested team graph would compile to the same Moltnet `member_id`, compilation MUST fail with a validation error naming the colliding team paths and member slots.
+- Moltnet member IDs are the direct agent member slot IDs from the team where each concrete agent is a direct member. They MUST be unique across different canonical agent sources in the full reachable team nesting used by the compile graph.
+- If two direct agent member slots anywhere in the reachable nested team graph would compile to the same Moltnet `member_id` and different canonical agent sources, compilation MUST fail with a validation error naming the colliding team paths and member slots. Reusing the same `member_id` for multiple direct memberships is valid only when every duplicate resolves to the same canonical agent source.
 - The same Moltnet network id MAY be reused by different teams. If the same concrete representative sees multiple attachments with the same `(network_id, member_id)`, the compiler MUST merge compatible room memberships into one client/bridge attachment. Incompatible duplicate attachments MUST fail compilation.
 - Moltnet room and DM `reply` policy is limited to `auto` and `never` in this alpha contract.
+
+#### External Service Participants
+
+A root team MAY declare a narrow, non-agent service participant that joins an
+owned Moltnet network only for explicit direct messages:
+
+```yaml
+external_participants:
+  - id: world
+    kind: service
+    surfaces:
+      moltnet:
+        - network: pitch
+          auth:
+            token_id: world
+          dms:
+            enabled: true
+```
+
+Rules:
+
+- `external_participants` is OPTIONAL and MAY be declared only by the root team
+  of the reachable organization graph. A nested team declaration MUST fail
+  compilation.
+- The list MUST contain between one and 32 strict entries. Each `id` MUST match
+  `[a-z][a-z0-9-]{0,62}`, MUST be unique, and MUST NOT collide with a canonical
+  organization member ID.
+- In v0.1, `kind` MUST be `service`. A service participant is not an agent and
+  MUST NOT declare or receive a runtime, execution, workspace, documents,
+  skills, schedule, subagents, room membership, or agent wake behavior.
+- `surfaces` MUST contain only `moltnet`. It MUST contain between one and 16
+  attachments, and a participant MUST NOT attach to the same network more than
+  once.
+- Each attachment MUST contain exactly `network`, `auth: {token_id}`, and
+  `dms: {enabled: true}`. `network` MUST name a network owned by the root team.
+- The compiler derives the service member ID as its authored `id` and its
+  principal as `system:<id>`. Nested agent members retain their canonical
+  organization-path IDs, such as `field.red`.
+- A network used by an external service participant MUST be a managed Moltnet
+  server with bearer authentication and `direct_messages: true`.
+- That server's topology client MUST select exactly the `operator` token. The
+  operator token MUST have no `agents` binding and MUST have exactly the ordered
+  scopes `[admin, observe, write]`.
+- Every agent or service actor on that network MUST explicitly select its own
+  token. An actor token MUST have exactly the ordered scopes `[attach, write]`,
+  MUST bind exactly one canonical member ID in `agents`, and MUST be selected by
+  exactly that actor. Operator and actor token IDs and secret environment
+  identities MUST remain distinct; no actor may select the operator token.
+- The compiler MUST treat token `secret` values as environment-variable
+  identities only. It MUST NOT read or serialize the referenced credential
+  value. Generated external-participant artifacts MUST remain endpoint-free.
+- A service receives a DM edge only to a canonical agent member that explicitly
+  enables DMs on the same Moltnet network. Room membership, representative
+  selection, or another-network attachment MUST NOT imply DM eligibility. At
+  least one eligible peer is required, and generated DM pairs MUST be unique and
+  deterministic.
+- Declaring `external_participants` MUST NOT cause standalone `spawnfile compile`
+  or `spawnfile up` to instantiate, contact, health-check, or wait for the
+  service. Spawnfile emits only the endpoint-free attachment artifact and token
+  topology for an external composer.
+- When the root team omits `external_participants`, compilation MUST preserve
+  the standalone organization and Moltnet path: it MUST NOT require the topology
+  operator/actor-token split, synthesize a service identity, or emit an external
+  participant artifact.
 
 ### 4.7 Team Docs And Context Artifacts
 
@@ -1496,9 +1646,11 @@ policy:
   on_degrade: error
 ```
 
-OpenClaw MCP currently goes through the mcporter bridge, so the adapter reports `mcp.web_search` as `degraded`. Because `on_degrade` is `error`, the compiler fails the build and tells you exactly which capability could not be preserved.
-
-Change `on_degrade` to `warn` and the build succeeds — but the compile report still records the degradation so you know what was lost.
+OpenClaw lowers the logical `web_search` declaration into its native
+`mcp.servers` config and reports `mcp.web_search` as `supported`. If a target
+runtime cannot preserve the MCP declaration, it reports the capability as
+`degraded` or `unsupported`; because `on_degrade` is `error`, that runtime would
+fail the build and tell you exactly which capability could not be preserved.
 
 ---
 

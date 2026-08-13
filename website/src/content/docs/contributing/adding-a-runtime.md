@@ -33,14 +33,10 @@ The `install` block is the compiled install surface Spawnfile will use when it b
 
 ### 2. Research
 
-Clone the runtime and study its config format:
-
-```bash
-./scripts/runtimes.sh myruntime
-./scripts/blueprints.sh myruntime
-```
-
-Document findings in `specs/research/RUNTIME-NOTES.md`.
+Study the pinned upstream source and its config format. Capture a frozen
+reference layout under `blueprints/<name>/` when the runtime exposes a
+declarative configuration surface, then document findings in
+`specs/research/RUNTIME-NOTES.md`.
 
 ### 3. Build the Adapter
 

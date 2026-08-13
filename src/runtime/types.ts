@@ -4,6 +4,7 @@ import type {
   ResolvedAgentSurfaces,
   ResolvedTeamNode
 } from "../compiler/types.js";
+import type { SimfileWorldBindingV1 } from "../compiler/worldBindings.js";
 import type { ResolvedAuthProfile } from "../auth/index.js";
 import type { AgentManifest } from "../manifest/index.js";
 import type { CapabilityReport, DiagnosticReport } from "../report/index.js";
@@ -28,6 +29,7 @@ export interface ContainerTargetInput {
   kind: "agent" | "team";
   slug: string;
   value: ResolvedAgentNode | ResolvedTeamNode;
+  worldBinding?: SimfileWorldBindingV1;
 }
 
 export interface ContainerTargetEnvFile {
@@ -35,12 +37,25 @@ export interface ContainerTargetEnvFile {
   relativePath: string;
 }
 
+export type RuntimeContainerConfigValueTransform = "bearer";
+
 export interface ContainerTarget {
   configEnvBindings?: RuntimeContainerConfigEnvBinding[];
+  /**
+   * Optional node id -> resolved engine kind map (currently only populated by
+   * `src/runtime/pi/adapter.ts`'s `createContainerTargets`, e.g. `{"agent:
+   * eleanor": "scripted"}`). Threaded through `RuntimeTargetPlan` into
+   * `ContainerRuntimeInstanceReport.engine_by_node_id` for compile-report
+   * disclosure (Piece 5, Slice B) — adapters with no engine concept simply
+   * omit it.
+   */
+  engineByNodeId?: Record<string, string>;
   envFiles?: ContainerTargetEnvFile[];
   files: EmittedFile[];
   id: string;
   sourceIds?: string[];
+  /** World token env names actually lowered into this target's native config. */
+  worldTokenEnvNames?: string[];
 }
 
 export interface RuntimeContainerInstancePaths {
@@ -53,7 +68,9 @@ export interface RuntimeContainerInstancePaths {
 export interface RuntimeContainerConfigEnvBinding {
   envName: string;
   generated?: boolean;
-  jsonPath: string;
+  /** Legacy dot paths remain supported; structured paths address arbitrary JSON keys exactly. */
+  jsonPath: string | readonly string[];
+  transform?: RuntimeContainerConfigValueTransform;
 }
 
 export interface RuntimeContainerMeta {
@@ -95,7 +112,14 @@ export interface RuntimeAuthInstance {
 }
 
 export interface RuntimeAuthPreparationInput {
-  authProfile: ResolvedAuthProfile;
+  /**
+   * The Spawnfile-managed auth profile (`--auth-profile`), or `null` when the
+   * run/up invocation did not select one. Host-credential staging that does
+   * not depend on an imported auth profile (e.g. the Pi adapter's optional
+   * CLI-home mounts for grok/codex/antigravity) must still run when this is
+   * `null` — only the profile-derived `imports` lookups are unavailable.
+   */
+  authProfile: ResolvedAuthProfile | null;
   env: Record<string, string>;
   instance: RuntimeAuthInstance;
   outputDirectory: string;

@@ -2,13 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 
 import { upProject as realUpProject } from "../compiler/index.js";
 import type { UpProjectResult } from "../compiler/index.js";
+import type { OrganizationReadinessEvidence } from "../compiler/organizationReadyEvidence.js";
 
 import { runOperationalSmokeE2E, type OperationalSmokeDependencies } from "./operationalSmoke.js";
+
+const genericOrganizationReadinessEvidence: OrganizationReadinessEvidence = {
+  compileFingerprint: "sf1:000000000000", compileVersion: "0.1", hasExternalMoltnet: false,
+  networks: [], organizationMembers: [], projectLabel: "generic",
+  version: "spawnfile.organization-ready-evidence.v1", worldBindings: null
+};
 
 const createUpResult = (outputDirectory: string, imageTag: string): UpProjectResult => ({
   authProfileName: null,
   containerName: "operational-container",
   imageTag,
+  organizationReadinessEvidence: genericOrganizationReadinessEvidence,
   outputDirectory,
   report: {
     container: {

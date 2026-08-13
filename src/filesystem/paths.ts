@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import path from "node:path";
 
 import { SpawnfileError } from "../shared/index.js";
@@ -21,8 +22,16 @@ export const assertPortableRelativePath = (inputPath: string): void => {
 export const getCanonicalManifestPath = (filePath: string): string =>
   path.resolve(filePath);
 
+const isExistingFile = (inputPath: string): boolean => {
+  try {
+    return statSync(inputPath).isFile();
+  } catch {
+    return false;
+  }
+};
+
 export const getManifestPath = (inputPath: string): string =>
-  path.basename(inputPath) === "Spawnfile"
+  path.basename(inputPath) === "Spawnfile" || isExistingFile(inputPath)
     ? path.resolve(inputPath)
     : path.resolve(inputPath, "Spawnfile");
 

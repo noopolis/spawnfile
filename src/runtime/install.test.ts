@@ -24,9 +24,9 @@ describe("runtime install selection", () => {
       installHint: "Copy a pinned Daimon runtime image.",
       kind: "container_image",
       runtimeName: "daimon",
-      runtimeRef: "v0.1.1",
+      runtimeRef: "v0.1.2",
       selectionSource: "runtime_registry_install",
-      tag: "0.1.1"
+      tag: "0.1.2"
     });
   });
 
@@ -37,9 +37,9 @@ describe("runtime install selection", () => {
       installHint: "Copy the pinned OpenClaw runtime files from the official container image.",
       kind: "container_image",
       runtimeName: "openclaw",
-      runtimeRef: "v2026.6.8",
+      runtimeRef: "v2026.6.11",
       selectionSource: "runtime_registry_install",
-      tag: "2026.6.8"
+      tag: "2026.6.11"
     });
   });
 
@@ -50,9 +50,9 @@ describe("runtime install selection", () => {
       installHint: "Copy the pinned PicoClaw runtime files from the official container image.",
       kind: "container_image",
       runtimeName: "picoclaw",
-      runtimeRef: "v0.2.9",
+      runtimeRef: "v0.3.1",
       selectionSource: "runtime_registry_install",
-      tag: "0.2.9"
+      tag: "0.3.1"
     });
   });
 
@@ -70,6 +70,6 @@ describe("runtime install selection", () => {
   });
 
   it("rejects exploratory runtimes for install selection", async () => {
-    await expect(resolveRuntimeInstallSelection("nullclaw")).rejects.toThrow(/exploratory/);
+    await expect(resolveRuntimeInstallSelection("openfang")).rejects.toThrow(/exploratory/);
   });
 });

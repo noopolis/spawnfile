@@ -393,6 +393,91 @@ describe("renderSpawnfile", () => {
     });
   });
 
+  it("renders inline agent members in canonical order and round-trips them", () => {
+    const source = renderSpawnfile({
+      kind: "team",
+      members: [
+        {
+          description: "Attacks the blue goal.",
+          environment: {
+            env: {
+              TEAM_COLOR: "red"
+            }
+          },
+          id: "red",
+          runtime: {
+            name: "daimon",
+            options: {
+              engine: "grok"
+            }
+          },
+          surfaces: {
+            moltnet: [
+              {
+                network: "pitch",
+                rooms: {
+                  field: {
+                    wake: "mentions"
+                  }
+                }
+              }
+            ]
+          },
+          workspace: {
+            docs: {
+              system: "./characters/red.md"
+            }
+          }
+        },
+        {
+          id: "coach",
+          ref: "./agents/coach"
+        }
+      ],
+      mode: "swarm",
+      name: "tiny-football",
+      spawnfile_version: "0.1"
+    });
+
+    const idIndex = source.indexOf("  - id: red");
+    const descriptionIndex = source.indexOf("    description:");
+    const runtimeIndex = source.indexOf("    runtime:");
+    const workspaceIndex = source.indexOf("    workspace:");
+    const environmentIndex = source.indexOf("    environment:");
+    const surfacesIndex = source.indexOf("    surfaces:");
+
+    expect(idIndex).toBeGreaterThanOrEqual(0);
+    expect(descriptionIndex).toBeGreaterThan(idIndex);
+    expect(runtimeIndex).toBeGreaterThan(descriptionIndex);
+    expect(workspaceIndex).toBeGreaterThan(runtimeIndex);
+    expect(environmentIndex).toBeGreaterThan(workspaceIndex);
+    expect(surfacesIndex).toBeGreaterThan(environmentIndex);
+    expect(source).toContain("      system: ./characters/red.md");
+    expect(source).toContain("  - id: coach\n    ref: ./agents/coach");
+    expect(manifestSchema.parse(YAML.parse(source) as unknown)).toMatchObject({
+      members: [
+        {
+          id: "red",
+          runtime: {
+            name: "daimon",
+            options: {
+              engine: "grok"
+            }
+          },
+          workspace: {
+            docs: {
+              system: "./characters/red.md"
+            }
+          }
+        },
+        {
+          id: "coach",
+          ref: "./agents/coach"
+        }
+      ]
+    });
+  });
+
   it("renders external Moltnet servers without managed store fields", () => {
     const source = renderSpawnfile({
       kind: "team",
@@ -501,7 +586,11 @@ describe("renderSpawnfile", () => {
     expect(source).toContain("    env:");
   });
 
-  it("redacts moltnet secret values when rendering", () => {
+  it("renders Moltnet secret references without reading their values", () => {
+    const previousOperator = process.env.MOLTNET_OPERATOR_TOKEN;
+    const previousPairing = process.env.MOLTNET_PAIRING_TOKEN;
+    process.env.MOLTNET_OPERATOR_TOKEN = "actual-operator-token-must-not-render";
+    process.env.MOLTNET_PAIRING_TOKEN = "actual-pairing-token-must-not-render";
     const source = renderSpawnfile({
       kind: "team",
       lead: "operator",
@@ -511,7 +600,7 @@ describe("renderSpawnfile", () => {
           ref: "./agents/operator"
         }
       ],
-      mode: "swarm",
+      mode: "hierarchical",
       name: "secure-team",
       networks: [
         {
@@ -549,7 +638,7 @@ describe("renderSpawnfile", () => {
                 remote_network_name: "PartnerNet",
                 token_secret: "MOLTNET_PAIRING_TOKEN"
               }
-            ],
+            ]
           },
           rooms: [
             {
@@ -561,11 +650,25 @@ describe("renderSpawnfile", () => {
       ],
       spawnfile_version: "0.1"
     });
+    if (previousOperator === undefined) delete process.env.MOLTNET_OPERATOR_TOKEN;
+    else process.env.MOLTNET_OPERATOR_TOKEN = previousOperator;
+    if (previousPairing === undefined) delete process.env.MOLTNET_PAIRING_TOKEN;
+    else process.env.MOLTNET_PAIRING_TOKEN = previousPairing;
 
-    expect(source).not.toContain("MOLTNET_OPERATOR_TOKEN");
-    expect(source).not.toContain("MOLTNET_PAIRING_TOKEN");
+    expect(source).toContain("secret: MOLTNET_OPERATOR_TOKEN");
+    expect(source).toContain("token_secret: MOLTNET_PAIRING_TOKEN");
+    expect(source).not.toContain("actual-operator-token-must-not-render");
+    expect(source).not.toContain("actual-pairing-token-must-not-render");
     expect(source).toContain("id: operator");
     expect(source).toContain("mode: bearer");
+    const parsed = manifestSchema.parse(YAML.parse(source));
+    if (parsed.kind !== "team" || parsed.networks?.[0]?.server?.mode !== "managed") {
+      throw new Error("expected managed team network");
+    }
+    expect(parsed.networks[0].server.auth.tokens?.[0]?.secret)
+      .toBe("MOLTNET_OPERATOR_TOKEN");
+    expect(parsed.networks[0].server.pairings?.[0]?.token_secret)
+      .toBe("MOLTNET_PAIRING_TOKEN");
   });
 
   it("renders rewritten agent manifests with subagents in canonical order", () => {
@@ -876,6 +979,9 @@ describe("renderSpawnfile", () => {
       surfaces: {
         moltnet: [
           {
+            auth: {
+              token_id: "researcher-attachment"
+            },
             network: "local_lab",
             rooms: {
               research: {
@@ -933,6 +1039,8 @@ describe("renderSpawnfile", () => {
 
     expect(agentSource).toContain("  moltnet:");
     expect(agentSource).toContain("    - network: local_lab");
+    expect(agentSource).toContain("      auth:");
+    expect(agentSource).toContain("        token_id: researcher-attachment");
     expect(agentSource).toContain("      rooms:");
     expect(agentSource).toContain("        research:");
     expect(agentSource).toContain("          wake: mentions");

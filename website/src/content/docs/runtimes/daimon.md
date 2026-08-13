@@ -16,7 +16,11 @@ runtime:
   name: daimon
 ```
 
-Runtime options are adapter-specific. The current adapter keeps Pi orchestration inside generated artifacts, so a project author should normally only declare `runtime: daimon` plus normal Spawnfile workspace, model, schedule, resource, and Moltnet fields.
+Runtime options are adapter-specific. `runtime.options.engine` may be `pi`,
+`codex`, `claude`, `grok`, or `agy`; when omitted, Daimon uses `pi`.
+`engine: pi` runs the in-process Daimon/Pi harness. The CLI engines run the
+selected local CLI through the generated Daimon app, with the same workspace,
+Moltnet, schedule, and Mneme memory wiring.
 
 ## Workspace Layout
 
@@ -95,6 +99,31 @@ Workspace resources use the same container lifecycle as other runtimes:
 
 MCP server declarations are validated but reported as degraded for Daimon in v0.1 because the generated app does not lower MCP servers into Pi yet.
 
+## Memory Handling
+
+Daimon supports file-backed Spawnfile memory banks through Mneme. Durable
+sqlite/json banks emit persistent container mounts, and the generated
+`pi-app.json` points each agent at the resolved Mneme runtime home. Multiple
+memory files in the same directory share one durable mount.
+
+`engine: pi` agents use Mneme in-process. CLI-backed Daimon engines (`codex`,
+`claude`, `grok`, and `agy`) receive Mneme recall context before each turn but
+do not write memories implicitly. Agents decide what is worth remembering by
+using memory tools; Spawnfile does not auto-capture every wake, tool call, or
+turn as memory.
+
+Daimon has two Mneme instruction surfaces over the same memory runtime:
+awake mode for normal work, and dream mode for consolidation. For `engine: pi`,
+scheduled memory consolidation with an `every` interval lowers to a fresh
+one-off dream wake with a collision-resistant session suffix. Dream wakes use
+the dream instruction surface and the same underlying Mneme tools, then discard
+the dream session after the wake completes. Cron-like memory consolidation
+schedules are reported as degraded in v0.1.
+
+CLI engines do not receive callable Mneme tools directly in v0.1; use
+PicoClaw's generated Mneme MCP path when an external runtime needs a live
+memory tool surface.
+
 ## Subagents
 
 When several Daimon agents are reachable in one compile graph, Spawnfile groups them into one generated app process. That is useful for local organizations, but it is not the same as native parent-owned subagent semantics. A Daimon agent with `subagents` compiles with a degraded capability report until the harness has an explicit parent-to-subagent contract.
@@ -149,14 +178,14 @@ For container compilation:
 - Config, home, and workspace paths under `/var/lib/spawnfile/instances/daimon/pi-app`
 - A start command that runs the generated app
 
-Daimon uses `noopolis/spawnfile-runtime-daimon:0.1.0` by default. To test a
+Daimon uses `noopolis/spawnfile-runtime-daimon:0.1.2` by default. To test a
 local runtime artifact instead:
 
 ```bash
+git clone git@github.com:noopolis/daimon.git
 cd daimon
 npm run image:runtime:local
-cd ..
-SPAWNFILE_DAIMON_RUNTIME_IMAGE=noopolis/spawnfile-runtime-daimon:0.1.0-local \
+SPAWNFILE_DAIMON_RUNTIME_IMAGE=noopolis/spawnfile-runtime-daimon:0.1.2-local \
   spawnfile build ./agentic-org
 ```
 

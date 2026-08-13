@@ -1,6 +1,6 @@
 {
   "name": "spawnfile",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "Canonical source compiler for autonomous agents and teams.",
   "license": "MIT",
   "type": "module",
@@ -9,14 +9,14 @@
   },
   "files": [
     "dist",
+    "moltnet-releases.json",
     "runtimes.yaml"
   ],
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.19.0"
   },
   "scripts": {
-    "blueprints": "./scripts/blueprints.sh",
-    "build": "rm -rf dist && tsc --project tsconfig.build.json && chmod +x dist/cli/index.js && node ./scripts/copy-runtime-scaffold-assets.mjs",
+    "build": "rm -rf dist && tsc --project tsconfig.build.json && chmod +x dist/cli/index.js && node ./src/runtime/copyScaffoldAssets.mjs",
     "clean": "rm -rf coverage dist",
     "coverage": "vitest run --coverage",
     "dev": "tsx src/cli/index.ts",
@@ -26,26 +26,42 @@
     "release:minor": "npm version minor && npm publish",
     "release:major": "npm version major && npm publish",
     "runtime:images": "npm run runtime:openclaw-image && npm run runtime:picoclaw-image",
-    "runtime:openclaw-image": "docker build -f runtime-images/openclaw/Dockerfile -t noopolis/spawnfile-runtime-openclaw:2026.6.8-local runtime-images/openclaw",
-    "runtime:pi-base": "./scripts/build-pi-runtime-base.sh",
-    "runtime:picoclaw-image": "docker build -f runtime-images/picoclaw/Dockerfile -t noopolis/spawnfile-runtime-picoclaw:0.2.9-local runtime-images/picoclaw",
-    "runtimes": "./scripts/runtimes.sh",
-    "runtimes:sync": "./scripts/runtimes.sh && ./scripts/blueprints.sh",
+    "runtime:openclaw-image": "docker build -f runtime-images/openclaw/Dockerfile -t noopolis/spawnfile-runtime-openclaw:2026.6.11-local runtime-images/openclaw",
+    "runtime:picoclaw-image": "docker build -f runtime-images/picoclaw/Dockerfile -t noopolis/spawnfile-runtime-picoclaw:0.3.1-local runtime-images/picoclaw",
+    "audit:generate": "tsx src/audit/auditCli.ts",
+    "build:local-moltnet": "node ./scripts/build-local-moltnet.mjs",
+    "verify:package-closure": "node ./scripts/verify-package-closure.mjs",
     "test:e2e:docker-auth": "tsx src/e2e/cli.ts",
+    "test:e2e:daimon-memory-recall": "tsx src/e2e/cli.ts daimon-memory-recall",
+    "test:e2e:jungian-self-org": "tsx src/e2e/cli.ts jungian-self-org",
     "test:e2e:moltnet-team-chat": "tsx src/e2e/cli.ts moltnet-team-chat",
+    "test:e2e:moltnet-memetics": "tsx src/e2e/cli.ts moltnet-memetics",
+    "test:e2e:mixed-runtime-memory": "tsx src/e2e/cli.ts mixed-runtime-memory",
+    "test:e2e:preflight": "tsx src/e2e/cli.ts preflight",
+    "test:e2e:ollama-embeddings-probe": "tsx src/e2e/cli.ts ollama-embeddings-probe",
     "test:e2e:operational-smoke": "tsx src/e2e/cli.ts operational-smoke",
-    "test": "vitest run",
+    "test:e2e:lifecycle-smoke": "tsx src/e2e/cli.ts lifecycle-smoke",
+    "test": "npm run test:vitest; vitest_status=$?; npm run test:verdict; verdict_status=$?; npm run test:coverage-verdict; coverage_status=$?; npm run test:node; node_status=$?; failed_lanes=''; if [ \"$verdict_status\" -eq 2 ]; then failed_lanes='vitest test failures'; fi; if [ \"$node_status\" -eq 2 ]; then if [ -n \"$failed_lanes\" ]; then failed_lanes=\"$failed_lanes; node:test suite\"; else failed_lanes='node:test suite'; fi; fi; result_status=0; if [ -n \"$failed_lanes\" ]; then echo \"FAIL(tests): $failed_lanes\"; result_status=1; fi; if [ \"$verdict_status\" -ne 0 ] && [ \"$verdict_status\" -ne 2 ]; then echo 'FAIL(vitest-verdict): could not determine the vitest result'; result_status=1; fi; if [ \"$node_status\" -ne 0 ] && [ \"$node_status\" -ne 2 ]; then echo 'FAIL(node-lane): could not determine the node:test result'; result_status=1; fi; if [ \"$result_status\" -ne 0 ]; then exit 1; elif [ \"$vitest_status\" -ne 0 ]; then echo \"FAIL(vitest): exited $vitest_status with no test failure\"; exit 1; elif [ \"$coverage_status\" -eq 2 ]; then echo 'FAIL(coverage): thresholds not met (tests all passed)'; exit 2; elif [ \"$coverage_status\" -ne 0 ]; then echo 'FAIL(coverage-verdict): could not evaluate coverage (tests all passed)'; exit 1; else echo 'PASS'; fi",
+    "test:vitest": "rm -f coverage/vitest-results.json coverage/coverage-summary.json && vitest run --coverage.thresholds.branches=0 --coverage.thresholds.functions=0 --coverage.thresholds.lines=0 --coverage.thresholds.statements=0",
+    "test:verdict": "node -e \"const fs=require('fs'); const file='coverage/vitest-results.json'; if (!fs.existsSync(file)) { console.error('VERDICT: results file missing'); process.exit(1); } let result; try { result=JSON.parse(fs.readFileSync(file, 'utf8')); } catch { console.error('VERDICT: results file unparseable'); process.exit(1); } const total=result.numTotalTests; const totalSuites=result.numTotalTestSuites; const passedTests=result.numPassedTests; const failedTests=result.numFailedTests; const pendingTests=result.numPendingTests; const todoTests=result.numTodoTests; const failedSuites=result.numFailedTestSuites; if (typeof result.success !== 'boolean' || !Number.isInteger(passedTests) || passedTests < 0 || !Number.isInteger(failedTests) || failedTests < 0 || !Number.isInteger(pendingTests) || pendingTests < 0 || !Number.isInteger(todoTests) || todoTests < 0 || !Number.isInteger(failedSuites) || failedSuites < 0 || !Number.isInteger(totalSuites) || totalSuites < 0) { console.error('VERDICT: results schema unrecognised'); process.exit(1); } if (!Number.isInteger(total) || total <= 0) { console.error('VERDICT: no tests found'); process.exit(1); } if (passedTests + failedTests + pendingTests + todoTests !== total) { console.error('VERDICT: results counters do not reconcile (tests='+total+', passed='+passedTests+', failed='+failedTests+', skipped='+pendingTests+', todo='+todoTests+')'); process.exit(1); } const failed=result.success === false || failedTests > 0 || failedSuites > 0; if (failed) { console.error('VERDICT: test failures found (tests='+failedTests+', suites='+failedSuites+', success='+result.success+')'); process.exit(2); } if (passedTests === 0) { console.error('VERDICT: no tests actually ran (skipped='+pendingTests+', todo='+todoTests+')'); process.exit(1); } console.log('VERDICT: tests passed (tests='+total+', suites='+totalSuites+', passed='+passedTests+', skipped='+pendingTests+', todo='+todoTests+')');\"",
+    "test:coverage-verdict": "node --import tsx -e \"import fs from 'node:fs'; const file='coverage/coverage-summary.json'; const fail=(message)=>{ console.error('COVERAGE VERDICT: '+message); process.exit(1); }; let summary; try { summary=JSON.parse(fs.readFileSync(file, 'utf8')); } catch (error) { fail(error && error.code === 'ENOENT' ? 'summary file missing' : 'summary file unparseable'); } import('./vitest.config.ts').then(({default:config})=>{ const thresholds=config.test && config.test.coverage && config.test.coverage.thresholds; if (!thresholds || typeof thresholds !== 'object' || !summary || typeof summary !== 'object' || !summary.total || typeof summary.total !== 'object') fail('summary or threshold schema unrecognised'); const metricNames=['branches','functions','lines','statements']; const metrics=metricNames.filter((metric)=>Object.prototype.hasOwnProperty.call(thresholds, metric)); if (metrics.length === 0) fail('no threshold metrics configured'); let shortfall=false; for (const metric of metrics) { const threshold=thresholds[metric]; const pct=summary.total[metric] && summary.total[metric].pct; if (typeof threshold !== 'number' || !Number.isFinite(threshold) || typeof pct !== 'number' || !Number.isFinite(pct)) fail('missing or non-numeric value for '+metric); console.log('COVERAGE: '+metric+' '+pct+'% (threshold '+threshold+'%)'); if (pct < threshold) shortfall=true; } if (shortfall) { console.error('COVERAGE VERDICT: thresholds not met'); process.exit(2); } console.log('COVERAGE VERDICT: thresholds met'); }).catch((error)=>fail('could not load vitest config: '+error.message));\"",
+    "test:node": "mkdir -p coverage || exit 1; rm -f coverage/node-test.tap || exit 1; node --import tsx --test --test-reporter=tap src/runtime/pi/appControlDeliveryMetadata.test.ts > coverage/node-test.tap 2>&1; node_status=$?; cat coverage/node-test.tap; cat_status=$?; npm run test:node-verdict; verdict_status=$?; if [ \"$verdict_status\" -eq 2 ]; then exit 2; fi; if [ \"$verdict_status\" -ne 0 ]; then exit 1; fi; if [ \"$cat_status\" -ne 0 ]; then echo 'NODE VERDICT: could not read TAP output' >&2; exit 1; fi; if [ \"$node_status\" -ne 0 ]; then echo \"NODE VERDICT: node:test runner exited $node_status despite a passing TAP summary\" >&2; exit 1; fi; exit 0",
+    "test:node-verdict": "node -e \"const fs=require('fs'); const text=fs.readFileSync('coverage/node-test.tap', 'utf8'); const tests=text.match(/^# tests ([0-9]+)\\r?$/m); const suites=text.match(/^# suites ([0-9]+)\\r?$/m); const passed=text.match(/^# pass ([0-9]+)\\r?$/m); const failed=text.match(/^# fail ([0-9]+)\\r?$/m); const skipped=text.match(/^# skipped ([0-9]+)\\r?$/m); const todo=text.match(/^# todo ([0-9]+)\\r?$/m); const cancelled=text.match(/^# cancelled ([0-9]+)\\r?$/m); if (!tests || !suites || !passed || !failed || !skipped || !todo || !cancelled) { console.error('NODE VERDICT: TAP summary unrecognised'); process.exit(1); } const testCount=Number(tests[1]); const suiteCount=Number(suites[1]); const passCount=Number(passed[1]); const failCount=Number(failed[1]); const skippedCount=Number(skipped[1]); const todoCount=Number(todo[1]); const cancelledCount=Number(cancelled[1]); if (failCount > 0) { console.error('NODE VERDICT: test failures found (tests='+testCount+', failed='+failCount+')'); process.exit(2); } if (cancelledCount > 0) { console.error('NODE VERDICT: incomplete run (cancelled='+cancelledCount+')'); process.exit(1); } if (passCount + skippedCount + todoCount + cancelledCount !== testCount) { console.error('NODE VERDICT: TAP counts do not reconcile (tests='+testCount+', passed='+passCount+', skipped='+skippedCount+', todo='+todoCount+', cancelled='+cancelledCount+')'); process.exit(1); } if (testCount < 10) { console.error('NODE VERDICT: expected at least 10 node:test cases, found '+testCount+' — cases were removed or the file was gutted'); process.exit(1); } if (passCount < 10) { console.error('NODE VERDICT: expected at least 10 passing node:test cases, found '+passCount+' (skipped='+skippedCount+', todo='+todoCount+')'); process.exit(1); } if (suiteCount < 1) { console.error('NODE VERDICT: expected at least 1 node:test suite, found '+suiteCount); process.exit(1); } console.log('NODE VERDICT: tests passed (tests='+testCount+', suites='+suiteCount+', passed='+passCount+', skipped='+skippedCount+', todo='+todoCount+', failed=0)');\"",
+    "test:boundaries": "vitest run --coverage.enabled=false src/ownership/rootOwnershipBoundary.test.ts src/deployment/providerRuntimeBoundary.test.ts src/ownership/mnemePublicImportBoundary.test.ts src/target/containerBundleArchive.test.ts",
+    "test:causal-conformance": "tsx src/ledger/causalConformanceCli.ts",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "test:e2e:distribution-image": "tsx src/e2e/cli.ts distribution-image",
     "test:e2e:distribution-roundtrip": "tsx src/e2e/cli.ts distribution-roundtrip",
-    "test:e2e:pi-harness-org": "tsx src/e2e/cli.ts pi-harness-org"
+    "test:e2e:daimon-org": "tsx src/e2e/cli.ts daimon-org"
   },
   "dependencies": {
+    "@noopolis/stele": "0.0.2",
     "commander": "^14.0.1",
     "yaml": "^2.8.1",
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@noopolis/mneme": "^0.1.1",
     "@types/node": "^24.6.0",
     "@vitest/coverage-v8": "^3.2.4",
     "tsx": "^4.20.6",

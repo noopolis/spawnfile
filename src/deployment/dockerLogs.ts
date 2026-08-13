@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 
 import type { DeploymentRecord } from "./record.js";
 import { dockerContextNameForTarget } from "./target.js";
+import { redactSensitiveText } from "../shared/index.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -64,26 +65,10 @@ const redactKnownSecrets = (text: string, secretValues: string[]): string =>
     .filter((secret) => secret.length > 0)
     .reduce((redacted, secret) => redacted.replaceAll(secret, "[REDACTED]"), text);
 
-const redactTokenLikeText = (text: string): string => {
-  let redacted = text;
-  redacted = redacted.replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi, "Bearer [REDACTED]");
-  redacted = redacted.replace(/\bmagt_v1_[A-Za-z0-9_-]{16,}\b/g, "[REDACTED]");
-  redacted = redacted.replace(/\b(?:sk|sk-proj)-[A-Za-z0-9_-]{20,}\b/g, "[REDACTED]");
-  redacted = redacted.replace(
-    /\b([A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD)[A-Z0-9_]*=)([^\s"'`]+)/gi,
-    "$1[REDACTED]"
-  );
-  redacted = redacted.replace(
-    /("([^"]*(?:api[_-]?key|token|secret|password)[^"]*)"\s*:\s*")([^"]+)(")/gi,
-    "$1[REDACTED]$4"
-  );
-  return redacted;
-};
-
 export const redactDockerLogText = (
   text: string,
   secretValues: string[] = []
-): string => redactTokenLikeText(redactKnownSecrets(text, secretValues));
+): string => redactSensitiveText(redactKnownSecrets(text, secretValues));
 
 const combineLogStreams = (stdout: string, stderr: string): string => {
   if (!stdout) {

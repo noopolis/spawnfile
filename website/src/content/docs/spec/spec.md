@@ -272,7 +272,172 @@ environment:
 Rules:
 
 - `auth.secret` SHOULD be an environment variable name, not a literal credential value.
+- User-authored MCP server names beginning with `spawnfile.` or `mneme-` are reserved for compiler-owned generated services and MUST be rejected.
 - Adapters MAY lower a logical MCP declaration into a runtime's native MCP config format.
+- Compiler-owned generated MCP services are not authored under `environment.mcp_servers`, are not visible to `workspace.skills[*].requires.mcp`, and MUST use reserved, collision-free names when exposed in runtime-native MCP config.
+
+### 2.3.1 Memory Banks
+
+The top-level `memory` block declares Spawnfile-owned memory banks. A memory bank is portable state and a tool surface for remembering, searching, locating, summarizing, redacting, and forgetting memory events. It is not a natural-language `workspace.docs.memory` document, and it is not a Moltnet network.
+
+Memory banks may be declared on agents or teams:
+
+```yaml
+memory:
+  - id: self
+    store:
+      kind: sqlite
+      path: /var/lib/spawnfile/memory/self.sqlite
+```
+
+Team declarations may restrict which direct member slots can access the bank:
+
+```yaml
+memory:
+  - id: self
+    store:
+      kind: sqlite
+      path: /var/lib/spawnfile/memory/self.sqlite
+    access:
+      members: [representative, critic, worker]
+```
+
+Memory banks may also declare indexing, consolidation, and retention
+intent. These fields are portable intent; adapters report degraded or
+unsupported when they cannot preserve them.
+
+```yaml
+memory:
+  - id: self
+    store:
+      kind: sqlite
+      persistence:
+        mode: durable
+    index:
+      lexical:
+        enabled: true
+        engine: sqlite_fts
+      vector:
+        enabled: false
+      graph:
+        enabled: false
+      rerank:
+        enabled: false
+    consolidation:
+      mode: on_threshold
+      summarize_after_events: 100
+    retention:
+      forgetting: manual
+```
+
+Rules:
+
+- `memory` is OPTIONAL.
+- `memory[*].id` MUST be unique within the declaring manifest.
+- `memory[*].id` values MUST be report-key safe: `[A-Za-z0-9_-]+`.
+- `memory[*].store` is REQUIRED.
+- `memory[*].store.kind` MUST be `sqlite`, `json`, `postgres`, or `memory`.
+- `memory[*].store.kind: sqlite` and `memory[*].store.kind: json` MAY omit `path`; omitted paths default under `/var/lib/spawnfile/memory/<manifest-slug>/<memory-id>/`.
+- `memory[*].store.kind: sqlite` lowers to `memory.sqlite` by default and does not allow `dsn_secret`.
+- `memory[*].store.kind: json` lowers to `memory.jsonl` by default and does not allow `dsn_secret`.
+- `memory[*].store.kind: postgres` requires `dsn_secret` and MUST NOT include `path`.
+- `memory[*].store.kind: memory` MUST NOT include `path` or `dsn_secret`.
+- `memory[*].store.persistence` is valid only for `sqlite` and `json`.
+- `memory[*].store.persistence.mode` MUST be `durable` or `ephemeral`.
+- If `memory[*].store.persistence` is omitted for `sqlite` or `json`, the compiler treats it as `durable`.
+- `memory[*].store.persistence.mode: durable` emits a persistent runtime mount for the store directory.
+- `memory[*].index` is OPTIONAL.
+- If `memory[*].index` is omitted, the effective index intent is lexical enabled, vector disabled, graph disabled, and rerank disabled.
+- `memory[*].index.lexical.enabled` defaults to `true`.
+- `memory[*].index.lexical.engine` MAY be `sqlite_fts` or `bm25`; if omitted, the compiler chooses the adapter default.
+- `memory[*].index.vector.enabled` defaults to `false`.
+- If `memory[*].index.vector.enabled` is `true`, the entry MUST declare `memory[*].index.vector.model`.
+- `memory[*].index.vector.provider` MAY declare the embedding provider when it differs from the adapter default. Spawnfile v0.1 supports `ollama`.
+- `memory[*].index.vector.base_url` MAY declare the embedding provider base URL. If omitted, generated runtimes use their provider default or `MNEME_OLLAMA_BASE_URL`.
+- `memory[*].index.vector.dimensions` MAY declare the expected embedding dimensionality.
+- `memory[*].index.vector.timeout_ms` MAY declare the embedding request timeout.
+- `memory[*].index.graph.enabled` defaults to `false`.
+- `memory[*].index.graph.kind` MAY be `entity_graph` or `temporal_kg`; if omitted and graph is enabled, the adapter default applies.
+- `memory[*].index.rerank.enabled` defaults to `false`.
+- `memory[*].consolidation` is OPTIONAL.
+- `memory[*].consolidation.mode` MUST be `disabled`, `on_threshold`, or `scheduled`; if omitted, it defaults to `disabled`.
+- `memory[*].consolidation.summarize_after_events` MAY declare the threshold for `on_threshold` consolidation.
+- `memory[*].consolidation.schedule` MAY declare a runtime-supported schedule expression for `scheduled` consolidation.
+- Scheduled consolidation is lowered as a wake for the agent that owns access to
+  the memory bank, not as a separate hidden summarizer. The wake MUST run in
+  `dream` mode when the runtime supports wake modes.
+- A dream wake MUST use a fresh one-off conversation/session id with a
+  collision-resistant suffix. Dream sessions MUST NOT reuse the normal awake
+  room/thread session and SHOULD be discarded after the wake completes.
+- `memory[*].retention` is OPTIONAL.
+- `memory[*].retention.forgetting` MUST be `manual`, `decay`, or `ttl`; if omitted, it defaults to `manual`.
+- `memory[*].retention.ttl` MAY declare a duration when `forgetting: ttl`.
+- Agent-level memory banks are available only to that agent.
+- Team-level memory banks are available to all direct concrete members of that team by default.
+- `memory[*].access.members` MAY restrict a team-level bank to the listed direct member slots.
+- `memory[*].access.members` MUST name direct member slots of the declaring team.
+- Team-level memory banks do not automatically cross nested team boundaries.
+- A parent team may expose a child team's representatives through `external`, `lead`, or swarm fallback, but that does not grant the parent memory access to the child team's memory bank.
+- Memory access principals and scopes MUST be derived from trusted compile/runtime context: concrete agent id, direct team context, current room, current pair, current task, and current artifact context. The model MUST NOT be trusted to declare its own principal.
+- Runtimes with native or in-process memory tooling MAY receive direct memory-kernel access.
+- Runtimes that need MCP access MUST receive compiler-generated runtime-private MCP wiring. Authors MUST NOT manually declare Spawnfile-owned memory MCP servers.
+- Generated memory MCP servers MUST use compiler-owned names that cannot
+  collide with authored MCP servers or with other generated memory servers for
+  the same agent. OpenClaw and PicoClaw v0.1 lower file-backed banks as
+  `mneme-<memory-id>` stdio servers when the id is unique for that agent, and
+  append a compiler-owned discriminator when needed. Generated servers MUST
+  resolve active scope aliases such as `current`, `current_room`,
+  `current_pair`, `current_task`, and `all` from a trusted wake binding rather
+  than from model-supplied identity.
+- Mneme mode is a tool/session mode, not a second server. Generated Mneme MCP
+  servers MUST use one MCP binary/transport and pass `--mode awake` or
+  `--mode dream` when the runtime can choose the mode. Mode selects the
+  instruction surface and tool descriptions; it does not create a separate
+  memory store.
+- If an adapter cannot preserve the declared memory bank and its access rules, it MUST report `degraded` or `unsupported` according to policy.
+- Memory stores MUST be append-only at the source-of-truth layer. Indexes, summaries, claims, graph edges, and embeddings are projections and MUST be rebuildable from the source ledger plus tombstone/redaction events.
+- Memory retrieval MUST resolve the active principal and allowed scopes before lexical, vector, graph, temporal, or rerank retrieval runs.
+- Memory results MUST include provenance or derived-source references. Derived summaries and claims MUST cite source event ids.
+- Forgetting, redaction, expiry, and supersession MUST be represented as explicit memory events; adapters MUST NOT silently erase provenance as the only record of change.
+- Spawnfile v0.1 does not define memory `write` or `auto_capture` configuration.
+  Agents decide what is worth remembering by calling memory tools. Runtime
+  adapters MUST NOT silently register every wake, message, tool call, or turn as
+  a memory event.
+
+Portable memory tools are:
+
+```text
+memory.search(scope, query, limit)
+memory.locate(query, limit)
+memory.register(scope, kind, content, evidence)
+memory.summarize(scope, horizon)
+memory.forget(scope, event_ids, reason)
+```
+
+`memory.search` and `memory.locate` MAY accept optional filters for memory
+record types, entities, tags, artifact paths, observed time range, valid time,
+and supersession handling. Tombstoned or redacted content MUST NOT be returned
+as raw content even if a filter asks for it. Superseded records SHOULD be
+excluded by default unless a query explicitly asks for historical records.
+
+Memory record types are:
+
+- `raw_event`
+- `episodic`
+- `semantic`
+- `procedural`
+- `relationship`
+- `artifact`
+- `narrative`
+- `tombstone`
+
+Memory access policy MUST apply separately to search, locate, register,
+summarize, and forget. Locate results are disclosures: returning that a private
+memory exists requires policy approval even when no raw content is returned.
+Promotion between private, pair, team, room, global, and public scopes MUST be
+explicit and evidence-backed.
+
+Memory access policy and output judgment are separate. The memory system enforces mechanical access to stored events. Deliberation, policy judgment, and consultation between agents remain normal agent behavior through declared communication surfaces such as Moltnet rooms.
 
 ### 2.4 Runtime Binding
 
@@ -310,6 +475,21 @@ runtime:
   options:
     profile: default
 ```
+
+Daimon accepts an optional runtime engine selector:
+
+```yaml
+runtime:
+  name: daimon
+  options:
+    engine: pi
+```
+
+For `runtime.name: daimon`, `runtime.options.engine` MAY be `pi`, `codex`,
+`claude`, `grok`, or `agy`. If omitted, the compiler MUST use `pi`. `engine:
+pi` runs the in-process Daimon/Pi harness. The other values run the generated
+Daimon CLI-engine wrapper for that tool while keeping Spawnfile workspace,
+Moltnet, schedule, and Mneme memory wiring in the generated Daimon app.
 
 ### 2.5 Execution Intent
 
@@ -631,15 +811,15 @@ environment:
       url: https://search.mcp.example.com/mcp
       auth:
         secret: SEARCH_API_KEY
-    - name: memory_store
+    - name: private_index
       transport: streamable_http
-      url: https://memory.mcp.example.com/mcp
+      url: https://index.mcp.example.com/mcp
       auth:
-        secret: MEMORY_API_KEY
+        secret: INDEX_API_KEY
   secrets:
     - name: SEARCH_API_KEY
       required: true
-    - name: MEMORY_API_KEY
+    - name: INDEX_API_KEY
       required: false
   packages:
     - id: playwright
@@ -665,12 +845,16 @@ All blocks other than the top-level required fields are OPTIONAL unless otherwis
 
 ### 3.3 Agent Schedule
 
-`schedule` is OPTIONAL and valid only on agent manifests. It declares agent-owned wake intent; deployment profiles and renderers may decide how to materialize it for a target environment.
+`schedule` is OPTIONAL and valid only on agent manifests. It declares
+organization-authored, agent-scoped wake intent. Spawnfile validates and
+compiles that intent, while the selected runtime or generated organization app
+executes it; Spawnfile itself does not become the live scheduler.
 
-Runtimes that do not expose native wake scheduling must lower schedules through a Spawnfile-owned runner process only when:
+Runtimes that do not expose native wake scheduling may lower schedules through
+their generated organization app only when:
 
-- the adapter explicitly exposes a wake contract, and
-- the command is started via `spawnfile up`.
+- the adapter explicitly exposes a runtime-owned wake contract, and
+- the generated app is started through the normal organization lifecycle.
 
 If neither native scheduling nor an adapter wake contract exists, `agent.schedule` reports `degraded`.
 
@@ -774,9 +958,9 @@ Teams are:
 - potentially multi-runtime
 - coordination-aware through declared agent surfaces and declared team networks
 
-Direct protocol surfaces belong to agents, not teams. A team does not cause Spawnfile to inject a custom message router, MCP tool, proxy process, team-secret route, or other runtime coordination primitive. How agents reach each other is a function of the surfaces they share and the addresses the manifest makes knowable at compile time.
+Direct protocol surfaces belong to agents, not teams. A team does not cause Spawnfile to inject a custom message router, proxy process, team-secret route, or other runtime coordination primitive. How agents reach each other is a function of the surfaces they share and the addresses the manifest makes knowable at compile time. The exception is declared `memory`: adapters may emit compiler-owned generated MCP wiring or direct runtime tooling so authorized members can access the declared memory bank.
 
-Spawnfile does not assume that every runtime has a native team config format, nested teams, shared team memory, or durable team lifecycle APIs.
+Spawnfile does not assume that every runtime has a native team config format, nested teams, or durable team lifecycle APIs.
 
 Adapters MAY lower a Spawnfile team into a native team object, a flat leader/member config, provider-backed rooms, generated context files, or another target-native surface. If a target cannot preserve the declared structure, the compiler MUST report `degraded` or `unsupported`.
 
@@ -1068,8 +1252,8 @@ Rules:
 - A room `write_policy` is OPTIONAL and MUST be `members`, `registered_agents`, or `operators` when present. Generated agent tokens are identity tokens; they do not bypass `members` or `operators` policies.
 - Direct child-team IDs in a parent room expand to the child team's concrete representatives for that parent context.
 - Parent networks do not generally propagate through nested team boundaries. Only explicit parent-room representative attachments propagate, and only to selected representatives.
-- Moltnet member IDs are the direct agent member slot IDs from the team where each concrete agent is a direct member. They MUST be unique across the full reachable team nesting used by the compile graph.
-- If two direct agent member slots anywhere in the reachable nested team graph would compile to the same Moltnet `member_id`, compilation MUST fail with a validation error naming the colliding team paths and member slots.
+- Moltnet member IDs are the direct agent member slot IDs from the team where each concrete agent is a direct member. They MUST be unique across different canonical agent sources in the full reachable team nesting used by the compile graph.
+- If two direct agent member slots anywhere in the reachable nested team graph would compile to the same Moltnet `member_id` and different canonical agent sources, compilation MUST fail with a validation error naming the colliding team paths and member slots. Reusing the same `member_id` for multiple direct memberships is valid only when every duplicate resolves to the same canonical agent source.
 - The same Moltnet network id MAY be reused by different teams. If the same concrete representative sees multiple attachments with the same `(network_id, member_id)`, the compiler MUST merge compatible room memberships into one client/bridge attachment. Incompatible duplicate attachments MUST fail compilation.
 - Moltnet room and DM `reply` policy is limited to `auto` and `never` in this alpha contract.
 
@@ -1314,7 +1498,7 @@ For every declared capability the compiler MUST report one of:
 | `degraded` | Partially mapped; runtime behavior may differ from declared intent |
 | `unsupported` | Cannot be expressed in the target |
 
-At minimum, compilers MUST report outcomes for declared docs, workspace skills, MCP servers, execution model intent, execution sandbox intent, schedules, workspace resources, environment inputs, declared surfaces, and team context/network intent.
+At minimum, compilers MUST report outcomes for declared docs, workspace skills, MCP servers, execution model intent, execution sandbox intent, schedules, workspace resources, memory banks, environment inputs, declared surfaces, and team context/network intent.
 
 ### 6.4 How It Works In Practice
 
@@ -1335,9 +1519,11 @@ policy:
   on_degrade: error
 ```
 
-OpenClaw MCP currently goes through the mcporter bridge, so the adapter reports `mcp.web_search` as `degraded`. Because `on_degrade` is `error`, the compiler fails the build and tells you exactly which capability could not be preserved.
-
-Change `on_degrade` to `warn` and the build succeeds — but the compile report still records the degradation so you know what was lost.
+OpenClaw lowers the logical `web_search` declaration into its native
+`mcp.servers` config and reports `mcp.web_search` as `supported`. If a target
+runtime cannot preserve the MCP declaration, it reports the capability as
+`degraded` or `unsupported`; because `on_degrade` is `error`, that runtime would
+fail the build and tell you exactly which capability could not be preserved.
 
 ---
 

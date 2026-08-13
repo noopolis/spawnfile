@@ -1,5 +1,12 @@
 import { SpawnfileError } from "../shared/index.js";
 
+import { NOOPOLIS_RUN_ID_ENV, resolveNoopolisRunId } from "./common.js";
+import {
+  createVendorCopyCommand,
+  needsVendorCopyCommand,
+  resolveInstallPackageSpec,
+  type RuntimeContainerPackageOverrides
+} from "./containerPackageOverrides.js";
 import { resolveRuntimeInstallSelection } from "./install.js";
 
 export const RUNTIME_INSTALL_ROOT = "/opt/spawnfile/runtime-installs";
@@ -9,9 +16,9 @@ const DAIMON_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE";
 const OPENCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_OPENCLAW_RUNTIME_IMAGE";
 const PICOCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_PICOCLAW_RUNTIME_IMAGE";
 const DAIMON_PACKAGE_NAME = "@noopolis/daimon";
-const DAIMON_PACKAGE_VERSION = "0.1.1";
+const DAIMON_PACKAGE_VERSION = "0.1.2";
 const MNEME_PACKAGE_NAME = "@noopolis/mneme";
-const MNEME_PACKAGE_VERSION = "0.1.0";
+const MNEME_PACKAGE_VERSION = "0.1.1";
 const PI_AI_PACKAGE_NAME = "@earendil-works/pi-ai";
 const PI_CODING_AGENT_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
 const PI_PACKAGE_VERSION = "0.79.10";
@@ -20,9 +27,30 @@ export interface RuntimeInstallRecipe {
   baseImage?: string;
   commands: string[];
   copyCommands: string[];
+  /**
+   * Container environment variables this recipe's container must be
+   * started with. Always includes NOOPOLIS_RUN_ID (see
+   * src/runtime/common.ts) when a run id is available, so every authority
+   * container stamps causal events with the same run_id — never a value
+   * read from model output.
+   */
+  env: Record<string, string>;
   runtimeName: string;
   runtimeRoot: string;
 }
+
+/**
+ * Builds the shared container env assembly injected into every generated
+ * runtime install recipe. Currently just NOOPOLIS_RUN_ID, sourced from the
+ * host/compile process environment; omitted entirely when unset rather
+ * than stamping an empty value.
+ */
+export const createRuntimeContainerEnv = (
+  env: NodeJS.ProcessEnv = process.env
+): Record<string, string> => {
+  const runId = resolveNoopolisRunId(env);
+  return runId ? { [NOOPOLIS_RUN_ID_ENV]: runId } : {};
+};
 
 const assertArtifactInstallSelection = (
   runtimeName: string,
@@ -69,13 +97,28 @@ const resolveRuntimeImageRef = (
     ? `${selection.image}:${selection.tag}`
     : undefined);
 
+export interface RuntimeInstallRecipeOptions {
+  /**
+   * Compile-time-only local overrides for this runtime's install npm
+   * packages (see src/runtime/containerPackageOverrides.ts and
+   * src/compiler/containerPackageOverrides.ts). Never set during a
+   * standard compile; only opt-in local/E2E harnesses populate this, and
+   * only for the exact package names they override — every other package
+   * in the recipe keeps its pinned registry `name@version` spec.
+   */
+  packageOverrides?: RuntimeContainerPackageOverrides;
+}
+
 export const createRuntimeInstallRecipe = async (
-  runtimeName: string
+  runtimeName: string,
+  options: RuntimeInstallRecipeOptions = {}
 ): Promise<RuntimeInstallRecipe> => {
   const selection = await resolveRuntimeInstallSelection(runtimeName);
   assertArtifactInstallSelection(runtimeName, selection);
 
   const installRoot = `${RUNTIME_INSTALL_ROOT}/${runtimeName}`;
+  const containerEnv = createRuntimeContainerEnv();
+  const packageOverrides = options.packageOverrides;
 
   switch (runtimeName) {
     case "openclaw": {
@@ -84,6 +127,7 @@ export const createRuntimeInstallRecipe = async (
         return {
           commands: [],
           copyCommands: [createRuntimeImageCopyCommand(openClawRuntimeImage, installRoot)],
+          env: containerEnv,
           runtimeName,
           runtimeRoot: installRoot
         };
@@ -101,6 +145,7 @@ export const createRuntimeInstallRecipe = async (
           `npm install -g --omit=dev --no-fund --no-audit ${selection.packageName}@${selection.version}`
         ],
         copyCommands: [],
+        env: containerEnv,
         runtimeName,
         runtimeRoot: `/usr/local/lib/node_modules/${selection.packageName}`
       };
@@ -113,6 +158,7 @@ export const createRuntimeInstallRecipe = async (
             `mkdir -p /usr/local/bin && ln -sf ${installRoot}/bin/picoclaw /usr/local/bin/picoclaw`
           ],
           copyCommands: [createRuntimeImageCopyCommand(picoClawRuntimeImage, installRoot)],
+          env: containerEnv,
           runtimeName,
           runtimeRoot: installRoot
         };
@@ -128,6 +174,7 @@ export const createRuntimeInstallRecipe = async (
       return {
         commands: createPicoClawArchiveInstallCommands(installRoot, selection),
         copyCommands: [],
+        env: containerEnv,
         runtimeName,
         runtimeRoot: installRoot
       };
@@ -144,6 +191,7 @@ export const createRuntimeInstallRecipe = async (
         return {
           commands: [],
           copyCommands: [createRuntimeImageCopyCommand(daimonRuntimeImage, installRoot)],
+          env: containerEnv,
           runtimeName,
           runtimeRoot: installRoot
         };
@@ -157,8 +205,8 @@ export const createRuntimeInstallRecipe = async (
       }
 
       const npmPackages = [
-        `${selection.packageName}@${selection.version}`,
-        `${MNEME_PACKAGE_NAME}@${MNEME_PACKAGE_VERSION}`,
+        resolveInstallPackageSpec(selection.packageName, selection.version, packageOverrides),
+        resolveInstallPackageSpec(MNEME_PACKAGE_NAME, MNEME_PACKAGE_VERSION, packageOverrides),
         `${PI_CODING_AGENT_PACKAGE_NAME}@${PI_PACKAGE_VERSION}`,
         `${PI_AI_PACKAGE_NAME}@${PI_PACKAGE_VERSION}`
       ];
@@ -168,7 +216,13 @@ export const createRuntimeInstallRecipe = async (
           `mkdir -p ${installRoot}`,
           `cd ${installRoot} && npm install --omit=dev --no-fund --no-audit ${npmPackages.join(" ")}`
         ],
-        copyCommands: [],
+        copyCommands: needsVendorCopyCommand(
+          [selection.packageName, MNEME_PACKAGE_NAME],
+          packageOverrides
+        )
+          ? [createVendorCopyCommand()]
+          : [],
+        env: containerEnv,
         runtimeName,
         runtimeRoot: installRoot
       };
@@ -183,8 +237,8 @@ export const createRuntimeInstallRecipe = async (
 
       const prebuiltBaseImage = process.env[PI_RUNTIME_BASE_IMAGE_ENV]?.trim() || undefined;
       const npmPackages = [
-        `${DAIMON_PACKAGE_NAME}@${DAIMON_PACKAGE_VERSION}`,
-        `${MNEME_PACKAGE_NAME}@${MNEME_PACKAGE_VERSION}`,
+        resolveInstallPackageSpec(DAIMON_PACKAGE_NAME, DAIMON_PACKAGE_VERSION, packageOverrides),
+        resolveInstallPackageSpec(MNEME_PACKAGE_NAME, MNEME_PACKAGE_VERSION, packageOverrides),
         `${selection.packageName}@${selection.version}`,
         `${PI_AI_PACKAGE_NAME}@${selection.version}`
       ];
@@ -197,7 +251,12 @@ export const createRuntimeInstallRecipe = async (
               `mkdir -p ${installRoot}`,
               `cd ${installRoot} && npm install --omit=dev --no-fund --no-audit ${npmPackages.join(" ")}`
             ],
-        copyCommands: [],
+        copyCommands:
+          !prebuiltBaseImage &&
+          needsVendorCopyCommand([DAIMON_PACKAGE_NAME, MNEME_PACKAGE_NAME], packageOverrides)
+            ? [createVendorCopyCommand()]
+            : [],
+        env: containerEnv,
         runtimeName,
         runtimeRoot: installRoot
       };

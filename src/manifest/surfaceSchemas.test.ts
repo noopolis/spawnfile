@@ -266,6 +266,9 @@ describe("surfaceSchemas", () => {
         surfaces: {
           moltnet: [
             {
+              auth: {
+                token_id: "researcher-attachment"
+              },
               network: "local_lab",
               rooms: {
                 research: {
@@ -277,7 +280,12 @@ describe("surfaceSchemas", () => {
         }
       })
     ).toMatchObject({
-      kind: "agent"
+      kind: "agent",
+      surfaces: {
+        moltnet: [{
+          auth: { token_id: "researcher-attachment" }
+        }]
+      }
     });
 
     const result = manifestSchema.safeParse({

@@ -61,10 +61,10 @@ workspace:
       requires:
         mcp:
           - web_search
-    - ref: ./skills/memory_store
+    - ref: ./skills/private_index
       requires:
         mcp:
-          - memory_store
+          - private_index
 ```
 
 Each name in `requires.mcp` must match a `name` in the agent's visible MCP server list. The compiler validates this at compile time and reports an error if a required MCP server is not declared.
@@ -131,10 +131,9 @@ environment:
 
 Adapters map logical MCP declarations into runtime-native MCP configuration. The level of support varies by runtime:
 
+- **OpenClaw** has a first-class MCP config surface (`mcp.servers`) and supports stdio, SSE, and streamable HTTP transports.
 - **PicoClaw** has a first-class MCP config surface (`tools.mcp.servers`) and supports stdio, SSE, and HTTP transports.
-- **OpenClaw** supports MCP through an `mcporter` bridge layer.
 - **Daimon** loads compiled skills, but Spawnfile does not lower MCP server declarations into the generated Daimon app in v0.1.
-- **NullClaw** supports MCP with a stdio-first approach. Remote URLs may require a local bridge.
 
 If a runtime cannot preserve an MCP declaration, the compiler reports it as `degraded` or `unsupported` based on your policy settings.
 

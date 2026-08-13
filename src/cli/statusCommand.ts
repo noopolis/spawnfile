@@ -1,237 +1,47 @@
-import path from "node:path";
-
 import { Command } from "commander";
 
-import {
-  inspectDockerDeployment,
-  listDeploymentRecords,
-  listHomeDeploymentRecords,
-  readHomeDeploymentRecord,
-  readHomeDeploymentReport,
-  recoverDockerDeploymentRecords,
-  type DockerInspectionResult
-} from "../deployment/index.js";
-import {
-  extractImageReport,
-  normalizeProjectLabelSlug,
-  parseDistributionReport,
-  projectImageOrganizationView,
-  renderImageInterface
-} from "../distribution/index.js";
-import { collectRegistryDriftObservations } from "../status/index.js";
-import type { OrganizationView } from "../compiler/index.js";
+import { listDeploymentRecords } from "../deployment/index.js";
+import { normalizeProjectLabelSlug } from "../distribution/index.js";
 import { resolveProjectOutputDirectory } from "../filesystem/index.js";
-import { DEFAULT_OUTPUT_DIRECTORY, errorExitCode, SpawnfileError } from "../shared/index.js";
-
-import { resolveCommandInput } from "./resolveCommandInput.js";
-import { loadedImageCompileReport } from "../status/index.js";
+import { DEFAULT_OUTPUT_DIRECTORY, errorExitCode } from "../shared/index.js";
 import {
-  createStaticStatus,
-  createDeploymentSummaries,
+  collectCompiledProbeObservations,
   collectDeploymentLogObservations,
   collectMoltnetProbeObservations,
   collectRuntimeProbeObservations,
+  createDeploymentSummaries,
+  createStaticStatus,
   exitCodeForStatus,
-  flattenOrganizationNodes,
   loadCompileReport,
+  readCompiledProbeFile,
   renderStatus,
   resolveStatusSelector,
   type StatusCommandResult,
-  type StatusExitCode,
-  type StatusOutputMode,
-  type StatusSelectorInput
+  type StatusExitCode
 } from "../status/index.js";
+
+import { resolveCommandInput } from "./resolveCommandInput.js";
 import type { CliHandlers, CliStreams } from "./runCli.js";
+import {
+  inspectDeployments,
+  recoverContextDeployments,
+  resolveDeploymentRecords,
+  resolveStatusAuthValues,
+  runHomeDeploymentStatus,
+  runStaticImageStatus,
+  type LoadedDeploymentRecord
+} from "./statusCommandLive.js";
+import {
+  emitStatusOutput,
+  resolveStatusOutputMode,
+  resolveStatusSelectorInput,
+  resolveStatusTimeoutMs,
+  statusInputFailure,
+  type StatusCommandHandlersWithLive,
+  type StatusCommandOptions
+} from "./statusCommandOptions.js";
 
-type StatusCommandHandlers = Pick<CliHandlers, "buildOrganizationView"> & Partial<Pick<CliHandlers, "requireAuthProfile">>;
-type StatusCommandLiveHandlers = {
-  collectDeploymentLogObservations?: typeof collectDeploymentLogObservations;
-  collectMoltnetProbeObservations?: typeof collectMoltnetProbeObservations;
-  collectRuntimeProbeObservations?: typeof collectRuntimeProbeObservations;
-  inspectDockerDeployment?: typeof inspectDockerDeployment;
-  recoverDockerDeploymentRecords?: typeof recoverDockerDeploymentRecords;
-};
-type StatusCommandHandlersWithLive = StatusCommandHandlers & StatusCommandLiveHandlers;
-
-export interface StatusCommandOptions {
-  agent?: string;
-  context?: string;
-  deployment?: string;
-  dockerCommand?: string;
-  image?: boolean;
-  json?: boolean;
-  live?: boolean;
-  logs?: boolean;
-  network?: string;
-  out?: string;
-  pretty?: boolean;
-  pull?: boolean;
-  pullCheck?: boolean;
-  quiet?: boolean;
-  recover?: boolean;
-  runtime?: string;
-  team?: string;
-  timeout?: string;
-  watch?: boolean;
-}
-
-const inputFailure = (message: string): StatusCommandResult => ({
-  error: message,
-  exitCode: 2
-});
-
-const resolveOutputMode = (options: StatusCommandOptions): StatusOutputMode | StatusCommandResult => {
-  const modes: StatusOutputMode[] = [
-    ...(options.json ? ["json" as const] : []),
-    ...(options.pretty ? ["pretty" as const] : []),
-    ...(options.quiet ? ["quiet" as const] : [])
-  ];
-
-  if (modes.length > 1) {
-    return inputFailure("Choose only one status output mode: --pretty, --json, or --quiet");
-  }
-
-  return modes[0] ?? "pretty";
-};
-
-const resolveSelectorInput = (
-  options: StatusCommandOptions
-): StatusSelectorInput | null | StatusCommandResult => {
-  const selectors = [
-    ...(options.agent ? [{ kind: "agent" as const, value: options.agent }] : []),
-    ...(options.team ? [{ kind: "team" as const, value: options.team }] : []),
-    ...(options.network ? [{ kind: "network" as const, value: options.network }] : []),
-    ...(options.runtime ? [{ kind: "runtime" as const, value: options.runtime }] : [])
-  ];
-
-  if (selectors.length > 1) {
-    return inputFailure("Choose only one status selector: --agent, --team, --network, or --runtime");
-  }
-
-  return selectors[0] ?? null;
-};
-
-const resolveTimeoutMs = (
-  options: StatusCommandOptions
-): number | undefined | StatusCommandResult => {
-  if (!options.timeout) {
-    return undefined;
-  }
-  const parsed = Number(options.timeout);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return inputFailure("status --timeout must be a positive integer number of milliseconds");
-  }
-  return parsed;
-};
-
-type LoadedDeploymentRecord = Awaited<ReturnType<typeof listDeploymentRecords>>[number];
-
-const resolveDeploymentRecords = (
-  records: LoadedDeploymentRecord[],
-  options: StatusCommandOptions
-): LoadedDeploymentRecord[] | StatusCommandResult => {
-  if (options.deployment) {
-    const record = records.find((entry) => entry.record.name === options.deployment);
-    return record
-      ? [record]
-      : inputFailure(`Unknown deployment "${options.deployment}". Valid deployments: ${
-          records.map((entry) => entry.record.name).sort().join(", ") || "none"
-        }`);
-  }
-
-  if (options.live && records.length > 1) {
-    return inputFailure(`status --live requires --deployment when multiple records exist: ${
-      records.map((entry) => entry.record.name).sort().join(", ")
-    }`);
-  }
-
-  return records;
-};
-
-const inspectDeployments = async (
-  records: LoadedDeploymentRecord[],
-  handlers: StatusCommandLiveHandlers,
-  options: StatusCommandOptions,
-  timeoutMs: number | undefined
-): Promise<Map<string, DockerInspectionResult>> => {
-  if (!options.live) {
-    return new Map();
-  }
-
-  const inspect = handlers.inspectDockerDeployment ?? inspectDockerDeployment;
-  const inspections = await Promise.all(records.map(async ({ record }) => [
-    record.name,
-    await inspect(record, {
-      dockerCommand: options.dockerCommand,
-      timeoutMs
-    })
-  ] as const));
-  return new Map(inspections);
-};
-
-const containsFromView = (view: OrganizationView): Array<{ id: string; kind: "agent" | "team" }> =>
-  flattenOrganizationNodes(view).map((node) => ({ id: node.id, kind: node.kind }));
-
-const runtimeInstanceIdsFromReport = (
-  loadedReport: Awaited<ReturnType<typeof loadCompileReport>>
-): string[] =>
-  loadedReport.kind === "loaded"
-    ? loadedReport.report.runtimeInstances.map((instance) => instance.id).sort()
-    : [];
-
-const recoverContextDeployments = async (
-  input: {
-    handlers: StatusCommandLiveHandlers;
-    loadedReport: Awaited<ReturnType<typeof loadCompileReport>>;
-    options: StatusCommandOptions;
-    outputDirectory: string;
-    projectLabel: string;
-    sourceRoot: string;
-    timeoutMs: number | undefined;
-    view: OrganizationView;
-  }
-): Promise<LoadedDeploymentRecord[]> => {
-  const recover = input.handlers.recoverDockerDeploymentRecords ?? recoverDockerDeploymentRecords;
-  return recover({
-    contains: containsFromView(input.view),
-    context: input.options.context!,
-    dockerCommand: input.options.dockerCommand,
-    outputDirectory: input.outputDirectory,
-    projectLabel: input.projectLabel,
-    runtimeInstanceIds: runtimeInstanceIdsFromReport(input.loadedReport),
-    sourceRoot: input.sourceRoot,
-    timeoutMs: input.timeoutMs
-  });
-};
-
-const resolveAuthValues = async (
-  records: LoadedDeploymentRecord[],
-  handlers: StatusCommandHandlers
-): Promise<Record<string, string>> => {
-  const values: Record<string, string> = {};
-  if (!handlers.requireAuthProfile) {
-    return values;
-  }
-
-  const profileNames = [...new Set(records
-    .map(({ record }) => record.auth_profile)
-    .filter((profileName): profileName is string => typeof profileName === "string" && profileName.length > 0))];
-  for (const profileName of profileNames) {
-    try {
-      const profile = await handlers.requireAuthProfile(profileName);
-      Object.assign(values, profile.env);
-    } catch {
-      // Missing profile values are reported by the metadata layer as unknown credentials.
-    }
-  }
-  return values;
-};
-
-const emitOutput = (streams: CliStreams, output: string): void => {
-  for (const line of output.split("\n")) {
-    streams.stdout(line);
-  }
-};
+export type { StatusCommandOptions } from "./statusCommandOptions.js";
 
 const wait = (ms: number): Promise<void> =>
   new Promise((resolve) => {
@@ -267,154 +77,10 @@ export const executeStatusWatch = async (
       return;
     }
     if (result.output) {
-      emitOutput(streams, result.output);
+      emitStatusOutput(streams, result.output);
     }
     iteration += 1;
   }
-};
-
-/* v8 ignore start -- docker extraction is covered by distribution E2E */
-const runStaticImageStatus = async (
-  imageRef: string,
-  options: StatusCommandOptions,
-  json: boolean
-): Promise<StatusCommandResult> => {
-  try {
-    const inspection = await extractImageReport(imageRef, {
-      dockerCommand: options.dockerCommand,
-      dockerContext: options.context,
-      pull: options.pull
-    });
-    return {
-      exitCode: 0,
-      output: renderImageInterface(inspection.report, { imageRef, json })
-    };
-  } catch (error) {
-    // Input errors (bad labels, non-JSON report, fingerprint mismatch) exit 2;
-    // Docker/runtime failures (daemon down, pull/create failure) exit 1.
-    return {
-      error: error instanceof Error ? error.message : String(error),
-      exitCode: errorExitCode(error)
-    };
-  }
-};
-/* v8 ignore stop */
-
-const runHomeDeploymentStatus = async (
-  options: StatusCommandOptions,
-  handlers: StatusCommandHandlersWithLive,
-  mode: StatusOutputMode,
-  timeoutMs: number | undefined
-): Promise<StatusCommandResult> => {
-  let records: Awaited<ReturnType<typeof listHomeDeploymentRecords>>;
-  try {
-    records = await listHomeDeploymentRecords();
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error), exitCode: errorExitCode(error) };
-  }
-
-  if (!options.deployment) {
-    if (records.length === 0) {
-      return inputFailure("No image deployments found in the home store");
-    }
-    if (records.length > 1) {
-      return inputFailure(`status --deployment is required: ${
-        records.map((entry) => entry.record.name).sort().join(", ")
-      }`);
-    }
-  }
-  const targetName = options.deployment ?? records[0]!.record.name;
-  const match = records.find((entry) => entry.record.name === targetName);
-  if (!match) {
-    return inputFailure(`Unknown deployment "${targetName}". Valid deployments: ${
-      records.map((entry) => entry.record.name).sort().join(", ") || "none"
-    }`);
-  }
-
-  let report;
-  try {
-    const record = await readHomeDeploymentRecord(targetName);
-    void record;
-    const raw = await readHomeDeploymentReport(targetName);
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (error) {
-      // A corrupt cached report is bad input, not a runtime failure: exit 2.
-      throw new SpawnfileError(
-        "validation_error",
-        `Cached report for "${targetName}" is not valid JSON: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    }
-    report = parseDistributionReport(parsed);
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error), exitCode: errorExitCode(error) };
-  }
-
-  const view = projectImageOrganizationView(report, match.record.source.kind === "image"
-    ? match.record.source.ref
-    : targetName);
-  const reportPath = match.path.replace(/record\.json$/, "spawnfile-report.json");
-  const loadedReport = loadedImageCompileReport(report, reportPath);
-  const selectedRecords = [match];
-
-  const deploymentInspections = await inspectDeployments(selectedRecords, handlers, options, timeoutMs);
-  const recordValues = selectedRecords.map(({ record }) => record);
-  const authValues = options.live ? await resolveAuthValues(selectedRecords, handlers) : {};
-  const collectRuntimeProbes = handlers.collectRuntimeProbeObservations ?? collectRuntimeProbeObservations;
-  const collectMoltnetProbes = handlers.collectMoltnetProbeObservations ?? collectMoltnetProbeObservations;
-  const collectDeploymentLogs = handlers.collectDeploymentLogObservations ?? collectDeploymentLogObservations;
-  const liveObservations = options.live && !options.recover
-    ? [
-        ...await collectRuntimeProbes({
-          deployments: recordValues,
-          inspections: deploymentInspections,
-          loadedReport,
-          timeoutMs
-        }),
-        ...await collectMoltnetProbes({
-          authValues,
-          deployments: recordValues,
-          inspections: deploymentInspections,
-          loadedReport,
-          timeoutMs
-        }),
-        ...(options.logs
-          ? await collectDeploymentLogs({
-            deployments: recordValues,
-            dockerCommand: options.dockerCommand,
-            loadedReport,
-            timeoutMs
-          })
-          : []),
-        ...(options.pullCheck
-          ? await collectRegistryDriftObservations({
-            deployments: recordValues,
-            dockerCommand: options.dockerCommand,
-            timeoutMs
-          })
-          : [])
-      ]
-    : [];
-
-  const status = createStaticStatus(view, loadedReport, {
-    deployments: createDeploymentSummaries(selectedRecords, deploymentInspections),
-    inputPath: view.inputPath,
-    live: {
-      context: null,
-      deploymentName: targetName,
-      logs: options.logs ?? false,
-      recover: false,
-      requested: options.live ?? false
-    },
-    liveObservations,
-    outputDirectory: "",
-    selection: null
-  });
-
-  return { exitCode: exitCodeForStatus(status), output: renderStatus(status, { mode }), status };
 };
 
 export const executeStatusCommand = async (
@@ -422,28 +88,22 @@ export const executeStatusCommand = async (
   options: StatusCommandOptions,
   handlers: StatusCommandHandlersWithLive
 ): Promise<StatusCommandResult> => {
-  const mode = resolveOutputMode(options);
+  const mode = resolveStatusOutputMode(options);
   if (typeof mode !== "string") {
     return mode;
   }
 
   if (options.logs && !options.live) {
-    return inputFailure("status --logs requires --live");
+    return statusInputFailure("status --logs requires --live");
   }
 
-  // A positional image reference without --deployment renders the static
-  // interface from the embedded report. Image ref with --deployment, or a bare
-  // --deployment on the default path, reads the home store.
-  // A clear image reference (tag/digest/registry, or forced with --image)
-  // without --deployment renders the static interface; any other positional is
-  // treated as a project path (the view builder reports a missing path).
   const commandInput = resolveCommandInput(inputPath, { forceImage: options.image });
   const usedDefaultPath = inputPath === process.cwd();
   if (commandInput.kind === "image" && !options.deployment) {
     return runStaticImageStatus(commandInput.ref, options, mode === "json");
   }
   if (options.deployment && !options.context && (commandInput.kind === "image" || usedDefaultPath)) {
-    const timeoutForHome = resolveTimeoutMs(options);
+    const timeoutForHome = resolveStatusTimeoutMs(options);
     if (typeof timeoutForHome !== "number" && timeoutForHome !== undefined) {
       return timeoutForHome;
     }
@@ -451,20 +111,20 @@ export const executeStatusCommand = async (
   }
 
   if (options.context && !options.live) {
-    return inputFailure("status --context requires --live");
+    return statusInputFailure("status --context requires --live");
   }
   if (options.logs && !options.live) {
-    return inputFailure("status --logs requires --live");
+    return statusInputFailure("status --logs requires --live");
   }
   if (options.recover && !options.context) {
-    return inputFailure("status --recover requires --context");
+    return statusInputFailure("status --recover requires --context");
   }
-  const timeoutMs = resolveTimeoutMs(options);
+  const timeoutMs = resolveStatusTimeoutMs(options);
   if (typeof timeoutMs !== "number" && timeoutMs !== undefined) {
     return timeoutMs;
   }
 
-  const selectorInput = resolveSelectorInput(options);
+  const selectorInput = resolveStatusSelectorInput(options);
   if (selectorInput && "exitCode" in selectorInput) {
     return selectorInput;
   }
@@ -516,7 +176,7 @@ export const executeStatusCommand = async (
   );
   const selectedDeploymentRecordValues = selectedDeploymentRecords.map(({ record }) => record);
   const authValues = options.live
-    ? await resolveAuthValues(selectedDeploymentRecords, handlers)
+    ? await resolveStatusAuthValues(selectedDeploymentRecords, handlers)
     : {};
   const collectRuntimeProbes = handlers.collectRuntimeProbeObservations ?? collectRuntimeProbeObservations;
   const collectMoltnetProbes = handlers.collectMoltnetProbeObservations ?? collectMoltnetProbeObservations;
@@ -547,7 +207,15 @@ export const executeStatusCommand = async (
       ]
     : [];
 
+  const compiledProbeObservations = await collectCompiledProbeObservations(
+    loadedReport,
+    outputDirectory,
+    readCompiledProbeFile,
+    handlers.compiledProbeCollectors
+  );
+
   const status = createStaticStatus(view, loadedReport, {
+    compiledProbeObservations,
     deployments: createDeploymentSummaries(selectedDeploymentRecords, deploymentInspections),
     inputPath,
     live: {
@@ -609,7 +277,7 @@ export const registerStatusCommand = (
         streams.stderr(`error: ${result.error}`);
       }
       if (result.output) {
-        emitOutput(streams, result.output);
+        emitStatusOutput(streams, result.output);
       }
     });
 };

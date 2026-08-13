@@ -1,4 +1,4 @@
-export const renderPiCliSource = (): string => String.raw`const cliEngineKinds = new Set(["agy", "codex", "grok"]);
+export const renderPiCliSource = (): string => String.raw`const cliEngineKinds = new Set(["agy", "claude", "codex", "grok", "scripted"]);
 const maxCapturedOutputBytes = 1024 * 256;
 const cliOutputOptions = {
   maxBuffer: 1024 * 1024 * 8,
@@ -165,17 +165,36 @@ const spawnToFiles = (command, args, options) => new Promise((resolve, reject) =
   });
 });
 
-const createCliEnginePrompt = (config, paths, event) => [
+const formatCliWakePrompt = (event) => [
+  "Wake event:",
+  "- id: " + event.id,
+  "- kind: " + event.kind,
+  "- from: " + (event.from ?? "operator"),
+  "",
+  event.text
+].join("\n");
+
+const buildCliMemoryRequest = (event) => {
+  const context = readMemoryContext({ kind: event.kind, id: event.id, from: event.from, text: event.text, context: event.context });
+  return {
+    context,
+    request: {
+      eventId: event.id,
+      kind: event.kind,
+      text: event.text,
+      from: event.from,
+      context
+    }
+  };
+};
+
+const createCliEnginePrompt = (config, paths, event, memoryPromptText) => [
   createIdentityPrompt(config, paths.workspacePath),
   "",
-  "## Wake Event",
-  "Wake id: " + event.id,
-  "Wake kind: " + event.kind,
-  "From: " + event.from,
-  "",
-  event.text,
+  memoryPromptText ?? formatCliWakePrompt(event),
   "",
   "Use the workspace and Moltnet skill/CLI according to your instructions.",
+  "Use recalled Daimon memory as authoritative context when it is relevant.",
   "The Daimon runtime publishes your final CLI output as your reply to the wake source.",
   "Return only the exact message body that should be published. Do not include summaries, markdown headings, tool reports, or action logs.",
   "Do not return progress reports such as 'handling', 'reading', 'querying', 'I will', or 'I have responded'. If your instructions require a tool or Moltnet action, execute it before the final reply.",
@@ -184,125 +203,23 @@ const createCliEnginePrompt = (config, paths, event) => [
   "If no response is needed, return one short sentence explaining why."
 ].join("\n");
 
-const runCodexEngine = async (prompt, paths) => {
-  const engineHomePath = path.join(paths.runtimeHomePath, "codex-home");
-  await mkdir(path.join(engineHomePath, ".codex"), { recursive: true });
-  try {
-    const authSource = path.join(paths.homePath, ".codex", "auth.json");
-    const authTarget = path.join(engineHomePath, ".codex", "auth.json");
-    await writeFile(authTarget, await readFile(authSource, "utf8"));
-  } catch {}
-  const outputPath = path.join(paths.runtimeHomePath, "codex-" + Date.now() + ".txt");
-  const args = [
-    "exec",
-    "--sandbox",
-    process.env.SPAWNFILE_CODEX_SANDBOX ?? "danger-full-access",
-    "--ephemeral",
-    "--skip-git-repo-check",
-    "--ignore-rules",
-    "--color",
-    "never",
-    "-C",
-    paths.workspacePath,
-    "--output-last-message",
-    outputPath,
-    "-m",
-    process.env.DAIMON_CODEX_MODEL ?? "gpt-5.4-mini",
-    "-"
-  ];
-  const { stderr, stdout } = await spawnWithInput("codex", args, prompt, {
-    cwd: paths.workspacePath,
-    env: createEngineEnv(paths, engineHomePath)
-  });
-  try {
-    return stripAnsi(await readFile(outputPath, "utf8"));
-  } catch {
-    return stripAnsi([stdout, stderr].filter(Boolean).join("\n"));
+const formatTurnError = (error) =>
+  error instanceof Error ? error.message : String(error);
+
+const recordCliMemoryTurn = async (memory, prepared, request, result, outputText, error) => {
+  if (!memory || !prepared) {
+    return;
   }
-};
 
-const runGrokEngine = async (prompt, paths) => {
-  const engineHomePath = path.join(paths.runtimeHomePath, "grok-home");
-  await mkdir(engineHomePath, { recursive: true });
-  const sharedGrok = await getSharedGrokHome(paths);
-  const promptPath = path.join(paths.runtimeHomePath, "grok-prompt-" + Date.now() + ".txt");
-  await writeFile(promptPath, prompt);
-  const output = await execFileAsync("grok", [
-    "--prompt-file",
-    promptPath,
-    "--max-turns",
-    process.env.DAIMON_GROK_MAX_TURNS ?? "8",
-    "--no-memory",
-    "--disable-web-search",
-    "--cwd",
-    paths.workspacePath,
-    "--output-format",
-    "plain",
-    "--always-approve",
-    "--permission-mode",
-    process.env.DAIMON_GROK_PERMISSION_MODE ?? "auto",
-    "--allow",
-    "Bash"
-  ], {
-    ...cliOutputOptions,
-    cwd: paths.workspacePath,
-    env: createEngineEnv(paths, engineHomePath, {
-      GROK_HOME: sharedGrok.grokHomePath
-    })
+  await memory.recordTurn({
+    error,
+    outputText,
+    principal: prepared.principal,
+    prompt: prepared.packet,
+    recall: prepared.recall,
+    request,
+    result
   });
-  await unlink(promptPath).catch(() => undefined);
-  return cleanCliFinalText(output.stdout);
-};
-
-const runAgyEngine = async (prompt, paths) => {
-  const engineHomePath = path.join(paths.runtimeHomePath, "agy-home");
-  await mkdir(engineHomePath, { recursive: true });
-  await copyDirectoryIfExists(
-    path.join(paths.homePath, ".config", "Antigravity"),
-    path.join(engineHomePath, ".config", "Antigravity")
-  );
-  await copyDirectoryIfExists(
-    path.join(paths.homePath, ".gemini", "antigravity-cli"),
-    path.join(engineHomePath, ".gemini", "antigravity-cli")
-  );
-  const outputPath = path.join(paths.runtimeHomePath, "agy-output-" + Date.now() + ".txt");
-  const errorPath = path.join(paths.runtimeHomePath, "agy-error-" + Date.now() + ".txt");
-  await spawnToFiles("agy", [
-    "--print",
-    prompt,
-    "--print-timeout",
-    process.env.DAIMON_AGY_TIMEOUT ?? "300s",
-    "--model",
-    process.env.DAIMON_AGY_MODEL ?? "Gemini 3.5 Flash (Low)",
-    "--new-project",
-    "--add-dir",
-    paths.workspacePath,
-    "--dangerously-skip-permissions"
-  ], {
-    cwd: paths.workspacePath,
-    env: createEngineEnv(paths, engineHomePath),
-    stderrPath: errorPath,
-    stdoutPath: outputPath
-  });
-  const text = cleanCliFinalText(await readBounded(outputPath));
-  await Promise.all([unlink(outputPath), unlink(errorPath)].map((promise) => promise.catch(() => undefined)));
-  return text;
-};
-
-const runCliEngine = async (engine, prompt, paths) => {
-  const startedAt = Date.now();
-  let text;
-  if (engine === "codex") {
-    text = await runCodexEngine(prompt, paths);
-  } else if (engine === "grok") {
-    text = await runGrokEngine(prompt, paths);
-  } else {
-    text = await runAgyEngine(prompt, paths);
-  }
-  return {
-    durationMs: Date.now() - startedAt,
-    text
-  };
 };
 
 class CliEngineAgentHandle {
@@ -310,11 +227,125 @@ class CliEngineAgentHandle {
     this.config = config;
     this.paths = paths;
     this.engine = normalizeAgentEngineKind(config);
+    this.memory = config.memory ? createMemoryRuntime(createMemoryRuntimeOptions(config)) : null;
   }
 
   async wake(event) {
-    const prompt = createCliEnginePrompt(this.config, this.paths, event);
-    return runCliEngine(this.engine, prompt, this.paths);
+    const startedAt = new Date();
+    const { request } = buildCliMemoryRequest(event);
+    let engineMs;
+    let memoryPrepareMs;
+    let memoryPrepareStatus;
+    let memoryRecordMs;
+    let outputText = "";
+    let prepared;
+    let prompt = createCliEnginePrompt(this.config, this.paths, event);
+
+    try {
+      if (this.memory) {
+        const memoryStartedAt = Date.now();
+        try {
+          prepared = await this.memory.prepareTurn(request);
+        } catch (error) {
+          memoryPrepareMs = Date.now() - memoryStartedAt;
+          memoryPrepareStatus = "failed";
+          throw error;
+        }
+        memoryPrepareMs = Date.now() - memoryStartedAt;
+        memoryPrepareStatus = "completed";
+        prompt = createCliEnginePrompt(this.config, this.paths, event, prepared.promptText);
+      }
+
+      // prompt is final here; stamp turn.input.submitted before the CLI engine
+      // sees it, chained to the real WakeEvent id (event.id) — matching
+      // daimon's own PiAgentHandle.wake() placement/shape (turnCausal.ts).
+      const turnInputSubmitted = await stampTurnInputSubmitted({
+        agentId: normalizeMemoryAgentId(this.config.id),
+        event,
+        prepared,
+        promptText: prompt,
+        runtimeHomePath: this.paths.runtimeHomePath
+      });
+
+      const result = await runCliEngine(this.engine, prompt, this.paths, this.config);
+      engineMs = result.durationMs;
+      outputText = typeof result.text === "string" ? result.text : "";
+
+      // Success path only; chained to turnInputSubmitted above, per
+      // turnCausal.ts's stampTurnOutputCompleted contract.
+      await stampTurnOutputCompleted({
+        agentId: normalizeMemoryAgentId(this.config.id),
+        causeEventId: turnInputSubmitted.event_id,
+        outputText,
+        runtimeHomePath: this.paths.runtimeHomePath,
+        turnId: event.id
+      });
+
+      const memoryRecordStartedAt = Date.now();
+      await recordCliMemoryTurn(
+        this.memory,
+        prepared,
+        request,
+        "completed",
+        outputText,
+        undefined
+      );
+      memoryRecordMs = this.memory && prepared ? Date.now() - memoryRecordStartedAt : undefined;
+      await writeTurnTrace(this.paths, createGeneratedTurnTrace({
+        config: this.config,
+        engine: this.engine,
+        engineMs,
+        event,
+        memoryPrepareMs,
+        memoryPrepareStatus,
+        memoryRecall: prepared ? {
+          redaction_count: prepared.recall.redactionCount,
+          selected_count: prepared.recall.selectedEventIds.length,
+          token_budget_used: prepared.recall.tokenBudgetUsed,
+          total_candidates: prepared.recall.totalCandidates
+        } : undefined,
+        memoryRecordMs,
+        outputText,
+        prompt,
+        startedAt,
+        status: "completed"
+      }));
+      return result;
+    } catch (error) {
+      if (this.memory && memoryPrepareStatus === undefined) {
+        memoryPrepareStatus = "failed";
+      }
+      await recordCliMemoryTurn(
+        this.memory,
+        prepared,
+        request,
+        "failed",
+        "",
+        formatTurnError(error)
+      );
+      await writeTurnTrace(this.paths, createGeneratedTurnTrace({
+        config: this.config,
+        engine: this.engine,
+        engineMs,
+        error: formatTurnError(error),
+        errorStage: memoryPrepareStatus === "failed" && !prepared ? "memory_prepare" : "engine_prompt",
+        event,
+        memoryPrepareMs,
+        memoryPrepareStatus,
+        memoryRecall: prepared ? {
+          redaction_count: prepared.recall.redactionCount,
+          selected_count: prepared.recall.selectedEventIds.length,
+          token_budget_used: prepared.recall.tokenBudgetUsed,
+          total_candidates: prepared.recall.totalCandidates
+        } : undefined,
+        memoryRecordMs,
+        outputText,
+        prompt,
+        startedAt,
+        status: "failed"
+      }));
+      throw error;
+    }
   }
 
   stop() {}

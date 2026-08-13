@@ -1,0 +1,28 @@
+spawnfile_version: "0.1"
+kind: agent
+name: claude-cli-memory
+description: "Claude CLI engine memory harness probe."
+
+runtime:
+  name: daimon
+  options:
+    engine: claude
+
+execution:
+  model:
+    primary:
+      provider: anthropic
+      name: claude-sonnet-4-6
+      auth:
+        method: claude-code
+  sandbox:
+    mode: workspace
+
+schedule:
+  kind: every
+  every: 1s
+  prompt: "Remember claude banana nebula marker and reply with a short claude line."
+
+workspace:
+  docs:
+    system: AGENTS.md

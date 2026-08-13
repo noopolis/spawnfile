@@ -6,12 +6,14 @@ import type {
   ResolvedTeamNetwork,
   ResolvedTeamNode
 } from "./types.js";
+import { resolveMoltnetClientAuth } from "./moltnetConfigLowering.js";
 
 export interface MoltnetTeamContext {
   memberId: string;
   teamName: string;
   teamSource: string;
   networks: ResolvedTeamNetwork[];
+  resolvedMemberId?: string;
 }
 
 export interface TeamRepresentativeResolution {
@@ -26,8 +28,18 @@ const cloneAttachment = (
   attachment: ResolvedMoltnetAttachment,
   context: MoltnetTeamContext
 ): ResolvedMoltnetAttachment => ({
-  ...(attachment.dms ? { dms: { ...attachment.dms } } : {}),
-  memberId: context.memberId,
+  ...(attachment.auth ? { auth: { ...attachment.auth } } : {}),
+  ...(attachment.dms
+    ? {
+        dms: {
+          ...attachment.dms,
+          ...(attachment.dms.allowedWakeSenders !== undefined
+            ? { allowedWakeSenders: [...attachment.dms.allowedWakeSenders] }
+            : {})
+        }
+      }
+    : {}),
+  memberId: context.resolvedMemberId ?? context.memberId,
   network: attachment.network,
   ...(attachment.rooms
     ? {
@@ -140,6 +152,15 @@ export const resolveMoltnetAttachments = (
       throw new SpawnfileError(
         "validation_error",
         `Agent ${nodeName} references unknown Moltnet network ${attachment.network} on team ${context.teamName}`
+      );
+    }
+    if (network.server) {
+      resolveMoltnetClientAuth(
+        network.server,
+        network.id,
+        context.memberId,
+        undefined,
+        attachment.auth?.tokenId
       );
     }
 

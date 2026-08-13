@@ -26,7 +26,7 @@ const createSingleAgentScenario = (
   return {
     agents: [agent],
     description: `${runtime} single-agent Docker auth smoke using ${authMethod}`,
-    fixture: "agent",
+    fixture: "docker-auth-agent",
     id,
     kind: "single-agent",
     promptChecks: [{ runtime }]
@@ -63,7 +63,7 @@ const TEAM_SCENARIOS: DockerAuthE2EScenario[] = [
       }
     ],
     description: "multi-runtime Docker auth smoke team",
-    fixture: "team",
+    fixture: "docker-auth-team",
     id: "team-multi-runtime",
     kind: "team",
     promptChecks: [

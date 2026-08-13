@@ -6,8 +6,9 @@ import {
   importClaudeCodeAuth,
   importCodexAuth,
   importEnvFile,
-  requireAuthProfile,
-  type ResolvedAuthProfile
+  initializeTargetSecretSourceLifecycle,
+  provisionCredentials,
+  requireAuthProfile
 } from "../auth/index.js";
 import {
   addAgentProject,
@@ -18,6 +19,7 @@ import {
   buildOrganizationView,
   buildCompilePlan,
   buildProject,
+  buildUpReceipt,
   clearProjectModelFallbacks,
   compileProject,
   initProject,
@@ -39,14 +41,18 @@ import {
   devUpProject
 } from "../dev/index.js";
 import { consumeImageUp } from "../distribution/index.js";
+import { downDeployment, exportRunArtifacts } from "../deployment/index.js";
 import { errorExitCode, isSpawnfileError } from "../shared/index.js";
 import { listRuntimeAdapters } from "../runtime/index.js";
+import { registerArtifactsCommands } from "./artifactsCommands.js";
+import { registerAuthCommands } from "./authCommands.js";
 import { registerDevCommands } from "./devCommands.js";
 import { registerLifecycleCommands } from "./lifecycleCommands.js";
 import { registerModelCommands } from "./modelCommands.js";
 import { registerRuntimeCommands } from "./runtimeCommands.js";
 import { registerSurfaceCommands } from "./surfaceCommands.js";
 import { registerStatusCommand } from "./statusCommand.js";
+import { registerProductionTargetCommands } from "./targetCommands.js";
 import { registerViewCommand } from "./viewCommand.js";
 
 const packageJsonPath = new URL("../../package.json", import.meta.url);
@@ -86,9 +92,13 @@ export interface CliHandlers {
   addTeamProject: typeof addTeamProject; clearProjectModelFallbacks: typeof clearProjectModelFallbacks;
   importClaudeCodeAuth: typeof importClaudeCodeAuth; importCodexAuth: typeof importCodexAuth;
   importEnvFile: typeof importEnvFile; initProject: typeof initProject;
+  initializeTargetSecretSourceLifecycle: typeof initializeTargetSecretSourceLifecycle;
+  provisionCredentials: typeof provisionCredentials;
+  exportRunArtifacts: typeof exportRunArtifacts;
+  downDeployment: typeof downDeployment;
   listRuntimeAdapters: typeof listRuntimeAdapters; removeProjectSurface: typeof removeProjectSurface;
   requireAuthProfile: typeof requireAuthProfile; runProject: typeof runProject;
-  upProject: typeof upProject;
+  upProject: typeof upProject; buildUpReceipt: typeof buildUpReceipt;
   consumeImageUp: typeof consumeImageUp;
   devActivityProject: typeof devActivityProject;
   devApplyProject: typeof devApplyProject;
@@ -104,15 +114,17 @@ const createDefaultHandlers = (): CliHandlers => ({
   buildCompilePlan, buildOrganizationView, buildProject, compileProject, publishProject,
   addAgentProject, addProjectModelFallback, addProjectSurface,
   addSubagentProject, addTeamProject, clearProjectModelFallbacks,
-  importClaudeCodeAuth, importCodexAuth, importEnvFile,
+  importClaudeCodeAuth, importCodexAuth, importEnvFile, initializeTargetSecretSourceLifecycle,
+  provisionCredentials,
+  exportRunArtifacts, downDeployment,
   initProject, listRuntimeAdapters, removeProjectSurface, requireAuthProfile,
-  runProject, setProjectPrimaryModel, setProjectRuntime, upProject, consumeImageUp,
+  runProject, setProjectPrimaryModel, setProjectRuntime, upProject, buildUpReceipt, consumeImageUp,
   devActivityProject, devApplyProject, devRestartProject, devStopProject, devUpProject,
   setProjectSurfaceAccess, showProjectSurfaces, syncProjectAuth
 });
 
 export interface RunCliOptions {
-  handlers?: Partial<CliHandlers>; renderEnvironment?: CliRenderEnvironment; streams?: CliStreams;
+  handlers?: Partial<CliHandlers>; renderEnvironment?: CliRenderEnvironment; stdin?: AsyncIterable<unknown>; streams?: CliStreams;
 }
 
 const isCliStreams = (value: CliStreams | RunCliOptions | undefined): value is CliStreams => {
@@ -127,11 +139,13 @@ const normalizeRunCliOptions = (
   ? {
       handlers: handlerOverrides,
       renderEnvironment: createDefaultRenderEnvironment(),
+      stdin: process.stdin,
       streams: optionsOrStreams
     }
   : {
       handlers: optionsOrStreams?.handlers ?? handlerOverrides,
       renderEnvironment: optionsOrStreams?.renderEnvironment ?? createDefaultRenderEnvironment(),
+      stdin: optionsOrStreams?.stdin ?? process.stdin,
       streams: optionsOrStreams?.streams ?? createDefaultStreams()
     };
 
@@ -144,6 +158,8 @@ const writeCommanderOutput = (
     write(normalized);
   }
 };
+
+const TARGET_CLI_USAGE_ERROR = "error: Invalid target command";
 
 const isCommanderError = (error: unknown): error is { code: string; exitCode: number } => {
   if (typeof error !== "object" || error === null) {
@@ -174,17 +190,6 @@ const formatPlanSummary = (plan: Awaited<ReturnType<typeof buildCompilePlan>>): 
     `runtimes: ${Object.keys(plan.runtimes).sort().join(", ") || "none"}`
   ].join("\n");
 
-const formatAuthProfileSummary = (profile: ResolvedAuthProfile): string[] => {
-  const envKeys = Object.keys(profile.env).sort();
-  const importedKinds = Object.keys(profile.imports).sort();
-
-  return [
-    `profile: ${profile.name}`,
-    `env: ${envKeys.length > 0 ? envKeys.join(", ") : "none"}`,
-    `imports: ${importedKinds.length > 0 ? importedKinds.join(", ") : "none"}`
-  ];
-};
-
 const emitLines = (streams: CliStreams, lines: string[]): void =>
   lines.forEach((line) => streams.stdout(line));
 
@@ -206,18 +211,22 @@ export const runCli: RunCli = async (
   const cliOptions = normalizeRunCliOptions(optionsOrStreams, handlerOverrides);
   const streams = cliOptions.streams;
   const handlers = { ...createDefaultHandlers(), ...cliOptions.handlers };
+  const isTargetInvocation = argv[0] === "target";
   let commandExitCode: 0 | 1 | 2 = 0;
   const program = new Command();
   program.name("spawnfile").description("Spawnfile v0.1 compiler").version(readPackageVersion());
   program.exitOverride();
   program.configureOutput({
     outputError: (message, write) => write(message),
-    writeErr: (message) => writeCommanderOutput(streams.stderr, message),
+    writeErr: (message) => {
+      if (!isTargetInvocation) writeCommanderOutput(streams.stderr, message);
+    },
     writeOut: (message) => writeCommanderOutput(streams.stdout, message)
   });
 
-  registerLifecycleCommands(program, handlers, streams);
+  registerLifecycleCommands(program, handlers, streams, cliOptions.stdin);
   registerDevCommands(program, handlers, streams);
+  registerArtifactsCommands(program, handlers, streams);
 
   program
     .command("init")
@@ -288,6 +297,9 @@ export const runCli: RunCli = async (
     commandExitCode = exitCode;
   });
   registerViewCommand(program, handlers, streams, cliOptions.renderEnvironment);
+  registerProductionTargetCommands(program, streams, cliOptions.stdin, (exitCode) => {
+    commandExitCode = exitCode;
+  });
 
   program
     .command("validate")
@@ -308,83 +320,16 @@ export const runCli: RunCli = async (
       }
     });
 
-  const authCommand = program.command("auth").description("Manage local Spawnfile auth profiles");
-  const authImportCommand = authCommand
-    .command("import")
-    .description("Import auth material into a local auth profile");
-
-  authImportCommand
-    .command("env")
-    .description("Import secrets from an env file into a profile")
-    .argument("<file>", "Path to an env file")
-    .option("-p, --profile <name>", "Auth profile name", "default")
-    .action(async (filePath: string, options: { profile: string }) => {
-      const profile = await handlers.importEnvFile(options.profile, filePath);
-      emitLines(streams, formatAuthProfileSummary(profile));
-    });
-
-  authImportCommand
-    .command("claude-code")
-    .description("Import Claude Code subscription credentials into a profile")
-    .option("-p, --profile <name>", "Auth profile name", "default")
-    .option("--from <directory>", "Source Claude Code config directory")
-    .action(async (options: { from?: string; profile: string }) => {
-      const profile = await handlers.importClaudeCodeAuth(options.profile, options.from);
-      emitLines(streams, formatAuthProfileSummary(profile));
-    });
-
-  authImportCommand
-    .command("codex")
-    .description("Import Codex subscription credentials into a profile")
-    .option("-p, --profile <name>", "Auth profile name", "default")
-    .option("--from <directory>", "Source Codex config directory")
-    .action(async (options: { from?: string; profile: string }) => {
-      const profile = await handlers.importCodexAuth(options.profile, options.from);
-      emitLines(streams, formatAuthProfileSummary(profile));
-    });
-
-  authCommand
-    .command("sync")
-    .description("Provision auth material a project requires into a profile")
-    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
-    .option("-p, --profile <name>", "Auth profile name", "default")
-    .option("--env-file <file>", "Path to an env file with model keys and runtime secrets")
-    .option("--claude-from <directory>", "Source Claude Code config directory")
-    .option("--codex-from <directory>", "Source Codex config directory")
-    .action(
-      async (
-        inputPath: string,
-        options: {
-          claudeFrom?: string;
-          codexFrom?: string;
-          envFile?: string;
-          profile: string;
-        }
-      ) => {
-        const profile = await handlers.syncProjectAuth(inputPath, {
-          claudeCodeDirectory: options.claudeFrom,
-          codexDirectory: options.codexFrom,
-          envFilePath: options.envFile,
-          profileName: options.profile
-        });
-        emitLines(streams, formatAuthProfileSummary(profile));
-      }
-    );
-
-  authCommand
-    .command("show")
-    .description("Show the contents of a local auth profile")
-    .option("-p, --profile <name>", "Auth profile name", "default")
-    .action(async (options: { profile: string }) => {
-      const profile = await handlers.requireAuthProfile(options.profile);
-      emitLines(streams, formatAuthProfileSummary(profile));
-    });
+  registerAuthCommands(program, handlers, streams, cliOptions.stdin);
 
   try {
     await program.parseAsync(argv, { from: "user" });
     return commandExitCode;
   } catch (error: unknown) {
     if (isCommanderError(error)) {
+      if (isTargetInvocation && error.exitCode !== 0) {
+        streams.stderr(TARGET_CLI_USAGE_ERROR);
+      }
       // Commander prints its own usage message; usage errors exit 2.
       return error.exitCode === 0 ? 0 : 2;
     }

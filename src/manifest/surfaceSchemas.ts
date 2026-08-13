@@ -207,6 +207,24 @@ const webhookSurfaceSchema = z
 
 const moltnetWakeSchema = z.enum(["all", "mentions", "thread_only", "never"]);
 
+const moltnetWakeSenderSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{0,62}$/u, {
+    message: "moltnet allowed wake senders must match ^[a-z][a-z0-9-]{0,62}$"
+  });
+
+const moltnetAllowedWakeSendersSchema = z
+  .array(moltnetWakeSenderSchema)
+  .max(32)
+  .superRefine((value, context) => {
+    if (new Set(value).size !== value.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "moltnet allowed_wake_senders must be unique"
+      });
+    }
+  });
+
 const moltnetRoomBehaviorSchema = z
   .object({
     wake: moltnetWakeSchema.optional()
@@ -216,12 +234,20 @@ const moltnetRoomBehaviorSchema = z
 const moltnetDmSchema = z
   .object({
     enabled: z.boolean(),
-    wake: moltnetWakeSchema.optional()
+    wake: moltnetWakeSchema.optional(),
+    allowed_wake_senders: moltnetAllowedWakeSendersSchema.optional()
+  })
+  .strict();
+
+const moltnetAttachmentAuthSchema = z
+  .object({
+    token_id: z.string().trim().min(1)
   })
   .strict();
 
 const moltnetAttachmentSchema = z
   .object({
+    auth: moltnetAttachmentAuthSchema.optional(),
     dms: moltnetDmSchema.optional(),
     network: z.string().min(1),
     rooms: z.record(z.string().min(1), moltnetRoomBehaviorSchema).optional()
@@ -270,6 +296,7 @@ export type HttpSurfaceAccess = never;
 export type HttpSurfaceAuth = never;
 export type HttpSurface = never;
 export type MoltnetAttachment = z.infer<typeof moltnetAttachmentSchema>;
+export type MoltnetAttachmentAuth = z.infer<typeof moltnetAttachmentAuthSchema>;
 export type MoltnetDM = z.infer<typeof moltnetDmSchema>;
 export type MoltnetRoomBehavior = z.infer<typeof moltnetRoomBehaviorSchema>;
 export type MoltnetSurface = z.infer<typeof moltnetSurfaceSchema>;

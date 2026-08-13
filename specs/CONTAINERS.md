@@ -135,32 +135,25 @@ The Daimon, OpenClaw, and PicoClaw adapters use published runtime artifact image
 Current default images:
 
 ```text
-noopolis/spawnfile-runtime-daimon:0.1.1
-noopolis/spawnfile-runtime-openclaw:2026.6.8
-noopolis/spawnfile-runtime-picoclaw:0.2.9
+noopolis/spawnfile-runtime-daimon:0.1.2
+noopolis/spawnfile-runtime-openclaw:2026.6.11
+noopolis/spawnfile-runtime-picoclaw:0.3.1
 ```
 
 To test a local Daimon runtime artifact instead:
 
 ```bash
+git clone git@github.com:noopolis/daimon.git
 cd daimon
 npm run image:runtime:local
-cd ..
-SPAWNFILE_DAIMON_RUNTIME_IMAGE=noopolis/spawnfile-runtime-daimon:0.1.1-local spawnfile up ./org --detach
+SPAWNFILE_DAIMON_RUNTIME_IMAGE=noopolis/spawnfile-runtime-daimon:0.1.2-local spawnfile up ./org --detach
 ```
 
 OpenClaw and PicoClaw have equivalent overrides:
 
 ```bash
-SPAWNFILE_OPENCLAW_RUNTIME_IMAGE=noopolis/spawnfile-runtime-openclaw:2026.6.8-local spawnfile up ./org --detach
-SPAWNFILE_PICOCLAW_RUNTIME_IMAGE=noopolis/spawnfile-runtime-picoclaw:0.2.9-local spawnfile up ./org --detach
-```
-
-The Pi compatibility adapter still supports a reusable base image with `SPAWNFILE_PI_RUNTIME_BASE_IMAGE`; when set, generated Dockerfiles use that image as the base and skip the Pi npm dependency install. Build the reference Pi base image with:
-
-```bash
-npm run runtime:pi-base -- noopolis/spawnfile-pi-runtime:0.79.10-node24
-SPAWNFILE_PI_RUNTIME_BASE_IMAGE=noopolis/spawnfile-pi-runtime:0.79.10-node24 spawnfile up ./org --detach
+SPAWNFILE_OPENCLAW_RUNTIME_IMAGE=noopolis/spawnfile-runtime-openclaw:2026.6.11-local spawnfile up ./org --detach
+SPAWNFILE_PICOCLAW_RUNTIME_IMAGE=noopolis/spawnfile-runtime-picoclaw:0.3.1-local spawnfile up ./org --detach
 ```
 
 Declared `environment.packages` are installed into the generated image before runtime startup:
@@ -276,7 +269,15 @@ Model auth intent itself is declared on each source model target under `executio
 Container startup must support Moltnet server and node artifacts emitted from `team.networks[].server`:
 
 - For `spawnfile build` / `spawnfile up` with `--context`, the compiler resolves the docker context architecture before staging Moltnet artifacts and selects `moltnet_linux_<architecture>.tar.gz` for that architecture. For manual compile without `--context`, you can force the target with `SPAWNFILE_MOLTNET_TARGET_ARCH=amd64|arm64` (or `x86_64`/`aarch64` aliases).
-- When Moltnet binaries are not staged from a local release asset, the generated Dockerfile installs Moltnet from `https://moltnet.dev/install.sh` and includes the GitHub latest-release metadata as a prior Docker layer so Docker cache invalidates when Moltnet releases.
+- By default, a Moltnet-bearing compile downloads the exact architecture asset
+  named by `moltnet-releases.json`, applies a bounded response limit, and checks
+  its SHA-256 digest before extraction. `SPAWNFILE_MOLTNET_RELEASE_DIR` is an
+  explicit offline/development override containing
+  `moltnet_linux_<arch>.tar.gz` plus `moltnet_release_stamp_<arch>.json`. The
+  strict local stamp binds the asset digest and source revision and asserts the
+  `pi-bridge` capability, but is not itself a trust root. Both paths must match
+  the same checked-in authority; a self-authored matching stamp/tarball pair
+  and every unpinned `latest` coordinate are rejected.
 - `server.store.kind: sqlite` and `server.store.kind: json` create the configured or default store directory before server start.
 - Durable `sqlite` and `json` stores emit `container.persistent_mounts[]` entries that `spawnfile run` and `spawnfile up` translate into Docker named volumes.
 - `server.store.persistence.mode: ephemeral` skips persistent mount emission but still creates the in-container store directory before server start.
@@ -495,21 +496,21 @@ The intended workflow for testing compiled output:
 
 ```bash
 # sync declared model auth and project secrets into a local profile
-spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
+spawnfile auth sync test/fixtures/single-agent --profile dev --env-file ./.env
 
 # compile and build the container
-spawnfile build fixtures/single-agent --out ./bundle/single-agent --tag my-agent
+spawnfile build test/fixtures/single-agent --out ./bundle/single-agent --tag my-agent
 
 # run with the local auth profile
-spawnfile run fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev
+spawnfile run test/fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev
 ```
 
 For teams:
 
 ```bash
-spawnfile auth sync fixtures/multi-runtime-team --profile dev --env-file ./.env
-spawnfile build fixtures/multi-runtime-team --out ./bundle/team --tag my-team
-spawnfile run fixtures/multi-runtime-team --out ./bundle/team --tag my-team --auth-profile dev
+spawnfile auth sync test/fixtures/multi-runtime-team --profile dev --env-file ./.env
+spawnfile build test/fixtures/multi-runtime-team --out ./bundle/team --tag my-team
+spawnfile run test/fixtures/multi-runtime-team --out ./bundle/team --tag my-team --auth-profile dev
 ```
 
 Same flow regardless of project complexity. One compile, one build, one run.
@@ -517,10 +518,10 @@ Same flow regardless of project complexity. One compile, one build, one run.
 For interactive Pi org development, use the dev loop:
 
 ```bash
-spawnfile auth sync fixtures/e2e/pi-harness-org --profile dev --env-file ./.env
-spawnfile dev up fixtures/e2e/pi-harness-org --auth-profile dev --deployment dev
-spawnfile dev apply fixtures/e2e/pi-harness-org --agent new-agent --deployment dev
-spawnfile dev activity fixtures/e2e/pi-harness-org --agent new-agent --deployment dev
+spawnfile auth sync test/fixtures/e2e/daimon-org --profile dev --env-file ./.env
+spawnfile dev up test/fixtures/e2e/daimon-org --auth-profile dev --deployment dev
+spawnfile dev apply test/fixtures/e2e/daimon-org --agent new-agent --deployment dev
+spawnfile dev activity test/fixtures/e2e/daimon-org --agent new-agent --deployment dev
 ```
 
 Dev mode uses `.spawn-dev` by default and keeps the deployment record there.

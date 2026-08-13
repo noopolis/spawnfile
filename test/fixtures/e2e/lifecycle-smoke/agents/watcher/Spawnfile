@@ -1,0 +1,25 @@
+spawnfile_version: "0.1"
+kind: agent
+name: watcher
+description: "Deterministic scripted watcher agent for spawnfile's own lifecycle smoke."
+
+runtime:
+  name: pi
+  options:
+    engine: scripted
+    engine_command: ../../harness/lifecycle-engine.mjs
+
+schedule:
+  kind: cron
+  cron: "0 0 * * *"
+
+surfaces:
+  moltnet:
+    - network: smoke_lab
+      rooms:
+        smoke-room:
+          wake: mentions
+
+workspace:
+  docs:
+    system: AGENTS.md

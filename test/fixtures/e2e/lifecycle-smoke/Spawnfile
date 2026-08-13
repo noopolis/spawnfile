@@ -1,0 +1,53 @@
+spawnfile_version: "0.1"
+kind: team
+name: lifecycle-smoke
+description: "Minimal single-agent scripted-engine org used only to exercise spawnfile up/artifacts export/down --json end to end (Slice B Piece 5 step 5). No conversation script, no turn/behavior assertions — see src/e2e/lifecycleSmoke.ts."
+
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
+
+members:
+  - id: watcher
+    ref: ./agents/watcher
+
+memory:
+  - id: smoke-recall
+    access:
+      members: [watcher]
+    store:
+      kind: json
+      path: /var/lib/spawnfile/memory/lifecycle-smoke/smoke-recall.jsonl
+      persistence:
+        mode: durable
+    index:
+      lexical:
+        enabled: true
+        engine: sqlite_fts
+      vector:
+        enabled: false
+
+mode: swarm
+
+networks:
+  - id: smoke_lab
+    name: Smoke Lab
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 0.0.0.0
+        port: 19961
+      store:
+        kind: memory
+      auth:
+        mode: none
+      human_ingress: true
+    rooms:
+      - id: smoke-room
+        members: [watcher]
+
+policy:
+  mode: warn
+  on_degrade: warn

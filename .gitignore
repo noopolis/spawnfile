@@ -1,13 +1,8 @@
 coverage
 dist
+.DS_Store
 .spawn
 .vscode
 node_modules
-/runtimes
-/design
-/testing
-/discussions
-/testing
-/discussions
 .env
 .moltnet

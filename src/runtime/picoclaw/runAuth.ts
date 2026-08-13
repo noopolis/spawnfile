@@ -15,7 +15,7 @@ export const preparePicoClawRuntimeAuth = async (
     return { coveredModelSecrets: [], mountArgs: [] };
   }
 
-  const claudeCode = input.authProfile.imports["claude-code"]
+  const claudeCode = input.authProfile?.imports["claude-code"]
     ? await loadImportedClaudeCodeCredential(input.authProfile.imports["claude-code"].path)
     : null;
 

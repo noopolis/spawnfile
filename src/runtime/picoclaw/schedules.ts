@@ -1,7 +1,24 @@
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import type { CapabilityReport } from "../../report/index.js";
+import { slugify } from "../../compiler/helpers.js";
 import { createDiagnostic } from "../common.js";
+import {
+  isMnemeMemoryAccessSupported,
+  mnemeMemoryServerName
+} from "../mnemeMcp.js";
+import { parseEveryScheduleMs } from "../scheduleUtils.js";
 import type { EmittedFile } from "../types.js";
+
+type PicoClawCronSchedule =
+  | {
+      expr?: string;
+      kind: "cron";
+      tz?: string;
+    }
+  | {
+      everyMs: number;
+      kind: "every";
+    };
 
 interface PicoClawCronJob {
   createdAtMs: number;
@@ -14,11 +31,7 @@ interface PicoClawCronJob {
     kind: "agent_turn";
     message: string;
   };
-  schedule: {
-    expr?: string;
-    kind: "cron";
-    tz?: string;
-  };
+  schedule: PicoClawCronSchedule;
   state: Record<string, never>;
   updatedAtMs: number;
 }
@@ -54,14 +67,87 @@ const createPicoClawCronJob = (node: ResolvedAgentNode): PicoClawCronJob | null 
   };
 };
 
+const dreamPrompt = (bankId: string, serverName: string): string =>
+  [
+    `Dream over Mneme memory bank ${bankId}.`,
+    "This is an isolated memory-maintenance session, not normal conversation.",
+    `Prefer the ${serverName} MCP tools when available.`,
+    "Search the active dream scope and read-only global scope for stale, duplicate, noisy, or important memories.",
+    "Use memory_summarize, memory_register, or memory_forget only when consolidation is evidence-backed."
+  ].join(" ");
+
+const scheduleFromMemoryConsolidation = (
+  schedule: string
+): PicoClawCronSchedule => {
+  const everyMs = parseEveryScheduleMs(schedule);
+  if (everyMs !== null) {
+    return { everyMs, kind: "every" };
+  }
+  return { expr: schedule, kind: "cron" };
+};
+
+const createPicoClawMemoryDreamJobs = (
+  node: ResolvedAgentNode
+): PicoClawCronJob[] => {
+  const jobs: PicoClawCronJob[] = [];
+  const seen = new Set<string>();
+
+  for (const access of node.memoryAccess ?? []) {
+    const schedule = access.bank.consolidation.schedule;
+    if (
+      !isMnemeMemoryAccessSupported(access) ||
+      access.bank.consolidation.mode !== "scheduled" ||
+      !schedule
+    ) {
+      continue;
+    }
+
+    const key = `${access.source}:${access.bank.id}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+
+    const dreamServerName = mnemeMemoryServerName(node, access, "dream");
+    const bankSlug = dreamServerName.replace(/^mneme-/u, "").replace(/-dream$/u, "");
+    const agentSlug = slugify(node.name) || "agent";
+    const id = `spawnfile-dream-${agentSlug}-${bankSlug}`;
+    jobs.push({
+      createdAtMs: 0,
+      deleteAfterRun: false,
+      enabled: true,
+      id,
+      name: id,
+      payload: {
+        deliver: false,
+        kind: "agent_turn",
+        message: dreamPrompt(access.bank.id, dreamServerName)
+      },
+      schedule: scheduleFromMemoryConsolidation(schedule),
+      state: {},
+      updatedAtMs: 0
+    });
+  }
+
+  return jobs;
+};
+
+export const createPicoClawCronJobs = (
+  node: ResolvedAgentNode
+): PicoClawCronJob[] =>
+  [
+    createPicoClawCronJob(node),
+    ...createPicoClawMemoryDreamJobs(node)
+  ].filter((job): job is PicoClawCronJob => job !== null);
+
 export const createPicoClawCronStoreFile = (node: ResolvedAgentNode): EmittedFile | null => {
-  const job = createPicoClawCronJob(node);
-  if (!job) {
+  const jobs = createPicoClawCronJobs(node);
+  if (jobs.length === 0) {
     return null;
   }
 
   const store: PicoClawCronStore = {
-    jobs: [job],
+    jobs,
     version: 1
   };
 
@@ -70,6 +156,9 @@ export const createPicoClawCronStoreFile = (node: ResolvedAgentNode): EmittedFil
     path: "workspace/cron/jobs.json"
   };
 };
+
+export const hasPicoClawCronJobs = (node: ResolvedAgentNode): boolean =>
+  createPicoClawCronJobs(node).length > 0;
 
 export const scheduleOutcomeFor = (
   node: ResolvedAgentNode

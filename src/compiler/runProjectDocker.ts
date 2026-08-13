@@ -13,15 +13,18 @@ export interface DockerRunInvocation {
   cwd: string;
   detach: boolean;
   deploymentName?: string | null;
+  deploymentLabels?: Readonly<Record<string, string>>;
   dockerContext?: string | null;
   dockerHost?: string | null;
   envFilePath: string;
   imageTag: string;
+  onDetachedStarted?: (result: { containerId: string }) => Promise<void>;
   supportDirectory: string;
 }
 
 export interface DockerRunResult {
   containerId?: string;
+  deploymentLabels?: Readonly<Record<string, string>>;
   imageId?: string;
 }
 
@@ -204,7 +207,7 @@ const prepareRemoteBindMounts = async (
   };
 };
 
-const inspectImageArgs = (
+export const createDetachedContainerInspectArgs = (
   invocation: DockerRunInvocation,
   containerId: string
 ): string[] => {
@@ -213,24 +216,44 @@ const inspectImageArgs = (
     : invocation.dockerHost
       ? ["--host", invocation.dockerHost, "inspect"]
       : ["inspect"];
-  return [...base, "--format", "{{.Image}}", containerId];
+  return [...base, "--format", "{{json .Id}}\n{{json .Image}}\n{{json .Config.Labels}}", containerId];
 };
 
-const inspectDetachedImageId = async (
+export const parseDetachedContainerInspect = (
+  stdout: string,
+  expectedContainerId: string,
+  expectedLabels?: Readonly<Record<string, string>>
+): DockerRunResult => {
+  const [idRaw, imageRaw, labelsRaw, ...extra] = stdout.trim().split("\n");
+  if (!idRaw || !imageRaw || !labelsRaw || extra.length > 0) throw new Error("unexpected inspect response");
+  const actualId = JSON.parse(idRaw) as unknown; const imageId = JSON.parse(imageRaw) as unknown; const labels = JSON.parse(labelsRaw) as unknown;
+  if (typeof actualId !== "string" || actualId !== expectedContainerId || !/^[a-f0-9]{64}$/u.test(actualId)
+    || typeof imageId !== "string" || !/^sha256:[a-f0-9]{64}$/u.test(imageId)) throw new Error("malformed detached container metadata");
+  if (!expectedLabels) return { containerId: actualId, imageId };
+  if (!labels || typeof labels !== "object" || Array.isArray(labels)) throw new Error("missing detached deployment labels");
+  const actual = Object.fromEntries(Object.keys(expectedLabels).sort().map((key) => {
+    const value = (labels as Record<string, unknown>)[key];
+    if (typeof value !== "string" || value !== expectedLabels[key]) throw new Error("detached deployment label drift");
+    return [key, value];
+  }));
+  return { containerId: actualId, imageId, deploymentLabels: actual };
+};
+
+const inspectDetachedContainer = async (
   invocation: DockerRunInvocation,
   containerId: string
-): Promise<string | undefined> => {
+): Promise<DockerRunResult> => {
   try {
-    const { stdout } = await execFile(invocation.command, inspectImageArgs(invocation, containerId), {
+    const { stdout } = await execFile(invocation.command, createDetachedContainerInspectArgs(invocation, containerId), {
       cwd: invocation.cwd,
       timeout: 10_000
     });
-    return stdout.trim() || undefined;
+    return parseDetachedContainerInspect(stdout, containerId, invocation.deploymentLabels);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new SpawnfileError(
       "runtime_error",
-      `Unable to inspect detached container ${containerId} image id: ${message}`
+      `Unable to inspect detached container ${containerId}: ${message}`
     );
   }
 };
@@ -275,8 +298,11 @@ const runPreparedDockerContainer = (
           settle(() => resolve(undefined));
           return;
         }
-        inspectDetachedImageId(prepared.invocation, containerId)
-          .then((imageId) => resolve({ containerId, ...(imageId ? { imageId } : {}) }))
+        Promise.resolve(
+          prepared.invocation.onDetachedStarted?.({ containerId })
+        )
+          .then(() => inspectDetachedContainer(prepared.invocation, containerId))
+          .then(resolve)
           .catch(reject);
         return;
       }
