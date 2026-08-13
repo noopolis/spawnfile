@@ -10,7 +10,7 @@ import { removeDirectory } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 const DEFAULT_FIXTURE_DIRECTORY = fileURLToPath(
-  new URL("../../fixtures/distribution-org", import.meta.url)
+  new URL("../../test/fixtures/distribution-org", import.meta.url)
 );
 
 export interface DistributionRoundtripLogger {

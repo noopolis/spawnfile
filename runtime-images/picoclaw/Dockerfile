@@ -2,7 +2,7 @@
 
 FROM debian:bookworm-slim AS build
 
-ARG PICOCLAW_VERSION=v0.2.9
+ARG PICOCLAW_VERSION=v0.3.1
 ARG TARGETARCH
 ARG RUNTIME_ROOT=/opt/spawnfile/runtime-installs/picoclaw
 

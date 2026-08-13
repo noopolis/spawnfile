@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -395,6 +395,7 @@ describe("status command", () => {
       {
         containerId: "abc",
         drift: [],
+        identity: null,
         exists: true,
         exitCode: null,
         finishedAt: null,
@@ -569,6 +570,7 @@ describe("status command", () => {
       ["prod-container", {
         containerId: "abc123",
         drift: [],
+        identity: null,
         exists: true,
         exitCode: null,
         finishedAt: null,
@@ -654,6 +656,253 @@ describe("status command", () => {
     expect(deploymentExit).toBe(2);
     expect(badDeployment.stderr.join("\n")).toContain("Invalid");
   });
+
+  const writeLifecycleWiringFixture = async (outputDirectory: string): Promise<void> => {
+    await writeUtf8File(path.join(outputDirectory, REPORT_FILENAME), `${JSON.stringify({
+      compile_fingerprint: "sf1:abc",
+      container: {
+        entrypoint: "entrypoint.sh",
+        moltnet: {
+          node_plans: [
+            { config_path: "/var/lib/spawnfile/moltnet/nodes/root-local_lab-analyst.json", network_id: "local_lab" }
+          ],
+          server_plans: [
+            {
+              auth_mode: "bearer",
+              base_url: "http://127.0.0.1:8787",
+              id: "root-local_lab",
+              mode: "external",
+              network_id: "local_lab",
+              rooms: [{ id: "floor", members: ["analyst"] }]
+            }
+          ]
+        },
+        runtime_instances: [
+          {
+            config_path: "/instances/pi/agent-analyst/pi/pi-app.json",
+            home_path: "/instances/pi/agent-analyst/home",
+            id: "pi-analyst",
+            internal_port: 19690,
+            node_ids: ["agent:analyst"],
+            runtime: "pi",
+            workspace_path: "/instances/pi/agent-analyst/workspace"
+          }
+        ]
+      },
+      diagnostics: [],
+      generated_at: "2026-06-11T00:00:00.000Z",
+      nodes: [
+        { capabilities: [], diagnostics: [], id: "agent:analyst", kind: "agent", runtime: "pi" }
+      ],
+      output_directory: outputDirectory,
+      root: "/project/Spawnfile",
+      spawnfile_version: "0.1"
+    })}\n`);
+
+    const nodeConfigPath = path.join(
+      outputDirectory,
+      "container",
+      "rootfs",
+      "var",
+      "lib",
+      "spawnfile",
+      "moltnet",
+      "nodes"
+    );
+    await ensureDirectory(nodeConfigPath);
+    await writeUtf8File(path.join(nodeConfigPath, "root-local_lab-analyst.json"), JSON.stringify({
+      attachments: [
+        {
+          agent: { id: "analyst", name: "Analyst" },
+          runtime: { control_url: "http://127.0.0.1:19690/agents/analyst/wake", kind: "pi" }
+        }
+      ],
+      moltnet: { base_url: "http://127.0.0.1:8787", network_id: "local_lab" },
+      version: "moltnet.node.v1"
+    }));
+
+    const piAppDirectory = path.join(
+      outputDirectory,
+      "container",
+      "rootfs",
+      "opt",
+      "spawnfile",
+      "runtime-installs",
+      "pi"
+    );
+    await ensureDirectory(piAppDirectory);
+    await writeUtf8File(path.join(piAppDirectory, "app.mjs"), [
+      "// operator route: /spawnfile/agents/:slug/wake",
+      'const CONTROL_TOKEN_ENV = "SPAWNFILE_PI_CONTROL_TOKEN";',
+      'return { ok: false, reason: "no operator token configured (" + CONTROL_TOKEN_ENV + " is unset)" };'
+    ].join("\n"));
+
+    await writeUtf8File(path.join(outputDirectory, "entrypoint.sh"), "#!/usr/bin/env bash\nexec node app.mjs\n");
+  };
+
+  it("surfaces B38 lifecycle and Moltnet-wiring probe observations from real compiled output", async () => {
+    const outputDirectory = await createOutputDirectory();
+    await writeLifecycleWiringFixture(outputDirectory);
+    const { streams, stdout } = createStreams();
+
+    const exitCode = await runCli(["status", "/project", "--out", outputDirectory, "--json"], {
+      handlers: { buildOrganizationView: vi.fn(async () => createView()) },
+      streams
+    });
+    const parsed = JSON.parse(stdout.join("\n")) as {
+      observations: Array<{ key: string; severity: string; subject: string }>;
+      version: string;
+    };
+
+    expect(exitCode).toBe(0);
+    expect(parsed.version).toBe("spawnfile.status.v1");
+    const byKey = (key: string) => parsed.observations.filter((entry) => entry.key === key);
+    expect(byKey("lifecycle.instance.coverage").every((entry) => entry.severity === "ok")).toBe(true);
+    expect(byKey("lifecycle.instance.runtime").every((entry) => entry.severity === "ok")).toBe(true);
+    expect(byKey("lifecycle.instance.paths").every((entry) => entry.severity === "ok")).toBe(true);
+    expect(byKey("lifecycle.wake.operator").every((entry) => entry.severity === "ok")).toBe(true);
+    // NOOPOLIS_RUN_ID is only stamped when the compile-host env carried a run
+    // id; this fixture's entrypoint does not, so run_id must be unknown —
+    // never ok — per the B38 cardinal rule.
+    expect(byKey("lifecycle.run_id")).toEqual([expect.objectContaining({ severity: "unknown" })]);
+    expect(byKey("network.wiring.node_config").every((entry) => entry.severity === "ok")).toBe(true);
+    expect(byKey("network.wiring.control_url").every((entry) => entry.severity === "ok")).toBe(true);
+    expect(byKey("network.wiring.network_resolves").every((entry) => entry.severity === "ok")).toBe(true);
+    expect(byKey("network.wiring.membership").every((entry) => entry.severity === "ok")).toBe(true);
+  });
+
+  it("flips lifecycle.instance.coverage to error when an agent is dropped from every runtime instance's node_ids", async () => {
+    const outputDirectory = await createOutputDirectory();
+    await writeLifecycleWiringFixture(outputDirectory);
+    const reportPath = path.join(outputDirectory, REPORT_FILENAME);
+    const raw = JSON.parse(await readFile(reportPath, "utf8")) as {
+      container: { runtime_instances: Array<{ node_ids: string[] }> };
+    };
+    raw.container.runtime_instances[0]!.node_ids = [];
+    await writeUtf8File(reportPath, `${JSON.stringify(raw)}\n`);
+    const { streams, stdout } = createStreams();
+
+    const exitCode = await runCli(["status", "/project", "--out", outputDirectory, "--json"], {
+      handlers: { buildOrganizationView: vi.fn(async () => createView()) },
+      streams
+    });
+    const parsed = JSON.parse(stdout.join("\n")) as {
+      observations: Array<{ key: string; severity: string; subject: string }>;
+    };
+
+    expect(exitCode).toBe(1);
+    expect(parsed.observations).toContainEqual(expect.objectContaining({
+      key: "lifecycle.instance.coverage",
+      severity: "error",
+      subject: "agent:analyst"
+    }));
+  });
+
+  it("flips network.wiring.control_url to error when a node config's control_url is mangled", async () => {
+    const outputDirectory = await createOutputDirectory();
+    await writeLifecycleWiringFixture(outputDirectory);
+    const nodeConfigFile = path.join(
+      outputDirectory,
+      "container",
+      "rootfs",
+      "var",
+      "lib",
+      "spawnfile",
+      "moltnet",
+      "nodes",
+      "root-local_lab-analyst.json"
+    );
+    await writeUtf8File(nodeConfigFile, JSON.stringify({
+      attachments: [
+        {
+          agent: { id: "analyst", name: "Analyst" },
+          runtime: { control_url: "not-a-real-url", kind: "pi" }
+        }
+      ],
+      moltnet: { base_url: "http://127.0.0.1:8787", network_id: "local_lab" },
+      version: "moltnet.node.v1"
+    }));
+    const { streams, stdout } = createStreams();
+
+    const exitCode = await runCli(["status", "/project", "--out", outputDirectory, "--json"], {
+      handlers: { buildOrganizationView: vi.fn(async () => createView()) },
+      streams
+    });
+    const parsed = JSON.parse(stdout.join("\n")) as {
+      observations: Array<{ key: string; severity: string; subject: string }>;
+    };
+
+    expect(exitCode).toBe(1);
+    expect(parsed.observations).toContainEqual(expect.objectContaining({
+      key: "network.wiring.control_url",
+      severity: "error",
+      subject: "network:local_lab"
+    }));
+  });
+
+  it("flips network.wiring.node_config to error when the node config file is deleted", async () => {
+    const outputDirectory = await createOutputDirectory();
+    await writeLifecycleWiringFixture(outputDirectory);
+    const nodeConfigFile = path.join(
+      outputDirectory,
+      "container",
+      "rootfs",
+      "var",
+      "lib",
+      "spawnfile",
+      "moltnet",
+      "nodes",
+      "root-local_lab-analyst.json"
+    );
+    await rm(nodeConfigFile);
+    const { streams, stdout } = createStreams();
+
+    const exitCode = await runCli(["status", "/project", "--out", outputDirectory, "--json"], {
+      handlers: { buildOrganizationView: vi.fn(async () => createView()) },
+      streams
+    });
+    const parsed = JSON.parse(stdout.join("\n")) as {
+      observations: Array<{ key: string; severity: string; subject: string }>;
+    };
+
+    expect(exitCode).toBe(1);
+    expect(parsed.observations).toContainEqual(expect.objectContaining({
+      key: "network.wiring.node_config",
+      severity: "error",
+      subject: "network:local_lab"
+    }));
+  });
+
+  it("passes an injected compiledProbeCollectors handler through to createStaticStatus", async () => {
+    const outputDirectory = await createOutputDirectory();
+    await writeCompileReport(outputDirectory);
+    const collectLifecycleProbeObservations = vi.fn(async () => [{
+      key: "lifecycle.instance.coverage",
+      label: "OK lifecycle.instance.coverage",
+      message: "stubbed",
+      severity: "ok" as const,
+      source: "compile_report" as const,
+      subject: "compile"
+    }]);
+    const collectMoltnetWiringProbeObservations = vi.fn(async () => []);
+
+    const result = await executeStatusCommand("/project", { json: true, out: outputDirectory }, {
+      buildOrganizationView: vi.fn(async () => createView()),
+      compiledProbeCollectors: { collectLifecycleProbeObservations, collectMoltnetWiringProbeObservations }
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(collectLifecycleProbeObservations).toHaveBeenCalledWith(expect.objectContaining({
+      loadedReport: expect.objectContaining({ kind: "loaded" }),
+      outputDirectory
+    }));
+    expect(collectMoltnetWiringProbeObservations).toHaveBeenCalled();
+    const parsed = JSON.parse(result.output ?? "") as { observations: Array<{ key: string; message: string }> };
+    expect(parsed.observations).toContainEqual(expect.objectContaining({
+      key: "lifecycle.instance.coverage",
+      message: "stubbed"
+    }));
+  });
 });
 
 describe("executeStatusCommand home store", () => {
@@ -688,7 +937,20 @@ describe("executeStatusCommand home store", () => {
       portMappings: [],
       publishedPorts: [],
       resources: [],
-      runtimeInstances: []
+      runtimeInstances: [
+        {
+          config_path: "/c",
+          home_path: "/h",
+          id: "picoclaw-a",
+          internal_port: null,
+          model_auth_methods: {},
+          model_secrets_required: [],
+          node_ids: ["agent:a"],
+          published_port: null,
+          runtime: "picoclaw",
+          workspace_path: "/w"
+        }
+      ]
     });
     for (const name of names) {
       await writeHomeDeployment(
@@ -782,5 +1044,49 @@ describe("executeStatusCommand home store", () => {
     );
     expect(result.exitCode).toBeDefined();
     expect(collectRuntimeProbeObservations).toHaveBeenCalled();
+  });
+
+  it("reports the B38 disk-reading lifecycle probes as unknown, never ok, and never crashes for a home deployment with no compiled output tree", async () => {
+    await setupHome(["research"]);
+    const result = await executeStatusCommand(
+      process.cwd(),
+      { deployment: "research", json: true },
+      { buildOrganizationView: vi.fn(async () => createView()) }
+    );
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.output ?? "") as {
+      observations: Array<{ key: string; severity: string }>;
+      version: string;
+    };
+    expect(parsed.version).toBe("spawnfile.status.v1");
+    const byKey = (key: string) => parsed.observations.filter((entry) => entry.key === key);
+
+    // These three are derived purely from the (real) cached distribution
+    // report content, no on-disk read involved, so this fixture's single
+    // picoclaw instance/agent still resolves ok.
+    expect(byKey("lifecycle.instance.coverage").every((entry) => entry.severity === "ok")).toBe(true);
+    expect(byKey("lifecycle.instance.runtime").every((entry) => entry.severity === "ok")).toBe(true);
+    expect(byKey("lifecycle.instance.paths").every((entry) => entry.severity === "ok")).toBe(true);
+
+    // wake.operator: picoclaw is not pi/daimon, so it is unknown regardless
+    // of any compiled output tree.
+    expect(byKey("lifecycle.wake.operator").every((entry) => entry.severity === "unknown")).toBe(true);
+
+    // run_id: an image/distribution report has no on-disk entrypoint to
+    // read, so entrypointPath is null and this must be unknown, never ok.
+    expect(byKey("lifecycle.run_id")).toEqual([expect.objectContaining({ severity: "unknown" })]);
+
+    // This fixture declares no Moltnet networks at all, and an image report
+    // never carries node_plans, so every network.wiring.* key legitimately
+    // has nothing to check — never a false ok, never a crash.
+    for (const key of [
+      "network.wiring.node_config",
+      "network.wiring.control_url",
+      "network.wiring.network_resolves",
+      "network.wiring.membership"
+    ]) {
+      expect(byKey(key)).toEqual([]);
+    }
   });
 });

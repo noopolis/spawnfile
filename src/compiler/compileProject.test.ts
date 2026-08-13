@@ -2,10 +2,8 @@ import path from "node:path";
 import os from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { chmod, stat } from "node:fs/promises";
-import { execFile as execFileCallback } from "node:child_process";
-import { promisify } from "node:util";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ensureDirectory,
@@ -16,10 +14,27 @@ import {
 } from "../filesystem/index.js";
 
 import { compileProject } from "./compileProject.js";
+import { TRUSTED_TEST_MOLTNET_RELEASE_AUTHORITY } from
+  "../../test/trustedMoltnetRelease.js";
+
+vi.mock("./moltnetBinaries.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./moltnetBinaries.js")>();
+  const { stageTrustedTestMoltnetRelease } = await import(
+    "../../test/trustedMoltnetRelease.js"
+  );
+  return {
+    ...actual,
+    stageMoltnetBinaries: (outputDirectory: string, options: Parameters<
+      typeof actual.stageMoltnetBinaries
+    >[1]) => stageTrustedTestMoltnetRelease(
+      outputDirectory,
+      options
+    )
+  };
+});
 
 const temporaryDirectories: string[] = [];
-const fixturesRoot = path.resolve(process.cwd(), "fixtures");
-const execFile = promisify(execFileCallback);
+const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures");
 
 const createFakeMoltnetCli = async (): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moltnet-cli-"));
@@ -66,22 +81,6 @@ const createFakeMoltnetCli = async (): Promise<string> => {
   return cliPath;
 };
 
-const createFakeMoltnetReleaseDirectory = async (): Promise<string> => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moltnet-release-"));
-  temporaryDirectories.push(directory);
-
-  const payloadDirectory = path.join(directory, "payload");
-  await ensureDirectory(payloadDirectory);
-  const binaryPath = path.join(payloadDirectory, "moltnet");
-  await writeUtf8File(binaryPath, "#!/usr/bin/env sh\necho moltnet\n");
-  await chmod(binaryPath, 0o755);
-
-  const assetName = `moltnet_linux_${process.arch === "arm64" ? "arm64" : "amd64"}.tar.gz`;
-  await execFile("tar", ["-C", payloadDirectory, "-czf", path.join(directory, assetName), "."]);
-
-  return directory;
-};
-
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
 });
@@ -123,7 +122,7 @@ describe("compileProject", () => {
     ).resolves.toBe(true);
 
     const agentNode = result.report.nodes.find((node) => node.kind === "agent");
-    expect(agentNode?.runtime_ref).toBe("v2026.6.8");
+    expect(agentNode?.runtime_ref).toBe("v2026.6.11");
     expect(agentNode?.runtime_status).toBe("active");
     expect(result.report.container).toEqual({
       dockerfile: "Dockerfile",
@@ -151,7 +150,7 @@ describe("compileProject", () => {
         }
       ],
       runtime_homes: ["/var/lib/spawnfile/instances/openclaw/agent-analyst/home"],
-      runtime_secrets_required: ["OPENCLAW_GATEWAY_TOKEN"],
+      runtime_secrets_required: ["OPENCLAW_GATEWAY_TOKEN", "SEARCH_API_KEY"],
       runtimes_installed: ["openclaw"],
       secrets_required: ["ANTHROPIC_API_KEY", "OPENCLAW_GATEWAY_TOKEN", "SEARCH_API_KEY"]
     });
@@ -160,7 +159,7 @@ describe("compileProject", () => {
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain("USER root");
     expect(dockerfile).toContain(
-      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.8 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
+      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.11 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
     );
     expect(dockerfile).toContain("COPY container/rootfs/ /");
     expect(dockerfile).not.toContain("COPY . /opt/spawnfile");
@@ -205,6 +204,72 @@ describe("compileProject", () => {
     expect(rootedConfig).toContain('"allowedOrigins"');
     expect(rootedConfig).toContain('"http://127.0.0.1:18789"');
   }, 30000);
+
+  it("emits runtime-native system documents for inline agents", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-inline-compile-"));
+    const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-inline-output-"));
+    temporaryDirectories.push(directory, outputDirectory);
+
+    await ensureDirectory(path.join(directory, "characters"));
+    await writeUtf8File(path.join(directory, "characters", "red.md"), "# Red sentinel\n");
+    await writeUtf8File(path.join(directory, "characters", "blue.md"), "# Blue sentinel\n");
+    await writeUtf8File(
+      path.join(directory, "Spawnfile"),
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: inline-duo",
+        "mode: swarm",
+        "members:",
+        "  - id: red",
+        "    runtime: openclaw",
+        "    workspace:",
+        "      docs:",
+        "        system: ./characters/red.md",
+        "  - id: blue",
+        "    runtime: daimon",
+        "    workspace:",
+        "      docs:",
+        "        system: ./characters/blue.md",
+        ""
+      ].join("\n")
+    );
+
+    const result = await compileProject(directory, { outputDirectory });
+    const redInstructions = await readUtf8File(
+      path.join(
+        outputDirectory,
+        "runtimes",
+        "openclaw",
+        "agents",
+        "red",
+        "workspace",
+        "AGENTS.md"
+      )
+    );
+    const blueInstructions = await readUtf8File(
+      path.join(
+        outputDirectory,
+        "runtimes",
+        "daimon",
+        "agents",
+        "blue",
+        "workspace",
+        "AGENTS.md"
+      )
+    );
+
+    expect(redInstructions).toContain("# Red sentinel");
+    expect(blueInstructions).toContain("# Blue sentinel");
+    expect(
+      result.report.nodes
+        .filter((node) => node.kind === "agent")
+        .map((node) => node.source)
+    ).toEqual([
+      `${path.join(directory, "Spawnfile")}#member=blue`,
+      `${path.join(directory, "Spawnfile")}#member=red`
+    ]);
+  });
 
   it("marks a multi-runtime team as degraded at team level", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-team-src-"));
@@ -284,7 +349,7 @@ describe("compileProject", () => {
       entrypoint: "entrypoint.sh",
       env_example: ".env.example",
       internal_ports: [18789, 18990, 18991],
-      model_secrets_required: [],
+      model_secrets_required: ["SPAWNFILE_CLI_AUTH_JSON"],
       port_mappings: [],
       ports: [],
       published_ports: [],
@@ -297,7 +362,7 @@ describe("compileProject", () => {
           model_auth_methods: {
             anthropic: "claude-code"
           },
-          model_secrets_required: [],
+          model_secrets_required: ["SPAWNFILE_CLI_AUTH_JSON"],
           node_ids: ["agent:orchestrator"],
           published_port: null,
           runtime: "openclaw",
@@ -311,7 +376,7 @@ describe("compileProject", () => {
           model_auth_methods: {
             anthropic: "claude-code"
           },
-          model_secrets_required: [],
+          model_secrets_required: ["SPAWNFILE_CLI_AUTH_JSON"],
           node_ids: ["agent:researcher"],
           published_port: null,
           runtime: "picoclaw",
@@ -325,7 +390,7 @@ describe("compileProject", () => {
           model_auth_methods: {
             anthropic: "claude-code"
           },
-          model_secrets_required: [],
+          model_secrets_required: ["SPAWNFILE_CLI_AUTH_JSON"],
           node_ids: ["agent:writer"],
           published_port: null,
           runtime: "picoclaw",
@@ -339,17 +404,17 @@ describe("compileProject", () => {
       ],
       runtime_secrets_required: ["OPENCLAW_GATEWAY_TOKEN"],
       runtimes_installed: ["openclaw", "picoclaw"],
-      secrets_required: ["OPENCLAW_GATEWAY_TOKEN"]
+      secrets_required: ["OPENCLAW_GATEWAY_TOKEN", "SPAWNFILE_CLI_AUTH_JSON"]
     });
 
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain("USER root");
     expect(dockerfile).toContain(
-      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.8 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
+      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.11 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
     );
     expect(dockerfile).toContain(
-      "COPY --from=noopolis/spawnfile-runtime-picoclaw:0.2.9 /opt/spawnfile/runtime-installs/picoclaw /opt/spawnfile/runtime-installs/picoclaw"
+      "COPY --from=noopolis/spawnfile-runtime-picoclaw:0.3.1 /opt/spawnfile/runtime-installs/picoclaw /opt/spawnfile/runtime-installs/picoclaw"
     );
     expect(dockerfile).toContain(
       "RUN mkdir -p /usr/local/bin && ln -sf /opt/spawnfile/runtime-installs/picoclaw/bin/picoclaw /usr/local/bin/picoclaw"
@@ -518,7 +583,6 @@ describe("compileProject", () => {
       const previousCli = process.env.SPAWNFILE_MOLTNET_CLI;
       const previousReleaseDir = process.env.SPAWNFILE_MOLTNET_RELEASE_DIR;
       process.env.SPAWNFILE_MOLTNET_CLI = await createFakeMoltnetCli();
-      process.env.SPAWNFILE_MOLTNET_RELEASE_DIR = await createFakeMoltnetReleaseDirectory();
 
       try {
         const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moltnet-compile-"));
@@ -618,6 +682,17 @@ describe("compileProject", () => {
         );
 
         expect(result.report.container?.ports).toEqual([8787]);
+        expect(result.report.container?.moltnet?.release).toMatchObject({
+          architecture: process.arch === "arm64" ? "arm64" : "amd64",
+          asset: `moltnet_linux_${process.arch === "arm64" ? "arm64" : "amd64"}.tar.gz`,
+          capabilities: ["pi-bridge"],
+          release_version: TRUSTED_TEST_MOLTNET_RELEASE_AUTHORITY.release_version,
+          source_revision: TRUSTED_TEST_MOLTNET_RELEASE_AUTHORITY.source_revision,
+          version: "spawnfile.moltnet-release-identity.v1"
+        });
+        expect(result.report.container?.moltnet?.release?.asset_sha256).toMatch(
+          /^sha256:[a-f0-9]{64}$/u
+        );
         expect(dockerfile).not.toContain("FROM golang:1.24-bookworm AS moltnet-builder");
         expect(dockerfile).toContain("COPY moltnet-bin/ /usr/local/bin/");
         expect(dockerfile).toContain("RUN chmod +x /usr/local/bin/moltnet");
@@ -810,16 +885,12 @@ describe("compileProject", () => {
         expect(clientConfig).toContain(
           '"token_path": "/var/lib/spawnfile/agents/orchestrator-agent/state/moltnet/local_lab-orchestrator.token"'
         );
+        expect(process.env.SPAWNFILE_MOLTNET_RELEASE_DIR).toBe(previousReleaseDir);
       } finally {
         if (previousCli === undefined) {
           delete process.env.SPAWNFILE_MOLTNET_CLI;
         } else {
           process.env.SPAWNFILE_MOLTNET_CLI = previousCli;
-        }
-        if (previousReleaseDir === undefined) {
-          delete process.env.SPAWNFILE_MOLTNET_RELEASE_DIR;
-        } else {
-          process.env.SPAWNFILE_MOLTNET_RELEASE_DIR = previousReleaseDir;
         }
       }
     },
@@ -827,18 +898,17 @@ describe("compileProject", () => {
   );
 
   it(
-    "compiles a Spawnfile-owned Pi harness org into one generated app",
+    "compiles a Spawnfile-owned Daimon org into one generated app",
     async () => {
       const previousCli = process.env.SPAWNFILE_MOLTNET_CLI;
       const previousReleaseDir = process.env.SPAWNFILE_MOLTNET_RELEASE_DIR;
       process.env.SPAWNFILE_MOLTNET_CLI = await createFakeMoltnetCli();
-      process.env.SPAWNFILE_MOLTNET_RELEASE_DIR = await createFakeMoltnetReleaseDirectory();
 
       try {
         const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-pi-org-out-"));
         temporaryDirectories.push(outputDirectory);
 
-        const result = await compileProject(path.join(fixturesRoot, "e2e", "pi-harness-org"), {
+        const result = await compileProject(path.join(fixturesRoot, "e2e", "daimon-org"), {
           outputDirectory
         });
         const container = result.report.container;
@@ -851,36 +921,70 @@ describe("compileProject", () => {
             "Pi generated runtime app exposes a control endpoint for Moltnet bridge wake delivery",
           outcome: "supported"
         });
-        expect(container?.runtimes_installed).toEqual(["pi"]);
+        expect(mapperReport?.active_environments?.moltnet?.daimon_lab.rooms["lab-floor"]).toMatchObject({
+          context_key: "daimon-org",
+          derivation: {
+            member_position: 0,
+            rule: "first_listed_room_member_containing_agent"
+          },
+          memory: {
+            durable_scope: { qualifier: "daimon-org", scope: "team" },
+            ephemeral_scope: { qualifier: "daimon_lab:lab-floor", scope: "room" }
+          },
+          session_key: "mapper@moltnet:daimon_lab:room:lab-floor"
+        });
+        expect(mapperReport?.active_environments?.schedules?.default).toMatchObject({
+          context_key: "daimon-org",
+          derivation: { rule: "single_direct_team_context_for_agent_schedule" },
+          memory: {
+            durable_scope: { qualifier: "daimon-org", scope: "team" }
+          },
+          session_key: "mapper@schedule:daimon-org"
+        });
+        expect(Object.keys(mapperReport?.active_environments?.dreams ?? {}).sort()).toEqual([
+          "daimon-org",
+          "self"
+        ]);
+        expect(container?.runtimes_installed).toEqual(["daimon"]);
         expect(container?.runtime_instances).toEqual([
           {
-            config_path: "/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json",
-            home_path: "/var/lib/spawnfile/instances/pi/pi-app/home",
+            config_path: "/var/lib/spawnfile/instances/daimon/pi-app/pi/pi-app.json",
+            engine_by_node_id: {
+              "agent:mapper": "pi",
+              "agent:reviewer": "pi"
+            },
+            home_path: "/var/lib/spawnfile/instances/daimon/pi-app/home",
             id: "pi-app",
             internal_port: 19690,
             model_auth_methods: {
               openai: "codex"
             },
-            model_secrets_required: [],
+            model_secrets_required: ["SPAWNFILE_CLI_AUTH_JSON"],
             node_ids: ["agent:mapper", "agent:reviewer"],
             published_port: null,
-            runtime: "pi",
-            workspace_path: "/var/lib/spawnfile/instances/pi/pi-app/workspace"
+            runtime: "daimon",
+            telemetry_mount_ids: {
+              "agent:mapper": "agent-mapper-daimon-telemetry",
+              "agent:reviewer": "agent-reviewer-daimon-telemetry"
+            },
+            workspace_path: "/var/lib/spawnfile/instances/daimon/pi-app/workspace"
           }
         ]);
         expect(container?.runtime_homes).toEqual([
-          "/var/lib/spawnfile/instances/pi/pi-app/home"
+          "/var/lib/spawnfile/instances/daimon/pi-app/home"
         ]);
         expect(container?.moltnet?.node_plans).toEqual([
           {
             config_path:
-              "/var/lib/spawnfile/moltnet/nodes/pi-harness-org-pi_lab-mapper.json",
-            network_id: "pi_lab"
+              "/var/lib/spawnfile/moltnet/nodes/daimon-org-daimon_lab-mapper.json",
+            member_id: "mapper",
+            network_id: "daimon_lab"
           },
           {
             config_path:
-              "/var/lib/spawnfile/moltnet/nodes/pi-review-team-pi_lab-reviewer.json",
-            network_id: "pi_lab"
+              "/var/lib/spawnfile/moltnet/nodes/daimon-review-team-daimon_lab-reviewer.json",
+            member_id: "reviewer",
+            network_id: "daimon_lab"
           }
         ]);
         const nodeConfig = await readUtf8File(
@@ -893,14 +997,14 @@ describe("compileProject", () => {
             "spawnfile",
             "moltnet",
             "nodes",
-            "pi-harness-org-pi_lab-mapper.json"
+            "daimon-org-daimon_lab-mapper.json"
           )
         );
         expect(nodeConfig).toContain('"kind": "pi"');
         expect(container?.moltnet?.server_plans[0]).toMatchObject({
           auth_mode: "open",
           mode: "managed",
-          network_id: "pi_lab",
+          network_id: "daimon_lab",
           rooms: [
             {
               id: "lab-floor",
@@ -911,33 +1015,33 @@ describe("compileProject", () => {
           ]
         });
         expect(container?.persistent_mounts?.map((mount) => mount.id).sort()).toEqual([
+          "agent-mapper-daimon-telemetry",
           "agent-mapper-moltnet-tokens",
+          "agent-reviewer-daimon-telemetry",
           "agent-reviewer-moltnet-tokens",
-          "moltnet-pi_lab-store"
+          "memory-var-lib-spawnfile-memory-daimon-org",
+          "moltnet-daimon_lab-causal",
+          "moltnet-daimon_lab-store"
         ]);
 
         const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
         expect(dockerfile).toContain("FROM node:24-bookworm-slim");
-        expect(dockerfile).toContain("RUN mkdir -p /opt/spawnfile/runtime-installs/pi");
         expect(dockerfile).toContain(
-          "RUN cd /opt/spawnfile/runtime-installs/pi && npm install --omit=dev --no-fund --no-audit"
+          "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.2 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
         );
-        expect(dockerfile).toContain("@noopolis/daimon@0.1.1");
-        expect(dockerfile).toContain("@noopolis/mneme@0.1.0");
-        expect(dockerfile).toContain("@earendil-works/pi-coding-agent@0.79.10");
+        expect(dockerfile).toContain("COPY container/rootfs/ /");
 
         const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
         expect(entrypoint).toContain("/usr/local/bin/moltnet &");
         expect(entrypoint).toContain("/usr/local/bin/moltnet node");
-        expect(entrypoint).toContain("http://127.0.0.1:19690/healthz");
         expect(entrypoint).toContain(
-          "'node' '/opt/spawnfile/runtime-installs/pi/app.mjs' '/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json'"
+          "'node' '/opt/spawnfile/runtime-installs/daimon/app.mjs' '/var/lib/spawnfile/instances/daimon/pi-app/pi/pi-app.json'"
         );
         expect(entrypoint).toContain(
-          "prepare_volume_resource 'shared-lab' '/var/lib/spawnfile/instances/pi/pi-app/workspace/agents/mapper/shared-lab'"
+          "prepare_volume_resource 'shared-lab' '/var/lib/spawnfile/instances/daimon/pi-app/workspace/agents/mapper/shared-lab'"
         );
         expect(entrypoint).toContain(
-          "prepare_volume_resource 'shared-lab' '/var/lib/spawnfile/instances/pi/pi-app/workspace/agents/reviewer/shared-lab'"
+          "prepare_volume_resource 'shared-lab' '/var/lib/spawnfile/instances/daimon/pi-app/workspace/agents/reviewer/shared-lab'"
         );
 
         const appConfig = JSON.parse(
@@ -950,7 +1054,7 @@ describe("compileProject", () => {
               "lib",
               "spawnfile",
               "instances",
-              "pi",
+              "daimon",
               "pi-app",
               "pi",
               "pi-app.json"
@@ -975,7 +1079,7 @@ describe("compileProject", () => {
             "lib",
             "spawnfile",
             "instances",
-            "pi",
+            "daimon",
             "pi-app",
             "workspace",
             "agents",
@@ -990,16 +1094,12 @@ describe("compileProject", () => {
             fileExists(path.join(workspace, ".codex", "skills", "moltnet", "SKILL.md"))
           ).resolves.toBe(true);
         }
+        expect(process.env.SPAWNFILE_MOLTNET_RELEASE_DIR).toBe(previousReleaseDir);
       } finally {
         if (previousCli === undefined) {
           delete process.env.SPAWNFILE_MOLTNET_CLI;
         } else {
           process.env.SPAWNFILE_MOLTNET_CLI = previousCli;
-        }
-        if (previousReleaseDir === undefined) {
-          delete process.env.SPAWNFILE_MOLTNET_RELEASE_DIR;
-        } else {
-          process.env.SPAWNFILE_MOLTNET_RELEASE_DIR = previousReleaseDir;
         }
       }
     },

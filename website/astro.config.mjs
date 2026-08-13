@@ -57,8 +57,6 @@ export default defineConfig({
             { label: 'OpenClaw', slug: 'runtimes/openclaw' },
             { label: 'PicoClaw', slug: 'runtimes/picoclaw' },
             { label: 'Pi', slug: 'runtimes/pi' },
-            { label: 'NullClaw', slug: 'runtimes/nullclaw' },
-            { label: 'ZeroClaw', slug: 'runtimes/zeroclaw' },
           ],
         },
         {

@@ -111,8 +111,15 @@ describe("status compile report loader", () => {
     const directory = await createOutputDirectory();
     await writeUtf8File(path.join(directory, REPORT_FILENAME), `${JSON.stringify({
       container: {
+        entrypoint: "entrypoint.sh",
         internal_ports: [8787, "bad", Number.NaN],
         moltnet: {
+          node_plans: [
+            "bad-node-plan",
+            { config_path: "/var/lib/spawnfile/moltnet/nodes/root-local_lab-analyst.json", network_id: "local_lab" },
+            { network_id: "missing-config-path" },
+            { config_path: "/missing-network-id" }
+          ],
           server_plans: [
             "bad-server",
             {
@@ -187,6 +194,10 @@ describe("status compile report loader", () => {
 
     expect(result.kind).toBe("loaded");
     if (result.kind === "loaded") {
+      expect(result.report.entrypointPath).toBe(path.join(directory, "entrypoint.sh"));
+      expect(result.report.moltnetNodePlans).toEqual([
+        { configPath: "/var/lib/spawnfile/moltnet/nodes/root-local_lab-analyst.json", networkId: "local_lab" }
+      ]);
       expect(result.report.internalPorts).toEqual([8787]);
       expect(result.report.publishedPorts).toEqual([18787]);
       expect(result.report.portMappings).toEqual([{ internalPort: 8787, publishedPort: 18787 }]);
@@ -258,6 +269,8 @@ describe("status compile report loader", () => {
 
     expect(result.kind).toBe("loaded");
     if (result.kind === "loaded") {
+      expect(result.report.entrypointPath).toBeNull();
+      expect(result.report.moltnetNodePlans).toEqual([]);
       expect(result.report.internalPorts).toEqual([]);
       expect(result.report.moltnetServers).toEqual([]);
       expect(result.report.persistentMounts).toEqual([]);

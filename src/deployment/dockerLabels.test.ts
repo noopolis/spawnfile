@@ -23,6 +23,17 @@ describe("docker deployment labels", () => {
     });
   });
 
+  it("adds a run identity label when the deployment has one", () => {
+    expect(createDockerDeploymentLabels({
+      compileFingerprint: "sf1:abc123",
+      deployment: "prod-eu",
+      project: "agentic-org",
+      runId: "run-abc123",
+      unit: "prod-eu-container",
+      version: "0.1"
+    })[dockerDeploymentLabelKeys.runId]).toBe("run-abc123");
+  });
+
   it("rejects local paths and other non-identifiers", () => {
     expect(() => createDockerDeploymentLabels({
       compileFingerprint: "sf1:abc123",

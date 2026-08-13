@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { ResolvedAgentNode } from "../compiler/types.js";
 
-import { createAgentCapabilities, createDocumentFiles, createSkillFiles } from "./common.js";
+import {
+  createAgentCapabilities,
+  createDocumentFiles,
+  createSkillFiles,
+  ensureNoopolisRunId,
+  NOOPOLIS_RUN_ID_ENV,
+  resolveNoopolisRunId
+} from "./common.js";
 
 const baseAgent: ResolvedAgentNode = {
   description: "",
@@ -78,6 +85,48 @@ describe("runtime common helpers", () => {
     );
   });
 
+  it("creates memory capabilities for accessible memory banks", () => {
+    const capabilities = createAgentCapabilities({
+      ...baseAgent,
+      memoryAccess: [
+        {
+          agentSource: "/tmp/Spawnfile",
+          bank: {
+            consolidation: { mode: "disabled" },
+            declaredBy: "agent",
+            declaredName: "assistant",
+            id: "notes",
+            index: {
+              graph: { enabled: false },
+              lexical: { enabled: true },
+              rerank: { enabled: false },
+              vector: { enabled: false }
+            },
+            retention: { forgetting: "manual" },
+            source: "/tmp/Spawnfile",
+            store: { kind: "sqlite", path: "/var/lib/spawnfile/memory/assistant/notes/memory.sqlite" }
+          },
+          declaringKind: "agent",
+          source: "/tmp/Spawnfile"
+        }
+      ]
+    }, {
+      memoryMessage: "memory via tools",
+      memoryOutcome: "supported"
+    });
+
+    expect(capabilities).toContainEqual({
+      key: "memory",
+      message: "memory via tools",
+      outcome: "supported"
+    });
+    expect(capabilities).toContainEqual({
+      key: "memory.notes",
+      message: "memory via tools",
+      outcome: "supported"
+    });
+  });
+
   it("marks agent schedules as degraded until a runtime scheduler is emitted", () => {
     const capabilities = createAgentCapabilities({
       ...baseAgent,
@@ -117,5 +166,83 @@ describe("runtime common helpers", () => {
       message: "client config only",
       outcome: "degraded"
     });
+  });
+});
+
+describe("resolveNoopolisRunId", () => {
+  it("exposes NOOPOLIS_RUN_ID as the env var name", () => {
+    expect(NOOPOLIS_RUN_ID_ENV).toBe("NOOPOLIS_RUN_ID");
+  });
+
+  it("returns the trimmed run id when set", () => {
+    expect(resolveNoopolisRunId({ NOOPOLIS_RUN_ID: "  run-123  " })).toBe("run-123");
+  });
+
+  it("returns undefined when unset", () => {
+    expect(resolveNoopolisRunId({})).toBeUndefined();
+  });
+
+  it("returns undefined for a blank value", () => {
+    expect(resolveNoopolisRunId({ NOOPOLIS_RUN_ID: "   " })).toBeUndefined();
+  });
+
+  it("defaults to reading from process.env", () => {
+    const original = process.env.NOOPOLIS_RUN_ID;
+    process.env.NOOPOLIS_RUN_ID = "run-from-process-env";
+    try {
+      expect(resolveNoopolisRunId()).toBe("run-from-process-env");
+    } finally {
+      if (original === undefined) {
+        delete process.env.NOOPOLIS_RUN_ID;
+      } else {
+        process.env.NOOPOLIS_RUN_ID = original;
+      }
+    }
+  });
+});
+
+describe("ensureNoopolisRunId", () => {
+  it("returns the existing trimmed run id and leaves env untouched when already set", () => {
+    const env: NodeJS.ProcessEnv = { NOOPOLIS_RUN_ID: "  run-existing  " };
+
+    expect(ensureNoopolisRunId(env)).toBe("run-existing");
+    expect(env.NOOPOLIS_RUN_ID).toBe("  run-existing  ");
+  });
+
+  it("generates and stamps a fresh run id onto env when unset", () => {
+    const env: NodeJS.ProcessEnv = {};
+
+    const generated = ensureNoopolisRunId(env);
+
+    expect(generated).toMatch(/^run-[0-9a-f]{32}$/);
+    expect(env.NOOPOLIS_RUN_ID).toBe(generated);
+  });
+
+  it("generates and stamps a fresh run id onto env when blank", () => {
+    const env: NodeJS.ProcessEnv = { NOOPOLIS_RUN_ID: "   " };
+
+    const generated = ensureNoopolisRunId(env);
+
+    expect(generated).toMatch(/^run-[0-9a-f]{32}$/);
+    expect(env.NOOPOLIS_RUN_ID).toBe(generated);
+  });
+
+  it("generates a different run id on each call given separate unset envs", () => {
+    expect(ensureNoopolisRunId({})).not.toBe(ensureNoopolisRunId({}));
+  });
+
+  it("defaults to reading/stamping process.env", () => {
+    const original = process.env.NOOPOLIS_RUN_ID;
+    delete process.env.NOOPOLIS_RUN_ID;
+    try {
+      const generated = ensureNoopolisRunId();
+      expect(process.env.NOOPOLIS_RUN_ID).toBe(generated);
+    } finally {
+      if (original === undefined) {
+        delete process.env.NOOPOLIS_RUN_ID;
+      } else {
+        process.env.NOOPOLIS_RUN_ID = original;
+      }
+    }
   });
 });

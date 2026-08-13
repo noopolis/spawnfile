@@ -1,0 +1,20 @@
+{
+  "version": "spawnfile.moltnet-release-authority.v1",
+  "release_version": "v0.1.14",
+  "source_revision": "7baeb284ba0b1b5e454476141a557d68b5a4af0d",
+  "capabilities": [
+    "pi-bridge"
+  ],
+  "assets": [
+    {
+      "architecture": "amd64",
+      "asset": "moltnet_linux_amd64.tar.gz",
+      "asset_sha256": "sha256:a2e7a0acd44ab548a81d99e51401ebdee9f50a539b24c9450fc12d8e9218e5f6"
+    },
+    {
+      "architecture": "arm64",
+      "asset": "moltnet_linux_arm64.tar.gz",
+      "asset_sha256": "sha256:3d46ad047496dd32a9ad41901e7ae1f10a25e9a21f3b29d3b6ccd2cff62fa58f"
+    }
+  ]
+}

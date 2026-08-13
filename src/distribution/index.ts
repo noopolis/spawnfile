@@ -46,7 +46,8 @@ export {
   DISTRIBUTION_REPORT_IMAGE_PATH,
   DISTRIBUTION_REPORT_OUTPUT_FILE,
   DISTRIBUTION_REPORT_VERSION,
-  IMAGE_CONTRACT_VERSION
+  IMAGE_CONTRACT_VERSION,
+  WORLD_BINDINGS_IMAGE_PATH
 } from "./types.js";
 export type {
   DistributionAgentSummary,
@@ -60,5 +61,6 @@ export type {
   DistributionSecretCategory,
   DistributionSecretEntry,
   DistributionTeamSummary,
-  DistributionWorkspaceResource
+  DistributionWorkspaceResource,
+  DistributionWorldBindingsEvidence
 } from "./types.js";

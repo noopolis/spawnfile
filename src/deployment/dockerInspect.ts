@@ -2,6 +2,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 
 import type { DeploymentRecord } from "./record.js";
+import { dockerDeploymentLabelKeys } from "./dockerLabels.js";
 import { dockerContextNameForTarget, verifyDockerDeploymentTarget } from "./target.js";
 
 const execFile = promisify(execFileCallback);
@@ -18,6 +19,7 @@ export interface DockerUnitInspection {
   exists: boolean | null;
   exitCode: number | null;
   finishedAt: string | null;
+  identity: DockerDeploymentIdentity | null;
   imageId: string | null;
   message: string;
   restartCount: number | null;
@@ -26,6 +28,15 @@ export interface DockerUnitInspection {
   startedAt: string | null;
   status: string | null;
   unitId: string;
+}
+
+export interface DockerDeploymentIdentity {
+  readonly compileFingerprint: string;
+  readonly deployment: string;
+  readonly project: string;
+  readonly runId: string;
+  readonly unit: string;
+  readonly version: string;
 }
 
 export type DockerInspectionResult = Map<string, DockerUnitInspection>;
@@ -44,6 +55,31 @@ const toNumberOrNull = (value: unknown): number | null =>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const identifierLabelValuePattern = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+
+const identityFromInspection = (
+  inspected: Record<string, unknown>
+): DockerDeploymentIdentity | null => {
+  const config = isRecord(inspected.Config) ? inspected.Config : null;
+  const labels = config && isRecord(config.Labels) ? config.Labels : null;
+  if (!labels) return null;
+
+  const values = {
+    compileFingerprint: labels[dockerDeploymentLabelKeys.compileFingerprint],
+    deployment: labels[dockerDeploymentLabelKeys.deployment],
+    project: labels[dockerDeploymentLabelKeys.project],
+    runId: labels[dockerDeploymentLabelKeys.runId],
+    unit: labels[dockerDeploymentLabelKeys.unit],
+    version: labels[dockerDeploymentLabelKeys.version]
+  };
+  if (Object.values(values).some((value) =>
+    typeof value !== "string" || !identifierLabelValuePattern.test(value))) {
+    return null;
+  }
+
+  return values as DockerDeploymentIdentity;
+};
 
 const targetRefForUnit = (
   unit: DeploymentRecord["units"][number]
@@ -103,9 +139,10 @@ const inspectionFromState = (
     exists: true,
     exitCode: toNumberOrNull(state.ExitCode),
     finishedAt: toStringOrNull(state.FinishedAt),
+    identity: running === true ? identityFromInspection(inspected) : null,
     imageId,
     message: drift.length > 0 ? `${baseMessage}; ${drift.join("; ")}` : baseMessage,
-    restartCount: toNumberOrNull(state.RestartCount),
+    restartCount: toNumberOrNull(inspected.RestartCount),
     running,
     severity: drift.length > 0 ? "warn" : running === false ? "error" : "ok",
     startedAt: toStringOrNull(state.StartedAt),
@@ -123,6 +160,7 @@ const missingInspection = (
   exists: false,
   exitCode: null,
   finishedAt: null,
+  identity: null,
   imageId: null,
   message,
   restartCount: null,
@@ -143,6 +181,7 @@ const unknownInspection = (
   exists: null,
   exitCode: null,
   finishedAt: null,
+  identity: null,
   imageId: null,
   message,
   restartCount: null,

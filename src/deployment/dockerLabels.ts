@@ -4,6 +4,7 @@ export const dockerDeploymentLabelKeys = {
   compileFingerprint: "com.spawnfile.compile_fingerprint",
   deployment: "com.spawnfile.deployment",
   project: "com.spawnfile.project",
+  runId: "com.spawnfile.run_id",
   unit: "com.spawnfile.unit",
   version: "com.spawnfile.version"
 } as const;
@@ -12,6 +13,7 @@ export interface DockerDeploymentLabelInput {
   compileFingerprint: string;
   deployment: string;
   project: string;
+  runId?: string;
   unit: string;
   version: string;
 }
@@ -34,6 +36,7 @@ export const createDockerDeploymentLabels = (
     [dockerDeploymentLabelKeys.compileFingerprint]: input.compileFingerprint,
     [dockerDeploymentLabelKeys.deployment]: input.deployment,
     [dockerDeploymentLabelKeys.project]: input.project,
+    ...(input.runId ? { [dockerDeploymentLabelKeys.runId]: input.runId } : {}),
     [dockerDeploymentLabelKeys.unit]: input.unit,
     [dockerDeploymentLabelKeys.version]: input.version
   };

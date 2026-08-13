@@ -8,7 +8,6 @@ import {
   collectMoltnetBindings,
   createContextBaseKey,
   createVisibleTeamCards,
-  findAgentBySource,
   findTeamBySource,
   getSystemTeamDoc,
   reportKeySegment,
@@ -16,6 +15,10 @@ import {
 } from "./teamContextHelpers.js";
 import type { AgentContext, TeamCompileSupport } from "./teamContextTypes.js";
 export type { TeamCompileSupport } from "./teamContextTypes.js";
+import {
+  ActiveEnvironmentsIndex,
+  buildActiveEnvironments
+} from "./teamContextActiveEnvironments.js";
 import {
   generateTeamRoster,
   listTeamRepresentatives
@@ -124,6 +127,11 @@ const createTeamCapabilities = (teamNode: ResolvedTeamNode): CapabilityReport[] 
     outcome: "supported"
   },
   {
+    key: "team.active_environments",
+    message: "Derived active environment bindings were emitted in team-contexts.yaml",
+    outcome: "supported"
+  },
+  {
     key: "team.representatives",
     message: "Representative chains were resolved",
     outcome: "supported"
@@ -182,55 +190,13 @@ const createRepresentativeDiagnostics = (
   return diagnostics;
 };
 
-const addAmbiguousBindingDiagnostics = (
-  agentNode: ResolvedAgentNode,
-  contexts: AgentContext[],
-  diagnosticsByTeamSource: Map<string, DiagnosticReport[]>
-): void => {
-  const bindings = new Map<string, AgentContext[]>();
-
-  for (const context of contexts) {
-    const teamSource = context.kind === "direct"
-      ? context.membership.teamSource
-      : context.parentTeamNode.source;
-    const memberId = context.kind === "direct"
-      ? context.membership.memberId
-      : context.representativeMemberId;
-
-    for (const binding of collectMoltnetBindings(agentNode, teamSource, memberId)) {
-      for (const room of binding.rooms) {
-        const key = `moltnet:${binding.network}:${room}`;
-        bindings.set(key, [...(bindings.get(key) ?? []), context]);
-      }
-    }
-  }
-
-  for (const [binding, bindingContexts] of bindings) {
-    const uniqueKeys = [...new Set(bindingContexts.map((context) => context.contextKey))];
-    if (uniqueKeys.length < 2) {
-      continue;
-    }
-
-    for (const context of bindingContexts) {
-      const teamSource = context.kind === "direct"
-        ? context.membership.teamSource
-        : context.parentTeamNode.source;
-      addMapEntries(diagnosticsByTeamSource, teamSource, [
-        {
-          level: "warn",
-          message: `Agent ${agentNode.name} maps ${binding} to multiple team contexts: ${uniqueKeys.join(", ")}`
-        }
-      ]);
-    }
-  }
-};
-
 export const prepareTeamCompileSupport = async (
   plan: CompilePlan
 ): Promise<TeamCompileSupport> => {
   const capabilitiesByTeamSource = new Map<string, CapabilityReport[]>();
   const diagnosticsByTeamSource = new Map<string, DiagnosticReport[]>();
   const filesByAgentSource = new Map<string, EmittedFile[]>();
+  const activeEnvironmentsByAgentSource = new Map<string, ActiveEnvironmentsIndex>();
   const contextsByAgent = collectAgentContexts(plan);
 
   for (const node of plan.nodes) {
@@ -242,13 +208,32 @@ export const prepareTeamCompileSupport = async (
     addMapEntries(diagnosticsByTeamSource, node.value.source, createRepresentativeDiagnostics(plan, node.value));
   }
 
-  for (const [agentSource, contexts] of contextsByAgent) {
-    const agentNode = findAgentBySource(plan, agentSource);
-    if (!agentNode) {
+  for (const node of plan.nodes) {
+    if (node.value.kind !== "agent") {
       continue;
     }
 
+    const agentNode = node.value;
+    const agentSource = agentNode.source;
+    const contexts = contextsByAgent.get(agentSource) ?? [];
     const directCount = contexts.filter((context) => context.kind === "direct").length;
+    const activeEnvironmentsResult = buildActiveEnvironments(
+      plan,
+      agentNode,
+      contexts,
+      directCount
+    );
+    for (const { source, diagnostic } of activeEnvironmentsResult.diagnostics) {
+      addMapEntries(diagnosticsByTeamSource, source, [diagnostic]);
+    }
+
+    if (activeEnvironmentsResult.activeEnvironments !== undefined) {
+      activeEnvironmentsByAgentSource.set(agentSource, activeEnvironmentsResult.activeEnvironments);
+    }
+    if (contexts.length === 0 && activeEnvironmentsResult.activeEnvironments === undefined) {
+      continue;
+    }
+
     const directIndex: Array<Record<string, unknown>> = [];
     const representationIndex: Array<Record<string, unknown>> = [];
     const files: EmittedFile[] = [];
@@ -338,6 +323,9 @@ export const prepareTeamCompileSupport = async (
     }
 
     const contextIndex = {
+      ...(activeEnvironmentsResult.activeEnvironments
+        ? { active_environments: activeEnvironmentsResult.activeEnvironments }
+        : {}),
       direct_memberships: directIndex,
       representations: representationIndex
     };
@@ -352,8 +340,12 @@ export const prepareTeamCompileSupport = async (
       }
     );
     filesByAgentSource.set(agentSource, files);
-    addAmbiguousBindingDiagnostics(agentNode, contexts, diagnosticsByTeamSource);
   }
 
-  return { capabilitiesByTeamSource, diagnosticsByTeamSource, filesByAgentSource };
+  return {
+    activeEnvironmentsByAgentSource,
+    capabilitiesByTeamSource,
+    diagnosticsByTeamSource,
+    filesByAgentSource
+  };
 };

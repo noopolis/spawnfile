@@ -122,4 +122,31 @@ describe("buildCompilePlanTeams", () => {
       ]
     }))).toThrow(/Moltnet room general references unknown member missing/);
   });
+
+  it("accepts only external participants attached to the room network", () => {
+    const resolved = createResolvedTeam({
+      externalParticipants: [{
+        id: "world",
+        kind: "service",
+        surfaces: {
+          moltnet: [{
+            auth: { token_id: "world" },
+            dms: { enabled: true },
+            network: "org"
+          }]
+        }
+      }],
+      networks: [{
+        id: "org",
+        name: "Org",
+        provider: "moltnet",
+        rooms: [{ id: "general", members: ["lead", "world"] }]
+      }]
+    });
+
+    expect(() => validateTeamNetworkRooms(resolved)).not.toThrow();
+    resolved.networks![0]!.rooms[0]!.members = ["lead", "unattached"];
+    expect(() => validateTeamNetworkRooms(resolved))
+      .toThrow(/Moltnet room general references unknown member unattached/);
+  });
 });

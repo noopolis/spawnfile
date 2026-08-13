@@ -22,6 +22,9 @@ export interface ContainerEnvVariable {
 
 export interface RuntimeTargetPlan {
   configEnvBindings?: RuntimeContainerConfigEnvBinding[];
+  /** Passthrough of `ContainerTarget.engineByNodeId` (see `runtime/types.ts`), for
+   * `containerArtifacts.ts` to stamp onto `ContainerRuntimeInstanceReport.engine_by_node_id`. */
+  engineByNodeId?: Record<string, string>;
   packages?: ResolvedPackage[];
   envFiles: Array<{
     envName: string;
@@ -39,12 +42,21 @@ export interface RuntimeTargetPlan {
   modelSecretsRequired: string[];
   port?: number;
   publishedPort?: number;
+  /**
+   * Per-run container environment carried by this target's
+   * RuntimeInstallRecipe (see src/runtime/container.ts). Sourced only from
+   * the host/compile process environment (e.g. NOOPOLIS_RUN_ID), never
+   * model output. Rendered into the container RUN-time env surface
+   * (entrypoint exec env), never baked into the Dockerfile build layer.
+   */
+  recipeEnv?: Record<string, string>;
   resources?: WorkspaceResourcePlan[];
   runtimeName: string;
   runtimeRoot: string;
   sourceIds?: string[];
   targetConfigEnvBindings?: RuntimeContainerConfigEnvBinding[];
   targetFiles: EmittedFile[];
+  worldTokenEnvNames?: string[];
 }
 
 export interface CompiledNodeArtifact {

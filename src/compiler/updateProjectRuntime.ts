@@ -1,17 +1,23 @@
 import path from "node:path";
 
 import {
-  getCanonicalManifestPath,
   getManifestPath,
-  getProjectRoot,
   writeUtf8File
 } from "../filesystem/index.js";
-import type { AgentManifest, TeamManifest } from "../manifest/index.js";
-import { loadManifest, renderSpawnfile } from "../manifest/index.js";
+import type { AgentManifest, InlineAgentMember, TeamManifest } from "../manifest/index.js";
+import {
+  loadManifest,
+  materializeInlineAgentManifest,
+  renderSpawnfile
+} from "../manifest/index.js";
 import { assertRuntimeCanCompile } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { assertRuntimeSupportsExecutionModelAuth } from "./modelAuth.js";
+import {
+  collectProjectManifestPaths,
+  rewriteInlineAgentMembers
+} from "./projectManifestGraph.js";
 import { validateAgentSurfaceSupport } from "./surfaceDefinitions.js";
 
 type ProjectManifest = AgentManifest | TeamManifest;
@@ -32,57 +38,8 @@ const TEAM_RUNTIME_COMMAND_ERROR =
 const resolveTargetManifestPath = (inputPath?: string): string =>
   getManifestPath(path.resolve(inputPath ?? process.cwd()));
 
-const collectManifestPaths = async (
-  manifestPath: string,
-  recursive: boolean,
-  visited = new Set<string>()
-): Promise<string[]> => {
-  const canonicalPath = getCanonicalManifestPath(manifestPath);
-  if (visited.has(canonicalPath)) {
-    return [];
-  }
-
-  visited.add(canonicalPath);
-  if (!recursive) {
-    return [canonicalPath];
-  }
-
-  const loadedManifest = await loadManifest(canonicalPath);
-  const childRefs =
-    loadedManifest.manifest.kind === "team"
-      ? loadedManifest.manifest.members.map((member) => member.ref)
-      : (loadedManifest.manifest.subagents ?? []).map((subagent) => subagent.ref);
-
-  const nestedPaths = await Promise.all(
-    childRefs.map((ref) =>
-      collectManifestPaths(
-        getManifestPath(path.resolve(getProjectRoot(canonicalPath), ref)),
-        true,
-        visited
-      )
-    )
-  );
-
-  return [canonicalPath, ...nestedPaths.flat()];
-};
-
 const manifestChanged = (current: ProjectManifest, next: ProjectManifest): boolean =>
   JSON.stringify(current) !== JSON.stringify(next);
-
-const assertRuntimeMutationAllowed = (
-  manifest: ProjectManifest,
-  recursive: boolean
-): manifest is AgentManifest => {
-  if (manifest.kind === "agent") {
-    return true;
-  }
-
-  if (recursive) {
-    return false;
-  }
-
-  throw new SpawnfileError("validation_error", TEAM_RUNTIME_COMMAND_ERROR);
-};
 
 const validateAgentRuntimeMutation = (manifest: AgentManifest): void => {
   validateAgentSurfaceSupport(manifest);
@@ -99,13 +56,23 @@ const validateAgentRuntimeMutation = (manifest: AgentManifest): void => {
   );
 };
 
+const setInlineRuntime = (
+  team: TeamManifest,
+  member: InlineAgentMember,
+  runtime: string
+): InlineAgentMember => {
+  const nextMember = { ...member, runtime };
+  validateAgentRuntimeMutation(materializeInlineAgentManifest(team, nextMember));
+  return nextMember;
+};
+
 export const setProjectRuntime = async (
   options: ProjectRuntimeOptions
 ): Promise<UpdateProjectRuntimeResult> => {
   await assertRuntimeCanCompile(options.runtime);
 
   const recursive = options.recursive ?? false;
-  const manifestPaths = await collectManifestPaths(
+  const manifestPaths = await collectProjectManifestPaths(
     resolveTargetManifestPath(options.path),
     recursive
   );
@@ -115,16 +82,21 @@ export const setProjectRuntime = async (
     const loadedManifest = await loadManifest(manifestPath);
     const manifest = loadedManifest.manifest;
 
-    if (!assertRuntimeMutationAllowed(manifest, recursive)) {
-      continue;
+    let nextManifest: ProjectManifest;
+    if (manifest.kind === "agent") {
+      nextManifest = {
+        ...manifest,
+        runtime: options.runtime
+      };
+      validateAgentRuntimeMutation(nextManifest);
+    } else {
+      if (!recursive) {
+        throw new SpawnfileError("validation_error", TEAM_RUNTIME_COMMAND_ERROR);
+      }
+      nextManifest = rewriteInlineAgentMembers(manifest, (member) =>
+        setInlineRuntime(manifest, member, options.runtime)
+      );
     }
-
-    const nextManifest: AgentManifest = {
-      ...manifest,
-      runtime: options.runtime
-    };
-
-    validateAgentRuntimeMutation(nextManifest);
 
     if (!manifestChanged(manifest, nextManifest)) {
       continue;

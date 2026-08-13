@@ -9,8 +9,8 @@ export type SpawnfileErrorCode =
 export class SpawnfileError extends Error {
   public readonly code: SpawnfileErrorCode;
 
-  public constructor(code: SpawnfileErrorCode, message: string) {
-    super(message);
+  public constructor(code: SpawnfileErrorCode, message: string, options?: ErrorOptions) {
+    super(message, options);
     this.code = code;
     this.name = "SpawnfileError";
   }

@@ -1,0 +1,44 @@
+spawnfile_version: "0.1"
+kind: team
+name: daimon-cli-memory-org
+description: "Generated Daimon app fixture for CLI-backed engines with Mneme memory"
+
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
+
+members:
+  - id: codex
+    ref: ./agents/codex-agent
+  - id: claude
+    ref: ./agents/claude-agent
+  - id: grok
+    ref: ./agents/grok-agent
+  - id: agy
+    ref: ./agents/agy-agent
+
+memory:
+  - id: cli-recall
+    access:
+      members: [codex, claude, grok, agy]
+    consolidation:
+      mode: scheduled
+      schedule: 1s
+    store:
+      kind: json
+      path: /var/lib/spawnfile/memory/daimon-cli-memory/cli-recall.jsonl
+      persistence:
+        mode: durable
+    index:
+      lexical:
+        enabled: true
+        engine: sqlite_fts
+      vector:
+        enabled: true
+        provider: ollama
+        model: fake-embedding
+        dimensions: 2
+
+mode: hierarchical
+lead: codex

@@ -1,12 +1,18 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { CompilePlan, ResolvedAgentNode } from "./types.js";
+import type { CompilePlan, ResolvedAgentNode, ResolvedMemoryBank } from "./types.js";
 import type { ContainerTargetInput } from "../runtime/index.js";
 import * as runtimeIndex from "../runtime/index.js";
 import { createContainerArtifacts } from "./containerArtifacts.js";
 import { createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
+import { createPersistentVolumeName } from "./moltnetArtifactPaths.js";
 import { openClawAdapter } from "../runtime/openclaw/adapter.js";
 import { picoClawAdapter } from "../runtime/picoclaw/adapter.js";
+import { piAdapter } from "../runtime/pi/adapter.js";
+import { createPiTestNode } from "../runtime/pi/testHelpers.js";
 
 const createPlan = (runtimeNames: string[]): CompilePlan => ({
   edges: [],
@@ -36,6 +42,25 @@ const createAgentNode = (
   ...overrides
 });
 
+const createMemoryBank = (
+  source: string,
+  store: ResolvedMemoryBank["store"]
+): ResolvedMemoryBank => ({
+  consolidation: { mode: "disabled" },
+  declaredBy: "agent",
+  declaredName: "assistant",
+  id: "shared-memory",
+  index: {
+    graph: { enabled: false },
+    lexical: { enabled: true },
+    rerank: { enabled: false },
+    vector: { enabled: false }
+  },
+  retention: { forgetting: "manual" },
+  source,
+  store
+} as const);
+
 describe("createContainerArtifacts", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -57,9 +82,168 @@ describe("createContainerArtifacts", () => {
 
     expect(result.report.secrets_required).toEqual(["OPENCLAW_GATEWAY_TOKEN"]);
     expect(result.report.model_secrets_required).toEqual([]);
+    expect(result.files.find((file) => file.path === ".dockerignore")).toEqual({
+      content: "runtimes/\nspawnfile-report.json\ndeployments/\n",
+      path: ".dockerignore"
+    });
     expect(result.files.find((file) => file.path === ".env.example")?.content).toContain(
       "OPENCLAW_GATEWAY_TOKEN="
     );
+  });
+
+  it("emits bearer MCP placeholders, required env names, and isolated target bindings", async () => {
+    const first = createAgentNode("openclaw", {
+      mcpServers: [
+        {
+          auth: { mode: "bearer", secret: "FIRST_MCP_TOKEN" },
+          name: "first-search",
+          transport: "streamable_http",
+          url: "https://first.example/mcp"
+        }
+      ],
+      name: "first",
+      source: "/tmp/openclaw/first/Spawnfile"
+    });
+    const second = createAgentNode("openclaw", {
+      mcpServers: [
+        {
+          auth: { secret: "SECOND_MCP_TOKEN" },
+          name: "second-search",
+          transport: "sse",
+          url: "https://second.example/mcp"
+        }
+      ],
+      name: "second",
+      source: "/tmp/openclaw/second/Spawnfile"
+    });
+    const compiledFirst = await openClawAdapter.compileAgent(first);
+    const compiledSecond = await openClawAdapter.compileAgent(second);
+    const result = await createContainerArtifacts(createPlan(["openclaw"]), [
+      {
+        emittedFiles: compiledFirst.files,
+        id: "agent:first",
+        kind: "agent",
+        runtimeName: "openclaw",
+        slug: "first",
+        value: first
+      },
+      {
+        emittedFiles: compiledSecond.files,
+        id: "agent:second",
+        kind: "agent",
+        runtimeName: "openclaw",
+        slug: "second",
+        value: second
+      }
+    ]);
+
+    const firstConfigFile = result.files.find((file) =>
+      file.path.endsWith("/agent-first/home/.openclaw/openclaw.json")
+    );
+    const secondConfigFile = result.files.find((file) =>
+      file.path.endsWith("/agent-second/home/.openclaw/openclaw.json")
+    );
+    const entrypoint = result.files.find((file) => file.path === "entrypoint.sh")?.content ?? "";
+    const envExample = result.files.find((file) => file.path === ".env.example")?.content ?? "";
+    const distributionReport = result.files.find((file) => file.path === "distribution-report.json")?.content ?? "";
+    const firstConfig = JSON.parse(firstConfigFile!.content);
+    const secondConfig = JSON.parse(secondConfigFile!.content);
+    const firstBindingLine = entrypoint
+      .split("\n")
+      .find((line) => line.includes("agent-first/home/.openclaw/openclaw.json") && line.includes("apply_json_env_value"));
+    const secondBindingLine = entrypoint
+      .split("\n")
+      .find((line) => line.includes("agent-second/home/.openclaw/openclaw.json") && line.includes("apply_json_env_value"));
+
+    expect(firstConfig.mcp.servers["first-search"].headers).toEqual({ Authorization: "" });
+    expect(secondConfig.mcp.servers["second-search"].headers).toEqual({ SECOND_MCP_TOKEN: "" });
+    expect(result.report.secrets_required).toEqual([
+      "FIRST_MCP_TOKEN",
+      "OPENCLAW_GATEWAY_TOKEN",
+      "SECOND_MCP_TOKEN"
+    ]);
+    expect(result.report.runtime_secrets_required).toContain("FIRST_MCP_TOKEN");
+    expect(envExample).toContain("FIRST_MCP_TOKEN=");
+    expect(envExample).toContain("SECOND_MCP_TOKEN=");
+    expect(distributionReport).toContain("FIRST_MCP_TOKEN");
+    expect(distributionReport).toContain("SECOND_MCP_TOKEN");
+    expect([firstConfigFile!.content, secondConfigFile!.content, entrypoint, envExample, distributionReport].join("\n"))
+      .not.toContain("sample-resolved-token");
+    expect(firstBindingLine).toContain("FIRST_MCP_TOKEN");
+    expect(firstBindingLine).not.toContain("SECOND_MCP_TOKEN");
+    expect(firstBindingLine).toContain("'bearer'");
+    expect(secondBindingLine).toContain("SECOND_MCP_TOKEN");
+    expect(secondBindingLine).not.toContain("FIRST_MCP_TOKEN");
+    expect(secondBindingLine).not.toContain("'bearer'");
+  });
+
+  it("isolates PicoClaw MCP secrets and auth modes across targets", async () => {
+    const first = createAgentNode("picoclaw", {
+      mcpServers: [
+        {
+          auth: { mode: "bearer", secret: "PICO_FIRST_TOKEN" },
+          name: "shared.mcp",
+          transport: "streamable_http",
+          url: "https://first.example/mcp"
+        }
+      ],
+      name: "first",
+      source: "/tmp/picoclaw/first/Spawnfile"
+    });
+    const second = createAgentNode("picoclaw", {
+      mcpServers: [
+        {
+          auth: { secret: "PICO_SECOND_TOKEN" },
+          name: "shared.mcp",
+          transport: "sse",
+          url: "https://second.example/mcp"
+        }
+      ],
+      name: "second",
+      source: "/tmp/picoclaw/second/Spawnfile"
+    });
+    const compiledFirst = await picoClawAdapter.compileAgent(first);
+    const compiledSecond = await picoClawAdapter.compileAgent(second);
+    const result = await createContainerArtifacts(createPlan(["picoclaw"]), [
+      {
+        emittedFiles: compiledFirst.files,
+        id: "agent:first",
+        kind: "agent",
+        runtimeName: "picoclaw",
+        slug: "first",
+        value: first
+      },
+      {
+        emittedFiles: compiledSecond.files,
+        id: "agent:second",
+        kind: "agent",
+        runtimeName: "picoclaw",
+        slug: "second",
+        value: second
+      }
+    ]);
+    const entrypoint = result.files.find((file) => file.path === "entrypoint.sh")?.content ?? "";
+    const firstBinding = entrypoint
+      .split("\n")
+      .find((line) => line.includes("agent-first") && line.includes("apply_json_env_value"));
+    const secondBinding = entrypoint
+      .split("\n")
+      .find((line) => line.includes("agent-second") && line.includes("apply_json_env_value"));
+    const firstConfig = JSON.parse(
+      result.files.find((file) => file.path.endsWith("/agent-first/picoclaw/config.json"))!.content
+    );
+    const secondConfig = JSON.parse(
+      result.files.find((file) => file.path.endsWith("/agent-second/picoclaw/config.json"))!.content
+    );
+
+    expect(firstConfig.tools.mcp.servers["shared.mcp"].headers).toEqual({ Authorization: "" });
+    expect(secondConfig.tools.mcp.servers["shared.mcp"].headers).toEqual({ PICO_SECOND_TOKEN: "" });
+    expect(firstBinding).toContain("PICO_FIRST_TOKEN");
+    expect(firstBinding).not.toContain("PICO_SECOND_TOKEN");
+    expect(firstBinding).toContain("'bearer'");
+    expect(secondBinding).toContain("PICO_SECOND_TOKEN");
+    expect(secondBinding).not.toContain("PICO_FIRST_TOKEN");
+    expect(secondBinding).not.toContain("'bearer'");
   });
 
   it("renders Discord surface secrets when an agent declares Discord", async () => {
@@ -204,6 +388,7 @@ describe("createContainerArtifacts", () => {
         value: moltnetNode
       }
     ], {
+      hasStagedMoltnetBinaries: true,
       moltnet: {
         files: [],
         nodePlans: [],
@@ -236,6 +421,171 @@ describe("createContainerArtifacts", () => {
     expect(dockerfile).toContain(
       "touch '/var/lib/spawnfile/moltnet/networks/local-lab/.spawnfile-volume-init'"
     );
+  });
+
+  it("includes durable sqlite stores as container memory artifacts", async () => {
+    const node = createAgentNode("openclaw", { source: "/tmp/openclaw/memory" });
+    const compiled = await openClawAdapter.compileAgent(node);
+    const memoryPlan: CompilePlan = {
+      ...createPlan(["openclaw"]),
+      nodes: [
+        {
+          id: "agent:assistant",
+          kind: "agent",
+          runtimeName: "openclaw",
+          slug: "assistant",
+          value: node
+        }
+      ],
+      memoryAccess: [
+        {
+          agentSource: "/tmp/openclaw/memory",
+          declaringKind: "agent",
+          source: "/tmp/openclaw/memory",
+          bank: createMemoryBank("/tmp/openclaw/memory", {
+            kind: "sqlite",
+            path: "/var/lib/spawnfile/memory/assistant/shared-memory/memory.sqlite",
+            persistence: { mode: "durable" }
+          })
+        }
+      ]
+    };
+    const result = await createContainerArtifacts(memoryPlan, [
+      {
+        emittedFiles: compiled.files,
+        kind: "agent",
+        runtimeName: "openclaw",
+        slug: "assistant",
+        value: node
+      }
+    ]);
+    const dockerfile = result.files.find((file) => file.path === "Dockerfile")?.content ?? "";
+    // Project-scoped (plan.root here is "/tmp/Spawnfile") via
+    // createPersistentVolumeName rather than a bare path slug; no
+    // NOOPOLIS_RUN_ID is set in this test process env, so no run segment.
+    const expectedVolumeName = createPersistentVolumeName(
+      "/tmp/Spawnfile",
+      "memory-var-lib-spawnfile-memory-assistant-shared-memory"
+    );
+
+    expect(result.report.memory).toEqual([
+      {
+        accessible_node_ids: ["agent:assistant"],
+        declaring_node_id: "agent:assistant",
+        id: "shared-memory",
+        store: {
+          kind: "sqlite",
+          path: "/var/lib/spawnfile/memory/assistant/shared-memory/memory.sqlite",
+          persistence: "durable",
+          persistent_mount_id: "memory-var-lib-spawnfile-memory-assistant-shared-memory"
+        },
+        transport_by_node_id: {
+          "agent:assistant": "mcp"
+        },
+        index: {
+          graph: { enabled: false },
+          lexical: { enabled: true },
+          rerank: { enabled: false },
+          vector: { enabled: false }
+        },
+        consolidation: { mode: "disabled" },
+        retention: { forgetting: "manual" }
+      }
+    ]);
+    expect(result.distribution.report.persistent_mounts).toEqual([
+      {
+        durability: "persistent",
+        id: "memory-var-lib-spawnfile-memory-assistant-shared-memory",
+        kind: "volume",
+        target: "/var/lib/spawnfile/memory/assistant/shared-memory"
+      }
+    ]);
+    expect(result.report.persistent_mounts).toEqual([
+      {
+        id: "memory-var-lib-spawnfile-memory-assistant-shared-memory",
+        mount_path: "/var/lib/spawnfile/memory/assistant/shared-memory",
+        reason: "durable memory stores under /var/lib/spawnfile/memory/assistant/shared-memory",
+        volume_name: expectedVolumeName
+      }
+    ]);
+    expect(dockerfile).toContain(
+      "mkdir -p '/var/lib/spawnfile' '/var/lib/spawnfile/memory/assistant/shared-memory'"
+    );
+    expect(dockerfile).toContain(
+      "touch '/var/lib/spawnfile/memory/assistant/shared-memory/.spawnfile-volume-init'"
+    );
+  });
+
+  it("omits ephemeral sqlite/postgres/memory stores from persistent mounts", async () => {
+    const node = createAgentNode("openclaw", { source: "/tmp/openclaw/ephemeral-memory" });
+    const compiled = await openClawAdapter.compileAgent(node);
+    const memoryPlan: CompilePlan = {
+      ...createPlan(["openclaw"]),
+      nodes: [
+        {
+          id: "agent:assistant",
+          kind: "agent",
+          runtimeName: "openclaw",
+          slug: "assistant",
+          value: node
+        }
+      ],
+      memoryAccess: [
+        {
+          agentSource: "/tmp/openclaw/ephemeral-memory",
+          declaringKind: "agent",
+          source: "/tmp/openclaw/ephemeral-memory",
+          bank: {
+            ...createMemoryBank("/tmp/openclaw/ephemeral-memory", {
+              kind: "sqlite",
+              path: "/tmp/assistant/ephemeral.sqlite",
+              persistence: { mode: "ephemeral" }
+            }),
+            id: "ephemeral-sqlite"
+          }
+        },
+        {
+          agentSource: "/tmp/openclaw/ephemeral-memory",
+          declaringKind: "agent",
+          source: "/tmp/openclaw/ephemeral-memory",
+          bank: {
+            ...createMemoryBank("/tmp/openclaw/ephemeral-memory", {
+              kind: "memory"
+            }),
+            id: "memory-only"
+          }
+        },
+        {
+          agentSource: "/tmp/openclaw/ephemeral-memory",
+          declaringKind: "agent",
+          source: "/tmp/openclaw/ephemeral-memory",
+          bank: {
+            ...createMemoryBank("/tmp/openclaw/ephemeral-memory", {
+              kind: "postgres",
+              dsn_secret: "POSTGRES_DSN"
+            }),
+            id: "remote-postgres"
+          }
+        }
+      ]
+    };
+    const result = await createContainerArtifacts(memoryPlan, [
+      {
+        emittedFiles: compiled.files,
+        kind: "agent",
+        runtimeName: "openclaw",
+        slug: "assistant",
+        value: node
+      }
+    ]);
+
+    expect(result.distribution.report.persistent_mounts).toEqual([]);
+    expect(result.report.persistent_mounts).toBeUndefined();
+    expect(result.report.memory?.map((memory) => memory.store.kind).sort()).toEqual([
+      "memory",
+      "postgres",
+      "sqlite"
+    ]);
   });
 
   it("renders workspace resource startup and report metadata", async () => {
@@ -483,7 +833,7 @@ describe("createContainerArtifacts", () => {
 
     expect(dockerfile).toContain("FROM debian:bookworm-slim");
     expect(dockerfile).toContain(
-      "COPY --from=noopolis/spawnfile-runtime-picoclaw:0.2.9 /opt/spawnfile/runtime-installs/picoclaw /opt/spawnfile/runtime-installs/picoclaw"
+      "COPY --from=noopolis/spawnfile-runtime-picoclaw:0.3.1 /opt/spawnfile/runtime-installs/picoclaw /opt/spawnfile/runtime-installs/picoclaw"
     );
     expect(dockerfile).toContain(
       "RUN mkdir -p /usr/local/bin && ln -sf /opt/spawnfile/runtime-installs/picoclaw/bin/picoclaw /usr/local/bin/picoclaw"
@@ -535,7 +885,7 @@ describe("createContainerArtifacts", () => {
         "container/rootfs/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw/config.json"
     );
 
-    expect(result.report.model_secrets_required).toEqual([]);
+    expect(result.report.model_secrets_required).toEqual(["SPAWNFILE_CLI_AUTH_JSON"]);
     expect(result.report.runtime_instances).toEqual([
       {
         config_path: "/var/lib/spawnfile/instances/picoclaw/agent-assistant/picoclaw/config.json",
@@ -545,7 +895,7 @@ describe("createContainerArtifacts", () => {
         model_auth_methods: {
           openai: "codex"
         },
-        model_secrets_required: [],
+        model_secrets_required: ["SPAWNFILE_CLI_AUTH_JSON"],
         node_ids: ["agent:assistant"],
         published_port: null,
         runtime: "picoclaw",
@@ -590,7 +940,7 @@ describe("createContainerArtifacts", () => {
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain("USER root");
     expect(dockerfile).toContain(
-      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.8 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
+      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.11 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
     );
     expect(dockerfile).not.toContain("ghcr.io/openclaw/openclaw");
     expect(dockerfile).not.toContain("runtime-sources");
@@ -599,6 +949,61 @@ describe("createContainerArtifacts", () => {
       "'/opt/spawnfile/runtime-installs/openclaw/openclaw.mjs'"
     );
     expect(stateKeepFile?.content).toBe("");
+  });
+
+  it("renders recipe.env NOOPOLIS_RUN_ID into the container run-time env, never the Dockerfile build layer", async () => {
+    const node = createAgentNode("openclaw");
+    const compiled = await openClawAdapter.compileAgent(node);
+
+    vi.spyOn(runtimeIndex, "createRuntimeInstallRecipe").mockResolvedValue({
+      commands: [],
+      copyCommands: [],
+      env: { NOOPOLIS_RUN_ID: "run-abc123" },
+      runtimeName: "openclaw",
+      runtimeRoot: "/usr/local/lib/node_modules/openclaw"
+    });
+
+    const result = await createContainerArtifacts(createPlan(["openclaw"]), [
+      {
+        emittedFiles: compiled.files,
+        kind: "agent",
+        runtimeName: "openclaw",
+        slug: "assistant",
+        value: node
+      }
+    ]);
+
+    const dockerfile = result.files.find((file) => file.path === "Dockerfile")?.content ?? "";
+    const entrypoint = result.files.find((file) => file.path === "entrypoint.sh")?.content ?? "";
+
+    expect(entrypoint).toContain("NOOPOLIS_RUN_ID='run-abc123'");
+    expect(dockerfile).not.toContain("NOOPOLIS_RUN_ID");
+  });
+
+  it("emits no NOOPOLIS_RUN_ID assignment when the recipe env is empty", async () => {
+    const node = createAgentNode("openclaw");
+    const compiled = await openClawAdapter.compileAgent(node);
+
+    vi.spyOn(runtimeIndex, "createRuntimeInstallRecipe").mockResolvedValue({
+      commands: [],
+      copyCommands: [],
+      env: {},
+      runtimeName: "openclaw",
+      runtimeRoot: "/usr/local/lib/node_modules/openclaw"
+    });
+
+    const result = await createContainerArtifacts(createPlan(["openclaw"]), [
+      {
+        emittedFiles: compiled.files,
+        kind: "agent",
+        runtimeName: "openclaw",
+        slug: "assistant",
+        value: node
+      }
+    ]);
+
+    const entrypoint = result.files.find((file) => file.path === "entrypoint.sh")?.content ?? "";
+    expect(entrypoint).not.toContain("NOOPOLIS_RUN_ID");
   });
 
   it("does not hard-require model auth env vars in the generated entrypoint", async () => {
@@ -689,6 +1094,7 @@ describe("createContainerArtifacts", () => {
     vi.spyOn(runtimeIndex, "createRuntimeInstallRecipe").mockResolvedValue({
       commands: [],
       copyCommands: [],
+      env: {},
       runtimeName: "openclaw",
       runtimeRoot: "/opt/runtime/openclaw"
     });
@@ -713,6 +1119,37 @@ describe("createContainerArtifacts", () => {
     ).rejects.toThrow(
       "Container target openclaw-shared declares conflicting package definitions for apt package curl"
     );
+  });
+
+  it("records engine: scripted for a pi runtime instance on the compile report (Piece 5 disclosure)", async () => {
+    const fixtureRoot = fileURLToPath(
+      new URL("../../test/fixtures/e2e/office-sim/harness", import.meta.url)
+    );
+    const node = createPiTestNode({
+      name: "eleanor",
+      runtime: { name: "pi", options: { engine: "scripted", engine_command: "office-engine.mjs" } },
+      source: path.join(fixtureRoot, "Spawnfile")
+    });
+    const compiled = await piAdapter.compileAgent(node);
+
+    const result = await createContainerArtifacts(createPlan(["pi"]), [
+      {
+        emittedFiles: compiled.files,
+        id: "agent:eleanor",
+        kind: "agent",
+        runtimeName: "pi",
+        slug: "eleanor",
+        value: node
+      }
+    ]);
+
+    expect(result.report.runtime_instances).toEqual([
+      expect.objectContaining({
+        engine_by_node_id: { "agent:eleanor": "scripted" },
+        id: "pi-app",
+        runtime: "pi"
+      })
+    ]);
   });
 });
 

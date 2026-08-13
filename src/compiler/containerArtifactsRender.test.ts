@@ -335,7 +335,7 @@ describe("renderDockerfile", () => {
     );
   });
 
-  it("installs moltnet from the public installer when requested", async () => {
+  it("installs python3 when Moltnet node endpoints can be rebound at runtime", async () => {
     const { renderDockerfile } = await loadRenderModule({
       openclaw: {
         commands: [],
@@ -346,6 +346,34 @@ describe("renderDockerfile", () => {
     });
 
     const dockerfile = await renderDockerfile(
+      [createRuntimePlan("openclaw")],
+      {
+        hasMoltnet: true,
+        hasStagedMoltnetBinaries: true,
+        moltnet: {
+          nodePlans: [{
+            configPath: "/var/lib/spawnfile/moltnet/nodes/agent.json",
+            networkId: "pitch"
+          }],
+          serverPlans: []
+        }
+      }
+    );
+
+    expect(dockerfile).toContain("python3");
+  });
+
+  it("rejects Moltnet without a pinned stamped release instead of installing latest", async () => {
+    const { renderDockerfile } = await loadRenderModule({
+      openclaw: {
+        commands: [],
+        copyCommands: [],
+        runtimeName: "openclaw",
+        runtimeRoot: "/usr/local/lib/node_modules/openclaw"
+      }
+    });
+
+    await expect(renderDockerfile(
       [
         createRuntimePlan("openclaw", {
           meta: {
@@ -362,19 +390,7 @@ describe("renderDockerfile", () => {
         })
       ],
       { hasMoltnet: true }
-    );
-
-    expect(dockerfile).not.toContain("FROM golang:1.24-bookworm AS moltnet-builder");
-    expect(dockerfile).not.toContain("COPY moltnet-bin/ /usr/local/bin/");
-    expect(dockerfile).toContain(
-      "RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl tar"
-    );
-    expect(dockerfile).toContain(
-      "ADD https://api.github.com/repos/noopolis/moltnet/releases/latest /tmp/spawnfile-moltnet-release.json"
-    );
-    expect(dockerfile).toContain(
-      "RUN MOLTNET_RELEASE=\"$(sed -n 's/.*\\\"tag_name\\\": *\\\"\\([^\\\"]*\\)\\\".*/\\1/p' /tmp/spawnfile-moltnet-release.json | head -n 1)\" && echo \"Installing Moltnet ${MOLTNET_RELEASE:-latest}\" && MOLTNET_INSTALL_DIR=/usr/local/bin sh -c 'curl -fsSL https://moltnet.dev/install.sh | sh'"
-    );
+    )).rejects.toThrow(/unpinned latest installation is disabled/u);
   });
 
   it("installs staged moltnet binaries when a local release is configured", async () => {
@@ -482,7 +498,7 @@ describe("renderDockerfile", () => {
       daimon: {
         commands: [],
         copyCommands: [
-          "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.1 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
+          "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.2 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
         ],
         runtimeName: "daimon",
         runtimeRoot: "/opt/spawnfile/runtime-installs/daimon"
@@ -490,7 +506,7 @@ describe("renderDockerfile", () => {
       openclaw: {
         commands: [],
         copyCommands: [
-          "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.8 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
+          "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.11 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
         ],
         runtimeName: "openclaw",
         runtimeRoot: "/opt/spawnfile/runtime-installs/openclaw"
@@ -528,10 +544,10 @@ describe("renderDockerfile", () => {
 
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain(
-      "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.1 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
+      "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.2 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
     );
     expect(dockerfile).toContain(
-      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.8 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
+      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.11 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
     );
     expect(dockerfile).not.toContain("npm install --omit=dev --no-fund --no-audit @noopolis/daimon");
     expect(dockerfile.indexOf("COPY --from=noopolis/spawnfile-runtime-daimon")).toBeLessThan(
@@ -588,6 +604,72 @@ describe("renderEntrypoint", () => {
 
     expect(entrypoint).toContain('if [ -z "${!name:-}" ]; then');
     expect(entrypoint).toContain('printf %s "${!name:-}" > "$target"');
+  });
+
+  it("renders recipeEnv into the exec-time env prefix, not the Dockerfile", async () => {
+    const { renderEntrypoint } = await loadRenderModule({
+      openclaw: {
+        commands: [],
+        copyCommands: [],
+        runtimeName: "openclaw",
+        runtimeRoot: "/opt/runtime/openclaw"
+      }
+    });
+
+    const entrypoint = renderEntrypoint(
+      [
+        createRuntimePlan("openclaw", {
+          meta: {
+            configFileName: "openclaw.json",
+            instancePaths: {
+              configPathTemplate: "<instance-root>/openclaw.json",
+              homePathTemplate: "<instance-root>/home",
+              workspacePathTemplate: "<instance-root>/workspace"
+            },
+            standaloneBaseImage: "node:24-bookworm-slim",
+            startCommand: ["node", "<runtime-root>/openclaw.mjs"],
+            systemDeps: []
+          },
+          recipeEnv: { NOOPOLIS_RUN_ID: "run-abc123" }
+        })
+      ],
+      []
+    );
+
+    expect(entrypoint).toContain("NOOPOLIS_RUN_ID='run-abc123' exec");
+  });
+
+  it("emits no env assignment when recipeEnv is empty", async () => {
+    const { renderEntrypoint } = await loadRenderModule({
+      openclaw: {
+        commands: [],
+        copyCommands: [],
+        runtimeName: "openclaw",
+        runtimeRoot: "/opt/runtime/openclaw"
+      }
+    });
+
+    const entrypoint = renderEntrypoint(
+      [
+        createRuntimePlan("openclaw", {
+          meta: {
+            configFileName: "openclaw.json",
+            instancePaths: {
+              configPathTemplate: "<instance-root>/openclaw.json",
+              homePathTemplate: "<instance-root>/home",
+              workspacePathTemplate: "<instance-root>/workspace"
+            },
+            standaloneBaseImage: "node:24-bookworm-slim",
+            startCommand: ["node", "<runtime-root>/openclaw.mjs"],
+            systemDeps: []
+          },
+          recipeEnv: {}
+        })
+      ],
+      []
+    );
+
+    expect(entrypoint).not.toContain("NOOPOLIS_RUN_ID");
   });
 
   it("replaces runtime start-command placeholders", async () => {

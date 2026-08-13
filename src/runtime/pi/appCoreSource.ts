@@ -1,185 +1,26 @@
-export const renderPiCoreSource = (): string => String.raw`const createConfigModel = (agentConfig) => ({
-  provider: typeof agentConfig?.model?.provider === "string"
-    ? agentConfig.model.provider
-    : "openai-codex",
-  name: typeof agentConfig?.model?.name === "string"
-    ? agentConfig.model.name
-    : "gpt-5.4-mini"
+import { renderPiControlSource } from "./appControlSource.js";
+import { renderPiWakeContextSource } from "./appWakeContextSource.js";
+
+export interface RenderPiCoreSourceOptions {
+  world?: boolean;
+}
+
+export const renderPiCoreSource = (
+  options: RenderPiCoreSourceOptions = {}
+): string => String.raw`const createConfigModel = (agentConfig) => ({
+  provider: typeof agentConfig?.model?.provider === "string" ? agentConfig.model.provider : "openai-codex",
+  name: typeof agentConfig?.model?.name === "string" ? agentConfig.model.name : "gpt-5.4-mini"
 });
 
 const normalizeWakeKind = (value) => {
-  return value === "manual" || value === "message" || value === "schedule"
+  return value === "manual" || value === "message" || value === "schedule" || value === "dream"
     ? value
     : "message";
 };
 
-const rebuildAgentKeys = (agents) => {
-  const keys = new Map();
-  for (const agent of agents) {
-    const candidates = [
-      agent.config.id,
-      agent.config.name,
-      agent.config.slug,
-      typeof agent.config.id === "string" && agent.config.id.startsWith("agent:")
-        ? agent.config.id.slice("agent:".length)
-        : ""
-    ];
-    for (const candidate of candidates) {
-      if (typeof candidate === "string" && candidate.length > 0) {
-        keys.set(candidate, agent);
-      }
-    }
-  }
-  return keys;
-};
+${renderPiWakeContextSource()}
 
-const formatControlEventId = (payload, fallbackPrefix) => {
-  if (typeof payload.event_id === "string" && payload.event_id.length > 0) {
-    return payload.event_id;
-  }
-  if (typeof payload.context_id === "string" && payload.context_id.length > 0) {
-    return payload.context_id + ":" + Date.now();
-  }
-  return fallbackPrefix + Date.now();
-};
-
-const loadManagedAgent = async (agents, configPath, slug, instanceRoot, services) => {
-  const config = await readJson(configPath);
-  const agentConfig = (config.agents ?? []).find((agent) => agent.slug === slug || agent.id === slug || agent.name === slug);
-  if (!agentConfig) {
-    throw new Error("unknown agent " + slug);
-  }
-
-  const oldIndex = agents.findIndex((agent) => agent.config.slug === agentConfig.slug || agent.config.id === agentConfig.id || agent.config.name === agentConfig.name);
-  if (oldIndex >= 0) {
-    agents[oldIndex].stop();
-    agents.splice(oldIndex, 1);
-  }
-
-  const managed = new PiManagedAgent(agentConfig, {
-    runtimeHomePath: path.join(instanceRoot, "runtime", "agents", agentConfig.slug),
-    homePath: path.join(instanceRoot, "home"),
-    workspacePath: path.join(instanceRoot, "workspace", "agents", agentConfig.slug)
-  }, services);
-  await managed.start();
-  agents.push(managed);
-  return managed;
-};
-
-const startControlServer = async (agents, portValue, configPath, instanceRoot, services) => {
-  if (!portValue) {
-    return null;
-  }
-  const port = Number(portValue);
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error("Invalid SPAWNFILE_PI_CONTROL_PORT: " + portValue);
-  }
-
-  let agentsByKey = rebuildAgentKeys(agents);
-
-  const server = createServer(async (request, response) => {
-    const url = new URL(request.url ?? "/", "http://127.0.0.1");
-
-    if (request.method === "GET" && url.pathname === "/healthz") {
-      sendJson(response, 200, { status: "ok" });
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/spawnfile/agents") {
-      sendJson(response, 200, {
-        agents: agents.map((agent) => ({
-          id: agent.config.id,
-          name: agent.config.name,
-          slug: agent.config.slug
-        }))
-      });
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/spawnfile/activity") {
-      sendJson(response, 200, { events: services.activity.list(url.searchParams.get("agent"), url.searchParams.get("tail")) });
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/spawnfile/activity/stream") {
-      services.activity.stream(request, response, url.searchParams.get("agent"), url.searchParams.get("tail"));
-      return;
-    }
-
-    const activityMatch = /^\/spawnfile\/agents\/([^/]+)\/activity(\/stream)?$/u.exec(url.pathname);
-    if (request.method === "GET" && activityMatch) {
-      const agentFilter = decodeURIComponent(activityMatch[1]);
-      if (activityMatch[2]) {
-        services.activity.stream(request, response, agentFilter, url.searchParams.get("tail"));
-      } else {
-        sendJson(response, 200, { events: services.activity.list(agentFilter, url.searchParams.get("tail")) });
-      }
-      return;
-    }
-
-    if (request.method === "POST" && (url.pathname === "/spawnfile/agents/load" || url.pathname === "/spawnfile/agents/restart")) {
-      try {
-        const payload = await readRequestJson(request);
-        const slug = typeof payload.slug === "string"
-          ? payload.slug
-          : typeof payload.agent === "string"
-            ? payload.agent
-            : "";
-        const agent = await loadManagedAgent(agents, configPath, slug, instanceRoot, services);
-        agentsByKey = rebuildAgentKeys(agents);
-        sendJson(response, 200, { id: agent.config.id, loaded: true, name: agent.config.name, slug: agent.config.slug });
-      } catch (error) {
-        sendJson(response, 400, { error: error instanceof Error ? error.message : String(error) });
-      }
-      return;
-    }
-
-    const match = /^\/agents\/([^/]+)\/wake$/u.exec(url.pathname);
-    if (request.method !== "POST" || !match) {
-      sendJson(response, 404, { error: "not found" });
-      return;
-    }
-
-    const key = decodeURIComponent(match[1]);
-    const agent = agentsByKey.get(key);
-    if (!agent) {
-      sendJson(response, 404, { error: "unknown agent " + key });
-      return;
-    }
-
-    try {
-      const payload = await readRequestJson(request);
-      if (typeof payload.message !== "string" || payload.message.trim().length === 0) {
-        sendJson(response, 200, { from: agent.config.id, message: "" });
-        return;
-      }
-      const eventId = formatControlEventId(payload, "message-");
-      const message = await agent.wake({
-        id: eventId,
-        kind: normalizeWakeKind(typeof payload.wake_kind === "string" ? payload.wake_kind : payload.kind),
-        from: typeof payload.from === "string" ? payload.from : "moltnet",
-        text: controlEventText(payload)
-      });
-
-      sendJson(response, 200, {
-        from: agent.config.id,
-        message
-      });
-    } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : String(error) });
-    }
-  });
-
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(port, "127.0.0.1", () => {
-      server.off("error", reject);
-      resolve();
-    });
-  });
-  console.log("[pi] control listening on 127.0.0.1:" + port);
-  return server;
-};
+${renderPiControlSource()}
 
 class PiManagedAgent {
   constructor(config, paths, services) {
@@ -191,7 +32,10 @@ class PiManagedAgent {
       ? new PiHarnessAdapter({
           authPath: path.join(paths.homePath, ".pi", "agent", "auth.json"),
           modelsPath: path.join(paths.homePath, ".pi", "agent", "models.json"),
-          model: createConfigModel(config)
+          model: createConfigModel(config),
+          memory: createMemoryRuntimeOptions(config),
+          rawTrainingCapture: config.raw_training_capture,
+          thinkingLevel: config.thinking_level${options.world ? ",\n          world: config.world" : ""}
         })
       : null;
     this.running = false;
@@ -199,11 +43,10 @@ class PiManagedAgent {
   }
   async start() {
     if (this.engine === "pi") {
-      const identityPrompt = createIdentityPrompt(this.config, this.paths.workspacePath);
       this.handle = await this.adapter.startAgent({
         id: this.config.id,
         name: this.config.name,
-        instructions: this.config.instructions + "\n\n" + identityPrompt,
+        instructions: createAgentInstructions(this.config, this.paths.workspacePath),
         runtimeHomePath: this.paths.runtimeHomePath,
         tools: this.config.tools,
         workspacePath: this.paths.workspacePath
@@ -212,6 +55,9 @@ class PiManagedAgent {
       this.handle = new CliEngineAgentHandle(this.config, this.paths);
     }
     this.publish("agent.loaded", { engine: this.engine });
+  }
+  listDreamEnvironmentKeys() {
+    return listDreamEnvironmentKeys(this.paths.workspacePath);
   }
   publish(type, fields = {}) {
     this.services.activity?.publish({
@@ -224,12 +70,42 @@ class PiManagedAgent {
     });
   }
   async wake(event) {
+    const enriched = await enrichWakeContext(this.paths.workspacePath, event);
+    const messageFrom = asStringOrUndefined(enriched.messageFrom);
+    const isRoomWake = enriched.isRoomWake;
+    const deliveryFrom = asStringOrUndefined(event.delivery?.sender);
+    const from = deliveryFrom ?? (isRoomWake
+      ? "moltnet"
+      : (asStringOrUndefined(enriched.eventFrom) ?? messageFrom ?? "moltnet"));
+    const kind = normalizeWakeKind(event.kind);
+    const rawText = typeof event.text === "string" ? event.text : "";
+    const resolvedContext = enriched.context;
+    const context = asObject(resolvedContext) ? {
+      ...resolvedContext,
+      activeEnvironment: enriched.activeEnvironment,
+      active_environment: enriched.activeEnvironment
+    } : enriched.context;
+    const promptFrom = isRoomWake ? messageFrom : from;
+    const contextualText = kind === "message" || kind === "manual"
+      ? controlEventText({ ...event, message: rawText, from: promptFrom, activeEnvironment: enriched.activeEnvironment })
+      : [
+          rawText,
+          ...formatActiveEnvironmentBlock(enriched.activeEnvironment)
+        ].filter((line) => line.trim().length > 0).join("\n\n");
+
+    const enrichedEvent = {
+      ...event,
+      context,
+      from,
+      text: contextualText,
+    };
+
     return new Promise((resolve, reject) => {
-      this.queued.push({ event, reject, resolve });
+      this.queued.push({ event: enrichedEvent, reject, resolve });
       this.publish("agent.wake.queued", {
         queue_length: this.queued.length,
         wake_id: event.id,
-        wake_kind: event.kind
+        wake_kind: kind
       });
       void this.drainQueue();
     });
@@ -261,10 +137,14 @@ class PiManagedAgent {
     });
     try {
       const result = await this.handle.wake({
+        context: event.context,
+        context_id: event.context_id,
+        delivery: event.delivery,
         id: event.id,
         kind: event.kind,
         from: event.from,
-        text: event.text
+        text: event.text,
+        transportText: event.transportText
       });
       const finalText = typeof result.text === "string" ? result.text.trim() : "";
       console.log("[pi:" + this.config.id + "] " + finalText);
@@ -278,6 +158,7 @@ class PiManagedAgent {
       this.publish("agent.turn.completed", {
         duration_ms: result.durationMs ?? (Date.now() - startedAt),
         output_length: finalText.length,
+        trace_path: turnTracePath(this.paths, event.id),
         wake_id: event.id,
         wake_kind: event.kind
       });
@@ -287,6 +168,7 @@ class PiManagedAgent {
       this.publish("agent.turn.failed", {
         duration_ms: Date.now() - startedAt,
         error: formatActivityError(error),
+        trace_path: turnTracePath(this.paths, event.id),
         wake_id: event.id,
         wake_kind: event.kind
       });
@@ -307,15 +189,17 @@ const main = async () => {
 
   const config = await readJson(configPath);
   const instanceRoot = path.resolve(path.dirname(configPath), "..");
-  const activity = createActivityBroker();
+  const activityLogPath = path.join(instanceRoot, "runtime", "activity.ndjson");
+  await mkdir(path.dirname(activityLogPath), { recursive: true });
+  const activity = createActivityBroker({ logPath: activityLogPath });
   const services = { activity };
   const agents = [];
 
   for (const agentConfig of config.agents ?? []) {
     const managed = new PiManagedAgent(
-      agentConfig,
-      {
-      runtimeHomePath: path.join(instanceRoot, "runtime", "agents", agentConfig.slug),
+        agentConfig,
+        {
+          runtimeHomePath: path.join(instanceRoot, "runtime", "agents", agentConfig.slug),
         homePath: path.join(instanceRoot, "home"),
         workspacePath: path.join(instanceRoot, "workspace", "agents", agentConfig.slug)
       },
@@ -331,39 +215,7 @@ const main = async () => {
     ? null
     : await startControlServer(agents, process.env.SPAWNFILE_PI_CONTROL_PORT, configPath, instanceRoot, services);
 
-  let scheduledCount = 0;
-  for (const agent of agents) {
-    if (agent.config.schedule?.kind !== "every" || !agent.config.schedule.every) {
-      continue;
-    }
-
-    const intervalMs = parseEveryMs(agent.config.schedule.every);
-    const createEvent = () => ({
-      id: "schedule-" + agent.config.id + "-" + Date.now(),
-      kind: "schedule",
-      from: "scheduler",
-      text: agent.config.schedule.prompt ?? "Run the scheduled Spawnfile task."
-    });
-    scheduledCount += 1;
-
-    if (runOnce) {
-      await agent.wake(createEvent());
-      continue;
-    }
-
-    const timer = setInterval(() => {
-      void agent.wake(createEvent()).catch((error) => {
-        console.error("[pi:" + agent.config.id + "] scheduled wake error: " + (error instanceof Error ? error.message : String(error)));
-      });
-    }, intervalMs);
-    timers.push(timer);
-
-    setTimeout(() => {
-      void agent.wake(createEvent()).catch((error) => {
-        console.error("[pi:" + agent.config.id + "] initial wake error: " + (error instanceof Error ? error.message : String(error)));
-      });
-    }, 100);
-  }
+  const scheduledCount = await installAgentSchedules(agents, timers, runOnce);
 
   if (runOnce) {
     if (scheduledCount === 0) {

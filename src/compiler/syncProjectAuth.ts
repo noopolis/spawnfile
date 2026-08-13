@@ -13,6 +13,7 @@ import { listAgentSurfaceSecretNames } from "./agentSurfaces.js";
 import { buildCompilePlan } from "./buildCompilePlan.js";
 import { listMoltnetNetworkSecretNames } from "./compilePlanHelpers.js";
 import {
+  CLI_CREDENTIAL_SECRET_NAME,
   listExecutionModelSecretNames,
   resolveExecutionModelAuthMethods
 } from "./modelEnv.js";
@@ -76,6 +77,9 @@ const resolveAuthRequirements = async (
     }
 
     for (const envName of listExecutionModelSecretNames(node.value.execution)) {
+      if (envName === CLI_CREDENTIAL_SECRET_NAME) {
+        continue;
+      }
       requiredEnvNames.add(envName);
       optionalEnvNames.delete(envName);
     }

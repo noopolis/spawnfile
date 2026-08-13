@@ -68,6 +68,12 @@ export interface DistributionPortMapping {
   published_port: number;
 }
 
+export interface DistributionWorldBindingsEvidence {
+  artifact_path: typeof WORLD_BINDINGS_IMAGE_PATH;
+  digest: string;
+  schema: "simfile.world-bindings.v1";
+}
+
 export interface DistributionReport {
   compile_fingerprint: string;
   generated_at: string;
@@ -84,12 +90,14 @@ export interface DistributionReport {
   runtime_instances: DistributionRuntimeInstance[];
   secrets: Record<DistributionSecretCategory, DistributionSecretEntry[]>;
   version: "spawnfile.distribution-report.v1";
+  world_bindings?: DistributionWorldBindingsEvidence;
 }
 
 export const DISTRIBUTION_REPORT_VERSION = "spawnfile.distribution-report.v1";
 export const DISTRIBUTION_REPORT_IMAGE_PATH = "/spawnfile/spawnfile-report.json";
 export const DISTRIBUTION_REPORT_OUTPUT_FILE = "distribution-report.json";
 export const IMAGE_CONTRACT_VERSION = "spawnfile.image.v1";
+export const WORLD_BINDINGS_IMAGE_PATH = "/spawnfile/world-bindings.json";
 
 export type DistributionImageLabels = Record<
   | "com.spawnfile.compile_fingerprint"

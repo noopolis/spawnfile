@@ -299,20 +299,20 @@ spawnfile model set anthropic claude-opus-4-6 ./my-team --auth claude-code --rec
 
 ```bash
 # Validate without compiling
-spawnfile validate ./fixtures/single-agent
+spawnfile validate ./test/fixtures/single-agent
 
 # Inspect the resolved graph without compiling
-spawnfile view ./fixtures/single-agent
+spawnfile view ./test/fixtures/single-agent
 
 # Inspect concrete team-network membership
-spawnfile view ./fixtures/e2e/moltnet-team-chat --mode networks
+spawnfile view ./test/fixtures/e2e/moltnet-team-chat --mode networks
 
 # Compile the project in the current directory
 spawnfile compile
 
 # Compile a specific project
-spawnfile compile ./fixtures/single-agent
+spawnfile compile ./test/fixtures/single-agent
 
 # Compile with custom output directory
-spawnfile compile ./fixtures/single-agent --out ./build
+spawnfile compile ./test/fixtures/single-agent --out ./build
 ```

@@ -13,6 +13,11 @@ const MODEL_PROVIDER_ENV_VARS = new Map<string, string>([
   ["xai", "XAI_API_KEY"]
 ]);
 
+export const CLI_CREDENTIAL_SECRET_NAME = "SPAWNFILE_CLI_AUTH_JSON";
+
+export const modelAuthMethodNeedsCliCredential = (method: ModelAuthMethod): boolean =>
+  method !== "api_key" && method !== "none";
+
 const resolveLegacyModelAuthMethod = (
   execution: ExecutionBlock | undefined,
   provider: string
@@ -160,6 +165,11 @@ export const listExecutionModelSecretNames = (
   const secretNames = new Set<string>();
 
   for (const target of listEffectiveExecutionModelTargets(execution)) {
+    if (modelAuthMethodNeedsCliCredential(target.auth.method)) {
+      secretNames.add(CLI_CREDENTIAL_SECRET_NAME);
+      continue;
+    }
+
     if (target.auth.method !== "api_key") {
       continue;
     }

@@ -1,5 +1,6 @@
 /* v8 ignore file -- type-only module */
 import type { CapabilityReport, DiagnosticReport } from "../report/index.js";
+import type { ActiveEnvironmentsIndex } from "./teamContextActiveEnvironments.js";
 import type { EmittedFile } from "../runtime/index.js";
 
 import type {
@@ -9,6 +10,7 @@ import type {
 } from "./types.js";
 
 export interface TeamCompileSupport {
+  activeEnvironmentsByAgentSource: Map<string, ActiveEnvironmentsIndex>;
   capabilitiesByTeamSource: Map<string, CapabilityReport[]>;
   diagnosticsByTeamSource: Map<string, DiagnosticReport[]>;
   filesByAgentSource: Map<string, EmittedFile[]>;

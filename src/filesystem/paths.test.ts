@@ -1,4 +1,6 @@
 import path from "node:path";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 import { describe, expect, it } from "vitest";
 
@@ -27,6 +29,20 @@ describe("paths", () => {
 
   it("keeps explicit Spawnfile paths intact", () => {
     expect(getManifestPath("/tmp/demo/Spawnfile")).toBe(path.resolve("/tmp/demo/Spawnfile"));
+  });
+
+  it("keeps any existing manifest file path intact", () => {
+    const project = mkdtempSync(path.join(tmpdir(), "spawnfile-paths-"));
+    const manifest = path.join(project, "Spawnfile.v22");
+    writeFileSync(manifest, "version: 0.1\n");
+    try {
+      expect(getManifestPath(manifest)).toBe(path.resolve(manifest));
+      expect(resolveProjectOutputDirectory(manifest, undefined, ".spawn")).toBe(
+        path.join(project, ".spawn")
+      );
+    } finally {
+      rmSync(project, { force: true, recursive: true });
+    }
   });
 
   it("builds manifest paths from directories", () => {

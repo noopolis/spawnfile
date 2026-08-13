@@ -1,13 +1,10 @@
-import { execFile as execFileCallback } from "node:child_process";
 import { chmod, mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  ensureDirectory,
   readUtf8File,
   removeDirectory,
   writeUtf8File
@@ -15,9 +12,24 @@ import {
 
 import { compileProject } from "./compileProject.js";
 
-const execFile = promisify(execFileCallback);
+vi.mock("./moltnetBinaries.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./moltnetBinaries.js")>();
+  const { stageTrustedTestMoltnetRelease } = await import(
+    "../../test/trustedMoltnetRelease.js"
+  );
+  return {
+    ...actual,
+    stageMoltnetBinaries: (outputDirectory: string, options: Parameters<
+      typeof actual.stageMoltnetBinaries
+    >[1]) => stageTrustedTestMoltnetRelease(
+      outputDirectory,
+      options
+    )
+  };
+});
+
 const temporaryDirectories: string[] = [];
-const fixturesRoot = path.resolve(process.cwd(), "fixtures");
+const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures");
 
 const createFakeMoltnetCli = async (): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-mixed-moltnet-cli-"));
@@ -51,19 +63,6 @@ const createFakeMoltnetCli = async (): Promise<string> => {
   return cliPath;
 };
 
-const createFakeMoltnetReleaseDirectory = async (): Promise<string> => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-mixed-moltnet-release-"));
-  temporaryDirectories.push(directory);
-  const payloadDirectory = path.join(directory, "payload");
-  await ensureDirectory(payloadDirectory);
-  await writeUtf8File(path.join(payloadDirectory, "moltnet"), "#!/usr/bin/env sh\necho moltnet\n");
-  await chmod(path.join(payloadDirectory, "moltnet"), 0o755);
-  const assetName = `moltnet_linux_${process.arch === "arm64" ? "arm64" : "amd64"}.tar.gz`;
-  await execFile("tar", ["-C", payloadDirectory, "-czf", path.join(directory, assetName), "."]);
-  await writeUtf8File(path.join(directory, "checksums.txt"), `${"0".repeat(64)}  ${assetName}\n`);
-  return directory;
-};
-
 describe("mixed runtime org fixture", () => {
   afterEach(async () => {
     await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
@@ -73,7 +72,6 @@ describe("mixed runtime org fixture", () => {
     const previousCli = process.env.SPAWNFILE_MOLTNET_CLI;
     const previousReleaseDir = process.env.SPAWNFILE_MOLTNET_RELEASE_DIR;
     process.env.SPAWNFILE_MOLTNET_CLI = await createFakeMoltnetCli();
-    process.env.SPAWNFILE_MOLTNET_RELEASE_DIR = await createFakeMoltnetReleaseDirectory();
 
     try {
       const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-mixed-runtime-out-"));
@@ -135,11 +133,10 @@ describe("mixed runtime org fixture", () => {
         apiKey: "ollama",
         baseUrl: "http://host.docker.internal:11434/v1"
       });
+      expect(process.env.SPAWNFILE_MOLTNET_RELEASE_DIR).toBe(previousReleaseDir);
     } finally {
       if (previousCli === undefined) delete process.env.SPAWNFILE_MOLTNET_CLI;
       else process.env.SPAWNFILE_MOLTNET_CLI = previousCli;
-      if (previousReleaseDir === undefined) delete process.env.SPAWNFILE_MOLTNET_RELEASE_DIR;
-      else process.env.SPAWNFILE_MOLTNET_RELEASE_DIR = previousReleaseDir;
     }
   }, 40_000);
 });

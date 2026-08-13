@@ -89,6 +89,33 @@ describe("resolveImageEnvironment", () => {
     expect(env.BAD).toBeUndefined();
     expect(env.GOOD).toBe("value");
   });
+
+  it("does not generate non-generated or unknown runtime secrets", () => {
+    const report = reportWithSecrets();
+    report.secrets.runtime = [
+      { generated: false, name: "USER_RUNTIME_TOKEN", required: true },
+      { generated: true, name: "CUSTOM_GENERATED_TOKEN", required: true }
+    ];
+
+    const env = resolveImageEnvironment({
+      authValues: {},
+      report
+    });
+
+    expect(env.USER_RUNTIME_TOKEN).toBeUndefined();
+    expect(env.CUSTOM_GENERATED_TOKEN).toBeUndefined();
+  });
+
+  it("keeps an explicitly supplied generated runtime token", () => {
+    const env = resolveImageEnvironment({
+      authValues: {
+        OPENCLAW_GATEWAY_TOKEN: "provided"
+      },
+      report: reportWithSecrets()
+    });
+
+    expect(env.OPENCLAW_GATEWAY_TOKEN).toBe("provided");
+  });
 });
 
 describe("renderEnvFileContent", () => {

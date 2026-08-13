@@ -40,6 +40,22 @@ const runnerFor = (labels: Record<string, string>, reportJson: string) =>
     return Buffer.from("");
   };
 
+const recordingRunnerFor = (
+  calls: string[][],
+  labels: Record<string, string>,
+  reportJson: string
+) =>
+  async (args: string[]): Promise<Buffer> => {
+    calls.push(args);
+    if (args[0] === "image" && args[1] === "inspect") {
+      return Buffer.from(JSON.stringify(labels));
+    }
+    if (args[0] === "cp") {
+      return tarOf(Buffer.from(reportJson));
+    }
+    return Buffer.from("");
+  };
+
 describe("resolveDockerBaseArgs", () => {
   it("prefers context, then host, else none", () => {
     expect(resolveDockerBaseArgs({ dockerContext: "vm1" })).toEqual(["--context", "vm1"]);
@@ -65,6 +81,16 @@ describe("extractImageReport", () => {
     expect(inspection.report.organization.project).toBe("org");
   });
 
+  it("pulls the image when requested", async () => {
+    const calls: string[][] = [];
+    await extractImageReport("you/org:1.0.0", {
+      pull: true,
+      runDocker: recordingRunnerFor(calls, labels, JSON.stringify(report))
+    });
+
+    expect(calls[0]).toEqual(["pull", "you/org:1.0.0"]);
+  });
+
   it("rejects an image without the contract label", async () => {
     await expect(
       extractImageReport("x:1", { runDocker: runnerFor({}, JSON.stringify(report)) })
@@ -82,6 +108,56 @@ describe("extractImageReport", () => {
     ).rejects.toThrow(/Unsupported image contract/);
   });
 
+  it("rejects missing or non-identifier image labels", async () => {
+    await expect(
+      extractImageReport("x:1", {
+        runDocker: runnerFor(
+          { ...labels, "com.spawnfile.project": "bad project" },
+          JSON.stringify(report)
+        )
+      })
+    ).rejects.toThrow(/com.spawnfile.project/);
+  });
+
+  it("rejects unreadable image labels", async () => {
+    await expect(
+      extractImageReport("x:1", {
+        runDocker: async (args) => {
+          if (args[0] === "image" && args[1] === "inspect") {
+            return Buffer.from("{not-json");
+          }
+          return Buffer.from("");
+        }
+      })
+    ).rejects.toThrow(/Unable to read labels/);
+  });
+
+  it("translates missing local images into validation errors", async () => {
+    await expect(
+      extractImageReport("missing:1", {
+        runDocker: async (args) => {
+          if (args[0] === "image" && args[1] === "inspect") {
+            throw new Error("No such image: missing:1");
+          }
+          return Buffer.from("");
+        }
+      })
+    ).rejects.toThrow(/is not available locally/);
+  });
+
+  it("preserves unexpected image inspect failures", async () => {
+    await expect(
+      extractImageReport("broken:1", {
+        runDocker: async (args) => {
+          if (args[0] === "image" && args[1] === "inspect") {
+            throw new Error("docker daemon unavailable");
+          }
+          return Buffer.from("");
+        }
+      })
+    ).rejects.toThrow(/docker daemon unavailable/);
+  });
+
   it("rejects a fingerprint that disagrees with the label", async () => {
     await expect(
       extractImageReport("x:1", {
@@ -97,5 +173,81 @@ describe("extractImageReport", () => {
     await expect(
       extractImageReport("x:1", { runDocker: runnerFor(labels, "not json") })
     ).rejects.toThrow(/not valid JSON/);
+  });
+
+  it("uses the default label path when the report path label is absent", async () => {
+    const calls: string[][] = [];
+    const inspection = await extractImageReport("you/org:1.0.0", {
+      runDocker: async (args) => {
+        calls.push(args);
+        if (args[0] === "image" && args[1] === "inspect") {
+          const defaultLabels = {
+            "com.spawnfile.compile_fingerprint": report.compile_fingerprint,
+            "com.spawnfile.image_contract": "spawnfile.image.v1",
+            "com.spawnfile.project": "org"
+          };
+          return Buffer.from(JSON.stringify(defaultLabels));
+        }
+        if (args[0] === "cp") {
+          return tarOf(Buffer.from(JSON.stringify(report)));
+        }
+        return Buffer.from("");
+      }
+    });
+
+    expect(inspection.compileFingerprint).toBe(report.compile_fingerprint);
+    expect(
+      calls.some(
+        (args) =>
+          args[0] === "cp" && args[1].endsWith(`:${DISTRIBUTION_REPORT_IMAGE_PATH}`) && args[2] === "-"
+      )
+    ).toBe(true);
+    expect(calls).toContainEqual(["create", "--name", expect.any(String), "you/org:1.0.0"]);
+  });
+
+  it("rethrows unexpected image inspect failures that are not Error objects", async () => {
+    await expect(
+      extractImageReport("x:1", {
+        runDocker: async (args) => {
+          if (args[0] === "image" && args[1] === "inspect") {
+            throw "image daemon panic";
+          }
+          return Buffer.from("");
+        }
+      })
+    ).rejects.toThrow(/image daemon panic/);
+  });
+
+  it("falls back to empty labels when inspect emits null", async () => {
+    await expect(
+      extractImageReport("x:1", {
+        runDocker: async (args) => {
+          if (args[0] === "image" && args[1] === "inspect") {
+            return Buffer.from("null");
+          }
+          return Buffer.from("");
+        }
+      })
+    ).rejects.toThrow(/not a Spawnfile image/);
+  });
+
+  it("cleans up the helper container when report copy fails", async () => {
+    const calls: string[][] = [];
+    await expect(
+      extractImageReport("x:1", {
+        runDocker: async (args) => {
+          calls.push(args);
+          if (args[0] === "image" && args[1] === "inspect") {
+            return Buffer.from(JSON.stringify(labels));
+          }
+          if (args[0] === "cp") {
+            throw new Error("copy failed");
+          }
+          return Buffer.from("");
+        }
+      })
+    ).rejects.toThrow(/copy failed/);
+
+    expect(calls.some((args) => args[0] === "rm" && args[1] === "-f")).toBe(true);
   });
 });

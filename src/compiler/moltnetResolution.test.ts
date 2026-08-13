@@ -542,6 +542,91 @@ describe("moltnetResolution", () => {
     );
   });
 
+  it("allows duplicate moltnet member ids when all duplicates share one canonical agent source", () => {
+    const canonicalAgent = createAgent({
+      moltnet: [{
+        memberId: null,
+        network: "org",
+        rooms: {
+          room: {
+            wake: "all"
+          }
+        },
+        teamSource: null
+      }]
+    });
+    const officeTeam = createTeam({
+      members: [
+        {
+          id: "eleanor",
+          kind: "agent",
+          nodeSource: canonicalAgent.source,
+          runtimeName: "openclaw"
+        }
+      ],
+      source: "/tmp/office/Spawnfile",
+      name: "office",
+      networks: [
+        {
+          id: "org",
+          name: "Org",
+          provider: "moltnet",
+          rooms: [{ id: "room", members: ["eleanor"] }]
+        }
+      ]
+    });
+    const friendsTeam = createTeam({
+      ...officeTeam,
+      source: "/tmp/friends/Spawnfile",
+      name: "friends",
+      external: []
+    });
+
+    const plan: CompilePlan = {
+      edges: [],
+      memberships: [
+        {
+          agentSource: canonicalAgent.source,
+          memberId: "eleanor",
+          teamName: officeTeam.name,
+          teamSource: officeTeam.source
+        },
+        {
+          agentSource: canonicalAgent.source,
+          memberId: "eleanor",
+          teamName: friendsTeam.name,
+          teamSource: friendsTeam.source
+        }
+      ],
+      nodes: [
+        { id: "agent", kind: "agent", runtimeName: "openclaw", slug: "eleanor", value: canonicalAgent },
+        { id: "office", kind: "team", runtimeName: null, slug: "office", value: officeTeam },
+        { id: "friends", kind: "team", runtimeName: null, slug: "friends", value: friendsTeam }
+      ],
+      root: officeTeam.source,
+      runtimes: { openclaw: { nodeIds: ["agent"] } }
+    };
+
+    resolvePlanMoltnetAttachments(plan);
+
+    expect(canonicalAgent.surfaces?.moltnet).toEqual([
+      {
+        contextRooms: {
+          [officeTeam.source]: ["room"],
+          [friendsTeam.source]: ["room"]
+        },
+        memberId: "eleanor",
+        network: "org",
+        rooms: {
+          room: {
+            wake: "all"
+          }
+        },
+        teamSource: officeTeam.source
+      }
+    ]);
+  });
+
   it("rejects synthesized representative attachments without a direct member context", () => {
     const agent = createAgent(undefined);
     const childTeam = createTeam({

@@ -3,28 +3,18 @@ import YAML from "yaml";
 import type {
   AgentManifest,
   AgentSchedule,
-  DiscordSurfaceAccess,
-  DiscordSurface,
   ExecutionBlock,
-  MoltnetAttachment,
-  MoltnetDM,
-  MoltnetRoomBehavior,
   ModelEntryAuth,
   ModelTarget,
   Environment,
+  ManifestMember,
   RuntimeBinding,
   SharedSurface,
-  SlackSurface,
-  SlackSurfaceAccess,
-  SurfacesBlock,
-  TelegramSurface,
-  TelegramSurfaceAccess,
   TeamManifest,
-  WebhookSurface,
-  WhatsAppSurface,
-  WhatsAppSurfaceAccess
 } from "./schemas.js";
+import { isReferencedMember } from "./schemas.js";
 import { orderTeamNetworks } from "./renderSpawnfileNetworks.js";
+import { orderSurfaces } from "./renderSpawnfileSurfaces.js";
 import { orderWorkspace } from "./renderSpawnfileWorkspace.js";
 
 const withDefinedEntries = (entries: Array<[string, unknown]>): Record<string, unknown> =>
@@ -43,178 +33,6 @@ const orderRuntimeBinding = (
     ["name", runtime.name],
     ["options", runtime.options]
   ]) as unknown as RuntimeBinding;
-};
-
-const orderDiscordSurface = (
-  surface: DiscordSurface | undefined
-): DiscordSurface | undefined => {
-  if (!surface) {
-    return undefined;
-  }
-
-  return withDefinedEntries([
-    ["access", orderDiscordSurfaceAccess(surface.access)],
-    ["bot_token_secret", surface.bot_token_secret],
-    ["identity", surface.identity]
-  ]) as unknown as DiscordSurface;
-};
-
-const orderDiscordSurfaceAccess = (
-  access: DiscordSurfaceAccess | undefined
-): DiscordSurfaceAccess | undefined => {
-  if (!access) {
-    return undefined;
-  }
-
-  return withDefinedEntries([
-    ["mode", access.mode],
-    ["users", access.users],
-    ["guilds", access.guilds],
-    ["channels", access.channels]
-  ]) as unknown as DiscordSurfaceAccess;
-};
-
-const orderTelegramSurface = (
-  surface: TelegramSurface | undefined
-): TelegramSurface | undefined => {
-  if (!surface) {
-    return undefined;
-  }
-
-  return withDefinedEntries([
-    ["access", orderTelegramSurfaceAccess(surface.access)],
-    ["bot_token_secret", surface.bot_token_secret],
-    ["identity", surface.identity]
-  ]) as unknown as TelegramSurface;
-};
-
-const orderTelegramSurfaceAccess = (
-  access: TelegramSurfaceAccess | undefined
-): TelegramSurfaceAccess | undefined => {
-  if (!access) {
-    return undefined;
-  }
-
-  return withDefinedEntries([
-    ["mode", access.mode],
-    ["users", access.users],
-    ["chats", access.chats]
-  ]) as unknown as TelegramSurfaceAccess;
-};
-
-const orderWebhookSurface = (
-  surface: WebhookSurface | undefined
-): WebhookSurface | undefined => {
-  if (!surface) {
-    return undefined;
-  }
-
-  return withDefinedEntries([
-    ["url", surface.url],
-    ["signing_secret", surface.signing_secret]
-  ]) as unknown as WebhookSurface;
-};
-
-const orderMoltnetRoomBehavior = (
-  behavior: MoltnetRoomBehavior | undefined
-): MoltnetRoomBehavior | undefined => {
-  if (!behavior) {
-    return undefined;
-  }
-
-  return withDefinedEntries([
-    ["wake", behavior.wake]
-  ]) as MoltnetRoomBehavior;
-};
-
-const orderMoltnetDm = (dms: MoltnetDM | undefined): MoltnetDM | undefined => {
-  if (!dms) {
-    return undefined;
-  }
-
-  return withDefinedEntries([
-    ["enabled", dms.enabled],
-    ["wake", dms.wake]
-  ]) as MoltnetDM;
-};
-
-const orderMoltnetAttachment = (
-  attachment: MoltnetAttachment
-): MoltnetAttachment =>
-  withDefinedEntries([
-    ["network", attachment.network],
-    [
-      "rooms",
-      attachment.rooms
-        ? Object.fromEntries(
-            Object.entries(attachment.rooms)
-              .sort(([left], [right]) => left.localeCompare(right))
-              .map(([roomId, behavior]) => [roomId, orderMoltnetRoomBehavior(behavior)])
-          )
-        : undefined
-    ],
-    ["dms", orderMoltnetDm(attachment.dms)]
-  ]) as MoltnetAttachment;
-
-const orderMoltnetSurface = (
-  surface: SurfacesBlock["moltnet"]
-): SurfacesBlock["moltnet"] | undefined =>
-  surface?.map(orderMoltnetAttachment);
-
-const orderWhatsAppSurface = (
-  surface: WhatsAppSurface | undefined
-): WhatsAppSurface | undefined => {
-  if (!surface) {
-    return undefined;
-  }
-
-  return withDefinedEntries([
-    ["access", orderWhatsAppSurfaceAccess(surface.access)],
-    ["identity", surface.identity]
-  ]) as unknown as WhatsAppSurface;
-};
-
-const orderWhatsAppSurfaceAccess = (
-  access: WhatsAppSurfaceAccess | undefined
-): WhatsAppSurfaceAccess | undefined => {
-  if (!access) {
-    return undefined;
-  }
-
-  return withDefinedEntries([
-    ["mode", access.mode],
-    ["users", access.users],
-    ["groups", access.groups]
-  ]) as unknown as WhatsAppSurfaceAccess;
-};
-
-const orderSlackSurface = (
-  surface: SlackSurface | undefined
-): SlackSurface | undefined => {
-  if (!surface) {
-    return undefined;
-  }
-
-  return withDefinedEntries([
-    ["access", orderSlackSurfaceAccess(surface.access)],
-    ["bot_token_secret", surface.bot_token_secret],
-    ["app_token_secret", surface.app_token_secret],
-    ["identity", surface.identity]
-  ]) as unknown as SlackSurface;
-};
-
-const orderSlackSurfaceAccess = (
-  access: SlackSurfaceAccess | undefined
-): SlackSurfaceAccess | undefined => {
-  if (!access) {
-    return undefined;
-  }
-
-  return withDefinedEntries([
-    ["mode", access.mode],
-    ["users", access.users],
-    ["channels", access.channels]
-  ]) as unknown as SlackSurfaceAccess;
 };
 
 const orderModelEntryAuth = (
@@ -319,21 +137,27 @@ const orderSharedSurface = (
   ]) as unknown as SharedSurface;
 };
 
-const orderSurfaces = (
-  surfaces: SurfacesBlock | undefined
-): SurfacesBlock | undefined => {
-  if (!surfaces) {
-    return undefined;
+const orderMember = (member: ManifestMember): Record<string, unknown> => {
+  if (isReferencedMember(member)) {
+    return withDefinedEntries([
+      ["id", member.id],
+      ["ref", member.ref]
+    ]);
   }
 
   return withDefinedEntries([
-    ["discord", orderDiscordSurface(surfaces.discord)],
-    ["telegram", orderTelegramSurface(surfaces.telegram)],
-    ["whatsapp", orderWhatsAppSurface(surfaces.whatsapp)],
-    ["slack", orderSlackSurface(surfaces.slack)],
-    ["webhook", orderWebhookSurface(surfaces.webhook)],
-    ["moltnet", orderMoltnetSurface(surfaces.moltnet)]
-  ]) as unknown as SurfacesBlock;
+    ["id", member.id],
+    ["description", member.description],
+    ["expose", member.expose],
+    ["runtime", orderRuntimeBinding(member.runtime)],
+    ["execution", orderExecution(member.execution)],
+    ["schedule", orderAgentSchedule(member.schedule)],
+    ["workspace", orderWorkspace(member.workspace)],
+    ["environment", orderEnvironment(member.environment)],
+    ["surfaces", orderSurfaces(member.surfaces)],
+    ["memory", member.memory],
+    ["policy", member.policy]
+  ]);
 };
 
 const renderSections = (sections: Record<string, unknown>[]): string =>
@@ -370,11 +194,12 @@ const orderTeamManifestSections = (manifest: TeamManifest): Record<string, unkno
   withDefinedEntries([["networks", orderTeamNetworks(manifest.networks)]]),
   withDefinedEntries([["policy", manifest.policy]]),
   withDefinedEntries([
-    ["members", manifest.members],
+    ["members", manifest.members.map(orderMember)],
     ["mode", manifest.mode],
     ["lead", manifest.lead],
     ["external", manifest.external]
-  ])
+  ]),
+  withDefinedEntries([["external_participants", manifest.external_participants]])
 ];
 
 export const renderSpawnfile = (manifest: AgentManifest | TeamManifest): string =>

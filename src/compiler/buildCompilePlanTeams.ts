@@ -48,12 +48,22 @@ export const resolveTeamNetworks = (manifest: TeamManifest): ResolvedTeamNetwork
     return resolved;
   });
 
+export const isAttachedExternalRoomMember = (
+  teamNode: ResolvedTeamNode,
+  networkId: string,
+  memberId: string
+): boolean => teamNode.externalParticipants?.some((participant) =>
+  participant.id === memberId
+  && participant.surfaces.moltnet.some((attachment) =>
+    attachment.network === networkId)) === true;
+
 export const validateTeamNetworkRooms = (teamNode: ResolvedTeamNode): void => {
   for (const network of teamNode.networks ?? []) {
     for (const room of network.rooms) {
       for (const roomMemberId of room.members) {
         const resolvedMember = teamNode.members.find((member) => member.id === roomMemberId);
-        if (!resolvedMember) {
+        if (!resolvedMember
+          && !isAttachedExternalRoomMember(teamNode, network.id, roomMemberId)) {
           throw new SpawnfileError(
             "validation_error",
             `Team ${teamNode.name} Moltnet room ${room.id} references unknown member ${roomMemberId}`

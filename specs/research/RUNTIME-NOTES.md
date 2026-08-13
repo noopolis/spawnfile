@@ -94,9 +94,9 @@ So the current schema split is:
 
 Key evidence:
 
-- `runtimes/openclaw/README.md`
-- `runtimes/openclaw/VISION.md`
-- `runtimes/openclaw/src/routing/resolve-route.ts`
+- `https://github.com/openclaw/openclaw/blob/main/README.md`
+- `https://github.com/openclaw/openclaw/blob/main/VISION.md`
+- `https://github.com/openclaw/openclaw/blob/main/src/routing/resolve-route.ts`
 
 ### Skills
 
@@ -114,14 +114,18 @@ Adapter target:
 
 ### MCP
 
-OpenClaw supports MCP, but the important nuance is that MCP is currently treated as a bridge layer through `mcporter`, not a pure first-class core runtime surface.
+OpenClaw supports outbound MCP through native top-level `mcp.servers` config as
+of the pinned v2026.6.11 target.
 
-- `VISION.md` explicitly says MCP support goes through `mcporter`
-- ACPX runtime paths can inject named MCP server maps
+- `mcp.servers.<name>` accepts stdio command servers and remote SSE or
+  streamable HTTP servers
+- embedded OpenClaw exposes configured MCP tools in normal coding and messaging
+  profiles
 
 Adapter target:
 
-- compile logical Spawnfile MCP declarations into OpenClaw's MCP bridge or plugin-native config
+- compile logical Spawnfile MCP declarations into OpenClaw's native
+  `mcp.servers` config
 - do not assume a single stable MCP config path without adapter research
 
 ### Models and Auth
@@ -211,11 +215,11 @@ Adapter target:
 
 Key evidence:
 
-- `runtimes/picoclaw/README.md`
-- `runtimes/picoclaw/pkg/config/config.go`
-- `runtimes/picoclaw/pkg/mcp/manager.go`
-- `runtimes/picoclaw/pkg/routing/route.go`
-- `runtimes/picoclaw/pkg/tools/spawn.go`
+- `https://github.com/sipeed/picoclaw/blob/main/README.md`
+- `https://github.com/sipeed/picoclaw/blob/main/pkg/config/config.go`
+- `https://github.com/sipeed/picoclaw/blob/main/pkg/mcp/manager.go`
+- `https://github.com/sipeed/picoclaw/blob/main/pkg/routing/route.go`
+- `https://github.com/sipeed/picoclaw/blob/main/pkg/tools/spawn.go`
 
 ### Skills
 
@@ -332,10 +336,10 @@ Adapter target:
 
 Key evidence:
 
-- `runtimes/tinyclaw/README.md`
-- `runtimes/tinyclaw/lib/teams.sh`
-- `runtimes/tinyclaw/AGENTS.md`
-- `runtimes/tinyclaw/src/lib/agent.ts`
+- `https://github.com/TinyAGI/tinyclaw/blob/main/README.md`
+- `https://github.com/TinyAGI/tinyclaw/blob/main/lib/teams.sh`
+- `https://github.com/TinyAGI/tinyclaw/blob/main/AGENTS.md`
+- `https://github.com/TinyAGI/tinyclaw/blob/main/src/lib/agent.ts`
 
 ### Skills
 
@@ -444,9 +448,9 @@ Adapter target:
 
 Key evidence:
 
-- `runtimes/nanoclaw/README.md`
-- `runtimes/nanoclaw/CLAUDE.md`
-- `runtimes/nanoclaw/src/container-runner.ts`
+- `https://github.com/qwibitai/nanoclaw/blob/main/README.md`
+- `https://github.com/qwibitai/nanoclaw/blob/main/CLAUDE.md`
+- `https://github.com/qwibitai/nanoclaw/blob/main/src/container-runner.ts`
 
 ### Skills
 
@@ -513,10 +517,10 @@ Adapter implication:
 
 Key evidence:
 
-- `runtimes/nullclaw/README.md`
-- `runtimes/nullclaw/src/agent_routing.zig`
-- `runtimes/nullclaw/src/tools/delegate.zig`
-- `runtimes/nullclaw/src/subagent.zig`
+- `https://github.com/nullclaw/nullclaw/blob/main/README.md`
+- `https://github.com/nullclaw/nullclaw/blob/main/src/agent_routing.zig`
+- `https://github.com/nullclaw/nullclaw/blob/main/src/tools/delegate.zig`
+- `https://github.com/nullclaw/nullclaw/blob/main/src/subagent.zig`
 
 ### Skills
 
@@ -593,9 +597,9 @@ Adapter target:
 
 Key evidence:
 
-- `runtimes/zeroclaw/README.md`
-- `runtimes/zeroclaw/docs/config-reference.md`
-- `runtimes/zeroclaw/docs/providers-reference.md`
+- `https://github.com/zeroclaw-labs/zeroclaw/blob/master/README.md`
+- `https://github.com/zeroclaw-labs/zeroclaw/blob/master/docs/config-reference.md`
+- `https://github.com/zeroclaw-labs/zeroclaw/blob/master/docs/providers-reference.md`
 
 ### Skills
 
@@ -667,9 +671,9 @@ Adapter target:
 
 Key evidence:
 
-- `runtimes/openfang/README.md`
-- `runtimes/openfang/docs/api-reference.md`
-- `runtimes/openfang/docs/cli-reference.md`
+- `https://github.com/RightNow-AI/openfang/blob/main/README.md`
+- `https://github.com/RightNow-AI/openfang/blob/main/docs/api-reference.md`
+- `https://github.com/RightNow-AI/openfang/blob/main/docs/cli-reference.md`
 
 ### Skills
 
@@ -717,7 +721,7 @@ Adapter implication:
 
 Key evidence:
 
-- `runtimes/ironclaw/README.md`
+- `https://github.com/nearai/ironclaw/blob/main/README.md`
 - CLI completion and source references around `mcp`
 
 ### Skills
@@ -833,7 +837,8 @@ These are implementation notes from adapter work and container smoke verificatio
 
 ## Open Questions To Research Later
 
-- OpenClaw: exact MCP compile surface beyond the `mcporter` bridge path
+- OpenClaw: deeper MCP auth projection and tool-filter coverage beyond
+  Spawnfile's current portable `auth.secret` surface
 - TinyClaw: whether MCP has a real runtime surface or only indirect skill-based integration
 - ZeroClaw: exact user-facing MCP server config surface for non-provider MCP integrations
 - NullClaw: how AIEOS structured identity interacts with markdown docs — can both coexist?

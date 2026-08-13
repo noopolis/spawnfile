@@ -28,7 +28,7 @@ npm run typecheck
 Run the CLI on a fixture without a global link:
 
 ```bash
-npm run dev -- validate fixtures/single-agent
+npm run dev -- validate test/fixtures/single-agent
 ```
 
 ## Website
@@ -60,7 +60,7 @@ When adding a runtime, also update `runtimes.yaml` with the pinned version and s
 
 - Keep `README.md` focused on getting started.
 - Put detailed specification material in `specs/`.
-- Keep package `CLAUDE.md` guides in present tense and aligned with current code.
+- Keep package `AGENTS.md` guides in present tense and aligned with current code, with `CLAUDE.md` symlinks for compatibility.
 
 ## Commit style
 

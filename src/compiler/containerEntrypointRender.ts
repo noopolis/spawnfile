@@ -2,16 +2,42 @@ import path from "node:path";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
-import { resolveMoltnetStorePath } from "./moltnetConfigLowering.js";
+import { createMoltnetCausalEventsPath, resolveMoltnetStorePath } from "./moltnetConfigLowering.js";
 import { networkUrlEnvName } from "./networkBinding.js";
 import {
   createWorkspaceResourceCommands,
   createWorkspaceResourceShellFunctions
 } from "./containerWorkspaceResourceRender.js";
+import {
+  createConfigEnvMaterializationFunction,
+  createConfigEnvWrites
+} from "./containerConfigEnvRender.js";
+import {
+  CLI_CREDENTIAL_SECRET_NAME,
+  modelAuthMethodNeedsCliCredential
+} from "./modelEnv.js";
+import {
+  createCliCredentialMaterialization,
+  createRecipeEnvAssignments,
+  mergeRecipeEnv,
+  shellQuote
+} from "./containerEntrypointShell.js";
 
 const MOLTNET_SERVER_DATA_DIRECTORY = "/var/lib/spawnfile/moltnet/servers";
 
-const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)}'`;
+// moltnet reads this path from MOLTNET_CAUSAL_EVENTS_PATH
+// (internal/app/config_load.go's mergeEnvConfig) and, when set, stamps
+// every message.accepted/message.denied causal event there via
+// internal/observability/causal.go's CausalWriter (nil/no-op otherwise).
+// Always set, independent of the network's own store.kind (a memory-store
+// network — e.g. office-sim's fixture — still gets a causal log). Points
+// into a dedicated `causal/` subdirectory of the server's data directory
+// (see createMoltnetCausalDirectory/createMoltnetCausalEventsPath) that
+// moltnetArtifacts.ts registers as its own persistent mount, so it survives
+// container teardown/restart via a host-backed named docker volume instead
+// of only being recoverable through a live-container `docker cp` (the
+// previous e2e-capture-only precedent).
+const moltnetCausalEventsPath = createMoltnetCausalEventsPath;
 
 const createEnvironmentAssignments = (plan: RuntimeTargetPlan): string[] => {
   const envAssignments: string[] = [];
@@ -22,8 +48,7 @@ const createEnvironmentAssignments = (plan: RuntimeTargetPlan): string[] => {
 
   if (
     plan.instancePaths.homePath &&
-    plan.runtimeName === "picoclaw" &&
-    plan.modelAuthMethods.openai === "codex"
+    Object.values(plan.modelAuthMethods).some(modelAuthMethodNeedsCliCredential)
   ) {
     envAssignments.push(`CODEX_HOME=${shellQuote(path.posix.join(plan.instancePaths.homePath, ".codex"))}`);
   }
@@ -46,18 +71,14 @@ const createEnvironmentAssignments = (plan: RuntimeTargetPlan): string[] => {
     envAssignments.push(`${name}=${shellQuote(value)}`);
   }
 
+  envAssignments.push(...createRecipeEnvAssignments(plan.recipeEnv));
+
   return envAssignments;
 };
 
 const createEnvFileWrites = (plan: RuntimeTargetPlan): string[] =>
   plan.envFiles.map(
     (binding) => `write_env_file ${shellQuote(binding.envName)} ${shellQuote(binding.filePath)}`
-  );
-
-const createConfigEnvWrites = (plan: RuntimeTargetPlan): string[] =>
-  (plan.configEnvBindings ?? []).map(
-    (binding) =>
-      `apply_json_env_value ${shellQuote(plan.instancePaths.configPath)} ${shellQuote(binding.envName)} ${shellQuote(binding.jsonPath)}`
   );
 
 const createMoltnetStorePrepareCommands = (
@@ -111,6 +132,7 @@ export interface EntrypointOptions {
   hasMoltnet?: boolean;
   hasStagedMoltnetBinaries?: boolean;
   moltnet?: {
+    externalParticipantArtifacts?: NonNullable<MoltnetArtifacts["externalParticipantArtifacts"]>;
     nodePlans: MoltnetArtifacts["nodePlans"];
     serverPlans: MoltnetArtifacts["serverPlans"];
   };
@@ -123,6 +145,13 @@ export const renderEntrypoint = (
   requiredSecrets: string[],
   options: EntrypointOptions = {}
 ): string => {
+  const cliCredentialMaterialization = createCliCredentialMaterialization(runtimePlans);
+  const renderedRequiredSecrets = [
+    ...new Set([
+      ...requiredSecrets,
+      ...(cliCredentialMaterialization.length > 0 ? [CLI_CREDENTIAL_SECRET_NAME] : [])
+    ])
+  ];
   const lines = [
     "#!/usr/bin/env bash",
     "set -euo pipefail",
@@ -153,49 +182,7 @@ export const renderEntrypoint = (
     '  printf %s \"${!name:-}\" > \"$target\"',
     "}",
     "",
-    "apply_json_env_value() {",
-    '  local target=\"$1\"',
-    '  local name=\"$2\"',
-    '  local json_path=\"$3\"',
-    '  if [ -z \"${!name:-}\" ]; then',
-    "    return",
-    "  fi",
-    "  python3 - \"$target\" \"$name\" \"$json_path\" <<'PY'",
-    "import json",
-    "import os",
-    "import sys",
-    "",
-    "target_path = sys.argv[1]",
-    "env_name = sys.argv[2]",
-    "json_path = sys.argv[3].split('.')",
-    "value = os.environ.get(env_name)",
-    "if value is None:",
-    "    raise SystemExit(0)",
-    "",
-    "with open(target_path, encoding='utf-8') as handle:",
-    "    data = json.load(handle)",
-    "",
-    "cursor = data",
-    "for part in json_path[:-1]:",
-    "    if isinstance(cursor, list):",
-    "        cursor = cursor[int(part)]",
-    "        continue",
-    "    child = cursor.get(part)",
-    "    if not isinstance(child, (dict, list)):",
-    "        child = {}",
-    "        cursor[part] = child",
-    "    cursor = child",
-    "",
-    "if isinstance(cursor, list):",
-    "    cursor[int(json_path[-1])] = value",
-    "else:",
-    "    cursor[json_path[-1]] = value",
-    "",
-    "with open(target_path, 'w', encoding='utf-8') as handle:",
-    "    json.dump(data, handle, indent=2)",
-    "    handle.write('\\n')",
-    "PY",
-    "}",
+    ...createConfigEnvMaterializationFunction(),
     "",
     ...createWorkspaceResourceShellFunctions()
   ];
@@ -207,16 +194,19 @@ export const renderEntrypoint = (
     ""
   );
 
-  for (const secretName of requiredSecrets) {
+  for (const secretName of renderedRequiredSecrets) {
     lines.push(`require_env ${shellQuote(secretName)}`);
   }
 
-  if (requiredSecrets.length > 0) {
+  if (renderedRequiredSecrets.length > 0) {
     lines.push("");
   }
 
+  lines.push(...cliCredentialMaterialization);
+
   const moltnetServerPlans = options.moltnet?.serverPlans ?? [];
   const moltnetNodePlans = options.moltnet?.nodePlans ?? [];
+  const moltnetExternalParticipants = options.moltnet?.externalParticipantArtifacts ?? [];
 
   if (
     runtimePlans.length === 1 &&
@@ -252,6 +242,10 @@ export const renderEntrypoint = (
     ""
   );
 
+  const recipeEnvAssignments = createRecipeEnvAssignments(mergeRecipeEnv(runtimePlans));
+  const recipeEnvPrefix =
+    recipeEnvAssignments.length > 0 ? `${recipeEnvAssignments.join(" ")} ` : "";
+
   const managedMoltnetServerPlans = moltnetServerPlans.filter((serverPlan) => serverPlan.mode === "managed");
 
   if (managedMoltnetServerPlans.length > 0) {
@@ -269,15 +263,44 @@ export const renderEntrypoint = (
         `apply_json_env_value ${shellQuote(serverPlan.configPath)} ${shellQuote(patch.envName)} ${shellQuote(patch.jsonPath)}`
       );
     }
+    const causalEventsPath = moltnetCausalEventsPath(serverPlan.configPath);
     serverLines.push(
       ...createMoltnetStorePrepareCommands(serverPlan),
-      `MOLTNET_CONFIG=${shellQuote(serverPlan.configPath)} /usr/local/bin/moltnet &`,
+      `MOLTNET_CONFIG=${shellQuote(serverPlan.configPath)} MOLTNET_CAUSAL_EVENTS_PATH=${shellQuote(causalEventsPath)} ${recipeEnvPrefix}/usr/local/bin/moltnet &`,
       'PIDS+=("$!")'
     );
     if (serverPlan.port) {
       serverLines.push(
         `until curl -sf ${shellQuote(`http://127.0.0.1:${serverPlan.port}/healthz`)} >/dev/null; do sleep 1; done`
       );
+    }
+    const externalParticipants = moltnetExternalParticipants.filter(
+      (artifact) => artifact.network.id === serverPlan.networkId
+    );
+    if (externalParticipants.length > 0) {
+      const clientTokenId = serverPlan.server.auth.client?.token_id;
+      const clientToken = serverPlan.server.auth.tokens?.find(
+        (token) => token.id === clientTokenId
+      );
+      if (!serverPlan.port || !clientToken?.secret) {
+        throw new Error(
+          `Managed Moltnet external participant topology for ${serverPlan.networkId} requires an operator token and port`
+        );
+      }
+      for (const artifact of externalParticipants) {
+        for (const directMessage of artifact.direct_messages) {
+          serverLines.push(
+            [
+              "/usr/local/bin/moltnet admin dm ensure",
+              `--sender ${shellQuote(artifact.participant.member_id)}`,
+              ...directMessage.members.map((member) => `--member ${shellQuote(member)}`),
+              `--base-url ${shellQuote(`http://127.0.0.1:${serverPlan.port}`)}`,
+              `--token-env ${shellQuote(clientToken.secret)}`,
+              ">/dev/null"
+            ].join(" ")
+          );
+        }
+      }
     }
     // Suppress the in-image managed server when an external endpoint is bound.
     lines.push(
@@ -312,7 +335,7 @@ export const renderEntrypoint = (
       `if [ -n "\${${urlEnv}:-}" ]; then`,
       `  apply_json_env_value ${shellQuote(nodePlan.configPath)} ${shellQuote(urlEnv)} ${shellQuote("moltnet.base_url")}`,
       "fi",
-      `/usr/local/bin/moltnet node ${shellQuote(nodePlan.configPath)} &`,
+      `${recipeEnvPrefix}/usr/local/bin/moltnet node ${shellQuote(nodePlan.configPath)} &`,
       'PIDS+=("$!")',
       ""
     );

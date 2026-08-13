@@ -1,16 +1,17 @@
 import path from "node:path";
 import os from "node:os";
 import { chmod, mkdtemp } from "node:fs/promises";
-import { execFile as execFileCallback } from "node:child_process";
-import { promisify } from "node:util";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  BUILD_IMAGE_CACHE_VERSION,
+  writeBuildImageCacheEntry
+} from "../deployment/buildImageCacheStore.js";
 import {
   fileExists,
   writeUtf8File,
   readUtf8File,
-  ensureDirectory,
   removeDirectory
 } from "../filesystem/index.js";
 
@@ -21,9 +22,30 @@ import {
   type DockerBuildInvocation
 } from "./buildProject.js";
 
-const execFile = promisify(execFileCallback);
+vi.mock("./moltnetBinaries.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./moltnetBinaries.js")>();
+  const { stageTrustedTestMoltnetRelease } = await import(
+    "../../test/trustedMoltnetRelease.js"
+  );
+  return {
+    ...actual,
+    stageMoltnetBinaries: (outputDirectory: string, options: Parameters<
+      typeof actual.stageMoltnetBinaries
+    >[1]) => stageTrustedTestMoltnetRelease(
+      outputDirectory,
+      options
+    )
+  };
+});
+
 const temporaryDirectories: string[] = [];
-const fixturesRoot = path.resolve(process.cwd(), "fixtures");
+const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures");
+
+beforeEach(async () => {
+  const homeDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-build-home-"));
+  temporaryDirectories.push(homeDirectory);
+  vi.stubEnv("SPAWNFILE_HOME", homeDirectory);
+});
 
 const createFakeDockerInfoCommand = async (architecture: string): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-fake-docker-"));
@@ -84,22 +106,6 @@ const createFakeMoltnetCli = async (): Promise<string> => {
   return commandPath;
 };
 
-const createFakeMoltnetReleaseDirectory = async (
-  architecture = "amd64"
-): Promise<string> => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moltnet-release-"));
-  const payloadDirectory = path.join(directory, "payload");
-  temporaryDirectories.push(directory);
-
-  await ensureDirectory(payloadDirectory);
-  await writeUtf8File(path.join(payloadDirectory, "moltnet"), "#!/usr/bin/env sh\necho moltnet\n");
-  await chmod(path.join(payloadDirectory, "moltnet"), 0o755);
-  const assetName = `moltnet_linux_${architecture}.tar.gz`;
-  await execFile("tar", ["-C", payloadDirectory, "-czf", path.join(directory, assetName), "."]);
-
-  return directory;
-};
-
 afterEach(async () => {
   vi.unstubAllEnvs();
   await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
@@ -111,10 +117,12 @@ describe("buildProject", () => {
     temporaryDirectories.push(outputDirectory);
 
     const invocations: DockerBuildInvocation[] = [];
+    const imageInspector = vi.fn(async () => null);
     const result = await buildProject(path.join(fixturesRoot, "single-agent"), {
       buildRunner: async (invocation) => {
         invocations.push(invocation);
       },
+      imageInspector,
       outputDirectory
     });
 
@@ -128,12 +136,25 @@ describe("buildProject", () => {
         imageTag: "spawnfile-single-agent"
       }
     ]);
+    expect(imageInspector).not.toHaveBeenCalled();
+    expect(result.imageBuild).toEqual({
+      buildMs: expect.any(Number),
+      contextBytes: expect.any(Number),
+      contextDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+      contextDigestMs: expect.any(Number),
+      contextFileCount: expect.any(Number),
+      probeMs: expect.any(Number),
+      skipped: false
+    });
+    expect(result.imageBuild!.contextBytes).toBeGreaterThan(0);
+    expect(result.imageBuild!.contextFileCount).toBeGreaterThan(0);
     await expect(fileExists(path.join(outputDirectory, "Dockerfile"))).resolves.toBe(true);
+    await expect(fileExists(path.join(outputDirectory, ".dockerignore"))).resolves.toBe(true);
     await expect(fileExists(path.join(outputDirectory, "runtime-sources"))).resolves.toBe(false);
 
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
     expect(dockerfile).toContain(
-      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.8 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
+      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.11 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
     );
     expect(dockerfile).not.toContain("runtime-sources");
   }, 30000);
@@ -159,10 +180,10 @@ describe("buildProject", () => {
 
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
     expect(dockerfile).toContain(
-      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.8 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
+      "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.11 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
     );
     expect(dockerfile).toContain(
-      "COPY --from=noopolis/spawnfile-runtime-picoclaw:0.2.9 /opt/spawnfile/runtime-installs/picoclaw /opt/spawnfile/runtime-installs/picoclaw"
+      "COPY --from=noopolis/spawnfile-runtime-picoclaw:0.3.1 /opt/spawnfile/runtime-installs/picoclaw /opt/spawnfile/runtime-installs/picoclaw"
     );
     expect(dockerfile).toContain(
       "RUN mkdir -p /usr/local/bin && ln -sf /opt/spawnfile/runtime-installs/picoclaw/bin/picoclaw /usr/local/bin/picoclaw"
@@ -192,6 +213,51 @@ describe("buildProject", () => {
     });
   }, 30000);
 
+  it("always invokes an injected runner even when a fully matching cache entry exists", async () => {
+    const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-build-skip-"));
+    temporaryDirectories.push(outputDirectory);
+    const buildRunner = vi.fn(async () => undefined);
+    const inputPath = path.join(fixturesRoot, "single-agent");
+    const first = await buildProject(inputPath, {
+      buildRunner,
+      outputDirectory
+    });
+    await writeBuildImageCacheEntry({
+      compileFingerprint: first.report.compile_fingerprint!,
+      contextDigest: first.imageBuild!.contextDigest,
+      dockerContext: null,
+      imageId: "sha256:cached-image",
+      imageTag: first.imageTag,
+      projectRoot: first.report.root,
+      version: BUILD_IMAGE_CACHE_VERSION,
+      writtenAt: "2026-07-30T12:00:00.000Z"
+    });
+    const imageInspector = vi.fn(async () => ({
+      id: "sha256:cached-image",
+      labels: {
+        "com.spawnfile.compile_fingerprint": first.report.compile_fingerprint!
+      }
+    }));
+
+    const second = await buildProject(inputPath, {
+      buildRunner,
+      imageInspector,
+      outputDirectory
+    });
+
+    expect(buildRunner).toHaveBeenCalledTimes(2);
+    expect(imageInspector).not.toHaveBeenCalled();
+    expect(second.imageBuild).toEqual({
+      buildMs: expect.any(Number),
+      contextBytes: first.imageBuild!.contextBytes,
+      contextDigest: first.imageBuild!.contextDigest,
+      contextDigestMs: expect.any(Number),
+      contextFileCount: first.imageBuild!.contextFileCount,
+      probeMs: 0,
+      skipped: false
+    });
+  }, 30_000);
+
   it("derives the default image tag from a Spawnfile file path", async () => {
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-build-file-"));
     temporaryDirectories.push(outputDirectory);
@@ -215,12 +281,11 @@ describe("buildProject", () => {
   it("resolves Moltnet binary architecture from a docker context and stages matching assets", async () => {
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-build-context-arch-"));
     temporaryDirectories.push(outputDirectory);
-    const releaseDirectory = await createFakeMoltnetReleaseDirectory("arm64");
+    const previousReleaseDirectory = process.env.SPAWNFILE_MOLTNET_RELEASE_DIR;
     const dockerCommand = await createFakeDockerInfoCommand("arm64");
     const moltnetCli = await createFakeMoltnetCli();
     const buildRunner = vi.fn(async () => undefined);
     vi.stubEnv("SPAWNFILE_MOLTNET_CLI", moltnetCli);
-    vi.stubEnv("SPAWNFILE_MOLTNET_RELEASE_DIR", releaseDirectory);
     vi.stubEnv("SPAWNFILE_MOLTNET_TARGET_ARCH", "amd64");
 
     const result = await buildProject(path.join(fixturesRoot, "e2e", "moltnet-team-chat"), {
@@ -240,6 +305,7 @@ describe("buildProject", () => {
     });
 
     await expect(fileExists(path.join(outputDirectory, "moltnet-bin", "moltnet"))).resolves.toBe(true);
+    expect(process.env.SPAWNFILE_MOLTNET_RELEASE_DIR).toBe(previousReleaseDirectory);
   }, 30000);
 });
 

@@ -15,15 +15,23 @@ import { DEFAULT_OUTPUT_DIRECTORY } from "../shared/index.js";
 import {
   assertRuntimeCanCompile,
   createRuntimeLifecycleDiagnostics,
-  getRuntimeAdapter
+  getRuntimeAdapter,
+  resolveNoopolisRunId
 } from "../runtime/index.js";
-
-import { Manifest } from "../manifest/index.js";
 
 import { buildCompilePlan } from "./buildCompilePlan.js";
 import { createContainerArtifacts } from "./containerArtifacts.js";
 import {
-  TeamCompileSupport,
+  stageRuntimePackageOverrides,
+  type RuntimePackageOverrideRequest
+} from "./containerPackageOverrides.js";
+import { augmentNodeReports } from "./compileProjectReports.js";
+import {
+  enforcePolicy,
+  type OnDegrade,
+  type PolicyMode
+} from "./compileProjectPolicy.js";
+import {
   injectMoltnetWorkspaceFiles,
   injectTeamCompileSupportFiles,
   prepareTeamCompileSupport,
@@ -31,18 +39,41 @@ import {
 } from "./compileProjectSupport.js";
 import { CompilePlanNode, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 import { generateMoltnetArtifacts } from "./moltnetArtifacts.js";
-import { stageMoltnetBinaries, type MoltnetTargetArchitecture } from "./moltnetBinaries.js";
+import {
+  stageMoltnetBinaries,
+  type MoltnetTargetArchitecture
+} from "./moltnetBinaries.js";
+import { loadWorldBindingsForCompile } from "./worldBindingsFile.js";
+import {
+  createOrganizationReadinessEvidence,
+  type OrganizationReadinessEvidence
+} from "./organizationReadyEvidence.js";
 
-type PolicyMode = NonNullable<Manifest["policy"]>["mode"];
-type OnDegrade = NonNullable<Manifest["policy"]>["on_degrade"];
+export {
+  createOrganizationReadinessEvidence,
+  ORGANIZATION_READINESS_EVIDENCE_VERSION
+} from "./organizationReadyEvidence.js";
+export type {
+  CreateOrganizationReadinessEvidenceInput,
+  OrganizationReadinessEvidence
+} from "./organizationReadyEvidence.js";
 
 export interface CompileProjectOptions {
   clean?: boolean;
   containerArchitecture?: MoltnetTargetArchitecture;
   outputDirectory?: string;
+  /** Compile-time-only local overrides for runtime install npm packages
+   * (see src/compiler/containerPackageOverrides.ts). Only opt-in
+   * local/E2E callers set this; a standard compile leaves it undefined and
+   * every runtime install package resolves to its pinned registry
+   * version, unchanged. */
+  runtimePackageOverrides?: RuntimePackageOverrideRequest;
+  /** Runner-owned path to a bounded, secret-free simfile.world-bindings.v1 artifact. */
+  worldBindingsPath?: string;
 }
 
 export interface CompileProjectResult {
+  organizationReadinessEvidence: OrganizationReadinessEvidence;
   outputDirectory: string;
   report: CompileReport;
   reportPath: string;
@@ -223,118 +254,18 @@ const compileTeamNode = async (
   };
 };
 
-const enforcePolicy = (
-  nodeReport: NodeReport,
-  policyMode: PolicyMode | null,
-  onDegrade: OnDegrade | null
-): void => {
-  for (const capability of nodeReport.capabilities) {
-    if (capability.outcome === "unsupported") {
-      if (policyMode === "strict") {
-        throw new Error(
-          `Policy violation: ${capability.key} is unsupported for ${nodeReport.id} (strict mode)${capability.message ? `: ${capability.message}` : ""}`
-        );
-      }
-
-      if (policyMode === "warn") {
-        nodeReport.diagnostics.push(
-          createDiagnostic(
-            "warn",
-            `Policy warning: ${capability.key} is unsupported for ${nodeReport.id}${capability.message ? `: ${capability.message}` : ""}`
-          )
-        );
-      }
-    }
-
-    if (capability.outcome === "degraded") {
-      if (onDegrade === "error") {
-        throw new Error(
-          `Policy violation: ${capability.key} is degraded for ${nodeReport.id} (on_degrade: error)${capability.message ? `: ${capability.message}` : ""}`
-        );
-      }
-
-      if (onDegrade === "warn") {
-        nodeReport.diagnostics.push(
-          createDiagnostic(
-            "warn",
-            `Policy warning: ${capability.key} is degraded for ${nodeReport.id}${capability.message ? `: ${capability.message}` : ""}`
-          )
-        );
-      }
-    }
-  }
-};
-
-const createIdentityCapabilities = (
-  node: ResolvedAgentNode
-): CapabilityReport[] => [
-  ...(node.surfaces?.slack?.identity
-    ? [{
-        key: "surfaces.slack.identity",
-        message: "Declared Slack identity was preserved for roster output",
-        outcome: "supported" as const
-      }]
-    : []),
-  ...(node.surfaces?.discord?.identity
-    ? [{
-        key: "surfaces.discord.identity",
-        message: "Declared Discord identity was preserved for roster output",
-        outcome: "supported" as const
-      }]
-    : []),
-  ...(node.surfaces?.telegram?.identity
-    ? [{
-        key: "surfaces.telegram.identity",
-        message: "Declared Telegram identity was preserved for roster output",
-        outcome: "supported" as const
-      }]
-    : []),
-  ...(node.surfaces?.whatsapp?.identity
-    ? [{
-        key: "surfaces.whatsapp.identity",
-        message: "Declared WhatsApp identity was preserved for roster output",
-        outcome: "supported" as const
-      }]
-    : [])
-];
-
-const createWorkspaceResourceCapabilities = (
-  node: ResolvedAgentNode | ResolvedTeamNode
-): CapabilityReport[] =>
-  (node.workspaceResources?.length ?? 0) > 0
-    ? [{
-        key: "workspace.resources",
-        message: `${node.workspaceResources?.length ?? 0} workspace resource(s) will be prepared at startup`,
-        outcome: "supported" as const
-      }]
-    : [];
-
-const augmentNodeReports = (
-  compiledNodes: CompiledNodeResult[],
-  support: TeamCompileSupport
-): void => {
-  for (const compiled of compiledNodes) {
-    compiled.report.capabilities.push(...createWorkspaceResourceCapabilities(compiled.value));
-
-    if (compiled.value.kind === "team") {
-      compiled.report.capabilities.push(
-        ...(support.capabilitiesByTeamSource.get(compiled.value.source) ?? [])
-      );
-      compiled.report.diagnostics.push(
-        ...(support.diagnosticsByTeamSource.get(compiled.value.source) ?? [])
-      );
-      continue;
-    }
-
-    compiled.report.capabilities.push(...createIdentityCapabilities(compiled.value));
-  }
-};
-
 export const compileProject = async (
   inputPath: string,
   options: CompileProjectOptions = {}
 ): Promise<CompileProjectResult> => {
   const plan = await buildCompilePlan(inputPath);
+  const worldBindings = options.worldBindingsPath === undefined
+    ? undefined
+    : await loadWorldBindingsForCompile(
+        plan,
+        options.worldBindingsPath,
+        resolveNoopolisRunId(process.env)
+      );
   // The default output directory lives under the resolved project root, not the
   // process working directory, so `spawnfile compile ./org` writes ./org/.spawn.
   const outputDirectory = options.outputDirectory
@@ -378,17 +309,26 @@ export const compileProject = async (
   }
 
   const moltnetArtifacts = await generateMoltnetArtifacts(plan);
-  const hasStagedMoltnetBinaries = moltnetArtifacts
+
+  const moltnetRelease = moltnetArtifacts
     ? await stageMoltnetBinaries(outputDirectory, {
         architecture: options.containerArchitecture
       })
-    : false;
+    : undefined;
   await injectMoltnetWorkspaceFiles(outputDirectory, compiledNodes, moltnetArtifacts);
+
+  const resolvedRuntimePackageOverrides = await stageRuntimePackageOverrides(
+    outputDirectory,
+    options.runtimePackageOverrides
+  );
   const generatedAt = new Date().toISOString();
   const containerArtifacts = await createContainerArtifacts(plan, compiledNodes, {
     generatedAt,
-    hasStagedMoltnetBinaries,
-    moltnet: moltnetArtifacts
+    hasStagedMoltnetBinaries: Boolean(moltnetRelease),
+    moltnet: moltnetArtifacts,
+    moltnetRelease,
+    runtimePackageOverrides: resolvedRuntimePackageOverrides,
+    ...(worldBindings ? { worldBindings } : {})
   });
   await writeEmittedFiles(outputDirectory, containerArtifacts.files);
   await Promise.all(
@@ -404,6 +344,13 @@ export const compileProject = async (
     projectName: containerArtifacts.distribution.report.organization.project
   });
   const reportPath = await writeCompileReport(outputDirectory, report);
+  const organizationReadinessEvidence = createOrganizationReadinessEvidence({
+    compileVersion: report.spawnfile_version,
+    containerArtifacts,
+    moltnetArtifacts,
+    plan,
+    ...(worldBindings ? { worldBindings } : {})
+  });
 
-  return { outputDirectory, report, reportPath };
+  return { organizationReadinessEvidence, outputDirectory, report, reportPath };
 };

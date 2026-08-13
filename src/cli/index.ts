@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
-import { runCli } from "./runCli.js";
+import { isTargetLookupInvocation } from "./targetCliRoute.js";
 
-const exitCode = await runCli(process.argv.slice(2));
-process.exit(exitCode);
+const argv = process.argv.slice(2);
+const exitCode = isTargetLookupInvocation(argv)
+  ? await (await import("./targetLookupCli.js")).runTargetLookupCli(argv)
+  : await (await import("./runCli.js")).runCli(argv);
+process.exitCode = exitCode;

@@ -67,6 +67,133 @@ describe("manifestSchema", () => {
     expect(isAgentManifest(result)).toBe(true);
   });
 
+  it("accepts legacy and explicit bearer MCP auth", () => {
+    const result = manifestSchema.parse({
+      kind: "agent",
+      environment: {
+        mcp_servers: [
+          {
+            auth: { secret: "LEGACY_MCP_TOKEN" },
+            name: "legacy",
+            transport: "sse",
+            url: "https://legacy.example/mcp"
+          },
+          {
+            auth: { mode: "bearer", secret: "BEARER_MCP_TOKEN" },
+            name: "bearer",
+            transport: "streamable_http",
+            url: "https://bearer.example/mcp"
+          }
+        ]
+      },
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    if (!isAgentManifest(result)) {
+      throw new Error("Expected an agent manifest");
+    }
+
+    expect(result.environment?.mcp_servers?.[0]?.auth).toEqual({
+      secret: "LEGACY_MCP_TOKEN"
+    });
+    expect(result.environment?.mcp_servers?.[1]?.auth).toEqual({
+      mode: "bearer",
+      secret: "BEARER_MCP_TOKEN"
+    });
+  });
+
+  it("rejects explicit bearer auth on stdio MCP servers", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      environment: {
+        mcp_servers: [
+          {
+            auth: { mode: "bearer", secret: "MCP_TOKEN" },
+            command: "uvx",
+            name: "memory",
+            transport: "stdio"
+          }
+        ]
+      },
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.message)).toContain(
+      "stdio MCP servers do not support bearer auth"
+    );
+  });
+
+  it("accepts valid bearer environment-variable names", () => {
+    expect(
+      manifestSchema.safeParse({
+        kind: "agent",
+        environment: { mcp_servers: [{ auth: { mode: "bearer", secret: "_TOKEN_2" }, name: "search", transport: "sse", url: "https://search.example/mcp" }] },
+        name: "agent",
+        runtime: "openclaw",
+        spawnfile_version: "0.1"
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects invalid explicit bearer environment-variable names", () => {
+    for (const secret of ["", "   ", "2TOKEN", "TOKEN.NAME", "TOKEN-NAME", "TOKEN NAME"]) {
+      const result = manifestSchema.safeParse({
+        kind: "agent",
+        environment: { mcp_servers: [{ auth: { mode: "bearer", secret }, name: "search", transport: "sse", url: "https://search.example/mcp" }] },
+        name: "agent",
+        runtime: "openclaw",
+        spawnfile_version: "0.1"
+      });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues.some((issue) => issue.path.join(".") === "environment.mcp_servers.0.auth.secret")).toBe(true);
+    }
+  });
+
+  it("rejects unknown MCP auth modes and fields", () => {
+    for (const auth of [
+      { mode: "header", secret: "MCP_TOKEN" },
+      { header: "Authorization", secret: "MCP_TOKEN" }
+    ]) {
+      const result = manifestSchema.safeParse({
+        kind: "agent",
+        environment: {
+          mcp_servers: [
+            {
+              auth,
+              name: "search",
+              transport: "sse",
+              url: "https://search.example/mcp"
+            }
+          ]
+        },
+        name: "agent",
+        runtime: "openclaw",
+        spawnfile_version: "0.1"
+      });
+
+      expect(result.success).toBe(false);
+    }
+  });
+
+  it("rejects empty MCP server names", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      environment: {
+        mcp_servers: [{ name: "", transport: "sse", url: "https://search.example/mcp" }]
+      },
+      name: "agent",
+      runtime: "openclaw",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("rejects stdio MCP servers without a command", () => {
     const result = manifestSchema.safeParse({
       kind: "agent",
@@ -105,6 +232,29 @@ describe("manifestSchema", () => {
 
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.message).toContain("must declare url");
+  });
+
+  it("rejects compiler-owned MCP server names", () => {
+    for (const name of ["spawnfile.memory", "mneme-journal"]) {
+      const result = manifestSchema.safeParse({
+        kind: "agent",
+        environment: {
+          mcp_servers: [
+            {
+              command: "mneme",
+              name,
+              transport: "stdio"
+            }
+          ]
+        },
+        name: "agent",
+        runtime: "picoclaw",
+        spawnfile_version: "0.1"
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0]?.message).toContain("reserved");
+    }
   });
 
   it("accepts package declarations with valid managers", () => {
@@ -403,6 +553,94 @@ describe("manifestSchema", () => {
       throw new Error("expected team manifest");
     }
     expect(result.shared?.environment?.packages?.[0].id).toBe("gh");
+  });
+
+  it("accepts inline OpenClaw and Daimon agent members", () => {
+    const result = manifestSchema.parse({
+      kind: "team",
+      members: [
+        {
+          id: "red",
+          runtime: "daimon",
+          workspace: {
+            docs: {
+              system: "./characters/red.md"
+            }
+          }
+        },
+        {
+          description: "Defends the blue goal.",
+          id: "blue",
+          runtime: "openclaw",
+          workspace: {
+            docs: {
+              system: "./characters/blue.md"
+            }
+          }
+        }
+      ],
+      mode: "swarm",
+      name: "tiny-football",
+      spawnfile_version: "0.1"
+    });
+
+    expect(isTeamManifest(result)).toBe(true);
+    if (!isTeamManifest(result)) {
+      throw new Error("expected team manifest");
+    }
+    expect(result.members).toMatchObject([
+      { id: "red", runtime: "daimon" },
+      { id: "blue", runtime: "openclaw" }
+    ]);
+  });
+
+  it("rejects ambiguous members that mix ref and inline agent fields", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "red",
+          ref: "./agents/red",
+          runtime: "daimon",
+          workspace: {
+            docs: {
+              system: "./characters/red.md"
+            }
+          }
+        }
+      ],
+      mode: "swarm",
+      name: "tiny-football",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("either {id, ref} or an inline agent");
+  });
+
+  it("rejects inline members without a system instruction document", () => {
+    const result = manifestSchema.safeParse({
+      kind: "team",
+      members: [
+        {
+          id: "red",
+          runtime: "daimon",
+          workspace: {
+            docs: {
+              identity: "./characters/red-identity.md"
+            }
+          }
+        }
+      ],
+      mode: "swarm",
+      name: "tiny-football",
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain(
+      "inline agent members must declare workspace.docs.system",
+    );
   });
 
   it("accepts agent workspace skills and environment packages", () => {
@@ -729,6 +967,248 @@ describe("manifestSchema", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it("accepts top-level agent memory declarations", () => {
+    const result = manifestSchema.parse({
+      kind: "agent",
+      name: "analyst",
+      runtime: "openclaw",
+      memory: [
+        {
+          id: "self",
+          store: {
+            kind: "sqlite",
+            persistence: {
+              mode: "durable"
+            }
+          }
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(isAgentManifest(result)).toBe(true);
+    if (!isAgentManifest(result)) {
+      throw new Error("expected agent manifest");
+    }
+    expect(result.memory?.[0]?.id).toBe("self");
+    expect(result.memory?.[0]?.store.kind).toBe("sqlite");
+  });
+
+  it("accepts top-level team memory declarations with valid access restrictions", () => {
+    const result = manifestSchema.parse({
+      kind: "team",
+      members: [{ id: "worker", ref: "./agents/worker" }],
+      mode: "swarm",
+      name: "memory-team",
+      memory: [
+        {
+          id: "team-self",
+          access: {
+            members: ["worker"]
+          },
+          store: {
+            kind: "json",
+            path: "/var/lib/spawnfile/memory/team-self"
+          }
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(isTeamManifest(result)).toBe(true);
+    if (!isTeamManifest(result)) {
+      throw new Error("expected team manifest");
+    }
+    expect(result.memory?.[0]?.access?.members).toEqual(["worker"]);
+    expect(result.memory?.[0]).toBeDefined();
+  });
+
+  it("rejects agent-level memory access member declarations", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      name: "analyst",
+      runtime: "openclaw",
+      memory: [
+        {
+          id: "self",
+          access: {
+            members: ["ignored"]
+          },
+          store: {
+            kind: "memory"
+          }
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("agent memory banks must not declare access.members");
+  });
+
+  it("rejects duplicate memory ids within a manifest", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      name: "writer",
+      runtime: "openclaw",
+      memory: [
+        {
+          id: "same",
+          store: { kind: "memory" }
+        },
+        {
+          id: "same",
+          store: { kind: "memory" }
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("memory ids must be unique");
+  });
+
+  it("rejects unsupported memory vector providers", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      name: "writer",
+      runtime: "pi",
+      memory: [
+        {
+          id: "self",
+          index: {
+            vector: {
+              enabled: true,
+              model: "embed-model",
+              provider: "unknown"
+            }
+          },
+          store: { kind: "memory" }
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(issueHasPath(result, "memory.0.index.vector.provider")).toBe(true);
+  });
+
+  it("rejects enabled memory vector indexes without a model", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      name: "writer",
+      runtime: "pi",
+      memory: [
+        {
+          id: "self",
+          index: {
+            vector: {
+              enabled: true,
+              provider: "ollama"
+            }
+          },
+          store: { kind: "memory" }
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("requires model");
+  });
+
+  it("rejects ephemeral memory persistence that declares host-backed details", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      name: "writer",
+      runtime: "pi",
+      memory: [
+        {
+          id: "self",
+          store: {
+            kind: "sqlite",
+            persistence: {
+              mode: "ephemeral",
+              mount: "/var/lib/spawnfile/memory/self",
+              name: "self-memory"
+            }
+          }
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("ephemeral persistence");
+  });
+
+  it("rejects memory retention ttl unless ttl forgetting is enabled", () => {
+    const result = manifestSchema.safeParse({
+      kind: "agent",
+      name: "writer",
+      runtime: "pi",
+      memory: [
+        {
+          id: "self",
+          retention: {
+            forgetting: "decay",
+            ttl: "30d"
+          },
+          store: { kind: "memory" }
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("only valid when forgetting is ttl");
+  });
+
+  it("rejects sqlite and json memory stores that declare PostgreSQL fields", () => {
+    const sqliteResult = manifestSchema.safeParse({
+      kind: "agent",
+      name: "writer",
+      runtime: "openclaw",
+      memory: [
+        {
+          id: "self",
+          store: {
+            dsn_secret: "POSTGRES_DSN",
+            kind: "sqlite"
+          }
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    const jsonResult = manifestSchema.safeParse({
+      kind: "agent",
+      name: "writer",
+      runtime: "openclaw",
+      memory: [
+        {
+          id: "self",
+          store: {
+            kind: "json",
+            path: "/var/lib/memory.db"
+          }
+        },
+        {
+          id: "bad",
+          store: {
+            kind: "postgres"
+          }
+        }
+      ],
+      spawnfile_version: "0.1"
+    });
+
+    expect(sqliteResult.success).toBe(false);
+    expect(jsonResult.success).toBe(false);
+    expect(sqliteResult.error?.issues[0]?.path.join(".")).toContain("memory.0.store");
+    expect(jsonResult.error?.issues[0]?.path.join(".")).toContain("memory.1.store");
   });
 
   it("rejects unsupported managed moltnet console analytics providers", () => {
@@ -2587,5 +3067,21 @@ describe("manifestSchema", () => {
 
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.message).toContain("declared unknown provider google");
+  });
+
+  it("rejects duplicate room ids within one team network", () => {
+    const manifest = createTeamWithNetwork(createManagedServer({}));
+    const network = (manifest.networks as Array<Record<string, unknown>>)[0]!;
+    network.rooms = [
+      { id: "workroom", members: ["worker"] },
+      { id: "workroom", members: ["worker"] }
+    ];
+
+    const result = manifestSchema.safeParse(manifest);
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toContainEqual(expect.objectContaining({
+      message: "network team_net declares duplicate room ids"
+    }));
   });
 });

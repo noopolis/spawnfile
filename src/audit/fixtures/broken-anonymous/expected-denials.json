@@ -1,0 +1,5 @@
+{
+  "expectedDenialTypes": [
+    "message.denied"
+  ]
+}

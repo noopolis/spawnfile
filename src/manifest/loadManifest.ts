@@ -8,6 +8,7 @@ import { SpawnfileError } from "../shared/index.js";
 import {
   AgentManifest,
   ExecutionBlock,
+  InlineAgentMember,
   Manifest,
   McpServer,
   SharedSurface,
@@ -16,6 +17,8 @@ import {
   SkillReference,
   TeamManifest,
   isAgentManifest,
+  isInlineAgentMember,
+  isReferencedMember,
   isTeamManifest,
   manifestSchema
 } from "./schemas.js";
@@ -167,24 +170,37 @@ const validateSkills = async (
   );
 };
 
+type LocalAgentConfiguration = Pick<
+  AgentManifest,
+  "environment" | "workspace"
+> | Pick<InlineAgentMember, "environment" | "workspace">;
+
+const validateLocalAgentConfiguration = async (
+  manifestPath: string,
+  agent: LocalAgentConfiguration
+): Promise<void> => {
+  const agentWorkspaceSkills = agent.workspace?.skills;
+  const agentEnvironment = agent.environment;
+
+  ensureUniqueNames((agentEnvironment?.mcp_servers ?? []).map((server) => server.name), "MCP server");
+
+  await validateDocFiles(manifestPath, agent.workspace?.docs);
+  await validateSkills(manifestPath, agentWorkspaceSkills);
+  validateSkillRequirements(agentWorkspaceSkills, getMcpNames(agentEnvironment?.mcp_servers));
+};
+
 const validateLocalAgentManifest = async (
   manifestPath: string,
   manifest: AgentManifest
 ): Promise<void> => {
-  const agentWorkspaceSkills = manifest.workspace?.skills;
-  const agentEnvironment = manifest.environment;
-
-  ensureUniqueNames((agentEnvironment?.mcp_servers ?? []).map((server) => server.name), "MCP server");
   ensureUniqueNames((manifest.subagents ?? []).map((subagent) => subagent.id), "subagent id");
 
-  await validateDocFiles(manifestPath, manifest.workspace?.docs);
-  await validateSkills(manifestPath, agentWorkspaceSkills);
+  await validateLocalAgentConfiguration(manifestPath, manifest);
   await validateManifestRefs(
     manifestPath,
     manifest.subagents?.map((subagent) => subagent.ref),
     "Subagent"
   );
-  validateSkillRequirements(agentWorkspaceSkills, getMcpNames(agentEnvironment?.mcp_servers));
 };
 
 const getSharedMcpNames = (shared: SharedSurface | undefined): Set<string> =>
@@ -207,8 +223,13 @@ const validateLocalTeamManifest = async (
   await validateSkills(manifestPath, sharedWorkspace?.skills);
   await validateManifestRefs(
     manifestPath,
-    manifest.members.map((member) => member.ref),
+    manifest.members.filter(isReferencedMember).map((member) => member.ref),
     "Member"
+  );
+  await Promise.all(
+    manifest.members
+      .filter(isInlineAgentMember)
+      .map((member) => validateLocalAgentConfiguration(manifestPath, member))
   );
   validateSkillRequirements(sharedWorkspace?.skills, getSharedMcpNames(manifest.shared));
 

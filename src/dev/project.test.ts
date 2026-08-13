@@ -4,6 +4,19 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../compiler/moltnetBinaries.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../compiler/moltnetBinaries.js")>();
+  const { stageTrustedTestMoltnetRelease } = await import(
+    "../../test/trustedMoltnetRelease.js"
+  );
+  return {
+    ...actual,
+    stageMoltnetBinaries: (outputDirectory: string, options: Parameters<
+      typeof actual.stageMoltnetBinaries
+    >[1]) => stageTrustedTestMoltnetRelease(outputDirectory, options)
+  };
+});
+
 import {
   ensureDirectory,
   removeDirectory,
@@ -13,7 +26,7 @@ import { type DeploymentRecord, writeDeploymentRecord } from "../deployment/inde
 
 import { devActivityProject, devApplyProject, devRestartProject, devStopProject, devUpProject } from "./index.js";
 
-const fixturesRoot = path.resolve(process.cwd(), "fixtures");
+const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures");
 const temporaryDirectories: string[] = [];
 const previousMoltnetCli = process.env.SPAWNFILE_MOLTNET_CLI;
 const previousOpenAIKey = process.env.OPENAI_API_KEY;
@@ -76,9 +89,9 @@ const addObserverAgent = async (projectDirectory: string): Promise<void> => {
       'spawnfile_version: "0.1"',
       "kind: agent",
       "name: observer",
-      'description: "Observes the Pi harness dev loop."',
+      'description: "Observes the Daimon dev loop."',
       "",
-      "runtime: pi",
+      "runtime: daimon",
       "",
       "execution:",
       "  model:",
@@ -92,7 +105,7 @@ const addObserverAgent = async (projectDirectory: string): Promise<void> => {
       "",
       "surfaces:",
       "  moltnet:",
-      "    - network: pi_lab",
+      "    - network: daimon_lab",
       "      rooms:",
       "        lab-floor:",
       "          wake: mentions",
@@ -133,13 +146,13 @@ const addExternalObserverNetwork = async (projectDirectory: string): Promise<voi
     observerSpawnfile,
     (await readFile(observerSpawnfile, "utf8")).replace(
       [
-        "    - network: pi_lab",
+        "    - network: daimon_lab",
         "      rooms:",
         "        lab-floor:",
         "          wake: mentions"
       ].join("\n"),
       [
-        "    - network: pi_lab",
+        "    - network: daimon_lab",
         "      rooms:",
         "        lab-floor:",
         "          wake: mentions",
@@ -233,10 +246,10 @@ afterEach(async () => {
 });
 
 describe("devApplyProject", () => {
-  it("hot-applies a new Pi agent and starts only its Moltnet bridge", async () => {
+  it("hot-applies a new Daimon agent and starts only its Moltnet bridge", async () => {
     const parentDirectory = await createTempDirectory("spawnfile-dev-project-");
     const projectDirectory = path.join(parentDirectory, "org");
-    await cp(path.join(fixturesRoot, "e2e", "pi-harness-org"), projectDirectory, {
+    await cp(path.join(fixturesRoot, "e2e", "daimon-org"), projectDirectory, {
       recursive: true
     });
     await addObserverAgent(projectDirectory);
@@ -275,13 +288,13 @@ describe("devApplyProject", () => {
       existingAgent: false
     });
     expect(calls.some((args) =>
-      args.join(" ").includes("pi-app.json spawnfile-pi-dev:/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json")
+      args.join(" ").includes("pi-app.json spawnfile-pi-dev:/var/lib/spawnfile/instances/daimon/pi-app/pi/pi-app.json")
     )).toBe(true);
     expect(calls.some((args) =>
-      args.join(" ").includes("workspace/agents/observer spawnfile-pi-dev:/var/lib/spawnfile/instances/pi/pi-app/workspace/agents")
+      args.join(" ").includes("workspace/agents/observer spawnfile-pi-dev:/var/lib/spawnfile/instances/daimon/pi-app/workspace/agents")
     )).toBe(true);
     expect(calls.some((args) =>
-      args.join(" ").includes("/var/lib/spawnfile/moltnet/nodes/pi-harness-org-pi_lab-observer.json")
+      args.join(" ").includes("/var/lib/spawnfile/moltnet/nodes/daimon-org-daimon_lab-observer.json")
     )).toBe(true);
     expect(calls.some((args) =>
       args.join(" ").includes("/var/lib/spawnfile/moltnet/servers/")
@@ -294,8 +307,8 @@ describe("devApplyProject", () => {
     expect(calls.some((args) =>
       args.includes("chown")
       && args.includes("spawnfile:spawnfile")
-      && args.includes("/var/lib/spawnfile/instances/pi/pi-app")
-      && args.includes("/var/lib/spawnfile/moltnet/nodes/pi-harness-org-pi_lab-observer.json")
+      && args.includes("/var/lib/spawnfile/instances/daimon/pi-app")
+      && args.includes("/var/lib/spawnfile/moltnet/nodes/daimon-org-daimon_lab-observer.json")
       && args.includes("/var/lib/spawnfile/agents/observer/state/moltnet")
     )).toBe(true);
     expect(calls.some((args) =>
@@ -305,14 +318,14 @@ describe("devApplyProject", () => {
       args.includes("-d")
       && args.includes("--user")
       && args.includes("spawnfile")
-      && args.at(-1)?.includes("moltnet node '/var/lib/spawnfile/moltnet/nodes/pi-harness-org-pi_lab-observer.json'")
+      && args.at(-1)?.includes("moltnet node '/var/lib/spawnfile/moltnet/nodes/daimon-org-daimon_lab-observer.json'")
     )).toBe(true);
   }, 40_000);
 
-  it("reloads an existing Pi agent without starting a second bridge", async () => {
+  it("reloads an existing Daimon agent without starting a second bridge", async () => {
     const parentDirectory = await createTempDirectory("spawnfile-dev-project-");
     const projectDirectory = path.join(parentDirectory, "org");
-    await cp(path.join(fixturesRoot, "e2e", "pi-harness-org"), projectDirectory, {
+    await cp(path.join(fixturesRoot, "e2e", "daimon-org"), projectDirectory, {
       recursive: true
     });
     process.env.SPAWNFILE_MOLTNET_CLI = await createFakeMoltnetCli();
@@ -355,10 +368,10 @@ describe("devApplyProject", () => {
     expect(calls.some((args) => args.some((arg) => arg.endsWith("/spawnfile/agents/load")))).toBe(true);
   }, 40_000);
 
-  it("starts all Moltnet node bridges for a new Pi agent", async () => {
+  it("starts all Moltnet node bridges for a new Daimon agent", async () => {
     const parentDirectory = await createTempDirectory("spawnfile-dev-project-");
     const projectDirectory = path.join(parentDirectory, "org");
-    await cp(path.join(fixturesRoot, "e2e", "pi-harness-org"), projectDirectory, {
+    await cp(path.join(fixturesRoot, "e2e", "daimon-org"), projectDirectory, {
       recursive: true
     });
     await addObserverAgent(projectDirectory);
@@ -389,10 +402,10 @@ describe("devApplyProject", () => {
     expect(result.bridgeStarted).toBe(true);
     expect(bridgeStarts).toHaveLength(2);
     expect(bridgeStarts.some((args) =>
-      args.at(-1)?.includes("pi-harness-org-pi_lab-observer.json")
+      args.at(-1)?.includes("daimon-org-daimon_lab-observer.json")
     )).toBe(true);
     expect(bridgeStarts.some((args) =>
-      args.at(-1)?.includes("pi-harness-org-external_lab-observer.json")
+      args.at(-1)?.includes("daimon-org-external_lab-observer.json")
     )).toBe(true);
   }, 40_000);
 
@@ -506,7 +519,7 @@ describe("devApplyProject", () => {
     ).rejects.toThrow(/no recorded container name/);
   });
 
-  it("reports an unknown Pi agent after recompiling", async () => {
+  it("reports an unknown Daimon agent after recompiling", async () => {
     const projectDirectory = await createMinimalPiProject();
     const outputDirectory = path.join(projectDirectory, ".spawn-dev");
     await seedDeploymentRecord(outputDirectory, projectDirectory);
@@ -524,7 +537,7 @@ describe("devApplyProject", () => {
         execFile,
         outputDirectory
       })
-    ).rejects.toThrow(/Pi agent "missing" was not found/);
+    ).rejects.toThrow(/Daimon agent "missing" was not found/);
   });
 
   it("uses the same hot-apply path for dev restart", async () => {

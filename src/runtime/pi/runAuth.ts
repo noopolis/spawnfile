@@ -93,6 +93,18 @@ const stageGrokHome = async (
     "worktrees.db"
   ]);
 
+/** The generated `runCodexEngine` (appCliEnginesSource.ts) reads codex CLI
+ * auth from `<containerHome>/.codex/auth.json`, so — mirroring the grok and
+ * antigravity homes — stage the real host `~/.codex/auth.json` when a codex
+ * CLI engine runs. Only `auth.json` is staged: the host `config.toml` carries
+ * machine-specific settings the container should not inherit, and it is the
+ * only file `runCodexEngine` copies forward. */
+const stageCodexHome = async (
+  sourcePath: string,
+  tempRoot: string
+): Promise<string> =>
+  stageCliHome(sourcePath, tempRoot, "codex-home", ["auth.json"]);
+
 const stageAntigravityHome = async (
   sourcePath: string,
   tempRoot: string
@@ -129,7 +141,8 @@ const firstExistingDirectory = async (paths: string[]): Promise<string | null> =
 
 const collectOptionalCliHomeMounts = async (
   containerHomePath: string,
-  tempRoot: string
+  tempRoot: string,
+  options: { skipCodex?: boolean } = {}
 ): Promise<string[]> => {
   const home = os.homedir();
   const mounts: string[] = [];
@@ -142,6 +155,19 @@ const collectOptionalCliHomeMounts = async (
       await stageGrokHome(grokHome, tempRoot),
       path.posix.join(containerHomePath, ".grok")
     ));
+  }
+
+  if (!options.skipCodex) {
+    const codexCandidates = process.env.CODEX_HOME
+      ? [process.env.CODEX_HOME]
+      : [path.join(home, ".codex")];
+    const codexHome = await firstExistingDirectory(codexCandidates);
+    if (codexHome && await fileExists(path.join(codexHome, "auth.json"))) {
+      mounts.push(...createMountArgs(
+        await stageCodexHome(codexHome, tempRoot),
+        path.posix.join(containerHomePath, ".codex")
+      ));
+    }
   }
 
   const antigravityCandidates = process.env.ANTIGRAVITY_HOME
@@ -182,10 +208,10 @@ export const preparePiRuntimeAuth = async (
     return { coveredModelSecrets: [], mountArgs: [] };
   }
 
-  const codex = input.authProfile.imports.codex
+  const codex = input.authProfile?.imports.codex
     ? await loadImportedCodexCredential(input.authProfile.imports.codex.path)
     : null;
-  const claudeCode = input.authProfile.imports["claude-code"]
+  const claudeCode = input.authProfile?.imports["claude-code"]
     ? await loadImportedClaudeCodeCredential(input.authProfile.imports["claude-code"].path)
     : null;
 
@@ -194,7 +220,13 @@ export const preparePiRuntimeAuth = async (
     input.instance.model_auth_methods.anthropic === "claude-code" && claudeCode;
   const mountArgs = await collectOptionalCliHomeMounts(
     input.instance.home_path,
-    input.tempRoot
+    input.tempRoot,
+    {
+      // `up` delivers this credential through the env-secret channel; do not
+      // also create a remote-host bind mount for the same Codex auth file.
+      skipCodex: Boolean(input.authProfile?.imports.codex) ||
+        typeof input.env.SPAWNFILE_CLI_AUTH_JSON === "string"
+    }
   );
 
   const authProfiles: Record<string, unknown> = {};
