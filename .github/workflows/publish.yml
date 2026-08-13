@@ -46,12 +46,6 @@ jobs:
             exit 1
           fi
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Test
-        run: npm test
-
       - name: Build
         run: npm run build
 
@@ -59,6 +53,8 @@ jobs:
         run: npm run verify:package-closure
 
       - name: Publish to npm
-        run: npm publish
+        # Full typecheck and test coverage run on pull requests and main.
+        # This tag job publishes only the artifact built and verified above.
+        run: npm publish --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
