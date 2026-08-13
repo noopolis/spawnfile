@@ -1,6 +1,7 @@
 import { SpawnfileError } from "../shared/index.js";
 
 import { resolveTeamRepresentatives } from "./moltnetRepresentativeResolution.js";
+import { resolveCanonicalAgentMemberId } from "./organizationIdentity.js";
 import type {
   CompilePlan,
   ResolvedAgentNode,
@@ -9,6 +10,7 @@ import type {
   ResolvedTeamNetworkRoom,
   ResolvedTeamNode
 } from "./types.js";
+import { isAttachedExternalRoomMember } from "./buildCompilePlanTeams.js";
 
 const hasOwn = (value: object, key: string): boolean =>
   Object.prototype.hasOwnProperty.call(value, key);
@@ -52,6 +54,27 @@ const clonePolicy = (
 const defaultNestedRepresentativePolicy = (): ResolvedMoltnetRoomPolicy => ({
   wake: "mentions"
 });
+
+const resolveConcreteMemberId = (
+  plan: CompilePlan,
+  agentSource: string,
+  authoredMemberId: string
+): string => {
+  if (!plan.organizationIdentity) return authoredMemberId;
+  const canonicalMemberId = resolveCanonicalAgentMemberId(plan, agentSource);
+  if (
+    !canonicalMemberId ||
+    plan.organizationIdentity.agentMembers.filter((member) =>
+      member.memberId === canonicalMemberId
+    ).length !== 1
+  ) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Unable to resolve exactly one canonical Moltnet member id for ${agentSource}`
+    );
+  }
+  return canonicalMemberId;
+};
 
 const findDirectRoomPolicy = (
   plan: CompilePlan,
@@ -106,16 +129,21 @@ export const listConcreteMoltnetRoomMemberIds = (
   room: ResolvedTeamNetworkRoom,
   memberships = plan.moltnetRoomMemberships
 ): string[] => {
+  const externalMembers = room.members.filter((memberId) =>
+    isAttachedExternalRoomMember(teamNode, networkId, memberId));
   if (memberships) {
     return [
       ...new Set(
-        memberships
+        [
+          ...memberships
           .filter((membership) =>
             membership.declaringTeamSource === teamNode.source
             && membership.networkId === networkId
             && membership.roomId === room.id
           )
-          .map((membership) => membership.concreteMemberId)
+          .map((membership) => membership.concreteMemberId),
+          ...externalMembers
+        ]
       )
     ].sort();
   }
@@ -124,6 +152,10 @@ export const listConcreteMoltnetRoomMemberIds = (
   for (const declaredSlot of room.members) {
     const member = teamNode.members.find((entry) => entry.id === declaredSlot);
     if (!member) {
+      if (isAttachedExternalRoomMember(teamNode, networkId, declaredSlot)) {
+        concreteMembers.push(declaredSlot);
+        continue;
+      }
       throw new SpawnfileError(
         "validation_error",
         `Team ${teamNode.name} Moltnet room ${room.id} references unknown member ${declaredSlot}`
@@ -131,7 +163,7 @@ export const listConcreteMoltnetRoomMemberIds = (
     }
 
     if (member.kind === "agent") {
-      concreteMembers.push(member.id);
+      concreteMembers.push(resolveConcreteMemberId(plan, member.nodeSource, member.id));
       continue;
     }
 
@@ -143,7 +175,9 @@ export const listConcreteMoltnetRoomMemberIds = (
         `Team ${childTeam.name} has no concrete representative for Moltnet room ${room.id} on ${teamNode.name}`
       );
     }
-    concreteMembers.push(...representatives.map((representative) => representative.memberId));
+    concreteMembers.push(...representatives.map((representative) =>
+      resolveConcreteMemberId(plan, representative.agentSource, representative.memberId)
+    ));
   }
 
   return [...new Set(concreteMembers)].sort();
@@ -165,6 +199,13 @@ export const resolveMoltnetRoomMemberships = (
         for (const declaredSlot of room.members) {
           const declaredMember = teamNode.members.find((member) => member.id === declaredSlot);
           if (!declaredMember) {
+            if (isAttachedExternalRoomMember(
+              teamNode,
+              network.id,
+              declaredSlot
+            )) {
+              continue;
+            }
             throw new SpawnfileError(
               "validation_error",
               `Team ${teamNode.name} Moltnet room ${room.id} references unknown member ${declaredSlot}`
@@ -184,7 +225,7 @@ export const resolveMoltnetRoomMemberships = (
             memberships.push({
               agentName: agentNode.name,
               agentSource: agentNode.source,
-              concreteMemberId: declaredSlot,
+              concreteMemberId: resolveConcreteMemberId(plan, agentNode.source, declaredSlot),
               declaredSlot,
               declaringTeamName: teamNode.name,
               declaringTeamSource: teamNode.source,
@@ -219,7 +260,11 @@ export const resolveMoltnetRoomMemberships = (
             memberships.push({
               agentName: agentNode.name,
               agentSource: agentNode.source,
-              concreteMemberId: representative.memberId,
+              concreteMemberId: resolveConcreteMemberId(
+                plan,
+                representative.agentSource,
+                representative.memberId
+              ),
               declaredSlot,
               declaringTeamName: teamNode.name,
               declaringTeamSource: teamNode.source,

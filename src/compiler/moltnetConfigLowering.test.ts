@@ -114,6 +114,7 @@ describe("moltnetConfigLowering", () => {
         ]
       }
     }), "org", "agent")).toEqual({
+      credentialId: "writer",
       mode: "bearer",
       tokenEnv: "MOLTNET_WRITER_TOKEN"
     });
@@ -140,6 +141,136 @@ describe("moltnetConfigLowering", () => {
       staticToken: true,
       tokenEnv: "MOLTNET_STATIC_TOKEN"
     });
+  });
+
+  it("binds explicit attachment tokens to exactly one member and rejects operator fallback", () => {
+    const server = createManagedServer({
+      auth: {
+        agent_registration: "disabled",
+        client: { token_id: "world" },
+        mode: "bearer",
+        tokens: [
+          {
+            agents: ["red"],
+            id: "red-agent",
+            scopes: ["attach", "write"],
+            secret: "RED_TOKEN"
+          },
+          {
+            agents: ["world"],
+            id: "world",
+            scopes: ["observe", "write"],
+            secret: "WORLD_TOKEN"
+          }
+        ]
+      }
+    });
+
+    expect(resolveMoltnetClientAuth(
+      server,
+      "pitch",
+      "red",
+      "red",
+      "red-agent"
+    )).toEqual({
+      credentialAgentId: "red",
+      credentialId: "red-agent",
+      mode: "bearer",
+      registration: "disabled",
+      tokenEnv: "RED_TOKEN"
+    });
+    expect(() => resolveMoltnetClientAuth(server, "pitch", "red", "red"))
+      .toThrow(/must select its own attach\+write token/);
+
+    const shared = createManagedServer({
+      auth: {
+        client: { token_id: "shared" },
+        mode: "bearer",
+        tokens: [{
+          agents: ["red", "blue"],
+          id: "shared",
+          scopes: ["attach", "write"],
+          secret: "SHARED_TOKEN"
+        }]
+      }
+    });
+    expect(() => resolveMoltnetClientAuth(
+      shared,
+      "pitch",
+      "red",
+      "red",
+      "shared"
+    )).toThrow(/actor token/u);
+  });
+
+  it("rejects unsafe explicit actor-token selections outside B31 mode", () => {
+    const server = createManagedServer({
+      auth: {
+        client: { token_id: "operator" },
+        mode: "bearer",
+        tokens: [
+          { id: "operator", scopes: ["admin", "observe", "write"], secret: "OPERATOR_ENV" },
+          { agents: ["red"], id: "red", scopes: ["attach", "write"], secret: "RED_ENV" },
+          { agents: ["red"], id: "wrong-scope", scopes: ["attach"], secret: "WRONG_SCOPE_ENV" },
+          { agents: ["red"], id: "extra-scope", scopes: ["attach", "write", "admin"], secret: "EXTRA_SCOPE_ENV" },
+          { agents: ["blue"], id: "wrong-agent", scopes: ["attach", "write"], secret: "WRONG_AGENT_ENV" },
+          { agents: ["red", "blue"], id: "shared", scopes: ["attach", "write"], secret: "SHARED_ENV" },
+          { id: "unbound", scopes: ["attach", "write"], secret: "UNBOUND_ENV" }
+        ]
+      }
+    });
+
+    expect(resolveMoltnetClientAuth(server, "pitch", "red", undefined, "red"))
+      .toEqual({
+        credentialAgentId: "red",
+        credentialId: "red",
+        mode: "bearer",
+        tokenEnv: "RED_ENV"
+      });
+    for (const tokenId of ["operator", "wrong-scope", "extra-scope", "wrong-agent", "shared", "unbound", "missing", ""]) {
+      expect.soft(
+        () => resolveMoltnetClientAuth(server, "pitch", "red", undefined, tokenId),
+        tokenId
+      ).toThrow(/actor token/u);
+    }
+
+    const duplicate = structuredClone(server);
+    duplicate.auth.tokens?.push({
+      agents: ["red"],
+      id: "red",
+      scopes: ["attach", "write"],
+      secret: "RED_ENV_2"
+    });
+    expect(() => resolveMoltnetClientAuth(duplicate, "pitch", "red", undefined, "red"))
+      .toThrow(/actor token/u);
+    expect(resolveMoltnetClientAuth(createManagedServer({
+      auth: {
+        agent_registration: "open",
+        mode: "bearer",
+        tokens: [{ agents: ["red"], id: "red", scopes: ["attach", "write"], secret: "RED_ENV" }]
+      }
+    }), "pitch", "red", undefined, "red")).toEqual({
+      credentialAgentId: "red",
+      credentialId: "red",
+      mode: "bearer",
+      registration: "open",
+      tokenEnv: "RED_ENV"
+    });
+    expect(() => resolveMoltnetClientAuth({
+      auth: { client: { token_env: "REMOTE_ENV" }, mode: "bearer" },
+      mode: "external",
+      url: "https://moltnet.example"
+    }, "pitch", "red", undefined, "red")).toThrow(/actor token/u);
+
+    const isolated = structuredClone(server);
+    isolated.auth.client = { static_token: true, token_path: "/topology/operator.token" };
+    expect(resolveMoltnetClientAuth(isolated, "pitch", "red", undefined, "red"))
+      .toEqual({
+        credentialAgentId: "red",
+        credentialId: "red",
+        mode: "bearer",
+        tokenEnv: "RED_ENV"
+      });
   });
 
   it("lowers managed server config with secrets and pairing patches", () => {

@@ -94,8 +94,8 @@ Support levels:
 | `workspace.resources` `volume` | Compiler-owned symlink/backing directory | Compiler-owned symlink/backing directory | Compiler-owned symlink/backing directory per concrete agent workspace |
 | `workspace.resources` `git` | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup |
 | `environment.env`, `environment.secrets`, `environment.packages` | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior |
-| `environment.mcp_servers` | Degraded through OpenClaw bridge path | Supported through PicoClaw MCP config | Degraded; not lowered into the generated Daimon app yet |
-| `memory` | Planned through compiler-generated memory MCP; currently degraded until adapter lowering lands | Planned through compiler-generated memory MCP; currently degraded until adapter lowering lands | Planned through in-process memory kernel; currently degraded until Spawnfile lowering lands |
+| `environment.mcp_servers` | Supported through OpenClaw `mcp.servers` config | Supported through PicoClaw MCP config | Degraded; not lowered into the generated Daimon app yet |
+| `memory` | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported through Mneme; `engine: pi` uses in-process tools and CLI engines receive pre-turn recall context only |
 | `execution.sandbox.mode` | Supported through OpenClaw runtime/container workspace behavior | Supported through `restrict_to_workspace` and container workspace behavior | Degraded; container/workspace isolation only, Pi itself is not a sandbox engine |
 | `subagents` | Degraded; routed sessions do not preserve full parent-owned semantics | Supported through PicoClaw subagent behavior | Degraded; grouped app agents do not preserve parent-owned subagent semantics |
 
@@ -133,20 +133,23 @@ persisted, searchable, and policy-enforced.
 
 | Dimension | OpenClaw | PicoClaw | Daimon |
 |-----------|----------|----------|--------|
-| Store lowering (`sqlite`, `json`) | Planned through generated MCP sidecar | Planned through generated MCP sidecar | Planned through in-process kernel |
-| Store lowering (`postgres`) | Planned, requires DSN secret materialization | Planned, requires DSN secret materialization | Planned, requires DSN secret materialization |
+| Store lowering (`sqlite`, `json`) | Supported through generated Mneme MCP servers | Supported through generated Mneme MCP servers | Supported through the generated Daimon app and Mneme runtime |
+| Store lowering (`postgres`) | Reported by DSN secret name only; runtime tools are not wired in v0.1 | Reported by DSN secret name only; generated Mneme MCP is not emitted in v0.1 | Reported by DSN secret name only; runtime tools are not wired in v0.1 |
 | Durable persistent mounts | Compiler-owned | Compiler-owned | Compiler-owned |
-| Tool coverage (`search`, `locate`, `register`, `summarize`, `forget`) | Planned through MCP | Planned through MCP | Planned direct, MCP bridge optional |
-| Principal/scope enforcement | Planned in generated memory service | Planned in generated memory service | Planned in memory kernel |
-| Lexical index | Planned | Planned | Planned/default |
-| Vector index | Optional/degraded unless configured | Optional/degraded unless configured | Optional/degraded unless configured |
+| Tool coverage (`search`, `locate`, `register`, `summarize`, `forget`) | Supported through generated Mneme MCP for file stores in awake and dream modes | Supported through generated Mneme MCP for file stores in awake and dream modes | Supported directly for `engine: pi`; CLI engines receive prepared recall but not callable Mneme tools |
+| Principal/scope enforcement | Enforced by Mneme MCP context generated from runtime config | Enforced by Mneme MCP context generated from runtime config | Enforced by generated Daimon memory context before each turn |
+| Lexical index | Reported | Supported/default through Mneme | Supported/default through Mneme |
+| Vector index | Supported for generated Mneme MCP when `provider: ollama` is configured | Supported for generated Mneme MCP when `provider: ollama` is configured | Supported for generated Daimon memory when `provider: ollama` is configured |
 | Graph/temporal index | Optional/degraded unless configured | Optional/degraded unless configured | Optional/degraded unless configured |
-| Activity/audit events | Planned through generated memory service metadata | Planned through generated memory service metadata | Planned through `spawnfile.activity.v1` |
+| Scheduled consolidation / dream mode | Supported through generated isolated OpenClaw cron jobs and dream-mode Mneme MCP for file stores | Supported through generated PicoClaw cron jobs and dream-mode Mneme MCP for file stores | Supported for `every` schedules as fresh one-off dream wakes for `engine: pi`; cron-like schedules are degraded |
+| Activity/audit events | Memory events are recorded by Mneme tools; runtime activity normalization is still runtime-owned | Memory events are recorded by Mneme tools; runtime activity normalization is still runtime-owned | Memory events are recorded by Mneme tools and runtime activity is exposed through `spawnfile.activity.v1` |
 | Raw memory visibility to runtime files | Must be denied | Must be denied | Must be denied |
 
-If a runtime cannot preserve scope/principal enforcement, the memory bank is
-`unsupported`, not merely degraded. If it can preserve storage but not a
-requested index or consolidation mode, that specific capability is `degraded`.
+If a runtime exposes a live memory tool but cannot preserve scope/principal
+enforcement, the memory bank is `unsupported`, not merely degraded. A runtime
+may report declared memory as `degraded` when it emits no live memory tool and
+keeps the bank report-only. If it can preserve storage but not a requested
+index or consolidation mode, that specific capability is `degraded`.
 
 ---
 
@@ -174,18 +177,12 @@ Do not bump `ref` speculatively. The pin represents "the adapter works at this v
 
 If the install artifact version differs from the source `ref`, both values should still be updated intentionally in the same review. The runtime registry is the source of truth for the exact runtime version Spawnfile supports.
 
-### Sync Script
+### Registry Contract
 
-`scripts/runtimes.sh` reads `runtimes.yaml` and clones or checks out each runtime at its pinned ref.
-
-```bash
-./scripts/runtimes.sh              # sync all runtimes
-./scripts/runtimes.sh openclaw     # sync one runtime
-```
-
-The cloned repositories live in `runtimes/` at the repo root. This directory is gitignored.
-
-These local clones are for research, blueprint generation, and adapter development. `spawnfile compile` should not require local runtime clones on the compiler machine; container build/install should use the registry pin plus the adapter's install strategy.
+`runtimes.yaml` is the source of truth for supported versions and install
+strategies. `spawnfile compile` must not require runtime source checkouts on the
+compiler machine; container build/install uses the registry pin plus the
+adapter's verified install strategy.
 
 In v0.1, generated Dockerfiles must not clone runtime repositories or rebuild runtime sources during image build when a verified compiled install strategy is available. `source_repo` exists as a registry/install fallback, not the intended default for active runtime builds.
 
@@ -196,9 +193,8 @@ In v0.1, generated Dockerfiles must not clone runtime repositories or rebuild ru
 ### Adding A New Runtime
 
 1. Add an entry to `runtimes.yaml` with `status: exploratory`
-2. Run `./scripts/runtimes.sh <name>` to clone it
-3. Research the runtime and add findings to `specs/research/RUNTIME-NOTES.md`
-4. When ready to implement, create `src/runtime/<name>/adapter.ts` and change status to `active`
+2. Research the pinned upstream source and add findings to `specs/research/RUNTIME-NOTES.md`
+3. When ready to implement, create `src/runtime/<name>/adapter.ts` and change status to `active`
 
 ### Promoting To Active
 

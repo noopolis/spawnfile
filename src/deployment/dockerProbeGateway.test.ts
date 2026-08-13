@@ -37,6 +37,7 @@ const inspection: DockerUnitInspection = {
   exists: true,
   exitCode: 0,
   finishedAt: null,
+  identity: null,
   imageId: "image-123",
   message: "running",
   restartCount: 0,
@@ -68,12 +69,12 @@ describe("docker probe gateway", () => {
     );
   });
 
-  it("performs HTTP probes through docker exec curl and normalizes failures", async () => {
+  it("performs HTTP probes through a same-image network helper and parses status", async () => {
     const record = createRecord();
     record.target = { kind: "host", value: "ssh://ops@example" };
     const execFile = vi
       .fn()
-      .mockResolvedValueOnce({ stderr: "", stdout: "{\"ok\":true}\n" })
+      .mockResolvedValueOnce({ stderr: "", stdout: "{\"ok\":true}\n200" })
       .mockRejectedValueOnce(new Error("curl failed"));
     const gateway = createDockerProbeGateway(record, record.units[0]!, {
       dockerCommand: "podman",
@@ -82,7 +83,7 @@ describe("docker probe gateway", () => {
     });
 
     await expect(gateway.httpGet(18789, "healthz")).resolves.toEqual({
-      body: "{\"ok\":true}\n",
+      body: "{\"ok\":true}",
       ok: true
     });
     await expect(gateway.httpGet(18789, "/ready")).resolves.toEqual({
@@ -93,7 +94,7 @@ describe("docker probe gateway", () => {
     expect(execFile).toHaveBeenNthCalledWith(
       1,
       "podman",
-      ["--host", "ssh://ops@example", "exec", "container-123", "curl", "-fsS", "http://127.0.0.1:18789/healthz"],
+      ["--host", "ssh://ops@example", "run", "--rm", "--network", "container:container-123", "--entrypoint", "curl", "image-123", "-sS", "--output", "-", "--write-out", "\\n%{http_code}", "http://127.0.0.1:18789/healthz"],
       { timeout: 10000 }
     );
   });
@@ -127,9 +128,45 @@ describe("docker probe gateway", () => {
     });
     expect(execFile).toHaveBeenCalledWith(
       "docker",
-      ["--context", "legacy", "exec", "project", "curl", "-fsS", "http://127.0.0.1:18789/healthz"],
+      ["--context", "legacy", "run", "--rm", "--network", "container:project", "--entrypoint", "curl", "image-123", "-sS", "--output", "-", "--write-out", "\\n%{http_code}", "http://127.0.0.1:18789/healthz"],
       { timeout: 10000 }
     );
+  });
+
+  it("handles non-success and malformed HTTP output and rejects headers", async () => {
+    const record = createRecord();
+    const execFile = vi.fn()
+      .mockResolvedValueOnce({ stderr: "", stdout: "unauthorized\n401" })
+      .mockResolvedValueOnce({ stderr: "", stdout: "malformed" });
+    const gateway = createDockerProbeGateway(record, record.units[0]!, { execFile, inspection });
+    await expect(gateway.httpGet(8787, "/healthz")).resolves.toEqual({ body: "unauthorized", error: "HTTP 401", ok: false });
+    await expect(gateway.httpGet(8787, "/healthz")).resolves.toEqual({ body: "", error: "malformed HTTP probe response", ok: false });
+    await expect(gateway.httpGet(8787, "/healthz", { Authorization: "Bearer secret" })).resolves.toEqual({ body: "", error: "HTTP probe headers are forbidden", ok: false });
+    expect(execFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("normalizes bare image digests and reports bounded, redacted startup failures", async () => {
+    const record = createRecord();
+    record.units[0]!.image_id = "a".repeat(64);
+    const execFile = vi.fn(async () => {
+      throw Object.assign(new Error("Command failed"), {
+        code: 125,
+        stderr: "pull denied Authorization: Bearer super-secret-token"
+      });
+    });
+    const gateway = createDockerProbeGateway(record, record.units[0]!, { execFile, inspection });
+
+    await expect(gateway.httpGet(19971, "/healthz")).resolves.toEqual({
+      body: "",
+      error: "docker probe exit 125: pull denied Authorization=[redacted]",
+      ok: false
+    });
+    expect(execFile).toHaveBeenCalledWith(
+      "docker",
+      expect.arrayContaining(["sha256:" + "a".repeat(64)]),
+      { timeout: 10000 }
+    );
+    expect(JSON.stringify(execFile.mock.calls)).not.toContain("super-secret-token");
   });
 
   it("rejects deployment units without a recorded container reference", async () => {

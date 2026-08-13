@@ -53,7 +53,7 @@ For `test:e2e:moltnet-team-chat`, verify the selected profile imports Codex
 credentials before treating the live reply check as meaningful:
 
 ```bash
-spawnfile auth sync fixtures/e2e/moltnet-team-chat --profile e2e
+spawnfile auth sync test/fixtures/e2e/moltnet-team-chat --profile e2e
 ```
 
 The output should include `imports: codex`.

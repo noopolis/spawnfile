@@ -291,6 +291,44 @@ describe("moltnetRoomMemberships", () => {
     expect(listConcreteMoltnetRoomMemberIds(concretePlan, org, "org", room)).toEqual(["stored"]);
   });
 
+  it("keeps an attached external service in server rooms without treating it as an agent", () => {
+    const lead = agent("lead");
+    const org = team("org-team", {
+      externalParticipants: [{
+        id: "world",
+        kind: "service",
+        surfaces: {
+          moltnet: [{
+            auth: { token_id: "world" },
+            dms: { enabled: true },
+            network: "org"
+          }]
+        }
+      }],
+      members: [{ id: "lead", kind: "agent", nodeSource: lead.source, runtimeName: "openclaw" }],
+      networks: [{
+        id: "org",
+        name: "Org",
+        provider: "moltnet",
+        rooms: [{ id: "room", members: ["lead", "world"] }]
+      }]
+    });
+    const concretePlan = plan([node(lead), node(org)]);
+    const room = org.networks?.[0]?.rooms[0];
+    if (!room) {
+      throw new Error("expected room");
+    }
+
+    expect(listConcreteMoltnetRoomMemberIds(concretePlan, org, "org", room))
+      .toEqual(["lead", "world"]);
+    expect(resolveMoltnetRoomMemberships(concretePlan)
+      .map((row) => row.concreteMemberId)).toEqual(["lead"]);
+    concretePlan.moltnetRoomMemberships =
+      resolveMoltnetRoomMemberships(concretePlan);
+    expect(listConcreteMoltnetRoomMemberIds(concretePlan, org, "org", room))
+      .toEqual(["lead", "world"]);
+  });
+
   it("rejects concrete member listing when a nested team cannot be found", () => {
     const org = team("org-team", {
       members: [{ id: "missing", kind: "team", nodeSource: "/tmp/missing/Spawnfile", runtimeName: null }],

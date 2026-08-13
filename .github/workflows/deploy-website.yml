@@ -23,6 +23,10 @@ jobs:
         run: npm ci
         working-directory: website
 
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: website
+
       - name: Build
         run: npm run build
         working-directory: website

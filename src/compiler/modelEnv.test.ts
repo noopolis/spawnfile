@@ -58,6 +58,33 @@ describe("modelEnv", () => {
     expect(listExecutionModelSecretNames(execution)).toEqual([]);
   });
 
+  it("registers one CLI credential secret for CLI auth methods", () => {
+    const execution: ExecutionBlock = {
+      model: {
+        primary: {
+          auth: { method: "codex" },
+          name: "gpt-5.4",
+          provider: "openai"
+        },
+        fallback: [{
+          auth: { method: "api_key" },
+          name: "claude-sonnet",
+          provider: "anthropic"
+        }]
+      }
+    };
+
+    expect(listExecutionModelSecretNames(execution)).toEqual([
+      "ANTHROPIC_API_KEY",
+      "SPAWNFILE_CLI_AUTH_JSON"
+    ]);
+    expect(listExecutionModelSecretNames({
+      model: { primary: { auth: { method: "none" }, name: "local", provider: "local", endpoint: {
+        base_url: "http://localhost", compatibility: "openai"
+      } } }
+    })).toEqual([]);
+  });
+
   it("inherits legacy auth maps when inline auth is omitted", () => {
     const execution: ExecutionBlock = {
       model: {

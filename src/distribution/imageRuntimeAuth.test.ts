@@ -39,6 +39,23 @@ const claudeImportDir = async (): Promise<string> => {
   return importDir;
 };
 
+const codexImportDir = async (): Promise<string> => {
+  const dir = await tempDir();
+  const importDir = path.join(dir, ".codex");
+  await mkdir(importDir, { recursive: true });
+  await writeFile(
+    path.join(importDir, "auth.json"),
+    JSON.stringify({
+      tokens: {
+        access_token: "codex-access",
+        account_id: "acct",
+        refresh_token: "codex-refresh"
+      }
+    })
+  );
+  return importDir;
+};
+
 const report = () =>
   buildDistributionReport({
     envVariables: [],
@@ -71,6 +88,38 @@ const report = () =>
     ]
   });
 
+const codexReport = () =>
+  buildDistributionReport({
+    envVariables: [],
+    generatedAt: "2026-06-13T00:00:00.000Z",
+    internalPorts: [],
+    modelAuthMethods: { openai: "codex" },
+    moltnetNetworks: [],
+    organization: {
+      agents: [{ id: "agent:assistant", name: "assistant", runtime: "openclaw", teams: [] }],
+      project: "org",
+      teams: []
+    },
+    persistentMounts: [],
+    portMappings: [],
+    publishedPorts: [],
+    resources: [],
+    runtimeInstances: [
+      {
+        config_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/openclaw.json",
+        home_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home",
+        id: "agent-assistant",
+        internal_port: null,
+        model_auth_methods: { openai: "codex" },
+        model_secrets_required: [],
+        node_ids: ["agent:assistant"],
+        published_port: null,
+        runtime: "openclaw",
+        workspace_path: "/w"
+      }
+    ]
+  });
+
 describe("prepareImageRuntimeAuthMounts", () => {
   it("mounts the credential profile and the import directory into the runtime home", async () => {
     const importDir = await claudeImportDir();
@@ -93,6 +142,28 @@ describe("prepareImageRuntimeAuthMounts", () => {
     expect(result.coveredModelSecrets.has("ANTHROPIC_API_KEY")).toBe(true);
     expect(result.mountArgs.some((arg) => arg.endsWith(`:${home}/.openclaw/agents/main/agent/auth-profiles.json`))).toBe(true);
     expect(result.mountArgs).toContain(`${importDir}:${home}/.claude`);
+  });
+
+  it("mounts imported Codex auth into runtime homes", async () => {
+    const importDir = await codexImportDir();
+    const profile: ResolvedAuthProfile = {
+      authHome: "/auth",
+      env: {},
+      imports: { codex: { kind: "codex", path: importDir } },
+      name: "me",
+      profileDirectory: "/auth/me",
+      profilePath: "/auth/me/profile.json",
+      version: 1
+    };
+    const result = await prepareImageRuntimeAuthMounts({
+      authProfile: profile,
+      report: codexReport(),
+      tempRoot: await tempDir()
+    });
+
+    const home = "/var/lib/spawnfile/instances/openclaw/agent-assistant/home";
+    expect(result.coveredModelSecrets.has("OPENAI_API_KEY")).toBe(true);
+    expect(result.mountArgs).toContain(`${importDir}:${home}/.codex`);
   });
 
   it("throws when an imported auth path does not exist", async () => {

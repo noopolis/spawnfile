@@ -1,6 +1,7 @@
 # Memory Backend Research Notes
 
-Research snapshot for external memory systems cloned under `runtimes/`.
+Research snapshot for external memory systems evaluated against Spawnfile's
+portable memory contract.
 
 Purpose:
 
@@ -13,16 +14,13 @@ contract.
 
 ---
 
-## Local Clones
+## Sources
 
-| Backend | Local path | Remote | Snapshot |
-|---------|------------|--------|----------|
-| Mem0 | `runtimes/mem0` | `https://github.com/mem0ai/mem0.git` | `main` |
-| Graphiti | `runtimes/graphiti` | `https://github.com/getzep/graphiti.git` | `main` |
-| LangMem | `runtimes/langmem` | `https://github.com/langchain-ai/langmem.git` | `main` |
-
-The parent repository ignores `runtimes/`, so these clones are local research
-dependencies and are not committed as vendored source.
+| Backend | Remote | Snapshot |
+|---------|--------|----------|
+| Mem0 | `https://github.com/mem0ai/mem0.git` | `main` |
+| Graphiti | `https://github.com/getzep/graphiti.git` | `main` |
+| LangMem | `https://github.com/langchain-ai/langmem.git` | `main` |
 
 ---
 
@@ -82,7 +80,7 @@ Current Daimon state:
 Observed surfaces:
 
 - Python package and TypeScript package.
-- Self-hosted server under `runtimes/mem0/server`.
+- Self-hosted server under the upstream `server/` directory.
 - Server endpoints include memory add, search, get, update, history, delete,
   reset, entities, auth, and API keys.
 - Client supports add/search plus filters for users, agents, sessions, created
@@ -140,7 +138,7 @@ memory.register(raw event)
   -> /memories with infer=false and Spawnfile metadata
 
 memory.register(candidate conversation)
-  -> /memories with infer=true only after policy/write mode allows extraction
+  -> /memories with infer=true only when extraction is policy-allowed
 
 memory.search
   -> /search with filters derived from allowed scopes
@@ -163,7 +161,7 @@ memory.forget
 Observed surfaces:
 
 - Open-source temporal context graph engine.
-- Docker Compose and MCP server are present under `runtimes/graphiti`.
+- Docker Compose and an MCP server are present in the upstream repository.
 - MCP server exposes episode add/delete/get, node search, fact search, saga
   summaries, episode provenance, and status tools.
 - Supports temporal facts, provenance episodes, semantic/keyword/graph retrieval,

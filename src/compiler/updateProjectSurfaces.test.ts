@@ -4,8 +4,8 @@ import { mkdtemp } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { readUtf8File, removeDirectory } from "../filesystem/index.js";
-import { loadManifest } from "../manifest/index.js";
+import { readUtf8File, removeDirectory, writeUtf8File } from "../filesystem/index.js";
+import { isInlineAgentMember, loadManifest } from "../manifest/index.js";
 
 import { addAgentProject, addSubagentProject } from "./addProjectNode.js";
 import { initProject } from "./initProject.js";
@@ -95,6 +95,71 @@ describe("addProjectSurface", () => {
     }
     expect(writerManifest.manifest.surfaces?.telegram).toEqual({});
     expect(criticManifest.manifest.surfaces?.telegram).toEqual({});
+  });
+
+  it("adds, shows, updates, and removes inline agent surfaces", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-surface-inline-"));
+    temporaryDirectories.push(directory);
+    const manifestPath = path.join(directory, "Spawnfile");
+
+    await writeUtf8File(path.join(directory, "red.md"), "# Red\n");
+    await writeUtf8File(
+      manifestPath,
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: inline-team",
+        "mode: swarm",
+        "members:",
+        "  - id: red",
+        "    runtime: openclaw",
+        "    workspace:",
+        "      docs:",
+        "        system: red.md",
+        ""
+      ].join("\n")
+    );
+
+    const added = await addProjectSurface({
+      path: directory,
+      recursive: true,
+      surface: "discord"
+    });
+    const shown = await showProjectSurfaces({ path: directory, recursive: true });
+    const accessed = await setProjectSurfaceAccess({
+      mode: "open",
+      path: directory,
+      recursive: true,
+      surface: "discord"
+    });
+    const removed = await removeProjectSurface({
+      path: directory,
+      recursive: true,
+      surface: "discord"
+    });
+    const loaded = await loadManifest(manifestPath);
+
+    expect(added.updatedFiles).toEqual([manifestPath]);
+    expect(accessed.updatedFiles).toEqual([manifestPath]);
+    expect(removed.updatedFiles).toEqual([manifestPath]);
+    expect(shown.entries).toEqual([
+      {
+        kind: "agent",
+        manifestPath: `${manifestPath}#member=red`,
+        name: "red",
+        surfaces: { discord: {} }
+      }
+    ]);
+    expect(loaded.manifest.kind).toBe("team");
+    if (loaded.manifest.kind !== "team") {
+      throw new Error("expected team manifest");
+    }
+    const member = loaded.manifest.members[0];
+    expect(isInlineAgentMember(member)).toBe(true);
+    if (!isInlineAgentMember(member)) {
+      throw new Error("expected inline agent member");
+    }
+    expect(member.surfaces).toBeUndefined();
   });
 
   it("rejects non-recursive surface updates on team manifests", async () => {

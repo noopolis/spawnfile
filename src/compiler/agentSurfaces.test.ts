@@ -19,6 +19,9 @@ describe("agentSurfaces", () => {
         },
         moltnet: [
           {
+            auth: {
+              token_id: "orchestrator-attachment"
+            },
             dms: {
               enabled: true,
               wake: "all"
@@ -59,6 +62,9 @@ describe("agentSurfaces", () => {
       },
       moltnet: [
         {
+          auth: {
+            tokenId: "orchestrator-attachment"
+          },
           dms: {
             enabled: true,
             wake: "all"
@@ -182,5 +188,31 @@ describe("agentSurfaces", () => {
         }
       ]
     });
+  });
+
+  it("copies moltnet dms allowed wake sender arrays and preserves authored order", () => {
+    const senders = ["world", "agent-x", "service"];
+    const source = {
+      moltnet: [
+        {
+          dms: {
+            enabled: true,
+            wake: "all" as const,
+            allowed_wake_senders: senders
+          },
+          network: "local_lab"
+        }
+      ]
+    };
+
+    const resolved = resolveAgentSurfaces(source);
+    expect(resolved?.moltnet?.[0]?.dms?.allowedWakeSenders).toEqual(senders);
+
+    senders.push("new");
+    expect(resolved?.moltnet?.[0]?.dms?.allowedWakeSenders).toEqual([
+      "world",
+      "agent-x",
+      "service"
+    ]);
   });
 });

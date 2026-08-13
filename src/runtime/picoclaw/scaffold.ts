@@ -13,7 +13,7 @@ export const createPicoClawAgentScaffold = (): RuntimeAgentScaffold => ({
       path: "SOUL.md"
     },
     {
-      content: loadRuntimeScaffoldAsset(import.meta.url, "AGENTS.md"),
+      content: loadRuntimeScaffoldAsset(import.meta.url, "WORKSPACE_AGENTS.md"),
       path: "AGENTS.md"
     }
   ],

@@ -1,0 +1,68 @@
+spawnfile_version: "0.1"
+kind: team
+name: daimon-org
+description: "Spawnfile-owned org compiled into a single generated Daimon app"
+
+shared:
+  workspace:
+    docs:
+      system: TEAM.md
+    skills:
+      - ref: ./shared/skills/file-note
+    resources:
+      - id: shared-lab
+        kind: volume
+        mount: ./shared-lab
+        mode: mutable
+        sharing: team
+
+members:
+  - id: mapper
+    ref: ./agents/mapper
+  - id: review
+    ref: ./teams/review
+
+memory:
+  - id: shared-recall
+    access:
+      members: [mapper]
+    store:
+      kind: json
+      path: /var/lib/spawnfile/memory/daimon-org/shared-recall.jsonl
+      persistence:
+        mode: durable
+    index:
+      lexical:
+        enabled: true
+        engine: sqlite_fts
+      vector:
+        enabled: true
+        provider: ollama
+        model: qwen3-embedding:0.6b
+        dimensions: 1024
+
+mode: hierarchical
+lead: mapper
+
+networks:
+  - id: daimon_lab
+    name: Daimon Lab
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 0.0.0.0
+        port: 19877
+      store:
+        kind: sqlite
+        path: /var/lib/spawnfile/moltnet/networks/daimon_lab/moltnet.sqlite
+      auth:
+        mode: open
+        public_read: true
+      human_ingress: true
+      direct_messages: false
+    rooms:
+      - id: lab-floor
+        members: [mapper, review]
+        visibility: public
+        write_policy: registered_agents

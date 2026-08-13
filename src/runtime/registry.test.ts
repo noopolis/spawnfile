@@ -21,10 +21,10 @@ describe("runtime registry", () => {
       install: {
         image: "noopolis/spawnfile-runtime-openclaw",
         kind: "container_image",
-        tag: "2026.6.8"
+        tag: "2026.6.11"
       },
       name: "openclaw",
-      ref: "v2026.6.8",
+      ref: "v2026.6.11",
       status: "active"
     });
   });

@@ -51,7 +51,7 @@ runtimes:
 
 These runtimes have working adapters:
 
-1. **[OpenClaw](/runtimes/openclaw/)** -- JSON config, rich workspace layout, MCP through mcporter bridge, native multi-agent sessions.
+1. **[OpenClaw](/runtimes/openclaw/)** -- JSON config, rich workspace layout, native `mcp.servers`, native multi-agent sessions.
 2. **[PicoClaw](/runtimes/picoclaw/)** -- JSON config, workspace-first model, first-class MCP surface, spawned subagents.
 3. **[Daimon](/runtimes/daimon/)** -- Noopolis-native generated harness app backed by Pi, grouped team agents, subscription auth support, local model endpoints, shared workspace resources.
 4. **[Pi](/runtimes/pi/)** -- compatibility alias for the Daimon runtime path.
@@ -60,11 +60,9 @@ These runtimes have working adapters:
 
 These runtimes are tracked as adapter research targets but have no bundled adapter yet:
 
-5. **[NullClaw](/runtimes/nullclaw/)** -- JSON config, OpenClaw-compatible structure, stdio-first MCP, delegate agents.
-6. **[ZeroClaw](/runtimes/zeroclaw/)** -- TOML config, strong auth story, named delegate sub-agents.
-7. **[OpenFang](https://github.com/RightNow-AI/openfang)** -- declarative config and agent templates, not mapped to a Spawnfile adapter yet.
-8. **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** -- active harness candidate; config, workspace, and skill surfaces still need research.
-9. **[OpenCode](https://github.com/anomalyco/opencode)** -- active coding-agent harness candidate; long-running runtime behavior still needs research.
+5. **[OpenFang](https://github.com/RightNow-AI/openfang)** -- declarative config and agent templates, not mapped to a Spawnfile adapter yet.
+6. **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** -- active harness candidate; config, workspace, and skill surfaces still need research.
+7. **[OpenCode](https://github.com/anomalyco/opencode)** -- active coding-agent harness candidate; long-running runtime behavior still needs research.
 
 ## Version Pinning
 
@@ -84,16 +82,11 @@ Bump `ref` when:
 
 Do not bump `ref` speculatively. The pin represents "the adapter works at this version."
 
-### Sync Script
+### Registry Contract
 
-`scripts/runtimes.sh` reads `runtimes.yaml` and clones or checks out each runtime at its pinned ref:
-
-```bash
-./scripts/runtimes.sh              # sync all runtimes
-./scripts/runtimes.sh openclaw     # sync one runtime
-```
-
-Cloned repositories live in `runtimes/` at the repo root (gitignored). These are for research, blueprint generation, and adapter development. The `spawnfile compile` command does not require local runtime clones.
+`runtimes.yaml` is the source of truth for supported versions and install
+strategies. The `spawnfile compile` command does not require runtime source
+checkouts.
 
 ## Blueprints
 
@@ -134,7 +127,8 @@ Support levels:
 | `workspace.resources` `git` | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup |
 | `environment.env` and `environment.secrets` | Compiler-owned env and secret materialization | Compiler-owned env and secret materialization | Compiler-owned env and secret materialization |
 | `environment.packages` | Compiler-owned container package installation | Compiler-owned container package installation | Compiler-owned container package installation |
-| `environment.mcp_servers` | Degraded through OpenClaw bridge path | Supported through PicoClaw MCP config | Degraded; not lowered into the generated Daimon app yet |
+| `environment.mcp_servers` | Supported through OpenClaw `mcp.servers` config | Supported through PicoClaw MCP config | Degraded; not lowered into the generated Daimon app yet |
+| `memory` | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported through Mneme; `engine: pi` uses in-process tools and CLI engines receive pre-turn recall context only |
 | `execution.sandbox.mode` | Supported through OpenClaw runtime/container workspace behavior | Supported through `restrict_to_workspace` and container workspace behavior | Degraded; container/workspace isolation only, Pi itself is not a sandbox engine |
 | `subagents` | Degraded; lowered to routed sessions, not full Spawnfile parent-owned semantics | Supported through PicoClaw subagent behavior | Degraded; grouped app agents exist, but parent-owned subagent semantics are not preserved |
 

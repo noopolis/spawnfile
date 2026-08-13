@@ -150,7 +150,7 @@ Rules:
 - Moltnet FQIDs are derivable and should be emitted into context-scoped rosters.
 - A parent room member may name a direct child-team slot. The compiler expands that slot through the child team's representative chain and attaches only selected concrete representatives.
 - Parent networks do not autojoin every descendant. Non-representative child members do not receive parent room attachments.
-- Moltnet member IDs are direct agent member slot IDs and must be unique across the reachable nested team graph.
+- Moltnet member IDs are direct agent member slot IDs and must be unique across different canonical agent sources in the reachable nested team graph. The same member id may appear in multiple direct memberships only when those memberships resolve to the same canonical agent source.
 - Reusing the same network id across teams is allowed. Compatible duplicate attachments for the same `(network_id, member_id)` merge rooms; incompatible duplicates fail compilation.
 - `spawnfile status --live` may inspect Moltnet metadata for declared networks: rooms, expected members, live participants, connected/disconnected bridge state, and direct-message capability. Wake delivered/failed events and debug lifecycle events are future metadata extensions, after Moltnet exposes a bounded metadata endpoint; debug events also require debug mode to be declared.
 - Moltnet status inspection is metadata-only. It must not request or render message bodies, and missing operator credentials render the network layer `unknown` instead of attempting anonymous access.

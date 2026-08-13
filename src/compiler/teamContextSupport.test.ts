@@ -1,13 +1,68 @@
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
 
+import { resolveMoltnetRoomMemberships } from "./moltnetRoomMemberships.js";
 import { prepareTeamCompileSupport } from "./teamContextSupport.js";
+import type { ResolvedMemoryAccess, ResolvedMemoryBank } from "./types.js";
 import {
   createTestAgent,
   createTestPlan,
   createTestTeam,
   findTestFile
 } from "./teamContextSupport.testHelpers.js";
+
+const baseMemoryIndex = {
+  graph: { enabled: false },
+  lexical: { enabled: true },
+  rerank: { enabled: false },
+  vector: { enabled: false }
+};
+
+const baseMemoryConsolidation = { mode: "disabled" as const };
+const baseMemoryRetention = { forgetting: "manual" as const };
+
+const createTeamMemoryBank = (
+  source: string,
+  declaredName: string,
+  id: string
+): ResolvedMemoryBank => ({
+  access: undefined,
+  consolidation: baseMemoryConsolidation,
+  declaredBy: "team",
+  declaredName,
+  id,
+  index: baseMemoryIndex,
+  retention: baseMemoryRetention,
+  source,
+  store: {
+    kind: "json",
+    path: `${source}/memory/${id}/memory.json`,
+    persistence: { mode: "durable" }
+  }
+});
+
+const createAgentMemoryBank = (
+  source: string,
+  declaredName: string,
+  id: string
+): ResolvedMemoryBank => ({
+  ...createTeamMemoryBank(source, declaredName, id),
+  declaredBy: "agent"
+});
+
+const createTeamMemoryAccess = (
+  agentSource: string,
+  source: string,
+  slotId: string,
+  teamName: string,
+  bankId: string
+): ResolvedMemoryAccess => ({
+  agentSource,
+  declaringKind: "team",
+  slotId,
+  source,
+  bank: createTeamMemoryBank(source, teamName, bankId)
+});
 
 describe("prepareTeamCompileSupport", () => {
   it("emits direct and representative contexts with cards, indexes, aliases, and capabilities", async () => {
@@ -192,6 +247,7 @@ describe("prepareTeamCompileSupport", () => {
     ).toEqual([
       "team.roster",
       "team.context_orientation",
+      "team.active_environments",
       "team.representatives",
       "team.networks",
       "team.networks.moltnet",
@@ -200,7 +256,7 @@ describe("prepareTeamCompileSupport", () => {
     expect(support.diagnosticsByTeamSource.get(parentSource) ?? []).toEqual([]);
   });
 
-  it("warns on ambiguous shared bindings and omits root aliases for multiple direct memberships", async () => {
+  it("omits root aliases for multiple direct memberships without ambiguity warnings", async () => {
     const alphaSource = "/project/teams/alpha/Spawnfile";
     const betaSource = "/project/teams/beta/Spawnfile";
     const agentSource = "/project/agents/qc/Spawnfile";
@@ -282,12 +338,8 @@ describe("prepareTeamCompileSupport", () => {
 
     expect(files.some((file) => file.path === "TEAM.md")).toBe(false);
     expect(files.some((file) => file.path === ".spawnfile/roster.yaml")).toBe(false);
-    expect(
-      support.diagnosticsByTeamSource.get(alphaSource)?.map((diagnostic) => diagnostic.message)
-    ).toContain("Agent qc maps moltnet:org:common to multiple team contexts: alpha, beta");
-    expect(
-      support.diagnosticsByTeamSource.get(betaSource)?.map((diagnostic) => diagnostic.message)
-    ).toContain("Agent qc maps moltnet:org:common to multiple team contexts: alpha, beta");
+    expect(support.diagnosticsByTeamSource.get(alphaSource) ?? []).toEqual([]);
+    expect(support.diagnosticsByTeamSource.get(betaSource) ?? []).toEqual([]);
   });
 
   it("warns when an implicit nested swarm team is exposed as the parent lead", async () => {
@@ -365,5 +417,408 @@ describe("prepareTeamCompileSupport", () => {
       "Nested swarm team Child Swarm is exposed without explicit external representatives",
       "Team Parent lead child resolves to multiple implicit representatives"
     ]);
+  });
+
+  it("emits separate direct contexts for one canonical agent imported by three teams", async () => {
+    const agentSource = "/project/agents/eleanor/Spawnfile";
+    const officeSource = "/project/teams/office/Spawnfile";
+    const familySource = "/project/teams/eleanor-family/Spawnfile";
+    const friendsSource = "/project/teams/friends-group/Spawnfile";
+    const agent = createTestAgent("eleanor", agentSource);
+    const teams = [
+      createTestTeam({
+        members: [{ id: "eleanor", kind: "agent", nodeSource: agentSource, runtimeName: "openclaw" }],
+        name: "Office",
+        source: officeSource
+      }),
+      createTestTeam({
+        members: [{ id: "eleanor", kind: "agent", nodeSource: agentSource, runtimeName: "openclaw" }],
+        name: "Eleanor Family",
+        source: familySource
+      }),
+      createTestTeam({
+        members: [{ id: "eleanor", kind: "agent", nodeSource: agentSource, runtimeName: "openclaw" }],
+        name: "Friends Group",
+        source: friendsSource
+      })
+    ];
+
+    const support = await prepareTeamCompileSupport(createTestPlan([agent], teams, [
+      {
+        agentSource,
+        memberId: "eleanor",
+        teamName: "Office",
+        teamSource: officeSource
+      },
+      {
+        agentSource,
+        memberId: "eleanor",
+        teamName: "Eleanor Family",
+        teamSource: familySource
+      },
+      {
+        agentSource,
+        memberId: "eleanor",
+        teamName: "Friends Group",
+        teamSource: friendsSource
+      }
+    ]));
+    const files = support.filesByAgentSource.get(agentSource) ?? [];
+    const index = YAML.parse(findTestFile(files, ".spawnfile/team-contexts.yaml").content) as {
+      direct_memberships: Array<{ context_key: string; member: string; team: string; team_doc: string }>;
+      representations: unknown[];
+    };
+
+    expect(files.some((file) => file.path === "TEAM.md")).toBe(false);
+    expect(files.some((file) => file.path === ".spawnfile/roster.yaml")).toBe(false);
+    expect(index.representations).toEqual([]);
+    expect(index.direct_memberships.map((entry) => entry.team).sort()).toEqual([
+      "Eleanor Family",
+      "Friends Group",
+      "Office"
+    ]);
+    expect(index.direct_memberships.every((entry) => entry.member === "eleanor")).toBe(true);
+    expect(index.direct_memberships.map((entry) => entry.team_doc).sort()).toEqual([
+      ".spawnfile/team-contexts/eleanor-family/TEAM.md",
+      ".spawnfile/team-contexts/friends-group/TEAM.md",
+      ".spawnfile/team-contexts/office/TEAM.md"
+    ]);
+  });
+
+  it("derives shared room active context from first listed team member", async () => {
+    const agentSource = "/project/agents/eleanor/Spawnfile";
+    const alphaSource = "/project/teams/alpha/Spawnfile";
+    const betaSource = "/project/teams/beta/Spawnfile";
+    const rootSource = "/project/Spawnfile";
+    const agent = createTestAgent("eleanor", agentSource);
+    const alphaTeam = createTestTeam({
+      external: ["eleanor"],
+      externalExplicit: true,
+      members: [{ id: "eleanor", kind: "agent", nodeSource: agentSource, runtimeName: "openclaw" }],
+      name: "Alpha",
+      source: alphaSource
+    });
+    const betaTeam = createTestTeam({
+      external: ["eleanor"],
+      externalExplicit: true,
+      members: [{ id: "eleanor", kind: "agent", nodeSource: agentSource, runtimeName: "openclaw" }],
+      name: "Beta",
+      source: betaSource
+    });
+    const rootTeam = createTestTeam({
+      members: [
+        { id: "beta", kind: "team", nodeSource: betaSource, runtimeName: null },
+        { id: "alpha", kind: "team", nodeSource: alphaSource, runtimeName: null }
+      ],
+      name: "Root",
+      networks: [
+        {
+          id: "org",
+          name: "Org",
+          provider: "moltnet",
+          rooms: [{ id: "shared", members: ["beta", "alpha"] }]
+        }
+      ],
+      source: rootSource
+    });
+    const plan = createTestPlan([agent], [rootTeam, alphaTeam, betaTeam], [
+      { agentSource, memberId: "eleanor", teamName: "Alpha", teamSource: alphaSource },
+      { agentSource, memberId: "eleanor", teamName: "Beta", teamSource: betaSource }
+    ]);
+    plan.moltnetRoomMemberships = resolveMoltnetRoomMemberships(plan);
+
+    const support = await prepareTeamCompileSupport(plan);
+    const index = YAML.parse(
+      findTestFile(support.filesByAgentSource.get(agentSource) ?? [], ".spawnfile/team-contexts.yaml").content
+    ) as {
+      active_environments: {
+        moltnet: Record<string, { rooms: Record<string, { context_key: string; derivation: { member_position: number } }> }>;
+      };
+    };
+
+    expect(index.active_environments.moltnet.org.rooms.shared).toMatchObject({
+      context_key: "root--beta",
+      derivation: { member_position: 0 }
+    });
+  });
+
+  it("flips shared room active context when authored members are reordered", async () => {
+    const agentSource = "/project/agents/eleanor/Spawnfile";
+    const alphaSource = "/project/teams/alpha/Spawnfile";
+    const betaSource = "/project/teams/beta/Spawnfile";
+    const rootSource = "/project/Spawnfile";
+    const agent = createTestAgent("eleanor", agentSource);
+    const alphaTeam = createTestTeam({
+      external: ["eleanor"],
+      externalExplicit: true,
+      members: [{ id: "eleanor", kind: "agent", nodeSource: agentSource, runtimeName: "openclaw" }],
+      name: "Alpha",
+      source: alphaSource
+    });
+    const betaTeam = createTestTeam({
+      external: ["eleanor"],
+      externalExplicit: true,
+      members: [{ id: "eleanor", kind: "agent", nodeSource: agentSource, runtimeName: "openclaw" }],
+      name: "Beta",
+      source: betaSource
+    });
+    const rootTeam = createTestTeam({
+      members: [
+        { id: "alpha", kind: "team", nodeSource: alphaSource, runtimeName: null },
+        { id: "beta", kind: "team", nodeSource: betaSource, runtimeName: null }
+      ],
+      name: "Root",
+      networks: [
+        {
+          id: "org",
+          name: "Org",
+          provider: "moltnet",
+          rooms: [{ id: "shared", members: ["alpha", "beta"] }]
+        }
+      ],
+      source: rootSource
+    });
+    const plan = createTestPlan([agent], [rootTeam, alphaTeam, betaTeam], [
+      { agentSource, memberId: "eleanor", teamName: "Alpha", teamSource: alphaSource },
+      { agentSource, memberId: "eleanor", teamName: "Beta", teamSource: betaSource }
+    ]);
+    plan.moltnetRoomMemberships = resolveMoltnetRoomMemberships(plan);
+
+    const support = await prepareTeamCompileSupport(plan);
+    const index = YAML.parse(
+      findTestFile(support.filesByAgentSource.get(agentSource) ?? [], ".spawnfile/team-contexts.yaml").content
+    ) as {
+      active_environments: {
+        moltnet: Record<string, { rooms: Record<string, { context_key: string; derivation: { member_position: number } }> }>;
+      };
+    };
+
+    expect(index.active_environments.moltnet.org.rooms.shared).toMatchObject({
+      context_key: "root--alpha",
+      derivation: { member_position: 0 }
+    });
+  });
+
+  it("uses representative context for parent rooms that contain a child team", async () => {
+    const agentSource = "/project/teams/field/agents/rep/Spawnfile";
+    const childSource = "/project/teams/field/Spawnfile";
+    const rootSource = "/project/Spawnfile";
+    const agent = createTestAgent("rep", agentSource);
+    const childTeam = createTestTeam({
+      external: ["rep"],
+      externalExplicit: true,
+      members: [{ id: "rep", kind: "agent", nodeSource: agentSource, runtimeName: "openclaw" }],
+      name: "Field",
+      source: childSource
+    });
+    const rootTeam = createTestTeam({
+      members: [{ id: "field", kind: "team", nodeSource: childSource, runtimeName: null }],
+      name: "Root Org",
+      networks: [
+        {
+          id: "org",
+          name: "Org",
+          provider: "moltnet",
+          rooms: [{ id: "mission-control", members: ["field"] }]
+        }
+      ],
+      source: rootSource
+    });
+    const plan = createTestPlan([agent], [rootTeam, childTeam], [
+      { agentSource, memberId: "rep", teamName: "Field", teamSource: childSource }
+    ]);
+    plan.moltnetRoomMemberships = resolveMoltnetRoomMemberships(plan);
+
+    const support = await prepareTeamCompileSupport(plan);
+    const index = YAML.parse(
+      findTestFile(support.filesByAgentSource.get(agentSource) ?? [], ".spawnfile/team-contexts.yaml").content
+    ) as {
+      active_environments: {
+        moltnet: Record<string, { rooms: Record<string, { context_key: string; member_slot: string; team_doc: string }> }>;
+      };
+    };
+
+    expect(index.active_environments.moltnet.org.rooms["mission-control"]).toMatchObject({
+      context_key: "root-org--field",
+      member_slot: "field",
+      team_doc: ".spawnfile/team-contexts/root-org--field/TEAM.md"
+    });
+  });
+
+  it("derives schedules to the only direct context or global self", async () => {
+    const singleAgentSource = "/project/agents/single/Spawnfile";
+    const singleTeamSource = "/project/teams/single/Spawnfile";
+    const singleAgent = createTestAgent("single", singleAgentSource);
+    singleAgent.schedule = { kind: "every", every: "1m" };
+    const singleTeam = createTestTeam({
+      members: [{ id: "single", kind: "agent", nodeSource: singleAgentSource, runtimeName: "openclaw" }],
+      name: "Single Team",
+      source: singleTeamSource
+    });
+    const singleSupport = await prepareTeamCompileSupport(createTestPlan([singleAgent], [singleTeam], [
+      { agentSource: singleAgentSource, memberId: "single", teamName: "Single Team", teamSource: singleTeamSource }
+    ]));
+    const singleIndex = YAML.parse(
+      findTestFile(singleSupport.filesByAgentSource.get(singleAgentSource) ?? [], ".spawnfile/team-contexts.yaml").content
+    ) as { active_environments: { schedules: Record<string, { context_key: string }> } };
+
+    expect(singleIndex.active_environments.schedules.default.context_key).toBe("single-team");
+
+    const multiAgentSource = "/project/agents/multi/Spawnfile";
+    const firstTeamSource = "/project/teams/first/Spawnfile";
+    const secondTeamSource = "/project/teams/second/Spawnfile";
+    const multiAgent = createTestAgent("multi", multiAgentSource);
+    multiAgent.schedule = { kind: "every", every: "1m" };
+    const firstTeam = createTestTeam({
+      members: [{ id: "multi", kind: "agent", nodeSource: multiAgentSource, runtimeName: "openclaw" }],
+      name: "First Team",
+      source: firstTeamSource
+    });
+    const secondTeam = createTestTeam({
+      members: [{ id: "multi", kind: "agent", nodeSource: multiAgentSource, runtimeName: "openclaw" }],
+      name: "Second Team",
+      source: secondTeamSource
+    });
+    const multiSupport = await prepareTeamCompileSupport(createTestPlan([multiAgent], [firstTeam, secondTeam], [
+      { agentSource: multiAgentSource, memberId: "multi", teamName: "First Team", teamSource: firstTeamSource },
+      { agentSource: multiAgentSource, memberId: "multi", teamName: "Second Team", teamSource: secondTeamSource }
+    ]));
+    const multiIndex = YAML.parse(
+      findTestFile(multiSupport.filesByAgentSource.get(multiAgentSource) ?? [], ".spawnfile/team-contexts.yaml").content
+    ) as { active_environments: { schedules: Record<string, { context_key: string }> } };
+
+    expect(multiIndex.active_environments.schedules.default.context_key).toBe("self");
+  });
+
+  it("derives dreams from self and memory-bearing team scopes", async () => {
+    const agentSource = "/project/agents/eleanor/Spawnfile";
+    const officeSource = "/project/teams/office/Spawnfile";
+    const friendsSource = "/project/teams/friends/Spawnfile";
+    const agent = createTestAgent("eleanor", agentSource);
+    const officeMember = "office-agent";
+    const friendsMember = "friends-agent";
+
+    const officeTeam = createTestTeam({
+      members: [
+        { id: officeMember, kind: "agent", nodeSource: agentSource, runtimeName: "openclaw" }
+      ],
+      name: "Office",
+      source: officeSource
+    });
+    const friendsTeam = createTestTeam({
+      members: [
+        { id: friendsMember, kind: "agent", nodeSource: agentSource, runtimeName: "openclaw" }
+      ],
+      name: "Friends",
+      source: friendsSource
+    });
+
+    agent.memoryAccess = [
+      createTeamMemoryAccess(
+        agentSource,
+        officeSource,
+        officeMember,
+        "Office",
+        "office-memory"
+      )
+    ];
+
+    const support = await prepareTeamCompileSupport(
+      createTestPlan([agent], [officeTeam, friendsTeam], [
+        {
+          agentSource,
+          memberId: officeMember,
+          teamName: "Office",
+          teamSource: officeSource
+        },
+        {
+          agentSource,
+          memberId: friendsMember,
+          teamName: "Friends",
+          teamSource: friendsSource
+        }
+      ])
+    );
+
+    const index = YAML.parse(
+      findTestFile(support.filesByAgentSource.get(agentSource) ?? [], ".spawnfile/team-contexts.yaml").content
+    ) as { active_environments: { dreams: Record<string, { context_key: string }> } };
+
+    expect(Object.keys(index.active_environments.dreams).sort()).toEqual(["office", "self"]);
+    expect(index.active_environments.dreams.self.context_key).toBe("self");
+    expect(index.active_environments.dreams.office.context_key).toBe("office");
+    expect(index.active_environments.dreams.friends).toBeUndefined();
+  });
+
+  it("derives all team dreams when an agent-owned memory bank can store scoped principals", async () => {
+    const agentSource = "/project/agents/eleanor/Spawnfile";
+    const officeSource = "/project/teams/office/Spawnfile";
+    const friendsSource = "/project/teams/friends/Spawnfile";
+    const agent = createTestAgent("eleanor", agentSource);
+    agent.memory = [createAgentMemoryBank(agentSource, "self", "self-memory")];
+
+    const officeTeam = createTestTeam({
+      members: [{ id: "office-agent", kind: "agent", nodeSource: agentSource, runtimeName: "openclaw" }],
+      name: "Office",
+      source: officeSource
+    });
+    const friendsTeam = createTestTeam({
+      members: [{ id: "friends-agent", kind: "agent", nodeSource: agentSource, runtimeName: "openclaw" }],
+      name: "Friends",
+      source: friendsSource
+    });
+
+    const support = await prepareTeamCompileSupport(
+      createTestPlan([agent], [officeTeam, friendsTeam], [
+        {
+          agentSource,
+          memberId: "office-agent",
+          teamName: "Office",
+          teamSource: officeSource
+        },
+        {
+          agentSource,
+          memberId: "friends-agent",
+          teamName: "Friends",
+          teamSource: friendsSource
+        }
+      ])
+    );
+
+    const index = YAML.parse(
+      findTestFile(support.filesByAgentSource.get(agentSource) ?? [], ".spawnfile/team-contexts.yaml").content
+    ) as { active_environments: { dreams: Record<string, { context_key: string }> } };
+
+    expect(Object.keys(index.active_environments.dreams).sort()).toEqual(["friends", "office", "self"]);
+  });
+
+  it("emits self schedule and dream environments for standalone agents", async () => {
+    const agentSource = "/project/agents/solo/Spawnfile";
+    const agent = createTestAgent("solo", agentSource);
+    agent.schedule = { kind: "every", every: "1m" };
+    agent.memory = [createAgentMemoryBank(agentSource, "solo", "solo-memory")];
+
+    const support = await prepareTeamCompileSupport(createTestPlan([agent], [], []));
+    const index = YAML.parse(
+      findTestFile(support.filesByAgentSource.get(agentSource) ?? [], ".spawnfile/team-contexts.yaml").content
+    ) as {
+      active_environments: {
+        schedules: Record<string, { context_key: string; memory: { durable_scope: { scope: string } } }>;
+        dreams: Record<string, { context_key: string; memory: { durable_scope: { scope: string } } }>;
+      };
+      direct_memberships: unknown[];
+      representations: unknown[];
+    };
+
+    expect(index.direct_memberships).toEqual([]);
+    expect(index.representations).toEqual([]);
+    expect(index.active_environments.schedules.default).toMatchObject({
+      context_key: "self",
+      memory: { durable_scope: { scope: "global" } }
+    });
+    expect(index.active_environments.dreams.self).toMatchObject({
+      context_key: "self",
+      memory: { durable_scope: { scope: "global" } }
+    });
   });
 });

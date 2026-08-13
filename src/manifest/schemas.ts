@@ -2,7 +2,10 @@ import { z } from "zod";
 
 import { agentScheduleSchema } from "./scheduleSchemas.js";
 import { executionSchema } from "./executionSchemas.js";
+import { memoryBanksSchema } from "./memorySchemas.js";
+import { mcpServerSchema } from "./mcpSchemas.js";
 import { surfacesSchema } from "./surfaceSchemas.js";
+import { externalParticipantServiceSchema } from "./externalParticipantSchemas.js";
 import {
   teamNetworkSchema,
   teamWorkspaceDocsSchema,
@@ -21,39 +24,6 @@ const skillReferenceSchema = z
     requires: skillRequirementSchema.optional()
   })
   .strict();
-
-const mcpAuthSchema = z
-  .object({
-    secret: z.string()
-  })
-  .strict();
-
-const mcpServerSchema = z
-  .object({
-    args: z.array(z.string()).optional(),
-    auth: mcpAuthSchema.optional(),
-    command: z.string().optional(),
-    env: z.record(z.string(), z.string()).optional(),
-    name: z.string(),
-    transport: z.enum(["sse", "stdio", "streamable_http"]),
-    url: z.string().optional()
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.transport === "stdio" && !value.command) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "stdio MCP servers must declare command"
-      });
-    }
-
-    if (value.transport !== "stdio" && !value.url) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `${value.transport} MCP servers must declare url`
-      });
-    }
-  });
 
 const runtimeBindingSchema = z.union([
   z.string().min(1),
@@ -129,6 +99,7 @@ const commonManifestSchema = z
     description: z.string().optional(),
     execution: executionSchema.optional(),
     kind: z.enum(["agent", "team"]),
+    memory: memoryBanksSchema.optional(),
     name: z
       .string()
       .min(1)
@@ -153,28 +124,79 @@ const sharedSurfaceSchema = z
   })
   .strict();
 
-const memberSchema = z
+const referencedMemberSchema = z
   .object({
     id: z.string().min(1),
     ref: z.string()
   })
   .strict();
 
+const refineAgentMemoryAccess = (
+  value: { memory?: z.infer<typeof memoryBanksSchema> },
+  context: z.RefinementCtx
+): void => {
+  for (const memory of value.memory ?? []) {
+    if (memory.access?.members) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "agent memory banks must not declare access.members"
+      });
+    }
+  }
+};
+
+const inlineAgentMemberSchema = z
+  .object({
+    description: z.string().optional(),
+    environment: environmentSchema.optional(),
+    execution: executionSchema.optional(),
+    expose: z.boolean().optional(),
+    id: z.string().min(1),
+    memory: memoryBanksSchema.optional(),
+    policy: policySchema.optional(),
+    runtime: runtimeBindingSchema.optional(),
+    schedule: agentScheduleSchema.optional(),
+    surfaces: surfacesSchema.optional(),
+    workspace: teamWorkspaceSchema
+  })
+  .strict()
+  .superRefine((value, context) => {
+    refineAgentMemoryAccess(value, context);
+    if (!value.workspace.docs?.system) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "inline agent members must declare workspace.docs.system",
+        path: ["workspace", "docs", "system"]
+      });
+    }
+  });
+
+const memberSchema = z.union([
+  referencedMemberSchema,
+  inlineAgentMemberSchema
+], {
+  error: "team member must be either {id, ref} or an inline agent declaring workspace.docs.system"
+});
+
 const agentManifestSchema = commonManifestSchema
   .extend({
     expose: z.boolean().optional(),
     kind: z.literal("agent"),
     environment: environmentSchema.optional(),
+    memory: memoryBanksSchema.optional(),
     runtime: runtimeBindingSchema.optional(),
     schedule: agentScheduleSchema.optional(),
     subagents: z.array(subagentSchema).optional(),
     workspace: teamWorkspaceSchema.optional()
   })
+  .superRefine(refineAgentMemoryAccess)
   .strict();
 
 const teamManifestSchema = commonManifestSchema
   .extend({
+    memory: memoryBanksSchema.optional(),
     external: z.array(z.string().min(1)).optional(),
+    external_participants: z.array(externalParticipantServiceSchema).min(1).max(32).optional(),
     kind: z.literal("team"),
     lead: z.string().min(1).optional(),
     members: z.array(memberSchema),
@@ -220,15 +242,50 @@ const teamManifestSchema = commonManifestSchema
       }
 
       for (const network of value.networks) {
+        const externalRoomMembers = new Set(
+          value.external_participants?.filter((participant) =>
+            participant.surfaces.moltnet.some((attachment) =>
+              attachment.network === network.id))
+            .map((participant) => participant.id) ?? []
+        );
         for (const room of network.rooms) {
           for (const memberId of room.members) {
-            if (!memberIds.has(memberId)) {
+            if (!memberIds.has(memberId) && !externalRoomMembers.has(memberId)) {
               context.addIssue({
                 code: z.ZodIssueCode.custom,
                 message: `network ${network.id} room ${room.id} references unknown member ${memberId}`
               });
             }
           }
+        }
+
+        const externalAttached = value.external_participants?.some((participant) =>
+          participant.surfaces.moltnet.some((attachment) => attachment.network === network.id)
+        ) === true;
+        const operatorClient = network.server?.mode === "managed" &&
+          network.server.auth.mode === "bearer" &&
+          network.server.auth.client?.token_id === "operator";
+        const operatorOnly = operatorClient &&
+          network.server?.auth.tokens?.some((token) =>
+            token.id === "operator" && token.agents === undefined &&
+            token.scopes.length === 3 && token.scopes.every((scope, index) => scope === ["admin", "observe", "write"][index])
+          ) === true;
+        if ((operatorOnly && !externalAttached) || (operatorClient && externalAttached && !operatorOnly)) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `network ${network.id} topology operator requires a same-network external participant attachment`
+          });
+        }
+      }
+    }
+
+    for (const memory of value.memory ?? []) {
+      for (const memberId of memory.access?.members ?? []) {
+        if (!memberIds.has(memberId)) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `memory ${memory.id} access references unknown member ${memberId}`
+          });
         }
       }
     }
@@ -245,7 +302,9 @@ export type { AgentSchedule } from "./scheduleSchemas.js";
 export type DocsBlock = z.infer<typeof teamWorkspaceDocsSchema>;
 export type Environment = z.infer<typeof environmentSchema>;
 export type Manifest = z.infer<typeof manifestSchema>;
+export type InlineAgentMember = z.infer<typeof inlineAgentMemberSchema>;
 export type ManifestMember = z.infer<typeof memberSchema>;
+export type ReferencedMember = z.infer<typeof referencedMemberSchema>;
 export type McpServer = z.infer<typeof mcpServerSchema>;
 export type RuntimeBinding = z.infer<typeof runtimeBindingSchema>;
 export type Package = z.infer<typeof packageSchema>;
@@ -253,6 +312,15 @@ export type Secret = z.infer<typeof secretSchema>;
 export type SharedSurface = z.infer<typeof sharedSurfaceSchema>;
 export type SkillReference = z.infer<typeof skillReferenceSchema>;
 export type TeamManifest = z.infer<typeof teamManifestSchema>;
+export type { ExternalParticipantMoltnetAttachment, ExternalParticipantService } from "./externalParticipantSchemas.js";
+export type {
+  MemoryAccess,
+  MemoryBank,
+  MemoryConsolidation,
+  MemoryIndex,
+  MemoryRetention,
+  MemoryStore
+} from "./memorySchemas.js";
 export type {
   ExecutionBlock,
   ModelEndpoint,
@@ -294,3 +362,9 @@ export const isAgentManifest = (manifest: Manifest): manifest is AgentManifest =
 
 export const isTeamManifest = (manifest: Manifest): manifest is TeamManifest =>
   manifest.kind === "team";
+
+export const isInlineAgentMember = (
+  member: ManifestMember
+): member is InlineAgentMember => !("ref" in member);
+
+export const isReferencedMember = (member: ManifestMember): member is ReferencedMember => "ref" in member;

@@ -9,11 +9,19 @@ import {
 } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
+import { parseOrganizationHandoff, type OrganizationHandoff } from "./organizationHandoffTypes.js";
+import { parseOpaqueTargetHandle, type OpaqueTargetHandle } from "../target/index.js";
+
 import {
   normalizeDeploymentName,
   resolveDeploymentRecordPath,
   resolveDeploymentRecordsDirectory
 } from "./names.js";
+import {
+  parseOrganizationReadiness,
+  organizationReadinessSchema,
+  type OrganizationReadiness
+} from "./organizationReady.js";
 
 const contextTargetSchema = z.object({
   endpoint_fingerprint: z.string().regex(/^sha256:[a-f0-9]{32}$/),
@@ -103,14 +111,46 @@ export const deploymentRecordSchema = z.object({
   env_file: z.string().min(1).optional(),
   manager: z.string().min(1),
   name: z.string().min(1),
+  organization_handoff: z.unknown().optional(),
+  organization_handoff_handle: z.string().optional(),
   output_directory: z.string().min(1).nullable(),
+  // Optional: the NOOPOLIS_RUN_ID stamped on every authority container's
+  // causal events for this deployment's run (see specs/CAUSAL.md and
+  // src/runtime/common.ts). Populated only when the compiling process had a
+  // run id set (every `spawnfile run`/`up --detach` invocation via
+  // ensureNoopolisRunId()); absent for image-consume/recovered records that
+  // have no reliable run-time id to source. This is what lets
+  // `spawnfile artifacts export --run-id <id>` find the deployment whose
+  // containers/volumes were compiled under that run.
+  run_id: z.string().min(1).optional(),
   source: recordSourceSchema,
   target: targetSchema,
   units: z.array(unitSchema).min(1),
-  version: z.literal("spawnfile.deployment.v2")
-}).strict();
+  version: z.literal("spawnfile.deployment.v2"),
+  // Optional: stamped by `spawnfile artifacts export` (artifactsExport.ts) once it has
+  // successfully written `spawnfile.export-index.v1` for this deployment's run. This is
+  // the record-driven marker `spawnfile down` (downDeployment.ts) reads to enforce the
+  // export-before-teardown invariant (Decision 21) without needing to be told, out of
+  // band, where a prior export went: down resolves the SAME deployment record export
+  // already writes back to, so the two commands share one source of truth. Absent means
+  // "never exported" — not "exported to an unknown location".
+  export_index: z.object({
+    exported_at: z.string().min(1),
+    path: z.string().min(1),
+    run_id: z.string().min(1)
+  }).strict().optional(),
+  organization_ready: organizationReadinessSchema.optional()
+}).strict().superRefine((value, context) => {
+  if (value.organization_handoff_handle !== undefined && value.organization_handoff === undefined) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["organization_handoff_handle"], message: "organization handoff handle requires organization handoff" });
+  }
+});
 
-export type DeploymentRecord = z.infer<typeof deploymentRecordSchema>;
+export type DeploymentRecord = Omit<z.infer<typeof deploymentRecordSchema>, "organization_handoff" | "organization_handoff_handle" | "organization_ready"> & {
+  organization_handoff?: OrganizationHandoff;
+  organization_handoff_handle?: OpaqueTargetHandle;
+  organization_ready?: OrganizationReadiness;
+};
 
 const upgradeV1Record = (
   record: z.infer<typeof deploymentRecordV1Schema>
@@ -133,10 +173,20 @@ const hasVersion = (source: unknown, version: string): boolean =>
   && source !== null
   && (source as { version?: unknown }).version === version;
 
+const readOrganizationReadiness = (source: unknown): OrganizationReadiness | undefined => {
+  if (typeof source !== "object" || source === null || !Object.hasOwn(source, "organization_ready")) {
+    return undefined;
+  }
+  return parseOrganizationReadiness(
+    (source as { organization_ready: unknown }).organization_ready
+  );
+};
+
 export const parseDeploymentRecord = (
   source: unknown,
   sourceLabel = "deployment record"
 ): DeploymentRecord => {
+  const organizationReadiness = readOrganizationReadiness(source);
   let record: DeploymentRecord;
   if (hasVersion(source, "spawnfile.deployment.v1")) {
     const parsed = deploymentRecordV1Schema.safeParse(source);
@@ -155,7 +205,19 @@ export const parseDeploymentRecord = (
         `Invalid ${sourceLabel}: ${z.prettifyError(parsed.error)}`
       );
     }
-    record = parsed.data;
+    const {
+      organization_handoff: organizationHandoff,
+      organization_handoff_handle: organizationHandoffHandle,
+      organization_ready: _organizationReady,
+      ...recordWithoutMetadata
+    } = parsed.data;
+    record = {
+      ...recordWithoutMetadata,
+      ...(organizationHandoff === undefined
+        ? {}
+        : { organization_handoff: parseOrganizationHandoff(organizationHandoff) }),
+      ...(organizationHandoffHandle === undefined ? {} : { organization_handoff_handle: parseOpaqueTargetHandle(organizationHandoffHandle) })
+    } as DeploymentRecord;
   }
 
   const normalizedName = normalizeDeploymentName(record.name);
@@ -166,7 +228,7 @@ export const parseDeploymentRecord = (
     );
   }
 
-  return record;
+  return organizationReadiness ? { ...record, organization_ready: organizationReadiness } : record;
 };
 
 export const readDeploymentRecord = async (recordPath: string): Promise<DeploymentRecord> => {

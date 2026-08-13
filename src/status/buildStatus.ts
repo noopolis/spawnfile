@@ -296,6 +296,7 @@ export const createStaticStatus = (
   view: StaticStatus["view"],
   loadedReport: LoadedCompileReport,
   input: {
+    compiledProbeObservations?: StatusObservation[];
     deployments?: StatusDeploymentSummary[];
     inputPath: string;
     liveObservations?: StatusObservation[];
@@ -310,6 +311,7 @@ export const createStaticStatus = (
   const deployments = input.deployments ?? [];
   const live = input.live ?? defaultLiveRequest();
   const liveObservations = input.liveObservations ?? [];
+  const compiledProbeObservations = input.compiledProbeObservations ?? [];
   const selection = expandStatusSelectionSubjects(input.selection, {
     deployments,
     loadedReport,
@@ -318,6 +320,7 @@ export const createStaticStatus = (
 
   addDeclaredObservations(observations, view, nodes);
   addCompiledObservations(observations, loadedReport, view, nodes);
+  observations.push(...compiledProbeObservations);
   observations.push(...createDeploymentObservations(deployments, {
     compileFingerprint: compileInfoFor(loadedReport).compileFingerprint,
     liveRequested: live.requested,

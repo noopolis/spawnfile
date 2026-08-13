@@ -1,3 +1,4 @@
+export * from "./inlineAgentMember.js";
 export * from "./loadManifest.js";
 export * from "./renderSpawnfile.js";
 export * from "./scaffold.js";

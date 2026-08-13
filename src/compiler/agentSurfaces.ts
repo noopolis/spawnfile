@@ -42,11 +42,21 @@ export const resolveAgentSurfaces = (
 
   if (surfaces.moltnet) {
     resolved.moltnet = surfaces.moltnet.map((attachment) => ({
+      ...(attachment.auth
+        ? {
+            auth: {
+              tokenId: attachment.auth.token_id
+            }
+          }
+        : {}),
       ...(attachment.dms
         ? {
             dms: {
               enabled: attachment.dms.enabled,
-              ...(attachment.dms.wake ? { wake: attachment.dms.wake } : {})
+              ...(attachment.dms.wake ? { wake: attachment.dms.wake } : {}),
+              ...(attachment.dms.allowed_wake_senders !== undefined
+                ? { allowedWakeSenders: [...attachment.dms.allowed_wake_senders] }
+                : {})
             }
           }
         : {}),

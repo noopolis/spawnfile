@@ -346,7 +346,7 @@ Rules:
 - A parent team's `networks[].rooms[].members` list may name direct agent member IDs or direct child-team member IDs.
 - Direct child-team IDs expand through the child team's representative chain, not to arbitrary descendants.
 - The compiler synthesizes Moltnet room attachments for selected representatives because the parent room is declared organization membership, not a proxy.
-- Moltnet member IDs are direct member slot IDs and must be unique across the reachable nested team graph.
+- Moltnet member IDs are direct member slot IDs and must be unique across different canonical agent sources in the reachable nested team graph. Reusing the same member id is valid only when every duplicate resolves to the same canonical agent source.
 - The compiler resolves each concrete generated attachment into a process-group key and emits Moltnet node configuration using `MoltnetNode` topology where possible.
 - Default process-group key is one concrete agent.
 - The same Moltnet network-id may be reused across teams. Compatible duplicate attachments for the same `(network_id, member_id)` merge rooms; incompatible duplicates fail compilation.
@@ -525,6 +525,23 @@ Top-level report rules:
 - `compile_fingerprint` is a stable fingerprint of the compile output used by deployment records and drift detection.
 - The report MUST NOT include secret values, generated token values, or secret-bearing Moltnet config patches.
 
+### Memory Report Extension
+
+When manifests declare `memory`, the container report includes
+`container.memory[]`. Each entry records the memory bank id, declaring node,
+accessible concrete agent node ids, sanitized store/index/consolidation/retention
+metadata, and `transport_by_node_id`.
+
+Durable sqlite/json stores emit matching `container.persistent_mounts[]`
+entries. Mount ids are based on the container mount path, so multiple memory
+files in the same directory share one durable volume. OpenClaw and PicoClaw v0.1 lower
+file-backed banks through generated compiler-owned Mneme MCP servers in awake
+mode, using `mneme-<memory-id>` when the id is unique for the agent and an
+added discriminator when needed. Daimon agents receive direct Mneme runtime wiring; `engine: pi` uses
+in-process Mneme tools and switches the instruction/tool surface between awake
+and dream mode per wake. CLI engines receive prepared recall context but do not
+write memories implicitly in v0.1.
+
 ### Node Entry Shape
 
 ```json
@@ -631,7 +648,7 @@ Validation should happen in three layers:
 - team mode/lead/external references
 - team representative resolution
 - team network member references
-- duplicate Moltnet `member_id` detection across reachable nested teams
+- duplicate Moltnet `member_id` detection across reachable nested teams, allowing duplicates only when they resolve to the same canonical agent source
 - skill `requires.mcp` resolution
 - duplicate `workspace.resource` IDs and overlapping agent-visible mounts within each concrete agent context
 - duplicate workspace resource identities within inherited resource sets and incompatible shared resource definitions

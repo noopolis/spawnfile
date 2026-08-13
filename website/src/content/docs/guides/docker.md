@@ -110,7 +110,7 @@ Spawnfile manages runtime and model auth through local **auth profiles**. This k
 The primary happy path is `spawnfile auth sync`, which reads model auth intent from the project's manifests and imports matching local credentials into a named profile:
 
 ```bash
-spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
+spawnfile auth sync test/fixtures/single-agent --profile dev --env-file ./.env
 ```
 
 This reads the declared `auth` methods on each model target and surface, then imports the matching material. For example, if the manifest declares `auth.method: claude-code`, the sync imports your local Claude Code CLI credentials. If it declares `auth.method: api_key`, it reads the key from the provided env file.
@@ -173,30 +173,30 @@ For local development, `spawnfile up` is the one-command path after auth is sync
 
 ```bash
 # Sync declared model auth into a local profile
-spawnfile auth sync fixtures/single-agent --profile dev --env-file ./.env
+spawnfile auth sync test/fixtures/single-agent --profile dev --env-file ./.env
 
-spawnfile up fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev --detach
-spawnfile status fixtures/single-agent --out ./bundle/single-agent --live
+spawnfile up test/fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev --detach
+spawnfile status test/fixtures/single-agent --out ./bundle/single-agent --live
 ```
 
 Use the split-step `build` and `run` flow when you want to inspect, extend, or publish the image between steps:
 
 ```bash
 # Compile and build the container
-spawnfile build fixtures/single-agent --out ./bundle/single-agent --tag my-agent
+spawnfile build test/fixtures/single-agent --out ./bundle/single-agent --tag my-agent
 
 # Run with the local auth profile
-spawnfile run fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev --detach
-spawnfile status fixtures/single-agent --out ./bundle/single-agent --live
+spawnfile run test/fixtures/single-agent --out ./bundle/single-agent --tag my-agent --auth-profile dev --detach
+spawnfile status test/fixtures/single-agent --out ./bundle/single-agent --live
 ```
 
 For teams:
 
 ```bash
-spawnfile auth sync fixtures/multi-runtime-team --profile dev --env-file ./.env
-spawnfile build fixtures/multi-runtime-team --out ./bundle/team --tag my-team
-spawnfile run fixtures/multi-runtime-team --out ./bundle/team --tag my-team --auth-profile dev --detach --deployment dev
-spawnfile status fixtures/multi-runtime-team --out ./bundle/team --live --deployment dev
+spawnfile auth sync test/fixtures/multi-runtime-team --profile dev --env-file ./.env
+spawnfile build test/fixtures/multi-runtime-team --out ./bundle/team --tag my-team
+spawnfile run test/fixtures/multi-runtime-team --out ./bundle/team --tag my-team --auth-profile dev --detach --deployment dev
+spawnfile status test/fixtures/multi-runtime-team --out ./bundle/team --live --deployment dev
 ```
 
 The same commands apply regardless of project complexity. Use `up` for one-command local startup, or use `build` and `run` when you want explicit image staging.
@@ -214,16 +214,16 @@ Command boundaries:
 - `spawnfile dev up` starts a detached development deployment under `.spawn-dev`; `spawnfile dev apply --agent <id>` hot-loads one Pi agent into that running container without rebuilding or restarting the rest of the org.
 - `spawnfile status` reads the authored graph and compile report by default. With `--live`, it reads the detached deployment record and inspects the recorded Docker target.
 
-Managed Moltnet SQLite/JSON stores and open-registration agent token directories appear in the compile report as `container.persistent_mounts[]`. `spawnfile run` and `spawnfile up` mount those entries as Docker named volumes so messages, registrations, and generated open-mode agent tokens survive container replacement.
+Managed Moltnet SQLite/JSON stores, durable memory SQLite/JSON stores, and open-registration agent token directories appear in the compile report as `container.persistent_mounts[]`. `spawnfile run` and `spawnfile up` mount those entries as Docker named volumes so messages, registrations, memory state, and generated open-mode agent tokens survive container replacement.
 
 ### Dev Hot Apply
 
 Use dev mode when you are adding or editing Pi agents and want a tight feedback loop:
 
 ```bash
-spawnfile auth sync fixtures/e2e/pi-harness-org --profile dev --env-file ./.env
-spawnfile dev up fixtures/e2e/pi-harness-org --auth-profile dev --deployment dev
-spawnfile dev apply fixtures/e2e/pi-harness-org --agent observer --deployment dev
+spawnfile auth sync test/fixtures/e2e/daimon-org --profile dev --env-file ./.env
+spawnfile dev up test/fixtures/e2e/daimon-org --auth-profile dev --deployment dev
+spawnfile dev apply test/fixtures/e2e/daimon-org --agent observer --deployment dev
 ```
 
 `dev up` is a normal detached Docker deployment, but its default output root is
@@ -317,7 +317,7 @@ Resource mounts are symlink-backed inside the runtime workspace. Use workspace-r
 Manual Docker remains valid against the compile output:
 
 ```bash
-spawnfile compile fixtures/single-agent --out ./bundle/single-agent
+spawnfile compile test/fixtures/single-agent --out ./bundle/single-agent
 cd ./bundle/single-agent
 docker build -t my-agent .
 cp .env.example .env

@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Verify tag matches package version
         shell: bash
         run: |
@@ -53,7 +56,7 @@ jobs:
         run: npm run build
 
       - name: Verify package contents
-        run: npm pack --dry-run
+        run: npm run verify:package-closure
 
       - name: Publish to npm
         run: npm publish

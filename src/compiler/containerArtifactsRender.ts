@@ -1,8 +1,15 @@
 import path from "node:path";
 
-import { DISTRIBUTION_REPORT_IMAGE_PATH } from "../distribution/index.js";
+import {
+  DISTRIBUTION_REPORT_IMAGE_PATH,
+  WORLD_BINDINGS_IMAGE_PATH
+} from "../distribution/index.js";
 import { createRuntimeInstallRecipe } from "../runtime/index.js";
-import type { EmittedFile, RuntimeInstallRecipe } from "../runtime/index.js";
+import type {
+  EmittedFile,
+  RuntimeContainerPackageOverrides,
+  RuntimeInstallRecipe
+} from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import type {
@@ -26,8 +33,6 @@ import {
 
 const CONTAINER_ROOTFS_ROOT = "container/rootfs";
 const GATEWAY_PORT_PLACEHOLDER = "<gateway-port>";
-const MOLTNET_INSTALL_SCRIPT_URL = "https://moltnet.dev/install.sh";
-const MOLTNET_RELEASE_METADATA_URL = "https://api.github.com/repos/noopolis/moltnet/releases/latest";
 const WORKSPACE_PLACEHOLDER = "<workspace-path>";
 const RUNTIME_ROOT_PLACEHOLDER = "<runtime-root>";
 
@@ -114,15 +119,27 @@ export const renderEnvExample = (variables: ContainerEnvVariable[]): string => {
 export interface DockerfileDistributionOptions {
   labels: Record<string, string>;
   reportOutputFile: string;
+  worldBindingsOutputFile?: string;
 }
 
 export const renderDockerfile = async (
   runtimePlans: RuntimeTargetPlan[],
-  options: EntrypointOptions & { distribution?: DockerfileDistributionOptions } = {}
+  options: EntrypointOptions & {
+    distribution?: DockerfileDistributionOptions;
+    runtimePackageOverrides?: RuntimeContainerPackageOverrides;
+  } = {}
 ): Promise<string> => {
+  if (options.hasMoltnet && !options.hasStagedMoltnetBinaries) {
+    throw new SpawnfileError(
+      "compile_error",
+      "Moltnet must be supplied as a pinned, digest-verified, pi-bridge-stamped release; unpinned latest installation is disabled"
+    );
+  }
   const runtimeNames = [...new Set(runtimePlans.map((plan) => plan.runtimeName))];
   const runtimeRecipes = await Promise.all(
-    runtimeNames.map((runtimeName) => createRuntimeInstallRecipe(runtimeName))
+    runtimeNames.map((runtimeName) =>
+      createRuntimeInstallRecipe(runtimeName, { packageOverrides: options.runtimePackageOverrides })
+    )
   );
   const recipeByRuntimeName = new Map(
     runtimeRecipes.map((recipe) => [recipe.runtimeName, recipe])
@@ -130,7 +147,12 @@ export const renderDockerfile = async (
   const baseImage = selectBaseImage(runtimePlans, runtimeRecipes);
   const needsJsonEnvWriter = runtimePlans.some(
     (plan) => (plan.configEnvBindings?.length ?? 0) > 0
-  );
+  ) || (options.moltnet?.nodePlans.length ?? 0) > 0
+    || (options.moltnet?.serverPlans ?? []).some(
+      (plan) => plan.mode === "managed"
+        && plan.configPath !== null
+        && plan.secretPatches.length > 0
+    );
   const needsGit = runtimePlans.some((plan) =>
     (plan.resources ?? []).some((resource) => resource.kind === "git")
   );
@@ -140,9 +162,6 @@ export const renderDockerfile = async (
         recipeByRuntimeName.get(plan.runtimeName)?.baseImage ? [] : plan.meta.systemDeps
       ),
       ...(needsGit ? ["git"] : []),
-      ...(options.hasMoltnet && !options.hasStagedMoltnetBinaries
-        ? ["ca-certificates", "curl", "tar"]
-        : []),
       ...(needsJsonEnvWriter ? ["python3"] : [])
     ])
   ].sort();
@@ -196,12 +215,6 @@ export const renderDockerfile = async (
       `RUN chmod +x ${MOLTNET_BINARY_NAMES.map((binaryName) => `/usr/local/bin/${binaryName}`).join(" ")}`,
       ""
     );
-  } else if (options.hasMoltnet) {
-    lines.push(
-      `ADD ${MOLTNET_RELEASE_METADATA_URL} /tmp/spawnfile-moltnet-release.json`,
-      `RUN MOLTNET_RELEASE="$${"("}sed -n 's/.*\\"tag_name\\": *\\"\\([^\\"]*\\)\\".*/\\1/p' /tmp/spawnfile-moltnet-release.json | head -n 1${")"}" && echo "Installing Moltnet $${"{MOLTNET_RELEASE:-latest}"}" && MOLTNET_INSTALL_DIR=/usr/local/bin sh -c ${shellQuote(`curl -fsSL ${MOLTNET_INSTALL_SCRIPT_URL} | sh`)}`,
-      ""
-    );
   }
 
   for (const recipe of runtimeRecipes) {
@@ -237,6 +250,12 @@ export const renderDockerfile = async (
     lines.push(
       "",
       `COPY ${options.distribution.reportOutputFile} ${DISTRIBUTION_REPORT_IMAGE_PATH}`,
+      ...(options.distribution.worldBindingsOutputFile
+        ? [
+          `COPY ${options.distribution.worldBindingsOutputFile} ${WORLD_BINDINGS_IMAGE_PATH}`,
+          `RUN chmod 600 ${WORLD_BINDINGS_IMAGE_PATH} && chown spawnfile:spawnfile ${WORLD_BINDINGS_IMAGE_PATH}`
+        ]
+        : []),
       ...Object.entries(options.distribution.labels)
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([name, value]) => `LABEL ${name}=${shellQuote(value)}`)

@@ -1,12 +1,10 @@
-import type {
-  ResolvedAgentNode,
-} from "../../compiler/types.js";
+import type { ResolvedAgentNode } from "../../compiler/types.js";
+
 import {
   listEffectiveExecutionModelTargets,
   listExecutionModelSecretNames,
   resolveModelProviderEnvName
 } from "../../compiler/modelEnv.js";
-import type { McpServer } from "../../manifest/index.js";
 import type {
   AdapterCompileResult,
   ContainerTarget,
@@ -25,6 +23,7 @@ import { createPicoClawAgentScaffold } from "./scaffold.js";
 import {
   createPicoClawCronStoreFile,
   createScheduleDiagnostics,
+  hasPicoClawCronJobs,
   scheduleOutcomeFor
 } from "./schedules.js";
 import {
@@ -34,6 +33,15 @@ import {
 } from "./surfaces.js";
 import { PICOCLAW_GATEWAY_BASE_PORT, PICOCLAW_INTERNAL_PICO_TOKEN } from "./pico.js";
 import { picoClawStatusProbes } from "./statusProbes.js";
+import {
+  buildPicoClawMemoryMcpServers,
+  picoClawMemoryCapabilityFor,
+  PICOCLAW_MNEME_PACKAGE
+} from "./memory.js";
+import {
+  buildPicoClawAuthoredMcpServers,
+  buildPicoClawMcpEnvBindings
+} from "./mcp.js";
 
 const formatModelName = (node: ResolvedAgentNode): string | null => {
   const primary = node.execution?.model?.primary;
@@ -118,39 +126,12 @@ const buildModelList = (node: ResolvedAgentNode): Array<Record<string, unknown>>
   });
 };
 
-const buildMcpServers = (
-  servers: McpServer[]
-): Record<string, Record<string, unknown>> => {
-  const result: Record<string, Record<string, unknown>> = {};
-
-  for (const server of servers) {
-    const entry: Record<string, unknown> = { enabled: true };
-
-    if (server.transport === "stdio") {
-      entry.command = server.command;
-      if (server.args) entry.args = server.args;
-      if (server.env) entry.env = server.env;
-    } else {
-      entry.type = server.transport === "streamable_http" ? "http" : server.transport;
-      entry.url = server.url;
-    }
-
-    if (server.auth) {
-      entry.headers = { [server.auth.secret]: "" };
-    }
-
-    result[server.name] = entry;
-  }
-
-  return result;
-};
-
 const buildPicoClawToolsConfig = (
   node: ResolvedAgentNode
 ): Record<string, unknown> | undefined => {
   const tools: Record<string, unknown> = {};
 
-  if (node.schedule?.kind === "cron") {
+  if (hasPicoClawCronJobs(node)) {
     tools.cron = {
       enabled: true
     };
@@ -165,7 +146,18 @@ const buildPicoClawToolsConfig = (
   if (node.mcpServers.length > 0) {
     tools.mcp = {
       enabled: true,
-      servers: buildMcpServers(node.mcpServers)
+      servers: buildPicoClawAuthoredMcpServers(node.mcpServers)
+    };
+  }
+
+  const memoryMcpServers = buildPicoClawMemoryMcpServers(node);
+  if (Object.keys(memoryMcpServers).length > 0) {
+    tools.mcp = {
+      enabled: true,
+      servers: {
+        ...((tools.mcp as { servers?: Record<string, Record<string, unknown>> } | undefined)?.servers ?? {}),
+        ...memoryMcpServers
+      }
     };
   }
 
@@ -211,7 +203,10 @@ const createContainerTargets = async (
       envName: secretName,
       relativePath: createSecretPath(secretName)
     }));
-    const configEnvBindings = buildPicoClawSurfaceEnvBindings(agent.surfaces);
+    const configEnvBindings = [
+      ...(buildPicoClawSurfaceEnvBindings(agent.surfaces) ?? []),
+      ...buildPicoClawMcpEnvBindings(agent.mcpServers)
+    ];
 
     return {
       configEnvBindings,
@@ -268,7 +263,7 @@ export const picoClawAdapter: RuntimeAdapter = {
   container: {
     configFileName: "config.json",
     configPathEnv: "PICOCLAW_CONFIG",
-    globalNpmPackages: ["@anthropic-ai/claude-code", "@openai/codex"],
+    globalNpmPackages: ["@anthropic-ai/claude-code", "@openai/codex", PICOCLAW_MNEME_PACKAGE],
     homeEnv: "PICOCLAW_HOME",
     instancePaths: {
       configPathTemplate: "<instance-root>/picoclaw/<config-file>",
@@ -294,8 +289,11 @@ export const picoClawAdapter: RuntimeAdapter = {
   async compileAgent(node): Promise<AdapterCompileResult> {
     const scheduleOutcome = scheduleOutcomeFor(node);
     const cronStoreFile = createPicoClawCronStoreFile(node);
+    const memoryCapability = picoClawMemoryCapabilityFor(node);
     return {
       capabilities: createAgentCapabilities(node, {
+        memoryMessage: memoryCapability.message,
+        memoryOutcome: memoryCapability.outcome,
         scheduleMessage: scheduleOutcome.message,
         scheduleOutcome: scheduleOutcome.outcome
       }),

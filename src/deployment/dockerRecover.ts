@@ -120,6 +120,7 @@ const groupByDeployment = (
     }
     const name = deploymentNameFor(labels);
     const compileFingerprint = labels[dockerDeploymentLabelKeys.compileFingerprint];
+    const runId = labels[dockerDeploymentLabelKeys.runId];
     if (!name || !compileFingerprint) {
       continue;
     }
@@ -137,13 +138,27 @@ const groupByDeployment = (
     seenUnits.add(unit.id);
     unitsByDeployment.set(name, seenUnits);
 
-    const record = records.get(name) ?? {
+    const existing = records.get(name);
+    if (
+      existing
+      && (
+        existing.compile_fingerprint !== compileFingerprint
+        || existing.run_id !== runId
+      )
+    ) {
+      throw new SpawnfileError(
+        "validation_error",
+        `Recovered deployment "${name}" has inconsistent identity labels`
+      );
+    }
+    const record = existing ?? {
       auth_profile: null,
       compile_fingerprint: compileFingerprint,
       created_at: toStringOrNull(inspection.Created) ?? new Date().toISOString(),
       manager: "docker",
       name,
       output_directory: options.outputDirectory,
+      ...(runId ? { run_id: runId } : {}),
       source: { kind: "project", root: options.sourceRoot },
       target,
       units: [],

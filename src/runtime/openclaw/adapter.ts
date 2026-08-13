@@ -28,6 +28,13 @@ import {
   buildOpenClawMoltnetEnvBindings,
   validateOpenClawMoltnetRuntimeOptions
 } from "./moltnet.js";
+import {
+  buildOpenClawMcpConfig,
+  buildOpenClawMcpEnvBindings,
+  openClawMemoryCapabilityFor
+} from "./mcp.js";
+import { MNEME_PACKAGE } from "../mnemeMcp.js";
+import { createOpenClawCronStoreFile } from "./schedules.js";
 import { openClawStatusProbes } from "./statusProbes.js";
 
 const buildEnvSecretRef = (envName: string): Record<string, string> => ({
@@ -127,6 +134,11 @@ const buildOpenClawConfig = (node: ResolvedAgentNode): string => {
     config.moltnet = moltnet;
   }
 
+  const mcp = buildOpenClawMcpConfig(node);
+  if (mcp) {
+    config.mcp = mcp;
+  }
+
   // Bake the import-auth (claude-code/codex) OAuth structure at compile time so
   // the image is self-sufficient; only the credential tokens are injected later.
   const authBaked = applyOpenClawImportAuthConfig(
@@ -166,6 +178,7 @@ const createContainerTargets = async (
           ]
         : []),
       ...(buildOpenClawSurfaceEnvBindings(agent?.surfaces) ?? []),
+      ...(agent ? buildOpenClawMcpEnvBindings(agent.mcpServers) : []),
       ...(agent ? (buildOpenClawMoltnetEnvBindings(agent.runtime.options) ?? []) : [])
     ];
 
@@ -221,6 +234,7 @@ export const openClawAdapter: RuntimeAdapter = {
         required: true
       }
     ],
+    globalNpmPackages: [MNEME_PACKAGE],
     homeEnv: "OPENCLAW_HOME",
     instancePaths: {
       configPathTemplate: "<instance-root>/home/.openclaw/<config-file>",
@@ -251,23 +265,25 @@ export const openClawAdapter: RuntimeAdapter = {
     }
   },
   async compileAgent(node): Promise<AdapterCompileResult> {
+    const memoryCapability = openClawMemoryCapabilityFor(node);
+    const cronStoreFile = createOpenClawCronStoreFile(node);
     return {
       capabilities: createAgentCapabilities(node, {
-        mcpOutcome: node.mcpServers.length > 0 ? "degraded" : "supported",
+        memoryMessage: memoryCapability.message,
+        memoryOutcome: memoryCapability.outcome,
+        mcpOutcome: "supported",
         subagentOutcome: node.subagents.length > 0 ? "degraded" : "supported"
       }),
       diagnostics: [
         ...(node.subagents.length > 0
           ? [createDiagnostic("warn" as const, "OpenClaw subagents lower to routed sessions in v0.1")]
-          : []),
-        ...(node.mcpServers.length > 0
-          ? [createDiagnostic("warn" as const, "OpenClaw MCP goes through mcporter bridge; direct config may not apply")]
           : [])
       ],
       files: [
         ...createDocumentFiles("workspace", node.docs),
         ...createSkillFiles("workspace/skills", node.skills),
         ...createOpenClawStateFiles(),
+        ...(cronStoreFile ? [cronStoreFile] : []),
         {
           content: buildOpenClawConfig(node),
           path: "openclaw.json"

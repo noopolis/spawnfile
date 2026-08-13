@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { DeploymentRecord } from "./record.js";
 import { inspectDockerDeployment } from "./dockerInspect.js";
+import { dockerDeploymentLabelKeys } from "./dockerLabels.js";
 
 const createRecord = (): DeploymentRecord => ({
   auth_profile: null,
@@ -31,6 +32,30 @@ const createRecord = (): DeploymentRecord => ({
   version: "spawnfile.deployment.v2"
 });
 
+const liveIdentityLabels = (): Record<string, string> => ({
+  [dockerDeploymentLabelKeys.compileFingerprint]: "sf1:abc123",
+  [dockerDeploymentLabelKeys.deployment]: "default",
+  [dockerDeploymentLabelKeys.project]: "project-alpha",
+  [dockerDeploymentLabelKeys.runId]: "run-abc123",
+  [dockerDeploymentLabelKeys.unit]: "default-container",
+  [dockerDeploymentLabelKeys.version]: "spawnfile.v0.1"
+});
+
+const inspectOutput = (labels: unknown): string => JSON.stringify([{
+  Config: { Labels: labels },
+  Id: "container-123",
+  Image: "image-123",
+  State: { Running: true, Status: "running" }
+}]);
+
+const inspectWithLabels = async (labels: unknown) => {
+  const record = createRecord();
+  record.target = { kind: "host", value: "ssh://ops@example" };
+  return inspectDockerDeployment(record, {
+    execFile: async () => ({ stderr: "", stdout: inspectOutput(labels) })
+  });
+};
+
 describe("docker deployment inspection", () => {
   it("inspects recorded containers through the recorded docker context", async () => {
     const record = createRecord();
@@ -45,12 +70,13 @@ describe("docker deployment inspection", () => {
         ? "\"ssh://deploy@example.com\"\n"
         : JSON.stringify([
           {
+            Config: { Labels: liveIdentityLabels() },
             Id: "container-123",
             Image: "image-123",
+            RestartCount: 1,
             State: {
               ExitCode: 0,
               FinishedAt: "",
-              RestartCount: 1,
               Running: true,
               StartedAt: "2026-06-11T00:00:00.000Z",
               Status: "running"
@@ -75,11 +101,37 @@ describe("docker deployment inspection", () => {
     );
     expect(result.get("default-container")).toMatchObject({
       exists: true,
+      identity: {
+        compileFingerprint: "sf1:abc123",
+        deployment: "default",
+        project: "project-alpha",
+        runId: "run-abc123",
+        unit: "default-container",
+        version: "spawnfile.v0.1"
+      },
       message: "container is running (running)",
+      restartCount: 1,
       running: true,
       severity: "ok",
       status: "running"
     });
+  });
+
+  it("reads restart count from the top-level Docker inspection payload", async () => {
+    const record = createRecord();
+    record.target = { kind: "host", value: "ssh://ops@example" };
+    const result = await inspectDockerDeployment(record, {
+      execFile: async () => ({
+        stderr: "",
+        stdout: JSON.stringify([{
+          Id: "container-123",
+          RestartCount: 0,
+          State: { Running: true, Status: "running" }
+        }])
+      })
+    });
+
+    expect(result.get("default-container")?.restartCount).toBe(0);
   });
 
   it("returns missing and unknown observations instead of throwing", async () => {
@@ -209,5 +261,92 @@ describe("docker deployment inspection", () => {
       ],
       severity: "warn"
     });
+  });
+
+  it("projects only the complete canonical compiler-owned label identity", async () => {
+    const labels = {
+      ...liveIdentityLabels(),
+      "com.spawnfile.project_alias": "wrong-project",
+      "com.example.path": "/private/project",
+      "com.example.secret": "sentinel-secret-value",
+      "com.example.url": "https://secret.example/token"
+    };
+    const result = await inspectWithLabels(labels);
+    const inspection = result.get("default-container");
+
+    expect(inspection?.identity).toEqual({
+      compileFingerprint: "sf1:abc123",
+      deployment: "default",
+      project: "project-alpha",
+      runId: "run-abc123",
+      unit: "default-container",
+      version: "spawnfile.v0.1"
+    });
+    expect(JSON.stringify(inspection)).not.toMatch(
+      /sentinel-secret-value|secret\.example|\/private\/project|wrong-project/
+    );
+  });
+
+  it("rejects every missing or malformed canonical identity label without exposing it", async () => {
+    const canonical = liveIdentityLabels();
+    for (const key of Object.values(dockerDeploymentLabelKeys)) {
+      const missing = { ...canonical };
+      delete missing[key];
+      expect((await inspectWithLabels(missing)).get("default-container")?.identity).toBeNull();
+    }
+
+    for (const key of Object.values(dockerDeploymentLabelKeys)) {
+      for (const value of ["", " ", "/unsafe/path", "has space", "line\nbreak", "x".repeat(129), 7]) {
+        const hostile = { ...canonical, [key]: value };
+        const inspection = (await inspectWithLabels(hostile)).get("default-container");
+        expect(inspection?.identity).toBeNull();
+        if (typeof value === "string" && value.length > 0 && value !== " ") {
+          expect(JSON.stringify(inspection)).not.toContain(value);
+        }
+      }
+    }
+  });
+
+  it("rejects malformed label shapes and lookalike keys without throwing", async () => {
+    const lookalike = liveIdentityLabels();
+    delete lookalike[dockerDeploymentLabelKeys.runId];
+    lookalike["com.spawnfile.run-id"] = "run-abc123";
+    for (const labels of [null, [], "labels", lookalike]) {
+      await expect(inspectWithLabels(labels)).resolves.toEqual(expect.any(Map));
+      expect((await inspectWithLabels(labels)).get("default-container")?.identity).toBeNull();
+    }
+
+    const record = createRecord();
+    record.target = { kind: "host", value: "ssh://ops@example" };
+    for (const config of [null, [], "config", { Labels: null }, { Labels: [] }]) {
+      const result = await inspectDockerDeployment(record, {
+        execFile: async () => ({
+          stderr: "",
+          stdout: JSON.stringify([{ Config: config, State: { Running: true, Status: "running" } }])
+        })
+      });
+      expect(result.get("default-container")?.identity).toBeNull();
+    }
+  });
+
+  it("keeps identity null outside complete live inspections", async () => {
+    const record = createRecord();
+    record.target = { kind: "host", value: "ssh://ops@example" };
+    const missing = await inspectDockerDeployment(record, {
+      execFile: async () => { throw new Error("No such object"); }
+    });
+    const stopped = await inspectDockerDeployment(record, {
+      execFile: async () => ({ stderr: "", stdout: JSON.stringify([{ State: { Running: false } }]) })
+    });
+    const malformed = await inspectDockerDeployment(record, {
+      execFile: async () => ({ stderr: "", stdout: "[]" })
+    });
+    const targetFailure = await inspectDockerDeployment(createRecord(), {
+      execFile: async () => ({ stderr: "", stdout: "\"ssh://other@example\"" })
+    });
+
+    for (const result of [missing, stopped, malformed, targetFailure]) {
+      expect(result.get("default-container")?.identity).toBeNull();
+    }
   });
 });

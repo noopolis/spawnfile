@@ -65,9 +65,24 @@ Fallback models are mapped only if the runtime path supports them. Auth handling
 
 ## MCP Handling
 
-OpenClaw supports MCP through an `mcporter` bridge layer rather than a pure first-class MCP config surface. The adapter compiles logical Spawnfile MCP declarations into OpenClaw's MCP bridge or plugin-native config.
+OpenClaw supports MCP through native top-level `mcp.servers` config. The
+adapter compiles logical Spawnfile MCP declarations into that registry, using
+`transport: "stdio"` for command servers, `transport: "sse"` for SSE URLs, and
+`transport: "streamable-http"` for Spawnfile `streamable_http` servers.
 
-ACPX runtime paths can inject named MCP server maps, which gives the adapter a target for MCP lowering.
+## Memory Handling
+
+OpenClaw supports file-backed Spawnfile memory banks through compiler-generated
+Mneme MCP servers. A durable sqlite/json memory bank emits a persistent
+container mount for its store directory, installs the `mneme` CLI in the
+generated image, and adds a `mneme-<memory-id>` stdio server under
+`mcp.servers` with `--mode awake`; if an agent sees two banks with the same id,
+Spawnfile appends a compiler-owned discriminator to keep the names distinct. If
+the bank declares scheduled consolidation, Spawnfile also emits a matching
+`-dream` server with `--mode dream` and pre-seeds OpenClaw's native cron store
+with an isolated memory-maintenance wake. Postgres and pure in-memory stores
+are reported in the compile report but do not receive generated Mneme MCP
+wiring in v0.1.
 
 ## Workspace and Sandbox
 
@@ -175,12 +190,12 @@ For container compilation, the adapter provides container metadata including:
 - The start command
 - Port and environment configuration
 
-OpenClaw uses `noopolis/spawnfile-runtime-openclaw:2026.6.8` by default.
+OpenClaw uses `noopolis/spawnfile-runtime-openclaw:2026.6.11` by default.
 Generated Dockerfiles copy `/opt/spawnfile/runtime-installs/openclaw` from
 that image. To test a local runtime artifact instead:
 
 ```bash
-SPAWNFILE_OPENCLAW_RUNTIME_IMAGE=noopolis/spawnfile-runtime-openclaw:2026.6.8-local \
+SPAWNFILE_OPENCLAW_RUNTIME_IMAGE=noopolis/spawnfile-runtime-openclaw:2026.6.11-local \
   spawnfile build ./agentic-org
 ```
 

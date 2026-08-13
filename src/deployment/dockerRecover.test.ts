@@ -7,7 +7,7 @@ import { createEndpointFingerprint } from "./target.js";
 const labelsFor = (deployment: string, unit = `${deployment}-container`): Record<string, string> => ({
   [dockerDeploymentLabelKeys.compileFingerprint]: "sf1:abc123",
   [dockerDeploymentLabelKeys.deployment]: deployment,
-  [dockerDeploymentLabelKeys.project]: "pi-harness-org",
+  [dockerDeploymentLabelKeys.project]: "daimon-org",
   [dockerDeploymentLabelKeys.unit]: unit,
   [dockerDeploymentLabelKeys.version]: "0.1"
 });
@@ -46,7 +46,7 @@ describe("recoverDockerDeploymentRecords", () => {
       context: "gpu-4090",
       execFile,
       outputDirectory: "/project/.spawn-dev",
-      projectLabel: "pi-harness-org",
+      projectLabel: "daimon-org",
       runtimeInstanceIds: ["pi-app"],
       sourceRoot: "/project/Spawnfile"
     });
@@ -136,7 +136,7 @@ describe("recoverDockerDeploymentRecords", () => {
       context: "gpu-4090",
       execFile,
       outputDirectory: "/project/.spawn",
-      projectLabel: "pi-harness-org",
+      projectLabel: "daimon-org",
       sourceRoot: "/project/Spawnfile"
     });
 
@@ -159,7 +159,7 @@ describe("recoverDockerDeploymentRecords", () => {
       context: "gpu-4090",
       execFile,
       outputDirectory: "/project/.spawn",
-      projectLabel: "pi-harness-org",
+      projectLabel: "daimon-org",
       sourceRoot: "/project/Spawnfile"
     })).resolves.toEqual([]);
 
@@ -197,7 +197,7 @@ describe("recoverDockerDeploymentRecords", () => {
       context: "gpu-4090",
       execFile,
       outputDirectory: "/project/.spawn",
-      projectLabel: "pi-harness-org",
+      projectLabel: "daimon-org",
       sourceRoot: "/project/Spawnfile"
     })).rejects.toThrow("multiple containers for unit");
   });

@@ -155,6 +155,71 @@ describe("loadManifest", () => {
     expect(result.manifest.members).toHaveLength(2);
   });
 
+  it("loads inline agent documents and skills relative to the team manifest", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-inline-team-"));
+    temporaryDirectories.push(directory);
+    await ensureDirectory(path.join(directory, "characters"));
+    await ensureDirectory(path.join(directory, "skills", "football"));
+    await writeUtf8File(path.join(directory, "characters", "red.md"), "# Red\n");
+    await writeUtf8File(
+      path.join(directory, "skills", "football", "SKILL.md"),
+      ["---", "name: football", 'description: "Play football"', "---", ""].join("\n")
+    );
+    const manifestPath = path.join(directory, "Spawnfile");
+    await writeUtf8File(
+      manifestPath,
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: tiny-football",
+        "mode: swarm",
+        "members:",
+        "  - id: red",
+        "    runtime: daimon",
+        "    workspace:",
+        "      docs:",
+        "        system: ./characters/red.md",
+        "      skills:",
+        "        - ref: ./skills/football"
+      ].join("\n")
+    );
+
+    const result = await loadManifest(manifestPath);
+
+    expect(isTeamManifest(result.manifest)).toBe(true);
+    if (!isTeamManifest(result.manifest)) {
+      throw new Error("Expected team manifest");
+    }
+    expect(result.manifest.members[0]).toMatchObject({
+      id: "red",
+      runtime: "daimon",
+      workspace: { docs: { system: "./characters/red.md" } }
+    });
+  });
+
+  it("rejects a missing inline agent system document", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-inline-missing-doc-"));
+    temporaryDirectories.push(directory);
+    const manifestPath = path.join(directory, "Spawnfile");
+    await writeUtf8File(
+      manifestPath,
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: tiny-football",
+        "mode: swarm",
+        "members:",
+        "  - id: red",
+        "    runtime: daimon",
+        "    workspace:",
+        "      docs:",
+        "        system: ./characters/red.md"
+      ].join("\n")
+    );
+
+    await expect(loadManifest(manifestPath)).rejects.toThrow(/Document not found/);
+  });
+
   it("rejects missing documents", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-invalid-doc-"));
     temporaryDirectories.push(directory);

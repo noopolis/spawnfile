@@ -14,7 +14,8 @@ import type {
   DistributionRuntimeInstance,
   DistributionSecretCategory,
   DistributionSecretEntry,
-  DistributionWorkspaceResource
+  DistributionWorkspaceResource,
+  DistributionWorldBindingsEvidence
 } from "./types.js";
 
 export interface DistributionEnvVariableInput {
@@ -36,6 +37,7 @@ export interface BuildDistributionReportInput {
   publishedPorts: number[];
   resources: DistributionWorkspaceResource[];
   runtimeInstances: DistributionRuntimeInstance[];
+  worldBindings?: DistributionWorldBindingsEvidence;
 }
 
 const createSecretCategoryMap = (
@@ -87,7 +89,8 @@ export const buildDistributionReport = (
       left.id.localeCompare(right.id)
     ),
     secrets: createSecretCategoryMap(input.envVariables),
-    version: DISTRIBUTION_REPORT_VERSION
+    version: DISTRIBUTION_REPORT_VERSION,
+    ...(input.worldBindings ? { world_bindings: input.worldBindings } : {})
   };
 
   return {

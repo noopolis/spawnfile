@@ -1,4 +1,5 @@
 import type { TeamNetworkServer } from "../manifest/index.js";
+import { SpawnfileError } from "../shared/index.js";
 
 export interface MoltnetSecretPatch {
   envName: string;
@@ -6,6 +7,8 @@ export interface MoltnetSecretPatch {
 }
 
 export interface MoltnetClientAuthPlan {
+  credentialAgentId?: string;
+  credentialId?: string;
   mode: "bearer" | "none" | "open";
   registration?: "disabled" | "open" | "token";
   staticToken?: boolean;
@@ -96,6 +99,23 @@ export const resolveMoltnetStorePersistenceMountPath = (
 export const createMoltnetServerConfigPath = (serverId: string): string =>
   `container/rootfs/var/lib/spawnfile/moltnet/servers/${pathSafeSegment(serverId)}/Moltnet.json`;
 
+/**
+ * Dedicated causal-log subdirectory, a SIBLING of (never the same directory
+ * as) the server's own Moltnet.json config file. Deliberately kept separate
+ * so a persistent volume mounted here (to survive container teardown/
+ * restart, see moltnetArtifacts.ts's causal persistent mount) never masks a
+ * rebuilt image's freshly-baked Moltnet.json — which carries secrets
+ * patched in at container start via secretPatches — with a stale copy left
+ * over in a prior run's volume. Takes the already-container-absolute
+ * `configPath` (MoltnetServerPlan.configPath, post toContainerRootfsPath),
+ * not the rootfs-prefixed emit path.
+ */
+export const createMoltnetCausalDirectory = (configPath: string): string =>
+  `${configPath.slice(0, configPath.lastIndexOf("/")) || "/"}/causal`;
+
+export const createMoltnetCausalEventsPath = (configPath: string): string =>
+  `${createMoltnetCausalDirectory(configPath)}/causal.jsonl`;
+
 export const createMoltnetNodeConfigPath = (
   teamSlug: string,
   networkId: string,
@@ -132,10 +152,66 @@ export const resolveMoltnetClientAuth = (
   server: TeamNetworkServer,
   networkId: string,
   memberId: string,
-  agentSlug?: string
+  agentSlug?: string,
+  attachmentTokenId?: string
 ): MoltnetClientAuthPlan => {
   if (server.auth.mode === "none") {
+    if (attachmentTokenId !== undefined) {
+      throw new SpawnfileError(
+        "validation_error",
+        `Moltnet attachment ${networkId}/${memberId} cannot select token ${attachmentTokenId} when auth.mode is none`
+      );
+    }
     return { mode: "none" };
+  }
+
+  if (attachmentTokenId !== undefined) {
+    if (server.mode !== "managed" || server.auth.mode !== "bearer") {
+      throw new SpawnfileError(
+        "validation_error",
+        `invalid Moltnet actor token ${attachmentTokenId} for ${memberId}: token_id is supported only for managed bearer servers`
+      );
+    }
+    const tokens = server.auth.tokens?.filter(
+      (candidate) => candidate.id === attachmentTokenId
+    ) ?? [];
+    const token = tokens[0];
+    if (tokens.length === 0 || !token) {
+      throw new SpawnfileError(
+        "validation_error",
+        `invalid Moltnet actor token ${attachmentTokenId} for ${memberId}: attachment ${networkId}/${memberId} references unknown token ${attachmentTokenId}`
+      );
+    }
+    if (tokens.length !== 1) {
+      throw new SpawnfileError(
+        "validation_error",
+        `invalid Moltnet actor token ${attachmentTokenId} for ${memberId}: token id must exist exactly once`
+      );
+    }
+    if (
+      token.scopes.length !== 2
+      || token.scopes[0] !== "attach"
+      || token.scopes[1] !== "write"
+    ) {
+      throw new SpawnfileError(
+        "validation_error",
+        `invalid Moltnet actor token ${attachmentTokenId} for ${memberId}: token must include attach and write scopes exactly`
+      );
+    }
+    if (token.agents?.length !== 1 || token.agents[0] !== memberId) {
+      throw new SpawnfileError(
+        "validation_error",
+        `invalid Moltnet actor token ${attachmentTokenId} for ${memberId}: token must declare exactly agents: [${memberId}]`
+      );
+    }
+
+    return {
+      credentialAgentId: memberId,
+      credentialId: token.id,
+      mode: "bearer",
+      ...(server.auth.agent_registration ? { registration: server.auth.agent_registration } : {}),
+      tokenEnv: token.secret
+    };
   }
 
   const client = server.auth.client;
@@ -155,12 +231,41 @@ export const resolveMoltnetClientAuth = (
     };
   }
 
-  const tokenEnv = client.token_env
-    ?? (client.token_id && server.mode === "managed"
-      ? server.auth.tokens?.find((token) => token.id === client.token_id)?.secret
-      : undefined);
+  const selectedManagedToken = client.token_id && server.mode === "managed"
+    ? server.auth.tokens?.find((token) => token.id === client.token_id)
+    : undefined;
+  if (
+    server.mode === "managed"
+    && server.auth.mode === "bearer"
+    && selectedManagedToken
+    && (
+      !selectedManagedToken.scopes.includes("attach")
+      || !selectedManagedToken.scopes.includes("write")
+    )
+  ) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Moltnet attachment ${networkId}/${memberId} must select its own attach+write token; auth.client token ${selectedManagedToken.id} is operator-only`
+    );
+  }
+  if (
+    selectedManagedToken
+    && (selectedManagedToken.agents?.length ?? 0) > 0
+    && !selectedManagedToken.agents?.includes(memberId)
+  ) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Moltnet attachment ${networkId}/${memberId} is not allowed by auth.client token ${selectedManagedToken.id}`
+    );
+  }
+  const tokenEnv = client.token_env ?? selectedManagedToken?.secret;
+  const selectedAgents = selectedManagedToken
+    ? [...new Set((selectedManagedToken.agents ?? []).map((agent) => agent.trim()))].filter(Boolean)
+    : [];
 
   return {
+    ...(selectedAgents.length === 1 ? { credentialAgentId: selectedAgents[0] } : {}),
+    ...(client.token_id ? { credentialId: client.token_id } : {}),
     mode: server.auth.mode,
     ...(server.auth.agent_registration ? { registration: server.auth.agent_registration } : {}),
     ...(client.static_token ? { staticToken: true } : {}),

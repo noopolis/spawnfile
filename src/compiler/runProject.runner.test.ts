@@ -14,6 +14,14 @@ const createFakeDetachedChild = (): FakeChild => {
   return child;
 };
 
+const detachedContainerId = "a".repeat(64);
+const detachedImageId = `sha256:${"b".repeat(64)}`;
+const detachedInspectStdout = [
+  JSON.stringify(detachedContainerId),
+  JSON.stringify(detachedImageId),
+  JSON.stringify({})
+].join("\n");
+
 const loadRunProjectModule = async (
   child: FakeChild,
   execFileImplementation: (
@@ -96,7 +104,7 @@ describe("runDockerContainer", () => {
       child,
       (_file, _args, _options, callback) => callback(null, {
         stderr: "",
-        stdout: "sha256:image-123\n"
+        stdout: `${detachedInspectStdout}\n`
       })
     );
 
@@ -113,12 +121,12 @@ describe("runDockerContainer", () => {
       imageTag: "spawnfile-agent",
       supportDirectory: "/tmp/spawnfile-run"
     });
-    child.stdout?.emit("data", "container-123\n");
+    child.stdout?.emit("data", `${detachedContainerId}\n`);
     child.emit("exit", 0, null);
 
     await expect(promise).resolves.toEqual({
-      containerId: "container-123",
-      imageId: "sha256:image-123"
+      containerId: detachedContainerId,
+      imageId: detachedImageId
     });
     expect(spawn).toHaveBeenCalledWith(
       "docker",
@@ -130,7 +138,14 @@ describe("runDockerContainer", () => {
     );
     expect(execFile).toHaveBeenCalledWith(
       "docker",
-      ["--context", "remote", "inspect", "--format", "{{.Image}}", "container-123"],
+      [
+        "--context",
+        "remote",
+        "inspect",
+        "--format",
+        "{{json .Id}}\n{{json .Image}}\n{{json .Config.Labels}}",
+        detachedContainerId
+      ],
       { cwd: "/tmp/spawnfile-run", timeout: 10_000 },
       expect.any(Function)
     );
@@ -154,7 +169,7 @@ describe("runDockerContainer", () => {
           return;
         }
         if (file === "docker" && args.includes("inspect")) {
-          callback(null, { stderr: "", stdout: "sha256:image-123\n" });
+          callback(null, { stderr: "", stdout: `${detachedInspectStdout}\n` });
           return;
         }
         callback(new Error(`unexpected execFile ${file} ${args.join(" ")}`), {
@@ -189,12 +204,12 @@ describe("runDockerContainer", () => {
     });
 
     await new Promise<void>((resolve) => setImmediate(resolve));
-    child.stdout?.emit("data", "container-123\n");
+    child.stdout?.emit("data", `${detachedContainerId}\n`);
     child.emit("exit", 0, null);
 
     await expect(promise).resolves.toEqual({
-      containerId: "container-123",
-      imageId: "sha256:image-123"
+      containerId: detachedContainerId,
+      imageId: detachedImageId
     });
     expect(execFile).toHaveBeenCalledWith(
       "scp",
@@ -254,7 +269,7 @@ describe("runDockerContainer", () => {
 
     await expect(promise).rejects.toMatchObject({
       code: "runtime_error",
-      message: "Unable to inspect detached container container-123 image id: inspect failed"
+      message: "Unable to inspect detached container container-123: inspect failed"
     });
   });
 

@@ -2,12 +2,20 @@ import {
   AgentSchedule,
   ExecutionBlock,
   McpServer,
+  MemoryConsolidation,
+  MemoryIndex,
+  MemoryRetention,
   ModelEndpoint,
   Secret,
-  TeamNetworkServer
+  TeamNetworkServer,
+  type ExternalParticipantService
 } from "../manifest/index.js";
 import { ModelAuthMethod, StringMap } from "../shared/index.js";
 import type { ResolvedWorkspaceResource } from "./workspaceResources.js";
+import type {
+  ResolvedExternalParticipant,
+  ResolvedOrganizationIdentity
+} from "./organizationIdentity.js";
 
 export interface ResolvedDocument {
   content: string;
@@ -104,9 +112,13 @@ export interface ResolvedMoltnetRoomPolicy {
 
 export interface ResolvedMoltnetDMConfig extends ResolvedMoltnetRoomPolicy {
   enabled: boolean;
+  allowedWakeSenders?: string[];
 }
 
 export interface ResolvedMoltnetAttachment {
+  auth?: {
+    tokenId: string;
+  };
   contextRooms?: Record<string, string[]>;
   dms?: ResolvedMoltnetDMConfig;
   memberId: string | null;
@@ -145,6 +157,74 @@ export interface ResolvedTeamNetwork {
   provider: "moltnet";
   rooms: ResolvedTeamNetworkRoom[];
   server?: TeamNetworkServer;
+}
+
+export interface ResolvedMemoryStorePersistence {
+  mode: "durable" | "ephemeral";
+  mount?: string;
+  name?: string;
+}
+
+export interface ResolvedMemoryStore {
+  kind: "json" | "memory" | "postgres" | "sqlite";
+  path?: string;
+  persistence?: ResolvedMemoryStorePersistence;
+  dsn_secret?: string;
+}
+
+export interface ResolvedMemoryIndex {
+  graph: {
+    enabled: boolean;
+    kind?: "entity_graph" | "temporal_kg";
+  };
+  lexical: {
+    enabled: boolean;
+    engine?: "bm25" | "sqlite_fts";
+  };
+  rerank: {
+    enabled: boolean;
+  };
+  vector: {
+    base_url?: string;
+    enabled: boolean;
+    model?: string;
+    provider?: "ollama";
+    dimensions?: number;
+    timeout_ms?: number;
+  };
+}
+
+export interface ResolvedMemoryConsolidation {
+  mode: MemoryConsolidation["mode"];
+  schedule?: string;
+  summarize_after_events?: number;
+}
+
+export interface ResolvedMemoryRetention {
+  forgetting: MemoryRetention["forgetting"];
+  ttl?: string;
+}
+
+export interface ResolvedMemoryBank {
+  access?: {
+    members?: string[];
+  };
+  consolidation: ResolvedMemoryConsolidation;
+  declaredBy: "agent" | "team";
+  declaredName: string;
+  id: string;
+  index: ResolvedMemoryIndex;
+  retention: ResolvedMemoryRetention;
+  source: string;
+  store: ResolvedMemoryStore;
+}
+
+export interface ResolvedMemoryAccess {
+  agentSource: string;
+  declaringKind: "agent" | "team";
+  slotId?: string;
+  source: string;
+  bank: ResolvedMemoryBank;
 }
 
 export interface EffectiveModelTarget {
@@ -186,8 +266,11 @@ export interface ResolvedAgentNode {
   secrets: Secret[];
   skills: ResolvedSkill[];
   source: string;
+  sourcePath?: string;
   surfaces?: ResolvedAgentSurfaces;
   subagents: ResolvedSubagentRef[];
+  memory?: ResolvedMemoryBank[];
+  memoryAccess?: ResolvedMemoryAccess[];
   workspaceResources?: ResolvedWorkspaceResource[];
 }
 
@@ -196,6 +279,7 @@ export interface ResolvedTeamNode {
   docs: ResolvedDocument[];
   external: string[];
   externalExplicit?: boolean;
+  externalParticipants?: ExternalParticipantService[];
   kind: "team";
   lead: string | null;
   members: ResolvedMemberRef[];
@@ -212,6 +296,7 @@ export interface ResolvedTeamNode {
     skills: ResolvedSkill[];
     packages?: ResolvedPackage[];
   };
+  memory?: ResolvedMemoryBank[];
   source: string;
 }
 
@@ -257,9 +342,20 @@ export interface ResolvedMoltnetRoomMembership {
 
 export interface CompilePlan {
   edges: CompilePlanEdge[];
+  memoryAccess?: ResolvedMemoryAccess[];
   memberships?: ResolvedTeamMembershipContext[];
   moltnetRoomMemberships?: ResolvedMoltnetRoomMembership[];
   nodes: CompilePlanNode[];
   root: string;
   runtimes: Record<string, { nodeIds: string[] }>;
+  organizationIdentity?: ResolvedOrganizationIdentity;
+  moltnetExternalParticipantIntents?: MoltnetExternalParticipantIntent[];
+}
+
+export interface MoltnetExternalParticipantIntent {
+  participant: ResolvedExternalParticipant;
+  networkId: string;
+  tokenId: string;
+  tokenEnv: string;
+  directMessagePeers: string[];
 }

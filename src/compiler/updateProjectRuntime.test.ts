@@ -5,7 +5,12 @@ import { mkdtemp } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { readUtf8File, removeDirectory, writeUtf8File } from "../filesystem/index.js";
-import { isAgentManifest, isTeamManifest, loadManifest } from "../manifest/index.js";
+import {
+  isAgentManifest,
+  isInlineAgentMember,
+  isTeamManifest,
+  loadManifest
+} from "../manifest/index.js";
 
 import { addAgentProject, addSubagentProject } from "./addProjectNode.js";
 import { initProject } from "./initProject.js";
@@ -69,6 +74,49 @@ describe("setProjectRuntime", () => {
     }
     expect(writerManifest.manifest.runtime).toBe("picoclaw");
     expect(criticManifest.manifest.runtime).toBe("picoclaw");
+  });
+
+  it("updates inline agent runtimes in their declaring team file", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-runtime-inline-"));
+    temporaryDirectories.push(directory);
+    const manifestPath = path.join(directory, "Spawnfile");
+
+    await writeUtf8File(path.join(directory, "red.md"), "# Red\n");
+    await writeUtf8File(
+      manifestPath,
+      [
+        'spawnfile_version: "0.1"',
+        "kind: team",
+        "name: inline-team",
+        "mode: swarm",
+        "members:",
+        "  - id: red",
+        "    runtime: openclaw",
+        "    workspace:",
+        "      docs:",
+        "        system: red.md",
+        ""
+      ].join("\n")
+    );
+
+    const result = await setProjectRuntime({
+      path: directory,
+      recursive: true,
+      runtime: "picoclaw"
+    });
+    const loaded = await loadManifest(manifestPath);
+
+    expect(result.updatedFiles).toEqual([manifestPath]);
+    expect(loaded.manifest.kind).toBe("team");
+    if (loaded.manifest.kind !== "team") {
+      throw new Error("expected team manifest");
+    }
+    const member = loaded.manifest.members[0];
+    expect(isInlineAgentMember(member)).toBe(true);
+    if (!isInlineAgentMember(member)) {
+      throw new Error("expected inline agent member");
+    }
+    expect(member.runtime).toBe("picoclaw");
   });
 
   it("rejects non-recursive runtime updates on team manifests", async () => {
