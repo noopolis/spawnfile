@@ -13,6 +13,7 @@ import {
   writeUtf8File
 } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
+import { ensureNoopolisRunId } from "../runtime/index.js";
 import { findDaimonRuntimeInstance, resolveDaimonRuntimeRoot } from "./daimonRuntimeInstanceLookup.js";
 import {
   applyRuntimePackageOverrides,
@@ -247,10 +248,15 @@ export const runDaimonOrgE2E = async (
       cwd: runtimeRoot
     });
     const appArgs = [path.join(runtimeRoot, "app.mjs"), configPath];
-    const appEnv = {
+    // This harness runs the generated app.mjs directly instead of through
+    // spawnfile run/up, so it must stamp NOOPOLIS_RUN_ID itself (like
+    // src/e2e/officeSim.ts did) — daimon's resolveRunId throws on a blank
+    // value and both runs share one id for a single causal run.
+    const appEnv: NodeJS.ProcessEnv = {
       ...process.env,
       SPAWNFILE_PI_RUN_ONCE: "1"
     };
+    ensureNoopolisRunId(appEnv);
     await execFile(options.nodeCommand ?? "node", appArgs, { env: appEnv });
     await execFile(options.nodeCommand ?? "node", appArgs, { env: appEnv });
 

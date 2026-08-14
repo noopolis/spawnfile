@@ -189,7 +189,7 @@ const buildCliMemoryRequest = (event) => {
 };
 
 const createCliEnginePrompt = (config, paths, event, memoryPromptText) => [
-  createIdentityPrompt(config, paths.workspacePath),
+  createAgentInstructions(config, paths.workspacePath),
   "",
   memoryPromptText ?? formatCliWakePrompt(event),
   "",

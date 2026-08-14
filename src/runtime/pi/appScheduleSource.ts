@@ -46,8 +46,12 @@ export const installAgentSchedules = async (agents, timers, runOnce, clock = sys
   for (const agent of agents) {
     if (agent.config.schedule?.kind === "every" && agent.config.schedule.every) {
       const intervalMs = parseEveryMs(agent.config.schedule.every);
+      // Wake ids become mneme's wake_event_id, which must match the causal-id
+      // namespace /^(simfile|moltnet|mneme|daimon):.+$/. These wakes are
+      // delivered by the daimon runtime harness (as moltnet wakes carry a
+      // moltnet: id), so they carry the daimon: authority prefix.
       const createEvent = () => ({
-        id: "schedule-" + agent.config.id + "-" + clock.now(),
+        id: "daimon:schedule-" + agent.config.id + "-" + clock.now(),
         kind: "schedule",
         from: "scheduler",
         text: agent.config.schedule.prompt ?? "Run the scheduled Spawnfile task."
@@ -63,7 +67,7 @@ export const installAgentSchedules = async (agents, timers, runOnce, clock = sys
       const dreamEnvironments = await agent.listDreamEnvironmentKeys();
       for (const dreamEnvironment of dreamEnvironments) {
         const createEvent = () => ({
-          id: "dream-" + agent.config.id + "-" + bankId + "-" + dreamEnvironment + "-" + clock.now(),
+          id: "daimon:dream-" + agent.config.id + "-" + bankId + "-" + dreamEnvironment + "-" + clock.now(),
           kind: "dream",
           from: "mneme",
           dream_environment: dreamEnvironment,
