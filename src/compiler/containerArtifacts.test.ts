@@ -1123,7 +1123,7 @@ describe("createContainerArtifacts", () => {
 
   it("records engine: scripted for a pi runtime instance on the compile report (Piece 5 disclosure)", async () => {
     const fixtureRoot = fileURLToPath(
-      new URL("../../test/fixtures/e2e/office-sim/harness", import.meta.url)
+      new URL("../../fixtures/office-sim/harness", import.meta.url)
     );
     const node = createPiTestNode({
       name: "eleanor",

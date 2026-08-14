@@ -13,7 +13,7 @@ import type { OrganizationReadinessEvidence } from "../compiler/organizationRead
 import { runCli } from "./runCli.js";
 
 const temporaryDirectories: string[] = [];
-const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures");
+const fixturesRoot = path.resolve(process.cwd(), "examples");
 const packageVersion = (
   JSON.parse(readFileSync("package.json", "utf8")) as { version: string }
 ).version;
@@ -589,7 +589,7 @@ describe("runCli", () => {
       report: {
         diagnostics: [],
         nodes: [],
-        root: path.join(fixturesRoot, "e2e", "daimon-org"),
+        root: path.join(fixturesRoot, "daimon-org"),
         spawnfile_version: "0.1" as const,
       },
       reportPath: "/tmp/org/.spawn-dev/spawnfile-report.json",
@@ -600,7 +600,7 @@ describe("runCli", () => {
       [
         "dev",
         "up",
-        path.join(fixturesRoot, "e2e", "daimon-org"),
+        path.join(fixturesRoot, "daimon-org"),
         "--auth-profile",
         "dev",
         "--deployment",
@@ -619,7 +619,7 @@ describe("runCli", () => {
 
     expect(exitCode).toBe(0);
     expect(devUpProject).toHaveBeenCalledWith(
-      path.join(fixturesRoot, "e2e", "daimon-org"),
+      path.join(fixturesRoot, "daimon-org"),
       {
         authProfile: "dev",
         containerName: undefined,
@@ -654,7 +654,7 @@ describe("runCli", () => {
       [
         "dev",
         "apply",
-        path.join(fixturesRoot, "e2e", "daimon-org"),
+        path.join(fixturesRoot, "daimon-org"),
         "--agent",
         "observer",
         "--deployment",
@@ -671,7 +671,7 @@ describe("runCli", () => {
 
     expect(exitCode).toBe(0);
     expect(devApplyProject).toHaveBeenCalledWith(
-      path.join(fixturesRoot, "e2e", "daimon-org"),
+      path.join(fixturesRoot, "daimon-org"),
       {
         agent: "observer",
         deploymentName: "dev",
@@ -1657,7 +1657,7 @@ describe("runCli", () => {
     const exitCode = await runCli(
       [
         "publish",
-        "test/fixtures/single-agent",
+        "examples/single-agent",
         "--tag",
         "localhost:5000/org:1.0.0",
       ],

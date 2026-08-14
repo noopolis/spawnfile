@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,7 +10,19 @@ import type { DockerAuthE2EScenario, E2EAgentSpec } from "./types.js";
 
 type MutableJson = Record<string, unknown>;
 
-const FIXTURES_ROOT = fileURLToPath(new URL("../../test/fixtures/e2e", import.meta.url));
+const EXAMPLES_ROOT = fileURLToPath(new URL("../../examples", import.meta.url));
+const FIXTURES_ROOT = fileURLToPath(new URL("../../fixtures", import.meta.url));
+
+// Bare fixture names in scenarios.ts resolve to either a showcase org under
+// examples/ or a test-only org under fixtures/. Prefer examples/, fall back to
+// fixtures/, whichever exists on disk.
+const resolveFixtureDirectory = (name: string): string => {
+  const inExamples = path.join(EXAMPLES_ROOT, name);
+  if (existsSync(inExamples)) {
+    return inExamples;
+  }
+  return path.join(FIXTURES_ROOT, name);
+};
 
 const readYamlFile = async (filePath: string): Promise<MutableJson> =>
   YAML.parse(await readUtf8File(filePath)) as MutableJson;
@@ -62,7 +75,7 @@ export const materializeDockerAuthFixture = async (
   scenario: DockerAuthE2EScenario,
   destinationDirectory: string
 ): Promise<void> => {
-  const sourceDirectory = path.join(FIXTURES_ROOT, scenario.fixture);
+  const sourceDirectory = resolveFixtureDirectory(scenario.fixture);
   await copyDirectory(sourceDirectory, destinationDirectory);
 
   if (scenario.fixture === "docker-auth-agent") {

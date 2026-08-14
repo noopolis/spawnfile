@@ -63,13 +63,13 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
   and run authored fixtures, but scenarios, clocks, characters, world rules,
   transcripts, and simulation reports belong to the system that defines them.
 - When an E2E expects live runtime replies, inject the required runtime/model credentials through `syncProjectAuth` or an explicit auth profile before interpreting failures. Missing credentials can make bridges attach successfully while agents never answer, which is an auth/setup failure rather than a Moltnet or compiler failure.
-- Before running `moltnet-team-chat`, verify the selected auth profile includes a Codex import because every OpenClaw agent in that fixture declares `execution.model.*.auth.method: codex`. A valid preflight is `spawnfile auth sync test/fixtures/e2e/moltnet-team-chat --profile <name>` followed by confirming the output includes `imports: codex`.
+- Before running `moltnet-team-chat`, verify the selected auth profile includes a Codex import because every OpenClaw agent in that fixture declares `execution.model.*.auth.method: codex`. A valid preflight is `spawnfile auth sync examples/moltnet-team-chat --profile <name>` followed by confirming the output includes `imports: codex`.
 - Never run the live Moltnet team-chat E2E on ports already used by the developer. If `8787` is occupied, copy the fixture to `/tmp` and rewrite the parent and child Moltnet server ports separately; the source fixture uses `8787` in both the root team and nested field team, so a blind replacement can make both servers bind the same port.
 - A known-good isolated live command is:
 
   ```bash
   tmp="$(mktemp -d /tmp/spawnfile-team-chat.XXXXXX)"
-  cp -R test/fixtures/e2e/moltnet-team-chat/. "$tmp"
+  cp -R examples/moltnet-team-chat/. "$tmp"
   perl -pi -e 's/8787/21087/g' "$tmp/Spawnfile"
   perl -pi -e 's/8787/21088/g' "$tmp/teams/field/Spawnfile"
   npm run test:e2e:moltnet-team-chat -- \
@@ -84,7 +84,7 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
 
 - A passing live agent communication run prints `Moltnet team-chat E2E passed (...)`. This means the generated container started Moltnet, attached the bridges, woke the OpenClaw/Codex agents, and observed both the parent request/ACK and child ACK messages.
 - **Interim live-model regression check (Slice B), do not delete:** `moltnetTeamChat.ts` (plus `moltnetTeamChatBusyTurn.ts` and `moltnetTeamChatB20.ts`, which share its plumbing) proves a busy-turn burst gets one real reply carrying every queued marker — genuinely unfakeable live-model behavior, not something a fake-engine unit test can stand in for. This is kept as-is pending the compose-and-observe pipeline (Spawnfile org + Simfile world, composed and observed read-only from `simfile`, per the project direction to delete bespoke orchestration harnesses once the platform gap they work around is fixed rather than reimplement them there). Do not touch its shared plumbing while it's still the only thing exercising this path.
-- The Daimon org E2E compiles `test/fixtures/e2e/daimon-org`, injects real Codex OAuth into the generated Pi home, installs the generated Daimon runtime package, runs the generated app twice, and asserts that two Daimon agents wrote through a shared workspace resource and recorded/recalled Mneme memory. **Interim live-model regression check (Slice B), do not delete:** two real Codex agents actually writing to a shared workspace path is unfakeable live-model behavior, kept as-is pending the same compose-and-observe pipeline noted above (its compiler-wiring/memory-persistence assertions overlap with unit coverage elsewhere, but splitting those out was judged not worth the churn while this file is still flagged interim). Pi currently requires Node 22.19+; a known-good command is:
+- The Daimon org E2E compiles `examples/daimon-org`, injects real Codex OAuth into the generated Pi home, installs the generated Daimon runtime package, runs the generated app twice, and asserts that two Daimon agents wrote through a shared workspace resource and recorded/recalled Mneme memory. **Interim live-model regression check (Slice B), do not delete:** two real Codex agents actually writing to a shared workspace path is unfakeable live-model behavior, kept as-is pending the same compose-and-observe pipeline noted above (its compiler-wiring/memory-persistence assertions overlap with unit coverage elsewhere, but splitting those out was judged not worth the churn while this file is still flagged interim). Pi currently requires Node 22.19+; a known-good command is:
 
   ```bash
   PATH="$HOME/.nvm/versions/node/v22.22.1/bin:$PATH" \
@@ -135,9 +135,9 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
 - Memory wiring E2Es are compile/report checks, not mocked model conversations. They compile the mixed-runtime and Jungian fixtures, assert Moltnet topology, assert memory capability reporting, and inspect generated memory transport outcomes. The generated-app E2Es above are the ones that execute runtime turns. Known-good commands are:
 
   ```bash
-  npm run test:e2e:daimon-memory-recall -- --fixture test/fixtures/e2e/mixed-runtime-org
-  npm run test:e2e:mixed-runtime-memory -- --fixture test/fixtures/e2e/mixed-runtime-org
-  npm run test:e2e:jungian-self-org -- --fixture test/fixtures/e2e/jungian-daimon-org
+  npm run test:e2e:daimon-memory-recall -- --fixture examples/mixed-runtime-org
+  npm run test:e2e:mixed-runtime-memory -- --fixture examples/mixed-runtime-org
+  npm run test:e2e:jungian-self-org -- --fixture examples/jungian-daimon-org
   ```
 
 - The Ollama embeddings probe is optional. It checks the configured endpoint and returns skipped when Ollama or the requested embedding model is unavailable:
@@ -157,7 +157,7 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
 
 - The moltnet-memetics E2E (`runMoltnetMemeticsE2E`, `moltnetMemetics.ts`) drives
   one real Eleanor<->Sam conversation through a real Docker container running a
-  compiled `test/fixtures/e2e/moltnet-memetics` fixture: two `runtime: pi`
+  compiled `fixtures/moltnet-memetics` fixture: two `runtime: pi`
   (`engine: codex`) agents, one managed Moltnet network/room (`memetics_lab`/
   `eleanor-home`), both with `wake: mentions` — an agent only wakes when a
   room message @mentions their id, so turn-taking is explicit rather than
@@ -214,7 +214,7 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
 
   ```bash
   tmp="$(mktemp -d /tmp/spawnfile-memetics.XXXXXX)"
-  cp -R test/fixtures/e2e/moltnet-memetics/. "$tmp"
+  cp -R fixtures/moltnet-memetics/. "$tmp"
   perl -pi -e 's/8787/21092/g' "$tmp/Spawnfile"
   npm run test:e2e:moltnet-memetics -- \
     --fixture "$tmp" \
@@ -233,7 +233,7 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
   `npm run test:e2e:lifecycle-smoke`:** proves the documented
   `spawnfile up`/`artifacts export`/`down --json` receipt contract end to end
   against a minimal single-agent SCRIPTED fixture
-  (`test/fixtures/e2e/lifecycle-smoke`, no model auth). It asserts up-receipt
+  (`fixtures/lifecycle-smoke`, no model auth). It asserts up-receipt
   fields (`fingerprint`, `run_id`, non-empty `compiled_schedule`,
   `readiness.moltnet_base_url`, `engines`), that Moltnet's `/healthz`
   answers, that `artifacts export --json`'s export-index lists a genuinely
@@ -255,7 +255,7 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
   A passing run prints `Lifecycle smoke E2E passed (...)`. Uses an isolated
   Moltnet port (`19961`) never a developer's active port.
 
-- `test/fixtures/e2e/office-sim/harness/office-engine.mjs` (Slice B, Piece 5
+- `fixtures/office-sim/harness/office-engine.mjs` (Slice B, Piece 5
   step 1) is a standalone script speaking the pi runtime's `scripted` engine
   argv contract (`--prompt-file <path> --cwd <workspacePath>`, reply text on
   stdout) — see `src/runtime/pi/AGENTS.md`'s `appCliEnginesSource.ts`/
@@ -264,7 +264,7 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
   `ecosystem/simfile/fixtures/sims/office-sim` (its own copy of this script);
   this copy stays because two unrelated unit tests
   (`src/runtime/pi/adapter.test.ts`, `src/compiler/containerArtifacts.test.ts`)
-  reference `test/fixtures/e2e/office-sim/harness` directly as a generic
+  reference `fixtures/office-sim/harness` directly as a generic
   fixture proving the pi adapter's `scripted` engine kind.
   `src/e2e/officeEngineScript.test.ts` spawns the standalone script as a child
   process and asserts its stdout against inlined constants (the screenplay

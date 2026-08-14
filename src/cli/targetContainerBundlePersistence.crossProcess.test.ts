@@ -55,7 +55,7 @@ const runChild = (
   action: "attest" | "complete" | "inspect",
   scenario?: "daemon_replaced" | "exact" | "image_missing" | "label_drift"
 ): Promise<ChildResult> => new Promise((resolve, reject) => {
-  const child = fork(fileURLToPath(new URL("../../test/fixtures/targetContainerBundlePersistence.fixture.ts", import.meta.url)), [], {
+  const child = fork(fileURLToPath(new URL("../../fixtures/support/targetContainerBundlePersistence.fixture.ts", import.meta.url)), [], {
     env: { ...process.env, SPAWNFILE_HOME: home },
     execArgv: ["--import", createRequire(import.meta.url).resolve("tsx")],
     silent: true

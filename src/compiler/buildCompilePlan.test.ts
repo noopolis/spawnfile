@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ensureDirectory, removeDirectory, writeUtf8File } from "../filesystem/index.js";
 import { buildCompilePlan } from "./buildCompilePlan.js";
 
-const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures");
+const fixturesRoot = path.resolve(process.cwd(), "examples");
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {

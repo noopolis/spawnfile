@@ -179,7 +179,7 @@ export const runB18Preflight = async (
   const runtimeAssetRoot = options.runtimeAssetRoot ?? process.cwd();
   const mixedRuntimeFixtureDirectory =
     options.mixedRuntimeFixtureDirectory ??
-    path.join(projectRoot, "test", "fixtures", "e2e", "mixed-runtime-org");
+    path.join(projectRoot, "examples", "mixed-runtime-org");
   const dockerCommand = options.dockerCommand ?? "docker";
   const remoteContext = options.dockerRemoteContext ?? DEFAULT_REMOTE_DOCKER_CONTEXT;
   const remoteContextId = `${CHECK_IDS.dockerRemoteContext}-${remoteContext}`;

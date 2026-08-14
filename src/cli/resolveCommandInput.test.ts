@@ -4,16 +4,16 @@ import { resolveCommandInput } from "./resolveCommandInput.js";
 
 describe("resolveCommandInput", () => {
   it("treats existing directories as project paths", () => {
-    expect(resolveCommandInput("test/fixtures/single-agent")).toEqual({
+    expect(resolveCommandInput("examples/single-agent")).toEqual({
       kind: "project",
-      path: "test/fixtures/single-agent"
+      path: "examples/single-agent"
     });
   });
 
   it("treats existing files as project paths", () => {
-    expect(resolveCommandInput("test/fixtures/single-agent/Spawnfile")).toEqual({
+    expect(resolveCommandInput("examples/single-agent/Spawnfile")).toEqual({
       kind: "project",
-      path: "test/fixtures/single-agent/Spawnfile"
+      path: "examples/single-agent/Spawnfile"
     });
   });
 
@@ -49,8 +49,8 @@ describe("resolveCommandInput", () => {
   });
 
   it("prefers a directory over a same-spelled ref unless forced", () => {
-    expect(resolveCommandInput("test/fixtures/single-agent")).toMatchObject({ kind: "project" });
-    expect(resolveCommandInput("test/fixtures/single-agent", { forceImage: true })).toMatchObject({
+    expect(resolveCommandInput("examples/single-agent")).toMatchObject({ kind: "project" });
+    expect(resolveCommandInput("examples/single-agent", { forceImage: true })).toMatchObject({
       kind: "image"
     });
   });

@@ -12,7 +12,8 @@ This repository is the reference implementation of the Spawnfile v0.1 compiler.
 ├── specs/                    # Specs, architecture docs, and runtime research
 ├── scripts/                  # Bootstrap and repo helper scripts
 ├── src/                      # CLI, compiler, adapters, manifests, reports, target contracts
-├── test/fixtures/            # Canonical compiler and E2E Spawnfile projects
+├── examples/                 # Showcase Spawnfile org projects (reference layouts)
+├── fixtures/                 # Test-only Spawnfile org projects + support/ helpers
 ├── package.json              # Node package metadata and CLI scripts
 ├── tsconfig.json             # Typecheck config
 ├── tsconfig.build.json       # Build-only emit config

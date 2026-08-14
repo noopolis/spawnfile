@@ -18,7 +18,7 @@ import { renderPiPreludeSource } from "./appPreludeSource.js";
 /**
  * Coverage for the DAIMON-TURN-CAUSAL gap: `CliEngineAgentHandle.wake()`
  * (the handle used for every non-"pi" engine kind — codex/claude/grok/agy,
- * including the fake-engine E2E fixtures under test/fixtures/e2e/office-sim)
+ * including the fake-engine E2E fixtures under fixtures/office-sim)
  * previously never stamped `turn.input.submitted`/`turn.output.completed`,
  * so a real compiled run's daimon `telemetry/causal.jsonl` only ever
  * contained `control.wake.accepted`. `stampTurnInputSubmitted`/

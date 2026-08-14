@@ -20,7 +20,7 @@ import {
   matchesDockerBuildIgnorePattern
 } from "./dockerBuildContext.js";
 
-const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures");
+const fixturesRoot = path.resolve(process.cwd(), "examples");
 const temporaryDirectories: string[] = [];
 const previousRunId = process.env.NOOPOLIS_RUN_ID;
 

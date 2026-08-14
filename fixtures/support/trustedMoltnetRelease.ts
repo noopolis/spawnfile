@@ -7,9 +7,9 @@ import { promisify } from "node:util";
 import type {
   MoltnetReleaseIdentity,
   MoltnetTargetArchitecture
-} from "../src/compiler/moltnetBinaries.js";
+} from "../../src/compiler/moltnetBinaries.js";
 import type { TrustedMoltnetReleaseAuthority } from
-  "../src/compiler/moltnetReleaseAuthority.js";
+  "../../src/compiler/moltnetReleaseAuthority.js";
 
 const ASSET_BASE64 =
   "H4sIAMhDdWoAA+3STQ7CIBAFYNY9xRjXluFnynmqoWkTC6ZQz29jSRcm6kZijHybt5nAI0PNWXaIaIjgns2aKPWaCQiSiqQWRiCgkMIQA8pfjbE5xHZaqrSXyYbRD8/mlrGue3FOeseWP6Lmoz9HZ2PGO97uX+uH/asGFQPM2Gnz5/vf7/gcJn4cHLfuCqGv7Kn3kD7FIdoQq293LIqiKD7vBticJfwACgAA";

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { runCli, type CliHandlers } from "./runCli.js";
 
-const projectPath = path.resolve("test/fixtures/single-agent");
+const projectPath = path.resolve("examples/single-agent");
 const bindingsPath = "/runner/artifacts/world-bindings.json";
 const streams = { stderr: vi.fn(), stdout: vi.fn() };
 

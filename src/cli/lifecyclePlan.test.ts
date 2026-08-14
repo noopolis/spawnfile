@@ -15,7 +15,7 @@ import { canonicalLifecycleJson } from "../deployment/lifecycleCompletionContrac
 import { runCli } from "./runCli.js";
 
 const priorHome = process.env.SPAWNFILE_HOME;
-const project = path.resolve("test/fixtures/single-agent");
+const project = path.resolve("examples/single-agent");
 let home = "";
 let compiled = "";
 const invocationId = "lci_plan000000000000";

@@ -9,7 +9,7 @@ import { removeDirectory } from "../filesystem/index.js";
 
 import { publishProject } from "./publishProject.js";
 
-const FIXTURE = fileURLToPath(new URL("../../test/fixtures/single-agent", import.meta.url));
+const FIXTURE = fileURLToPath(new URL("../../examples/single-agent", import.meta.url));
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {

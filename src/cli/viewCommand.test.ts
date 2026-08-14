@@ -9,7 +9,7 @@ import { removeDirectory } from "../filesystem/index.js";
 import { runCli, type CliHandlers } from "./runCli.js";
 
 const repositoryRoot = process.cwd();
-const fixturesRoot = path.resolve(repositoryRoot, "test", "fixtures");
+const fixturesRoot = path.resolve(repositoryRoot, "examples");
 const temporaryDirectories: string[] = [];
 
 const createStreams = (): {
@@ -139,7 +139,7 @@ describe("view command", () => {
     const { streams, stdout } = createStreams();
 
     const exitCode = await runCli(
-      ["view", path.join(fixturesRoot, "e2e", "moltnet-team-chat"), "--mode", "networks"],
+      ["view", path.join(fixturesRoot, "moltnet-team-chat"), "--mode", "networks"],
       {
         renderEnvironment: { ci: false, noColor: true, stdoutIsTty: false },
         streams

@@ -25,7 +25,7 @@ import {
 vi.mock("./moltnetBinaries.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./moltnetBinaries.js")>();
   const { stageTrustedTestMoltnetRelease } = await import(
-    "../../test/trustedMoltnetRelease.js"
+    "../../fixtures/support/trustedMoltnetRelease.js"
   );
   return {
     ...actual,
@@ -39,7 +39,8 @@ vi.mock("./moltnetBinaries.js", async (importOriginal) => {
 });
 
 const temporaryDirectories: string[] = [];
-const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures");
+const examplesRoot = path.resolve(process.cwd(), "examples");
+const fixturesRoot = path.resolve(process.cwd(), "fixtures");
 
 beforeEach(async () => {
   const homeDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-build-home-"));
@@ -118,7 +119,7 @@ describe("buildProject", () => {
 
     const invocations: DockerBuildInvocation[] = [];
     const imageInspector = vi.fn(async () => null);
-    const result = await buildProject(path.join(fixturesRoot, "single-agent"), {
+    const result = await buildProject(path.join(examplesRoot, "single-agent"), {
       buildRunner: async (invocation) => {
         invocations.push(invocation);
       },
@@ -197,7 +198,7 @@ describe("buildProject", () => {
     temporaryDirectories.push(outputDirectory);
 
     const buildRunner = vi.fn(async () => undefined);
-    const result = await buildProject(path.join(fixturesRoot, "single-agent"), {
+    const result = await buildProject(path.join(examplesRoot, "single-agent"), {
       buildRunner,
       imageTag: "custom-image:dev",
       outputDirectory
@@ -217,7 +218,7 @@ describe("buildProject", () => {
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-build-skip-"));
     temporaryDirectories.push(outputDirectory);
     const buildRunner = vi.fn(async () => undefined);
-    const inputPath = path.join(fixturesRoot, "single-agent");
+    const inputPath = path.join(examplesRoot, "single-agent");
     const first = await buildProject(inputPath, {
       buildRunner,
       outputDirectory
@@ -263,7 +264,7 @@ describe("buildProject", () => {
     temporaryDirectories.push(outputDirectory);
 
     const buildRunner = vi.fn(async () => undefined);
-    const result = await buildProject(path.join(fixturesRoot, "single-agent", "Spawnfile"), {
+    const result = await buildProject(path.join(examplesRoot, "single-agent", "Spawnfile"), {
       buildRunner,
       outputDirectory
     });
@@ -288,7 +289,7 @@ describe("buildProject", () => {
     vi.stubEnv("SPAWNFILE_MOLTNET_CLI", moltnetCli);
     vi.stubEnv("SPAWNFILE_MOLTNET_TARGET_ARCH", "amd64");
 
-    const result = await buildProject(path.join(fixturesRoot, "e2e", "moltnet-team-chat"), {
+    const result = await buildProject(path.join(examplesRoot, "moltnet-team-chat"), {
       buildRunner,
       dockerContext: "remote-pi",
       dockerCommand,

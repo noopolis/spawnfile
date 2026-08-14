@@ -54,7 +54,7 @@ export type {
   RunMoltnetMemeticsE2EResult
 } from "./moltnetMemeticsTypes.js";
 
-const DEFAULT_FIXTURE_DIRECTORY = fileURLToPath(new URL("../../test/fixtures/e2e/moltnet-memetics", import.meta.url));
+const DEFAULT_FIXTURE_DIRECTORY = fileURLToPath(new URL("../../fixtures/moltnet-memetics", import.meta.url));
 const DEFAULT_BASE_URL = "http://127.0.0.1:8787";
 export const MOLTNET_MEMETICS_NETWORK_ID = "memetics_lab";
 export const MOLTNET_MEMETICS_ROOM_ID = "eleanor-home";
