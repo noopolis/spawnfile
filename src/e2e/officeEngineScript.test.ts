@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const execFileAsync = promisify(execFile);
 
 /**
- * Standalone `fixtures/office-sim/harness/office-engine.mjs`
+ * Standalone `fixtures/support/scripted-engine/office-engine.mjs`
  * (Slice B, Piece 5 step 1) is a generic `scripted`-engine fixture script
  * (its eleanor/sam canned-reply screenplay was originally extracted from the
  * now-deleted `officeSimEngines.ts`'s fake `grok` binary — the office-sim
@@ -33,7 +33,7 @@ const OFFICE_SIM_ELEANOR_CLOSE =
   "Great, that's settled: downtown office, go-live June 1 for the file migration. Done.";
 const OFFICE_SIM_AGREEMENT_MARKER = "works for me";
 const SCRIPT_PATH = fileURLToPath(
-  new URL("../../fixtures/office-sim/harness/office-engine.mjs", import.meta.url)
+  new URL("../../fixtures/support/scripted-engine/office-engine.mjs", import.meta.url)
 );
 
 describe("office-engine.mjs (standalone scripted-engine fixture script)", () => {

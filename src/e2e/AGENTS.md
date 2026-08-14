@@ -255,7 +255,7 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
   A passing run prints `Lifecycle smoke E2E passed (...)`. Uses an isolated
   Moltnet port (`19961`) never a developer's active port.
 
-- `fixtures/office-sim/harness/office-engine.mjs` (Slice B, Piece 5
+- `fixtures/support/scripted-engine/office-engine.mjs` (Slice B, Piece 5
   step 1) is a standalone script speaking the pi runtime's `scripted` engine
   argv contract (`--prompt-file <path> --cwd <workspacePath>`, reply text on
   stdout) — see `src/runtime/pi/AGENTS.md`'s `appCliEnginesSource.ts`/
@@ -264,7 +264,7 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
   `ecosystem/simfile/fixtures/sims/office-sim` (its own copy of this script);
   this copy stays because two unrelated unit tests
   (`src/runtime/pi/adapter.test.ts`, `src/compiler/containerArtifacts.test.ts`)
-  reference `fixtures/office-sim/harness` directly as a generic
+  reference `fixtures/support/scripted-engine` directly as a generic
   fixture proving the pi adapter's `scripted` engine kind.
   `src/e2e/officeEngineScript.test.ts` spawns the standalone script as a child
   process and asserts its stdout against inlined constants (the screenplay

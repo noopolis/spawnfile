@@ -223,7 +223,7 @@ describe("piAdapter engine options and target variants", () => {
 
   it("stages a scripted engine's engine_command script as a workspace file and reports engine kind per node", async () => {
     const fixtureRoot = fileURLToPath(
-      new URL("../../../fixtures/office-sim/harness", import.meta.url)
+      new URL("../../../fixtures/support/scripted-engine", import.meta.url)
     );
     const scriptedAgent = createPiTestNode({
       name: "eleanor",
