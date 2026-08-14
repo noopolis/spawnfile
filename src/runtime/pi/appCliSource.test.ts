@@ -13,6 +13,7 @@ import {
 } from "@noopolis/mneme";
 
 import { renderPiCliSource } from "./appCliSource.js";
+import { renderPiPreludeSource } from "./appPreludeSource.js";
 
 /**
  * Coverage for the DAIMON-TURN-CAUSAL gap: `CliEngineAgentHandle.wake()`
@@ -71,7 +72,7 @@ const loadCliHarness = (mocks: CliHarnessMocks): CliHarness => {
   return runInNewContext(harnessSource, {
     console,
     createGeneratedTurnTrace: vi.fn(() => ({})),
-    createIdentityPrompt: vi.fn(() => "identity prompt"),
+    createAgentInstructions: vi.fn(() => "identity prompt"),
     createMemoryRuntime: mocks.createMemoryRuntime,
     createMemoryRuntimeOptions: mocks.createMemoryRuntimeOptions,
     normalizeMemoryAgentId: (value: unknown) =>
@@ -361,5 +362,24 @@ describe("CliEngineAgentHandle wired to the real @noopolis/mneme memory runtime"
 
     expect(prompt).not.toContain("codename NOVA");
     expect(prompt).toContain("toner cartridge");
+  });
+});
+
+describe("CLI engine prompt resolves its identity helper from the prelude", () => {
+  // Regression guard: the CLI prompt builder must call an identity helper the
+  // prelude actually defines. It once called a dead name (createIdentityPrompt)
+  // that no render source defined, which only the runInNewContext stub above
+  // hid — the generated app threw "createIdentityPrompt is not defined" on the
+  // first CLI-engine (grok/agy/codex-cli/claude) wake.
+  const cliSource = renderPiCliSource();
+  const preludeSource = renderPiPreludeSource();
+
+  it("calls createAgentInstructions, which the prelude defines", () => {
+    expect(cliSource).toContain("createAgentInstructions(config, paths.workspacePath)");
+    expect(preludeSource).toContain("const createAgentInstructions =");
+  });
+
+  it("no longer references the undefined createIdentityPrompt", () => {
+    expect(cliSource).not.toContain("createIdentityPrompt");
   });
 });
