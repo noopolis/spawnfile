@@ -110,7 +110,7 @@ const attachFromSeparateProcess = async (
 ): Promise<AttachChildResult> =>
   new Promise((resolve, reject) => {
     const child = fork(
-      fileURLToPath(new URL("../../test/fixtures/organizationHandoffAttach.fixture.ts", import.meta.url)),
+      fileURLToPath(new URL("../../fixtures/support/organizationHandoffAttach.fixture.ts", import.meta.url)),
       [],
       {
         env: { SPAWNFILE_HOME: home },
@@ -171,7 +171,7 @@ const closeFromSeparateProcess = async (
 ): Promise<void> =>
   new Promise((resolve, reject) => {
     const child = fork(
-      fileURLToPath(new URL("../../test/fixtures/organizationHandoffDownClose.fixture.ts", import.meta.url)),
+      fileURLToPath(new URL("../../fixtures/support/organizationHandoffDownClose.fixture.ts", import.meta.url)),
       [],
       {
         env: { SPAWNFILE_HOME: home },

@@ -49,7 +49,7 @@ interface CodexAuthFile {
   };
 }
 
-const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures", "e2e", "daimon-org");
+const fixturesRoot = path.resolve(process.cwd(), "examples", "daimon-org");
 
 const toRootfsPath = (rootfs: string, containerPath: string): string =>
   path.join(rootfs, containerPath.replace(/^\/+/u, ""));

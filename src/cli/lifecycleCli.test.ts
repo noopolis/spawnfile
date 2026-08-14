@@ -21,7 +21,7 @@ import { runCli } from "./runCli.js";
 import { createUpLifecycleInvocation } from "./upLifecycleInvocation.js";
 
 const priorHome = process.env.SPAWNFILE_HOME;
-const project = path.resolve("test/fixtures/single-agent");
+const project = path.resolve("examples/single-agent");
 let home = "";
 
 const id = (letter: string): string => `lci_${letter.repeat(16)}`;

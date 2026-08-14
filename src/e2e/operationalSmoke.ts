@@ -21,7 +21,7 @@ import {
 import { assertOperationalSmokeStatusLive } from "./operationalSmokeStatus.js";
 
 const DEFAULT_FIXTURE_DIRECTORY = fileURLToPath(
-  new URL("../../test/fixtures/e2e/operational-smoke", import.meta.url)
+  new URL("../../fixtures/operational-smoke", import.meta.url)
 );
 const MOLTNET_PORT = 19087;
 

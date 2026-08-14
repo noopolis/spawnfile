@@ -26,7 +26,7 @@ import {
   type RunProjectResult
 } from "./runProject.js";
 
-const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures");
+const fixturesRoot = path.resolve(process.cwd(), "examples");
 const temporaryDirectories: string[] = [];
 const previousSpawnfileHome = process.env.SPAWNFILE_HOME;
 const previousAnthropicKey = process.env.ANTHROPIC_API_KEY;

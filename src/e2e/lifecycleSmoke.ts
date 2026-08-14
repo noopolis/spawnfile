@@ -37,7 +37,7 @@ const runDockerCommand = async (dockerCommand: string, args: string[]): Promise<
  * spawnfile's e2e coverage off zero once the office-sim monolith (`officeSim.ts`,
  * `autonomousOfficeSim*`) is deleted in step 6. It proves the documented
  * up -> artifacts-export -> down receipt contract end to end against a minimal SCRIPTED
- * fixture (`test/fixtures/e2e/lifecycle-smoke`, no auth): `spawnfile up --json` ->
+ * fixture (`fixtures/lifecycle-smoke`, no auth): `spawnfile up --json` ->
  * up-receipt fields -> moltnet `/healthz` -> `spawnfile artifacts export --json` ->
  * export-index lists non-empty `raw/{moltnet,mneme,daimon}` files -> `spawnfile down
  * --json` -> a clean receipt. ZERO transcript/turn/behavior assertions (Decision 20 —
@@ -46,7 +46,7 @@ const runDockerCommand = async (dockerCommand: string, args: string[]): Promise<
  */
 
 const DEFAULT_FIXTURE_DIRECTORY = fileURLToPath(
-  new URL("../../test/fixtures/e2e/lifecycle-smoke", import.meta.url)
+  new URL("../../fixtures/lifecycle-smoke", import.meta.url)
 );
 const NETWORK_ID = "smoke_lab";
 const ROOM_ID = "smoke-room";

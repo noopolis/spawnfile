@@ -10,7 +10,7 @@ import { compileProject } from "./compileProject.js";
 vi.mock("./moltnetBinaries.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./moltnetBinaries.js")>();
   const { stageTrustedTestMoltnetRelease } = await import(
-    "../../test/trustedMoltnetRelease.js"
+    "../../fixtures/support/trustedMoltnetRelease.js"
   );
   return {
     ...actual,
@@ -83,7 +83,7 @@ describe("compileProject organization readiness evidence", () => {
   it("returns the immutable generic projection without changing its reports", async () => {
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-evidence-"));
     directories.push(outputDirectory);
-    const result = await compileProject(path.resolve("test/fixtures/single-agent"), { outputDirectory });
+    const result = await compileProject(path.resolve("examples/single-agent"), { outputDirectory });
     expect(result.organizationReadinessEvidence).toBeDefined();
     expect(result.organizationReadinessEvidence?.worldBindings).toBeNull();
     expect(result.organizationReadinessEvidence?.networks).toEqual([]);

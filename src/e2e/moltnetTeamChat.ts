@@ -45,7 +45,7 @@ import type {
   RunMoltnetTeamChatE2EResult
 } from "./moltnetTeamChatTypes.js";
 
-const DEFAULT_FIXTURE_DIRECTORY = fileURLToPath(new URL("../../test/fixtures/e2e/moltnet-team-chat", import.meta.url));
+const DEFAULT_FIXTURE_DIRECTORY = fileURLToPath(new URL("../../examples/moltnet-team-chat", import.meta.url));
 const DEFAULT_PARENT_BASE_URL = "http://127.0.0.1:8787";
 const DEFAULT_CHILD_BASE_URL = "http://127.0.0.1:8788";
 

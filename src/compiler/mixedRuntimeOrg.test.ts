@@ -15,7 +15,7 @@ import { compileProject } from "./compileProject.js";
 vi.mock("./moltnetBinaries.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./moltnetBinaries.js")>();
   const { stageTrustedTestMoltnetRelease } = await import(
-    "../../test/trustedMoltnetRelease.js"
+    "../../fixtures/support/trustedMoltnetRelease.js"
   );
   return {
     ...actual,
@@ -29,7 +29,7 @@ vi.mock("./moltnetBinaries.js", async (importOriginal) => {
 });
 
 const temporaryDirectories: string[] = [];
-const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures");
+const fixturesRoot = path.resolve(process.cwd(), "examples");
 
 const createFakeMoltnetCli = async (): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-mixed-moltnet-cli-"));
@@ -77,7 +77,7 @@ describe("mixed runtime org fixture", () => {
       const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-mixed-runtime-out-"));
       temporaryDirectories.push(outputDirectory);
 
-      const result = await compileProject(path.join(fixturesRoot, "e2e", "mixed-runtime-org"), {
+      const result = await compileProject(path.join(fixturesRoot, "mixed-runtime-org"), {
         outputDirectory
       });
       const container = result.report.container;

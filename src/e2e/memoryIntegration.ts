@@ -20,8 +20,8 @@ import {
 
 export type { MemoryE2EOptions, MemoryE2EResult, MemoryE2EStatus };
 
-const MIXED_RUNTIME_FIXTURE = path.resolve(process.cwd(), "test", "fixtures", "e2e", "mixed-runtime-org");
-const JUNGIAN_FIXTURE = path.resolve(process.cwd(), "test", "fixtures", "e2e", "jungian-daimon-org");
+const MIXED_RUNTIME_FIXTURE = path.resolve(process.cwd(), "examples", "mixed-runtime-org");
+const JUNGIAN_FIXTURE = path.resolve(process.cwd(), "examples", "jungian-daimon-org");
 
 export const runDaimonMemoryRecallE2E = async (
   options: MemoryE2EOptions = {}
@@ -56,7 +56,7 @@ export const runDaimonMemoryRecallE2E = async (
           fixtureDirectory,
           outputDirectory,
           "No agent-level memory banks found for localist; recall probe intentionally skipped",
-          ["Add memory to test/fixtures/e2e/mixed-runtime-org/agents/localist/Spawnfile to exercise this path."]
+          ["Add memory to examples/mixed-runtime-org/agents/localist/Spawnfile to exercise this path."]
         );
       }
 
@@ -125,7 +125,7 @@ export const runMixedRuntimeMemoryWiringE2E = async (
           "Memory declarations were expected for all mixed runtimes, but wiring is incomplete",
           [
             `Missing coverage: ${missingCoverage.join(", ")}`,
-            "Review memory declarations in test/fixtures/e2e/mixed-runtime-org/Spawnfile"
+            "Review memory declarations in examples/mixed-runtime-org/Spawnfile"
           ]
         );
       }
@@ -237,7 +237,7 @@ export const runJungianSelfOrgE2E = async (
           fixtureDirectory,
           outputDirectory,
           "No Jungian memory banks are currently resolved; self-org memory probe skipped",
-          ["Add agent/team memory declarations in test/fixtures/e2e/jungian-daimon-org to run this assertion."]
+          ["Add agent/team memory declarations in examples/jungian-daimon-org to run this assertion."]
         );
       }
 

@@ -63,7 +63,7 @@ const exact = (raw: unknown, keys: readonly string[]): Record<string, unknown> |
 
 const runChild = (home: string, request: Record<string, unknown>): Promise<ChildResult> =>
   new Promise((resolve, reject) => {
-    const child = fork(fileURLToPath(new URL("../../test/fixtures/targetDefaultAuthoritySession.fixture.ts", import.meta.url)), [], {
+    const child = fork(fileURLToPath(new URL("../../fixtures/support/targetDefaultAuthoritySession.fixture.ts", import.meta.url)), [], {
       env: { SPAWNFILE_HOME: home },
       execArgv: ["--import", createRequire(import.meta.url).resolve("tsx")],
       silent: true

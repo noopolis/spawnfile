@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../compiler/moltnetBinaries.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../compiler/moltnetBinaries.js")>();
   const { stageTrustedTestMoltnetRelease } = await import(
-    "../../test/trustedMoltnetRelease.js"
+    "../../fixtures/support/trustedMoltnetRelease.js"
   );
   return {
     ...actual,
@@ -26,7 +26,7 @@ import { type DeploymentRecord, writeDeploymentRecord } from "../deployment/inde
 
 import { devActivityProject, devApplyProject, devRestartProject, devStopProject, devUpProject } from "./index.js";
 
-const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures");
+const fixturesRoot = path.resolve(process.cwd(), "examples");
 const temporaryDirectories: string[] = [];
 const previousMoltnetCli = process.env.SPAWNFILE_MOLTNET_CLI;
 const previousOpenAIKey = process.env.OPENAI_API_KEY;
@@ -249,7 +249,7 @@ describe("devApplyProject", () => {
   it("hot-applies a new Daimon agent and starts only its Moltnet bridge", async () => {
     const parentDirectory = await createTempDirectory("spawnfile-dev-project-");
     const projectDirectory = path.join(parentDirectory, "org");
-    await cp(path.join(fixturesRoot, "e2e", "daimon-org"), projectDirectory, {
+    await cp(path.join(fixturesRoot, "daimon-org"), projectDirectory, {
       recursive: true
     });
     await addObserverAgent(projectDirectory);
@@ -325,7 +325,7 @@ describe("devApplyProject", () => {
   it("reloads an existing Daimon agent without starting a second bridge", async () => {
     const parentDirectory = await createTempDirectory("spawnfile-dev-project-");
     const projectDirectory = path.join(parentDirectory, "org");
-    await cp(path.join(fixturesRoot, "e2e", "daimon-org"), projectDirectory, {
+    await cp(path.join(fixturesRoot, "daimon-org"), projectDirectory, {
       recursive: true
     });
     process.env.SPAWNFILE_MOLTNET_CLI = await createFakeMoltnetCli();
@@ -371,7 +371,7 @@ describe("devApplyProject", () => {
   it("starts all Moltnet node bridges for a new Daimon agent", async () => {
     const parentDirectory = await createTempDirectory("spawnfile-dev-project-");
     const projectDirectory = path.join(parentDirectory, "org");
-    await cp(path.join(fixturesRoot, "e2e", "daimon-org"), projectDirectory, {
+    await cp(path.join(fixturesRoot, "daimon-org"), projectDirectory, {
       recursive: true
     });
     await addObserverAgent(projectDirectory);

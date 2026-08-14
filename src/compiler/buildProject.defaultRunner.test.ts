@@ -9,7 +9,7 @@ import { readBuildImageCacheEntry } from "../deployment/buildImageCacheStore.js"
 import { readUtf8File, removeDirectory } from "../filesystem/index.js";
 
 const temporaryDirectories: string[] = [];
-const fixturesRoot = path.resolve(process.cwd(), "test", "fixtures");
+const fixturesRoot = path.resolve(process.cwd(), "examples");
 
 const createFakeChild = (): EventEmitter => new EventEmitter();
 
