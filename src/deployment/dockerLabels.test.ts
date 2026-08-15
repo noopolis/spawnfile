@@ -38,7 +38,7 @@ describe("docker deployment labels", () => {
     expect(() => createDockerDeploymentLabels({
       compileFingerprint: "sf1:abc123",
       deployment: "prod",
-      project: "/Users/apresmoi/project",
+      project: "/Users/example/project",
       unit: "prod-container",
       version: "0.1"
     })).toThrow(/must be an identifier/);

@@ -1,7 +1,7 @@
 /**
  * Evidence input types and small pure helpers shared by every check function
  * in checks.ts. Split out purely to keep checks.ts under the repo's 400-line
- * cap (see /Users/apresmoi/Documents/spawnfile/CLAUDE.md) — nothing here is
+ * cap (see the repo CLAUDE.md) — nothing here is
  * a different layer or a different contract, it is checks.ts's own
  * plumbing. No I/O, same as checks.ts itself.
  */
