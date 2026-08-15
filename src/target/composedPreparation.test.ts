@@ -41,7 +41,7 @@ const request = {
     scope: "world",
     source_handle: handle("g"),
   }],
-  target_selector: "gpu-4090",
+  target_selector: "gpu-host",
   version: "spawnfile.composed-preparation.request.v1",
   world: {
     artifact_manifest_digest: sha("a"),
@@ -126,7 +126,7 @@ describe("composed preparation", () => {
       auth_profile: "profile-one",
       run_id: "run-one",
       selected_target: selected,
-      target_selector: "gpu-4090",
+      target_selector: "gpu-host",
     });
     expect(parseComposedPreparationReceipt(receipt)).toEqual(receipt);
     expect(JSON.parse(createCanonicalComposedPreparationReceiptBytes(receipt))).toEqual(receipt);

@@ -37,7 +37,7 @@ const request = {
   organization: { artifact_digest: sha("e"), world_bindings_digest: sha("f") },
   run_id: "run-one",
   secret_bindings: [{ name: "world_bearer", scope: "world", source_handle: opaque("a") }],
-  target_selector: "gpu-4090",
+  target_selector: "gpu-host",
   version: "spawnfile.composed-preparation.request.v1",
   world: { artifact_manifest_digest: sha("1"), bundle_digest: sha("2") },
 } as const;
@@ -128,7 +128,7 @@ describe("target prepare_composed_run command", () => {
     expect(result.stdout).toHaveLength(1);
     expect(parseComposedPreparationReceipt(JSON.parse(result.stdout[0]!))).toMatchObject({
       run_id: "run-one",
-      target_selector: "gpu-4090",
+      target_selector: "gpu-host",
     });
   });
 

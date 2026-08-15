@@ -99,7 +99,7 @@ const freshRun = async (
   return {
     config: {
       containerBundleStoreRoot: durable,
-      context: "gpu_4090",
+      context: "gpu_host",
       dockerCommand: "docker",
       evidenceDestination: path.join(output, "evidence.tar"),
       timeoutMs: 30_000

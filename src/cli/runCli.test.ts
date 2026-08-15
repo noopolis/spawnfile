@@ -48,7 +48,7 @@ describe("runCli", () => {
       JSON.stringify({
         idempotency_key: "idem_aaaaaaaaaaaaaaaa",
         operation: "select_target",
-        target_reference: "gpu-4090",
+        target_reference: "gpu-host",
         version: "spawnfile.target-resource.request.v1",
       }),
     );
@@ -606,7 +606,7 @@ describe("runCli", () => {
         "--deployment",
         "dev",
         "--context",
-        "gpu-4090",
+        "gpu-host",
         "--out",
         "/tmp/org/.spawn-dev",
       ],
@@ -625,7 +625,7 @@ describe("runCli", () => {
         containerName: undefined,
         deploymentName: "dev",
         dockerCommand: undefined,
-        dockerContext: "gpu-4090",
+        dockerContext: "gpu-host",
         envFilePath: undefined,
         imageTag: undefined,
         outputDirectory: "/tmp/org/.spawn-dev",

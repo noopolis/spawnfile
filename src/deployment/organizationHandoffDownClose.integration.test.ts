@@ -35,8 +35,8 @@ const targetRoots: string[] = [];
 const originalHome = process.env.SPAWNFILE_HOME;
 const authorities: Array<Awaited<ReturnType<typeof initializeOrganizationHandoffAuthorityStore>>> = [];
 const digest = (value: string): string => `sha256:${createHash("sha256").update(value, "utf8").digest("hex")}`;
-const childEndpoint = "ssh://operator@remote-4090";
-const childContext = "remote_4090";
+const childEndpoint = "ssh://operator@remote-host";
+const childContext = "remote_host";
 const selectedFingerprint = createEndpointFingerprint(childEndpoint);
 const selected = {
   fingerprint: selectedFingerprint,
@@ -292,7 +292,7 @@ describe("deployment handoff close boundary", () => {
     await detachExactOrganizationAttachment(
       await targetStore.loadAttachment(binding.attachment_handle),
       {
-        context: "remote_4090",
+        context: "remote_host",
         executor: async (_file, args) => {
           calls.push(args);
           if (args[2] === "network" && args[3] === "inspect") {
@@ -315,11 +315,11 @@ describe("deployment handoff close boundary", () => {
       }
     );
     expect(calls.map((args) => args.slice(0, 4))).toEqual([
-      ["--context", "remote_4090", "network", "inspect"],
-      ["--context", "remote_4090", "container", "inspect"],
-      ["--context", "remote_4090", "network", "disconnect"],
-      ["--context", "remote_4090", "container", "inspect"],
-      ["--context", "remote_4090", "network", "inspect"]
+      ["--context", "remote_host", "network", "inspect"],
+      ["--context", "remote_host", "container", "inspect"],
+      ["--context", "remote_host", "network", "disconnect"],
+      ["--context", "remote_host", "container", "inspect"],
+      ["--context", "remote_host", "network", "inspect"]
     ]);
   }, 20_000);
 
@@ -460,7 +460,7 @@ describe("deployment handoff close boundary", () => {
       output_directory: outputDirectory,
       run_id: "run-one",
       source: { kind: "project", root: "/project" },
-      target: { endpoint_fingerprint: `sha256:${"0".repeat(32)}`, kind: "context", name: "remote_4090" },
+      target: { endpoint_fingerprint: `sha256:${"0".repeat(32)}`, kind: "context", name: "remote_host" },
       units: [{
         container_id: "4".repeat(64),
         container_name: "football",

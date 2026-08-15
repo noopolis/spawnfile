@@ -106,7 +106,7 @@ Simfile uses one aggregate preparation command rather than choosing among the
 low-level preparation verbs:
 
 ```bash
-target-config-producer gpu-4090 \
+target-config-producer gpu-host \
   | spawnfile target --config - prepare_composed_run /absolute/path/request.json
 ```
 
@@ -140,8 +140,8 @@ target mutation:
 
 | Input | Contract |
 |---|---|
-| Target selector | nonsecret `gpu-4090` default, overridable only as a bounded selector |
-| Private target configuration | `target-config-producer gpu-4090` writes the strict object to stdin; only literal `--config -` is accepted |
+| Target selector | nonsecret `gpu-host` default, overridable only as a bounded selector |
+| Private target configuration | `target-config-producer gpu-host` writes the strict object to stdin; only literal `--config -` is accepted |
 | Runtime auth | named local profile `simfile-live`; the name may be recorded, its values may not |
 | Spawnfile binary | normal `PATH` discovery of the installed `spawnfile` executable |
 | Moltnet binary | exact digest-bound release download by default, or a strict local `moltnet_release_stamp_<arch>.json` override; both must match `moltnet-releases.json`, and unpinned `latest` is forbidden |
@@ -157,7 +157,7 @@ request and grants no target authority by itself:
 {
   "version": "spawnfile.simfile-run-operator-input.v1",
   "run_id": "run-example",
-  "target_selector": "gpu-4090",
+  "target_selector": "gpu-host",
   "target_config_transport": "stdin",
   "auth_profile": "simfile-live",
   "run_root": "/operator/simfile/runs/run-example",
@@ -176,7 +176,7 @@ config, its producer command, Moltnet directory, and auth values are absent:
 {
   "version": "spawnfile.simfile-run-operator-receipt.v1",
   "run_id": "run-example",
-  "target_selector": "gpu-4090",
+  "target_selector": "gpu-host",
   "selected_target": {
     "version": "spawnfile.target-resource.selected-target.v1",
     "handle": "opaque_exampletarget01",
@@ -221,7 +221,7 @@ operation. It accepts the unchanged original mutation request and a minimal
 `spawnfile.target-lookup-config.v1` context document:
 
 ```bash
-printf '%s' '{"context":"gpu_4090","version":"spawnfile.target-lookup-config.v1"}' \
+printf '%s' '{"context":"gpu_host","version":"spawnfile.target-lookup-config.v1"}' \
   | spawnfile target --config - lookup_operation /absolute/path/original-request.json
 ```
 

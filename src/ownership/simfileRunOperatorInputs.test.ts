@@ -12,7 +12,7 @@ import { parseSelectedTargetReceipt } from "../target/contracts.js";
 const request = {
   version: "spawnfile.simfile-run-operator-input.v1",
   run_id: "run-example",
-  target_selector: "gpu-4090",
+  target_selector: "gpu-host",
   target_config_transport: "stdin",
   auth_profile: "simfile-live",
   run_root: "/operator/simfile/runs/run-example",
@@ -47,7 +47,7 @@ describe("Simfile run operator input resolution", () => {
     expect(resolution).toMatchObject({
       version: "spawnfile.simfile-run-operator-resolution.v1",
       run_id: "run-example",
-      target_selector: "gpu-4090",
+      target_selector: "gpu-host",
       auth_profile: "simfile-live",
       roots: {
         output: "/operator/simfile/runs/run-example/output",

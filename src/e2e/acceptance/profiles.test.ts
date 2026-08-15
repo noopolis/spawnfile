@@ -28,12 +28,12 @@ describe("SLICE_PROFILE", () => {
 });
 
 describe("FULL_PROFILE", () => {
-  it("declares exactly 28 checks with subsystem-remote-4090 as the sole optional check", () => {
+  it("declares exactly 28 checks with subsystem-remote-host as the sole optional check", () => {
     expect(FULL_PROFILE.checks).toHaveLength(28);
 
     const optionalChecks = FULL_PROFILE.checks.filter((check) => check.requirement === "optional");
     expect(optionalChecks).toHaveLength(1);
-    expect(optionalChecks[0]?.id).toBe("subsystem-remote-4090");
+    expect(optionalChecks[0]?.id).toBe("subsystem-remote-host");
 
     const requiredChecks = FULL_PROFILE.checks.filter((check) => check.requirement === "required");
     expect(requiredChecks).toHaveLength(27);

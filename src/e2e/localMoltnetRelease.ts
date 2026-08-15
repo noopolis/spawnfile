@@ -23,7 +23,7 @@ export const localMoltnetReleaseDir = (): string =>
 
 /** Maps the host arch to the Linux GOARCH the container build targets.
  * `stageMoltnetBinaries` defaults to the same native `process.arch`, so the
- * staged tarball must match it (arm64 on this box, amd64 on the 4090). */
+ * staged tarball must match it (arm64 on this box, amd64 on the gpu host). */
 export const localMoltnetArch = (): "amd64" | "arm64" => {
   switch (process.arch) {
     case "arm64":

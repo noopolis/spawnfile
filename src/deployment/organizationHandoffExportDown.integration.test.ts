@@ -71,7 +71,7 @@ const record = (outputDirectory: string): DeploymentRecord => ({
   output_directory: outputDirectory,
   run_id: "run-one",
   source: { kind: "project", root: "/project" },
-  target: { endpoint_fingerprint: `sha256:${"3".repeat(32)}`, kind: "context", name: "remote_4090" },
+  target: { endpoint_fingerprint: `sha256:${"3".repeat(32)}`, kind: "context", name: "remote_host" },
   units: [{
     container_id: "container-123",
     container_name: "football",
@@ -150,7 +150,7 @@ describe("organization handoff export/down boundary", () => {
     await writeUtf8File(path.join(output, "spawnfile-report.json"), JSON.stringify(emptyArtifactReport()));
 
     const journal = await initializeTargetJournal({
-      context: "remote_4090", descriptorDigest: digest, root: journalRoot, runId: "run-one", selectedTarget: selectedReceipt
+      context: "remote_host", descriptorDigest: digest, root: journalRoot, runId: "run-one", selectedTarget: selectedReceipt
     });
     await complete(journal, request("create_data_network", 0, "idem_aaaaaaaaaaaaaaaa"), networkHandle);
     const attachRequest = parseTargetResourceRequest(request("attach_organization", 1, "idem_bbbbbbbbbbbbbbbb", {

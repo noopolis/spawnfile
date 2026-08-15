@@ -170,7 +170,7 @@ describe("Docker public artifact snapshot adapter", () => {
       };
     const snapshot = await createDockerPublicArtifactSnapshotReader({
       authorityStore: authority(binding),
-      context: "gpu-4090",
+      context: "gpu-host",
       contentExecutor,
       executor,
       timeoutMs: 30_000
@@ -180,12 +180,12 @@ describe("Docker public artifact snapshot adapter", () => {
     expect(calls.filter((args) => args[3] === "inspect")).toHaveLength(2);
     expect(contentCalls).toEqual([
       [
-        "--context", "gpu-4090", "container", "exec",
+        "--context", "gpu-host", "container", "exec",
         containerId, "/usr/bin/readlink", "-e",
         "/tmp/spawnfile-public/viewer-trace.json"
       ],
       [
-        "--context", "gpu-4090", "container", "exec",
+        "--context", "gpu-host", "container", "exec",
         containerId, "/bin/cat", "/tmp/spawnfile-public/viewer-trace.json"
       ]
     ]);
@@ -202,7 +202,7 @@ describe("Docker public artifact snapshot adapter", () => {
     };
     await expect(createDockerPublicArtifactSnapshotReader({
       authorityStore: authority(binding),
-      context: "gpu-4090",
+      context: "gpu-host",
       contentExecutor: noContentCalls,
       executor: noCalls,
       timeoutMs: 30_000
@@ -226,7 +226,7 @@ describe("Docker public artifact snapshot adapter", () => {
       });
     await expect(createDockerPublicArtifactSnapshotReader({
       authorityStore: authority(binding),
-      context: "gpu-4090",
+      context: "gpu-host",
       contentExecutor: oversized,
       executor: inspectOnly,
       timeoutMs: 30_000
@@ -255,7 +255,7 @@ describe("Docker public artifact snapshot adapter", () => {
       };
     await expect(createDockerPublicArtifactSnapshotReader({
       authorityStore: authority(binding),
-      context: "gpu-4090",
+      context: "gpu-host",
       contentExecutor,
       executor,
       timeoutMs: 30_000

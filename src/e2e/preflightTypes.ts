@@ -87,6 +87,6 @@ export const CHECK_IDS = {
 
 export const DEFAULT_COMMAND_TIMEOUT_MS = 3_000;
 export const DEFAULT_FETCH_TIMEOUT_MS = 2_000;
-export const DEFAULT_REMOTE_DOCKER_CONTEXT = "4090";
+export const DEFAULT_REMOTE_DOCKER_CONTEXT = "gpu-host";
 export const DEFAULT_MOLTNET_SERVER_URL = "http://127.0.0.1:19087/healthz";
 export const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434";

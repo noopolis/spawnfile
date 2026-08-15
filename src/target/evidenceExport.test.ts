@@ -221,7 +221,7 @@ describe("evidence export helper contract", () => {
 });
 
 describe("evidence export execution diagnostics", () => {
-  const args = ["--context", "gpu-4090", "container", "start", "--attach", "spfe_example"];
+  const args = ["--context", "gpu-host", "container", "start", "--attach", "spfe_example"];
 
   it("distinguishes each bounded output-shape failure", async () => {
     const cases = [
@@ -236,7 +236,7 @@ describe("evidence export execution diagnostics", () => {
 
   it("reports a thrown docker error with its bounded argv", async () => {
     await expect(executeEvidenceExport({
-      args: ["--context", "gpu-4090", "container", "start", "--attach", "spfe_example", "TOKEN=secret-value"],
+      args: ["--context", "gpu-host", "container", "start", "--attach", "spfe_example", "TOKEN=secret-value"],
       executor: async () => { throw new Error("Docker command failed"); },
       timeoutMs: 1000
     })).rejects.toThrow(/thrown failure: Error: Docker command failed; docker argv: .*TOKEN=\[REDACTED\]/u);

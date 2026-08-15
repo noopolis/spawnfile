@@ -18,7 +18,7 @@ describe("Simfile run operator target contract", () => {
     for (const required of [
       "spawnfile.simfile-run-operator-input.v1",
       "spawnfile.simfile-run-operator-receipt.v1",
-      "target-config-producer gpu-4090",
+      "target-config-producer gpu-host",
       "only literal `--config -` is accepted",
       "named local profile `simfile-live`",
       "distinct `output/`, `evidence/`, `journal/`, and `cache/`",
@@ -40,7 +40,7 @@ describe("Simfile run operator target contract", () => {
       run_id: "run-contract",
       run_root: "/operator/runs/run-contract",
       target_config_transport: "stdin",
-      target_selector: "gpu-4090",
+      target_selector: "gpu-host",
       version: "spawnfile.simfile-run-operator-input.v1"
     } as const;
     expect(() => parseSimfileRunOperatorInput({

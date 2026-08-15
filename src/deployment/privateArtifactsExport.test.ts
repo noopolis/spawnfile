@@ -58,7 +58,7 @@ describe("exportPrivateRuntimeArtifacts", () => {
         target: {
           endpoint_fingerprint: "sha256:0123456789abcdef0123456789abcdef",
           kind: "context",
-          name: "gpu-4090",
+          name: "gpu-host",
         },
         timeoutMs: 1_000,
       });
@@ -94,7 +94,7 @@ describe("exportPrivateRuntimeArtifacts", () => {
         target: {
           endpoint_fingerprint: "sha256:0123456789abcdef0123456789abcdef",
           kind: "context",
-          name: "gpu-4090",
+          name: "gpu-host",
         },
         timeoutMs: 1_000,
       });

@@ -14,8 +14,8 @@ import { initializeTargetJournal } from "./journal.js";
 import { type OrganizationAttachmentAuthorization, type OrganizationAttachmentResolution } from "./organizationAttachmentAuthority.js";
 import { initializeOrganizationAttachmentAuthorityStore } from "./organizationAttachmentStore.js";
 
-const context = "gpu-4090";
-const endpoint = "ssh://operator@gpu-4090";
+const context = "gpu-host";
+const endpoint = "ssh://operator@gpu-host";
 const runId = "run-recovery";
 const descriptor = `sha256:${"d".repeat(64)}`;
 const containerId = "c".repeat(64);

@@ -35,7 +35,7 @@ spawnfile up . --detach --deployment dev --auth-profile dev
 spawnfile status . --live --deployment dev
 spawnfile status . --live --deployment dev --logs
 spawnfile status . --live --deployment dev --watch
-spawnfile status . --live --context gpu-4090 --deployment dev --logs
+spawnfile status . --live --context gpu-host --deployment dev --logs
 ```
 
 Live status reads the selected record under `.spawn/deployments/`, or recovers a remote deployment from Spawnfile labels when `--context <name>` is supplied, then asks the deployment manager for status. For Docker deployments, that means Spawnfile inspects the recorded or recovered Docker target and container unit instead of guessing from local containers.
@@ -92,7 +92,7 @@ Use context recovery when a deployment is already running on a remote Docker con
 ```bash
 spawnfile status . \
   --live \
-  --context gpu-4090 \
+  --context gpu-host \
   --deployment hotadd \
   --logs \
   --timeout 5000

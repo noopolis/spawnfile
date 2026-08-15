@@ -95,7 +95,7 @@ describe("Docker world-clock adapter", () => {
       return { bytes: args.includes("/bin/cat") ? Buffer.from(createCanonicalWorldServiceActivationBytes(marker)) : Buffer.from(JSON.stringify(observed)) };
     };
     const authority: WorldServiceAuthorityReader = { loadService: async () => world };
-    return { calls, reader: createDockerWorldClockReader({ authorityStore: authority, context: "gpu-4090", contentExecutor, executor, timeoutMs: 30_000 }), world };
+    return { calls, reader: createDockerWorldClockReader({ authorityStore: authority, context: "gpu-host", contentExecutor, executor, timeoutMs: 30_000 }), world };
   };
 
   it("reads immutable activation authority and one exact localhost clock", async () => {

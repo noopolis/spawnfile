@@ -26,8 +26,8 @@ import {
 
 const runId = "run-attachment";
 const descriptorDigest = `sha256:${"d".repeat(64)}`;
-const context = "gpu-4090";
-const endpoint = "ssh://operator@gpu-4090";
+const context = "gpu-host";
+const endpoint = "ssh://operator@gpu-host";
 const containerId = "c".repeat(64);
 const networkId = "a".repeat(64);
 const handoffHandle = parseOpaqueTargetHandle("opaque_4444444444444444");

@@ -141,7 +141,7 @@ const harness = (input: {
     calls,
     disconnects: () => disconnects,
     executions,
-    options: { context: "remote_4090", executor, timeoutMs: 4_000 }
+    options: { context: "remote_host", executor, timeoutMs: 4_000 }
   };
 };
 
@@ -169,7 +169,7 @@ describe("exact organization attachment lifecycle cleanup", () => {
       };
       await expect(detachExactOrganizationAttachment(
         run.binding, {
-          context: "remote_4090",
+          context: "remote_host",
           executor,
           timeoutMs: 1,
           ...invalid
@@ -203,7 +203,7 @@ describe("exact organization attachment lifecycle cleanup", () => {
     ]);
     const mutation = run.calls[2]!;
     expect(mutation).toEqual([
-      "--context", "remote_4090", "network", "disconnect",
+      "--context", "remote_host", "network", "disconnect",
       run.binding.data_network.id,
       run.binding.resolution.network_attachment.container_id
     ]);
