@@ -102,7 +102,9 @@ const descriptorValues = (raw: unknown): Record<string, unknown> => {
     !item.enumerable || !("value" in item))) return fail();
   return Object.fromEntries(expected.filter((key) => Object.hasOwn(descriptors, key)).map((key) => [key, descriptors[key]!.value]));
 };
-const preparedMappings = (raw: unknown): readonly PreparedArtifactMapping[] => {
+export const parseTargetPreparedArtifactMappings = (
+  raw: unknown
+): readonly PreparedArtifactMapping[] => {
   if (raw === undefined) return Object.freeze([]);
   if (!Array.isArray(raw) || raw.length > 32) return fail();
   const manifests = new Set<string>();
@@ -279,7 +281,9 @@ export const loadTargetDefaultConfig = async (
   try { artifactMappings = value.artifactMappings === undefined
     ? Object.freeze([]) : parseDockerArtifactMappings(value.artifactMappings); }
   catch { return fail(); }
-  const preparedArtifactMappings = preparedMappings(value.preparedArtifactMappings);
+  const preparedArtifactMappings = parseTargetPreparedArtifactMappings(
+    value.preparedArtifactMappings
+  );
   if (preparedArtifactMappings.some((prepared) => artifactMappings.some((artifact) =>
     artifact.artifact_manifest_digest === prepared.artifact_manifest_digest))) return fail();
   const evidenceDestination = await validateDestination(value.evidenceDestination);

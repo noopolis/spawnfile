@@ -36,11 +36,11 @@ import {
   type TargetWorldClockRequest,
 } from "../target/worldClock.js";
 import {
-  createProductionTargetCommandSession,
   registerTargetCommands,
   type TargetCommandHandlerSession,
   type TargetCommandHandlers
 } from "./targetCommands.js";
+import { createProductionTargetCommandSession } from "./targetProductionCommands.js";
 import type { TargetDefaultConfig } from "./targetDefaultConfig.js";
 import {
   TARGET_OPERATION_DISPATCH,

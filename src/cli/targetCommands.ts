@@ -37,27 +37,17 @@ import {
   readTargetPublicArtifactSnapshotRequestFile,
   readTargetTopologyAttestationRequestFile
 } from "./targetRequestFile.js";
-import type { TargetDefaultConfig } from "./targetDefaultConfig.js";
 import {
-  readTargetDefaultConfigStdin,
-  readTargetWorldReadinessConfigStdin
-} from "./targetDefaultConfigStdin.js";
-import {
-  createProductionTargetLookupLoader,
   registerTargetOperationLookup,
   type TargetOperationLookupLoader
 } from "./targetLookupCommands.js";
 import type { TargetTopologyAttestationResult } from "../target/topologyAttestation.js";
-import { registerContainerBundleCommand } from "./containerBundleCommand.js";
 import { registerTargetWorldClockCommand, type TargetWorldClockSession } from "./targetWorldClockCommand.js";
-import type { TargetWorldClockRequest } from "../target/worldClock.js";
 import {
   registerTargetWorldReadinessCommand,
   type TargetWorldReadinessSession,
 } from "./targetWorldReadinessCommand.js";
-import type { TargetWorldReadinessRequest } from "../target/worldReadiness.js";
 import { registerTargetComposedPreparationCommand } from "./targetComposedPreparationCommand.js";
-import { createProductionTargetWorldQuerySession } from "./targetDefaultWorldQueries.js";
 
 type RequestFor<Operation extends TargetOperation> =
   Extract<TargetResourceRequest, { operation: Operation }>;
@@ -84,7 +74,7 @@ export interface TargetCommandStreams {
   stdout(message: string): void;
 }
 
-type SetTargetCommandExitCode = (exitCode: 1 | 2) => void;
+export type SetTargetCommandExitCode = (exitCode: 1 | 2) => void;
 
 const operations = Object.keys(TARGET_OPERATION_DISPATCH) as TargetOperation[];
 
@@ -299,11 +289,22 @@ export const registerTargetCommands = (
   lookupLoader?: TargetOperationLookupLoader,
   worldReadinessSession?: (
     configInput: unknown
-  ) => Promise<TargetWorldReadinessSession & TargetWorldClockSession>
+  ) => Promise<TargetWorldReadinessSession & TargetWorldClockSession>,
+  configFreeCommands: readonly string[] = []
 ): Command => {
   const target = program.command("target").description("Execute target-resource operations");
   if (typeof session === "function") {
-    target.requiredOption("--config <config-input>", "Strict target configuration JSON stdin; use -");
+    if (configFreeCommands.length === 0) {
+      target.requiredOption("--config <config-input>", "Strict target configuration JSON stdin; use -");
+    } else {
+      target.option("--config <config-input>", "Strict target configuration JSON stdin; use -");
+      target.hook("preAction", (_command, actionCommand) => {
+        if (!configFreeCommands.includes(actionCommand.name())
+          && (target.opts() as { config?: unknown }).config === undefined) {
+          target.error("required option '--config <config-input>' not specified");
+        }
+      });
+    }
   }
   for (const operation of operations) {
     registerOperation(target, operation, session, streams, setExitCode);
@@ -336,62 +337,4 @@ export const registerTargetCommands = (
   }
   if (lookupLoader) registerTargetOperationLookup(target, lookupLoader, streams, setExitCode);
   return target;
-};
-
-export const createProductionTargetCommandSession = (
-  config: TargetDefaultConfig
-): TargetCommandHandlerSession => Object.freeze({
-  activateTopology: async (request: TargetTopologyAttestationRequest) => {
-    const { activateTargetDefaultTopology } = await import("./targetDefaultHandlers.js");
-    return activateTargetDefaultTopology(config, request);
-  },
-  run: async <Result>(
-    invokeHandlers: (handlers: TargetCommandHandlers) => Promise<Result>
-  ): Promise<Result> => {
-    const { withTargetDefaultHandlerSession } = await import("./targetDefaultHandlers.js");
-    return withTargetDefaultHandlerSession(config, invokeHandlers);
-  },
-  attestTopology: async (request: TargetTopologyAttestationRequest) => {
-    const { attestTargetDefaultTopology } = await import("./targetDefaultHandlers.js");
-    return attestTargetDefaultTopology(config, request);
-  },
-  queryWorldReadiness: async (request: TargetWorldReadinessRequest) => {
-    const { queryTargetDefaultWorldReadiness } = await import(
-      "./targetDefaultWorldReadiness.js"
-    );
-    return queryTargetDefaultWorldReadiness(config, request);
-  },
-  queryWorldClock: async (request: TargetWorldClockRequest) => {
-    const { queryTargetDefaultWorldClock } = await import("./targetDefaultWorldClock.js");
-    return queryTargetDefaultWorldClock(config, request);
-  },
-  snapshotPublicArtifact: async (request: TargetPublicArtifactSnapshotRequest) => {
-    const { snapshotTargetDefaultPublicArtifact } = await import("./targetDefaultHandlers.js");
-    return snapshotTargetDefaultPublicArtifact(config, request);
-  }
-});
-
-export const registerProductionTargetCommands = (
-  program: Command,
-  streams: TargetCommandStreams,
-  stdin: AsyncIterable<unknown>,
-  setExitCode: SetTargetCommandExitCode
-): void => {
-  const target = registerTargetCommands(
-    program,
-    async (configInput) => {
-      if (configInput !== "-") throw new TypeError("Invalid target configuration");
-      return createProductionTargetCommandSession(await readTargetDefaultConfigStdin(stdin));
-    },
-    streams,
-    setExitCode,
-    createProductionTargetLookupLoader(stdin),
-    async (configInput) => {
-      if (configInput !== "-") throw new TypeError("Invalid target configuration");
-      return createProductionTargetWorldQuerySession(
-        await readTargetWorldReadinessConfigStdin(stdin)
-      );
-    }
-  );
-  registerContainerBundleCommand(target, stdin, streams, setExitCode);
 };

@@ -52,7 +52,7 @@ import { registerModelCommands } from "./modelCommands.js";
 import { registerRuntimeCommands } from "./runtimeCommands.js";
 import { registerSurfaceCommands } from "./surfaceCommands.js";
 import { registerStatusCommand } from "./statusCommand.js";
-import { registerProductionTargetCommands } from "./targetCommands.js";
+import { registerProductionTargetCommands } from "./targetProductionCommands.js";
 import { registerViewCommand } from "./viewCommand.js";
 
 const packageJsonPath = new URL("../../package.json", import.meta.url);

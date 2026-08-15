@@ -6,12 +6,11 @@ images are built and pushed by `.github/workflows/runtime-images.yml` and pinned
 in this repo's `runtimes.yaml`. `src/runtime/container.ts` `COPY --from`s these
 images into generated organization Dockerfiles.
 
-The `daimon/` image is built here from the **published** `@noopolis/daimon`,
-`@noopolis/mneme`, and `@earendil-works/pi-*` packages (build-args
-`DAIMON_VERSION`/`MNEME_VERSION`/`PI_VERSION`); it needs no Daimon source
-checkout. For development against unreleased sibling checkouts, its Dockerfile
-also carries `local` (tarball) and `verify` targets, driven by
-`scripts/build-local-daimon.mjs`. The daimon repo no longer builds this image.
+The `daimon/` image is built exactly like the others — a single Dockerfile
+that installs the **published** `@noopolis/daimon`, `@noopolis/mneme`, and
+`@earendil-works/pi-*` packages (build-args `DAIMON_VERSION`/`MNEME_VERSION`/
+`PI_VERSION`) and scratch-copies the artifact. It needs no Daimon source
+checkout, and the daimon repo no longer builds this image.
 
 Runtime artifact images are copy sources for generated organization Dockerfiles.
 They must contain pinned runtime dependencies only, under
