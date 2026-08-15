@@ -49,14 +49,22 @@ jobs:
             image: noopolis/spawnfile-runtime-openclaw
             version: 2026.6.11
             context: runtime-images/openclaw
-            build_arg_name: OPENCLAW_VERSION
-            build_arg_value: 2026.6.11
+            build_args: |
+              OPENCLAW_VERSION=2026.6.11
           - runtime: picoclaw
             image: noopolis/spawnfile-runtime-picoclaw
             version: 0.3.1
             context: runtime-images/picoclaw
-            build_arg_name: PICOCLAW_VERSION
-            build_arg_value: v0.3.1
+            build_args: |
+              PICOCLAW_VERSION=v0.3.1
+          - runtime: daimon
+            image: noopolis/spawnfile-runtime-daimon
+            version: 0.1.2
+            context: runtime-images/daimon
+            build_args: |
+              DAIMON_VERSION=0.1.2
+              MNEME_VERSION=0.1.1
+              PI_VERSION=0.79.10
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -131,5 +139,4 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: ${{ steps.publish.outputs.push == 'true' }}
           tags: ${{ steps.publish.outputs.tags }}
-          build-args: |
-            ${{ matrix.build_arg_name }}=${{ matrix.build_arg_value }}
+          build-args: ${{ matrix.build_args }}
