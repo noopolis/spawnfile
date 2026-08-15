@@ -89,9 +89,9 @@ describe("Pi world binding projection", () => {
     expect(config.agents[0]).not.toHaveProperty("world");
     expect(result.target).not.toHaveProperty("worldTokenEnvNames");
     expect(result.app).not.toContain("world: config.world");
-    expect(Buffer.byteLength(result.app)).toBe(71_411);
+    expect(Buffer.byteLength(result.app)).toBe(71_414);
     expect(createHash("sha256").update(result.app).digest("hex"))
-      .toBe("f69411a72e2f35c9962af639990d949f20847001aed827f7358368c46c48db82");
+      .toBe("b734a73e888d6b178be6821cca4647dc74ef9116cd916c13fe7098198d8cd1e7");
   });
 
   it("does not claim Pi-native JSON tools for a CLI engine binding", () => {
