@@ -52,6 +52,6 @@ src/e2e/acceptance/
 - `AcceptanceVerdict.version` is the fixed literal
   `"spawnfile.acceptance-verdict.v1"`. Bump this string (and add a new type)
   if the verdict shape ever changes incompatibly; do not mutate it in place.
-- `subsystem-remote-4090` is the only optional check declared in either
+- `subsystem-remote-host` is the only optional check declared in either
   profile. Every other check in both `SLICE_PROFILE` and `FULL_PROFILE` is
   required.

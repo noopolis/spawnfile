@@ -43,7 +43,7 @@ describe("recoverDockerDeploymentRecords", () => {
 
     const records = await recoverDockerDeploymentRecords({
       contains: [{ id: "agent:mapper", kind: "agent" }],
-      context: "gpu-4090",
+      context: "gpu-host",
       execFile,
       outputDirectory: "/project/.spawn-dev",
       projectLabel: "daimon-org",
@@ -53,7 +53,7 @@ describe("recoverDockerDeploymentRecords", () => {
 
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({
-      path: "docker-context://gpu-4090/hotadd",
+      path: "docker-context://gpu-host/hotadd",
       record: {
         compile_fingerprint: "sf1:abc123",
         created_at: "2026-06-21T16:00:00.000Z",
@@ -62,7 +62,7 @@ describe("recoverDockerDeploymentRecords", () => {
         target: {
           endpoint_fingerprint: createEndpointFingerprint("ssh://deploy@example.com"),
           kind: "context",
-          name: "gpu-4090"
+          name: "gpu-host"
         },
         units: [
           expect.objectContaining({
@@ -81,13 +81,13 @@ describe("recoverDockerDeploymentRecords", () => {
       [
         "context",
         "inspect",
-        "gpu-4090",
+        "gpu-host",
         "--format",
         "{{json .Endpoints.docker.Host}}"
       ],
       [
         "--context",
-        "gpu-4090",
+        "gpu-host",
         "ps",
         "-a",
         "--filter",
@@ -95,7 +95,7 @@ describe("recoverDockerDeploymentRecords", () => {
         "--format",
         "{{.ID}}"
       ],
-      ["--context", "gpu-4090", "inspect", "abc123"]
+      ["--context", "gpu-host", "inspect", "abc123"]
     ]);
   });
 
@@ -133,7 +133,7 @@ describe("recoverDockerDeploymentRecords", () => {
     });
 
     const records = await recoverDockerDeploymentRecords({
-      context: "gpu-4090",
+      context: "gpu-host",
       execFile,
       outputDirectory: "/project/.spawn",
       projectLabel: "daimon-org",
@@ -156,7 +156,7 @@ describe("recoverDockerDeploymentRecords", () => {
     });
 
     await expect(recoverDockerDeploymentRecords({
-      context: "gpu-4090",
+      context: "gpu-host",
       execFile,
       outputDirectory: "/project/.spawn",
       projectLabel: "daimon-org",
@@ -194,7 +194,7 @@ describe("recoverDockerDeploymentRecords", () => {
     });
 
     await expect(recoverDockerDeploymentRecords({
-      context: "gpu-4090",
+      context: "gpu-host",
       execFile,
       outputDirectory: "/project/.spawn",
       projectLabel: "daimon-org",

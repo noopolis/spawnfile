@@ -60,7 +60,7 @@ spawnfile compile                                # lower to runtime-native outpu
 spawnfile status .                               # read declared/compiled status
 spawnfile auth sync --profile dev --env-file .env
 spawnfile build  --tag my-agent                  # compile + docker build
-spawnfile up . --context gpu-4090 --detach       # build and run on a Docker context
+spawnfile up . --context gpu-host --detach       # build and run on a Docker context
 spawnfile dev up . --auth-profile dev            # detached dev loop in .spawn-dev
 spawnfile dev apply . --agent researcher         # hot-add/reload one Pi agent
 spawnfile dev activity . --agent researcher      # inspect buffered Pi activity events

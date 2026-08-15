@@ -47,9 +47,9 @@ describe("checkDockerRemoteContext", () => {
     const result = await checkDockerRemoteContext(
       commandRunner,
       "docker",
-      "4090",
-      ["default", "4090"],
-      "docker-context-4090",
+      "gpu-host",
+      ["default", "gpu-host"],
+      "docker-context-gpu-host",
       3000
     );
 

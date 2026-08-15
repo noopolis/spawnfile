@@ -103,7 +103,7 @@ const requestFor = (operation: TargetOperation): TargetResourceRequest => {
     return {
       idempotency_key: envelope.idempotency_key,
       operation,
-      target_reference: "gpu-4090",
+      target_reference: "gpu-host",
       version: envelope.version
     };
   }

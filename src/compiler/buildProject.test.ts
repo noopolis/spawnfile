@@ -334,12 +334,12 @@ describe("buildProject helpers", () => {
     });
 
     expect(createDockerBuildInvocation("/tmp/dist", "spawnfile-agent", {
-      dockerContext: "gpu-4090"
+      dockerContext: "gpu-host"
     })).toEqual({
-      args: ["--context", "gpu-4090", "build", "-t", "spawnfile-agent", "."],
+      args: ["--context", "gpu-host", "build", "-t", "spawnfile-agent", "."],
       command: "docker",
       cwd: "/tmp/dist",
-      dockerContext: "gpu-4090",
+      dockerContext: "gpu-host",
       imageTag: "spawnfile-agent"
     });
   });

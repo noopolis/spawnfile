@@ -33,8 +33,8 @@ import { fileExists } from "../filesystem/index.js";
 import { rm } from "node:fs/promises";
 import type { OrganizationReadinessEvidence } from "./organizationReadyEvidence.js";
 
-const endpoint = "ssh://operator@remote-4090";
-const context = "remote_4090";
+const endpoint = "ssh://operator@remote-host";
+const context = "remote_host";
 const fingerprint = createEndpointFingerprint(endpoint);
 const selected = {
   fingerprint,

@@ -107,7 +107,7 @@ export const SLICE_PROFILE: AcceptanceProfile = {
 };
 
 // The 12 subsystem checks layered on top of the slice for the full profile.
-// subsystem-remote-4090 is the sole optional check in either profile — the
+// subsystem-remote-host is the sole optional check in either profile — the
 // one permissible external-gap example (an on-prem GPU box may be offline).
 const SUBSYSTEM_CHECKS: AcceptanceCheckDeclaration[] = [
   requiredCheck(
@@ -140,8 +140,8 @@ const SUBSYSTEM_CHECKS: AcceptanceCheckDeclaration[] = [
     ["B35", "B36", "B49", "B53"]
   ),
   optionalCheck(
-    "subsystem-remote-4090",
-    "Remote 4090 Docker context is reachable",
+    "subsystem-remote-host",
+    "Remote host Docker context is reachable",
     ["B43"]
   ),
   requiredCheck(

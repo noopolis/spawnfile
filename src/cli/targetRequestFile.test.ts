@@ -10,7 +10,7 @@ const roots: string[] = [];
 const request = {
   idempotency_key: "idem_aaaaaaaaaaaaaaaa",
   operation: "select_target",
-  target_reference: "gpu-4090",
+  target_reference: "gpu-host",
   version: "spawnfile.target-resource.request.v1"
 };
 
@@ -66,7 +66,7 @@ describe("readTargetRequestFile", () => {
     roots.push(root);
     const target = path.join(root, "target.json");
     const link = path.join(root, "request.json");
-    await writeFile(target, `{"operation":"cleanup_run","operation":"select_target","idempotency_key":"idem_aaaaaaaaaaaaaaaa","target_reference":"gpu-4090","version":"spawnfile.target-resource.request.v1"}`);
+    await writeFile(target, `{"operation":"cleanup_run","operation":"select_target","idempotency_key":"idem_aaaaaaaaaaaaaaaa","target_reference":"gpu-host","version":"spawnfile.target-resource.request.v1"}`);
     await symlink(target, link);
     await expect(readTargetRequestFile(link)).resolves.toEqual(request);
     await expect(readTargetRequestFile(await fixture(`\uFEFF${JSON.stringify(request)}`))).rejects.toThrow();

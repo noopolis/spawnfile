@@ -175,7 +175,7 @@ describe("runB18Preflight", () => {
         command: "docker",
         args: ["context", "ls", "--format", "{{.Name}} {{.Current}}"],
         result: {
-          stdout: "default *\n4090\n"
+          stdout: "default *\ngpu-host\n"
         }
       },
       { command: "moltnet", args: ["--help"] }
@@ -207,7 +207,7 @@ describe("runB18Preflight", () => {
     expect(checkById(result.checks, "antigravity")?.status).toBe("passed");
     expect(checkById(result.checks, "antigravity-auth")?.status).toBe("passed");
     expect(checkById(result.checks, "docker-context-list")?.status).toBe("passed");
-    expect(checkById(result.checks, "docker-context-4090")?.status).toBe("passed");
+    expect(checkById(result.checks, "docker-context-gpu-host")?.status).toBe("passed");
     expect(checkById(result.checks, "runtime-assets-openclaw")?.status).toBe("passed");
     expect(checkById(result.checks, "runtime-assets-picoclaw")?.status).toBe("passed");
     expect(checkById(result.checks, "daimon")?.status).toBe("passed");
@@ -255,8 +255,8 @@ describe("runB18Preflight", () => {
     });
 
     expect(checkById(result.checks, "docker-context-list")?.status).toBe("unavailable");
-    expect(checkById(result.checks, "docker-context-4090")?.status).toBe("skipped");
-    expect(checkById(result.checks, "docker-context-4090")?.reason).toContain("unavailable");
+    expect(checkById(result.checks, "docker-context-gpu-host")?.status).toBe("skipped");
+    expect(checkById(result.checks, "docker-context-gpu-host")?.reason).toContain("unavailable");
   });
 
   it("does not leak auth secrets while reporting missing token metadata", async () => {
@@ -272,7 +272,7 @@ describe("runB18Preflight", () => {
       {
         command: "docker",
         args: ["context", "ls", "--format", "{{.Name}} {{.Current}}"],
-        result: { stdout: "default *\n4090\n" }
+        result: { stdout: "default *\ngpu-host\n" }
       },
       { command: "moltnet", args: ["--help"] }
     ]);
@@ -310,7 +310,7 @@ describe("runB18Preflight", () => {
       {
         command: "docker",
         args: ["context", "ls", "--format", "{{.Name}} {{.Current}}"],
-        result: { stdout: "default *\n4090\n" }
+        result: { stdout: "default *\ngpu-host\n" }
       },
       { command: "moltnet", args: ["--help"] }
     ]);

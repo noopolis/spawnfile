@@ -166,14 +166,14 @@ describe("Docker world-only readiness adapter", () => {
         return { bytes: Buffer.from(JSON.stringify(document)) };
       };
     const receipt = await createDockerWorldReadinessReader({
-      authorityStore: authority(binding), context: "gpu-4090", contentExecutor,
+      authorityStore: authority(binding), context: "gpu-host", contentExecutor,
       executor, timeoutMs: 30_000
     }).query(requestFor(binding));
     expect(receipt.readiness).toEqual(document);
     expect(inspectCalls.filter((args) => args[3] === "inspect")).toHaveLength(2);
     expect(queryCalls).toHaveLength(1);
     expect(queryCalls[0]!.slice(0, 8)).toEqual([
-      "--context", "gpu-4090", "container", "exec", containerId,
+      "--context", "gpu-host", "container", "exec", containerId,
       "/usr/local/bin/node", "--input-type=module", "-e"
     ]);
     expect(queryCalls[0]!.slice(-2)).toEqual(["4071", "/v1/world/readiness"]);
@@ -192,7 +192,7 @@ describe("Docker world-only readiness adapter", () => {
       throw new Error("endpoint must not be reached");
     };
     await expect(createDockerWorldReadinessReader({
-      authorityStore: authority(binding), context: "gpu-4090",
+      authorityStore: authority(binding), context: "gpu-host",
       contentExecutor: noQuery, executor: noDocker, timeoutMs: 30_000
     }).query({ ...requestFor(binding), run_id: "run-stale" }))
       .rejects.toThrow("Target world readiness query failed");
@@ -201,7 +201,7 @@ describe("Docker world-only readiness adapter", () => {
       { moltnetClient: { read: async () => undefined } },
       { teamRegistry: { load: async () => undefined } }
     ]) expect(() => createDockerWorldReadinessReader({
-      authorityStore: authority(binding), context: "gpu-4090",
+      authorityStore: authority(binding), context: "gpu-host",
       contentExecutor: noQuery, executor: noDocker, timeoutMs: 30_000,
       ...extra
     } as never)).toThrow("Target world readiness query failed");
@@ -218,7 +218,7 @@ describe("Docker world-only readiness adapter", () => {
       bytes: Buffer.from(JSON.stringify({ ...document, run_id: "run-stale" }))
     });
     await expect(createDockerWorldReadinessReader({
-      authorityStore: authority(binding), context: "gpu-4090",
+      authorityStore: authority(binding), context: "gpu-host",
       contentExecutor: forged, executor, timeoutMs: 30_000
     }).query(requestFor(binding))).rejects.toThrow("Target world readiness query failed");
   });

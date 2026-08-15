@@ -25,7 +25,7 @@ describe("target operation dispatch metadata", () => {
     expect(targetOperationDispatch({
       idempotency_key: "idem_aaaaaaaaaaaaaaaa",
       operation: "select_target",
-      target_reference: "gpu-4090",
+      target_reference: "gpu-host",
       version: "spawnfile.target-resource.request.v1"
     })).toBe(TARGET_OPERATION_DISPATCH.select_target);
   });

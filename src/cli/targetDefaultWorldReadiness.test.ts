@@ -56,7 +56,7 @@ describe("production world-readiness dependency boundary", () => {
     roots.push(root);
     const authority = path.join(root, "absent", "world-authority");
     const config: TargetDefaultWorldReadinessConfig = {
-      context: "gpu-4090", dockerCommand: "docker",
+      context: "gpu-host", dockerCommand: "docker",
       paths: { worldAuthority: authority }, timeoutMs: 30_000
     };
     const before = await readdir(root);
@@ -72,7 +72,7 @@ describe("production world-readiness dependency boundary", () => {
     const authority = path.join(root, "world-authority");
     await mkdir(authority); await chmod(authority, 0o755);
     const config: TargetDefaultWorldReadinessConfig = {
-      context: "gpu-4090", dockerCommand: "docker",
+      context: "gpu-host", dockerCommand: "docker",
       paths: { worldAuthority: authority }, timeoutMs: 30_000
     };
     await expect(queryTargetDefaultWorldReadiness(config, request)).rejects.toThrow();
@@ -87,7 +87,7 @@ describe("production world-readiness dependency boundary", () => {
     const requestPath = path.join(root, "request.json");
     await writeFile(requestPath, JSON.stringify(request));
     const configBytes = JSON.stringify({
-      context: "gpu-4090", dockerCommand: "docker",
+      context: "gpu-host", dockerCommand: "docker",
       evidenceDestination: path.join(root, "unused-evidence.tar"),
       timeoutMs: 30_000, version: TARGET_DEFAULT_CONFIG_STDIN_VERSION
     });

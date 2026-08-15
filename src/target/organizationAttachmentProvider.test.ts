@@ -139,7 +139,7 @@ describe("organization attachment Docker provider", () => {
   it("runs one bounded fixed Docker command and preserves safe not-found classification", async () => {
     const executor = vi.fn(async () => ({ stderr: "", stdout: "ok" }));
     await expect(executeDockerOrganizationAttachment({
-      args: ["--context", "gpu-4090", "network", "connect", "a".repeat(64), "c".repeat(64)],
+      args: ["--context", "gpu-host", "network", "connect", "a".repeat(64), "c".repeat(64)],
       executor,
       timeoutMs: 10_000
     })).resolves.toEqual({ stderr: "", stdout: "ok" });

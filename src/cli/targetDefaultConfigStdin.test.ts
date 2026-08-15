@@ -42,7 +42,7 @@ const config = (destination: string) => ({
     image_digest: `sha256:${"b".repeat(64)}`,
     image_reference: `registry.example/spawn/helper@sha256:${"b".repeat(64)}`
   }],
-  context: "gpu_4090", dockerCommand: "docker", evidenceDestination: destination,
+  context: "gpu_host", dockerCommand: "docker", evidenceDestination: destination,
   helperArtifactManifestDigest: `sha256:${"a".repeat(64)}`, timeoutMs: 30_000,
   version: TARGET_DEFAULT_CONFIG_STDIN_VERSION
 });
@@ -65,7 +65,7 @@ describe("readTargetDefaultConfigStdin", () => {
   it("accepts one bounded versioned config document", async () => {
     const value = await setup();
     await expect(readTargetDefaultConfigStdin(stdin(value))).resolves.toMatchObject({
-      context: "gpu_4090", dockerCommand: "docker", timeoutMs: 30_000
+      context: "gpu_host", dockerCommand: "docker", timeoutMs: 30_000
     });
   });
 
@@ -88,7 +88,7 @@ describe("readTargetDefaultConfigStdin", () => {
     delete value.artifactMappings;
     delete value.helperArtifactManifestDigest;
     const loaded = await readTargetDefaultConfigStdin(stdin(JSON.stringify(value)));
-    expect(loaded).toMatchObject({ artifactMappings: [], context: "gpu_4090" });
+    expect(loaded).toMatchObject({ artifactMappings: [], context: "gpu_host" });
     expect(Object.hasOwn(loaded, "helperArtifact")).toBe(false);
     const partial = { ...value, artifactMappings: config("/private/evidence.tar").artifactMappings };
     await expect(readTargetDefaultConfigStdin(stdin(JSON.stringify(partial))))
@@ -125,7 +125,7 @@ describe("readTargetDefaultConfigStdin", () => {
     const value = await setup();
     const duplicate = value.replace('"image_digest":', '"image_digest":"wrong","image_digest":');
     const escaped = value.replace('"image_digest":', '"image_\\u0064igest":"wrong","image_digest":');
-    const nested = value.replace('"context":"gpu_4090"', '"context":"gpu_4090","nested":{"x":1,"x":2}');
+    const nested = value.replace('"context":"gpu_host"', '"context":"gpu_host","nested":{"x":1,"x":2}');
     await expect(readTargetDefaultConfigStdin(stdin(duplicate))).rejects.toThrow(TARGET_DEFAULT_CONFIG_STDIN_ERROR);
     await expect(readTargetDefaultConfigStdin(stdin(escaped))).rejects.toThrow(TARGET_DEFAULT_CONFIG_STDIN_ERROR);
     await expect(readTargetDefaultConfigStdin(stdin(nested))).rejects.toThrow(TARGET_DEFAULT_CONFIG_STDIN_ERROR);
@@ -165,8 +165,8 @@ describe("readTargetLookupConfigStdin", () => {
     const home = process.env.SPAWNFILE_HOME!;
     expect(await readdir(home)).toEqual([]);
     await expect(readTargetLookupConfigStdin(stdin(JSON.stringify({
-      context: "gpu_4090", version: TARGET_LOOKUP_CONFIG_STDIN_VERSION
-    })))).resolves.toEqual({ context: "gpu_4090" });
+      context: "gpu_host", version: TARGET_LOOKUP_CONFIG_STDIN_VERSION
+    })))).resolves.toEqual({ context: "gpu_host" });
     expect(await readdir(home)).toEqual([]);
   });
 
@@ -174,9 +174,9 @@ describe("readTargetLookupConfigStdin", () => {
     const defaultConfig = await setup();
     for (const value of [
       defaultConfig,
-      '{"context":"gpu_4090","context":"other","version":"spawnfile.target-lookup-config.v1"}',
-      '{"context":"GPU 4090","version":"spawnfile.target-lookup-config.v1"}',
-      '{"context":"gpu_4090","selected_target":{},"version":"spawnfile.target-lookup-config.v1"}'
+      '{"context":"gpu_host","context":"other","version":"spawnfile.target-lookup-config.v1"}',
+      '{"context":"GPU host","version":"spawnfile.target-lookup-config.v1"}',
+      '{"context":"gpu_host","selected_target":{},"version":"spawnfile.target-lookup-config.v1"}'
     ]) {
       await expect(readTargetLookupConfigStdin(stdin(value)))
         .rejects.toThrow(TARGET_DEFAULT_CONFIG_STDIN_ERROR);
@@ -190,7 +190,7 @@ describe("readTargetWorldReadinessConfigStdin", () => {
     const home = process.env.SPAWNFILE_HOME!;
     expect(await readdir(home)).toEqual([]);
     await expect(readTargetWorldReadinessConfigStdin(stdin(value))).resolves.toMatchObject({
-      context: "gpu_4090",
+      context: "gpu_host",
       dockerCommand: "docker",
       paths: { worldAuthority: path.join(home, "target", "world-authority") },
       timeoutMs: 30_000

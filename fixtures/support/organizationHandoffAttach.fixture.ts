@@ -12,8 +12,8 @@ import { initializeOrganizationAttachmentAuthorityStore } from "../../src/target
 
 const VERSION = "spawnfile.deployment-handoff-attach.v1" as const;
 const MAX_BYTES = 16_384;
-const CONTEXT = "remote_4090";
-const ENDPOINT = "ssh://operator@remote-4090";
+const CONTEXT = "remote_host";
+const ENDPOINT = "ssh://operator@remote-host";
 const NETWORK_ID = "6".repeat(64);
 type Request = {
   readonly authorization: Record<string, unknown>;
