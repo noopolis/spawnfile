@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -16,7 +16,10 @@ const roots: string[] = [];
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
 const privateEvidenceDestination = async (): Promise<string> => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-target-resolver-"));
+  // The resolver requires the destination's parent to be a *physical* private
+  // dir (realpath(parent) === parent), so resolve os.tmpdir()'s symlinks first
+  // — on macOS it is /var → /private/var, which fails the check otherwise.
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "spawnfile-target-resolver-")));
   roots.push(root);
   return path.join(root, "world-evidence.tar");
 };
