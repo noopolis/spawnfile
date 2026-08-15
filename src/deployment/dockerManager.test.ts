@@ -159,12 +159,12 @@ describe("docker deployment manager foundations", () => {
   });
 
   it("derives identifier project labels from paths without preserving the path", () => {
-    expect(createDockerProjectLabel("/Users/apresmoi/Documents/project/Spawnfile")).toBe("project");
+    expect(createDockerProjectLabel("/Users/example/Documents/project/Spawnfile")).toBe("project");
   });
 
   it("prefers the manifest project name over the checkout directory when provided", () => {
     expect(
-      createDockerProjectLabel("/Users/apresmoi/Documents/project/Spawnfile", "Research Cell")
+      createDockerProjectLabel("/Users/example/Documents/project/Spawnfile", "Research Cell")
     ).toBe("Research-Cell");
   });
 
