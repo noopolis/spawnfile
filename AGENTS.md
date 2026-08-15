@@ -8,12 +8,17 @@ This repository is the reference implementation of the Spawnfile v0.1 compiler.
 .
 ├── README.md                 # Project overview and install/use flow
 ├── runtimes.yaml             # Runtime registry — pinned versions and status
+├── moltnet-releases.json     # Pinned, checksum-verified Moltnet release authority
 ├── blueprints/               # Frozen reference layouts per runtime at pinned version
 ├── specs/                    # Specs, architecture docs, and runtime research
 ├── scripts/                  # Bootstrap and repo helper scripts
 ├── src/                      # CLI, compiler, adapters, manifests, reports, target contracts
+├── runtime-images/           # Dockerfiles for wrapped third-party runtime images
+│                             # (openclaw, picoclaw); daimon builds its own in the daimon repo
 ├── examples/                 # Showcase Spawnfile org projects (reference layouts)
 ├── fixtures/                 # Test-only Spawnfile org projects + support/ helpers
+├── website/                  # Documentation site (Astro)
+├── .github/                  # CI workflows (tests, runtime-images, publish)
 ├── package.json              # Node package metadata and CLI scripts
 ├── tsconfig.json             # Typecheck config
 ├── tsconfig.build.json       # Build-only emit config
@@ -49,4 +54,4 @@ This repository is the reference implementation of the Spawnfile v0.1 compiler.
 ## Commits
 
 - Use conventional commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`).
-- Never add co-author attributions, sign-off lines, or AI credit to commits. No `Co-Authored-By`, no `Signed-off-by`, no mentions of AI tools in commit messages.
+- Never add co-author attributions, sign-off lines, or AI credit to commits. No `Co-Authored-By`, no `Signed-off-by`, no mentions of AI tools in commit messages since its obvious.
