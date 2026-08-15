@@ -1393,6 +1393,57 @@ describe("runCli", () => {
     expect(stdout[0]).toContain("initialized");
   });
 
+  it("lists available templates without scaffolding", async () => {
+    const listInitTemplates = vi.fn(async () => ["single-agent", "mixed-runtime-org"]);
+    const initProject = vi.fn();
+
+    const stdout: string[] = [];
+    const exitCode = await runCli(
+      ["init", "--list-templates"],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message),
+      },
+      { initProject, listInitTemplates },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(listInitTemplates).toHaveBeenCalled();
+    expect(initProject).not.toHaveBeenCalled();
+    expect(stdout).toEqual(["single-agent", "mixed-runtime-org"]);
+  });
+
+  it("initializes a project from a template", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "spawnfile-cli-template-init-"),
+    );
+    temporaryDirectories.push(directory);
+
+    const initProject = vi.fn(async () => ({
+      createdFiles: [path.join(directory, "Spawnfile")],
+      directory,
+    }));
+
+    const stdout: string[] = [];
+    const exitCode = await runCli(
+      ["init", directory, "--template", "single-agent"],
+      {
+        stderr: () => undefined,
+        stdout: (message) => stdout.push(message),
+      },
+      { initProject },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(initProject).toHaveBeenCalledWith({
+      directory,
+      runtime: undefined,
+      team: undefined,
+      template: "single-agent",
+    });
+    expect(stdout[0]).toContain("initialized");
+  });
+
   it("adds an agent member to a team project without requiring --runtime", async () => {
     const addAgentProject = vi.fn(async () => ({
       createdFiles: [

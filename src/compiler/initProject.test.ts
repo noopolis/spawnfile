@@ -12,7 +12,7 @@ import {
 } from "../filesystem/index.js";
 import { isAgentManifest, loadManifest } from "../manifest/index.js";
 
-import { initProject } from "./initProject.js";
+import { initProject, listInitTemplates } from "./initProject.js";
 
 const temporaryDirectories: string[] = [];
 const getRuntimeName = (runtime: unknown): string | undefined =>
@@ -147,5 +147,61 @@ describe("initProject", () => {
     await expect(initProject({ directory, runtime: "ghostclaw" })).rejects.toThrow(
       /Unknown runtime adapter/
     );
+  });
+
+  it("lists the bundled example templates", async () => {
+    const templates = await listInitTemplates();
+    expect(templates).toContain("single-agent");
+    expect(templates).toContain("mixed-runtime-org");
+    expect(templates).toEqual([...templates].sort());
+  });
+
+  it("scaffolds a project from an example template", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-template-init-"));
+    temporaryDirectories.push(directory);
+
+    const result = await initProject({ directory, template: "single-agent" });
+    const loadedManifest = await loadManifest(path.join(directory, "Spawnfile"));
+
+    expect(result.createdFiles.length).toBeGreaterThan(0);
+    await expect(fileExists(path.join(directory, "Spawnfile"))).resolves.toBe(true);
+    await expect(readUtf8File(path.join(directory, ".gitignore"))).resolves.toContain(".spawn/");
+    if (!isAgentManifest(loadedManifest.manifest)) {
+      throw new Error("Expected agent manifest from the single-agent template");
+    }
+  });
+
+  it("rejects an unknown template with the available list", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-bad-template-init-"));
+    temporaryDirectories.push(directory);
+
+    await expect(initProject({ directory, template: "ghost-org" })).rejects.toThrow(
+      /Unknown template "ghost-org"\. Available templates:/
+    );
+  });
+
+  it("rejects --template combined with --team or --runtime", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-template-conflict-init-"));
+    temporaryDirectories.push(directory);
+
+    await expect(initProject({ directory, template: "single-agent", team: true })).rejects.toThrow(
+      /cannot be combined/
+    );
+    await expect(
+      initProject({ directory, template: "single-agent", runtime: "openclaw" })
+    ).rejects.toThrow(/cannot be combined/);
+  });
+
+  it("reports only template-contributed files, not pre-existing directory contents", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-template-scope-init-"));
+    temporaryDirectories.push(directory);
+    const preExisting = path.join(directory, "NOTES.md");
+    await writeUtf8File(preExisting, "keep me\n");
+
+    const result = await initProject({ directory, template: "single-agent" });
+
+    expect(result.createdFiles).not.toContain(preExisting);
+    expect(result.createdFiles.some((file) => file.endsWith("Spawnfile"))).toBe(true);
+    await expect(fileExists(preExisting)).resolves.toBe(true);
   });
 });
