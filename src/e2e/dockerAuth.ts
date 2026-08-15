@@ -228,7 +228,10 @@ const runScenario = async (
           const promptInstance = findPromptInstance(scenario, runtimeInstances, check.runtime);
 
           logger.info(`scenario ${scenario.id}: waiting for ${check.runtime}`);
-          await waitForRuntimeReady(check.runtime);
+          await waitForRuntimeReady(check.runtime, {
+            command: options.dockerCommand,
+            containerName
+          });
 
           logger.info(`scenario ${scenario.id}: prompting ${check.runtime}`);
           const output = await promptRuntime(check.runtime, {
