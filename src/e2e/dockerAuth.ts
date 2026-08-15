@@ -41,8 +41,6 @@ export interface RunDockerAuthE2EResult {
   results: DockerAuthE2EScenarioResult[];
 }
 
-const DEFAULT_ENV_FILE = path.resolve(process.cwd(), "../headhunter/.env");
-
 const createLogger = (logger?: DockerAuthE2ELogger): DockerAuthE2ELogger =>
   logger ?? {
     error: (message) => console.error(message),
@@ -76,7 +74,7 @@ const findPromptInstance = (
 };
 
 const resolveEnvFilePath = (inputPath?: string): string | undefined =>
-  inputPath ?? DEFAULT_ENV_FILE;
+  inputPath;
 
 const withSpawnfileHome = async <T>(
   spawnfileHome: string,
