@@ -23,6 +23,7 @@ import {
   clearProjectModelFallbacks,
   compileProject,
   initProject,
+  listInitTemplates,
   publishProject,
   upProject,
   removeProjectSurface,
@@ -92,6 +93,7 @@ export interface CliHandlers {
   addTeamProject: typeof addTeamProject; clearProjectModelFallbacks: typeof clearProjectModelFallbacks;
   importClaudeCodeAuth: typeof importClaudeCodeAuth; importCodexAuth: typeof importCodexAuth;
   importEnvFile: typeof importEnvFile; initProject: typeof initProject;
+  listInitTemplates: typeof listInitTemplates;
   initializeTargetSecretSourceLifecycle: typeof initializeTargetSecretSourceLifecycle;
   provisionCredentials: typeof provisionCredentials;
   exportRunArtifacts: typeof exportRunArtifacts;
@@ -117,7 +119,7 @@ const createDefaultHandlers = (): CliHandlers => ({
   importClaudeCodeAuth, importCodexAuth, importEnvFile, initializeTargetSecretSourceLifecycle,
   provisionCredentials,
   exportRunArtifacts, downDeployment,
-  initProject, listRuntimeAdapters, removeProjectSurface, requireAuthProfile,
+  initProject, listInitTemplates, listRuntimeAdapters, removeProjectSurface, requireAuthProfile,
   runProject, setProjectPrimaryModel, setProjectRuntime, upProject, buildUpReceipt, consumeImageUp,
   devActivityProject, devApplyProject, devRestartProject, devStopProject, devUpProject,
   setProjectSurfaceAccess, showProjectSurfaces, syncProjectAuth
@@ -234,11 +236,24 @@ export const runCli: RunCli = async (
     .argument("[path]", "Directory to initialize", process.cwd())
     .option("--team", "Initialize a team project")
     .option("--runtime <name>", "Runtime for agent scaffolds")
-    .action(async (inputPath: string, options: { runtime?: string; team?: boolean }) => {
+    .option("--template <name>", "Scaffold from a bundled example template")
+    .option("--list-templates", "List available example templates and exit")
+    .action(async (
+      inputPath: string,
+      options: { runtime?: string; team?: boolean; template?: string; listTemplates?: boolean }
+    ) => {
+      if (options.listTemplates) {
+        const templates = await handlers.listInitTemplates();
+        for (const template of templates) {
+          streams.stdout(template);
+        }
+        return;
+      }
       const result = await handlers.initProject({
         directory: inputPath,
         runtime: options.runtime,
-        team: options.team
+        team: options.team,
+        template: options.template
       });
       streams.stdout(`initialized ${result.directory}`);
       emitFileLines(streams, "created", result.createdFiles);
