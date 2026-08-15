@@ -75,14 +75,14 @@ describe("renderPiActivitySource", () => {
     const { formatActivityError } = loadHarness();
 
     const redacted = formatActivityError(
-      'failed Bearer abcdefghijklmnop sk-proj-abcdefghijklmnopqrstuvwxyz /Users/apresmoi/.codex/auth.json {"refresh_token":"super-secret"} {"session_key":"secret-session"} {"authorization":"basic abcdef"} {"credential":"cred-secret"} session key: agent@moltnet:secret-session'
+      'failed Bearer abcdefghijklmnop sk-proj-abcdefghijklmnopqrstuvwxyz /Users/example/.codex/auth.json {"refresh_token":"super-secret"} {"session_key":"secret-session"} {"authorization":"basic abcdef"} {"credential":"cred-secret"} session key: agent@moltnet:secret-session'
     );
 
     expect(redacted).toContain("Bearer [REDACTED]");
     expect(redacted).toContain("[path]");
     expect(redacted).not.toContain("abcdefghijklmnop");
     expect(redacted).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz");
-    expect(redacted).not.toContain("/Users/apresmoi");
+    expect(redacted).not.toContain("/Users/example");
     expect(redacted).not.toContain("super-secret");
     expect(redacted).not.toContain("secret-session");
     expect(redacted).not.toContain("basic abcdef");
@@ -116,7 +116,7 @@ describe("renderPiActivitySource", () => {
           networkId: "noopolis",
           nested: {
             password: "nested-password-secret",
-            path: "/Users/apresmoi/private/file.txt"
+            path: "/Users/example/private/file.txt"
           },
           roomId: "agora",
           session_key: "agent@moltnet:secret-session"
@@ -166,7 +166,7 @@ describe("renderPiActivitySource", () => {
     expect(serialized).not.toContain("access-token-secret");
     expect(serialized).not.toContain("nested-password-secret");
     expect(serialized).not.toContain("secret-session");
-    expect(serialized).not.toContain("/Users/apresmoi");
+    expect(serialized).not.toContain("/Users/example");
     expect(trace.memory.prepare.recall.selected_count).toBe(1);
   });
 
