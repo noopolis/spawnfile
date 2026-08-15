@@ -9,7 +9,7 @@ import { Command } from "commander";
 
 import { queryTargetDefaultWorldReadiness } from "./targetDefaultWorldReadiness.js";
 import type { TargetDefaultWorldReadinessConfig } from "./targetDefaultConfig.js";
-import { registerProductionTargetCommands } from "./targetCommands.js";
+import { registerProductionTargetCommands } from "./targetProductionCommands.js";
 import { TARGET_DEFAULT_CONFIG_STDIN_VERSION } from "./targetDefaultConfigStdin.js";
 
 const roots: string[] = [];
