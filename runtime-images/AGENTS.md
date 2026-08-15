@@ -1,15 +1,17 @@
 # Runtime Images
 
-This folder owns Dockerfiles for the **third-party** runtimes Spawnfile
-packages itself: `openclaw/` and `picoclaw/`. Their `noopolis/spawnfile-runtime-*`
-images are built and pushed by `.github/workflows/runtime-images.yml`.
+This folder owns Dockerfiles for the runtimes Spawnfile packages itself:
+`openclaw/`, `picoclaw/`, and `daimon/`. Their `noopolis/spawnfile-runtime-*`
+images are built and pushed by `.github/workflows/runtime-images.yml` and pinned
+in this repo's `runtimes.yaml`. `src/runtime/container.ts` `COPY --from`s these
+images into generated organization Dockerfiles.
 
-**Daimon is intentionally not here.** Daimon is a first-party Noopolis runtime,
-so its runtime image (`noopolis/spawnfile-runtime-daimon`) is built and
-published from the daimon repo itself (`Dockerfile.runtime` +
-`.github/workflows/runtime-image.yml` there), pinned in this repo's
-`runtimes.yaml`. `src/runtime/container.ts`'s daimon recipe `COPY --from`s that
-image, with an `@noopolis/daimon` + `@noopolis/mneme` npm-install fallback.
+The `daimon/` image is built here from the **published** `@noopolis/daimon`,
+`@noopolis/mneme`, and `@earendil-works/pi-*` packages (build-args
+`DAIMON_VERSION`/`MNEME_VERSION`/`PI_VERSION`); it needs no Daimon source
+checkout. For development against unreleased sibling checkouts, its Dockerfile
+also carries `local` (tarball) and `verify` targets, driven by
+`scripts/build-local-daimon.mjs`. The daimon repo no longer builds this image.
 
 Runtime artifact images are copy sources for generated organization Dockerfiles.
 They must contain pinned runtime dependencies only, under

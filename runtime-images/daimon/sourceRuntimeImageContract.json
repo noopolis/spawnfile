@@ -1,0 +1,26 @@
+{
+  "version": "daimon.source-runtime-image-contract.v1",
+  "image": {
+    "id": "sha256:02844616e3df1b2653349777e644dcf8cbf615b368b88a9aaf937b9290e8a388",
+    "reference": "noopolis/spawnfile-runtime-daimon:0.1.2-b35-source",
+    "runtime_tree_digest": "sha256:d967220cd33ffc2b1c631c5cd0d8fe3370f5069032c515e8bb10de1af7e6af7a"
+  },
+  "tool_contract": {
+    "digest": "sha256:c7c4e5528ef5165fc782b2478102216d46e90f9d53db34705202a9f61fa3bd5c",
+    "implementation": {
+      "world_tool_protocol_sha256": "sha256:216cd421c2e9bacf6c19b300a4f8ca4fdaa4049c35edf43be068914a3c34871c",
+      "world_tools_sha256": "sha256:b95da5bcb0c386aed2bfaf4cdf672edf10b283fe581d9ee5734291dc01fdfe0b"
+    },
+    "proof": {
+      "version": "daimon.pi-world-tool-proof.v1",
+      "sequence": [
+        "world_claim",
+        "world_observe",
+        "world_act"
+      ],
+      "public_results_token_free": true,
+      "public_schemas_token_free": true,
+      "private_authority_transport": true
+    }
+  }
+}
