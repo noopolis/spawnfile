@@ -9,6 +9,7 @@
   },
   "files": [
     "dist",
+    "examples",
     "moltnet-releases.json",
     "runtimes.yaml"
   ],

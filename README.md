@@ -54,6 +54,8 @@ Node.js 22+ required. See [source install](#from-source) for local development.
 
 ```bash
 spawnfile init                                   # scaffold an agent (defaults to openclaw)
+spawnfile init --list-templates                  # list bundled example templates
+spawnfile init --template mixed-runtime-org      # scaffold from an example org
 spawnfile validate                               # check the graph
 spawnfile view .                                 # read-only graph view; writes no files
 spawnfile compile                                # lower to runtime-native output
