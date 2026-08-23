@@ -9,6 +9,7 @@ import {
   renewLifecycleOwner,
   type LifecycleInvocation,
 } from "../deployment/index.js";
+import type { UpLifecycleRecovery } from "../deployment/upLifecycleRecoveryState.js";
 import { SpawnfileError } from "../shared/index.js";
 
 export const createLifecycleInvocation = (
@@ -33,8 +34,8 @@ export const digestLifecycleBinding = (
 
 export type LifecycleReconciliation =
   | { outcomeBytes: string; status: "completed" }
-  | { status: "provably_not_applied" }
-  | { status: "resume_safe" }
+  | { recovery?: UpLifecycleRecovery; status: "provably_not_applied" }
+  | { recovery?: UpLifecycleRecovery; status: "resume_safe" }
   | { reason: string; status: "ambiguous" };
 
 const withLifecycleHeartbeat = async <T>(
@@ -64,8 +65,8 @@ export const runMachineLifecycle = async (
   owner: (capability: {
     epoch: string;
     role: "initial" | "recovery";
-  }) => Promise<string>,
-  reconcile?: () => Promise<LifecycleReconciliation>,
+  }, recovery?: UpLifecycleRecovery) => Promise<string>,
+  reconcile?: (capability: { epoch: string; role: "initial" | "recovery" }) => Promise<LifecycleReconciliation>,
 ): Promise<string> => {
   const existing = await findExactLifecycleCompletion(invocation);
   if (existing) return existing.outcome_bytes;
@@ -94,7 +95,7 @@ export const runMachineLifecycle = async (
       const verdict = await withLifecycleHeartbeat(
         invocation,
         recovery.capability,
-        reconcile,
+        () => reconcile(recovery.capability),
       );
       if (verdict.status === "completed") {
         return (
@@ -115,7 +116,7 @@ export const runMachineLifecycle = async (
             await withLifecycleHeartbeat(
               invocation,
               recovery.capability,
-              () => owner(recovery.capability),
+              () => owner(recovery.capability, verdict.recovery),
             ),
             recovery.capability,
           )

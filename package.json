@@ -1,6 +1,6 @@
 {
   "name": "spawnfile",
-  "version": "0.1.14",
+  "version": "0.1.17",
   "description": "Canonical source compiler for autonomous agents and teams.",
   "license": "MIT",
   "type": "module",
@@ -17,7 +17,7 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc --project tsconfig.build.json && chmod +x dist/cli/index.js && node ./src/runtime/copyScaffoldAssets.mjs",
+    "build": "rm -rf dist && tsc --project tsconfig.build.json && chmod +x dist/cli/index.js && node ./src/evidenceExportHelper/copyAssets.mjs && node ./src/runtime/copyScaffoldAssets.mjs",
     "clean": "rm -rf coverage dist",
     "coverage": "vitest run --coverage",
     "dev": "tsx src/cli/index.ts",
@@ -29,9 +29,10 @@
     "runtime:images": "npm run runtime:openclaw-image && npm run runtime:picoclaw-image && npm run runtime:daimon-image",
     "runtime:openclaw-image": "docker build -f runtime-images/openclaw/Dockerfile -t noopolis/spawnfile-runtime-openclaw:2026.6.11-local runtime-images/openclaw",
     "runtime:picoclaw-image": "docker build -f runtime-images/picoclaw/Dockerfile -t noopolis/spawnfile-runtime-picoclaw:0.3.1-local runtime-images/picoclaw",
-    "runtime:daimon-image": "docker build -f runtime-images/daimon/Dockerfile -t noopolis/spawnfile-runtime-daimon:0.1.2-local --build-arg DAIMON_VERSION=0.1.2 --build-arg MNEME_VERSION=0.1.1 --build-arg PI_VERSION=0.79.10 runtime-images/daimon",
+    "runtime:daimon-image": "npm run build:local-daimon",
     "audit:generate": "tsx src/audit/auditCli.ts",
     "build:local-moltnet": "node ./scripts/build-local-moltnet.mjs",
+    "build:local-daimon": "node ./scripts/build-local-daimon-runtime.mjs",
     "verify:package-closure": "node ./scripts/verify-package-closure.mjs",
     "test:e2e:docker-auth": "tsx src/e2e/cli.ts",
     "test:e2e:daimon-memory-recall": "tsx src/e2e/cli.ts daimon-memory-recall",

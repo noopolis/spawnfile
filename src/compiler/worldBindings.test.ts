@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 import type { CompilePlan, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
+import { resolveOrganizationIdentity } from "./organizationIdentity.js";
 import {
   findWorldBindingForNode,
   parseSimfileWorldBindings,
@@ -240,6 +241,16 @@ describe("simfile.world-bindings.v1", () => {
       .toBe("TINY_FOOTBALL_BLUE_WORLD_TOKEN");
     expect(findWorldBindingForNode(first, "unscoped-agent")).toBeUndefined();
     expect(Object.isFrozen(first.assignments[0]?.binding)).toBe(true);
+  });
+
+  it("joins every agent in an ordinary organization with zero external participants", () => {
+    const current = plan();
+    const root = current.nodes.find((node) => node.kind === "team")?.value as ResolvedTeamNode;
+    root.externalParticipants = undefined;
+    current.organizationIdentity = resolveOrganizationIdentity(current);
+    expect(current.organizationIdentity?.externalParticipants).toEqual([]);
+    expect(resolveWorldBindings(current, artifact()).assignments.map(({ nodeId }) => nodeId))
+      .toEqual(["runtime:blue", "runtime:red"]);
   });
 
   it("fails closed for missing, extra, wrong-principal, and duplicate joins", () => {

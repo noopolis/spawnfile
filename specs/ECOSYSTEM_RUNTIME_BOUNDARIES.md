@@ -55,8 +55,10 @@ do not change that ABI; a live decision-claim path requires the exact
 The first-tick receipt MUST prove tick 1 followed activation without a
 participant action. Organization readiness MUST bind a pinned
 `spawnfile.moltnet-release-identity.v1`—architecture, asset digest, release
-version, source revision, and the sole `pi-bridge` capability—rather than an
-unpinned `latest` input.
+identity, and only the bridge capabilities its built binary proves—rather than
+an unpinned `latest` input. The public identity remains solely `pi-bridge`;
+the ordered dual capability identity is local-development-only and requires an
+explicit compiler opt-in.
 
 `--lockstep`, if introduced, is restricted to an explicit local scripted
 diagnostic and is ineligible for live-agent evidence. It MUST NOT make a

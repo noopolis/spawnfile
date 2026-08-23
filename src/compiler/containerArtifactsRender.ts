@@ -19,6 +19,12 @@ import type {
 import type { EntrypointOptions } from "./containerEntrypointRender.js";
 export { renderEntrypoint } from "./containerEntrypointRender.js";
 export type { EntrypointOptions } from "./containerEntrypointRender.js";
+import {
+  DAIMON_RUNTIME_UID,
+  DAIMON_UID_ENTRYPOINT_PATH,
+  renderDaimonUidEntrypoint
+} from "./containerDaimonUidEntrypointRender.js";
+import { createStateOwnershipCommand } from "./containerStateOwnershipRender.js";
 import { MOLTNET_BIN_DIRECTORY, MOLTNET_BINARY_NAMES } from "./moltnetBinaries.js";
 import {
   collectPackagesByManager,
@@ -35,31 +41,14 @@ const CONTAINER_ROOTFS_ROOT = "container/rootfs";
 const GATEWAY_PORT_PLACEHOLDER = "<gateway-port>";
 const WORKSPACE_PLACEHOLDER = "<workspace-path>";
 const RUNTIME_ROOT_PLACEHOLDER = "<runtime-root>";
+const PREBUILT_FINAL_SYSTEM_DEPS_BY_RUNTIME: Readonly<Record<string, ReadonlySet<string>>> = {
+  daimon: new Set(["dbus-daemon", "gnome-keyring", "util-linux"])
+};
 
 const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)}'`;
 
 const extractNodeMajorVersion = (image: string): number =>
   Number(image.match(/^node:(\d+)/)?.[1] ?? "0");
-
-const createStateOwnershipCommand = (persistentMountPaths: string[] = []): string => {
-  const mountPaths = [...new Set(persistentMountPaths)].sort();
-  const mkdirPaths = [...new Set(["/var/lib/spawnfile", ...mountPaths])].sort();
-  const markerCommands = mountPaths.map((mountPath) =>
-    `touch ${shellQuote(path.posix.join(mountPath, ".spawnfile-volume-init"))}`
-  );
-  const chownPaths = [
-    ...new Set([
-      "/var/lib/spawnfile",
-      ...mountPaths.filter((mountPath) => !mountPath.startsWith("/var/lib/spawnfile/"))
-    ])
-  ].sort();
-
-  return [
-    `mkdir -p ${mkdirPaths.map(shellQuote).join(" ")}`,
-    ...markerCommands,
-    `chown -R spawnfile:spawnfile ${chownPaths.map(shellQuote).join(" ")}`
-  ].join(" && ");
-};
 
 const selectBaseImage = (
   runtimePlans: RuntimeTargetPlan[],
@@ -136,6 +125,7 @@ export const renderDockerfile = async (
     );
   }
   const runtimeNames = [...new Set(runtimePlans.map((plan) => plan.runtimeName))];
+  const hasDaimon = runtimeNames.includes("daimon");
   const runtimeRecipes = await Promise.all(
     runtimeNames.map((runtimeName) =>
       createRuntimeInstallRecipe(runtimeName, { packageOverrides: options.runtimePackageOverrides })
@@ -159,7 +149,11 @@ export const renderDockerfile = async (
   const systemDeps = [
     ...new Set([
       ...runtimePlans.flatMap((plan) =>
-        recipeByRuntimeName.get(plan.runtimeName)?.baseImage ? [] : plan.meta.systemDeps
+        recipeByRuntimeName.get(plan.runtimeName)?.baseImage
+          ? plan.meta.systemDeps.filter((dependency) =>
+              PREBUILT_FINAL_SYSTEM_DEPS_BY_RUNTIME[plan.runtimeName]?.has(dependency)
+            )
+          : plan.meta.systemDeps
       ),
       ...(needsGit ? ["git"] : []),
       ...(needsJsonEnvWriter ? ["python3"] : [])
@@ -228,7 +222,9 @@ export const renderDockerfile = async (
   }
 
   lines.push(
-    'RUN if ! id -u spawnfile >/dev/null 2>&1; then useradd --create-home --home-dir /home/spawnfile --shell /bin/bash spawnfile; fi',
+    hasDaimon
+      ? `RUN if ! getent group spawnfile >/dev/null 2>&1; then groupadd --gid ${DAIMON_RUNTIME_UID} spawnfile; fi && if ! id -u spawnfile >/dev/null 2>&1; then useradd --uid ${DAIMON_RUNTIME_UID} --gid spawnfile --create-home --home-dir /home/spawnfile --shell /bin/bash spawnfile; fi`
+      : 'RUN if ! id -u spawnfile >/dev/null 2>&1; then useradd --create-home --home-dir /home/spawnfile --shell /bin/bash spawnfile; fi',
     ""
   );
 
@@ -236,7 +232,7 @@ export const renderDockerfile = async (
     "COPY container/rootfs/ /",
     "COPY .env.example /opt/spawnfile/.env.example",
     'COPY entrypoint.sh /opt/spawnfile/entrypoint.sh',
-    "RUN chmod +x /opt/spawnfile/entrypoint.sh"
+    `RUN chmod +x /opt/spawnfile/entrypoint.sh${hasDaimon ? ` ${DAIMON_UID_ENTRYPOINT_PATH}` : ""}`
   );
 
   const postRootfsCommands = [
@@ -262,30 +258,43 @@ export const renderDockerfile = async (
     );
   }
 
-  lines.push(`RUN ${createStateOwnershipCommand(options.persistentMountPaths)}`);
+  lines.push(`RUN ${createStateOwnershipCommand(
+    runtimePlans,
+    options.persistentMountPaths,
+    options.moltnet
+  )}`);
 
   if (exposedPorts.length > 0) {
     lines.push(`EXPOSE ${exposedPorts.join(" ")}`);
   }
 
-  lines.push("USER spawnfile");
-  lines.push('ENTRYPOINT ["/opt/spawnfile/entrypoint.sh"]');
+  lines.push(hasDaimon ? "USER root" : "USER spawnfile");
+  lines.push(hasDaimon
+    ? `ENTRYPOINT ["${DAIMON_UID_ENTRYPOINT_PATH}"]`
+    : 'ENTRYPOINT ["/opt/spawnfile/entrypoint.sh"]');
   return `${lines.join("\n").trimEnd()}\n`;
 };
 
-export const createRootfsFiles = (runtimePlans: RuntimeTargetPlan[]): EmittedFile[] =>
-  runtimePlans.flatMap((plan) =>
+export const createRootfsFiles = (
+  runtimePlans: RuntimeTargetPlan[],
+  persistentMountPaths: string[] = [],
+  moltnet?: EntrypointOptions["moltnet"]
+): EmittedFile[] => {
+  const files = runtimePlans.flatMap((plan) =>
     plan.targetFiles.map((file) => {
+      const renderedContent = file.content
+        .replaceAll("<config-path>", plan.instancePaths.configPath)
+        .replaceAll(WORKSPACE_PLACEHOLDER, plan.instancePaths.workspacePath)
+        .replaceAll("<instance-root>", plan.instancePaths.instanceRoot ?? "")
+        .replaceAll(RUNTIME_ROOT_PLACEHOLDER, plan.runtimeRoot)
+        .replaceAll(
+          `"${GATEWAY_PORT_PLACEHOLDER}"`,
+          plan.port ? String(plan.port) : "0"
+        )
+        .replaceAll(GATEWAY_PORT_PLACEHOLDER, plan.port ? String(plan.port) : "");
       if (file.path === plan.meta.configFileName) {
         return {
-          content: file.content
-            .replaceAll(WORKSPACE_PLACEHOLDER, plan.instancePaths.workspacePath)
-            .replaceAll(RUNTIME_ROOT_PLACEHOLDER, plan.runtimeRoot)
-            .replaceAll(
-              `"${GATEWAY_PORT_PLACEHOLDER}"`,
-              plan.port ? String(plan.port) : "0"
-            )
-            .replaceAll(GATEWAY_PORT_PLACEHOLDER, plan.port ? String(plan.port) : ""),
+          content: renderedContent,
           path: `${CONTAINER_ROOTFS_ROOT}${plan.instancePaths.configPath}`
         };
       }
@@ -293,7 +302,7 @@ export const createRootfsFiles = (runtimePlans: RuntimeTargetPlan[]): EmittedFil
       if (file.path.startsWith("runtime/")) {
         const relativeRuntimePath = file.path.slice("runtime/".length);
         return {
-          content: file.content,
+          content: renderedContent,
           path: `${CONTAINER_ROOTFS_ROOT}${path.posix.join(
             plan.runtimeRoot,
             relativeRuntimePath
@@ -336,3 +345,11 @@ export const createRootfsFiles = (runtimePlans: RuntimeTargetPlan[]): EmittedFil
       );
     })
   );
+  return runtimePlans.some((plan) => plan.runtimeName === "daimon")
+    ? [{
+        content: renderDaimonUidEntrypoint(runtimePlans, persistentMountPaths, moltnet),
+        mode: 0o755,
+        path: `${CONTAINER_ROOTFS_ROOT}${DAIMON_UID_ENTRYPOINT_PATH}`
+      }, ...files]
+    : files;
+};

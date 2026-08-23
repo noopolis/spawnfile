@@ -7,6 +7,12 @@ type RecordReader = (
   links?: readonly number[],
 ) => Promise<string | null>;
 
+// A competing publisher removes its temporary hard link asynchronously.  A
+// short run of event-loop turns can elapse before that unlink is scheduled
+// when many lifecycle operations are active, so leave a bounded but practical
+// window before treating an extra link as hostile.
+export const LIFECYCLE_PUBLICATION_SETTLE_ATTEMPTS = 64;
+
 const refuse = (message: string): never => {
   throw new SpawnfileError(
     "runtime_error",
@@ -17,7 +23,7 @@ const refuse = (message: string): never => {
 export const settleLifecyclePublication = async (
   file: string,
 ): Promise<void> => {
-  for (let attempt = 0; attempt < 16; attempt += 1) {
+  for (let attempt = 0; attempt < LIFECYCLE_PUBLICATION_SETTLE_ATTEMPTS; attempt += 1) {
     const info = await lstat(file).catch(() => refuse("publication changed"));
     if (info.nlink === 1) return;
     await new Promise<void>((resolve) => setImmediate(resolve));

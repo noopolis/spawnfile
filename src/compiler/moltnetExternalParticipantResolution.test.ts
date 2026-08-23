@@ -79,7 +79,14 @@ describe("Moltnet external participant resolution", () => {
           { authoredMemberKey: "red", kind: "agent", memberId: "alpha.red", principalId: "agent:alpha.red" },
           { authoredMemberKey: "red", kind: "agent", memberId: "beta.red", principalId: "agent:beta.red" }
         ],
-        externalParticipants: []
+        externalParticipants: [
+          {
+            authoredParticipantKey: "world",
+            kind: "service",
+            memberId: "world",
+            principalId: "system:world"
+          }
+        ]
       },
       root: root.source,
       runtimes: {}

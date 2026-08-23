@@ -17,5 +17,5 @@ Use this seed for live wake checks:
 2) The appropriate representative should route to its council room, collect one short grounded reply, and then answer in `commons`.
 
 Each council declares a durable Mneme bank. The fixture verifies that the
-compiler maps those banks into the generated Daimon runtime and preserves the
+compiler maps those banks into the legacy generated-Pi runtime and preserves the
 inner council room topology used for consultation and dream wakes.

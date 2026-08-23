@@ -311,6 +311,40 @@ describe("buildUpReceipt", () => {
     expect(receipt.engines).toEqual([{ agent: "agent:eleanor", engine: "scripted" }]);
   });
 
+  it("preserves an explicit local dual-bridge Moltnet identity without relabeling it as public", async () => {
+    const fixtureDirectory = await createSingleAgentFixture();
+    const outputDirectory = await createTempDirectory("spawnfile-up-receipt-compiled-");
+    const upResult = createUpResult(outputDirectory, null);
+    upResult.report = {
+      ...upResult.report,
+      container: {
+        ...upResult.report.container!,
+        moltnet: {
+          ...upResult.report.container!.moltnet!,
+          release: {
+            architecture: "amd64", asset: "moltnet_linux_amd64.tar.gz",
+            asset_sha256: `sha256:${"d".repeat(64)}`,
+            capabilities: ["daimon-bridge", "pi-bridge"],
+            development: { mode: "local-development", non_production: true, unsigned: true, unpublished: true },
+            source_sha256: `sha256:${"e".repeat(64)}`,
+            version: "spawnfile.moltnet-release-identity.v1"
+          }
+        }
+      }
+    };
+
+    const receipt = await buildUpReceipt(fixtureDirectory, upResult);
+
+    expect(receipt.moltnet_release).toEqual({
+      architecture: "amd64", asset: "moltnet_linux_amd64.tar.gz",
+      asset_sha256: `sha256:${"d".repeat(64)}`,
+      capabilities: ["daimon-bridge", "pi-bridge"],
+      development: { mode: "local-development", non_production: true, unsigned: true, unpublished: true },
+      source_sha256: `sha256:${"e".repeat(64)}`,
+      version: "spawnfile.moltnet-release-identity.v1"
+    });
+  });
+
   it("reports unknown readiness and null deployment name with no deployment record (non-detached run)", async () => {
     const fixtureDirectory = await createSingleAgentFixture();
     const outputDirectory = await createTempDirectory("spawnfile-up-receipt-compiled-");

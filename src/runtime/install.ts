@@ -8,6 +8,8 @@ import {
 export type RuntimeInstallSelection =
   | {
       ecosystem: "go" | "node";
+      capabilityReceipt?: string;
+      digest?: string;
       image: string;
       installHint: string;
       kind: "container_image";
@@ -173,6 +175,8 @@ export const resolveRuntimeInstallSelection = async (
     case "container_image":
       return {
         ecosystem: installProfile.container_image.ecosystem,
+        capabilityReceipt: runtime.install.capabilityReceipt,
+        digest: runtime.install.digest,
         image: runtime.install.image,
         installHint: installProfile.container_image.installHint,
         kind: "container_image",

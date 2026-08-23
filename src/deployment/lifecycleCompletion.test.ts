@@ -25,6 +25,13 @@ import {
   type LifecycleInvocation,
   type LifecycleOwnerCapability,
 } from "./lifecycleCompletion.js";
+import {
+  findLifecycleUpReservation,
+  findLifecycleUpStart,
+  recordLifecycleUpCleanup,
+  recordLifecycleUpReservation,
+  recordLifecycleUpStart,
+} from "./lifecycleUpRecords.js";
 import { setLifecycleStoreTestHook } from "./lifecycleCompletionStore.js";
 import { matchesSettledLifecyclePublication } from "./lifecycleCompletionPublication.js";
 
@@ -476,10 +483,14 @@ describe("lifecycle completion store", () => {
     const copy = `${file}.copy`;
     await link(file, copy);
     expect((await lstat(file)).nlink).toBe(2);
+    // This deliberately exceeds the former short settle window. A real
+    // competing publisher can be delayed by unrelated lifecycle work, but its
+    // exact temporary link must still settle before a second claimant fails.
+    const delayedUnlinkYields = 20;
     let yields = 0;
     globalThis.setImmediate = ((callback: (...args: unknown[]) => void) => {
       yields += 1;
-      if (yields === 4) {
+      if (yields === delayedUnlinkYields) {
         void rm(copy).then(() => callback());
       } else {
         originalSetImmediate(callback);
@@ -489,7 +500,7 @@ describe("lifecycle completion store", () => {
     await expect(claimLifecycleInvocation(transient)).resolves.toMatchObject({
       status: "pending",
     });
-    expect(yields).toBeGreaterThanOrEqual(4);
+    expect(yields).toBeGreaterThanOrEqual(delayedUnlinkYields);
 
     const bytes = JSON.stringify(
       {
@@ -545,5 +556,43 @@ describe("lifecycle completion store", () => {
     await expect(claimLifecycleInvocation(permanent)).rejects.toThrow(
       "Lifecycle completion store refused: publication did not settle",
     );
+  });
+
+  it("binds a detached up start to its pre-effect reservation and permits an exact cleaned retry", async () => {
+    const up = invocation({
+      id: `lci_${"u".repeat(16)}`,
+      operation: "up",
+      request_policy: { detach: true },
+    });
+    const capability = await claimOwner(up);
+    const reservation = {
+      container_name: "detached-organization",
+      docker_command: "docker",
+      docker_context: null,
+      label_authority: {
+        permitted_extra_labels: "image-config-labels" as const,
+        required: { "dev.spawnfile.deployment": "default" },
+      },
+    };
+    const start = {
+      container_id: "c".repeat(64),
+      container_name: "detached-organization",
+      image_id: `sha256:${"d".repeat(64)}`,
+      label_authority: reservation.label_authority,
+    };
+    await recordLifecycleUpReservation(up, reservation, capability);
+    await expect(findLifecycleUpReservation(up)).resolves.toMatchObject(reservation);
+    await recordLifecycleUpStart(up, start, capability);
+    await expect(findLifecycleUpStart(up)).resolves.toMatchObject({ attempt: 0, start });
+    await expect(recordLifecycleUpStart(up, { ...start, container_name: "other" }, capability))
+      .rejects.toThrow("up start authority drift");
+    const active = await findLifecycleUpStart(up);
+    if (!active) throw new Error("expected active up start");
+    await recordLifecycleUpCleanup(up, active, capability);
+    await recordLifecycleUpStart(up, { ...start, container_id: "e".repeat(64) }, capability);
+    await expect(findLifecycleUpStart(up)).resolves.toMatchObject({
+      attempt: 1,
+      start: { ...start, attempt: 1, container_id: "e".repeat(64) },
+    });
   });
 });

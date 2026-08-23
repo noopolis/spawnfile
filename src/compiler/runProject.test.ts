@@ -398,6 +398,60 @@ describe("createDockerRunInvocation", () => {
     await removeDirectory(invocation.supportDirectory);
   });
 
+  it("renders one stable AGY realm volume plus an opaque read-only unlock mount", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-agy-run-out-");
+    const unlockDirectory = await createTempDirectory("spawnfile-agy-unlock-");
+    const unlockPath = path.join(unlockDirectory, "unlock");
+    const configPath = "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon/runtime.json";
+    const configOutputPath = path.join(outputDirectory, "container", "rootfs", configPath);
+    await ensureDirectory(path.dirname(configOutputPath));
+    await writeUtf8File(configOutputPath, JSON.stringify({
+      agents: [{
+        engine: { kind: "agy" }, id: "agent:agy",
+        runtimeHomePath: "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/agy"
+      }],
+      host: {},
+      version: "noopolis.daimon.organization-runtime.v1"
+    }));
+    await writeUtf8File(unlockPath, "unlock-canary");
+    await (await import("node:fs/promises")).chmod(unlockPath, 0o600);
+    const prior = process.env.SPAWNFILE_DAIMON_SOURCE_AGY_UNLOCK_SECRET;
+    process.env.SPAWNFILE_DAIMON_SOURCE_AGY_UNLOCK_SECRET = unlockPath;
+    try {
+      const report = createCompileReport({
+        persistent_mounts: [{
+          id: "daimon-agy-subscription-realm",
+          mount_path: "/var/lib/spawnfile/daimon/agy-subscription-realm",
+          reason: "Daimon host AGY subscription realm",
+          volume_name: "spawnfile-stable-agy-realm"
+        }],
+        runtime_instances: [{
+          config_path: configPath,
+          engine_by_node_id: { "agent:agy": "agy" },
+          home_path: null,
+          id: "daimon-organization",
+          runtime: "daimon"
+        }],
+        runtimes_installed: ["daimon"]
+      });
+      const invocation = await createDockerRunInvocation({
+        organizationReadinessEvidence: genericOrganizationReadinessEvidence,
+        outputDirectory,
+        report,
+        reportPath: path.join(outputDirectory, "spawnfile-report.json")
+      }, "spawnfile-agy");
+      expect(invocation.args).toContain("spawnfile-stable-agy-realm:/var/lib/spawnfile/daimon/agy-subscription-realm");
+      expect(invocation.args).toContain(`${unlockPath}:/var/lib/spawnfile/daimon/agy-unlock-secret:ro`);
+      expect(invocation.args.join("\n")).not.toContain("unlock-canary");
+      expect(await readUtf8File(invocation.envFilePath)).not.toContain("unlock-canary");
+      expect(JSON.stringify(report)).not.toContain(unlockPath);
+      await removeDirectory(invocation.supportDirectory);
+    } finally {
+      if (prior === undefined) delete process.env.SPAWNFILE_DAIMON_SOURCE_AGY_UNLOCK_SECRET;
+      else process.env.SPAWNFILE_DAIMON_SOURCE_AGY_UNLOCK_SECRET = prior;
+    }
+  });
+
   it("fails when required model auth is missing", async () => {
     await expect(
       createDockerRunInvocation(

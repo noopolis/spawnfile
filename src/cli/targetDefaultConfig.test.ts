@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { parsePreparedEvidenceHelperReceipt } from "../evidenceExportHelper/index.js";
 import {
   TARGET_DEFAULT_CONFIG_ERROR,
   loadTargetDefaultConfig,
@@ -13,6 +14,11 @@ import {
 
 const manifest = `sha256:${"a".repeat(64)}`;
 const image = `sha256:${"b".repeat(64)}`;
+const preparedHelper = parsePreparedEvidenceHelperReceipt({
+  digest: `sha256:${"c".repeat(64)}`,
+  handle: `opaque_${"d".repeat(64)}`,
+  version: "spawnfile.target-evidence-export-helper.prepared.v1",
+});
 const mapping = {
   artifact_manifest_digest: manifest,
   image_digest: image,
@@ -75,6 +81,7 @@ describe("private target default configuration", () => {
       attachmentAuthority: path.join(value.home, "target", "attachment-authority"),
       worldAuthority: path.join(value.home, "target", "world-authority"),
       evidenceExport: path.join(value.home, "target", "evidence-export"),
+      evidenceHelper: path.join(value.home, "target", "evidence-helper"),
       containerBundles: path.join(value.home, "target", "container-bundles")
     });
     for (const directory of Object.values(config.paths)) {
@@ -99,6 +106,28 @@ describe("private target default configuration", () => {
     expect(config.artifactMappings).toEqual([]);
     expect(config.helperArtifact).toBeUndefined();
     expect(JSON.stringify(config)).not.toContain("helperArtifact");
+  });
+
+  it("accepts the local helper only as a paired opaque prepared receipt", async () => {
+    const value = await setup();
+    const { artifactMappings: _mappings, helperArtifactManifestDigest: _legacy, ...helperFree } = value.inputs;
+    const config = await loadTargetDefaultConfig({
+      ...helperFree,
+      evidenceHelperBaseImage: "node:22-bookworm-slim",
+      preparedEvidenceHelper: preparedHelper,
+    });
+    expect(config.evidenceHelperBaseImage).toBe("node:22-bookworm-slim");
+    expect(config.preparedEvidenceHelper).toEqual(preparedHelper);
+    for (const partial of [
+      { ...helperFree, evidenceHelperBaseImage: "node:22-bookworm-slim" },
+      { ...helperFree, preparedEvidenceHelper: preparedHelper },
+      { ...helperFree, evidenceHelperBaseImage: "sha256:" + "e".repeat(64), preparedEvidenceHelper: preparedHelper },
+      { ...helperFree, evidenceHelperBaseImage: "node:22-bookworm-slim", preparedEvidenceHelper: {
+        ...preparedHelper, handle: "opaque_short",
+      } },
+    ]) {
+      await expect(loadTargetDefaultConfig(partial as never)).rejects.toThrow(TARGET_DEFAULT_CONFIG_ERROR);
+    }
   });
 
   it("keeps an explicit container-bundle authority across fresh per-run homes only", async () => {

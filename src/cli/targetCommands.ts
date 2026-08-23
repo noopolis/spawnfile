@@ -5,9 +5,9 @@ import {
   createTargetTopologyReceiptDigest
 } from "../target/handles.js";
 import {
-  createCanonicalTargetPublicArtifactSnapshotBytes,
-  type TargetPublicArtifactSnapshot,
-  type TargetPublicArtifactSnapshotRequest
+  createCanonicalTargetPublicArtifactSnapshotResultBytes,
+  type TargetPublicArtifactSnapshotRequest,
+  type TargetPublicArtifactSnapshotResult
 } from "../target/publicArtifactSnapshot.js";
 import {
   createCanonicalTargetTopologyActivationReceiptBytes,
@@ -66,7 +66,7 @@ export interface TargetCommandHandlerSession extends TargetWorldReadinessSession
   attestTopology?(request: TargetTopologyAttestationRequest): Promise<TargetTopologyAttestationResult>;
   snapshotPublicArtifact?(
     request: TargetPublicArtifactSnapshotRequest
-  ): Promise<TargetPublicArtifactSnapshot>;
+  ): Promise<TargetPublicArtifactSnapshotResult>;
 }
 
 export interface TargetCommandStreams {
@@ -271,7 +271,7 @@ const registerPublicArtifactSnapshot = (
         return;
       }
       try {
-        streams.stdout(createCanonicalTargetPublicArtifactSnapshotBytes(
+        streams.stdout(createCanonicalTargetPublicArtifactSnapshotResultBytes(
           await activeSession.snapshotPublicArtifact(request)
         ));
       } catch (error) {

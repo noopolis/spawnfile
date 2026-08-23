@@ -132,22 +132,18 @@ Runtimes MAY provide a reusable artifact image that already contains their pinne
 
 The Daimon, OpenClaw, and PicoClaw adapters use published runtime artifact images by default. Generated Dockerfiles copy each runtime from `/opt/spawnfile/runtime-installs/<runtime>` and skip runtime npm/archive installs during organization builds.
 
-Current default images:
+Current default images include a generic Daimon engine runtime selected by
+immutable digest and capability receipt:
 
 ```text
-noopolis/spawnfile-runtime-daimon:0.1.2
+noopolis/spawnfile-runtime-daimon@sha256:<pinned-digest>
 noopolis/spawnfile-runtime-openclaw:2026.6.11
 noopolis/spawnfile-runtime-picoclaw:0.3.1
 ```
 
-To test a local Daimon runtime artifact instead:
-
-```bash
-git clone git@github.com:noopolis/daimon.git
-cd daimon
-npm run image:runtime:local
-SPAWNFILE_DAIMON_RUNTIME_IMAGE=noopolis/spawnfile-runtime-daimon:0.1.2-local spawnfile up ./org --detach
-```
+Public Daimon hosts do not accept a local/tag-only image override. Recovery and
+development use the separately released source-free generic image with the
+same pinned digest and capability receipt; mutable checkout images fail closed.
 
 OpenClaw and PicoClaw have equivalent overrides:
 
@@ -274,8 +270,11 @@ Container startup must support Moltnet server and node artifacts emitted from `t
   its SHA-256 digest before extraction. `SPAWNFILE_MOLTNET_RELEASE_DIR` is an
   explicit offline/development override containing
   `moltnet_linux_<arch>.tar.gz` plus `moltnet_release_stamp_<arch>.json`. The
-  strict local stamp binds the asset digest and source revision and asserts the
-  `pi-bridge` capability, but is not itself a trust root. Both paths must match
+  strict local-development stamp binds the asset digest and source digest and
+  asserts the ordered `daimon-bridge`, `pi-bridge` capability set. It is usable
+  only with `SPAWNFILE_ALLOW_LOCAL_E2E=1`; production compiles accept only the
+  pinned public `pi-bridge` identity. Both paths verify the built archive rather
+  than trusting a source declaration.
   the same checked-in authority; a self-authored matching stamp/tarball pair
   and every unpinned `latest` coordinate are rejected.
 - `server.store.kind: sqlite` and `server.store.kind: json` create the configured or default store directory before server start.
@@ -321,9 +320,9 @@ A failed detached start MUST NOT write a record. Redeploying the same deployment
 by default. `spawnfile dev apply --agent <id>` reads that record to find the
 running Docker target and container, recompiles into `.spawn-dev` without
 removing records, and mutates the running development container in place. The
-v0.1 hot-apply path is Pi-only: it copies the refreshed Pi app config, the
+v0.1 hot-apply path is `runtime: pi`-only: it copies the refreshed generated Pi app config, the
 selected agent workspace, every matching Moltnet node config, and managed
-Moltnet server configs into the container, then calls the generated Daimon control
+Moltnet server configs into the container, then calls the generated Pi control
 endpoint to load or reload that agent. New-agent Moltnet nodes are started as
 that agent is applied. Existing agents and the container are not restarted.
 Running managed Moltnet servers keep their current in-memory room membership
@@ -525,8 +524,8 @@ spawnfile dev activity test/fixtures/e2e/daimon-org --agent new-agent --deployme
 ```
 
 Dev mode uses `.spawn-dev` by default and keeps the deployment record there.
-`dev apply` is intentionally source-backed and Pi-specific in v0.1. It does not
-rebuild the image or restart the container; it updates one generated Daimon agent in
+`dev apply` is intentionally source-backed and `runtime: pi`-specific in v0.1. It does not
+rebuild the image or restart the container; it updates one generated Pi agent in
 the running container and starts that agent's Moltnet bridges only when the
 agent is new.
 

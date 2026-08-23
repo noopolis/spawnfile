@@ -3,6 +3,10 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { SpawnfileError } from "../shared/index.js";
+import {
+  assertOpaqueDaimonCredentialsHaveNoUserNamespace,
+  pinOpaqueDaimonDockerEndpoint
+} from "./runProjectDockerDaimonGuards.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -18,12 +22,15 @@ export interface DockerRunInvocation {
   dockerHost?: string | null;
   envFilePath: string;
   imageTag: string;
-  onDetachedStarted?: (result: { containerId: string }) => Promise<void>;
+  onDetachedStarted?: (result: DockerRunResult) => Promise<void>;
+  /** Ephemeral guard; never serialized into reports, records, or labels. */
+  opaqueDaimonCredentials?: boolean;
   supportDirectory: string;
 }
 
 export interface DockerRunResult {
   containerId?: string;
+  containerName?: string;
   deploymentLabels?: Readonly<Record<string, string>>;
   imageId?: string;
 }
@@ -39,6 +46,10 @@ interface SshDockerContext {
 interface PreparedRunInvocation {
   cleanup(): Promise<void>;
   invocation: DockerRunInvocation;
+}
+
+interface PinnedOpaqueDaimonInvocation extends DockerRunInvocation {
+  dockerEndpointPinned?: boolean;
 }
 
 const parseDockerContextHost = (stdout: string): string | null => {
@@ -216,30 +227,32 @@ export const createDetachedContainerInspectArgs = (
     : invocation.dockerHost
       ? ["--host", invocation.dockerHost, "inspect"]
       : ["inspect"];
-  return [...base, "--format", "{{json .Id}}\n{{json .Image}}\n{{json .Config.Labels}}", containerId];
+  return [...base, "--format", "{{json .Id}}\n{{json .Name}}\n{{json .Image}}\n{{json .Config.Labels}}", containerId];
 };
 
 export const parseDetachedContainerInspect = (
   stdout: string,
   expectedContainerId: string,
-  expectedLabels?: Readonly<Record<string, string>>
+  expectedLabels?: Readonly<Record<string, string>>,
+  expectedContainerName?: string | null
 ): DockerRunResult => {
-  const [idRaw, imageRaw, labelsRaw, ...extra] = stdout.trim().split("\n");
-  if (!idRaw || !imageRaw || !labelsRaw || extra.length > 0) throw new Error("unexpected inspect response");
-  const actualId = JSON.parse(idRaw) as unknown; const imageId = JSON.parse(imageRaw) as unknown; const labels = JSON.parse(labelsRaw) as unknown;
+  const [idRaw, nameRaw, imageRaw, labelsRaw, ...extra] = stdout.trim().split("\n");
+  if (!idRaw || !nameRaw || !imageRaw || !labelsRaw || extra.length > 0) throw new Error("unexpected inspect response");
+  const actualId = JSON.parse(idRaw) as unknown; const actualName = JSON.parse(nameRaw) as unknown; const imageId = JSON.parse(imageRaw) as unknown; const labels = JSON.parse(labelsRaw) as unknown;
   if (typeof actualId !== "string" || actualId !== expectedContainerId || !/^[a-f0-9]{64}$/u.test(actualId)
+    || typeof actualName !== "string" || actualName !== `/${expectedContainerName ?? ""}`
     || typeof imageId !== "string" || !/^sha256:[a-f0-9]{64}$/u.test(imageId)) throw new Error("malformed detached container metadata");
-  if (!expectedLabels) return { containerId: actualId, imageId };
+  if (!expectedLabels) return { containerId: actualId, containerName: actualName.slice(1), imageId };
   if (!labels || typeof labels !== "object" || Array.isArray(labels)) throw new Error("missing detached deployment labels");
   const actual = Object.fromEntries(Object.keys(expectedLabels).sort().map((key) => {
     const value = (labels as Record<string, unknown>)[key];
     if (typeof value !== "string" || value !== expectedLabels[key]) throw new Error("detached deployment label drift");
     return [key, value];
   }));
-  return { containerId: actualId, imageId, deploymentLabels: actual };
+  return { containerId: actualId, containerName: actualName.slice(1), imageId, deploymentLabels: actual };
 };
 
-const inspectDetachedContainer = async (
+export const inspectDetachedContainer = async (
   invocation: DockerRunInvocation,
   containerId: string
 ): Promise<DockerRunResult> => {
@@ -248,7 +261,7 @@ const inspectDetachedContainer = async (
       cwd: invocation.cwd,
       timeout: 10_000
     });
-    return parseDetachedContainerInspect(stdout, containerId, invocation.deploymentLabels);
+    return parseDetachedContainerInspect(stdout, containerId, invocation.deploymentLabels, invocation.containerName);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new SpawnfileError(
@@ -298,10 +311,11 @@ const runPreparedDockerContainer = (
           settle(() => resolve(undefined));
           return;
         }
-        Promise.resolve(
-          prepared.invocation.onDetachedStarted?.({ containerId })
-        )
-          .then(() => inspectDetachedContainer(prepared.invocation, containerId))
+        Promise.resolve(inspectDetachedContainer(prepared.invocation, containerId))
+          .then(async (result) => {
+            await prepared.invocation.onDetachedStarted?.(result);
+            return result;
+          })
           .then(resolve)
           .catch(reject);
         return;
@@ -318,10 +332,18 @@ const runPreparedDockerContainer = (
     });
   });
 
-export const runDockerContainer: DockerRunRunner = (
-  invocation: DockerRunInvocation
+const runDockerContainerPrepared = (
+  invocation: PinnedOpaqueDaimonInvocation
 ): Promise<DockerRunResult | void> => {
   if (!invocation.dockerContext || collectBindMountSources(invocation.args).length === 0) {
+    if (invocation.opaqueDaimonCredentials && !invocation.dockerEndpointPinned) {
+      return assertOpaqueDaimonCredentialsHaveNoUserNamespace(invocation).then(() =>
+        runPreparedDockerContainer({
+          cleanup: async () => undefined,
+          invocation
+        })
+      );
+    }
     return runPreparedDockerContainer({
       cleanup: async () => undefined,
       invocation
@@ -330,3 +352,13 @@ export const runDockerContainer: DockerRunRunner = (
 
   return prepareRemoteBindMounts(invocation).then(runPreparedDockerContainer);
 };
+
+export const runDockerContainer: DockerRunRunner = (invocation) =>
+  invocation.opaqueDaimonCredentials
+    ? pinOpaqueDaimonDockerEndpoint(invocation)
+      .then(async (pinned) => {
+        await assertOpaqueDaimonCredentialsHaveNoUserNamespace(pinned);
+        return pinned;
+      })
+      .then((pinned) => runDockerContainerPrepared({ ...pinned, dockerEndpointPinned: true }))
+    : runDockerContainerPrepared(invocation);

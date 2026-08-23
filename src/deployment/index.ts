@@ -16,6 +16,7 @@ export * from "./downDeployment.js";
 export * from "./downReceiptTypes.js";
 export * from "./homeStore.js";
 export * from "./lifecycleCompletion.js";
+export * from "./lifecycleUpRecords.js";
 export * from "./names.js";
 export * from "./organizationHandoffTypes.js";
 export * from "./organizationHandoffAuthorityTypes.js";

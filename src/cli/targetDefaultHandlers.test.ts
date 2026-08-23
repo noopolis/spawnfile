@@ -138,6 +138,7 @@ const fixture = () => {
     }),
     handoffResolver: Object.freeze({ resolve: vi.fn() }),
     helperArtifactResolver: Object.freeze({ resolve: resolveHelper }),
+    helperExecutor: executor,
     journals: Object.freeze({ resolve: resolveJournal }),
     secretAuthorityStore: Object.freeze({ marker: "secret-store" }),
     secretResolver: Object.freeze({ resolve: vi.fn() }),

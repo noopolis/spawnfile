@@ -18,6 +18,7 @@ const detachedContainerId = "a".repeat(64);
 const detachedImageId = `sha256:${"b".repeat(64)}`;
 const detachedInspectStdout = [
   JSON.stringify(detachedContainerId),
+  JSON.stringify("/spawnfile-agent"),
   JSON.stringify(detachedImageId),
   JSON.stringify({})
 ].join("\n");
@@ -126,6 +127,7 @@ describe("runDockerContainer", () => {
 
     await expect(promise).resolves.toEqual({
       containerId: detachedContainerId,
+      containerName: "spawnfile-agent",
       imageId: detachedImageId
     });
     expect(spawn).toHaveBeenCalledWith(
@@ -143,12 +145,36 @@ describe("runDockerContainer", () => {
         "remote",
         "inspect",
         "--format",
-        "{{json .Id}}\n{{json .Image}}\n{{json .Config.Labels}}",
+        "{{json .Id}}\n{{json .Name}}\n{{json .Image}}\n{{json .Config.Labels}}",
         detachedContainerId
       ],
       { cwd: "/tmp/spawnfile-run", timeout: 10_000 },
       expect.any(Function)
     );
+  });
+
+  it("captures inspected detached identity before the start-boundary callback", async () => {
+    const child = createFakeDetachedChild();
+    const events: string[] = [];
+    const { runDockerContainer } = await loadRunProjectModule(
+      child,
+      (_file, _args, _options, callback) => {
+        events.push("inspect");
+        callback(null, { stderr: "", stdout: `${detachedInspectStdout}\n` });
+      }
+    );
+    const promise = runDockerContainer({
+      args: ["run", "-d", "--name", "spawnfile-agent", "spawnfile-agent"], command: "docker",
+      containerName: "spawnfile-agent", cwd: "/tmp/spawnfile-run", detach: true,
+      envFilePath: "/tmp/spawnfile-run.env", imageTag: "spawnfile-agent", supportDirectory: "/tmp/spawnfile-run",
+      onDetachedStarted: async (result) => {
+        events.push(`capture:${result.containerId}:${result.containerName}`);
+      }
+    });
+    child.stdout?.emit("data", `${detachedContainerId}\n`);
+    child.emit("exit", 0, null);
+    await expect(promise).resolves.toMatchObject({ containerId: detachedContainerId, containerName: "spawnfile-agent" });
+    expect(events).toEqual(["inspect", `capture:${detachedContainerId}:spawnfile-agent`]);
   });
 
   it("stages bind mounts for SSH docker contexts before running remotely", async () => {
@@ -209,6 +235,7 @@ describe("runDockerContainer", () => {
 
     await expect(promise).resolves.toEqual({
       containerId: detachedContainerId,
+      containerName: "spawnfile-agent",
       imageId: detachedImageId
     });
     expect(execFile).toHaveBeenCalledWith(

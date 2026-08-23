@@ -3,7 +3,7 @@ kind: agent
 name: mapper
 description: "Maps shared workspace state for the Daimon org."
 
-runtime: daimon
+runtime: pi
 
 execution:
   model:

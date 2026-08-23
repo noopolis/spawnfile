@@ -898,7 +898,7 @@ describe("compileProject", () => {
   );
 
   it(
-    "compiles a Spawnfile-owned Daimon org into one generated app",
+    "compiles the legacy generated-Pi org into one generated app",
     async () => {
       const previousCli = process.env.SPAWNFILE_MOLTNET_CLI;
       const previousReleaseDir = process.env.SPAWNFILE_MOLTNET_RELEASE_DIR;
@@ -945,15 +945,15 @@ describe("compileProject", () => {
           "daimon-org",
           "self"
         ]);
-        expect(container?.runtimes_installed).toEqual(["daimon"]);
+        expect(container?.runtimes_installed).toEqual(["pi"]);
         expect(container?.runtime_instances).toEqual([
           {
-            config_path: "/var/lib/spawnfile/instances/daimon/pi-app/pi/pi-app.json",
+            config_path: "/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json",
             engine_by_node_id: {
               "agent:mapper": "pi",
               "agent:reviewer": "pi"
             },
-            home_path: "/var/lib/spawnfile/instances/daimon/pi-app/home",
+            home_path: "/var/lib/spawnfile/instances/pi/pi-app/home",
             id: "pi-app",
             internal_port: 19690,
             model_auth_methods: {
@@ -962,16 +962,16 @@ describe("compileProject", () => {
             model_secrets_required: ["SPAWNFILE_CLI_AUTH_JSON"],
             node_ids: ["agent:mapper", "agent:reviewer"],
             published_port: null,
-            runtime: "daimon",
+            runtime: "pi",
             telemetry_mount_ids: {
               "agent:mapper": "agent-mapper-daimon-telemetry",
               "agent:reviewer": "agent-reviewer-daimon-telemetry"
             },
-            workspace_path: "/var/lib/spawnfile/instances/daimon/pi-app/workspace"
+            workspace_path: "/var/lib/spawnfile/instances/pi/pi-app/workspace"
           }
         ]);
         expect(container?.runtime_homes).toEqual([
-          "/var/lib/spawnfile/instances/daimon/pi-app/home"
+          "/var/lib/spawnfile/instances/pi/pi-app/home"
         ]);
         expect(container?.moltnet?.node_plans).toEqual([
           {
@@ -1026,22 +1026,20 @@ describe("compileProject", () => {
 
         const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
         expect(dockerfile).toContain("FROM node:24-bookworm-slim");
-        expect(dockerfile).toContain(
-          "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.2 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
-        );
+        expect(dockerfile).toContain("@earendil-works/pi-coding-agent@0.79.10");
         expect(dockerfile).toContain("COPY container/rootfs/ /");
 
         const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
         expect(entrypoint).toContain("/usr/local/bin/moltnet &");
         expect(entrypoint).toContain("/usr/local/bin/moltnet node");
         expect(entrypoint).toContain(
-          "'node' '/opt/spawnfile/runtime-installs/daimon/app.mjs' '/var/lib/spawnfile/instances/daimon/pi-app/pi/pi-app.json'"
+          "'node' '/opt/spawnfile/runtime-installs/pi/app.mjs' '/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json'"
         );
         expect(entrypoint).toContain(
-          "prepare_volume_resource 'shared-lab' '/var/lib/spawnfile/instances/daimon/pi-app/workspace/agents/mapper/shared-lab'"
+          "prepare_volume_resource 'shared-lab' '/var/lib/spawnfile/instances/pi/pi-app/workspace/agents/mapper/shared-lab'"
         );
         expect(entrypoint).toContain(
-          "prepare_volume_resource 'shared-lab' '/var/lib/spawnfile/instances/daimon/pi-app/workspace/agents/reviewer/shared-lab'"
+          "prepare_volume_resource 'shared-lab' '/var/lib/spawnfile/instances/pi/pi-app/workspace/agents/reviewer/shared-lab'"
         );
 
         const appConfig = JSON.parse(
@@ -1054,7 +1052,7 @@ describe("compileProject", () => {
               "lib",
               "spawnfile",
               "instances",
-              "daimon",
+              "pi",
               "pi-app",
               "pi",
               "pi-app.json"
@@ -1079,7 +1077,7 @@ describe("compileProject", () => {
             "lib",
             "spawnfile",
             "instances",
-            "daimon",
+            "pi",
             "pi-app",
             "workspace",
             "agents",

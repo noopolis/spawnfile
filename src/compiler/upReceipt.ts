@@ -45,6 +45,44 @@ export const resolveCompiledEngines = (
     .map(([agent, engine]) => ({ agent, engine }))
     .sort((left, right) => left.agent.localeCompare(right.agent));
 
+const createReceiptMoltnetIdentity = (
+  release: NonNullable<UpProjectResult["report"]["container"]>["moltnet"] extends infer Moltnet
+    ? Moltnet extends { release?: infer Identity } ? Identity : never
+    : never
+) => {
+  if (!release) return undefined;
+  if (release.capabilities.length === 1) {
+    if (release.capabilities[0] !== "pi-bridge" || !release.release_version || !release.source_revision) {
+      throw new SpawnfileError("runtime_error", "Published Moltnet receipt lacks its pinned source identity");
+    }
+    return {
+      architecture: release.architecture,
+      asset: release.asset,
+      asset_sha256: release.asset_sha256,
+      capabilities: ["pi-bridge"] as ["pi-bridge"],
+      release_version: release.release_version,
+      source_revision: release.source_revision,
+      version: release.version
+    };
+  }
+  if (
+    release.capabilities.join("\0") !== "daimon-bridge\0pi-bridge" ||
+    !release.development ||
+    !release.source_sha256
+  ) {
+    throw new SpawnfileError("runtime_error", "Local Moltnet receipt lacks its development provenance");
+  }
+  return {
+    architecture: release.architecture,
+    asset: release.asset,
+    asset_sha256: release.asset_sha256,
+    capabilities: ["daimon-bridge", "pi-bridge"] as ["daimon-bridge", "pi-bridge"],
+    development: release.development,
+    source_sha256: release.source_sha256,
+    version: release.version
+  };
+};
+
 /**
  * Builds `spawnfile.up-receipt.v1` from a project-path `upProject()` result. Reads back
  * the deployment record `upProject` already wrote (for `run_id`/deployment name/container
@@ -95,10 +133,7 @@ export const buildUpReceipt = async (
     compiled_schedule: compiledSchedule,
     engines: compiledEngines,
     ...(result.report.container?.moltnet?.release
-      ? { moltnet_release: {
-          ...result.report.container.moltnet.release,
-          capabilities: ["pi-bridge"] as ["pi-bridge"]
-        } }
+      ? { moltnet_release: createReceiptMoltnetIdentity(result.report.container.moltnet.release) }
       : {}),
     ...(record?.organization_handoff ? { organization_handoff: record.organization_handoff } : {}),
     ...(record?.organization_handoff_handle ? { organization_handoff_handle: record.organization_handoff_handle } : {}),

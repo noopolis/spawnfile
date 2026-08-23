@@ -68,7 +68,7 @@ describe("mixed runtime org fixture", () => {
     await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
   });
 
-  it("compiles OpenClaw, PicoClaw, and Daimon agents into one container plan", async () => {
+  it("compiles OpenClaw, PicoClaw, and legacy Pi agents into one container plan", async () => {
     const previousCli = process.env.SPAWNFILE_MOLTNET_CLI;
     const previousReleaseDir = process.env.SPAWNFILE_MOLTNET_RELEASE_DIR;
     process.env.SPAWNFILE_MOLTNET_CLI = await createFakeMoltnetCli();
@@ -82,7 +82,7 @@ describe("mixed runtime org fixture", () => {
       });
       const container = result.report.container;
 
-      expect(container?.runtimes_installed).toEqual(["daimon", "openclaw", "picoclaw"]);
+      expect(container?.runtimes_installed).toEqual(["openclaw", "pi", "picoclaw"]);
       expect(container?.runtime_instances.map((instance) => ({
         id: instance.id,
         methods: instance.model_auth_methods,
@@ -105,7 +105,7 @@ describe("mixed runtime org fixture", () => {
           id: "pi-app",
           methods: { local: "none" },
           nodes: ["agent:localist"],
-          runtime: "daimon"
+          runtime: "pi"
         }
       ]);
       expect(container?.moltnet?.node_plans.map((plan) => plan.network_id).sort()).toEqual([
@@ -117,13 +117,13 @@ describe("mixed runtime org fixture", () => {
       const piConfig = JSON.parse(
         await readUtf8File(path.join(
           outputDirectory,
-          "container/rootfs/var/lib/spawnfile/instances/daimon/pi-app/pi/pi-app.json"
+          "container/rootfs/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json"
         ))
       );
       const modelsConfig = JSON.parse(
         await readUtf8File(path.join(
           outputDirectory,
-          "container/rootfs/var/lib/spawnfile/instances/daimon/pi-app/home/.pi/agent/models.json"
+          "container/rootfs/var/lib/spawnfile/instances/pi/pi-app/home/.pi/agent/models.json"
         ))
       );
       const provider = piConfig.agents[0]?.model.provider as string;

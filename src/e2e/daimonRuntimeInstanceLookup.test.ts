@@ -27,12 +27,12 @@ const buildInstance = (runtime: string): ContainerRuntimeInstanceReport => ({
 });
 
 describe("findDaimonRuntimeInstance", () => {
-  it("finds the instance labeled with the current 'daimon' runtime", () => {
+  it("does not accept a public Daimon organization host", () => {
     const instances = [buildInstance("moltnet"), buildInstance("daimon")];
-    expect(findDaimonRuntimeInstance(instances)).toBe(instances[1]);
+    expect(findDaimonRuntimeInstance(instances)).toBeUndefined();
   });
 
-  it("finds the instance labeled with the legacy 'pi' runtime", () => {
+  it("finds the legacy generated-Pi instance", () => {
     const instances = [buildInstance("moltnet"), buildInstance("pi")];
     expect(findDaimonRuntimeInstance(instances)).toBe(instances[1]);
   });
@@ -47,17 +47,7 @@ describe("findDaimonRuntimeInstance", () => {
 });
 
 describe("resolveDaimonRuntimeRoot", () => {
-  it("prefers the current 'daimon' runtime-installs directory when it exists", async () => {
-    const rootfs = await mkdtemp(path.join(os.tmpdir(), "spawnfile-daimon-runtime-root-test-"));
-    cleanupDirs.push(rootfs);
-    await mkdir(path.join(rootfs, "opt", "spawnfile", "runtime-installs", "daimon"), { recursive: true });
-
-    expect(await resolveDaimonRuntimeRoot(rootfs)).toBe(
-      path.join(rootfs, "opt", "spawnfile", "runtime-installs", "daimon")
-    );
-  });
-
-  it("falls back to the legacy 'pi' runtime-installs directory when 'daimon' is absent", async () => {
+  it("resolves the legacy generated-Pi runtime install directory", async () => {
     const rootfs = await mkdtemp(path.join(os.tmpdir(), "spawnfile-daimon-runtime-root-test-"));
     cleanupDirs.push(rootfs);
     await mkdir(path.join(rootfs, "opt", "spawnfile", "runtime-installs", "pi"), { recursive: true });

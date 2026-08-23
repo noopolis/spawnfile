@@ -55,22 +55,21 @@ const defaultNestedRepresentativePolicy = (): ResolvedMoltnetRoomPolicy => ({
   wake: "mentions"
 });
 
+// Ordinary Moltnet uses direct member slots. B31's externally authorized
+// organization uses its canonical nested principal identifiers instead.
 const resolveConcreteMemberId = (
   plan: CompilePlan,
   agentSource: string,
   authoredMemberId: string
 ): string => {
-  if (!plan.organizationIdentity) return authoredMemberId;
+  if ((plan.organizationIdentity?.externalParticipants.length ?? 0) === 0) {
+    return authoredMemberId;
+  }
   const canonicalMemberId = resolveCanonicalAgentMemberId(plan, agentSource);
-  if (
-    !canonicalMemberId ||
-    plan.organizationIdentity.agentMembers.filter((member) =>
-      member.memberId === canonicalMemberId
-    ).length !== 1
-  ) {
+  if (!canonicalMemberId) {
     throw new SpawnfileError(
       "validation_error",
-      `Unable to resolve exactly one canonical Moltnet member id for ${agentSource}`
+      `Unable to resolve canonical Moltnet member id for ${agentSource}`
     );
   }
   return canonicalMemberId;

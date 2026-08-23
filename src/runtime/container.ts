@@ -12,11 +12,12 @@ import { resolveRuntimeInstallSelection } from "./install.js";
 export const RUNTIME_INSTALL_ROOT = "/opt/spawnfile/runtime-installs";
 const PI_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_PI_RUNTIME_BASE_IMAGE";
 const DAIMON_RUNTIME_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_IMAGE";
-const DAIMON_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE";
+const DAIMON_RUNTIME_CAPABILITY_RECEIPT_ENV = "SPAWNFILE_DAIMON_RUNTIME_CAPABILITY_RECEIPT";
+const DAIMON_CAPABILITY_RECEIPT_FILE = "capability-receipt.json";
 const OPENCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_OPENCLAW_RUNTIME_IMAGE";
 const PICOCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_PICOCLAW_RUNTIME_IMAGE";
 const DAIMON_PACKAGE_NAME = "@noopolis/daimon";
-const DAIMON_PACKAGE_VERSION = "0.1.2";
+const PI_DAIMON_PACKAGE_VERSION = "0.1.2";
 const MNEME_PACKAGE_NAME = "@noopolis/mneme";
 const MNEME_PACKAGE_VERSION = "0.1.1";
 const PI_AI_PACKAGE_NAME = "@earendil-works/pi-ai";
@@ -96,6 +97,43 @@ const resolveRuntimeImageRef = (
   (selection.kind === "container_image"
     ? `${selection.image}:${selection.tag}`
     : undefined);
+
+/**
+ * Daimon is distributed only as a generic, source-free runtime image. A
+ * development override is deliberately narrow: it can repeat the exact
+ * immutable image and receipt selected by the registry, never substitute a
+ * checkout, mutable tag, or a host-installed CLI.
+ */
+const resolveDaimonRuntimeImageRef = (
+  selection: Awaited<ReturnType<typeof resolveRuntimeInstallSelection>>
+): { capabilityReceipt: string; image: string } => {
+  if (
+    selection.kind !== "container_image" ||
+    !selection.digest ||
+    !selection.capabilityReceipt
+  ) {
+    throw new SpawnfileError(
+      "runtime_error",
+      "Daimon organization runtime v1 requires a pinned generic Daimon runtime image"
+    );
+  }
+
+  const pinnedImage = `${selection.image}@${selection.digest}`;
+  const override = process.env[DAIMON_RUNTIME_IMAGE_ENV]?.trim();
+  if (!override) {
+    return { capabilityReceipt: selection.capabilityReceipt, image: pinnedImage };
+  }
+
+  const receipt = process.env[DAIMON_RUNTIME_CAPABILITY_RECEIPT_ENV]?.trim();
+  if (override !== pinnedImage || receipt !== selection.capabilityReceipt) {
+    throw new SpawnfileError(
+      "runtime_error",
+      "Daimon runtime image overrides must exactly match the pinned image digest and capability receipt; source and tag-only overrides are disabled"
+    );
+  }
+
+  return { capabilityReceipt: selection.capabilityReceipt, image: override };
+};
 
 export interface RuntimeInstallRecipeOptions {
   /**
@@ -180,48 +218,16 @@ export const createRuntimeInstallRecipe = async (
       };
     }
     case "daimon": {
-      const daimonRuntimeImage =
-        process.env[DAIMON_RUNTIME_IMAGE_ENV]?.trim() ||
-        process.env[DAIMON_RUNTIME_BASE_IMAGE_ENV]?.trim() ||
-        (selection.kind === "container_image"
-          ? `${selection.image}:${selection.tag}`
-          : undefined);
-
-      if (daimonRuntimeImage) {
-        return {
-          commands: [],
-          copyCommands: [createRuntimeImageCopyCommand(daimonRuntimeImage, installRoot)],
-          env: containerEnv,
-          runtimeName,
-          runtimeRoot: installRoot
-        };
-      }
-
-      if (selection.kind !== "npm") {
-        throw new SpawnfileError(
-          "runtime_error",
-          `Runtime ${runtimeName} has no compiled artifact recipe for ${selection.kind}`
-        );
-      }
-
-      const npmPackages = [
-        resolveInstallPackageSpec(selection.packageName, selection.version, packageOverrides),
-        resolveInstallPackageSpec(MNEME_PACKAGE_NAME, MNEME_PACKAGE_VERSION, packageOverrides),
-        `${PI_CODING_AGENT_PACKAGE_NAME}@${PI_PACKAGE_VERSION}`,
-        `${PI_AI_PACKAGE_NAME}@${PI_PACKAGE_VERSION}`
-      ];
-
+      const daimonRuntime = resolveDaimonRuntimeImageRef(selection);
       return {
         commands: [
-          `mkdir -p ${installRoot}`,
-          `cd ${installRoot} && npm install --omit=dev --no-fund --no-audit ${npmPackages.join(" ")}`
+          `test -f ${installRoot}/${DAIMON_CAPABILITY_RECEIPT_FILE} && actual="$(sha256sum ${installRoot}/${DAIMON_CAPABILITY_RECEIPT_FILE} | awk '{print "sha256:" $1}')" && test "$actual" = ${JSON.stringify(daimonRuntime.capabilityReceipt)}`,
+          `ln -sf ${installRoot}/bin/daimon-runtime /usr/local/bin/daimon-runtime`,
+          `ln -sf ${installRoot}/bin/codex /usr/local/bin/codex`,
+          `ln -sf ${installRoot}/bin/grok /usr/local/bin/grok`,
+          `ln -sf ${installRoot}/bin/agy /usr/local/bin/agy`
         ],
-        copyCommands: needsVendorCopyCommand(
-          [selection.packageName, MNEME_PACKAGE_NAME],
-          packageOverrides
-        )
-          ? [createVendorCopyCommand()]
-          : [],
+        copyCommands: [createRuntimeImageCopyCommand(daimonRuntime.image, installRoot)],
         env: containerEnv,
         runtimeName,
         runtimeRoot: installRoot
@@ -237,7 +243,7 @@ export const createRuntimeInstallRecipe = async (
 
       const prebuiltBaseImage = process.env[PI_RUNTIME_BASE_IMAGE_ENV]?.trim() || undefined;
       const npmPackages = [
-        resolveInstallPackageSpec(DAIMON_PACKAGE_NAME, DAIMON_PACKAGE_VERSION, packageOverrides),
+        resolveInstallPackageSpec(DAIMON_PACKAGE_NAME, PI_DAIMON_PACKAGE_VERSION, packageOverrides),
         resolveInstallPackageSpec(MNEME_PACKAGE_NAME, MNEME_PACKAGE_VERSION, packageOverrides),
         `${selection.packageName}@${selection.version}`,
         `${PI_AI_PACKAGE_NAME}@${selection.version}`

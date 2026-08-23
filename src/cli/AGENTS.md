@@ -8,11 +8,16 @@ This folder owns user-facing command parsing and process exit behavior.
 src/cli/
 ├── index.ts        # Executable Node entrypoint
 ├── runCli.ts       # Top-level Commander setup and shared CLI types
+├── capabilitiesCommand.ts # Read-only public capability command registration
+├── capabilitiesReceipt.ts # Strict Spawnfile capability receipt
+├── composedLifecycleContractSet.ts # Closed machine command/contract inventory
+├── evidenceExportHelperCommand.ts # Local helper construction command
 ├── compileBuildCommands.ts # `compile` and `build` command registration
 ├── lifecycleCommands.ts # Thin lifecycle/compile/build/run/publish/up/down registration composition
 ├── lifecyclePlanningCommands.ts # Durable lifecycle plan and lookup command registration
 ├── runPublishCommands.ts # `run` and `publish` command registration
 ├── upCommand.ts # Project/image `up` registration and machine-lifecycle receipt flow
+├── upLifecycleRecovery.ts # Exact detached-container recovery for machine project `up`
 ├── statusCommand.ts # Status command orchestration and registration
 ├── statusCommandOptions.ts # Status option parsing, handler contracts, and output helpers
 ├── statusCommandLive.ts # Home-store and live-deployment status collection
@@ -21,6 +26,8 @@ src/cli/
 ├── surfaceCommands.ts # `spawnfile surface ...` command registration
 ├── artifactsCommands.ts # `spawnfile artifacts export` command registration
 ├── targetCommands.ts # `spawnfile target ...` command registration
+├── targetEvidenceHelperResolution.ts # Target-local evidence helper request derivation
+├── targetConfigPreparedPlan.ts # Strict private prepared-plan file transport
 ├── targetComposedPreparationCommand.ts # One aggregate composed-run preparation command
 ├── targetWorldReadinessCommand.ts # public world-only readiness query registration
 ├── targetWorldClockCommand.ts # public post-activation world-clock query registration

@@ -208,7 +208,7 @@ const containerProjection = (
   Domainname: "", ExposedPortCount: 0, ExtraHostCount: 0, GroupAddCount: 0,
   Hostname: spec.containerName, Id: container.id, Image: spec.imageReference,
   IpcMode: "none", Labels: spec.receiptLabels, LinkCount: 0, LogType: "none",
-  Tmpfs: { "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777" },
+  Tmpfs: { "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777", "/tmp/spawnfile-public": "rw,noexec,nosuid,nodev,size=1m,mode=1777" },
   Mounts: mountsFor(spec), Name: `/${spec.containerName}`,
   NetworkAttachmentCount: 1, NetworkAttachmentId: "b".repeat(64), NetworkAttachmentName: valueAfter(spec.createArgs, "--network"), NetworkAliases: spec.networkAlias ? [spec.networkAlias] : null,
   NetworkMode: valueAfter(spec.createArgs, "--network"), PidMode: "", PortBindingCount: 0,

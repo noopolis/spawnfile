@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { parseOpaqueTargetHandle } from "./contracts.js";
 import { createDockerArtifactSpec } from "./dockerArtifactsProvider.js";
-import type { DockerTargetExecutors } from "./dockerCommandExecutor.js";
+import {
+  DockerPublicArtifactNotPresentError,
+  PUBLIC_ARTIFACT_READER_PROGRAM,
+  type DockerTargetExecutors
+} from "./dockerCommandExecutor.js";
 import { createDockerResourceSpec } from "./dockerResourcesProvider.js";
 import { createExistingDockerSecretSpec } from "./dockerSecretsProvider.js";
 import { createWorldServiceAuthorization } from "./dockerWorldServiceAuthority.js";
@@ -22,6 +26,8 @@ import {
   type WorldServiceBinding
 } from "./dockerWorldServiceStore.js";
 import {
+  createTargetPublicArtifactSnapshotRequestDigest,
+  parseTargetPublicArtifactSnapshot,
   parseTargetPublicArtifactSnapshotRequest
 } from "./publicArtifactSnapshot.js";
 
@@ -119,7 +125,10 @@ const inspection = (spec: DockerWorldServiceSpec): Record<string, unknown> => ({
   PidMode: "", PortBindingCount: 0, Privileged: false, PublishAllPorts: false,
   ReadonlyRootfs: true, RestartMaximumRetryCount: 0, RestartPolicyName: "no",
   SecurityOpt: ["no-new-privileges=true"], Status: "running",
-  Tmpfs: { "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777" },
+  Tmpfs: {
+    "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777",
+    "/tmp/spawnfile-public": "rw,noexec,nosuid,nodev,size=1m,mode=1777"
+  },
   UTSMode: "", UsernsMode: "", VolumesFromCount: 0
 });
 
@@ -163,32 +172,107 @@ describe("Docker public artifact snapshot adapter", () => {
       async (_file, args) => {
         contentCalls.push([...args]);
         return { bytes: Uint8Array.from(Buffer.from(
-          args[5] === "/usr/bin/readlink"
-            ? "/tmp/spawnfile-public/viewer-trace.json\n"
-            : "{\"tick\":12}"
+          args[10] === "/tmp/spawnfile-public/viewer-trace.json"
+            ? "{\"tick\":12}"
+            : ""
         )) };
       };
-    const snapshot = await createDockerPublicArtifactSnapshotReader({
-      authorityStore: authority(binding),
-      context: "gpu-host",
-      contentExecutor,
-      executor,
-      timeoutMs: 30_000
-    }).snapshot(requestFor(binding));
+    const snapshot = parseTargetPublicArtifactSnapshot(
+      await createDockerPublicArtifactSnapshotReader({
+        authorityStore: authority(binding),
+        context: "gpu-host",
+        contentExecutor,
+        executor,
+        timeoutMs: 30_000
+      }).snapshot(requestFor(binding))
+    );
     expect(Buffer.from(snapshot.content_base64, "base64").toString("utf8"))
       .toBe("{\"tick\":12}");
     expect(calls.filter((args) => args[3] === "inspect")).toHaveLength(2);
     expect(contentCalls).toEqual([
       [
         "--context", "gpu-host", "container", "exec",
-        containerId, "/usr/bin/readlink", "-e",
-        "/tmp/spawnfile-public/viewer-trace.json"
-      ],
-      [
-        "--context", "gpu-host", "container", "exec",
-        containerId, "/bin/cat", "/tmp/spawnfile-public/viewer-trace.json"
+        containerId, "/usr/local/bin/node", "--input-type=module", "-e", PUBLIC_ARTIFACT_READER_PROGRAM,
+        "spawnfile-public-artifact-read", "/tmp/spawnfile-public/viewer-trace.json"
       ]
     ]);
+  });
+
+  it("returns a correlated not-present outcome only for the typed path probe", async () => {
+    const binding = fixtureBinding();
+    const request = requestFor(binding);
+    const spec = worldServiceSpecForBinding(binding);
+    let inspections = 0;
+    const executor: DockerWorldServiceExecutor = async (_file, args) => {
+      if (args[3] === "inspect") {
+        inspections += 1;
+        return { stderr: "", stdout: JSON.stringify([inspection(spec)]) };
+      }
+      throw new Error("unexpected provider command");
+    };
+    const contentExecutor: DockerTargetExecutors["publicArtifact"] = async () => {
+      throw new DockerPublicArtifactNotPresentError();
+    };
+    await expect(createDockerPublicArtifactSnapshotReader({
+      authorityStore: authority(binding),
+      context: "gpu-host",
+      contentExecutor,
+      executor,
+      timeoutMs: 30_000
+    }).snapshot(request)).resolves.toEqual({
+      artifact_id: "viewer_trace",
+      request_digest: createTargetPublicArtifactSnapshotRequestDigest(request),
+      run_id: "run-public",
+      status: "not_present",
+      version: "spawnfile.target-public-artifact-snapshot.not-present.v1"
+    });
+    expect(inspections).toBe(2);
+  });
+
+  it("keeps a world that stops across an absent probe as a permanent failure", async () => {
+    const binding = fixtureBinding();
+    const spec = worldServiceSpecForBinding(binding);
+    let inspections = 0;
+    const executor: DockerWorldServiceExecutor = async (_file, args) => {
+      if (args[3] !== "inspect") throw new Error("unexpected provider command");
+      inspections += 1;
+      return {
+        stderr: "",
+        stdout: JSON.stringify([{
+          ...inspection(spec),
+          Status: inspections === 1 ? "running" : "exited"
+        }])
+      };
+    };
+    await expect(createDockerPublicArtifactSnapshotReader({
+      authorityStore: authority(binding),
+      context: "gpu-host",
+      contentExecutor: async () => { throw new DockerPublicArtifactNotPresentError(); },
+      executor,
+      timeoutMs: 30_000
+    }).snapshot(requestFor(binding))).rejects.toThrow(
+      "Target public artifact snapshot failed"
+    );
+  });
+
+  it("keeps untyped read failures permanent", async () => {
+    const binding = fixtureBinding();
+    const spec = worldServiceSpecForBinding(binding);
+    const executor: DockerWorldServiceExecutor = async (_file, args) => {
+      if (args[3] === "inspect") {
+        return { stderr: "", stdout: JSON.stringify([inspection(spec)]) };
+      }
+      throw new Error("unexpected provider command");
+    };
+    await expect(createDockerPublicArtifactSnapshotReader({
+      authorityStore: authority(binding),
+      context: "gpu-host",
+      contentExecutor: async () => { throw new Error("provider failed"); },
+      executor,
+      timeoutMs: 30_000
+    }).snapshot(requestFor(binding))).rejects.toThrow(
+      "Target public artifact snapshot failed"
+    );
   });
 
   it("fails closed on correlation drift and oversized copied content", async () => {
@@ -219,9 +303,9 @@ describe("Docker public artifact snapshot adapter", () => {
     const oversized: DockerTargetExecutors["publicArtifact"] =
       async (_file, args) => ({
         bytes: Uint8Array.from(Buffer.from(
-          args[5] === "/usr/bin/readlink"
-            ? `${request.artifact.path}\n`
-            : "x".repeat(request.artifact.max_bytes + 1)
+          args[10] === request.artifact.path
+            ? "x".repeat(request.artifact.max_bytes + 1)
+            : ""
         ))
       });
     await expect(createDockerPublicArtifactSnapshotReader({
@@ -233,7 +317,7 @@ describe("Docker public artifact snapshot adapter", () => {
     }).snapshot(request)).rejects.toThrow("Target public artifact snapshot failed");
   });
 
-  it("rejects a declared public path that resolves through any symlink", async () => {
+  it("keeps a nofollow link or replacement race permanent", async () => {
     const binding = fixtureBinding();
     const request = requestFor(binding);
     const spec = worldServiceSpecForBinding(binding);
@@ -247,11 +331,7 @@ describe("Docker public artifact snapshot adapter", () => {
     const contentExecutor: DockerTargetExecutors["publicArtifact"] =
       async (_file, args) => {
         calls.push([...args]);
-        return {
-          bytes: Uint8Array.from(Buffer.from(
-            "/run/spawnfile-secrets/world-token\n"
-          ))
-        };
+        throw new Error("atomic open rejected symlink");
       };
     await expect(createDockerPublicArtifactSnapshotReader({
       authorityStore: authority(binding),
@@ -261,6 +341,6 @@ describe("Docker public artifact snapshot adapter", () => {
       timeoutMs: 30_000
     }).snapshot(request)).rejects.toThrow("Target public artifact snapshot failed");
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.[5]).toBe("/usr/bin/readlink");
+    expect(calls[0]?.[10]).toBe(request.artifact.path);
   });
 });

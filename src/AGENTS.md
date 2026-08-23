@@ -9,6 +9,7 @@ src/
 ├── auth/         # Local auth profile storage and auth import flows
 ├── cli/          # User-facing command parsing and terminal entrypoints
 ├── compiler/     # Graph resolution, compile planning, and artifact emission
+├── evidenceExportHelper/ # Package-owned local evidence helper recipe and authority
 ├── filesystem/   # File IO and path utilities
 ├── manifest/     # Spawnfile schema parsing and validation
 ├── report/       # Diagnostics and compile report generation

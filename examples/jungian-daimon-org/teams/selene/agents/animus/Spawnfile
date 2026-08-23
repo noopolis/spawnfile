@@ -4,7 +4,7 @@ name: selene-animus
 description: "Selene inner archetype (Antigravity CLI engine)"
 
 runtime:
-  name: daimon
+  name: pi
   options:
     engine: agy
 

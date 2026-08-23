@@ -2,7 +2,7 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { EVIDENCE_EXPORT_MOUNT, EVIDENCE_EXPORT_HELPER_CMD, EVIDENCE_EXPORT_HELPER_CONTRACT, EVIDENCE_EXPORT_HELPER_CONTRACT_LABEL, EVIDENCE_EXPORT_HELPER_ENTRYPOINT, EVIDENCE_EXPORT_HELPER_USER, createEvidenceExportHelper, createEvidenceExportHelperSpec, parseEvidenceVolumeAuthority } from "./evidenceExportProvider.js";
+import { EVIDENCE_EXPORT_MOUNT, EVIDENCE_EXPORT_HELPER_CMD, EVIDENCE_EXPORT_HELPER_CONTRACT, EVIDENCE_EXPORT_HELPER_CONTRACT_LABEL, EVIDENCE_EXPORT_HELPER_ENTRYPOINT, EVIDENCE_EXPORT_HELPER_ENV, EVIDENCE_EXPORT_HELPER_USER, createEvidenceExportHelper, createEvidenceExportHelperSpec, parseEvidenceVolumeAuthority } from "./evidenceExportProvider.js";
 import { createDockerArtifactSpec, initializeDockerArtifactIdentityStore } from "./dockerArtifactsProvider.js";
 import { initializeEvidenceExportAuthorityStore, type EvidenceExportAdmission, type EvidenceExportAuthorityStoreOptions } from "./evidenceExportStore.js";
 import { createDockerResourceSpec } from "./dockerResourcesProvider.js";
@@ -140,7 +140,7 @@ export const runLifecycleExport = async (input: LifecycleExportInput = {}): Prom
       Entrypoint: EVIDENCE_EXPORT_HELPER_ENTRYPOINT,
       Cmd: EVIDENCE_EXPORT_HELPER_CMD,
       Labels: { [EVIDENCE_EXPORT_HELPER_CONTRACT_LABEL]: "v1" },
-      Env: null,
+        Env: ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
       ExposedPorts: null,
       Healthcheck: null,
       User: EVIDENCE_EXPORT_HELPER_USER,
@@ -305,7 +305,7 @@ export const helperProjection = (args: string[], volumeName: string, imageLabels
     Config: {
       Entrypoint: EVIDENCE_EXPORT_HELPER_ENTRYPOINT,
       Cmd: EVIDENCE_EXPORT_HELPER_CMD,
-      Env: null,
+      Env: EVIDENCE_EXPORT_HELPER_ENV,
       ExposedPorts: null,
       Healthcheck: null,
       Image: image,

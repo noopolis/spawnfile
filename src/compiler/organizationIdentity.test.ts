@@ -369,11 +369,14 @@ describe("organization identity", () => {
     expect(() => resolveMoltnetExternalParticipantIntents(empty)).toThrow(/no eligible/u);
   });
 
-  it("leaves the no-external legacy graph and auth path inactive", () => {
+  it("derives the no-external agent graph while leaving external auth inactive", () => {
     const current = plan();
     rootOf(current).externalParticipants = undefined;
     current.nodes.push({ id: "legacy-extra", kind: "agent", runtimeName: "pi", slug: "legacy-extra", value: { kind: "agent", name: "legacy-extra", source: "/legacy/extra" } as never });
-    expect(resolveOrganizationIdentity(current)).toBeUndefined();
+    current.organizationIdentity = resolveOrganizationIdentity(current);
+    expect(current.organizationIdentity).toMatchObject({
+      agentMembers: [{ memberId: "red", principalId: "agent:red" }], externalParticipants: [],
+    });
     expect(resolveMoltnetExternalParticipantIntents(current)).toEqual([]);
     expect(() => validateB31MoltnetAuth(current)).not.toThrow();
   });

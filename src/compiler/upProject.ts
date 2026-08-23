@@ -1,25 +1,18 @@
 import path from "node:path";
-import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
 
 import {
   createOrganizationReadinessPending,
-  createDockerOrganizationHandoffSession,
   createDockerDeploymentRecord,
-  initializeOrganizationHandoffAuthorityStore,
-  parseCanonicalSha256Digest,
   probeDockerOrganizationReadiness,
   readDeploymentRecord,
   resolveDockerDeploymentTarget,
   resolveDeploymentRecordPath,
   type DockerTargetExecFile,
-  type OrganizationHandoffCapabilityPending,
-  type OrganizationHandoffInput,
   writeDeploymentRecord,
-  writeDockerDeploymentRecordForRun
+  writeDockerDeploymentRecordForRun,
 } from "../deployment/index.js";
-import { createCanonicalSelectedTargetReceiptBytes, parseOpaqueTargetHandle, parseRunId, parseSelectedTargetReceipt, selectTarget, type OpaqueTargetHandle, type SelectedTargetReceipt } from "../target/index.js";
-
+import type { UpLifecycleRecovery } from "../deployment/upLifecycleRecoveryState.js";
 import {
   buildProject,
   type BuildProjectResult,
@@ -39,7 +32,13 @@ import { DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
 import { ensureNoopolisRunId, resolveNoopolisRunId } from "../runtime/index.js";
 import { fileExists } from "../filesystem/index.js";
 import { resolveHostCliCredential } from "./runProjectAuth.js";
-
+import {
+  compileOrganizationHandoff,
+  executeOrganizationHandoff,
+  organizationHandoffInputError,
+  resolveRequestedOrganizationHandoff,
+  verifyRequestedOrganizationHandoffTarget,
+} from "./upProjectHandoff.js";
 export interface UpProjectOptions extends CompileProjectOptions {
   authProfile?: string;
   buildRunner?: DockerBuildRunner;
@@ -51,7 +50,15 @@ export interface UpProjectOptions extends CompileProjectOptions {
   dockerHost?: string;
   envFilePath?: string;
   imageTag?: string;
+  lifecycleRecovery?: UpLifecycleRecovery;
   runRunner?: DockerRunRunner;
+  onDetachedReservation?: (authority: {
+    containerName: string;
+    deploymentLabels: Readonly<Record<string, string>>;
+    dockerCommand: string;
+    dockerContext: string | null;
+  }) => Promise<void>;
+  onDetachedStarted?: (result: DockerRunResult & { containerId: string; containerName: string; imageId: string; deploymentLabels: Readonly<Record<string, string>> }) => Promise<void>;
   networkAttachmentHandle?: string;
   organizationHandoffRunId?: string;
   descriptorDigest?: string;
@@ -66,29 +73,6 @@ export interface UpProjectResult extends BuildProjectResult {
   deploymentRecordPath?: string | null;
   supportDirectory: string | null;
 }
-
-const handoffInputError = (): SpawnfileError =>
-  new SpawnfileError(
-    "validation_error",
-    "Organization handoff requires authorized run id, selected target receipt, descriptor digest, selected target receipt digest, network attachment handle, and world bindings"
-  );
-
-const handoffRecoveryIncompleteError = (): SpawnfileError =>
-  new SpawnfileError(
-    "runtime_error",
-    "Organization handoff recovery is incomplete; redeploy with explicit authorization"
-  );
-
-interface RequestedHandoff extends Omit<OrganizationHandoffInput, "bindingDigest"> {
-  descriptorDigest: string;
-  runId: string;
-  selectedTarget: SelectedTargetReceipt;
-}
-interface CompiledHandoff {
-  authority: RequestedHandoff & { bindingDigest: string };
-  organizationHandoff: OrganizationHandoffInput;
-}
-
 const stableRecord = (record: Awaited<ReturnType<typeof readDeploymentRecord>>) => {
   const { created_at: _createdAt, export_index: _exportIndex, organization_ready: _organizationReady, ...stable } = record;
   return stable;
@@ -100,77 +84,8 @@ const canonicalJson = (value: unknown): string => {
     return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
   }
   const serialized = JSON.stringify(value);
-  if (serialized === undefined) throw handoffInputError();
+  if (serialized === undefined) throw organizationHandoffInputError();
   return serialized;
-};
-
-const resolveRequestedHandoff = (
-  options: UpProjectOptions
-): RequestedHandoff | null => {
-  const values = [
-    options.descriptorDigest,
-    options.organizationHandoffRunId,
-    options.selectedTargetReceiptDigest,
-    options.selectedTargetReceipt,
-    options.networkAttachmentHandle,
-    options.worldBindingsPath
-  ];
-  if (values.every((value) => value === undefined)) return null;
-  if (values.some((value) => value === undefined) || !options.detach) throw handoffInputError();
-
-  try {
-    const selectedTarget = parseSelectedTargetReceipt(options.selectedTargetReceipt);
-    const selectedDigest = parseCanonicalSha256Digest(options.selectedTargetReceiptDigest, "selected_target_receipt_digest");
-    const computedDigest = `sha256:${createHash("sha256").update(createCanonicalSelectedTargetReceiptBytes(selectedTarget), "utf8").digest("hex")}`;
-    if (selectedDigest !== computedDigest) throw new Error("selected receipt digest mismatch");
-    return {
-      descriptorDigest: parseCanonicalSha256Digest(options.descriptorDigest, "descriptor_digest"),
-      runId: parseRunId(options.organizationHandoffRunId),
-      networkAttachmentHandle: parseOpaqueTargetHandle(options.networkAttachmentHandle),
-      selectedTarget,
-      selectedTargetReceiptDigest: selectedDigest
-    };
-  } catch {
-    throw handoffInputError();
-  }
-};
-
-const verifyRequestedHandoffTarget = async (
-  requested: RequestedHandoff | null,
-  resolved: { readonly dockerContext?: string | null; readonly dockerHost?: string | null },
-  options: Pick<UpProjectOptions, "dockerCommand" | "targetExecFile">
-): Promise<void> => {
-  if (!requested) return;
-  if (typeof resolved.dockerContext !== "string" || resolved.dockerContext.length === 0
-    || resolved.dockerHost != null || process.env.DOCKER_HOST != null) throw handoffInputError();
-  try {
-    const actual = await selectTarget({
-      context: resolved.dockerContext,
-      dockerCommand: options.dockerCommand,
-      execFile: options.targetExecFile
-    });
-    if (createCanonicalSelectedTargetReceiptBytes(actual)
-      !== createCanonicalSelectedTargetReceiptBytes(requested.selectedTarget)) throw new Error("target mismatch");
-  } catch {
-    throw handoffInputError();
-  }
-};
-
-const resolveCompiledHandoff = (
-  requested: RequestedHandoff | null,
-  buildResult: BuildProjectResult
-): CompiledHandoff | undefined => {
-  if (!requested) return undefined;
-  try {
-    const bindingDigest = buildResult.organizationReadinessEvidence.worldBindings?.digest;
-    if (!bindingDigest) throw new Error("missing compiled binding evidence");
-    const bindingDigestParsed = parseCanonicalSha256Digest(bindingDigest, "binding_digest");
-    return { authority: { ...requested, bindingDigest: bindingDigestParsed }, organizationHandoff: {
-      bindingDigest: bindingDigestParsed, networkAttachmentHandle: requested.networkAttachmentHandle,
-      selectedTargetReceiptDigest: requested.selectedTargetReceiptDigest } };
-  } catch {
-    throw handoffInputError();
-  }
 };
 
 export const upProject = async (
@@ -179,10 +94,10 @@ export const upProject = async (
 ): Promise<UpProjectResult> => {
   // Parse caller authority before any target or build work. Target identity is
   // verified below from the resolved detached options, including exact record reuse.
-  const requestedHandoff = resolveRequestedHandoff(options);
+  const requestedHandoff = resolveRequestedOrganizationHandoff(options);
   // Handoff reservation identity must survive a process crash.  Unlike an
   // ordinary deployment run, it may never silently mint a fresh run id.
-  if (requestedHandoff && resolveNoopolisRunId(process.env) !== requestedHandoff.runId) throw handoffInputError();
+  if (requestedHandoff && resolveNoopolisRunId(process.env) !== requestedHandoff.runId) throw organizationHandoffInputError();
   const resolvedOptions = await resolveDetachedDeploymentOptions(
     path.resolve(options.outputDirectory ?? DEFAULT_OUTPUT_DIRECTORY),
     {
@@ -198,7 +113,7 @@ export const upProject = async (
       targetExecFile: options.targetExecFile
     }
   );
-  await verifyRequestedHandoffTarget(requestedHandoff, resolvedOptions, options);
+  await verifyRequestedOrganizationHandoffTarget(requestedHandoff, resolvedOptions, options);
   // Every authority container compiled for this deployment must stamp
   // causal events under the same real run id (see specs/CAUSAL.md).
   // buildProject/compileProject stay deterministic functions of the host
@@ -219,7 +134,7 @@ export const upProject = async (
       ? { worldBindingsPath: options.worldBindingsPath }
       : {})
   });
-  const handoff = resolveCompiledHandoff(requestedHandoff, buildResult);
+  const handoff = compileOrganizationHandoff(requestedHandoff, buildResult);
   const authProfile = resolvedOptions.authProfile
     ? await requireAuthProfile(resolvedOptions.authProfile)
     : null;
@@ -236,110 +151,111 @@ export const upProject = async (
     dockerHost: resolvedOptions.dockerHost,
     envFilePath: resolvedOptions.envFilePath
   });
+  if (options.onDetachedStarted) {
+    const started = options.onDetachedStarted;
+    invocation.onDetachedStarted = async (result) => {
+      if (!result.containerId || !result.containerName || !result.imageId || !result.deploymentLabels) {
+        throw new SpawnfileError("runtime_error", "Detached deployment metadata is incomplete");
+      }
+      await started({ ...result, containerId: result.containerId, containerName: result.containerName, imageId: result.imageId, deploymentLabels: result.deploymentLabels });
+    };
+  }
 
-  let authority: Awaited<ReturnType<typeof initializeOrganizationHandoffAuthorityStore>> | undefined;
   let deploymentRecordPath: string | null;
-  let recovered = false;
-  let dockerLifecycleInvoked = false;
-  try {
-    let pending: OrganizationHandoffCapabilityPending | undefined;
-    if (handoff) {
-      if (!invocation.deploymentLabels || !invocation.containerName) throw handoffInputError();
-      const session = createDockerOrganizationHandoffSession({
-        bindingDigest: handoff.authority.bindingDigest,
-        containerName: invocation.containerName,
-        deploymentLabels: invocation.deploymentLabels,
-        descriptorDigest: handoff.authority.descriptorDigest,
-        organizationHandoff: handoff.organizationHandoff,
-        runId: handoff.authority.runId,
-        selectedTarget: handoff.authority.selectedTarget,
-        selectedTargetReceiptDigest: handoff.authority.selectedTargetReceiptDigest
-      });
-      authority = await initializeOrganizationHandoffAuthorityStore();
-      const begun = await authority.begin(session.authorityInput);
-      pending = begun.pending;
-      recovered = !begun.created;
-    }
-    let runMetadata: DockerRunResult | void = undefined;
-    if (!recovered) {
-      dockerLifecycleInvoked = true;
-      runMetadata = await executeDockerRunWithSupportCleanup(invocation, options.runRunner ?? runDockerContainer);
-    }
-    const observed = recovered && authority && pending
-      ? await authority.readDockerMutation(pending.pending_key)
-      : undefined;
-    if (recovered && !observed) throw handoffRecoveryIncompleteError();
-    const recoveredMetadata: DockerRunResult | void = observed
-      ? { containerId: observed.container_id, deploymentLabels: observed.deployment_labels, imageId: observed.image_id }
-      : undefined;
-    const exactRunMetadata = runMetadata ?? recoveredMetadata;
-    let organizationHandoffHandle: OpaqueTargetHandle | undefined;
-    if (handoff) {
-      if (!exactRunMetadata?.containerId || !exactRunMetadata.deploymentLabels || !exactRunMetadata.imageId || !authority || !pending) throw handoffInputError();
-      if (!recovered) await authority.observeDockerMutation(pending.pending_key, {
-        containerId: exactRunMetadata.containerId, deploymentLabels: exactRunMetadata.deploymentLabels, imageId: exactRunMetadata.imageId
-      });
-      const finalized = await authority.finalize(pending.pending_key, { containerId: exactRunMetadata.containerId, deploymentLabels: exactRunMetadata.deploymentLabels });
-      organizationHandoffHandle = finalized.organization_handoff_handle;
-      const existingRecordPath = invocation.detach && invocation.deploymentName
-        ? resolveDeploymentRecordPath(buildResult.outputDirectory, invocation.deploymentName)
-        : null;
-      if (existingRecordPath && await fileExists(existingRecordPath)) {
-        const existing = await readDeploymentRecord(existingRecordPath);
-        const target = await resolveDockerDeploymentTarget({
-          context: invocation.dockerContext ?? undefined,
-          dockerCommand: invocation.command,
-          dockerHost: invocation.dockerHost ?? undefined,
-          execFile: options.targetExecFile
-        });
-        const expected = createDockerDeploymentRecord({
-          authProfileName: authProfile?.name ?? null,
-          compileFingerprint: buildResult.report.compile_fingerprint ?? "",
-          containerName: invocation.containerName,
-          deploymentName: invocation.deploymentName ?? undefined,
-          envFilePath: resolvedOptions.envFilePath,
-          imageTag,
-          networkIds: buildResult.report.container?.moltnet?.server_plans
-            .filter((server) => server.mode === "managed").map((server) => server.network_id),
-          nodes: buildResult.report.nodes,
-          organizationHandoff: handoff.organizationHandoff,
-          organizationHandoffHandle,
-          outputDirectory: buildResult.outputDirectory,
-          projectRoot: buildResult.report.root,
-          runId: handoff.authority.runId,
-          runMetadata: exactRunMetadata,
-          runtimeInstanceIds: buildResult.report.container?.runtime_instances.map((instance) => instance.id) ?? [],
-          target
-        });
-        if (canonicalJson(stableRecord(existing)) !== canonicalJson(stableRecord(expected))) throw handoffInputError();
-        deploymentRecordPath = existingRecordPath;
-      } else deploymentRecordPath = invocation.detach && invocation.deploymentName
-        ? await writeDockerDeploymentRecordForRun({ authProfileName: authProfile?.name ?? null, envFilePath: resolvedOptions.envFilePath,
-            imageTag, invocation, outputDirectory: buildResult.outputDirectory,
-            organizationHandoff: handoff.organizationHandoff, organizationHandoffHandle, report: buildResult.report,
-            runMetadata: exactRunMetadata, targetExecFile: options.targetExecFile })
-        : null;
-    } else deploymentRecordPath = invocation.detach && invocation.deploymentName
-      ? await writeDockerDeploymentRecordForRun({ authProfileName: authProfile?.name ?? null, envFilePath: resolvedOptions.envFilePath,
-          imageTag, invocation, outputDirectory: buildResult.outputDirectory, report: buildResult.report,
-          runMetadata: runMetadata ?? undefined, targetExecFile: options.targetExecFile })
+  if (handoff) {
+    const executed = await executeOrganizationHandoff({
+      dockerCommand: options.dockerCommand,
+      handoff,
+      invocation,
+      lifecycleRecovery: options.lifecycleRecovery,
+      onDetachedReservation: options.onDetachedReservation,
+      runRunner: options.runRunner ?? runDockerContainer,
+      targetExecFile: options.targetExecFile,
+    });
+    const { organizationHandoffHandle, runMetadata } = executed;
+    const existingRecordPath = invocation.detach && invocation.deploymentName
+      ? resolveDeploymentRecordPath(buildResult.outputDirectory, invocation.deploymentName)
       : null;
-  } finally {
-    // Replay creates a fresh support directory but does not invoke the normal
-    // Docker lifecycle wrapper. Preserve its detached credential cleanup
-    // semantics without deleting bind-mount support files.
-    let cleanupError: unknown;
-    try {
-      if (invocation.detach && !dockerLifecycleInvoked) await rm(invocation.envFilePath, { force: true });
-    } catch (error) {
-      cleanupError = error;
+    if (existingRecordPath && await fileExists(existingRecordPath)) {
+      const existing = await readDeploymentRecord(existingRecordPath);
+      const target = await resolveDockerDeploymentTarget({
+        context: invocation.dockerContext ?? undefined,
+        dockerCommand: invocation.command,
+        dockerHost: invocation.dockerHost ?? undefined,
+        execFile: options.targetExecFile,
+      });
+      const expected = createDockerDeploymentRecord({
+        authProfileName: authProfile?.name ?? null,
+        compileFingerprint: buildResult.report.compile_fingerprint ?? "",
+        containerName: invocation.containerName,
+        deploymentName: invocation.deploymentName ?? undefined,
+        envFilePath: resolvedOptions.envFilePath,
+        imageTag,
+        networkIds: buildResult.report.container?.moltnet?.server_plans
+          .filter((server) => server.mode === "managed").map((server) => server.network_id),
+        nodes: buildResult.report.nodes,
+        organizationHandoff: handoff.organizationHandoff,
+        organizationHandoffHandle,
+        outputDirectory: buildResult.outputDirectory,
+        projectRoot: buildResult.report.root,
+        runId: handoff.authority.runId,
+        runMetadata,
+        runtimeInstanceIds: buildResult.report.container?.runtime_instances.map((instance) => instance.id) ?? [],
+        target,
+      });
+      if (canonicalJson(stableRecord(existing)) !== canonicalJson(stableRecord(expected))) {
+        throw organizationHandoffInputError();
+      }
+      deploymentRecordPath = existingRecordPath;
+    } else {
+      deploymentRecordPath = invocation.detach && invocation.deploymentName
+        ? await writeDockerDeploymentRecordForRun({
+            authProfileName: authProfile?.name ?? null,
+            envFilePath: resolvedOptions.envFilePath,
+            imageTag,
+            invocation,
+            organizationHandoff: handoff.organizationHandoff,
+            organizationHandoffHandle,
+            outputDirectory: buildResult.outputDirectory,
+            report: buildResult.report,
+            runMetadata,
+            targetExecFile: options.targetExecFile,
+          })
+        : null;
     }
+  } else {
+    let dockerLifecycleInvoked = false;
     try {
-      await authority?.dispose();
-    } catch (error) {
-      if (cleanupError === undefined) throw error;
+      if (options.onDetachedReservation) {
+        if (!invocation.detach || !invocation.containerName || !invocation.deploymentLabels) {
+          throw new SpawnfileError("runtime_error", "Detached deployment authority is incomplete");
+        }
+        await options.onDetachedReservation({
+          containerName: invocation.containerName,
+          deploymentLabels: invocation.deploymentLabels,
+          dockerCommand: invocation.command,
+          dockerContext: invocation.dockerContext ?? null,
+        });
+      }
+      dockerLifecycleInvoked = true;
+      const runMetadata = await executeDockerRunWithSupportCleanup(invocation, options.runRunner ?? runDockerContainer);
+      deploymentRecordPath = invocation.detach && invocation.deploymentName
+        ? await writeDockerDeploymentRecordForRun({
+            authProfileName: authProfile?.name ?? null,
+            envFilePath: resolvedOptions.envFilePath,
+            imageTag,
+            invocation,
+            outputDirectory: buildResult.outputDirectory,
+            report: buildResult.report,
+            runMetadata: runMetadata ?? undefined,
+            targetExecFile: options.targetExecFile,
+          })
+        : null;
+    } finally {
+      if (invocation.detach && !dockerLifecycleInvoked) {
+        await rm(invocation.envFilePath, { force: true });
+      }
     }
-    if (cleanupError !== undefined) throw cleanupError;
   }
 
   if (deploymentRecordPath && buildResult.organizationReadinessEvidence) {

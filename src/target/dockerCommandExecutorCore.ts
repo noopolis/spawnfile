@@ -25,10 +25,12 @@ export type DockerCommandSpawn = (
 export class DockerCommandFailure extends Error {
   public readonly code: number;
   public readonly stderr: string;
-  public constructor(code: number, stderr: string) {
+  public readonly stdoutBytes: number;
+  public constructor(code: number, stderr: string, stdoutBytes: number) {
     super(DOCKER_COMMAND_ERROR);
     this.code = code;
     this.stderr = stderr;
+    this.stdoutBytes = stdoutBytes;
   }
 }
 
@@ -217,7 +219,11 @@ export const executeDockerCommandCore = (
         return;
       }
       if (closeCode !== 0) {
-        settle(new DockerCommandFailure(closeCode, stderr));
+        settle(new DockerCommandFailure(
+          closeCode,
+          stderr,
+          typeof stdout === "string" ? Buffer.byteLength(stdout, "utf8") : stdout.byteLength
+        ));
         return;
       }
       settle(undefined, { stderr, stdout });

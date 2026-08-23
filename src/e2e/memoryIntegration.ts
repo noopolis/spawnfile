@@ -31,9 +31,9 @@ export const runDaimonMemoryRecallE2E = async (
     options,
     async ({ compileResult, plan, outputDirectory }) => {
       const fixtureDirectory = options.fixtureDirectory ?? MIXED_RUNTIME_FIXTURE;
-      const daimonNodes = getRuntimeNodes(compileResult.report, "daimon");
-      if (daimonNodes.length === 0) {
-        throw new SpawnfileError("runtime_error", "Mixed fixture did not compile a Daimon runtime instance");
+      const piNodes = getRuntimeNodes(compileResult.report, "pi");
+      if (piNodes.length === 0) {
+        throw new SpawnfileError("runtime_error", "Mixed fixture did not compile a legacy Pi runtime instance");
       }
 
       const localist = compileResult.report.nodes.find(
@@ -43,7 +43,7 @@ export const runDaimonMemoryRecallE2E = async (
         return createUnsupported(
           fixtureDirectory,
           outputDirectory,
-          "Daimon recall fixture path changed; localist agent was not found in compile report",
+          "Legacy Pi recall fixture path changed; localist agent was not found in compile report",
           ["Expected localist agent source to be discoverable in report.nodes."]
         );
       }
@@ -63,13 +63,13 @@ export const runDaimonMemoryRecallE2E = async (
       expectRoomMembers(compileResult.report.container?.moltnet, "mixed_lab", "floor", ["conductor", "analyst", "localist"]);
 
       const coverage = collectMemoryCoverageByRuntime(plan, compileResult.report.nodes);
-      const floorBanks = coverage.get("daimon");
+      const floorBanks = coverage.get("pi");
       if (!floorBanks || floorBanks.size === 0) {
         return createUnsupported(
           fixtureDirectory,
           outputDirectory,
-          "Mixed fixture memory plan does not resolve Daimon memory access",
-          ["BuildCompilePlan resolved memory declarations, but no agent access mapped to daimon runtime."]
+          "Mixed fixture memory plan does not resolve legacy Pi memory access",
+          ["BuildCompilePlan resolved memory declarations, but no agent access mapped to pi runtime."]
         );
       }
 
@@ -77,10 +77,10 @@ export const runDaimonMemoryRecallE2E = async (
         return createUnsupported(
           fixtureDirectory,
           outputDirectory,
-          "Daimon runtime did not emit expected memory capabilities",
+          "Legacy Pi runtime did not emit expected memory capabilities",
           [
             `localist has ${memoryBanks.length} declared memory bank(s) for recall checks`,
-            "Check Daimon direct Mneme memory wiring and compile capability emission."
+            "Check legacy Pi direct Mneme memory wiring and compile capability emission."
           ]
         );
       }
@@ -88,7 +88,7 @@ export const runDaimonMemoryRecallE2E = async (
       return createPassed(
         fixtureDirectory,
         outputDirectory,
-        "Daimon memory wiring is present and executable in compile output",
+        "Legacy Pi memory wiring is present and executable in compile output",
         [`localist has ${memoryBanks.length} active memory bank mapping(s).`]
       );
     }
@@ -107,7 +107,7 @@ export const runMixedRuntimeMemoryWiringE2E = async (
       const floorInstanceRuntimes = (compileResult.report.container?.runtime_instances ?? [])
         .map((instance) => instance.runtime)
         .sort();
-      const requiredRuntimes = ["daimon", "openclaw", "picoclaw"];
+      const requiredRuntimes = ["openclaw", "pi", "picoclaw"];
       const missingRuntimes = requiredRuntimes.filter((runtime) => !floorInstanceRuntimes.includes(runtime));
       if (missingRuntimes.length > 0) {
         throw new SpawnfileError(
@@ -141,7 +141,7 @@ export const runMixedRuntimeMemoryWiringE2E = async (
           "Mixed runtime memory capabilities are missing from compile output",
           [
             `Missing memory capability runtime(s): ${missingCapabilityRuntimes.join(", ")}`,
-            "Daimon and PicoClaw should emit memory capabilities; OpenClaw should emit memory capabilities through Mneme MCP."
+            "Pi and PicoClaw should emit memory capabilities; OpenClaw should emit memory capabilities through Mneme MCP."
           ]
         );
       }
@@ -179,7 +179,7 @@ export const runMixedRuntimeMemoryWiringE2E = async (
       return createPassed(
         fixtureDirectory,
         outputDirectory,
-        "Mixed-runtime Daimon + PicoClaw + Moltnet memory wiring is present with explicit runtime outcomes",
+        "Mixed-runtime Pi + PicoClaw + Moltnet memory wiring is present with explicit runtime outcomes",
         [
           "mixed_lab floor room has all declared members",
           "openclaw/picoclaw dream cron jobs are emitted",
@@ -198,10 +198,10 @@ export const runJungianSelfOrgE2E = async (
     options,
     async ({ compileResult, plan, outputDirectory }) => {
       const fixtureDirectory = options.fixtureDirectory ?? JUNGIAN_FIXTURE;
-      const daimonNodes = getRuntimeNodes(compileResult.report, "pi")
+      const piNodes = getRuntimeNodes(compileResult.report, "pi")
         .filter((node) => node.kind === "agent");
-      if (daimonNodes.length === 0) {
-        throw new SpawnfileError("runtime_error", "Jungian fixture did not compile a Daimon runtime instance");
+      if (piNodes.length === 0) {
+        throw new SpawnfileError("runtime_error", "Jungian fixture did not compile a legacy Pi runtime instance");
       }
 
       const roomIssues = [
@@ -231,8 +231,8 @@ export const runJungianSelfOrgE2E = async (
       }
 
       const coverage = collectMemoryCoverageByRuntime(plan, compileResult.report.nodes);
-      const daimonCoverage = coverage.get("pi");
-      if (!daimonCoverage || daimonCoverage.size === 0) {
+      const piCoverage = coverage.get("pi");
+      if (!piCoverage || piCoverage.size === 0) {
         return createSkipped(
           fixtureDirectory,
           outputDirectory,
@@ -241,15 +241,15 @@ export const runJungianSelfOrgE2E = async (
         );
       }
 
-      const missingDaimonCapability = !daimonNodes.every(nodeHasMemoryCapability);
-      if (missingDaimonCapability) {
+      const missingPiCapability = !piNodes.every(nodeHasMemoryCapability);
+      if (missingPiCapability) {
         return createUnsupported(
           fixtureDirectory,
           outputDirectory,
-          "Daimon runtime did not expose memory capabilities for Jungian self-org agents",
+          "Legacy Pi runtime did not expose memory capabilities for Jungian self-org agents",
           [
-            `Resolved ${daimonCoverage.size} Jungian memory bank mapping(s)`,
-            "Check Daimon direct Mneme memory wiring and compile capability emission."
+            `Resolved ${piCoverage.size} Jungian memory bank mapping(s)`,
+            "Check legacy Pi direct Mneme memory wiring and compile capability emission."
           ]
         );
       }
@@ -259,7 +259,7 @@ export const runJungianSelfOrgE2E = async (
         outputDirectory,
         "Jungian self-org fixture compiles with requested room topology and memory mapping",
         [
-          `Jungian Daimon coverage includes ${daimonCoverage.size} memory bank binding(s)`,
+          `Jungian legacy Pi coverage includes ${piCoverage.size} memory bank binding(s)`,
           "nested council rooms are present on mixed Moltnet topology"
         ]
       );

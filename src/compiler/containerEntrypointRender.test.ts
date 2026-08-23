@@ -363,7 +363,7 @@ describe("renderEntrypoint MCP secret materialization", () => {
 });
 
 describe("renderEntrypoint CLI credential materialization", () => {
-  it("requires CLI auth before materialization and startup, then unsets the runtime copy", () => {
+  it("requires Pi CLI auth before materialization and startup, then unsets the runtime copy", () => {
     const root = mkdtempSync(join(tmpdir(), "spawnfile-cli-auth-"));
     const homePath = join(root, "home");
     const authPath = join(homePath, ".codex", "auth.json");
@@ -373,7 +373,7 @@ describe("renderEntrypoint CLI credential materialization", () => {
         meta: { ...runtimePlan().meta, startCommand: ["bash", "-c", `test -f ${authPath} && test -z "\${SPAWNFILE_CLI_AUTH_JSON:-}" && touch ${markerPath}`] },
         instancePaths: { configPath: join(root, "config.json"), homePath, workspacePath: join(root, "workspace") },
         modelAuthMethods: { openai: "codex" },
-        runtimeName: "daimon"
+        runtimeName: "pi"
       })],
       []
     );
