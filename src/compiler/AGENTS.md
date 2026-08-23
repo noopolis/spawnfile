@@ -48,10 +48,13 @@ src/compiler/
 ├── moltnetArtifactPaths.ts     # Moltnet artifact path, port, and volume-name helpers
 ├── moltnetArtifactTypes.ts     # Moltnet artifact data contracts shared by compiler modules
 ├── moltnetRoomPolicyCompatibility.ts # Duplicate Moltnet network/room compatibility checks
+├── organizationIdentity.ts     # Public canonical organization identity surface
+├── organizationIdentityGraph.ts # Internal root-team graph/path validation primitives
+├── organizationExternalParticipants.ts # Nonempty participant B31 auth and intent lowering
 ├── moltnetBinaries.ts          # Strict stamped and authority-pinned Moltnet binary staging
 ├── moltnetReleaseDownload.ts   # Bounded exact-digest download for the pinned published release
 ├── moltnetReleaseAuthority.ts  # Parser for the checked-in version/revision/asset digest trust root
-├── daimonTelemetryArtifacts.ts # Run-scoped durable volume per pi/daimon agent for its daimon turn/wake causal telemetry directory
+├── daimonTelemetryArtifacts.ts # Run-scoped durable volume for legacy generated-Pi telemetry
 ├── containerPackageOverrides.ts # Local runtime install package npm-pack staging for the container build context
 ├── upReceipt.ts                # `spawnfile.up-receipt.v1` builder: compiled_schedule extraction + deployment-record readback
 ├── view/                       # Pure compiler view models/renderers for `spawnfile view`
@@ -100,23 +103,15 @@ src/compiler/
   recomputing pi-internal engine resolution itself. This is the disclosure ground truth for
   a `scripted` (or any non-default) pi engine, so a scripted run is visibly scripted rather
   than an invisible test-only branch.
-- `daimonTelemetryArtifacts.ts`'s `createDaimonTelemetryArtifacts` (Piece 4b, Decision 21)
-  registers one run-scoped durable volume per pi/daimon agent, mounted onto
-  `<instanceRoot>/runtime/agents/<slug>/telemetry` (the parent of `causal.jsonl` —
-  `src/runtime/pi/appCoreSource.ts`'s `runtimeHomePath`/`instanceRoot`), mirroring exactly
-  how `moltnetArtifacts.ts` mounts the Moltnet causal directory: same
-  `createPersistentVolumeName(plan.root, id, undefined, runId)` run-scoping, same
-  `ContainerPersistentMountReport` shape, merged into `containerArtifacts.ts`'s
-  `persistent_mounts` alongside memory/moltnet mounts. It covers both the literal `pi`
-  runtime name and its `daimon` alias (`src/runtime/pi/adapter.ts`'s
-  `daimonAdapter = { ...piAdapter, name: "daimon" }`) since both generate the exact same
-  app and both write telemetry the same way. Each covered agent's mount id is also stamped
-  onto its runtime instance's `runtime_instances[].telemetry_mount_ids` (node id -> mount
-  id, `report/types.ts`) so `src/deployment/artifactsExportPlan.ts`'s `planDaimonFiles` can
-  resolve the volume without recomputing any container path itself. Before Piece 4b, daimon
-  inner-truth telemetry was container-local (`docker cp` only), which is WHY `spawnfile
-  artifacts export` had to run before `spawnfile down` removed the container; this closes
-  that gap for daimon, matching mneme/moltnet-causal (da12744).
+- `daimonTelemetryArtifacts.ts` retains the legacy generated-Pi telemetry mount
+  layout. The Phase-A public `runtime: daimon` host has no Spawnfile telemetry
+  mount or Pi implementation path; add its public activity integration only in
+  a later Daimon control-plane phase.
+- `runtime: daimon` lowers one strict public organization-host config, not a
+  generated Pi app. Schedules, MCP declarations, and every surface except a
+  compiler-owned Moltnet public-wake attachment fail closed. `runtime: pi`
+  remains the only generated Pi path and owns its legacy engine/auth/MCP/
+  scheduler behavior.
 - Standard compiles use the published Daimon, Mneme, and authority-pinned
   Moltnet releases. Local package directories are accepted only through the
   explicit `CompileProjectOptions.runtimePackageOverrides` test/development

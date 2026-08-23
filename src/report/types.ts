@@ -222,9 +222,16 @@ export interface ContainerMoltnetPlanSummary {
     architecture: "amd64" | "arm64";
     asset: string;
     asset_sha256: `sha256:${string}`;
-    capabilities: readonly ["pi-bridge"];
-    release_version: string;
-    source_revision: string;
+    capabilities: readonly ["pi-bridge"] | readonly ["daimon-bridge", "pi-bridge"];
+    development?: {
+      mode: "local-development";
+      non_production: true;
+      unsigned: true;
+      unpublished: true;
+    };
+    release_version?: string;
+    source_revision?: string;
+    source_sha256?: `sha256:${string}`;
     version: "spawnfile.moltnet-release-identity.v1";
   };
   server_plans: ContainerMoltnetServerPlanSummary[];

@@ -45,7 +45,7 @@ const worldProjection = (spec: ReturnType<typeof createDockerWorldServiceSpec>, 
     DeviceCount: 0, DeviceRequestCount: 0, DnsCount: 0, Domainname: "", ExposedPortCount: 0,
     ExtraHostCount: 0, GroupAddCount: 0, Hostname: spec.containerName, Id: "9".repeat(64),
     Image: spec.imageReference, IpcMode: "none", Labels: spec.receiptLabels, LinkCount: 0,
-    Tmpfs: { "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777" },
+    Tmpfs: { "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777", "/tmp/spawnfile-public": "rw,noexec,nosuid,nodev,size=1m,mode=1777" },
     LogType: "none", Mounts: [
       { Destination: spec.evidenceMountPath, Name: source(spec.evidenceMountPath), RW: true, Type: "volume" },
       { Destination: "/run/spawnfile-secrets", Name: source("/run/spawnfile-secrets"), RW: false, Type: "volume" }

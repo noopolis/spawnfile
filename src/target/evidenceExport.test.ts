@@ -5,6 +5,7 @@ import {
   EVIDENCE_EXPORT_HELPER_CMD,
   EVIDENCE_EXPORT_HELPER_CONTRACT_LABEL,
   EVIDENCE_EXPORT_HELPER_ENTRYPOINT,
+  EVIDENCE_EXPORT_HELPER_ENV,
   EVIDENCE_EXPORT_HELPER_USER,
   createEvidenceExportHelper,
   createEvidenceExportHelperSpec,
@@ -44,7 +45,7 @@ const helperContainerProjection = (runtimeLabels: Record<string, string>, imageL
     Image: `docker.io/example/exporter@sha256:${"b".repeat(64)}`,
     Entrypoint: EVIDENCE_EXPORT_HELPER_ENTRYPOINT,
     Cmd: EVIDENCE_EXPORT_HELPER_CMD,
-    Env: null,
+    Env: EVIDENCE_EXPORT_HELPER_ENV,
     ExposedPorts: null,
     Healthcheck: null,
     Labels: { ...imageLabels, ...runtimeLabels },
@@ -97,7 +98,7 @@ describe("evidence export helper contract", () => {
       Cmd: EVIDENCE_EXPORT_HELPER_CMD,
       Labels: labels,
       User: EVIDENCE_EXPORT_HELPER_USER,
-      Env: null,
+      Env: EVIDENCE_EXPORT_HELPER_ENV,
       ExposedPorts: null,
       Healthcheck: null,
       Volumes: null
@@ -107,7 +108,10 @@ describe("evidence export helper contract", () => {
     expect(isExpectedEvidenceExportImage(helperImageProjection({ ...validConfig, Cmd: ["bad"] }), base)).toBe(false);
     expect(isExpectedEvidenceExportImage(helperImageProjection({ ...validConfig, Labels: {} }), base)).toBe(false);
     expect(isExpectedEvidenceExportImage(helperImageProjection({ ...validConfig, Labels: { ...labels, extra: "bad" } }), base)).toBe(false);
-    expect(isExpectedEvidenceExportImage(helperImageProjection({ ...validConfig, Env: ["HOME=/bad"] }), base)).toBe(false);
+    for (const Env of [null, [], [EVIDENCE_EXPORT_HELPER_ENV[0], EVIDENCE_EXPORT_HELPER_ENV[0]],
+      [...EVIDENCE_EXPORT_HELPER_ENV, "HOME=/bad"], ["PATH=/bad"], ["TOKEN=private"]]) {
+      expect(isExpectedEvidenceExportImage(helperImageProjection({ ...validConfig, Env }), base)).toBe(false);
+    }
     expect(isExpectedEvidenceExportImage(helperImageProjection({ ...validConfig, ExposedPorts: { "80/tcp": {} } }), base)).toBe(false);
     expect(isExpectedEvidenceExportImage(helperImageProjection({ ...validConfig, Healthcheck: { Test: ["CMD-SHELL", "echo"] } }), base)).toBe(false);
     expect(isExpectedEvidenceExportImage(helperImageProjection({ ...validConfig, Volumes: { "/tmp": {} } }), base)).toBe(false);
@@ -115,6 +119,16 @@ describe("evidence export helper contract", () => {
     expect(isExpectedEvidenceExportImage(JSON.stringify([{ RepoDigests: [`docker.io/example/exporter@sha256:${"c".repeat(64)}`], Config: validConfig }]), base)).toBe(false);
     expect(isExpectedEvidenceExportImage(JSON.stringify([{ RepoDigests: [`docker.io/example/exporter@sha256:${"b".repeat(64)}`], Config: validConfig, Extra: true }]), base)).toBe(false);
     expect(isExpectedEvidenceExportImage(helperImageProjection({ ...validConfig, Extra: true } as Record<string, unknown>), base)).toBe(false);
+  });
+
+  it("accepts a locally attested config identity without RepoDigests", () => {
+    const local = createEvidenceExportHelper({ artifactManifestDigest: `sha256:${"a".repeat(64)}`,
+      imageDigest: `sha256:${"b".repeat(64)}`, imageReference: `sha256:${"b".repeat(64)}`,
+      resultHandle: "opaque_aaaaaaaaaaaaaaaa" });
+    const config = { Entrypoint: EVIDENCE_EXPORT_HELPER_ENTRYPOINT, Cmd: EVIDENCE_EXPORT_HELPER_CMD,
+      Labels: { [EVIDENCE_EXPORT_HELPER_CONTRACT_LABEL]: "v1" }, User: EVIDENCE_EXPORT_HELPER_USER,
+      Env: EVIDENCE_EXPORT_HELPER_ENV, ExposedPorts: null, Healthcheck: null, Volumes: null };
+    expect(isExpectedEvidenceExportImage(JSON.stringify([{ RepoDigests: null, Config: config }]), local)).toBe(true);
   });
 
   it("accepts only an exact inspected helper container projection", () => {

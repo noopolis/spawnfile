@@ -118,6 +118,36 @@ describe("renderDockerfile", () => {
     vi.doUnmock("../runtime/index.js");
   });
 
+  it("installs declared Daimon AGY realm packages on a prebuilt base image", async () => {
+    const { renderDockerfile } = await loadRenderModule({
+      daimon: {
+        baseImage: "noopolis/spawnfile-runtime-daimon:test",
+        commands: [],
+        copyCommands: [],
+        runtimeName: "daimon",
+        runtimeRoot: "/opt/runtime/daimon"
+      }
+    });
+    const plan = createRuntimePlan("daimon", {
+      meta: {
+        ...createRuntimePlan("daimon").meta,
+        systemDeps: ["bash", "ca-certificates", "curl", "dbus-daemon", "gnome-keyring", "util-linux"]
+      }
+    });
+    const dockerfile = await renderDockerfile([plan], {
+      persistentMountPaths: ["/var/lib/spawnfile/daimon/agy-subscription-realm"]
+    });
+    expect(dockerfile).toContain("FROM noopolis/spawnfile-runtime-daimon:test");
+    expect(dockerfile).toContain(
+      "apt-get install -y --no-install-recommends dbus-daemon gnome-keyring util-linux"
+    );
+    expect(dockerfile).not.toContain(
+      "apt-get install -y --no-install-recommends bash ca-certificates curl"
+    );
+    expect(dockerfile).not.toContain("secret-tool");
+    expect(dockerfile).not.toContain("dbus-x11");
+  });
+
   it("uses the highest node base image when a multi-runtime image includes node runtimes", async () => {
     const { renderDockerfile } = await loadRenderModule({
       openclaw: {
@@ -498,7 +528,7 @@ describe("renderDockerfile", () => {
       daimon: {
         commands: [],
         copyCommands: [
-          "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.2 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
+          "COPY --from=noopolis/spawnfile-runtime-daimon@sha256:19b671e589ad8c9e8f1b55610ccbf86ee72f16b4cb2f707ec419f5ef0d6942aa /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
         ],
         runtimeName: "daimon",
         runtimeRoot: "/opt/spawnfile/runtime-installs/daimon"
@@ -544,7 +574,7 @@ describe("renderDockerfile", () => {
 
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain(
-      "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.2 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
+      "COPY --from=noopolis/spawnfile-runtime-daimon@sha256:19b671e589ad8c9e8f1b55610ccbf86ee72f16b4cb2f707ec419f5ef0d6942aa /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
     );
     expect(dockerfile).toContain(
       "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.11 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"

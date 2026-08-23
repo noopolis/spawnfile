@@ -63,7 +63,7 @@ const compiledEngineEntrySchema = z
 
 export type CompiledEngineEntry = z.infer<typeof compiledEngineEntrySchema>;
 
-const moltnetReleaseIdentitySchema = z.object({
+const publishedMoltnetReleaseIdentitySchema = z.object({
   architecture: z.union([z.literal("amd64"), z.literal("arm64")]),
   asset: z.string().regex(/^moltnet_linux_(amd64|arm64)\.tar\.gz$/u),
   asset_sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
@@ -88,6 +88,30 @@ const moltnetReleaseIdentitySchema = z.object({
     });
   }
 });
+
+const localMoltnetReleaseIdentitySchema = z.object({
+  architecture: z.union([z.literal("amd64"), z.literal("arm64")]),
+  asset: z.string().regex(/^moltnet_linux_(amd64|arm64)\.tar\.gz$/u),
+  asset_sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  capabilities: z.tuple([z.literal("daimon-bridge"), z.literal("pi-bridge")]),
+  development: z.object({
+    mode: z.literal("local-development"),
+    non_production: z.literal(true),
+    unsigned: z.literal(true),
+    unpublished: z.literal(true)
+  }).strict(),
+  source_sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  version: z.literal("spawnfile.moltnet-release-identity.v1")
+}).strict().superRefine((value, context) => {
+  if (!value.asset.includes(`_${value.architecture}.`)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["asset"], message: "Moltnet asset architecture must match identity architecture" });
+  }
+});
+
+const moltnetReleaseIdentitySchema = z.union([
+  publishedMoltnetReleaseIdentitySchema,
+  localMoltnetReleaseIdentitySchema
+]);
 
 export type MoltnetReleaseReceiptIdentity = z.infer<typeof moltnetReleaseIdentitySchema>;
 

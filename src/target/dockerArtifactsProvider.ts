@@ -27,6 +27,7 @@ const MAX_OUTPUT_BYTES = 32_768;
 const MAX_REPOSITORY_BYTES = 255;
 const MAX_REFERENCE_BYTES = MAX_REPOSITORY_BYTES + 72;
 const MAX_IDENTITY_BYTES = 262_144;
+const IDENTITY_RETRY_ATTEMPTS = 64;
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/u;
 const PORT_PATTERN = /^[1-9][0-9]{0,4}$/u;
 const NAME_COMPONENT_PATTERN = /^[a-z0-9]+(?:(?:[._]|__|[-]+)[a-z0-9]+)*$/u;
@@ -259,11 +260,18 @@ const openSecureIdentity = async (filePath: string): Promise<IdentityFile | null
   } catch { return fail(); } finally { await handle.close().catch(() => undefined); }
 };
 const openIdentity = async (filePath: string, links: readonly number[]): Promise<IdentityFile | null> => {
-  const value = await openSecureIdentity(filePath); if (value !== null && !links.includes(value.nlink)) return fail(); return value;
+  const value = await openSecureIdentity(filePath);
+  if (value === null || value.nlink === 0) return null;
+  if (!links.includes(value.nlink)) return fail();
+  return value;
 };
 const syncDirectory = async (directory: string): Promise<void> => {
   const handle = await open(directory, constants.O_RDONLY); try { await handle.sync(); } finally { await handle.close(); }
 };
+const retryTurn = (attempt: number): Promise<void> => new Promise((resolve) => {
+  if ((attempt + 1) % 8 === 0) setTimeout(resolve, 1);
+  else setImmediate(resolve);
+});
 /* One canonical immutable record exists for one exact operation/request pair. */
 const keyPath = (root: string, operationHandle: string, requestDigest: string): string =>
   path.join(root, `${digest("identity-operation", `${operationHandle}\0${requestDigest}`)}.identity.json`);
@@ -278,17 +286,22 @@ const sameInode = (left: IdentityFile, right: IdentityFile): boolean => left.dev
  * what makes unlink-after-same-inode-proof safe here.
  */
 const reconcilePublishedIdentity = async (root: string, file: string, expected: string): Promise<void> => {
-  for (let attempt = 0; attempt < 16; attempt += 1) {
+  for (let attempt = 0; attempt < IDENTITY_RETRY_ATTEMPTS; attempt += 1) {
     const final = await openIdentity(file, [1, 2]);
     if (!final || final.bytes !== expected) return fail();
     const pending = await openIdentity(pendingPath(file), [1, 2]);
     if (final.nlink === 1) {
       if (pending === null) return;
-      if (pending.bytes !== expected) return fail();
-      if (pending.nlink !== 1) continue;
+      if (pending.bytes !== expected) {
+        if (pending.nlink === 1 && expected.startsWith(pending.bytes)) {
+          await retryTurn(attempt); continue;
+        }
+        return fail();
+      }
+      if (pending.nlink !== 1) { await retryTurn(attempt); continue; }
     } else {
       /* A concurrent unlink can make a just-read two-link final become one-link. */
-      if (pending === null || pending.nlink !== 2) continue;
+      if (pending === null || pending.nlink !== 2) { await retryTurn(attempt); continue; }
       if (!sameInode(final, pending) || pending.bytes !== expected) return fail();
     }
     /* Safe only under the trusted-root boundary documented above. */
@@ -297,6 +310,7 @@ const reconcilePublishedIdentity = async (root: string, file: string, expected: 
     const repaired = await openIdentity(file, [1]);
     if (!repaired || repaired.bytes !== expected) return fail();
     if (await openIdentity(pendingPath(file), [1]) === null) return;
+    await retryTurn(attempt);
   }
   return fail();
 };
@@ -312,7 +326,7 @@ const exactPublishedIdentity = async (root: string, file: string, content: strin
 };
 const publishIdentity = async (root: string, file: string, content: string, options?: DockerArtifactIdentityStoreOptions): Promise<void> => {
   const pending = pendingPath(file);
-  for (let attempt = 0; attempt < 16; attempt += 1) {
+  for (let attempt = 0; attempt < IDENTITY_RETRY_ATTEMPTS; attempt += 1) {
     if (await exactPublishedIdentity(root, file, content)) return;
     let created = false; let handle;
     try {
@@ -327,12 +341,17 @@ const publishIdentity = async (root: string, file: string, content: string, opti
     const pendingRecord = await openIdentity(pending, [1, 2]);
     if (pendingRecord === null) {
       if (await exactPublishedIdentity(root, file, content)) return;
-      continue;
+      await retryTurn(attempt); continue;
     }
-    if (pendingRecord.bytes !== content) return fail();
+    if (pendingRecord.bytes !== content) {
+      if (pendingRecord.nlink === 1 && content.startsWith(pendingRecord.bytes)) {
+        await retryTurn(attempt); continue;
+      }
+      return fail();
+    }
     if (pendingRecord.nlink === 2) {
       if (await exactPublishedIdentity(root, file, content)) return;
-      continue;
+      await retryTurn(attempt); continue;
     }
     if (created) await options?.beforeLink?.();
     try {
@@ -344,6 +363,7 @@ const publishIdentity = async (root: string, file: string, content: string, opti
     }
     /* EEXIST may mean another exact binder linked first or a final vanished; retry only after an exact proof. */
     if (await exactPublishedIdentity(root, file, content)) return;
+    await retryTurn(attempt);
   }
   return fail();
 };

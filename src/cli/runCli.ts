@@ -47,7 +47,9 @@ import { errorExitCode, isSpawnfileError } from "../shared/index.js";
 import { listRuntimeAdapters } from "../runtime/index.js";
 import { registerArtifactsCommands } from "./artifactsCommands.js";
 import { registerAuthCommands } from "./authCommands.js";
+import { registerCapabilitiesCommand } from "./capabilitiesCommand.js";
 import { registerDevCommands } from "./devCommands.js";
+import { registerEvidenceExportHelperCommand } from "./evidenceExportHelperCommand.js";
 import { registerLifecycleCommands } from "./lifecycleCommands.js";
 import { registerModelCommands } from "./modelCommands.js";
 import { registerRuntimeCommands } from "./runtimeCommands.js";
@@ -229,6 +231,10 @@ export const runCli: RunCli = async (
   registerLifecycleCommands(program, handlers, streams, cliOptions.stdin);
   registerDevCommands(program, handlers, streams);
   registerArtifactsCommands(program, handlers, streams);
+  registerCapabilitiesCommand(program, streams, readPackageVersion());
+  registerEvidenceExportHelperCommand(program, streams, (exitCode) => {
+    commandExitCode = exitCode;
+  });
 
   program
     .command("init")

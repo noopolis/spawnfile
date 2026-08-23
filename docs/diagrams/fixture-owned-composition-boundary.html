@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fixture-owned composition boundary</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--paper:#f5f5f5;--ink:#2d3142;--muted:#4f5d75;--soft:#7a8399;--accent:#eb6c36;--link:#2e5aa8}
+    body{background:var(--paper);color:var(--ink);font-family:'Geist',system-ui,sans-serif;min-height:100vh;padding:48px 32px}
+    main{margin:0 auto;max-width:1200px}.eyebrow{color:var(--muted);font-family:'Geist Mono',monospace;font-size:8px;font-weight:500;letter-spacing:.18em;margin-bottom:8px;text-transform:uppercase}
+    h1{font-family:'Instrument Serif',serif;font-size:32px;font-weight:400;letter-spacing:-.02em;line-height:1.15;margin-bottom:8px}.subtitle{color:var(--muted);font-size:12px;line-height:1.5;margin-bottom:24px;max-width:800px}
+    .scroll{overflow-x:auto}svg{display:block;min-width:1000px;width:100%}footer{border-top:1px solid rgba(45,49,66,.12);color:var(--soft);font-family:'Geist Mono',monospace;font-size:8px;letter-spacing:.08em;margin-top:20px;padding-top:12px}
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Architecture pattern · Fixture-owned composition</p>
+    <h1>Keep the platform generic. Put the story in the fixture.</h1>
+    <p class="subtitle">Tiny Football established the separation. The Daimon E2E should reuse that boundary: ecosystem packages expose stable seams; a disposable fixture supplies agents, prompts, research goals, and expected conversation.</p>
+    <div class="scroll">
+      <svg viewBox="0 0 1200 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="fixture-boundary-title fixture-boundary-desc">
+        <title id="fixture-boundary-title">Fixture-owned composition boundary</title>
+        <desc id="fixture-boundary-desc">Comparison showing the Tiny Football precedent and the proposed Daimon autonomous research test, with generic platform contracts separated from fixture-owned scenario behavior.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#eb6c36"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#2e5aa8"/></marker>
+        </defs>
+        <rect width="1200" height="720" fill="#f5f5f5"/>
+
+        <!-- Zones -->
+        <rect x="32" y="56" width="1136" height="264" rx="8" fill="rgba(45,49,66,.02)" stroke="rgba(45,49,66,.12)" stroke-width=".8"/>
+        <rect x="48" y="60" width="152" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="124" y="68" fill="#7a8399" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle" letter-spacing=".14em">GENERIC PLATFORM</text>
+        <rect x="32" y="352" width="536" height="240" rx="8" fill="rgba(45,49,66,.02)" stroke="rgba(45,49,66,.12)" stroke-width=".8"/>
+        <rect x="48" y="356" width="176" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="136" y="364" fill="#7a8399" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle" letter-spacing=".14em">PRECEDENT · FIXTURE</text>
+        <rect x="600" y="352" width="568" height="240" rx="8" fill="rgba(235,108,54,.03)" stroke="rgba(235,108,54,.45)" stroke-width="1" stroke-dasharray="4 4"/>
+        <rect x="616" y="356" width="168" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="700" y="364" fill="#eb6c36" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle" letter-spacing=".14em">TARGET · E2E FIXTURE</text>
+
+        <!-- Connectors first -->
+        <line x1="288" y1="188" x2="392" y2="188" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="304" y="168" width="72" height="12" rx="2" fill="#f5f5f5"/><text x="340" y="176" fill="#7a8399" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">DELEGATE</text>
+        <line x1="648" y1="188" x2="752" y2="188" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="664" y="168" width="72" height="12" rx="2" fill="#f5f5f5"/><text x="700" y="176" fill="#7a8399" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">LAUNCH</text>
+        <line x1="1008" y1="188" x2="1040" y2="188" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 160 440 V 296 Q 160 288 168 288 H 160 V 252" fill="none" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+        <rect x="172" y="308" width="96" height="12" rx="2" fill="#f5f5f5"/><text x="220" y="316" fill="#2e5aa8" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">PUBLIC CONTRACT</text>
+        <path d="M 440 440 V 304 Q 440 296 432 296 H 520 Q 528 296 528 252" fill="none" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+        <rect x="448" y="308" width="80" height="12" rx="2" fill="#f5f5f5"/><text x="488" y="316" fill="#2e5aa8" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">LIFECYCLE</text>
+        <path d="M 736 440 V 304 Q 736 296 744 296 H 880 Q 888 296 888 252" fill="none" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="760" y="308" width="104" height="12" rx="2" fill="#f5f5f5"/><text x="812" y="316" fill="#eb6c36" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">COMPILE + WAKE</text>
+        <path d="M 1024 440 V 336 Q 1024 328 1032 328 H 1104 V 252" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+        <rect x="1036" y="340" width="96" height="12" rx="2" fill="#f5f5f5"/><text x="1084" y="348" fill="#7a8399" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">ASSERT CHAT</text>
+
+        <!-- Generic platform nodes -->
+        <rect x="48" y="124" width="240" height="128" rx="6" fill="#fff" stroke="#2d3142"/>
+        <rect x="60" y="132" width="64" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,.4)" stroke-width=".8"/><text x="92" y="140" fill="#4f5d75" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">WORLD API</text>
+        <text x="168" y="176" fill="#2d3142" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Simfile</text>
+        <text x="168" y="196" fill="#4f5d75" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">world + clock + observations</text>
+        <text x="168" y="216" fill="#7a8399" font-family="'Geist',sans-serif" font-size="8" text-anchor="middle">No organization orchestration</text>
+        <rect x="392" y="124" width="256" height="128" rx="6" fill="#fff" stroke="#2d3142"/>
+        <rect x="404" y="132" width="72" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,.4)" stroke-width=".8"/><text x="440" y="140" fill="#4f5d75" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">COMPILER</text>
+        <text x="520" y="176" fill="#2d3142" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Spawnfile</text>
+        <text x="520" y="196" fill="#4f5d75" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">org graph + workspace + deployment</text>
+        <text x="520" y="216" fill="#7a8399" font-family="'Geist',sans-serif" font-size="8" text-anchor="middle">Never executes model engines</text>
+        <rect x="752" y="124" width="256" height="128" rx="6" fill="rgba(235,108,54,.08)" stroke="#eb6c36" stroke-width="1.2"/>
+        <rect x="764" y="132" width="64" height="12" rx="2" fill="transparent" stroke="rgba(235,108,54,.55)" stroke-width=".8"/><text x="796" y="140" fill="#eb6c36" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">RUNTIME</text>
+        <text x="880" y="176" fill="#2d3142" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Daimon</text>
+        <text x="880" y="196" fill="#4f5d75" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">one agent · one wake · one turn</text>
+        <text x="880" y="216" fill="#7a8399" font-family="'Geist',sans-serif" font-size="8" text-anchor="middle">Owns Codex · Grok · AGY execution</text>
+        <rect x="1040" y="124" width="112" height="128" rx="6" fill="rgba(45,49,66,.03)" stroke="rgba(45,49,66,.3)"/>
+        <text x="1096" y="176" fill="#2d3142" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Moltnet</text>
+        <text x="1096" y="196" fill="#4f5d75" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">rooms + DMs</text>
+        <text x="1096" y="216" fill="#7a8399" font-family="'Geist',sans-serif" font-size="8" text-anchor="middle">Transport only</text>
+
+        <!-- Fixture nodes -->
+        <rect x="64" y="440" width="192" height="104" rx="6" fill="#fff" stroke="#2d3142"/>
+        <rect x="76" y="448" width="72" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,.4)" stroke-width=".8"/><text x="112" y="456" fill="#4f5d75" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">SCENARIO</text>
+        <text x="160" y="488" fill="#2d3142" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Tiny Football fixture</text>
+        <text x="160" y="508" fill="#4f5d75" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">world rules + production runner</text>
+        <text x="160" y="524" fill="#7a8399" font-family="'Geist',sans-serif" font-size="8" text-anchor="middle">Historical precedent</text>
+        <rect x="344" y="440" width="192" height="104" rx="6" fill="#fff" stroke="#2d3142"/>
+        <rect x="356" y="448" width="72" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,.4)" stroke-width=".8"/><text x="392" y="456" fill="#4f5d75" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">BOUNDARY</text>
+        <text x="440" y="488" fill="#2d3142" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Delegated lifecycle</text>
+        <text x="440" y="508" fill="#4f5d75" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">fixture calls stable public seams</text>
+        <text x="440" y="524" fill="#7a8399" font-family="'Geist',sans-serif" font-size="8" text-anchor="middle">No fixture behavior in packages</text>
+        <rect x="632" y="440" width="208" height="104" rx="6" fill="rgba(235,108,54,.08)" stroke="#eb6c36" stroke-width="1.2"/>
+        <rect x="644" y="448" width="72" height="12" rx="2" fill="transparent" stroke="rgba(235,108,54,.55)" stroke-width=".8"/><text x="680" y="456" fill="#eb6c36" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">SCENARIO</text>
+        <text x="736" y="488" fill="#2d3142" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Autonomous research fixture</text>
+        <text x="736" y="508" fill="#4f5d75" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">agents + prompts + today's task</text>
+        <text x="736" y="524" fill="#7a8399" font-family="'Geist',sans-serif" font-size="8" text-anchor="middle">Disposable local E2E only</text>
+        <rect x="928" y="440" width="192" height="104" rx="6" fill="#fff" stroke="#2d3142"/>
+        <rect x="940" y="448" width="64" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,.4)" stroke-width=".8"/><text x="972" y="456" fill="#4f5d75" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">PROOF</text>
+        <text x="1024" y="488" fill="#2d3142" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">E2E assertions</text>
+        <text x="1024" y="508" fill="#4f5d75" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">engine parents + Moltnet history</text>
+        <text x="1024" y="524" fill="#7a8399" font-family="'Geist',sans-serif" font-size="8" text-anchor="middle">No Spawnfile cognition edge</text>
+
+        <!-- Boundary rule -->
+        <line x1="32" y1="624" x2="1168" y2="624" stroke="rgba(45,49,66,.12)" stroke-width=".8"/>
+        <text x="32" y="652" fill="#4f5d75" font-family="'Geist Mono',monospace" font-size="8" letter-spacing=".14em">BOUNDARY RULE</text>
+        <text x="160" y="652" fill="#2d3142" font-family="'Instrument Serif',serif" font-size="16" font-style="italic">Packages provide capabilities. Fixtures provide narratives.</text>
+        <text x="32" y="688" fill="#7a8399" font-family="'Geist',sans-serif" font-size="8">Fixture-specific names, prompts, goals, timing, and expected messages stop below the boundary; only versioned contracts cross upward.</text>
+      </svg>
+    </div>
+    <footer>DEFAULT DIAGRAM-DESIGN PROFILE · DOC-WIDE · LOCAL STATIC HTML</footer>
+  </main>
+</body>
+</html>

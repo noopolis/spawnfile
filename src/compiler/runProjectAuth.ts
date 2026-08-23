@@ -11,6 +11,7 @@ import {
 import type { ContainerReport } from "../report/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import { getRuntimeAdapter } from "../runtime/index.js";
+import type { RuntimeAuthPreparationResult } from "../runtime/types.js";
 import {
   CLI_CREDENTIAL_SECRET_NAME,
   modelAuthMethodNeedsCliCredential
@@ -18,6 +19,7 @@ import {
 
 interface PreparedRunAuth {
   coveredModelSecrets: Set<string>;
+  launchIdentity?: RuntimeAuthPreparationResult["launchIdentity"];
   mountArgs: string[];
 }
 
@@ -98,6 +100,7 @@ export const prepareRuntimeAuthMounts = async (
   // responsible for treating a `null` `authProfile` as "no profile-derived
   // imports available" rather than failing.
   const coveredModelSecrets = new Set<string>();
+  let launchIdentity: RuntimeAuthPreparationResult["launchIdentity"];
   const mountArgs: string[] = [];
 
   for (const instance of containerReport.runtime_instances) {
@@ -115,10 +118,23 @@ export const prepareRuntimeAuthMounts = async (
     });
 
     addCoveredModelSecrets(coveredModelSecrets, instance.id, prepared.coveredModelSecrets);
+    if (prepared.launchIdentity) {
+      if (launchIdentity && launchIdentity.uid !== prepared.launchIdentity.uid) {
+        throw new SpawnfileError(
+          "validation_error",
+          "Opaque runtime credentials resolve conflicting launch UIDs"
+        );
+      }
+      launchIdentity = prepared.launchIdentity;
+    }
     mountArgs.push(...prepared.mountArgs);
   }
 
-  return { coveredModelSecrets, mountArgs };
+  return {
+    coveredModelSecrets,
+    ...(launchIdentity ? { launchIdentity } : {}),
+    mountArgs
+  };
 };
 
 export const assertDeclaredModelAuthSatisfied = (
@@ -178,6 +194,9 @@ const createGeneratedRuntimeSecret = (
     return randomBytes(24).toString("hex");
   }
   if (generatedMoltnetSecrets.has(secretName)) {
+    return randomBytes(32).toString("base64url");
+  }
+  if (secretName === "SPAWNFILE_DAIMON_CONTROL_TOKEN") {
     return randomBytes(32).toString("base64url");
   }
 
@@ -350,7 +369,7 @@ export const resolveAuthMountArgs = async (
   // duplicate Docker mount points and bypass the adapter's minimal-file staging.
   const piRuntimeHomes = new Set(
     containerReport.runtime_instances
-      .filter((instance) => instance.runtime === "pi" || instance.runtime === "daimon")
+      .filter((instance) => instance.runtime === "pi")
       .map((instance) => instance.home_path)
       .filter((homePath): homePath is string => homePath !== null)
   );

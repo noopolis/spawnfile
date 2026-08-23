@@ -27,6 +27,7 @@ import {
 } from "../deployment/index.js";
 import { DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
 import { ensureNoopolisRunId, resolveNoopolisRunId } from "../runtime/index.js";
+import { DAIMON_AUTHORIZED_UID_ENV } from "./containerDaimonUidEntrypointRender.js";
 
 import {
   compileProject,
@@ -36,6 +37,7 @@ import {
 import { createDefaultImageTag, resolveDockerBuildArchitecture } from "./buildProject.js";
 import { slugify } from "./helpers.js";
 import {
+  inspectDetachedContainer as recoverDetachedDockerRun,
   runDockerContainer,
   type DockerRunInvocation,
   type DockerRunResult,
@@ -53,7 +55,7 @@ import {
   resolveRunEnvironment
 } from "./runProjectAuth.js";
 
-export { runDockerContainer };
+export { recoverDetachedDockerRun, runDockerContainer };
 export type { DockerRunInvocation, DockerRunResult, DockerRunRunner };
 
 export interface RunProjectOptions extends CompileProjectOptions {
@@ -138,6 +140,10 @@ export const createDockerRunInvocation = async (
     );
     assertRunEnvironmentSatisfied(containerReport, env, preparedRuntimeAuth.coveredModelSecrets);
     assertMoltnetCredentialValuesDistinct(containerReport, env);
+    const hasDaimon = containerReport.runtime_instances.some(
+      (instance) => instance.runtime === "daimon"
+    );
+    const opaqueDaimonCredentials = preparedRuntimeAuth.launchIdentity?.kind === "daimon";
 
     await ensureDirectory(supportDirectory);
     await writeUtf8File(envFilePath, renderDockerEnvFile(env));
@@ -162,6 +168,17 @@ export const createDockerRunInvocation = async (
 
     args.push("--name", containerName);
 
+    if (hasDaimon) {
+      args.push(
+        "--cap-drop=ALL",
+        "--cap-add=CHOWN",
+        "--cap-add=SETUID",
+        "--cap-add=SETGID",
+        "--cap-add=DAC_READ_SEARCH",
+        "--security-opt=no-new-privileges:true"
+      );
+    }
+
     for (const port of containerReport.ports) {
       args.push("-p", `${port}:${port}`);
     }
@@ -181,6 +198,9 @@ export const createDockerRunInvocation = async (
     if (deploymentLabels) appendDockerLabelArgs(args, deploymentLabels);
 
     args.push("--env-file", envFilePath);
+    if (preparedRuntimeAuth.launchIdentity) {
+      args.push("--env", `${DAIMON_AUTHORIZED_UID_ENV}=${preparedRuntimeAuth.launchIdentity.uid}`);
+    }
     args.push(...(await resolveAuthMountArgs(containerReport, options.authProfile ?? null)));
     args.push(...preparedRuntimeAuth.mountArgs);
     args.push(imageTag);
@@ -197,6 +217,7 @@ export const createDockerRunInvocation = async (
       dockerHost: options.dockerHost ?? null,
       envFilePath,
       imageTag,
+      ...(opaqueDaimonCredentials ? { opaqueDaimonCredentials } : {}),
       supportDirectory
     };
   } catch (error) {

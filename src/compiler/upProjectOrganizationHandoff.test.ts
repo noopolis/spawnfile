@@ -6,7 +6,8 @@ vi.mock("./buildProject.js", async (importOriginal) => ({
 }));
 vi.mock("./runProject.js", async (importOriginal) => ({
   ...await importOriginal<typeof import("./runProject.js")>(),
-  createDockerRunInvocation: vi.fn(), resolveDetachedDeploymentOptions: vi.fn(), runDockerContainer: vi.fn()
+  createDockerRunInvocation: vi.fn(), recoverDetachedDockerRun: vi.fn(),
+  resolveDetachedDeploymentOptions: vi.fn(), runDockerContainer: vi.fn()
 }));
 vi.mock("../deployment/index.js", async (importOriginal) => ({
   ...await importOriginal<typeof import("../deployment/index.js")>(),
@@ -21,7 +22,11 @@ vi.mock("node:fs/promises", async (importOriginal) => ({
 }));
 
 import { buildProject, type BuildProjectResult } from "./buildProject.js";
-import { createDockerRunInvocation, resolveDetachedDeploymentOptions } from "./runProject.js";
+import {
+  createDockerRunInvocation,
+  recoverDetachedDockerRun,
+  resolveDetachedDeploymentOptions,
+} from "./runProject.js";
 import { upProject } from "./upProject.js";
 import {
   probeDockerOrganizationReadiness, readDeploymentRecord, writeDeploymentRecord,
@@ -30,6 +35,10 @@ import {
 } from "../deployment/index.js";
 import { createCanonicalSelectedTargetReceiptBytes, createEndpointFingerprint, parseOpaqueTargetHandle } from "../target/index.js";
 import { fileExists } from "../filesystem/index.js";
+import {
+  detachedContainerRecovery,
+  noDockerMutationRecovery,
+} from "../deployment/upLifecycleRecoveryState.js";
 import { rm } from "node:fs/promises";
 import type { OrganizationReadinessEvidence } from "./organizationReadyEvidence.js";
 
@@ -55,7 +64,12 @@ const deploymentLabels = {
   "com.spawnfile.project": "football", "com.spawnfile.run_id": "run-from-host",
   "com.spawnfile.unit": "football-container", "com.spawnfile.version": "0.1"
 };
-const runMetadata = { containerId: "1".repeat(64), deploymentLabels, imageId: `sha256:${"f".repeat(64)}` };
+const runMetadata = {
+  containerId: "1".repeat(64),
+  containerName: "football",
+  deploymentLabels,
+  imageId: `sha256:${"f".repeat(64)}`,
+};
 const beginAuthority = vi.fn(); const observeAuthority = vi.fn(); const finalizeAuthority = vi.fn(); const readMutationAuthority = vi.fn(); const disposeAuthority = vi.fn();
 const targetExecFile = vi.fn(async () => ({ stderr: "", stdout: JSON.stringify(endpoint) }));
 
@@ -103,6 +117,7 @@ beforeEach(() => {
   beginAuthority.mockResolvedValue({ created: true, pending: { pending_key: "a".repeat(64) } });
   observeAuthority.mockResolvedValue(undefined);
   readMutationAuthority.mockResolvedValue(null);
+  vi.mocked(recoverDetachedDockerRun).mockResolvedValue(runMetadata);
   finalizeAuthority.mockResolvedValue({ organization_handoff_handle: "opaque_ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" });
   disposeAuthority.mockResolvedValue(undefined);
   vi.mocked(initializeOrganizationHandoffAuthorityStore).mockResolvedValue({
@@ -218,6 +233,69 @@ describe("upProject organization handoff", () => {
     await expect(upProject("/tmp/project", { ...complete, runRunner: run })).rejects.toThrow(/recovery is incomplete/);
     expect(run).not.toHaveBeenCalled(); expect(finalizeAuthority).not.toHaveBeenCalled();
     expect(writeDockerDeploymentRecordForRun).not.toHaveBeenCalled();
+  });
+
+  it("restarts a pending handoff only after lifecycle proves Docker did not start", async () => {
+    vi.mocked(buildProject).mockResolvedValue(buildResult());
+    vi.mocked(createDockerRunInvocation).mockResolvedValue({
+      args: [], command: "docker", containerName: "football", cwd: "/tmp/spawnfile-handoff", detach: true,
+      deploymentName: "football", deploymentLabels, dockerContext: null, dockerHost: null, envFilePath: "/tmp/spawnfile-handoff.env",
+      imageTag: "football:latest", supportDirectory: "/tmp/spawnfile-handoff-support",
+    });
+    beginAuthority.mockResolvedValue({ created: false, pending: { pending_key: "a".repeat(64) } });
+    const reserve = vi.fn(); const run = vi.fn(async () => runMetadata);
+    await upProject("/tmp/project", {
+      ...complete,
+      lifecycleRecovery: noDockerMutationRecovery(),
+      onDetachedReservation: reserve,
+      runRunner: run,
+    });
+    expect(reserve.mock.invocationCallOrder[0]).toBeLessThan(beginAuthority.mock.invocationCallOrder[0]!);
+    expect(beginAuthority.mock.invocationCallOrder[0]).toBeLessThan(run.mock.invocationCallOrder[0]!);
+    expect(observeAuthority).toHaveBeenCalledWith("a".repeat(64), expect.objectContaining(runMetadata));
+  });
+
+  it("does not turn a stale observed handoff into a record after a no-mutation recovery", async () => {
+    vi.mocked(buildProject).mockResolvedValue(buildResult());
+    vi.mocked(createDockerRunInvocation).mockResolvedValue({
+      args: [], command: "docker", containerName: "football", cwd: "/tmp/spawnfile-handoff", detach: true,
+      deploymentName: "football", deploymentLabels, dockerContext: null, dockerHost: null, envFilePath: "/tmp/spawnfile-handoff.env",
+      imageTag: "football:latest", supportDirectory: "/tmp/spawnfile-handoff-support",
+    });
+    beginAuthority.mockResolvedValue({ created: false, pending: { pending_key: "a".repeat(64) } });
+    readMutationAuthority.mockResolvedValue({
+      container_id: runMetadata.containerId,
+      deployment_labels: deploymentLabels,
+      image_id: runMetadata.imageId,
+    });
+    const run = vi.fn(async () => runMetadata);
+    await expect(upProject("/tmp/project", {
+      ...complete,
+      lifecycleRecovery: noDockerMutationRecovery(),
+      runRunner: run,
+    })).rejects.toThrow(/recovery is incomplete/u);
+    expect(run).not.toHaveBeenCalled();
+    expect(finalizeAuthority).not.toHaveBeenCalled();
+    expect(writeDockerDeploymentRecordForRun).not.toHaveBeenCalled();
+  });
+
+  it("adopts a lifecycle-verified detached container before finalizing a pending handoff", async () => {
+    vi.mocked(buildProject).mockResolvedValue(buildResult());
+    vi.mocked(createDockerRunInvocation).mockResolvedValue({
+      args: [], command: "docker", containerName: "football", cwd: "/tmp/spawnfile-handoff", detach: true,
+      deploymentName: "football", deploymentLabels, dockerContext: null, dockerHost: null, envFilePath: "/tmp/spawnfile-handoff.env",
+      imageTag: "football:latest", supportDirectory: "/tmp/spawnfile-handoff-support",
+    });
+    beginAuthority.mockResolvedValue({ created: false, pending: { pending_key: "a".repeat(64) } });
+    const run = vi.fn(async () => runMetadata);
+    await upProject("/tmp/project", {
+      ...complete,
+      lifecycleRecovery: detachedContainerRecovery(runMetadata),
+      runRunner: run,
+    });
+    expect(run).not.toHaveBeenCalled();
+    expect(recoverDetachedDockerRun).toHaveBeenCalledWith(expect.anything(), runMetadata.containerId);
+    expect(observeAuthority).toHaveBeenCalledWith("a".repeat(64), expect.objectContaining(runMetadata));
   });
 
   it("disposes authority even when pre-run detached env cleanup fails, preserving the cleanup error", async () => {

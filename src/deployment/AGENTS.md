@@ -27,7 +27,8 @@ src/deployment/
 ├── downDeployment.ts # `spawnfile down` orchestrator: record-driven teardown + the export-before-teardown guard (refuse/force/export-to)
 ├── lifecycleCompletionStore.ts # Strict lifecycle record reads and immutable publication
 ├── lifecycleCompletionPaths.ts # Lifecycle completion path and record-name validation
-└── lifecycleCompletionRoot.ts # Anchored lifecycle-store root creation and revalidation
+├── lifecycleCompletionRoot.ts # Anchored lifecycle-store root creation and revalidation
+└── lifecycleUpRecords.ts # Pre-effect up reservations, detached-start records, and verified cleanup markers
 ```
 
 ## Rules

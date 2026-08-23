@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spawnfile public API — data flow</title>
+  <style>
+    :root {
+      --paper: #f3eee7;
+      --ink: #0b0b0b;
+      --accent: #d4604a;
+      --muted: #a59d94;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    body {
+      display: grid;
+      place-items: start center;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(1280px, 100vw);
+      aspect-ratio: 8 / 5;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: var(--paper);
+    }
+
+    .eyebrow,
+    .lane-label,
+    .chip,
+    .node-kicker,
+    .issue-label {
+      font-weight: 750;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow { font-size: 12px; fill: var(--accent); }
+    .title { font: 700 36px/1.1 Georgia, "Times New Roman", serif; fill: var(--ink); }
+    .subtitle { font-size: 15px; fill: var(--ink); }
+    .lane-label { font-size: 11px; fill: var(--muted); }
+    .node { fill: var(--paper); stroke: var(--ink); stroke-width: 2; }
+    .node-accent { stroke: var(--accent); stroke-width: 4; }
+    .node-kicker { font-size: 10px; fill: var(--muted); }
+    .node-title { font: 700 18px/1 Georgia, "Times New Roman", serif; fill: var(--ink); }
+    .node-title.compact { font-size: 16px; }
+    .node-copy { font-size: 12px; fill: var(--ink); }
+    .node-copy.muted { fill: var(--muted); }
+    .flow { fill: none; stroke: var(--ink); stroke-width: 2; marker-end: url(#arrow); }
+    .flow.secondary { stroke: var(--muted); stroke-dasharray: 5 5; }
+    .flow-label { font-size: 10px; font-weight: 650; fill: var(--ink); }
+    .chip-box { fill: var(--paper); stroke: var(--muted); stroke-width: 1; }
+    .chip { font-size: 8px; fill: var(--ink); letter-spacing: .06em; }
+    .issue-box { fill: var(--paper); stroke: var(--accent); stroke-width: 2; }
+    .issue-label { font-size: 9px; fill: var(--accent); }
+    .issue-copy { font-size: 11px; font-weight: 650; fill: var(--ink); }
+    .issue-link { fill: none; stroke: var(--accent); stroke-width: 2; }
+    .legend { font-size: 10px; fill: var(--ink); }
+    .footer { font-size: 10px; fill: var(--muted); }
+  </style>
+</head>
+<body>
+  <main aria-label="Spawnfile public API diagram">
+    <svg viewBox="0 0 1280 800" role="img" aria-labelledby="diagram-title diagram-desc">
+      <title id="diagram-title">Spawnfile public CLI and API surface</title>
+      <desc id="diagram-desc">
+        A two-lane data-flow diagram. The operator lane moves from authoring and inspection through
+        compile, compiled package, build and publish, deployment, and operations. The machine lane
+        moves from capability discovery through target lifecycle operations to versioned receipts.
+        Callouts flag the run command's missing build step, legacy Pi-shaped Daimon integration,
+        and the unversioned artifacts-export JSON wrapper.
+      </desc>
+
+      <defs>
+        <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+          <path d="M0 0 L8 4 L0 8 Z" fill="#0b0b0b" />
+        </marker>
+        <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
+          <path d="M16 0 H0 V16" fill="none" stroke="#a59d94" stroke-width="1" opacity=".12" />
+        </pattern>
+      </defs>
+
+      <rect width="1280" height="800" fill="url(#grid)" />
+
+      <text x="48" y="48" class="eyebrow">Spawnfile · public surface</text>
+      <text x="48" y="88" class="title">Source to organization lifecycle</text>
+      <text x="48" y="116" class="subtitle">The compiler owns organization shape and deployment; versioned contracts carry machine coordination.</text>
+
+      <line x1="48" y1="144" x2="1232" y2="144" stroke="#0b0b0b" stroke-width="2" />
+      <text x="48" y="172" class="lane-label">Operator / project workflow</text>
+      <text x="48" y="524" class="lane-label">Machine / composed lifecycle</text>
+
+      <!-- Operator lane: six primary nodes -->
+      <g aria-label="Author and inspect" data-primary-node="true">
+        <rect x="48" y="196" width="176" height="144" rx="4" class="node" />
+        <line x1="48" y1="196" x2="224" y2="196" class="node-accent" />
+        <text x="64" y="220" class="node-kicker">01 · source</text>
+        <text x="64" y="248" class="node-title">Author &amp; inspect</text>
+        <text x="64" y="276" class="node-copy">init · add · model</text>
+        <text x="64" y="296" class="node-copy">runtime · surface · auth</text>
+        <text x="64" y="320" class="node-copy muted">validate · view · runtimes</text>
+      </g>
+
+      <g aria-label="Compile" data-primary-node="true">
+        <rect x="256" y="196" width="144" height="144" rx="4" class="node" />
+        <line x1="256" y1="196" x2="400" y2="196" class="node-accent" />
+        <text x="272" y="220" class="node-kicker">02 · lower</text>
+        <text x="272" y="248" class="node-title">Compile</text>
+        <text x="272" y="276" class="node-copy">resolve graph</text>
+        <text x="272" y="296" class="node-copy">validate adapters</text>
+        <text x="272" y="316" class="node-copy">emit workspaces</text>
+      </g>
+
+      <g aria-label="Compiled package" data-primary-node="true">
+        <rect x="432" y="196" width="176" height="144" rx="4" class="node" />
+        <line x1="432" y1="196" x2="608" y2="196" class="node-accent" />
+        <text x="448" y="220" class="node-kicker">03 · artifact</text>
+        <text x="448" y="248" class="node-title compact">Compiled package</text>
+        <text x="448" y="276" class="node-copy">Dockerfile · entrypoint</text>
+        <text x="448" y="296" class="node-copy">runtime configs · rootfs</text>
+        <rect x="448" y="308" width="144" height="20" rx="4" class="chip-box" />
+        <text x="456" y="324" class="chip">distribution-report.v1</text>
+      </g>
+
+      <g aria-label="Build and publish" data-primary-node="true">
+        <rect x="640" y="196" width="160" height="144" rx="4" class="node" />
+        <line x1="640" y1="196" x2="800" y2="196" class="node-accent" />
+        <text x="656" y="220" class="node-kicker">04 · distribute</text>
+        <text x="656" y="248" class="node-title">Build / publish</text>
+        <text x="656" y="276" class="node-copy">local OCI image</text>
+        <text x="656" y="296" class="node-copy">verify · registry push</text>
+        <rect x="656" y="308" width="128" height="20" rx="4" class="chip-box" />
+        <text x="664" y="324" class="chip">spawnfile.image.v1</text>
+      </g>
+
+      <g aria-label="Deploy" data-primary-node="true">
+        <rect x="832" y="196" width="160" height="144" rx="4" class="node" />
+        <line x1="832" y1="196" x2="992" y2="196" class="node-accent" />
+        <text x="848" y="220" class="node-kicker">05 · deploy</text>
+        <text x="848" y="248" class="node-title">Up / run</text>
+        <text x="848" y="276" class="node-copy">container + volumes</text>
+        <text x="848" y="296" class="node-copy">deployment record v2</text>
+        <rect x="848" y="308" width="128" height="20" rx="4" class="chip-box" />
+        <text x="856" y="324" class="chip">up-receipt.v1</text>
+      </g>
+
+      <g aria-label="Operate" data-primary-node="true">
+        <rect x="1024" y="196" width="208" height="144" rx="4" class="node" />
+        <line x1="1024" y1="196" x2="1232" y2="196" class="node-accent" />
+        <text x="1040" y="220" class="node-kicker">06 · operate</text>
+        <text x="1040" y="244" class="node-title">Observe / export</text>
+        <text x="1040" y="264" class="node-title">&amp; stop</text>
+        <text x="1040" y="288" class="node-copy">status · artifacts export</text>
+        <text x="1040" y="308" class="node-copy">down · lifecycle lookup</text>
+        <text x="1040" y="328" class="node-copy muted">status.v1 · index.v1 · down.v1</text>
+      </g>
+
+      <!-- Main orthogonal flow -->
+      <path d="M224 268 H256" class="flow" />
+      <path d="M400 268 H432" class="flow" />
+      <path d="M608 268 H640" class="flow" />
+      <path d="M800 268 H832" class="flow" />
+      <path d="M992 268 H1024" class="flow" />
+
+      <!-- Issue callouts -->
+      <g aria-label="P1 run command mismatch">
+        <path d="M912 340 V360" class="issue-link" />
+        <rect x="832" y="360" width="160" height="96" rx="4" class="issue-box" />
+        <text x="848" y="384" class="issue-label">P1 · contract mismatch</text>
+        <text x="848" y="408" class="issue-copy">run promises build,</text>
+        <text x="848" y="424" class="issue-copy">but compiles then runs</text>
+        <text x="848" y="440" class="issue-copy">an existing image tag.</text>
+      </g>
+
+      <g aria-label="P1 legacy Pi-shaped Daimon integration">
+        <path d="M1128 340 V360" class="issue-link" />
+        <rect x="1024" y="360" width="208" height="96" rx="4" class="issue-box" />
+        <text x="1040" y="384" class="issue-label">P1 · legacy boundary</text>
+        <text x="1040" y="408" class="issue-copy">Daimon dev / status / Moltnet</text>
+        <text x="1040" y="424" class="issue-copy">still assume Pi app IDs, routes,</text>
+        <text x="1040" y="440" class="issue-copy">ports, and config shape.</text>
+      </g>
+
+      <!-- Machine lane: three primary nodes -->
+      <g aria-label="Capabilities" data-primary-node="true">
+        <rect x="48" y="548" width="240" height="128" rx="4" class="node" />
+        <line x1="48" y1="548" x2="288" y2="548" class="node-accent" />
+        <text x="64" y="572" class="node-kicker">07 · discover</text>
+        <text x="64" y="600" class="node-title">Capabilities</text>
+        <text x="64" y="628" class="node-copy">closed command + contract inventory</text>
+        <rect x="64" y="640" width="152" height="20" rx="4" class="chip-box" />
+        <text x="72" y="656" class="chip">capabilities.v1</text>
+      </g>
+
+      <g aria-label="Target lifecycle" data-primary-node="true">
+        <rect x="368" y="548" width="416" height="128" rx="4" class="node" />
+        <line x1="368" y1="548" x2="784" y2="548" class="node-accent" />
+        <text x="384" y="572" class="node-kicker">08 · coordinate</text>
+        <text x="384" y="600" class="node-title">Target + lifecycle operations</text>
+        <text x="384" y="628" class="node-copy">resolve config · prepare · select · attach · attest · activate</text>
+        <text x="384" y="648" class="node-copy">readiness · clock · snapshot · recover · cleanup</text>
+      </g>
+
+      <g aria-label="Versioned receipts" data-primary-node="true">
+        <rect x="864" y="548" width="368" height="128" rx="4" class="node" />
+        <line x1="864" y1="548" x2="1232" y2="548" class="node-accent" />
+        <text x="880" y="572" class="node-kicker">09 · handoff</text>
+        <text x="880" y="600" class="node-title">Versioned receipts</text>
+        <text x="880" y="628" class="node-copy">target-resource.v1 · topology.v1 · lifecycle.v1</text>
+        <text x="880" y="648" class="node-copy">up.v1 · export-index.v1 · down.v1</text>
+      </g>
+
+      <path d="M288 612 H368" class="flow" />
+      <text x="304" y="600" class="flow-label">admit</text>
+      <path d="M784 612 H864" class="flow" />
+      <text x="800" y="584" class="flow-label">canonical JSON</text>
+      <path d="M576 548 V480 H816 V288 H832" class="flow secondary" />
+      <text x="596" y="472" class="flow-label">authorizes project-mode up</text>
+      <path d="M1232 268 H1256 V612 H1232" class="flow secondary" />
+
+      <g aria-label="P2 export wrapper mismatch">
+        <rect x="864" y="696" width="368" height="64" rx="4" class="issue-box" />
+        <text x="880" y="716" class="issue-label">P2 · envelope mismatch</text>
+        <text x="880" y="736" class="issue-copy">artifacts --json wraps export-index.v1</text>
+        <text x="880" y="752" class="issue-copy">in an unversioned outer object.</text>
+        <path d="M1048 676 V696" class="issue-link" />
+      </g>
+
+      <g aria-label="Legend">
+        <line x1="48" y1="724" x2="80" y2="724" class="flow" />
+        <text x="92" y="728" class="legend">data / authority flow</text>
+        <rect x="232" y="712" width="28" height="20" rx="4" class="issue-box" />
+        <text x="272" y="728" class="legend">confirmed boundary issue</text>
+      </g>
+
+      <text x="48" y="780" class="footer">Current implementation surface · nine primary nodes · provider traffic and agent cognition remain outside Spawnfile.</text>
+      <text x="1232" y="780" text-anchor="end" class="footer">1280 × 800</text>
+    </svg>
+  </main>
+</body>
+</html>

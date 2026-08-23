@@ -5,8 +5,8 @@ import type {
 } from "../target/contracts.js";
 import type { TargetTopologyAttestationResult } from "../target/topologyAttestation.js";
 import type {
-  TargetPublicArtifactSnapshot,
-  TargetPublicArtifactSnapshotRequest
+  TargetPublicArtifactSnapshotRequest,
+  TargetPublicArtifactSnapshotResult
 } from "../target/publicArtifactSnapshot.js";
 import type { TargetTopologyActivationResult } from "../target/topologyActivation.js";
 
@@ -77,7 +77,7 @@ export const attestTargetDefaultTopology = async (
 export const snapshotTargetDefaultPublicArtifact = async (
   config: TargetDefaultConfig,
   request: TargetPublicArtifactSnapshotRequest
-): Promise<TargetPublicArtifactSnapshot> => {
+): Promise<TargetPublicArtifactSnapshotResult> => {
   const session = await initializeTargetDefaultAuthoritySession(config);
   try {
     return await createDockerPublicArtifactSnapshotReader({

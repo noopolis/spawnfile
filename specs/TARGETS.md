@@ -76,6 +76,112 @@ attestation, so supported teardown cannot race the proof.
 
 ## Target CLI
 
+### Capability discovery
+
+An automation client must query capabilities before using a versioned public
+contract:
+
+```bash
+spawnfile capabilities --json
+```
+
+This command is read-only: it reads only the packaged Spawnfile version, does
+not consume standard input, does not write files, and does not contact Docker
+or any provider. Success emits exactly one strict
+`spawnfile.capabilities.v1` JSON document followed by a newline. Missing
+`--json` fails with exit code 2 and emits no receipt.
+
+The receipt names the exact target-config resolver command and output/config
+versions. It also carries the complete closed
+`spawnfile.composed-lifecycle-contract-set.v1` command-and-contract inventory:
+an automation client MUST require `complete: true`, the exact set version, and
+every command row it intends to use before mutation. Each row has a canonical
+`argv` form plus explicit `stdin_versions`, `request_versions`,
+`receipt_versions`, `invocation_versions`, and `pending_versions`; empty lists
+mean that role is intentionally unversioned or unused. Image-reference `up` is
+not in that inventory: only project-mode `up --json` with a lifecycle
+invocation has correlated, lookup-recoverable machine semantics. It also names
+the self-identifying prepared-plan version. That v1 plan accepts exactly
+`version`, `evidence_destination`, plus one `prepared_artifact_mapping`;
+unknown keys are rejected. The credential
+provisioning request supports an optional `model_engine_auth` member, so a
+scripted organization need not provide model-engine auth.
+
+The receipt reports only shipped public capabilities. The current build ships
+the Spawnfile-owned, target-local
+`spawnfile.target-evidence-export-helper.prepared.v1` helper receipt. It is
+prepared with `spawnfile helper prepare-evidence-export --context <name> --json`
+and selected by `target resolve_config --prepare-evidence-helper`; callers do
+not provide an authority-file path. Its identity is the exact Docker image
+config digest, so a classic local Docker engine need not expose a registry
+manifest digest. Its
+public-artifact snapshot query returns the typed
+`spawnfile.target-public-artifact-snapshot.not-present.v1` result when the
+declared terminal artifact does not yet exist. It reads that terminal artifact
+with one atomic no-follow open from a dedicated public tmpfs mount; a symlink,
+parent traversal, replacement failure, or any other read failure is permanent
+and MUST NOT be translated to `not_present`. Capability discovery does not
+prove that a target or auth preflight will succeed on every machine. A caller
+must validate the exact receipt versions it requires before beginning mutations.
+
+### Local evidence-export helper
+
+Spawnfile owns the local-development helper source, canonical USTAR build
+context, image construction, and private transaction authority. Provision it
+only on an explicitly named local Docker context whose selected Node base image
+is already present:
+
+```bash
+spawnfile helper prepare-evidence-export \
+  --context default \
+  --json
+```
+
+The command accepts `--base-image`, `--docker-command`, and a bounded
+`--timeout-ms` when their defaults are unsuitable. It never selects the
+current context implicitly, never targets a remote endpoint, never pulls or
+pushes, and runs the Docker build with networking disabled. The package-shipped
+recipe creates the exact helper label, `/bin/spawnfile-export-helper`
+entrypoint, `65534:65534` user, and exactly one nonsecret environment entry:
+`PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`. Null,
+duplicate, additional, or drifted image environment entries are rejected. The
+helper emits the strict canonical USTAR output required by the evidence-export
+contract.
+
+Before the first Docker mutation Spawnfile persists and fsyncs one deterministic
+pending transaction under its private target-local state root. That record binds
+the exact context endpoint, daemon projection, platform, base config digest,
+recipe digest, and a private reservation. The build captures Docker's emitted
+immutable config ID directly rather than adopting a mutable tag. Recovery only
+re-attests that completed exact config ID or rebuilds it from the same packaged
+recipe; a pending-only reservation never consults or overwrites a helper tag.
+It never discovers resources by listing or name scan. A public result is only the canonical
+`spawnfile.target-evidence-export-helper.prepared.v1` receipt with its opaque
+handle and digest. The Docker image identity used by target lowering is the
+locally accepted config digest; a registry or `RepoDigest` is not required.
+
+The resolver may prepare the same package-owned artifact as part of its target
+setup path:
+
+```bash
+spawnfile target resolve_config \
+  --context default \
+  --evidence-destination "$PWD/.spawn-local/evidence.tar" \
+  --prepare-evidence-helper
+```
+
+The resolver and target lifecycle consume the opaque preparation internally;
+no caller-managed authority-file path is accepted.
+
+The `target resolve_config` result contains `target_config_digest`, computed
+over canonical JSON bytes of its strict `target_config` under
+`spawnfile.target-config-digest.v1`. When and only when
+`--prepare-evidence-helper` was requested on an explicitly selected local
+context, it also contains `prepared_evidence_helper`; that opaque receipt is
+the exact same value embedded as `target_config.preparedEvidenceHelper`.
+No helper config identity, daemon projection, reservation detail, or authority
+path is public.
+
 The built Spawnfile CLI exposes fourteen mutating/selection verbs, four
 read-only target queries, one owner-only lifecycle release, one separate
 read-only journal lookup, and one aggregate preparation command:
@@ -102,8 +208,8 @@ read-only journal lookup, and one aggregate preparation command:
 - `lookup_operation`
 - `prepare_composed_run`
 
-Simfile uses one aggregate preparation command rather than choosing among the
-low-level preparation verbs:
+A composed-lifecycle consumer uses one aggregate preparation command rather
+than choosing among the low-level preparation verbs:
 
 ```bash
 target-config-producer gpu-host \
@@ -133,76 +239,23 @@ path, inline JSON, environment-derived secret values, or request-relative file
 paths. Request validation happens before configuration is read or a target
 operation starts.
 
-### Composed-run operator inputs
+### Composed-lifecycle client inputs
 
-The one-command Simfile path freezes these operator-owned inputs before any
-target mutation:
+There is no product-specific operator-input request. A composed-lifecycle client
+discovers the machine-readable command set with `spawnfile capabilities --json`
+and uses only rows advertised by `spawnfile.composed-lifecycle-contract-set.v1`.
+It owns its local run-root layout, local authentication policy, and any
+runtime-specific asset selection.
 
-| Input | Contract |
-|---|---|
-| Target selector | nonsecret `gpu-host` default, overridable only as a bounded selector |
-| Private target configuration | `target-config-producer gpu-host` writes the strict object to stdin; only literal `--config -` is accepted |
-| Runtime auth | named local profile `simfile-live`; the name may be recorded, its values may not |
-| Spawnfile binary | normal `PATH` discovery of the installed `spawnfile` executable |
-| Moltnet binary | exact digest-bound release download by default, or a strict local `moltnet_release_stamp_<arch>.json` override; both must match `moltnet-releases.json`, and unpinned `latest` is forbidden |
-| Run roots | one absolute operator-selected root with distinct `output/`, `evidence/`, `journal/`, and `cache/` children owned by the run id |
-| Correlation | one run id plus exact request digests, idempotency keys, selected-target receipt, and verified Moltnet identity |
-
-The operator-input request is nonsecret and versioned. Its executable parser
-and resolver live at the runtime-specific ownership boundary, outside the
-project-neutral target modules. It is not a replacement for any target-resource
-request and grants no target authority by itself:
-
-```json
-{
-  "version": "spawnfile.simfile-run-operator-input.v1",
-  "run_id": "run-example",
-  "target_selector": "gpu-host",
-  "target_config_transport": "stdin",
-  "auth_profile": "simfile-live",
-  "run_root": "/operator/simfile/runs/run-example",
-  "moltnet_release": {
-    "directory_transport": "operator-path",
-    "required_capability": "pi-bridge",
-    "stamp_version": "spawnfile.moltnet-release-stamp.v1"
-  }
-}
-```
-
-The correlated preparation receipt exposes only safe identities. The target
-config, its producer command, Moltnet directory, and auth values are absent:
-
-```json
-{
-  "version": "spawnfile.simfile-run-operator-receipt.v1",
-  "run_id": "run-example",
-  "target_selector": "gpu-host",
-  "selected_target": {
-    "version": "spawnfile.target-resource.selected-target.v1",
-    "handle": "opaque_exampletarget01",
-    "fingerprint": "sha256:00000000000000000000000000000000"
-  },
-  "auth_profile": "simfile-live",
-  "roots_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-  "moltnet_release": {
-    "version": "spawnfile.moltnet-release-identity.v1",
-    "release_version": "v0.1.14-1-g0000000",
-    "source_revision": "0000000000000000000000000000000000000000",
-    "architecture": "amd64",
-    "asset": "moltnet_linux_amd64.tar.gz",
-    "asset_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-    "capabilities": ["pi-bridge"]
-  }
-}
-```
-
-The zeros are documentation placeholders, never accepted provenance. A real
-receipt is derived from the same-build artifact, strict stamp, and exact
-checked-in Moltnet release authority. A self-authored stamp/tarball pair does
-not establish trust. The receipt is invalid if any identity is missing, stale,
-mismatched, `latest`, or not correlated to the resolved request, run roots, and
-selected-target receipt. Simfile may persist the secret-free receipt but must
-never persist or echo the producer's private configuration.
+The public CLI carries only versioned public requests and receipts. Target
+configuration remains the strict private stdin input accepted exclusively by
+`--config -`; it is never copied into a request or receipt. A client that needs
+a resolved target uses the advertised `target resolve_config` contract, whose
+`spawnfile.target-config-resolution.v1` receipt binds the strict target-config
+digest, context class, platform, and base-image identity. Lifecycle calls bind
+their idempotency and recovery through their published invocation and receipt
+versions. These generic contracts do not grant an external caller access to
+private target configuration or local credential values.
 
 The optional `container_bundle_store_root` member selects a dedicated,
 mode-`0700`, current-uid-owned physical directory for immutable target-local

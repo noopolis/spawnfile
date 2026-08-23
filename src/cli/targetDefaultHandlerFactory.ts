@@ -10,7 +10,8 @@ import { createDockerSecretOperations } from "../target/dockerSecrets.js";
 import { selectTarget, type SelectTargetOptions } from "../target/dockerTarget.js";
 import { createDockerWorldServiceOperations } from "../target/dockerWorldService.js";
 import { createEvidenceExportOperations } from "../target/evidenceExport.js";
-import { EVIDENCE_EXPORT_HELPER_CONTRACT } from "../target/evidenceExportProvider.js";
+import { createEvidenceExportHelper, EVIDENCE_EXPORT_HELPER_CONTRACT } from "../target/evidenceExportProvider.js";
+import { resolvePreparedEvidenceHelperImage } from "../evidenceExportHelper/index.js";
 import { createDockerOrganizationAttachmentOperations } from "../target/organizationAttachment.js";
 import type { SelectedTargetReceipt, TargetResourceRequest } from "../target/contracts.js";
 
@@ -106,7 +107,7 @@ const requireAuthorities = (raw: TargetDefaultAuthorities): TargetDefaultAuthori
   const names = [
     "artifactIdentityStore", "attachmentAuthorityStore",
     "evidenceExportAuthorityStore", "executors", "handoffResolver",
-    "helperArtifactResolver", "journals", "secretAuthorityStore",
+    "helperArtifactResolver", "helperExecutor", "journals", "secretAuthorityStore",
     "secretResolver", "topologyAttestor", "worldAuthorityStore", "worldResolver"
   ] as const;
   if (!raw || typeof raw !== "object" || Array.isArray(raw) || nodeTypes.isProxy(raw)
@@ -130,6 +131,9 @@ const requireAuthorities = (raw: TargetDefaultAuthorities): TargetDefaultAuthori
   ] as const;
   const executors = shape(values.executors, executorNames);
   if (executorNames.some((name) => typeof executors[name] !== "function")) {
+    throw new Error("Target handler initialization failed");
+  }
+  if (typeof values.helperExecutor !== "function") {
     throw new Error("Target handler initialization failed");
   }
   for (const name of [
@@ -222,6 +226,23 @@ const execute = async (
       }).execute(request);
     case "export_evidence_volume":
     case "recover_operation": {
+      if (config.evidenceHelperBaseImage && config.preparedEvidenceHelper) {
+        const helperInput = { baseImage: config.evidenceHelperBaseImage, context: config.context,
+          executor: authorities.helperExecutor, privateRoot: config.paths.evidenceHelper,
+          timeoutMs: config.timeoutMs };
+        const image = await resolvePreparedEvidenceHelperImage(helperInput, config.preparedEvidenceHelper);
+        const localHelper = createEvidenceExportHelper({ artifactManifestDigest: config.preparedEvidenceHelper.digest,
+          imageDigest: image.configDigest, imageReference: image.imageReference, resultHandle: config.preparedEvidenceHelper.handle });
+        const operations = factories.evidence({
+          ...common, artifactIdentityStore: authorities.artifactIdentityStore,
+          authorityStore: authorities.evidenceExportAuthorityStore, executor: authorities.executors.resource,
+          exportExecutor: authorities.executors.evidenceExport, helperArtifactContract: EVIDENCE_EXPORT_HELPER_CONTRACT,
+          helperArtifactManifestDigest: config.preparedEvidenceHelper.digest, localHelper
+        });
+        return request.operation === "recover_operation"
+          ? operations.recover(request, config.evidenceDestination)
+          : operations.execute(request, config.evidenceDestination);
+      }
       if (!config.helperArtifact || !authorities.helperArtifactResolver) {
         throw new Error("Target evidence helper is not configured");
       }

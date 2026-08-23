@@ -204,7 +204,7 @@ describe("evidence export operation authority", () => {
         Entrypoint: ["/bin/spawnfile-export-helper"],
         Cmd: [],
         Labels: { "spawnfile.target.evidence-export.helper-contract": "v1" },
-        Env: null,
+        Env: ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
         ExposedPorts: null,
         Healthcheck: null,
         User: "65534:65534",
@@ -222,7 +222,7 @@ describe("evidence export operation authority", () => {
       }
       if (args[2] === "container" && args[3] === "inspect") {
         const command = created[created.indexOf("--name") + 1]!;
-        return { stderr: "", stdout: JSON.stringify([{ Name: `/${command}`, Config: { Entrypoint: ["/bin/spawnfile-export-helper"], Cmd: [], Labels: { "spawnfile.target.evidence-export.helper-contract": "v1" }, User: "65534:65534", Image: reference, Env: null, ExposedPorts: null, Healthcheck: null, Volumes: null }, HostConfig: { AutoRemove: false, NetworkMode: "none", ReadonlyRootfs: true, Privileged: false, CapAdd: null, CapDrop: ["ALL"], SecurityOpt: ["no-new-privileges=true"], PidsLimit: 64, Memory: 134217728, NanoCpus: 250_000_000, IpcMode: "none", PidMode: "", UTSMode: "", UsernsMode: "", CgroupnsMode: "private", Binds: null, VolumesFrom: null, ExtraHosts: null, Dns: null, Links: null, GroupAdd: null, Devices: null, DeviceRequests: null, PortBindings: null, PublishAllPorts: false, RestartPolicy: { Name: "no", MaximumRetryCount: 0 }, LogConfig: { Type: "none", Config: {} } }, Mounts: [{ Type: "volume", Name: volume!.name, Destination: "/spawnfile/evidence", RW: false }] }]) };
+        return { stderr: "", stdout: JSON.stringify([{ Name: `/${command}`, Config: { Entrypoint: ["/bin/spawnfile-export-helper"], Cmd: [], Labels: { "spawnfile.target.evidence-export.helper-contract": "v1" }, User: "65534:65534", Image: reference, Env: ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"], ExposedPorts: null, Healthcheck: null, Volumes: null }, HostConfig: { AutoRemove: false, NetworkMode: "none", ReadonlyRootfs: true, Privileged: false, CapAdd: null, CapDrop: ["ALL"], SecurityOpt: ["no-new-privileges=true"], PidsLimit: 64, Memory: 134217728, NanoCpus: 250_000_000, IpcMode: "none", PidMode: "", UTSMode: "", UsernsMode: "", CgroupnsMode: "private", Binds: null, VolumesFrom: null, ExtraHosts: null, Dns: null, Links: null, GroupAdd: null, Devices: null, DeviceRequests: null, PortBindings: null, PublishAllPorts: false, RestartPolicy: { Name: "no", MaximumRetryCount: 0 }, LogConfig: { Type: "none", Config: {} } }, Mounts: [{ Type: "volume", Name: volume!.name, Destination: "/spawnfile/evidence", RW: false }] }]) };
       }
       if (args[2] === "container" && args[3] === "rm") return { stderr: "", stdout: "removed" };
       throw new Error("unexpected docker invocation");

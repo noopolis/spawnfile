@@ -1,5 +1,5 @@
 import type { ChildProcess } from "node:child_process";
-import { lstat, mkdtemp, rm } from "node:fs/promises";
+import { lstat, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -20,4 +20,25 @@ it("disposes promptly and idempotently after a worker has already exited by sign
   await new Promise<void>((resolve) => child?.exitCode !== null || child?.signalCode !== null ? resolve() : child?.once("exit", () => resolve()));
   await Promise.race([client.dispose(), new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("dispose did not settle")), 500))]);
   await client.dispose();
+});
+
+it("converges full-size concurrent publishers without leaving staging sidecars", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-handoff-fs-client-")); directories.push(directory);
+  const stat = await lstat(directory);
+  const options = {
+    cwd: directory, dev: stat.dev, ino: stat.ino,
+    ...(typeof process.getuid === "function" ? { uid: process.getuid() } : {}),
+  };
+  const clients = await Promise.all(Array.from({ length: 8 }, async () => initializeOrganizationHandoffAuthorityFsClient(options)));
+  const leaves: string[] = [];
+  try {
+    for (let index = 0; index < 8; index += 1) {
+      const name = `${index.toString(16).padStart(128, "0")}.json`; leaves.push(name);
+      const results = await Promise.all(clients.map(async (client) => client.create(name, "x".repeat(30_000))));
+      expect(results.filter(Boolean)).toHaveLength(1);
+      expect((await readdir(directory)).sort()).toEqual([...leaves].sort());
+    }
+  } finally {
+    await Promise.all(clients.map(async (client) => client.dispose()));
+  }
 });

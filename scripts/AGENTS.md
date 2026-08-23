@@ -10,7 +10,8 @@ scripts/
 ├── bootstrap-worktree.test.mjs  # Bare node:test coverage and bootstrap self-test gate
 ├── build-closure.mjs            # Builds a selected repository dependency closure in order
 ├── build-closure.test.mjs       # Injected-registry and injected-run closure tests
-├── build-local-moltnet.mjs      # Builds and stamps a local Moltnet release through Docker
+├── build-local-daimon-runtime.mjs # Builds a digest-bound generic local Daimon image
+├── build-local-moltnet.mjs      # Builds and stamps a local Moltnet release through Go
 ├── loop-verify.mjs              # Runs mechanical loop gates and summarizes suite failures
 ├── loop-verify.test.mjs         # Tests loop verification freshness and TAP parsing helpers
 ├── tap-self-test.mjs            # Shared TAP parsing, test discovery, and case assertions

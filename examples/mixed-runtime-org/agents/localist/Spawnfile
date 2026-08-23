@@ -1,9 +1,9 @@
 spawnfile_version: "0.1"
 kind: agent
 name: localist
-description: "Daimon agent configured for a local OpenAI-compatible model"
+description: "Pi agent configured for a local OpenAI-compatible model"
 
-runtime: daimon
+runtime: pi
 
 execution:
   model:
@@ -21,7 +21,7 @@ execution:
 schedule:
   kind: every
   every: 10s
-  prompt: "Append one short line to ./shared-log/localist.md proving Daimon can use shared resources."
+  prompt: "Append one short line to ./shared-log/localist.md proving Pi can use shared resources."
 
 surfaces:
   moltnet:

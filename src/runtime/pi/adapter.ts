@@ -336,9 +336,4 @@ export const piAdapter: RuntimeAdapter = {
   }
 };
 
-export const daimonAdapter: RuntimeAdapter = {
-  ...piAdapter,
-  name: "daimon"
-};
-
 export const PI_RUNTIME_PACKAGE = `${PI_PACKAGE_NAME}@${PI_PACKAGE_VERSION}`;

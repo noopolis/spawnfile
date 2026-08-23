@@ -18,6 +18,7 @@ import {
   type LifecycleRootAuthority
 } from "./lifecycleCompletionRoot.js";
 import {
+  LIFECYCLE_PUBLICATION_SETTLE_ATTEMPTS,
   matchesSettledLifecyclePublication,
   readSettledLifecycleRecord
 } from "./lifecycleCompletionPublication.js";
@@ -30,6 +31,9 @@ export {
   lifecycleRecordName,
   planPath,
   recoveryPath,
+  upCleanupPath,
+  upReservationPath,
+  upStartPath,
   resolveLifecycleCompletionDirectory,
   resolveLifecycleCompletionPath
 } from "./lifecycleCompletionPaths.js";
@@ -179,7 +183,7 @@ export const publishLifecycleRecord = async (
       }
       return false;
     }
-    for (let attempt = 0; attempt < 16; attempt += 1) {
+    for (let attempt = 0; attempt < LIFECYCLE_PUBLICATION_SETTLE_ATTEMPTS; attempt += 1) {
       const exact = await readLifecycleRecord(final, [1, 2]);
       if (exact !== content) failLifecycleStore("publication changed");
       if ((await lstat(final).catch(() => null))?.nlink === 1) {

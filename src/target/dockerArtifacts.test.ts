@@ -163,6 +163,59 @@ describe("immutable Docker artifact resolution", () => {
     }
   });
 
+  it("waits for an exact bounded pending prefix before joining its immutable binding", async () => {
+    const state: State = { calls: [] }; const setupValue = await setup(state);
+    const binding = { artifactManifestDigest: manifest, imageDigest, imageReference, operationHandle: parseOpaqueTargetHandle("opaque_aaaaaaaaaaaaaaaa"), requestDigest: `sha256:${"d".repeat(64)}`, resultHandle: parseOpaqueTargetHandle("opaque_bbbbbbbbbbbbbbbb"), selectedTargetHandle: setupValue.selected.handle };
+    const interrupted = await initializeDockerArtifactIdentityStore(setupValue.identityRoot, {
+      beforePublish: async () => { throw new Error("crash"); },
+    });
+    await expect(interrupted.bind(binding)).rejects.toThrow("Docker artifact resolution failed");
+    const pending = path.join(setupValue.identityRoot, (await readdir(setupValue.identityRoot))
+      .find((item) => item.endsWith(".pending"))!);
+    const complete = await readFile(pending, "utf8");
+    await writeFile(pending, complete.slice(0, 1), { mode: 0o600 });
+    const originalSetImmediate = globalThis.setImmediate;
+    let turns = 0;
+    globalThis.setImmediate = ((callback: (...args: unknown[]) => void) => {
+      turns += 1;
+      if (turns === 20) void writeFile(pending, complete, { mode: 0o600 }).then(() => callback());
+      else originalSetImmediate(callback);
+      return {} as NodeJS.Immediate;
+    }) as typeof setImmediate;
+    try {
+      await expect((await initializeDockerArtifactIdentityStore(setupValue.identityRoot)).bind(binding))
+        .resolves.toBeUndefined();
+    } finally { globalThis.setImmediate = originalSetImmediate; }
+    expect(turns).toBeGreaterThanOrEqual(20);
+    await expect((await initializeDockerArtifactIdentityStore(setupValue.identityRoot))
+      .resolveOperation(binding.operationHandle, binding.requestDigest)).resolves.toEqual(binding);
+  });
+
+  it("reconciles in-flight pending records only after their exact state settles", async () => {
+    const state: State = { calls: [] }; const setupValue = await setup(state);
+    const binding = { artifactManifestDigest: manifest, imageDigest, imageReference, operationHandle: parseOpaqueTargetHandle("opaque_aaaaaaaaaaaaaaaa"), requestDigest: `sha256:${"d".repeat(64)}`, resultHandle: parseOpaqueTargetHandle("opaque_bbbbbbbbbbbbbbbb"), selectedTargetHandle: setupValue.selected.handle };
+    const store = await initializeDockerArtifactIdentityStore(setupValue.identityRoot); await store.bind(binding);
+    const final = path.join(setupValue.identityRoot, (await readdir(setupValue.identityRoot))
+      .find((item) => item.endsWith(".identity.json"))!);
+    const pending = path.join(setupValue.identityRoot, `.${path.basename(final)}.pending`);
+    const exact = await readFile(final, "utf8");
+    const afterTwentyTurns = async (operation: () => Promise<unknown>, repair: () => Promise<void>) => {
+      const original = globalThis.setImmediate; let turns = 0;
+      globalThis.setImmediate = ((callback: (...args: unknown[]) => void) => {
+        turns += 1;
+        if (turns === 20) void repair().then(() => callback()); else original(callback);
+        return {} as NodeJS.Immediate;
+      }) as typeof setImmediate;
+      try { return await operation(); } finally { globalThis.setImmediate = original; expect(turns).toBeGreaterThanOrEqual(20); }
+    };
+    await writeFile(pending, exact.slice(0, 1), { mode: 0o600 });
+    await expect(afterTwentyTurns(() => store.resolveOperation(binding.operationHandle, binding.requestDigest),
+      async () => writeFile(pending, exact, { mode: 0o600 }))).resolves.toEqual(binding);
+    await writeFile(pending, exact, { mode: 0o600 }); const copy = `${pending}.copy`; await link(pending, copy);
+    await expect(afterTwentyTurns(() => store.resolveOperation(binding.operationHandle, binding.requestDigest),
+      async () => rm(copy))).resolves.toEqual(binding);
+  });
+
   it("joins when another independent store links the final after the first binder proved pending", async () => {
     const state: State = { calls: [] }; const setupValue = await setup(state);
     const binding = { artifactManifestDigest: manifest, imageDigest, imageReference, operationHandle: parseOpaqueTargetHandle("opaque_aaaaaaaaaaaaaaaa"), requestDigest: `sha256:${"d".repeat(64)}`, resultHandle: parseOpaqueTargetHandle("opaque_bbbbbbbbbbbbbbbb"), selectedTargetHandle: setupValue.selected.handle };

@@ -148,6 +148,30 @@ describe("organization handoff authority store", () => {
     expect(finalized.container_id).toBe("9".repeat(64));
   });
 
+  it("settles exact stale publication sidecars when a fresh worker joins a reservation", async () => {
+    const initial = await store(); const started = await initial.begin(input());
+    const name = `${Buffer.from(createOrganizationHandoffRecoveryKey(started.pending.pending_key), "utf8").toString("hex")}.json`;
+    const directory = path.join(resolveOrganizationHandoffAuthorityRoot(), "recovery-reserved");
+    const record = JSON.stringify(started.pending); const leaf = path.join(directory, name);
+    await writeFile(`${leaf}.pending`, record, { mode: 0o600 });
+    await writeFile(`${leaf}.recovery`, record, { mode: 0o600 });
+    await initial.dispose();
+    const restarted = await initialize();
+    await expect(restarted.begin(input())).resolves.toEqual({ created: false, pending: started.pending });
+    expect(await readdir(directory)).toEqual([name]);
+  });
+
+  it("reconstructs a durable crash while both recovery publication leaves are prefixes", async () => {
+    const value = await store(); const pending = createOrganizationHandoffCapabilityPending(input());
+    const name = `${Buffer.from(createOrganizationHandoffRecoveryKey(pending.pending_key), "utf8").toString("hex")}.json`;
+    const directory = path.join(resolveOrganizationHandoffAuthorityRoot(), "recovery-reserved");
+    const prefix = JSON.stringify(pending).slice(0, 32); const leaf = path.join(directory, name);
+    await writeFile(`${leaf}.pending`, prefix, { mode: 0o600 });
+    await writeFile(`${leaf}.recovery`, prefix, { mode: 0o600 });
+    await expect(value.begin(input())).resolves.toEqual({ created: true, pending });
+    expect(await readdir(directory)).toEqual([name]);
+  });
+
   it("fails closed for closure, corruption, symlinked authority, and a changed authorization before any provider seam", async () => {
     const value = await store(); const pending = await value.reserve(input());
     const final = await value.finalize(pending.pending_key, { containerId: "3".repeat(64), deploymentLabels: labels });

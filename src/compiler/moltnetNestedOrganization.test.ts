@@ -196,6 +196,9 @@ describe("nested B31 Moltnet organization composition", () => {
     const plan = await buildCompilePlan(root);
     const rootTeam = plan.nodes.find((node) => node.kind === "team")?.value;
     expect(rootTeam && Object.hasOwn(rootTeam, "externalParticipants")).toBe(false);
+    expect(plan.organizationIdentity).toMatchObject({
+      agentMembers: [{ memberId: "red", principalId: "agent:red" }], externalParticipants: [],
+    });
     const artifacts = await generateMoltnetArtifacts(plan);
     expect(artifacts && Object.hasOwn(artifacts, "externalParticipantArtifacts"))
       .toBe(false);

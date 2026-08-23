@@ -514,14 +514,15 @@ Daimon accepts an optional runtime engine selector:
 runtime:
   name: daimon
   options:
-    engine: pi
+    engine: codex
 ```
 
-For `runtime.name: daimon`, `runtime.options.engine` MAY be `pi`, `codex`,
-`claude`, `grok`, or `agy`. If omitted, the compiler MUST use `pi`. `engine:
-pi` runs the in-process Daimon/Pi harness. The other values run the generated
-Daimon CLI-engine wrapper for that tool while keeping Spawnfile workspace,
-Moltnet, schedule, and Mneme memory wiring in the generated Daimon app.
+For `runtime.name: daimon`, `runtime.options.engine` MAY be `codex`, `grok`,
+or `agy`. If omitted, the compiler MUST use `codex`. Spawnfile emits one strict
+`noopolis.daimon.organization-runtime.v1` host config and never generates engine
+argv, auth, or Pi code for it. In Phase A, schedules, MCP declarations, and all
+agent surfaces MUST be rejected. `runtime: pi` is the separate legacy generated
+Pi implementation and retains its own engine/auth/scheduler/MCP/Moltnet behavior.
 
 ### 2.5 Execution Intent
 
@@ -1378,7 +1379,10 @@ Rules:
 - When the root team omits `external_participants`, compilation MUST preserve
   the standalone organization and Moltnet path: it MUST NOT require the topology
   operator/actor-token split, synthesize a service identity, or emit an external
-  participant artifact.
+  participant artifact. The compiler still MUST derive canonical agent-member
+  organization identity from the valid root-team graph, with an empty resolved
+  external-participant list, for generic organization-bound inputs such as world
+  bindings.
 
 ### 4.7 Team Docs And Context Artifacts
 
@@ -1956,13 +1960,13 @@ from normal `.spawn/` output and defaults to `.spawn-dev/`.
 - MUST target a project-backed dev deployment record
 - MUST recompile source into the dev output directory without deleting the deployment record
 - MUST hot-apply exactly one agent selected by id, slug, or name
-- For Daimon runtime agents, MUST copy the updated Daimon app config, selected agent workspace, every matching Moltnet node config, and managed Moltnet server configs into the recorded running container, then call the generated Daimon control endpoint to load the agent
+- For Pi runtime agents, MUST copy the updated generated Pi app config, selected agent workspace, every matching Moltnet node config, and managed Moltnet server configs into the recorded running container, then call the generated Pi control endpoint to load the agent
 - For a new Pi agent with Moltnet node configs, MUST start only that agent's Moltnet node processes; existing agents and the container MUST NOT be restarted
 - For an existing Pi agent, MUST reload the in-memory Pi agent and MUST NOT start a duplicate Moltnet node
 - Running managed Moltnet servers keep their current in-memory room membership until the copied server config is reconciled through an operator-token `moltnet apply` or a server restart
 - MUST fail clearly for unsupported runtimes or deployments without a live Pi control endpoint
 
-`spawnfile dev activity` reads the generated Daimon app's bounded
+`spawnfile dev activity` reads the generated Pi app's bounded
 `spawnfile.activity.v1` buffer from the running dev container and prints JSON
 lines. It MAY filter by agent id, slug, or name, and MUST NOT read Moltnet
 message bodies or expose hidden reasoning.

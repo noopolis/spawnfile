@@ -7,6 +7,7 @@ describe("runtime container install recipes", () => {
   afterEach(() => {
     delete process.env.SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE;
     delete process.env.SPAWNFILE_DAIMON_RUNTIME_IMAGE;
+    delete process.env.SPAWNFILE_DAIMON_RUNTIME_CAPABILITY_RECEIPT;
     delete process.env.SPAWNFILE_OPENCLAW_RUNTIME_IMAGE;
     delete process.env.SPAWNFILE_PI_RUNTIME_BASE_IMAGE;
     delete process.env.SPAWNFILE_PICOCLAW_RUNTIME_IMAGE;
@@ -53,9 +54,16 @@ describe("runtime container install recipes", () => {
 
     expect(recipe.runtimeName).toBe("daimon");
     expect(recipe.runtimeRoot).toBe(`${RUNTIME_INSTALL_ROOT}/daimon`);
-    expect(recipe.commands).toEqual([]);
+    expect(recipe.commands).toEqual(expect.arrayContaining([
+      expect.stringContaining("capability-receipt.json"),
+      expect.stringContaining('actual="$(sha256sum'),
+      `ln -sf ${RUNTIME_INSTALL_ROOT}/daimon/bin/daimon-runtime /usr/local/bin/daimon-runtime`,
+      `ln -sf ${RUNTIME_INSTALL_ROOT}/daimon/bin/codex /usr/local/bin/codex`,
+      `ln -sf ${RUNTIME_INSTALL_ROOT}/daimon/bin/grok /usr/local/bin/grok`,
+      `ln -sf ${RUNTIME_INSTALL_ROOT}/daimon/bin/agy /usr/local/bin/agy`
+    ]));
     expect(recipe.copyCommands).toEqual([
-      `COPY --from=noopolis/spawnfile-runtime-daimon:0.1.2 ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
+      `COPY --from=noopolis/spawnfile-runtime-daimon@sha256:19b671e589ad8c9e8f1b55610ccbf86ee72f16b4cb2f707ec419f5ef0d6942aa ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
     ]);
   });
 
@@ -110,16 +118,27 @@ describe("runtime container install recipes", () => {
     expect(recipe.commands).toEqual([`mkdir -p ${RUNTIME_INSTALL_ROOT}/pi`]);
   });
 
-  it("uses a prebuilt Daimon runtime artifact image when configured", async () => {
-    process.env.SPAWNFILE_DAIMON_RUNTIME_IMAGE = "noopolis/spawnfile-runtime-daimon:test";
+  it("allows only an exact Daimon runtime image and receipt override", async () => {
+    process.env.SPAWNFILE_DAIMON_RUNTIME_IMAGE = "noopolis/spawnfile-runtime-daimon@sha256:19b671e589ad8c9e8f1b55610ccbf86ee72f16b4cb2f707ec419f5ef0d6942aa";
+    process.env.SPAWNFILE_DAIMON_RUNTIME_CAPABILITY_RECEIPT = "sha256:1a207c0cc5f081b2a8f941d59b74e37f905a1dc7b37a08c7984c6e39123fb4e7";
 
     const recipe = await createRuntimeInstallRecipe("daimon");
 
     expect(recipe.baseImage).toBeUndefined();
-    expect(recipe.commands).toEqual([]);
+    expect(recipe.commands).toEqual(expect.arrayContaining([
+      expect.stringContaining("capability-receipt.json"),
+      `ln -sf ${RUNTIME_INSTALL_ROOT}/daimon/bin/daimon-runtime /usr/local/bin/daimon-runtime`
+    ]));
     expect(recipe.copyCommands).toEqual([
-      `COPY --from=noopolis/spawnfile-runtime-daimon:test ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
+      `COPY --from=noopolis/spawnfile-runtime-daimon@sha256:19b671e589ad8c9e8f1b55610ccbf86ee72f16b4cb2f707ec419f5ef0d6942aa ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
     ]);
+  });
+
+  it("rejects mutable Daimon runtime image overrides", async () => {
+    process.env.SPAWNFILE_DAIMON_RUNTIME_IMAGE = "noopolis/spawnfile-runtime-daimon:test";
+    await expect(createRuntimeInstallRecipe("daimon")).rejects.toThrow(
+      "source and tag-only overrides are disabled"
+    );
   });
 
   it("uses a prebuilt OpenClaw runtime artifact image when configured", async () => {
@@ -148,16 +167,11 @@ describe("runtime container install recipes", () => {
     ]);
   });
 
-  it("treats the legacy Daimon base-image env as a copyable artifact", async () => {
+  it("ignores the legacy Daimon base-image override", async () => {
     process.env.SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE = "noopolis/spawnfile-runtime-daimon:legacy";
-
-    const recipe = await createRuntimeInstallRecipe("daimon");
-
-    expect(recipe.baseImage).toBeUndefined();
-    expect(recipe.commands).toEqual([]);
-    expect(recipe.copyCommands).toEqual([
-      `COPY --from=noopolis/spawnfile-runtime-daimon:legacy ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
-    ]);
+    await expect(createRuntimeInstallRecipe("daimon")).resolves.toMatchObject({
+      copyCommands: [expect.stringContaining("@sha256:")]
+    });
   });
 
   it("omits NOOPOLIS_RUN_ID from every recipe's env when unset", async () => {

@@ -48,7 +48,10 @@ const inspection = (spec: DockerWorldServiceSpec): Record<string, unknown> => ({
   NetworkAttachmentCount: 1, NetworkAttachmentId: "b".repeat(64), NetworkAttachmentName: after(spec.createArgs, "--network"),
   NetworkMode: after(spec.createArgs, "--network"), PidMode: "", PortBindingCount: 0, Privileged: false,
   PublishAllPorts: false, ReadonlyRootfs: true, RestartMaximumRetryCount: 0, RestartPolicyName: "no",
-  SecurityOpt: ["no-new-privileges=true"], Status: "running", Tmpfs: { "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777" },
+  SecurityOpt: ["no-new-privileges=true"], Status: "running", Tmpfs: {
+    "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777",
+    "/tmp/spawnfile-public": "rw,noexec,nosuid,nodev,size=1m,mode=1777"
+  },
   UTSMode: "", UsernsMode: "", VolumesFromCount: 0,
 });
 

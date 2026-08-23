@@ -21,6 +21,7 @@ import {
   resolveTargetPackages
 } from "./containerTargetPlanResolution.js";
 import { listExecutionModelSecretNames } from "./modelEnv.js";
+import { createPersistentVolumeName } from "./moltnetArtifactPaths.js";
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import type { CompilePlan } from "./types.js";
 import { findWorldBindingForNode, type ResolvedWorldBindings } from "./worldBindings.js";
@@ -66,8 +67,10 @@ export const createEnvVariableMap = (
   for (const node of compiledNodes) {
     if (node.value.kind === "agent") {
       for (const secret of node.value.secrets) registerSecret(secret);
-      for (const secretName of listExecutionModelSecretNames(node.value.execution)) {
-        register(secretName, true, `Model provider auth for ${secretName}`, "model");
+      if (node.runtimeName !== "daimon") {
+        for (const secretName of listExecutionModelSecretNames(node.value.execution)) {
+          register(secretName, true, `Model provider auth for ${secretName}`, "model");
+        }
       }
       for (const secretName of listAgentSurfaceSecretNames(node.value.surfaces)) {
         register(secretName, true, "Bot token for declared agent surfaces", "surface");
@@ -124,7 +127,9 @@ export const createRuntimeTargetPlans = async (
     const adapter = getRuntimeAdapter(runtimeName);
     const recipe = await createRuntimeInstallRecipe(runtimeName);
     const targetInputs = compiledNodes
-      .filter((node) => node.runtimeName === runtimeName && node.emittedFiles.length > 0)
+      .filter((node) =>
+        node.runtimeName === runtimeName && (node.emittedFiles.length > 0 || runtimeName === "daimon")
+      )
       .map((node): ContainerTargetInput => {
         const id = node.id ?? `${node.kind}:${node.slug}`;
         const worldBinding = node.kind === "agent"
@@ -156,8 +161,15 @@ export const createRuntimeTargetPlans = async (
         id: target.id,
         instancePaths,
         meta: adapter.container,
-        modelAuthMethods: resolveTargetModelAuthMethods(target, targetInputs),
-        modelSecretsRequired: resolveTargetModelSecrets(target, targetInputs),
+        modelAuthMethods: runtimeName === "daimon" ? {} : resolveTargetModelAuthMethods(target, targetInputs),
+        modelSecretsRequired: runtimeName === "daimon" ? [] : resolveTargetModelSecrets(target, targetInputs),
+        ...(target.opaqueMountTargets ? { opaqueMountTargets: [...target.opaqueMountTargets].sort() } : {}),
+        ...(target.persistentMounts ? { persistentMounts: target.persistentMounts.map((mount) => ({
+          id: mount.id,
+          mount_path: mount.mountPath.replaceAll("<instance-root>", instancePaths.instanceRoot),
+          reason: mount.reason,
+          volume_name: createPersistentVolumeName(plan.root, mount.id)
+        })).sort((left, right) => left.id.localeCompare(right.id)) } : {}),
         port: adapter.container.port ? adapter.container.port + (index * portStride) : undefined,
         publishedPort:
           resolveTargetExposure(target, targetInputs) && adapter.container.port

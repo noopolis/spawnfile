@@ -1,7 +1,7 @@
 spawnfile_version: "0.1"
 kind: team
 name: daimon-review-team
-description: "Nested review team for the generated Daimon app fixture"
+description: "Nested review team for the legacy generated-Pi fixture"
 
 members:
   - id: reviewer

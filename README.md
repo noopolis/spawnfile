@@ -71,11 +71,49 @@ spawnfile status . --live                        # inspect the detached deployme
 spawnfile publish . --tag you/my-agent:1.0.0     # compile + build + verify + push
 ```
 
-Compiled output lands under `.spawn/` by default, including a `Dockerfile`, `entrypoint.sh`, `.env.example`, and a prebuilt `container/rootfs/` tree. `spawnfile build` uses the pinned runtime artifacts from `runtimes.yaml`; it does not rebuild runtimes from source. Daimon, OpenClaw, and PicoClaw use published copyable artifact images by default, so normal prompt/config edits reuse their dependency layers. To test a local runtime artifact instead, set `SPAWNFILE_DAIMON_RUNTIME_IMAGE`, `SPAWNFILE_OPENCLAW_RUNTIME_IMAGE`, or `SPAWNFILE_PICOCLAW_RUNTIME_IMAGE` to a local image tag. For `build`/`up` on a docker `--context`, Moltnet release assets are staged for that context's architecture (`amd64` or `arm64`); for local-only manual compile targeting a fixed architecture, set `SPAWNFILE_MOLTNET_TARGET_ARCH=amd64|arm64`.
+Compiled output lands under `.spawn/` by default, including a `Dockerfile`, `entrypoint.sh`, `.env.example`, and a prebuilt `container/rootfs/` tree. `spawnfile build` uses the pinned runtime artifacts from `runtimes.yaml`; it does not rebuild runtimes from source. Daimon, OpenClaw, and PicoClaw use published copyable artifact images by default, so normal prompt/config edits reuse their dependency layers. Daimon accepts only its exact immutable image digest plus matching capability receipt; mutable/local overrides are fail-closed. OpenClaw and PicoClaw retain their explicit local-image overrides. For `build`/`up` on a docker `--context`, Moltnet release assets are staged for that context's architecture (`amd64` or `arm64`); for local-only manual compile targeting a fixed architecture, set `SPAWNFILE_MOLTNET_TARGET_ARCH=amd64|arm64`.
 
 `spawnfile status` is read-only. By default it shows authored and compiled state without Docker, runtime, or Moltnet calls. With `--live`, it reads the selected detached deployment record, inspects the recorded Docker target, runs adapter-owned runtime probes, and checks Moltnet metadata without reading message bodies. Add `--logs` for a redacted Docker log tail, or `--watch` to refresh status continuously. For a remote Docker context where the local record is missing, pass `--context <name>` with `--live` to recover the deployment from Spawnfile container labels.
 
-`spawnfile dev` is the source-backed interactive loop. It uses `.spawn-dev/` by default, starts a detached dev deployment with `spawnfile dev up`, and can hot-apply one Daimon runtime agent with `spawnfile dev apply --agent <id>` without restarting the rest of the org. Hot apply recompiles source, copies the selected agent workspace, Daimon config, matching Moltnet node configs, and managed Moltnet server configs into the running container, loads it through the Daimon control endpoint, and starts only that agent's Moltnet bridges when it is new. `spawnfile dev activity` reads the generated Daimon app's bounded activity buffer as JSON lines so operators can see queued wakes, turn starts/completions, runtime event types, output completions, and errors without mixing those diagnostics into Moltnet chat. Running managed Moltnet servers keep their current in-memory room membership until an operator-token `moltnet apply` or server restart reconciles the copied server config.
+`spawnfile dev` is the source-backed interactive loop. In Phase A, hot apply and its bounded activity buffer remain `runtime: pi` behavior; public `runtime: daimon` hosts do not yet support hot apply, schedules, MCP, or agent surfaces. A future control-plane adapter will integrate those concerns through Daimon's public APIs rather than generated Pi code.
+
+Before automating Spawnfile, query the installed CLI rather than inferring
+support from its package version:
+
+```bash
+spawnfile capabilities --json
+```
+
+This command only reads Spawnfile's packaged version and emits one strict
+`spawnfile.capabilities.v1` JSON document. It does not read standard input,
+write files, or contact Docker. The receipt identifies the target resolver,
+closed composed-lifecycle command set, optional model-auth behavior, local
+evidence helper, and typed terminal-artifact absence contracts. Capabilities
+describe the installed CLI surface; target and auth preflight can still fail
+for a particular machine or project. See
+[`specs/TARGETS.md`](specs/TARGETS.md#capability-discovery).
+
+For a local Docker target, Spawnfile prepares and journals the package-owned
+helper under its private target state:
+
+```bash
+# node:22-bookworm-slim must already be present in this Docker context.
+spawnfile helper prepare-evidence-export \
+  --context default \
+  --json
+
+spawnfile target resolve_config \
+  --context default \
+  --evidence-destination "$PWD/.spawn-local/evidence.tar" \
+  --prepare-evidence-helper
+```
+
+The helper command uses only the explicitly named local context, performs a
+network-disabled build from package-shipped source, never pulls or pushes, and
+keeps a fsynced pending transaction authority before its first Docker mutation.
+The public result is only a versioned opaque handle and digest; reuse re-attests
+the exact context, daemon, base config, platform, recipe, and image config
+identity. No registry manifest or caller-managed authority file is required.
 
 Compiled images are self-describing: `spawnfile publish` pushes one to any OCI registry, and anyone can run it with no source — `spawnfile up you/my-agent:1.0.0 --deployment prod --detach --auth-profile me` — or inspect what it needs first with `spawnfile status you/my-agent:1.0.0`. See [`specs/DISTRIBUTION.md`](specs/DISTRIBUTION.md).
 

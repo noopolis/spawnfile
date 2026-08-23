@@ -10,11 +10,11 @@ const labels = {
   "com.spawnfile.unit": "football-container", "com.spawnfile.version": "0.1"
 };
 const inspected = (overrides: { id?: string; labels?: unknown; extra?: string } = {}): string =>
-  `${JSON.stringify(overrides.id ?? id)}\n${JSON.stringify(imageId)}\n${JSON.stringify(overrides.labels ?? labels)}${overrides.extra ?? ""}`;
+  `${JSON.stringify(overrides.id ?? id)}\n${JSON.stringify("/football")}\n${JSON.stringify(imageId)}\n${JSON.stringify(overrides.labels ?? labels)}${overrides.extra ?? ""}`;
 
 describe("detached Docker inspection", () => {
   it("returns only the verified full id, image id, and exact deployment labels", () => {
-    expect(parseDetachedContainerInspect(inspected(), id, labels)).toEqual({ containerId: id, imageId, deploymentLabels: labels });
+    expect(parseDetachedContainerInspect(inspected(), id, labels, "football")).toEqual({ containerId: id, containerName: "football", imageId, deploymentLabels: labels });
   });
 
   it.each([
@@ -24,17 +24,17 @@ describe("detached Docker inspection", () => {
     ["extra line", inspected({ extra: "\n{}" })],
     ["malformed response", "not-json"]
   ])("rejects %s before finalization", (_label, stdout) => {
-    expect(() => parseDetachedContainerInspect(stdout, id, labels)).toThrow();
+    expect(() => parseDetachedContainerInspect(stdout, id, labels, "football")).toThrow();
   });
 
   it.each(["sha256:short", `sha256:${"A".repeat(64)}`, `sha256:${"c".repeat(65)}`])("rejects a non-canonical image id before finalization", (badImage) => {
-    const stdout = `${JSON.stringify(id)}\n${JSON.stringify(badImage)}\n${JSON.stringify(labels)}`;
-    expect(() => parseDetachedContainerInspect(stdout, id, labels)).toThrow();
+    const stdout = `${JSON.stringify(id)}\n${JSON.stringify("/football")}\n${JSON.stringify(badImage)}\n${JSON.stringify(labels)}`;
+    expect(() => parseDetachedContainerInspect(stdout, id, labels, "football")).toThrow();
   });
 
   it("uses the selected Docker context or host without name/list lookup", () => {
     const base = { args: [], command: "docker", containerName: "football", cwd: "/tmp", detach: true, envFilePath: "/tmp/run.env", imageTag: "football:latest", supportDirectory: "/tmp/support" };
-    expect(createDetachedContainerInspectArgs({ ...base, dockerContext: "remote" }, id)).toEqual(["--context", "remote", "inspect", "--format", "{{json .Id}}\n{{json .Image}}\n{{json .Config.Labels}}", id]);
-    expect(createDetachedContainerInspectArgs({ ...base, dockerHost: "ssh://host" }, id)).toEqual(["--host", "ssh://host", "inspect", "--format", "{{json .Id}}\n{{json .Image}}\n{{json .Config.Labels}}", id]);
+    expect(createDetachedContainerInspectArgs({ ...base, dockerContext: "remote" }, id)).toEqual(["--context", "remote", "inspect", "--format", "{{json .Id}}\n{{json .Name}}\n{{json .Image}}\n{{json .Config.Labels}}", id]);
+    expect(createDetachedContainerInspectArgs({ ...base, dockerHost: "ssh://host" }, id)).toEqual(["--host", "ssh://host", "inspect", "--format", "{{json .Id}}\n{{json .Name}}\n{{json .Image}}\n{{json .Config.Labels}}", id]);
   });
 });

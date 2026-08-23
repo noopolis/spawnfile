@@ -76,7 +76,7 @@ const projection = (
   CgroupnsMode: "private", DeviceCount: 0, DeviceRequestCount: 0, DnsCount: 0,
   Domainname: "", ExposedPortCount: 0, ExtraHostCount: 0, GroupAddCount: 0,
   Hostname: spec.containerName, Id: containerId, Image: spec.imageReference, IpcMode: "none",
-  Tmpfs: { "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777" },
+  Tmpfs: { "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777", "/tmp/spawnfile-public": "rw,noexec,nosuid,nodev,size=1m,mode=1777" },
   Labels: drift ? { ...spec.receiptLabels, extra: "foreign" } : spec.receiptLabels,
   LinkCount: 0, LogType: "none",
   Mounts: spec.createArgs.filter((value, index, values) => values[index - 1] === "--mount")

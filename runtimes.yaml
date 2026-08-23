@@ -13,12 +13,14 @@
 runtimes:
   daimon:
     remote: git@github.com:noopolis/daimon.git
-    ref: v0.1.2
+    ref: v0.2.0
     default_branch: main
     install:
       kind: container_image
       image: noopolis/spawnfile-runtime-daimon
-      tag: 0.1.2
+      tag: 0.2.0
+      digest: sha256:19b671e589ad8c9e8f1b55610ccbf86ee72f16b4cb2f707ec419f5ef0d6942aa
+      capability_receipt: sha256:1a207c0cc5f081b2a8f941d59b74e37f905a1dc7b37a08c7984c6e39123fb4e7
     status: active
 
   openclaw:

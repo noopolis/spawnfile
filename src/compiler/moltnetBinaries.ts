@@ -14,12 +14,19 @@ import {
   type TrustedMoltnetReleaseAuthority
 } from "./moltnetReleaseAuthority.js";
 import { downloadTrustedMoltnetReleaseAsset } from "./moltnetReleaseDownload.js";
+import {
+  readLocalMoltnetReleaseIdentity,
+  type LocalMoltnetReleaseIdentity
+} from "./localMoltnetAuthority.js";
 
 const execFile = promisify(execFileCallback);
 
 const MOLTNET_CLI_ENV = "SPAWNFILE_MOLTNET_CLI";
 /** Explicit operator override for a locally staged, authority-bound release. */
 export const MOLTNET_RELEASE_DIR_ENV = "SPAWNFILE_MOLTNET_RELEASE_DIR";
+/** Explicit development-only local archive authority; never consulted by production compiles. */
+export const MOLTNET_LOCAL_RELEASE_DIR_ENV = "SPAWNFILE_LOCAL_MOLTNET_RELEASE_DIR";
+export const MOLTNET_ALLOW_LOCAL_E2E_ENV = "SPAWNFILE_ALLOW_LOCAL_E2E";
 const MOLTNET_TARGET_ARCH_ENV = "SPAWNFILE_MOLTNET_TARGET_ARCH";
 const MOLTNET_TARGET_OS = "linux";
 
@@ -29,15 +36,23 @@ export const MOLTNET_RELEASE_IDENTITY_VERSION = "spawnfile.moltnet-release-ident
 export const MOLTNET_RELEASE_STAMP_VERSION = "spawnfile.moltnet-release-stamp.v1" as const;
 export type { MoltnetTargetArchitecture } from "./moltnetReleaseAuthority.js";
 
-export interface MoltnetReleaseIdentity {
+export type MoltnetBridgeCapabilities = readonly ["pi-bridge"] | readonly ["daimon-bridge", "pi-bridge"];
+
+interface MoltnetIdentityBase {
   readonly architecture: MoltnetTargetArchitecture;
   readonly asset: string;
   readonly asset_sha256: `sha256:${string}`;
+  readonly capabilities: MoltnetBridgeCapabilities;
+  readonly version: typeof MOLTNET_RELEASE_IDENTITY_VERSION;
+}
+
+export interface PublishedMoltnetReleaseIdentity extends MoltnetIdentityBase {
   readonly capabilities: readonly ["pi-bridge"];
   readonly release_version: string;
   readonly source_revision: string;
-  readonly version: typeof MOLTNET_RELEASE_IDENTITY_VERSION;
 }
+
+export type MoltnetReleaseIdentity = PublishedMoltnetReleaseIdentity | LocalMoltnetReleaseIdentity;
 
 export interface MoltnetBinaryStageOptions {
   readonly architecture?: MoltnetTargetArchitecture;
@@ -160,7 +175,7 @@ const verifyReleaseIdentity = async (
   releaseDirectory: string,
   architecture: MoltnetTargetArchitecture,
   authority: TrustedMoltnetReleaseAuthority
-): Promise<MoltnetReleaseIdentity> => {
+): Promise<PublishedMoltnetReleaseIdentity> => {
   const trustedAuthority = parseTrustedMoltnetReleaseAuthority(authority);
   const trustedAsset = trustedMoltnetReleaseAsset(trustedAuthority, architecture);
   const asset = createReleaseAssetName(architecture);
@@ -273,6 +288,18 @@ const resolveConfiguredReleaseDirectory = async (): Promise<string | null> => {
   return configuredDirectory;
 };
 
+const resolveConfiguredLocalReleaseDirectory = async (): Promise<string | null> => {
+  const configuredDirectory = process.env[MOLTNET_LOCAL_RELEASE_DIR_ENV]?.trim();
+  if (!configuredDirectory) return null;
+  if (process.env[MOLTNET_ALLOW_LOCAL_E2E_ENV] !== "1") {
+    throw new SpawnfileError("compile_error", "Local Moltnet identity requires explicit SPAWNFILE_ALLOW_LOCAL_E2E=1 opt-in");
+  }
+  if (!path.isAbsolute(configuredDirectory) || !(await fileExists(configuredDirectory))) {
+    throw new SpawnfileError("compile_error", "Local Moltnet release directory is invalid");
+  }
+  return configuredDirectory;
+};
+
 const findPathMoltnetCli = async (): Promise<string | null> => {
   try {
     await execFile("moltnet", ["version"]);
@@ -326,6 +353,20 @@ export const stageMoltnetBinaries = async (
   outputDirectory: string,
   options: MoltnetBinaryStageOptions = {}
 ): Promise<MoltnetReleaseIdentity> => {
+  const localReleaseDirectory = await resolveConfiguredLocalReleaseDirectory();
+  if (localReleaseDirectory) {
+    const architecture = resolveTargetArchitecture(options.architecture);
+    const identity = await readLocalMoltnetReleaseIdentity(
+      localReleaseDirectory,
+      architecture,
+      resolveTargetArchitecture()
+    );
+    return stageMoltnetReleaseAsset(
+      outputDirectory,
+      path.join(localReleaseDirectory, createReleaseAssetName(architecture)),
+      identity
+    );
+  }
   const releaseDirectory = options.releaseDirectory
     ?? await resolveConfiguredReleaseDirectory();
   if (releaseDirectory) {

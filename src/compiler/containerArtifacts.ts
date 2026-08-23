@@ -126,6 +126,7 @@ export const createContainerArtifacts = async (
   const persistentMounts = [
     ...memoryArtifacts.mounts,
     ...daimonTelemetryArtifacts.mounts,
+    ...runtimePlans.flatMap((runtimePlan) => runtimePlan.persistentMounts ?? []),
     ...((options.moltnet?.persistentMounts ?? []).map((mount) => ({
       id: mount.id,
       mount_path: mount.mountPath,
@@ -286,7 +287,17 @@ export const createContainerArtifacts = async (
   );
 
   const files: EmittedFile[] = [
-    ...createRootfsFiles(runtimePlans),
+    ...createRootfsFiles(
+      runtimePlans,
+      persistentMounts.map((mount) => mount.mount_path),
+      options.moltnet
+        ? {
+            externalParticipantArtifacts: options.moltnet.externalParticipantArtifacts,
+            nodePlans: options.moltnet.nodePlans,
+            serverPlans: options.moltnet.serverPlans
+          }
+        : undefined
+    ),
     ...(options.moltnet?.files ?? []),
     ...(options.worldBindings
       ? [{ content: options.worldBindings.canonicalBytes, mode: 0o600, path: WORLD_BINDINGS_OUTPUT_FILE }]

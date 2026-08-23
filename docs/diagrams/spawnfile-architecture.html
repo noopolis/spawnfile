@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Spawnfile — current architecture</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f3eee7;
+      --ink: #0b0b0b;
+      --accent: #d4604a;
+      --muted: #a59d94;
+      --panel: #faf7f2;
+      --road: #ded6cd;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--paper); }
+    body { display: grid; place-items: center; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    svg { display: block; width: min(100vw, 1280px); height: auto; background: var(--paper); }
+    text { fill: var(--ink); }
+    .eyebrow { font-size: 11px; font-weight: 750; letter-spacing: 1.5px; }
+    .title { font-size: 28px; font-weight: 760; letter-spacing: -0.7px; }
+    .subtitle { font-size: 13px; fill: #4c4843; }
+    .boundary { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; }
+    .boundary-label { font-size: 10px; font-weight: 750; letter-spacing: 1.2px; fill: #68615a; }
+    .node { fill: var(--panel); stroke: var(--ink); stroke-width: 1.5; }
+    .node-title { font-size: 14px; font-weight: 750; }
+    .node-copy { font-size: 11px; fill: #57514b; }
+    .micro { font-size: 10px; fill: #68615a; }
+    .road { fill: none; stroke: var(--road); stroke-width: 8; stroke-linecap: square; stroke-linejoin: miter; }
+    .edge { fill: none; stroke: var(--ink); stroke-width: 1.5; marker-end: url(#arrow); }
+    .edge-dashed { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 6 5; marker-end: url(#arrow-muted); }
+    .callout { fill: #f7e6e1; stroke: var(--accent); stroke-width: 2; }
+    .callout-kicker { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; fill: var(--accent); }
+    .callout-title { font-size: 13px; font-weight: 780; }
+    .strip { fill: #e9e2da; stroke: var(--ink); stroke-width: 1.5; }
+    .strip-head { fill: var(--ink); }
+    .strip-head-text { fill: var(--paper); font-size: 11px; font-weight: 800; letter-spacing: 1.2px; }
+    .strip-copy { font-size: 10.5px; font-weight: 620; }
+  </style>
+</head>
+<body>
+  <svg viewBox="0 0 1280 800" role="img" aria-labelledby="diagram-title diagram-desc" xmlns="http://www.w3.org/2000/svg">
+    <title id="diagram-title">Spawnfile current architecture and integration gaps</title>
+    <desc id="diagram-desc">A left-to-right secure paved-road architecture. Authored Spawnfiles pass through manifest validation, graph resolution, runtime adapters, container artifacts, an immutable image, deployment, and status and recovery. A target control plane joins deployment from below. Dashed red callouts mark missing Daimon credential provisioning and authenticated wake ingress. A bottom strip lists remaining priority-one boundary defects.</desc>
+
+    <defs>
+      <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 8 4 L 0 8 z" fill="#0b0b0b"/>
+      </marker>
+      <marker id="arrow-muted" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 8 4 L 0 8 z" fill="#a59d94"/>
+      </marker>
+    </defs>
+
+    <rect width="1280" height="800" fill="#f3eee7"/>
+
+    <g aria-label="Title and legend">
+      <text x="36" y="38" class="eyebrow">CURRENT IMPLEMENTATION · TRACKED + UNTRACKED WORKTREE</text>
+      <text x="36" y="72" class="title">Spawnfile architecture</text>
+      <text x="36" y="96" class="subtitle">The paved road compiles and deploys organizations; cognition stays inside agent runtimes.</text>
+
+      <path d="M 1008 55 H 1050" class="edge"/>
+      <text x="1062" y="59" class="micro">live</text>
+      <path d="M 1120 55 H 1162" class="edge-dashed"/>
+      <text x="1174" y="59" class="micro">not integrated</text>
+    </g>
+
+    <g aria-label="Trust boundaries">
+      <rect x="28" y="124" width="184" height="424" rx="8" class="boundary"/>
+      <text x="40" y="145" class="boundary-label">AUTHORING TRUST</text>
+
+      <rect x="232" y="124" width="592" height="424" rx="8" class="boundary"/>
+      <text x="244" y="145" class="boundary-label">TRUSTED COMPILER</text>
+
+      <rect x="844" y="124" width="190" height="424" rx="8" class="boundary"/>
+      <text x="856" y="145" class="boundary-label">ARTIFACT TRUST</text>
+
+      <rect x="1054" y="124" width="198" height="424" rx="8" class="boundary"/>
+      <text x="1066" y="145" class="boundary-label">DOCKER / RUNTIME</text>
+    </g>
+
+    <g aria-label="Live compile and deployment road">
+      <path d="M 190 226 H 260 H 446 H 632 V 300 H 852 V 226 H 876 H 1010 V 302 H 1074 H 1228" class="road"/>
+
+      <path d="M 190 226 H 260" class="edge"/>
+      <path d="M 426 226 H 446" class="edge"/>
+      <path d="M 612 226 H 632" class="edge"/>
+      <path d="M 715 268 V 300" class="edge"/>
+      <path d="M 798 340 H 852 V 226 H 876" class="edge"/>
+      <path d="M 1024 226 H 1038 V 302 H 1074" class="edge"/>
+      <path d="M 1170 366 V 388 H 1202" class="edge"/>
+    </g>
+
+    <g aria-label="Primary architecture nodes">
+      <g aria-label="Authoring and CLI">
+        <rect x="48" y="186" width="142" height="80" rx="6" class="node"/>
+        <text x="64" y="211" class="node-title">Authoring + CLI</text>
+        <text x="64" y="231" class="node-copy">Spawnfiles · docs</text>
+        <text x="64" y="247" class="node-copy">skills · references</text>
+      </g>
+
+      <g aria-label="Manifest validation">
+        <rect x="260" y="186" width="166" height="80" rx="6" class="node"/>
+        <text x="276" y="211" class="node-title">Manifest validation</text>
+        <text x="276" y="231" class="node-copy">parse · normalize</text>
+        <text x="276" y="247" class="node-copy">reject invalid source</text>
+      </g>
+
+      <g aria-label="Resolved organization graph">
+        <rect x="446" y="186" width="166" height="80" rx="6" class="node"/>
+        <text x="462" y="211" class="node-title">Resolved org graph</text>
+        <text x="462" y="231" class="node-copy">inheritance · teams</text>
+        <text x="462" y="247" class="node-copy">resources · topology</text>
+      </g>
+
+      <g aria-label="Runtime adapters">
+        <rect x="632" y="186" width="166" height="82" rx="6" class="node"/>
+        <text x="648" y="211" class="node-title">Runtime adapters</text>
+        <text x="648" y="231" class="node-copy">Daimon · OpenClaw</text>
+        <text x="648" y="247" class="node-copy">PicoClaw · legacy Pi</text>
+      </g>
+
+      <g aria-label="Container artifacts">
+        <rect x="632" y="300" width="166" height="80" rx="6" class="node"/>
+        <text x="648" y="325" class="node-title">Container artifacts</text>
+        <text x="648" y="345" class="node-copy">rootfs · entrypoint</text>
+        <text x="648" y="361" class="node-copy">config · reports</text>
+      </g>
+
+      <g aria-label="Target control plane">
+        <rect x="446" y="420" width="166" height="82" rx="6" class="node"/>
+        <text x="462" y="445" class="node-title">Target control plane</text>
+        <text x="462" y="465" class="node-copy">opaque handles · journal</text>
+        <text x="462" y="481" class="node-copy">network · secrets · handoff</text>
+      </g>
+
+      <g aria-label="Immutable image and receipts">
+        <rect x="876" y="186" width="148" height="80" rx="6" class="node"/>
+        <text x="892" y="211" class="node-title">Image + receipts</text>
+        <text x="892" y="231" class="node-copy">immutable runtime pins</text>
+        <text x="892" y="247" class="node-copy">public fingerprints</text>
+      </g>
+
+      <g aria-label="Deployment lifecycle">
+        <rect x="1074" y="302" width="156" height="64" rx="6" class="node"/>
+        <text x="1090" y="327" class="node-title">Deployment lifecycle</text>
+        <text x="1090" y="347" class="node-copy">build · up · readiness</text>
+      </g>
+
+      <g aria-label="Status evidence and recovery">
+        <rect x="1074" y="388" width="156" height="92" rx="6" class="node"/>
+        <text x="1090" y="413" class="node-title">Status + evidence</text>
+        <text x="1090" y="433" class="node-copy">inspect · export · down</text>
+        <text x="1090" y="449" class="node-copy">receipts · recovery</text>
+        <text x="1090" y="465" class="node-copy">durable records</text>
+      </g>
+    </g>
+
+    <g aria-label="Supporting runtime facts">
+      <rect x="856" y="292" width="166" height="58" rx="6" class="node"/>
+      <text x="870" y="314" class="node-title">Generic Daimon image</text>
+      <text x="870" y="334" class="node-copy">Codex · Grok · AGY binaries</text>
+
+      <rect x="1074" y="186" width="156" height="86" rx="6" class="node"/>
+      <text x="1090" y="211" class="node-title">One Daimon host</text>
+      <text x="1090" y="231" class="node-copy">N separate config roots</text>
+      <text x="1090" y="247" class="node-copy">Daimon executes engines</text>
+
+      <path d="M 1022 321 H 1040 V 229 H 1074" class="edge"/>
+      <path d="M 612 461 H 1038 V 334 H 1074" class="edge"/>
+    </g>
+
+    <g aria-label="Priority zero integration gaps">
+      <rect x="248" y="568" width="358" height="62" rx="6" class="callout"/>
+      <text x="264" y="589" class="callout-kicker">P0 · GAP 01</text>
+      <text x="264" y="610" class="callout-title">Daimon engine auth is not provisioned</text>
+      <text x="264" y="624" class="micro">No minimal per-agent credential mount reaches the host.</text>
+      <path d="M 530 568 V 526 H 1060 V 246 H 1074" class="edge-dashed"/>
+
+      <rect x="626" y="568" width="606" height="62" rx="6" class="callout"/>
+      <text x="642" y="589" class="callout-kicker">P0 · GAP 02</text>
+      <text x="642" y="610" class="callout-title">Authenticated wake ingress is not wired</text>
+      <text x="642" y="624" class="micro">Moltnet/schedules cannot yet deliver typed wakes to Daimon’s public /v2/wakes surface.</text>
+      <path d="M 930 568 V 536 H 1046 V 260 H 1074" class="edge-dashed"/>
+    </g>
+
+    <g aria-label="Priority one boundary defects">
+      <rect x="28" y="660" width="1224" height="108" rx="6" class="strip"/>
+      <rect x="28" y="660" width="156" height="108" rx="6" class="strip-head"/>
+      <text x="48" y="695" class="strip-head-text">P1 BOUNDARY STRIP</text>
+      <text x="48" y="718" class="micro" style="fill:#f3eee7">must clear before</text>
+      <text x="48" y="734" class="micro" style="fill:#f3eee7">production closure</text>
+
+      <line x1="356" y1="676" x2="356" y2="752" stroke="#a59d94"/>
+      <line x1="576" y1="676" x2="576" y2="752" stroke="#a59d94"/>
+      <line x1="796" y1="676" x2="796" y2="752" stroke="#a59d94"/>
+      <line x1="1016" y1="676" x2="1016" y2="752" stroke="#a59d94"/>
+
+      <text x="204" y="691" class="strip-copy">MODEL INTENT</text>
+      <text x="204" y="710" class="micro">accepted, then discarded</text>
+      <text x="204" y="726" class="micro">with no degradation signal</text>
+
+      <text x="376" y="691" class="strip-copy">ISOLATION FLAG</text>
+      <text x="376" y="710" class="micro">restrict_to_workspace</text>
+      <text x="376" y="726" class="micro">accepted but not enforced</text>
+
+      <text x="596" y="691" class="strip-copy">STATUS + READINESS</text>
+      <text x="596" y="710" class="micro">still assumes generated Pi;</text>
+      <text x="596" y="726" class="micro">no Daimon health probe</text>
+
+      <text x="816" y="691" class="strip-copy">EVIDENCE</text>
+      <text x="816" y="710" class="micro">Daimon telemetry is not</text>
+      <text x="816" y="726" class="micro">durable or exportable</text>
+
+      <text x="1036" y="691" class="strip-copy">RELEASE PIPELINE</text>
+      <text x="1036" y="710" class="micro">runtime-image CI still uses</text>
+      <text x="1036" y="726" class="micro">the obsolete build contract</text>
+    </g>
+  </svg>
+</body>
+</html>

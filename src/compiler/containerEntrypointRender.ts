@@ -103,6 +103,7 @@ const resolveStartCommand = (plan: RuntimeTargetPlan): string[] =>
       token
         .replaceAll("<config-path>", plan.instancePaths.configPath)
         .replaceAll("<home-path>", plan.instancePaths.homePath ?? "")
+        .replaceAll("<instance-root>", plan.instancePaths.instanceRoot ?? "")
         .replaceAll("<runtime-root>", plan.runtimeRoot)
         .replaceAll("<workspace-path>", plan.instancePaths.workspacePath)
         .replaceAll("<port>", plan.port ? String(plan.port) : "")
@@ -110,9 +111,24 @@ const resolveStartCommand = (plan: RuntimeTargetPlan): string[] =>
     .filter((token) => token.length > 0);
 
 const createRuntimeReadinessWait = (plan: RuntimeTargetPlan): string[] => {
-  if (!["openclaw", "pi"].includes(plan.runtimeName) || !plan.port) {
-    return [];
+  if (!plan.port) return [];
+
+  if (plan.runtimeName === "daimon") {
+    return [
+      "attempts=0",
+      `until curl -sf ${shellQuote(`http://127.0.0.1:${plan.port}/healthz`)} >/dev/null; do`,
+      "  attempts=$((attempts + 1))",
+      '  if [ "$attempts" -ge 180 ]; then',
+      `    echo ${shellQuote(`Timed out waiting for daimon on port ${plan.port}`)} >&2`,
+      "    exit 1",
+      "  fi",
+      "  sleep 1",
+      "done",
+      ""
+    ];
   }
+
+  if (!["openclaw", "pi"].includes(plan.runtimeName)) return [];
 
   return [
     "attempts=0",

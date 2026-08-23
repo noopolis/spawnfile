@@ -85,7 +85,7 @@ describe("createDaimonTelemetryArtifacts", () => {
     });
   });
 
-  it("mounts telemetry for the daimon runtime name too (the pi-app alias)", () => {
+  it("does not attach generated-Pi telemetry to a public Daimon host", () => {
     const plan = createPlan();
     const runtimePlan = createRuntimePlan({
       id: "pi-app",
@@ -96,10 +96,8 @@ describe("createDaimonTelemetryArtifacts", () => {
 
     const bundle = createDaimonTelemetryArtifacts(plan, [runtimePlan], compiledNodes);
 
-    expect(bundle.mounts.map((mount) => mount.id)).toEqual(["agent-mapper-daimon-telemetry"]);
-    expect(bundle.telemetryMountIdsByInstance.get("pi-app")).toEqual({
-      "agent:mapper": "agent-mapper-daimon-telemetry"
-    });
+    expect(bundle.mounts).toEqual([]);
+    expect(bundle.telemetryMountIdsByInstance.size).toBe(0);
   });
 
   it("scopes the volume name to the run id, so two runs of the same project never share telemetry", () => {

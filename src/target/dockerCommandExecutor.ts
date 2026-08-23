@@ -19,7 +19,10 @@ import {
   type DockerWorldServiceExecutor
 } from "./dockerWorldServiceProvider.js";
 import type { DockerEvidenceExportExecutor } from "./evidenceExportProvider.js";
-import { MAX_TARGET_PUBLIC_ARTIFACT_BYTES } from "./publicArtifactSnapshot.js";
+import {
+  MAX_TARGET_PUBLIC_ARTIFACT_BYTES,
+  isTargetPublicArtifactPath
+} from "./publicArtifactSnapshot.js";
 import {
   DOCKER_COMMAND_ERROR,
   DockerCommandFailure,
@@ -28,6 +31,36 @@ import {
 } from "./dockerCommandExecutorCore.js";
 
 type AdapterKind = "artifact" | "attachment" | "resource" | "secret" | "world";
+
+const PUBLIC_ARTIFACT_NOT_PRESENT_EXIT = 42;
+// The public directory is a separately mounted tmpfs and paths are restricted
+// to direct children.  Open the leaf exactly once with O_NOFOLLOW: no path
+// preflight is permitted because it would turn a replacement into a TOCTOU
+// disclosure.  Only ENOENT from that open denotes the terminal absence state.
+export const PUBLIC_ARTIFACT_READER_PROGRAM = [
+  "import fs from 'node:fs';",
+  "const path = process.argv[1];",
+  "let fd;",
+  "try { fd = fs.openSync(path, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); }",
+  "catch (error) { process.exitCode = error?.code === 'ENOENT' ? 42 : 43; }",
+  "if (fd !== undefined) {",
+  "  try {",
+  "    if (!fs.fstatSync(fd).isFile()) process.exitCode = 43;",
+  "    else { const chunks = []; let bytes; do { const chunk = Buffer.allocUnsafe(65536); bytes = fs.readSync(fd, chunk); if (bytes) chunks.push(chunk.subarray(0, bytes)); } while (bytes); process.stdout.write(Buffer.concat(chunks)); }",
+  "  } catch { process.exitCode = 43; } finally { fs.closeSync(fd); }",
+  "}"
+].join(" ");
+
+/** Private control signal emitted only for an exact missing public path probe. */
+export class DockerPublicArtifactNotPresentError extends Error {
+  public readonly kind = "not_present" as const;
+
+  public constructor() {
+    super("Target public artifact is not present");
+    this.name = "DockerPublicArtifactNotPresentError";
+  }
+}
+
 const role = (args: readonly string[]): readonly string[] => {
   if (args[0] === "--context") {
     return args.length >= 3 && /^[a-z][a-z0-9_-]{0,63}$/u.test(args[1]!) ? args.slice(2) : [];
@@ -39,6 +72,24 @@ const role = (args: readonly string[]): readonly string[] => {
       ? args.slice(4) : [];
   }
   return args;
+};
+const exactPublicArtifactAbsence = (
+  args: readonly string[],
+  error: unknown
+): DockerPublicArtifactNotPresentError | undefined => {
+  if (!(error instanceof DockerCommandFailure)
+    || error.code !== PUBLIC_ARTIFACT_NOT_PRESENT_EXIT || error.stderr !== ""
+    || error.stdoutBytes !== 0) return undefined;
+  const command = role(args);
+  const path = command[8];
+  if (command.length !== 9
+    || command[0] !== "container" || command[1] !== "exec"
+    || !/^[a-f0-9]{64}$/u.test(command[2]!)
+    || command[3] !== "/usr/local/bin/node" || command[4] !== "--input-type=module"
+    || command[5] !== "-e" || command[6] !== PUBLIC_ARTIFACT_READER_PROGRAM
+    || command[7] !== "spawnfile-public-artifact-read"
+    || !isTargetPublicArtifactPath(path)) return undefined;
+  return new DockerPublicArtifactNotPresentError();
 };
 const exactMissingImageReference = (requested: string | undefined, reported: string): boolean => {
   if (requested === undefined || reported === requested) return reported === requested;
@@ -136,6 +187,16 @@ export interface DockerTargetExecutors {
   readonly secret: DockerSecretExecutor;
   readonly world: DockerWorldServiceExecutor;
 }
+
+export const createPublicArtifactReadCommand = (input: {
+  readonly containerId: string;
+  readonly context: string;
+  readonly path: string;
+}): string[] => [
+  "--context", input.context, "container", "exec", input.containerId,
+  "/usr/local/bin/node", "--input-type=module", "-e", PUBLIC_ARTIFACT_READER_PROGRAM,
+  "spawnfile-public-artifact-read", input.path
+];
 export interface CreateDockerTargetExecutorsOptions {
   readonly dockerCommand?: string;
   readonly spawn?: DockerCommandSpawn;
@@ -214,7 +275,11 @@ export const createDockerTargetExecutors = (
           stdoutCap: MAX_TARGET_PUBLIC_ARTIFACT_BYTES
         });
         return { bytes: Uint8Array.from(result.stdout as Uint8Array) };
-      } catch { throw new Error(DOCKER_COMMAND_ERROR); }
+      } catch (error) {
+        const absence = exactPublicArtifactAbsence(args, error);
+        if (absence) throw absence;
+        throw new Error(DOCKER_COMMAND_ERROR);
+      }
     },
     resource: text("resource"),
     secret: text("secret"),

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Spawnfile YAML specification map</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f3eee7;
+      --ink: #0b0b0b;
+      --accent: #d4604a;
+      --muted: #a59d94;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(1280px, 100vw);
+      margin: 0 auto;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: var(--paper);
+    }
+
+    .eyebrow,
+    .node-kicker,
+    .legend,
+    .step-number {
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .title {
+      font-size: 34px;
+      font-weight: 760;
+      letter-spacing: -.035em;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      fill: var(--muted);
+    }
+
+    .node-title {
+      font-size: 17px;
+      font-weight: 760;
+      letter-spacing: -.015em;
+    }
+
+    .body {
+      font-size: 12px;
+      font-weight: 520;
+    }
+
+    .small {
+      font-size: 11px;
+      font-weight: 520;
+    }
+
+    .drift {
+      font-size: 10px;
+      font-weight: 680;
+    }
+
+    .muted { fill: var(--muted); }
+    .accent { fill: var(--accent); }
+    .paper { fill: var(--paper); }
+    .ink { fill: var(--ink); }
+
+    .node {
+      fill: var(--paper);
+      stroke: var(--ink);
+      stroke-width: 1.5;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .node-muted {
+      fill: var(--paper);
+      stroke: var(--muted);
+      stroke-width: 1.5;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .root-node {
+      fill: var(--ink);
+      stroke: var(--ink);
+      stroke-width: 1.5;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .connector {
+      fill: none;
+      stroke: var(--ink);
+      stroke-width: 1.5;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .connector-muted {
+      fill: none;
+      stroke: var(--muted);
+      stroke-width: 1.5;
+      stroke-dasharray: 5 4;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .drift-rule {
+      stroke: var(--accent);
+      stroke-width: 3;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .step-rule {
+      stroke: var(--muted);
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+  </style>
+</head>
+<body>
+  <main aria-label="Spawnfile YAML specification diagram">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 900" width="1280" height="900" role="img" aria-labelledby="diagram-title diagram-description">
+      <title id="diagram-title">Spawnfile YAML specification map</title>
+      <desc id="diagram-description">A nested tree showing common Spawnfile fields branching into agent and team declarations, their grouped surfaces, inheritance rules, current boundary drifts, and the resolution pipeline from authored YAML to runtime artifacts.</desc>
+
+      <text x="48" y="44" class="eyebrow accent">Spawnfile · source model</text>
+      <text x="48" y="82" class="title ink">YAML specification map</text>
+      <text x="48" y="106" class="subtitle">Current v0.1 architecture · authored intent stays separate from runtime execution</text>
+
+      <g aria-label="Legend">
+        <line x1="1012" y1="52" x2="1036" y2="52" class="connector" />
+        <text x="1044" y="56" class="legend ink">inherits / lowers</text>
+        <line x1="1012" y1="80" x2="1036" y2="80" class="connector-muted" />
+        <text x="1044" y="84" class="legend muted">must not inherit</text>
+        <line x1="1012" y1="108" x2="1036" y2="108" class="drift-rule" />
+        <text x="1044" y="112" class="legend accent">current P1 drift</text>
+      </g>
+
+      <!-- Root common declaration -->
+      <g aria-label="Common Spawnfile fields">
+        <rect x="424" y="136" width="432" height="88" rx="4" class="root-node" />
+        <text x="448" y="160" class="node-kicker paper">Every Spawnfile</text>
+        <text x="448" y="187" class="node-title paper">Common declaration</text>
+        <text x="448" y="205" class="body paper">spawnfile_version: "0.1" · kind · name</text>
+        <text x="448" y="219" class="small paper">description? · memory? · policy?</text>
+      </g>
+
+      <!-- Root split -->
+      <path d="M640 224 V244 H336 V260" class="connector" />
+      <path d="M640 244 H944 V260" class="connector" />
+
+      <!-- Agent group -->
+      <g aria-label="Agent manifest">
+        <rect x="56" y="260" width="560" height="100" rx="4" class="node" />
+        <text x="80" y="284" class="node-kicker accent">kind: agent</text>
+        <text x="80" y="311" class="node-title ink">One autonomous runtime identity</text>
+        <text x="80" y="334" class="body ink">runtime · execution? · workspace? · environment?</text>
+        <text x="80" y="351" class="small muted">surfaces? · schedule? · subagents? · expose?* (implemented, not specified)</text>
+      </g>
+
+      <!-- Team group -->
+      <g aria-label="Team manifest">
+        <rect x="664" y="260" width="560" height="100" rx="4" class="node" />
+        <text x="688" y="284" class="node-kicker accent">kind: team</text>
+        <text x="688" y="311" class="node-title ink">Organization structure, not cognition</text>
+        <text x="688" y="334" class="body ink">mode · lead? · external? · members · shared? · memory? · networks?</text>
+        <text x="688" y="351" class="small muted">teams declare no runtime, execution, schedule or direct communication surfaces</text>
+      </g>
+
+      <!-- Agent branches -->
+      <path d="M336 360 V384 H152 V404" class="connector" />
+      <path d="M336 384 H336 V404" class="connector" />
+      <path d="M336 384 H520 V404" class="connector" />
+
+      <g aria-label="Agent runtime and execution">
+        <rect x="40" y="404" width="224" height="220" rx="4" class="node" />
+        <text x="60" y="428" class="node-kicker ink">Runtime + execution</text>
+        <text x="60" y="454" class="body ink">runtime</text>
+        <text x="60" y="472" class="small muted">string or { name, options? }</text>
+        <text x="60" y="498" class="body ink">execution.model</text>
+        <text x="60" y="516" class="small muted">primary · fallback[] · auth · endpoint</text>
+        <text x="60" y="542" class="body ink">execution.sandbox.mode</text>
+        <text x="60" y="560" class="small muted">workspace · sandboxed · unrestricted</text>
+        <line x1="40" y1="580" x2="264" y2="580" class="drift-rule" />
+        <text x="60" y="596" class="drift accent">P1 · capability reports can overstate</text>
+        <text x="60" y="608" class="drift accent">model, sandbox and subagents;</text>
+        <text x="60" y="620" class="drift accent">an ignored option drops authored intent.</text>
+      </g>
+
+      <g aria-label="Agent workspace and environment">
+        <rect x="280" y="404" width="224" height="220" rx="4" class="node" />
+        <text x="300" y="428" class="node-kicker ink">Workspace + environment</text>
+        <text x="300" y="454" class="body ink">docs</text>
+        <text x="300" y="472" class="small muted">identity · soul · system · memory ·</text>
+        <text x="300" y="487" class="small muted">heartbeat · extras</text>
+        <text x="300" y="513" class="body ink">skills[] · resources[]</text>
+        <text x="300" y="531" class="small muted">SKILL.md · git | volume</text>
+        <text x="300" y="557" class="body ink">env{} · secrets[] · packages[] · MCP[]</text>
+        <line x1="280" y1="580" x2="504" y2="580" class="drift-rule" />
+        <text x="300" y="596" class="drift accent">P1 · parent resources leak into</text>
+        <text x="300" y="608" class="drift accent">subagents; declared Daimon env</text>
+        <text x="300" y="620" class="drift accent">does not reach the engine.</text>
+      </g>
+
+      <g aria-label="Agent surfaces and lifecycle">
+        <rect x="520" y="404" width="112" height="220" rx="4" class="node-muted" />
+        <text x="536" y="428" class="node-kicker ink">Edges</text>
+        <text x="536" y="454" class="body ink">surfaces</text>
+        <text x="536" y="472" class="small muted">chat</text>
+        <text x="536" y="487" class="small muted">Moltnet</text>
+        <text x="536" y="502" class="small muted">webhook</text>
+        <text x="536" y="528" class="body ink">schedule</text>
+        <text x="536" y="546" class="small muted">cron</text>
+        <text x="536" y="561" class="small muted">every</text>
+        <text x="536" y="576" class="small muted">disabled</text>
+        <text x="536" y="602" class="body ink">subagents</text>
+      </g>
+
+      <!-- Team branches -->
+      <path d="M944 360 V384 H804 V404" class="connector" />
+      <path d="M944 384 H1084 V404" class="connector" />
+
+      <g aria-label="Team structure and shared surface">
+        <rect x="648" y="404" width="312" height="220" rx="4" class="node" />
+        <text x="668" y="428" class="node-kicker ink">Structure + shared surface</text>
+        <text x="668" y="454" class="body ink">mode: hierarchical | swarm</text>
+        <text x="668" y="472" class="small muted">lead? · external[]? · representative fallback</text>
+        <text x="668" y="498" class="body ink">members[]</text>
+        <text x="668" y="516" class="small muted">{ id, ref } agent/team · or strict inline agent</text>
+        <text x="668" y="542" class="body ink">shared.workspace + shared.environment</text>
+        <text x="668" y="560" class="small muted">Direct agents inherit skills, resources, env,</text>
+        <text x="668" y="575" class="small muted">secrets, packages and MCP; local keys win.</text>
+        <line x1="648" y1="590" x2="960" y2="590" class="drift-rule" />
+        <text x="668" y="606" class="drift accent">P1 · ancestor resources leak through nested teams;</text>
+        <text x="668" y="620" class="drift accent">team docs enter agent role files.</text>
+      </g>
+
+      <g aria-label="Team memory, networks and external participants">
+        <rect x="976" y="404" width="264" height="220" rx="4" class="node" />
+        <text x="996" y="428" class="node-kicker ink">State + coordination</text>
+        <text x="996" y="454" class="body ink">memory[]</text>
+        <text x="996" y="472" class="small muted">store · index · consolidation · retention</text>
+        <text x="996" y="487" class="small muted">access.members → direct slots only</text>
+        <text x="996" y="513" class="body ink">networks[] → Moltnet</text>
+        <text x="996" y="531" class="small muted">rooms · managed/external server · auth</text>
+        <text x="996" y="557" class="body ink">external_participants[]</text>
+        <text x="996" y="575" class="small muted">root-only service · explicit DM attachment</text>
+        <text x="996" y="601" class="small muted">Nested teams remain black boxes.</text>
+        <text x="996" y="616" class="small muted">Only selected representatives cross upward.</text>
+      </g>
+
+      <!-- Explicit non-inheritance markers -->
+      <path d="M392 624 V644 H560" class="connector-muted" />
+      <text x="568" y="648" class="small muted">subagents must not inherit workspace · environment · surfaces</text>
+      <path d="M804 624 V660 H942 V640" class="connector-muted" />
+      <text x="948" y="648" class="small muted">outer shared surface must not cross nested-team boundaries</text>
+
+      <!-- Resolution strip -->
+      <g aria-label="Resolution and lowering pipeline">
+        <rect x="40" y="696" width="1200" height="156" rx="4" class="node" />
+        <text x="64" y="724" class="node-kicker accent">Resolution strip</text>
+        <text x="64" y="748" class="node-title ink">Authored YAML becomes runtime artifacts through explicit boundaries</text>
+
+        <line x1="260" y1="776" x2="260" y2="828" class="step-rule" />
+        <line x1="492" y1="776" x2="492" y2="828" class="step-rule" />
+        <line x1="724" y1="776" x2="724" y2="828" class="step-rule" />
+        <line x1="956" y1="776" x2="956" y2="828" class="step-rule" />
+
+        <text x="64" y="788" class="step-number accent">01</text>
+        <text x="64" y="810" class="body ink">Parse + validate</text>
+        <text x="64" y="828" class="small muted">strict schema · local files</text>
+
+        <text x="284" y="788" class="step-number accent">02</text>
+        <text x="284" y="810" class="body ink">Resolve graph</text>
+        <text x="284" y="828" class="small muted">refs · cycles · stable nodes</text>
+
+        <text x="516" y="788" class="step-number accent">03</text>
+        <text x="516" y="810" class="body ink">Compute effective intent</text>
+        <text x="516" y="828" class="small muted">inheritance · merge · defaults</text>
+
+        <text x="748" y="788" class="step-number accent">04</text>
+        <text x="748" y="810" class="body ink">Enforce capability policy</text>
+        <text x="748" y="828" class="small muted">supported · degraded · unsupported</text>
+
+        <text x="980" y="788" class="step-number accent">05</text>
+        <text x="980" y="810" class="body ink">Lower through adapters</text>
+        <text x="980" y="828" class="small muted">workspace · config · image · report</text>
+      </g>
+
+      <text x="40" y="882" class="small muted">Solid lines show authored containment or intended inheritance. Dashed lines mark explicit non-inheritance. Red rules identify current implementation drift, not desired schema behavior.</text>
+    </svg>
+  </main>
+</body>
+</html>
