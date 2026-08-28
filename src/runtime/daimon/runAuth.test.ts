@@ -10,6 +10,8 @@ import { prepareDaimonRuntimeAuth } from "./runAuth.js";
 const temporaryDirectories: string[] = [];
 const originalCodexHome = process.env.CODEX_HOME;
 const originalGrokHome = process.env.GROK_HOME;
+const codexCredential = () => JSON.stringify({ tokens: { access_token: "test-access", refresh_token: "test-refresh" } });
+const grokCredential = (accessLength = 32, refreshLength = 16) => JSON.stringify({ "https://auth.x.ai::test": { key: "a".repeat(accessLength), refresh_token: "r".repeat(refreshLength), expires_at: "2099-01-01T00:00:00.000Z" } });
 const createTempDirectory = async (prefix: string): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
   temporaryDirectories.push(directory);
@@ -63,7 +65,7 @@ describe("prepareDaimonRuntimeAuth", () => {
     const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
     const codexHome = await createTempDirectory("spawnfile-daimon-codex-");
     process.env.CODEX_HOME = codexHome;
-    await writeFile(path.join(codexHome, "auth.json"), "{\"token\":\"redacted\"}\n");
+    await writeFile(path.join(codexHome, "auth.json"), codexCredential());
     await chmod(path.join(codexHome, "auth.json"), 0o600);
     const home = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex";
     const configPath = await writeConfig(outputDirectory, home);
@@ -77,10 +79,31 @@ describe("prepareDaimonRuntimeAuth", () => {
     const mount = prepared.mountArgs[1]!;
     const source = path.join(codexHome, "auth.json");
     expect(mount).toBe(`${source}:${home}/.daimon-inbound/codex-auth:ro`);
-    expect(prepared.launchIdentity).toEqual({ kind: "daimon", uid: process.getuid?.() });
+    expect(prepared.launchIdentity).toBeUndefined();
     expect(prepared.mountArgs.join("\n")).not.toContain(tempRoot);
     expect((await lstat(path.join(outputDirectory, "container", "rootfs", `.${home}`, ".daimon-inbound"))).mode & 0o777)
       .toBe(0o700);
+  });
+
+  it("accepts the declared native Codex refresh credential variants", async () => {
+    for (const nativeCredential of [
+      { accessToken: "test-access", refreshToken: "test-refresh" },
+      { token: "test-access", refreshToken: "test-refresh" }
+    ]) {
+      const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
+      const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
+      const codexHome = await createTempDirectory("spawnfile-daimon-codex-");
+      process.env.CODEX_HOME = codexHome;
+      await writeFile(path.join(codexHome, "auth.json"), JSON.stringify(nativeCredential), { mode: 0o600 });
+      await chmod(path.join(codexHome, "auth.json"), 0o600);
+      const configPath = await writeConfig(
+        outputDirectory,
+        "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex"
+      );
+      await expect(prepare(outputDirectory, tempRoot, configPath)).resolves.toMatchObject({
+        mountArgs: ["-v", expect.stringContaining("/.daimon-inbound/codex-auth:ro")]
+      });
+    }
   });
 
   it("rejects an insecure caller-provided credential source", async () => {
@@ -108,7 +131,7 @@ describe("prepareDaimonRuntimeAuth", () => {
     const credentials = await Promise.all(["codex", "grok"].map(async (engine) => {
       const home = await createTempDirectory(`spawnfile-daimon-${engine}-`);
       const file = "auth.json";
-      await writeFile(path.join(home, file), `${engine}-token\n`);
+      await writeFile(path.join(home, file), engine === "grok" ? grokCredential() : codexCredential());
       await chmod(path.join(home, file), 0o600);
       return { engine, file, home };
     }));
@@ -131,13 +154,20 @@ describe("prepareDaimonRuntimeAuth", () => {
       agents: [...credentials.map((credential) => ({
         engine: { kind: credential.engine },
         id: `agent:${credential.engine}`,
-        runtimeHomePath: `/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/${credential.engine}`
+        runtimeHomePath: `/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/${credential.engine}`,
+        schedule: { kind: "every", interval_ms: 60_000, prompt: "scheduled work" }
       })), {
+        engine: { kind: "grok" },
+        id: "agent:grok-two",
+        runtimeHomePath: "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/grok-two",
+        schedule: { kind: "disabled" }
+      }, {
         engine: { kind: "agy" },
         id: "agent:agy",
-        runtimeHomePath: "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/agy"
+        runtimeHomePath: "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/agy",
+        schedule: { kind: "disabled" }
       }],
-      host: {}, version: "noopolis.daimon.organization-runtime.v1"
+      host: {}, version: "noopolis.daimon.organization-runtime.v2"
     }));
 
     const prepared = await prepareDaimonRuntimeAuth({
@@ -146,13 +176,15 @@ describe("prepareDaimonRuntimeAuth", () => {
       outputDirectory, tempRoot
     });
 
-    expect(prepared.mountArgs).toEqual([...credentials].sort((left, right) =>
-      left.engine.localeCompare(right.engine)
-    ).flatMap((credential) => [
+    expect(prepared.mountArgs).toEqual([
       "-v",
-      `${path.join(credential.home, credential.file)}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/${credential.engine}/.daimon-inbound/${credential.engine}-auth:ro`
-    ]).concat(["-v", `${unlock}:/var/lib/spawnfile/daimon/agy-unlock-secret:ro`]));
-    expect(prepared.launchIdentity).toEqual({ kind: "daimon", uid: process.getuid?.() });
+      `${path.join(credentials[0]!.home, credentials[0]!.file)}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex/.daimon-inbound/codex-auth:ro`,
+      "-v",
+      `${path.join(credentials[1]!.home, credentials[1]!.file)}:/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro`,
+      "-v",
+      `${unlock}:/var/lib/spawnfile/daimon/agy-unlock-secret:ro`
+    ]);
+    expect(prepared.launchIdentity).toBeUndefined();
     expect(prepared.mountArgs.join("\n")).not.toContain("antigravity-oauth-token");
   });
 
@@ -209,7 +241,7 @@ describe("prepareDaimonRuntimeAuth", () => {
 
     const grokHome = await createTempDirectory("spawnfile-daimon-grok-home-");
     process.env.GROK_HOME = grokHome;
-    await writeFile(path.join(grokHome, "auth.json"), "grok-auth\n");
+    await writeFile(path.join(grokHome, "auth.json"), grokCredential());
     await chmod(path.join(grokHome, "auth.json"), 0o600);
     const grokConfig = await writeConfigSource(outputDirectory, JSON.stringify({
       agents: [{
@@ -219,9 +251,59 @@ describe("prepareDaimonRuntimeAuth", () => {
       host: {}, version: "noopolis.daimon.organization-runtime.v1"
     }));
     await expect(prepare(outputDirectory, tempRoot, grokConfig)).resolves.toMatchObject({
-      launchIdentity: { kind: "daimon", uid: process.getuid?.() },
-      mountArgs: ["-v", expect.stringContaining(".daimon-inbound/grok-auth:ro")]
+      mountArgs: ["-v", expect.stringContaining(":/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro")]
     });
+  });
+
+  it("rejects an empty Grok placeholder before Docker launch without reflecting credential bytes", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
+    const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
+    const grokHome = await createTempDirectory("spawnfile-daimon-grok-home-");
+    process.env.GROK_HOME = grokHome;
+    await writeFile(path.join(grokHome, "auth.json"), "{}", { mode: 0o600 });
+    await chmod(path.join(grokHome, "auth.json"), 0o600);
+    const configPath = await writeConfigSource(outputDirectory, JSON.stringify({
+      agents: [{ engine: { kind: "grok" }, id: "agent:grok", runtimeHomePath: "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/grok" }],
+      host: {}, version: "noopolis.daimon.organization-runtime.v1"
+    }));
+    await expect(prepare(outputDirectory, tempRoot, configPath)).rejects.toThrow(/refreshable subscription credential/u);
+  });
+
+  it("matches the broker credential token-length boundary", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
+    const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
+    const grokHome = await createTempDirectory("spawnfile-daimon-grok-home-");
+    process.env.GROK_HOME = grokHome;
+    const configPath = await writeConfigSource(outputDirectory, JSON.stringify({
+      agents: [{ engine: { kind: "grok" }, id: "agent:grok", runtimeHomePath: "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/grok" }],
+      host: {}, version: "noopolis.daimon.organization-runtime.v1"
+    }));
+    for (const [access, refresh, accepted] of [[31, 16, false], [32, 15, false], [32, 16, true]] as const) {
+      await writeFile(path.join(grokHome, "auth.json"), grokCredential(access, refresh), { mode: 0o600 });
+      const result = prepare(outputDirectory, tempRoot, configPath);
+      if (accepted) await expect(result).resolves.toBeDefined();
+      else await expect(result).rejects.toThrow(/refreshable subscription credential/u);
+    }
+  });
+
+  it("redacts rejected Grok credential contents", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
+    const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
+    const grokHome = await createTempDirectory("spawnfile-daimon-grok-home-");
+    process.env.GROK_HOME = grokHome;
+    await writeFile(path.join(grokHome, "auth.json"), "secret-grok-canary", { mode: 0o600 });
+    await chmod(path.join(grokHome, "auth.json"), 0o600);
+    const configPath = await writeConfigSource(outputDirectory, JSON.stringify({
+      agents: [{ engine: { kind: "grok" }, id: "agent:grok", runtimeHomePath: "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/grok" }],
+      host: {}, version: "noopolis.daimon.organization-runtime.v1"
+    }));
+    try {
+      await prepare(outputDirectory, tempRoot, configPath);
+      expect.fail("expected invalid credential rejection");
+    } catch (error) {
+      expect((error as Error).message).toMatch(/refreshable subscription credential/u);
+      expect((error as Error).message).not.toContain("secret-grok-canary");
+    }
   });
 
   it("rejects undeclared source slots and unsafe generated config shapes before mounting", async () => {
@@ -243,7 +325,7 @@ describe("prepareDaimonRuntimeAuth", () => {
     const invalidSources = [
       ["not-json", /not JSON/u],
       ["null", /invalid shape/u],
-      [JSON.stringify({ agents: {}, version: "noopolis.daimon.organization-runtime.v1" }), /not v1/u],
+      [JSON.stringify({ agents: {}, version: "noopolis.daimon.organization-runtime.v1" }), /supported v1\/v2/u],
       [JSON.stringify({ agents: [null], version: "noopolis.daimon.organization-runtime.v1" }), /invalid agent$/u],
       [JSON.stringify({ agents: [{ engine: null, id: "agent", runtimeHomePath: home }], version: "noopolis.daimon.organization-runtime.v1" }), /invalid agent credential target/u],
       [JSON.stringify({ agents: [{ engine: { kind: "codex" }, id: "", runtimeHomePath: home }], version: "noopolis.daimon.organization-runtime.v1" }), /invalid agent credential target/u],

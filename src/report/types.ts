@@ -40,15 +40,23 @@ export interface ContainerRuntimeInstanceReport {
 export interface ContainerWorkspaceResourceReport {
   backing_path: string;
   id: string;
-  kind: "git" | "volume";
+  kind: "bundle" | "git" | "volume";
   link_path: string;
   mode: "mutable" | "readonly";
   mount: string;
+  mount_path: string;
+  replacement_sentinel?: {
+    path: string;
+    result: "verified_on_startup";
+  };
+  resolved_identity: string;
   sharing: "per_agent" | "team";
+  volume_name: string | null;
 }
 
 export interface ContainerPersistentMountReport {
   id: string;
+  lifecycle?: "exclusive-reattach";
   mount_path: string;
   reason: string;
   volume_name: string;
@@ -255,6 +263,11 @@ export interface ContainerReport {
   entrypoint: string;
   env_example: string;
   internal_ports?: number[];
+  local_daimon_runtime?: {
+    capability_receipt_sha256: string;
+    image_reference: string;
+    registry_authority: string;
+  };
   model_secrets_required: string[];
   moltnet?: ContainerMoltnetPlanSummary;
   memory?: ContainerMemoryReport[];

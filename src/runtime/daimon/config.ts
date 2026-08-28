@@ -1,24 +1,47 @@
 import path from "node:path";
 
 import type { ResolvedAgentNode } from "../../compiler/types.js";
+import { parseEveryScheduleMs } from "../scheduleUtils.js";
 import { SpawnfileError } from "../../shared/index.js";
 import type { ContainerTarget, ContainerTargetInput, EmittedFile } from "../types.js";
 
 import {
   DAIMON_AGY_SUBSCRIPTION_REALM,
-  DAIMON_ENGINE_CREDENTIALS
+  DAIMON_ENGINE_CREDENTIALS,
+  DAIMON_GROK_SUBSCRIPTION_REALM
 } from "./contractManifest.js";
+import { assertDaimonScheduleAuthority } from "./scheduleAuthority.js";
 
 export const DAIMON_CONFIG_FILE = "daimon-organization-runtime.json";
 export const DAIMON_CONTROL_PORT = 19700;
 export const DAIMON_MAX_AGENTS = 32;
 export const DAIMON_ORGANIZATION_TARGET_ID = "daimon-organization";
+export const DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY = "state/wake-acceptance";
+export const DAIMON_RUNTIME_ACCEPTANCE_STORE_ENV = "DAIMON_RUNTIME_ACCEPTANCE_STORE";
+export const DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID = "daimon-organization-acceptance-store";
+export const DAIMON_RUNTIME_READINESS_RECEIPT_ENV = "DAIMON_RUNTIME_READINESS_RECEIPT";
 export const DAIMON_RUNTIME_HOMES_DIRECTORY = "runtime-homes";
 const DAIMON_MAX_CONFIG_BYTES = 1_048_576;
 const DAIMON_MAX_INSTRUCTION_BYTES = 16_384;
 const DAIMON_MAX_INSTRUCTION_CODEPOINTS = 4_096;
 export const DAIMON_ENGINES = ["agy", "codex", "grok"] as const;
 type DaimonEngine = typeof DAIMON_ENGINES[number];
+
+const normalizeSchedule = (node: ResolvedAgentNode): Record<string, unknown> | undefined => {
+  const schedule = node.schedule;
+  if (!schedule || schedule.kind === "disabled") return schedule ? { kind: "disabled" } : undefined;
+  if (schedule.kind === "every") {
+    const interval_ms = parseEveryScheduleMs(schedule.every);
+    if (interval_ms === null) throw new SpawnfileError("validation_error", `invalid every schedule for ${node.name}`);
+    return { kind: "every", interval_ms, prompt: schedule.prompt ?? "Scheduled work" };
+  }
+  return {
+    cron: schedule.cron.trim().replace(/\s+/gu, " "),
+    kind: "cron",
+    prompt: schedule.prompt ?? "Scheduled work",
+    timezone: schedule.timezone ?? "UTC"
+  };
+};
 
 const formatInstructions = (node: ResolvedAgentNode): string =>
   node.docs.map((document) => `# ${document.role}\n\n${document.content}`).join("\n\n").trim() ||
@@ -57,10 +80,12 @@ const renderStartScript = (agents: Array<{
   runtimeHomePath: string;
   workspacePath: string;
 }>): string => {
+  const acceptanceStorePath = `<instance-root>/${DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY}`;
+  const readinessReceiptPath = `${acceptanceStorePath}/runtime-readiness.json`;
   const setup = agents.flatMap((agent) => {
-    const credential = agent.engine.kind === "agy"
-      ? undefined
-      : DAIMON_ENGINE_CREDENTIALS[agent.engine.kind];
+    const credential = agent.engine.kind === "codex"
+      ? DAIMON_ENGINE_CREDENTIALS.codex
+      : undefined;
     const inbound = path.posix.join(agent.runtimeHomePath, ".daimon-inbound");
     return [
       `install -d -m 700 ${[
@@ -76,6 +101,10 @@ const renderStartScript = (agents: Array<{
   return [
     "#!/usr/bin/env bash",
     "set -euo pipefail",
+    `install -d -m 700 ${JSON.stringify(acceptanceStorePath)}`,
+    `export ${DAIMON_RUNTIME_ACCEPTANCE_STORE_ENV}=${JSON.stringify(acceptanceStorePath)}`,
+    `rm -f ${JSON.stringify(readinessReceiptPath)}`,
+    `export ${DAIMON_RUNTIME_READINESS_RECEIPT_ENV}=${JSON.stringify(readinessReceiptPath)}`,
     ...setup,
     'if [ "$#" -gt 0 ]; then exec daimon-runtime "$@"; fi',
     "exec daimon-runtime run --config <config-path>"
@@ -97,18 +126,32 @@ export const createDaimonContainerTargets = async (
     );
   }
 
+  const hasSchedules = agents.some((input) => input.value.schedule !== undefined);
+  if (hasSchedules) await assertDaimonScheduleAuthority();
   const configAgents = agents
     .map((input) => ({
       engine: { kind: resolveDaimonEngine(input.value) },
       id: input.id,
       instructions: formatInstructions(input.value),
       name: input.value.name,
+      ...(input.value.mcpServers.length === 0 ? {} : { mcp: input.value.mcpServers.map((server) => ({
+        name: server.name, transport: server.transport, args: server.args ?? [], env: server.env ?? {}, tools: server.tools!,
+        ...(server.command ? { command: server.command } : {}), ...(server.url ? { url: server.url } : {}),
+        ...(server.auth?.mode === "bearer" ? { authSecretEnv: server.auth.secret } : {})
+      })) }),
+      ...(input.value.surfaces?.moltnet?.length ? { moltnet: {
+        cliPath: "/usr/local/bin/moltnet",
+        configPath: `<workspace-path>/agents/${input.slug}/.moltnet/config.json`,
+        networks: input.value.surfaces.moltnet.map((attachment) => ({ id: attachment.network, rooms: Object.keys(attachment.rooms ?? {}).sort(), dms: attachment.dms?.enabled === true }))
+      } } : {}),
       runtimeHomePath: `<instance-root>/${DAIMON_RUNTIME_HOMES_DIRECTORY}/${input.slug}`,
-      workspacePath: `<workspace-path>/agents/${input.slug}`
+      workspacePath: `<workspace-path>/agents/${input.slug}`,
+      ...(hasSchedules ? { schedule: normalizeSchedule(input.value) ?? { kind: "disabled" } } : {})
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
   const engineByNodeId = Object.fromEntries(configAgents.map((agent) => [agent.id, agent.engine.kind]));
   const hasAgy = configAgents.some((agent) => agent.engine.kind === "agy");
+  const hasGrok = configAgents.some((agent) => agent.engine.kind === "grok");
   const agyRuntimeHomeMounts = configAgents
     .filter((agent) => agent.engine.kind === "agy")
     .map((agent) => ({
@@ -116,6 +159,22 @@ export const createDaimonContainerTargets = async (
       mountPath: agent.runtimeHomePath,
       reason: `Daimon AGY subscription runtime home for ${agent.id}`
     }));
+  const portableEngineHomeMounts = configAgents
+    .filter((agent) => agent.engine.kind !== "agy")
+    .map((agent) => {
+      const destinationRelativePath = agent.engine.kind === "grok"
+        ? DAIMON_GROK_SUBSCRIPTION_REALM.agentCredentialRelativePath
+        : DAIMON_ENGINE_CREDENTIALS.codex.destinationRelativePath;
+      return {
+        id: `daimon-engine-home-${agent.engine.kind}-${path.posix.basename(agent.runtimeHomePath)}`,
+        mountPath: path.posix.join(
+          agent.runtimeHomePath,
+          path.posix.dirname(destinationRelativePath)
+        ),
+        reason: `Daimon ${agent.engine.kind} subscription credential home for ${agent.id}`
+      };
+    });
+  const toolStateMounts = configAgents.map((agent) => ({ id: `daimon-tool-state-${path.posix.basename(agent.runtimeHomePath)}`, mountPath: path.posix.join(agent.runtimeHomePath, "tool-state"), reason: `Daimon durable cognition tool receipts for ${agent.id}` }));
   for (const agent of configAgents) assertPublicInstructionBounds(agent.id, agent.instructions);
   const config = {
     agents: configAgents,
@@ -124,7 +183,9 @@ export const createDaimonContainerTargets = async (
       controlTokenEnv: "SPAWNFILE_DAIMON_CONTROL_TOKEN",
       port: DAIMON_CONTROL_PORT
     },
-    version: "noopolis.daimon.organization-runtime.v1"
+    version: hasSchedules
+      ? "noopolis.daimon.organization-runtime.v2"
+      : "noopolis.daimon.organization-runtime.v1"
   };
   const serializedConfig = `${JSON.stringify(config, null, 2)}\n`;
   if (Buffer.byteLength(serializedConfig, "utf8") > DAIMON_MAX_CONFIG_BYTES) {
@@ -143,14 +204,26 @@ export const createDaimonContainerTargets = async (
       }
     ],
     id: DAIMON_ORGANIZATION_TARGET_ID,
-    ...(hasAgy ? {
-      opaqueMountTargets: [DAIMON_AGY_SUBSCRIPTION_REALM.unlockMountPath],
-      persistentMounts: [{
+    ...(hasAgy || hasGrok ? {
+      opaqueMountTargets: [
+        ...(hasAgy ? [DAIMON_AGY_SUBSCRIPTION_REALM.unlockMountPath] : []),
+        ...(hasGrok ? [DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath] : [])
+      ],
+    } : {}),
+    persistentMounts: [...portableEngineHomeMounts, ...toolStateMounts, {
+      id: DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID,
+      mountPath: `<instance-root>/${DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY}`,
+      reason: "Daimon organization durable wake acceptance store"
+    }, ...(hasGrok ? [{
+        id: "daimon-grok-subscription-realm",
+        lifecycle: "exclusive-reattach" as const,
+        mountPath: DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath,
+        reason: "Daimon host Grok subscription credential realm"
+      }] : []), ...(hasAgy ? [{
         id: "daimon-agy-subscription-realm",
         mountPath: DAIMON_AGY_SUBSCRIPTION_REALM.durableMountPath,
         reason: "Daimon host AGY subscription realm"
-      }, ...agyRuntimeHomeMounts]
-    } : {}),
+      }, ...agyRuntimeHomeMounts] : [])],
     sourceIds: agents.map((agent) => agent.id).sort()
   }];
 };

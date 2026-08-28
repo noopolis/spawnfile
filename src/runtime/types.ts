@@ -39,6 +39,7 @@ export interface ContainerTargetEnvFile {
 
 export interface ContainerTargetPersistentMount {
   id: string;
+  lifecycle?: "exclusive-reattach";
   mountPath: string;
   reason: string;
 }

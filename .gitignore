@@ -7,3 +7,4 @@ node_modules
 .env
 .moltnet
 .worktree-bootstrap.json
+.local-daimon-runtime-identity.json

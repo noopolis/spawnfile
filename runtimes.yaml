@@ -21,6 +21,7 @@ runtimes:
       tag: 0.2.0
       digest: sha256:19b671e589ad8c9e8f1b55610ccbf86ee72f16b4cb2f707ec419f5ef0d6942aa
       capability_receipt: sha256:1a207c0cc5f081b2a8f941d59b74e37f905a1dc7b37a08c7984c6e39123fb4e7
+      contract_manifest_sha256: sha256:95ef6c04f1a757b8cd33498207239aa242d0dd6783308530eadb660285b5f83b
     status: active
 
   openclaw:

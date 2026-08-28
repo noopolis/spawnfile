@@ -11,6 +11,7 @@ import {
   DAIMON_CONTRACT_MANIFEST_DIGEST_FILE,
   DAIMON_CONTRACT_MANIFEST_FILE,
   DAIMON_CONTRACT_MANIFEST_VERSION,
+  DAIMON_GROK_ENGINE_BROKER,
   parseDaimonContractManifest,
   readVerifiedDaimonContractManifest
 } from "./contractManifest.js";
@@ -31,16 +32,36 @@ const manifest = () => ({
     unlockMountPath: "/var/lib/spawnfile/daimon/agy-unlock-secret",
     unlockSourceSlot: "agy-unlock-secret"
   },
+  grokSubscriptionRealm: {
+    agentCredentialRelativePath: ".grok/auth.json",
+    bootstrapMountPath: "/var/lib/spawnfile/daimon/grok-bootstrap-auth",
+    bootstrapSourceSlot: "grok-auth",
+    directoryMode: 0o700,
+    durableMountPath: "/var/lib/spawnfile/daimon/grok-subscription-realm",
+    fileMode: 0o600,
+    maxCredentialBytes: 65_536
+  },
+  grokEngineBroker: DAIMON_GROK_ENGINE_BROKER,
   consumedConfigFields: [
     "version", "host.bindHost", "host.port", "host.controlTokenEnv", "agents[].id",
     "agents[].name", "agents[].instructions", "agents[].workspacePath",
-    "agents[].runtimeHomePath", "agents[].engine.kind"
+    "agents[].runtimeHomePath", "agents[].engine.kind", "agents[].schedule.kind",
+    "agents[].schedule.interval_ms", "agents[].schedule.cron", "agents[].schedule.timezone",
+    "agents[].schedule.prompt", "agents[].mcp", "agents[].moltnet"
   ],
   engineCredentialMaterial: {
     codex: { destinationRelativePath: ".codex/auth.json", directoryMode: 0o700, fileMode: 0o600, sourceRelativePath: ".daimon-inbound/codex-auth", sourceSlot: "codex-auth" },
-    grok: { destinationRelativePath: ".grok/auth.json", directoryMode: 0o700, fileMode: 0o600, sourceRelativePath: ".daimon-inbound/grok-auth", sourceSlot: "grok-auth" }
   },
   supportedEngineKinds: ["agy", "codex", "grok"],
+  organizationRuntimeConfigV2Schema: {
+    $id: "noopolis.daimon.organization-runtime.v2",
+    properties: { agents: { items: { properties: { schedule: { oneOf: [{}, {}, {}] } } } } }
+  },
+  wakeAcceptanceTypes: ["manual", "message", "schedule", "external"],
+  deliverySemantics: {
+    activeDeliveryIdempotency: "unbounded-until-terminal", terminalReceiptHorizon: 2_048,
+    recovery: "at-least-once-with-stable-wake-id", concurrentSameAgentTurns: false, externalEffectsExactlyOnce: false
+  },
   version: DAIMON_CONTRACT_MANIFEST_VERSION
 });
 
@@ -68,7 +89,17 @@ describe("Daimon contract manifest", () => {
           durableMountPath: "/var/lib/spawnfile/daimon/agy-subscription-realm",
           unlockMountPath: "/var/lib/spawnfile/daimon/agy-unlock-secret"
         },
+        grokSubscriptionRealm: {
+          durableMountPath: "/var/lib/spawnfile/daimon/grok-subscription-realm",
+          bootstrapMountPath: "/var/lib/spawnfile/daimon/grok-bootstrap-auth"
+        },
+        grokEngineBroker: {
+          identities: { organizationUid: 2_000, brokerUid: 2_100, firstWorkerUid: 2_200 },
+          providerProxy: { host: "127.0.0.1", port: 43_123 },
+          mcpFacade: { host: "127.0.0.1", port: 43_124, path: "/mcp" }
+        },
         supportedEngineKinds: ["agy", "codex", "grok"]
+        , wakeAcceptanceTypes: ["manual", "message", "schedule", "external"]
       }
     });
   });
@@ -92,7 +123,7 @@ describe("Daimon contract manifest", () => {
     expect(() => assertDaimonRuntimeHome("relative/runtime-home")).toThrow(/absolute POSIX/u);
   });
 
-  it("rejects malformed credential and AGY material at the consumed contract boundary", () => {
+  it("rejects malformed credential and subscription-realm material at the consumed contract boundary", () => {
     for (const invalid of [null, [], "manifest"]) {
       expect(() => parseDaimonContractManifest(invalid)).toThrow(/manifest/u);
     }
@@ -104,6 +135,18 @@ describe("Daimon contract manifest", () => {
       ...manifest(),
       agySubscriptionRealm: { ...manifest().agySubscriptionRealm, directoryMode: 0o755 }
     })).toThrow(/AGY subscription realm/u);
+    expect(() => parseDaimonContractManifest({
+      ...manifest(),
+      grokSubscriptionRealm: { ...manifest().grokSubscriptionRealm, directoryMode: 0o755 }
+    })).toThrow(/Grok subscription realm/u);
+    expect(() => parseDaimonContractManifest({
+      ...manifest(),
+      grokEngineBroker: { ...DAIMON_GROK_ENGINE_BROKER, providerProxy: { host: "0.0.0.0", port: 43_123 } }
+    })).toThrow(/Grok engine broker/u);
+    expect(() => parseDaimonContractManifest({
+      ...manifest(),
+      grokEngineBroker: { ...DAIMON_GROK_ENGINE_BROKER, nativeAbiVersion: 1 }
+    })).toThrow(/Grok engine broker/u);
   });
 
   it("rejects missing, malformed, noncanonical, and digest-mismatched packaged files", async () => {
