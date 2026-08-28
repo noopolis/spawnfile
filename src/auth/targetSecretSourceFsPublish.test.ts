@@ -1,7 +1,9 @@
 import { chmod, link, lstat, mkdtemp, open, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import * as versionRecordParsers from "./targetSecretSourceVersionRecords.js";
 
 import {
   TARGET_SECRET_SOURCE_ERROR,
@@ -60,6 +62,45 @@ afterEach(async () => {
 });
 
 describe("targetSecretSourceFsPublish", () => {
+  it("rejects malformed, equal, and byte-mismatched immutable handles before publication", async () => {
+    const { publisher } = await setup();
+    const { input } = makeInput(3, 4);
+    for (const private_metadata of [
+      { ...input.private_metadata, publication_handle: "malformed" },
+      { ...input.private_metadata, source_version_handle: "malformed" },
+      { publication_handle: input.private_metadata.source_version_handle, source_version_handle: input.private_metadata.source_version_handle }
+    ]) {
+      await expect(publisher.publishVersion({ ...input, private_metadata } as TargetSecretSourceFsPublishInput)).rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
+    }
+    const other = makeInput(5, 6);
+    await expect(publisher.publishVersion({ ...input, private_metadata: other.input.private_metadata }))
+      .rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
+    await expect(lstat(pathsFor(input).final)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rejects malformed publication envelopes before reading immutable handles", async () => {
+    const { publisher } = await setup();
+    for (const input of [
+      null,
+      {},
+      { bytes: "not-bytes", private_metadata: {} },
+      { bytes: new Uint8Array([1]), private_metadata: null },
+      { bytes: new Uint8Array([1]), private_metadata: { publication_handle: 1, source_version_handle: 2 } }
+    ]) await expect(publisher.publishVersion(input as never)).rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
+  });
+
+  it("revalidates the embedded publication handle during immutable proof", async () => {
+    const { publisher } = await setup();
+    const { input } = makeInput(7, 8);
+    const original = versionRecordParsers.parseTargetSecretSourceVersionRecordBytes;
+    const spy = vi.spyOn(versionRecordParsers, "parseTargetSecretSourceVersionRecordBytes").mockImplementation((bytes, expected) => ({
+      ...original(bytes, expected),
+      publication_handle: makeInput(9, 10).version.private_metadata.publication_handle
+    }));
+    await expect(publisher.publishVersion(input)).rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
+    spy.mockRestore();
+  });
+
   it("publishes only the canonical final and replays exact bytes", async () => {
     const { publisher } = await setup();
     const { input } = makeInput(1, 2);
@@ -109,6 +150,34 @@ describe("targetSecretSourceFsPublish", () => {
     expect(await readFile(paths.final)).toEqual(Buffer.from(input.bytes));
     expect((await lstat(paths.final)).nlink).toBe(1);
   });
+
+  it("repeatedly converges under full-file publisher contention", async () => {
+    for (let round = 0; round < 20; round += 1) {
+      await setup();
+      const { input } = makeInput(80 + round, 120 + round, new Uint8Array(32_768).fill(round + 1));
+      const errors: unknown[] = [];
+      const contention = new Map<string, number>();
+      const publisherCount = round % 2 === 0 ? 16 : 32;
+      const publishers = await Promise.all(Array.from({ length: publisherCount }, (_, index) => initializeTargetSecretSourceFsPublish({
+        contentionForTest: (reason) => contention.set(reason, (contention.get(reason) ?? 0) + 1),
+        errorForTest: (error) => errors.push(error),
+        hookForTest: async (phase) => {
+          if (phase === "before_contention_retry") {
+            await new Promise((resolve) => setTimeout(resolve, ((round + 1) * (index + 3)) % 4));
+          }
+        }
+      })));
+      const results = await Promise.allSettled(publishers.map((publisher) => publisher.publishVersion(input)));
+      if (results.some(({ status }) => status === "rejected")) {
+        throw new Error(`publisher contention failed: ${JSON.stringify(Object.fromEntries(contention))}`, { cause: errors[0] });
+      }
+      const paths = pathsFor(input);
+      expect(await readFile(paths.final)).toEqual(Buffer.from(input.bytes));
+      expect((await lstat(paths.final)).nlink).toBe(1);
+      await expect(lstat(paths.claim)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(lstat(paths.token)).rejects.toMatchObject({ code: "ENOENT" });
+    }
+  }, 30_000);
 
   it("reobserves a stale nlink-two claim after the token disappears", async () => {
     await setup();

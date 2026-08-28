@@ -22,6 +22,8 @@ export interface TargetSecretSourceFsPublishInput {
   >;
 }
 export interface TargetSecretSourceFsPublishOptions {
+  readonly contentionForTest?: (reason: string, attempt: number) => void;
+  readonly errorForTest?: (error: unknown) => void;
   readonly hookForTest?: (phase: TargetSecretSourceFsPublishPhase, path: string) => Promise<void> | void;
   readonly maxWriteBytesForTest?: number;
 }
@@ -42,6 +44,7 @@ export const initializeTargetSecretSourceFsPublish = async (
       resolveTargetSecretsRoot(),
       resolveTargetSecretVersionsDirectory()
     ],
+    contentionForTest: options.contentionForTest,
     hookForTest: options.hookForTest,
     maxWriteBytesForTest: options.maxWriteBytesForTest
   });
@@ -65,7 +68,8 @@ export const initializeTargetSecretSourceFsPublish = async (
           }
         }
       });
-    } catch {
+    } catch (error) {
+      options.errorForTest?.(error);
       fail();
     }
   };
