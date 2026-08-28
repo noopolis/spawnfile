@@ -79,9 +79,7 @@ execution:
 
 ## Schedule Handling
 
-Daimon supports `schedule.kind: every` through the generated harness app. The app owns a small in-process scheduler, queues a wake when an agent is already busy, and invokes the agent again after the current turn finishes.
-
-`schedule.kind: cron` is validated but reported as degraded for Daimon in v0.1. Use PicoClaw when a native cron store is required.
+Daimon's strict v2 organization runtime supports `schedule.kind: cron`, `every`, and `disabled`. Cron uses the declared IANA timezone and standard five-field DOM/DOW semantics; every uses a durable anchor and interval. The runtime persists stable occurrence identities beside its acceptance store, coalesces downtime and busy periods to the latest eligible occurrence, and deduplicates execution across restart. Disabled schedules register no timer or wake.
 
 ## Sandbox Handling
 
@@ -97,7 +95,7 @@ Workspace resources use the same container lifecycle as other runtimes:
 - shared team resources are visible from each agent workspace through symlinks
 - `git` resources are prepared at container startup rather than during compile
 
-MCP server declarations are validated but reported as degraded for Daimon in v0.1 because the generated app does not lower MCP servers into Pi yet.
+MCP server declarations require an explicit nonempty `tools` allowlist. Spawnfile lowers the per-agent server authority into the organization config; Daimon verifies the listed tools at startup and exposes only those tools to real Codex/Grok cognition turns. Stdio commands must be absolute, remote bearer credentials remain environment-name references, and calls are bounded with durable per-agent receipts.
 
 ## Memory Handling
 
@@ -178,16 +176,12 @@ For container compilation:
 - Config, home, and workspace paths under `/var/lib/spawnfile/instances/daimon/pi-app`
 - A start command that runs the generated app
 
-Daimon uses `noopolis/spawnfile-runtime-daimon:0.1.2` by default. To test a
-local runtime artifact instead:
-
-```bash
-git clone git@github.com:noopolis/daimon.git
-cd daimon
-npm run image:runtime:local
-SPAWNFILE_DAIMON_RUNTIME_IMAGE=noopolis/spawnfile-runtime-daimon:0.1.2-local \
-  spawnfile build ./agentic-org
-```
+Daimon uses the immutable image manifest and capability-receipt digests pinned
+in `runtimes.yaml` by default. A local runtime can be selected only through the
+generated identity file named by `SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY`.
+That non-production identity must bind the fixed loopback registry repository
+by manifest digest and include the exact embedded receipt digest; raw image,
+tag-only, missing-receipt, and arbitrary-registry overrides are rejected.
 
 Unlike a runtime-specific base image, this artifact image works for
 mixed-runtime organizations. Generated Dockerfiles copy Daimon from the artifact

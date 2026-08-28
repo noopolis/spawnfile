@@ -137,22 +137,20 @@ Runtimes MAY provide a reusable artifact image that already contains their pinne
 
 The Daimon, OpenClaw, and PicoClaw adapters use published runtime artifact images by default. Generated Dockerfiles copy each runtime from `/opt/spawnfile/runtime-installs/<runtime>` and skip runtime npm/archive installs during organization builds.
 
-Current default images:
+Current default images include an immutable Daimon artifact:
 
 ```text
-noopolis/spawnfile-runtime-daimon:0.1.2
+noopolis/spawnfile-runtime-daimon@sha256:<pinned-digest>
 noopolis/spawnfile-runtime-openclaw:2026.6.11
 noopolis/spawnfile-runtime-picoclaw:0.3.1
 ```
 
-To test a local Daimon runtime artifact instead:
-
-```bash
-git clone git@github.com:noopolis/daimon.git
-cd daimon
-npm run image:runtime:local
-SPAWNFILE_DAIMON_RUNTIME_IMAGE=noopolis/spawnfile-runtime-daimon:0.1.2-local spawnfile up ./org --detach
-```
+Standard Daimon compiles use the exact manifest and capability-receipt digests
+in `runtimes.yaml`. Local development requires an absolute generated identity
+path in `SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY`. The identity is accepted only
+for `127.0.0.1:5000/noopolis/spawnfile-runtime-daimon@sha256:<manifest>` and must
+contain the matching receipt digest plus the exact non-production stamp. Raw,
+tag-only, receipt-less, or arbitrary-registry overrides fail closed.
 
 OpenClaw and PicoClaw have equivalent overrides:
 

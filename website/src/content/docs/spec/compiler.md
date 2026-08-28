@@ -379,7 +379,8 @@ Rules:
   - `open`: emits `auth_mode: open`, `registration: open`, and per-agent writable token paths unless a static token client source is provided.
 - `server.auth.public_read` and `server.auth.agent_registration` lower into native Moltnet auth config without changing generated node room authority.
 - Per-agent writable token paths are derived from the compiled agent slug and Moltnet member id so the generated `MoltnetNode` and generated `.moltnet/config.json` point to the same durable credential file.
-- Managed bearer mode requires `token_id` and requires the referenced token to include `attach` and `write` scopes.
+- Managed bearer attachment `token_id` references must use exactly `[attach, write]`, or `[attach, observe, write]` for a Daimon attachment, and bind exactly that attachment's resolved Moltnet member ID.
+- A Daimon `MoltnetNode` attachment keeps the resolved Moltnet member ID in `agent.id` and emits the compiled Daimon host identity separately as `runtime.agent_id`; the bridge uses only the latter for Daimon wake requests and result matching.
 - Managed and external open static token mode requires `static_token: true` on the configured client source.
 - `server.pairings` entries are materialized into managed server config and rejected on non-managed networks.
 - Managed `server.human_ingress`, `server.direct_messages`, `server.debug_events`, `server.console.analytics`, `server.trust_forwarded_proto`, and `server.allowed_origins` lower directly into the Moltnet native server config.

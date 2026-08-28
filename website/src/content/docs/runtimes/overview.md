@@ -127,7 +127,7 @@ Support levels:
 | `workspace.resources` `git` | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup |
 | `environment.env` and `environment.secrets` | Compiler-owned env and secret materialization | Compiler-owned env and secret materialization | Compiler-owned env and secret materialization |
 | `environment.packages` | Compiler-owned container package installation | Compiler-owned container package installation | Compiler-owned container package installation |
-| `environment.mcp_servers` | Supported through OpenClaw `mcp.servers` config | Supported through PicoClaw MCP config | Degraded; not lowered into the generated Daimon app yet |
+| `environment.mcp_servers` | Supported through OpenClaw `mcp.servers` config | Supported through PicoClaw MCP config | Supported for explicit tool allowlists; stdio commands must be absolute |
 | `memory` | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported through Mneme; `engine: pi` uses in-process tools and CLI engines receive pre-turn recall context only |
 | `execution.sandbox.mode` | Supported through OpenClaw runtime/container workspace behavior | Supported through `restrict_to_workspace` and container workspace behavior | Degraded; container/workspace isolation only, Pi itself is not a sandbox engine |
 | `subagents` | Degraded; lowered to routed sessions, not full Spawnfile parent-owned semantics | Supported through PicoClaw subagent behavior | Degraded; grouped app agents exist, but parent-owned subagent semantics are not preserved |
@@ -141,8 +141,8 @@ Support levels:
 | Anthropic `api_key` auth | Supported | Supported | Supported |
 | Anthropic `claude-code` auth | Supported | Supported | Supported through Pi's Anthropic OAuth auth store |
 | `custom` or `local` endpoint with `api_key` or `none` | Supported, except subscription-import auth | Supported for supported endpoint/auth combinations | Supported through generated Pi `models.json` |
-| `schedule.kind: cron` | Degraded; no OpenClaw schedule store is emitted in v0.1 | Supported through `workspace/cron/jobs.json` | Degraded; the generated app only supports interval schedules |
-| `schedule.kind: every` | Degraded; no OpenClaw schedule store is emitted in v0.1 | Degraded; PicoClaw lowering is cron-only in v0.1 | Supported by the generated app scheduler |
+| `schedule.kind: cron` | Degraded; no OpenClaw schedule store is emitted in v0.1 | Supported through `workspace/cron/jobs.json` | Supported through the durable native v2 scheduler |
+| `schedule.kind: every` | Degraded; no OpenClaw schedule store is emitted in v0.1 | Degraded; PicoClaw lowering is cron-only in v0.1 | Supported through the durable native v2 scheduler |
 | `schedule.kind: disabled` | Supported, emits no wake registration | Supported, emits no wake registration | Supported, emits no wake registration |
 
 ### Communication Surface
