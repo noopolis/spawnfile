@@ -1,6 +1,8 @@
 import type { EffectiveModelTarget, ResolvedAgentNode, ResolvedAgentSurfaces } from "../../compiler/types.js";
+import type { CapabilityReport } from "../../report/index.js";
 import { SpawnfileError } from "../../shared/index.js";
 import { createAgentCapabilities, createDiagnostic, createDocumentFiles, createSkillFiles } from "../common.js";
+import { parseEveryScheduleMs } from "../scheduleUtils.js";
 import type { AdapterCompileResult, RuntimeAdapter } from "../types.js";
 
 import {
@@ -11,6 +13,7 @@ import {
   resolveDaimonEngine
 } from "./config.js";
 import { prepareDaimonRuntimeAuth } from "./runAuth.js";
+import { hasDaimonScheduleAuthority } from "./scheduleAuthority.js";
 
 const assertDaimonSurfaces = (surfaces: ResolvedAgentSurfaces | undefined): void => {
   if (!surfaces) return;
@@ -35,11 +38,10 @@ const assertDaimonModel = (target: EffectiveModelTarget): void => {
 };
 
 const unsupportedAgentFeatures = (node: ResolvedAgentNode): void => {
-  if (node.mcpServers.length > 0) {
-    throw new SpawnfileError("validation_error", "Daimon organization runtime v1 does not lower MCP declarations yet");
-  }
-  if (node.schedule && node.schedule.kind !== "disabled") {
-    throw new SpawnfileError("validation_error", "Daimon organization runtime v1 does not lower schedules yet");
+  if (resolveDaimonEngine(node) === "agy" && (node.mcpServers.length > 0 || (node.surfaces?.moltnet?.length ?? 0) > 0)) throw new SpawnfileError("validation_error", "Daimon AGY does not expose cognition tools; use Codex or Grok for declared MCP or Moltnet actions");
+  for (const server of node.mcpServers) {
+    if (!server.tools?.length) throw new SpawnfileError("validation_error", `Daimon MCP server ${server.name} requires an explicit tools allowlist`);
+    if (server.transport === "stdio" && !server.command?.startsWith("/")) throw new SpawnfileError("validation_error", `Daimon stdio MCP server ${server.name} requires an absolute command`);
   }
   if (resolveDaimonEngine(node) !== "codex" && node.execution?.model) {
     throw new SpawnfileError(
@@ -47,6 +49,33 @@ const unsupportedAgentFeatures = (node: ResolvedAgentNode): void => {
       "Daimon Grok and AGY agents must omit Spawnfile execution.model; their subscription auth and model selection are Daimon-owned"
     );
   }
+};
+
+const scheduleCapabilityFor = async (
+  node: ResolvedAgentNode
+): Promise<{ message?: string; outcome?: CapabilityReport["outcome"] }> => {
+  if (!node.schedule) return {};
+  let authoritative = false;
+  try { authoritative = await hasDaimonScheduleAuthority(); } catch { /* The lowering gate reports invalid receipt details. */ }
+  if (!authoritative) {
+    return {
+      message: "Daimon v2 schedule state: degraded; the selected image receipt does not attest v2, so no schedule lowering is emitted",
+      outcome: "degraded"
+    };
+  }
+  if (node.schedule.kind === "disabled") {
+    return {
+      message: "Daimon v2 schedule state: disabled; normalized=disabled; persistence=none; timer=stopped",
+      outcome: "supported"
+    };
+  }
+  const normalized = node.schedule.kind === "every"
+    ? `every/${parseEveryScheduleMs(node.schedule.every)}ms`
+    : `cron/${node.schedule.cron.trim().replace(/\s+/gu, " ")}; zone=${node.schedule.timezone ?? "UTC"}`;
+  return {
+    message: `Daimon v2 schedule state: supported; normalized=${normalized}; persistence=sha256(agent+schedule) in durable acceptance root; timer=runtime-managed`,
+    outcome: "supported"
+  };
 };
 
 export const daimonAdapter: RuntimeAdapter = {
@@ -72,6 +101,7 @@ export const daimonAdapter: RuntimeAdapter = {
     startCommand: ["bash", "<runtime-root>/daimon-start.sh"],
     systemDeps: [
       "bash",
+      "bubblewrap",
       "ca-certificates",
       "curl",
       "dbus-daemon",
@@ -81,11 +111,16 @@ export const daimonAdapter: RuntimeAdapter = {
   },
   async compileAgent(node): Promise<AdapterCompileResult> {
     unsupportedAgentFeatures(node);
+    const scheduleCapability = await scheduleCapabilityFor(node);
     return {
       capabilities: createAgentCapabilities(node, {
+        mcpOutcome: "supported",
+        moltnetMessage: "Daimon exposes one scoped authenticated send tool during real cognition turns",
+        moltnetOutcome: "supported",
         memoryMessage: "Daimon organization runtime v1 does not lower Spawnfile memory declarations yet",
         memoryOutcome: "degraded",
-        scheduleOutcome: node.schedule ? "degraded" : undefined
+        scheduleMessage: scheduleCapability.message,
+        scheduleOutcome: scheduleCapability.outcome
       }),
       diagnostics: node.execution?.sandbox
         ? [createDiagnostic("warn", "Daimon runtime isolation is enforced by the selected runtime image")]

@@ -16,7 +16,8 @@ import { DAIMON_CONFIG_FILE } from "./config.js";
 const createDaimonNode = (id: string, name = id, engine = "codex") => {
   const node = createPiTestNode({
     name,
-    runtime: { name: "daimon", options: { engine } }
+    runtime: { name: "daimon", options: { engine } },
+    source: `/tmp/agent/${id}/Spawnfile`
   });
   if (engine === "codex") return node;
   const { model: _model, ...execution } = node.execution!;
@@ -87,7 +88,7 @@ describe("daimonAdapter", () => {
     expect(entrypoint).toContain("'bash' '/opt/spawnfile/runtime-installs/daimon/daimon-start.sh'");
     expect(entrypoint).not.toContain("SPAWNFILE_CLI_AUTH_JSON");
     expect(daimonAdapter.container.systemDeps).toEqual([
-      "bash", "ca-certificates", "curl", "dbus-daemon", "gnome-keyring", "util-linux"
+      "bash", "bubblewrap", "ca-certificates", "curl", "dbus-daemon", "gnome-keyring", "util-linux"
     ]);
   });
 
@@ -112,17 +113,19 @@ describe("daimonAdapter", () => {
       recipeEnv: {}, runtimeName: "daimon", runtimeRoot: "/opt/spawnfile/runtime-installs/daimon",
       sourceIds: target.sourceIds, targetFiles: target.files
     };
-    const compilePlan = { nodes: [] } as unknown as CompilePlan;
+    const compilePlan = { nodes: agents.map((agent) => ({
+      id: agent.id, kind: "agent", runtimeName: "daimon", slug: agent.slug, value: agent.node
+    })) } as unknown as CompilePlan;
     const attachments = agents.map((agent) => JSON.parse(createMoltnetNodeConfigContent({
       agentNode: agent.node,
-      attachment: { memberId: agent.id, network: "local", teamSource: null },
+      attachment: { memberId: agent.slug, network: "local", teamSource: null },
       networkServer: { auth: { mode: "none" }, mode: "external", url: "http://127.0.0.1:9999" },
       nodeSlug: agent.slug,
       plan: compilePlan,
       serverPlan: { baseUrl: "http://127.0.0.1:9999", rooms: [] }
     }).content));
     const entrypoint = renderEntrypoint([runtimePlan], [], {
-      moltnet: { nodePlans: [{ configPath: "/config/moltnet.json", networkId: "local" }] as any, serverPlans: [] }
+      moltnet: { nodePlans: [{ configPath: "/config/moltnet.json", networkId: "local", receiptStorePath: "/var/lib/spawnfile/moltnet/networks/local/daimon-receipts/codex.json" }] as any, serverPlans: [] }
     });
 
     expect(JSON.parse(target.files.find((file) => file.path === DAIMON_CONFIG_FILE)!.content).agents)
@@ -132,9 +135,46 @@ describe("daimonAdapter", () => {
         expect.objectContaining({ engine: { kind: "agy" } })
       ]));
     expect(target.opaqueMountTargets).toEqual([
-      "/var/lib/spawnfile/daimon/agy-unlock-secret"
+      "/var/lib/spawnfile/daimon/agy-unlock-secret",
+      "/var/lib/spawnfile/daimon/grok-bootstrap-auth"
     ]);
     expect(target.persistentMounts).toEqual([
+      {
+        id: "daimon-engine-home-codex-codex",
+        mountPath: "<instance-root>/runtime-homes/codex/.codex",
+        reason: "Daimon codex subscription credential home for agent:codex"
+      },
+      {
+        id: "daimon-engine-home-grok-grok",
+        mountPath: "<instance-root>/runtime-homes/grok/.grok",
+        reason: "Daimon grok subscription credential home for agent:grok"
+      },
+      {
+        id: "daimon-tool-state-agy",
+        mountPath: "<instance-root>/runtime-homes/agy/tool-state",
+        reason: "Daimon durable cognition tool receipts for agent:agy"
+      },
+      {
+        id: "daimon-tool-state-codex",
+        mountPath: "<instance-root>/runtime-homes/codex/tool-state",
+        reason: "Daimon durable cognition tool receipts for agent:codex"
+      },
+      {
+        id: "daimon-tool-state-grok",
+        mountPath: "<instance-root>/runtime-homes/grok/tool-state",
+        reason: "Daimon durable cognition tool receipts for agent:grok"
+      },
+      {
+        id: "daimon-organization-acceptance-store",
+        mountPath: "<instance-root>/state/wake-acceptance",
+        reason: "Daimon organization durable wake acceptance store"
+      },
+      {
+        id: "daimon-grok-subscription-realm",
+        lifecycle: "exclusive-reattach",
+        mountPath: "/var/lib/spawnfile/daimon/grok-subscription-realm",
+        reason: "Daimon host Grok subscription credential realm"
+      },
       {
         id: "daimon-agy-subscription-realm",
         mountPath: "/var/lib/spawnfile/daimon/agy-subscription-realm",
@@ -147,6 +187,9 @@ describe("daimonAdapter", () => {
       }
     ]);
     const start = target.files.find((file) => file.path === "runtime/daimon-start.sh")!;
+    expect(start.content).toContain(
+      'export DAIMON_RUNTIME_ACCEPTANCE_STORE="<instance-root>/state/wake-acceptance"'
+    );
     expect(start.content.indexOf("/runtime-homes/agy")).toBeLessThan(
       start.content.indexOf('if [ "$#" -gt 0 ]; then exec daimon-runtime "$@"; fi')
     );
@@ -155,27 +198,66 @@ describe("daimonAdapter", () => {
     );
     for (const [index, agent] of agents.entries()) {
       expect(attachments[index].attachments[0].runtime).toEqual(resolveRuntimeConfig(
-        compilePlan, agent.node, agent.slug, "local", agent.id
+        compilePlan, agent.node, agent.slug, "local", agent.slug
       ));
       expect(attachments[index].attachments[0].runtime).toMatchObject({
+        agent_id: agent.id,
         control_url: "http://127.0.0.1:19700",
         kind: "daimon",
+        receipt_store_path: `/var/lib/spawnfile/moltnet/networks/local/daimon-receipts/${agent.slug}.json`,
         token_env: "SPAWNFILE_DAIMON_CONTROL_TOKEN"
       });
+      expect(attachments[index].attachments[0].agent.id).toBe(agent.slug);
     }
     expect(entrypoint.indexOf("/healthz")).toBeGreaterThan(entrypoint.indexOf("daimon-start.sh"));
     expect(entrypoint.indexOf("moltnet node")).toBeGreaterThan(entrypoint.indexOf("/healthz"));
+    expect(entrypoint).toContain("install -d -m 700 '/var/lib/spawnfile/moltnet/networks/local/daimon-receipts'");
     expect(entrypoint).not.toContain("Authorization: Bearer");
     expect(entrypoint).not.toMatch(/(?:codex|grok|agy) (?:exec|run)/u);
   });
 
-  it("does not emit AGY state when every agent uses a portable engine", async () => {
+  it("emits only isolated portable credential homes when no agent uses AGY", async () => {
     const target = (await daimonAdapter.createContainerTargets!([
       { emittedFiles: [], id: "agent:codex", kind: "agent", slug: "codex", value: createDaimonNode("codex") },
       { emittedFiles: [], id: "agent:grok", kind: "agent", slug: "grok", value: createDaimonNode("grok", "Grok", "grok") }
     ]))[0]!;
-    expect(target.opaqueMountTargets).toBeUndefined();
-    expect(target.persistentMounts).toBeUndefined();
+    expect(target.opaqueMountTargets).toEqual(["/var/lib/spawnfile/daimon/grok-bootstrap-auth"]);
+    expect(target.persistentMounts).toEqual([
+      {
+        id: "daimon-engine-home-codex-codex",
+        mountPath: "<instance-root>/runtime-homes/codex/.codex",
+        reason: "Daimon codex subscription credential home for agent:codex"
+      },
+      {
+        id: "daimon-engine-home-grok-grok",
+        mountPath: "<instance-root>/runtime-homes/grok/.grok",
+        reason: "Daimon grok subscription credential home for agent:grok"
+      },
+      {
+        id: "daimon-tool-state-codex",
+        mountPath: "<instance-root>/runtime-homes/codex/tool-state",
+        reason: "Daimon durable cognition tool receipts for agent:codex"
+      },
+      {
+        id: "daimon-tool-state-grok",
+        mountPath: "<instance-root>/runtime-homes/grok/tool-state",
+        reason: "Daimon durable cognition tool receipts for agent:grok"
+      },
+      {
+        id: "daimon-organization-acceptance-store",
+        mountPath: "<instance-root>/state/wake-acceptance",
+        reason: "Daimon organization durable wake acceptance store"
+      },
+      {
+        id: "daimon-grok-subscription-realm",
+        lifecycle: "exclusive-reattach",
+        mountPath: "/var/lib/spawnfile/daimon/grok-subscription-realm",
+        reason: "Daimon host Grok subscription credential realm"
+      }
+    ]);
+    expect(target.persistentMounts?.some((mount) =>
+      mount.mountPath.includes(".daimon-inbound")
+    )).toBe(false);
   });
 
   it("rejects 33 agents before emitting a partial target", async () => {
@@ -195,21 +277,24 @@ describe("daimonAdapter", () => {
     );
   });
 
-  it("selects a source-free immutable runtime image", async () => {
-    const recipe = await createRuntimeInstallRecipe("daimon");
-    expect(recipe.copyCommands).toEqual([
-      expect.stringContaining("noopolis/spawnfile-runtime-daimon@sha256:")
-    ]);
-    expect(recipe.commands.join("\n")).toContain("daimon-runtime");
-    expect(recipe.commands.join("\n")).not.toContain("npm install");
+  it("rejects the pinned image until it attests the exact compiler contract", async () => {
+    await expect(createRuntimeInstallRecipe("daimon")).rejects.toThrow(/exact contract manifest/u);
   });
 
-  it("fails closed for schedules, MCP, and non-Moltnet Daimon surface behavior", async () => {
+  it("lowers schedules while retaining the MCP and non-Moltnet surface boundary", async () => {
     await expect(daimonAdapter.compileAgent(createDaimonNode("schedule", "Schedule"))).resolves.toBeDefined();
     await expect(daimonAdapter.compileAgent(createPiTestNode({
       runtime: { name: "daimon", options: {} },
       schedule: { every: "1m", kind: "every", prompt: "work" }
-    }))).rejects.toThrow("does not lower schedules yet");
+    }))).resolves.toMatchObject({ capabilities: expect.arrayContaining([
+      expect.objectContaining({ key: "agent.schedule", outcome: "degraded" })
+    ]) });
+    await expect(daimonAdapter.compileAgent(createPiTestNode({
+      runtime: { name: "daimon", options: {} },
+      schedule: { kind: "disabled" }
+    }))).resolves.toMatchObject({ capabilities: expect.arrayContaining([
+      expect.objectContaining({ key: "agent.schedule", outcome: "degraded" })
+    ]) });
     await expect(daimonAdapter.compileAgent(createPiTestNode({
       runtime: { name: "daimon", options: { engine: "grok" } }
     }))).rejects.toThrow("must omit Spawnfile execution.model");
@@ -229,7 +314,7 @@ describe("daimonAdapter", () => {
     await expect(daimonAdapter.compileAgent({
       ...createDaimonNode("mcp"),
       mcpServers: [{ name: "unsupported" }]
-    } as any)).rejects.toThrow(/does not lower MCP/u);
+    } as any)).rejects.toThrow(/explicit tools allowlist/u);
     await expect(daimonAdapter.createContainerTargets!([])).resolves.toEqual([]);
 
     expect(daimonAdapter.validateRuntimeOptions?.({ engine: 7 } as any)).toEqual([
@@ -237,6 +322,32 @@ describe("daimonAdapter", () => {
     ]);
     expect(daimonAdapter.validateRuntimeOptions?.({ engine: "codex", unexpected: true } as any))
       .toEqual([expect.objectContaining({ message: expect.stringContaining("unexpected") })]);
+  });
+
+  it("lowers declared production MCP and scoped Moltnet cognition capabilities", async () => {
+    const node = { ...createDaimonNode("tools"), mcpServers: [{ name: "lifecycle", transport: "stdio", command: "/opt/tools/lifecycle", args: ["serve"], tools: ["checkpoint"], env: {} }], surfaces: { moltnet: [{ network: "news", rooms: { desk: { wake: "all" } }, dms: { enabled: false } }] } } as any;
+    const compiled = await daimonAdapter.compileAgent(node);
+    const target = (await daimonAdapter.createContainerTargets!([{ emittedFiles: compiled.files, id: "agent:tools", kind: "agent", slug: "tools", value: node }]))[0]!;
+    const agent = JSON.parse(target.files.find((file) => file.path === DAIMON_CONFIG_FILE)!.content).agents[0];
+    expect(agent.mcp).toEqual([{ name: "lifecycle", transport: "stdio", command: "/opt/tools/lifecycle", args: ["serve"], env: {}, tools: ["checkpoint"] }]);
+    expect(agent.moltnet).toEqual({ cliPath: "/usr/local/bin/moltnet", configPath: "<workspace-path>/agents/tools/.moltnet/config.json", networks: [{ id: "news", rooms: ["desk"], dms: false }] });
+    expect(compiled.capabilities).toEqual(expect.arrayContaining([expect.objectContaining({ key: "mcp.lifecycle", outcome: "supported" }), expect.objectContaining({ key: "surfaces.moltnet", outcome: "supported" })]));
+
+    const remote = { ...createDaimonNode("remote"), mcpServers: [{ name: "search", transport: "streamable_http", url: "https://mcp.example/tools", auth: { mode: "bearer", secret: "MCP_TOKEN" }, tools: ["query"] }], surfaces: { moltnet: [{ network: "private", dms: { enabled: true } }] } } as any;
+    const remoteCompiled = await daimonAdapter.compileAgent(remote);
+    const remoteTarget = (await daimonAdapter.createContainerTargets!([{ emittedFiles: remoteCompiled.files, id: "agent:remote", kind: "agent", slug: "remote", value: remote }]))[0]!;
+    const remoteAgent = JSON.parse(remoteTarget.files.find((file) => file.path === DAIMON_CONFIG_FILE)!.content).agents[0];
+    expect(remoteAgent.mcp).toEqual([{ name: "search", transport: "streamable_http", url: "https://mcp.example/tools", authSecretEnv: "MCP_TOKEN", args: [], env: {}, tools: ["query"] }]);
+    expect(remoteAgent.moltnet.networks).toEqual([{ id: "private", rooms: [], dms: true }]);
+  });
+
+  it("fails closed for unsafe or unavailable production cognition authorities", async () => {
+    const base = createDaimonNode("unsafe");
+    await expect(daimonAdapter.compileAgent({ ...base, mcpServers: [{ name: "missing", transport: "stdio", command: "/bin/tool" }] } as any)).rejects.toThrow(/tools allowlist/u);
+    await expect(daimonAdapter.compileAgent({ ...base, mcpServers: [{ name: "relative", transport: "stdio", command: "tool", tools: ["act"] }] } as any)).rejects.toThrow(/absolute command/u);
+    const agy = createDaimonNode("agy-tools", "agy-tools", "agy");
+    await expect(daimonAdapter.compileAgent({ ...agy, mcpServers: [{ name: "tool", transport: "stdio", command: "/bin/tool", tools: ["act"] }] } as any)).rejects.toThrow(/AGY does not expose/u);
+    await expect(daimonAdapter.compileAgent({ ...agy, surfaces: { moltnet: [{ network: "news" }] } } as any)).rejects.toThrow(/AGY does not expose/u);
   });
 
   it("preserves non-workspace files and rejects invalid engines and oversized instructions", async () => {

@@ -13,6 +13,7 @@ src/runtime/
 ├── mnemeMcp.ts            # Shared Mneme MCP lowering used by MCP-capable runtimes
 ├── container.ts           # Container install recipes (createRuntimeInstallRecipe) per bundled runtime
 ├── containerPackageOverrides.ts # Runtime install npm package override contract consumed by container.ts
+├── localDaimonAuthority.ts # Exact non-production identity-file parser for loopback Daimon images
 ├── registry.ts            # Bundled adapter registration and lookup
 ├── scheduleUtils.ts       # Shared duration schedule helpers for runtime lowering
 ├── daimon/                # Public Daimon organization-host adapter
@@ -29,6 +30,14 @@ Adapter-specific behavior belongs in the runtime subfolders. That includes runti
 `common.ts` additionally exports `ensureNoopolisRunId(env = process.env)`: the one place a run id is ever generated. It returns the host-provided value untouched when `resolveNoopolisRunId` already finds one, otherwise it generates a fresh id (`run-<hex uuid>`) and stamps it onto `env` before returning it. It is exported through this folder's barrel (`index.ts`) so `src/compiler/runProject.ts` and `src/compiler/upProject.ts` can call it once, at the top of their `run`/`up` execution functions, before invoking `compileProject`/`buildProject` — never from inside `compileProject.ts`/`buildProject.ts` themselves, which must stay deterministic functions of whatever is already in the host env. `src/e2e/officeSim.ts` calls it too, since that harness builds a container directly rather than going through `runProject`/`upProject`. Without this, a host that never sets `NOOPOLIS_RUN_ID` (a bare `spawnfile up`, or an E2E harness) leaves `createRuntimeContainerEnv` with nothing to stamp, and moltnet's `causal.jsonl` capture ends up empty even though mneme/daimon still emit under their own `"unset-run"` fallback.
 
 `containerPackageOverrides.ts` defines the `RuntimeContainerPackageOverrides` contract (`packageName -> { filename }`) used by the legacy Pi recipe. The Phase-A Daimon host never installs a local package: it copies a separately released generic image by immutable digest and verifies that image's capability receipt. The actual `npm pack`-into-build-context step is compiler-level I/O and lives in `src/compiler/containerPackageOverrides.ts`; this folder only owns recipe shaping, never packing or engine installation.
+
+`localDaimonAuthority.ts` is the only local Daimon image seam. It accepts only
+an attested `127.0.0.1:<port>` registry authority and is activated
+only by an absolute path in `SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY`, accepts
+the exact v2 non-production schema, and requires the fixed loopback registry
+repository by OCI manifest digest plus a capability-receipt SHA-256. Raw image
+or receipt environment overrides fail closed. With no identity path,
+`container.ts` uses the checked-in `runtimes.yaml` digest and receipt unchanged.
 
 `types.ts`'s `ContainerTarget` carries an optional `engineByNodeId?: Record<string, string>` passthrough slot for adapters that disclose a native engine kind per compiled node. The Pi adapter reports generated Pi engine kinds; the Daimon adapter reports its public `codex`/`grok`/`agy` engine intents. `src/compiler/containerArtifactsPlans.ts`/`containerArtifacts.ts` thread the map unchanged into `ContainerRuntimeInstanceReport.engine_by_node_id` (`src/report/types.ts`). Other adapters omit it.
 

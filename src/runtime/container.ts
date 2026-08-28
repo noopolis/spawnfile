@@ -8,11 +8,17 @@ import {
   type RuntimeContainerPackageOverrides
 } from "./containerPackageOverrides.js";
 import { resolveRuntimeInstallSelection } from "./install.js";
+import {
+  DAIMON_LOCAL_RUNTIME_IDENTITY_ENV,
+  loadLocalDaimonRuntimeIdentity
+} from "./localDaimonAuthority.js";
+import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./daimon/contractManifest.js";
 
 export const RUNTIME_INSTALL_ROOT = "/opt/spawnfile/runtime-installs";
 const PI_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_PI_RUNTIME_BASE_IMAGE";
-const DAIMON_RUNTIME_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_IMAGE";
-const DAIMON_RUNTIME_CAPABILITY_RECEIPT_ENV = "SPAWNFILE_DAIMON_RUNTIME_CAPABILITY_RECEIPT";
+const LEGACY_DAIMON_RUNTIME_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_IMAGE";
+const LEGACY_DAIMON_RUNTIME_CAPABILITY_RECEIPT_ENV =
+  "SPAWNFILE_DAIMON_RUNTIME_CAPABILITY_RECEIPT";
 const DAIMON_CAPABILITY_RECEIPT_FILE = "capability-receipt.json";
 const OPENCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_OPENCLAW_RUNTIME_IMAGE";
 const PICOCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_PICOCLAW_RUNTIME_IMAGE";
@@ -100,13 +106,14 @@ const resolveRuntimeImageRef = (
 
 /**
  * Daimon is distributed only as a generic, source-free runtime image. A
- * development override is deliberately narrow: it can repeat the exact
- * immutable image and receipt selected by the registry, never substitute a
- * checkout, mutable tag, or a host-installed CLI.
+ * local-development authority is deliberately narrow: it must be an explicit
+ * generated identity file naming the approved loopback registry repository by
+ * manifest digest plus the exact embedded receipt digest. Raw image/receipt
+ * overrides, mutable tags, checkouts, and host-installed CLIs are rejected.
  */
-const resolveDaimonRuntimeImageRef = (
+const resolveDaimonRuntimeImageRef = async (
   selection: Awaited<ReturnType<typeof resolveRuntimeInstallSelection>>
-): { capabilityReceipt: string; image: string } => {
+): Promise<{ capabilityReceipt: string; image: string }> => {
   if (
     selection.kind !== "container_image" ||
     !selection.digest ||
@@ -119,20 +126,28 @@ const resolveDaimonRuntimeImageRef = (
   }
 
   const pinnedImage = `${selection.image}@${selection.digest}`;
-  const override = process.env[DAIMON_RUNTIME_IMAGE_ENV]?.trim();
-  if (!override) {
-    return { capabilityReceipt: selection.capabilityReceipt, image: pinnedImage };
-  }
-
-  const receipt = process.env[DAIMON_RUNTIME_CAPABILITY_RECEIPT_ENV]?.trim();
-  if (override !== pinnedImage || receipt !== selection.capabilityReceipt) {
+  if (
+    process.env[LEGACY_DAIMON_RUNTIME_IMAGE_ENV]?.trim() ||
+    process.env[LEGACY_DAIMON_RUNTIME_CAPABILITY_RECEIPT_ENV]?.trim()
+  ) {
     throw new SpawnfileError(
       "runtime_error",
-      "Daimon runtime image overrides must exactly match the pinned image digest and capability receipt; source and tag-only overrides are disabled"
+      `Raw Daimon runtime image overrides are disabled; use ${DAIMON_LOCAL_RUNTIME_IDENTITY_ENV}`
     );
   }
 
-  return { capabilityReceipt: selection.capabilityReceipt, image: override };
+  const identityPath = process.env[DAIMON_LOCAL_RUNTIME_IDENTITY_ENV]?.trim();
+  if (identityPath) {
+    const identity = await loadLocalDaimonRuntimeIdentity(identityPath);
+    return { capabilityReceipt: identity.capabilityReceipt, image: identity.imageReference };
+  }
+  if (selection.contractManifestSha256 !== DAIMON_CONTRACT_MANIFEST_SHA256) {
+    throw new SpawnfileError(
+      "runtime_error",
+      "Selected Daimon runtime image does not attest the compiler's exact contract manifest; build and select a matching local artifact or pin a published compatible release"
+    );
+  }
+  return { capabilityReceipt: selection.capabilityReceipt, image: pinnedImage };
 };
 
 export interface RuntimeInstallRecipeOptions {
@@ -218,14 +233,16 @@ export const createRuntimeInstallRecipe = async (
       };
     }
     case "daimon": {
-      const daimonRuntime = resolveDaimonRuntimeImageRef(selection);
+      const daimonRuntime = await resolveDaimonRuntimeImageRef(selection);
       return {
         commands: [
           `test -f ${installRoot}/${DAIMON_CAPABILITY_RECEIPT_FILE} && actual="$(sha256sum ${installRoot}/${DAIMON_CAPABILITY_RECEIPT_FILE} | awk '{print "sha256:" $1}')" && test "$actual" = ${JSON.stringify(daimonRuntime.capabilityReceipt)}`,
+          `test -f ${installRoot}/contract-manifest.json && test -f ${installRoot}/contract-manifest.sha256 && manifest="$(cat ${installRoot}/contract-manifest.sha256)" && test "$manifest" = ${JSON.stringify(DAIMON_CONTRACT_MANIFEST_SHA256)} && test "$(sha256sum ${installRoot}/contract-manifest.json | awk '{print "sha256:" $1}')" = "$manifest" && node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(r.manifest_sha256!==process.argv[2])process.exit(1)' ${installRoot}/${DAIMON_CAPABILITY_RECEIPT_FILE} "$manifest"`,
           `ln -sf ${installRoot}/bin/daimon-runtime /usr/local/bin/daimon-runtime`,
           `ln -sf ${installRoot}/bin/codex /usr/local/bin/codex`,
-          `ln -sf ${installRoot}/bin/grok /usr/local/bin/grok`,
-          `ln -sf ${installRoot}/bin/agy /usr/local/bin/agy`
+          `install -o root -g root -m 0555 ${installRoot}/bin/grok /usr/local/bin/grok`,
+          `ln -sf ${installRoot}/bin/agy /usr/local/bin/agy`,
+          `mkdir -p /opt/daimon/bin && install -o root -g root -m 0555 ${installRoot}/bin/daimon-engine-broker /opt/daimon/bin/daimon-engine-broker && arch="$(dpkg --print-architecture)" && case "$arch" in amd64) expected=e3fe2738fc8a979861085b4003bf2d5d7c284874897cb6ec2e2e2383211768bd ;; arm64) expected=ad44e02c38e6a3207ac4a3d5fd98b6d2e55341ce42dfd2f07204bbe54a7a653d ;; *) exit 1 ;; esac && test "$(sha256sum /opt/daimon/bin/daimon-engine-broker | awk '{print $1}')" = "$expected"`
         ],
         copyCommands: [createRuntimeImageCopyCommand(daimonRuntime.image, installRoot)],
         env: containerEnv,

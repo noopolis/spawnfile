@@ -24,6 +24,7 @@ const runtimeInstallSchema = z.discriminatedUnion("kind", [
   z
     .object({
       capability_receipt: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+      contract_manifest_sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
       digest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
       image: z.string().min(1),
       kind: z.literal("container_image"),
@@ -77,6 +78,7 @@ let runtimeRegistryPromise: Promise<RuntimeRegistryEntry[]> | undefined;
 export type RuntimeRegistryInstall =
   | {
       capabilityReceipt?: string;
+      contractManifestSha256?: string;
       digest?: string;
       image: string;
       kind: "container_image";
@@ -118,6 +120,9 @@ export const parseRuntimeRegistry = (source: string): RuntimeRegistryEntry[] => 
           ? {
               ...(entry.install.capability_receipt
                 ? { capabilityReceipt: entry.install.capability_receipt }
+                : {}),
+              ...(entry.install.contract_manifest_sha256
+                ? { contractManifestSha256: entry.install.contract_manifest_sha256 }
                 : {}),
               ...(entry.install.digest ? { digest: entry.install.digest } : {}),
               image: entry.install.image,

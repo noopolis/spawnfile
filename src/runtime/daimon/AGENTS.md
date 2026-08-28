@@ -12,6 +12,15 @@ application per agent. It permits only compiler-owned Moltnet public-wake
 attachments; Daimon consumes a generic 0700 private ingress itself. `runtime:
 pi` remains the legacy generated Pi path.
 
-The consumed Daimon manifest may declare the AGY host realm's stable volume
-target and opaque unlock slot. This adapter renders those resources but never
-starts D-Bus, runs AGY, or reads either secret.
+The consumed Daimon manifest declares stable AGY and Grok host-realm volumes
+plus their opaque bootstrap slots. This adapter renders those resources but
+never starts a provider CLI, D-Bus, or a turn.
+
+The consumed manifest also pins the native Grok broker source/x64/arm64
+digests, fixed root/org/broker/worker identities, root-only registrations,
+and loopback-only provider/MCP endpoints. Container provisioning must match
+that authority exactly and must not publish either broker port.
+
+Codex keeps an isolated per-agent credential home. Grok keeps isolated
+per-agent non-auth state but one durable rotating subscription credential
+realm; never fan out Grok refresh authority across writable homes.
