@@ -589,8 +589,10 @@ describe("renderSpawnfile", () => {
   it("renders Moltnet secret references without reading their values", () => {
     const previousOperator = process.env.MOLTNET_OPERATOR_TOKEN;
     const previousPairing = process.env.MOLTNET_PAIRING_TOKEN;
+    const previousRelay = process.env.MOLTNET_RELAY_TOKEN;
     process.env.MOLTNET_OPERATOR_TOKEN = "actual-operator-token-must-not-render";
     process.env.MOLTNET_PAIRING_TOKEN = "actual-pairing-token-must-not-render";
+    process.env.MOLTNET_RELAY_TOKEN = "actual-relay-token-must-not-render";
     const source = renderSpawnfile({
       kind: "team",
       lead: "operator",
@@ -633,7 +635,11 @@ describe("renderSpawnfile", () => {
             pairings: [
               {
                 id: "pairing_one",
-                remote_base_url: "https://partner-net.example",
+                relay: {
+                  room: "secure-team-partner",
+                  token_secret: "MOLTNET_RELAY_TOKEN",
+                  url: "wss://relay.example.com"
+                },
                 remote_network_id: "partner_net",
                 remote_network_name: "PartnerNet",
                 token_secret: "MOLTNET_PAIRING_TOKEN"
@@ -642,6 +648,7 @@ describe("renderSpawnfile", () => {
           },
           rooms: [
             {
+              federation: ["pairing_one"],
               id: "research",
               members: ["operator"]
             }
@@ -654,11 +661,18 @@ describe("renderSpawnfile", () => {
     else process.env.MOLTNET_OPERATOR_TOKEN = previousOperator;
     if (previousPairing === undefined) delete process.env.MOLTNET_PAIRING_TOKEN;
     else process.env.MOLTNET_PAIRING_TOKEN = previousPairing;
+    if (previousRelay === undefined) delete process.env.MOLTNET_RELAY_TOKEN;
+    else process.env.MOLTNET_RELAY_TOKEN = previousRelay;
 
     expect(source).toContain("secret: MOLTNET_OPERATOR_TOKEN");
     expect(source).toContain("token_secret: MOLTNET_PAIRING_TOKEN");
+    expect(source).toContain("token_secret: MOLTNET_RELAY_TOKEN");
+    expect(source).toContain("url: wss://relay.example.com");
+    expect(source).toContain("room: secure-team-partner");
+    expect(source).toContain("federation:\n          - pairing_one");
     expect(source).not.toContain("actual-operator-token-must-not-render");
     expect(source).not.toContain("actual-pairing-token-must-not-render");
+    expect(source).not.toContain("actual-relay-token-must-not-render");
     expect(source).toContain("id: operator");
     expect(source).toContain("mode: bearer");
     const parsed = manifestSchema.parse(YAML.parse(source));
@@ -669,6 +683,9 @@ describe("renderSpawnfile", () => {
       .toBe("MOLTNET_OPERATOR_TOKEN");
     expect(parsed.networks[0].server.pairings?.[0]?.token_secret)
       .toBe("MOLTNET_PAIRING_TOKEN");
+    expect(parsed.networks[0].server.pairings?.[0]?.relay?.token_secret)
+      .toBe("MOLTNET_RELAY_TOKEN");
+    expect(parsed.networks[0].rooms[0]?.federation).toEqual(["pairing_one"]);
   });
 
   it("renders rewritten agent manifests with subagents in canonical order", () => {

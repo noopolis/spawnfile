@@ -92,6 +92,56 @@ const resolve = (plan: CompilePlan) => resolveMoltnetServerPlans(
 );
 
 describe("Moltnet server-plan composition", () => {
+  it("preserves room federation and rejects unknown pairing references", () => {
+    const paired = server();
+    if (paired.mode !== "managed") throw new Error("expected managed server");
+    paired.pairings = [{
+      id: "partner",
+      remote_base_url: "https://partner.example",
+      remote_network_id: "partner-net",
+      remote_network_name: "Partner",
+      token_secret: "PARTNER_TOKEN"
+    }];
+    const plan = createPlan([network("pitch", "research", paired)], []);
+    if (plan.nodes[0]?.value.kind !== "team" || !plan.nodes[0].value.networks?.[0]?.rooms[0]) {
+      throw new Error("expected root room");
+    }
+    plan.nodes[0].value.networks[0].rooms[0].federation = ["partner"];
+
+    expect(resolve(plan).get("pitch")?.rooms[0]?.federation).toEqual(["partner"]);
+    plan.nodes[0].value.networks[0].rooms[0].federation = ["unknown"];
+    expect(() => resolve(plan)).toThrow(/federation references unknown pairing unknown/u);
+  });
+
+  it("rejects conflicting federation policy on a merged room", () => {
+    const plan = createPlan(
+      [network("pitch", "research", server())],
+      [network("pitch", "research", undefined)]
+    );
+    if (plan.nodes[0]?.value.kind !== "team" || plan.nodes[1]?.value.kind !== "team") {
+      throw new Error("expected team nodes");
+    }
+    plan.nodes[0].value.networks![0]!.rooms[0]!.federation = "none";
+    plan.nodes[1].value.networks![0]!.rooms[0]!.federation = "all";
+
+    expect(() => resolve(plan)).toThrow(/conflicting federation/u);
+  });
+
+  it("rejects federation policy on an external server", () => {
+    const plan = createPlan(
+      [network("pitch", "research", {
+        auth: { mode: "none" },
+        mode: "external",
+        url: "https://moltnet.example"
+      })],
+      []
+    );
+    if (plan.nodes[0]?.value.kind !== "team") throw new Error("expected team node");
+    plan.nodes[0].value.networks![0]!.rooms[0]!.federation = "all";
+
+    expect(() => resolve(plan)).toThrow(/External Moltnet network pitch room research/u);
+  });
+
   it("merges a nested ownerless overlay into its root-owned server", () => {
     const plan = createPlan(
       [network("pitch", "root-room", server())],

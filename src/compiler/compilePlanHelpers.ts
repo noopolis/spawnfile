@@ -83,6 +83,9 @@ const collectMoltnetSecretNames = (
   if (server.mode === "managed") {
     for (const pairing of server.pairings ?? []) {
       secretNames.add(pairing.token_secret);
+      if (pairing.relay) {
+        secretNames.add(pairing.relay.token_secret);
+      }
     }
 
     if (server.store.kind === "postgres") {
