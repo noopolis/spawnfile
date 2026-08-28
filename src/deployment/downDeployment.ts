@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { fileExists, readUtf8File } from "../filesystem/index.js";
+import { derivePersistentMountVolumeName, parseDistributionReport } from "../distribution/index.js";
 import type { CompileReport } from "../report/index.js";
 import { REPORT_FILENAME, SpawnfileError } from "../shared/index.js";
 
@@ -22,6 +23,9 @@ import {
 } from "./organizationHandoffAuthorityStore.js";
 import { readDeploymentRecordFromOutput } from "./record.js";
 import type { DeploymentRecord } from "./record.js";
+import { readHomeDeploymentRecord, readHomeDeploymentReport, resolveHomeRecordPath } from "./homeStore.js";
+import { resolveDeploymentRecordPath } from "./names.js";
+import { dockerContextNameForTarget } from "./target.js";
 
 export interface DownDeploymentOptions {
   /** Where the deployment record + compile report already live (the compile's own
@@ -45,6 +49,69 @@ export interface DownDeploymentOptions {
   expectedLifecycleCorrelation?: DeploymentLifecycleCorrelation;
   timeoutMs?: number;
 }
+
+export const readCanonicalDownRecord = async (
+  compiledOutputDirectory: string,
+  deploymentName: string
+): Promise<{ mode: "image" | "project"; record: DeploymentRecord }> => {
+  const projectPath = resolveDeploymentRecordPath(path.resolve(compiledOutputDirectory), deploymentName);
+  const homePath = resolveHomeRecordPath(deploymentName);
+  const [projectExists, homeExists] = await Promise.all([fileExists(projectPath), fileExists(homePath)]);
+  if (projectExists && homeExists) throw new SpawnfileError("runtime_error", "Deployment record is ambiguous between project and image stores");
+  if (projectExists) {
+    const record = await readDeploymentRecordFromOutput(path.resolve(compiledOutputDirectory), deploymentName);
+    if (record.source.kind !== "project") throw new SpawnfileError("runtime_error", "Project deployment store contains a non-project record");
+    return { mode: "project", record };
+  }
+  if (homeExists) {
+    const record = await readHomeDeploymentRecord(deploymentName);
+    if (record.source.kind !== "image") throw new SpawnfileError("runtime_error", "Image deployment store contains a non-image record");
+    return { mode: "image", record };
+  }
+  throw new SpawnfileError("validation_error", `No recorded deployment named ${deploymentName}`);
+};
+
+const imageDown = async (
+  record: DeploymentRecord,
+  options: DownDeploymentOptions,
+  runner: { dockerCommand: string; execFile: DockerTeardownExecFile; timeoutMs: number }
+): Promise<DownReceipt> => {
+  if (record.source.kind !== "image" || record.units.length !== 1) throw new SpawnfileError("runtime_error", "Image deployment record is invalid for teardown");
+  if (!record.export_index && !options.force) throw new SpawnfileError("runtime_error", "Image deployment artifact export is unsupported; pass --force to discard unexported artifacts");
+  const unit = record.units[0]!;
+  if (!unit.container_id || !unit.image_id) throw new SpawnfileError("runtime_error", "Image deployment has no exact recorded container or image identity");
+  const context = dockerContextNameForTarget(record.target);
+  const prefix = context ? ["--context", context] : record.target.kind === "host" ? ["--host", record.target.value] : [];
+  const inspected = await runner.execFile(runner.dockerCommand, [...prefix, "container", "inspect", "--format", "{{json .Id}}\n{{json .Name}}\n{{json .Image}}\n{{json .Config.Labels}}", unit.container_id], { timeout: runner.timeoutMs });
+  let identity: { id: string; imageId: string; labels: Record<string, string>; name: string };
+  try {
+    const [idLine, nameLine, imageLine, labelsLine, ...extra] = inspected.stdout.trim().split("\n");
+    if (!idLine || !nameLine || !imageLine || !labelsLine || extra.length) throw new Error();
+    identity = { id: JSON.parse(idLine), imageId: JSON.parse(imageLine), name: JSON.parse(nameLine), labels: JSON.parse(labelsLine) };
+  } catch { throw new SpawnfileError("runtime_error", "Image deployment container identity is malformed"); }
+  if (identity.id !== unit.container_id || identity.name !== `/${unit.container_name}` || identity.imageId !== unit.image_id
+    || identity.labels["com.spawnfile.deployment"] !== record.name
+    || identity.labels["com.spawnfile.compile_fingerprint"] !== record.compile_fingerprint
+    || identity.labels["com.spawnfile.unit"] !== unit.id) {
+    throw new SpawnfileError("runtime_error", "Image deployment container identity does not match its record");
+  }
+  let reportValue: unknown;
+  try {
+    reportValue = JSON.parse(await readHomeDeploymentReport(record.name));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new SpawnfileError("runtime_error", `Cached image distribution report is unreadable: ${reason}`);
+  }
+  const report = parseDistributionReport(reportValue, "cached image distribution report");
+  if (report.compile_fingerprint !== record.compile_fingerprint) throw new SpawnfileError("runtime_error", "Cached image distribution report does not match its deployment record");
+  const volumes = [...new Set(report.persistent_mounts.map((mount) => derivePersistentMountVolumeName(record.name, mount)))].sort();
+  const removed = await removeDockerContainer(record.target, unit.container_id, runner);
+  if (!removed.removed) return { deployment: record.name, errors: [`unable to remove container ${unit.container_id} (unit ${unit.id}): ${removed.error}`], retained_volumes: volumes, units_stopped: [], version: DOWN_RECEIPT_VERSION };
+  const errors: string[] = [], retained: string[] = [];
+  if (options.removeVolumes) for (const volume of volumes) { const result = await removeDockerVolume(record.target, volume, runner); if (!result.removed) { errors.push(`unable to remove volume ${volume}: ${result.error}`); retained.push(volume); } }
+  else retained.push(...volumes);
+  return { deployment: record.name, errors, retained_volumes: retained, units_stopped: [unit.id], version: DOWN_RECEIPT_VERSION };
+};
 
 const targetRefForUnit = (
   unit: DeploymentRecord["units"][number],
@@ -165,14 +232,14 @@ export const downDeployment = async (
   const execFileImpl = options.execFile ?? defaultDockerTeardownExecFile;
   const timeoutMs = options.timeoutMs ?? 30_000;
 
-  const initialRecord = await readDeploymentRecordFromOutput(
-    compiledOutputDirectory,
-    options.deploymentName,
-  );
+  const resolved = await readCanonicalDownRecord(compiledOutputDirectory, options.deploymentName);
+  const initialRecord = resolved.record;
   assertDeploymentLifecycleCorrelation(
     initialRecord,
     options.expectedLifecycleCorrelation,
   );
+  const runnerOptions = { dockerCommand, execFile: execFileImpl, timeoutMs };
+  if (resolved.mode === "image") return imageDown(initialRecord, options, runnerOptions);
   const record = await ensureExported(initialRecord, {
     ...options,
     compiledOutputDirectory,
@@ -183,7 +250,6 @@ export const downDeployment = async (
   );
   await closeOrganizationHandoff(record);
 
-  const runnerOptions = { dockerCommand, execFile: execFileImpl, timeoutMs };
   const unitsStopped: string[] = [];
   const errors: string[] = [];
 

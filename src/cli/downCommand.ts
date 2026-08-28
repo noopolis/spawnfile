@@ -5,7 +5,7 @@ import type { Command } from "commander";
 import {
   createDeploymentLifecycleCorrelation,
   findLifecycleInvocation,
-  readDeploymentRecordFromOutput,
+  readCanonicalDownRecord,
   type DeploymentLifecycleCorrelation,
   type DownReceipt,
   type LifecycleInvocation,
@@ -144,10 +144,7 @@ export const registerDownCommand = (
         expected?: DeploymentLifecycleCorrelation,
       ): Promise<string> => {
         const expectedUnits = expected
-          ? (await readDeploymentRecordFromOutput(
-              compiled,
-              options.deployment,
-            )).units.map((unit) => unit.id).sort()
+          ? (await readCanonicalDownRecord(compiled, options.deployment)).record.units.map((unit) => unit.id).sort()
           : undefined;
         const receipt: DownReceipt = await handlers.downDeployment({
           compiledOutputDirectory: compiled,
@@ -186,10 +183,7 @@ export const registerDownCommand = (
           exact = stored;
           correlation = correlationFrom(stored);
         } else {
-          const record = await readDeploymentRecordFromOutput(
-            compiled,
-            options.deployment,
-          );
+          const record = (await readCanonicalDownRecord(compiled, options.deployment)).record;
           correlation = createDeploymentLifecycleCorrelation(record);
           exact = createDownLifecycleInvocation(
             options.lifecycleInvocation,
@@ -204,10 +198,7 @@ export const registerDownCommand = (
           async () => {
             try {
               const current = createDeploymentLifecycleCorrelation(
-                await readDeploymentRecordFromOutput(
-                  compiled,
-                  options.deployment,
-                ),
+                (await readCanonicalDownRecord(compiled, options.deployment)).record,
               );
               return canonicalLifecycleJson(current) ===
                 canonicalLifecycleJson(correlation)

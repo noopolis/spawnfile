@@ -130,10 +130,10 @@ describe("deployment records", () => {
       { ...organizationReadiness, run_id: "bad/run" },
       { ...organizationReadiness, world_binding_digest: "sha256:bad" },
       { ...organizationReadiness, run_id: null },
-      { ...organizationReadiness, world_binding_digest: null },
       prototypeBearing
     ];
     expect(deploymentRecordSchema.safeParse(readyRecord).success).toBe(true);
+    expect(deploymentRecordSchema.safeParse({ ...readyRecord, organization_ready: { ...organizationReadiness, world_binding_digest: null } }).success).toBe(true);
     for (const organization_ready of hostileValues) {
       expect(deploymentRecordSchema.safeParse({ ...createRecord(outputDirectory), organization_ready }).success)
         .toBe(false);

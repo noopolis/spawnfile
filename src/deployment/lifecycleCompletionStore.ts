@@ -18,9 +18,9 @@ import {
   type LifecycleRootAuthority
 } from "./lifecycleCompletionRoot.js";
 import {
-  LIFECYCLE_PUBLICATION_SETTLE_ATTEMPTS,
   matchesSettledLifecyclePublication,
-  readSettledLifecycleRecord
+  readSettledLifecycleRecord,
+  settleLifecyclePublicationUntil
 } from "./lifecycleCompletionPublication.js";
 
 export {
@@ -183,16 +183,16 @@ export const publishLifecycleRecord = async (
       }
       return false;
     }
-    for (let attempt = 0; attempt < LIFECYCLE_PUBLICATION_SETTLE_ATTEMPTS; attempt += 1) {
+    await settleLifecyclePublicationUntil(async () => {
       const exact = await readLifecycleRecord(final, [1, 2]);
       if (exact !== content) failLifecycleStore("publication changed");
       if ((await lstat(final).catch(() => null))?.nlink === 1) {
         await revalidateHeldLifecycleRoot(authority, rootHandle);
-        return linked;
+        return true;
       }
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
-    return failLifecycleStore("publication did not settle");
+      return false;
+    });
+    return linked;
   } finally {
     await rootHandle.close().catch(() => undefined);
   }
