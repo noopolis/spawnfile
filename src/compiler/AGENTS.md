@@ -29,6 +29,7 @@ src/compiler/
 ├── containerConfigEnvRender.ts # Generic JSON config-env command and entrypoint materialization rendering
 ├── containerEntrypointRender.ts # Generated container entrypoint orchestration
 ├── containerEntrypointShell.ts # Shell quoting, recipe env, and CLI credential materialization helpers
+├── containerDaimonBrokerRender.ts # Fixed Daimon broker identities, registrations, worker config, and root-launch provisioning
 ├── containerArtifactsPlans.ts # Environment inventory and runtime target-plan orchestration
 ├── containerTargetPlanResolution.ts # Per-target paths, packages, auth, secrets, and exposure resolution
 ├── teamRoster.ts               # Context-scoped team roster generation and diagnostics

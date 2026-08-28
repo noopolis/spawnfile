@@ -501,7 +501,7 @@ describe("upProject organization handoff", () => {
     expect(writeDockerDeploymentRecordForRun).not.toHaveBeenCalled();
   });
 
-  it("preserves the same handoff across B35 ready, failed, cancelled, and pending terminal rewrites", async () => {
+  it("preserves the handoff for ready or pending and removes failed or cancelled candidates", async () => {
     const outcomes = [
       ["organization_ready", "ready"], ["topology_mismatch", "failed"],
       ["probe_cancelled", "cancelled"], ["probe_unavailable", "pending"]
@@ -526,10 +526,15 @@ describe("upProject organization handoff", () => {
       vi.mocked(probeDockerOrganizationReadiness).mockImplementation(async (input) => ({
         ...input.record.organization_ready!, code, state
       }));
-      await upProject("/tmp/project", { ...complete, runRunner: async () => runMetadata });
+      const operation=upProject("/tmp/project", { ...complete, runRunner: async () => runMetadata });
+      if(state==="failed"||state==="cancelled")await expect(operation).rejects.toMatchObject({code:"runtime_error"});else await operation;
       for (const [, written] of vi.mocked(writeDeploymentRecord).mock.calls) {
         expect(written.organization_handoff).toEqual(stored.organization_handoff);
         expect(written.organization_handoff_handle).toEqual(handoffHandle);
+      }
+      if(state==="failed"||state==="cancelled"){
+        expect(targetExecFile).toHaveBeenCalledWith("docker",["container","rm","--force","opaque-container"],{timeout:30_000});
+        expect(rm).toHaveBeenCalledWith("/tmp/spawnfile-handoff/deployments/football.json",{force:true});
       }
     }
   });

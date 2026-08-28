@@ -30,6 +30,7 @@ export interface OrganizationReadinessEvidence {
     readonly digest: string;
     readonly assignments: readonly { readonly memberId: string; readonly nodeId: string }[];
   } | null;
+  readonly daimon?: { readonly receiptPath: string; readonly agents: readonly { readonly agentId: string; readonly engine: string }[] } | null;
   readonly networks: readonly {
     readonly id: string;
     readonly mode: "external" | "managed";
@@ -39,6 +40,7 @@ export interface OrganizationReadinessEvidence {
       readonly nodeId: string;
       readonly memberId: string;
       readonly configPath: string;
+      readonly receiptPath: string;
       readonly sha256: string;
     }[];
   }[];
@@ -157,6 +159,17 @@ const assertMemberId = (value: string, label: string): void => {
   if (!MEMBER_ID.test(value)) fail(`${label} is unbounded or noncanonical`);
 };
 
+const assertMoltnetRoomMemberId = (value: string, label: string): void => {
+  if (MEMBER_ID.test(value)) return;
+  const separator = value.indexOf(":");
+  const networkId = value.slice(0, separator);
+  const agentId = value.slice(separator + 1);
+  if (separator <= 0 || separator === value.length - 1 || value.length > 128
+    || !ID.test(networkId) || !ID.test(agentId)) {
+    fail(`${label} is unbounded or noncanonical`);
+  }
+};
+
 const assertConfigPath = (value: string): void => {
   if (value.length > 255 || !CONFIG_PATH.test(value)) {
     fail(`Moltnet config path is noncanonical: ${value}`);
@@ -231,13 +244,15 @@ const validateMoltnet = (
     const rooms = sort(server.rooms.map((room) => {
       assertId(room.id, "Moltnet room id");
       assertUnique(room.members, (member) => member, `Moltnet room member on ${server.networkId}/${room.id}`);
-      for (const member of room.members) assertMemberId(member, `Moltnet room member on ${server.networkId}/${room.id}`);
+      for (const member of room.members) {
+        assertMoltnetRoomMemberId(member, `Moltnet room member on ${server.networkId}/${room.id}`);
+      }
       return { id: room.id, members: sort(room.members, (member) => member) };
     }), (room) => room.id);
     assertUnique(rooms, (room) => room.id, `Moltnet room on ${server.networkId}`);
     const nodes = sort(nodePlans.filter((node) => node.networkId === server.networkId).map((node) => {
       const attachment = attachmentByKey.get(`${node.networkId}\u0000${node.memberId}`)!;
-      return { configPath: node.configPath, memberId: node.memberId!, nodeId: attachment.nodeId,
+      return { configPath: node.configPath, receiptPath: `/run/spawnfile/moltnet-readiness/${node.networkId}-${node.memberId}.json`, memberId: node.memberId!, nodeId: attachment.nodeId,
         sha256: sha256(emittedConfigContent(artifacts as MoltnetArtifacts, node.configPath)) };
     }), (node) => `${node.memberId}\u0000${node.nodeId}`);
     return { id: server.networkId, internalPort: server.mode === "managed" ? server.port! : null,
@@ -317,9 +332,17 @@ export const createOrganizationReadinessEvidence = (
   const projectLabel = normalizeProjectLabelSlug(distribution.organization.project);
   if (projectLabel.length > 128 || !ID.test(projectLabel)) fail("project label is unbounded or noncanonical");
 
+  const daimonInstance = input.containerArtifacts.report.runtime_instances.find((instance) => instance.runtime === "daimon");
+  const daimon = daimonInstance === undefined ? null : {
+    receiptPath: "/var/lib/spawnfile/instances/daimon/daimon-organization/state/wake-acceptance/runtime-readiness.json",
+    agents: Object.entries(daimonInstance.engine_by_node_id ?? {}).sort(([left], [right]) => left.localeCompare(right)).map(([agentId, engine]) => ({ agentId, engine }))
+  };
+  if (daimon !== null && daimon.agents.length === 0) fail("Daimon readiness has no compiled agent engines");
+
   return freeze({
     compileFingerprint: fingerprint,
     compileVersion: input.compileVersion,
+    daimon,
     hasExternalMoltnet: networks.some((network) => network.mode === "external"),
     networks,
     organizationMembers,

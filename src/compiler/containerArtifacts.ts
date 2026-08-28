@@ -1,45 +1,31 @@
 import { createHash } from "node:crypto";
 
-import {
-  buildDistributionReport,
-  createDistributionImageLabels,
-  DISTRIBUTION_REPORT_OUTPUT_FILE,
-  normalizeProjectLabelSlug,
-  WORLD_BINDINGS_IMAGE_PATH
-} from "../distribution/index.js";
+import { buildDistributionReport, createDistributionImageLabels, DISTRIBUTION_REPORT_OUTPUT_FILE, normalizeProjectLabelSlug, WORLD_BINDINGS_IMAGE_PATH } from "../distribution/index.js";
 import type { DistributionReport } from "../distribution/index.js";
-import type { EmittedFile, RuntimeContainerPackageOverrides } from "../runtime/index.js";
+import type { ContainerPersistentMountReport } from "../report/index.js";
+import { DAIMON_LOCAL_RUNTIME_IDENTITY_ENV, loadLocalDaimonRuntimeIdentity, type EmittedFile, type RuntimeContainerPackageOverrides } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { createMoltnetSummary, createOrganizationSummary } from "./containerArtifactSummaries.js";
 import { createEnvVariableMap, createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
 import { createDockerIgnoreContent } from "./dockerBuildContext.js";
 import { createDaimonTelemetryArtifacts } from "./daimonTelemetryArtifacts.js";
-import {
-  createRootfsFiles,
-  renderDockerfile,
-  renderEntrypoint,
-  renderEnvExample
-} from "./containerArtifactsRender.js";
+import { createRootfsFiles, renderDockerfile, renderEntrypoint, renderEnvExample } from "./containerArtifactsRender.js";
 import { createMemoryArtifactBundle } from "./memoryArtifacts.js";
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import type { MoltnetReleaseIdentity } from "./moltnetBinaries.js";
-import type {
-  CompiledNodeArtifact,
-  GeneratedContainerArtifacts
-} from "./containerArtifactsTypes.js";
+import type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./containerArtifactsTypes.js";
+import { resolveWorkspaceResourceVolumes, type ResolvedTargetResourcePlan } from "./containerTargetResources.js";
 import type { CompilePlan } from "./types.js";
-import {
-  SIMFILE_WORLD_BINDINGS_VERSION,
-  WORLD_BINDINGS_OUTPUT_FILE,
-  type ResolvedWorldBindings
-} from "./worldBindings.js";
+import { SIMFILE_WORLD_BINDINGS_VERSION, WORLD_BINDINGS_OUTPUT_FILE, type ResolvedWorldBindings } from "./worldBindings.js";
 
 export type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./containerArtifactsTypes.js";
 
 export interface ContainerArtifactOptions {
+  deploymentLineage?: string;
   generatedAt?: string;
   hasStagedMoltnetBinaries?: boolean;
+  hasWorkspaceBundles?: boolean;
   moltnet?: MoltnetArtifacts | null;
   moltnetRelease?: MoltnetReleaseIdentity;
   worldBindings?: ResolvedWorldBindings;
@@ -55,7 +41,9 @@ export const createContainerArtifacts = async (
   compiledNodes: CompiledNodeArtifact[],
   options: ContainerArtifactOptions = {}
 ): Promise<GeneratedContainerArtifacts> => {
-  const runtimePlans = await createRuntimeTargetPlans(plan, compiledNodes, options.worldBindings);
+  const localDaimonIdentityPath = process.env[DAIMON_LOCAL_RUNTIME_IDENTITY_ENV]?.trim();
+  const localDaimonIdentity = localDaimonIdentityPath ? await loadLocalDaimonRuntimeIdentity(localDaimonIdentityPath) : undefined;
+  const runtimePlans = await createRuntimeTargetPlans(plan, compiledNodes, options.worldBindings, options.deploymentLineage);
   const daimonTelemetryArtifacts = createDaimonTelemetryArtifacts(plan, runtimePlans, compiledNodes);
   const envVariableMap = createEnvVariableMap(compiledNodes, runtimePlans, options.moltnet);
   const projectedWorldTokenEnvNames = [...new Set(
@@ -105,7 +93,9 @@ export const createContainerArtifacts = async (
     .map((variable) => variable.name)
     .sort();
   const memoryArtifacts = createMemoryArtifactBundle(plan);
-  const persistentMountsById = new Map<string, { mount_path: string; reason: string; volume_name: string }>();
+  const { resources: resolvedWorkspaceResources, mounts: workspaceResourceMounts } =
+    resolveWorkspaceResourceVolumes(runtimePlans);
+  const persistentMountsById = new Map<string, { lifecycle?: "exclusive-reattach"; mount_path: string; reason: string; volume_name: string }>();
   for (const mount of memoryArtifacts.mounts) {
     const existing = persistentMountsById.get(mount.id);
     if (existing) {
@@ -117,14 +107,16 @@ export const createContainerArtifacts = async (
       continue;
     }
     persistentMountsById.set(mount.id, {
+      ...(mount.lifecycle ? { lifecycle: mount.lifecycle } : {}),
       mount_path: mount.mount_path,
       reason: mount.reason,
       volume_name: mount.volume_name
     });
   }
 
-  const persistentMounts = [
+  const persistentMountCandidates: ContainerPersistentMountReport[] = [
     ...memoryArtifacts.mounts,
+    ...workspaceResourceMounts,
     ...daimonTelemetryArtifacts.mounts,
     ...runtimePlans.flatMap((runtimePlan) => runtimePlan.persistentMounts ?? []),
     ...((options.moltnet?.persistentMounts ?? []).map((mount) => ({
@@ -133,7 +125,8 @@ export const createContainerArtifacts = async (
       reason: mount.reason,
       volume_name: mount.volumeName
     })))
-  ]
+  ];
+  const persistentMounts = persistentMountCandidates
     .sort((left, right) => left.id.localeCompare(right.id))
     .filter((mount) => {
       const existing = persistentMountsById.get(mount.id);
@@ -141,7 +134,8 @@ export const createContainerArtifacts = async (
         if (
           existing.mount_path === mount.mount_path &&
           existing.volume_name === mount.volume_name &&
-          existing.reason === mount.reason
+          existing.reason === mount.reason &&
+          existing.lifecycle === mount.lifecycle
         ) {
           return true;
         }
@@ -151,6 +145,7 @@ export const createContainerArtifacts = async (
         );
       }
       persistentMountsById.set(mount.id, {
+        ...(mount.lifecycle ? { lifecycle: mount.lifecycle } : {}),
         mount_path: mount.mount_path,
         reason: mount.reason,
         volume_name: mount.volume_name
@@ -208,7 +203,7 @@ export const createContainerArtifacts = async (
   const workspaceResources = [
     ...new Map(
       runtimePlans.flatMap((plan) =>
-        (plan.resources ?? []).map((resource) => [
+        ((plan.resources ?? []) as ResolvedTargetResourcePlan[]).map((resource) => [
           `${resource.kind}:${resource.id}:${resource.linkPath}`,
           {
             backing_path: resource.backingPath,
@@ -217,7 +212,14 @@ export const createContainerArtifacts = async (
             link_path: resource.linkPath,
             mode: resource.mode,
             mount: resource.mount,
-            sharing: resource.sharing
+            mount_path: resource.linkPath,
+            replacement_sentinel: resource.replacementSentinel ? {
+              path: resource.replacementSentinel,
+              result: "verified_on_startup" as const
+            } : undefined,
+            resolved_identity: resource.resolvedIdentity,
+            sharing: resource.sharing,
+            volume_name: resource.volumeName ?? null
           }
         ])
       )
@@ -266,6 +268,7 @@ export const createContainerArtifacts = async (
       durability: "persistent" as const,
       id: mount.id,
       kind: "volume" as const,
+      ...(mount.lifecycle ? { lifecycle: mount.lifecycle } : {}),
       target: mount.mount_path
     })),
     portMappings,
@@ -317,6 +320,7 @@ export const createContainerArtifacts = async (
         },
         hasMoltnet: Boolean(options.moltnet),
         hasStagedMoltnetBinaries: options.hasStagedMoltnetBinaries,
+        hasWorkspaceBundles: options.hasWorkspaceBundles,
         ...(options.moltnet
           ? {
               moltnet: {
@@ -378,6 +382,11 @@ export const createContainerArtifacts = async (
       entrypoint: "entrypoint.sh",
       env_example: ".env.example",
       internal_ports: internalPorts,
+      ...(localDaimonIdentity ? { local_daimon_runtime: {
+        capability_receipt_sha256: localDaimonIdentity.capabilityReceipt,
+        image_reference: localDaimonIdentity.imageReference,
+        registry_authority: localDaimonIdentity.registryAuthority
+      } } : {}),
       model_secrets_required: modelSecretsRequired,
       ...(moltnetSummary ? { moltnet: moltnetSummary } : {}),
       port_mappings: portMappings,

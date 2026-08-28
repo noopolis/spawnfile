@@ -99,6 +99,154 @@ describe("runDockerContainer", () => {
     });
   });
 
+  it("rejects a foreign live occupant before run/up attaches an exclusive realm", async () => {
+    const child = createFakeChild();
+    const reservationId = "e".repeat(64);
+    let reservationLabels: Record<string, string> = {};
+    const { runDockerContainer, spawn } = await loadRunProjectModule(
+      child,
+      (_file, args, _options, callback) => {
+        if (args.includes("create")) {
+          reservationLabels = Object.fromEntries(args.flatMap((arg, index) =>
+            arg === "--label" ? [args[index + 1]!.split("=", 2) as [string, string]] : []));
+          callback(null, { stderr: "", stdout: `${reservationId}\n` });
+          return;
+        }
+        if (args.includes("inspect")) {
+          callback(null, { stderr: "", stdout: `${JSON.stringify(reservationId)}\n${JSON.stringify(reservationLabels)}\n` });
+          return;
+        }
+        if (args.includes("ps")) {
+          callback(null, { stderr: "", stdout: "foreign-deployment\n" });
+          return;
+        }
+        if (args.includes("rm")) {
+          callback(null, { stderr: "", stdout: "" });
+          return;
+        }
+        callback(new Error("unexpected Docker call"), { stderr: "", stdout: "" });
+      }
+    );
+    await expect(runDockerContainer({
+      args: ["run", "--rm", "spawnfile-agent"], command: "docker",
+      containerName: "spawnfile-agent", cwd: "/tmp/spawnfile-run", detach: false,
+      deploymentName: null, dockerContext: null, envFilePath: "/tmp/spawnfile-run.env",
+      exclusiveReattachVolumes: ["spawnfile-exclusive-realm-lineage"],
+      imageTag: "spawnfile-agent", supportDirectory: "/tmp/spawnfile-run"
+    })).rejects.toThrow(/another running deployment/u);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("serializes concurrent run/up admission until the verified-start boundary releases", async () => {
+    const child = createFakeChild();
+    const reservationId = "f".repeat(64);
+    let held = false;
+    let labels: Record<string, string> = {};
+    await loadRunProjectModule(child, (_file, args, _options, callback) => {
+      if (args.includes("create")) {
+        if (held) {
+          callback(new Error("name conflict"), { stderr: "", stdout: "" });
+          return;
+        }
+        held = true;
+        labels = Object.fromEntries(args.flatMap((arg, index) =>
+          arg === "--label" ? [args[index + 1]!.split("=", 2) as [string, string]] : []));
+        callback(null, { stderr: "", stdout: reservationId });
+        return;
+      }
+      if (args.includes("inspect")) {
+        callback(null, { stderr: "", stdout: `${JSON.stringify(reservationId)}\n${JSON.stringify(labels)}\n` });
+        return;
+      }
+      if (args.includes("ps")) {
+        callback(null, { stderr: "", stdout: "" });
+        return;
+      }
+      if (args.includes("rm")) {
+        held = false;
+        callback(null, { stderr: "", stdout: "" });
+        return;
+      }
+      callback(new Error("unexpected Docker call"), { stderr: "", stdout: "" });
+    });
+    const { withExclusiveVolumeReservations } = await import("./runProjectDockerReservation.js");
+    const invocation = {
+      args: ["run", "-d", "image"], command: "docker", containerName: "candidate",
+      cwd: "/tmp/spawnfile-run", detach: true, dockerContext: null,
+      dockerHost: "unix:///var/run/docker.sock",
+      envFilePath: "/tmp/spawnfile-run.env", exclusiveReattachVolumes: ["exclusive-realm"],
+      imageTag: "image", supportDirectory: "/tmp/spawnfile-run"
+    };
+    let enter!: () => void;
+    let finish!: () => void;
+    const entered = new Promise<void>((resolve) => { enter = resolve; });
+    const gate = new Promise<void>((resolve) => { finish = resolve; });
+    const first = withExclusiveVolumeReservations(invocation, async () => {
+      enter();
+      await gate;
+      return { containerId: detachedContainerId };
+    });
+    await entered;
+    await expect(withExclusiveVolumeReservations(invocation, async () => undefined))
+      .rejects.toThrow(/reservation is already held/u);
+    finish();
+    await expect(first).resolves.toMatchObject({ containerId: detachedContainerId });
+    await expect(withExclusiveVolumeReservations(invocation, async () => undefined))
+      .resolves.toBeUndefined();
+    await expect(withExclusiveVolumeReservations({
+      ...invocation, dockerContext: "remote", dockerHost: null
+    }, async () => undefined)).resolves.toBeUndefined();
+    expect(held).toBe(false);
+  });
+
+  it("fails closed and releases exact target reservations across provider faults", async () => {
+    const child = createFakeChild();
+    const reservationId = "9".repeat(64);
+    let labels: Record<string, string> = {};
+    let mode: "invalid-id" | "inspect-invalid" | "ps-error" | "rm-error" = "invalid-id";
+    await loadRunProjectModule(child, (_file, args, _options, callback) => {
+      if (args.includes("create")) {
+        labels = Object.fromEntries(args.flatMap((arg, index) =>
+          arg === "--label" ? [args[index + 1]!.split("=", 2) as [string, string]] : []));
+        callback(null, { stderr: "", stdout: mode === "invalid-id" ? "invalid" : reservationId });
+        return;
+      }
+      if (args.includes("inspect")) {
+        callback(null, { stderr: "", stdout: mode === "inspect-invalid"
+          ? "invalid"
+          : `${JSON.stringify(reservationId)}\n${JSON.stringify(labels)}\n` });
+        return;
+      }
+      if (args.includes("ps")) {
+        callback(mode === "ps-error" ? new Error("provider diagnostic") : null, { stderr: "", stdout: "" });
+        return;
+      }
+      if (args.includes("rm")) {
+        callback(mode === "rm-error" ? new Error("provider diagnostic") : null, { stderr: "", stdout: "" });
+        return;
+      }
+      callback(new Error("unexpected Docker call"), { stderr: "", stdout: "" });
+    });
+    const { withExclusiveVolumeReservations } = await import("./runProjectDockerReservation.js");
+    const invocation = {
+      args: ["run", "-d", "image"], command: "docker", containerName: "candidate",
+      cwd: "/tmp/spawnfile-run", detach: true, dockerContext: null, dockerHost: null,
+      envFilePath: "/tmp/spawnfile-run.env", exclusiveReattachVolumes: ["exclusive-realm"],
+      imageTag: "image", supportDirectory: "/tmp/spawnfile-run"
+    };
+    await expect(withExclusiveVolumeReservations(invocation, async () => undefined))
+      .rejects.toThrow(/returned invalid identity/u);
+    mode = "inspect-invalid";
+    await expect(withExclusiveVolumeReservations(invocation, async () => undefined))
+      .rejects.toThrow(/Unable to release exclusive persistent mount reservation/u);
+    mode = "ps-error";
+    await expect(withExclusiveVolumeReservations(invocation, async () => undefined))
+      .rejects.toThrow(/Unable to verify exclusive persistent mount occupancy/u);
+    mode = "rm-error";
+    await expect(withExclusiveVolumeReservations(invocation, async () => undefined))
+      .rejects.toThrow(/Unable to release exclusive persistent mount reservation/u);
+  });
+
   it("captures the immutable image id for detached containers", async () => {
     const child = createFakeDetachedChild();
     const { execFile, runDockerContainer, spawn } = await loadRunProjectModule(

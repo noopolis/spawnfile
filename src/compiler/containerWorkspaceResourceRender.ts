@@ -1,4 +1,5 @@
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
+import { VOLUME_BOOTSTRAP_MARKER, VOLUME_BOOTSTRAP_MARKER_CONTENT } from "./containerVolumeBootstrap.js";
 
 const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)}'`;
 
@@ -6,10 +7,14 @@ export const createWorkspaceResourceCommands = (plan: RuntimeTargetPlan): string
   (plan.resources ?? []).flatMap((resource) => {
     const readonlyFlag = resource.mode === "readonly" ? "readonly" : "mutable";
     if (resource.kind === "volume") {
+      const resolved = resource as typeof resource & { resolvedIdentity?: string };
       return [
-        `prepare_volume_resource ${shellQuote(resource.id)} ${shellQuote(resource.linkPath)} ${shellQuote(resource.backingPath)} ${shellQuote(readonlyFlag)}`
+        `prepare_volume_resource ${shellQuote(resource.id)} ${shellQuote(resource.linkPath)} ${shellQuote(resource.backingPath)} ${shellQuote(readonlyFlag)} ${shellQuote(resolved.resolvedIdentity ?? "")}`
       ];
     }
+    if (resource.kind === "bundle") return [
+      `prepare_bundle_resource ${shellQuote(resource.id)} ${shellQuote(resource.linkPath)} ${shellQuote(resource.backingPath)} ${shellQuote(resource.archivePath ?? "")} ${shellQuote(resource.sha256 ?? "")}`
+    ];
 
     const selectorKind = resource.branch
       ? "branch"
@@ -65,12 +70,54 @@ export const createWorkspaceResourceShellFunctions = (): string[] => [
   '  local link_path="$2"',
   '  local backing_path="$3"',
   '  local mode="$4"',
+  '  local identity="$5"',
   '  mkdir -p "$backing_path"',
   '  if [ ! -d "$backing_path" ]; then',
   '    echo "Workspace volume resource $id backing path is not a directory: $backing_path" >&2',
   "    exit 1",
   "  fi",
+  '  local sentinel="$backing_path/.spawnfile-resource-identity"',
+  '  if [ -f "$sentinel" ]; then',
+  '    if [ "$(cat "$sentinel")" != "$identity" ]; then',
+  '      echo "Workspace volume resource $id replacement sentinel mismatch" >&2',
+  "      exit 1",
+  "    fi",
+  "  else",
+  `    local bootstrap="$backing_path/${VOLUME_BOOTSTRAP_MARKER}"`,
+  `    local bootstrap_claim="$backing_path/${VOLUME_BOOTSTRAP_MARKER}.claim"`,
+  '    local first_entry',
+  '    first_entry="$(find "$backing_path" -mindepth 1 -maxdepth 1 -print -quit)"',
+  '    if [ -n "$first_entry" ]; then',
+  '      if [ "$first_entry" = "$bootstrap" ]; then',
+  '        mv -T --no-clobber -- "$bootstrap" "$bootstrap_claim"',
+  '      elif [ "$first_entry" != "$bootstrap_claim" ]; then',
+  '      echo "Workspace volume resource $id is nonempty without an authenticated replacement sentinel" >&2',
+  "      exit 1",
+  "      fi",
+  '      if [ "$(find "$backing_path" -mindepth 1 -maxdepth 1 ! -name ' + `'${VOLUME_BOOTSTRAP_MARKER}.claim'` + ' -print -quit)" != "" ] || [ -L "$bootstrap_claim" ] || [ ! -f "$bootstrap_claim" ] || [ "$(stat -c "%u:%g:%a:%h" "$bootstrap_claim")" != "${volume_bootstrap_uid}:${volume_bootstrap_gid}:600:1" ] || [ "$(cat "$bootstrap_claim")" != "' + VOLUME_BOOTSTRAP_MARKER_CONTENT + '" ]; then',
+  '        echo "Workspace volume resource $id bootstrap marker mismatch" >&2',
+  "        exit 1",
+  "      fi",
+  '      rm -- "$bootstrap_claim"',
+  "    fi",
+  '    printf "%s\\n" "$identity" > "$sentinel"',
+  "  fi",
   '  mark_readonly_resource "$backing_path" "$mode"',
+  '  prepare_resource_link "$id" "$link_path" "$backing_path"',
+  "}",
+  "",
+  "prepare_bundle_resource() {",
+  '  local id="$1" link_path="$2" backing_path="$3" archive="$4" identity="$5"',
+  '  [ -f "$archive" ] || { echo "Workspace bundle $id archive missing" >&2; exit 1; }',
+  '  local sentinel="$backing_path/.spawnfile-bundle-identity"',
+  '  if [ -e "$backing_path" ]; then',
+  '    [ -f "$sentinel" ] && [ "$(cat "$sentinel")" = "$identity" ] || { echo "Workspace bundle $id identity mismatch" >&2; exit 1; }',
+  "  else",
+  '    mkdir -p "$backing_path"',
+  '    tar --no-same-owner --no-same-permissions -xf "$archive" -C "$backing_path"',
+  '    printf %s "$identity" > "$sentinel"',
+  "  fi",
+  '  mark_readonly_resource "$backing_path" readonly',
   '  prepare_resource_link "$id" "$link_path" "$backing_path"',
   "}",
   "",

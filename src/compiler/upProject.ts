@@ -32,6 +32,7 @@ import { DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
 import { ensureNoopolisRunId, resolveNoopolisRunId } from "../runtime/index.js";
 import { fileExists } from "../filesystem/index.js";
 import { resolveHostCliCredential } from "./runProjectAuth.js";
+import { defaultDockerTargetExecFile } from "../target/dockerTargetExecFile.js";
 import {
   compileOrganizationHandoff,
   executeOrganizationHandoff,
@@ -127,6 +128,7 @@ export const upProject = async (
     containerArchitecture: options.containerArchitecture,
     dockerContext: resolvedOptions.dockerContext,
     dockerCommand: options.dockerCommand,
+    deploymentLineage: resolvedOptions.deploymentName ?? "default",
     imageTag: resolvedOptions.imageTag,
     outputDirectory: options.outputDirectory,
     runtimePackageOverrides: options.runtimePackageOverrides,
@@ -275,6 +277,23 @@ export const upProject = async (
       execFile: options.targetExecFile,
       record: pendingRecord
     });
+    if (organizationReady.state === "failed" || organizationReady.state === "cancelled") {
+      const unit = record.units[0];
+      const reference = unit?.container_id ?? unit?.container_name;
+      if (reference) {
+        const prefix = invocation.dockerContext
+          ? ["--context", invocation.dockerContext]
+          : invocation.dockerHost ? ["--host", invocation.dockerHost] : [];
+        await (options.targetExecFile ?? defaultDockerTargetExecFile)(
+          invocation.command,
+          [...prefix, "container", "rm", "--force", reference],
+          { timeout: 30_000 }
+        );
+      }
+      await rm(invocation.supportDirectory, { recursive: true, force: true });
+      await rm(deploymentRecordPath, { force: true });
+      throw new SpawnfileError("runtime_error", "Detached deployment failed organization readiness and was rolled back");
+    }
     await writeDeploymentRecord(buildResult.outputDirectory, {
       ...pendingRecord,
       organization_ready: organizationReady

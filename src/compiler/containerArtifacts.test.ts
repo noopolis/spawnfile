@@ -419,7 +419,7 @@ describe("createContainerArtifacts", () => {
       "mkdir -p '/var/lib/spawnfile' '/var/lib/spawnfile/moltnet/networks/local-lab'"
     );
     expect(dockerfile).toContain(
-      "touch '/var/lib/spawnfile/moltnet/networks/local-lab/.spawnfile-volume-init'"
+      "spawnfile.volume-bootstrap.v1"
     );
   });
 
@@ -512,7 +512,7 @@ describe("createContainerArtifacts", () => {
       "mkdir -p '/var/lib/spawnfile' '/var/lib/spawnfile/memory/assistant/shared-memory'"
     );
     expect(dockerfile).toContain(
-      "touch '/var/lib/spawnfile/memory/assistant/shared-memory/.spawnfile-volume-init'"
+      "spawnfile.volume-bootstrap.v1"
     );
   });
 
@@ -648,7 +648,11 @@ describe("createContainerArtifacts", () => {
         link_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/workspace/cache",
         mode: "readonly",
         mount: "./cache",
-        sharing: "per_agent"
+        mount_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/workspace/cache",
+        replacement_sentinel: { path: expect.stringContaining("/.spawnfile-resource-identity"), result: "verified_on_startup" },
+        resolved_identity: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        sharing: "per_agent",
+        volume_name: expect.stringMatching(/^spawnfile-workspace-resource-[a-f0-9]{24}$/u)
       },
       {
         backing_path: expect.stringContaining("/var/lib/spawnfile/resources/instances/agent-assistant-"),
@@ -657,7 +661,11 @@ describe("createContainerArtifacts", () => {
         link_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/workspace/repos/project",
         mode: "mutable",
         mount: "./repos/project",
-        sharing: "per_agent"
+        mount_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/workspace/repos/project",
+        replacement_sentinel: undefined,
+        resolved_identity: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        sharing: "per_agent",
+        volume_name: null
       }
     ]);
   });

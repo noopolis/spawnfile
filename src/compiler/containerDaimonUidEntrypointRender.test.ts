@@ -1,21 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
 import { execFile as execFileCallback, spawnSync } from "node:child_process";
-import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import type { EntrypointOptions } from "./containerEntrypointRender.js";
+import { renderEntrypoint } from "./containerEntrypointRender.js";
 import {
   DAIMON_AUTHORIZED_UID_ENV,
+  DAIMON_BROKER_STARTUP_TIMEOUT_SECONDS,
+  renderDaimonBrokerSocketWait,
   renderDaimonUidEntrypoint,
+  resolveDaimonVolumeIdentityFiles,
   resolveDaimonUidEntrypointOwnershipPlan,
   resolveDaimonUidEntrypointStateRoots
 } from "./containerDaimonUidEntrypointRender.js";
 
 const execFile = promisify(execFileCallback);
-const authorizedUid = 501;
+const authorizedUid = 2000;
 
 const daimonPlan: RuntimeTargetPlan = {
   engineByNodeId: { "agent:AGY": "agy", "agent:Codex One": "codex", "agent:Grok Two": "grok" },
@@ -35,6 +39,50 @@ const nodeConfig = "/var/lib/spawnfile/moltnet/nodes/agent.json";
 const causalState = "/var/lib/spawnfile/moltnet/servers/local/causal";
 const agyRealm = "/var/lib/spawnfile/daimon/agy-subscription-realm";
 const agyRuntimeHome = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/agy";
+const codexEngineHome = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex-one/.codex";
+const grokEngineHome = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/grok-two/.grok";
+
+describe("Daimon broker socket startup wait", () => {
+  const nodeSocketServer = `const net=require("node:net");const socket=process.argv[1];const delay=Number(process.argv[2]);setTimeout(()=>{const server=net.createServer();server.listen(socket,()=>setTimeout(()=>server.close(),500));},delay);`;
+
+  it("uses the production cold-start budget and remains fail-fast and bounded", async () => {
+    expect(DAIMON_BROKER_STARTUP_TIMEOUT_SECONDS).toBe(60);
+    const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-broker-wait-"));
+    const waitProgram = renderDaimonBrokerSocketWait(2, 0.02).join("\n");
+    const delayedSocket = path.join(root, "delayed.sock");
+    await expect(execFile("bash", ["-ceu", `${waitProgram}\nnode -e "$0" "$1" 120 & child=$!\nwait_for_broker_socket "$1" "$child" delayed\nkill "$child" 2>/dev/null || true\nwait "$child" 2>/dev/null || true`, nodeSocketServer, delayedSocket])).resolves.toBeDefined();
+
+    const earlyStarted = Date.now();
+    await expect(execFile("bash", ["-ceu", `${waitProgram}\nnode -e 'process.exit(7)' & child=$!\nwait_for_broker_socket "$1" "$child" early`, "", path.join(root, "early.sock")])).rejects.toThrow(/early exited before readiness \(status 7\)/u);
+    expect(Date.now() - earlyStarted).toBeLessThan(1_000);
+
+    const timeoutStarted = Date.now();
+    await expect(execFile("bash", ["-ceu", `${renderDaimonBrokerSocketWait(1, 0.02).join("\n")}\nsleep 5 & child=$!\ntrap 'kill "$child" 2>/dev/null || true' EXIT\nwait_for_broker_socket "$1" "$child" never`, "", path.join(root, "never.sock")])).rejects.toThrow(/never readiness timed out after 1s/u);
+    expect(Date.now() - timeoutStarted).toBeLessThan(2_500);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("waits for the exact post-drop process identity within the shared budget", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-broker-identity-"));
+    const waitProgram = renderDaimonBrokerSocketWait(2, 0.02).join("\n");
+    const delayed = `${waitProgram}\nbroker_process_status_root="$1"\nsleep 5 & child=$!\ntrap 'kill "$child" 2>/dev/null || true' EXIT\nmkdir -p "$1/$child"\nprintf 'Uid:\\t0\\nCapBnd:\\t00000000000000c1\\n' > "$1/$child/status"\n(sleep 0.12; printf 'Uid:\\t2100\\nCapBnd:\\t0000000000000000\\n' > "$1/$child/status") &\nwait_for_broker_identity "$child" 2100 0000000000000000 relay`;
+    await expect(execFile("bash", ["-ceu", delayed, "", root])).resolves.toBeDefined();
+
+    const never = `${renderDaimonBrokerSocketWait(1, 0.02).join("\n")}\nbroker_process_status_root="$1"\nsleep 5 & child=$!\ntrap 'kill "$child" 2>/dev/null || true' EXIT\nmkdir -p "$1/$child"\nprintf 'Uid:\\t0\\nCapBnd:\\t00000000000000c1\\n' > "$1/$child/status"\nwait_for_broker_identity "$child" 2100 0000000000000000 relay`;
+    await expect(execFile("bash", ["-ceu", never, "", root])).rejects.toThrow(/relay identity readiness timed out after 1s/u);
+
+    const exited = `${waitProgram}\nbroker_process_status_root="$1"\nnode -e 'process.exit(9)' & child=$!\nwait_for_broker_identity "$child" 2100 0000000000000000 relay`;
+    await expect(execFile("bash", ["-ceu", exited, "", root])).rejects.toThrow(/relay exited before identity readiness \(status 9\)/u);
+    await rm(root, { recursive: true, force: true });
+  });
+});
+const acceptanceStore = "/var/lib/spawnfile/instances/daimon/daimon-organization/state/wake-acceptance";
+const acceptanceStoreMount = {
+  id: "daimon-organization-acceptance-store",
+  mount_path: acceptanceStore,
+  reason: "Daimon organization durable wake acceptance store",
+  volume_name: "spawnfile-test-daimon-acceptance-store"
+};
 const agyRealmMount = {
   id: "daimon-agy-subscription-realm",
   mount_path: agyRealm,
@@ -46,6 +94,18 @@ const agyRuntimeHomeMount = {
   mount_path: agyRuntimeHome,
   reason: "Daimon AGY subscription runtime home for agent:agy",
   volume_name: "spawnfile-test-agy-runtime-home"
+};
+const codexEngineHomeMount = {
+  id: "daimon-engine-home-codex-codex-one",
+  mount_path: codexEngineHome,
+  reason: "Daimon codex subscription credential home for agent:Codex One",
+  volume_name: "spawnfile-test-codex-engine-home"
+};
+const grokEngineHomeMount = {
+  id: "daimon-engine-home-grok-grok-two",
+  mount_path: grokEngineHome,
+  reason: "Daimon grok subscription credential home for agent:Grok Two",
+  volume_name: "spawnfile-test-grok-engine-home"
 };
 const moltnetPlans = {
   nodePlans: [{ configPath: nodeConfig, networkId: "local" }],
@@ -70,27 +130,132 @@ const moltnetPlans = {
 } satisfies NonNullable<EntrypointOptions["moltnet"]>;
 
 describe("renderDaimonUidEntrypoint", () => {
+  it("deduplicates shared declared volume anchors and rejects conflicting or escaping identity metadata",()=>{const path="/var/lib/spawnfile/resources/teams/example/shared/.spawnfile-resource-identity",base={...daimonPlan,resources:[{id:"shared",kind:"volume",linkPath:"/workspace/shared",backingPath:"/var/lib/spawnfile/resources/teams/example/shared",mount:"./shared",mode:"mutable",sharing:"team",replacementSentinel:path,resolvedIdentity:`sha256:${"a".repeat(64)}`} as NonNullable<RuntimeTargetPlan["resources"]>[number]&{replacementSentinel:string;resolvedIdentity:string}]};expect(resolveDaimonVolumeIdentityFiles([base,base])).toEqual([{path,identity:`sha256:${"a".repeat(64)}`}]);const conflict={...base,resources:[{...base.resources[0]!,resolvedIdentity:`sha256:${"b".repeat(64)}`} ]};expect(()=>resolveDaimonVolumeIdentityFiles([base,conflict])).toThrow(/conflicting compiler-authored volume identity anchor/u);const invalidRoots=["/var/lib/spawnfile/resources/../../etc","/var/lib/spawnfile/resources","/var/lib/spawnfile/resources/"];for(const backingPath of invalidRoots){const invalid={...base,resources:[{...base.resources[0]!,backingPath,replacementSentinel:`${backingPath}/.spawnfile-resource-identity`} ]};expect(()=>resolveDaimonVolumeIdentityFiles([invalid])).toThrow(/invalid compiler-authored volume identity anchor/u);}});
+  it("secures the durable organization acceptance store for the authorized runtime UID", () => {
+    const ownership = resolveDaimonUidEntrypointOwnershipPlan(
+      [{ ...daimonPlan, persistentMounts: [acceptanceStoreMount] }],
+      [acceptanceStore]
+    );
+
+    expect(ownership.privateModeDirectories).toContain(acceptanceStore);
+    expect(ownership.stateRoots).toContain(acceptanceStore);
+  });
+
+  it("secures compiler-authored Daimon receipt follower directories", () => {
+    const receiptPath = "/var/lib/spawnfile/moltnet/networks/local/daimon-receipts/relay-agent.json";
+    const ownership = resolveDaimonUidEntrypointOwnershipPlan(
+      [daimonPlan],
+      ["/var/lib/spawnfile/moltnet/networks/local"],
+      { ...moltnetPlans, nodePlans: [{ ...moltnetPlans.nodePlans[0]!, receiptStorePath: receiptPath }] }
+    );
+
+    expect(ownership.privateModeDirectories).toContain(path.posix.dirname(receiptPath));
+    expect(ownership.privateDirectories).toContain(path.posix.dirname(receiptPath));
+    expect(ownership.creatablePrivateDirectories).toEqual([
+      { anchor: "/var/lib/spawnfile/moltnet/networks/local", target: path.posix.dirname(receiptPath) },
+      { anchor: "/run", target: "/run/spawnfile/moltnet-readiness" }
+    ]);
+    expect(ownership.stateRoots).toContain("/var/lib/spawnfile/moltnet/networks/local");
+  });
+
   it("reowns only compiler-authored state, skips opaque mounts, and drops every capability before the existing entrypoint", () => {
+    const volumeRoot="/var/lib/spawnfile/resources/teams/example/shared",volumeSentinel=`${volumeRoot}/.spawnfile-resource-identity`,volumeIdentity="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const rendered = renderDaimonUidEntrypoint(
-      [{ ...daimonPlan, persistentMounts: [agyRealmMount, agyRuntimeHomeMount] }],
-      [agyRealm, agyRuntimeHome, "/var/lib/spawnfile/daimon-state"],
+      [{ ...daimonPlan, persistentMounts: [
+        agyRealmMount, agyRuntimeHomeMount, codexEngineHomeMount, grokEngineHomeMount
+      ],resources:[{id:"shared",kind:"volume",linkPath:"/var/lib/spawnfile/instances/daimon/daimon-organization/workspace/shared",backingPath:volumeRoot,mount:"./shared",mode:"mutable",sharing:"team",replacementSentinel:volumeSentinel,resolvedIdentity:volumeIdentity} as NonNullable<RuntimeTargetPlan["resources"]>[number]&{replacementSentinel:string;resolvedIdentity:string}] }],
+      [agyRealm, agyRuntimeHome, codexEngineHome, grokEngineHome, volumeRoot,"/var/lib/spawnfile/daimon-state"],
       moltnetPlans
     );
 
-    expect(rendered).toContain(`uid="\${${DAIMON_AUTHORIZED_UID_ENV}:-1001}"`);
+    expect(rendered).toContain("uid=2000");
+    expect(rendered).toContain("for fixed_uid in 2000 2100 2200");
+    expect(rendered).toContain("Buffer.alloc(692)");
+    expect(rendered).toContain("/etc/daimon-engine-broker/registrations.bin");
+    expect(rendered).toContain("http://127.0.0.1:43123/v1");
+    expect(rendered).toContain("http://127.0.0.1:43124/mcp");
+    expect(rendered).toContain("DAIMON_MCP_CAPABILITY");
+    expect(rendered).toContain("/var/lib/daimon-workers/2200");
+    expect(rendered).toContain("/var/lib/daimon-worker-attestations/");
+    expect(rendered).toContain("ensureExactLink(`${configRoot}/sandbox.toml`, profilePath)");
+    expect(rendered).toContain("sandbox-events.jsonl");
+    expect(rendered).toContain("restrict_network = true");
+    expect(rendered).toContain("fs.chmodSync(target, 0o750)");
+    expect(rendered).toContain("fs.chmodSync(target, 0o640)");
+    expect(rendered).toContain("unsafe worker workspace link");
+    expect(rendered).toContain("resourceByLink.get(target)");
+    expect(rendered).toContain("raw !== resource.backingPath");
+    expect(rendered).toContain('!raw.startsWith("/var/lib/spawnfile/resources/")');
+    expect(rendered).toContain("volumeIdentityPaths.has(childPath)");
+    expect(rendered).toContain(JSON.stringify({path:volumeSentinel,identity:volumeIdentity}));
+    expect(rendered).toContain("before.nlink !== 1");
+    expect(rendered).toContain("constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK");
+    const recovery=rendered.indexOf("if (hasMarker)");const durableSentinel=rendered.indexOf("fs.fsyncSync(sentinel)",recovery),durableParent=rendered.indexOf("fs.fsyncSync(parent)",durableSentinel),removeMarker=rendered.indexOf("fs.unlinkSync",durableParent),durableRemoval=rendered.indexOf("fs.fsyncSync(parent)",removeMarker);expect(recovery).toBeGreaterThan(-1);expect(durableSentinel).toBeGreaterThan(recovery);expect(durableParent).toBeGreaterThan(durableSentinel);expect(removeMarker).toBeGreaterThan(durableParent);expect(durableRemoval).toBeGreaterThan(removeMarker);
+    expect(rendered).toContain("validateResourceLink(target, info); return;");
+    expect(rendered).toContain("worker runtime file identity mismatch");
+    expect(rendered).toContain("worker runtime link identity mismatch");
+    expect(rendered).toContain("ensureEventsFile(eventsPath, entry.uid)");
+    expect(rendered).toContain("noopolis.daimon.engine-broker-service.v1");
+    expect(rendered).toContain("/etc/daimon-engine-broker/service.json");
+    expect(rendered).toContain("readSecure(bootstrap, undefined, 'bootstrap')");
+    expect(rendered).toContain("noopolis.daimon.broker-credential-journal.v1");
+    expect(rendered).toContain("journal.state === 'stale'");
+    expect(rendered).toContain("bootstrapDigest === journal.sourceDigest");
+    expect(rendered).toContain("generation: journal.generation + 1");
+    expect(rendered).toContain("state: 'promoted'");
+    expect(rendered).toContain("bootstrapBytes.fill(0)");
+    expect(rendered).toContain("ensureExactFile(profilePath, profileFor(entry), 0, 0, 0o444)");
+    expect(rendered).toContain("--bounding-set=-all,+chown,+setuid,+setgid -- '/opt/daimon/bin/daimon-engine-broker' &");
+    expect(rendered).toContain("--bounding-set=-all,+chown,+setuid,+setgid,+setpcap -- '/opt/daimon/bin/daimon-engine-broker' --relay &");
+    expect(rendered).toContain('"$relay_pid:2100:0000000000000000"');
+    expect(rendered).toContain('expected_caps=${rest##*:}');
+    expect(rendered).toContain("--reuid 2100 --regid 2100");
+    expect(rendered).toContain("engine-broker serve &");
+    expect(rendered).toContain("broker_startup_timeout_seconds=60");
+    expect(rendered).toContain("wait_for_broker_socket '/run/daimon-engine-broker/backend.sock'");
+    expect(rendered).toContain('wait_for_broker_identity "$relay_pid" 2100 0000000000000000');
+    expect(rendered).toContain("broker_startup_started=$SECONDS");
+    expect(rendered).toContain("startup_children+=(\"$broker_pid\")");
+    expect(rendered).toContain("trap cleanup_broker_startup EXIT");
+    expect(rendered).not.toContain("seq 1 100");
+    expect(rendered).toContain("/run/daimon-engine-broker/backend.sock");
+    expect(rendered).toContain("/run/daimon-engine-broker/launcher.sock");
+    expect(rendered).toContain('wait -n -p finished_pid "${watch_pids[@]}"');
+    expect(rendered).toContain("finished_pid=");
+    expect(rendered).toContain('${finished_pid:-}');
+    expect(rendered).toContain("[ -S '/run/daimon-engine-broker/control.sock' ]");
+    expect(rendered).not.toMatch(/0\.0\.0\.0:4312[34]/u);
     expect(rendered).toContain("runtime-homes/codex-one/.daimon-inbound/codex-auth");
-    expect(rendered).toContain("runtime-homes/grok-two/.daimon-inbound/grok-auth");
+    expect(rendered).not.toContain("runtime-homes/grok-two/.daimon-inbound/grok-auth");
     expect(rendered).toContain("/var/lib/spawnfile/daimon/agy-unlock-secret");
     expect(rendered).not.toContain("runtime-homes/agy/.daimon-inbound/agy-auth");
     expect(rendered).toContain("const opaquePaths = new Set(");
+    expect(rendered).toContain(
+      `const opaqueDescendantRoots = new Set(["${codexEngineHome}","${grokEngineHome}"]);`
+    );
+    expect(rendered).toContain(
+      "opaquePaths.has(childPath) || opaqueDescendantRoots.has(childPath)"
+    );
     expect(rendered).toContain("constants.O_NOFOLLOW");
     expect(rendered).toContain("fs.fchownSync");
-    expect(rendered).toContain(`const privateFiles = ["${nodeConfig}","${serverConfig}"];`);
-    expect(rendered).toContain(`const privateModeDirectories = ["${agyRealm}","${agyRuntimeHome}"];`);
+    expect(rendered).toContain(`const privateFiles = ["${daimonPlan.instancePaths.configPath}","${nodeConfig}","${serverConfig}"];`);
+    expect(rendered).toContain(
+      `const privateModeDirectories = ["${agyRealm}","${daimonPlan.instancePaths.instanceRoot}/daimon","${agyRuntimeHome}","${codexEngineHome}","${grokEngineHome}"];`
+    );
     expect(rendered).toContain("for (const target of privateDirectories)");
     expect(rendered).toContain("for (const target of privateModeDirectories)");
     expect(rendered).toContain("for (const target of privateFiles)");
     expect(rendered).toContain("const securePrivateDirectory = (fd) => {");
+    expect(rendered).toContain("for (const target of ['/var', '/var/lib']) secureFixedTraversalAncestor(target)");
+    expect(rendered).toContain("secureSharedStateAncestor('/var/lib/spawnfile')");
+    expect(rendered).toContain("info.uid === 0 && info.gid === 0 && mode === 0o711");
+    expect(rendered).toContain("info.uid === uid && info.gid === uid && mode === 0o700");
+    expect(rendered).toContain("mode !== 0o775 && mode !== 0o755 && mode !== 0o711");
+    expect(rendered).toContain("shared state ancestor has an unexpected preimage");
+    expect(rendered).toContain("probe=/var/lib/spawnfile/daimon/grok-subscription-realm/.daimon-ancestry-probe");
+    expect(rendered).toContain("--reuid 2000 --regid 2000");
+    expect(rendered).toContain("--reuid 2200 --regid 2200");
+    expect(rendered).toContain("info.uid !== 0 || info.gid !== 0");
     expect(rendered).toContain("fs.fchownSync(fd, 0, 0);");
     expect(rendered).toContain("fs.fchmodSync(fd, 0o700)");
     expect(rendered).toContain("fs.fchownSync(fd, uid, uid);");
@@ -124,17 +289,23 @@ describe("renderDaimonUidEntrypoint", () => {
 
   it("repairs only exact private traversal ancestors, Moltnet configs, and writable leaves", () => {
     expect(resolveDaimonUidEntrypointOwnershipPlan(
-      [{ ...daimonPlan, persistentMounts: [agyRealmMount, agyRuntimeHomeMount] }],
-      [agyRealm, agyRuntimeHome, causalState, "/external-state"],
+      [{ ...daimonPlan, persistentMounts: [
+        agyRealmMount, agyRuntimeHomeMount, codexEngineHomeMount, grokEngineHomeMount
+      ] }],
+      [agyRealm, agyRuntimeHome, codexEngineHome, grokEngineHome, causalState, "/external-state"],
       moltnetPlans
     )).toEqual({
+      creatablePrivateDirectories: [
+        { anchor: "/run", target: "/run/spawnfile/moltnet-readiness" }
+      ],
+      opaqueDescendantRoots: [codexEngineHome, grokEngineHome],
       privateDirectories: [
-        "/var/lib/spawnfile",
         "/var/lib/spawnfile/daimon",
         agyRealm,
         "/var/lib/spawnfile/instances",
         "/var/lib/spawnfile/instances/daimon",
         "/var/lib/spawnfile/instances/daimon/daimon-organization",
+        "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon",
         "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes",
         agyRuntimeHome,
         "/var/lib/spawnfile/instances/daimon/daimon-organization/workspace",
@@ -144,8 +315,14 @@ describe("renderDaimonUidEntrypoint", () => {
         "/var/lib/spawnfile/moltnet/servers/local",
         causalState
       ],
-      privateFiles: [nodeConfig, serverConfig],
-      privateModeDirectories: [agyRealm, agyRuntimeHome],
+      privateFiles: [daimonPlan.instancePaths.configPath, nodeConfig, serverConfig],
+      privateModeDirectories: [
+        agyRealm,
+        "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon",
+        agyRuntimeHome,
+        codexEngineHome,
+        grokEngineHome
+      ],
       stateRoots: [
         "/external-state",
         agyRealm,
@@ -169,6 +346,7 @@ describe("renderDaimonUidEntrypoint", () => {
     }]);
 
     expect(rendered).toContain("const opaquePaths = new Set([]);");
+    expect(rendered).toContain("const opaqueDescendantRoots = new Set([]);");
   });
 
   it("uses only absolute roots when plan metadata or persistent input is incomplete", () => {
@@ -185,170 +363,4 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).not.toContain("runtime-homes/codex-one/.daimon-inbound/codex-auth");
   });
 
-  it("repairs a fresh volume and private Moltnet ancestors for authorized UID 501 across restart", async () => {
-    const instanceRoot = "/var/lib/spawnfile/instances/daimon/daimon-organization";
-    const workspacePath = `${instanceRoot}/workspace`;
-    const runtimeHomesPath = `${instanceRoot}/runtime-homes`;
-    const dockerDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-daimon-uid-image-"));
-    const tag = `spawnfile-daimon-uid-${Date.now().toString(36)}`;
-    const containerName = `${tag}-container`;
-    const volumeName = `${tag}-realm-volume`;
-    const runtimeHomeVolumeName = `${tag}-agy-runtime-home-volume`;
-    const plan: RuntimeTargetPlan = {
-      ...daimonPlan,
-      engineByNodeId: undefined,
-      instancePaths: {
-        configPath: `${instanceRoot}/daimon/config.json`,
-        instanceRoot,
-        workspacePath
-      },
-      meta: {
-        ...daimonPlan.meta,
-        configFileName: "daimon/config.json",
-        startCommand: ["true"],
-        systemDeps: ["bash", "dbus-daemon", "util-linux"]
-      },
-      persistentMounts: [
-        { ...agyRealmMount, volume_name: volumeName },
-        { ...agyRuntimeHomeMount, volume_name: runtimeHomeVolumeName }
-      ],
-      targetFiles: [{ content: "{}\n", path: "daimon/config.json" }]
-    };
-    try {
-      vi.resetModules();
-      vi.doMock("../runtime/index.js", () => ({
-        createRuntimeInstallRecipe: vi.fn(async () => ({
-          baseImage: "node:24-bookworm-slim",
-          commands: [],
-          copyCommands: [],
-          runtimeName: "daimon",
-          runtimeRoot: "/opt/daimon"
-        }))
-      }));
-      const { createRootfsFiles, renderDockerfile } = await import("./containerArtifactsRender.js");
-      const dockerfile = await renderDockerfile([plan], {
-        moltnet: moltnetPlans,
-        persistentMountPaths: [agyRealm, agyRuntimeHome, causalState]
-      });
-      const stateRoots = resolveDaimonUidEntrypointStateRoots([plan]);
-      expect(stateRoots).toEqual([runtimeHomesPath, workspacePath]);
-      for (const stateRoot of stateRoots) {
-        expect(dockerfile).toContain(`install -d -o root -g root -m 700 '${stateRoot}'`);
-      }
-      expect(dockerfile).not.toContain("SPAWNFILE_DAIMON_WRITABLE_ROOTS");
-      expect(dockerfile).not.toContain("/untrusted");
-
-      for (const file of createRootfsFiles([plan], [agyRealm, agyRuntimeHome, causalState], moltnetPlans)) {
-        const outputPath = path.join(dockerDirectory, file.path);
-        await mkdir(path.dirname(outputPath), { recursive: true });
-        await writeFile(outputPath, file.content, "utf8");
-      }
-      for (const configPath of [nodeConfig, serverConfig]) {
-        const outputPath = path.join(dockerDirectory, "container/rootfs", configPath);
-        await mkdir(path.dirname(outputPath), { recursive: true });
-        await writeFile(outputPath, "{}\n", { encoding: "utf8", mode: 0o600 });
-      }
-      await writeFile(path.join(dockerDirectory, ".env.example"), "", "utf8");
-      await writeFile(
-        path.join(dockerDirectory, "entrypoint.sh"),
-        [
-          "#!/usr/bin/env bash",
-          "set -euo pipefail",
-          `test \"$(id -u)\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}\"`,
-          "getent passwd \"$(id -u)\" >/dev/null",
-          "test \"$(sed -n 's/^CapEff:[[:space:]]*//p' /proc/self/status)\" = 0000000000000000",
-          `test \"$(stat -c '%u:%a' '/var/lib/spawnfile')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:700\"`,
-          `test \"$(stat -c '%u:%a' '/var/lib/spawnfile/moltnet')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:700\"`,
-          `test \"$(stat -c '%u:%a' '/var/lib/spawnfile/moltnet/servers/local')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:700\"`,
-          `test \"$(stat -c '%u:%a' '${serverConfig}')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:600\"`,
-          `test \"$(stat -c '%u:%a' '${nodeConfig}')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:600\"`,
-          `test \"$(stat -c '%u:%a' '${causalState}')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:700\"`,
-          `test \"$(stat -c '%u:%a' '${agyRealm}')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:700\"`,
-          `test \"$(stat -c '%u:%a' '${runtimeHomesPath}')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:700\"`,
-          `test \"$(stat -c '%u:%a' '${workspacePath}')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:700\"`,
-          `test "$(stat -c '%u:%a' '${agyRuntimeHome}')" = "\${${DAIMON_AUTHORIZED_UID_ENV}}:700"`,
-          "test \"$(stat -c '%u:%a' /untrusted/sentinel)\" = 0:600",
-          "dbus_root=$(mktemp -d /tmp/spawnfile-dbus.XXXXXX)",
-          "chmod 700 \"$dbus_root\"",
-          "dbus_address=unix:path=$dbus_root/bus",
-          "dbus-daemon --session --fork --nopidfile --address=\"$dbus_address\"",
-          "dbus-send --bus=\"$dbus_address\" --dest=org.freedesktop.DBus --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ListNames >/dev/null",
-          `count_file='${agyRealm}/starts'`,
-          "count=$(cat \"$count_file\" 2>/dev/null || printf 0)",
-          "printf %s $((count + 1)) > \"$count_file\"",
-          `token_marker='${agyRuntimeHome}/subscription-state'`,
-          "if [ \"$count\" = 0 ]; then printf enrolled > \"$token_marker\"; else test \"$(cat \"$token_marker\")\" = enrolled; fi",
-          `printf 'entrypoint uid=%s caps=%s realm=%s start=%s\\n' \"$(id -u)\" \"$(sed -n 's/^CapEff:[[:space:]]*//p' /proc/self/status)\" \"$(stat -c '%u:%a' '${agyRealm}')\" \"$count\"`
-        ].join("\n") + "\n",
-        "utf8"
-      );
-      await writeFile(
-        path.join(dockerDirectory, "Dockerfile"),
-        `${dockerfile}\nRUN install -d -o root -g root -m 755 /untrusted && install -o root -g root -m 600 /dev/null /untrusted/sentinel\n`,
-        "utf8"
-      );
-      await execFile("docker", ["build", "--pull=false", "--tag", tag, "."], {
-        cwd: dockerDirectory,
-        timeout: 30_000
-      });
-      await execFile("docker", [
-        "create", "--name", containerName,
-        "--cap-drop=ALL", "--cap-add=CHOWN", "--cap-add=SETUID", "--cap-add=SETGID", "--cap-add=DAC_READ_SEARCH",
-        "--security-opt=no-new-privileges:true",
-        "--env", `${DAIMON_AUTHORIZED_UID_ENV}=${authorizedUid}`,
-        "--env", "SPAWNFILE_DAIMON_WRITABLE_ROOTS=/untrusted",
-        "--mount", `type=volume,source=${volumeName},target=${agyRealm}`,
-        "--mount", `type=volume,source=${runtimeHomeVolumeName},target=${agyRuntimeHome}`,
-        tag
-      ]);
-      const initial = await execFile("docker", ["start", "-a", containerName]);
-      const restarted = await execFile("docker", ["start", "-a", containerName]);
-      expect(initial.stdout).toContain(`entrypoint uid=${authorizedUid} caps=0000000000000000 realm=${authorizedUid}:700 start=0`);
-      expect(restarted.stdout).toContain(`entrypoint uid=${authorizedUid} caps=0000000000000000 realm=${authorizedUid}:700 start=1`);
-    } finally {
-      vi.doUnmock("../runtime/index.js");
-      vi.resetModules();
-      await execFile("docker", ["rm", "--force", containerName]).catch(() => undefined);
-      await execFile("docker", ["volume", "rm", "--force", volumeName]).catch(() => undefined);
-      await execFile("docker", ["volume", "rm", "--force", runtimeHomeVolumeName]).catch(() => undefined);
-      await execFile("docker", ["image", "rm", "--force", tag]).catch(() => undefined);
-      await rm(dockerDirectory, { force: true, recursive: true });
-    }
-  }, 60_000);
-
-  it("rejects an ancestor symlink and ignores run-env roots before a restart can reach an external entrypoint", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-daimon-root-link-"));
-    const externalRoot = path.join(directory, "opt", "spawnfile", "root");
-    const protectedEntrypoint = path.join(externalRoot, "entrypoint.sh");
-    const hostileParent = path.join(directory, "compiled");
-    const instanceRoot = path.join(hostileParent, "instance");
-    const runEnvironment = path.join(directory, "run.env");
-    const wrapper = path.join(directory, "daimon-uid-entrypoint.sh");
-    try {
-      await mkdir(externalRoot, { recursive: true });
-      await writeFile(protectedEntrypoint, "trusted root entrypoint\n", "utf8");
-      await symlink(path.join(directory, "opt", "spawnfile", "root"), hostileParent);
-      await writeFile(runEnvironment, "SPAWNFILE_DAIMON_WRITABLE_ROOTS=/opt/spawnfile/root\n", "utf8");
-      const rendered = renderDaimonUidEntrypoint([{
-        ...daimonPlan,
-        instancePaths: {
-          ...daimonPlan.instancePaths,
-          instanceRoot,
-          workspacePath: path.join(instanceRoot, "workspace")
-        }
-      }]);
-      await writeFile(wrapper, rendered, "utf8");
-      for (const _restart of [0, 1]) {
-        const result = spawnSync("bash", ["-c", 'set -a; . "$1"; set +a; exec bash "$2"', "bash", runEnvironment, wrapper], {
-          env: process.env
-        });
-        expect(result.status).not.toBe(0);
-        expect(Buffer.from(result.stderr).toString("utf8")).toContain("symbolic-link");
-      }
-      expect(await readFile(protectedEntrypoint, "utf8")).toBe("trusted root entrypoint\n");
-      expect((await lstat(externalRoot)).isDirectory()).toBe(true);
-    } finally {
-      await rm(directory, { force: true, recursive: true });
-    }
-  });
 });
