@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -20,8 +20,11 @@ import {
   type OrganizationHandoffAuthorityStore
 } from "./organizationHandoffAuthorityStore.js";
 import { readDeploymentRecord, writeDeploymentRecord, type DeploymentRecord } from "./record.js";
+import { resolveHomeReportPath, writeHomeDeployment } from "./homeStore.js";
+import { buildDistributionReport } from "../distribution/index.js";
 
 const temporaryDirectories: string[] = [];
+const originalSpawnfileHome = process.env.SPAWNFILE_HOME;
 
 const createTempDirectory = async (prefix: string): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
@@ -30,6 +33,8 @@ const createTempDirectory = async (prefix: string): Promise<string> => {
 };
 
 afterEach(async () => {
+  if (originalSpawnfileHome === undefined) delete process.env.SPAWNFILE_HOME;
+  else process.env.SPAWNFILE_HOME = originalSpawnfileHome;
   await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
   vi.mocked(initializeOrganizationHandoffAuthorityStore).mockReset();
 });
@@ -165,6 +170,71 @@ const setupCompiledOutput = async (
 };
 
 describe("downDeployment", () => {
+  it("routes an image home record through exact identity teardown and retains its realms", async () => {
+    process.env.SPAWNFILE_HOME = await createTempDirectory("spawnfile-image-down-home-");
+    const compiledOutputDirectory = await createTempDirectory("spawnfile-image-down-project-");
+    const containerId = "a".repeat(64), volumeCalls: string[][] = [];
+    const distribution = buildDistributionReport({ envVariables: [], generatedAt: "2026-08-26T00:00:00.000Z", internalPorts: [], modelAuthMethods: {}, moltnetNetworks: [], organization: { agents: [], project: "image", teams: [] }, persistentMounts: [{ durability: "persistent", id: "realm", kind: "volume", lifecycle: "exclusive-reattach", target: "/realm" }], portMappings: [], publishedPorts: [], resources: [], runtimeInstances: [] });
+    const imageRecord = createRecord({ compile_fingerprint: distribution.compile_fingerprint, name: "image", output_directory: null, source: { digest: null, kind: "image", ref: "org/image:v1" }, units: [{ ...createRecord().units[0]!, container_id: containerId, container_name: "spawnfile-image", id: "image-container" }] });
+    await writeHomeDeployment(imageRecord, distribution);
+    const execFile = async (_file: string, args: string[]) => { volumeCalls.push(args); if (args.includes("inspect")) return { stderr: "", stdout: `${JSON.stringify(containerId)}\n${JSON.stringify("/spawnfile-image")}\n${JSON.stringify("image-123")}\n${JSON.stringify({ "com.spawnfile.deployment": "image", "com.spawnfile.compile_fingerprint": distribution.compile_fingerprint, "com.spawnfile.unit": "image-container" })}\n` }; return { stderr: "", stdout: "" }; };
+    const receipt = await downDeployment({ compiledOutputDirectory, deploymentName: "image", execFile, force: true });
+    expect(receipt.units_stopped).toEqual(["image-container"]);
+    expect(receipt.retained_volumes[0]).toMatch(/^spawnfile-exclusive-realm-/u);
+    expect(volumeCalls.some((args) => args.includes("volume"))).toBe(false);
+    const removed = await downDeployment({ compiledOutputDirectory, deploymentName: "image", execFile, force: true, removeVolumes: true });
+    expect(removed.retained_volumes).toEqual([]);
+    expect(volumeCalls.some((args) => args.includes("volume") && args.includes("rm"))).toBe(true);
+  });
+
+  it("removes image volumes only explicitly and rejects foreign identity", async () => {
+    process.env.SPAWNFILE_HOME = await createTempDirectory("spawnfile-image-down-home-");
+    const compiledOutputDirectory = await createTempDirectory("spawnfile-image-down-project-");
+    const containerId = "b".repeat(64);
+    const distribution = buildDistributionReport({ envVariables: [], generatedAt: "2026-08-26T00:00:00.000Z", internalPorts: [], modelAuthMethods: {}, moltnetNetworks: [], organization: { agents: [], project: "image", teams: [] }, persistentMounts: [{ durability: "persistent", id: "store", kind: "volume", target: "/store" }], portMappings: [], publishedPorts: [], resources: [], runtimeInstances: [] });
+    const imageRecord = createRecord({ compile_fingerprint: distribution.compile_fingerprint, name: "image", output_directory: null, source: { digest: null, kind: "image", ref: "org/image:v1" }, units: [{ ...createRecord().units[0]!, container_id: containerId, container_name: "spawnfile-image", id: "image-container" }] });
+    await writeHomeDeployment(imageRecord, distribution);
+    const foreign = async () => ({ stderr: "", stdout: `${JSON.stringify(containerId)}\n${JSON.stringify("/foreign")}\n${JSON.stringify("image-123")}\n${JSON.stringify({})}\n` });
+    await expect(downDeployment({ compiledOutputDirectory, deploymentName: "image", execFile: foreign, force: true, removeVolumes: true })).rejects.toThrow("does not match");
+  });
+
+  it("rejects missing and mismatched image identities before mutation", async () => {
+    process.env.SPAWNFILE_HOME = await createTempDirectory("spawnfile-image-down-home-");
+    const compiledOutputDirectory = await createTempDirectory("spawnfile-image-down-project-");
+    const distribution = buildDistributionReport({ envVariables: [], generatedAt: "2026-08-26T00:00:00.000Z", internalPorts: [], modelAuthMethods: {}, moltnetNetworks: [], organization: { agents: [], project: "image", teams: [] }, persistentMounts: [], portMappings: [], publishedPorts: [], resources: [], runtimeInstances: [] });
+    const containerId = "f".repeat(64), calls: string[][] = [];
+    const base = createRecord({ compile_fingerprint: distribution.compile_fingerprint, name: "image", output_directory: null, source: { digest: null, kind: "image", ref: "org/image:v1" }, units: [{ ...createRecord().units[0]!, container_id: containerId, container_name: "spawnfile-image", id: "image-container" }] });
+    await writeHomeDeployment({ ...base, units: [{ ...base.units[0]!, image_id: null }] }, distribution);
+    const execFile = async (_file: string, args: string[]) => { calls.push(args); return { stderr: "", stdout: `${JSON.stringify(containerId)}\n${JSON.stringify("/spawnfile-image")}\n${JSON.stringify("foreign-image")}\n${JSON.stringify({ "com.spawnfile.deployment": "image", "com.spawnfile.compile_fingerprint": distribution.compile_fingerprint, "com.spawnfile.unit": "image-container" })}\n` }; };
+    await expect(downDeployment({ compiledOutputDirectory, deploymentName: "image", execFile, force: true, removeVolumes: true })).rejects.toThrow("image identity");
+    expect(calls).toEqual([]);
+    await writeHomeDeployment(base, distribution);
+    await expect(downDeployment({ compiledOutputDirectory, deploymentName: "image", execFile, force: true, removeVolumes: true })).rejects.toThrow("does not match");
+    expect(calls).toHaveLength(1);
+    expect(calls.some((args) => args.includes("rm"))).toBe(false);
+  });
+
+  it("fails closed when project and image records are both canonical candidates", async () => {
+    process.env.SPAWNFILE_HOME = await createTempDirectory("spawnfile-image-down-home-");
+    const compiledOutputDirectory = await setupCompiledOutput({ export_index: exported });
+    const imageRecord = createRecord({ output_directory: null, source: { digest: null, kind: "image", ref: "org/image:v1" } });
+    await writeHomeDeployment(imageRecord, buildDistributionReport({ envVariables: [], generatedAt: "2026-08-26T00:00:00.000Z", internalPorts: [], modelAuthMethods: {}, moltnetNetworks: [], organization: { agents: [], project: "image", teams: [] }, persistentMounts: [], portMappings: [], publishedPorts: [], resources: [], runtimeInstances: [] }));
+    await expect(downDeployment({ compiledOutputDirectory, deploymentName: "default", execFile: createFakeExecFile(), force: true })).rejects.toThrow("ambiguous");
+  });
+
+  it("rejects missing records and a tampered cached image report before Docker mutation", async () => {
+    process.env.SPAWNFILE_HOME = await createTempDirectory("spawnfile-image-down-home-");
+    const compiledOutputDirectory = await createTempDirectory("spawnfile-image-down-project-");
+    const execFile = vi.fn(async () => ({ stderr: "", stdout: "" }));
+    await expect(downDeployment({ compiledOutputDirectory, deploymentName: "missing", execFile, force: true })).rejects.toThrow("No recorded deployment");
+    const distribution = buildDistributionReport({ envVariables: [], generatedAt: "2026-08-26T00:00:00.000Z", internalPorts: [], modelAuthMethods: {}, moltnetNetworks: [], organization: { agents: [], project: "image", teams: [] }, persistentMounts: [], portMappings: [], publishedPorts: [], resources: [], runtimeInstances: [] });
+    const containerId = "e".repeat(64);
+    await writeHomeDeployment(createRecord({ compile_fingerprint: distribution.compile_fingerprint, name: "image", output_directory: null, source: { digest: null, kind: "image", ref: "org/image:v1" }, units: [{ ...createRecord().units[0]!, container_id: containerId, container_name: "spawnfile-image", id: "image-container" }] }), distribution);
+    await writeFile(resolveHomeReportPath("image"), "{}\n");
+    execFile.mockResolvedValueOnce({ stderr: "", stdout: `${JSON.stringify(containerId)}\n${JSON.stringify("/spawnfile-image")}\n${JSON.stringify("image-123")}\n${JSON.stringify({ "com.spawnfile.deployment": "image", "com.spawnfile.compile_fingerprint": distribution.compile_fingerprint, "com.spawnfile.unit": "image-container" })}\n` });
+    await expect(downDeployment({ compiledOutputDirectory, deploymentName: "image", execFile, force: true })).rejects.toThrow();
+    expect(execFile).toHaveBeenCalledTimes(1);
+  });
   it("leaves ordinary records on the existing down path without initializing authority", async () => {
     const compiledOutputDirectory = await setupCompiledOutput({ export_index: exported });
 

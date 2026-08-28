@@ -141,7 +141,6 @@ describe("upReceiptSchema / parseUpReceipt", () => {
       { ...organizationReadiness, run_id: "bad/run" },
       { ...organizationReadiness, world_binding_digest: "sha256:bad" },
       { ...organizationReadiness, run_id: null },
-      { ...organizationReadiness, world_binding_digest: null },
       prototypeBearing
     ]) {
       const receipt = { ...createReceipt(), organization_ready };

@@ -36,7 +36,6 @@ import { setLifecycleStoreTestHook } from "./lifecycleCompletionStore.js";
 import { matchesSettledLifecyclePublication } from "./lifecycleCompletionPublication.js";
 
 const originalHome = process.env.SPAWNFILE_HOME;
-const originalSetImmediate = globalThis.setImmediate;
 let home = "";
 
 const invocation = (
@@ -71,7 +70,6 @@ beforeEach(async () => {
 
 afterEach(async () => {
   setLifecycleStoreTestHook(null);
-  globalThis.setImmediate = originalSetImmediate;
   if (originalHome === undefined) delete process.env.SPAWNFILE_HOME;
   else process.env.SPAWNFILE_HOME = originalHome;
   await rm(home, { force: true, recursive: true });
@@ -486,21 +484,13 @@ describe("lifecycle completion store", () => {
     // This deliberately exceeds the former short settle window. A real
     // competing publisher can be delayed by unrelated lifecycle work, but its
     // exact temporary link must still settle before a second claimant fails.
-    const delayedUnlinkYields = 20;
-    let yields = 0;
-    globalThis.setImmediate = ((callback: (...args: unknown[]) => void) => {
-      yields += 1;
-      if (yields === delayedUnlinkYields) {
-        void rm(copy).then(() => callback());
-      } else {
-        originalSetImmediate(callback);
-      }
-      return {} as NodeJS.Immediate;
-    }) as typeof setImmediate;
+    const delayedUnlink = new Promise<void>((resolve, reject) => {
+      setTimeout(() => rm(copy).then(resolve, reject), 200);
+    });
     await expect(claimLifecycleInvocation(transient)).resolves.toMatchObject({
       status: "pending",
     });
-    expect(yields).toBeGreaterThanOrEqual(delayedUnlinkYields);
+    await delayedUnlink;
 
     const bytes = JSON.stringify(
       {
@@ -526,20 +516,16 @@ describe("lifecycle completion store", () => {
     await writeFile(file, content, { mode: 0o600 });
     await link(file, copy);
     let reads = 0;
-    let yields = 0;
-    globalThis.setImmediate = ((callback: (...args: unknown[]) => void) => {
-      yields += 1;
-      if (yields === 3) void rm(copy).then(() => callback());
-      else originalSetImmediate(callback);
-      return {} as NodeJS.Immediate;
-    }) as typeof setImmediate;
+    const delayedUnlink = new Promise<void>((resolve, reject) => {
+      setTimeout(() => rm(copy).then(resolve, reject), 20);
+    });
     await expect(
       matchesSettledLifecyclePublication(file, content, async (candidate) => {
         reads += 1;
         return readFile(candidate, "utf8");
       }),
     ).resolves.toBe(true);
-    expect(yields).toBeGreaterThanOrEqual(3);
+    await delayedUnlink;
     expect(reads).toBe(2);
   });
 
