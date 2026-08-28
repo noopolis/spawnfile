@@ -7,6 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 
+import { verifyNativeHelperArtifacts } from "./native-helper-artifacts.mjs";
+
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(scriptDirectory, "..");
 const packageManifestPath = path.join(packageRoot, "package.json");
@@ -139,6 +141,7 @@ const assertInstalledClosure = async (installRoot, manifest, tarballPath) => {
     installedRoot, "dist", "evidenceExportHelper", "recipe.js",
   )).href);
   const helper = await helperRecipe.loadLocalEvidenceHelperRecipe();
+  await verifyNativeHelperArtifacts(path.join(installedRoot, "dist", "deployment", "native"));
   const helperSource = await readFile(helperProgram, "utf8");
   if (!helperSource.startsWith("#!/usr/local/bin/node")
     || !(helper.context instanceof Uint8Array)
@@ -150,7 +153,8 @@ const assertInstalledClosure = async (installRoot, manifest, tarballPath) => {
     "dist/compiler/moltnetBinaries.js",
   )).href);
   const expectedMoltnetExports = [
-    "MOLTNET_BINARY_NAMES", "MOLTNET_BIN_DIRECTORY", "MOLTNET_RELEASE_DIR_ENV",
+    "MOLTNET_ALLOW_LOCAL_E2E_ENV", "MOLTNET_BINARY_NAMES", "MOLTNET_BIN_DIRECTORY",
+    "MOLTNET_LOCAL_RELEASE_DIR_ENV", "MOLTNET_RELEASE_DIR_ENV",
     "MOLTNET_RELEASE_IDENTITY_VERSION", "MOLTNET_RELEASE_STAMP_VERSION",
     "resolveMoltnetCliCommand", "stageMoltnetBinaries",
   ];
@@ -234,6 +238,12 @@ const main = async () => {
     if (!entries.has("dist/evidenceExportHelper/helperProgram.mjs")
       || !entries.has("dist/evidenceExportHelper/recipe.js")) {
       fail("packed tarball omits the evidence helper runtime assets");
+    }
+    for (const architecture of ["x64", "arm64"]) {
+      if (!entries.has(`dist/deployment/native/rename-noreplace-${architecture}`)
+        || !entries.has(`dist/deployment/native/rename-noreplace-${architecture}.provenance.json`)) {
+        fail(`packed tarball omits the Linux ${architecture} rename-noreplace helper or provenance`);
+      }
     }
     if ([...entries].some((entry) => /\.test-helper\.(?:js|d\.ts)$/u.test(entry))) {
       fail("packed tarball leaked a test helper");
