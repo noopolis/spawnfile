@@ -41,6 +41,7 @@ const evidence: OrganizationReadinessEvidence = {
     mode: "managed",
     nodes: [{
       configPath: "/var/lib/spawnfile/moltnet/nodes/pitch-alpha.json",
+      receiptPath: "/run/spawnfile/moltnet-readiness/pitch-alpha.json",
       memberId: "alpha",
       nodeId: "agent:alpha",
       sha256: digest(config)
@@ -91,6 +92,7 @@ const inspection = (): DockerUnitInspection => ({
 });
 
 const probe = () => ({
+  attachmentReceipts: new Map([[evidence.networks[0]!.nodes[0]!.receiptPath, JSON.stringify({ version: "moltnet.node-readiness.v1", attachments: [{ network_id: "pitch", agent_id: "alpha" }] })]]),
   configs: new Map([[evidence.networks[0]!.nodes[0]!.configPath, config]]),
   networks: [{ healthOk: true, id: "pitch" }],
   worldBindings: bindings
@@ -119,6 +121,15 @@ const dockerRecord = (): DeploymentRecord => ({
 });
 
 describe("organization readiness reconciliation", () => {
+  it("requires an exact Daimon engine receipt for no-world readiness", () => {
+    const noWorld = { ...evidence, worldBindings: null, daimon: { receiptPath: "/state/readiness.json", agents: [{ agentId: "agent:alpha", engine: "codex" }] } };
+    const baseProbe = { attachmentReceipts: probe().attachmentReceipts, configs: probe().configs, networks: probe().networks, worldBindings: null };
+    const valid = JSON.stringify({ version: "noopolis.daimon.readiness-receipt.v1", agents: [{ agent_id: "agent:alpha", engine: "codex" }] });
+    expect(reconcileOrganizationReadiness({ evidence: noWorld, inspection: inspection(), record, probe: { ...baseProbe, daimonReceipt: valid } }).state).toBe("ready");
+    for (const daimonReceipt of [null, "{", JSON.stringify({ version: "bad", agents: [] }), JSON.stringify({ version: "noopolis.daimon.readiness-receipt.v1", agents: [{}] }), JSON.stringify({ version: "noopolis.daimon.readiness-receipt.v1", agents: [{ agent_id: "agent:alpha", engine: "grok" }] })]) {
+      expect(reconcileOrganizationReadiness({ evidence: noWorld, inspection: inspection(), record, probe: { ...baseProbe, daimonReceipt } }).code).toBe("topology_mismatch");
+    }
+  });
   it("reconciles a healthy never-restarted real-shaped Docker inspection as ready", async () => {
     const labels = {
       [dockerDeploymentLabelKeys.compileFingerprint]: evidence.compileFingerprint,
@@ -179,6 +190,8 @@ describe("organization readiness reconciliation", () => {
       { label: "unhealthy Moltnet", inspection: inspection(), probe: { ...probe(), networks: [{ ...probe().networks[0]!, healthOk: false }] }, state: "failed" },
       { label: "wrong network", inspection: inspection(), probe: { ...probe(), networks: [{ id: "wrong", healthOk: true }] }, state: "failed" },
       { label: "malformed config", inspection: inspection(), probe: { ...probe(), configs: new Map() }, state: "failed" },
+      { label: "missing live attachment receipt", inspection: inspection(), probe: { ...probe(), attachmentReceipts: new Map() }, state: "failed" },
+      { label: "wrong authenticated attachment", inspection: inspection(), probe: { ...probe(), attachmentReceipts: new Map([[evidence.networks[0]!.nodes[0]!.receiptPath, JSON.stringify({ version: "moltnet.node-readiness.v1", attachments: [{ network_id: "pitch", agent_id: "bravo" }] })]]) }, state: "failed" },
       { label: "wrong-version config", inspection: inspection(), probe: { ...probe(), configs: new Map([[evidence.networks[0]!.nodes[0]!.configPath, JSON.stringify({ version: "moltnet.node.v0" })]]) }, state: "failed" },
       { label: "wrong binding", inspection: inspection(), probe: { ...probe(), worldBindings: bindings.replace("alpha", "bravo") }, state: "failed" },
       { label: "duplicate binding", inspection: inspection(), probe: { ...probe(), worldBindings: bindings.replace("}],\"schema\"", "},{\"member\":{\"id\":\"alpha\"}}],\"schema\"") }, state: "failed" }

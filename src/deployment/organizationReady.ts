@@ -49,7 +49,9 @@ interface ExactOrganizationReadinessInput {
 }
 
 export interface OrganizationReadinessProbeData {
+  readonly daimonReceipt?: string | null;
   readonly configs: ReadonlyMap<string, string>;
+  readonly attachmentReceipts?: ReadonlyMap<string, string>;
   readonly networks: readonly {
     readonly healthOk: boolean;
     readonly id: string;
@@ -109,8 +111,8 @@ const organizationReadinessObjectSchema = z.object({
   if (!validStateCode(result.state, result.code)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["state"], message: "invalid state/code combination" });
   }
-  if (result.state === "ready" && (result.run_id === null || result.world_binding_digest === null)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["state"], message: "ready requires run_id and world_binding_digest" });
+  if (result.state === "ready" && result.run_id === null) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["state"], message: "ready requires run_id" });
   }
 });
 
@@ -215,6 +217,7 @@ const validBindings = (
   evidence: OrganizationReadinessEvidence,
   content: string | null
 ): boolean => {
+  if (evidence.worldBindings === null) return content === null;
   if (!content || !evidence.worldBindings || hash(content) !== evidence.worldBindings.digest) return false;
   try {
     const body = exact(JSON.parse(content), ["schema", "bindings"]);
@@ -235,12 +238,32 @@ const validBindings = (
   }
 };
 
+const validDaimon = (evidence: OrganizationReadinessEvidence, content: string | null | undefined): boolean => {
+  if (evidence.daimon == null) return content == null;
+  try {
+    const value = exact(JSON.parse(content ?? ""), ["version", "agents"]); if (value?.version !== "noopolis.daimon.readiness-receipt.v1" || !Array.isArray(value.agents)) return false;
+    const agents = value.agents.map((entry) => { const item = exact(entry, ["agent_id", "engine"]); return item && typeof item.agent_id === "string" && typeof item.engine === "string" ? [item.agent_id, item.engine] : null; });
+    return agents.every(Boolean) && JSON.stringify(agents) === JSON.stringify(evidence.daimon.agents.map((agent) => [agent.agentId, agent.engine]));
+  } catch { return false; }
+};
+
+const validAttachmentReceipts = (evidence: OrganizationReadinessEvidence, receipts: ReadonlyMap<string, string> | undefined): boolean => {
+  const expected = evidence.networks.flatMap((network) => network.nodes.map((node) => ({ networkId: network.id, memberId: node.memberId, path: node.receiptPath })));
+  if (!receipts || receipts.size !== expected.length) return expected.length === 0;
+  return expected.every((entry) => {
+    try {
+      const body = exact(JSON.parse(receipts.get(entry.path) ?? ""), ["version", "attachments"]); if (body?.version !== "moltnet.node-readiness.v1" || !Array.isArray(body.attachments)) return false;
+      return body.attachments.length === 1 && body.attachments.every((value) => { const attachment = exact(value, ["network_id", "agent_id"]); return attachment?.network_id === entry.networkId && attachment.agent_id === entry.memberId; });
+    } catch { return false; }
+  });
+};
+
 export const reconcileOrganizationReadiness = (
   input: ReconcileOrganizationReadinessInput
 ): OrganizationReadiness => {
   const { evidence, inspection, record } = input;
   if (evidence.hasExternalMoltnet) return correlation(evidence, record, "pending", "external_moltnet");
-  if (!evidence.worldBindings || !record.runId) return correlation(evidence, record, "pending", "compiled_evidence_missing");
+  if (!record.runId) return correlation(evidence, record, "pending", "compiled_evidence_missing");
   if (record.unitCount !== 1 || !inspection || inspection.running !== true || inspection.exists !== true) {
     return correlation(evidence, record, "pending", "unit_unavailable");
   }
@@ -253,7 +276,7 @@ export const reconcileOrganizationReadiness = (
     || identity.unit !== record.unitId || identity.version !== evidence.compileVersion) {
     return correlation(evidence, record, "failed", "identity_mismatch");
   }
-  if (!input.probe || input.probe.networks.length !== evidence.networks.length
+  if (!input.probe || !validDaimon(evidence, input.probe.daimonReceipt) || !validAttachmentReceipts(evidence, input.probe.attachmentReceipts) || input.probe.networks.length !== evidence.networks.length
     || !evidence.networks.every((network) => {
       const live = input.probe?.networks.find((candidate) => candidate.id === network.id);
       return live?.healthOk === true;
