@@ -18,10 +18,18 @@ import { SpawnfileError } from "../shared/index.js";
 
 import {
   deriveDeploymentName,
-  deriveVolumeName,
+  derivePersistentMountVolumeName,
   renderEnvFileContent,
   resolveImageEnvironment
 } from "./consumeImageSupport.js";
+import {
+  acquireExclusiveVolumeReservations,
+  assertCandidateContainerReady,
+  assertContainerStopped,
+  inspectContainerSnapshot,
+  restorePreviousContainer,
+  rollbackCandidateContainer
+} from "./consumeImageLifecycle.js";
 import { createConsumerDockerRunner } from "./dockerRunner.js";
 import type { DockerCommandRunner } from "./dockerRunner.js";
 import { extractImageReport, resolveDockerBaseArgs } from "./extractImage.js";
@@ -84,18 +92,6 @@ const resolveRegistryDigest = async (
     return match ?? null;
   } catch {
     return null;
-  }
-};
-
-const containerExists = async (
-  runDocker: DockerCommandRunner,
-  containerName: string
-): Promise<boolean> => {
-  try {
-    await runDocker(["container", "inspect", containerName]);
-    return true;
-  } catch {
-    return false;
   }
 };
 
@@ -217,6 +213,7 @@ const consumeImageUpLocked = async (
   // port for two containers at once. There is a brief restart gap, unavoidable
   // when reusing host ports without a proxy.
   const backupName = `${containerName}-previous-${Date.now().toString(36)}`;
+  let volumeReservation: Awaited<ReturnType<typeof acquireExclusiveVolumeReservations>> | undefined;
   try {
     await writeFile(envFilePath, renderEnvFileContent(env), "utf8");
 
@@ -225,21 +222,34 @@ const consumeImageUpLocked = async (
     // config is already baked into the image; this only resolves the credential
     // mounts. Doing it first guarantees an unusable import fails while the live
     // container is still untouched, never mid-swap.
-    const authMountArgs: string[] =
-      options.authProfile && availableImports.length > 0
-        ? (
-            await prepareImageRuntimeAuthMounts({
-              authProfile: options.authProfile,
-              report,
-              tempRoot: workDir
-            })
-          ).mountArgs
-        : [];
+    const authMountArgs = (
+      await prepareImageRuntimeAuthMounts({
+        authProfile: options.authProfile ?? null,
+        report,
+        tempRoot: workDir
+      })
+    ).mountArgs;
 
-    const liveExists = await containerExists(runDocker, containerName);
-    if (liveExists) {
+    volumeReservation = await acquireExclusiveVolumeReservations(
+      report, deploymentName, containerName, imageRef, runDocker
+    );
+    const previousContainer = await inspectContainerSnapshot(runDocker, containerName);
+    if (previousContainer !== null) {
       await runDocker(["rename", containerName, backupName]);
-      await runDocker(["stop", backupName]).catch(() => undefined);
+      try {
+        await runDocker(["stop", backupName]);
+        await assertContainerStopped(runDocker, backupName, previousContainer.id);
+      } catch (error) {
+        try {
+          await restorePreviousContainer(runDocker, previousContainer, backupName, containerName);
+        } catch {
+          throw new SpawnfileError(
+            "runtime_error",
+            "Prior deployment stop failed and its original state could not be restored"
+          );
+        }
+        throw error;
+      }
     }
 
     const runArgs = ["run", "-d", "--name", containerName, "--env-file", envFilePath];
@@ -247,7 +257,7 @@ const consumeImageUpLocked = async (
       runArgs.push("-p", `${port}:${port}`);
     }
     for (const mount of report.persistent_mounts) {
-      runArgs.push("-v", `${deriveVolumeName(deploymentName, mount.id)}:${mount.target}`);
+      runArgs.push("-v", `${derivePersistentMountVolumeName(deploymentName, mount)}:${mount.target}`);
     }
     runArgs.push(...authMountArgs);
     const labels = createDockerDeploymentLabels({
@@ -262,64 +272,68 @@ const consumeImageUpLocked = async (
     }
     runArgs.push(imageRef);
 
-    let runOutput: string;
+    let candidateId: string | undefined;
     try {
-      runOutput = (await runDocker(runArgs)).toString("utf8").trim();
+      const runOutput = (await runDocker(runArgs)).toString("utf8").trim();
+      const observedId = runOutput.split("\n").pop()?.trim();
+      if (!observedId || !/^[a-f0-9]{64}$/u.test(observedId)) {
+        throw new SpawnfileError("runtime_error", "Candidate container returned invalid identity");
+      }
+      candidateId = observedId;
+      await assertCandidateContainerReady(runDocker, candidateId, containerName);
+      const imageId = await resolveLocalImageId(imageRef, runDocker);
+      const digest = await resolveRegistryDigest(imageRef, runDocker);
+
+      const record: DeploymentRecord = {
+        auth_profile: options.authProfileName ?? null,
+        compile_fingerprint: inspection.compileFingerprint,
+        created_at: new Date().toISOString(),
+        ...(options.envFilePath ? { env_file: path.resolve(options.envFilePath) } : {}),
+        manager: "docker",
+        name: deploymentName,
+        output_directory: null,
+        source: { digest, kind: "image", ref: imageRef },
+        target,
+        units: [
+          {
+            container_id: candidateId,
+            container_name: containerName,
+            contains: buildContainsEntries(report),
+            id: unitIdFor(deploymentName),
+            image_id: imageId,
+            image_tag: imageRef,
+            kind: "container",
+            runtime_instances: report.runtime_instances.map((instance) => instance.id).sort()
+          }
+        ],
+        version: "spawnfile.deployment.v2"
+      };
+
+      const written = await writeHomeDeployment(record, report);
+      if (previousContainer !== null) {
+        await runDocker(["rm", "-f", previousContainer.id]).catch(() => undefined);
+      }
+      return {
+        containerName,
+        deploymentName,
+        imageRef,
+        previous,
+        record,
+        recordPath: written.recordPath
+      };
     } catch (error) {
-      // The new container failed to start; remove the failed attempt and restore
-      // the previous deployment so a failed redeploy never loses the live one.
-      await runDocker(["rm", "-f", containerName]).catch(() => undefined);
-      if (liveExists) {
-        await runDocker(["rename", backupName, containerName]).catch(() => undefined);
-        await runDocker(["start", containerName]).catch(() => undefined);
+      try {
+        await rollbackCandidateContainer(
+          runDocker, candidateId, containerName, previousContainer, backupName
+        );
+      } catch (rollbackError) {
+        throw rollbackError;
       }
       throw error;
     }
-
-    // The new container is up — discard the previous one.
-    if (liveExists) {
-      await runDocker(["rm", "-f", backupName]).catch(() => undefined);
-    }
-    const containerId = runOutput.split("\n").pop()?.trim() || null;
-    const imageId = await resolveLocalImageId(imageRef, runDocker);
-    const digest = await resolveRegistryDigest(imageRef, runDocker);
-
-    const record: DeploymentRecord = {
-      auth_profile: options.authProfileName ?? null,
-      compile_fingerprint: inspection.compileFingerprint,
-      created_at: new Date().toISOString(),
-      ...(options.envFilePath ? { env_file: path.resolve(options.envFilePath) } : {}),
-      manager: "docker",
-      name: deploymentName,
-      output_directory: null,
-      source: { digest, kind: "image", ref: imageRef },
-      target,
-      units: [
-        {
-          container_id: containerId,
-          container_name: containerName,
-          contains: buildContainsEntries(report),
-          id: unitIdFor(deploymentName),
-          image_id: imageId,
-          image_tag: imageRef,
-          kind: "container",
-          runtime_instances: report.runtime_instances.map((instance) => instance.id).sort()
-        }
-      ],
-      version: "spawnfile.deployment.v2"
-    };
-
-    const written = await writeHomeDeployment(record, report);
-    return {
-      containerName,
-      deploymentName,
-      imageRef,
-      previous,
-      record,
-      recordPath: written.recordPath
-    };
   } finally {
-    await rm(workDir, { force: true, recursive: true }).catch(() => undefined);
+    try { await volumeReservation?.release(); }
+    finally { await rm(workDir, { force: true, recursive: true }).catch(() => undefined); }
   }
 };
 

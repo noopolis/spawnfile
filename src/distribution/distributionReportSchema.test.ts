@@ -73,6 +73,17 @@ describe("parseDistributionReport", () => {
     expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/);
   });
 
+  it("accepts only the declared exclusive reattach lifecycle", () => {
+    const report = validReport();
+    report.persistent_mounts = [{
+      durability: "persistent", id: "realm", kind: "volume",
+      lifecycle: "exclusive-reattach", target: "/var/lib/example/realm"
+    }];
+    expect(parseDistributionReport(report).persistent_mounts[0]?.lifecycle).toBe("exclusive-reattach");
+    (report.persistent_mounts[0] as { lifecycle?: string }).lifecycle = "clone";
+    expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/u);
+  });
+
   it("rejects a runtime home_path containing '..'", () => {
     const report = validReport();
     report.runtime_instances = [
@@ -134,5 +145,41 @@ describe("parseDistributionReport", () => {
       }
     ];
     expect(() => parseDistributionReport(report)).not.toThrow();
+  });
+
+  it("accepts current engine disclosures and workspace resource kinds", () => {
+    const report = validReport();
+    report.runtime_instances = [{
+      config_path: "/var/lib/spawnfile/daimon/config.json",
+      engine_by_node_id: { "agent:reviewer": "grok", "agent:writer": "codex" },
+      home_path: "/var/lib/spawnfile/daimon/home",
+      id: "daimon-organization",
+      internal_port: null,
+      model_auth_methods: {},
+      model_secrets_required: [],
+      node_ids: ["agent:reviewer", "agent:writer"],
+      published_port: null,
+      runtime: "daimon",
+      workspace_path: "/var/lib/spawnfile/daimon/workspace"
+    }];
+    report.resources = [{
+      id: "workspace-seed", kind: "bundle", link_path: "/workspace/seed",
+      mode: "readonly", mount: "./seed", sharing: "per_agent"
+    }];
+    expect(parseDistributionReport(report)).toEqual(report);
+  });
+
+  it("rejects unknown engine and resource variants", () => {
+    const report = validReport();
+    report.runtime_instances = [{
+      config_path: "/config", engine_by_node_id: { "agent:x": "unknown-engine" as never },
+      home_path: "/home", id: "daimon-organization", internal_port: null,
+      model_auth_methods: {}, model_secrets_required: [], node_ids: ["agent:x"],
+      published_port: null, runtime: "daimon", workspace_path: "/workspace"
+    }];
+    expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/u);
+    delete report.runtime_instances[0]!.engine_by_node_id;
+    report.resources = [{ id: "x", kind: "device" as never, link_path: "/x", mode: "readonly", mount: "./x", sharing: "per_agent" }];
+    expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/u);
   });
 });

@@ -81,6 +81,30 @@ describe("extractImageReport", () => {
     expect(inspection.report.organization.project).toBe("org");
   });
 
+  it("round-trips the current producer engine map and broker resources through the embedded image report", async () => {
+    const current = buildDistributionReport({
+      envVariables: [], generatedAt: "2026-08-26T00:00:00.000Z", internalPorts: [],
+      modelAuthMethods: {}, moltnetNetworks: [],
+      organization: { agents: [{ id: "agent:writer", name: "writer", runtime: "daimon", teams: [] }], project: "org", teams: [] },
+      persistentMounts: [{ durability: "persistent", id: "grok-realm", kind: "volume", lifecycle: "exclusive-reattach", target: "/var/lib/daimon-engine-broker/realm" }],
+      portMappings: [], publishedPorts: [],
+      resources: [{ id: "workspace-seed", kind: "bundle", link_path: "/workspace/seed", mode: "readonly", mount: "./seed", sharing: "per_agent" }],
+      runtimeInstances: [{ config_path: "/etc/daimon/config.json", engine_by_node_id: { "agent:writer": "grok" }, home_path: "/var/lib/daimon", id: "daimon-organization", internal_port: null, model_auth_methods: {}, model_secrets_required: [], node_ids: ["agent:writer"], published_port: null, runtime: "daimon", workspace_path: "/workspace" }]
+    });
+    const currentLabels = {
+      "com.spawnfile.compile_fingerprint": current.compile_fingerprint,
+      "com.spawnfile.image_contract": "spawnfile.image.v1",
+      "com.spawnfile.project": "org",
+      "com.spawnfile.report": DISTRIBUTION_REPORT_IMAGE_PATH
+    };
+    const inspection = await extractImageReport("you/org:v3", {
+      runDocker: runnerFor(currentLabels, JSON.stringify(current))
+    });
+    expect(inspection.report.runtime_instances[0]?.engine_by_node_id).toEqual({ "agent:writer": "grok" });
+    expect(inspection.report.resources[0]?.kind).toBe("bundle");
+    expect(inspection.report.persistent_mounts[0]?.lifecycle).toBe("exclusive-reattach");
+  });
+
   it("pulls the image when requested", async () => {
     const calls: string[][] = [];
     await extractImageReport("you/org:1.0.0", {
