@@ -43,6 +43,11 @@ jobs:
       - name: Audit runtime dependencies
         run: npm audit --omit=dev --audit-level=high
 
+      - name: Enable cross-architecture helper builds
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: amd64,arm64
+
       - name: Verify tag matches package version
         shell: bash
         run: |
@@ -61,8 +66,32 @@ jobs:
             exit 1
           fi
 
+      - name: Rebuild dual-architecture native helpers
+        run: npm run build:native
+
       - name: Build
         run: npm run build
+
+      - name: Verify Git-free offline linux/amd64 source build
+        run: npm run test:source-provenance-docker
+
+      - name: Check out Moltnet provenance fixture
+        uses: actions/checkout@v4
+        with:
+          repository: noopolis/moltnet
+          path: moltnet-fixture
+
+      - name: Verify Git-free offline linux/amd64 Moltnet build
+        env:
+          SPAWNFILE_TEST_MOLTNET_SOURCE: ${{ github.workspace }}/moltnet-fixture
+        run: npm run test:moltnet-source-provenance-docker
+
+      - name: Remove Moltnet provenance fixture
+        if: always()
+        run: rm -rf -- moltnet-fixture
+
+      - name: Verify native helper syscalls
+        run: node --test scripts/native-helper-artifacts.test.mjs scripts/native-helper-integration.test.mjs
 
       - name: Verify package contents
         run: npm run verify:package-closure
