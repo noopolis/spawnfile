@@ -9,8 +9,8 @@ continues to compile the organization graph, workspaces, Moltnet topology,
 schedules, credentials and deployment; Daimon owns every agent turn, engine
 process, engine authentication home, MCP lifecycle and process cleanup.
 
-This is an ecosystem migration only. No Clank & Slop source, terminology,
-personas, fixtures or publication behavior enters Spawnfile or Daimon.
+This is an ecosystem migration only. No product-specific source, terminology,
+personas, fixtures, or publication behavior enters the platform packages.
 
 ## Contract fixed by the current Daimon release
 
