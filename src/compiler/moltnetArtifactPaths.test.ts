@@ -26,10 +26,10 @@ describe("createPersistentVolumeName literal formula", () => {
     expect(name).toContain("-run-alpha-");
   });
 
-  it("(c) an explicit persistence.name wins verbatim, even over a runId", () => {
+  it("(c) scopes an explicit persistence.name when a deployment run id is present", () => {
     const name = createPersistentVolumeName(PLAN_ROOT, MOUNT_ID, "my-explicit-volume", "run-alpha");
 
-    expect(name).toBe("my-explicit-volume");
+    expect(name).toMatch(/^spawnfile-team-my-explicit-volume-run-alpha-[0-9a-f]{8}$/u);
   });
 
   it("(d) two different runIds produce two different volume names (run isolation)", () => {

@@ -25,6 +25,7 @@ import {
   stageRuntimePackageOverrides,
   type RuntimePackageOverrideRequest
 } from "./containerPackageOverrides.js";
+import { stageWorkspaceBundles } from "./workspaceBundleArtifacts.js";
 import { augmentNodeReports } from "./compileProjectReports.js";
 import {
   enforcePolicy,
@@ -61,6 +62,8 @@ export type {
 export interface CompileProjectOptions {
   clean?: boolean;
   containerArchitecture?: MoltnetTargetArchitecture;
+  /** Stable deployment identity for exclusive credential-realm reattachment. */
+  deploymentLineage?: string;
   outputDirectory?: string;
   /** Compile-time-only local overrides for runtime install npm packages
    * (see src/compiler/containerPackageOverrides.ts). Only opt-in
@@ -321,10 +324,13 @@ export const compileProject = async (
     outputDirectory,
     options.runtimePackageOverrides
   );
+  const hasWorkspaceBundles = await stageWorkspaceBundles(outputDirectory, plan);
   const generatedAt = new Date().toISOString();
   const containerArtifacts = await createContainerArtifacts(plan, compiledNodes, {
+    deploymentLineage: options.deploymentLineage,
     generatedAt,
     hasStagedMoltnetBinaries: Boolean(moltnetRelease),
+    hasWorkspaceBundles,
     moltnet: moltnetArtifacts,
     moltnetRelease,
     runtimePackageOverrides: resolvedRuntimePackageOverrides,

@@ -7,6 +7,7 @@ import {
   assertOpaqueDaimonCredentialsHaveNoUserNamespace,
   pinOpaqueDaimonDockerEndpoint
 } from "./runProjectDockerDaimonGuards.js";
+import { withExclusiveVolumeReservations } from "./runProjectDockerReservation.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -21,6 +22,8 @@ export interface DockerRunInvocation {
   dockerContext?: string | null;
   dockerHost?: string | null;
   envFilePath: string;
+  /** Host-stable credential realms that must have at most one live deployment. */
+  exclusiveReattachVolumes?: readonly string[];
   imageTag: string;
   onDetachedStarted?: (result: DockerRunResult) => Promise<void>;
   /** Ephemeral guard; never serialized into reports, records, or labels. */
@@ -332,25 +335,26 @@ const runPreparedDockerContainer = (
     });
   });
 
-const runDockerContainerPrepared = (
+const runDockerContainerPrepared = async (
   invocation: PinnedOpaqueDaimonInvocation
 ): Promise<DockerRunResult | void> => {
-  if (!invocation.dockerContext || collectBindMountSources(invocation.args).length === 0) {
-    if (invocation.opaqueDaimonCredentials && !invocation.dockerEndpointPinned) {
-      return assertOpaqueDaimonCredentialsHaveNoUserNamespace(invocation).then(() =>
-        runPreparedDockerContainer({
-          cleanup: async () => undefined,
-          invocation
-        })
-      );
+  const run = async (): Promise<DockerRunResult | void> => {
+    if (!invocation.dockerContext || collectBindMountSources(invocation.args).length === 0) {
+      if (invocation.opaqueDaimonCredentials && !invocation.dockerEndpointPinned) {
+        await assertOpaqueDaimonCredentialsHaveNoUserNamespace(invocation);
+        return await runPreparedDockerContainer({
+            cleanup: async () => undefined,
+            invocation
+          });
+      }
+      return await runPreparedDockerContainer({
+        cleanup: async () => undefined,
+        invocation
+      });
     }
-    return runPreparedDockerContainer({
-      cleanup: async () => undefined,
-      invocation
-    });
-  }
-
-  return prepareRemoteBindMounts(invocation).then(runPreparedDockerContainer);
+    return await runPreparedDockerContainer(await prepareRemoteBindMounts(invocation));
+  };
+  return withExclusiveVolumeReservations(invocation, run);
 };
 
 export const runDockerContainer: DockerRunRunner = (invocation) =>

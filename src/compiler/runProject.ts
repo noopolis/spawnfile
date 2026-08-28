@@ -27,7 +27,6 @@ import {
 } from "../deployment/index.js";
 import { DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
 import { ensureNoopolisRunId, resolveNoopolisRunId } from "../runtime/index.js";
-import { DAIMON_AUTHORIZED_UID_ENV } from "./containerDaimonUidEntrypointRender.js";
 
 import {
   compileProject,
@@ -161,7 +160,7 @@ export const createDockerRunInvocation = async (
         : ["run"];
 
     if (options.detach) {
-      args.push("-d");
+      args.push("-d", "--restart", "unless-stopped");
     } else {
       args.push("--rm");
     }
@@ -184,7 +183,10 @@ export const createDockerRunInvocation = async (
     }
 
     for (const mount of containerReport.persistent_mounts ?? []) {
-      args.push("-v", `${mount.volume_name}:${mount.mount_path}`);
+      args.push(
+        "--mount",
+        `type=volume,source=${mount.volume_name},target=${mount.mount_path},volume-nocopy`
+      );
     }
 
     const deploymentLabels = options.detach && deploymentName ? (() => {
@@ -198,9 +200,6 @@ export const createDockerRunInvocation = async (
     if (deploymentLabels) appendDockerLabelArgs(args, deploymentLabels);
 
     args.push("--env-file", envFilePath);
-    if (preparedRuntimeAuth.launchIdentity) {
-      args.push("--env", `${DAIMON_AUTHORIZED_UID_ENV}=${preparedRuntimeAuth.launchIdentity.uid}`);
-    }
     args.push(...(await resolveAuthMountArgs(containerReport, options.authProfile ?? null)));
     args.push(...preparedRuntimeAuth.mountArgs);
     args.push(imageTag);
@@ -216,6 +215,12 @@ export const createDockerRunInvocation = async (
       dockerContext: options.dockerContext ?? null,
       dockerHost: options.dockerHost ?? null,
       envFilePath,
+      ...((containerReport.persistent_mounts ?? []).some((mount) => mount.lifecycle === "exclusive-reattach") ? {
+        exclusiveReattachVolumes: (containerReport.persistent_mounts ?? [])
+          .filter((mount) => mount.lifecycle === "exclusive-reattach")
+          .map((mount) => mount.volume_name)
+          .sort()
+      } : {}),
       imageTag,
       ...(opaqueDaimonCredentials ? { opaqueDaimonCredentials } : {}),
       supportDirectory
@@ -324,6 +329,7 @@ export const runProject = async (
   const compileResult = await compileProject(inputPath, {
     clean: options.clean,
     containerArchitecture: targetArchitecture,
+    deploymentLineage: resolvedOptions.deploymentName ?? "ephemeral",
     outputDirectory: options.outputDirectory,
     ...(options.worldBindingsPath !== undefined
       ? { worldBindingsPath: options.worldBindingsPath }

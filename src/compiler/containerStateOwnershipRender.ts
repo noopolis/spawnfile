@@ -8,6 +8,8 @@ import {
   resolveDaimonUidEntrypointStateRoots
 } from "./containerDaimonUidEntrypointRender.js";
 import type { EntrypointOptions } from "./containerEntrypointRender.js";
+import { VOLUME_BOOTSTRAP_MARKER,VOLUME_BOOTSTRAP_MARKER_CONTENT } from "./containerVolumeBootstrap.js";
+export { VOLUME_BOOTSTRAP_MARKER,VOLUME_BOOTSTRAP_MARKER_CONTENT } from "./containerVolumeBootstrap.js";
 
 const SPAWNFILE_STATE_ROOT = "/var/lib/spawnfile";
 const MOLTNET_STATE_ROOT = `${SPAWNFILE_STATE_ROOT}/moltnet`;
@@ -44,6 +46,9 @@ const createMoltnetPrivacyCommands = (
     ),
     ...moltnet.nodePlans.map((plan) => plan.configPath)
   ].sort();
+  const receiptDirectories = moltnet.nodePlans.flatMap((plan) =>
+    plan.receiptStorePath ? [path.posix.dirname(plan.receiptStorePath)] : []
+  );
   if (configPaths.length === 0) return [];
   if (configPaths.some((configPath) => !configPath.startsWith(`${MOLTNET_STATE_ROOT}/`))) {
     throw new SpawnfileError(
@@ -59,9 +64,10 @@ const createMoltnetPrivacyCommands = (
       ...configPaths.flatMap((configPath) =>
         privateDirectoriesThrough(path.posix.dirname(configPath))
       ),
+      ...receiptDirectories.flatMap(privateDirectoriesThrough),
       ...moltnetMountPaths.flatMap(privateDirectoriesThrough)
     ])
-  ].sort();
+  ].filter((directory) => directory !== SPAWNFILE_STATE_ROOT).sort();
   const ownership = `${DAIMON_RUNTIME_UID}:${DAIMON_RUNTIME_UID}`;
 
   return [
@@ -82,11 +88,11 @@ export const createStateOwnershipCommand = (
     : [];
   const mkdirPaths = [...new Set([SPAWNFILE_STATE_ROOT, ...mountPaths])].sort();
   const markerCommands = mountPaths.map((mountPath) =>
-    `touch ${shellQuote(path.posix.join(mountPath, ".spawnfile-volume-init"))}`
+    `printf '%s\\n' ${shellQuote(VOLUME_BOOTSTRAP_MARKER_CONTENT)} > ${shellQuote(path.posix.join(mountPath, VOLUME_BOOTSTRAP_MARKER))} && chmod 600 ${shellQuote(path.posix.join(mountPath, VOLUME_BOOTSTRAP_MARKER))}`
   );
   const chownPaths = [
     ...new Set([
-      SPAWNFILE_STATE_ROOT,
+      ...(runtimePlans.some((plan) => plan.runtimeName === "daimon") ? [] : [SPAWNFILE_STATE_ROOT]),
       ...mountPaths.filter((mountPath) => !mountPath.startsWith(`${SPAWNFILE_STATE_ROOT}/`))
     ])
   ].sort();
@@ -94,7 +100,12 @@ export const createStateOwnershipCommand = (
   return [
     `mkdir -p ${mkdirPaths.map(shellQuote).join(" ")}`,
     ...markerCommands,
-    `chown -R spawnfile:spawnfile ${chownPaths.map(shellQuote).join(" ")}`,
+    ...(chownPaths.length > 0
+      ? [`chown -R spawnfile:spawnfile ${chownPaths.map(shellQuote).join(" ")}`]
+      : []),
+    ...(runtimePlans.some((plan) => plan.runtimeName === "daimon")
+      ? [`chown root:root ${shellQuote(SPAWNFILE_STATE_ROOT)} && chmod 711 ${shellQuote(SPAWNFILE_STATE_ROOT)}`]
+      : []),
     ...wrapperStateRoots.map(
       (stateRoot) => `install -d -o root -g root -m 700 ${shellQuote(stateRoot)}`
     ),

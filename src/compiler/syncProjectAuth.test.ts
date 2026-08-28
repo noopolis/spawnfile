@@ -526,6 +526,7 @@ describe("syncProjectAuth", () => {
       [
         "MOLTNET_ATTACH_TOKEN=bearer-token\n",
         "REMOTE_NET_PAIR_TOKEN=pair-token\n",
+        "REMOTE_NET_RELAY_TOKEN=relay-token\n",
         "MOLTNET_DATABASE_URL=postgres-dsn\n",
         "MOLTNET_OPEN_STATIC_TOKEN=open-static-token\n"
       ].join("")
@@ -569,7 +570,10 @@ describe("syncProjectAuth", () => {
       "          token_id: attachments",
       "      pairings:",
       "        - id: remote-link",
-      "          remote_base_url: https://remote.example.com",
+      "          relay:",
+      "            url: wss://relay.example.com",
+      "            room: remote-link-v1",
+      "            token_secret: REMOTE_NET_RELAY_TOKEN",
       "          remote_network_id: remote",
       "          remote_network_name: Remote",
       "          token_secret: REMOTE_NET_PAIR_TOKEN",
@@ -611,7 +615,8 @@ describe("syncProjectAuth", () => {
       MOLTNET_ATTACH_TOKEN: "bearer-token",
       MOLTNET_DATABASE_URL: "postgres-dsn",
       MOLTNET_OPEN_STATIC_TOKEN: "open-static-token",
-      REMOTE_NET_PAIR_TOKEN: "pair-token"
+      REMOTE_NET_PAIR_TOKEN: "pair-token",
+      REMOTE_NET_RELAY_TOKEN: "relay-token"
     });
   });
 

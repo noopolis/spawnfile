@@ -16,6 +16,7 @@ import {
 import { compileProject } from "./compileProject.js";
 import { TRUSTED_TEST_MOLTNET_RELEASE_AUTHORITY } from
   "../../fixtures/support/trustedMoltnetRelease.js";
+import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "../runtime/daimon/contractManifest.js";
 
 vi.mock("./moltnetBinaries.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./moltnetBinaries.js")>();
@@ -81,7 +82,27 @@ const createFakeMoltnetCli = async (): Promise<string> => {
   return cliPath;
 };
 
+const useCompatibleDaimonRuntime = async (): Promise<void> => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-compile-daimon-"));
+  temporaryDirectories.push(directory);
+  const identityPath = path.join(directory, "identity.json");
+  const digest = `sha256:${"a".repeat(64)}`;
+  await writeUtf8File(identityPath, `${JSON.stringify({
+    capability_receipt_sha256: digest,
+    development: { mode: "local-development", non_production: true, unpublished: true, unsigned: true },
+    image_architecture: "amd64",
+    image_config_digest: digest,
+    image_manifest_digest: digest,
+    image_reference: `127.0.0.1:54321/noopolis/spawnfile-runtime-daimon@${digest}`,
+    manifest_sha256: DAIMON_CONTRACT_MANIFEST_SHA256,
+    registry_authority: "127.0.0.1:54321",
+    version: "spawnfile.local-daimon-runtime-identity.v3"
+  })}\n`);
+  process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY = identityPath;
+};
+
 afterEach(async () => {
+  delete process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY;
   await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
 });
 
@@ -209,6 +230,7 @@ describe("compileProject", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-inline-compile-"));
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-inline-output-"));
     temporaryDirectories.push(directory, outputDirectory);
+    await useCompatibleDaimonRuntime();
 
     await ensureDirectory(path.join(directory, "characters"));
     await writeUtf8File(path.join(directory, "characters", "red.md"), "# Red sentinel\n");
@@ -480,7 +502,11 @@ describe("compileProject", () => {
         link_path: "/var/lib/spawnfile/instances/openclaw/agent-worker/home/.openclaw/workspace/cache",
         mode: "readonly",
         mount: "./cache",
-        sharing: "per_agent"
+        mount_path: "/var/lib/spawnfile/instances/openclaw/agent-worker/home/.openclaw/workspace/cache",
+        replacement_sentinel: { path: expect.stringContaining("/.spawnfile-resource-identity"), result: "verified_on_startup" },
+        resolved_identity: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        sharing: "per_agent",
+        volume_name: expect.stringMatching(/^spawnfile-workspace-resource-[a-f0-9]{24}$/u)
       },
       {
         backing_path: expect.stringContaining("/var/lib/spawnfile/resources/instances/agent-worker-"),
@@ -489,7 +515,11 @@ describe("compileProject", () => {
         link_path: "/var/lib/spawnfile/instances/openclaw/agent-worker/home/.openclaw/workspace/repos/project",
         mode: "mutable",
         mount: "./repos/project",
-        sharing: "per_agent"
+        mount_path: "/var/lib/spawnfile/instances/openclaw/agent-worker/home/.openclaw/workspace/repos/project",
+        replacement_sentinel: undefined,
+        resolved_identity: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        sharing: "per_agent",
+        volume_name: null
       }
     ]);
     expect(entrypoint).toContain(
@@ -1014,7 +1044,8 @@ describe("compileProject", () => {
             }
           ]
         });
-        expect(container?.persistent_mounts?.map((mount) => mount.id).sort()).toEqual([
+        const mountIds = container?.persistent_mounts?.map((mount) => mount.id).sort() ?? [];
+        expect(mountIds).toEqual(expect.arrayContaining([
           "agent-mapper-daimon-telemetry",
           "agent-mapper-moltnet-tokens",
           "agent-reviewer-daimon-telemetry",
@@ -1022,7 +1053,8 @@ describe("compileProject", () => {
           "memory-var-lib-spawnfile-memory-daimon-org",
           "moltnet-daimon_lab-causal",
           "moltnet-daimon_lab-store"
-        ]);
+        ]));
+        expect(mountIds.filter((id) => id.startsWith("workspace-resource-"))).toHaveLength(3);
 
         const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
         expect(dockerfile).toContain("FROM node:24-bookworm-slim");
@@ -1030,7 +1062,7 @@ describe("compileProject", () => {
         expect(dockerfile).toContain("COPY container/rootfs/ /");
 
         const entrypoint = await readUtf8File(path.join(outputDirectory, "entrypoint.sh"));
-        expect(entrypoint).toContain("/usr/local/bin/moltnet &");
+        expect(entrypoint).toContain("/usr/local/bin/moltnet start --config");
         expect(entrypoint).toContain("/usr/local/bin/moltnet node");
         expect(entrypoint).toContain(
           "'node' '/opt/spawnfile/runtime-installs/pi/app.mjs' '/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json'"

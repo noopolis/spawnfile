@@ -1,5 +1,6 @@
 import type { Secret } from "../manifest/index.js";
 import { createRuntimeInstallRecipe, getRuntimeAdapter } from "../runtime/index.js";
+import { resolveNoopolisRunId } from "../runtime/index.js";
 import type { ContainerTargetInput } from "../runtime/index.js";
 
 import { listAgentSurfaceSecretNames } from "./agentSurfaces.js";
@@ -24,6 +25,7 @@ import { listExecutionModelSecretNames } from "./modelEnv.js";
 import { createPersistentVolumeName } from "./moltnetArtifactPaths.js";
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import type { CompilePlan } from "./types.js";
+import { createExclusiveReattachVolumeName } from "../shared/index.js";
 import { findWorldBindingForNode, type ResolvedWorldBindings } from "./worldBindings.js";
 
 export const createEnvVariableMap = (
@@ -118,9 +120,11 @@ export const createEnvVariableMap = (
 export const createRuntimeTargetPlans = async (
   plan: CompilePlan,
   compiledNodes: CompiledNodeArtifact[],
-  worldBindings?: ResolvedWorldBindings
+  worldBindings?: ResolvedWorldBindings,
+  deploymentLineage = "compile"
 ): Promise<RuntimeTargetPlan[]> => {
   const runtimeNames = Object.keys(plan.runtimes).sort();
+  const runId = resolveNoopolisRunId(process.env);
   const runtimePlans: RuntimeTargetPlan[] = [];
 
   for (const runtimeName of runtimeNames) {
@@ -166,9 +170,12 @@ export const createRuntimeTargetPlans = async (
         ...(target.opaqueMountTargets ? { opaqueMountTargets: [...target.opaqueMountTargets].sort() } : {}),
         ...(target.persistentMounts ? { persistentMounts: target.persistentMounts.map((mount) => ({
           id: mount.id,
+          ...(mount.lifecycle ? { lifecycle: mount.lifecycle } : {}),
           mount_path: mount.mountPath.replaceAll("<instance-root>", instancePaths.instanceRoot),
           reason: mount.reason,
-          volume_name: createPersistentVolumeName(plan.root, mount.id)
+          volume_name: mount.lifecycle === "exclusive-reattach"
+            ? createExclusiveReattachVolumeName(`${plan.root}\0${deploymentLineage}`, mount.id)
+            : createPersistentVolumeName(plan.root, mount.id, undefined, runId)
         })).sort((left, right) => left.id.localeCompare(right.id)) } : {}),
         port: adapter.container.port ? adapter.container.port + (index * portStride) : undefined,
         publishedPort:
@@ -176,7 +183,7 @@ export const createRuntimeTargetPlans = async (
             ? adapter.container.port + (index * portStride)
             : undefined,
         recipeEnv: recipe.env,
-        resources: resolveTargetResources(target, targetInputs, instancePaths, adapter.container),
+        resources: resolveTargetResources(target, targetInputs, instancePaths, adapter.container, plan.root, runId),
         runtimeName,
         runtimeRoot: recipe.runtimeRoot,
         sourceIds: [...(target.sourceIds ?? [])].sort(),

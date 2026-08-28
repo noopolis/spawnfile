@@ -205,10 +205,13 @@ describe("upProject", () => {
     expect(buildProject).toHaveBeenCalledWith("/tmp/project", {
       buildRunner: expect.any(Function),
       clean: undefined,
+      containerArchitecture: undefined,
+      deploymentLineage: "default",
       dockerContext: undefined,
       dockerCommand: undefined,
       imageTag: "spawnfile-up-container",
-      outputDirectory: undefined
+      outputDirectory: undefined,
+      runtimePackageOverrides: undefined
     });
     expect(createDockerRunInvocation).toHaveBeenCalledWith(
       expect.objectContaining({
