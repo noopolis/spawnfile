@@ -94,7 +94,7 @@ Support levels:
 | `workspace.resources` `volume` | Compiler-owned symlink/backing directory | Compiler-owned symlink/backing directory | Compiler-owned symlink/backing directory per concrete agent workspace |
 | `workspace.resources` `git` | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup |
 | `environment.env`, `environment.secrets`, `environment.packages` | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior |
-| `environment.mcp_servers` | Supported through OpenClaw `mcp.servers` config | Supported through PicoClaw MCP config | Rejected in Phase A; the public organization config has no MCP field |
+| `environment.mcp_servers` | Supported through OpenClaw `mcp.servers` config | Supported through PicoClaw MCP config | Supported for explicit nonempty tool allowlists; stdio commands must be absolute and remote bearer secrets remain env-name references |
 | `memory` | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Degraded/declared only in Phase A; no Spawnfile memory lowering enters the public config |
 | `execution.sandbox.mode` | Supported through OpenClaw runtime/container workspace behavior | Supported through `restrict_to_workspace` and container workspace behavior | Degraded; the generic runtime image and physical roots provide isolation |
 | `subagents` | Degraded; routed sessions do not preserve full parent-owned semantics | Supported through PicoClaw subagent behavior | Degraded; the public host runs listed agents independently |
@@ -107,9 +107,10 @@ Support levels:
 | Anthropic `api_key` auth | Supported | Supported | Rejected |
 | Anthropic `claude-code` auth | Supported | Supported | Rejected |
 | `custom` or `local` endpoint | Supported except subscription-import auth | Supported for compatible endpoint/auth pairs | Rejected |
-| `schedule.kind: cron` | Degraded | Supported through `workspace/cron/jobs.json` | Rejected in Phase A |
-| `schedule.kind: every` | Degraded | Degraded | Rejected in Phase A |
-| `surfaces.moltnet` | Supported through generated MoltnetNode bridge | Supported through generated MoltnetNode bridge | Supported through Daimon's authenticated public `/v1/wake` control bridge when the selected Moltnet release declares `daimon-bridge`; a public pi-only release fails closed |
+| `schedule.kind: cron` | Degraded | Supported through `workspace/cron/jobs.json` | Supported through the durable native v2 scheduler |
+| `schedule.kind: every` | Degraded | Degraded | Supported through the durable native v2 scheduler |
+| `schedule.kind: disabled` | Supported, emits no wake registration | Supported, emits no wake registration | Supported, emits no wake registration |
+| `surfaces.moltnet` | Supported through generated MoltnetNode bridge | Supported through generated MoltnetNode bridge | Supported for inbound authenticated wakes and an outbound cognition tool constrained to compiled networks, rooms, and DM policy; sends carry deterministic delivery ids and durable per-agent receipts |
 | Discord, Telegram, WhatsApp, Slack | Supported with OpenClaw access-mode coverage | Partial: open and user allowlists; pairing and richer allowlists rejected | Rejected |
 | Webhook | Parsed, not lowered by active adapters in v0.1 | Parsed, not lowered by active adapters in v0.1 | Rejected |
 
@@ -158,15 +159,24 @@ the `runtime: daimon` public-host contract and must not be inferred from it.
 ### Daimon opaque auth ownership
 
 Daimon credential inputs are opaque local bind sources, not Spawnfile auth
-files. Spawnfile authorizes their filesystem metadata only and passes a
-nonzero common owner UID through the in-memory launch path; it never reads or
-interprets credential bytes and never creates an engine home. The generated
-container wrapper uses that UID only to prepare compiler-owned writable state,
-then Daimon materializes its own private engine artifact after privilege drop.
+files. Spawnfile authorizes their filesystem metadata and validates only the
+bounded provider-native refresh shape without retaining or reporting bytes.
+It passes a nonzero common owner UID through the in-memory launch path and
+never creates an engine credential home. The generated container wrapper uses
+that UID only to prepare compiler-owned writable state.
 Remote, SSH, and user-namespace-remapped Docker targets are unsupported when
 an opaque Daimon source is present.
 
-The consumed Daimon manifest declares opaque file slots for Codex and Grok.
+The consumed Daimon manifest declares one per-agent opaque slot for Codex.
+For Grok it declares one durable rotating-credential realm and one read-only
+operator bootstrap slot; Daimon serializes Grok turns through that authority,
+atomically reconciles provider rotation, and leaves sessions/cache per agent.
+The generated Linux container installs `bubblewrap`, which Grok requires to
+fail closed while applying the realm and peer-home deny set.
+The realm mount is `exclusive-reattach`: its host-stable volume survives run
+and deployment identities, cannot be attached by two live deployments, and is
+never copied by product-state migration. Standard concurrent canary is
+rejected; stop the old deployment and reattach the same realm for replacement.
 For AGY it declares one host-realm durable mount plus one independent opaque
 unlock source slot. Spawnfile emits the stable RW volume, metadata-authorizes
 the caller-owned `0600` unlock source, and mounts it read-only; it never reads

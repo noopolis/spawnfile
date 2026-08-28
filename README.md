@@ -71,11 +71,11 @@ spawnfile status . --live                        # inspect the detached deployme
 spawnfile publish . --tag you/my-agent:1.0.0     # compile + build + verify + push
 ```
 
-Compiled output lands under `.spawn/` by default, including a `Dockerfile`, `entrypoint.sh`, `.env.example`, and a prebuilt `container/rootfs/` tree. `spawnfile build` uses the pinned runtime artifacts from `runtimes.yaml`; it does not rebuild runtimes from source. Daimon, OpenClaw, and PicoClaw use published copyable artifact images by default, so normal prompt/config edits reuse their dependency layers. Daimon accepts only its exact immutable image digest plus matching capability receipt; mutable/local overrides are fail-closed. OpenClaw and PicoClaw retain their explicit local-image overrides. For `build`/`up` on a docker `--context`, Moltnet release assets are staged for that context's architecture (`amd64` or `arm64`); for local-only manual compile targeting a fixed architecture, set `SPAWNFILE_MOLTNET_TARGET_ARCH=amd64|arm64`.
+Compiled output lands under `.spawn/` by default, including a `Dockerfile`, `entrypoint.sh`, `.env.example`, and a prebuilt `container/rootfs/` tree. `spawnfile build` uses the pinned runtime artifacts from `runtimes.yaml`; it does not rebuild runtimes from source. Daimon, OpenClaw, and PicoClaw use published copyable artifact images by default, so normal prompt/config edits reuse their dependency layers. Daimon accepts its production manifest/receipt pins or an explicitly supplied generated non-production identity for the fixed loopback registry; raw, mutable, tag-only, or receipt-less overrides fail closed. OpenClaw and PicoClaw retain their explicit local-image overrides. For `build`/`up` on a docker `--context`, Moltnet release assets are staged for that context's architecture (`amd64` or `arm64`); for local-only manual compile targeting a fixed architecture, set `SPAWNFILE_MOLTNET_TARGET_ARCH=amd64|arm64`.
 
 `spawnfile status` is read-only. By default it shows authored and compiled state without Docker, runtime, or Moltnet calls. With `--live`, it reads the selected detached deployment record, inspects the recorded Docker target, runs adapter-owned runtime probes, and checks Moltnet metadata without reading message bodies. Add `--logs` for a redacted Docker log tail, or `--watch` to refresh status continuously. For a remote Docker context where the local record is missing, pass `--context <name>` with `--live` to recover the deployment from Spawnfile container labels.
 
-`spawnfile dev` is the source-backed interactive loop. In Phase A, hot apply and its bounded activity buffer remain `runtime: pi` behavior; public `runtime: daimon` hosts do not yet support hot apply, schedules, MCP, or agent surfaces. A future control-plane adapter will integrate those concerns through Daimon's public APIs rather than generated Pi code.
+`spawnfile dev` is the source-backed interactive loop. Hot apply remains runtime-specific. Public `runtime: daimon` v2 hosts support durable native cron/every/disabled schedules and authenticated Moltnet wake delivery; unsupported surfaces remain explicit in the capability report.
 
 Before automating Spawnfile, query the installed CLI rather than inferring
 support from its package version:
@@ -220,6 +220,10 @@ The source-of-truth specs live in this repo:
 
 ## From source
 
+The normal source build requires only Node.js 22+ and uses the checked-in,
+checksum-verified Linux x64 and arm64 helper artifacts. It does not invoke
+Docker or access the network.
+
 ```bash
 git clone https://github.com/noopolis/spawnfile.git
 cd spawnfile
@@ -228,6 +232,12 @@ npm install
 npm run build
 npm link
 ```
+
+Maintainers rebuilding those native artifacts must additionally have Docker
+with BuildKit, the pinned `gcc:14.2.0` builder image available, and QEMU/binfmt
+enabled for both `linux/amd64` and `linux/arm64`. Run `npm run build:native`,
+then `npm run build`; CI performs the same rebuild and syscall verification on
+pull requests, `main`, and package publication.
 
 For local development without linking globally:
 
