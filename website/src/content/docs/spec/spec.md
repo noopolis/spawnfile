@@ -657,6 +657,7 @@ Rules:
 - `surfaces.slack.identity.user_id` is OPTIONAL. If present, it is the Slack user ID advertised in generated rosters where this agent is visible.
 - Surface `identity` fields are opt-in roster metadata. They do not provision accounts, validate provider-side membership, or cause Spawnfile to read runtime state.
 - `surfaces.moltnet` is a list of Moltnet attachments. Each attachment MUST declare `network` and at least one of `rooms` or `dms`.
+- `surfaces.moltnet[].auth.token_id` is OPTIONAL and is valid only for a managed bearer network. The referenced actor token MUST use exactly `[attach, write]`, or `[attach, observe, write]` for a Daimon attachment, and MUST bind exactly that attachment's resolved Moltnet member ID.
 - Moltnet room and DM `wake` policy MAY be `all`, `mentions`, `thread_only`, or `never`.
 - Moltnet room and DM `reply` policy MAY be only `auto` or `never` in this alpha. `manual` is not part of the portable v0.1 contract.
 - Moltnet attachments are valid only when the agent participates in a team context whose `team.networks[]` declares the named network and rooms.
@@ -891,7 +892,8 @@ Rules:
 - `every` schedules MUST declare a non-empty `every` interval.
 - `every` intervals use explicit duration strings such as `15m`, `2h`, or `1d`.
 - `timezone` defaults to `UTC` when omitted.
-- `cron` and `every` schedules MAY declare `timezone` and `prompt`.
+- `cron` schedules MUST declare `timezone` and MAY declare `prompt`.
+- `every` schedules MAY declare `prompt` and MUST NOT declare `timezone`.
 - `disabled` schedules MUST NOT declare `cron`, `every`, `timezone`, or `prompt` fields.
 - A `disabled` schedule MUST not emit a spawn or wake registration.
 - Team manifests MUST NOT declare `schedule`.

@@ -99,7 +99,7 @@ Support levels:
 | `workspace.resources` `volume` | Compiler-owned symlink/backing directory | Compiler-owned symlink/backing directory | Compiler-owned symlink/backing directory per concrete agent workspace |
 | `workspace.resources` `git` | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup |
 | `environment.env`, `environment.secrets`, `environment.packages` | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior |
-| `environment.mcp_servers` | Supported through OpenClaw `mcp.servers` config | Supported through PicoClaw MCP config | Degraded; not lowered into the generated Daimon app yet |
+| `environment.mcp_servers` | Supported through OpenClaw `mcp.servers` config | Supported through PicoClaw MCP config | Supported for explicit tool allowlists; stdio commands must be absolute |
 | `memory` | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported through Mneme; `engine: pi` uses in-process tools and CLI engines receive pre-turn recall context only |
 | `execution.sandbox.mode` | Supported through OpenClaw runtime/container workspace behavior | Supported through `restrict_to_workspace` and container workspace behavior | Degraded; container/workspace isolation only, Pi itself is not a sandbox engine |
 | `subagents` | Degraded; routed sessions do not preserve full parent-owned semantics | Supported through PicoClaw subagent behavior | Degraded; grouped app agents do not preserve parent-owned subagent semantics |
@@ -112,8 +112,9 @@ Support levels:
 | Anthropic `api_key` auth | Supported | Supported | Supported |
 | Anthropic `claude-code` auth | Supported | Supported | Supported through Pi's Anthropic OAuth auth store |
 | `custom` or `local` endpoint | Supported except subscription-import auth | Supported for compatible endpoint/auth pairs | Supported for `api_key` and `none` auth through generated Pi `models.json` |
-| `schedule.kind: cron` | Degraded | Supported through `workspace/cron/jobs.json` | Degraded |
-| `schedule.kind: every` | Degraded | Degraded | Supported by the generated app scheduler |
+| `schedule.kind: cron` | Degraded | Supported through `workspace/cron/jobs.json` | Supported through the durable native v2 scheduler |
+| `schedule.kind: every` | Degraded | Degraded | Supported through the durable native v2 scheduler |
+| `schedule.kind: disabled` | Supported, emits no wake registration | Supported, emits no wake registration | Supported, emits no wake registration |
 | `surfaces.moltnet` | Supported through generated MoltnetNode bridge | Supported through generated MoltnetNode bridge | Supported through generated MoltnetNode bridge and Daimon control endpoint |
 | Discord, Telegram, WhatsApp, Slack | Supported with OpenClaw access-mode coverage | Partial: open and user allowlists; pairing and richer allowlists rejected | Rejected |
 | Webhook | Parsed, not lowered by active adapters in v0.1 | Parsed, not lowered by active adapters in v0.1 | Rejected |
