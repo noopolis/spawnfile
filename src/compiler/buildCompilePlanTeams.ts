@@ -1,7 +1,13 @@
-import type { TeamManifest } from "../manifest/index.js";
+import {
+  isDeclaredPairedRemoteRoomMember,
+  type TeamManifest
+} from "../manifest/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
-import type { ResolvedTeamNetwork, ResolvedTeamNode } from "./types.js";
+import type {
+  ResolvedTeamNetwork,
+  ResolvedTeamNode
+} from "./types.js";
 
 export const resolveTeamExternalIds = (manifest: TeamManifest): string[] => {
   const memberIds = manifest.members.map((member) => member.id);
@@ -33,6 +39,9 @@ export const resolveTeamNetworks = (manifest: TeamManifest): ResolvedTeamNetwork
       name: network.name ?? network.id,
       provider: network.provider,
       rooms: network.rooms.map((room) => ({
+        ...(room.federation
+          ? { federation: Array.isArray(room.federation) ? [...room.federation].sort() : room.federation }
+          : {}),
         id: room.id,
         members: [...room.members],
         ...(room.name ? { name: room.name } : {}),
@@ -63,7 +72,8 @@ export const validateTeamNetworkRooms = (teamNode: ResolvedTeamNode): void => {
       for (const roomMemberId of room.members) {
         const resolvedMember = teamNode.members.find((member) => member.id === roomMemberId);
         if (!resolvedMember
-          && !isAttachedExternalRoomMember(teamNode, network.id, roomMemberId)) {
+          && !isAttachedExternalRoomMember(teamNode, network.id, roomMemberId)
+          && !isDeclaredPairedRemoteRoomMember(network, room, roomMemberId)) {
           throw new SpawnfileError(
             "validation_error",
             `Team ${teamNode.name} Moltnet room ${room.id} references unknown member ${roomMemberId}`

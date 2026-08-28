@@ -296,6 +296,16 @@ describe("organization identity", () => {
     expect(() => validateB31MoltnetAuth(current)).not.toThrow();
     expect(resolveMoltnetExternalParticipantIntents(current)[0]?.tokenEnv)
       .toBe("PITCH_WORLD");
+
+    const daimon = createB31Plan();
+    daimon.nodes.find((node) => node.kind === "agent")!.runtimeName = "daimon";
+    expect(() => validateB31MoltnetAuth(daimon)).toThrow(/actor token red/u);
+    const daimonServer = rootOf(daimon).networks?.[0]?.server;
+    if (!daimonServer || daimonServer.mode !== "managed") throw new Error("expected managed server");
+    const daimonToken = daimonServer.auth.tokens?.find((token) => token.id === "red");
+    if (!daimonToken) throw new Error("expected Daimon token");
+    daimonToken.scopes = ["attach", "observe", "write"];
+    expect(() => validateB31MoltnetAuth(daimon)).not.toThrow();
   });
 
   it("rejects hostile operator, actor, token, and environment declarations", () => {

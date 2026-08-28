@@ -329,6 +329,45 @@ describe("moltnetRoomMemberships", () => {
       .toEqual(["lead", "world"]);
   });
 
+  it("keeps a paired scoped remote member without synthesizing a local attachment", () => {
+    const lead = agent("lead");
+    const server = createManagedServer();
+    server.pairings = [{
+      id: "peer-link",
+      remote_base_url: "https://sensor.invalid",
+      remote_network_id: "peer-network",
+      remote_network_name: "Partner Floor",
+      token_secret: "PEER_PAIR_TOKEN"
+    }];
+    const org = team("org-team", {
+      members: [{ id: "lead", kind: "agent", nodeSource: lead.source, runtimeName: "openclaw" }],
+      networks: [{
+        id: "org",
+        name: "Org",
+        provider: "moltnet",
+        rooms: [{
+          federation: ["peer-link"],
+          id: "research",
+          members: ["lead", "peer-network:remote-agent"]
+        }],
+        server
+      }]
+    });
+    const concretePlan = plan([node(lead), node(org)]);
+    const room = org.networks?.[0]?.rooms[0];
+    if (!room) {
+      throw new Error("expected room");
+    }
+
+    expect(listConcreteMoltnetRoomMemberIds(concretePlan, org, "org", room))
+      .toEqual(["lead", "peer-network:remote-agent"].sort());
+    expect(resolveMoltnetRoomMemberships(concretePlan).map((row) => row.concreteMemberId))
+      .toEqual(["lead"]);
+    concretePlan.moltnetRoomMemberships = resolveMoltnetRoomMemberships(concretePlan);
+    expect(listConcreteMoltnetRoomMemberIds(concretePlan, org, "org", room))
+      .toEqual(["lead", "peer-network:remote-agent"].sort());
+  });
+
   it("rejects concrete member listing when a nested team cannot be found", () => {
     const org = team("org-team", {
       members: [{ id: "missing", kind: "team", nodeSource: "/tmp/missing/Spawnfile", runtimeName: null }],

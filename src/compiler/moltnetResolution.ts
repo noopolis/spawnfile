@@ -338,7 +338,8 @@ export const resolvePlanMoltnetAttachments = (plan: CompilePlan): void => {
           teamName: context.teamName,
           teamSource: context.teamSource
         },
-        agentNode.name
+        agentNode.name,
+        agentNode.runtime.name
       );
       resolvedAttachments.push(...(resolved ?? []));
     }

@@ -107,7 +107,7 @@ describe("Moltnet attachment credential plan validation", () => {
       ].join("\n")
     },
     {
-      expected: /must include attach and write scopes/,
+      expected: /must include attach, write scopes exactly/,
       selected: "red-agent",
       token: [
         "          - id: red-agent",

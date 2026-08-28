@@ -34,6 +34,10 @@ const orderWorkspaceResource = (resource: WorkspaceResource): unknown => {
       ["sharing", resource.sharing]
     ]);
   }
+  if (resource.kind === "bundle") return withDefinedEntries([
+    ["id", resource.id], ["kind", resource.kind], ["source", resource.source],
+    ["sha256", resource.sha256], ["mount", resource.mount], ["mode", resource.mode], ["sharing", resource.sharing]
+  ]);
 
   return withDefinedEntries([
     ["id", resource.id],

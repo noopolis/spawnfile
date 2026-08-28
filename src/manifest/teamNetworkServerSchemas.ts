@@ -83,15 +83,32 @@ const teamNetworkListenSchema = z
   })
   .strict();
 
+const teamNetworkPairingRelaySchema = z
+  .object({
+    room: z.string().trim().min(1),
+    token_secret: z.string().trim().min(1),
+    url: z.string().trim().min(1)
+  })
+  .strict();
+
 const teamNetworkPairingSchema = z
   .object({
     id: z.string().trim().min(1),
-    remote_base_url: z.string().trim().min(1),
+    relay: teamNetworkPairingRelaySchema.optional(),
+    remote_base_url: z.string().trim().min(1).optional(),
     remote_network_id: z.string().trim().min(1),
     remote_network_name: z.string().trim().min(1),
     token_secret: z.string().trim().min(1)
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if ((value.remote_base_url === undefined) === (value.relay === undefined)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "managed Moltnet pairing requires exactly one of remote_base_url or relay"
+      });
+    }
+  });
 
 const teamNetworkManagedServerSchema = z
   .object({

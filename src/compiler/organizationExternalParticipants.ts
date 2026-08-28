@@ -18,7 +18,7 @@ const actorTokenFor = (
   server: Extract<TeamNetworkServer, { mode: "managed" }>,
   tokenId: string,
   memberId: string,
-  allowObserve = false,
+  observePolicy: "allow" | "forbid" | "require" = "forbid",
 ) => {
   const token = server.auth.tokens?.filter((entry) => entry.id === tokenId);
   if (token?.length !== 1) {
@@ -27,13 +27,29 @@ const actorTokenFor = (
   const selected = requiredOrganizationIdentity(
     token?.[0], `Moltnet actor token ${tokenId} must exist exactly once`,
   );
-  const validScopes = exactOrganizationStrings(selected.scopes, ["attach", "write"])
-    || allowObserve && exactOrganizationStrings(selected.scopes, ["attach", "observe", "write"]);
+  const validScopes = (
+    observePolicy !== "require" && exactOrganizationStrings(selected.scopes, ["attach", "write"])
+  ) || (
+    observePolicy !== "forbid"
+      && exactOrganizationStrings(selected.scopes, ["attach", "observe", "write"])
+  );
   if (!validScopes || !exactOrganizationStrings(selected.agents, [memberId])) {
     organizationIdentityFail(`Moltnet actor token ${tokenId} has invalid scopes or agents for ${memberId}`);
   }
   return selected;
 };
+
+const isPairingAuthToken = (
+  server: Extract<TeamNetworkServer, { mode: "managed" }>,
+  token: NonNullable<Extract<TeamNetworkServer, { mode: "managed" }>["auth"]["tokens"]>[number],
+): boolean => token.agents === undefined
+  && exactOrganizationStrings(token.scopes, ["pair"])
+  && (server.pairings ?? []).filter((pairing) =>
+    pairing.id === token.id && pairing.token_secret === token.secret).length === 1;
+
+const isObserveOnlyConsoleToken = (
+  token: NonNullable<Extract<TeamNetworkServer, { mode: "managed" }>["auth"]["tokens"]>[number],
+): boolean => token.agents === undefined && exactOrganizationStrings(token.scopes, ["observe"]);
 
 const validateB31Networks = (plan: CompilePlan): Set<string> => {
   const root = requiredOrganizationIdentity(rootOrganizationTeam(plan), "B31 root team is missing");
@@ -110,7 +126,12 @@ export const validateB31MoltnetAuth = (plan: CompilePlan): void => {
       }
       selectedActorKeys.add(actorKey);
       if (network?.server?.mode === "managed") {
-        const token = actorTokenFor(network.server, selectedTokenId, member.memberId);
+        const token = actorTokenFor(
+          network.server,
+          selectedTokenId,
+          member.memberId,
+          node?.runtimeName === "daimon" ? "require" : "forbid",
+        );
         const selected = selectedByNetwork.get(attachment.network) ?? new Map<string, string>();
         const previous = selected.get(selectedTokenId);
         if (previous) {
@@ -128,7 +149,7 @@ export const validateB31MoltnetAuth = (plan: CompilePlan): void => {
     for (const attachment of service.surfaces.moltnet) {
       const network = root.networks?.find((entry) => entry.id === attachment.network);
       if (network?.server?.mode !== "managed") continue;
-      const token = actorTokenFor(network.server, attachment.auth.token_id, service.id, true);
+      const token = actorTokenFor(network.server, attachment.auth.token_id, service.id, "allow");
       if (token.id === "operator") {
         organizationIdentityFail(`B31 external participant ${service.id} must not use operator token`);
       }
@@ -143,7 +164,9 @@ export const validateB31MoltnetAuth = (plan: CompilePlan): void => {
     const selected = selectedByNetwork.get(network.id);
     if (network.server?.mode !== "managed" || !selected) continue;
     for (const token of network.server.auth.tokens ?? []) {
-      if (token.id !== "operator" && !selected.has(token.id)) {
+      if (token.id !== "operator" && !selected.has(token.id)
+        && !isPairingAuthToken(network.server, token)
+        && !isObserveOnlyConsoleToken(token)) {
         organizationIdentityFail(`Moltnet actor token ${token.id} is not selected by exactly one actor`);
       }
     }
@@ -190,7 +213,7 @@ export const resolveMoltnetExternalParticipantIntents = (
       peers.sort(compareOrganizationIds);
       const network = root.networks?.find((entry) => entry.id === attachment.network);
       const token = network?.server?.mode === "managed"
-        ? actorTokenFor(network.server, attachment.auth.token_id, service.id, true)
+        ? actorTokenFor(network.server, attachment.auth.token_id, service.id, "allow")
         : undefined;
       result.push({ participant, networkId: attachment.network, tokenId: attachment.auth.token_id,
         tokenEnv: token?.secret ?? "", directMessagePeers: peers });
