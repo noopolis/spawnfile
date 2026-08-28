@@ -3,6 +3,7 @@ import { z } from "zod";
 import { SpawnfileError } from "../shared/index.js";
 
 import {
+  DISTRIBUTION_ENGINE_KINDS,
   DISTRIBUTION_REPORT_VERSION,
   WORLD_BINDINGS_IMAGE_PATH
 } from "./types.js";
@@ -47,6 +48,10 @@ const instanceIdSchema = z
 
 const runtimeInstanceSchema = z.object({
   config_path: containerPathSchema,
+  engine_by_node_id: z.record(
+    z.string().min(1),
+    z.enum(DISTRIBUTION_ENGINE_KINDS)
+  ).optional(),
   home_path: containerPathSchema.nullable(),
   id: instanceIdSchema,
   internal_port: portSchema.nullable(),
@@ -90,6 +95,7 @@ export const distributionReportSchema = z.object({
     // schema alone keeps the volume-name source clean (defense in depth).
     id: instanceIdSchema,
     kind: z.literal("volume"),
+    lifecycle: z.literal("exclusive-reattach").optional(),
     target: containerPathSchema
   }).strict()),
   port_mappings: z.array(z.object({
@@ -99,7 +105,7 @@ export const distributionReportSchema = z.object({
   ports: z.array(portSchema),
   resources: z.array(z.object({
     id: z.string().min(1),
-    kind: z.union([z.literal("git"), z.literal("volume")]),
+    kind: z.union([z.literal("bundle"), z.literal("git"), z.literal("volume")]),
     link_path: z.string(),
     mode: z.union([z.literal("mutable"), z.literal("readonly")]),
     mount: z.string(),

@@ -14,6 +14,7 @@ export { consumeImageUp } from "./consumeImage.js";
 export type { ConsumeImageUpOptions, ConsumeImageUpResult } from "./consumeImage.js";
 export {
   deriveDeploymentName,
+  derivePersistentMountVolumeName,
   deriveVolumeName,
   renderEnvFileContent,
   resolveImageEnvironment
