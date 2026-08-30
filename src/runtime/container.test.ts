@@ -5,6 +5,10 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { NOOPOLIS_RUN_ID_ENV } from "./common.js";
+import {
+  DAIMON_WAKE_FUSE_DIRECTORY,
+  DAIMON_WAKE_FUSE_DIRECTORY_ENV
+} from "./daimon/config.js";
 import { createRuntimeContainerEnv, createRuntimeInstallRecipe, RUNTIME_INSTALL_ROOT } from "./container.js";
 import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./daimon/contractManifest.js";
 const LOCAL_DAIMON_IMAGE_REPOSITORY = "127.0.0.1:54321/noopolis/spawnfile-runtime-daimon";
@@ -154,6 +158,9 @@ describe("runtime container install recipes", () => {
     expect(recipe.copyCommands).toEqual([
       `COPY --from=${LOCAL_DAIMON_IMAGE_REPOSITORY}@${testDigest("c")} ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
     ]);
+    expect(recipe.env).toEqual({
+      [DAIMON_WAKE_FUSE_DIRECTORY_ENV]: DAIMON_WAKE_FUSE_DIRECTORY
+    });
   });
 
   it("rejects raw Daimon image overrides instead of treating them as local authority", async () => {

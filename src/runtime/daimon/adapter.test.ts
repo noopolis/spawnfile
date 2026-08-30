@@ -12,7 +12,11 @@ import { createRuntimeInstallRecipe } from "../container.js";
 import { createPiTestNode } from "../pi/testHelpers.js";
 
 import { daimonAdapter } from "./adapter.js";
-import { DAIMON_CONFIG_FILE } from "./config.js";
+import {
+  DAIMON_CONFIG_FILE,
+  DAIMON_WAKE_FUSE_DIRECTORY,
+  DAIMON_WAKE_FUSE_DIRECTORY_ENV
+} from "./config.js";
 
 const createDaimonNode = (id: string, name = id, engine = "codex") => {
   const node = createPiTestNode({
@@ -86,6 +90,26 @@ describe("daimonAdapter", () => {
     });
   });
 
+  it("mounts the durable wake-fuse ledger for a codex-only organization", async () => {
+    const node = createDaimonNode("codex-only", "Codex Only");
+    const compiled = await daimonAdapter.compileAgent(node);
+    const target = (await daimonAdapter.createContainerTargets!([{
+      emittedFiles: compiled.files,
+      id: "agent:codex-only",
+      kind: "agent",
+      slug: "codex-only",
+      value: node
+    }]))[0]!;
+
+    // Mutation-critical: gating this mount on Grok or AGY must turn this red.
+    expect(target.persistentMounts).toContainEqual({
+      id: "daimon-wake-fuse",
+      lifecycle: "exclusive-reattach",
+      mountPath: "/var/lib/spawnfile/daimon/wake-fuse",
+      reason: "Daimon durable wake-fuse admission ledger"
+    });
+  });
+
   it("creates physical per-agent roots and invokes only the public daemon command", async () => {
     const plan = await createPlan();
     const rootfs = createRootfsFiles([plan]);
@@ -107,6 +131,14 @@ describe("daimonAdapter", () => {
     expect(daimonAdapter.container.systemDeps).toEqual([
       "bash", "bubblewrap", "ca-certificates", "curl", "dbus-daemon", "gnome-keyring", "util-linux"
     ]);
+
+    const envEntrypoint = renderEntrypoint([{
+      ...plan,
+      recipeEnv: { [DAIMON_WAKE_FUSE_DIRECTORY_ENV]: DAIMON_WAKE_FUSE_DIRECTORY }
+    }], []);
+    expect(envEntrypoint).toContain(
+      `DAIMON_WAKE_FUSE_DIRECTORY='/var/lib/spawnfile/daimon/wake-fuse' exec`
+    );
   });
 
   it("compiles and mounts a three-engine Moltnet trace without invoking an engine", async () => {
@@ -185,6 +217,12 @@ describe("daimonAdapter", () => {
         id: "daimon-organization-acceptance-store",
         mountPath: "<instance-root>/state/wake-acceptance",
         reason: "Daimon organization durable wake acceptance store"
+      },
+      {
+        id: "daimon-wake-fuse",
+        lifecycle: "exclusive-reattach",
+        mountPath: "/var/lib/spawnfile/daimon/wake-fuse",
+        reason: "Daimon durable wake-fuse admission ledger"
       },
       {
         id: "daimon-grok-subscription-realm",
@@ -271,6 +309,12 @@ describe("daimonAdapter", () => {
         id: "daimon-organization-acceptance-store",
         mountPath: "<instance-root>/state/wake-acceptance",
         reason: "Daimon organization durable wake acceptance store"
+      },
+      {
+        id: "daimon-wake-fuse",
+        lifecycle: "exclusive-reattach",
+        mountPath: "/var/lib/spawnfile/daimon/wake-fuse",
+        reason: "Daimon durable wake-fuse admission ledger"
       },
       {
         id: "daimon-grok-subscription-realm",

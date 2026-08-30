@@ -9,6 +9,7 @@ import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import type { EntrypointOptions } from "./containerEntrypointRender.js";
 import { renderEntrypoint } from "./containerEntrypointRender.js";
 import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
+import { DAIMON_WAKE_FUSE_DIRECTORY } from "../runtime/daimon/config.js";
 import {
   DAIMON_AUTHORIZED_UID_ENV,
   DAIMON_BROKER_STARTUP_TIMEOUT_SECONDS,
@@ -395,6 +396,27 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).toContain(`install -d -o 2100 -g 2100 -m 0750 '${usageDirectory}'`);
     expect(rendered).toContain(
       `--reuid 2100 --regid 2100 --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${usageDirectory}/.daimon-usage-probe; umask 027; : > "$probe"; rm "$probe"'`
+    );
+  });
+
+  it("provisions the wake-fuse directory for the organization identity", () => {
+    const ownership = resolveDaimonUidEntrypointOwnershipPlan(
+      [{ ...daimonPlan, persistentMounts: [{
+        id: "daimon-wake-fuse",
+        mount_path: DAIMON_WAKE_FUSE_DIRECTORY,
+        reason: "Daimon durable wake-fuse admission ledger",
+        volume_name: "spawnfile-test-wake-fuse"
+      }] }],
+      [DAIMON_WAKE_FUSE_DIRECTORY]
+    );
+    expect(ownership.stateRoots).not.toContain(DAIMON_WAKE_FUSE_DIRECTORY);
+
+    const rendered = renderDaimonUidEntrypoint([daimonPlan]);
+
+    // Mutation-critical: changing either owner identity or the private mode
+    // must turn this assertion red.
+    expect(rendered).toContain(
+      `chown 0:0 '${DAIMON_WAKE_FUSE_DIRECTORY}' && chmod 0700 '${DAIMON_WAKE_FUSE_DIRECTORY}' && chown 2000:2000 '${DAIMON_WAKE_FUSE_DIRECTORY}'`
     );
   });
 

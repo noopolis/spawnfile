@@ -13,6 +13,10 @@ import {
   loadLocalDaimonRuntimeIdentity
 } from "./localDaimonAuthority.js";
 import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./daimon/contractManifest.js";
+import {
+  DAIMON_WAKE_FUSE_DIRECTORY,
+  DAIMON_WAKE_FUSE_DIRECTORY_ENV
+} from "./daimon/config.js";
 
 export const RUNTIME_INSTALL_ROOT = "/opt/spawnfile/runtime-installs";
 const PI_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_PI_RUNTIME_BASE_IMAGE";
@@ -245,7 +249,10 @@ export const createRuntimeInstallRecipe = async (
           `mkdir -p /opt/daimon/bin && install -o root -g root -m 0555 ${installRoot}/bin/daimon-engine-broker /opt/daimon/bin/daimon-engine-broker && arch="$(dpkg --print-architecture)" && case "$arch" in amd64) expected=e3fe2738fc8a979861085b4003bf2d5d7c284874897cb6ec2e2e2383211768bd ;; arm64) expected=ad44e02c38e6a3207ac4a3d5fd98b6d2e55341ce42dfd2f07204bbe54a7a653d ;; *) exit 1 ;; esac && test "$(sha256sum /opt/daimon/bin/daimon-engine-broker | awk '{print $1}')" = "$expected"`
         ],
         copyCommands: [createRuntimeImageCopyCommand(daimonRuntime.image, installRoot)],
-        env: containerEnv,
+        env: {
+          ...containerEnv,
+          [DAIMON_WAKE_FUSE_DIRECTORY_ENV]: DAIMON_WAKE_FUSE_DIRECTORY
+        },
         runtimeName,
         runtimeRoot: installRoot
       };
