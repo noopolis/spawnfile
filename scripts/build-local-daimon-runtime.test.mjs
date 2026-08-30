@@ -255,3 +255,61 @@ test("Daimon Dockerfile verifies the AGY archive before extracting antigravity a
   assert.match(dockerfile, /--mount=type=cache,target=\/root\/\.npm,sharing=locked/u);
   assert.doesNotMatch(dockerfile, /npm cache clean/u);
 });
+
+test("Daimon Dockerfile stage graph preserves cache and offline-network boundaries", () => {
+  const dockerfile = readFileSync(new URL("../runtime-images/daimon/Dockerfile", import.meta.url), "utf8");
+  const stages = new Map();
+  const fromPattern = /^FROM\s+(\S+)\s+AS\s+(\S+)\s*$/gimu;
+  const declarations = [...dockerfile.matchAll(fromPattern)];
+
+  for (const [index, declaration] of declarations.entries()) {
+    const [, rawParent, name] = declaration;
+    const parent = rawParent.replaceAll("${DAIMON_DEPENDENCY_MODE}", "registry");
+    const bodyStart = declaration.index + declaration[0].length;
+    const bodyEnd = declarations[index + 1]?.index ?? dockerfile.length;
+    stages.set(name, { body: dockerfile.slice(bodyStart, bodyEnd), parent });
+  }
+
+  const ancestry = (graph, target) => {
+    const chain = [];
+    const visited = new Set();
+    let current = target;
+    while (graph.has(current)) {
+      assert.ok(!visited.has(current), `stage ancestry must not contain a cycle at ${current}`);
+      visited.add(current);
+      chain.push(current);
+      current = graph.get(current).parent;
+    }
+    chain.push(current);
+    return chain;
+  };
+
+  assert.deepEqual(ancestry(stages, "build"), [
+    "build", "daimon_registry", "codex_registry", "agy_cli", "agy_source_registry",
+    "grok_cli", "grok_source_registry", "base", "base_registry", "${NODE_BASE_IMAGE}"
+  ]);
+
+  const offlineStages = new Map([...stages].map(([name, stage]) => [
+    name,
+    { ...stage, parent: stage.parent.replaceAll("registry", "offline-bundle") }
+  ]));
+  assert.deepEqual(ancestry(offlineStages, "build"), [
+    "build", "daimon_offline-bundle", "codex_offline-bundle", "agy_cli", "agy_source_offline-bundle",
+    "grok_cli", "grok_source_offline-bundle", "base", "base_offline-bundle", "${NODE_BASE_IMAGE}"
+  ]);
+
+  const assertAncestorsExcludeDaimonInputs = (graph, target) => {
+    for (const ancestor of ancestry(graph, target).slice(1, -1)) {
+      assert.doesNotMatch(graph.get(ancestor).body, /daimon\.tgz|source-inputs\.json/u, `${ancestor} must not depend on Daimon package inputs`);
+    }
+  };
+  assertAncestorsExcludeDaimonInputs(stages, "daimon_registry");
+  assertAncestorsExcludeDaimonInputs(offlineStages, "daimon_offline-bundle");
+
+  const stagesContaining = (pattern) => [...stages]
+    .filter(([, stage]) => pattern.test(stage.body))
+    .map(([name]) => name)
+    .sort();
+  assert.deepEqual(stagesContaining(/\bapt-get\b/u), ["base_registry"]);
+  assert.deepEqual(stagesContaining(/\bcurl\s+-/u), ["agy_source_registry", "grok_source_registry"]);
+});
