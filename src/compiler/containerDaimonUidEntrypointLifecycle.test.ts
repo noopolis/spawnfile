@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { execFile as execFileCallback, spawnSync } from "node:child_process";
-import { chmod, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { execFile as execFileCallback } from "node:child_process";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -20,6 +20,12 @@ import {
 
 const execFile = promisify(execFileCallback);
 const authorizedUid = 2000;
+
+// Every directory from the private state root down to `target`, so a test can create each
+// one with the root-owned 0711 preimage the ownership guard demands.
+const privateStateAncestors = (target: string): string[] =>
+  path.posix.relative("/var/lib", target).split("/")
+    .map((_, index, segments) => path.posix.join("/var/lib", ...segments.slice(0, index + 1)));
 
 const daimonPlan: RuntimeTargetPlan = {
   engineByNodeId: { "agent:AGY": "agy", "agent:Codex One": "codex", "agent:Grok Two": "grok" },
@@ -358,39 +364,74 @@ describe("renderDaimonUidEntrypoint lifecycle",()=>{
     }
   }, 60_000);
 
+  // The guard hardens the fixed /var and /var/lib ancestors and the private state root
+  // before it ever opens a compiler-authored state root, and it walks every absolute path
+  // segment by segment from "/" through /proc/self/fd. Both facts make the host filesystem
+  // the wrong place to exercise the hostile-ancestor rejection: on macOS every open fails
+  // because /proc does not exist, and on unprivileged Linux the /var fchmod raises EPERM,
+  // so the assertion below would pass or explode for reasons unrelated to the symlink.
+  // Running inside a throwaway Linux container gives the test a filesystem it owns from /
+  // down, so the rejection it asserts is caused by the symlink the test itself planted.
   it("rejects an ancestor symlink and ignores run-env roots before a restart can reach an external entrypoint", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-daimon-root-link-"));
-    const externalRoot = path.join(directory, "opt", "spawnfile", "root");
-    const protectedEntrypoint = path.join(externalRoot, "entrypoint.sh");
-    const hostileParent = path.join(directory, "compiled");
-    const instanceRoot = path.join(hostileParent, "instance");
-    const runEnvironment = path.join(directory, "run.env");
-    const wrapper = path.join(directory, "daimon-uid-entrypoint.sh");
-    try {
-      await mkdir(externalRoot, { recursive: true });
-      await writeFile(protectedEntrypoint, "trusted root entrypoint\n", "utf8");
-      await symlink(path.join(directory, "opt", "spawnfile", "root"), hostileParent);
-      await writeFile(runEnvironment, "SPAWNFILE_DAIMON_WRITABLE_ROOTS=/opt/spawnfile/root\n", "utf8");
-      const rendered = renderDaimonUidEntrypoint([{
-        ...daimonPlan,
-        instancePaths: {
-          ...daimonPlan.instancePaths,
-          instanceRoot,
-          workspacePath: path.join(instanceRoot, "workspace")
-        }
-      }]);
-      await writeFile(wrapper, rendered, "utf8");
-      for (const _restart of [0, 1]) {
-        const result = spawnSync("bash", ["-c", 'set -a; . "$1"; set +a; exec bash "$2"', "bash", runEnvironment, wrapper], {
-          env: process.env
-        });
-        expect(result.status).not.toBe(0);
-        expect(Buffer.from(result.stderr).toString("utf8")).toContain("symbolic-link");
+    const testRoot = "/spawnfile-daimon-root-link";
+    const externalRoot = `${testRoot}/opt/spawnfile/root`;
+    const protectedEntrypoint = `${externalRoot}/entrypoint.sh`;
+    const hostileParent = `${testRoot}/compiled`;
+    const instanceRoot = `${hostileParent}/instance`;
+    const wrapper = `${testRoot}/daimon-uid-entrypoint.sh`;
+    const runEnvironment = `${testRoot}/run.env`;
+    const configPath = daimonPlan.instancePaths.configPath;
+    const rejection = "Daimon ownership guard: root has a symbolic-link or unavailable path component";
+    const plan: RuntimeTargetPlan = {
+      ...daimonPlan,
+      instancePaths: {
+        ...daimonPlan.instancePaths,
+        instanceRoot,
+        workspacePath: `${instanceRoot}/workspace`
       }
-      expect(await readFile(protectedEntrypoint, "utf8")).toBe("trusted root entrypoint\n");
-      expect((await lstat(externalRoot)).isDirectory()).toBe(true);
-    } finally {
-      await rm(directory, { force: true, recursive: true });
-    }
-  });
+    };
+    const stateRoots = resolveDaimonUidEntrypointStateRoots([plan]);
+    expect(stateRoots).toEqual([`${instanceRoot}/runtime-homes`, `${instanceRoot}/workspace`]);
+    const rendered = renderDaimonUidEntrypoint([plan]);
+    expect(rendered).not.toContain("SPAWNFILE_DAIMON_WRITABLE_ROOTS");
+    const { stdout } = await execFile("docker", [
+      "run", "--rm",
+      "--env", `SPAWNFILE_TEST_WRAPPER=${Buffer.from(rendered, "utf8").toString("base64")}`,
+      "node:24-bookworm-slim", "bash", "-c",
+      [
+        "set -eu",
+        // Behind the symlink the state roots resolve to real directories, so the guard can
+        // only fail for having refused to follow the symlink, never for a missing path.
+        `install -d -o root -g root -m 755 '${externalRoot}' ${stateRoots.map((root) => `'${root.replace(hostileParent, externalRoot)}'`).join(" ")}`,
+        `printf 'trusted root entrypoint\\n' > '${protectedEntrypoint}'`,
+        `ln -s '${externalRoot}' '${hostileParent}'`,
+        // Compiler-authored private state the guard secures before any state root.
+        ...privateStateAncestors(path.posix.dirname(configPath))
+          .map((directory) => `install -d -o root -g root -m 711 '${directory}'`),
+        `printf '{}\\n' > '${configPath}'`,
+        `printf %s "$SPAWNFILE_TEST_WRAPPER" | base64 -d > '${wrapper}'`,
+        `printf 'SPAWNFILE_DAIMON_WRITABLE_ROOTS=/opt/spawnfile/root\\n' > '${runEnvironment}'`,
+        "for restart in 1 2; do",
+        "  set +e",
+        `  guard_stderr=$( ( set -a; . '${runEnvironment}'; set +a; exec bash '${wrapper}' ) 2>&1 >/dev/null )`,
+        "  guard_status=$?",
+        "  set -e",
+        `  printf 'restart=%s status=%s stderr=%s\\n' "$restart" "$guard_status" "$guard_stderr"`,
+        "done",
+        `printf 'entrypoint=%s\\n' "$(cat '${protectedEntrypoint}')"`,
+        `printf 'external-root=%s\\n' "$(stat -c %F '${externalRoot}')"`,
+        ...stateRoots.map((root) => {
+          const behindLink = root.replace(hostileParent, externalRoot);
+          return `printf '%s=%s\\n' '${path.posix.basename(root)}' "$(stat -c '%u:%g:%a' '${behindLink}')"`;
+        })
+      ].join("\n")
+    ], { timeout: 60_000 });
+    expect(stdout).toContain(`restart=1 status=1 stderr=${rejection}\n`);
+    expect(stdout).toContain(`restart=2 status=1 stderr=${rejection}\n`);
+    expect(stdout).toContain("entrypoint=trusted root entrypoint\n");
+    expect(stdout).toContain("external-root=directory\n");
+    // Following the symlink would have handed the protected tree to the runtime UID.
+    expect(stdout).toContain("runtime-homes=0:0:755\n");
+    expect(stdout).toContain("workspace=0:0:755\n");
+  }, 60_000);
 });
