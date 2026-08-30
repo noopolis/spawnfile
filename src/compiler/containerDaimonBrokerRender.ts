@@ -108,6 +108,8 @@ export const renderDaimonBrokerProvisioning = (plans: RuntimeTargetPlan[]): stri
     "fs.chmodSync('/etc/daimon-engine-broker', 0o555);"
   ].join("\n");
   return [
+    "if [ -d /etc/daimon-engine-broker ]; then chmod u+rwx /etc/daimon-engine-broker; fi",
+    "if [ -d /run/daimon-engine-broker ]; then chmod u+rwx /run/daimon-engine-broker; fi",
     "rm -rf /etc/daimon-engine-broker /run/daimon-engine-broker",
     `install -d -o root -g ${DAIMON_BROKER_UID} -m 0731 /run/daimon-engine-broker`,
     "node <<'SPAWNFILE_DAIMON_BROKER_PROVISION'",

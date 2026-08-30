@@ -301,7 +301,7 @@ export const renderDaimonUidEntrypoint = (
       "trap cleanup_broker_startup EXIT",
       "trap 'exit 143' TERM INT HUP",
       `install -d -o ${DAIMON_BROKER_UID} -g ${DAIMON_BROKER_UID} -m 0700 ${quote(DAIMON_BROKER_REALM)}`,
-      `if [ -e ${quote(`${DAIMON_BROKER_REALM}/auth.json`)} ]; then test -f ${quote(`${DAIMON_BROKER_REALM}/auth.json`)} && test ! -L ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chown ${DAIMON_BROKER_UID}:${DAIMON_BROKER_UID} ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chmod 0600 ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; fi`,
+      `if [ -e ${quote(`${DAIMON_BROKER_REALM}/auth.json`)} ]; then test -f ${quote(`${DAIMON_BROKER_REALM}/auth.json`)} && test ! -L ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chown 0:0 ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chmod 0600 ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chown ${DAIMON_BROKER_UID}:${DAIMON_BROKER_UID} ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; fi`,
       `setpriv --clear-groups --reuid ${DAIMON_BROKER_UID} --regid ${DAIMON_BROKER_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${DAIMON_BROKER_REALM}/.daimon-ancestry-probe; umask 077; : > "$probe"; rm "$probe"'`,
       `install -d -o ${DAIMON_BROKER_UID} -g ${DAIMON_BROKER_UID} -m 0750 ${quote(DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath)}`,
       `setpriv --clear-groups --reuid ${DAIMON_BROKER_UID} --regid ${DAIMON_BROKER_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath}/.daimon-usage-probe; umask 027; : > "$probe"; rm "$probe"'`,

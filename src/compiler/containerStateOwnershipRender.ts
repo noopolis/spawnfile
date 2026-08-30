@@ -72,8 +72,9 @@ const createMoltnetPrivacyCommands = (
 
   return [
     `install -d -o ${DAIMON_RUNTIME_UID} -g ${DAIMON_RUNTIME_UID} -m 700 ${privateDirectories.map(shellQuote).join(" ")}`,
-    `chown ${ownership} ${configPaths.map(shellQuote).join(" ")}`,
-    `chmod 600 ${configPaths.map(shellQuote).join(" ")}`
+    `chown root:root ${configPaths.map(shellQuote).join(" ")}`,
+    `chmod 600 ${configPaths.map(shellQuote).join(" ")}`,
+    `chown ${ownership} ${configPaths.map(shellQuote).join(" ")}`
   ];
 };
 
