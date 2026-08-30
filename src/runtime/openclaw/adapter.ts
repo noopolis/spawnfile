@@ -12,7 +12,8 @@ import {
   createAgentCapabilities,
   createDiagnostic,
   createDocumentFiles,
-  createSkillFiles
+  createSkillFiles,
+  WORKSPACE_SKILL_BASE_DIRECTORY
 } from "../common.js";
 import { SpawnfileError } from "../../shared/index.js";
 import { applyOpenClawImportAuthConfig, resolveOpenClawImportAuthModes } from "./configAuth.js";
@@ -281,7 +282,7 @@ export const openClawAdapter: RuntimeAdapter = {
       ],
       files: [
         ...createDocumentFiles("workspace", node.docs),
-        ...createSkillFiles("workspace/skills", node.skills),
+        ...createSkillFiles(WORKSPACE_SKILL_BASE_DIRECTORY, node.skills),
         ...createOpenClawStateFiles(),
         ...(cronStoreFile ? [cronStoreFile] : []),
         {

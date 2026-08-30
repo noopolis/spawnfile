@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { ResolvedAgentNode } from "../../compiler/types.js";
 
+import { WORKSPACE_SKILL_BASE_DIRECTORY } from "../common.js";
+
 import { openClawAdapter } from "./adapter.js";
 
 const createNode = (options: Record<string, unknown> = {}): ResolvedAgentNode => ({
@@ -29,6 +31,27 @@ const createNode = (options: Record<string, unknown> = {}): ResolvedAgentNode =>
 });
 
 describe("openClawAdapter", () => {
+  it("emits declared skills under the shared workspace skill root constant", async () => {
+    // OpenClaw reads `workspace/skills/` with its own loader. Deriving the
+    // path from common.ts's constant (rather than restating the literal here
+    // and in the adapter) is what keeps the adapter, PicoClaw, and
+    // src/runtime/AGENTS.md from drifting apart.
+    const result = await openClawAdapter.compileAgent({
+      ...createNode(),
+      skills: [{
+        content: "---\nname: web_search\ndescription: Search\n---\n",
+        name: "web_search",
+        ref: "./skills/web_search",
+        requiresMcp: [],
+        sourcePath: "/tmp/skills/web_search/SKILL.md"
+      }]
+    });
+
+    expect(result.files.map((file) => file.path)).toContain(
+      `${WORKSPACE_SKILL_BASE_DIRECTORY}/web_search/SKILL.md`
+    );
+  });
+
   it("exposes container metadata for gateway boot", () => {
     expect(openClawAdapter.container).toEqual({
       configFileName: "openclaw.json",
