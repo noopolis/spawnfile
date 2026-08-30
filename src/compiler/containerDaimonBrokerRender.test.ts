@@ -29,6 +29,31 @@ describe("Daimon broker registration ABI", () => {
   });
 });
 
+describe("Daimon broker registration directory provisioning", () => {
+  const plan = {
+    runtimeName: "daimon",
+    engineByNodeId: { "agent:grok": "grok" },
+    instancePaths: { workspacePath: "/workspace" }
+  } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
+
+  it("keeps the broker directory writable until its files are provisioned", () => {
+    const lines = renderDaimonBrokerProvisioning([plan]).join("\n").split("\n");
+    const mkdirIndex = lines.findIndex((line) => line.includes(
+      "fs.mkdirSync('/etc/daimon-engine-broker', { recursive: true, mode: 0o700 })"
+    ));
+    const serviceWriteIndex = lines.findIndex((line) => line.includes(
+      "fs.writeFileSync('/etc/daimon-engine-broker/service.json'"
+    ));
+    const tightenIndex = lines.findIndex((line) => line ===
+      "fs.chmodSync('/etc/daimon-engine-broker', 0o555);"
+    );
+
+    expect(mkdirIndex).toBeGreaterThanOrEqual(0);
+    expect(serviceWriteIndex).toBeGreaterThan(mkdirIndex);
+    expect(tightenIndex).toBeGreaterThan(serviceWriteIndex);
+  });
+});
+
 describe("Daimon broker usage ledger provisioning", () => {
   const plan = {
     runtimeName: "daimon",
