@@ -52,6 +52,21 @@ describe("Daimon broker registration directory provisioning", () => {
     expect(serviceWriteIndex).toBeGreaterThan(mkdirIndex);
     expect(tightenIndex).toBeGreaterThan(serviceWriteIndex);
   });
+
+  it("restores owner-write before removing tightened broker directories", () => {
+    const lines = renderDaimonBrokerProvisioning([plan]);
+    const etcLoosen = lines.indexOf(
+      "if [ -d /etc/daimon-engine-broker ]; then chmod u+rwx /etc/daimon-engine-broker; fi"
+    );
+    const runLoosen = lines.indexOf(
+      "if [ -d /run/daimon-engine-broker ]; then chmod u+rwx /run/daimon-engine-broker; fi"
+    );
+    const remove = lines.indexOf("rm -rf /etc/daimon-engine-broker /run/daimon-engine-broker");
+
+    expect(etcLoosen).toBeGreaterThanOrEqual(0);
+    expect(runLoosen).toBeGreaterThan(etcLoosen);
+    expect(remove).toBeGreaterThan(runLoosen);
+  });
 });
 
 describe("Daimon broker usage ledger provisioning", () => {
