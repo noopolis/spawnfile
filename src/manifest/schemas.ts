@@ -7,6 +7,7 @@ import { mcpServerSchema } from "./mcpSchemas.js";
 import { surfacesSchema } from "./surfaceSchemas.js";
 import { externalParticipantServiceSchema } from "./externalParticipantSchemas.js";
 import {
+  isDeclaredPairedRemoteRoomMember,
   teamNetworkSchema,
   teamWorkspaceDocsSchema,
   teamWorkspaceSchema
@@ -250,7 +251,9 @@ const teamManifestSchema = commonManifestSchema
         );
         for (const room of network.rooms) {
           for (const memberId of room.members) {
-            if (!memberIds.has(memberId) && !externalRoomMembers.has(memberId)) {
+            if (!memberIds.has(memberId)
+              && !externalRoomMembers.has(memberId)
+              && !isDeclaredPairedRemoteRoomMember(network, room, memberId)) {
               context.addIssue({
                 code: z.ZodIssueCode.custom,
                 message: `network ${network.id} room ${room.id} references unknown member ${memberId}`
@@ -335,6 +338,7 @@ export type {
   TeamWorkspace,
   TeamWorkspaceResource
 } from "./teamNetworkSchemas.js";
+export { isDeclaredPairedRemoteRoomMember } from "./teamNetworkSchemas.js";
 
 export type {
   DiscordSurface,

@@ -1,6 +1,7 @@
 /* v8 ignore file -- type-only module */
 import type { DistributionReport } from "../distribution/index.js";
 import type { ContainerReport } from "../report/index.js";
+import type { ContainerPersistentMountReport } from "../report/index.js";
 import type {
   EmittedFile,
   RuntimeContainerConfigEnvBinding,
@@ -40,6 +41,8 @@ export interface RuntimeTargetPlan {
   meta: RuntimeContainerMeta;
   modelAuthMethods: Record<string, ModelAuthMethod>;
   modelSecretsRequired: string[];
+  opaqueMountTargets?: string[];
+  persistentMounts?: ContainerPersistentMountReport[];
   port?: number;
   publishedPort?: number;
   /**

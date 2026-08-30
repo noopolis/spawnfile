@@ -32,12 +32,13 @@ export interface DistributionPersistentMount {
   durability: "persistent";
   id: string;
   kind: "volume";
+  lifecycle?: "exclusive-reattach";
   target: string;
 }
 
 export interface DistributionWorkspaceResource {
   id: string;
-  kind: "git" | "volume";
+  kind: "bundle" | "git" | "volume";
   link_path: string;
   mode: "mutable" | "readonly";
   mount: string;
@@ -46,6 +47,7 @@ export interface DistributionWorkspaceResource {
 
 export interface DistributionRuntimeInstance {
   config_path: string;
+  engine_by_node_id?: Record<string, string>;
   home_path: string | null;
   id: string;
   internal_port: number | null;
@@ -56,6 +58,11 @@ export interface DistributionRuntimeInstance {
   runtime: string;
   workspace_path: string;
 }
+
+export const DISTRIBUTION_ENGINE_KINDS = [
+  "agy", "claude", "codex", "grok", "pi", "scripted"
+] as const;
+export type DistributionEngineKind = typeof DISTRIBUTION_ENGINE_KINDS[number];
 
 export interface DistributionMoltnetNetwork {
   binding: "env";

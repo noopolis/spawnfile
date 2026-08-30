@@ -36,6 +36,7 @@ import {
 import { createDefaultImageTag, resolveDockerBuildArchitecture } from "./buildProject.js";
 import { slugify } from "./helpers.js";
 import {
+  inspectDetachedContainer as recoverDetachedDockerRun,
   runDockerContainer,
   type DockerRunInvocation,
   type DockerRunResult,
@@ -53,7 +54,7 @@ import {
   resolveRunEnvironment
 } from "./runProjectAuth.js";
 
-export { runDockerContainer };
+export { recoverDetachedDockerRun, runDockerContainer };
 export type { DockerRunInvocation, DockerRunResult, DockerRunRunner };
 
 export interface RunProjectOptions extends CompileProjectOptions {
@@ -138,6 +139,10 @@ export const createDockerRunInvocation = async (
     );
     assertRunEnvironmentSatisfied(containerReport, env, preparedRuntimeAuth.coveredModelSecrets);
     assertMoltnetCredentialValuesDistinct(containerReport, env);
+    const hasDaimon = containerReport.runtime_instances.some(
+      (instance) => instance.runtime === "daimon"
+    );
+    const opaqueDaimonCredentials = preparedRuntimeAuth.launchIdentity?.kind === "daimon";
 
     await ensureDirectory(supportDirectory);
     await writeUtf8File(envFilePath, renderDockerEnvFile(env));
@@ -155,19 +160,33 @@ export const createDockerRunInvocation = async (
         : ["run"];
 
     if (options.detach) {
-      args.push("-d");
+      args.push("-d", "--restart", "unless-stopped");
     } else {
       args.push("--rm");
     }
 
     args.push("--name", containerName);
 
+    if (hasDaimon) {
+      args.push(
+        "--cap-drop=ALL",
+        "--cap-add=CHOWN",
+        "--cap-add=SETUID",
+        "--cap-add=SETGID",
+        "--cap-add=DAC_READ_SEARCH",
+        "--security-opt=no-new-privileges:true"
+      );
+    }
+
     for (const port of containerReport.ports) {
       args.push("-p", `${port}:${port}`);
     }
 
     for (const mount of containerReport.persistent_mounts ?? []) {
-      args.push("-v", `${mount.volume_name}:${mount.mount_path}`);
+      args.push(
+        "--mount",
+        `type=volume,source=${mount.volume_name},target=${mount.mount_path},volume-nocopy`
+      );
     }
 
     const deploymentLabels = options.detach && deploymentName ? (() => {
@@ -196,7 +215,14 @@ export const createDockerRunInvocation = async (
       dockerContext: options.dockerContext ?? null,
       dockerHost: options.dockerHost ?? null,
       envFilePath,
+      ...((containerReport.persistent_mounts ?? []).some((mount) => mount.lifecycle === "exclusive-reattach") ? {
+        exclusiveReattachVolumes: (containerReport.persistent_mounts ?? [])
+          .filter((mount) => mount.lifecycle === "exclusive-reattach")
+          .map((mount) => mount.volume_name)
+          .sort()
+      } : {}),
       imageTag,
+      ...(opaqueDaimonCredentials ? { opaqueDaimonCredentials } : {}),
       supportDirectory
     };
   } catch (error) {
@@ -303,6 +329,7 @@ export const runProject = async (
   const compileResult = await compileProject(inputPath, {
     clean: options.clean,
     containerArchitecture: targetArchitecture,
+    deploymentLineage: resolvedOptions.deploymentName ?? "ephemeral",
     outputDirectory: options.outputDirectory,
     ...(options.worldBindingsPath !== undefined
       ? { worldBindingsPath: options.worldBindingsPath }

@@ -85,7 +85,10 @@ const inspection = (spec: DockerWorldServiceSpec): Record<string, unknown> => ({
   GroupAddCount: 0,
   PidMode: "",
   IpcMode: "none",
-  Tmpfs: { "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777" },
+  Tmpfs: {
+    "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777",
+    "/tmp/spawnfile-public": "rw,noexec,nosuid,nodev,size=1m,mode=1777"
+  },
   UTSMode: "",
   UsernsMode: "",
   CgroupnsMode: "private",
@@ -123,6 +126,7 @@ describe("Docker world-service provider", () => {
       "--cap-drop", "ALL", "--security-opt", "no-new-privileges=true",
       "--ipc", "none", "--cgroupns", "private",
       "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=1m,mode=1777",
+      "--tmpfs", "/tmp/spawnfile-public:rw,noexec,nosuid,nodev,size=1m,mode=1777",
       ...Object.entries(spec.receiptLabels).flatMap(([key, value]) => ["--label", `${key}=${value}`]),
       "--mount", `type=volume,src=${evidence.name},dst=/run/world/evidence,volume-nocopy`,
       "--mount", `type=volume,src=${secrets.volumeName},dst=/run/spawnfile-secrets,readonly,volume-nocopy`,
@@ -199,8 +203,14 @@ describe("Docker world-service provider", () => {
       ["host PID", (value) => { value.PidMode = "host"; }],
       ["shared IPC", (value) => { value.IpcMode = "host"; }],
       ["missing runtime tmpfs", (value) => { value.Tmpfs = {}; }],
+      ["missing public-artifact tmpfs", (value) => {
+        value.Tmpfs = { "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777" };
+      }],
       ["writable executable tmpfs", (value) => {
-        value.Tmpfs = { "/tmp": "rw,nosuid,nodev,size=1m,mode=1777" };
+        value.Tmpfs = {
+          "/tmp": "rw,nosuid,nodev,size=1m,mode=1777",
+          "/tmp/spawnfile-public": "rw,noexec,nosuid,nodev,size=1m,mode=1777"
+        };
       }],
       ["host UTS", (value) => { value.UTSMode = "host"; }],
       ["host userns", (value) => { value.UsernsMode = "host"; }],

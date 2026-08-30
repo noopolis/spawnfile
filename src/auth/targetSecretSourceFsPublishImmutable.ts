@@ -8,7 +8,9 @@ type Identity = Readonly<{ dev: number; ino: number; mode: number; nlink: number
 export type TargetSecretSourceFsPublishImmutablePhase =
   | "after_token_create" | "after_claim_link" | "after_claim_snapshot" | "after_mismatch_snapshot"
   | "after_exact_token_snapshot" | "after_final_create" | "after_partial_write" | "after_file_sync"
-  | "before_directory_sync" | "after_directory_sync" | "after_token_cleanup" | "after_claim_cleanup";
+  | "before_directory_sync" | "after_directory_sync" | "after_token_cleanup" | "after_claim_cleanup"
+  | "after_zero_lstat" | "after_final_lstat" | "after_token_open" | "after_token_sync" | "after_final_open" | "before_unlink_exact"
+  | "before_contention_retry";
 
 export interface TargetSecretSourceFsPublishImmutableInput {
   readonly bytes: Uint8Array;
@@ -18,6 +20,7 @@ export interface TargetSecretSourceFsPublishImmutableInput {
 }
 export interface TargetSecretSourceFsPublishImmutableOptions {
   readonly directory_chain: readonly string[];
+  readonly contentionForTest?: (reason: string, attempt: number) => void;
   readonly hookForTest?: (phase: TargetSecretSourceFsPublishImmutablePhase, path: string) => Promise<void> | void;
   readonly maxWriteBytesForTest?: number;
 }
@@ -54,7 +57,8 @@ const fileIdentity = (
     || (value.mode & 0o7777) !== 0o600 || value.size < 0 || value.size > MAX_BYTES || (zero && value.size !== 0)) fail();
   return { dev: value.dev, ino: value.ino, mode: value.mode, nlink: value.nlink, size: value.size, uid: value.uid };
 };
-const yieldTurn = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+const contentionDelay = (attempt: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, Math.min(5, 1 + Math.floor(attempt / 32))));
 
 export const initializeTargetSecretSourceFsPublishImmutable = async (
   options: TargetSecretSourceFsPublishImmutableOptions
@@ -100,6 +104,7 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
       if (beforeInfo.nlink === 0) { fileIdentity(beforeInfo, uid, [0], true); return null; }
       before = fileIdentity(beforeInfo, uid, links, true);
     } catch (error) { if (missing(error)) return null; return fail(); }
+    await options.hookForTest?.("after_zero_lstat", path);
     let fd;
     try {
       try { fd = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW); }
@@ -125,6 +130,7 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
     const immediate = await snapshotZero(path, [1, 2]);
     if (immediate === null) { await syncDirectory(); return false; }
     if (!sameInode(immediate, expected) || !same(immediate, expected)) return false;
+    await options.hookForTest?.("before_unlink_exact", path);
     try { await unlink(path); } catch (error) {
       if (!missing(error)) fail();
       await syncDirectory();
@@ -138,6 +144,7 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
     let before: Identity;
     try { before = fileIdentity(await lstat(path), uid, [1]); }
     catch (error) { if (missing(error)) return "absent"; return fail(); }
+    await options.hookForTest?.("after_final_lstat", path);
     if (before.size > expected.length) fail();
     let fd; let bytes: Uint8Array | undefined;
     try {
@@ -157,7 +164,10 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
       if (!same(opened, after) || !same(opened, named)) return "prefix";
       for (let index = 0; index < bytes.length; index += 1) if (bytes[index] !== expected[index]) fail();
       return bytes.length === expected.length ? "exact" : "prefix";
-    } catch { return fail(); } finally { bytes?.fill(0); await fd?.close().catch(() => undefined); }
+    } catch (error) {
+      if (missing(error)) return "absent";
+      return fail();
+    } finally { bytes?.fill(0); await fd?.close().catch(() => undefined); }
   };
   const createToken = async (token: string): Promise<Identity | null> => {
     await checkChain();
@@ -165,8 +175,14 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
     try {
       fd = await open(token, constants.O_CREAT | constants.O_EXCL | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
       await fd.chmod(0o600);
-      const opened = fileIdentity(await fd.stat(), uid, [1], true);
+      await options.hookForTest?.("after_token_open", token);
+      // An identical publisher may link or finish tearing down this token as soon
+      // as O_EXCL makes the pathname visible, before its creator reaches fstat.
+      const openedInfo = await fd.stat();
+      if (openedInfo.nlink === 0) { fileIdentity(openedInfo, uid, [0], true); return null; }
+      const opened = fileIdentity(openedInfo, uid, [1, 2], true);
       await fd.sync();
+      await options.hookForTest?.("after_token_sync", token);
       const afterInfo = await fd.stat();
       if (afterInfo.nlink === 0) { fileIdentity(afterInfo, uid, [0], true); return null; }
       const after = fileIdentity(afterInfo, uid, [1, 2], true);
@@ -202,6 +218,12 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
       await proveOwned();
       const claim = `${final}.claim`;
       const token = `${final}.token.${publicationHandle}`;
+      const retryContention = async (attempt: number, contestedPath: string, reason: string): Promise<void> => {
+        options.contentionForTest?.(reason, attempt);
+        await options.hookForTest?.("before_contention_retry", contestedPath);
+        if (attempt >= MAX_ATTEMPTS - 1) fail();
+        await contentionDelay(attempt);
+      };
       const proveFinal = async (): Promise<boolean> => {
         if (await readFinal(final, owned!) !== "exact") return false;
         await proveOwned();
@@ -217,14 +239,19 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
           return;
         }
         if (claimState !== null && tokenState === null) {
-          if (finalState !== "exact" || claimState.nlink !== 1) { await yieldTurn(); continue; }
+          if (finalState !== "exact" || claimState.nlink !== 1) { await retryContention(attempt, claim, "orphan-claim-not-cleanable"); continue; }
           if (!await proveFinal()) fail();
-          if (!await unlinkExact(claim, claimState)) { await yieldTurn(); continue; }
+          if (!await unlinkExact(claim, claimState)) {
+            const latestClaim = await snapshotZero(claim, [1, 2]);
+            if (latestClaim === null) { if (!await proveFinal()) fail(); return; }
+            if (!sameInode(latestClaim, claimState)) fail();
+            await retryContention(attempt, claim, "orphan-claim-cleanup-race"); continue;
+          }
           return;
         }
         let ownedToken = tokenState;
         if (ownedToken === null) ownedToken = await createToken(token);
-        if (ownedToken === null) { await yieldTurn(); continue; }
+        if (ownedToken === null) { await retryContention(attempt, token, "token-election-race"); continue; }
         let currentClaim = await snapshotZero(claim, [1, 2]);
         if (currentClaim === null && ownedToken.nlink === 1) {
           try { await checkChain(); await link(token, claim); } catch (error) { if (!exists(error)) fail(); }
@@ -233,33 +260,35 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
           currentClaim = await snapshotZero(claim, [1, 2]);
           ownedToken = await snapshotZero(token, [1, 2]);
         }
-        if (!currentClaim || !ownedToken) { await yieldTurn(); continue; }
+        if (!currentClaim || !ownedToken) { await retryContention(attempt, claim, "topology-observation-race"); continue; }
         if (currentClaim.dev !== ownedToken.dev || currentClaim.ino !== ownedToken.ino) {
           await options.hookForTest?.("after_mismatch_snapshot", token);
           if (ownedToken.nlink === 1) {
             const latest = await snapshotZero(token, [1, 2]);
             if (latest?.nlink === 1 && same(latest, ownedToken)) await unlinkExact(token, latest);
           }
-          await yieldTurn();
+          await retryContention(attempt, claim, "foreign-token-race");
           continue;
         }
-        if (currentClaim.nlink !== 2 || ownedToken.nlink !== 2) { await yieldTurn(); continue; }
+        if (currentClaim.nlink !== 2 || ownedToken.nlink !== 2) { await retryContention(attempt, claim, "link-count-race"); continue; }
         const state = await readFinal(final, owned);
         if (state === "absent") {
           let fd;
           try {
             fd = await open(final, constants.O_CREAT | constants.O_EXCL | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
             await fd.chmod(0o600);
-            const empty = fileIdentity(await fd.stat(), uid, [1], true);
+            await options.hookForTest?.("after_final_open", final);
+            const created = fileIdentity(await fd.stat(), uid, [1]);
+            if (created.size > owned.length) fail();
             await options.hookForTest?.("after_final_create", final);
-            const split = Math.max(1, Math.floor(owned.length / 2));
-            let offset = 0;
+            const split = Math.max(created.size, 1, Math.floor(owned.length / 2));
+            let offset = created.size;
             while (offset < split) offset += await writeSome(fd, owned, offset, split - offset);
             await options.hookForTest?.("after_partial_write", final);
             while (offset < owned.length) offset += await writeSome(fd, owned, offset, owned.length - offset);
             await fd.sync();
             const complete = fileIdentity(await fd.stat(), uid, [1]);
-            if (empty.dev !== complete.dev || empty.ino !== complete.ino || complete.size !== owned.length) fail();
+            if (created.dev !== complete.dev || created.ino !== complete.ino || complete.size !== owned.length) fail();
             await options.hookForTest?.("after_file_sync", final);
           } catch (error) { if (!exists(error)) fail(); } finally { await fd?.close().catch(() => undefined); }
         } else if (state === "prefix") {
@@ -275,19 +304,27 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
             if (before.dev !== after.dev || before.ino !== after.ino || after.size !== owned.length) fail();
           } catch { fail(); } finally { await fd?.close().catch(() => undefined); }
         }
-        if (!await proveFinal()) { await yieldTurn(); continue; }
+        if (!await proveFinal()) { await retryContention(attempt, final, "final-write-race"); continue; }
         await syncDirectory();
         await options.hookForTest?.("after_directory_sync", final);
         const exactToken = await snapshotZero(token, [1, 2]);
         await options.hookForTest?.("after_exact_token_snapshot", token);
         const exactClaim = await snapshotZero(claim, [1, 2]);
         if (!exactToken || !exactClaim || exactToken.dev !== exactClaim.dev || exactToken.ino !== exactClaim.ino
-          || exactToken.nlink !== 2 || exactClaim.nlink !== 2) { await yieldTurn(); continue; }
+          || exactToken.nlink !== 2 || exactClaim.nlink !== 2) { await retryContention(attempt, claim, "cleanup-snapshot-race"); continue; }
         await unlinkExact(token, exactToken);
         await options.hookForTest?.("after_token_cleanup", token);
         const remainingClaim = await snapshotZero(claim, [1, 2]);
         if (remainingClaim === null) { if (!await proveFinal()) fail(); return; }
-        if (remainingClaim.nlink !== 1 || !await unlinkExact(claim, remainingClaim)) { await yieldTurn(); continue; }
+        if (remainingClaim.nlink !== 1) {
+          await retryContention(attempt, claim, "claim-final-cleanup-race"); continue;
+        }
+        if (!await unlinkExact(claim, remainingClaim)) {
+          const latestClaim = await snapshotZero(claim, [1, 2]);
+          if (latestClaim === null) { if (!await proveFinal()) fail(); return; }
+          if (!sameInode(latestClaim, remainingClaim)) fail();
+          await retryContention(attempt, claim, "claim-final-cleanup-race"); continue;
+        }
         await options.hookForTest?.("after_claim_cleanup", claim);
         if (!await proveFinal()) fail();
         return;

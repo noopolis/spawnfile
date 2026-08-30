@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ResolvedAgentNode } from "../compiler/types.js";
 
 import {
+  CLI_ENGINE_SKILL_BASE_DIRECTORIES,
   createAgentCapabilities,
   createDocumentFiles,
   createSkillFiles,
@@ -61,6 +62,36 @@ describe("runtime common helpers", () => {
         content: "---\nname: web_search\ndescription: Search\n---\n",
         path: "workspace/skills/web_search/SKILL.md"
       }
+    ]);
+  });
+
+  it("fans one skill out across every requested discovery root", () => {
+    expect(createSkillFiles(["workspace/.agents/skills", "workspace/.codex/skills"], baseAgent.skills)).toEqual([
+      {
+        content: "---\nname: web_search\ndescription: Search\n---\n",
+        path: "workspace/.agents/skills/web_search/SKILL.md"
+      },
+      {
+        content: "---\nname: web_search\ndescription: Search\n---\n",
+        path: "workspace/.codex/skills/web_search/SKILL.md"
+      }
+    ]);
+  });
+
+  it("pins the CLI-engine skill roots to the roots Moltnet installs its own skill into", () => {
+    // resolveMoltnetWorkspaceLayout("daimon"|"pi") installs the Moltnet skill
+    // into exactly these two roots, and that skill demonstrably reaches the
+    // engine in a running container. Declared skills must land in the same
+    // places or no engine ever discovers them.
+    expect([...CLI_ENGINE_SKILL_BASE_DIRECTORIES]).toEqual([
+      "workspace/.agents/skills",
+      "workspace/.codex/skills"
+    ]);
+    expect(
+      createSkillFiles(CLI_ENGINE_SKILL_BASE_DIRECTORIES, baseAgent.skills).map((file) => file.path)
+    ).toEqual([
+      "workspace/.agents/skills/web_search/SKILL.md",
+      "workspace/.codex/skills/web_search/SKILL.md"
     ]);
   });
 

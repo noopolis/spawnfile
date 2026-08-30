@@ -341,7 +341,10 @@ Team networks are provider-backed organizational communication topology. Moltnet
 
 Rules:
 
-- A parent team's `networks[].rooms[].members` list may name direct agent member IDs or direct child-team member IDs.
+- A parent team's `networks[].rooms[].members` list may name direct agent member IDs,
+  direct child-team member IDs, or a scoped `<remote-network-id>:<agent-id>` member
+  backed by a pairing included in that room's federation stance. Scoped remote
+  members lower directly to Moltnet membership and never synthesize a local attachment.
 - Direct child-team IDs expand through the child team's representative chain, not to arbitrary descendants.
 - The compiler synthesizes Moltnet room attachments for selected representatives because the parent room is declared organization membership, not a proxy.
 - Moltnet member IDs are direct member slot IDs and must be unique across different canonical agent sources in the reachable nested team graph. Reusing the same member id is valid only when every duplicate resolves to the same canonical agent source.
@@ -380,9 +383,14 @@ Rules:
 - `server.auth.public_read` and `server.auth.agent_registration` lower into native Moltnet auth config without changing generated node room authority.
 - Per-agent writable token paths are derived from the compiled agent slug and Moltnet member id so the generated `MoltnetNode` and generated `.moltnet/config.json` point to the same durable credential file.
 - Managed bearer `server.auth.client` requires `token_id`; the referenced server-level client or operator token must include `write` and at least one of `attach` or `observe`.
-- Managed bearer `surfaces.moltnet[].auth.token_id` resolves independently per attachment. The referenced token must include `attach` and `write` and must bind exactly one `agents` entry equal to the attachment's resolved Moltnet member ID.
+- Managed bearer `surfaces.moltnet[].auth.token_id` resolves independently per attachment. The referenced token must use exactly `[attach, write]`, or `[attach, observe, write]` for a Daimon attachment, and must bind exactly one `agents` entry equal to the attachment's resolved Moltnet member ID.
+- A Daimon `MoltnetNode` attachment keeps the resolved Moltnet member ID in `agent.id` and emits the compiled Daimon host identity separately as `runtime.agent_id`; the bridge uses only the latter for Daimon wake requests and result matching.
 - Managed and external open static token mode requires `static_token: true` on the configured client source.
 - `server.pairings` entries are materialized into managed server config and rejected on non-managed networks.
+- Relay pairing credentials lower independently to `pairings[].relay.token`; the pairing credential still lowers to `pairings[].token`. Both remain environment patches and are never rendered into source artifacts.
+- `networks[].rooms[].federation` lowers to the native Moltnet room stance.
+  Lists are validated against the effective managed server pairings; omitted
+  stances lower to explicit `none` whenever pairings are configured.
 - Managed `server.human_ingress`, `server.direct_messages`, `server.debug_events`, `server.console.analytics`, `server.trust_forwarded_proto`, and `server.allowed_origins` lower directly into the Moltnet native server config.
 - `networks[].rooms[].visibility` and `networks[].rooms[].write_policy` lower directly into native Moltnet room config after representative expansion. Member expansion still controls concrete room membership; room write policy controls who may send.
 

@@ -7,8 +7,9 @@ import type { CompilePlan, ResolvedAgentNode, ResolvedMemoryBank } from "./types
 import type { ContainerTargetInput } from "../runtime/index.js";
 import * as runtimeIndex from "../runtime/index.js";
 import { createContainerArtifacts } from "./containerArtifacts.js";
+import { readTrustedMoltnetReleaseAuthority, trustedMoltnetReleaseAsset } from "./moltnetReleaseAuthority.js";
 import { createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
-import { createPersistentVolumeName } from "./moltnetArtifactPaths.js";
+import { createExclusiveReattachVolumeName } from "../shared/index.js";
 import { openClawAdapter } from "../runtime/openclaw/adapter.js";
 import { picoClawAdapter } from "../runtime/picoclaw/adapter.js";
 import { piAdapter } from "../runtime/pi/adapter.js";
@@ -419,7 +420,7 @@ describe("createContainerArtifacts", () => {
       "mkdir -p '/var/lib/spawnfile' '/var/lib/spawnfile/moltnet/networks/local-lab'"
     );
     expect(dockerfile).toContain(
-      "touch '/var/lib/spawnfile/moltnet/networks/local-lab/.spawnfile-volume-init'"
+      "spawnfile.volume-bootstrap.v1"
     );
   });
 
@@ -460,11 +461,11 @@ describe("createContainerArtifacts", () => {
       }
     ]);
     const dockerfile = result.files.find((file) => file.path === "Dockerfile")?.content ?? "";
-    // Project-scoped (plan.root here is "/tmp/Spawnfile") via
-    // createPersistentVolumeName rather than a bare path slug; no
-    // NOOPOLIS_RUN_ID is set in this test process env, so no run segment.
-    const expectedVolumeName = createPersistentVolumeName(
-      "/tmp/Spawnfile",
+    // Durable memory volumes are deployment-lineage scoped, never run scoped:
+    // a run-scoped name gave every redeploy a fresh empty bank. This compile
+    // passes no deploymentLineage, so it lands on the "compile" lineage.
+    const expectedVolumeName = createExclusiveReattachVolumeName(
+      "/tmp/Spawnfile\u0000compile",
       "memory-var-lib-spawnfile-memory-assistant-shared-memory"
     );
 
@@ -492,17 +493,22 @@ describe("createContainerArtifacts", () => {
         retention: { forgetting: "manual" }
       }
     ]);
+    // The lifecycle must reach the distribution report too: the sourceless
+    // consume-image path derives its own volume name from these fields, and
+    // only the exclusive lifecycle gets the host-stable reattachable name.
     expect(result.distribution.report.persistent_mounts).toEqual([
       {
         durability: "persistent",
         id: "memory-var-lib-spawnfile-memory-assistant-shared-memory",
         kind: "volume",
+        lifecycle: "exclusive-reattach",
         target: "/var/lib/spawnfile/memory/assistant/shared-memory"
       }
     ]);
     expect(result.report.persistent_mounts).toEqual([
       {
         id: "memory-var-lib-spawnfile-memory-assistant-shared-memory",
+        lifecycle: "exclusive-reattach",
         mount_path: "/var/lib/spawnfile/memory/assistant/shared-memory",
         reason: "durable memory stores under /var/lib/spawnfile/memory/assistant/shared-memory",
         volume_name: expectedVolumeName
@@ -512,7 +518,7 @@ describe("createContainerArtifacts", () => {
       "mkdir -p '/var/lib/spawnfile' '/var/lib/spawnfile/memory/assistant/shared-memory'"
     );
     expect(dockerfile).toContain(
-      "touch '/var/lib/spawnfile/memory/assistant/shared-memory/.spawnfile-volume-init'"
+      "spawnfile.volume-bootstrap.v1"
     );
   });
 
@@ -648,7 +654,11 @@ describe("createContainerArtifacts", () => {
         link_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/workspace/cache",
         mode: "readonly",
         mount: "./cache",
-        sharing: "per_agent"
+        mount_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/workspace/cache",
+        replacement_sentinel: { path: expect.stringContaining("/.spawnfile-resource-identity"), result: "verified_on_startup" },
+        resolved_identity: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        sharing: "per_agent",
+        volume_name: expect.stringMatching(/^spawnfile-workspace-resource-[a-f0-9]{24}$/u)
       },
       {
         backing_path: expect.stringContaining("/var/lib/spawnfile/resources/instances/agent-assistant-"),
@@ -657,7 +667,11 @@ describe("createContainerArtifacts", () => {
         link_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/workspace/repos/project",
         mode: "mutable",
         mount: "./repos/project",
-        sharing: "per_agent"
+        mount_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/workspace/repos/project",
+        replacement_sentinel: undefined,
+        resolved_identity: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        sharing: "per_agent",
+        volume_name: null
       }
     ]);
   });
@@ -1238,5 +1252,97 @@ describe("createContainerArtifacts distribution contract", () => {
 
     expect(instance?.node_ids).toEqual(["agent:research-cell"]);
     expect(Array.isArray(instance?.model_auth_methods)).toBe(false);
+  });
+
+  /**
+   * `specs/SURFACES.md` promises a Moltnet release without `daimon-bridge` is
+   * rejected. No published release implements the daimon node runtime kind, and
+   * the node config decodes with DisallowUnknownFields, so an ungated compile
+   * ships a container that dies at boot on strict decode of `agent_id`. A node
+   * plan carries `receiptStorePath` if and only if its agent runtime is daimon.
+   */
+  const piBridgeRelease = {
+    architecture: "amd64",
+    asset: "moltnet_linux_amd64.tar.gz",
+    asset_sha256: `sha256:${"a".repeat(64)}`,
+    capabilities: ["pi-bridge"],
+    release_version: "v0.1.14",
+    source_revision: "b".repeat(40),
+    version: "spawnfile.moltnet-release-identity.v1"
+  } as const;
+  const daimonBridgeRelease = {
+    architecture: "amd64",
+    asset: "moltnet_linux_amd64.tar.gz",
+    asset_sha256: `sha256:${"a".repeat(64)}`,
+    capabilities: ["daimon-bridge", "pi-bridge"],
+    development: { mode: "local-development", non_production: true, unpublished: true, unsigned: true },
+    source_sha256: `sha256:${"c".repeat(64)}`,
+    version: "spawnfile.moltnet-release-identity.v1"
+  } as const;
+  const moltnetWith = (nodePlans: { configPath: string; networkId: string; receiptStorePath?: string }[]) => ({
+    files: [], nodePlans, persistentMounts: [], ports: [], publishedPorts: [], serverPlans: []
+  });
+  const daimonPlans = moltnetWith([{
+    configPath: "/etc/spawnfile/moltnet/mapper.json",
+    networkId: "daimon_lab",
+    receiptStorePath: "/var/lib/spawnfile/moltnet/networks/daimon_lab/daimon-receipts/mapper.json"
+  }]);
+
+  const compileWith = (moltnet: unknown, moltnetRelease: unknown) => createContainerArtifacts(
+    createPlan(["openclaw"]),
+    [],
+    { hasStagedMoltnetBinaries: true, moltnet, moltnetRelease } as never
+  );
+
+  it("rejects a daimon Moltnet attachment when the staged release lacks daimon-bridge", async () => {
+    await expect(compileWith(daimonPlans, piBridgeRelease)).rejects.toThrow(/daimon-bridge/u);
+
+    const thrown: unknown = await compileWith(daimonPlans, piBridgeRelease).catch((error: unknown) => error);
+    const message = thrown instanceof Error ? thrown.message : "";
+    // Name the capability, the affected network, the real consequence, and a way out.
+    expect(message).toContain("daimon-bridge");
+    expect(message).toContain("daimon_lab");
+    expect(message).toContain("exit at boot");
+    expect(message).toContain("build-local-moltnet.mjs");
+  });
+
+  it("fails closed when a daimon Moltnet attachment has no staged release identity at all", async () => {
+    await expect(compileWith(daimonPlans, undefined)).rejects.toThrow(/daimon-bridge/u);
+  });
+
+  it("admits a daimon Moltnet attachment when the staged release advertises daimon-bridge", async () => {
+    const thrown: unknown = await compileWith(daimonPlans, daimonBridgeRelease).catch((error: unknown) => error);
+    expect(thrown instanceof Error ? thrown.message : "").not.toContain("daimon-bridge");
+  });
+
+  /**
+   * THE TRANSITION. Before moltnet v0.1.18 no published release advertised
+   * `daimon-bridge`, so the fail-closed gate rejected every daimon attachment —
+   * correctly, because the pinned binary rejected the config at strict decode.
+   * Now the checked-in authority advertises it, so the same organization must
+   * compile. Nothing else pins that flip, and it is the entire point of the pin.
+   */
+  it("admits a daimon Moltnet attachment against the checked-in released authority", async () => {
+    const authority = await readTrustedMoltnetReleaseAuthority();
+    expect(authority.capabilities).toContain("daimon-bridge");
+    const releasedIdentity = {
+      architecture: "amd64",
+      asset: trustedMoltnetReleaseAsset(authority, "amd64").asset,
+      asset_sha256: trustedMoltnetReleaseAsset(authority, "amd64").asset_sha256,
+      capabilities: authority.capabilities,
+      release_version: authority.release_version,
+      source_revision: authority.source_revision,
+      version: "spawnfile.moltnet-release-identity.v1"
+    };
+
+    const thrown: unknown = await compileWith(daimonPlans, releasedIdentity).catch((error: unknown) => error);
+
+    expect(thrown instanceof Error ? thrown.message : "").not.toContain("daimon-bridge");
+  });
+
+  it("leaves a pi-only Moltnet attachment on a pi-bridge release alone", async () => {
+    const piPlans = moltnetWith([{ configPath: "/etc/spawnfile/moltnet/pi.json", networkId: "lab" }]);
+    const thrown: unknown = await compileWith(piPlans, piBridgeRelease).catch((error: unknown) => error);
+    expect(thrown instanceof Error ? thrown.message : "").not.toContain("daimon-bridge");
   });
 });

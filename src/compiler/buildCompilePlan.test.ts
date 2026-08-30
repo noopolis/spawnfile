@@ -106,7 +106,7 @@ describe("buildCompilePlan", () => {
         "            field:",
         "              wake: mentions",
         "  - id: blue",
-        "    runtime: daimon",
+        "    runtime: pi",
         "    workspace:",
         "      docs:",
         "        system: ./characters/blue.md",
@@ -150,7 +150,7 @@ describe("buildCompilePlan", () => {
     expect(repeatedPlan).toEqual(plan);
     expect(plan.nodes).toHaveLength(4);
     expect(plan.runtimes.openclaw.nodeIds).toHaveLength(2);
-    expect(plan.runtimes.daimon.nodeIds).toHaveLength(1);
+    expect(plan.runtimes.pi.nodeIds).toHaveLength(1);
     expect(red?.value).toMatchObject({
       docs: [{ content: "# Red player\n", role: "system" }],
       env: { COLOR: "red", MATCH: "training" },

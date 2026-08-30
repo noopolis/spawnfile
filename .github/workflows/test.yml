@@ -10,6 +10,8 @@ permissions:
 
 jobs:
   root:
+    name: compiler + runtime tests
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - name: Check out Spawnfile
@@ -28,11 +30,30 @@ jobs:
       - name: Audit runtime dependencies
         run: npm audit --omit=dev --audit-level=high
 
+      - name: Enable cross-architecture helper builds
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: amd64,arm64
+
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Rebuild dual-architecture native helpers
+        run: npm run build:native
+
       - name: Build
         run: npm run build
+
+      - name: Verify native helper syscalls
+        run: node --test scripts/native-helper-artifacts.test.mjs scripts/native-helper-integration.test.mjs
+
+      # Preseed reads the candidate volume through its Docker Mountpoint and
+      # relies on host rename/fsync/hardlink semantics a container cannot give
+      # it. On a rootful Linux daemon /var/lib/docker/volumes/*/_data is
+      # root-owned 0700, so this needs root — it passes unprivileged on macOS
+      # only because Docker runs in a VM there.
+      - name: Verify named-volume product-state preseed
+        run: sudo -E env "PATH=$PATH" npm run test:product-state-volume
 
       - name: Boundary tests
         run: npm run test:boundaries

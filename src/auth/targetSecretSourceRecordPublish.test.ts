@@ -1,7 +1,10 @@
 import { chmod, link, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import * as grantRecordParsers from "./targetSecretSourceGrantRecords.js";
+import * as versionRecordParsers from "./targetSecretSourceVersionRecords.js";
 
 import {
   resolveTargetSecretAliasPath,
@@ -54,6 +57,76 @@ const records = () => {
 };
 
 describe("targetSecretSourceRecordPublish", () => {
+  it("rejects non-byte inputs for every immutable record kind", async () => {
+    const publisher = await setup();
+    for (const publish of [publisher.publishAlias, publisher.publishGrant, publisher.publishRedemption, publisher.publishRevocation]) {
+      await expect(publish("not-bytes" as never)).rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
+    }
+  });
+
+  it("rejects different bytes colliding on every immutable record handle", async () => {
+    const publisher = await setup();
+    const value = records();
+    await publisher.publishAlias(value.alias.private_bytes);
+    await publisher.publishGrant(value.grant.private_bytes);
+    await publisher.publishRedemption(value.redemption.private_bytes);
+    await publisher.publishRevocation(value.revocation.private_bytes);
+
+    const otherVersion = createTargetSecretSourceVersionRecordBytes(new Uint8Array([9]), {
+      entropy: entropy(9), publicationEntropy: entropy(10)
+    });
+    const aliasCollision = createTargetSecretSourceAliasRecordBytes(otherVersion.metadata, {
+      entropy: entropy(3), publicationEntropy: entropy(4)
+    });
+    const grantCollision = createTargetSecretSourceGrantRecordBytes({
+      descriptor_digest: digest("a"), name: "other", run_id: "run-1", scope: "world",
+      selected_target: { fingerprint: `sha256:${"b".repeat(32)}`, handle: handle("target"), version: "spawnfile.target-resource.selected-target.v1" },
+      source_handle: value.alias.metadata.source_handle, source_version_handle: value.grant.metadata.source_version_handle
+    }, { publicationEntropy: entropy(5) });
+    const authorization = {
+      descriptorDigest: digest("a"), name: "token", operationHandle: handle("operation"), requestDigest: digest("d"),
+      runId: "run-1", scope: "world", selectedTarget: { fingerprint: `sha256:${"b".repeat(32)}`, handle: handle("target") },
+      sourceHandle: value.alias.metadata.source_handle, version: "spawnfile.target-secret-source.authorization.v1"
+    };
+    const redemptionCollision = createTargetSecretSourceRedemptionRecordBytes(value.grant.metadata, authorization as never, {
+      publicationEntropy: entropy(6)
+    });
+    const revocationCollision = createTargetSecretSourceRevocationRecordBytes(
+      { kind: "version", revoked_handle: value.alias.metadata.source_handle },
+      { entropy: entropy(7), publicationEntropy: entropy(8) }
+    );
+    for (const publish of [
+      () => publisher.publishAlias(aliasCollision.private_bytes),
+      () => publisher.publishGrant(grantCollision.private_bytes),
+      () => publisher.publishRedemption(redemptionCollision.private_bytes),
+      () => publisher.publishRevocation(revocationCollision.private_bytes)
+    ]) await expect(publish()).rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
+  });
+
+  it("revalidates embedded handles for every record kind during immutable proof", async () => {
+    const publisher = await setup();
+    const value = records();
+    const cases = [
+      [versionRecordParsers, "parseTargetSecretSourceAliasRecordBytesForPublication", value.alias.private_bytes, publisher.publishAlias],
+      [grantRecordParsers, "parseTargetSecretSourceGrantRecordBytesForPublication", value.grant.private_bytes, publisher.publishGrant],
+      [grantRecordParsers, "parseTargetSecretSourceRedemptionRecordBytesForPublication", value.redemption.private_bytes, publisher.publishRedemption],
+      [grantRecordParsers, "parseTargetSecretSourceRevocationRecordBytesForPublication", value.revocation.private_bytes, publisher.publishRevocation]
+    ] as const;
+    for (const [module, name, bytes, publish] of cases) {
+      const parserModule = module as unknown as Record<string, (raw: Uint8Array) => Record<string, unknown>>;
+      const original = parserModule[name]!;
+      let calls = 0;
+      const spy = vi.spyOn(parserModule, name).mockImplementation((raw: Uint8Array) => {
+        const parsed = original(raw);
+        calls += 1;
+        return calls === 1 ? parsed : { ...parsed, publication_handle: handle("embedded-mismatch") };
+      });
+      await expect(publish(bytes)).rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
+      expect(calls).toBeGreaterThanOrEqual(2);
+      spy.mockRestore();
+    }
+  });
+
   it("publishes and exactly replays all four parser-proven direct leaves", async () => {
     const publisher = await setup(); const value = records();
     const cases = [
@@ -103,7 +176,7 @@ describe("targetSecretSourceRecordPublish", () => {
     await expect(publisher.publishAlias(new Uint8Array([...value.alias.private_bytes, 32]))).rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
   });
 
-  it("routes every kind through prefix recovery, actual short writes, and repeated twelve-way joins", async () => {
+  it("routes every kind through prefix recovery, actual short writes, and repeated 16/32-way joins", async () => {
     await setup(); const value = records();
     const makeCases = (publisher: Awaited<ReturnType<typeof initializeTargetSecretSourceRecordPublish>>) => [
       { bytes: value.alias.private_bytes, file: resolveTargetSecretAliasPath(value.alias.metadata.source_handle), publish: () => publisher.publishAlias(value.alias.private_bytes) },
@@ -126,7 +199,8 @@ describe("targetSecretSourceRecordPublish", () => {
       expect(await readFile(item.file)).toEqual(Buffer.from(item.bytes));
     }
     for (let round = 0; round < 3; round += 1) {
-      const writers = await Promise.all(Array.from({ length: 12 }, () => initializeTargetSecretSourceRecordPublish()));
+      const writerCount = round % 2 === 0 ? 16 : 32;
+      const writers = await Promise.all(Array.from({ length: writerCount }, () => initializeTargetSecretSourceRecordPublish()));
       for (let index = 0; index < 4; index += 1) {
         await rm(makeCases(writers[0]!)[index]!.file, { force: true });
         await Promise.all(writers.map((writer) => makeCases(writer)[index]!.publish()));

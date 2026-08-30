@@ -89,7 +89,7 @@ export const runDaimonOrgCli = async (argv: string[]): Promise<void> => {
   const command = new Command();
   command
     .name("spawnfile-e2e daimon-org")
-    .description("Run the opt-in Daimon organization E2E against real Codex auth")
+    .description("Run the opt-in legacy generated-Pi organization E2E against real Codex auth")
     .option("--codex-auth-path <path>", "Codex auth.json path")
     .option("--fixture <path>", "Fixture directory override")
     .option("--keep-artifacts", "Keep temporary compile output")
@@ -115,7 +115,7 @@ export const runDaimonOrgCli = async (argv: string[]): Promise<void> => {
     outputDirectory: options.out
   });
   console.log(
-    `Daimon org E2E passed (${result.mapperNotePath}, ${result.reviewerNotePath}; ` +
+    `Legacy Pi org E2E passed (${result.mapperNotePath}, ${result.reviewerNotePath}; ` +
     `memory_events=${result.memoryEventCount} recalled=${result.memoryRecallCount})`
   );
 };

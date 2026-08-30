@@ -12,6 +12,11 @@ export const EVIDENCE_EXPORT_HELPER_CONTRACT_VERSION = "v1" as const;
 export const EVIDENCE_EXPORT_HELPER_CONTRACT_LABEL = "spawnfile.target.evidence-export.helper-contract" as const;
 export const EVIDENCE_EXPORT_HELPER_ENTRYPOINT: readonly string[] = Object.freeze(["/bin/spawnfile-export-helper"]);
 export const EVIDENCE_EXPORT_HELPER_CMD: readonly string[] = Object.freeze([]);
+export const EVIDENCE_EXPORT_HELPER_PATH =
+  "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" as const;
+export const EVIDENCE_EXPORT_HELPER_ENV: readonly string[] = Object.freeze([
+  `PATH=${EVIDENCE_EXPORT_HELPER_PATH}`,
+]);
 export const EVIDENCE_EXPORT_HELPER_USER = "65534:65534" as const;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const NAME = /^spfe_[a-f0-9]{58}$/u;
@@ -51,8 +56,11 @@ const record = (raw: unknown): Readonly<Record<string, string>> => {
 };
 const utf8 = (value: unknown): value is string => typeof value === "string" && Buffer.from(value, "utf8").toString("utf8") === value && Buffer.byteLength(value, "utf8") <= 32_768;
 const json = (raw: string): unknown => { if (!utf8(raw)) return fail(); try { return JSON.parse(raw) as unknown; } catch { return fail(); } };
+const exactHelperEnv = (raw: unknown): boolean => Array.isArray(raw)
+  && raw.length === 1 && raw[0] === EVIDENCE_EXPORT_HELPER_ENV[0];
 export const createEvidenceExportHelper = (raw: { artifactManifestDigest: unknown; imageDigest: unknown; imageReference: unknown; resultHandle: unknown }): EvidenceExportHelper => {
-  if (typeof raw.artifactManifestDigest !== "string" || !DIGEST.test(raw.artifactManifestDigest) || typeof raw.imageDigest !== "string" || !DIGEST.test(raw.imageDigest) || typeof raw.imageReference !== "string" || !isImmutableDockerImageReference(raw.imageReference) || !raw.imageReference.endsWith(`@${raw.imageDigest}`)) return fail();
+  const localConfig = raw.imageReference === raw.imageDigest;
+  if (typeof raw.artifactManifestDigest !== "string" || !DIGEST.test(raw.artifactManifestDigest) || typeof raw.imageDigest !== "string" || !DIGEST.test(raw.imageDigest) || typeof raw.imageReference !== "string" || !localConfig && (!isImmutableDockerImageReference(raw.imageReference) || !raw.imageReference.endsWith(`@${raw.imageDigest}`))) return fail();
   return Object.freeze({ artifactManifestDigest: raw.artifactManifestDigest, image_digest: raw.imageDigest, image_reference: raw.imageReference, result_handle: parseOpaqueTargetHandle(raw.resultHandle) });
 };
 export const parseEvidenceVolumeAuthority = (raw: unknown): EvidenceVolumeAuthority => {
@@ -96,7 +104,8 @@ export const parseEvidenceExportImageInspection = (stdout: string, helper: Evide
   const prepared = createEvidenceExportHelper({ artifactManifestDigest: helper.artifactManifestDigest, imageDigest: helper.image_digest, imageReference: helper.image_reference, resultHandle: helper.result_handle });
   if (!Array.isArray(value) || value.length !== 1 || !exact(value[0], ["Config", "RepoDigests"])) return fail();
   const image = value[0] as Record<string, unknown>;
-  if (!Array.isArray(image.RepoDigests) || image.RepoDigests.length < 1 || image.RepoDigests.length > 32 || image.RepoDigests.some((value: unknown) => !isImmutableDockerImageReference(value))) return fail();
+  const localConfig = prepared.image_reference === prepared.image_digest;
+  if (!localConfig && (!Array.isArray(image.RepoDigests) || image.RepoDigests.length < 1 || image.RepoDigests.length > 32 || image.RepoDigests.some((value: unknown) => !isImmutableDockerImageReference(value)))) return fail();
   if (!exact(image.Config, ["Cmd", "Entrypoint", "Env", "ExposedPorts", "Healthcheck", "Labels", "User", "Volumes"])) return fail();
   const config = image.Config as Record<string, unknown>;
   const labels = record(config.Labels);
@@ -104,8 +113,9 @@ export const parseEvidenceExportImageInspection = (stdout: string, helper: Evide
   if (!Array.isArray(config.Entrypoint) || JSON.stringify(config.Entrypoint) !== JSON.stringify(EVIDENCE_EXPORT_HELPER_ENTRYPOINT)) return fail();
   if (config.Cmd !== null && !(Array.isArray(config.Cmd) && config.Cmd.length === 0)) return fail();
   if (config.User !== EVIDENCE_EXPORT_HELPER_USER) return fail();
-  if (config.Env !== null || config.ExposedPorts !== null || config.Healthcheck !== null || config.Volumes !== null) return fail();
-  if (!image.RepoDigests.includes(prepared.image_reference)) return fail();
+  if (!exactHelperEnv(config.Env)
+    || config.ExposedPorts !== null || config.Healthcheck !== null || config.Volumes !== null) return fail();
+  if (!localConfig && !(image.RepoDigests as unknown[]).includes(prepared.image_reference)) return fail();
   return { labels: Object.freeze({ ...labels }) };
 };
 export const isExpectedEvidenceExportImage = (stdout: string, helper: EvidenceExportHelper): boolean => {
@@ -129,7 +139,8 @@ export const isExpectedEvidenceExportHelper = (stdout: string, spec: EvidenceExp
     return item.Name === `/${spec.containerName}` && config.Image === spec.imageReference
       && JSON.stringify(config.Entrypoint) === JSON.stringify(EVIDENCE_EXPORT_HELPER_ENTRYPOINT)
       && (cmd === null || (Array.isArray(cmd) && cmd.length === 0))
-      && config.Env === null && config.ExposedPorts === null && config.Healthcheck === null && config.Volumes === null
+      && exactHelperEnv(config.Env)
+      && config.ExposedPorts === null && config.Healthcheck === null && config.Volumes === null
       && config.User === EVIDENCE_EXPORT_HELPER_USER
       && exact(config.Labels as Record<string, unknown>, Object.keys(expectedLabels))
       && Object.entries(expectedLabels).every(([key, value]) => config.Labels as Record<string, unknown> !== null && (config.Labels as Record<string, unknown>)[key] === value)

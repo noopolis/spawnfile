@@ -5,6 +5,11 @@ import { types as nodeTypes } from "node:util";
 
 import { resolveSpawnfileHome } from "../auth/index.js";
 import {
+  parsePreparedEvidenceHelperReceipt,
+  type PreparedEvidenceHelperReceipt,
+} from "../evidenceExportHelper/index.js";
+import { parseDockerBaseImageReference } from "../target/dockerBaseImage.js";
+import {
   parseDockerArtifactMappings,
   type DockerArtifactMapping
 } from "../target/dockerArtifactsProvider.js";
@@ -21,7 +26,8 @@ const CHILD_ROOTS = Object.freeze([
   "secret-authority",
   "attachment-authority",
   "world-authority",
-  "evidence-export"
+  "evidence-export",
+  "evidence-helper"
 ] as const);
 
 export interface TargetDefaultConfigInputs {
@@ -37,6 +43,8 @@ export interface TargetDefaultConfigInputs {
   readonly containerBundleStoreRoot?: string;
   readonly context: string;
   readonly dockerCommand: string;
+  readonly evidenceHelperBaseImage?: string;
+  readonly preparedEvidenceHelper?: PreparedEvidenceHelperReceipt;
   readonly evidenceDestination: string;
   readonly helperArtifactManifestDigest?: string;
   /** Local-Daemon prepared images, admitted only by manifest/bundle/policy. */
@@ -60,6 +68,8 @@ export interface TargetDefaultConfig {
   readonly artifactMappings: readonly DockerArtifactMapping[];
   readonly context: string;
   readonly dockerCommand: string;
+  readonly evidenceHelperBaseImage?: string;
+  readonly preparedEvidenceHelper?: PreparedEvidenceHelperReceipt;
   readonly evidenceDestination: string;
   /** Present only when the private evidence-export helper was configured. */
   readonly helperArtifact?: DockerArtifactMapping;
@@ -68,6 +78,7 @@ export interface TargetDefaultConfig {
     readonly artifactIdentities: string;
     readonly attachmentAuthority: string;
     readonly evidenceExport: string;
+    readonly evidenceHelper: string;
     readonly containerBundles: string;
     readonly journals: string;
     readonly root: string;
@@ -90,7 +101,7 @@ const descriptorValues = (raw: unknown): Record<string, unknown> => {
   if (!raw || typeof raw !== "object" || Array.isArray(raw) || nodeTypes.isProxy(raw)
     || Object.getPrototypeOf(raw) !== Object.prototype) return fail();
   const expected = [
-    "artifactMappings", "containerBundleStoreRoot", "context", "dockerCommand", "evidenceDestination",
+    "artifactMappings", "containerBundleStoreRoot", "context", "dockerCommand", "evidenceDestination", "evidenceHelperBaseImage", "preparedEvidenceHelper",
     "helperArtifactManifestDigest", "preparedArtifactMappings", "timeoutMs"
   ];
   const required = ["context", "dockerCommand", "evidenceDestination", "timeoutMs"];
@@ -229,7 +240,7 @@ const prepareRoots = async (
   const created = await Promise.all(childRoots.map((name) =>
     ensureOwnedRoot(path.join(root, name))));
   const containerBundles = containerBundleStoreRoot === undefined
-    ? created[6]!
+    ? created[7]!
     : await prepareExplicitContainerBundleRoot(containerBundleStoreRoot, root);
   return Object.freeze({
     root,
@@ -239,6 +250,7 @@ const prepareRoots = async (
     attachmentAuthority: created[3]!,
     worldAuthority: created[4]!,
     evidenceExport: created[5]!,
+    evidenceHelper: created[6]!,
     containerBundles
   });
 };
@@ -277,6 +289,11 @@ export const loadTargetDefaultConfig = async (
       (typeof value.helperArtifactManifestDigest !== "string"
         || !DIGEST.test(value.helperArtifactManifestDigest)))) return fail();
   const dockerCommand = command(value.dockerCommand);
+  const evidenceHelperBaseImage = value.evidenceHelperBaseImage === undefined ? undefined
+    : parseDockerBaseImageReference(value.evidenceHelperBaseImage) ?? fail();
+  const preparedEvidenceHelper = value.preparedEvidenceHelper === undefined ? undefined
+    : (() => { try { return parsePreparedEvidenceHelperReceipt(value.preparedEvidenceHelper); } catch { return fail(); } })();
+  if ((evidenceHelperBaseImage === undefined) !== (preparedEvidenceHelper === undefined)) return fail();
   let artifactMappings: readonly DockerArtifactMapping[];
   try { artifactMappings = value.artifactMappings === undefined
     ? Object.freeze([]) : parseDockerArtifactMappings(value.artifactMappings); }
@@ -295,6 +312,8 @@ export const loadTargetDefaultConfig = async (
     artifactMappings,
     context: value.context,
     dockerCommand,
+    ...(evidenceHelperBaseImage === undefined ? {} : { evidenceHelperBaseImage }),
+    ...(preparedEvidenceHelper === undefined ? {} : { preparedEvidenceHelper }),
     evidenceDestination,
     ...(matches.length === 1 ? { helperArtifact: matches[0]! } : {}),
     preparedArtifactMappings,

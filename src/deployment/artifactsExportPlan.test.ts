@@ -311,4 +311,68 @@ describe("planArtifactExports", () => {
   it("returns an empty plan for a report with no container section", () => {
     expect(planArtifactExports({ diagnostics: [], nodes: [], root: "/project", spawnfile_version: "0.1" })).toEqual([]);
   });
+
+  /**
+   * Cost has to survive teardown. `spawnfile usage` reads the ledger live via
+   * `docker exec`, which a sealed, torn-down run does not have, so unless export
+   * carries the volume the numbers are gone exactly when someone wants them.
+   */
+  it("plans both usage ledger generations when the daimon usage volume is mounted", () => {
+    const report = baseReport(baseContainer({
+      persistent_mounts: [
+        {
+          id: "daimon-grok-usage-ledger",
+          lifecycle: "exclusive-reattach",
+          mount_path: "/var/lib/spawnfile/daimon/usage",
+          reason: "Daimon per-turn engine usage ledger",
+          volume_name: "spawnfile-project-daimon-grok-usage-ledger-abc123"
+        }
+      ]
+    }));
+
+    const planned = planArtifactExports(report);
+
+    expect(planned).toEqual([
+      {
+        optional: true,
+        relativePath: "raw/daimon/usage.jsonl",
+        source: {
+          kind: "volume",
+          volumeName: "spawnfile-project-daimon-grok-usage-ledger-abc123",
+          volumePath: "usage.jsonl"
+        }
+      },
+      {
+        // The rotated generation is not optional-because-unimportant: a deployment
+        // long enough to rotate keeps its earlier turns ONLY here, so omitting it
+        // silently truncates history for the most expensive runs.
+        optional: true,
+        relativePath: "raw/daimon/usage.jsonl.1",
+        source: {
+          kind: "volume",
+          volumeName: "spawnfile-project-daimon-grok-usage-ledger-abc123",
+          volumePath: "usage.jsonl.1"
+        }
+      }
+    ]);
+  });
+
+  it("plans no usage ledger for an organization that was never provisioned the volume", () => {
+    // A codex-only org writes no ledger at all and is given no usage mount. Absent
+    // must stay absent: nothing planned, rather than an entry that would export as
+    // an empty file and read as a genuine zero-cost run.
+    const report = baseReport(baseContainer({
+      persistent_mounts: [
+        {
+          id: "daimon-agy-subscription-realm",
+          lifecycle: "exclusive-reattach",
+          mount_path: "/var/lib/spawnfile/daimon/agy-subscription-realm",
+          reason: "AGY subscription realm",
+          volume_name: "spawnfile-project-daimon-agy-subscription-realm-abc123"
+        }
+      ]
+    }));
+
+    expect(planArtifactExports(report)).toEqual([]);
+  });
 });

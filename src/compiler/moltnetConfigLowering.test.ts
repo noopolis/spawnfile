@@ -4,6 +4,7 @@ import type { TeamNetworkServer } from "../manifest/index.js";
 
 import {
   createMoltnetNativeServerConfig,
+  createMoltnetDaimonReceiptStorePath,
   createDefaultMoltnetStorePath,
   createMoltnetNodeConfigPath,
   createMoltnetOpenTokenDirectory,
@@ -37,6 +38,15 @@ describe("moltnetConfigLowering", () => {
       .toBe("container/rootfs/var/lib/spawnfile/moltnet/servers/org-net/Moltnet.json");
     expect(createMoltnetNodeConfigPath("root team", "org net", "field/rep"))
       .toBe("container/rootfs/var/lib/spawnfile/moltnet/nodes/root-team-org-net-field-rep.json");
+  });
+
+  it("renders only collision-free absolute Daimon receipt-store paths", () => {
+    expect(createMoltnetDaimonReceiptStorePath("local", "relay-agent"))
+      .toBe("/var/lib/spawnfile/moltnet/networks/local/daimon-receipts/relay-agent.json");
+    expect(() => createMoltnetDaimonReceiptStorePath("local", "../relay-agent"))
+      .toThrow("invalid Daimon receipt-store path segment");
+    expect(() => createMoltnetDaimonReceiptStorePath("local net", "relay-agent"))
+      .toThrow("invalid Daimon receipt-store path segment");
   });
 
   it("renders listen addresses and base URLs for managed and external servers", () => {
@@ -211,6 +221,7 @@ describe("moltnetConfigLowering", () => {
         tokens: [
           { id: "operator", scopes: ["admin", "observe", "write"], secret: "OPERATOR_ENV" },
           { agents: ["red"], id: "red", scopes: ["attach", "write"], secret: "RED_ENV" },
+          { agents: ["red"], id: "daimon", scopes: ["attach", "observe", "write"], secret: "DAIMON_ENV" },
           { agents: ["red"], id: "wrong-scope", scopes: ["attach"], secret: "WRONG_SCOPE_ENV" },
           { agents: ["red"], id: "extra-scope", scopes: ["attach", "write", "admin"], secret: "EXTRA_SCOPE_ENV" },
           { agents: ["blue"], id: "wrong-agent", scopes: ["attach", "write"], secret: "WRONG_AGENT_ENV" },
@@ -227,7 +238,11 @@ describe("moltnetConfigLowering", () => {
         mode: "bearer",
         tokenEnv: "RED_ENV"
       });
-    for (const tokenId of ["operator", "wrong-scope", "extra-scope", "wrong-agent", "shared", "unbound", "missing", ""]) {
+    expect(resolveMoltnetClientAuth(server, "pitch", "red", undefined, "daimon", "daimon"))
+      .toMatchObject({ credentialId: "daimon", tokenEnv: "DAIMON_ENV" });
+    expect(() => resolveMoltnetClientAuth(server, "pitch", "red", undefined, "red", "daimon"))
+      .toThrow(/attach, observe, write scopes exactly/u);
+    for (const tokenId of ["operator", "daimon", "wrong-scope", "extra-scope", "wrong-agent", "shared", "unbound", "missing", ""]) {
       expect.soft(
         () => resolveMoltnetClientAuth(server, "pitch", "red", undefined, tokenId),
         tokenId
@@ -279,6 +294,7 @@ describe("moltnetConfigLowering", () => {
       networkName: "Org",
       rooms: [
         {
+          federation: ["remote"],
           id: "agora",
           members: ["lead"],
           name: "Agora",
@@ -355,6 +371,7 @@ describe("moltnetConfigLowering", () => {
       ],
       rooms: [
         {
+          federation: ["remote"],
           id: "agora",
           members: ["lead"],
           name: "Agora",
@@ -378,6 +395,67 @@ describe("moltnetConfigLowering", () => {
       },
       storage: { kind: "postgres", postgres: { dsn: "" } }
     });
+  });
+
+  it("emits an explicit none stance for paired rooms without a federation grant", () => {
+    const lowered = createMoltnetNativeServerConfig({
+      networkId: "org",
+      networkName: "Org",
+      rooms: [{ id: "private", members: ["lead"] }],
+      server: createManagedServer({
+        pairings: [{
+          id: "remote",
+          remote_base_url: "https://remote.example.com",
+          remote_network_id: "remote-org",
+          remote_network_name: "Remote Org",
+          token_secret: "REMOTE_PAIR_TOKEN"
+        }]
+      })
+    });
+
+    expect(lowered.config).toMatchObject({
+      rooms: [{ federation: "none", id: "private", members: ["lead"] }]
+    });
+  });
+
+  it("lowers relay pairings with independent transport and pairing secrets", () => {
+    const lowered = createMoltnetNativeServerConfig({
+      networkId: "collaboration-net",
+      networkName: "Collaboration Hub",
+      rooms: [{ federation: ["observer"], id: "research", members: ["lead"] }],
+      server: createManagedServer({
+        pairings: [{
+          id: "observer",
+          relay: {
+            room: "observer-room-v1",
+            token_secret: "MOLTNET_RELAY_TOKEN",
+            url: "wss://relay.example.com"
+          },
+          remote_network_id: "observer-net",
+          remote_network_name: "Observer",
+          token_secret: "OBSERVER_PAIRING_TOKEN"
+        }]
+      })
+    });
+
+    expect(lowered.secretPatches).toEqual([
+      { envName: "OBSERVER_PAIRING_TOKEN", jsonPath: "pairings.0.token" },
+      { envName: "MOLTNET_RELAY_TOKEN", jsonPath: "pairings.0.relay.token" }
+    ]);
+    expect(lowered.config).toMatchObject({
+      pairings: [{
+        id: "observer",
+        relay: {
+          room: "observer-room-v1",
+          token: "",
+          url: "wss://relay.example.com"
+        },
+        remote_network_id: "observer-net",
+        remote_network_name: "Observer",
+        token: ""
+      }]
+    });
+    expect(JSON.stringify(lowered.config)).not.toContain("remote_base_url");
   });
 
   it("lowers sqlite, json, and memory storage configs", () => {

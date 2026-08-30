@@ -100,7 +100,8 @@ const createAttachmentConfig = (
     attachment.network,
     attachment.memberId,
     agentSlug,
-    attachment.auth?.tokenId
+    attachment.auth?.tokenId,
+    node.runtime.name
   );
 
   return {

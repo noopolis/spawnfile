@@ -284,6 +284,34 @@ describe("buildUpReceipt", () => {
     });
   });
 
+  /**
+   * A PUBLISHED release now advertises both bridges (moltnet v0.1.18). The
+   * receipt used to pick its branch by capability COUNT, so a two-capability
+   * published release fell into the local-development branch and was rejected
+   * for lacking a `development` marker it must never carry. Provenance, not
+   * count, decides the branch.
+   */
+  it("accepts a published release advertising both bridges without demanding development provenance", async () => {
+    const fixtureDirectory = await createSingleAgentFixture();
+    const outputDirectory = await createTempDirectory("spawnfile-up-receipt-compiled-");
+    const recordPath = await writeDeploymentRecord(outputDirectory, createRecord());
+    const upResult = createUpResult(outputDirectory, recordPath);
+    upResult.report.container!.moltnet!.release = {
+      ...upResult.report.container!.moltnet!.release!,
+      capabilities: ["daimon-bridge", "pi-bridge"],
+      release_version: "v0.1.18"
+    } as never;
+
+    const receipt = await buildUpReceipt(fixtureDirectory, upResult);
+
+    expect(receipt.moltnet_release).toMatchObject({
+      capabilities: ["daimon-bridge", "pi-bridge"],
+      release_version: "v0.1.18"
+    });
+    // A published release must never acquire local-development provenance.
+    expect(receipt.moltnet_release).not.toHaveProperty("development");
+  });
+
   it("discloses a scripted pi engine per agent, derived from the compile report's engine_by_node_id", async () => {
     const fixtureDirectory = await createSingleAgentFixture();
     const outputDirectory = await createTempDirectory("spawnfile-up-receipt-compiled-");
@@ -309,6 +337,40 @@ describe("buildUpReceipt", () => {
     const receipt = await buildUpReceipt(fixtureDirectory, upResult);
 
     expect(receipt.engines).toEqual([{ agent: "agent:eleanor", engine: "scripted" }]);
+  });
+
+  it("preserves an explicit local dual-bridge Moltnet identity without relabeling it as public", async () => {
+    const fixtureDirectory = await createSingleAgentFixture();
+    const outputDirectory = await createTempDirectory("spawnfile-up-receipt-compiled-");
+    const upResult = createUpResult(outputDirectory, null);
+    upResult.report = {
+      ...upResult.report,
+      container: {
+        ...upResult.report.container!,
+        moltnet: {
+          ...upResult.report.container!.moltnet!,
+          release: {
+            architecture: "amd64", asset: "moltnet_linux_amd64.tar.gz",
+            asset_sha256: `sha256:${"d".repeat(64)}`,
+            capabilities: ["daimon-bridge", "pi-bridge"],
+            development: { mode: "local-development", non_production: true, unsigned: true, unpublished: true },
+            source_sha256: `sha256:${"e".repeat(64)}`,
+            version: "spawnfile.moltnet-release-identity.v1"
+          }
+        }
+      }
+    };
+
+    const receipt = await buildUpReceipt(fixtureDirectory, upResult);
+
+    expect(receipt.moltnet_release).toEqual({
+      architecture: "amd64", asset: "moltnet_linux_amd64.tar.gz",
+      asset_sha256: `sha256:${"d".repeat(64)}`,
+      capabilities: ["daimon-bridge", "pi-bridge"],
+      development: { mode: "local-development", non_production: true, unsigned: true, unpublished: true },
+      source_sha256: `sha256:${"e".repeat(64)}`,
+      version: "spawnfile.moltnet-release-identity.v1"
+    });
   });
 
   it("reports unknown readiness and null deployment name with no deployment record (non-detached run)", async () => {

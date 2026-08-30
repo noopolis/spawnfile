@@ -15,6 +15,11 @@ export const LIFECYCLE_AMBIGUOUS_VERSION =
   "spawnfile.lifecycle-ambiguous.v1" as const;
 export const LIFECYCLE_TERMINAL_VERSION =
   "spawnfile.lifecycle-terminal.v1" as const;
+export const LIFECYCLE_UP_START_VERSION = "spawnfile.lifecycle-up-start.v1" as const;
+export const LIFECYCLE_UP_RESERVATION_VERSION = "spawnfile.lifecycle-up-reservation.v1" as const;
+export const LIFECYCLE_UP_CLEANUP_VERSION = "spawnfile.lifecycle-up-cleanup.v1" as const;
+// Docker carries an image's config labels onto a container; no other extras are allowed.
+export const LIFECYCLE_UP_EXTRA_LABELS = "image-config-labels" as const;
 export const LIFECYCLE_RECORD_MAX_BYTES = 1_000_000;
 export const lifecycleIdSchema = z
   .string()
@@ -94,6 +99,38 @@ export const lifecycleCompletionSchema = z
   })
   .strict();
 export type LifecycleCompletion = z.infer<typeof lifecycleCompletionSchema>;
+const lifecycleUpLabelAuthoritySchema = z.object({
+  required: z.record(z.string().min(1).max(255), z.string().max(4096)),
+  permitted_extra_labels: z.literal(LIFECYCLE_UP_EXTRA_LABELS),
+}).strict();
+export const lifecycleUpReservationSchema = z.object({
+  container_name: z.string().min(1).max(255),
+  docker_command: z.string().min(1).max(4096),
+  docker_context: z.string().min(1).max(128).nullable(),
+  invocation: lifecycleInvocationSchema,
+  label_authority: lifecycleUpLabelAuthoritySchema,
+  version: z.literal(LIFECYCLE_UP_RESERVATION_VERSION),
+}).strict();
+export type LifecycleUpReservation = z.infer<typeof lifecycleUpReservationSchema>;
+export const lifecycleUpStartSchema = z
+  .object({
+    attempt: z.number().int().min(0).max(16),
+    container_id: z.string().regex(/^[a-f0-9]{64}$/u),
+    container_name: z.string().min(1).max(255),
+    image_id: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+    invocation: lifecycleInvocationSchema,
+    label_authority: lifecycleUpLabelAuthoritySchema,
+    version: z.literal(LIFECYCLE_UP_START_VERSION),
+  })
+  .strict();
+export type LifecycleUpStart = z.infer<typeof lifecycleUpStartSchema>;
+export const lifecycleUpCleanupSchema = z.object({
+  attempt: z.number().int().min(0).max(16),
+  container_id: z.string().regex(/^[a-f0-9]{64}$/u),
+  invocation: lifecycleInvocationSchema,
+  version: z.literal(LIFECYCLE_UP_CLEANUP_VERSION),
+}).strict();
+export type LifecycleUpCleanup = z.infer<typeof lifecycleUpCleanupSchema>;
 export const lifecycleTerminalSchema = z.discriminatedUnion("status", [
   z
     .object({

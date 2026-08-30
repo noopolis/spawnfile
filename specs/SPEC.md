@@ -378,6 +378,8 @@ Rules:
 - `memory[*].store.persistence.mode` MUST be `durable` or `ephemeral`.
 - If `memory[*].store.persistence` is omitted for `sqlite` or `json`, the compiler treats it as `durable`.
 - `memory[*].store.persistence.mode: durable` emits a persistent runtime mount for the store directory.
+- That mount is `exclusive-reattach`: its volume is named from the project root and the deployment lineage, never the run id, so it survives a redeploy, and only one live container may hold it at a time.
+- Two `memory[*]` entries MUST NOT resolve to the same durable store directory unless they declare the identical store, index, consolidation, and retention. The runtime keys a store by that directory and ignores the declared filename, so differing declarations would silently share one physical store.
 - `memory[*].index` is OPTIONAL.
 - If `memory[*].index` is omitted, the effective index intent is lexical enabled, vector disabled, graph disabled, and rerank disabled.
 - `memory[*].index.lexical.enabled` defaults to `true`.
@@ -514,14 +516,16 @@ Daimon accepts an optional runtime engine selector:
 runtime:
   name: daimon
   options:
-    engine: pi
+    engine: codex
 ```
 
-For `runtime.name: daimon`, `runtime.options.engine` MAY be `pi`, `codex`,
-`claude`, `grok`, or `agy`. If omitted, the compiler MUST use `pi`. `engine:
-pi` runs the in-process Daimon/Pi harness. The other values run the generated
-Daimon CLI-engine wrapper for that tool while keeping Spawnfile workspace,
-Moltnet, schedule, and Mneme memory wiring in the generated Daimon app.
+For `runtime.name: daimon`, `runtime.options.engine` MAY be `codex`, `grok`,
+or `agy`. If omitted, the compiler MUST use `codex`. Spawnfile emits one strict
+`noopolis.daimon.organization-runtime.v1` host config and never generates engine
+argv, auth, or Pi code for it. Strict organization-runtime v2 configs lower
+`cron`, `every`, and `disabled` schedules into Daimon's durable native scheduler
+and may attach authenticated Moltnet delivery through the declared bridge.
+Unsupported MCP and agent surfaces remain rejected or explicitly reported.
 
 ### 2.5 Execution Intent
 
@@ -689,7 +693,7 @@ Rules:
 - `surfaces.slack.identity.user_id` is OPTIONAL. If present, it is the Slack user ID advertised in generated rosters where this agent is visible.
 - Surface `identity` fields are opt-in roster metadata. They do not provision accounts, validate provider-side membership, or cause Spawnfile to read runtime state.
 - `surfaces.moltnet` is a list of Moltnet attachments. Each attachment MUST declare `network` and at least one of `rooms` or `dms`.
-- `surfaces.moltnet[].auth.token_id` is OPTIONAL and is valid only for a managed bearer network. It MUST reference one declared server token whose scopes include `attach` and `write` and whose `agents` list contains exactly that attachment's resolved Moltnet member ID.
+- `surfaces.moltnet[].auth.token_id` is OPTIONAL and is valid only for a managed bearer network. It MUST reference one declared server token whose scopes include `attach` and `write` and whose `agents` list contains exactly that attachment's resolved Moltnet member ID. A Daimon attachment additionally requires `observe` so its bridge can receive network events.
 - Moltnet room and DM `wake` policy MAY be `all`, `mentions`, `thread_only`, or `never`.
 - Moltnet room and DM `reply` policy MAY be only `auto` or `never` in this alpha. `manual` is not part of the portable v0.1 contract.
 - Moltnet attachments are valid only when the agent participates in a team context whose `team.networks[]` declares the named network and rooms.
@@ -930,7 +934,8 @@ Rules:
 - `every` schedules MUST declare a non-empty `every` interval.
 - `every` intervals use explicit duration strings such as `15m`, `2h`, or `1d`.
 - `timezone` defaults to `UTC` when omitted.
-- `cron` and `every` schedules MAY declare `timezone` and `prompt`.
+- `cron` schedules MUST declare `timezone` and MAY declare `prompt`.
+- `every` schedules MAY declare `prompt` and MUST NOT declare `timezone`.
 - `disabled` schedules MUST NOT declare `cron`, `every`, `timezone`, or `prompt` fields.
 - A `disabled` schedule MUST not emit a spawn or wake registration.
 - Team manifests MUST NOT declare `schedule`.
@@ -1286,8 +1291,14 @@ Rules:
 - A managed bearer attachment that declares `surfaces.moltnet[].auth.token_id` MUST use its referenced per-attachment token instead of `server.auth.client`. That token MUST include `attach` and `write` and MUST declare exactly `agents: [<resolved-member-id>]`.
 - `server.auth.mode: none` rejects all token sources.
 - `server.pairings` is valid only for `server.mode: managed`.
-- Managed `server.pairings` entries use `id` and MAY include `remote_network_id`, `remote_network_name`, `remote_base_url`, and `token_secret`.
+- Managed `server.pairings` entries use `id`, `remote_network_id`, `remote_network_name`, and `token_secret`, plus exactly one transport: `remote_base_url`, or `relay` with `url`, `room`, and `token_secret`. Relay and pairing credentials are independent secret references.
 - `server.pairings.id` MUST be unique within one managed server block.
+- `rooms[].federation` is OPTIONAL and MUST be `none`, `all`, or a non-empty
+  list of pairing ids. Pairing ids in a list MUST resolve against the effective
+  managed server; external-server rooms MUST NOT declare federation.
+- An omitted room federation stance means `none`. When a managed server has
+  pairings, the compiler MUST emit that default explicitly so adding a pairing
+  never grants an existing room access implicitly.
 - `server.store` MUST be present for `server.mode: managed`.
 - `server.store.kind` MUST be `sqlite`, `json`, `postgres`, or `memory`.
 - `server.store.kind: sqlite` and `server.store.kind: json` MAY omit `path`; omitted paths default under `/var/lib/spawnfile/moltnet/networks/<network-id>/`.
@@ -1306,7 +1317,9 @@ Rules:
 - `server.direct_messages: false` means any `surfaces.moltnet[].dms` for that network is a validation error.
 - `server.debug_events: true` is valid only for managed Moltnet servers and lowers to Moltnet lifecycle diagnostics. It can expose disconnect reasons and bridge/runtime errors through events, so it is intended for operational debugging, not normal public network defaults.
 - `server.console.analytics` is valid only for managed Moltnet servers and configures the hosted `/console/` page. In v0.1 the only supported provider is `google`, with a GA4 `measurement_id` such as `G-XXXXXXXXXX`.
-- A room `members` list MAY name direct agent member IDs or direct child-team member IDs.
+- A room `members` list MAY name direct agent member IDs, direct child-team member IDs,
+  or a scoped `<remote-network-id>:<agent-id>` member whose remote network is a
+  declared pairing included by that room's federation stance.
 - A room `visibility` is OPTIONAL and MUST be `public` or `private` when present. Public visibility only becomes anonymous-readable when `server.auth.public_read: true`.
 - A room `write_policy` is OPTIONAL and MUST be `members`, `registered_agents`, or `operators` when present. Generated agent tokens are identity tokens; they do not bypass `members` or `operators` policies.
 - Direct child-team IDs in a parent room expand to the child team's concrete representatives for that parent context.
@@ -1359,9 +1372,11 @@ Rules:
   operator token MUST have no `agents` binding and MUST have exactly the ordered
   scopes `[admin, observe, write]`.
 - Every agent or service actor on that network MUST explicitly select its own
-  token. An actor token MUST have exactly the ordered scopes `[attach, write]`,
-  MUST bind exactly one canonical member ID in `agents`, and MUST be selected by
-  exactly that actor. Operator and actor token IDs and secret environment
+  token. A non-Daimon agent token MUST have exactly the ordered scopes
+  `[attach, write]`; a Daimon agent token MUST have exactly
+  `[attach, observe, write]`; and an external service token MAY use either
+  ordered set. Every actor token MUST bind exactly one canonical member ID in
+  `agents` and MUST be selected by exactly that actor. Operator and actor token IDs and secret environment
   identities MUST remain distinct; no actor may select the operator token.
 - The compiler MUST treat token `secret` values as environment-variable
   identities only. It MUST NOT read or serialize the referenced credential
@@ -1378,7 +1393,10 @@ Rules:
 - When the root team omits `external_participants`, compilation MUST preserve
   the standalone organization and Moltnet path: it MUST NOT require the topology
   operator/actor-token split, synthesize a service identity, or emit an external
-  participant artifact.
+  participant artifact. The compiler still MUST derive canonical agent-member
+  organization identity from the valid root-team graph, with an empty resolved
+  external-participant list, for generic organization-bound inputs such as world
+  bindings.
 
 ### 4.7 Team Docs And Context Artifacts
 
@@ -1956,13 +1974,13 @@ from normal `.spawn/` output and defaults to `.spawn-dev/`.
 - MUST target a project-backed dev deployment record
 - MUST recompile source into the dev output directory without deleting the deployment record
 - MUST hot-apply exactly one agent selected by id, slug, or name
-- For Daimon runtime agents, MUST copy the updated Daimon app config, selected agent workspace, every matching Moltnet node config, and managed Moltnet server configs into the recorded running container, then call the generated Daimon control endpoint to load the agent
+- For Pi runtime agents, MUST copy the updated generated Pi app config, selected agent workspace, every matching Moltnet node config, and managed Moltnet server configs into the recorded running container, then call the generated Pi control endpoint to load the agent
 - For a new Pi agent with Moltnet node configs, MUST start only that agent's Moltnet node processes; existing agents and the container MUST NOT be restarted
 - For an existing Pi agent, MUST reload the in-memory Pi agent and MUST NOT start a duplicate Moltnet node
 - Running managed Moltnet servers keep their current in-memory room membership until the copied server config is reconciled through an operator-token `moltnet apply` or a server restart
 - MUST fail clearly for unsupported runtimes or deployments without a live Pi control endpoint
 
-`spawnfile dev activity` reads the generated Daimon app's bounded
+`spawnfile dev activity` reads the generated Pi app's bounded
 `spawnfile.activity.v1` buffer from the running dev container and prints JSON
 lines. It MAY filter by agent id, slug, or name, and MUST NOT read Moltnet
 message bodies or expose hidden reasoning.

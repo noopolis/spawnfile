@@ -16,11 +16,14 @@ export * from "./downDeployment.js";
 export * from "./downReceiptTypes.js";
 export * from "./homeStore.js";
 export * from "./lifecycleCompletion.js";
+export * from "./lifecycleUpRecords.js";
 export * from "./names.js";
 export * from "./organizationHandoffTypes.js";
 export * from "./organizationHandoffAuthorityTypes.js";
 export * from "./organizationHandoffAuthorityStore.js";
 export * from "./organizationReady.js";
+export * from "./canaryCutover.js";
+export * from "./productStateClone.js";
 export * from "./record.js";
 // Compatibility target exports remain available from this legacy deployment barrel.
 export * from "./target.js";

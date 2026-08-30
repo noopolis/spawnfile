@@ -8,7 +8,8 @@ import type { RuntimeLifecycleStatus } from "../shared/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { openClawAdapter } from "./openclaw/adapter.js";
-import { daimonAdapter, piAdapter } from "./pi/adapter.js";
+import { daimonAdapter } from "./daimon/adapter.js";
+import { piAdapter } from "./pi/adapter.js";
 import { picoClawAdapter } from "./picoclaw/adapter.js";
 import type { RuntimeAdapter } from "./types.js";
 
@@ -22,6 +23,9 @@ const runtimeAdapters = new Map<string, RuntimeAdapter>([
 const runtimeInstallSchema = z.discriminatedUnion("kind", [
   z
     .object({
+      capability_receipt: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+      contract_manifest_sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+      digest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
       image: z.string().min(1),
       kind: z.literal("container_image"),
       tag: z.string().min(1)
@@ -73,6 +77,9 @@ let runtimeRegistryPromise: Promise<RuntimeRegistryEntry[]> | undefined;
 
 export type RuntimeRegistryInstall =
   | {
+      capabilityReceipt?: string;
+      contractManifestSha256?: string;
+      digest?: string;
       image: string;
       kind: "container_image";
       tag: string;
@@ -109,7 +116,20 @@ export const parseRuntimeRegistry = (source: string): RuntimeRegistryEntry[] => 
     return Object.entries(parsed.runtimes)
       .map(([name, entry]) => ({
         defaultBranch: entry.default_branch,
-        install: entry.install,
+        install: entry.install?.kind === "container_image"
+          ? {
+              ...(entry.install.capability_receipt
+                ? { capabilityReceipt: entry.install.capability_receipt }
+                : {}),
+              ...(entry.install.contract_manifest_sha256
+                ? { contractManifestSha256: entry.install.contract_manifest_sha256 }
+                : {}),
+              ...(entry.install.digest ? { digest: entry.install.digest } : {}),
+              image: entry.install.image,
+              kind: entry.install.kind,
+              tag: entry.install.tag
+            }
+          : entry.install,
         name,
         ref: entry.ref,
         remote: entry.remote,

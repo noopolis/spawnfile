@@ -70,7 +70,7 @@ const exactDefaultConfigObject = (raw: unknown): Record<string, unknown> => {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)
     || Object.getPrototypeOf(raw) !== Object.prototype) return fail();
   const expected = [
-    "artifactMappings", "container_bundle_store_root", "context", "dockerCommand", "evidenceDestination",
+    "artifactMappings", "container_bundle_store_root", "context", "dockerCommand", "evidenceDestination", "evidenceHelperBaseImage", "preparedEvidenceHelper",
     "helperArtifactManifestDigest", "preparedArtifactMappings", "timeoutMs", "version"
   ];
   const required = ["context", "dockerCommand", "evidenceDestination", "timeoutMs", "version"];
@@ -155,6 +155,12 @@ const defaultConfigInputs = (
   context: raw.context as string,
   dockerCommand: raw.dockerCommand as string,
   evidenceDestination: raw.evidenceDestination as string,
+  ...(Object.hasOwn(raw, "evidenceHelperBaseImage") ? {
+    evidenceHelperBaseImage: raw.evidenceHelperBaseImage as string
+  } : {}),
+  ...(Object.hasOwn(raw, "preparedEvidenceHelper") ? {
+    preparedEvidenceHelper: raw.preparedEvidenceHelper as TargetDefaultConfigInputs["preparedEvidenceHelper"]
+  } : {}),
   ...(Object.hasOwn(raw, "helperArtifactManifestDigest") ? {
     helperArtifactManifestDigest: raw.helperArtifactManifestDigest as string
   } : {}),

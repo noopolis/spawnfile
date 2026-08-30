@@ -75,7 +75,13 @@ const createFakeReleaseDirectory = async (
 
   for (const binaryName of binaryNames) {
     const binaryPath = path.join(payloadDirectory, binaryName);
-    await writeUtf8File(binaryPath, `#!/usr/bin/env sh\necho ${binaryName}\n`);
+    await writeUtf8File(binaryPath, [
+      "#!/usr/bin/env sh",
+      "if [ \"$1\" = version ]; then echo moltnet; exit 0; fi",
+      "if [ \"$1\" = node ]; then sleep 2; exit 0; fi",
+      `echo ${binaryName}`,
+      "exit 1"
+    ].join("\n") + "\n");
     await chmod(binaryPath, 0o755);
   }
 
@@ -146,8 +152,10 @@ afterEach(async () => {
 describe("moltnetBinaries", () => {
   it("exposes only the fixed-authority staging surface from the shipped module", () => {
     expect(Object.keys(shippedMoltnetBinaries).sort()).toEqual([
+      "MOLTNET_ALLOW_LOCAL_E2E_ENV",
       "MOLTNET_BINARY_NAMES",
       "MOLTNET_BIN_DIRECTORY",
+      "MOLTNET_LOCAL_RELEASE_DIR_ENV",
       "MOLTNET_RELEASE_DIR_ENV",
       "MOLTNET_RELEASE_IDENTITY_VERSION",
       "MOLTNET_RELEASE_STAMP_VERSION",
@@ -225,6 +233,75 @@ describe("moltnetBinaries", () => {
     );
     await expect(fileExists(path.join(outputDirectory, MOLTNET_BIN_DIRECTORY)))
       .resolves.toBe(false);
+  });
+
+  it("admits a dual-bridge local identity only through explicit E2E opt-in", async () => {
+    const releaseDirectory = await createFakeReleaseDirectory();
+    const architecture = process.arch === "arm64" ? "arm64" : "amd64";
+    const asset = `moltnet_linux_${architecture}.tar.gz`;
+    const sha256 = createHash("sha256").update(await readFile(path.join(releaseDirectory, asset))).digest("hex");
+    await writeUtf8File(path.join(releaseDirectory, `local_moltnet_release_stamp_${architecture}.json`), `${JSON.stringify({
+      arch: architecture, asset, capabilities: ["daimon-bridge", "pi-bridge"],
+      development: { mode: "local-development", non_production: true, unsigned: true, unpublished: true },
+      sha256, source_sha256: `sha256:${"f".repeat(64)}`,
+      stamp_version: "spawnfile.local-moltnet-release-stamp.v1"
+    })}\n`);
+    const outputDirectory = await createTempDirectory("spawnfile-moltnet-local-out-");
+    vi.stubEnv("SPAWNFILE_LOCAL_MOLTNET_RELEASE_DIR", releaseDirectory);
+    await expect(stageMoltnetBinaries(outputDirectory, { architecture })).rejects.toThrow(/explicit SPAWNFILE_ALLOW_LOCAL_E2E=1/u);
+    vi.stubEnv("SPAWNFILE_ALLOW_LOCAL_E2E", "1");
+    await expect(stageMoltnetBinaries(outputDirectory, { architecture })).resolves.toMatchObject({
+      capabilities: ["daimon-bridge", "pi-bridge"],
+      development: { mode: "local-development", non_production: true, unsigned: true, unpublished: true },
+      source_sha256: `sha256:${"f".repeat(64)}`
+    });
+  });
+
+  it("rejects a dual-bridge stamp when the archived binary rejects Daimon configuration", async () => {
+    const releaseDirectory = await createFakeReleaseDirectory();
+    const architecture = process.arch === "arm64" ? "arm64" : "amd64";
+    const asset = `moltnet_linux_${architecture}.tar.gz`;
+    const binaryPath = path.join(releaseDirectory, "payload", "moltnet");
+    await writeUtf8File(binaryPath, [
+      "#!/usr/bin/env sh",
+      "if [ \"$1\" = version ]; then echo moltnet; exit 0; fi",
+      "if grep -q '\"kind\":\"daimon\"' \"$2\"; then echo unsupported >&2; exit 1; fi",
+      "sleep 2"
+    ].join("\n") + "\n");
+    await chmod(binaryPath, 0o755);
+    await execFile("tar", ["-C", path.join(releaseDirectory, "payload"), "-czf", path.join(releaseDirectory, asset), "."]);
+    const sha256 = createHash("sha256").update(await readFile(path.join(releaseDirectory, asset))).digest("hex");
+    await writeUtf8File(path.join(releaseDirectory, `local_moltnet_release_stamp_${architecture}.json`), `${JSON.stringify({
+      arch: architecture, asset, capabilities: ["daimon-bridge", "pi-bridge"],
+      development: { mode: "local-development", non_production: true, unsigned: true, unpublished: true },
+      sha256, source_sha256: `sha256:${"f".repeat(64)}`,
+      stamp_version: "spawnfile.local-moltnet-release-stamp.v1"
+    })}\n`);
+    const outputDirectory = await createTempDirectory("spawnfile-moltnet-local-out-");
+    vi.stubEnv("SPAWNFILE_LOCAL_MOLTNET_RELEASE_DIR", releaseDirectory);
+    vi.stubEnv("SPAWNFILE_ALLOW_LOCAL_E2E", "1");
+
+    await expect(stageMoltnetBinaries(outputDirectory, {
+      architecture, executionHost: { architecture, platform: "linux" }
+    })).rejects.toThrow(/does not accept daimon-bridge/u);
+  });
+
+  it("rejects malformed local identities before extraction", async () => {
+    const releaseDirectory = await createFakeReleaseDirectory();
+    const architecture = process.arch === "arm64" ? "arm64" : "amd64";
+    const asset = `moltnet_linux_${architecture}.tar.gz`;
+    const sha256 = createHash("sha256").update(await readFile(path.join(releaseDirectory, asset))).digest("hex");
+    await writeUtf8File(path.join(releaseDirectory, `local_moltnet_release_stamp_${architecture}.json`), `${JSON.stringify({
+      arch: architecture, asset, capabilities: ["pi-bridge"],
+      development: { mode: "local-development", non_production: true, unsigned: true, unpublished: true },
+      sha256, source_sha256: `sha256:${"f".repeat(64)}`,
+      stamp_version: "spawnfile.local-moltnet-release-stamp.v1"
+    })}\n`);
+    vi.stubEnv("SPAWNFILE_ALLOW_LOCAL_E2E", "1");
+    vi.stubEnv("SPAWNFILE_LOCAL_MOLTNET_RELEASE_DIR", releaseDirectory);
+    const outputDirectory = await createTempDirectory("spawnfile-moltnet-local-out-");
+    await expect(stageMoltnetBinaries(outputDirectory, { architecture })).rejects.toThrow(/dual-bridge/u);
+    await expect(fileExists(path.join(outputDirectory, MOLTNET_BIN_DIRECTORY))).resolves.toBe(false);
   });
 
   it("normalizes every supported configured architecture before trust verification", async () => {
@@ -360,5 +437,52 @@ describe("moltnetBinaries", () => {
     await writeUtf8File(path.join(releaseDirectory, assetName), "tampered\n");
     await expect(stageFakeRelease(outputDirectory, releaseDirectory, architecture))
       .rejects.toThrow(/sha256 does not match/u);
+  });
+
+  /**
+   * The regression: `stageMoltnetBinaries` used to pass `resolveTargetArchitecture()`
+   * as the probe's HOST architecture. That helper honours the
+   * SPAWNFILE_MOLTNET_TARGET_ARCH build-target override, so host and target were the
+   * same value by construction, `architecture === hostArchitecture` was always true,
+   * and the direct-exec branch was the only branch reachable. On macOS that means
+   * spawning a linux ELF, which fails ENOEXEC and rejects a correct local build.
+   *
+   * Here the build target is pinned to the architecture this host is NOT, with no
+   * explicit host override. A direct-exec probe would run the shell-script stand-in
+   * and report the daimon rejection it is written to produce; the fixed caller
+   * resolves the real host instead, so that message must never appear.
+   */
+  it("resolves the probe host from the platform, not from the build-target override", async () => {
+    const hostArchitecture = process.arch === "arm64" ? "arm64" : "amd64";
+    const targetArchitecture = hostArchitecture === "arm64" ? "amd64" : "arm64";
+    const releaseDirectory = await createFakeReleaseDirectory(["moltnet"], targetArchitecture);
+    const asset = `moltnet_linux_${targetArchitecture}.tar.gz`;
+    const binaryPath = path.join(releaseDirectory, "payload", "moltnet");
+    await writeUtf8File(binaryPath, [
+      "#!/usr/bin/env sh",
+      "if [ \"$1\" = version ]; then echo moltnet; exit 0; fi",
+      "echo unsupported >&2; exit 1"
+    ].join("\n") + "\n");
+    await chmod(binaryPath, 0o755);
+    await execFile("tar", ["-C", path.join(releaseDirectory, "payload"), "-czf", path.join(releaseDirectory, asset), "."]);
+    const sha256 = createHash("sha256").update(await readFile(path.join(releaseDirectory, asset))).digest("hex");
+    await writeUtf8File(path.join(releaseDirectory, `local_moltnet_release_stamp_${targetArchitecture}.json`), `${JSON.stringify({
+      arch: targetArchitecture, asset, capabilities: ["daimon-bridge", "pi-bridge"],
+      development: { mode: "local-development", non_production: true, unsigned: true, unpublished: true },
+      sha256, source_sha256: `sha256:${"f".repeat(64)}`,
+      stamp_version: "spawnfile.local-moltnet-release-stamp.v1"
+    })}\n`);
+    const outputDirectory = await createTempDirectory("spawnfile-moltnet-local-out-");
+    vi.stubEnv("SPAWNFILE_LOCAL_MOLTNET_RELEASE_DIR", releaseDirectory);
+    vi.stubEnv("SPAWNFILE_ALLOW_LOCAL_E2E", "1");
+    vi.stubEnv("SPAWNFILE_MOLTNET_TARGET_ARCH", targetArchitecture);
+
+    const thrown: unknown = await stageMoltnetBinaries(outputDirectory).catch((error: unknown) => error);
+
+    expect(thrown).toBeInstanceOf(Error);
+    // Every direct-exec probe failure names "Local Moltnet binary"; the Docker
+    // cross-platform probe says "cross-host". This host cannot execute that
+    // target, so the direct branch must never have been entered.
+    expect((thrown as Error).message).not.toMatch(/Local Moltnet binary/u);
   });
 });

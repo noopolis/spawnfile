@@ -45,6 +45,61 @@ export const resolveCompiledEngines = (
     .map(([agent, engine]) => ({ agent, engine }))
     .sort((left, right) => left.agent.localeCompare(right.agent));
 
+const createReceiptMoltnetIdentity = (
+  release: NonNullable<UpProjectResult["report"]["container"]>["moltnet"] extends infer Moltnet
+    ? Moltnet extends { release?: infer Identity } ? Identity : never
+    : never
+) => {
+  if (!release) return undefined;
+  // Discriminate on PROVENANCE, never on capability count. A published release
+  // now advertises `daimon-bridge` too (moltnet v0.1.18), so `length === 1` would
+  // route it into the local-development branch and reject it for lacking a
+  // `development` marker it is never supposed to have.
+  //
+  // The canonical list lives in `moltnetReleaseAuthority.ts`, but the H2 boundary
+  // (`../deployment/organizationHandoffTypes.test.ts`) forbids this file from
+  // importing any `moltnet*` module, so the ordering is compared inline here the
+  // same way the local branch below already compares it. `upReceiptTypes.ts`'s
+  // schema is the authority that rejects any other list on parse.
+  const joined = release.capabilities.join("\0");
+  const receiptCapabilities: ["daimon-bridge", "pi-bridge"] | ["pi-bridge"] | null =
+    joined === "daimon-bridge\0pi-bridge"
+      ? ["daimon-bridge", "pi-bridge"]
+      : joined === "pi-bridge" ? ["pi-bridge"] : null;
+  if (receiptCapabilities === null) {
+    throw new SpawnfileError("runtime_error", "Moltnet receipt advertises unknown bridge capabilities");
+  }
+  if (!release.development) {
+    if (!release.release_version || !release.source_revision) {
+      throw new SpawnfileError("runtime_error", "Published Moltnet receipt lacks its pinned source identity");
+    }
+    return {
+      architecture: release.architecture,
+      asset: release.asset,
+      asset_sha256: release.asset_sha256,
+      capabilities: receiptCapabilities,
+      release_version: release.release_version,
+      source_revision: release.source_revision,
+      version: release.version
+    };
+  }
+  if (
+    release.capabilities.join("\0") !== "daimon-bridge\0pi-bridge" ||
+    !release.source_sha256
+  ) {
+    throw new SpawnfileError("runtime_error", "Local Moltnet receipt lacks its development provenance");
+  }
+  return {
+    architecture: release.architecture,
+    asset: release.asset,
+    asset_sha256: release.asset_sha256,
+    capabilities: ["daimon-bridge", "pi-bridge"] as ["daimon-bridge", "pi-bridge"],
+    development: release.development,
+    source_sha256: release.source_sha256,
+    version: release.version
+  };
+};
+
 /**
  * Builds `spawnfile.up-receipt.v1` from a project-path `upProject()` result. Reads back
  * the deployment record `upProject` already wrote (for `run_id`/deployment name/container
@@ -95,10 +150,7 @@ export const buildUpReceipt = async (
     compiled_schedule: compiledSchedule,
     engines: compiledEngines,
     ...(result.report.container?.moltnet?.release
-      ? { moltnet_release: {
-          ...result.report.container.moltnet.release,
-          capabilities: ["pi-bridge"] as ["pi-bridge"]
-        } }
+      ? { moltnet_release: createReceiptMoltnetIdentity(result.report.container.moltnet.release) }
       : {}),
     ...(record?.organization_handoff ? { organization_handoff: record.organization_handoff } : {}),
     ...(record?.organization_handoff_handle ? { organization_handoff_handle: record.organization_handoff_handle } : {}),

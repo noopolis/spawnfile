@@ -47,12 +47,15 @@ import { errorExitCode, isSpawnfileError } from "../shared/index.js";
 import { listRuntimeAdapters } from "../runtime/index.js";
 import { registerArtifactsCommands } from "./artifactsCommands.js";
 import { registerAuthCommands } from "./authCommands.js";
+import { registerCapabilitiesCommand } from "./capabilitiesCommand.js";
 import { registerDevCommands } from "./devCommands.js";
+import { registerEvidenceExportHelperCommand } from "./evidenceExportHelperCommand.js";
 import { registerLifecycleCommands } from "./lifecycleCommands.js";
 import { registerModelCommands } from "./modelCommands.js";
 import { registerRuntimeCommands } from "./runtimeCommands.js";
 import { registerSurfaceCommands } from "./surfaceCommands.js";
 import { registerStatusCommand } from "./statusCommand.js";
+import { registerUsageCommand } from "./usageCommand.js";
 import { registerProductionTargetCommands } from "./targetProductionCommands.js";
 import { registerViewCommand } from "./viewCommand.js";
 
@@ -229,6 +232,10 @@ export const runCli: RunCli = async (
   registerLifecycleCommands(program, handlers, streams, cliOptions.stdin);
   registerDevCommands(program, handlers, streams);
   registerArtifactsCommands(program, handlers, streams);
+  registerCapabilitiesCommand(program, streams, readPackageVersion());
+  registerEvidenceExportHelperCommand(program, streams, (exitCode) => {
+    commandExitCode = exitCode;
+  });
 
   program
     .command("init")
@@ -309,6 +316,9 @@ export const runCli: RunCli = async (
   registerRuntimeCommands(program, handlers, streams);
   registerSurfaceCommands(program, handlers, streams);
   registerStatusCommand(program, handlers, streams, (exitCode) => {
+    commandExitCode = exitCode;
+  });
+  registerUsageCommand(program, streams, (exitCode) => {
     commandExitCode = exitCode;
   });
   registerViewCommand(program, handlers, streams, cliOptions.renderEnvironment);

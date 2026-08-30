@@ -15,6 +15,8 @@ export const TARGET_PUBLIC_ARTIFACT_SNAPSHOT_REQUEST_VERSION =
   "spawnfile.target-public-artifact-snapshot.request.v1" as const;
 export const TARGET_PUBLIC_ARTIFACT_SNAPSHOT_VERSION =
   "spawnfile.target-public-artifact-snapshot.v1" as const;
+export const TARGET_PUBLIC_ARTIFACT_SNAPSHOT_NOT_PRESENT_VERSION =
+  "spawnfile.target-public-artifact-snapshot.not-present.v1" as const;
 export const TARGET_PUBLIC_ARTIFACT_ROOT = "/tmp/spawnfile-public" as const;
 export const MAX_TARGET_PUBLIC_ARTIFACT_BYTES = 131_072;
 
@@ -23,10 +25,15 @@ const identifierSchema = z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/u);
 const mediaTypeSchema = z.string()
   .max(127)
   .regex(/^[a-z][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/u);
+const PUBLIC_ARTIFACT_PATH = /^\/tmp\/spawnfile-public\/[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const publicPathSchema = z.string().max(255)
-  .regex(/^\/tmp\/spawnfile-public\/[A-Za-z0-9][A-Za-z0-9._/-]*$/u)
-  .refine((value) => !value.includes("//") && !value.endsWith("/")
-    && !value.split("/").some((part) => part === "." || part === ".."));
+  // This is intentionally a direct child of the isolated public tmpfs.  A
+  // nested path would require a recursive openat-style resolver to keep every
+  // parent below the mount while an untrusted world is writing its output.
+  .regex(PUBLIC_ARTIFACT_PATH);
+
+export const isTargetPublicArtifactPath = (value: unknown): value is string =>
+  typeof value === "string" && value.length <= 255 && PUBLIC_ARTIFACT_PATH.test(value);
 
 export const targetPublicArtifactSnapshotRequestSchema = z.object({
   artifact: z.object({
@@ -66,10 +73,27 @@ export const targetPublicArtifactSnapshotSchema = z.object({
   }
 });
 
+export const targetPublicArtifactSnapshotNotPresentSchema = z.object({
+  artifact_id: identifierSchema,
+  request_digest: digestSchema,
+  run_id: runIdSchema,
+  status: z.literal("not_present"),
+  version: z.literal(TARGET_PUBLIC_ARTIFACT_SNAPSHOT_NOT_PRESENT_VERSION)
+}).strict();
+
+export const targetPublicArtifactSnapshotResultSchema = z.union([
+  targetPublicArtifactSnapshotSchema,
+  targetPublicArtifactSnapshotNotPresentSchema
+]);
+
 export type TargetPublicArtifactSnapshotRequest =
   z.infer<typeof targetPublicArtifactSnapshotRequestSchema>;
 export type TargetPublicArtifactSnapshot =
   z.infer<typeof targetPublicArtifactSnapshotSchema>;
+export type TargetPublicArtifactSnapshotNotPresent =
+  z.infer<typeof targetPublicArtifactSnapshotNotPresentSchema>;
+export type TargetPublicArtifactSnapshotResult =
+  z.infer<typeof targetPublicArtifactSnapshotResultSchema>;
 
 const canonicalJsonValue = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(canonicalJsonValue).join(",")}]`;
@@ -142,6 +166,20 @@ export const parseTargetPublicArtifactSnapshot = (
   return targetPublicArtifactSnapshotSchema.parse(raw);
 };
 
+export const parseTargetPublicArtifactSnapshotNotPresent = (
+  raw: unknown
+): TargetPublicArtifactSnapshotNotPresent => {
+  assertOrdinaryPublicArtifactSnapshot(raw);
+  return targetPublicArtifactSnapshotNotPresentSchema.parse(raw);
+};
+
+export const parseTargetPublicArtifactSnapshotResult = (
+  raw: unknown
+): TargetPublicArtifactSnapshotResult => {
+  assertOrdinaryPublicArtifactSnapshot(raw);
+  return targetPublicArtifactSnapshotResultSchema.parse(raw);
+};
+
 export const createTargetPublicArtifactSnapshotRequestDigest = (
   raw: unknown
 ): `sha256:${string}` => `sha256:${createHash("sha256")
@@ -170,6 +208,23 @@ export const createTargetPublicArtifactSnapshot = (input: {
   });
 };
 
+export const createTargetPublicArtifactSnapshotNotPresent = (
+  raw: unknown
+): TargetPublicArtifactSnapshotNotPresent => {
+  const request = parseTargetPublicArtifactSnapshotRequest(raw);
+  return parseTargetPublicArtifactSnapshotNotPresent({
+    artifact_id: request.artifact.id,
+    request_digest: createTargetPublicArtifactSnapshotRequestDigest(request),
+    run_id: request.run_id,
+    status: "not_present",
+    version: TARGET_PUBLIC_ARTIFACT_SNAPSHOT_NOT_PRESENT_VERSION
+  });
+};
+
 export const createCanonicalTargetPublicArtifactSnapshotBytes = (
   raw: unknown
 ): string => canonicalJsonValue(parseTargetPublicArtifactSnapshot(raw));
+
+export const createCanonicalTargetPublicArtifactSnapshotResultBytes = (
+  raw: unknown
+): string => canonicalJsonValue(parseTargetPublicArtifactSnapshotResult(raw));

@@ -23,8 +23,13 @@
   initialize state, acquire a mutation lock, or call a provider.
 - `snapshot_public_artifact` is a read-only public projection query, not a
   mutation or an evidence export. Its public contract declares one bounded
-  artifact below `/tmp/spawnfile-public/` and returns only canonical bytes plus
-  public correlation digests. The private provider resolves one exact recorded
+  direct child of `/tmp/spawnfile-public/` and returns only canonical bytes plus
+  public correlation digests. The world service provides that root as a
+  separately attested tmpfs mount, and one atomic `O_NOFOLLOW` open reads its
+  terminal child without a check-then-read race. Only the reader's exact empty
+  terminal-absence exit returns the strict versioned `not_present` result;
+  every link, replacement, request, authority, container, path-safety, or
+  provider failure remains permanent. The private provider resolves one exact recorded
   world-service handle and may copy only that declared path; it never lists,
   searches, reads logs, reads evidence volumes, publishes a port, or exposes a
   provider identity.
@@ -78,8 +83,11 @@
   destination paths, Docker identities, provider output, or evidence bytes
   through this boundary, and it is not barrel-exported. Helper verification is
   contract-bound and image-based: the image projection must include exact
-  helper contract label, immutable `RepoDigest`, exact expected immutable entrypoint,
-  empty `Cmd`, and non-root `User` before any container create/inspect/replay.
+  helper contract label, either an immutable registry reference or a Spawnfile-attested
+  local image config digest, exact expected immutable entrypoint,
+  empty `Cmd`, non-root `User`, and only the fixed nonsecret
+  `PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`
+  environment entry before any container create/inspect/replay.
   Helper-container enforcement is fixed and isolated: `network none`, read-only
   root, no restart/logging/ports, bounded CPU/memory/pids, deterministic
   `volume-nocopy` mount, and explicit empty user/group/device/network-related

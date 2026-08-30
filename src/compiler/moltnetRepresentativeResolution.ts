@@ -133,7 +133,8 @@ export const resolveTeamRepresentatives = (
 export const resolveMoltnetAttachments = (
   attachments: ResolvedMoltnetAttachment[] | undefined,
   context: MoltnetTeamContext | undefined,
-  nodeName: string
+  nodeName: string,
+  runtimeName?: string
 ): ResolvedMoltnetAttachment[] | undefined => {
   if (!attachments || attachments.length === 0) {
     return undefined;
@@ -160,7 +161,8 @@ export const resolveMoltnetAttachments = (
         network.id,
         context.memberId,
         undefined,
-        attachment.auth?.tokenId
+        attachment.auth?.tokenId,
+        runtimeName
       );
     }
 

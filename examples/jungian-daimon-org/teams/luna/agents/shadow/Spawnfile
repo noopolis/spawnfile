@@ -4,7 +4,7 @@ name: luna-shadow
 description: "Luna inner archetype (Grok CLI engine)"
 
 runtime:
-  name: daimon
+  name: pi
   options:
     engine: grok
 

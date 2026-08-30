@@ -12,6 +12,7 @@ export interface MoltnetServerPlan {
   networkId: string;
   port?: number;
   rooms: Array<{
+    federation?: "all" | "none" | string[];
     id: string;
     members: string[];
     name?: string;
@@ -30,6 +31,7 @@ export interface MoltnetNodePlan {
   credentialSecret?: string;
   memberId?: string;
   networkId: string;
+  receiptStorePath?: string;
 }
 
 export interface MoltnetPersistentMount {

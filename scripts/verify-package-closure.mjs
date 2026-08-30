@@ -7,6 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 
+import { verifyNativeHelperArtifacts } from "./native-helper-artifacts.mjs";
+
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(scriptDirectory, "..");
 const packageManifestPath = path.join(packageRoot, "package.json");
@@ -86,6 +88,9 @@ const assertSourceClosure = async (manifest, lock) => {
 };
 
 const assertPackedManifest = (manifest) => {
+  if (typeof manifest.name !== "string" || typeof manifest.version !== "string") {
+    fail("packed manifest lacks an exact package identity");
+  }
   if (manifest.dependencies?.[STELE] !== STELE_VERSION) {
     fail(`packed ${STELE} coordinate drifted from ${STELE_VERSION}`);
   }
@@ -123,12 +128,33 @@ const assertInstalledClosure = async (installRoot, manifest, tarballPath) => {
   ], installRoot);
   const installedRoot = path.join(installRoot, "node_modules", manifest.name);
   if ((await lstat(installedRoot)).isSymbolicLink()) fail(`${manifest.name} installed as a source link`);
+  const installedManifest = await readJson(path.join(installedRoot, "package.json"));
+  if (installedManifest.name !== manifest.name || installedManifest.version !== manifest.version) {
+    fail("isolated install package identity drifted from the packed manifest");
+  }
+  const helperProgram = path.join(installedRoot, "dist", "evidenceExportHelper", "helperProgram.mjs");
+  const helperMetadata = await lstat(helperProgram);
+  if (!helperMetadata.isFile() || helperMetadata.isSymbolicLink() || helperMetadata.size < 1) {
+    fail("packed evidence helper asset is missing or unsafe");
+  }
+  const helperRecipe = await import(pathToFileURL(path.join(
+    installedRoot, "dist", "evidenceExportHelper", "recipe.js",
+  )).href);
+  const helper = await helperRecipe.loadLocalEvidenceHelperRecipe();
+  await verifyNativeHelperArtifacts(path.join(installedRoot, "dist", "deployment", "native"));
+  const helperSource = await readFile(helperProgram, "utf8");
+  if (!helperSource.startsWith("#!/usr/local/bin/node")
+    || !(helper.context instanceof Uint8Array)
+    || !/^sha256:[a-f0-9]{64}$/u.test(helper.recipeDigest)) {
+    fail("packed evidence helper asset cannot be imported into its recipe");
+  }
   const moltnetBinaries = await import(pathToFileURL(path.join(
     installedRoot,
     "dist/compiler/moltnetBinaries.js",
   )).href);
   const expectedMoltnetExports = [
-    "MOLTNET_BINARY_NAMES", "MOLTNET_BIN_DIRECTORY", "MOLTNET_RELEASE_DIR_ENV",
+    "MOLTNET_ALLOW_LOCAL_E2E_ENV", "MOLTNET_BINARY_NAMES", "MOLTNET_BIN_DIRECTORY",
+    "MOLTNET_LOCAL_RELEASE_DIR_ENV", "MOLTNET_RELEASE_DIR_ENV",
     "MOLTNET_RELEASE_IDENTITY_VERSION", "MOLTNET_RELEASE_STAMP_VERSION",
     "resolveMoltnetCliCommand", "stageMoltnetBinaries",
   ];
@@ -162,11 +188,25 @@ const assertInstalledClosure = async (installRoot, manifest, tarballPath) => {
   const stele = await import(pathToFileURL(steleRealPath).href);
   if (typeof stele.parseCausalJsonl !== "function") fail(`${STELE} runtime import is incomplete`);
   const executable = path.join(installRoot, "node_modules", ".bin", Object.keys(manifest.bin ?? {})[0]);
-  await run(executable, ["--help"], installRoot, {
+  const executableEnvironment = {
     ...process.env,
     PATH: `${path.dirname(executable)}${path.delimiter}${process.env.PATH ?? ""}`,
-  });
+  };
+  await run(executable, ["--help"], installRoot, executableEnvironment);
+  const capabilities = JSON.parse((await run(
+    executable, ["capabilities", "--json"], installRoot, executableEnvironment,
+  )).stdout);
+  if (capabilities?.version !== "spawnfile.capabilities.v1"
+    || capabilities?.implementation?.package !== manifest.name
+    || capabilities?.implementation?.version !== manifest.version
+    || capabilities?.capabilities?.composed_lifecycle?.complete !== true
+    || capabilities?.capabilities?.composed_lifecycle?.command_set_version
+      !== "spawnfile.composed-lifecycle-contract-set.v1") {
+    fail("packed CLI capability contract or package identity drifted");
+  }
   return {
+    capabilitiesVersion: capabilities.version,
+    commandSetVersion: capabilities.capabilities.composed_lifecycle.command_set_version,
     moltnetReleases,
     steleResolved: path.relative(installRealRoot, steleRealPath),
   };
@@ -195,6 +235,22 @@ const main = async () => {
       fail("npm pack manifest integrity does not match the inspected tarball bytes");
     }
     const entries = new Set(packed.files.map((entry) => entry.path));
+    if (!entries.has("dist/evidenceExportHelper/helperProgram.mjs")
+      || !entries.has("dist/evidenceExportHelper/recipe.js")) {
+      fail("packed tarball omits the evidence helper runtime assets");
+    }
+    for (const architecture of ["x64", "arm64"]) {
+      if (!entries.has(`dist/deployment/native/rename-noreplace-${architecture}`)
+        || !entries.has(`dist/deployment/native/rename-noreplace-${architecture}.provenance.json`)) {
+        fail(`packed tarball omits the Linux ${architecture} rename-noreplace helper or provenance`);
+      }
+    }
+    if ([...entries].some((entry) => /\.test-helper\.(?:js|d\.ts)$/u.test(entry))) {
+      fail("packed tarball leaked a test helper");
+    }
+    if ([...entries].some((entry) => /\/[^/]*RunOperatorInputs\.(?:js|d\.ts)$/u.test(entry))) {
+      fail("packed tarball leaked an unbound operator-input contract");
+    }
     if ((packed.bundled?.length ?? 0) !== 0) fail("npm pack unexpectedly bundled dependencies");
     if ([...entries].some((entry) => entry.startsWith("node_modules/")
       || entry.includes("ecosystem/") || /vendor\/.*\.tgz$/u.test(entry))) {
@@ -204,9 +260,14 @@ const main = async () => {
       "tar", ["-xOf", tarballPath, "package/package.json"], packageRoot,
     )).stdout);
     assertPackedManifest(packedManifest);
+    if (packedManifest.name !== manifest.name || packedManifest.version !== manifest.version) {
+      fail("packed manifest identity drifted from the source manifest");
+    }
     const installed = await assertInstalledClosure(installRoot, manifest, tarballPath);
     process.stdout.write(`${JSON.stringify({
       bundled: packed.bundled ?? [],
+      capabilities_version: installed.capabilitiesVersion,
+      command_set_version: installed.commandSetVersion,
       entries: packed.entryCount,
       integrity: packed.integrity,
       package: packed.id,

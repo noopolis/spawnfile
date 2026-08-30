@@ -121,6 +121,7 @@ const mergeRooms = (
     const existingRoom = serverPlan.rooms.find((entry) => entry.id === room.id);
     if (!existingRoom) {
       serverPlan.rooms.push({
+        ...(room.federation ? { federation: room.federation } : {}),
         id: room.id,
         members: concreteMembers,
         ...(room.name ? { name: room.name } : {}),
@@ -135,6 +136,13 @@ const mergeRooms = (
     assertCompatibleMoltnetRoomPolicy(
       network.id,
       room.id,
+      "federation",
+      existingRoom.federation,
+      room.federation
+    );
+    assertCompatibleMoltnetRoomPolicy(
+      network.id,
+      room.id,
       "visibility",
       existingRoom.visibility,
       room.visibility
@@ -146,6 +154,7 @@ const mergeRooms = (
       existingRoom.write_policy,
       room.write_policy
     );
+    existingRoom.federation ??= room.federation;
     existingRoom.visibility ??= room.visibility;
     existingRoom.write_policy ??= room.write_policy;
   }
@@ -205,6 +214,29 @@ export const resolveMoltnetServerPlans = (
     if (count > 1) serverPlans.get(networkId)?.rooms.sort((left, right) =>
       left.id.localeCompare(right.id)
     );
+  }
+  for (const serverPlan of serverPlans.values()) {
+    const pairingIds = new Set(
+      serverPlan.server.mode === "managed"
+        ? (serverPlan.server.pairings ?? []).map((pairing) => pairing.id)
+        : []
+    );
+    for (const room of serverPlan.rooms) {
+      if (serverPlan.server.mode === "external" && room.federation !== undefined) {
+        throw new SpawnfileError(
+          "validation_error",
+          `External Moltnet network ${serverPlan.networkId} room ${room.id} cannot declare federation`
+        );
+      }
+      if (!Array.isArray(room.federation)) continue;
+      const unknownPairing = room.federation.find((pairingId) => !pairingIds.has(pairingId));
+      if (unknownPairing) {
+        throw new SpawnfileError(
+          "validation_error",
+          `Moltnet network ${serverPlan.networkId} room ${room.id} federation references unknown pairing ${unknownPairing}`
+        );
+      }
+    }
   }
   return serverPlans;
 };

@@ -1,13 +1,12 @@
-import { execFile as execFileCallback } from "node:child_process";
 import { createHash } from "node:crypto";
-import { promisify } from "node:util";
 
 import { SpawnfileError } from "../shared/index.js";
 import { SELECTED_TARGET_VERSION, parseOpaqueTargetHandle, parseSelectedTargetReceipt, type SelectedTargetReceipt } from "./contracts.js";
 import { createEndpointFingerprint } from "./dockerEndpointFingerprint.js";
 import type { DockerTargetExecFile, ResolveDockerDeploymentTargetOptions, SelectTargetOptions } from "./dockerTarget.js";
+import { defaultDockerTargetExecFile } from "./dockerTargetExecFile.js";
 
-export const defaultDockerTargetExecFile = promisify(execFileCallback);
+export { defaultDockerTargetExecFile } from "./dockerTargetExecFile.js";
 const TARGET_SELECTION_ERROR = "Target selection failed";
 const DOCKER_CONTEXT_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/u;
 const MAX_RAW_EXECUTOR_STDOUT_BYTES = 4_096;

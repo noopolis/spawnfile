@@ -18,7 +18,8 @@ const orderTeamAuthToken = (token: {
 
 const orderTeamAuthPairing = (pairing: {
   id: string;
-  remote_base_url: string;
+  relay?: { room: string; token_secret: string; url: string };
+  remote_base_url?: string;
   remote_network_id: string;
   remote_network_name: string;
   token_secret: string;
@@ -26,6 +27,16 @@ const orderTeamAuthPairing = (pairing: {
   withDefinedEntries([
     ["id", pairing.id],
     ["remote_base_url", pairing.remote_base_url],
+    [
+      "relay",
+      pairing.relay
+        ? withDefinedEntries([
+            ["url", pairing.relay.url],
+            ["room", pairing.relay.room],
+            ["token_secret", pairing.relay.token_secret]
+          ])
+        : undefined
+    ],
     ["remote_network_id", pairing.remote_network_id],
     ["remote_network_name", pairing.remote_network_name],
     ["token_secret", pairing.token_secret]
@@ -117,6 +128,7 @@ export const orderTeamNetworks = (
             ["name", room.name],
             ["visibility", room.visibility],
             ["write_policy", room.write_policy],
+            ["federation", room.federation],
             ["members", room.members]
           ])
         )

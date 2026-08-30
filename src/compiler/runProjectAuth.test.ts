@@ -180,14 +180,14 @@ describe("prepareRuntimeAuthMounts", () => {
 });
 
 describe("resolveAuthMountArgs", () => {
-  it.each(["pi", "daimon"])("leaves %s runtime homes to the Pi auth adapter", async (runtime) => {
+  it("leaves the Pi runtime home to the Pi auth adapter", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
     process.env.SPAWNFILE_HOME = spawnfileHome;
     await registerImportedAuth("dev", "codex");
-    const homePath = `/var/lib/spawnfile/instances/${runtime}/instance/home`;
+    const homePath = "/var/lib/spawnfile/instances/pi/instance/home";
 
     await expect(resolveAuthMountArgs({
-      ...createContainerReport(runtime),
+      ...createContainerReport("pi"),
       runtime_homes: [homePath]
     }, await requireAuthProfile("dev"))).resolves.toEqual([]);
   });

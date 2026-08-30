@@ -88,13 +88,11 @@ Supported forms:
 - `kind: every` with a non-empty interval such as `2h` or `24h`.
 - `kind: disabled` to declare that automatic wake is intentionally off.
 
-`cron` and `every` schedules may include `timezone` and `prompt`. The prompt should describe one bounded wake iteration and usually complements `workspace.docs.heartbeat`.
+`cron` schedules require `timezone` and may include `prompt`; `every` schedules may include `prompt` but not `timezone`. The prompt should describe one bounded wake iteration and usually complements `workspace.docs.heartbeat`.
 
 Schedule declarations are portable wake intent. In this alpha, runtimes may report schedule lowering as degraded when they validate the intent but do not emit a native scheduler yet.
 
-In v0.1, `schedule.kind: cron` lowers to native scheduler artifacts for PicoClaw.
-`schedule.kind: every` lowers to the generated in-process scheduler for Pi.
-Other runtime/schedule combinations are validated but may report as degraded.
+PicoClaw lowers cron to its native cron store. Daimon lowers cron, every, and disabled into its strict v2 durable native scheduler. Other runtime/schedule combinations may report as degraded.
 
 ## skills
 

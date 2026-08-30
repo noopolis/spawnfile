@@ -24,10 +24,12 @@ export const mcpServerSchema = z
     env: z.record(z.string(), z.string()).optional(),
     name: z.string().min(1),
     transport: z.enum(["sse", "stdio", "streamable_http"]),
+    tools: z.array(z.string().min(1)).max(32).optional(),
     url: z.string().optional()
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.tools !== undefined && (value.tools.length === 0 || new Set(value.tools).size !== value.tools.length)) context.addIssue({ code: z.ZodIssueCode.custom, message: "MCP tools must be a nonempty unique allowlist" });
     if (value.name.startsWith("spawnfile.") || value.name.startsWith("mneme-")) {
       context.addIssue({ code: z.ZodIssueCode.custom, message: "MCP server name is reserved for compiler-owned generated services" });
     }

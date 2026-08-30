@@ -161,4 +161,202 @@ describe("targetSecretSourceFsPublishImmutable", () => {
     await expect(lstat(secondToken)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(lstat(secondClaim)).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  it("reobserves a token torn down before its creator fstats it", async () => {
+    let cut = false;
+    const publisher = await setup({ hookForTest: async (phase, file) => {
+      if (phase !== "after_token_open" || cut) return;
+      cut = true;
+      await unlink(file);
+    } });
+    const { input } = packet();
+    await publisher.publishImmutable(input);
+    expect(cut).toBe(true);
+    expect((await lstat(input.final_path)).nlink).toBe(1);
+  });
+
+  it("reobserves a final disappearing between lstat and open", async () => {
+    const publisher = await setup();
+    const { input } = packet();
+    await publisher.publishImmutable(input);
+    let cut = false;
+    const recovering = await initializeCurrent({ hookForTest: async (phase, file) => {
+      if (phase !== "after_final_lstat" || cut) return;
+      cut = true;
+      await unlink(file);
+    } });
+    await recovering.publishImmutable(input);
+    expect(cut).toBe(true);
+    expect(await readFile(input.final_path)).toEqual(Buffer.from(input.bytes));
+  });
+
+  it("succeeds when peer cleanup wins the exact claim unlink", async () => {
+    let cut = false;
+    const publisher = await setup({ hookForTest: async (phase, file) => {
+      if (phase !== "before_unlink_exact" || !file.endsWith(".claim") || cut) return;
+      cut = true;
+      await unlink(file);
+    } });
+    const { input } = packet();
+    await publisher.publishImmutable(input);
+    expect(cut).toBe(true);
+    await expect(lstat(`${input.final_path}.claim`)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("joins peer progress between final creation and the creator's first fstat", async () => {
+    await setup();
+    const { input } = packet(2_048);
+    const helper = await initializeCurrent();
+    let helped = false;
+    const creator = await initializeCurrent({ hookForTest: async (phase) => {
+      if (phase !== "after_final_open" || helped) return;
+      helped = true;
+      await helper.publishImmutable(input);
+    } });
+    await creator.publishImmutable(input);
+    expect(helped).toBe(true);
+    expect(await readFile(input.final_path)).toEqual(Buffer.from(input.bytes));
+  });
+
+  it("reobserves token teardown after its creator syncs", async () => {
+    let cut = false;
+    const publisher = await setup({ hookForTest: async (phase, file) => {
+      if (phase !== "after_token_sync" || cut) return;
+      cut = true;
+      await unlink(file);
+    } });
+    const { input } = packet();
+    await publisher.publishImmutable(input);
+    expect(cut).toBe(true);
+    expect(await readFile(input.final_path)).toEqual(Buffer.from(input.bytes));
+  });
+
+  it("rejects an oversized peer write after final creation", async () => {
+    let cut = false;
+    const publisher = await setup({ hookForTest: async (phase, file) => {
+      if (phase !== "after_final_open" || cut) return;
+      cut = true;
+      await writeFile(file, new Uint8Array(32_768).fill(9));
+    } });
+    const { input } = packet();
+    await expect(publisher.publishImmutable(input)).rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
+    expect(cut).toBe(true);
+  });
+
+  it("reobserves a disappearing election node and fails closed when its orphan cannot commit", async () => {
+    let cut = false;
+    const publisher = await setup({ hookForTest: async (phase, file) => {
+      if (phase !== "after_zero_lstat" || cut || !file.includes(".token.")) return;
+      cut = true;
+      await unlink(file);
+    } });
+    const { input } = packet();
+    await expect(publisher.publishImmutable(input)).rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
+    expect(cut).toBe(true);
+  });
+
+  it("accepts a peer-won orphan-claim cleanup after exact commit", async () => {
+    const base = await setup();
+    const { input } = packet();
+    await base.publishImmutable(input);
+    const claim = `${input.final_path}.claim`;
+    await writeFile(claim, new Uint8Array(), { mode: 0o600 });
+    let cut = false;
+    const recovering = await initializeCurrent({ hookForTest: async (phase, file) => {
+      if (phase !== "before_unlink_exact" || file !== claim || cut) return;
+      cut = true;
+      await unlink(file);
+    } });
+    await recovering.publishImmutable(input);
+    expect(cut).toBe(true);
+  });
+
+  it("cleans a valid replacement orphan claim after the exact commit marker", async () => {
+    const base = await setup();
+    const { input } = packet();
+    await base.publishImmutable(input);
+    const claim = `${input.final_path}.claim`;
+    await writeFile(claim, new Uint8Array(), { mode: 0o600 });
+    let cut = false;
+    const recovering = await initializeCurrent({ hookForTest: async (phase, file) => {
+      if (phase !== "before_unlink_exact" || file !== claim || cut) return;
+      cut = true;
+      await unlink(file);
+      await writeFile(file, new Uint8Array(), { mode: 0o600 });
+    } });
+    await recovering.publishImmutable(input);
+    expect(cut).toBe(true);
+    await expect(lstat(claim)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("fails re-proof when peer-won orphan cleanup coincides with final corruption", async () => {
+    const base = await setup();
+    const { input } = packet();
+    await base.publishImmutable(input);
+    const claim = `${input.final_path}.claim`;
+    await writeFile(claim, new Uint8Array(), { mode: 0o600 });
+    let cut = false;
+    const recovering = await initializeCurrent({ hookForTest: async (phase, file) => {
+      if (phase !== "before_unlink_exact" || file !== claim || cut) return;
+      cut = true;
+      await unlink(file);
+      await writeFile(input.final_path, input.bytes.subarray(0, input.bytes.length - 1));
+    } });
+    await expect(recovering.publishImmutable(input)).rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
+    expect(cut).toBe(true);
+  });
+
+  it("fails re-proof when peer cleanup removes the remaining claim as the final changes", async () => {
+    let cut = false;
+    const publisher = await setup({ hookForTest: async (phase, file) => {
+      if (phase !== "after_token_cleanup" || cut) return;
+      cut = true;
+      await unlink(`${file.slice(0, file.indexOf(".token."))}.claim`);
+      const { input } = current!;
+      await writeFile(input.final_path, input.bytes.subarray(0, input.bytes.length - 1));
+    } });
+    const current = packet();
+    await expect(publisher.publishImmutable(current.input)).rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
+    expect(cut).toBe(true);
+  });
+
+  it("reobserves an nlink-two remaining claim before peer teardown completes", async () => {
+    let extra = "";
+    let teardown: Promise<void> | undefined;
+    const publisher = await setup({ hookForTest: async (phase, file) => {
+      if (phase !== "after_token_cleanup" || teardown) return;
+      const claim = `${file.slice(0, file.indexOf(".token."))}.claim`;
+      extra = `${claim}.peer`;
+      await link(claim, extra);
+      teardown = new Promise((resolve, reject) => setTimeout(() => unlink(extra).then(resolve, reject), 0));
+    } });
+    const { input } = packet();
+    await publisher.publishImmutable(input);
+    await teardown;
+    await expect(lstat(extra)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("fails closed for a stable foreign claim before exact commit", async () => {
+    await setup();
+    const { input } = packet();
+    await writeFile(`${input.final_path}.claim`, new Uint8Array(), { mode: 0o600 });
+    const publisher = await initializeCurrent();
+    await expect(publisher.publishImmutable(input)).rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
+    await expect(lstat(input.final_path)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("fails closed when the final inode is replaced between named and opened observations", async () => {
+    const base = await setup();
+    const { input } = packet();
+    await base.publishImmutable(input);
+    let replaced = false;
+    const reader = await initializeCurrent({ hookForTest: async (phase, file) => {
+      if (phase !== "after_final_lstat" || replaced) return;
+      replaced = true;
+      await unlink(file);
+      await writeFile(file, input.bytes, { mode: 0o600 });
+    } });
+    await expect(reader.publishImmutable(input)).rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
+    expect(replaced).toBe(true);
+  });
 });

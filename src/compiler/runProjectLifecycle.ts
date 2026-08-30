@@ -23,9 +23,9 @@ export const executeDockerRunWithSupportCleanup = async (
       ? {
           ...invocation,
           onDetachedStarted: async (result) => {
+            await invocation.onDetachedStarted?.(result);
             started = true;
             await rm(invocation.envFilePath, { force: true });
-            await invocation.onDetachedStarted?.(result);
           }
         }
       : invocation;

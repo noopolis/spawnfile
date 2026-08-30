@@ -23,6 +23,7 @@ interface TargetConfigResolverCommandOptions {
   readonly context?: string;
   readonly dockerCommand: string;
   readonly evidenceDestination: string;
+  readonly prepareEvidenceHelper?: boolean;
   readonly preparedPlan?: string;
   readonly pull?: boolean;
   readonly timeoutMs: string;
@@ -59,6 +60,10 @@ export const registerTargetConfigResolverCommand = (
       "Absolute private evidence archive destination"
     )
     .option("--docker-command <command>", "Docker-compatible command", "docker")
+    .option(
+      "--prepare-evidence-helper",
+      "Prepare the package-owned evidence helper on an explicitly selected local Docker context",
+    )
     .option("--timeout-ms <milliseconds>", "Bounded Docker command timeout", "10000")
     .option(
       "--prepared-plan <path>",
@@ -77,6 +82,7 @@ export const registerTargetConfigResolverCommand = (
           context: options.context,
           dockerCommand: options.dockerCommand,
           evidenceDestination: options.evidenceDestination,
+          prepareEvidenceHelper: options.prepareEvidenceHelper,
           preparedPlanPath: options.preparedPlan,
           pull: options.pull,
           timeoutMs: timeout(options.timeoutMs),

@@ -3,6 +3,8 @@ import { link, lstat, open, unlink } from "node:fs/promises";
 
 const VERSION = "spawnfile.organization-handoff-fs-worker.v1";
 const MAX_BYTES = 32_768;
+const PUBLICATION_READ_ATTEMPTS = 64;
+const PUBLICATION_SETTLE_ATTEMPTS = 64;
 // Store keys encode either a 64-character pending key or a 71-character
 // `opaque_` handoff handle. No other leaf namespace is reachable.
 const NAME = /^(?:[a-f0-9]{128}|[a-f0-9]{142})\.json$/u;
@@ -99,29 +101,111 @@ const readDuringPublication = async (name: string, attempt = 0): Promise<string 
     // extra links, and other malformed states still fail immediately.
     const election = await expectedElectionState(name);
     if (election === null) return null;
-    if (attempt >= 32 || election !== true) return fail();
+    if (attempt >= PUBLICATION_READ_ATTEMPTS || election !== true) return fail();
     await waitForPublisher(); return readDuringPublication(name, attempt + 1);
   }
 };
+type StagingState = "absent" | "exact" | "expected-prefix";
+/**
+ * A sidecar may change between lstat and fd inspection while another worker
+ * publishes. Re-prove an exact immutable final first, then retry the sidecar
+ * so cleanup still relies on a stable checked sidecar rather than an inference.
+ */
+const readStaging = async (
+  staging: string, final: string, content: string, attempt = 0
+): Promise<StagingState> => {
+  try {
+    const observed = await read(staging);
+    if (observed === null) return "absent";
+    if (observed === content) return "exact";
+    return content.startsWith(observed) ? "expected-prefix" : fail();
+  } catch {
+    const published = await readDuringPublication(final);
+    if (published !== null) {
+      if (published !== content || attempt >= PUBLICATION_READ_ATTEMPTS) return fail();
+      await waitForPublisher(); return readStaging(staging, final, content, attempt + 1);
+    }
+    const election = await expectedElectionState(staging);
+    if (election === null) return "absent";
+    if (election !== true || attempt >= PUBLICATION_READ_ATTEMPTS) return fail();
+    await waitForPublisher(); return readStaging(staging, final, content, attempt + 1);
+  }
+};
+const publicationSidecars = (name: string): readonly string[] => [`${name}.pending`, `${name}.recovery`];
+/**
+ * A successful link election can race a peer which had already created the
+ * other staging leaf.  The final immutable record is authoritative, but the
+ * stale leaf must not survive a completed join: it would otherwise be
+ * mistaken for an in-progress publication after restart. Delete exact bytes
+ * immediately. An incomplete expected prefix may still belong to a publisher,
+ * so wait for it first; once that bounded wait expires, removing that proven
+ * prefix is safe because the final record already prevents it from winning a
+ * later link election.
+ */
+const settlePublished = async (name: string, content: string, attempt = 0): Promise<void> => {
+  if (attempt > PUBLICATION_SETTLE_ATTEMPTS || await readDuringPublication(name) !== content) return fail();
+  let incomplete = false;
+  for (const sidecar of publicationSidecars(name)) {
+    const observed = await readStaging(sidecar, name, content);
+    if (observed === "absent") continue;
+    if (observed === "expected-prefix" && attempt < PUBLICATION_SETTLE_ATTEMPTS) {
+      incomplete = true; continue;
+    }
+    await unlink(sidecar).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") fail(); });
+    await sync();
+  }
+  if (incomplete) {
+    await waitForPublisher(); return settlePublished(name, content, attempt + 1);
+  }
+  if (await readDuringPublication(name) !== content) return fail();
+  const remaining = await Promise.all(publicationSidecars(name).map(async (sidecar) => readStaging(sidecar, name, content)));
+  if (remaining.every((sidecar) => sidecar === "absent")) return;
+  if (attempt >= PUBLICATION_SETTLE_ATTEMPTS) return fail();
+  await waitForPublisher(); return settlePublished(name, content, attempt + 1);
+};
+const readPublished = async (name: string): Promise<string | null> => {
+  const content = await readDuringPublication(name);
+  if (content === null) return null;
+  await settlePublished(name, content); return content;
+};
 const write = async (name: string, content: string, attempt = 0): Promise<boolean> => {
-  if (attempt > 32) return fail();
+  if (attempt > PUBLICATION_SETTLE_ATTEMPTS) return fail();
   const joinOrRetry = async (): Promise<boolean> => {
     const published = await readDuringPublication(name);
-    if (published !== null) { if (published !== content) return fail(); return false; }
+    if (published !== null) { if (published !== content) return fail(); await settlePublished(name, content); return false; }
     await waitForPublisher(); return write(name, content, attempt + 1);
   };
-  const existing = await readDuringPublication(name); if (existing !== null) { if (existing !== content) fail(); return false; }
-  const pending = `${name}.pending`; const recovery = `${name}.recovery`; const incomplete = await readDuringPublication(pending);
-  if (incomplete !== null && incomplete !== content && !content.startsWith(incomplete)) return fail();
-  if (incomplete !== null && incomplete !== content) {
-    const recovered = await readDuringPublication(recovery); if (recovered !== null && recovered !== content) return fail();
-    if (recovered === null) {
+  const reproveStaging = async (): Promise<boolean> => {
+    const published = await readDuringPublication(name);
+    if (published === content) { await settlePublished(name, content); return true; }
+    if (published !== null) return fail();
+    await waitForPublisher(); return false;
+  };
+  const nextAttempt = (): number => attempt + 1;
+  const existing = await readDuringPublication(name); if (existing !== null) { if (existing !== content) fail(); await settlePublished(name, content); return false; }
+  const pending = `${name}.pending`; const recovery = `${name}.recovery`; const incomplete = await readStaging(pending, name, content);
+  if (incomplete === "expected-prefix") {
+    let recovered = await readStaging(recovery, name, content);
+    if (recovered === "expected-prefix") {
+      if (attempt < PUBLICATION_SETTLE_ATTEMPTS) {
+        await waitForPublisher(); return write(name, content, attempt + 1);
+      }
+      // A crashed recovery publisher can leave the same bounded prefix. It
+      // cannot win after this writer links the immutable final record, so
+      // retire it only after the full wait budget and reconstruct it below.
+      await unlink(recovery).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") fail(); });
+      await sync(); recovered = "absent";
+    }
+    if (recovered === "absent") {
       const handle = await open(recovery, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600).catch((error: NodeJS.ErrnoException) => error.code === "EEXIST" ? null : fail());
       if (handle === null) { await waitForPublisher(); return write(name, content, attempt + 1); }
       try { await handle.writeFile(content, "utf8"); await handle.sync(); } finally { await handle.close().catch(() => undefined); }
-      const staged = await readDuringPublication(recovery);
-      if (staged === null && await readDuringPublication(name) === content) return false;
-      if (staged !== content) return fail(); await sync();
+      const staged = await readStaging(recovery, name, content);
+      if (staged !== "exact") {
+        if (await reproveStaging()) return false;
+        return write(name, content, nextAttempt());
+      }
+      await sync();
     }
     const recoveredLinked = await link(recovery, name).then(() => true).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "EEXIST") return false;
@@ -130,15 +214,18 @@ const write = async (name: string, content: string, attempt = 0): Promise<boolea
     });
     if (recoveredLinked !== true) return joinOrRetry();
     await sync(); await unlink(recovery).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") fail(); }); await sync();
-    if (await readDuringPublication(name) !== content) fail(); return true;
+    if (await readDuringPublication(name) !== content) fail(); await settlePublished(name, content); return true;
   }
-  if (incomplete === null) {
+  if (incomplete === "absent") {
     const handle = await open(pending, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600).catch((error: NodeJS.ErrnoException) => error.code === "EEXIST" ? null : fail());
     if (handle === null) { await waitForPublisher(); return write(name, content, attempt + 1); }
     try { await handle.writeFile(content, "utf8"); await handle.sync(); } finally { await handle.close().catch(() => undefined); }
-    const staged = await readDuringPublication(pending);
-    if (staged === null && await readDuringPublication(name) === content) return false;
-    if (staged !== content) return fail(); await sync();
+    const staged = await readStaging(pending, name, content);
+    if (staged !== "exact") {
+      if (await reproveStaging()) return false;
+      return write(name, content, nextAttempt());
+    }
+    await sync();
   }
   const linked = await link(pending, name).then(() => true).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "EEXIST") return false;
@@ -147,7 +234,7 @@ const write = async (name: string, content: string, attempt = 0): Promise<boolea
   });
   if (linked !== true) return joinOrRetry();
   await sync(); await unlink(pending).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") fail(); }); await sync();
-  if (await readDuringPublication(name) !== content) fail(); return true;
+  if (await readDuringPublication(name) !== content) fail(); await settlePublished(name, content); return true;
 };
 
 let anchor: Anchor | undefined; let queue = Promise.resolve();
@@ -164,7 +251,7 @@ process.on("message", (raw: unknown) => {
     const request = validRequest(raw); if (!anchor) return fail(); const stat = await lstat(".");
     if (stat.dev !== anchor.dev || stat.ino !== anchor.ino || (stat.mode & 0o077) !== 0) return fail();
     const result = request.op === "read"
-      ? { content: await read(request.name) }
+      ? { content: await readPublished(request.name) }
       : { created: request.content === undefined ? fail() : await write(request.name, request.content) };
     send({ version: VERSION, id: request.id, ok: true, ...(result.content === null ? {} : { content: result.content }), ...(request.op === "create" ? { created: result.created } : {}) });
   }).catch(() => send({ version: VERSION, id: typeof raw === "object" && raw !== null && Number.isSafeInteger((raw as { id?: unknown }).id) ? (raw as { id: number }).id : 0, ok: false }));

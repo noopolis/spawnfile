@@ -46,6 +46,11 @@ const config = (destination: string) => ({
   helperArtifactManifestDigest: `sha256:${"a".repeat(64)}`, timeoutMs: 30_000,
   version: TARGET_DEFAULT_CONFIG_STDIN_VERSION
 });
+const preparedHelper = Object.freeze({
+  digest: `sha256:${"c".repeat(64)}`,
+  handle: `opaque_${"d".repeat(64)}`,
+  version: "spawnfile.target-evidence-export-helper.prepared.v1",
+});
 const setup = async (): Promise<string> => {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "spawnfile-target-config-stdin-")));
   roots.push(root);
@@ -93,6 +98,23 @@ describe("readTargetDefaultConfigStdin", () => {
     const partial = { ...value, artifactMappings: config("/private/evidence.tar").artifactMappings };
     await expect(readTargetDefaultConfigStdin(stdin(JSON.stringify(partial))))
       .rejects.toThrow(TARGET_DEFAULT_CONFIG_STDIN_ERROR);
+  });
+
+  it("accepts the paired local prepared receipt but no caller-owned authority seam", async () => {
+    const value = JSON.parse(await setup()) as Record<string, unknown>;
+    delete value.artifactMappings;
+    delete value.helperArtifactManifestDigest;
+    value.evidenceHelperBaseImage = "node:22-bookworm-slim";
+    value.preparedEvidenceHelper = preparedHelper;
+    await expect(readTargetDefaultConfigStdin(stdin(JSON.stringify(value))))
+      .resolves.toMatchObject({ evidenceHelperBaseImage: "node:22-bookworm-slim", preparedEvidenceHelper: preparedHelper });
+    const partial = { ...value };
+    delete partial.preparedEvidenceHelper;
+    await expect(readTargetDefaultConfigStdin(stdin(JSON.stringify(partial))))
+      .rejects.toThrow(TARGET_DEFAULT_CONFIG_STDIN_ERROR);
+    await expect(readTargetDefaultConfigStdin(stdin(JSON.stringify({
+      ...value, evidenceHelperAuthority: "/caller/owned/authority.json",
+    })))).rejects.toThrow(TARGET_DEFAULT_CONFIG_STDIN_ERROR);
   });
 
   it("rejects empty, non-stdin bytes, BOM, malformed, trailing, and oversized input", async () => {

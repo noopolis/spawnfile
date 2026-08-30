@@ -14,8 +14,8 @@ describe("listDockerAuthE2EScenarios", () => {
       "picoclaw-api_key",
       "picoclaw-codex",
       "picoclaw-claude-code",
-      "daimon-codex",
-      "daimon-api_key",
+      "pi-codex",
+      "pi-api_key",
       "team-multi-runtime"
     ]);
   });
@@ -31,6 +31,6 @@ describe("filterDockerAuthE2EScenarios", () => {
   it("filters by auth method", () => {
     expect(
       filterDockerAuthE2EScenarios({ authMethods: ["api_key"] }).map((scenario) => scenario.id)
-    ).toEqual(["openclaw-api_key", "picoclaw-api_key", "daimon-api_key", "team-multi-runtime"]);
+    ).toEqual(["openclaw-api_key", "picoclaw-api_key", "pi-api_key", "team-multi-runtime"]);
   });
 });

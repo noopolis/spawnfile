@@ -100,8 +100,15 @@ const teamWorkspaceResourceVolumeSchema = z
   })
   .strict();
 
+const teamWorkspaceResourceBundleSchema = z.object({
+  id: z.string().trim().min(1), kind: z.literal("bundle"), mount: resourceMountSchema,
+  mode: z.literal("readonly"), sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  sharing: z.literal("per_agent").optional(), source: z.string().trim().min(1)
+}).strict();
+
 const teamWorkspaceResourceSchema = z.discriminatedUnion("kind", [
   teamWorkspaceResourceGitSchema,
+  teamWorkspaceResourceBundleSchema,
   teamWorkspaceResourceVolumeSchema
 ]);
 
@@ -146,6 +153,10 @@ export const teamWorkspaceSchema = z
           url: resource.url
         });
       }
+      if (resource.kind === "bundle") return JSON.stringify({
+        kind: resource.kind, mode: resource.mode, mount: normalizeMount(resource.mount),
+        sha256: resource.sha256, sharing: resource.sharing ?? "per_agent", source: resource.source
+      });
 
       return JSON.stringify({
         kind: "volume",

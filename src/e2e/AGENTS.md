@@ -16,8 +16,8 @@ src/e2e/
 ├── operationalSmokePicoclaw.ts # PicoClaw-specific operational smoke helpers
 ├── operationalSmokeStatus.ts # Assertions for operational spawnfile status --live JSON output
 ├── lifecycleSmoke.ts # spawnfile up/artifacts-export/down --json lifecycle smoke against a minimal SCRIPTED fixture — zero transcript/turn/behavior assertions (Decision 20/21, Slice B Piece 5 step 5); the coverage safety net that replaced officeSim*.ts/autonomousOfficeSim*.ts once the office-sim scenario itself migrated to ecosystem/simfile
-├── daimonOrg.ts    # Generated Daimon app smoke with real Codex auth — interim live-model regression check (Slice B note below), kept even though it also re-proves some already-unit-tested compiler wiring/memory persistence
-├── memoryIntegration.ts # Compile/report memory wiring checks for Daimon, PicoClaw, and Jungian fixtures
+├── daimonOrg.ts    # Historical-name legacy generated-Pi app smoke with real Codex auth — interim live-model regression check (Slice B note below)
+├── memoryIntegration.ts # Compile/report memory wiring checks for legacy Pi, PicoClaw, and Jungian fixtures
 ├── memoryIntegrationSupport.ts # Shared helpers for memory integration E2Es
 ├── ollamaProbe.ts      # Optional local Ollama embeddings probe
 ├── preflight.ts        # Local readiness report surface and B18 adapter
@@ -84,7 +84,7 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
 
 - A passing live agent communication run prints `Moltnet team-chat E2E passed (...)`. This means the generated container started Moltnet, attached the bridges, woke the OpenClaw/Codex agents, and observed both the parent request/ACK and child ACK messages.
 - **Interim live-model regression check (Slice B), do not delete:** `moltnetTeamChat.ts` (plus `moltnetTeamChatBusyTurn.ts` and `moltnetTeamChatB20.ts`, which share its plumbing) proves a busy-turn burst gets one real reply carrying every queued marker — genuinely unfakeable live-model behavior, not something a fake-engine unit test can stand in for. This is kept as-is pending the compose-and-observe pipeline (Spawnfile org + Simfile world, composed and observed read-only from `simfile`, per the project direction to delete bespoke orchestration harnesses once the platform gap they work around is fixed rather than reimplement them there). Do not touch its shared plumbing while it's still the only thing exercising this path.
-- The Daimon org E2E compiles `examples/daimon-org`, injects real Codex OAuth into the generated Pi home, installs the generated Daimon runtime package, runs the generated app twice, and asserts that two Daimon agents wrote through a shared workspace resource and recorded/recalled Mneme memory. **Interim live-model regression check (Slice B), do not delete:** two real Codex agents actually writing to a shared workspace path is unfakeable live-model behavior, kept as-is pending the same compose-and-observe pipeline noted above (its compiler-wiring/memory-persistence assertions overlap with unit coverage elsewhere, but splitting those out was judged not worth the churn while this file is still flagged interim). Pi currently requires Node 22.19+; a known-good command is:
+- The historical-name Daimon-org E2E compiles `examples/daimon-org`, which is now an explicit legacy `runtime: pi` fixture. It injects real Codex OAuth into the generated Pi home, runs the generated Pi app twice, and asserts that two agents wrote through a shared workspace resource and recorded/recalled Mneme memory. It does not exercise the public Daimon organization host. **Interim live-model regression check (Slice B), do not delete:** two real Codex agents actually writing to a shared workspace path is unfakeable live-model behavior, kept as-is pending the same compose-and-observe pipeline noted above. Pi currently requires Node 22.19+; a known-good command is:
 
   ```bash
   PATH="$HOME/.nvm/versions/node/v22.22.1/bin:$PATH" \
