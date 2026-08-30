@@ -3,6 +3,7 @@ import path from "node:path";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import type { EntrypointOptions } from "./containerEntrypointRender.js";
 import { DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID } from "../runtime/daimon/config.js";
+import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import { MOLTNET_READINESS_DIRECTORY } from "./containerReadinessPaths.js";
 import {
   renderDaimonOwnershipProgram,
@@ -108,7 +109,9 @@ const writableStateRoots = (
     ...resolveDaimonUidEntrypointStateRoots(runtimePlans),
     ...persistentMountPaths
   ])
-].filter((root) => root.startsWith("/") && root !== DAIMON_BROKER_REALM).sort();
+].filter((root) => root.startsWith("/")
+  && root !== DAIMON_BROKER_REALM
+  && root !== DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath).sort();
 
 const privateDirectoriesThrough = (target: string): string[] => {
   if (
@@ -300,6 +303,8 @@ export const renderDaimonUidEntrypoint = (
       `install -d -o ${DAIMON_BROKER_UID} -g ${DAIMON_BROKER_UID} -m 0700 ${quote(DAIMON_BROKER_REALM)}`,
       `if [ -e ${quote(`${DAIMON_BROKER_REALM}/auth.json`)} ]; then test -f ${quote(`${DAIMON_BROKER_REALM}/auth.json`)} && test ! -L ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chown ${DAIMON_BROKER_UID}:${DAIMON_BROKER_UID} ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chmod 0600 ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; fi`,
       `setpriv --clear-groups --reuid ${DAIMON_BROKER_UID} --regid ${DAIMON_BROKER_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${DAIMON_BROKER_REALM}/.daimon-ancestry-probe; umask 077; : > "$probe"; rm "$probe"'`,
+      `install -d -o ${DAIMON_BROKER_UID} -g ${DAIMON_BROKER_UID} -m 0750 ${quote(DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath)}`,
+      `setpriv --clear-groups --reuid ${DAIMON_BROKER_UID} --regid ${DAIMON_BROKER_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath}/.daimon-usage-probe; umask 027; : > "$probe"; rm "$probe"'`,
       `setpriv --clear-groups --reuid ${DAIMON_ORGANIZATION_UID} --regid ${DAIMON_ORGANIZATION_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu '! test -r ${DAIMON_BROKER_REALM}'`,
       ...resolveDaimonGrokRegistrations(runtimePlans).map((entry) =>
         `setpriv --clear-groups --reuid ${entry.uid} --regid ${entry.uid} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu '! test -r ${DAIMON_BROKER_REALM}'`

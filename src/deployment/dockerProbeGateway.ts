@@ -1,6 +1,7 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 
+import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import type {
   RuntimeProbeExecResult,
   RuntimeProbeGateway,
@@ -13,16 +14,34 @@ import { dockerContextNameForTarget } from "./target.js";
 
 const execFile = promisify(execFileCallback);
 
+/**
+ * The ledger this gateway reads (`spawnfile usage`) rotates once a generation
+ * reaches `DAIMON_GROK_TURN_USAGE_LEDGER.rotateBytes`, and rotation happens on
+ * the append *after* that threshold is crossed — so a rotated generation is
+ * always at least the bound and the crossing line pushes it over. A maxBuffer
+ * merely equal to the bound therefore rejects the exact read this feature
+ * exists to perform (Node's `execFile` accepts a payload of exactly
+ * `maxBuffer` bytes and fails the next one with
+ * `ERR_CHILD_PROCESS_STDIO_MAXBUFFER`). Doubling the bound leaves a full
+ * generation of headroom, and is derived from the ledger constant rather than
+ * restated so the two cannot drift apart.
+ */
+export const DEFAULT_DOCKER_PROBE_MAX_BUFFER_BYTES =
+  2 * DAIMON_GROK_TURN_USAGE_LEDGER.rotateBytes;
+
 export type DockerProbeExecFile = (
   file: string,
   args: string[],
-  options: { timeout: number }
+  options: { maxBuffer?: number; timeout: number }
 ) => Promise<{ stderr: string; stdout: string }>;
 
 export interface DockerProbeGatewayOptions {
   dockerCommand?: string;
   execFile?: DockerProbeExecFile;
   inspection: DockerUnitInspection;
+  /** Overrides Node's 1 MiB `execFile` default `maxBuffer`. Defaults to
+   * {@link DEFAULT_DOCKER_PROBE_MAX_BUFFER_BYTES}. */
+  maxBufferBytes?: number;
   timeoutMs?: number;
 }
 
@@ -121,13 +140,14 @@ export const createDockerProbeGateway = (
   const dockerCommand = options.dockerCommand ?? "docker";
   const runExec = options.execFile ?? execFile;
   const timeout = options.timeoutMs ?? 10_000;
+  const maxBuffer = options.maxBufferBytes ?? DEFAULT_DOCKER_PROBE_MAX_BUFFER_BYTES;
 
   const exec = async (command: string[]): Promise<RuntimeProbeExecResult> => {
     const targetRef = targetRefForUnit(unit);
     return runExec(
       dockerCommand,
       withDockerTarget(record, ["exec", targetRef, ...command]),
-      { timeout }
+      { maxBuffer, timeout }
     );
   };
 
@@ -147,7 +167,7 @@ export const createDockerProbeGateway = (
         const result = await runExec(
           dockerCommand,
           withDockerTarget(record, httpProbeArgs(targetRef, imageRefForUnit(unit), url)),
-          { timeout }
+          { maxBuffer, timeout }
         );
         return parseCurlHttpOutput(result.stdout);
       } catch (error) {

@@ -21,6 +21,8 @@ src/cli/
 ├── statusCommand.ts # Status command orchestration and registration
 ├── statusCommandOptions.ts # Status option parsing, handler contracts, and output helpers
 ├── statusCommandLive.ts # Home-store and live-deployment status collection
+├── usageCommand.ts # `spawnfile usage` registration, windowing, and rendering
+├── usageCommandLive.ts # Usage ledger transport: deployment selection + probe-gateway reads
 ├── modelCommands.ts # `spawnfile model ...` command registration
 ├── runtimeCommands.ts # `spawnfile runtime ...` command registration
 ├── surfaceCommands.ts # `spawnfile surface ...` command registration
