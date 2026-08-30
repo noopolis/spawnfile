@@ -15,7 +15,7 @@ describe("product-state clone CLI", () => {
       const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true); const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
       expect(isProductStateCloneInvocation(["product-state", "clone", request])).toBe(true); expect(isProductStateCloneInvocation(["compile"])).toBe(false);
       await expect(runProductStateCloneCommand(["product-state", "clone", request])).resolves.toBe(0); expect(clone).toHaveBeenCalledWith({ authorityReceiptPath: "/authority", dockerCommand: "docker", destination: "/candidate", proofPath: "/proof", receiptPath: "/receipt", candidateRunId: "candidate" }); expect(stdout).toHaveBeenCalled();
-      await expect(runProductStateCloneCommand(["product-state", "clone"])).resolves.toBe(1); expect(stderr).toHaveBeenCalledWith("error: Product-state clone failed\n");
+      await expect(runProductStateCloneCommand(["product-state", "clone"])).resolves.toBe(1); expect(stderr).toHaveBeenCalledWith(expect.stringMatching(/^error: Product-state clone failed: /u));
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 });
