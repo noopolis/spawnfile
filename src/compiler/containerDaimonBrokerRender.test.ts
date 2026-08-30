@@ -65,7 +65,7 @@ describe("Daimon broker usage ledger provisioning", () => {
     const program = renderDaimonBrokerProvisioning([plan]).join("\n");
     const { directoryPath } = DAIMON_GROK_TURN_USAGE_LEDGER;
     expect(program).toContain(
-      `fs.mkdirSync('${directoryPath}', { recursive: true, mode: 0o750 }); fs.chownSync('${directoryPath}', 2100, 2100); fs.chmodSync('${directoryPath}', 0o750);`
+      `fs.mkdirSync('${directoryPath}', { recursive: true, mode: 0o750 }); fs.chownSync('${directoryPath}', 0, 0); fs.chmodSync('${directoryPath}', 0o750); fs.chownSync('${directoryPath}', 2100, 2100);`
     );
   });
 
@@ -76,6 +76,70 @@ describe("Daimon broker usage ledger provisioning", () => {
     expect(deniedForLine).toContain(
       `'/var/lib/spawnfile/instances/daimon/daimon-organization/state', '${DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath}']);`
     );
+  });
+});
+
+describe("Daimon root provisioning capability-safe ordering", () => {
+  const plan = {
+    runtimeName: "daimon",
+    engineByNodeId: { "agent:grok": "grok" },
+    instancePaths: { workspacePath: "/workspace" }
+  } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
+  const render = () => renderDaimonBrokerProvisioning([plan]).join("\n");
+
+  it("tightens the worker config directory after its last symlink write", () => {
+    const program = render();
+    const lastWrite = program.indexOf("ensureExactLink(`${configRoot}/sandbox-events.jsonl`, eventsPath)");
+    const tighten = program.indexOf("ensureDirectory(configRoot, 0, 0, 0o555)", lastWrite);
+
+    expect(lastWrite).toBeGreaterThanOrEqual(0);
+    expect(tighten).toBeGreaterThan(lastWrite);
+  });
+
+  it("hands the broker realm to its owner after the last atomic credential write", () => {
+    const program = render();
+    const credentialWrites = program.indexOf("try { const journalPath =");
+    const finalOwnership = program.indexOf(
+      "fs.chownSync('/var/lib/spawnfile/daimon/grok-subscription-realm', 2100, 2100)",
+      credentialWrites
+    );
+
+    expect(credentialWrites).toBeGreaterThanOrEqual(0);
+    expect(finalOwnership).toBeGreaterThan(credentialWrites);
+  });
+
+  it("reclaims, modes, and restores helper-managed inode ownership in that order", () => {
+    const program = render();
+
+    expect(program).toContain(
+      "fs.chownSync(target, 0, 0); fs.chmodSync(target, mode); fs.chownSync(target, uid, gid)"
+    );
+    expect(program).toContain(
+      "fs.chownSync(target, 0, 0); fs.chmodSync(target, 0o640); fs.chownSync(target, uid, 2100)"
+    );
+  });
+
+  it("modes atomic files and workspace nodes before final ownership", () => {
+    const program = render();
+
+    expect(program).toContain(
+      "fs.fchmodSync(output, 0o600); fs.fchownSync(output, 2100, 2100)"
+    );
+    expect(program).toContain(
+      "fs.chownSync(target, 0, 0); fs.chmodSync(target, 0o640); fs.chownSync(target, 2000, uid)"
+    );
+  });
+
+  it("restores the journal directory only after credential journal writes", () => {
+    const program = render();
+    const write = program.indexOf("atomicOwned(journalPath, recovered)");
+    const restore = program.indexOf(
+      "fs.chmodSync(journalRoot, 0o700); fs.chownSync(journalRoot, 2100, 2100)",
+      write
+    );
+
+    expect(write).toBeGreaterThanOrEqual(0);
+    expect(restore).toBeGreaterThan(write);
   });
 });
 
