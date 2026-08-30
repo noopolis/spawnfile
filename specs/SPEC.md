@@ -378,6 +378,8 @@ Rules:
 - `memory[*].store.persistence.mode` MUST be `durable` or `ephemeral`.
 - If `memory[*].store.persistence` is omitted for `sqlite` or `json`, the compiler treats it as `durable`.
 - `memory[*].store.persistence.mode: durable` emits a persistent runtime mount for the store directory.
+- That mount is `exclusive-reattach`: its volume is named from the project root and the deployment lineage, never the run id, so it survives a redeploy, and only one live container may hold it at a time.
+- Two `memory[*]` entries MUST NOT resolve to the same durable store directory unless they declare the identical store, index, consolidation, and retention. The runtime keys a store by that directory and ignores the declared filename, so differing declarations would silently share one physical store.
 - `memory[*].index` is OPTIONAL.
 - If `memory[*].index` is omitted, the effective index intent is lexical enabled, vector disabled, graph disabled, and rerank disabled.
 - `memory[*].index.lexical.enabled` defaults to `true`.

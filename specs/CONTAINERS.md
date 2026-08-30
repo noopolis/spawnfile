@@ -596,7 +596,11 @@ produce an arm64 runtime image. Known credential files/directories are omitted
 and credential-shaped file content fails creation before archive publication.
 
 Blue/green runs use distinct run-scoped volumes, including author-named
-volumes. Product-state transfer is a separate explicit operation over a strict
+volumes, EXCEPT `exclusive-reattach` mounts. Durable memory stores and the
+Daimon per-turn usage ledger are `exclusive-reattach`: their volumes are
+named from the project root and deployment lineage, never the run id, so
+they survive a redeploy. A report carrying one cannot use the concurrent
+canary workflow below. Product-state transfer is a separate explicit operation over a strict
 `spawnfile.product-state-quiescence.v1` proof. Only listed regular files whose
 checksums remain stable before and after copying are cloned. Auth, credential,
 token, secret, session, wake, and SQLite paths are rejected; live volumes are

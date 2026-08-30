@@ -104,6 +104,27 @@ src/compiler/
   recomputing pi-internal engine resolution itself. This is the disclosure ground truth for
   a `scripted` (or any non-default) pi engine, so a scripted run is visibly scripted rather
   than an invisible test-only branch.
+- `memoryArtifacts.ts` emits durable memory mounts with `lifecycle:
+  "exclusive-reattach"`, deliberately NOT run-scoped. `createPersistentVolumeName`
+  folds `NOOPOLIS_RUN_ID` into a volume name and `ensureNoopolisRunId` mints a
+  fresh id per `run`/`up`, so a run-scoped memory volume means the organization
+  redeployed tomorrow remembers nothing — and no working escape hatch exists
+  (`product-state clone` refuses SQLite paths; reusing yesterday's run id to
+  reproduce the name would collapse two causal runs onto one `run_id`). The
+  exclusive lifecycle's daemon-side reservation is a requirement here, not a
+  cost: Mneme's append-only JSONL plus its SQLite index are single-writer. The
+  consequence is that an organization with durable memory cannot use the
+  concurrent blue/green canary workflow and must stop-and-reattach
+  (`specs/CONTAINERS.md`), and two concurrent `spawnfile run` invocations of one
+  project now fail with an occupancy error instead of silently getting separate
+  empty banks. `daimon-grok-usage-ledger`
+  (`src/runtime/daimon/config.ts`) carries the same lifecycle for the same
+  reasons. An author-declared `persistence.name` is still honored verbatim.
+- `memoryArtifacts.ts` also rejects two distinct banks resolving to one durable
+  directory. Mneme keys a store by its runtime home and discards the declared
+  filename, so `/d/a.jsonl` and `/d/b.jsonl` are one physical store with two
+  writers; only banks that declare themselves identically (the same bank stated
+  in an org scope and again in a nested team scope) may share a directory.
 - `daimonTelemetryArtifacts.ts` retains the legacy generated-Pi telemetry mount
   layout. The Phase-A public `runtime: daimon` host has no Spawnfile telemetry
   mount or Pi implementation path; add its public activity integration only in
