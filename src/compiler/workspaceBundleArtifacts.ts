@@ -4,7 +4,8 @@ import path from "node:path";
 import { SpawnfileError } from "../shared/index.js";
 import type { CompilePlan } from "./types.js";
 
-const CAP = 67_108_864, BLOCK = 512;
+// Sanity bound for an operator-declared local tar; integrity comes from its digest, not its size.
+const CAP = 536_870_912, BLOCK = 512;
 const fail = (message = "Workspace bundle contains an invalid or unsafe tar entry"): never => { throw new SpawnfileError("validation_error", message); };
 const textField = (field: Buffer): string => { const nul = field.indexOf(0); return field.subarray(0, nul < 0 ? field.length : nul).toString("utf8"); };
 const octal = (field: Buffer, allowEmpty = false): number => {
