@@ -281,7 +281,9 @@ describe("moltnetBinaries", () => {
     vi.stubEnv("SPAWNFILE_LOCAL_MOLTNET_RELEASE_DIR", releaseDirectory);
     vi.stubEnv("SPAWNFILE_ALLOW_LOCAL_E2E", "1");
 
-    await expect(stageMoltnetBinaries(outputDirectory, { architecture })).rejects.toThrow(/does not accept daimon-bridge/u);
+    await expect(stageMoltnetBinaries(outputDirectory, {
+      architecture, executionHost: { architecture, platform: "linux" }
+    })).rejects.toThrow(/does not accept daimon-bridge/u);
   });
 
   it("rejects malformed local identities before extraction", async () => {
@@ -435,5 +437,52 @@ describe("moltnetBinaries", () => {
     await writeUtf8File(path.join(releaseDirectory, assetName), "tampered\n");
     await expect(stageFakeRelease(outputDirectory, releaseDirectory, architecture))
       .rejects.toThrow(/sha256 does not match/u);
+  });
+
+  /**
+   * The regression: `stageMoltnetBinaries` used to pass `resolveTargetArchitecture()`
+   * as the probe's HOST architecture. That helper honours the
+   * SPAWNFILE_MOLTNET_TARGET_ARCH build-target override, so host and target were the
+   * same value by construction, `architecture === hostArchitecture` was always true,
+   * and the direct-exec branch was the only branch reachable. On macOS that means
+   * spawning a linux ELF, which fails ENOEXEC and rejects a correct local build.
+   *
+   * Here the build target is pinned to the architecture this host is NOT, with no
+   * explicit host override. A direct-exec probe would run the shell-script stand-in
+   * and report the daimon rejection it is written to produce; the fixed caller
+   * resolves the real host instead, so that message must never appear.
+   */
+  it("resolves the probe host from the platform, not from the build-target override", async () => {
+    const hostArchitecture = process.arch === "arm64" ? "arm64" : "amd64";
+    const targetArchitecture = hostArchitecture === "arm64" ? "amd64" : "arm64";
+    const releaseDirectory = await createFakeReleaseDirectory(["moltnet"], targetArchitecture);
+    const asset = `moltnet_linux_${targetArchitecture}.tar.gz`;
+    const binaryPath = path.join(releaseDirectory, "payload", "moltnet");
+    await writeUtf8File(binaryPath, [
+      "#!/usr/bin/env sh",
+      "if [ \"$1\" = version ]; then echo moltnet; exit 0; fi",
+      "echo unsupported >&2; exit 1"
+    ].join("\n") + "\n");
+    await chmod(binaryPath, 0o755);
+    await execFile("tar", ["-C", path.join(releaseDirectory, "payload"), "-czf", path.join(releaseDirectory, asset), "."]);
+    const sha256 = createHash("sha256").update(await readFile(path.join(releaseDirectory, asset))).digest("hex");
+    await writeUtf8File(path.join(releaseDirectory, `local_moltnet_release_stamp_${targetArchitecture}.json`), `${JSON.stringify({
+      arch: targetArchitecture, asset, capabilities: ["daimon-bridge", "pi-bridge"],
+      development: { mode: "local-development", non_production: true, unsigned: true, unpublished: true },
+      sha256, source_sha256: `sha256:${"f".repeat(64)}`,
+      stamp_version: "spawnfile.local-moltnet-release-stamp.v1"
+    })}\n`);
+    const outputDirectory = await createTempDirectory("spawnfile-moltnet-local-out-");
+    vi.stubEnv("SPAWNFILE_LOCAL_MOLTNET_RELEASE_DIR", releaseDirectory);
+    vi.stubEnv("SPAWNFILE_ALLOW_LOCAL_E2E", "1");
+    vi.stubEnv("SPAWNFILE_MOLTNET_TARGET_ARCH", targetArchitecture);
+
+    const thrown: unknown = await stageMoltnetBinaries(outputDirectory).catch((error: unknown) => error);
+
+    expect(thrown).toBeInstanceOf(Error);
+    // Every direct-exec probe failure names "Local Moltnet binary"; the Docker
+    // cross-platform probe says "cross-host". This host cannot execute that
+    // target, so the direct branch must never have been entered.
+    expect((thrown as Error).message).not.toMatch(/Local Moltnet binary/u);
   });
 });

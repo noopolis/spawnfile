@@ -16,6 +16,7 @@ import {
 import { downloadTrustedMoltnetReleaseAsset } from "./moltnetReleaseDownload.js";
 import {
   readLocalMoltnetReleaseIdentity,
+  type MoltnetExecutionHost,
   type LocalMoltnetReleaseIdentity
 } from "./localMoltnetAuthority.js";
 
@@ -56,6 +57,8 @@ export type MoltnetReleaseIdentity = PublishedMoltnetReleaseIdentity | LocalMolt
 
 export interface MoltnetBinaryStageOptions {
   readonly architecture?: MoltnetTargetArchitecture;
+  /** Overrides the detected execution host for the local-build capability probe. Tests only. */
+  readonly executionHost?: MoltnetExecutionHost;
   /** Explicit local source directory; bytes remain bound to trusted authority. */
   readonly releaseDirectory?: string;
 }
@@ -117,6 +120,27 @@ const resolveTargetArchitecture = (
       );
   }
 };
+
+/**
+ * The platform executing this compile, for the local-build capability probe.
+ *
+ * Deliberately NOT `resolveTargetArchitecture()`: that helper honours the
+ * `SPAWNFILE_MOLTNET_TARGET_ARCH` build-target override and falls back to
+ * `process.arch`, so passing it as the host made the host and the target the
+ * same value by construction and pinned the probe to its direct-exec branch.
+ * This reads the real host only, and reports `architecture: undefined` for a
+ * CPU that is not a nameable Moltnet target rather than throwing -- an
+ * unsupported host is not a compile error, it just cannot exec the binary
+ * directly.
+ *
+ * Private: this module's export surface is pinned by test.
+ */
+const resolveMoltnetExecutionHost = (): MoltnetExecutionHost => ({
+  ...(process.arch === "arm64"
+    ? { architecture: "arm64" as const }
+    : process.arch === "x64" ? { architecture: "amd64" as const } : {}),
+  platform: process.platform
+});
 
 const createReleaseAssetName = (architecture: string): string =>
   `moltnet_${MOLTNET_TARGET_OS}_${architecture}.tar.gz`;
@@ -359,7 +383,7 @@ export const stageMoltnetBinaries = async (
     const identity = await readLocalMoltnetReleaseIdentity(
       localReleaseDirectory,
       architecture,
-      resolveTargetArchitecture()
+      options.executionHost ?? resolveMoltnetExecutionHost()
     );
     return stageMoltnetReleaseAsset(
       outputDirectory,
