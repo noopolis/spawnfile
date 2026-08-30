@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   root:
+    name: compiler + runtime tests
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
