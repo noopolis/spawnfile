@@ -19,6 +19,7 @@ import {
   applyRuntimePackageOverrides,
   type RuntimePackageOverrides
 } from "./runtimePackageOverrides.js";
+import { rewriteMemoryPaths, toRootfsPath } from "./runtimeRootfsPaths.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -50,9 +51,6 @@ interface CodexAuthFile {
 }
 
 const fixturesRoot = path.resolve(process.cwd(), "examples", "daimon-org");
-
-const toRootfsPath = (rootfs: string, containerPath: string): string =>
-  path.join(rootfs, containerPath.replace(/^\/+/u, ""));
 
 const decodeJwtExpiry = (accessToken: string): number => {
   const payload = accessToken.split(".")[1];
@@ -112,27 +110,6 @@ const writePiAuth = async (
   const codexCliAuthPath = path.join(toRootfsPath(rootfs, homePath), ".codex", "auth.json");
   await ensureDirectory(path.dirname(codexCliAuthPath));
   await writeUtf8File(codexCliAuthPath, codexAuthContent);
-};
-
-const rewriteConfigMemoryPathsForHostE2E = async (
-  configPath: string,
-  rootfs: string
-): Promise<string> => {
-  const config = JSON.parse(await readUtf8File(configPath)) as {
-    agents?: Array<{ memory?: { runtime_home_path?: string } }>;
-  };
-  let memoryEventsPath = "";
-  for (const agent of config.agents ?? []) {
-    const memory = agent.memory;
-    if (!memory?.runtime_home_path?.startsWith("/")) {
-      continue;
-    }
-    const containerMemoryPath = memory.runtime_home_path;
-    memory.runtime_home_path = toRootfsPath(rootfs, containerMemoryPath);
-    memoryEventsPath ||= path.join(memory.runtime_home_path, "memory", "events.jsonl");
-  }
-  await writeUtf8File(configPath, `${JSON.stringify(config, null, 2)}\n`);
-  return memoryEventsPath;
 };
 
 const readJsonl = async <T>(filePath: string): Promise<T[]> => {
@@ -238,7 +215,7 @@ export const runDaimonOrgE2E = async (
       path.join(runtimeRoot, "package.json"),
       options.runtimePackageOverrides
     );
-    const memoryEventsPath = await rewriteConfigMemoryPathsForHostE2E(configPath, rootfs);
+    const memoryEventsPath = await rewriteMemoryPaths(configPath, rootfs);
     await execFile(options.npmCommand ?? "npm", [
       "install",
       "--omit=dev",
@@ -261,7 +238,7 @@ export const runDaimonOrgE2E = async (
     await execFile(options.nodeCommand ?? "node", appArgs, { env: appEnv });
 
     const notes = await assertSharedNotes(rootfs, instance.workspace_path);
-    const memoryEvents = memoryEventsPath ? await readJsonl<{ type?: string }>(memoryEventsPath) : [];
+    const memoryEvents = await readJsonl<{ type?: string }>(memoryEventsPath);
     const memoryRecallCount = memoryEvents.filter((event) => event.type === "memory.recalled").length;
     if (memoryEvents.length === 0 || memoryRecallCount === 0) {
       throw new SpawnfileError(
