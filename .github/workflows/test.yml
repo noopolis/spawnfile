@@ -42,8 +42,20 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Check out Daimon provenance fixture
+        uses: actions/checkout@v4
+        with:
+          repository: noopolis/daimon
+          path: daimon-fixture
+
       - name: Verify Git-free offline linux/amd64 source build
+        env:
+          SPAWNFILE_TEST_DAIMON_SOURCE: ${{ github.workspace }}/daimon-fixture
         run: npm run test:source-provenance-docker
+
+      - name: Remove Daimon provenance fixture
+        if: always()
+        run: rm -rf daimon-fixture
 
       - name: Check out Moltnet provenance fixture
         uses: actions/checkout@v4

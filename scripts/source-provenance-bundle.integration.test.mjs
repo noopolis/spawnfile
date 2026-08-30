@@ -17,7 +17,13 @@ test("actual Daimon lock produces a real offline linux/amd64 shipped artifact an
   const temporary = mkdtempSync(path.join(repository, ".spawnfile-source-docker-"));
   let registry;
   try {
-    const closure = path.join(temporary, "closure"), actualDaimon = path.resolve(repository, "..", "daimon"), daimonSource = path.join(temporary, "actual-daimon-input");
+    const closure = path.join(temporary, "closure"),
+      // CI has no sibling checkout, so it points this at a fetched fixture the
+      // way SPAWNFILE_TEST_MOLTNET_SOURCE already does for the Moltnet variant.
+      actualDaimon = process.env.SPAWNFILE_TEST_DAIMON_SOURCE
+        ? path.resolve(process.env.SPAWNFILE_TEST_DAIMON_SOURCE)
+        : path.resolve(repository, "..", "daimon"),
+      daimonSource = path.join(temporary, "actual-daimon-input");
     mkdirSync(daimonSource); cpSync(path.join(actualDaimon, "package.json"), path.join(daimonSource, "package.json")); cpSync(path.join(actualDaimon, "package-lock.json"), path.join(daimonSource, "package-lock.json"));
     execFileSync("npm", ["run", "--silent", "prepare:linux-amd64-closure", "--", daimonSource, closure, "0.142.3"], { cwd: repository, stdio: "inherit" });
     const sourceTar = path.join(temporary, "source.tar"), dependencyTar = path.join(temporary, "dependencies.tar");
