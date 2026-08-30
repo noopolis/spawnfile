@@ -6,3 +6,5 @@ export * from "./localDaimonAuthority.js";
 export * from "./registry.js";
 export * from "./statusProbes.js";
 export * from "./types.js";
+export * from "./usageLedger.js";
+export * from "./usageLedgerRead.js";

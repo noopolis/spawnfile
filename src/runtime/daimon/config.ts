@@ -8,9 +8,27 @@ import type { ContainerTarget, ContainerTargetInput, EmittedFile } from "../type
 import {
   DAIMON_AGY_SUBSCRIPTION_REALM,
   DAIMON_ENGINE_CREDENTIALS,
-  DAIMON_GROK_SUBSCRIPTION_REALM
+  DAIMON_GROK_SUBSCRIPTION_REALM,
+  DAIMON_GROK_TURN_USAGE_LEDGER
 } from "./contractManifest.js";
+import {
+  DAIMON_INSTANCE_STATE_ROOT,
+  daimonMemoryCapabilityFor,
+  daimonMemorySelectionWarning,
+  daimonMemoryVectorRecallWarning,
+  resolveDaimonAgentMemory
+} from "./memory.js";
 import { assertDaimonScheduleAuthority } from "./scheduleAuthority.js";
+
+// Re-exported so every existing importer of these names keeps working; the
+// definitions themselves now live in `./memory.js`.
+export {
+  DAIMON_INSTANCE_STATE_ROOT,
+  daimonMemoryCapabilityFor,
+  daimonMemorySelectionWarning,
+  daimonMemoryVectorRecallWarning,
+  resolveDaimonAgentMemory
+};
 
 export const DAIMON_CONFIG_FILE = "daimon-organization-runtime.json";
 export const DAIMON_CONTROL_PORT = 19700;
@@ -129,7 +147,9 @@ export const createDaimonContainerTargets = async (
   const hasSchedules = agents.some((input) => input.value.schedule !== undefined);
   if (hasSchedules) await assertDaimonScheduleAuthority();
   const configAgents = agents
-    .map((input) => ({
+    .map((input) => {
+      const memory = resolveDaimonAgentMemory(input.value);
+      return {
       engine: { kind: resolveDaimonEngine(input.value) },
       id: input.id,
       instructions: formatInstructions(input.value),
@@ -139,6 +159,7 @@ export const createDaimonContainerTargets = async (
         ...(server.command ? { command: server.command } : {}), ...(server.url ? { url: server.url } : {}),
         ...(server.auth?.mode === "bearer" ? { authSecretEnv: server.auth.secret } : {})
       })) }),
+      ...(memory ? { memory } : {}),
       ...(input.value.surfaces?.moltnet?.length ? { moltnet: {
         cliPath: "/usr/local/bin/moltnet",
         configPath: `<workspace-path>/agents/${input.slug}/.moltnet/config.json`,
@@ -147,7 +168,8 @@ export const createDaimonContainerTargets = async (
       runtimeHomePath: `<instance-root>/${DAIMON_RUNTIME_HOMES_DIRECTORY}/${input.slug}`,
       workspacePath: `<workspace-path>/agents/${input.slug}`,
       ...(hasSchedules ? { schedule: normalizeSchedule(input.value) ?? { kind: "disabled" } } : {})
-    }))
+      };
+    })
     .sort((left, right) => left.id.localeCompare(right.id));
   const engineByNodeId = Object.fromEntries(configAgents.map((agent) => [agent.id, agent.engine.kind]));
   const hasAgy = configAgents.some((agent) => agent.engine.kind === "agy");
@@ -219,8 +241,29 @@ export const createDaimonContainerTargets = async (
         lifecycle: "exclusive-reattach" as const,
         mountPath: DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath,
         reason: "Daimon host Grok subscription credential realm"
+      }] : []), ...(hasGrok || hasAgy ? [{
+        // Non-run-scoped for the same reason as the durable memory mounts (see
+        // durableMemoryVolumeName in src/compiler/memoryArtifacts.ts): a
+        // run-scoped volume means every `spawnfile up` starts a new empty
+        // ledger and cross-deployment usage accounting is impossible. The
+        // broker is the single writer and rotates this log by size, so the
+        // exclusive reservation this lifecycle carries is a requirement, not a
+        // cost.
+        // The mount id is deliberately unchanged now that AGY writes here too:
+        // it is the volume's identity, and renaming it would orphan every
+        // existing deployment's accumulated ledger.
+        id: "daimon-grok-usage-ledger",
+        lifecycle: "exclusive-reattach" as const,
+        mountPath: DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
+        reason: "Daimon per-turn engine usage ledger"
       }] : []), ...(hasAgy ? [{
         id: "daimon-agy-subscription-realm",
+        // The AGY subscription credential is an OS-keyring entry created by an
+        // interactive browser OAuth that has no headless equivalent; it lives
+        // in this volume. Without this lifecycle the volume name folds in the
+        // run id, so every `spawnfile up` would hand the container an empty
+        // keyring and the operator would have to re-enrol by hand.
+        lifecycle: "exclusive-reattach" as const,
         mountPath: DAIMON_AGY_SUBSCRIPTION_REALM.durableMountPath,
         reason: "Daimon host AGY subscription realm"
       }, ...agyRuntimeHomeMounts] : [])],

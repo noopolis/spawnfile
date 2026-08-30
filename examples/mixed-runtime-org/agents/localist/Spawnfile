@@ -38,7 +38,7 @@ memory:
   - id: localist-floor
     store:
       kind: sqlite
-      path: /var/lib/spawnfile/memory/mixed-floor/localist-floor.sqlite
+      path: /var/lib/spawnfile/memory/mixed-localist/localist-floor.sqlite
     index:
       lexical:
         enabled: true
