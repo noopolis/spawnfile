@@ -16,5 +16,11 @@ export const runProductStateCloneCommand = async (argv: readonly string[]): Prom
     }
     const request = requestSchema.parse(JSON.parse(bytes.toString("utf8")));
     process.stdout.write(`${JSON.stringify(await runProductStateCloneWorkflow({ authorityReceiptPath: request.authority_receipt_path, dockerCommand: request.docker_command, destination: request.destination, proofPath: request.proof_path, receiptPath: request.receipt_path, candidateRunId: request.candidate_run_id }))}\n`); return 0;
-  } catch { process.stderr.write("error: Product-state clone failed\n"); return 1; }
+  } catch (error) {
+    // Carry the cause. A bare "failed" is undiagnosable in CI, where this runs
+    // against a different Docker and architecture than any developer machine.
+    const detail = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`error: Product-state clone failed: ${detail}\n`);
+    return 1;
+  }
 };
