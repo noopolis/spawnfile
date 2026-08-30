@@ -44,6 +44,7 @@ const serverConfig = "/var/lib/spawnfile/moltnet/servers/local/Moltnet.json";
 const nodeConfig = "/var/lib/spawnfile/moltnet/nodes/agent.json";
 const causalState = "/var/lib/spawnfile/moltnet/servers/local/causal";
 const agyRealm = "/var/lib/spawnfile/daimon/agy-subscription-realm";
+const wakeFuseDirectory = "/var/lib/spawnfile/daimon/wake-fuse";
 const agyRuntimeHome = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/agy";
 const codexEngineHome = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex-one/.codex";
 const grokEngineHome = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/grok-two/.grok";
@@ -113,6 +114,7 @@ describe("renderDaimonUidEntrypoint lifecycle",()=>{
     const volumeName = `${tag}-realm-volume`;
     const runtimeHomeVolumeName = `${tag}-agy-runtime-home-volume`;
     const codexVolumeName = `${tag}-codex-engine-home-volume`;
+    const wakeFuseVolumeName = `${tag}-wake-fuse-volume`;
     const networkVolumeName = `${tag}-moltnet-network-volume`;
     const resourceVolumeName=`${tag}-workspace-resource-volume`;
     const networkRoot = "/var/lib/spawnfile/moltnet/networks/local";
@@ -141,7 +143,14 @@ describe("renderDaimonUidEntrypoint lifecycle",()=>{
       persistentMounts: [
         { ...agyRealmMount, volume_name: volumeName },
         { ...agyRuntimeHomeMount, volume_name: runtimeHomeVolumeName },
-        { ...codexEngineHomeMount, volume_name: codexVolumeName }
+        { ...codexEngineHomeMount, volume_name: codexVolumeName },
+        {
+          id: "daimon-wake-fuse",
+          lifecycle: "exclusive-reattach",
+          mount_path: wakeFuseDirectory,
+          reason: "Daimon durable wake-fuse admission ledger",
+          volume_name: wakeFuseVolumeName
+        }
       ],
       resources: [{
         backingPath: "/var/lib/spawnfile/resources/instances/writer/public",
@@ -172,7 +181,7 @@ describe("renderDaimonUidEntrypoint lifecycle",()=>{
       const { createRootfsFiles, renderDockerfile } = await import("./containerArtifactsRender.js");
       const dockerfile = await renderDockerfile([plan], {
         moltnet: receiptMoltnetPlans,
-        persistentMountPaths: [agyRealm, agyRuntimeHome, codexEngineHome, causalState, networkRoot,volumeResourceRoot]
+        persistentMountPaths: [agyRealm, agyRuntimeHome, codexEngineHome, wakeFuseDirectory, causalState, networkRoot,volumeResourceRoot]
       });
       const stateRoots = resolveDaimonUidEntrypointStateRoots([plan]);
       expect(stateRoots).toEqual([runtimeHomesPath, workspacePath]);
@@ -187,7 +196,7 @@ describe("renderDaimonUidEntrypoint lifecycle",()=>{
       expect(dockerfile).toContain(`'${receiptDirectory}'`);
       const rootfsFiles = createRootfsFiles(
         [plan],
-        [agyRealm, agyRuntimeHome, codexEngineHome, causalState, networkRoot, volumeResourceRoot],
+        [agyRealm, agyRuntimeHome, codexEngineHome, wakeFuseDirectory, causalState, networkRoot, volumeResourceRoot],
         receiptMoltnetPlans
       );
       expect(rootfsFiles.find((file) => file.path.endsWith("daimon-uid-entrypoint.sh"))?.content)
@@ -264,6 +273,7 @@ describe("renderDaimonUidEntrypoint lifecycle",()=>{
           `test \"$(stat -c '%u:%a' '${receiptDirectory}')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:700\"`,
           `test \"$(stat -c '%u:%a' '/run/spawnfile/moltnet-readiness')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:700\"`,
           `test \"$(stat -c '%u:%a' '${agyRealm}')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:700\"`,
+          `test \"$(stat -c '%u:%g:%a' '${wakeFuseDirectory}')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:\${${DAIMON_AUTHORIZED_UID_ENV}}:700\"`,
           `test \"$(stat -c '%u:%a' '${runtimeHomesPath}')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:700\"`,
           `test \"$(stat -c '%u:%a' '${workspacePath}')\" = \"\${${DAIMON_AUTHORIZED_UID_ENV}}:700\"`,
           `if [ ! -e '${volumeResourceRoot}/content' ]; then printf content > '${volumeResourceRoot}/content'; fi`,
@@ -322,6 +332,7 @@ describe("renderDaimonUidEntrypoint lifecycle",()=>{
         "--mount", `type=volume,source=${volumeName},target=${agyRealm}`,
         "--mount", `type=volume,source=${runtimeHomeVolumeName},target=${agyRuntimeHome}`,
         "--mount", `type=volume,source=${codexVolumeName},target=${codexEngineHome}`,
+        "--mount", `type=volume,source=${wakeFuseVolumeName},target=${wakeFuseDirectory}`,
         "--mount", `type=volume,source=${networkVolumeName},target=${networkRoot}`,
         "--mount",`type=volume,source=${resourceVolumeName},target=${volumeResourceRoot},volume-nocopy`,
         tag
@@ -357,6 +368,7 @@ describe("renderDaimonUidEntrypoint lifecycle",()=>{
       await execFile("docker", ["volume", "rm", "--force", volumeName]).catch(() => undefined);
       await execFile("docker", ["volume", "rm", "--force", runtimeHomeVolumeName]).catch(() => undefined);
       await execFile("docker", ["volume", "rm", "--force", codexVolumeName]).catch(() => undefined);
+      await execFile("docker", ["volume", "rm", "--force", wakeFuseVolumeName]).catch(() => undefined);
       await execFile("docker", ["volume", "rm", "--force", networkVolumeName]).catch(() => undefined);
       await execFile("docker",["volume","rm","--force",resourceVolumeName]).catch(()=>undefined);
       await execFile("docker", ["image", "rm", "--force", tag]).catch(() => undefined);

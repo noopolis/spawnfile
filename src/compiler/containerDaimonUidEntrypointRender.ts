@@ -2,7 +2,10 @@ import path from "node:path";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import type { EntrypointOptions } from "./containerEntrypointRender.js";
-import { DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID } from "../runtime/daimon/config.js";
+import {
+  DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID,
+  DAIMON_WAKE_FUSE_DIRECTORY
+} from "../runtime/daimon/config.js";
 import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import { MOLTNET_READINESS_DIRECTORY } from "./containerReadinessPaths.js";
 import {
@@ -111,7 +114,8 @@ const writableStateRoots = (
   ])
 ].filter((root) => root.startsWith("/")
   && root !== DAIMON_BROKER_REALM
-  && root !== DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath).sort();
+  && root !== DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath
+  && root !== DAIMON_WAKE_FUSE_DIRECTORY).sort();
 
 const privateDirectoriesThrough = (target: string): string[] => {
   if (
@@ -294,6 +298,7 @@ export const renderDaimonUidEntrypoint = (
     '  useradd -K UID_MIN=1 --no-create-home --no-log-init --uid "$uid" --gid "$gid" --home-dir /nonexistent --shell /usr/sbin/nologin "$runtime_identity"',
     'fi',
     'if ! getent passwd "$uid" >/dev/null; then echo "Daimon authorized UID has no local identity" >&2; exit 1; fi',
+    `chown 0:0 ${quote(DAIMON_WAKE_FUSE_DIRECTORY)} && chmod 0700 ${quote(DAIMON_WAKE_FUSE_DIRECTORY)} && chown ${DAIMON_ORGANIZATION_UID}:${DAIMON_ORGANIZATION_UID} ${quote(DAIMON_WAKE_FUSE_DIRECTORY)}`,
     ...(resolveDaimonGrokRegistrations(runtimePlans).length === 0 ? [] : [
       ...renderDaimonBrokerSocketWait(),
       "startup_children=()",

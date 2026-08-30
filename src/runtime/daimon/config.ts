@@ -38,6 +38,9 @@ export const DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY = "state/wake-acceptance"
 export const DAIMON_RUNTIME_ACCEPTANCE_STORE_ENV = "DAIMON_RUNTIME_ACCEPTANCE_STORE";
 export const DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID = "daimon-organization-acceptance-store";
 export const DAIMON_RUNTIME_READINESS_RECEIPT_ENV = "DAIMON_RUNTIME_READINESS_RECEIPT";
+export const DAIMON_WAKE_FUSE_DIRECTORY = "/var/lib/spawnfile/daimon/wake-fuse";
+export const DAIMON_WAKE_FUSE_DIRECTORY_ENV = "DAIMON_WAKE_FUSE_DIRECTORY";
+export const DAIMON_WAKE_FUSE_MOUNT_ID = "daimon-wake-fuse";
 export const DAIMON_RUNTIME_HOMES_DIRECTORY = "runtime-homes";
 const DAIMON_MAX_CONFIG_BYTES = 1_048_576;
 const DAIMON_MAX_INSTRUCTION_BYTES = 16_384;
@@ -236,6 +239,11 @@ export const createDaimonContainerTargets = async (
       id: DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID,
       mountPath: `<instance-root>/${DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY}`,
       reason: "Daimon organization durable wake acceptance store"
+    }, {
+      id: DAIMON_WAKE_FUSE_MOUNT_ID,
+      lifecycle: "exclusive-reattach" as const,
+      mountPath: DAIMON_WAKE_FUSE_DIRECTORY,
+      reason: "Daimon durable wake-fuse admission ledger"
     }, ...(hasGrok ? [{
         id: "daimon-grok-subscription-realm",
         lifecycle: "exclusive-reattach" as const,
