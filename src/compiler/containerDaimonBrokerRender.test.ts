@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 
 import { describe, expect, it } from "vitest";
 
+import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import {
   renderDaimonBrokerProvisioning,
   renderDaimonWorkspaceResourceSecurity
@@ -25,6 +26,31 @@ describe("Daimon broker registration ABI", () => {
     } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
     expect(renderDaimonBrokerProvisioning([plan]).join("\n"))
       .toContain("record.writeUInt32LE(2, 0)");
+  });
+});
+
+describe("Daimon broker usage ledger provisioning", () => {
+  const plan = {
+    runtimeName: "daimon",
+    engineByNodeId: { "agent:grok": "grok" },
+    instancePaths: { workspacePath: "/workspace" }
+  } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
+
+  it("provisions the usage ledger directory alongside the realm", () => {
+    const program = renderDaimonBrokerProvisioning([plan]).join("\n");
+    const { directoryPath } = DAIMON_GROK_TURN_USAGE_LEDGER;
+    expect(program).toContain(
+      `fs.mkdirSync('${directoryPath}', { recursive: true, mode: 0o750 }); fs.chownSync('${directoryPath}', 2100, 2100); fs.chmodSync('${directoryPath}', 0o750);`
+    );
+  });
+
+  it("denies worker access to the usage ledger directory", () => {
+    const program = renderDaimonBrokerProvisioning([plan]).join("\n");
+    const deniedForLine = program.split("\n").find((line) => line.includes("const deniedFor ="));
+    expect(deniedForLine).toBeDefined();
+    expect(deniedForLine).toContain(
+      `'/var/lib/spawnfile/instances/daimon/daimon-organization/state', '${DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath}']);`
+    );
   });
 });
 

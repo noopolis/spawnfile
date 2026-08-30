@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import type { EntrypointOptions } from "./containerEntrypointRender.js";
 import { renderEntrypoint } from "./containerEntrypointRender.js";
+import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import {
   DAIMON_AUTHORIZED_UID_ENV,
   DAIMON_BROKER_STARTUP_TIMEOUT_SECONDS,
@@ -361,6 +362,40 @@ describe("renderDaimonUidEntrypoint", () => {
 
     expect(rendered).toContain("state_roots=('/persisted-state')");
     expect(rendered).not.toContain("runtime-homes/codex-one/.daimon-inbound/codex-auth");
+  });
+
+  it("excludes the usage ledger directory from state_roots while keeping it a persistent mount", () => {
+    const usageDirectory = DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath;
+    const usageMount = {
+      id: "daimon-grok-usage-ledger",
+      mount_path: usageDirectory,
+      reason: "Daimon per-turn engine usage ledger",
+      volume_name: "spawnfile-test-grok-usage-ledger"
+    };
+    const ownership = resolveDaimonUidEntrypointOwnershipPlan(
+      [{ ...daimonPlan, persistentMounts: [usageMount] }],
+      [usageDirectory]
+    );
+
+    // Mutation-critical: deleting the state_roots exclusion for the usage
+    // ledger directory must turn this assertion red.
+    expect(ownership.stateRoots).not.toContain(usageDirectory);
+
+    const rendered = renderDaimonUidEntrypoint(
+      [{ ...daimonPlan, persistentMounts: [usageMount] }],
+      [usageDirectory]
+    );
+    expect(rendered).not.toContain(`state_roots=('${usageDirectory}')`);
+  });
+
+  it("provisions the usage ledger directory and probes it for write access on every boot", () => {
+    const usageDirectory = DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath;
+    const rendered = renderDaimonUidEntrypoint([daimonPlan]);
+
+    expect(rendered).toContain(`install -d -o 2100 -g 2100 -m 0750 '${usageDirectory}'`);
+    expect(rendered).toContain(
+      `--reuid 2100 --regid 2100 --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${usageDirectory}/.daimon-usage-probe; umask 027; : > "$probe"; rm "$probe"'`
+    );
   });
 
 });

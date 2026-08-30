@@ -55,6 +55,7 @@ import { registerModelCommands } from "./modelCommands.js";
 import { registerRuntimeCommands } from "./runtimeCommands.js";
 import { registerSurfaceCommands } from "./surfaceCommands.js";
 import { registerStatusCommand } from "./statusCommand.js";
+import { registerUsageCommand } from "./usageCommand.js";
 import { registerProductionTargetCommands } from "./targetProductionCommands.js";
 import { registerViewCommand } from "./viewCommand.js";
 
@@ -315,6 +316,9 @@ export const runCli: RunCli = async (
   registerRuntimeCommands(program, handlers, streams);
   registerSurfaceCommands(program, handlers, streams);
   registerStatusCommand(program, handlers, streams, (exitCode) => {
+    commandExitCode = exitCode;
+  });
+  registerUsageCommand(program, streams, (exitCode) => {
     commandExitCode = exitCode;
   });
   registerViewCommand(program, handlers, streams, cliOptions.renderEnvironment);
