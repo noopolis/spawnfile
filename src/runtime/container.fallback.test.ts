@@ -147,7 +147,7 @@ describe("runtime container install recipe fallbacks", () => {
     );
   });
 
-  it("creates a Daimon npm install recipe when the runtime opts into npm", async () => {
+  it("rejects a Daimon npm install because public hosts require a generic image", async () => {
     const { createRuntimeInstallRecipe, RUNTIME_INSTALL_ROOT } = await loadContainerModule({
       daimon: {
         ecosystem: "node",
@@ -160,14 +160,9 @@ describe("runtime container install recipe fallbacks", () => {
         version: "0.1.2"
       }
     });
-    const recipe = await createRuntimeInstallRecipe("daimon");
-
-    expect(recipe.runtimeRoot).toBe(`${RUNTIME_INSTALL_ROOT}/daimon`);
-    expect(recipe.copyCommands).toEqual([]);
-    expect(recipe.commands).toEqual([
-      `mkdir -p ${RUNTIME_INSTALL_ROOT}/daimon`,
-      `cd ${RUNTIME_INSTALL_ROOT}/daimon && npm install --omit=dev --no-fund --no-audit @noopolis/daimon@0.1.2 @noopolis/mneme@0.1.1 @earendil-works/pi-coding-agent@0.79.10 @earendil-works/pi-ai@0.79.10`
-    ]);
+    await expect(createRuntimeInstallRecipe("daimon")).rejects.toThrow(
+      "requires a pinned generic Daimon runtime image"
+    );
   });
 
   it("rejects OpenClaw when no compiled artifact is available", async () => {
@@ -194,7 +189,7 @@ describe("runtime container install recipe fallbacks", () => {
     );
   });
 
-  it("rejects non-npm Daimon artifact installs", async () => {
+  it("rejects non-image Daimon artifact installs", async () => {
     const { createRuntimeInstallRecipe } = await loadContainerModule({
       daimon: {
         binaryName: "daimon",
@@ -214,7 +209,7 @@ describe("runtime container install recipe fallbacks", () => {
     });
 
     await expect(createRuntimeInstallRecipe("daimon")).rejects.toThrow(
-      /has no compiled artifact recipe for github_release_archive/
+      "requires a pinned generic Daimon runtime image"
     );
   });
 

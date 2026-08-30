@@ -4,10 +4,15 @@ import type { Command } from "commander";
 
 import {
   createDeploymentInstanceDigest,
+  admitLifecyclePlan,
+  LIFECYCLE_UP_EXTRA_LABELS,
+  recordLifecycleUpReservation,
+  recordLifecycleUpStart,
   readDeploymentRecord,
   recordLifecycleOutcomeEvidence,
   type UpReceipt
 } from "../deployment/index.js";
+import type { UpLifecycleRecovery } from "../deployment/upLifecycleRecoveryState.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { requireMachineLifecycle, runMachineLifecycle } from "./lifecycleMachine.js";
@@ -114,11 +119,16 @@ export const registerUpCommand = (
             "`--world-bindings` is only supported for project-mode deployments"
           );
         }
+        if (options.lifecycleInvocation !== undefined) {
+          throw new SpawnfileError(
+            "validation_error",
+            "Machine lifecycle image up is not supported; use the project deployment contract"
+          );
+        }
         if (options.json) {
           throw new SpawnfileError(
             "validation_error",
-            "`spawnfile up --json` is not yet supported for image-mode deployments " +
-              "(there is no source Spawnfile to derive compiled_schedule from)."
+            "Machine-readable lifecycle up is supported only for project deployments; use the project deployment contract"
           );
         }
         await runImageUpCommand(upInput.ref, options, handlers, streams);
@@ -163,14 +173,50 @@ export const registerUpCommand = (
               lifecycleInvocation: options.lifecycleInvocation
             });
         const render = async (
-          capability?: Parameters<typeof recordLifecycleOutcomeEvidence>[2]
+          capability?: Parameters<typeof recordLifecycleOutcomeEvidence>[2],
+          lifecycleRecovery?: UpLifecycleRecovery,
         ): Promise<string> => {
           const selectedTargetReceipt = options.selectedTargetReceipt === undefined
             ? undefined
             : await readSelectedTargetReceipt(options.selectedTargetReceipt);
+          const projectOptions = createUpProjectOptions({ ...options, selectedTargetReceipt });
+          const lifecycleProjectOptions = exactInvocation && capability
+            ? {
+                ...projectOptions,
+                ...(lifecycleRecovery === undefined ? {} : { lifecycleRecovery }),
+                onDetachedReservation: async (reserved: {
+                  containerName: string;
+                  deploymentLabels: Readonly<Record<string, string>>;
+                  dockerCommand: string;
+                  dockerContext: string | null;
+                }) => recordLifecycleUpReservation(exactInvocation, {
+                  container_name: reserved.containerName,
+                  docker_command: reserved.dockerCommand,
+                  docker_context: reserved.dockerContext,
+                  label_authority: {
+                    permitted_extra_labels: LIFECYCLE_UP_EXTRA_LABELS,
+                    required: reserved.deploymentLabels,
+                  },
+                }, capability),
+                onDetachedStarted: async (started: {
+                  containerId: string;
+                  containerName: string;
+                  deploymentLabels: Readonly<Record<string, string>>;
+                  imageId: string;
+                }) => recordLifecycleUpStart(exactInvocation, {
+                  container_id: started.containerId,
+                  container_name: started.containerName,
+                  image_id: started.imageId,
+                  label_authority: {
+                    permitted_extra_labels: LIFECYCLE_UP_EXTRA_LABELS,
+                    required: started.deploymentLabels,
+                  },
+                }, capability)
+              }
+            : projectOptions;
           const result = await handlers.upProject(
             inputPath,
-            createUpProjectOptions({ ...options, selectedTargetReceipt })
+            lifecycleProjectOptions
           );
           const receipt: UpReceipt = await handlers.buildUpReceipt(inputPath, result);
           const bytes = JSON.stringify(receipt, null, 2);
@@ -188,12 +234,13 @@ export const registerUpCommand = (
           }
           return bytes;
         };
+        if (exactInvocation) await admitLifecyclePlan(exactInvocation);
         const output = options.lifecycleInvocation === undefined
           ? await render()
           : await runMachineLifecycle(
               exactInvocation!,
               render,
-              () => reconcileUpLifecycle(inputPath, options, exactInvocation!)
+              (capability) => reconcileUpLifecycle(inputPath, options, exactInvocation!, capability)
             );
         streams.stdout(output);
         return;

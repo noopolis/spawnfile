@@ -3,6 +3,8 @@ import { randomBytes } from "node:crypto";
 import { normalizeProjectLabelSlug } from "./projectName.js";
 import type { ParsedImageReference } from "./imageRef.js";
 import type { DistributionReport } from "./types.js";
+import type { DistributionPersistentMount } from "./types.js";
+import { createExclusiveReattachVolumeName } from "../shared/index.js";
 
 const GENERATED_RUNTIME_SECRET_NAMES = new Set([
   "OPENCLAW_GATEWAY_TOKEN",
@@ -24,6 +26,13 @@ export const deriveVolumeName = (deploymentName: string, mountId: string): strin
   const safeMount = mountId.replace(/[^A-Za-z0-9_.-]+/g, "-");
   return `spawnfile_${deploymentName}_${safeMount}`;
 };
+
+export const derivePersistentMountVolumeName = (
+  deploymentName: string,
+  mount: DistributionPersistentMount
+): string => mount.lifecycle === "exclusive-reattach"
+  ? createExclusiveReattachVolumeName(deploymentName, mount.id)
+  : deriveVolumeName(deploymentName, mount.id);
 
 export interface ResolveImageEnvironmentInput {
   authValues: Record<string, string>;

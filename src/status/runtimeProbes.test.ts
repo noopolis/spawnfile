@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { DEFAULT_DOCKER_PROBE_MAX_BUFFER_BYTES } from "../deployment/index.js";
 import type { DeploymentRecord, DockerInspectionResult } from "../deployment/index.js";
 import { openClawAdapter } from "../runtime/openclaw/adapter.js";
 import type { LoadedCompileReport } from "./compileReport.js";
@@ -114,7 +115,7 @@ describe("runtime probe collection", () => {
         "\\n%{http_code}",
         "http://127.0.0.1:18789/healthz"
       ],
-      { timeout: 25 }
+      { maxBuffer: DEFAULT_DOCKER_PROBE_MAX_BUFFER_BYTES, timeout: 25 }
     );
   });
 
@@ -159,7 +160,7 @@ describe("runtime probe collection", () => {
     expect(execFile).toHaveBeenCalledWith(
       "docker",
       ["--host", "ssh://ops@example", "exec", "container-123", "cat", "/instances/agent-analyst/workspace/cron/jobs.json"],
-      { timeout: 25 }
+      { maxBuffer: DEFAULT_DOCKER_PROBE_MAX_BUFFER_BYTES, timeout: 25 }
     );
   });
 

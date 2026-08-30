@@ -18,6 +18,7 @@ import type {
   ContainerReport,
   ContainerRuntimeInstanceReport
 } from "../report/index.js";
+import type { DockerRunInvocation } from "./runProject.js";
 
 const temporaryDirectories: string[] = [];
 const previousCodexHome = process.env.CODEX_HOME;
@@ -120,7 +121,7 @@ const loadUpProjectModule = async () => {
     _: unknown,
     imageTag: string,
     options: { containerName?: string | undefined }
-  ) => ({
+  ): Promise<DockerRunInvocation> => ({
     args: ["run", "--rm", "--name", "spawnfile-up-container", "spawnfile-up-container"],
     command: "docker",
     containerName: options.containerName ?? "spawnfile-up-container",
@@ -204,10 +205,13 @@ describe("upProject", () => {
     expect(buildProject).toHaveBeenCalledWith("/tmp/project", {
       buildRunner: expect.any(Function),
       clean: undefined,
+      containerArchitecture: undefined,
+      deploymentLineage: "default",
       dockerContext: undefined,
       dockerCommand: undefined,
       imageTag: "spawnfile-up-container",
-      outputDirectory: undefined
+      outputDirectory: undefined,
+      runtimePackageOverrides: undefined
     });
     expect(createDockerRunInvocation).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -367,6 +371,50 @@ describe("upProject", () => {
     expect(result.authProfileName).toBe("prod");
     expect(result.containerName).toBe("detached-container");
     expect(result.supportDirectory).toBe("/tmp/spawnfile-run-support");
+  });
+
+  it("publishes detached container authority before the Docker runner can create it", async () => {
+    const { upProject, createDockerRunInvocation } = await loadUpProjectModule();
+    createDockerRunInvocation.mockResolvedValueOnce({
+      args: ["run", "--detach", "spawnfile-up-container"],
+      command: "docker",
+      containerName: "detached-container",
+      deploymentLabels: { "dev.spawnfile.deployment": "default" },
+      cwd: "/tmp/spawnfile-build-out",
+      detach: true,
+      deploymentName: null,
+      dockerContext: null,
+      envFilePath: "/tmp/spawnfile-run-support/run.env",
+      imageTag: "spawnfile-up-container",
+      supportDirectory: "/tmp/spawnfile-run-support",
+    });
+    const events: string[] = [];
+    const onDetachedReservation = vi.fn(async (authority: {
+      containerName: string;
+      deploymentLabels: Readonly<Record<string, string>>;
+      dockerCommand: string;
+      dockerContext: string | null;
+    }) => {
+      events.push("reservation");
+      expect(authority).toEqual({
+        containerName: "detached-container",
+        deploymentLabels: { "dev.spawnfile.deployment": "default" },
+        dockerCommand: "docker",
+        dockerContext: null,
+      });
+    });
+    const runRunner = vi.fn(async () => { events.push("docker-run"); });
+
+    await upProject("/tmp/project", {
+      detach: true,
+      imageTag: "spawnfile-up-container",
+      onDetachedReservation,
+      runRunner,
+    });
+
+    expect(events).toEqual(["reservation", "docker-run"]);
+    expect(onDetachedReservation).toHaveBeenCalledOnce();
+    expect(runRunner).toHaveBeenCalledOnce();
   });
 
   it("writes a deployment record after a detached up succeeds", async () => {

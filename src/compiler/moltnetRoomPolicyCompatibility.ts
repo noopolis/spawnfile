@@ -47,11 +47,15 @@ export const assertCompatibleMoltnetServer = (
 export const assertCompatibleMoltnetRoomPolicy = (
   networkId: string,
   roomId: string,
-  field: "visibility" | "write_policy",
-  existing: string | undefined,
-  next: string | undefined
+  field: "federation" | "visibility" | "write_policy",
+  existing: string | string[] | undefined,
+  next: string | string[] | undefined
 ): void => {
-  if (existing !== undefined && next !== undefined && existing !== next) {
+  if (
+    existing !== undefined
+    && next !== undefined
+    && stableStringify(existing) !== stableStringify(next)
+  ) {
     throw new SpawnfileError(
       "validation_error",
       `Duplicate Moltnet network ${networkId} room ${roomId} declares conflicting ${field}: ${existing} vs ${next}`

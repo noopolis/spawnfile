@@ -22,6 +22,7 @@ import {
   mergeRecipeEnv,
   shellQuote
 } from "./containerEntrypointShell.js";
+import { MOLTNET_READINESS_DIRECTORY } from "./containerReadinessPaths.js";
 
 const MOLTNET_SERVER_DATA_DIRECTORY = "/var/lib/spawnfile/moltnet/servers";
 
@@ -103,20 +104,38 @@ const resolveStartCommand = (plan: RuntimeTargetPlan): string[] =>
       token
         .replaceAll("<config-path>", plan.instancePaths.configPath)
         .replaceAll("<home-path>", plan.instancePaths.homePath ?? "")
+        .replaceAll("<instance-root>", plan.instancePaths.instanceRoot ?? "")
         .replaceAll("<runtime-root>", plan.runtimeRoot)
         .replaceAll("<workspace-path>", plan.instancePaths.workspacePath)
         .replaceAll("<port>", plan.port ? String(plan.port) : "")
     )
     .filter((token) => token.length > 0);
 
-const createRuntimeReadinessWait = (plan: RuntimeTargetPlan): string[] => {
-  if (!["openclaw", "pi"].includes(plan.runtimeName) || !plan.port) {
-    return [];
+const createRuntimeReadinessWait = (plan: RuntimeTargetPlan, pidVariable: string): string[] => {
+  if (!plan.port) return [];
+
+  if (plan.runtimeName === "daimon") {
+    return [
+      "attempts=0",
+      `until curl -sf ${shellQuote(`http://127.0.0.1:${plan.port}/healthz`)} >/dev/null; do`,
+      `  if ! kill -0 "$${pidVariable}" 2>/dev/null; then wait "$${pidVariable}" || true; echo ${shellQuote(`Daimon exited before readiness on port ${plan.port}`)} >&2; exit 1; fi`,
+      "  attempts=$((attempts + 1))",
+      '  if [ "$attempts" -ge 180 ]; then',
+      `    echo ${shellQuote(`Timed out waiting for daimon on port ${plan.port}`)} >&2`,
+      "    exit 1",
+      "  fi",
+      "  sleep 1",
+      "done",
+      ""
+    ];
   }
+
+  if (!["openclaw", "pi"].includes(plan.runtimeName)) return [];
 
   return [
     "attempts=0",
     `until curl -sf ${shellQuote(`http://127.0.0.1:${plan.port}/healthz`)} >/dev/null; do`,
+    `  if ! kill -0 "$${pidVariable}" 2>/dev/null; then wait "$${pidVariable}" || true; echo ${shellQuote(`${plan.runtimeName} exited before readiness on port ${plan.port}`)} >&2; exit 1; fi`,
     "  attempts=$((attempts + 1))",
     '  if [ "$attempts" -ge 180 ]; then',
     `    echo ${shellQuote(`Timed out waiting for ${plan.runtimeName} on port ${plan.port}`)} >&2`,
@@ -131,6 +150,7 @@ const createRuntimeReadinessWait = (plan: RuntimeTargetPlan): string[] => {
 export interface EntrypointOptions {
   hasMoltnet?: boolean;
   hasStagedMoltnetBinaries?: boolean;
+  hasWorkspaceBundles?: boolean;
   moltnet?: {
     externalParticipantArtifacts?: NonNullable<MoltnetArtifacts["externalParticipantArtifacts"]>;
     nodePlans: MoltnetArtifacts["nodePlans"];
@@ -145,6 +165,7 @@ export const renderEntrypoint = (
   requiredSecrets: string[],
   options: EntrypointOptions = {}
 ): string => {
+  const usesDaimonRuntime = runtimePlans.some((plan) => plan.runtimeName === "daimon");
   const cliCredentialMaterialization = createCliCredentialMaterialization(runtimePlans);
   const renderedRequiredSecrets = [
     ...new Set([
@@ -155,6 +176,17 @@ export const renderEntrypoint = (
   const lines = [
     "#!/usr/bin/env bash",
     "set -euo pipefail",
+    ...(usesDaimonRuntime ? [
+      'if [ "$#" -ne 3 ] || [ "$1" != "--spawnfile-runtime-identity" ]; then echo "Missing trusted Daimon runtime identity" >&2; exit 1; fi',
+      'volume_bootstrap_uid="$2"',
+      'volume_bootstrap_gid="$3"',
+      'if ! [[ "$volume_bootstrap_uid" =~ ^[1-9][0-9]{0,9}$ ]] || [ "$volume_bootstrap_uid" -gt 2147483647 ]; then echo "Invalid trusted Daimon runtime UID" >&2; exit 1; fi',
+      'if ! [[ "$volume_bootstrap_gid" =~ ^[1-9][0-9]{0,9}$ ]] || [ "$volume_bootstrap_gid" -gt 2147483647 ]; then echo "Invalid trusted Daimon runtime GID" >&2; exit 1; fi',
+      "shift 3"
+    ] : [
+      "volume_bootstrap_uid=1001",
+      "volume_bootstrap_gid=1001"
+    ]),
     "",
     "require_env() {",
     '  local name=\"$1\"',
@@ -242,6 +274,13 @@ export const renderEntrypoint = (
     ""
   );
 
+  for (const receiptDirectory of [...new Set(moltnetNodePlans.flatMap((plan) =>
+    plan.receiptStorePath ? [path.posix.dirname(plan.receiptStorePath)] : []
+  ))].sort()) {
+    lines.push(`install -d -m 700 ${shellQuote(receiptDirectory)}`);
+  }
+  if (moltnetNodePlans.some((plan) => plan.receiptStorePath)) lines.push("");
+
   const recipeEnvAssignments = createRecipeEnvAssignments(mergeRecipeEnv(runtimePlans));
   const recipeEnvPrefix =
     recipeEnvAssignments.length > 0 ? `${recipeEnvAssignments.join(" ")} ` : "";
@@ -266,12 +305,13 @@ export const renderEntrypoint = (
     const causalEventsPath = moltnetCausalEventsPath(serverPlan.configPath);
     serverLines.push(
       ...createMoltnetStorePrepareCommands(serverPlan),
-      `MOLTNET_CONFIG=${shellQuote(serverPlan.configPath)} MOLTNET_CAUSAL_EVENTS_PATH=${shellQuote(causalEventsPath)} ${recipeEnvPrefix}/usr/local/bin/moltnet &`,
-      'PIDS+=("$!")'
+      `MOLTNET_CONFIG=${shellQuote(serverPlan.configPath)} MOLTNET_CAUSAL_EVENTS_PATH=${shellQuote(causalEventsPath)} ${recipeEnvPrefix}/usr/local/bin/moltnet start --config ${shellQuote(serverPlan.configPath)} &`,
+      'moltnet_server_pid="$!"',
+      'PIDS+=("$moltnet_server_pid")'
     );
     if (serverPlan.port) {
       serverLines.push(
-        `until curl -sf ${shellQuote(`http://127.0.0.1:${serverPlan.port}/healthz`)} >/dev/null; do sleep 1; done`
+        `until curl -sf ${shellQuote(`http://127.0.0.1:${serverPlan.port}/healthz`)} >/dev/null; do if ! kill -0 "$moltnet_server_pid" 2>/dev/null; then wait "$moltnet_server_pid" || true; echo ${shellQuote(`Moltnet exited before readiness on port ${serverPlan.port}`)} >&2; exit 1; fi; sleep 1; done`
       );
     }
     const externalParticipants = moltnetExternalParticipants.filter(
@@ -322,20 +362,24 @@ export const renderEntrypoint = (
       ...createEnvFileWrites(plan),
       ...createConfigEnvWrites(plan),
       `${envAssignments.join(" ")} ${commandTokens.map(shellQuote).join(" ")} &`,
-      'PIDS+=("$!")',
+      'runtime_pid="$!"',
+      'PIDS+=("$runtime_pid")',
       "",
-      ...createRuntimeReadinessWait(plan)
+      ...createRuntimeReadinessWait(plan, "runtime_pid")
     );
   }
 
   for (const nodePlan of moltnetNodePlans) {
     const urlEnv = networkUrlEnvName(nodePlan.networkId);
+    const receiptPath = `${MOLTNET_READINESS_DIRECTORY}/${nodePlan.networkId}-${nodePlan.memberId}.json`;
     lines.push(
       // Rebind the bridge endpoint when an external network URL is provided.
       `if [ -n "\${${urlEnv}:-}" ]; then`,
       `  apply_json_env_value ${shellQuote(nodePlan.configPath)} ${shellQuote(urlEnv)} ${shellQuote("moltnet.base_url")}`,
       "fi",
-      `${recipeEnvPrefix}/usr/local/bin/moltnet node ${shellQuote(nodePlan.configPath)} &`,
+      `install -d -m 700 ${shellQuote(path.posix.dirname(receiptPath))}`,
+      `rm -f ${shellQuote(receiptPath)}`,
+      `MOLTNET_NODE_READINESS_RECEIPT=${shellQuote(receiptPath)} ${recipeEnvPrefix}/usr/local/bin/moltnet node ${shellQuote(nodePlan.configPath)} &`,
       'PIDS+=("$!")',
       ""
     );
@@ -347,13 +391,15 @@ export const renderEntrypoint = (
     "  exit 1",
     "fi",
     "",
-    "status=0",
-    'for pid in "${PIDS[@]}"; do',
-    '  if ! wait "$pid"; then',
-    "    status=1",
-    "  fi",
-    "done",
-    "",
+    "# Every child is critical. Exit on the first child termination so Docker",
+    "# can restart the complete, mutually consistent organization unit.",
+    "set +e",
+    'wait -n "${PIDS[@]}"',
+    "status=$?",
+    "set -e",
+    "terminate_children",
+    'for pid in "${PIDS[@]}"; do wait "$pid" 2>/dev/null || true; done',
+    'if [ "$status" -eq 0 ]; then status=1; fi',
     'exit "$status"'
   );
 

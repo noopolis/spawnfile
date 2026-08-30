@@ -3,9 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_TARGET_PUBLIC_ARTIFACT_BYTES,
   createCanonicalTargetPublicArtifactSnapshotBytes,
+  createCanonicalTargetPublicArtifactSnapshotResultBytes,
   createTargetPublicArtifactSnapshot,
+  createTargetPublicArtifactSnapshotNotPresent,
   createTargetPublicArtifactSnapshotRequestDigest,
   parseTargetPublicArtifactSnapshot,
+  parseTargetPublicArtifactSnapshotNotPresent,
+  parseTargetPublicArtifactSnapshotResult,
   parseTargetPublicArtifactSnapshotRequest
 } from "./publicArtifactSnapshot.js";
 
@@ -43,6 +47,7 @@ describe("target public artifact snapshot contract", () => {
     expect(JSON.parse(createCanonicalTargetPublicArtifactSnapshotBytes(snapshot)))
       .toEqual(snapshot);
     expect(parseTargetPublicArtifactSnapshot(snapshot)).toEqual(snapshot);
+    expect(parseTargetPublicArtifactSnapshotResult(snapshot)).toEqual(snapshot);
   });
 
   it("admits and canonically transports a retained trace beyond the generic graph string bound", () => {
@@ -64,11 +69,36 @@ describe("target public artifact snapshot contract", () => {
     expect(Buffer.from(reparsed.content_base64, "base64")).toEqual(content);
   });
 
+  it("classifies only this correlated artifact request as not present", () => {
+    const parsed = parseTargetPublicArtifactSnapshotRequest(request);
+    const outcome = createTargetPublicArtifactSnapshotNotPresent(parsed);
+    expect(outcome).toEqual({
+      artifact_id: "viewer_trace",
+      request_digest: createTargetPublicArtifactSnapshotRequestDigest(parsed),
+      run_id: "run-public-view",
+      status: "not_present",
+      version: "spawnfile.target-public-artifact-snapshot.not-present.v1"
+    });
+    expect(parseTargetPublicArtifactSnapshotNotPresent(outcome)).toEqual(outcome);
+    expect(parseTargetPublicArtifactSnapshotResult(outcome)).toEqual(outcome);
+    expect(JSON.parse(createCanonicalTargetPublicArtifactSnapshotResultBytes(outcome)))
+      .toEqual(outcome);
+    expect(() => parseTargetPublicArtifactSnapshotNotPresent({
+      ...outcome,
+      retry_after_ms: 1_000
+    })).toThrow();
+    expect(() => parseTargetPublicArtifactSnapshotNotPresent({
+      ...outcome,
+      status: "not_present_yet"
+    })).toThrow();
+  });
+
   it("rejects private paths, traversal, hostile shapes, oversize, and corrupt bytes", () => {
     for (const path of [
       "/run/world/evidence/viewer.json",
       "/run/spawnfile-secrets/token",
       "/tmp/spawnfile-public/../secret",
+      "/tmp/spawnfile-public/nested/secret",
       "/tmp/spawnfile-public/"
     ]) {
       expect(() => parseTargetPublicArtifactSnapshotRequest({

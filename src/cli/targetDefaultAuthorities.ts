@@ -1,4 +1,6 @@
 import { initializeDockerArtifactIdentityStore, type DockerArtifactIdentityBinding, type DockerArtifactIdentityStore, type DockerArtifactMapping } from "../target/dockerArtifactsProvider.js";
+import type { DockerArtifactExecutor } from "../target/dockerArtifactsProvider.js";
+import { createPreparedEvidenceHelperExecutor } from "../evidenceExportHelper/index.js";
 import { createDockerTargetExecutors, type DockerTargetExecutors } from "../target/dockerCommandExecutor.js";
 import { initializeTargetSecretVersionAuthorityStore, type TargetSecretVersionAuthorityStore } from "../target/dockerSecretsAuthority.js";
 import {
@@ -65,6 +67,7 @@ export interface TargetDefaultAuthorities {
   readonly evidenceExportAuthorityStore: EvidenceExportAuthorityStore;
   readonly executors: DockerTargetExecutors;
   readonly handoffResolver: OrganizationAttachmentResolver;
+  readonly helperExecutor: DockerArtifactExecutor;
   /** Omitted when this invocation cannot export evidence. */
   readonly helperArtifactResolver?: HelperArtifactResolver;
   readonly journals: TargetJournalResolver;
@@ -117,6 +120,7 @@ export const initializeTargetDefaultAuthoritySession = async (
     handoffAuthority = await initializeOrganizationHandoffAuthorityStore();
     const handoffResolver = handoffAuthority.resolver as OrganizationAttachmentResolver;
     const executors = createDockerTargetExecutors({ dockerCommand: config.dockerCommand });
+    const helperExecutor = createPreparedEvidenceHelperExecutor(config.dockerCommand);
     const preparedBuilder = createDockerTargetLocalBundleBuilder({ context: config.context,
       executor: executors.artifact, timeoutMs: config.timeoutMs });
     const preparedStore = await initializeFilesystemTargetLocalBundleStore(config.paths.containerBundles);
@@ -258,6 +262,7 @@ export const initializeTargetDefaultAuthoritySession = async (
       evidenceExportAuthorityStore,
       executors,
       handoffResolver,
+      helperExecutor,
       ...(helperArtifactResolver ? { helperArtifactResolver } : {}),
       journals,
       secretAuthorityStore,

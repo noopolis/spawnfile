@@ -16,6 +16,16 @@ export const WORLD_RUNTIME_TMPFS = Object.freeze({
   path: "/tmp",
   options: "rw,noexec,nosuid,nodev,size=1m,mode=1777"
 });
+/*
+ * A distinct mount point is a confinement boundary, not merely a convenient
+ * directory.  The public-artifact reader opens one direct child with
+ * O_NOFOLLOW; this mount prevents that child from being hard-linked or
+ * replaced with a path from the world root, secrets, or evidence mounts.
+ */
+export const WORLD_PUBLIC_ARTIFACT_TMPFS = Object.freeze({
+  path: "/tmp/spawnfile-public",
+  options: "rw,noexec,nosuid,nodev,size=1m,mode=1777"
+});
 
 const MAX_OUTPUT_BYTES = 32_768;
 const MAX_NAME_LENGTH = 63;
@@ -249,6 +259,7 @@ export const createDockerWorldServiceSpec = (input: {
       "--cap-drop", "ALL", "--security-opt", "no-new-privileges=true",
       "--ipc", "none", "--cgroupns", "private",
       "--tmpfs", `${WORLD_RUNTIME_TMPFS.path}:${WORLD_RUNTIME_TMPFS.options}`,
+      "--tmpfs", `${WORLD_PUBLIC_ARTIFACT_TMPFS.path}:${WORLD_PUBLIC_ARTIFACT_TMPFS.options}`,
       ...labelArgs,
       "--mount", `type=volume,src=${evidence.name},dst=${evidenceMountPath},volume-nocopy`,
       "--mount", `type=volume,src=${secrets.name},dst=${WORLD_SECRETS_PATH},readonly,volume-nocopy`,
@@ -369,8 +380,9 @@ export const parseExpectedDockerWorldService = (
     && value.PidMode === "" && value.IpcMode === "none" && value.UTSMode === ""
     && value.UsernsMode === "" && value.CgroupnsMode === "private"
     && exactRecord(value.Tmpfs)
-    && exactKeys(value.Tmpfs, [WORLD_RUNTIME_TMPFS.path])
+    && exactKeys(value.Tmpfs, [WORLD_RUNTIME_TMPFS.path, WORLD_PUBLIC_ARTIFACT_TMPFS.path])
     && value.Tmpfs[WORLD_RUNTIME_TMPFS.path] === WORLD_RUNTIME_TMPFS.options
+    && value.Tmpfs[WORLD_PUBLIC_ARTIFACT_TMPFS.path] === WORLD_PUBLIC_ARTIFACT_TMPFS.options
     && value.ReadonlyRootfs === true
     && JSON.stringify(value.SecurityOpt) === JSON.stringify(["no-new-privileges=true"])
     && value.LogType === "none" && value.RestartPolicyName === "no"

@@ -40,6 +40,8 @@ concurrency:
 
 jobs:
   build:
+    name: ${{ matrix.runtime }} runtime image
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -57,14 +59,22 @@ jobs:
             context: runtime-images/picoclaw
             build_args: |
               PICOCLAW_VERSION=v0.3.1
-          - runtime: daimon
-            image: noopolis/spawnfile-runtime-daimon
-            version: 0.1.2
-            context: runtime-images/daimon
-            build_args: |
-              DAIMON_VERSION=0.1.2
-              MNEME_VERSION=0.1.1
-              PI_VERSION=0.79.10
+          # The Daimon runtime image is deliberately absent from this matrix.
+          # It cannot be built by a plain `docker build` of a context: the
+          # Dockerfile opens with `FROM daimon_package` and needs a
+          # `--build-context` carrying a packed Daimon tarball, plus a
+          # capability receipt, three content digests, and eight pinned CLI
+          # artifact URLs and hashes. It also hard-pins linux/amd64, which
+          # contradicts this job's two-platform build. The entry that used to
+          # sit here passed DAIMON_VERSION/MNEME_VERSION/PI_VERSION — three
+          # args the Dockerfile does not declare — so it had never produced an
+          # image, only a red check.
+          #
+          # `npm run build:local-daimon` (scripts/build-local-daimon-runtime.mjs)
+          # assembles all of that and is the supported path today. Publishing
+          # from CI means teaching this workflow to call that script with a
+          # non-loopback registry target, which `resolveLocalImageTag` currently
+          # refuses by design.
     steps:
       - name: Check out
         uses: actions/checkout@v4

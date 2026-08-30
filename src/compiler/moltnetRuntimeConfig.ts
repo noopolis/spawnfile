@@ -2,6 +2,7 @@ import { getRuntimeAdapter } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import type { CompilePlan, ResolvedAgentNode } from "./types.js";
+import { createMoltnetDaimonReceiptStorePath } from "./moltnetConfigLowering.js";
 
 const INSTANCE_ROOT_PLACEHOLDER = "<instance-root>";
 const CONFIG_FILE_PLACEHOLDER = "<config-file>";
@@ -60,12 +61,28 @@ const resolveRuntimeInstancePaths = (
   };
 };
 
+const resolveDaimonAgentId = (
+  plan: CompilePlan,
+  agentNode: ResolvedAgentNode
+): string => {
+  const compiled = plan.nodes.find(
+    (node) => node.kind === "agent" && node.value.source === agentNode.source
+  );
+  if (!compiled) {
+    throw new SpawnfileError(
+      "compile_error",
+      `Unable to resolve Daimon runtime agent identity for ${agentNode.name}`
+    );
+  }
+  return compiled.id;
+};
+
 export const resolveRuntimeConfig = (
   plan: CompilePlan,
   agentNode: ResolvedAgentNode,
   nodeSlug: string,
-  _networkId: string,
-  _agentId: string
+  networkId: string,
+  moltnetAgentId: string
 ): Record<string, string> => {
   switch (agentNode.runtime.name) {
     case "openclaw": {
@@ -94,7 +111,22 @@ export const resolveRuntimeConfig = (
         kind: "picoclaw"
       };
     }
-    case "daimon":
+    case "daimon": {
+      const port = getRuntimeAdapter("daimon").container.port;
+      if (!port) {
+        throw new SpawnfileError(
+          "compile_error",
+          `Unable to resolve Daimon control port for Moltnet agent ${agentNode.name}`
+        );
+      }
+      return {
+        agent_id: resolveDaimonAgentId(plan, agentNode),
+        control_url: `http://127.0.0.1:${port}`,
+        kind: "daimon",
+        receipt_store_path: createMoltnetDaimonReceiptStorePath(networkId, moltnetAgentId),
+        token_env: "SPAWNFILE_DAIMON_CONTROL_TOKEN"
+      };
+    }
     case "pi": {
       const port = getRuntimeAdapter(agentNode.runtime.name).container.port;
       if (!port) {

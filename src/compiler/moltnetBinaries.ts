@@ -7,19 +7,29 @@ import { promisify } from "node:util";
 import { ensureDirectory, fileExists } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import {
+  parseMoltnetBridgeCapabilities,
   parseTrustedMoltnetReleaseAuthority,
   readTrustedMoltnetReleaseAuthority,
   trustedMoltnetReleaseAsset,
+  type MoltnetBridgeCapabilities,
   type MoltnetTargetArchitecture,
   type TrustedMoltnetReleaseAuthority
 } from "./moltnetReleaseAuthority.js";
 import { downloadTrustedMoltnetReleaseAsset } from "./moltnetReleaseDownload.js";
+import {
+  readLocalMoltnetReleaseIdentity,
+  type MoltnetExecutionHost,
+  type LocalMoltnetReleaseIdentity
+} from "./localMoltnetAuthority.js";
 
 const execFile = promisify(execFileCallback);
 
 const MOLTNET_CLI_ENV = "SPAWNFILE_MOLTNET_CLI";
 /** Explicit operator override for a locally staged, authority-bound release. */
 export const MOLTNET_RELEASE_DIR_ENV = "SPAWNFILE_MOLTNET_RELEASE_DIR";
+/** Explicit development-only local archive authority; never consulted by production compiles. */
+export const MOLTNET_LOCAL_RELEASE_DIR_ENV = "SPAWNFILE_LOCAL_MOLTNET_RELEASE_DIR";
+export const MOLTNET_ALLOW_LOCAL_E2E_ENV = "SPAWNFILE_ALLOW_LOCAL_E2E";
 const MOLTNET_TARGET_ARCH_ENV = "SPAWNFILE_MOLTNET_TARGET_ARCH";
 const MOLTNET_TARGET_OS = "linux";
 
@@ -29,18 +39,29 @@ export const MOLTNET_RELEASE_IDENTITY_VERSION = "spawnfile.moltnet-release-ident
 export const MOLTNET_RELEASE_STAMP_VERSION = "spawnfile.moltnet-release-stamp.v1" as const;
 export type { MoltnetTargetArchitecture } from "./moltnetReleaseAuthority.js";
 
-export interface MoltnetReleaseIdentity {
+/** Re-exported so existing importers keep one shape; defined in the lowest layer. */
+export type { MoltnetBridgeCapabilities } from "./moltnetReleaseAuthority.js";
+
+interface MoltnetIdentityBase {
   readonly architecture: MoltnetTargetArchitecture;
   readonly asset: string;
   readonly asset_sha256: `sha256:${string}`;
-  readonly capabilities: readonly ["pi-bridge"];
-  readonly release_version: string;
-  readonly source_revision: string;
+  readonly capabilities: MoltnetBridgeCapabilities;
   readonly version: typeof MOLTNET_RELEASE_IDENTITY_VERSION;
 }
 
+export interface PublishedMoltnetReleaseIdentity extends MoltnetIdentityBase {
+  readonly capabilities: MoltnetBridgeCapabilities;
+  readonly release_version: string;
+  readonly source_revision: string;
+}
+
+export type MoltnetReleaseIdentity = PublishedMoltnetReleaseIdentity | LocalMoltnetReleaseIdentity;
+
 export interface MoltnetBinaryStageOptions {
   readonly architecture?: MoltnetTargetArchitecture;
+  /** Overrides the detected execution host for the local-build capability probe. Tests only. */
+  readonly executionHost?: MoltnetExecutionHost;
   /** Explicit local source directory; bytes remain bound to trusted authority. */
   readonly releaseDirectory?: string;
 }
@@ -49,7 +70,15 @@ interface MoltnetReleaseStamp {
   readonly arch: MoltnetTargetArchitecture;
   readonly asset: string;
   readonly built_at: string;
-  readonly capabilities: readonly ["pi-bridge"];
+  readonly capabilities: MoltnetBridgeCapabilities;
+  /**
+   * Kept as a required scalar, NOT derived from `capabilities`: both capability
+   * variants include `pi-bridge`, so this is invariant across the widening and
+   * deriving it would change the stamp format for no gain. The stamp format is a
+   * matched pair with the writers in `fixtures/support/trustedMoltnetRelease.ts`
+   * and `src/e2e/localMoltnetRelease.ts`; there is no `daimon_bridge` twin
+   * because that would be a second way to say what `capabilities` already says.
+   */
   readonly pi_bridge: true;
   readonly sha256: string;
   readonly source_revision: string;
@@ -103,6 +132,27 @@ const resolveTargetArchitecture = (
   }
 };
 
+/**
+ * The platform executing this compile, for the local-build capability probe.
+ *
+ * Deliberately NOT `resolveTargetArchitecture()`: that helper honours the
+ * `SPAWNFILE_MOLTNET_TARGET_ARCH` build-target override and falls back to
+ * `process.arch`, so passing it as the host made the host and the target the
+ * same value by construction and pinned the probe to its direct-exec branch.
+ * This reads the real host only, and reports `architecture: undefined` for a
+ * CPU that is not a nameable Moltnet target rather than throwing -- an
+ * unsupported host is not a compile error, it just cannot exec the binary
+ * directly.
+ *
+ * Private: this module's export surface is pinned by test.
+ */
+const resolveMoltnetExecutionHost = (): MoltnetExecutionHost => ({
+  ...(process.arch === "arm64"
+    ? { architecture: "arm64" as const }
+    : process.arch === "x64" ? { architecture: "amd64" as const } : {}),
+  platform: process.platform
+});
+
 const createReleaseAssetName = (architecture: string): string =>
   `moltnet_${MOLTNET_TARGET_OS}_${architecture}.tar.gz`;
 
@@ -134,9 +184,7 @@ const parseReleaseStamp = (raw: string, architecture: MoltnetTargetArchitecture)
     || value.asset !== createReleaseAssetName(architecture)
     || typeof value.built_at !== "string"
     || !Number.isFinite(Date.parse(value.built_at))
-    || !Array.isArray(capabilities)
-    || capabilities.length !== 1
-    || capabilities[0] !== "pi-bridge"
+    || parseMoltnetBridgeCapabilities(capabilities) === null
     || value.pi_bridge !== true
     || typeof value.sha256 !== "string"
     || !SHA256.test(value.sha256)
@@ -160,7 +208,7 @@ const verifyReleaseIdentity = async (
   releaseDirectory: string,
   architecture: MoltnetTargetArchitecture,
   authority: TrustedMoltnetReleaseAuthority
-): Promise<MoltnetReleaseIdentity> => {
+): Promise<PublishedMoltnetReleaseIdentity> => {
   const trustedAuthority = parseTrustedMoltnetReleaseAuthority(authority);
   const trustedAsset = trustedMoltnetReleaseAsset(trustedAuthority, architecture);
   const asset = createReleaseAssetName(architecture);
@@ -196,7 +244,7 @@ const verifyReleaseIdentity = async (
     architecture,
     asset,
     asset_sha256: `sha256:${sha256}`,
-    capabilities: Object.freeze(["pi-bridge"] as const),
+    capabilities: stamp.capabilities,
     release_version: stamp.version,
     source_revision: stamp.source_revision,
     version: MOLTNET_RELEASE_IDENTITY_VERSION
@@ -273,6 +321,18 @@ const resolveConfiguredReleaseDirectory = async (): Promise<string | null> => {
   return configuredDirectory;
 };
 
+const resolveConfiguredLocalReleaseDirectory = async (): Promise<string | null> => {
+  const configuredDirectory = process.env[MOLTNET_LOCAL_RELEASE_DIR_ENV]?.trim();
+  if (!configuredDirectory) return null;
+  if (process.env[MOLTNET_ALLOW_LOCAL_E2E_ENV] !== "1") {
+    throw new SpawnfileError("compile_error", "Local Moltnet identity requires explicit SPAWNFILE_ALLOW_LOCAL_E2E=1 opt-in");
+  }
+  if (!path.isAbsolute(configuredDirectory) || !(await fileExists(configuredDirectory))) {
+    throw new SpawnfileError("compile_error", "Local Moltnet release directory is invalid");
+  }
+  return configuredDirectory;
+};
+
 const findPathMoltnetCli = async (): Promise<string | null> => {
   try {
     await execFile("moltnet", ["version"]);
@@ -326,6 +386,20 @@ export const stageMoltnetBinaries = async (
   outputDirectory: string,
   options: MoltnetBinaryStageOptions = {}
 ): Promise<MoltnetReleaseIdentity> => {
+  const localReleaseDirectory = await resolveConfiguredLocalReleaseDirectory();
+  if (localReleaseDirectory) {
+    const architecture = resolveTargetArchitecture(options.architecture);
+    const identity = await readLocalMoltnetReleaseIdentity(
+      localReleaseDirectory,
+      architecture,
+      options.executionHost ?? resolveMoltnetExecutionHost()
+    );
+    return stageMoltnetReleaseAsset(
+      outputDirectory,
+      path.join(localReleaseDirectory, createReleaseAssetName(architecture)),
+      identity
+    );
+  }
   const releaseDirectory = options.releaseDirectory
     ?? await resolveConfiguredReleaseDirectory();
   if (releaseDirectory) {
@@ -344,7 +418,7 @@ export const stageMoltnetBinaries = async (
       architecture,
       asset: trustedAsset.asset,
       asset_sha256: trustedAsset.asset_sha256,
-      capabilities: Object.freeze(["pi-bridge"] as const),
+      capabilities: authority.capabilities,
       release_version: authority.release_version,
       source_revision: authority.source_revision,
       version: MOLTNET_RELEASE_IDENTITY_VERSION

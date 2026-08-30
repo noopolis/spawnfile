@@ -16,7 +16,8 @@ import {
   createAgentCapabilities,
   createDiagnostic,
   createDocumentFiles,
-  createSkillFiles
+  createSkillFiles,
+  WORKSPACE_SKILL_BASE_DIRECTORY
 } from "../common.js";
 import { preparePicoClawRuntimeAuth } from "./runAuth.js";
 import { createPicoClawAgentScaffold } from "./scaffold.js";
@@ -300,7 +301,7 @@ export const picoClawAdapter: RuntimeAdapter = {
       diagnostics: createScheduleDiagnostics(node),
       files: [
         ...createDocumentFiles("workspace", node.docs),
-        ...createSkillFiles("workspace/skills", node.skills),
+        ...createSkillFiles(WORKSPACE_SKILL_BASE_DIRECTORY, node.skills),
         ...(cronStoreFile ? [cronStoreFile] : []),
         {
           content: buildPicoClawConfig(node),

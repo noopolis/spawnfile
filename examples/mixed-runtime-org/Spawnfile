@@ -1,7 +1,7 @@
 spawnfile_version: "0.1"
 kind: team
 name: mixed-runtime-org
-description: "Mixed OpenClaw, PicoClaw, and Daimon runtime fixture"
+description: "Mixed OpenClaw, PicoClaw, and legacy generated-Pi runtime fixture"
 
 mode: hierarchical
 lead: conductor

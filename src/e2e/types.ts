@@ -1,6 +1,6 @@
 import type { ModelAuthMethod } from "../shared/index.js";
 
-export type E2ERuntime = "openclaw" | "picoclaw" | "daimon";
+export type E2ERuntime = "openclaw" | "picoclaw" | "pi" | "daimon";
 export type E2EFixtureKind = "docker-auth-agent" | "docker-auth-team";
 export type E2EScenarioKind = "single-agent" | "team";
 

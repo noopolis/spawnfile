@@ -42,9 +42,9 @@ const runMemoryCli = async (
 
 export const runDaimonMemoryRecallCli = async (argv: string[]): Promise<void> =>
   runMemoryCli(argv, {
-    description: "Run the opt-in Daimon recall compile/probe E2E",
+    description: "Run the opt-in legacy Pi recall compile/probe E2E (historical command name)",
     name: "spawnfile-e2e daimon-memory-recall",
-    resultName: "Daimon memory recall E2E",
+    resultName: "Legacy Pi memory recall E2E",
     run: runDaimonMemoryRecallE2E
   });
 

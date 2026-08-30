@@ -1,10 +1,15 @@
 import { SpawnfileError } from "../shared/index.js";
-import type { DockerTargetExecutors } from "./dockerCommandExecutor.js";
+import {
+  createPublicArtifactReadCommand,
+  DockerPublicArtifactNotPresentError,
+  type DockerTargetExecutors
+} from "./dockerCommandExecutor.js";
 import {
   createTargetPublicArtifactSnapshot,
+  createTargetPublicArtifactSnapshotNotPresent,
   parseTargetPublicArtifactSnapshotRequest,
-  type TargetPublicArtifactSnapshot,
-  type TargetPublicArtifactSnapshotRequest
+  type TargetPublicArtifactSnapshotRequest,
+  type TargetPublicArtifactSnapshotResult
 } from "./publicArtifactSnapshot.js";
 import {
   type DockerWorldServiceExecutor
@@ -29,7 +34,7 @@ export interface DockerPublicArtifactSnapshotOptions {
 }
 
 export interface PublicArtifactSnapshotReader {
-  snapshot(raw: unknown): Promise<TargetPublicArtifactSnapshot>;
+  snapshot(raw: unknown): Promise<TargetPublicArtifactSnapshotResult>;
 }
 
 const CONTEXT_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/u;
@@ -67,42 +72,24 @@ const readPublicArtifact = async (
   containerId: string,
   request: TargetPublicArtifactSnapshotRequest,
   options: DockerPublicArtifactSnapshotOptions
-): Promise<Uint8Array> => {
+): Promise<Uint8Array | null> => {
+  let result: { readonly bytes: Uint8Array };
   try {
-    const resolved = await options.contentExecutor("docker", [
-      "--context", options.context,
-      "container", "exec",
+    result = await options.contentExecutor("docker", createPublicArtifactReadCommand({
       containerId,
-      "/usr/bin/readlink",
-      "-e",
-      request.artifact.path
-    ], {
+      context: options.context,
+      path: request.artifact.path
+    }), {
       signal: options.signal,
       timeout: options.timeoutMs
     });
-    if (!resolved || !(resolved.bytes instanceof Uint8Array)) return fail();
-    const resolvedPath = new TextDecoder("utf-8", { fatal: true })
-      .decode(resolved.bytes);
-    // Reject the final file and every parent alias. The world may publish only
-    // the exact regular path that its descriptor declared, never a symlink
-    // into private evidence, credentials, or another runtime surface.
-    if (resolvedPath !== `${request.artifact.path}\n`) return fail();
-    const result = await options.contentExecutor("docker", [
-      "--context", options.context,
-      "container", "exec",
-      containerId,
-      "/bin/cat",
-      request.artifact.path
-    ], {
-      signal: options.signal,
-      timeout: options.timeoutMs
-    });
-    if (!result || !(result.bytes instanceof Uint8Array)
-      || result.bytes.byteLength > request.artifact.max_bytes) return fail();
-    return Uint8Array.from(result.bytes);
-  } catch {
+  } catch (error) {
+    if (error instanceof DockerPublicArtifactNotPresentError) return null;
     return fail();
   }
+  if (!result || !(result.bytes instanceof Uint8Array)
+    || result.bytes.byteLength > request.artifact.max_bytes) return fail();
+  return Uint8Array.from(result.bytes);
 };
 
 class DockerPublicArtifactSnapshotReader implements PublicArtifactSnapshotReader {
@@ -112,7 +99,7 @@ class DockerPublicArtifactSnapshotReader implements PublicArtifactSnapshotReader
     this.#options = validOptions(options);
   }
 
-  public async snapshot(raw: unknown): Promise<TargetPublicArtifactSnapshot> {
+  public async snapshot(raw: unknown): Promise<TargetPublicArtifactSnapshotResult> {
     let request: TargetPublicArtifactSnapshotRequest;
     try { request = parseTargetPublicArtifactSnapshotRequest(raw); }
     catch { return fail(); }
@@ -138,7 +125,9 @@ class DockerPublicArtifactSnapshotReader implements PublicArtifactSnapshotReader
     ).catch(fail);
     if (!after || after.containerId !== before.containerId
       || after.status !== "running") return fail();
-    return createTargetPublicArtifactSnapshot({ content, request });
+    return content === null
+      ? createTargetPublicArtifactSnapshotNotPresent(request)
+      : createTargetPublicArtifactSnapshot({ content, request });
   }
 }
 

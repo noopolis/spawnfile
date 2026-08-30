@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -120,7 +120,81 @@ const codexReport = () =>
     ]
   });
 
+const daimonReport = () => buildDistributionReport({
+  envVariables: [], generatedAt: "2026-08-26T00:00:00.000Z", internalPorts: [],
+  modelAuthMethods: {}, moltnetNetworks: [],
+  organization: { agents: [
+    { id: "agent:coder", name: "coder", runtime: "daimon", teams: [] },
+    { id: "agent:reviewer", name: "reviewer", runtime: "daimon", teams: [] }
+  ], project: "org", teams: [] },
+  persistentMounts: [], portMappings: [], publishedPorts: [], resources: [],
+  runtimeInstances: [{
+    config_path: "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon/daimon-organization-runtime.json",
+    engine_by_node_id: { "agent:coder": "codex", "agent:reviewer": "grok" },
+    home_path: null, id: "daimon-organization", internal_port: null,
+    model_auth_methods: {}, model_secrets_required: [],
+    node_ids: ["agent:coder", "agent:reviewer"], published_port: null,
+    runtime: "daimon", workspace_path: "/var/lib/spawnfile/instances/daimon/daimon-organization/workspace"
+  }]
+});
+
+const directDaimonSources = async () => {
+  const root = await tempDir(), codex = path.join(root, "codex.json"), grok = path.join(root, "grok.json");
+  await writeFile(codex, JSON.stringify({ tokens: { access_token: "fake-access", refresh_token: "fake-refresh" } }), { mode: 0o600 });
+  await writeFile(grok, JSON.stringify({ "https://auth.x.ai::fixture": { key: "a".repeat(32), refresh_token: "r".repeat(16), expires_at: "2099-01-01T00:00:00.000Z" } }), { mode: 0o600 });
+  return { codex, grok, environment: { SPAWNFILE_DAIMON_SOURCE_CODEX_AUTH: codex, SPAWNFILE_DAIMON_SOURCE_GROK_AUTH: grok } };
+};
+
 describe("prepareImageRuntimeAuthMounts", () => {
+  it("mounts direct Daimon provider sources from an embedded engine map without an auth profile", async () => {
+    const sources = await directDaimonSources();
+    const result = await prepareImageRuntimeAuthMounts({
+      authProfile: null, report: daimonReport(), sourceEnvironment: sources.environment,
+      tempRoot: await tempDir()
+    });
+    expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`);
+    expect(result.mountArgs).toContain(`${sources.grok}:/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro`);
+  });
+
+  it("fails closed on missing, permissive, or linked direct Daimon sources", async () => {
+    const sources = await directDaimonSources();
+    await expect(prepareImageRuntimeAuthMounts({
+      authProfile: null, report: daimonReport(),
+      sourceEnvironment: { ...sources.environment, SPAWNFILE_DAIMON_SOURCE_GROK_AUTH: path.join(await tempDir(), "missing") },
+      tempRoot: await tempDir()
+    })).rejects.toThrow(/missing the selected grok artifact/u);
+    await chmod(sources.grok, 0o644);
+    await expect(prepareImageRuntimeAuthMounts({ authProfile: null, report: daimonReport(), sourceEnvironment: sources.environment, tempRoot: await tempDir() })).rejects.toThrow(/caller-owned 0600 regular file/u);
+    await chmod(sources.grok, 0o600);
+    const linked = path.join(await tempDir(), "linked.json"); await symlink(sources.grok, linked);
+    await expect(prepareImageRuntimeAuthMounts({ authProfile: null, report: daimonReport(), sourceEnvironment: { ...sources.environment, SPAWNFILE_DAIMON_SOURCE_GROK_AUTH: linked }, tempRoot: await tempDir() })).rejects.toThrow(/caller-owned 0600 regular file/u);
+  });
+
+  it("does not prepare unrelated runtimes when no auth profile is selected", async () => {
+    const result = await prepareImageRuntimeAuthMounts({ authProfile: null, report: report(), tempRoot: await tempDir() });
+    expect(result.mountArgs).toEqual([]);
+  });
+
+  it("rejects a Daimon engine map that is incomplete or invalid for Daimon", async () => {
+    const sources = await directDaimonSources(), incomplete = daimonReport();
+    incomplete.runtime_instances[0]!.engine_by_node_id = { "agent:coder": "codex" };
+    await expect(prepareImageRuntimeAuthMounts({ authProfile: null, report: incomplete, sourceEnvironment: sources.environment, tempRoot: await tempDir() })).rejects.toThrow(/does not match its declared agents/u);
+    const invalid = daimonReport(); invalid.runtime_instances[0]!.engine_by_node_id!["agent:reviewer"] = "scripted";
+    await expect(prepareImageRuntimeAuthMounts({ authProfile: null, report: invalid, sourceEnvironment: sources.environment, tempRoot: await tempDir() })).rejects.toThrow(/unsupported engine/u);
+  });
+
+  it("rejects redirected Daimon paths and cross-engine slug collisions", async () => {
+    const sources = await directDaimonSources();
+    for (const field of ["config_path", "workspace_path"] as const) {
+      const redirected = daimonReport(); redirected.runtime_instances[0]![field] = `/tmp/${field}`;
+      await expect(prepareImageRuntimeAuthMounts({ authProfile: null, report: redirected, sourceEnvironment: sources.environment, tempRoot: await tempDir() })).rejects.toThrow(/paths are not canonical/u);
+    }
+    const collision = daimonReport();
+    collision.runtime_instances[0]!.node_ids = ["agent:review er", "agent:review-er"];
+    collision.runtime_instances[0]!.engine_by_node_id = { "agent:review er": "codex", "agent:review-er": "grok" };
+    await expect(prepareImageRuntimeAuthMounts({ authProfile: null, report: collision, sourceEnvironment: sources.environment, tempRoot: await tempDir() })).rejects.toThrow(/unsafe agent id/u);
+  });
+
   it("mounts the credential profile and the import directory into the runtime home", async () => {
     const importDir = await claudeImportDir();
     const profile: ResolvedAuthProfile = {

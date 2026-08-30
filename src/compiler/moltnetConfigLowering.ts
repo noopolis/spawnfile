@@ -17,6 +17,7 @@ export interface MoltnetClientAuthPlan {
 }
 
 export interface MoltnetNativeRoomConfig {
+  federation?: "all" | "none" | string[];
   id: string;
   members: string[];
   name?: string;
@@ -53,6 +54,15 @@ export const createMoltnetOpenTokenPath = (
 
 export const createMoltnetNetworkStateDirectory = (networkId: string): string =>
   `/var/lib/spawnfile/moltnet/networks/${pathSafeSegment(networkId)}`;
+
+export const createMoltnetDaimonReceiptStorePath = (networkId: string, memberId: string): string => {
+  const network = pathSafeSegment(networkId);
+  const member = pathSafeSegment(memberId);
+  if (network !== networkId || member !== memberId || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$/u.test(memberId)) {
+    throw new SpawnfileError("validation_error", "invalid Daimon receipt-store path segment");
+  }
+  return `${createMoltnetNetworkStateDirectory(networkId)}/daimon-receipts/${member}.json`;
+};
 
 export const createDefaultMoltnetStorePath = (
   networkId: string,
@@ -153,7 +163,8 @@ export const resolveMoltnetClientAuth = (
   networkId: string,
   memberId: string,
   agentSlug?: string,
-  attachmentTokenId?: string
+  attachmentTokenId?: string,
+  runtimeName?: string
 ): MoltnetClientAuthPlan => {
   if (server.auth.mode === "none") {
     if (attachmentTokenId !== undefined) {
@@ -188,14 +199,14 @@ export const resolveMoltnetClientAuth = (
         `invalid Moltnet actor token ${attachmentTokenId} for ${memberId}: token id must exist exactly once`
       );
     }
-    if (
-      token.scopes.length !== 2
-      || token.scopes[0] !== "attach"
-      || token.scopes[1] !== "write"
-    ) {
+    const requiredScopes = runtimeName === "daimon"
+      ? ["attach", "observe", "write"]
+      : ["attach", "write"];
+    if (token.scopes.length !== requiredScopes.length
+      || token.scopes.some((scope, index) => scope !== requiredScopes[index])) {
       throw new SpawnfileError(
         "validation_error",
-        `invalid Moltnet actor token ${attachmentTokenId} for ${memberId}: token must include attach and write scopes exactly`
+        `invalid Moltnet actor token ${attachmentTokenId} for ${memberId}: token must include ${requiredScopes.join(", ")} scopes exactly`
       );
     }
     if (token.agents?.length !== 1 || token.agents[0] !== memberId) {
@@ -316,12 +327,21 @@ export const createMoltnetNativeServerConfig = ({
       envName: pairing.token_secret,
       jsonPath: `pairings.${index}.token`
     });
+    if (pairing.relay) {
+      secretPatches.push({
+        envName: pairing.relay.token_secret,
+        jsonPath: `pairings.${index}.relay.token`
+      });
+    }
 
     return {
       id: pairing.id,
       remote_network_id: pairing.remote_network_id,
       remote_network_name: pairing.remote_network_name,
-      remote_base_url: pairing.remote_base_url,
+      ...(pairing.remote_base_url ? { remote_base_url: pairing.remote_base_url } : {}),
+      ...(pairing.relay
+        ? { relay: { room: pairing.relay.room, token: "", url: pairing.relay.url } }
+        : {}),
       token: ""
     };
   });
@@ -359,6 +379,11 @@ export const createMoltnetNativeServerConfig = ({
       },
       storage: storageConfigFor(networkId, server.store),
       rooms: rooms.map((room) => ({
+        ...(room.federation !== undefined
+          ? { federation: room.federation }
+          : pairings.length > 0
+            ? { federation: "none" }
+            : {}),
         id: room.id,
         ...(room.name ? { name: room.name } : {}),
         ...(room.visibility ? { visibility: room.visibility } : {}),

@@ -10,6 +10,8 @@ import type {
   ResolvedTeamNetworkRoom,
   ResolvedTeamNode
 } from "./types.js";
+import { isDeclaredPairedRemoteRoomMember } from "../manifest/index.js";
+
 import { isAttachedExternalRoomMember } from "./buildCompilePlanTeams.js";
 
 const hasOwn = (value: object, key: string): boolean =>
@@ -55,22 +57,21 @@ const defaultNestedRepresentativePolicy = (): ResolvedMoltnetRoomPolicy => ({
   wake: "mentions"
 });
 
+// Ordinary Moltnet uses direct member slots. B31's externally authorized
+// organization uses its canonical nested principal identifiers instead.
 const resolveConcreteMemberId = (
   plan: CompilePlan,
   agentSource: string,
   authoredMemberId: string
 ): string => {
-  if (!plan.organizationIdentity) return authoredMemberId;
+  if ((plan.organizationIdentity?.externalParticipants.length ?? 0) === 0) {
+    return authoredMemberId;
+  }
   const canonicalMemberId = resolveCanonicalAgentMemberId(plan, agentSource);
-  if (
-    !canonicalMemberId ||
-    plan.organizationIdentity.agentMembers.filter((member) =>
-      member.memberId === canonicalMemberId
-    ).length !== 1
-  ) {
+  if (!canonicalMemberId) {
     throw new SpawnfileError(
       "validation_error",
-      `Unable to resolve exactly one canonical Moltnet member id for ${agentSource}`
+      `Unable to resolve canonical Moltnet member id for ${agentSource}`
     );
   }
   return canonicalMemberId;
@@ -129,8 +130,12 @@ export const listConcreteMoltnetRoomMemberIds = (
   room: ResolvedTeamNetworkRoom,
   memberships = plan.moltnetRoomMemberships
 ): string[] => {
+  const network = teamNode.networks?.find((candidate) => candidate.id === networkId);
   const externalMembers = room.members.filter((memberId) =>
     isAttachedExternalRoomMember(teamNode, networkId, memberId));
+  const remoteMembers = network
+    ? room.members.filter((memberId) => isDeclaredPairedRemoteRoomMember(network, room, memberId))
+    : [];
   if (memberships) {
     return [
       ...new Set(
@@ -142,7 +147,8 @@ export const listConcreteMoltnetRoomMemberIds = (
             && membership.roomId === room.id
           )
           .map((membership) => membership.concreteMemberId),
-          ...externalMembers
+          ...externalMembers,
+          ...remoteMembers
         ]
       )
     ].sort();
@@ -153,6 +159,10 @@ export const listConcreteMoltnetRoomMemberIds = (
     const member = teamNode.members.find((entry) => entry.id === declaredSlot);
     if (!member) {
       if (isAttachedExternalRoomMember(teamNode, networkId, declaredSlot)) {
+        concreteMembers.push(declaredSlot);
+        continue;
+      }
+      if (network && isDeclaredPairedRemoteRoomMember(network, room, declaredSlot)) {
         concreteMembers.push(declaredSlot);
         continue;
       }
@@ -204,6 +214,9 @@ export const resolveMoltnetRoomMemberships = (
               network.id,
               declaredSlot
             )) {
+              continue;
+            }
+            if (isDeclaredPairedRemoteRoomMember(network, room, declaredSlot)) {
               continue;
             }
             throw new SpawnfileError(

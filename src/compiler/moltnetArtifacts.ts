@@ -4,6 +4,8 @@ import { SpawnfileError } from "../shared/index.js";
 
 import {
   createMoltnetCausalDirectory,
+  createMoltnetDaimonReceiptStorePath,
+  createMoltnetNetworkStateDirectory,
   createMoltnetServerConfigPath,
   createMoltnetOpenTokenDirectory,
   createMoltnetNativeServerConfig,
@@ -55,6 +57,7 @@ export const generateMoltnetArtifacts = async (
   const configFiles: EmittedFile[] = [];
   const persistentMounts = new Map<string, MoltnetPersistentMount>();
   const external = createMoltnetExternalParticipantArtifactFiles(plan.moltnetExternalParticipantIntents ?? []);
+  const receiptStoreOwners = new Map<string, string>();
   configFiles.push(...external.files);
 
   const addPersistentMount = (mount: MoltnetPersistentMount): void => {
@@ -187,6 +190,25 @@ export const generateMoltnetArtifacts = async (
         attachment.network,
         attachment.memberId
       );
+      const receiptStorePath = agentNode.runtime.name === "daimon"
+        ? createMoltnetDaimonReceiptStorePath(attachment.network, attachment.memberId)
+        : undefined;
+      if (receiptStorePath) {
+        const owner = `${attachment.network}\u0000${attachment.memberId}`;
+        const existingOwner = receiptStoreOwners.get(receiptStorePath);
+        if (existingOwner !== undefined && existingOwner !== owner) {
+          throw new SpawnfileError("validation_error", "Daimon receipt-store paths collide");
+        }
+        receiptStoreOwners.set(receiptStorePath, owner);
+        const networkRoot = createMoltnetNetworkStateDirectory(attachment.network);
+        const covered = [...persistentMounts.values()].some((mount) =>
+          networkRoot === mount.mountPath || networkRoot.startsWith(`${mount.mountPath}/`)
+        );
+        if (!covered) {
+          const mountId = `moltnet-${attachment.network}-runtime-state`;
+          addPersistentMount({ id: mountId, mountPath: networkRoot, reason: `Moltnet runtime state for ${attachment.network}`, volumeName: createPersistentVolumeName(plan.root, mountId, undefined, runId) });
+        }
+      }
       const nodePlanKey = `${attachment.network}::${attachment.memberId}`;
       if (nodePlanKeys.has(nodePlanKey)) {
         throw new SpawnfileError(
@@ -254,7 +276,8 @@ export const generateMoltnetArtifacts = async (
         ...(clientAuth.credentialId ? { credentialId: clientAuth.credentialId } : {}),
         ...(clientAuth.tokenEnv ? { credentialSecret: clientAuth.tokenEnv } : {}),
         memberId: attachment.memberId,
-        networkId: attachment.network
+        networkId: attachment.network,
+        ...(receiptStorePath ? { receiptStorePath } : {})
       });
     }
   }

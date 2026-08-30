@@ -37,6 +37,32 @@ afterEach(async () => {
 });
 
 describe("runCli", () => {
+  it("emits the closed generic contract receipt without reading stdin", async () => {
+    const stdout: string[] = [];
+    let stdinReads = 0;
+    const exitCode = await runCli(["capabilities", "--json"], {
+      stdin: (async function* () {
+        stdinReads += 1;
+        yield "unread";
+      })(),
+      streams: { stderr: () => undefined, stdout: (value) => stdout.push(value) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdinReads).toBe(0);
+    expect(stdout).toHaveLength(1);
+    expect(JSON.parse(stdout[0]!)).toMatchObject({
+      capabilities: {
+        composed_lifecycle: {
+          command_set_version: "spawnfile.composed-lifecycle-contract-set.v1",
+          complete: true,
+        },
+      },
+      implementation: { package: "spawnfile", version: packageVersion },
+      version: "spawnfile.capabilities.v1",
+    });
+  });
+
   it("requires literal target config stdin and bounds config failures before effects", async () => {
     const directory = await mkdtemp(
       path.join(os.tmpdir(), "spawnfile-target-cli-"),
@@ -1983,16 +2009,25 @@ describe("runCli", () => {
     }
   });
 
-  it("rejects `up --json` for image-mode deployments", async () => {
+  it("rejects image-mode JSON because only project mode has a durable lifecycle contract", async () => {
+    const stdout: string[] = [];
     const stderr: string[] = [];
+    const consumeImageUp = vi.fn(async () => ({
+      containerName: "spawnfile-prod",
+      deploymentName: "prod",
+      imageRef: "you/org:1.0.0",
+      record: {} as never,
+      recordPath: "/private/deployments/prod/record.json",
+    }));
     const exitCode = await runCli(
       ["up", "you/org:1.0.0", "--deployment", "prod", "--detach", "--json"],
-      { stderr: (message) => stderr.push(message), stdout: () => undefined },
+      { stderr: (message) => stderr.push(message), stdout: (message) => stdout.push(message) },
+      { consumeImageUp: consumeImageUp as never },
     );
     expect(exitCode).toBe(2);
-    expect(stderr.join("\n")).toContain(
-      "not yet supported for image-mode deployments",
-    );
+    expect(stdout).toEqual([]);
+    expect(stderr.join("\n")).toContain("supported only for project deployments");
+    expect(consumeImageUp).not.toHaveBeenCalled();
   });
 
   it("tears down a deployment and renders a spawnfile.down-receipt.v1 with `down --json`", async () => {

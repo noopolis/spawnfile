@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
+import { createStateOwnershipCommand } from "./containerStateOwnershipRender.js";
 
 const execFile = promisify(execFileCallback);
 const temporaryDirectories: string[] = [];
@@ -116,6 +117,39 @@ describe("renderDockerfile", () => {
   afterEach(() => {
     vi.resetModules();
     vi.doUnmock("../runtime/index.js");
+  });
+
+  it("installs declared Daimon AGY realm packages on a prebuilt base image", async () => {
+    const { renderDockerfile } = await loadRenderModule({
+      daimon: {
+        baseImage: "noopolis/spawnfile-runtime-daimon:test",
+        commands: [],
+        copyCommands: [],
+        runtimeName: "daimon",
+        runtimeRoot: "/opt/runtime/daimon"
+      }
+    });
+    const plan = createRuntimePlan("daimon", {
+      meta: {
+        ...createRuntimePlan("daimon").meta,
+        systemDeps: ["bash", "bubblewrap", "ca-certificates", "curl", "dbus-daemon", "gnome-keyring", "util-linux"]
+      }
+    });
+    const dockerfile = await renderDockerfile([plan], {
+      persistentMountPaths: ["/var/lib/spawnfile/daimon/agy-subscription-realm"]
+    });
+    expect(dockerfile).toContain("FROM noopolis/spawnfile-runtime-daimon:test");
+    expect(dockerfile).toContain(
+      "apt-get install -y --no-install-recommends bubblewrap dbus-daemon gnome-keyring util-linux"
+    );
+    expect(dockerfile).not.toContain(
+      "apt-get install -y --no-install-recommends bash ca-certificates curl"
+    );
+    expect(dockerfile).not.toContain("secret-tool");
+    expect(dockerfile).not.toContain("dbus-x11");
+    expect(dockerfile).toContain("HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=12");
+    expect(dockerfile).toContain("/healthz");
+    expect(dockerfile).toContain(plan.instancePaths.configPath);
   });
 
   it("uses the highest node base image when a multi-runtime image includes node runtimes", async () => {
@@ -498,7 +532,7 @@ describe("renderDockerfile", () => {
       daimon: {
         commands: [],
         copyCommands: [
-          "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.2 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
+          "COPY --from=noopolis/spawnfile-runtime-daimon@sha256:19b671e589ad8c9e8f1b55610ccbf86ee72f16b4cb2f707ec419f5ef0d6942aa /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
         ],
         runtimeName: "daimon",
         runtimeRoot: "/opt/spawnfile/runtime-installs/daimon"
@@ -544,7 +578,7 @@ describe("renderDockerfile", () => {
 
     expect(dockerfile).toContain("FROM node:24-bookworm-slim");
     expect(dockerfile).toContain(
-      "COPY --from=noopolis/spawnfile-runtime-daimon:0.1.2 /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
+      "COPY --from=noopolis/spawnfile-runtime-daimon@sha256:19b671e589ad8c9e8f1b55610ccbf86ee72f16b4cb2f707ec419f5ef0d6942aa /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon"
     );
     expect(dockerfile).toContain(
       "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.11 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
@@ -787,7 +821,9 @@ describe("renderEntrypoint", () => {
     expect(entrypoint).toContain(
       "MOLTNET_CONFIG='/var/lib/spawnfile/moltnet/servers/local_lab/Moltnet.json'"
     );
-    expect(entrypoint).toContain("/usr/local/bin/moltnet &");
+    expect(entrypoint).toContain(
+      "/usr/local/bin/moltnet start --config '/var/lib/spawnfile/moltnet/servers/local_lab/Moltnet.json' &"
+    );
     expect(entrypoint).toContain("http://127.0.0.1:18789/healthz");
     expect(entrypoint).toContain("http://127.0.0.1:8787/healthz");
     expect(entrypoint).toContain("/usr/local/bin/moltnet node '/var/lib/spawnfile/moltnet/nodes/research.json' &");
@@ -884,7 +920,9 @@ describe("renderEntrypoint", () => {
     expect(entrypoint).toContain(
       "MOLTNET_CONFIG='/var/lib/spawnfile/moltnet/servers/local_lab/Moltnet.json'"
     );
-    expect(entrypoint).toContain("/usr/local/bin/moltnet &");
+    expect(entrypoint).toContain(
+      "/usr/local/bin/moltnet start --config '/var/lib/spawnfile/moltnet/servers/local_lab/Moltnet.json' &"
+    );
     expect(entrypoint).toContain("http://127.0.0.1:18789/healthz");
     expect(entrypoint).toContain("picoclaw");
     expect(entrypoint).toContain("/usr/local/bin/moltnet node '/var/lib/spawnfile/moltnet/nodes/research.json' &");
@@ -908,8 +946,9 @@ describe("renderEntrypoint", () => {
           linkPath: mountPath,
           mode: "mutable",
           mount: "./resources/cache",
-          sharing: "per_agent"
-        }
+          sharing: "per_agent",
+          resolvedIdentity: "sha256:replacement-proof"
+        } as any
       ]
     );
     await mkdir(path.dirname(plan.instancePaths.configPath), { recursive: true });
@@ -924,7 +963,59 @@ describe("renderEntrypoint", () => {
     await expect(readFile(proofPath, "utf8")).resolves.toBe("volume-ok");
     await expect(lstat(mountPath).then((stats) => stats.isSymbolicLink())).resolves.toBe(true);
     await expect(readlink(mountPath)).resolves.toBe(backingPath);
+    await expect(readFile(path.join(backingPath, ".spawnfile-resource-identity"), "utf8")).resolves.toBe("sha256:replacement-proof\n");
+    await execFile("bash", [entrypoint], { cwd: directory });
+    await writeFile(path.join(backingPath, ".spawnfile-resource-identity"), "wrong\n");
+    await expect(execFile("bash", [entrypoint], { cwd: directory })).rejects.toThrow(/replacement sentinel mismatch/u);
+    await rm(path.join(backingPath, ".spawnfile-resource-identity"));
+    await expect(execFile("bash", [entrypoint], { cwd: directory })).rejects.toThrow(/nonempty without an authenticated replacement sentinel/u);
   });
+
+  it("authenticates the compiler bootstrap marker copied into a fresh named volume", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-volume-bootstrap-image-"));
+    temporaryDirectories.push(directory);
+    const tag = `spawnfile-volume-bootstrap-${Date.now().toString(36)}`;
+    const volume = `${tag}-volume`;
+    const hostileVolumes = [`${tag}-wrong`, `${tag}-extra`, `${tag}-link`];
+    const backingPath = "/var/lib/spawnfile/resources/edition-state";
+    const plan: RuntimeTargetPlan = {
+      ...createRuntimePlan("test-runtime"),
+      runtimeName: "daimon",
+      instancePaths: { configPath: "/runtime/config.json", workspacePath: "/runtime/workspace" },
+      meta: { configFileName: "config.json", instancePaths: { configPathTemplate: "", workspacePathTemplate: "" }, standaloneBaseImage: "node:24-bookworm-slim", startCommand: ["sh", "-c", `test -f '${backingPath}/.spawnfile-resource-identity' && test ! -e '${backingPath}/.spawnfile-volume-init'`], systemDeps: [] },
+      resources: [{ backingPath, id: "edition-state", kind: "volume", linkPath: "/runtime/workspace/edition-state", mode: "mutable", mount: "./edition-state", resolvedIdentity: `sha256:${"a".repeat(64)}`, sharing: "team" } as any]
+    };
+    const { renderEntrypoint } = await loadRenderModule({});
+    await writeFile(path.join(directory, "entrypoint.sh"), renderEntrypoint([plan], []), { mode: 0o755 });
+    await writeFile(path.join(directory, "Dockerfile"), [
+      "FROM node:24-bookworm-slim",
+      "RUN groupadd --gid 2000 spawnfile && useradd --uid 2000 --gid 2000 --create-home spawnfile",
+      "COPY --chmod=755 entrypoint.sh /entrypoint.sh",
+      "RUN mkdir -p /runtime/workspace /runtime && printf '{}\\n' > /runtime/config.json && chown -R 2000:2000 /runtime",
+      `RUN ${createStateOwnershipCommand([plan], [backingPath])} && chown -R 2000:2000 '${backingPath}' /runtime`,
+      "USER spawnfile",
+      "ENTRYPOINT [\"/entrypoint.sh\",\"--spawnfile-runtime-identity\",\"2000\",\"2000\"]"
+    ].join("\n"));
+    try {
+      await execFile("docker", ["build", "--pull=false", "--tag", tag, "."], { cwd: directory, timeout: 60_000 });
+      await execFile("docker", ["volume", "create", volume]);
+      await expect(execFile("docker", ["run", "--rm", "--mount", `type=volume,source=${volume},target=${backingPath}`, tag], { timeout: 30_000 })).resolves.toBeDefined();
+      await expect(execFile("docker", ["run", "--rm", "--mount", `type=volume,source=${volume},target=${backingPath}`, tag], { timeout: 30_000 })).resolves.toBeDefined();
+      for (const hostile of hostileVolumes) await execFile("docker", ["volume", "create", hostile]);
+      await execFile("docker", ["run", "--rm", "-v", `${hostileVolumes[0]}:/state`, "alpine:3.22", "sh", "-ceu", "printf wrong > /state/.spawnfile-volume-init; chown -R 2000:2000 /state; chmod 600 /state/.spawnfile-volume-init"]);
+      await execFile("docker", ["run", "--rm", "-v", `${hostileVolumes[1]}:/state`, "alpine:3.22", "sh", "-ceu", "printf 'spawnfile.volume-bootstrap.v1\\n' > /state/.spawnfile-volume-init; touch /state/extra; chown -R 2000:2000 /state; chmod 600 /state/.spawnfile-volume-init"]);
+      await execFile("docker", ["run", "--rm", "-v", `${hostileVolumes[2]}:/state`, "alpine:3.22", "sh", "-ceu", "printf 'spawnfile.volume-bootstrap.v1\\n' > /state/target; chown -R 2000:2000 /state; chmod 600 /state/target; ln -s target /state/.spawnfile-volume-init"]);
+      const wrongUidVolume = `${tag}-wrong-uid`;
+      hostileVolumes.push(wrongUidVolume);
+      await execFile("docker", ["volume", "create", wrongUidVolume]);
+      await execFile("docker", ["run", "--rm", "-v", `${wrongUidVolume}:/state`, "alpine:3.22", "sh", "-ceu", "printf 'spawnfile.volume-bootstrap.v1\\n' > /state/.spawnfile-volume-init; chown 2000:2000 /state; chown 1001:1001 /state/.spawnfile-volume-init; chmod 600 /state/.spawnfile-volume-init"]);
+      for (const hostile of hostileVolumes) await expect(execFile("docker", ["run", "--rm", "--mount", `type=volume,source=${hostile},target=${backingPath}`, tag], { timeout: 30_000 })).rejects.toThrow(/bootstrap marker mismatch|nonempty without/u);
+    } finally {
+      await execFile("docker", ["volume", "rm", "--force", volume]).catch(() => undefined);
+      for (const hostile of hostileVolumes) await execFile("docker", ["volume", "rm", "--force", hostile]).catch(() => undefined);
+      await execFile("docker", ["image", "rm", "--force", tag]).catch(() => undefined);
+    }
+  }, 90_000);
 
   it("clones git resources into the declared mount path before starting the runtime", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-git-resource-"));

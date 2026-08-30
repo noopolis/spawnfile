@@ -43,7 +43,8 @@ export const createMoltnetNodeConfigContent = ({
     attachment.network,
     attachment.memberId,
     nodeSlug,
-    attachment.auth?.tokenId
+    attachment.auth?.tokenId,
+    agentNode.runtime.name
   );
   const usesPerAttachmentOpenToken =
     clientAuth.mode === "open" &&

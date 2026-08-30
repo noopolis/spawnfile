@@ -60,6 +60,62 @@ const runtimePlan = (overrides: Partial<RuntimeTargetPlan> = {}): RuntimeTargetP
 });
 
 describe("renderEntrypoint network binding", () => {
+  it("rejects noncanonical or spoofed internal Daimon runtime identities", () => {
+    const script = renderEntrypoint([runtimePlan({ runtimeName: "daimon" })], []);
+    const rejected = [
+      [],
+      ["--spawnfile-runtime-identity", "", "2000"],
+      ["--spawnfile-runtime-identity", "0", "2000"],
+      ["--spawnfile-runtime-identity", "00", "2000"],
+      ["--spawnfile-runtime-identity", "02000", "2000"],
+      ["--spawnfile-runtime-identity", "2000", ""],
+      ["--spawnfile-runtime-identity", "2000", "0"],
+      ["--spawnfile-runtime-identity", "2000", "00"],
+      ["--spawnfile-runtime-identity", "2000", "02000"],
+      ["--spawnfile-runtime-identity", "2:000", "2000"],
+      ["--spawnfile-runtime-identity", "2147483648", "2000"],
+      ["--spawnfile-runtime-identity", "2000", "2147483648"]
+    ];
+    for (const args of rejected) {
+      const result = spawnSync("bash", ["-c", script, "entrypoint-test", ...args], {
+        env: {
+          ...process.env,
+          SPAWNFILE_DAIMON_AUTHORIZED_UID: "2000",
+          volume_bootstrap_uid: "2000",
+          volume_bootstrap_gid: "2000"
+        }
+      });
+      expect(result.status, args.join(" ")).not.toBe(0);
+      expect(result.stderr.toString()).toMatch(/trusted Daimon runtime (identity|UID|GID)/u);
+    }
+  });
+
+  it("fails readiness immediately when the launched Daimon child exits", () => {
+    const root = mkdtempSync(join(tmpdir(), "spawnfile-daimon-readiness-exit-"));
+    const configPath = join(root, "config.json");
+    writeFileSync(configPath, "{}\n");
+    const script = renderEntrypoint([runtimePlan({
+      id: "daimon-exit",
+      runtimeName: "daimon",
+      port: 59999,
+      instancePaths: { configPath, workspacePath: join(root, "workspace") },
+      meta: { ...runtimePlan().meta, startCommand: ["bash", "-c", "exit 23"] }
+    })], [], { hasMoltnet: true, moltnet: { nodePlans: [nodePlan()], serverPlans: [] } });
+    const started = Date.now();
+    const result = spawnSync("bash", [
+      "-c", script, "entrypoint-test", "--spawnfile-runtime-identity", "2000", "2000"
+    ], { timeout: 5_000 });
+
+    expect(result.status).not.toBe(0);
+    expect(Date.now() - started).toBeLessThan(4_000);
+    expect(result.stderr.toString()).toContain("Daimon exited before readiness");
+  });
+
+  it("fails fast when a critical Daimon or Moltnet child exits", () => {
+    const script = renderEntrypoint([runtimePlan({ id: "daimon-organization", runtimeName: "daimon", port: 19700, engineByNodeId: { "agent:press": "grok", "agent:desk": "codex" } })], [], { hasMoltnet: true, moltnet: { nodePlans: [nodePlan()], serverPlans: [] } });
+    expect(script).toContain("/healthz");
+    expect(script).toContain('wait -n "${PIDS[@]}"');
+  });
   it("suppresses the in-image managed server when the network URL is bound", () => {
     const script = renderEntrypoint([], [], {
       hasMoltnet: true,
@@ -68,7 +124,9 @@ describe("renderEntrypoint network binding", () => {
     expect(script).toContain('if [ -z "${SPAWNFILE_NETWORK_DIST_LAB_URL:-}" ]; then');
     // The server start and healthz wait live inside the guarded block.
     const guardIndex = script.indexOf("SPAWNFILE_NETWORK_DIST_LAB_URL");
-    const serverIndex = script.indexOf("/usr/local/bin/moltnet &");
+    const serverIndex = script.indexOf(
+      "/usr/local/bin/moltnet start --config '/var/lib/spawnfile/moltnet/servers/org-dist_lab/Moltnet.json' &"
+    );
     expect(serverIndex).toBeGreaterThan(guardIndex);
     expect(script).toContain("/healthz");
   });
@@ -163,7 +221,8 @@ describe("renderEntrypoint managed moltnet recipeEnv propagation", () => {
     expect(script).toContain(
       "MOLTNET_CONFIG='/var/lib/spawnfile/moltnet/servers/org-dist_lab/Moltnet.json' " +
         "MOLTNET_CAUSAL_EVENTS_PATH='/var/lib/spawnfile/moltnet/servers/org-dist_lab/causal/causal.jsonl' " +
-        "NOOPOLIS_RUN_ID='run-abc123' /usr/local/bin/moltnet &"
+        "NOOPOLIS_RUN_ID='run-abc123' /usr/local/bin/moltnet start --config " +
+        "'/var/lib/spawnfile/moltnet/servers/org-dist_lab/Moltnet.json' &"
     );
     // B93's per-target exec-time prefix must still carry the value too.
     expect(script).toContain("NOOPOLIS_RUN_ID='run-abc123'");
@@ -199,7 +258,8 @@ describe("renderEntrypoint managed moltnet recipeEnv propagation", () => {
     expect(script).toContain(
       "MOLTNET_CONFIG='/var/lib/spawnfile/moltnet/servers/org-dist_lab/Moltnet.json' " +
         "MOLTNET_CAUSAL_EVENTS_PATH='/var/lib/spawnfile/moltnet/servers/org-dist_lab/causal/causal.jsonl' " +
-        "/usr/local/bin/moltnet &"
+        "/usr/local/bin/moltnet start --config " +
+        "'/var/lib/spawnfile/moltnet/servers/org-dist_lab/Moltnet.json' &"
     );
     expect(script).toContain(
       "/usr/local/bin/moltnet node '/var/lib/spawnfile/moltnet/nodes/dist_lab.json' &"
@@ -249,7 +309,7 @@ describe("renderEntrypoint managed moltnet causal events path", () => {
 
     const launchLine = script
       .split("\n")
-      .find((line) => line.includes("/usr/local/bin/moltnet &"));
+      .find((line) => line.includes("/usr/local/bin/moltnet start --config"));
     expect(launchLine).toBeDefined();
     expect(launchLine).toContain("MOLTNET_CAUSAL_EVENTS_PATH=");
     expect(launchLine).toContain("NOOPOLIS_RUN_ID='run-abc123'");
@@ -363,7 +423,7 @@ describe("renderEntrypoint MCP secret materialization", () => {
 });
 
 describe("renderEntrypoint CLI credential materialization", () => {
-  it("requires CLI auth before materialization and startup, then unsets the runtime copy", () => {
+  it("requires Pi CLI auth before materialization and startup, then unsets the runtime copy", () => {
     const root = mkdtempSync(join(tmpdir(), "spawnfile-cli-auth-"));
     const homePath = join(root, "home");
     const authPath = join(homePath, ".codex", "auth.json");
@@ -373,7 +433,7 @@ describe("renderEntrypoint CLI credential materialization", () => {
         meta: { ...runtimePlan().meta, startCommand: ["bash", "-c", `test -f ${authPath} && test -z "\${SPAWNFILE_CLI_AUTH_JSON:-}" && touch ${markerPath}`] },
         instancePaths: { configPath: join(root, "config.json"), homePath, workspacePath: join(root, "workspace") },
         modelAuthMethods: { openai: "codex" },
-        runtimeName: "daimon"
+        runtimeName: "pi"
       })],
       []
     );

@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   deriveDeploymentName,
+  derivePersistentMountVolumeName,
   deriveVolumeName,
   renderEnvFileContent,
   resolveImageEnvironment
 } from "./consumeImageSupport.js";
 import { parseImageReference } from "./imageRef.js";
+import type { ParsedImageReference } from "./imageRef.js";
 import type { DistributionReport } from "./types.js";
 
 const ref = (value: string) => {
@@ -48,6 +50,10 @@ describe("deriveDeploymentName", () => {
     expect(deriveDeploymentName(ref("you/research-cell:1.0.0"))).toBe("research-cell");
     expect(deriveDeploymentName(ref("ghcr.io/org/my_org:latest"))).toBe("my-org");
   });
+
+  it("uses a generic deployment name when the repository normalizes empty", () => {
+    expect(deriveDeploymentName({ name: "---" } as ParsedImageReference)).toBe("deployment");
+  });
 });
 
 describe("deriveVolumeName", () => {
@@ -58,6 +64,30 @@ describe("deriveVolumeName", () => {
   it("derives distinct volume names for two deployments of one image", () => {
     expect(deriveVolumeName("a", "store")).not.toBe(deriveVolumeName("b", "store"));
   });
+
+  it("scopes an exclusive realm to one explicit deployment lineage", () => {
+    const mount = {
+      durability: "persistent" as const,
+      id: "provider-subscription-realm",
+      kind: "volume" as const,
+      lifecycle: "exclusive-reattach" as const,
+      target: "/var/lib/example/realm"
+    };
+    expect(derivePersistentMountVolumeName("blue", mount)).not.toBe(
+      derivePersistentMountVolumeName("green", mount)
+    );
+    expect(derivePersistentMountVolumeName("blue", mount)).toMatch(
+      /^spawnfile-exclusive-provider-subscription-realm-[a-f0-9]{16}$/u
+    );
+  });
+
+  it("keeps legacy mounts without exclusive lifecycle deployment-local", () => {
+    expect(derivePersistentMountVolumeName("blue", {
+      id: "cache",
+      lifecycle: "legacy"
+    } as unknown as DistributionReport["persistent_mounts"][number])).toBe("spawnfile_blue_cache");
+  });
+
 });
 
 describe("resolveImageEnvironment", () => {

@@ -37,6 +37,13 @@ export interface ContainerTargetEnvFile {
   relativePath: string;
 }
 
+export interface ContainerTargetPersistentMount {
+  id: string;
+  lifecycle?: "exclusive-reattach";
+  mountPath: string;
+  reason: string;
+}
+
 export type RuntimeContainerConfigValueTransform = "bearer";
 
 export interface ContainerTarget {
@@ -53,6 +60,8 @@ export interface ContainerTarget {
   envFiles?: ContainerTargetEnvFile[];
   files: EmittedFile[];
   id: string;
+  opaqueMountTargets?: string[];
+  persistentMounts?: ContainerTargetPersistentMount[];
   sourceIds?: string[];
   /** World token env names actually lowered into this target's native config. */
   worldTokenEnvNames?: string[];
@@ -128,6 +137,10 @@ export interface RuntimeAuthPreparationInput {
 
 export interface RuntimeAuthPreparationResult {
   coveredModelSecrets: string[];
+  launchIdentity?: {
+    kind: "daimon";
+    uid: number;
+  };
   mountArgs: string[];
 }
 

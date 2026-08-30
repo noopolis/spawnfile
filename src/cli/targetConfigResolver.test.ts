@@ -2,11 +2,17 @@ import os from "node:os";
 import path from "node:path";
 import { chmod, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  parsePreparedEvidenceHelperReceipt,
+  type PrepareEvidenceHelperInput,
+} from "../evidenceExportHelper/index.js";
 import type { DockerTargetExecFile } from "../target/dockerTarget.js";
 
 import {
+  createCanonicalTargetConfigBytes,
+  createTargetConfigDigest,
   createTargetConfigResolutionBytes,
   resolveTargetConfig,
   STANDARD_WORLD_BASE_IMAGE,
@@ -31,23 +37,28 @@ interface FakeDockerOptions {
   readonly imageId?: string;
   readonly imageInspectFails?: boolean;
   readonly imageOs?: string;
+  readonly helperConfigId?: string;
+  readonly helperImageDigest?: string;
   readonly os?: string;
 }
 
 const fakeDocker = (options: FakeDockerOptions = {}) => {
   const calls: string[][] = [];
-  const execFile: DockerTargetExecFile = async (_command, args) => {
+  const commands: string[] = [];
+  const execFile: DockerTargetExecFile = async (command, args) => {
+    commands.push(command);
     calls.push([...args]);
-    if (args[0] === "context" && args[1] === "show") {
+    const dockerArgs = args[0] === "--context" ? args.slice(2) : args;
+    if (dockerArgs[0] === "context" && dockerArgs[1] === "show") {
       return { stderr: "", stdout: "local-dev\n" };
     }
-    if (args[0] === "context" && args[1] === "inspect") {
+    if (dockerArgs[0] === "context" && dockerArgs[1] === "inspect") {
       return {
         stderr: "",
         stdout: `${JSON.stringify(options.endpoint ?? "unix:///tmp/docker.sock")}\n`,
       };
     }
-    if (args[2] === "info") {
+    if (dockerArgs[0] === "info") {
       return {
         stderr: "",
         stdout: JSON.stringify({
@@ -56,23 +67,41 @@ const fakeDocker = (options: FakeDockerOptions = {}) => {
         }),
       };
     }
-    if (args[2] === "image" && args[3] === "pull") {
+    if (dockerArgs[0] === "image" && dockerArgs[1] === "pull") {
       return { stderr: "", stdout: `${digest("f")}\n` };
     }
-    if (args[2] === "image" && args[3] === "inspect") {
+    if (dockerArgs[0] === "image" && dockerArgs[1] === "inspect") {
+      if (dockerArgs[2]?.startsWith("spawnfile-local/evidence-export-helper@")) {
+        return {
+          stderr: "",
+          stdout: JSON.stringify([{
+            Architecture: "arm64",
+            Config: {
+              Cmd: [], Entrypoint: ["/bin/spawnfile-export-helper"],
+              Env: ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
+              ExposedPorts: null, Healthcheck: null,
+              Labels: { "spawnfile.target.evidence-export.helper-contract": "v1" },
+              User: "65534:65534", Volumes: null,
+            },
+            Id: options.helperConfigId ?? digest("b"), Os: "linux",
+            RepoDigests: [
+              `spawnfile-local/evidence-export-helper@${options.helperImageDigest ?? digest("c")}`,
+            ],
+          }]),
+        };
+      }
       if (options.imageInspectFails === true) throw new Error("missing");
-      return {
-        stderr: "",
-        stdout: JSON.stringify({
-          Architecture: options.imageArchitecture ?? options.architecture ?? "arm64",
-          Id: options.imageId ?? digest("a"),
-          Os: options.imageOs ?? "linux",
-        }),
+      const projection = {
+        Architecture: options.imageArchitecture ?? options.architecture ?? "arm64",
+        Id: options.imageId ?? digest("a"),
+        Os: options.imageOs ?? "linux",
       };
+      return { stderr: "", stdout: JSON.stringify(dockerArgs[4]?.startsWith("[")
+        ? [projection] : projection) };
     }
     throw new Error(`unexpected Docker args: ${args.join(" ")}`);
   };
-  return { calls, execFile };
+  return { calls, commands, execFile };
 };
 
 const preparedMapping = Object.freeze({
@@ -102,20 +131,24 @@ describe("target config resolver", () => {
       execFile: docker.execFile,
     });
 
+    const targetConfig = Object.freeze({
+      context: "local-dev",
+      dockerCommand: "docker",
+      evidenceDestination,
+      timeoutMs: 10_000,
+      version: "spawnfile.target-default-config.v1" as const,
+    });
     expect(resolution).toEqual({
       base_image: { config_digest: digest("a"), reference: STANDARD_WORLD_BASE_IMAGE },
       context_selection: "explicit",
       endpoint: { class: "local", transport: "unix" },
       platform: { architecture: "arm64", os: "linux" },
-      target_config: {
-        context: "local-dev",
-        dockerCommand: "docker",
-        evidenceDestination,
-        timeoutMs: 10_000,
-        version: "spawnfile.target-default-config.v1",
-      },
+      target_config: targetConfig,
+      target_config_digest: createTargetConfigDigest(targetConfig),
       version: "spawnfile.target-config-resolution.v1",
     });
+    expect(createCanonicalTargetConfigBytes(resolution.target_config))
+      .toBe(JSON.stringify(targetConfig));
     expect(JSON.parse(createTargetConfigResolutionBytes(resolution))).toEqual(resolution);
     expect(docker.calls).toHaveLength(3);
     expect(docker.calls.some((args) => args.includes("pull"))).toBe(false);
@@ -193,6 +226,7 @@ describe("target config resolver", () => {
     await writeFile(planPath, JSON.stringify({
       evidence_destination: evidenceDestination,
       prepared_artifact_mapping: preparedMapping,
+      version: "spawnfile.target-config-prepared-plan.v1",
     }), { mode: 0o600 });
     const docker = fakeDocker();
     const resolution = await resolveTargetConfig({
@@ -202,6 +236,7 @@ describe("target config resolver", () => {
       preparedPlanPath: planPath,
     });
     expect(resolution.target_config.preparedArtifactMappings).toEqual([preparedMapping]);
+    expect(resolution.target_config_digest).toBe(createTargetConfigDigest(resolution.target_config));
 
     await chmod(planPath, 0o644);
     await expect(resolveTargetConfig({
@@ -210,6 +245,97 @@ describe("target config resolver", () => {
       execFile: docker.execFile,
       preparedPlanPath: planPath,
     })).rejects.toThrow(/private bounded regular file/u);
+  });
+
+  it("returns a correlated opaque helper receipt only for explicit local preparation", async () => {
+    const evidenceDestination = await privateEvidenceDestination();
+    const docker = fakeDocker();
+    const receipt = parsePreparedEvidenceHelperReceipt({
+      digest: digest("d"),
+      handle: `opaque_${"e".repeat(64)}`,
+      version: "spawnfile.target-evidence-export-helper.prepared.v1",
+    });
+    const prepareEvidenceExportHelper = vi.fn(async () => receipt);
+    const resolution = await resolveTargetConfig({
+      context: "local-dev",
+      evidenceDestination,
+      execFile: docker.execFile,
+      prepareEvidenceHelper: true,
+    }, { prepareEvidenceExportHelper });
+
+    expect(prepareEvidenceExportHelper).toHaveBeenCalledWith(expect.objectContaining({
+      baseImage: STANDARD_WORLD_BASE_IMAGE,
+      context: "local-dev",
+      timeoutMs: 10_000,
+    }));
+    expect(resolution.prepared_evidence_helper).toEqual(receipt);
+    expect(resolution.target_config).toMatchObject({
+      evidenceHelperBaseImage: STANDARD_WORLD_BASE_IMAGE,
+      preparedEvidenceHelper: receipt,
+    });
+    expect(resolution.target_config_digest).toBe(createTargetConfigDigest(resolution.target_config));
+    expect(Object.keys(resolution.prepared_evidence_helper ?? {})).toEqual([
+      "digest", "handle", "version",
+    ]);
+  });
+
+  it("uses the configured Docker-compatible executable for every helper call", async () => {
+    const evidenceDestination = await privateEvidenceDestination();
+    const docker = fakeDocker();
+    const receipt = parsePreparedEvidenceHelperReceipt({
+      digest: digest("d"),
+      handle: `opaque_${"e".repeat(64)}`,
+      version: "spawnfile.target-evidence-export-helper.prepared.v1",
+    });
+    const prepareEvidenceExportHelper = vi.fn(async (input: PrepareEvidenceHelperInput) => {
+      await input.executor("docker", [
+        "--context", "local-dev", "context", "inspect", "local-dev", "--format",
+        "{{json .Endpoints.docker.Host}}",
+      ], { timeout: 10_000 } as never);
+      return receipt;
+    });
+    await expect(resolveTargetConfig({
+      context: "local-dev",
+      dockerCommand: "docker-compatible",
+      evidenceDestination,
+      execFile: docker.execFile,
+      prepareEvidenceHelper: true,
+    }, { prepareEvidenceExportHelper })).resolves.toMatchObject({
+      prepared_evidence_helper: receipt,
+    });
+    expect(docker.commands).toEqual(docker.calls.map(() => "docker-compatible"));
+    expect(docker.commands).not.toContain("docker");
+  });
+
+  it("refuses helper preparation without an explicit local target", async () => {
+    const evidenceDestination = await privateEvidenceDestination();
+    const docker = fakeDocker();
+    const prepareEvidenceExportHelper = vi.fn();
+    await expect(resolveTargetConfig({
+      evidenceDestination,
+      execFile: docker.execFile,
+      prepareEvidenceHelper: true,
+    }, { prepareEvidenceExportHelper })).rejects.toThrow(/explicitly selected local/u);
+    expect(prepareEvidenceExportHelper).not.toHaveBeenCalled();
+    expect(docker.calls).toHaveLength(2);
+  });
+
+  it("does not pull or prepare a helper on an explicitly remote target", async () => {
+    const evidenceDestination = await privateEvidenceDestination();
+    const docker = fakeDocker({ endpoint: "ssh://operator@example.test" });
+    const prepareEvidenceExportHelper = vi.fn();
+    await expect(resolveTargetConfig({
+      allowRemotePull: true,
+      context: "remote-prod",
+      evidenceDestination,
+      execFile: docker.execFile,
+      prepareEvidenceHelper: true,
+      pull: true,
+    }, { prepareEvidenceExportHelper })).rejects.toThrow(/explicitly selected local/u);
+    expect(prepareEvidenceExportHelper).not.toHaveBeenCalled();
+    expect(docker.calls).toEqual([[
+      "context", "inspect", "remote-prod", "--format", "{{json .Endpoints.docker.Host}}",
+    ]]);
   });
 
   it("rejects invalid inputs and platform or image identity drift", async () => {

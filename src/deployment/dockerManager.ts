@@ -289,7 +289,7 @@ export const probeDockerOrganizationReadiness = async (
       timeoutMs: input.timeoutMs
     });
     const inspection = await gateway.inspectUnit();
-    if (input.evidence.hasExternalMoltnet || !input.evidence.worldBindings) {
+    if (input.evidence.hasExternalMoltnet) {
       return reconcileOrganizationReadiness({
         evidence: input.evidence, inspection, probe: null, record: correlation
       });
@@ -318,17 +318,23 @@ export const probeDockerOrganizationReadiness = async (
       });
     }
     const configs = new Map<string, string>();
+    const attachmentReceipts = new Map<string, string>();
     for (const network of input.evidence.networks) {
       for (const node of network.nodes) {
         const result = await gateway.exec(["cat", node.configPath]);
         configs.set(node.configPath, result.stdout);
+        const receipt = await gateway.exec(["cat", node.receiptPath]);
+        attachmentReceipts.set(node.receiptPath, receipt.stdout);
       }
     }
-    const bindings = await gateway.exec(["cat", input.evidence.worldBindings.artifactPath]);
+    const daimonReceipt = input.evidence.daimon == null ? null : (await gateway.exec(["cat", input.evidence.daimon.receiptPath])).stdout;
+    const bindings = input.evidence.worldBindings === null
+      ? null
+      : await gateway.exec(["cat", input.evidence.worldBindings.artifactPath]);
     return reconcileOrganizationReadiness({
       evidence: input.evidence,
       inspection,
-      probe: { configs, networks, worldBindings: bindings.stdout },
+      probe: { attachmentReceipts, configs, daimonReceipt, networks, worldBindings: bindings?.stdout ?? null },
       record: correlation
     });
   } catch (error) {

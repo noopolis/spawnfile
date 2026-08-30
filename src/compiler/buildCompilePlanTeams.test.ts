@@ -79,6 +79,7 @@ describe("buildCompilePlanTeams", () => {
           provider: "moltnet",
           rooms: [
             {
+              federation: ["partner-b", "partner-a"],
               id: "general",
               members: ["lead"],
               name: "General"
@@ -99,7 +100,12 @@ describe("buildCompilePlanTeams", () => {
         id: "org",
         name: "org",
         provider: "moltnet",
-        rooms: [{ id: "general", members: ["lead"], name: "General" }],
+        rooms: [{
+          federation: ["partner-a", "partner-b"],
+          id: "general",
+          members: ["lead"],
+          name: "General"
+        }],
         server: {
           auth: { mode: "none" },
           listen: { bind: "127.0.0.1", port: 8787 },
@@ -148,5 +154,38 @@ describe("buildCompilePlanTeams", () => {
     resolved.networks![0]!.rooms[0]!.members = ["lead", "unattached"];
     expect(() => validateTeamNetworkRooms(resolved))
       .toThrow(/Moltnet room general references unknown member unattached/);
+  });
+
+  it("accepts a scoped remote member only through an included pairing", () => {
+    const resolved = createResolvedTeam({
+      networks: [{
+        id: "org",
+        name: "Org",
+        provider: "moltnet",
+        rooms: [{
+          federation: ["peer-link"],
+          id: "research",
+          members: ["lead", "peer-network:remote-agent"]
+        }],
+        server: {
+          auth: { mode: "none" },
+          listen: { bind: "127.0.0.1", port: 8787 },
+          mode: "managed",
+          pairings: [{
+            id: "peer-link",
+            remote_base_url: "https://sensor.invalid",
+            remote_network_id: "peer-network",
+            remote_network_name: "Partner Floor",
+            token_secret: "PEER_PAIR_TOKEN"
+          }],
+          store: { kind: "memory" }
+        }
+      }]
+    });
+
+    expect(() => validateTeamNetworkRooms(resolved)).not.toThrow();
+    resolved.networks![0]!.rooms[0]!.federation = "none";
+    expect(() => validateTeamNetworkRooms(resolved))
+      .toThrow(/references unknown member peer-network:remote-agent/);
   });
 });

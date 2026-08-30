@@ -67,6 +67,14 @@ describe("manifestSchema", () => {
     expect(isAgentManifest(result)).toBe(true);
   });
 
+  it("accepts a bounded MCP tool allowlist and rejects empty or duplicate lists", () => {
+    const source = { kind: "agent", environment: { mcp_servers: [{ command: "/bin/tool", name: "lifecycle", transport: "stdio", tools: ["draft", "release"] }] }, name: "agent", runtime: "daimon", spawnfile_version: "0.1" };
+    expect(manifestSchema.safeParse(source).success).toBe(true);
+    for (const tools of [[], ["release", "release"]]) {
+      expect(manifestSchema.safeParse({ ...source, environment: { mcp_servers: [{ ...source.environment.mcp_servers[0], tools }] } }).success).toBe(false);
+    }
+  });
+
   it("accepts legacy and explicit bearer MCP auth", () => {
     const result = manifestSchema.parse({
       kind: "agent",
@@ -798,6 +806,27 @@ describe("manifestSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it.each([
+    "60 0 * * *", "0 24 * * *", "0 0 0 * *", "0 0 32 * *", "0 0 * 0 *", "0 0 * 13 *", "0 0 * * 8",
+    "10-2 * * * *", "*/0 * * * *", "*/-1 * * * *", "L * * * *", "0 0 * * MON"
+  ])("rejects semantically invalid cron %s", (cron) => {
+    expect(manifestSchema.safeParse({ kind: "agent", name: "agent", runtime: "openclaw", schedule: { kind: "cron", cron }, spawnfile_version: "0.1" }).success).toBe(false);
+  });
+
+  it("aligns Daimon schedule duration, prompt, and possible-calendar bounds", () => {
+    const parses = (schedule: unknown) => manifestSchema.safeParse({ kind: "agent", name: "agent", runtime: "daimon", schedule, spawnfile_version: "0.1" }).success;
+    expect(parses({ kind: "every", every: "365d", prompt: "work" })).toBe(true);
+    expect(parses({ kind: "every", every: "366d", prompt: "work" })).toBe(false);
+    expect(parses({ kind: "every", every: "1ms", prompt: " \t" })).toBe(false);
+    expect(parses({ kind: "every", every: "1ms", prompt: "x".repeat(4_097) })).toBe(false);
+    expect(parses({ kind: "cron", cron: "0 0 31 2 *", timezone: "UTC", prompt: "work" })).toBe(false);
+    expect(parses({ kind: "cron", cron: `*/${"9".repeat(400)} * * * *`, timezone: "UTC", prompt: "work" })).toBe(false);
+    expect(parses({ kind: "cron", cron: "*".repeat(4_097), timezone: "UTC", prompt: "work" })).toBe(false);
+    const normalized = manifestSchema.parse({ kind: "agent", name: "agent", runtime: "daimon", schedule: { kind: "cron", cron: "  0   5  *  *   *  ", timezone: "UTC", prompt: "work" }, spawnfile_version: "0.1" });
+    if (normalized.kind !== "agent") throw new Error("expected agent manifest");
+    expect(normalized.schedule?.kind === "cron" ? normalized.schedule.cron : undefined).toBe("0 5 * * *");
+  });
+
   it("rejects schedules on team manifests", () => {
     const result = manifestSchema.safeParse({
       kind: "team",
@@ -957,6 +986,7 @@ describe("manifestSchema", () => {
           },
           rooms: [
             {
+              federation: ["partner"],
               id: "workroom",
               members: ["worker"]
             }
@@ -967,6 +997,28 @@ describe("manifestSchema", () => {
     });
 
     expect(result.success).toBe(true);
+    if (result.success && result.data.kind === "team") {
+      expect(result.data.networks?.[0]?.rooms[0]?.federation).toEqual(["partner"]);
+    }
+  });
+
+  it("rejects invalid moltnet room federation declarations", () => {
+    const base = {
+      kind: "team",
+      members: [{ id: "worker", ref: "./agents/worker" }],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [{
+        id: "team_net",
+        provider: "moltnet",
+        rooms: [{ federation: [] as string[], id: "workroom", members: ["worker"] }]
+      }],
+      spawnfile_version: "0.1"
+    };
+
+    expect(manifestSchema.safeParse(base).success).toBe(false);
+    base.networks[0]!.rooms[0]!.federation = ["partner", "partner"];
+    expect(manifestSchema.safeParse(base).success).toBe(false);
   });
 
   it("accepts top-level agent memory declarations", () => {
@@ -1818,6 +1870,50 @@ describe("manifestSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts relay pairings and requires exactly one pairing transport", () => {
+    const pairing = {
+      id: "partner",
+      relay: {
+        room: "partner-room",
+        token_secret: "PARTNER_RELAY_TOKEN",
+        url: "wss://relay.example.com"
+      },
+      remote_network_id: "partner_net",
+      remote_network_name: "PartnerNet",
+      token_secret: "REMOTE_PARTNER_TOKEN"
+    };
+    const manifest = {
+      kind: "team",
+      members: [{ id: "worker", ref: "./agents/worker" }],
+      mode: "swarm",
+      name: "worker-cell",
+      networks: [{
+        id: "team_net",
+        provider: "moltnet",
+        rooms: [{ federation: ["partner"], id: "workroom", members: ["worker"] }],
+        server: {
+          auth: { mode: "open" },
+          listen: { bind: "127.0.0.1", port: 8787 },
+          mode: "managed",
+          pairings: [pairing],
+          store: { kind: "memory" }
+        }
+      }],
+      spawnfile_version: "0.1"
+    };
+
+    expect(manifestSchema.safeParse(manifest).success).toBe(true);
+    expect(manifestSchema.safeParse({
+      ...manifest,
+      networks: [{ ...manifest.networks[0], server: { ...manifest.networks[0]!.server, pairings: [{ ...pairing, remote_base_url: "https://partner.example.com" }] } }]
+    }).success).toBe(false);
+    const { relay: _relay, ...withoutTransport } = pairing;
+    expect(manifestSchema.safeParse({
+      ...manifest,
+      networks: [{ ...manifest.networks[0], server: { ...manifest.networks[0]!.server, pairings: [withoutTransport] } }]
+    }).success).toBe(false);
+  });
+
   it("rejects external moltnet servers with pairings", () => {
     const result = manifestSchema.safeParse({
       kind: "team",
@@ -2548,6 +2644,45 @@ describe("manifestSchema", () => {
 
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.message).toContain("references unknown member reviewer");
+  });
+
+  it("accepts scoped remote room members only through the room's pairing", () => {
+    const manifest = {
+      kind: "team" as const,
+      members: [{ id: "writer", ref: "./agents/writer" }],
+      mode: "swarm" as const,
+      name: "research-team",
+      networks: [{
+        id: "local_lab",
+        provider: "moltnet" as const,
+        rooms: [{
+          federation: ["peer-link"],
+          id: "research",
+          members: ["writer", "peer-network:remote-agent"]
+        }],
+        server: {
+          auth: { mode: "none" as const },
+          listen: { bind: "127.0.0.1", port: 8787 },
+          mode: "managed" as const,
+          pairings: [{
+            id: "peer-link",
+            remote_base_url: "https://sensor.invalid",
+            remote_network_id: "peer-network",
+            remote_network_name: "Partner Floor",
+            token_secret: "PEER_PAIR_TOKEN"
+          }],
+          store: { kind: "memory" as const }
+        }
+      }],
+      spawnfile_version: "0.1" as const
+    };
+
+    expect(manifestSchema.safeParse(manifest).success).toBe(true);
+    manifest.networks[0]!.rooms[0]!.federation = ["other-link"];
+    const rejected = manifestSchema.safeParse(manifest);
+    expect(rejected.success).toBe(false);
+    expect(rejected.error?.issues.some((issue) =>
+      issue.message.includes("references unknown member peer-network:remote-agent"))).toBe(true);
   });
 
   it("accepts per-model auth and endpoint config for custom models", () => {

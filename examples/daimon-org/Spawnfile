@@ -1,7 +1,7 @@
 spawnfile_version: "0.1"
 kind: team
 name: daimon-org
-description: "Spawnfile-owned org compiled into a single generated Daimon app"
+description: "Legacy generated-Pi organization fixture with Moltnet and shared resources"
 
 shared:
   workspace:

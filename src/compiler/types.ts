@@ -143,6 +143,7 @@ export interface ResolvedAgentSurfaces {
 }
 
 export interface ResolvedTeamNetworkRoom {
+  federation?: "all" | "none" | string[];
   id: string;
   members: string[];
   name?: string;

@@ -11,7 +11,7 @@ export type DockerDeploymentTarget =
 export type DockerTargetExecFile = (
   file: string,
   args: string[],
-  options: { signal?: AbortSignal; timeout: number }
+  options: { signal?: AbortSignal; stdin?: Uint8Array; timeout: number }
 ) => Promise<{ stderr: string; stdout: string }>;
 
 export interface ResolveDockerDeploymentTargetOptions {

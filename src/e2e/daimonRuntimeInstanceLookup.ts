@@ -1,16 +1,13 @@
 import type { ContainerRuntimeInstanceReport } from "../report/index.js";
-import { fileExists } from "../filesystem/index.js";
 import { toRootfsPath } from "./runtimeRootfsPaths.js";
 
-/** Runtime labels a generated Pi/Daimon app's container-level instance may
- * report: some compiler report versions label it "pi" (the underlying
- * adapter), others "daimon" (the orchestrating runtime). */
-const DAIMON_RUNTIME_LABELS = ["daimon", "pi"] as const;
+/** Legacy generated-Pi E2Es are intentionally distinct from the public
+ * Daimon organization host and therefore accept only Pi instances. */
+const DAIMON_RUNTIME_LABELS = ["pi"] as const;
 
 /**
- * Find the generated Pi/Daimon runtime instance in a compiled container
- * report, tolerating both the current "daimon" runtime label and the legacy
- * "pi" label. Shared by every generated Pi/Daimon-app E2E harness.
+ * Find the legacy generated-Pi runtime instance in a compiled container
+ * report. Shared by generated-Pi E2E harnesses only.
  */
 export const findDaimonRuntimeInstance = (
   runtimeInstances: readonly ContainerRuntimeInstanceReport[] | undefined
@@ -20,14 +17,10 @@ export const findDaimonRuntimeInstance = (
   );
 
 /**
- * Resolve the generated Pi/Daimon runtime install directory under a
- * compiled container's rootfs, tolerating both the current "daimon"
- * install-dir name and the legacy "pi" name. Shared by every generated
- * Pi/Daimon-app E2E harness.
+ * Resolve the generated-Pi runtime install directory under a compiled
+ * container's rootfs. Public Daimon organization hosts are never accepted by
+ * this legacy app harness.
  */
 export const resolveDaimonRuntimeRoot = async (rootfs: string): Promise<string> => {
-  const daimonRoot = toRootfsPath(rootfs, "/opt/spawnfile/runtime-installs/daimon");
-  return (await fileExists(daimonRoot))
-    ? daimonRoot
-    : toRootfsPath(rootfs, "/opt/spawnfile/runtime-installs/pi");
+  return toRootfsPath(rootfs, "/opt/spawnfile/runtime-installs/pi");
 };

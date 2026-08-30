@@ -58,20 +58,9 @@ const validateGlobalMemberIds = (plan: CompilePlan): void => {
   );
 
   for (const context of uniqueContexts.values()) {
-    let memberId = context.memberId;
-    if (plan.organizationIdentity) {
-      const canonicalMemberId = resolveCanonicalAgentMemberId(plan, context.agentSource);
-      const matches = plan.organizationIdentity.agentMembers.filter(
-        (member) => member.memberId === canonicalMemberId
-      );
-      if (!canonicalMemberId || matches.length !== 1) {
-        throw new SpawnfileError(
-          "validation_error",
-          `Unable to resolve exactly one canonical Moltnet member id for ${context.agentSource}`
-        );
-      }
-      memberId = canonicalMemberId;
-    }
+    const memberId = (plan.organizationIdentity?.externalParticipants.length ?? 0) > 0
+      ? resolveCanonicalAgentMemberId(plan, context.agentSource) ?? context.memberId
+      : context.memberId;
     const previous = seen.get(memberId);
     const label = `${context.teamName} (${context.teamSource}) member ${context.memberId}`;
     if (
@@ -298,9 +287,7 @@ export const resolvePlanMoltnetAttachments = (plan: CompilePlan): void => {
     const { agentSource, attachment, directTeamSource } = synthesized;
     const representativeContext = (plan.memberships ?? []).find((context) =>
       context.agentSource === agentSource &&
-      (plan.organizationIdentity
-        ? context.teamSource === directTeamSource
-        : context.memberId === attachment.memberId)
+      context.teamSource === directTeamSource
     );
     if (!representativeContext) {
       throw new SpawnfileError(
@@ -339,18 +326,20 @@ export const resolvePlanMoltnetAttachments = (plan: CompilePlan): void => {
       }
 
       const teamNode = findTeamBySource(plan, context.teamSource);
-      const canonicalMemberId =
-        resolveCanonicalAgentMemberId(plan, context.agentSource) ?? context.memberId;
+      const resolvedMemberId = (plan.organizationIdentity?.externalParticipants.length ?? 0) > 0
+        ? resolveCanonicalAgentMemberId(plan, context.agentSource) ?? context.memberId
+        : context.memberId;
       const resolved = resolveMoltnetAttachments(
         declaredAttachments,
         {
           memberId: context.memberId,
           networks: teamNode.networks ?? [],
-          resolvedMemberId: canonicalMemberId,
+          resolvedMemberId,
           teamName: context.teamName,
           teamSource: context.teamSource
         },
-        agentNode.name
+        agentNode.name,
+        agentNode.runtime.name
       );
       resolvedAttachments.push(...(resolved ?? []));
     }

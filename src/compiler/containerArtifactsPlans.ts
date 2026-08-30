@@ -1,5 +1,6 @@
 import type { Secret } from "../manifest/index.js";
 import { createRuntimeInstallRecipe, getRuntimeAdapter } from "../runtime/index.js";
+import { resolveNoopolisRunId } from "../runtime/index.js";
 import type { ContainerTargetInput } from "../runtime/index.js";
 
 import { listAgentSurfaceSecretNames } from "./agentSurfaces.js";
@@ -21,8 +22,10 @@ import {
   resolveTargetPackages
 } from "./containerTargetPlanResolution.js";
 import { listExecutionModelSecretNames } from "./modelEnv.js";
+import { createPersistentVolumeName } from "./moltnetArtifactPaths.js";
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import type { CompilePlan } from "./types.js";
+import { createExclusiveReattachVolumeName } from "../shared/index.js";
 import { findWorldBindingForNode, type ResolvedWorldBindings } from "./worldBindings.js";
 
 export const createEnvVariableMap = (
@@ -66,8 +69,10 @@ export const createEnvVariableMap = (
   for (const node of compiledNodes) {
     if (node.value.kind === "agent") {
       for (const secret of node.value.secrets) registerSecret(secret);
-      for (const secretName of listExecutionModelSecretNames(node.value.execution)) {
-        register(secretName, true, `Model provider auth for ${secretName}`, "model");
+      if (node.runtimeName !== "daimon") {
+        for (const secretName of listExecutionModelSecretNames(node.value.execution)) {
+          register(secretName, true, `Model provider auth for ${secretName}`, "model");
+        }
       }
       for (const secretName of listAgentSurfaceSecretNames(node.value.surfaces)) {
         register(secretName, true, "Bot token for declared agent surfaces", "surface");
@@ -115,16 +120,20 @@ export const createEnvVariableMap = (
 export const createRuntimeTargetPlans = async (
   plan: CompilePlan,
   compiledNodes: CompiledNodeArtifact[],
-  worldBindings?: ResolvedWorldBindings
+  worldBindings?: ResolvedWorldBindings,
+  deploymentLineage = "compile"
 ): Promise<RuntimeTargetPlan[]> => {
   const runtimeNames = Object.keys(plan.runtimes).sort();
+  const runId = resolveNoopolisRunId(process.env);
   const runtimePlans: RuntimeTargetPlan[] = [];
 
   for (const runtimeName of runtimeNames) {
     const adapter = getRuntimeAdapter(runtimeName);
     const recipe = await createRuntimeInstallRecipe(runtimeName);
     const targetInputs = compiledNodes
-      .filter((node) => node.runtimeName === runtimeName && node.emittedFiles.length > 0)
+      .filter((node) =>
+        node.runtimeName === runtimeName && (node.emittedFiles.length > 0 || runtimeName === "daimon")
+      )
       .map((node): ContainerTargetInput => {
         const id = node.id ?? `${node.kind}:${node.slug}`;
         const worldBinding = node.kind === "agent"
@@ -156,15 +165,25 @@ export const createRuntimeTargetPlans = async (
         id: target.id,
         instancePaths,
         meta: adapter.container,
-        modelAuthMethods: resolveTargetModelAuthMethods(target, targetInputs),
-        modelSecretsRequired: resolveTargetModelSecrets(target, targetInputs),
+        modelAuthMethods: runtimeName === "daimon" ? {} : resolveTargetModelAuthMethods(target, targetInputs),
+        modelSecretsRequired: runtimeName === "daimon" ? [] : resolveTargetModelSecrets(target, targetInputs),
+        ...(target.opaqueMountTargets ? { opaqueMountTargets: [...target.opaqueMountTargets].sort() } : {}),
+        ...(target.persistentMounts ? { persistentMounts: target.persistentMounts.map((mount) => ({
+          id: mount.id,
+          ...(mount.lifecycle ? { lifecycle: mount.lifecycle } : {}),
+          mount_path: mount.mountPath.replaceAll("<instance-root>", instancePaths.instanceRoot),
+          reason: mount.reason,
+          volume_name: mount.lifecycle === "exclusive-reattach"
+            ? createExclusiveReattachVolumeName(`${plan.root}\0${deploymentLineage}`, mount.id)
+            : createPersistentVolumeName(plan.root, mount.id, undefined, runId)
+        })).sort((left, right) => left.id.localeCompare(right.id)) } : {}),
         port: adapter.container.port ? adapter.container.port + (index * portStride) : undefined,
         publishedPort:
           resolveTargetExposure(target, targetInputs) && adapter.container.port
             ? adapter.container.port + (index * portStride)
             : undefined,
         recipeEnv: recipe.env,
-        resources: resolveTargetResources(target, targetInputs, instancePaths, adapter.container),
+        resources: resolveTargetResources(target, targetInputs, instancePaths, adapter.container, plan.root, runId),
         runtimeName,
         runtimeRoot: recipe.runtimeRoot,
         sourceIds: [...(target.sourceIds ?? [])].sort(),

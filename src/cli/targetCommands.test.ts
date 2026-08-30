@@ -11,7 +11,9 @@ import {
   createCanonicalTargetReceiptBytes,
   createCanonicalTargetTopologyReceiptBytes,
   createCanonicalTargetPublicArtifactSnapshotBytes,
+  createCanonicalTargetPublicArtifactSnapshotResultBytes,
   createTargetPublicArtifactSnapshot,
+  createTargetPublicArtifactSnapshotNotPresent,
   createCanonicalTargetTopologyActivationReceiptBytes,
   createTargetReceiptDigest,
   createTargetRequestDigest,
@@ -505,6 +507,19 @@ describe("target command registration", () => {
     expect(seen).toEqual([publicArtifactRequest]);
     expect(Object.keys(TARGET_OPERATION_DISPATCH))
       .not.toContain("snapshot_public_artifact");
+  });
+
+  it("emits typed public-artifact absence as a canonical successful query", async () => {
+    const notPresent = createTargetPublicArtifactSnapshotNotPresent(publicArtifactRequest);
+    const session: TargetCommandHandlerSession = {
+      run: sessionFor(handlers([])).run,
+      snapshotPublicArtifact: async () => notPresent
+    };
+    await expect(runPublicArtifactSnapshot(session)).resolves.toEqual({
+      exits: [],
+      stderr: [],
+      stdout: [createCanonicalTargetPublicArtifactSnapshotResultBytes(notPresent)]
+    });
   });
 
   it("routes topology activation separately and emits one canonical receipt", async () => {

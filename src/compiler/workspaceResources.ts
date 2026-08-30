@@ -19,16 +19,19 @@ export type ResolvedWorkspaceResource = TeamWorkspaceResource & {
 };
 
 export interface WorkspaceResourcePlan {
+  archivePath?: string;
   backingPath: string;
   branch?: string;
   id: string;
-  kind: "git" | "volume";
+  kind: "bundle" | "git" | "volume";
   linkPath: string;
   mode: "mutable" | "readonly";
   mount: string;
   name?: string;
   ref?: string;
   sharing: WorkspaceResourceSharing;
+  sha256?: string;
+  source?: string;
   tag?: string;
   url?: string;
 }
@@ -47,6 +50,7 @@ const normalizeMount = (value: string): string => {
 };
 
 const normalizeResourceIdentity = (resource: ResolvedWorkspaceResource): string => {
+  if (resource.kind === "bundle") return JSON.stringify({ kind: resource.kind, mode: resource.mode, mount: normalizeMount(resource.mount), sha256: resource.sha256, source: resource.source, sharing: resource.sharing });
   if (resource.kind === "git") {
     return JSON.stringify({
       branch: resource.branch?.trim() ?? "",
@@ -81,12 +85,9 @@ const resolveSharing = (resource: TeamWorkspaceResource): WorkspaceResourceShari
 const toResolvedResource = (
   resource: TeamWorkspaceResource,
   scope: WorkspaceResourceScope
-): ResolvedWorkspaceResource => ({
-  ...resource,
-  mount: normalizeMount(resource.mount),
-  scope,
-  sharing: resolveSharing(resource)
-});
+): ResolvedWorkspaceResource => resource.kind === "bundle"
+  ? { ...resource, mount: normalizeMount(resource.mount), scope, sharing: "per_agent" }
+  : { ...resource, mount: normalizeMount(resource.mount), scope, sharing: resolveSharing(resource) };
 
 const createPathSegment = (value: string): string => {
   const slug = slugify(value);
@@ -189,7 +190,13 @@ export const toWorkspaceResourcePlan = (
         ...(resource.tag ? { tag: resource.tag } : {}),
         url: resource.url
       }
-    : {
+    : resource.kind === "bundle" ? {
+        archivePath: `/opt/spawnfile/workspace-bundles/${resource.sha256.slice(7)}.tar`,
+        backingPath: resolveBackingPath(resource, context.targetId), id: resource.id, kind: "bundle",
+        linkPath: resolveLinkPath(normalizeMount(resource.mount), context.workspacePath), mode: resource.mode,
+        mount: normalizeMount(resource.mount), sharing: resource.sharing, sha256: resource.sha256,
+        source: path.resolve(path.dirname(resource.scope.key), resource.source)
+      } : {
         backingPath: resolveBackingPath(resource, context.targetId),
         id: resource.id,
         kind: "volume",

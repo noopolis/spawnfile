@@ -1,0 +1,21 @@
+spawnfile_version: "0.1"
+kind: agent
+name: public-host-agent
+description: "Minimal public Daimon organization-host fixture"
+
+runtime:
+  name: daimon
+  options:
+    engine: codex
+
+execution:
+  model:
+    primary:
+      provider: openai
+      name: gpt-5.4-mini
+      auth:
+        method: codex
+
+workspace:
+  docs:
+    system: AGENTS.md

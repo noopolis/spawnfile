@@ -13,7 +13,7 @@ export interface OrganizationViewSkillSummary {
 
 export interface OrganizationViewResourceSummary {
   id: string;
-  kind: "git" | "volume";
+  kind: "bundle" | "git" | "volume";
   mode: "mutable" | "readonly";
   mount: string;
   sharing: "per_agent" | "team";

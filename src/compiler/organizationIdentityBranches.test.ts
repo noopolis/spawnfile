@@ -180,6 +180,51 @@ describe("organization identity defensive branches", () => {
     expect(() => validateB31MoltnetAuth(reused)).toThrow(/duplicate Moltnet token identity/u);
   });
 
+  it("allows only matching pair-scoped transport credentials to remain actorless", () => {
+    const current = prepare(createPlan());
+    const server = root(current).networks![0]!.server;
+    if (server?.mode !== "managed") throw new Error("expected managed server");
+    server.pairings = [{
+      id: "observer",
+      relay: {
+        room: "observer-room",
+        token_secret: "NETWORK_RELAY",
+        url: "wss://relay.example.test",
+      },
+      remote_network_id: "observer-net",
+      remote_network_name: "Observer",
+      token_secret: "NETWORK_OBSERVER",
+    }];
+    server.auth.tokens!.push({
+      id: "observer",
+      scopes: ["pair"],
+      secret: "NETWORK_OBSERVER",
+    });
+    expect(() => validateB31MoltnetAuth(current)).not.toThrow();
+
+    server.auth.tokens!.at(-1)!.secret = "NETWORK_WRONG";
+    expect(() => validateB31MoltnetAuth(current)).toThrow(/not selected by exactly one actor/u);
+  });
+
+  it("allows only agentless observe-only console credentials to remain actorless", () => {
+    const current = prepare(createPlan());
+    const server = root(current).networks![0]!.server;
+    if (server?.mode !== "managed") throw new Error("expected managed server");
+    server.auth.tokens!.push({
+      id: "console",
+      scopes: ["observe"],
+      secret: "NETWORK_CONSOLE",
+    });
+    expect(() => validateB31MoltnetAuth(current)).not.toThrow();
+
+    server.auth.tokens!.at(-1)!.scopes = ["observe", "write"];
+    expect(() => validateB31MoltnetAuth(current)).toThrow(/not selected by exactly one actor/u);
+
+    server.auth.tokens!.at(-1)!.scopes = ["observe"];
+    server.auth.tokens!.at(-1)!.agents = ["console"];
+    expect(() => validateB31MoltnetAuth(current)).toThrow(/not selected by exactly one actor/u);
+  });
+
   it("skips external authorities for unmanaged networks", () => {
     const current = prepare(createPlan());
     root(current).networks![0]!.server = {

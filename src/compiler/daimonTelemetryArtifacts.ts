@@ -7,16 +7,11 @@ import { createPersistentVolumeName } from "./moltnetArtifactPaths.js";
 import type { CompiledNodeArtifact, RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import type { CompilePlan } from "./types.js";
 
-/** Runtime names whose generated app is `src/runtime/pi/appCoreSource.ts` (the pi harness
- * and its `daimonAdapter` alias — see `src/runtime/pi/adapter.ts`'s
- * `export const daimonAdapter: RuntimeAdapter = { ...piAdapter, name: "daimon" }`, which
- * shares `piAdapter.container`/`createContainerTargets` byte-for-byte). Both write daimon
- * turn/wake causal telemetry the same way, under `runtimeHomePath` (appCoreSource.ts:189),
- * so both need the telemetry mount, not just the literal "pi" runtime name. */
-const DAIMON_TELEMETRY_RUNTIME_NAMES = new Set(["daimon", "pi"]);
+/** Only the legacy generated Pi application writes this telemetry layout. */
+const PI_TELEMETRY_RUNTIME_NAMES = new Set(["pi"]);
 
 export interface DaimonTelemetryArtifactBundle {
-  /** One durable volume per pi/daimon agent, mounted onto its telemetry directory. */
+  /** One durable volume per legacy Pi agent, mounted onto its telemetry directory. */
   mounts: ContainerPersistentMountReport[];
   /** Runtime target plan id (e.g. "pi-app") -> { node id -> telemetry persistent mount id
    * }, so `containerArtifacts.ts` can stamp `runtime_instances[].telemetry_mount_ids` and
@@ -29,7 +24,7 @@ const createTelemetryMountId = (agentSlug: string): string =>
   `agent-${agentSlug}-daimon-telemetry`;
 
 /**
- * Registers one run-scoped durable volume per pi/daimon agent for its daimon turn/wake
+ * Registers one run-scoped durable volume per legacy Pi agent for its daimon turn/wake
  * causal telemetry directory (`<instanceRoot>/runtime/agents/<slug>/telemetry` — the parent
  * of `causal.jsonl`, see `appCoreSource.ts`'s `runtimeHomePath`/`instanceRoot`), mirroring
  * exactly how `moltnetArtifacts.ts` mounts the Moltnet causal directory (Piece 4b,
@@ -58,7 +53,7 @@ export const createDaimonTelemetryArtifacts = (
   const telemetryMountIdsByInstance = new Map<string, Record<string, string>>();
 
   for (const runtimePlan of runtimePlans) {
-    if (!DAIMON_TELEMETRY_RUNTIME_NAMES.has(runtimePlan.runtimeName) || !runtimePlan.instancePaths.homePath) {
+    if (!PI_TELEMETRY_RUNTIME_NAMES.has(runtimePlan.runtimeName) || !runtimePlan.instancePaths.homePath) {
       continue;
     }
 

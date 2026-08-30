@@ -102,8 +102,9 @@ describe("piAdapter", () => {
     }));
 
     expect(compiled.files.map((file) => file.path).sort()).toEqual([
-      "workspace/AGENTS.md",
-      "workspace/skills/note/SKILL.md"
+      "workspace/.agents/skills/note/SKILL.md",
+      "workspace/.codex/skills/note/SKILL.md",
+      "workspace/AGENTS.md"
     ]);
     expect(compiled.capabilities).toContainEqual({
       key: "agent.schedule",

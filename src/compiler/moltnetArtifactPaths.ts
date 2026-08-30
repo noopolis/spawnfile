@@ -38,10 +38,9 @@ const truncateSegment = (value: string, maxLength: number): string =>
  * the host env) reproduces the pre-run-scoping name exactly, so standard
  * compiles stay byte-identical.
  *
- * `explicitName` (an author-declared `persistence.name`) always wins over
- * both project/id and run scoping — an explicit name is opt-in shared/
- * reused state by author intent, not something this helper should silently
- * fragment across runs.
+ * `explicitName` (an author-declared `persistence.name`) remains verbatim for
+ * a bare compile. During a run it is namespaced by the run identity, preventing
+ * blue/green candidates from accidentally sharing live durable state.
  */
 export const createPersistentVolumeName = (
   planRoot: string,
@@ -49,13 +48,10 @@ export const createPersistentVolumeName = (
   explicitName?: string,
   runId?: string
 ): string => {
-  if (explicitName && explicitName.trim().length > 0) {
-    return explicitName.trim();
-  }
-
   const project = truncateSegment(slugify(planRoot.split("/").slice(-2, -1)[0] ?? "project") || "project", 32);
-  const suffix = truncateSegment(slugify(id) || "state", 48);
+  const suffix = truncateSegment(slugify(explicitName?.trim() || id) || "state", 48);
   const trimmedRunId = runId?.trim();
+  if (explicitName && explicitName.trim().length > 0 && !trimmedRunId) return explicitName.trim();
   if (!trimmedRunId) {
     return `spawnfile-${project}-${suffix}-${createShortHash(`${planRoot}:${id}`)}`;
   }

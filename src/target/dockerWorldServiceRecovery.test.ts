@@ -162,7 +162,7 @@ const projection = (spec: DockerWorldServiceSpec, current: NonNullable<State["co
     CgroupnsMode: "private", DeviceCount: 0, DeviceRequestCount: 0, DnsCount: 0,
     Domainname: "", ExposedPortCount: 0, ExtraHostCount: 0, GroupAddCount: 0,
     Hostname: spec.containerName, Id: current.id, Image: spec.imageReference, IpcMode: "none",
-    Tmpfs: { "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777" },
+    Tmpfs: { "/tmp": "rw,noexec,nosuid,nodev,size=1m,mode=1777", "/tmp/spawnfile-public": "rw,noexec,nosuid,nodev,size=1m,mode=1777" },
     Labels: spec.receiptLabels, LinkCount: 0, LogType: "none", Mounts: mounts,
     Name: `/${spec.containerName}`, NetworkAttachmentCount: 1, NetworkAttachmentId: "b".repeat(64),
     NetworkAttachmentName: after(spec.createArgs, "--network"),

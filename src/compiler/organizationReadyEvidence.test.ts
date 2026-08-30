@@ -276,6 +276,14 @@ describe("createOrganizationReadinessEvidence", () => {
     expect(evidence).toMatchObject({ hasExternalMoltnet: false, networks: [], organizationMembers: [], worldBindings: null });
   });
 
+  it("preserves a bounded scoped remote Moltnet room member without requiring a local attachment", () => {
+    const source = input();
+    source.moltnetArtifacts!.serverPlans[0]!.rooms[0]!.members.push("remote:peer-agent");
+
+    expect(createOrganizationReadinessEvidence(source).networks[1]!.rooms[0]!.members)
+      .toContain("remote:peer-agent");
+  });
+
   it.each([
     ["missing node plan", /Moltnet attachment a-net\/alpha has no node plan/u, (value: EvidenceInput) => { expect(value.moltnetArtifacts!.nodePlans).toHaveLength(2); value.moltnetArtifacts!.nodePlans.pop(); expect(value.moltnetArtifacts!.nodePlans).toHaveLength(1); }],
     ["extra orphan node plan", /Moltnet node a-net\/world has no attachment/u, (value: EvidenceInput) => { expect(value.moltnetArtifacts!.nodePlans).toHaveLength(2); value.moltnetArtifacts!.nodePlans.push({ configPath: configPath("orphan"), memberId: "world", networkId: "a-net" }); value.moltnetArtifacts!.files.push({ content: "{}", path: `container/rootfs${configPath("orphan")}` }); expect(value.moltnetArtifacts!.nodePlans.at(-1)?.memberId).toBe("world"); }],

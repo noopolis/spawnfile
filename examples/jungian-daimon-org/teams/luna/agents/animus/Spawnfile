@@ -4,7 +4,7 @@ name: luna-animus
 description: "Luna inner archetype (Antigravity CLI engine)"
 
 runtime:
-  name: daimon
+  name: pi
   options:
     engine: agy
 
