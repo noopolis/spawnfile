@@ -67,7 +67,12 @@ const publishedMoltnetReleaseIdentitySchema = z.object({
   architecture: z.union([z.literal("amd64"), z.literal("arm64")]),
   asset: z.string().regex(/^moltnet_linux_(amd64|arm64)\.tar\.gz$/u),
   asset_sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
-  capabilities: z.tuple([z.literal("pi-bridge")]),
+  // Union, not replacement: moltnet v0.1.18 publishes both bridges, and every
+  // older pi-only release must still validate.
+  capabilities: z.union([
+    z.tuple([z.literal("pi-bridge")]),
+    z.tuple([z.literal("daimon-bridge"), z.literal("pi-bridge")])
+  ]),
   release_version: z.string().regex(/^v?\d+\.\d+\.\d+(?:-\d+-g[a-f0-9]{7,40})?$/u),
   source_revision: z.string().regex(/^[a-f0-9]{40}$/u),
   version: z.literal("spawnfile.moltnet-release-identity.v1")

@@ -49,9 +49,10 @@ export interface ContainerArtifactOptions {
  * `agent_id` at strict decode, before `Validate()` is even reached. The
  * entrypoint launches `moltnet node <config> &` and then `wait -n`
  * (`./containerEntrypointRender.ts`), so that exit tears the whole container
- * down. Only a locally built Moltnet advertises `daimon-bridge`
- * (`./localMoltnetAuthority.ts`); the pinned public authority is hard-narrowed
- * to `["pi-bridge"]` (`./moltnetReleaseAuthority.ts`).
+ * down. Both a locally built Moltnet (`./localMoltnetAuthority.ts`) and, since
+ * the v0.1.18 pin, the published authority (`./moltnetReleaseAuthority.ts`) can
+ * advertise `daimon-bridge`; anything older, including every release through
+ * v0.1.17, advertises only `pi-bridge` and is still rejected here.
  *
  * This throws rather than warning, which is the opposite call from the other
  * unlowerable-declaration diagnostics in this compiler. Those keep working

@@ -284,6 +284,34 @@ describe("buildUpReceipt", () => {
     });
   });
 
+  /**
+   * A PUBLISHED release now advertises both bridges (moltnet v0.1.18). The
+   * receipt used to pick its branch by capability COUNT, so a two-capability
+   * published release fell into the local-development branch and was rejected
+   * for lacking a `development` marker it must never carry. Provenance, not
+   * count, decides the branch.
+   */
+  it("accepts a published release advertising both bridges without demanding development provenance", async () => {
+    const fixtureDirectory = await createSingleAgentFixture();
+    const outputDirectory = await createTempDirectory("spawnfile-up-receipt-compiled-");
+    const recordPath = await writeDeploymentRecord(outputDirectory, createRecord());
+    const upResult = createUpResult(outputDirectory, recordPath);
+    upResult.report.container!.moltnet!.release = {
+      ...upResult.report.container!.moltnet!.release!,
+      capabilities: ["daimon-bridge", "pi-bridge"],
+      release_version: "v0.1.18"
+    } as never;
+
+    const receipt = await buildUpReceipt(fixtureDirectory, upResult);
+
+    expect(receipt.moltnet_release).toMatchObject({
+      capabilities: ["daimon-bridge", "pi-bridge"],
+      release_version: "v0.1.18"
+    });
+    // A published release must never acquire local-development provenance.
+    expect(receipt.moltnet_release).not.toHaveProperty("development");
+  });
+
   it("discloses a scripted pi engine per agent, derived from the compile report's engine_by_node_id", async () => {
     const fixtureDirectory = await createSingleAgentFixture();
     const outputDirectory = await createTempDirectory("spawnfile-up-receipt-compiled-");
