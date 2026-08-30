@@ -9,6 +9,15 @@ import { describe, expect, it } from "vitest";
 import { stageWorkspaceBundles, validateWorkspaceBundleTar } from "./workspaceBundleArtifacts.js";
 
 const run = promisify(execFile);
+const tarWithEmptyEntries = (count: number): Buffer => {
+  const tar = Buffer.alloc((count + 2) * 512);
+  for (let index = 0; index < count; index += 1) {
+    const header = tar.subarray(index * 512, (index + 1) * 512);
+    header.write(`entry-${index}`, 0, "ascii"); header.write("0000000", 100, "ascii"); header.write("00000000000", 124, "ascii"); header[156] = "0".charCodeAt(0); header.write("ustar", 257, "ascii");
+    header.fill(32, 148, 156); let checksum = 0; for (const byte of header) checksum += byte; header.write(`${checksum.toString(8).padStart(6, "0")}\0 `, 148, "ascii");
+  }
+  return tar;
+};
 
 describe("offline workspace bundles", () => {
   it("returns false without declarations and rejects unsafe archive identities", async () => {
@@ -70,6 +79,17 @@ describe("offline workspace bundles", () => {
       await writeFile(path.join(root, "bundle.tar"), Buffer.concat([bytes, Buffer.from("drift")]));
       await expect(stageWorkspaceBundles(path.join(root, "bad"), { nodes: [{ kind: "agent", value: { workspaceResources: [resource] } }] } as never)).rejects.toThrow(/checksum mismatch/u);
     } finally { await rm(root, { recursive: true, force: true }); }
+  });
+  it("accepts a workspace bundle above the former 10,000-entry bound", () => {
+    expect(() => validateWorkspaceBundleTar(tarWithEmptyEntries(10_001))).not.toThrow();
+  });
+  it("rejects a workspace bundle above the 65,536-entry bound with the entry-count message", () => {
+    expect(() => validateWorkspaceBundleTar(tarWithEmptyEntries(65_537))).toThrow("Workspace bundle exceeds the maximum entry count");
+  });
+  it("reports a genuinely truncated workspace bundle with the truncation message", () => {
+    const truncated = tarWithEmptyEntries(1).subarray(0, 1024); truncated.fill(0, 124, 136); truncated.write("00000002000", 124, "ascii");
+    truncated.fill(32, 148, 156); let checksum = 0; for (const byte of truncated.subarray(0, 512)) checksum += byte; truncated.write(`${checksum.toString(8).padStart(6, "0")}\0 `, 148, "ascii");
+    expect(() => validateWorkspaceBundleTar(truncated)).toThrow("Workspace bundle is truncated or exceeds entry bounds");
   });
   it("rejects a workspace bundle just over the 512 MiB cap", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-bundle-over-cap-"));
