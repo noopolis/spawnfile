@@ -160,15 +160,19 @@ describe("createDockerRunInvocation", () => {
       "spawnfile-picoclaw"
     );
 
-    expect(daimonInvocation.args).toEqual(expect.arrayContaining([
+    const daimonCapabilities = [
       "--cap-drop=ALL",
       "--cap-add=CHOWN",
       "--cap-add=SETUID",
       "--cap-add=SETGID",
       "--cap-add=DAC_READ_SEARCH",
-      "--cap-add=SETPCAP"
-    ]));
-    expect(nonDaimonInvocation.args).not.toContain("--cap-add=SETPCAP");
+      "--cap-add=SETPCAP",
+      "--cap-add=KILL"
+    ];
+    expect(daimonInvocation.args).toEqual(expect.arrayContaining(daimonCapabilities));
+    for (const capability of daimonCapabilities) {
+      expect(nonDaimonInvocation.args).not.toContain(capability);
+    }
 
     await Promise.all([
       removeDirectory(daimonInvocation.supportDirectory),
