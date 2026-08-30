@@ -29,6 +29,40 @@ export const resolveMnemeMemoryRuntimeHomePath = (access: MnemeMemoryAccess): st
 export const isMnemeMemoryAccessSupported = (access: MnemeMemoryAccess): boolean =>
   resolveMnemeMemoryRuntimeHomePath(access) !== null;
 
+const normalizePosixPath = (value: string): string =>
+  path.normalize(value).replace(/\/+$/u, "") || "/";
+
+/**
+ * The container path a bank's Mneme runtime home is durably mounted at, or
+ * `null` when the compiler emits no persistent volume for it.
+ *
+ * This is the single authority shared by two sides that must never disagree:
+ * `src/compiler/memoryArtifacts.ts`, which emits the persistent mount (and
+ * therefore the directory the Daimon UID entrypoint creates and chowns to the
+ * runtime uid), and the runtime config emitters, which may only point an
+ * in-process Mneme runtime at a path the container actually mounts. A path
+ * without a mount is either absent at runtime or root-owned, so an in-process
+ * runtime pointed at one fails its first `mkdir`/write instead of degrading.
+ */
+export const resolveMnemeDurableMemoryMountPath = (
+  bank: MnemeMemoryAccess["bank"]
+): string | null => {
+  const store = bank.store;
+  if (store.kind !== "sqlite" && store.kind !== "json") {
+    return null;
+  }
+
+  if (store.persistence?.mode === "ephemeral") {
+    return null;
+  }
+
+  if (store.persistence?.mount) {
+    return normalizePosixPath(store.persistence.mount);
+  }
+
+  return store.path ? path.dirname(normalizePosixPath(store.path)) : null;
+};
+
 const memoryAccessKey = (access: MnemeMemoryAccess): string =>
   `${access.source}:${access.bank.id}`;
 
