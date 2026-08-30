@@ -4,6 +4,7 @@ import { createRootfsFiles } from "../../compiler/containerArtifactsRender.js";
 import { renderEntrypoint } from "../../compiler/containerEntrypointRender.js";
 import { resolveInstancePaths } from "../../compiler/containerTargetPlanResolution.js";
 import type { RuntimeTargetPlan } from "../../compiler/containerArtifactsTypes.js";
+import { resolveMoltnetWorkspaceLayout } from "../../compiler/moltnetClientConfig.js";
 import { createMoltnetNodeConfigContent } from "../../compiler/moltnetNodeConfig.js";
 import { resolveRuntimeConfig } from "../../compiler/moltnetRuntimeConfig.js";
 import type { CompilePlan } from "../../compiler/types.js";
@@ -52,6 +53,22 @@ const createPlan = async (): Promise<RuntimeTargetPlan> => {
 };
 
 describe("daimonAdapter", () => {
+  it("emits declared skills into the roots Moltnet installs its own skill into", async () => {
+    const compiled = await daimonAdapter.compileAgent(createDaimonNode("first", "First"));
+    // The Moltnet skill is the working reference: it is the one skill that
+    // demonstrably reaches the engine in a running Daimon container, and it
+    // is installed into these roots. Declared skills must use the same ones.
+    const moltnetSkillRoots = resolveMoltnetWorkspaceLayout("daimon", "First").skillPaths.map(
+      (skillPath) => skillPath.replace(/\/moltnet\/SKILL\.md$/, "")
+    );
+
+    expect(moltnetSkillRoots).toEqual(["workspace/.agents/skills", "workspace/.codex/skills"]);
+    expect(
+      compiled.files.map((file) => file.path).filter((filePath) => filePath.endsWith("/SKILL.md"))
+    ).toEqual(moltnetSkillRoots.map((root) => `${root}/note/SKILL.md`));
+    expect(compiled.files.some((file) => file.path.startsWith("workspace/skills/"))).toBe(false);
+  });
+
   it("emits one strict organization host and no generated engine application", async () => {
     const plan = await createPlan();
     const config = plan.targetFiles.find((file) => file.path === DAIMON_CONFIG_FILE);
@@ -176,7 +193,14 @@ describe("daimonAdapter", () => {
         reason: "Daimon host Grok subscription credential realm"
       },
       {
+        id: "daimon-grok-usage-ledger",
+        lifecycle: "exclusive-reattach",
+        mountPath: "/var/lib/spawnfile/daimon/usage",
+        reason: "Daimon per-turn engine usage ledger"
+      },
+      {
         id: "daimon-agy-subscription-realm",
+        lifecycle: "exclusive-reattach",
         mountPath: "/var/lib/spawnfile/daimon/agy-subscription-realm",
         reason: "Daimon host AGY subscription realm"
       },
@@ -253,6 +277,12 @@ describe("daimonAdapter", () => {
         lifecycle: "exclusive-reattach",
         mountPath: "/var/lib/spawnfile/daimon/grok-subscription-realm",
         reason: "Daimon host Grok subscription credential realm"
+      },
+      {
+        id: "daimon-grok-usage-ledger",
+        lifecycle: "exclusive-reattach",
+        mountPath: "/var/lib/spawnfile/daimon/usage",
+        reason: "Daimon per-turn engine usage ledger"
       }
     ]);
     expect(target.persistentMounts?.some((mount) =>
@@ -346,8 +376,59 @@ describe("daimonAdapter", () => {
     await expect(daimonAdapter.compileAgent({ ...base, mcpServers: [{ name: "missing", transport: "stdio", command: "/bin/tool" }] } as any)).rejects.toThrow(/tools allowlist/u);
     await expect(daimonAdapter.compileAgent({ ...base, mcpServers: [{ name: "relative", transport: "stdio", command: "tool", tools: ["act"] }] } as any)).rejects.toThrow(/absolute command/u);
     const agy = createDaimonNode("agy-tools", "agy-tools", "agy");
-    await expect(daimonAdapter.compileAgent({ ...agy, mcpServers: [{ name: "tool", transport: "stdio", command: "/bin/tool", tools: ["act"] }] } as any)).rejects.toThrow(/AGY does not expose/u);
-    await expect(daimonAdapter.compileAgent({ ...agy, surfaces: { moltnet: [{ network: "news" }] } } as any)).rejects.toThrow(/AGY does not expose/u);
+    // The same two MCP validations apply to AGY as to every other engine.
+    await expect(daimonAdapter.compileAgent({ ...agy, mcpServers: [{ name: "missing", transport: "stdio", command: "/bin/tool" }] } as any)).rejects.toThrow(/tools allowlist/u);
+    await expect(daimonAdapter.compileAgent({ ...agy, mcpServers: [{ name: "relative", transport: "stdio", command: "tool", tools: ["act"] }] } as any)).rejects.toThrow(/absolute command/u);
+  });
+
+  it("lowers declared MCP and Moltnet for an AGY agent, like every other engine", async () => {
+    // Daimon used to refuse this outright ("Daimon AGY does not expose
+    // cognition tools"), which is what made an AGY agent unable to take part
+    // in a multi-agent organization at all.
+    const agy = createDaimonNode("agy-tools", "agy-tools", "agy");
+    const node = {
+      ...agy,
+      mcpServers: [{ name: "tool", transport: "stdio", command: "/bin/tool", tools: ["act"], args: [], env: {} }],
+      surfaces: { moltnet: [{ network: "news", rooms: { lobby: {} } }] }
+    } as any;
+    const compiled = await daimonAdapter.compileAgent(node);
+    expect(compiled.capabilities).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "mcp.tool", outcome: "supported" }),
+      expect.objectContaining({ key: "surfaces.moltnet", outcome: "supported" })
+    ]));
+    const target = (await daimonAdapter.createContainerTargets!([
+      { emittedFiles: [], id: "agent:agy", kind: "agent", slug: "agy", value: node }
+    ]))[0]!;
+    const config = JSON.parse(target.files.find((file) => file.path === "daimon-organization-runtime.json")!.content);
+    expect(config.agents[0].engine).toEqual({ kind: "agy" });
+    expect(config.agents[0].mcp).toEqual([
+      { name: "tool", transport: "stdio", args: [], env: {}, tools: ["act"], command: "/bin/tool" }
+    ]);
+    expect(config.agents[0].moltnet.networks).toEqual([{ id: "news", rooms: ["lobby"], dms: false }]);
+  });
+
+  it("keeps the AGY subscription realm and the usage ledger attached across deployments", async () => {
+    // Without `exclusive-reattach` the volume name folds in the run id
+    // (`createPersistentVolumeName`), so every `spawnfile up` hands the
+    // container an empty keyring and the operator has to redo the interactive
+    // OAuth enrolment. The usage ledger has to survive for the same reason:
+    // a run-scoped ledger makes cross-deployment accounting impossible, and an
+    // AGY-only organization needs it just as much as a Grok one.
+    const target = (await daimonAdapter.createContainerTargets!([
+      { emittedFiles: [], id: "agent:agy", kind: "agent", slug: "agy", value: createDaimonNode("agy", "AGY", "agy") }
+    ]))[0]!;
+    expect(target.persistentMounts).toContainEqual({
+      id: "daimon-agy-subscription-realm",
+      lifecycle: "exclusive-reattach",
+      mountPath: "/var/lib/spawnfile/daimon/agy-subscription-realm",
+      reason: "Daimon host AGY subscription realm"
+    });
+    expect(target.persistentMounts).toContainEqual({
+      id: "daimon-grok-usage-ledger",
+      lifecycle: "exclusive-reattach",
+      mountPath: "/var/lib/spawnfile/daimon/usage",
+      reason: "Daimon per-turn engine usage ledger"
+    });
   });
 
   it("preserves non-workspace files and rejects invalid engines and oversized instructions", async () => {
@@ -372,5 +453,45 @@ describe("daimonAdapter", () => {
     await expect(daimonAdapter.createContainerTargets!([{
       emittedFiles: [], id: "agent:oversized", kind: "agent", slug: "oversized", value: oversized
     }])).rejects.toThrow(/instructions/u);
+  });
+
+  /**
+   * `restrict_to_workspace` is on this adapter's runtime-option allowlist and is
+   * read by nothing under `src/runtime/daimon/`. PicoClaw lowers an identically
+   * named option for real, which is what makes it look wired here. An author
+   * who declares it gets no error and none of the confinement they asked for,
+   * so the compile has to say so out loud.
+   */
+  it("warns that a declared restrict_to_workspace is not enforced by the Daimon runtime", async () => {
+    const node = createDaimonNode("confined", "Confined");
+    node.runtime.options.restrict_to_workspace = true;
+
+    const compiled = await daimonAdapter.compileAgent(node);
+
+    const messages = compiled.diagnostics.map((diagnostic) => diagnostic.message);
+    expect(messages).toContainEqual(
+      expect.stringContaining("Daimon organization runtime v1 does not enforce restrict_to_workspace")
+    );
+    const warning = messages.find((message) => message.includes("does not enforce restrict_to_workspace"))!;
+    // The diagnostic has to name the agent, the actual behavior, and the way out.
+    expect(warning).toContain("Confined");
+    expect(warning).toContain("can reach the whole container filesystem");
+    expect(warning).toContain("picoclaw");
+    // Warn, never reject: a project already declaring the option must keep compiling.
+    expect(compiled.diagnostics.every((diagnostic) => diagnostic.level !== "error")).toBe(true);
+    expect(daimonAdapter.validateRuntimeOptions?.({ engine: "codex", restrict_to_workspace: true })).toEqual([]);
+  });
+
+  it("stays silent about restrict_to_workspace when it is absent or explicitly false", async () => {
+    const undeclared = await daimonAdapter.compileAgent(createDaimonNode("plain", "Plain"));
+    const optedOut = createDaimonNode("open", "Open");
+    optedOut.runtime.options.restrict_to_workspace = false;
+
+    const compiled = await daimonAdapter.compileAgent(optedOut);
+
+    for (const result of [undeclared, compiled]) {
+      expect(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
+        .not.toContain("does not enforce restrict_to_workspace");
+    }
   });
 });

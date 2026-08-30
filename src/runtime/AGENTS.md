@@ -10,11 +10,13 @@ src/runtime/
 ├── scaffoldAssets.ts      # Shared loader for runtime-owned init template assets
 ├── types.ts               # Shared adapter contract types
 ├── common.ts              # Shared lowering helpers used by adapters
-├── mnemeMcp.ts            # Shared Mneme MCP lowering used by MCP-capable runtimes
+├── mnemeMcp.ts            # Shared Mneme MCP lowering plus the durable memory mount authority
 ├── container.ts           # Container install recipes (createRuntimeInstallRecipe) per bundled runtime
 ├── containerPackageOverrides.ts # Runtime install npm package override contract consumed by container.ts
 ├── localDaimonAuthority.ts # Exact non-production identity-file parser for loopback Daimon images
 ├── registry.ts            # Bundled adapter registration and lookup
+├── usageLedger.ts         # Pure parser/aggregator for Daimon's per-turn usage ledger
+├── usageLedgerRead.ts     # Ledger read transport: `cat`s both generations through a caller-supplied exec and separates "absent" from "unreadable"
 ├── scheduleUtils.ts       # Shared duration schedule helpers for runtime lowering
 ├── daimon/                # Public Daimon organization-host adapter
 ├── openclaw/              # OpenClaw adapter implementation
@@ -24,6 +26,17 @@ src/runtime/
 ```
 
 Adapter-specific behavior belongs in the runtime subfolders. That includes runtime-owned init scaffolds and scaffold markdown assets. `common.ts` should only hold logic that is truly shared across adapters.
+
+`mnemeMcp.ts` also owns `resolveMnemeDurableMemoryMountPath`, the single
+authority for "does this memory bank get a durable container volume, and at what
+path". `src/compiler/memoryArtifacts.ts` calls it to emit the persistent mount
+(which is also what puts the path into the Daimon UID entrypoint's writable state
+roots, i.e. what chowns a fresh volume to the runtime uid), and `daimon/config.ts`
+calls it to decide whether to emit an agent `memory` block at all. Keep those two
+sides on this one function: a config that points an in-process Mneme runtime at a
+path the container does not mount fails at its first write instead of degrading.
+
+`common.ts` owns where declared `workspace.skills` are emitted. `createSkillFiles` accepts either one root or a list of roots, and the roots are named constants there: `WORKSPACE_SKILL_BASE_DIRECTORY` (`workspace/skills`) for OpenClaw and PicoClaw, which read that directory with their own skill loaders, and `CLI_ENGINE_SKILL_BASE_DIRECTORIES` (`workspace/.agents/skills` and `workspace/.codex/skills`) for Daimon and Pi, whose skills are discovered by an external coding-agent CLI. Both CLI-engine roots are required and their files are byte-identical on purpose: `.codex/skills` is Codex's own discovery root and `.agents/skills` is the generic root grok, agy, and other file-reading engines use. This mirrors the Moltnet skill install exactly — `resolveMoltnetWorkspaceLayout` in `src/compiler/moltnetClientConfig.ts` runs `moltnet skill install --runtime codex` for these runtimes and Moltnet writes both roots — and it is the reason declared skills now reach an engine at all: a plain `workspace/skills/` root is read by no engine Daimon or Pi can host, so everything emitted there was invisible.
 
 `common.ts` also owns the `NOOPOLIS_RUN_ID` container env constant (`NOOPOLIS_RUN_ID_ENV` / `resolveNoopolisRunId`); `container.ts` reads it via `createRuntimeContainerEnv` and stamps it into every generated `RuntimeInstallRecipe.env` so every authority container agrees on one run id for causal event envelopes (see `specs/CAUSAL.md`). Never read `run_id` or `principal_id` from model output here.
 

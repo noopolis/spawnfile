@@ -3,6 +3,7 @@ import type { ResolvedAgentNode, ResolvedAgentSurfaces } from "../../compiler/ty
 import { readUtf8File, resolveProjectPath } from "../../filesystem/index.js";
 import { SpawnfileError } from "../../shared/index.js";
 import {
+  CLI_ENGINE_SKILL_BASE_DIRECTORIES,
   createAgentCapabilities,
   createDiagnostic,
   createDocumentFiles,
@@ -244,7 +245,7 @@ export const piAdapter: RuntimeAdapter = {
       ],
       files: [
         ...createDocumentFiles("workspace", node.docs),
-        ...createSkillFiles("workspace/skills", node.skills),
+        ...createSkillFiles(CLI_ENGINE_SKILL_BASE_DIRECTORIES, node.skills),
         ...(await createScriptedEngineFiles(node))
       ]
     };

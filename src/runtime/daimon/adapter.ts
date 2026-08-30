@@ -1,12 +1,21 @@
 import type { EffectiveModelTarget, ResolvedAgentNode, ResolvedAgentSurfaces } from "../../compiler/types.js";
 import type { CapabilityReport } from "../../report/index.js";
 import { SpawnfileError } from "../../shared/index.js";
-import { createAgentCapabilities, createDiagnostic, createDocumentFiles, createSkillFiles } from "../common.js";
+import {
+  CLI_ENGINE_SKILL_BASE_DIRECTORIES,
+  createAgentCapabilities,
+  createDiagnostic,
+  createDocumentFiles,
+  createSkillFiles
+} from "../common.js";
 import { parseEveryScheduleMs } from "../scheduleUtils.js";
 import type { AdapterCompileResult, RuntimeAdapter } from "../types.js";
 
 import {
   createDaimonContainerTargets,
+  daimonMemoryCapabilityFor,
+  daimonMemorySelectionWarning,
+  daimonMemoryVectorRecallWarning,
   DAIMON_CONFIG_FILE,
   DAIMON_CONTROL_PORT,
   DAIMON_ENGINES,
@@ -37,8 +46,50 @@ const assertDaimonModel = (target: EffectiveModelTarget): void => {
   );
 };
 
+/**
+ * The compile-time warning for an agent that asked to be confined to its
+ * workspace on a runtime that does not confine anything.
+ *
+ * `restrict_to_workspace` is accepted by `validateRuntimeOptions` below (it is
+ * on the allowlist beside `engine`) and is then read by nothing under
+ * `src/runtime/daimon/`: the `noopolis.daimon.organization-runtime.v1` contract
+ * this adapter lowers into carries no workspace-confinement field, so the
+ * declaration reaches no runtime behavior at all. PicoClaw consumes an
+ * identically named option and really does lower it
+ * (`../picoclaw/adapter.ts`), which is exactly what makes the option look
+ * wired here.
+ *
+ * This warns rather than implementing confinement, because real workspace
+ * restriction for Daimon is a sandbox-profile change in daimon itself plus a
+ * widening of the digest-pinned organization runtime contract. It warns rather
+ * than rejecting, because an existing project that already declares the option
+ * must keep compiling. And it does not stay silent, because a security option
+ * that is accepted and ignored is a worse failure than one that is refused.
+ *
+ * Declaring `restrict_to_workspace: false` asks for nothing, so it says
+ * nothing.
+ */
+const daimonWorkspaceRestrictionWarning = (node: ResolvedAgentNode): string | undefined => {
+  const declared = node.runtime.options.restrict_to_workspace;
+  if (declared === undefined || declared === false) return undefined;
+  return `Daimon organization runtime v1 does not enforce restrict_to_workspace: agent ${node.name} declares `
+    + "it, but no Daimon lowering reads the option and the organization runtime contract carries no workspace "
+    + "confinement field, so this agent's engine can reach the whole container filesystem. Move the agent to the "
+    + "picoclaw runtime, which lowers restrict_to_workspace into its agent defaults, or drop the option and treat "
+    + "the container boundary as this agent's only isolation.";
+};
+
+/**
+ * AGY is no longer excluded here.
+ *
+ * It used to be: an AGY agent that declared an MCP server or a Moltnet surface
+ * was rejected outright, because Daimon pinned AGY to `toolAccess: "none"`.
+ * Daimon now mounts AGY on the same per-wake MCP endpoint Codex and Grok get
+ * (`daimon/src/pi/cliMcpRegistration.ts`), so an AGY agent can take part in an
+ * organization, and the declaration this compiler lowers is one the runtime
+ * actually honours. The remaining validations are engine-independent and stay.
+ */
 const unsupportedAgentFeatures = (node: ResolvedAgentNode): void => {
-  if (resolveDaimonEngine(node) === "agy" && (node.mcpServers.length > 0 || (node.surfaces?.moltnet?.length ?? 0) > 0)) throw new SpawnfileError("validation_error", "Daimon AGY does not expose cognition tools; use Codex or Grok for declared MCP or Moltnet actions");
   for (const server of node.mcpServers) {
     if (!server.tools?.length) throw new SpawnfileError("validation_error", `Daimon MCP server ${server.name} requires an explicit tools allowlist`);
     if (server.transport === "stdio" && !server.command?.startsWith("/")) throw new SpawnfileError("validation_error", `Daimon stdio MCP server ${server.name} requires an absolute command`);
@@ -112,22 +163,29 @@ export const daimonAdapter: RuntimeAdapter = {
   async compileAgent(node): Promise<AdapterCompileResult> {
     unsupportedAgentFeatures(node);
     const scheduleCapability = await scheduleCapabilityFor(node);
+    const memorySelectionWarning = daimonMemorySelectionWarning(node);
+    const memoryVectorWarning = daimonMemoryVectorRecallWarning(node);
+    const workspaceRestrictionWarning = daimonWorkspaceRestrictionWarning(node);
     return {
       capabilities: createAgentCapabilities(node, {
         mcpOutcome: "supported",
         moltnetMessage: "Daimon exposes one scoped authenticated send tool during real cognition turns",
         moltnetOutcome: "supported",
-        memoryMessage: "Daimon organization runtime v1 does not lower Spawnfile memory declarations yet",
-        memoryOutcome: "degraded",
+        ...daimonMemoryCapabilityFor(node),
         scheduleMessage: scheduleCapability.message,
         scheduleOutcome: scheduleCapability.outcome
       }),
-      diagnostics: node.execution?.sandbox
-        ? [createDiagnostic("warn", "Daimon runtime isolation is enforced by the selected runtime image")]
-        : [],
+      diagnostics: [
+        ...(node.execution?.sandbox
+          ? [createDiagnostic("warn", "Daimon runtime isolation is enforced by the selected runtime image")]
+          : []),
+        ...(memorySelectionWarning ? [createDiagnostic("warn", memorySelectionWarning)] : []),
+        ...(memoryVectorWarning ? [createDiagnostic("warn", memoryVectorWarning)] : []),
+        ...(workspaceRestrictionWarning ? [createDiagnostic("warn", workspaceRestrictionWarning)] : [])
+      ],
       files: [
         ...createDocumentFiles("workspace", node.docs),
-        ...createSkillFiles("workspace/skills", node.skills)
+        ...createSkillFiles(CLI_ENGINE_SKILL_BASE_DIRECTORIES, node.skills)
       ]
     };
   },

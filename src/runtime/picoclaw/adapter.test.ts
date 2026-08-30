@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { ResolvedAgentNode } from "../../compiler/types.js";
 
+import { WORKSPACE_SKILL_BASE_DIRECTORY } from "../common.js";
+
 import { picoClawAdapter } from "./adapter.js";
 
 const node: ResolvedAgentNode = {
@@ -29,6 +31,23 @@ const node: ResolvedAgentNode = {
 };
 
 describe("picoClawAdapter", () => {
+  it("emits declared skills under the shared workspace skill root constant", async () => {
+    const result = await picoClawAdapter.compileAgent({
+      ...node,
+      skills: [{
+        content: "---\nname: web_search\ndescription: Search\n---\n",
+        name: "web_search",
+        ref: "./skills/web_search",
+        requiresMcp: [],
+        sourcePath: "/tmp/skills/web_search/SKILL.md"
+      }]
+    });
+
+    expect(result.files.map((file) => file.path)).toContain(
+      `${WORKSPACE_SKILL_BASE_DIRECTORY}/web_search/SKILL.md`
+    );
+  });
+
   it("exposes container metadata for gateway boot", () => {
     expect(picoClawAdapter.container).toEqual({
       configFileName: "config.json",
