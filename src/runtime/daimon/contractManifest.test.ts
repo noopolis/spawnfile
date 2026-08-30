@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -10,6 +11,7 @@ import {
   assertDaimonRuntimeHome,
   DAIMON_CONTRACT_MANIFEST_DIGEST_FILE,
   DAIMON_CONTRACT_MANIFEST_FILE,
+  DAIMON_CONTRACT_MANIFEST_SHA256,
   DAIMON_CONTRACT_MANIFEST_VERSION,
   DAIMON_GROK_ENGINE_BROKER,
   parseDaimonContractManifest,
@@ -47,7 +49,7 @@ const manifest = () => ({
     "agents[].name", "agents[].instructions", "agents[].workspacePath",
     "agents[].runtimeHomePath", "agents[].engine.kind", "agents[].schedule.kind",
     "agents[].schedule.interval_ms", "agents[].schedule.cron", "agents[].schedule.timezone",
-    "agents[].schedule.prompt", "agents[].mcp", "agents[].moltnet"
+    "agents[].schedule.prompt", "agents[].mcp", "agents[].moltnet", "agents[].memory"
   ],
   engineCredentialMaterial: {
     codex: { destinationRelativePath: ".codex/auth.json", directoryMode: 0o700, fileMode: 0o600, sourceRelativePath: ".daimon-inbound/codex-auth", sourceSlot: "codex-auth" },
@@ -147,6 +149,25 @@ describe("Daimon contract manifest", () => {
       ...manifest(),
       grokEngineBroker: { ...DAIMON_GROK_ENGINE_BROKER, nativeAbiVersion: 1 }
     })).toThrow(/Grok engine broker/u);
+  });
+
+  /**
+   * The vendored `contract-manifest.json` / `contract-manifest.sha256` pair in
+   * this directory is a byte copy of what daimon's build emits, and
+   * `DAIMON_CONTRACT_MANIFEST_SHA256` is what the generated Dockerfile makes
+   * the runtime image attest against (src/runtime/container.ts). Nothing else
+   * checks that these three agree, so a daimon-side contract change that
+   * regenerates the manifest without re-vendoring it here produced a silent
+   * drift: the compiler pinned a digest no shipped runtime image could
+   * present. This is that missing check.
+   */
+  it("verifies the vendored contract manifest against the pinned digest", async () => {
+    const vendoredRoot = path.dirname(fileURLToPath(import.meta.url));
+    const vendored = await readVerifiedDaimonContractManifest(vendoredRoot);
+    expect(vendored.digest).toBe(DAIMON_CONTRACT_MANIFEST_SHA256);
+    const bytes = await readFile(path.join(vendoredRoot, DAIMON_CONTRACT_MANIFEST_FILE), "utf8");
+    const raw = JSON.parse(bytes) as { consumedConfigFields: string[] };
+    expect(raw.consumedConfigFields).toContain("agents[].memory");
   });
 
   it("rejects missing, malformed, noncanonical, and digest-mismatched packaged files", async () => {

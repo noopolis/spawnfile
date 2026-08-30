@@ -7,7 +7,7 @@ import { SpawnfileError } from "../../shared/index.js";
 export const DAIMON_CONTRACT_MANIFEST_VERSION =
   "noopolis.daimon.runtime-contract-manifest.v3" as const;
 export const DAIMON_CONTRACT_MANIFEST_SHA256 =
-  "sha256:65b21675dcc5a76395d345c4111a8abdeb36b43bcc5fd71292957a1e30fb5e5d" as const;
+  "sha256:575788f5abb6e82cb6c163c76996d1efe8e06bb9a15c4a942617f6a20646bfed" as const;
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";
@@ -52,6 +52,34 @@ export const DAIMON_GROK_ENGINE_BROKER = {
     arm64Sha256: "ad44e02c38e6a3207ac4a3d5fd98b6d2e55341ce42dfd2f07204bbe54a7a653d"
   }
 } as const;
+/**
+ * Where the Daimon broker writes its per-turn usage ledger, and what this
+ * compiler provisions. Deliberately kept out of `DAIMON_GROK_ENGINE_BROKER`:
+ * that object's canonical bytes are digest-pinned and attested against the
+ * runtime image at compile time, so a new key there would make every pinned
+ * image fail to attest. Mirrors `TURN_USAGE_LEDGER` in
+ * `daimon/src/runtime/turnUsageLedger.ts`.
+ */
+export const DAIMON_GROK_TURN_USAGE_LEDGER = {
+  version: "noopolis.daimon.turn-usage.v1",
+  directoryPath: "/var/lib/spawnfile/daimon/usage",
+  filePath: "/var/lib/spawnfile/daimon/usage/usage.jsonl",
+  rotatedFilePath: "/var/lib/spawnfile/daimon/usage/usage.jsonl.1",
+  directoryMode: 0o750,
+  fileMode: 0o640,
+  /**
+   * Mirrors `TURN_USAGE_ROTATE_BYTES` in `daimon/src/runtime/turnUsageLedger.ts`
+   * (Spawnfile must not import from `daimon/`, so this is the Spawnfile-side
+   * copy of the same agreed number). It is a LOWER bound on the size of a
+   * rotated generation, not an upper one: the broker rotates on the append
+   * *after* the file reaches this size, so `usage.jsonl.1` is always at least
+   * this large and the line that crossed the bound overshoots it. Anything
+   * sizing a read of one generation must therefore leave headroom above this
+   * number rather than matching it (see
+   * `DEFAULT_DOCKER_PROBE_MAX_BUFFER_BYTES`).
+   */
+  rotateBytes: 64 * 1024 * 1024
+} as const;
 export const DAIMON_AGY_SUBSCRIPTION_REALM = {
   directoryMode: 0o700,
   durableMountPath: "/var/lib/spawnfile/daimon/agy-subscription-realm",
@@ -95,7 +123,7 @@ const expectedConfigFields = [
   "agents[].runtimeHomePath", "agents[].engine.kind", "agents[].schedule.kind",
   "agents[].schedule.interval_ms", "agents[].schedule.cron",
   "agents[].schedule.timezone", "agents[].schedule.prompt",
-  "agents[].mcp", "agents[].moltnet"
+  "agents[].mcp", "agents[].moltnet", "agents[].memory"
 ] as const;
 const exactKeys = (value: Record<string, unknown>, keys: readonly string[]): boolean =>
   Object.keys(value).sort().join("\0") === [...keys].sort().join("\0");
