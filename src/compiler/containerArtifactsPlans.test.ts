@@ -9,6 +9,7 @@ import { daimonAdapter } from "../runtime/daimon/adapter.js";
 import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "../runtime/daimon/contractManifest.js";
 
 import { createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
+import { createExclusiveReattachVolumeName } from "../shared/index.js";
 import { createPersistentVolumeName } from "./moltnetArtifactPaths.js";
 import type { CompilePlan, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 
@@ -154,10 +155,24 @@ describe("runtime target plan source identity", () => {
           volume_name: createPersistentVolumeName("/tmp/Spawnfile", "daimon-agy-runtime-home-assistant", undefined, "candidate-blue")
         },
         {
+          // Run-id-free by construction. `createPersistentVolumeName` folds the
+          // run id in, so the previous (lifecycle-less) name changed on every
+          // `spawnfile up` and handed the container an empty keyring — meaning
+          // the interactive AGY browser OAuth had to be redone each deploy.
           id: "daimon-agy-subscription-realm",
+          lifecycle: "exclusive-reattach",
           mount_path: "/var/lib/spawnfile/daimon/agy-subscription-realm",
           reason: "Daimon host AGY subscription realm",
-          volume_name: createPersistentVolumeName("/tmp/Spawnfile", "daimon-agy-subscription-realm", undefined, "candidate-blue")
+          volume_name: createExclusiveReattachVolumeName("/tmp/Spawnfile\u0000compile", "daimon-agy-subscription-realm")
+        },
+        {
+          // An AGY-only organization meters its turns too, so it gets the
+          // ledger volume that used to be provisioned only for Grok.
+          id: "daimon-grok-usage-ledger",
+          lifecycle: "exclusive-reattach",
+          mount_path: "/var/lib/spawnfile/daimon/usage",
+          reason: "Daimon per-turn engine usage ledger",
+          volume_name: createExclusiveReattachVolumeName("/tmp/Spawnfile\u0000compile", "daimon-grok-usage-ledger")
         },
         {
           id: "daimon-organization-acceptance-store",
@@ -222,6 +237,18 @@ describe("runtime target plan source identity", () => {
         mount_path: "/var/lib/spawnfile/daimon/grok-subscription-realm",
         reason: "Daimon host Grok subscription credential realm",
         volume_name: expect.stringMatching(/^spawnfile-exclusive-daimon-grok-subscription-realm-[a-f0-9]{16}$/u)
+      },
+      {
+        // Run-scoping this volume threw the ledger away on every redeploy: a
+        // fresh `spawnfile up` minted a new run id and therefore a new empty
+        // volume, so `spawnfile usage` could never report across deployments.
+        // Its single-writer, size-rotating append log is exactly the shape
+        // `exclusive-reattach` exists for.
+        id: "daimon-grok-usage-ledger",
+        lifecycle: "exclusive-reattach",
+        mount_path: "/var/lib/spawnfile/daimon/usage",
+        reason: "Daimon per-turn engine usage ledger",
+        volume_name: expect.stringMatching(/^spawnfile-exclusive-daimon-grok-usage-ledger-[a-f0-9]{16}$/u)
       },
       {
         id: "daimon-organization-acceptance-store",

@@ -8,7 +8,7 @@ import type { ContainerTargetInput } from "../runtime/index.js";
 import * as runtimeIndex from "../runtime/index.js";
 import { createContainerArtifacts } from "./containerArtifacts.js";
 import { createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
-import { createPersistentVolumeName } from "./moltnetArtifactPaths.js";
+import { createExclusiveReattachVolumeName } from "../shared/index.js";
 import { openClawAdapter } from "../runtime/openclaw/adapter.js";
 import { picoClawAdapter } from "../runtime/picoclaw/adapter.js";
 import { piAdapter } from "../runtime/pi/adapter.js";
@@ -460,11 +460,11 @@ describe("createContainerArtifacts", () => {
       }
     ]);
     const dockerfile = result.files.find((file) => file.path === "Dockerfile")?.content ?? "";
-    // Project-scoped (plan.root here is "/tmp/Spawnfile") via
-    // createPersistentVolumeName rather than a bare path slug; no
-    // NOOPOLIS_RUN_ID is set in this test process env, so no run segment.
-    const expectedVolumeName = createPersistentVolumeName(
-      "/tmp/Spawnfile",
+    // Durable memory volumes are deployment-lineage scoped, never run scoped:
+    // a run-scoped name gave every redeploy a fresh empty bank. This compile
+    // passes no deploymentLineage, so it lands on the "compile" lineage.
+    const expectedVolumeName = createExclusiveReattachVolumeName(
+      "/tmp/Spawnfile\u0000compile",
       "memory-var-lib-spawnfile-memory-assistant-shared-memory"
     );
 
@@ -492,17 +492,22 @@ describe("createContainerArtifacts", () => {
         retention: { forgetting: "manual" }
       }
     ]);
+    // The lifecycle must reach the distribution report too: the sourceless
+    // consume-image path derives its own volume name from these fields, and
+    // only the exclusive lifecycle gets the host-stable reattachable name.
     expect(result.distribution.report.persistent_mounts).toEqual([
       {
         durability: "persistent",
         id: "memory-var-lib-spawnfile-memory-assistant-shared-memory",
         kind: "volume",
+        lifecycle: "exclusive-reattach",
         target: "/var/lib/spawnfile/memory/assistant/shared-memory"
       }
     ]);
     expect(result.report.persistent_mounts).toEqual([
       {
         id: "memory-var-lib-spawnfile-memory-assistant-shared-memory",
+        lifecycle: "exclusive-reattach",
         mount_path: "/var/lib/spawnfile/memory/assistant/shared-memory",
         reason: "durable memory stores under /var/lib/spawnfile/memory/assistant/shared-memory",
         volume_name: expectedVolumeName
@@ -1246,5 +1251,72 @@ describe("createContainerArtifacts distribution contract", () => {
 
     expect(instance?.node_ids).toEqual(["agent:research-cell"]);
     expect(Array.isArray(instance?.model_auth_methods)).toBe(false);
+  });
+
+  /**
+   * `specs/SURFACES.md` promises a Moltnet release without `daimon-bridge` is
+   * rejected. No published release implements the daimon node runtime kind, and
+   * the node config decodes with DisallowUnknownFields, so an ungated compile
+   * ships a container that dies at boot on strict decode of `agent_id`. A node
+   * plan carries `receiptStorePath` if and only if its agent runtime is daimon.
+   */
+  const piBridgeRelease = {
+    architecture: "amd64",
+    asset: "moltnet_linux_amd64.tar.gz",
+    asset_sha256: `sha256:${"a".repeat(64)}`,
+    capabilities: ["pi-bridge"],
+    release_version: "v0.1.14",
+    source_revision: "b".repeat(40),
+    version: "spawnfile.moltnet-release-identity.v1"
+  } as const;
+  const daimonBridgeRelease = {
+    architecture: "amd64",
+    asset: "moltnet_linux_amd64.tar.gz",
+    asset_sha256: `sha256:${"a".repeat(64)}`,
+    capabilities: ["daimon-bridge", "pi-bridge"],
+    development: { mode: "local-development", non_production: true, unpublished: true, unsigned: true },
+    source_sha256: `sha256:${"c".repeat(64)}`,
+    version: "spawnfile.moltnet-release-identity.v1"
+  } as const;
+  const moltnetWith = (nodePlans: { configPath: string; networkId: string; receiptStorePath?: string }[]) => ({
+    files: [], nodePlans, persistentMounts: [], ports: [], publishedPorts: [], serverPlans: []
+  });
+  const daimonPlans = moltnetWith([{
+    configPath: "/etc/spawnfile/moltnet/mapper.json",
+    networkId: "daimon_lab",
+    receiptStorePath: "/var/lib/spawnfile/moltnet/networks/daimon_lab/daimon-receipts/mapper.json"
+  }]);
+
+  const compileWith = (moltnet: unknown, moltnetRelease: unknown) => createContainerArtifacts(
+    createPlan(["openclaw"]),
+    [],
+    { hasStagedMoltnetBinaries: true, moltnet, moltnetRelease } as never
+  );
+
+  it("rejects a daimon Moltnet attachment when the staged release lacks daimon-bridge", async () => {
+    await expect(compileWith(daimonPlans, piBridgeRelease)).rejects.toThrow(/daimon-bridge/u);
+
+    const thrown: unknown = await compileWith(daimonPlans, piBridgeRelease).catch((error: unknown) => error);
+    const message = thrown instanceof Error ? thrown.message : "";
+    // Name the capability, the affected network, the real consequence, and a way out.
+    expect(message).toContain("daimon-bridge");
+    expect(message).toContain("daimon_lab");
+    expect(message).toContain("exit at boot");
+    expect(message).toContain("build-local-moltnet.mjs");
+  });
+
+  it("fails closed when a daimon Moltnet attachment has no staged release identity at all", async () => {
+    await expect(compileWith(daimonPlans, undefined)).rejects.toThrow(/daimon-bridge/u);
+  });
+
+  it("admits a daimon Moltnet attachment when the staged release advertises daimon-bridge", async () => {
+    const thrown: unknown = await compileWith(daimonPlans, daimonBridgeRelease).catch((error: unknown) => error);
+    expect(thrown instanceof Error ? thrown.message : "").not.toContain("daimon-bridge");
+  });
+
+  it("leaves a pi-only Moltnet attachment on a pi-bridge release alone", async () => {
+    const piPlans = moltnetWith([{ configPath: "/etc/spawnfile/moltnet/pi.json", networkId: "lab" }]);
+    const thrown: unknown = await compileWith(piPlans, piBridgeRelease).catch((error: unknown) => error);
+    expect(thrown instanceof Error ? thrown.message : "").not.toContain("daimon-bridge");
   });
 });

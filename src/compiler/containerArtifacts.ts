@@ -36,11 +36,59 @@ export interface ContainerArtifactOptions {
   runtimePackageOverrides?: RuntimeContainerPackageOverrides;
 }
 
+/**
+ * Enforces the `specs/SURFACES.md` Moltnet/daimon promise: "A release without
+ * `daimon-bridge` is rejected; the public pi-only release cannot be relabeled
+ * as dual-capability."
+ *
+ * A daimon Moltnet attachment lowers a node runtime config of
+ * `kind: "daimon"` carrying `agent_id`, `token_env`, and `receipt_store_path`
+ * (`./moltnetRuntimeConfig.ts`). No published Moltnet release implements that
+ * kind -- `pkg/bridgeconfig` has no `RuntimeDaimon` through the latest tag, and
+ * `pkg/nodeconfig` decodes with `DisallowUnknownFields()`, so the node exits on
+ * `agent_id` at strict decode, before `Validate()` is even reached. The
+ * entrypoint launches `moltnet node <config> &` and then `wait -n`
+ * (`./containerEntrypointRender.ts`), so that exit tears the whole container
+ * down. Only a locally built Moltnet advertises `daimon-bridge`
+ * (`./localMoltnetAuthority.ts`); the pinned public authority is hard-narrowed
+ * to `["pi-bridge"]` (`./moltnetReleaseAuthority.ts`).
+ *
+ * This throws rather than warning, which is the opposite call from the other
+ * unlowerable-declaration diagnostics in this compiler. Those keep working
+ * projects compiling; here every affected project is already broken, and the
+ * failure it replaces is an opaque JSON decode error at container boot.
+ *
+ * `receiptStorePath` is set on a node plan if and only if the attached agent's
+ * runtime is daimon (`./moltnetArtifacts.ts`), so it is the exact daimon
+ * signal on an already-resolved plan.
+ */
+const assertMoltnetDaimonBridgeCapability = (
+  moltnet: MoltnetArtifacts | undefined | null,
+  release: MoltnetReleaseIdentity | undefined
+): void => {
+  const daimonNetworks = [...new Set((moltnet?.nodePlans ?? [])
+    .filter((nodePlan) => nodePlan.receiptStorePath !== undefined)
+    .map((nodePlan) => nodePlan.networkId))].sort();
+  if (daimonNetworks.length === 0) return;
+  const capabilities: readonly string[] = release?.capabilities ?? [];
+  if (capabilities.includes("daimon-bridge")) return;
+  throw new SpawnfileError(
+    "compile_error",
+    `Moltnet release ${release?.version ?? "(unstaged)"} does not advertise the daimon-bridge capability, but `
+      + `${daimonNetworks.length} network attachment(s) lower a daimon runtime bridge (${daimonNetworks.join(", ")}). `
+      + "The published release implements pi-bridge only and rejects a daimon node config at strict JSON decode, so "
+      + "the container would exit at boot. Build Moltnet locally (scripts/build-local-moltnet.mjs, then "
+      + "SPAWNFILE_LOCAL_MOLTNET_RELEASE_DIR with SPAWNFILE_ALLOW_LOCAL_E2E=1) to stage a daimon-bridge release, or "
+      + "remove the Moltnet attachment from the daimon agent(s)."
+  );
+};
+
 export const createContainerArtifacts = async (
   plan: CompilePlan,
   compiledNodes: CompiledNodeArtifact[],
   options: ContainerArtifactOptions = {}
 ): Promise<GeneratedContainerArtifacts> => {
+  assertMoltnetDaimonBridgeCapability(options.moltnet, options.moltnetRelease);
   const localDaimonIdentityPath = process.env[DAIMON_LOCAL_RUNTIME_IDENTITY_ENV]?.trim();
   const localDaimonIdentity = localDaimonIdentityPath ? await loadLocalDaimonRuntimeIdentity(localDaimonIdentityPath) : undefined;
   const runtimePlans = await createRuntimeTargetPlans(plan, compiledNodes, options.worldBindings, options.deploymentLineage);
@@ -92,7 +140,7 @@ export const createContainerArtifacts = async (
     .filter((variable) => variable.required && variable.categories.includes("runtime"))
     .map((variable) => variable.name)
     .sort();
-  const memoryArtifacts = createMemoryArtifactBundle(plan);
+  const memoryArtifacts = createMemoryArtifactBundle(plan, options.deploymentLineage);
   const { resources: resolvedWorkspaceResources, mounts: workspaceResourceMounts } =
     resolveWorkspaceResourceVolumes(runtimePlans);
   const persistentMountsById = new Map<string, { lifecycle?: "exclusive-reattach"; mount_path: string; reason: string; volume_name: string }>();
