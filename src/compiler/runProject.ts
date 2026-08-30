@@ -174,6 +174,8 @@ export const createDockerRunInvocation = async (
         "--cap-add=SETUID",
         "--cap-add=SETGID",
         "--cap-add=DAC_READ_SEARCH",
+        // Lets the broker launcher drop its bounding set to 00000000000000c1; without SETPCAP, setpriv --bounding-set silently no-ops.
+        "--cap-add=SETPCAP",
         "--security-opt=no-new-privileges:true"
       );
     }
