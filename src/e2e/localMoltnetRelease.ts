@@ -3,6 +3,7 @@ import { readFile as readFileBinary } from "node:fs/promises";
 import path from "node:path";
 
 import { fileExists, readUtf8File } from "../filesystem/index.js";
+import { parseMoltnetBridgeCapabilities } from "../compiler/moltnetReleaseAuthority.js";
 import { SpawnfileError } from "../shared/index.js";
 import {
   parseTrustedMoltnetReleaseAuthority,
@@ -120,9 +121,7 @@ export const decideLocalMoltnetStaging = (
     || input.stamp.asset !== input.assetName
     || typeof input.stamp.built_at !== "string"
     || !Number.isFinite(Date.parse(input.stamp.built_at))
-    || !Array.isArray(capabilities)
-    || capabilities.length !== 1
-    || capabilities[0] !== "pi-bridge"
+    || parseMoltnetBridgeCapabilities(capabilities) === null
     || input.stamp.pi_bridge !== true
     || typeof input.stamp.sha256 !== "string"
     || !/^[a-f0-9]{64}$/u.test(input.stamp.sha256)

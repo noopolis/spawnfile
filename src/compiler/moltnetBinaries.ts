@@ -7,9 +7,11 @@ import { promisify } from "node:util";
 import { ensureDirectory, fileExists } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import {
+  parseMoltnetBridgeCapabilities,
   parseTrustedMoltnetReleaseAuthority,
   readTrustedMoltnetReleaseAuthority,
   trustedMoltnetReleaseAsset,
+  type MoltnetBridgeCapabilities,
   type MoltnetTargetArchitecture,
   type TrustedMoltnetReleaseAuthority
 } from "./moltnetReleaseAuthority.js";
@@ -37,7 +39,8 @@ export const MOLTNET_RELEASE_IDENTITY_VERSION = "spawnfile.moltnet-release-ident
 export const MOLTNET_RELEASE_STAMP_VERSION = "spawnfile.moltnet-release-stamp.v1" as const;
 export type { MoltnetTargetArchitecture } from "./moltnetReleaseAuthority.js";
 
-export type MoltnetBridgeCapabilities = readonly ["pi-bridge"] | readonly ["daimon-bridge", "pi-bridge"];
+/** Re-exported so existing importers keep one shape; defined in the lowest layer. */
+export type { MoltnetBridgeCapabilities } from "./moltnetReleaseAuthority.js";
 
 interface MoltnetIdentityBase {
   readonly architecture: MoltnetTargetArchitecture;
@@ -48,7 +51,7 @@ interface MoltnetIdentityBase {
 }
 
 export interface PublishedMoltnetReleaseIdentity extends MoltnetIdentityBase {
-  readonly capabilities: readonly ["pi-bridge"];
+  readonly capabilities: MoltnetBridgeCapabilities;
   readonly release_version: string;
   readonly source_revision: string;
 }
@@ -67,7 +70,15 @@ interface MoltnetReleaseStamp {
   readonly arch: MoltnetTargetArchitecture;
   readonly asset: string;
   readonly built_at: string;
-  readonly capabilities: readonly ["pi-bridge"];
+  readonly capabilities: MoltnetBridgeCapabilities;
+  /**
+   * Kept as a required scalar, NOT derived from `capabilities`: both capability
+   * variants include `pi-bridge`, so this is invariant across the widening and
+   * deriving it would change the stamp format for no gain. The stamp format is a
+   * matched pair with the writers in `fixtures/support/trustedMoltnetRelease.ts`
+   * and `src/e2e/localMoltnetRelease.ts`; there is no `daimon_bridge` twin
+   * because that would be a second way to say what `capabilities` already says.
+   */
   readonly pi_bridge: true;
   readonly sha256: string;
   readonly source_revision: string;
@@ -173,9 +184,7 @@ const parseReleaseStamp = (raw: string, architecture: MoltnetTargetArchitecture)
     || value.asset !== createReleaseAssetName(architecture)
     || typeof value.built_at !== "string"
     || !Number.isFinite(Date.parse(value.built_at))
-    || !Array.isArray(capabilities)
-    || capabilities.length !== 1
-    || capabilities[0] !== "pi-bridge"
+    || parseMoltnetBridgeCapabilities(capabilities) === null
     || value.pi_bridge !== true
     || typeof value.sha256 !== "string"
     || !SHA256.test(value.sha256)
@@ -235,7 +244,7 @@ const verifyReleaseIdentity = async (
     architecture,
     asset,
     asset_sha256: `sha256:${sha256}`,
-    capabilities: Object.freeze(["pi-bridge"] as const),
+    capabilities: stamp.capabilities,
     release_version: stamp.version,
     source_revision: stamp.source_revision,
     version: MOLTNET_RELEASE_IDENTITY_VERSION
@@ -409,7 +418,7 @@ export const stageMoltnetBinaries = async (
       architecture,
       asset: trustedAsset.asset,
       asset_sha256: trustedAsset.asset_sha256,
-      capabilities: Object.freeze(["pi-bridge"] as const),
+      capabilities: authority.capabilities,
       release_version: authority.release_version,
       source_revision: authority.source_revision,
       version: MOLTNET_RELEASE_IDENTITY_VERSION

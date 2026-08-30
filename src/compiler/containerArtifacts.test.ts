@@ -7,6 +7,7 @@ import type { CompilePlan, ResolvedAgentNode, ResolvedMemoryBank } from "./types
 import type { ContainerTargetInput } from "../runtime/index.js";
 import * as runtimeIndex from "../runtime/index.js";
 import { createContainerArtifacts } from "./containerArtifacts.js";
+import { readTrustedMoltnetReleaseAuthority, trustedMoltnetReleaseAsset } from "./moltnetReleaseAuthority.js";
 import { createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
 import { createExclusiveReattachVolumeName } from "../shared/index.js";
 import { openClawAdapter } from "../runtime/openclaw/adapter.js";
@@ -1311,6 +1312,31 @@ describe("createContainerArtifacts distribution contract", () => {
 
   it("admits a daimon Moltnet attachment when the staged release advertises daimon-bridge", async () => {
     const thrown: unknown = await compileWith(daimonPlans, daimonBridgeRelease).catch((error: unknown) => error);
+    expect(thrown instanceof Error ? thrown.message : "").not.toContain("daimon-bridge");
+  });
+
+  /**
+   * THE TRANSITION. Before moltnet v0.1.18 no published release advertised
+   * `daimon-bridge`, so the fail-closed gate rejected every daimon attachment —
+   * correctly, because the pinned binary rejected the config at strict decode.
+   * Now the checked-in authority advertises it, so the same organization must
+   * compile. Nothing else pins that flip, and it is the entire point of the pin.
+   */
+  it("admits a daimon Moltnet attachment against the checked-in released authority", async () => {
+    const authority = await readTrustedMoltnetReleaseAuthority();
+    expect(authority.capabilities).toContain("daimon-bridge");
+    const releasedIdentity = {
+      architecture: "amd64",
+      asset: trustedMoltnetReleaseAsset(authority, "amd64").asset,
+      asset_sha256: trustedMoltnetReleaseAsset(authority, "amd64").asset_sha256,
+      capabilities: authority.capabilities,
+      release_version: authority.release_version,
+      source_revision: authority.source_revision,
+      version: "spawnfile.moltnet-release-identity.v1"
+    };
+
+    const thrown: unknown = await compileWith(daimonPlans, releasedIdentity).catch((error: unknown) => error);
+
     expect(thrown instanceof Error ? thrown.message : "").not.toContain("daimon-bridge");
   });
 
