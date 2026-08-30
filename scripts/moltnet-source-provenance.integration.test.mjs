@@ -18,6 +18,6 @@ test("literal dirty-tree Moltnet archive wrapper emits an amd64 provenance-bound
     const stamp = JSON.parse(readFileSync(path.join(release, "local_moltnet_release_stamp_amd64.json"), "utf8"));
     assert.equal(stamp.arch, "amd64"); assert.equal(stamp.source_inputs.mode, "source-bundle"); assert.match(stamp.source_inputs.source_sha256, /^sha256:[a-f0-9]{64}$/u); assert.match(stamp.source_inputs.dependencies_sha256, /^sha256:[a-f0-9]{64}$/u);
     assert.ok(readFileSync(path.join(release, stamp.asset)).length > 1_000_000);
-    execFileSync("node", ["--import", "tsx", "--input-type=module", "-e", `import {readLocalMoltnetReleaseIdentity as read} from './src/compiler/localMoltnetAuthority.ts'; const value=await read(${JSON.stringify(release)},'amd64',${JSON.stringify(process.arch === "arm64" ? "arm64" : "amd64")}); if(value.source_inputs?.source_sha256!==value.source_sha256) process.exit(2);`], { cwd: repository, stdio: "inherit" });
+    execFileSync("node", ["--import", "tsx", "--input-type=module", "-e", `import {readLocalMoltnetReleaseIdentity as read} from './src/compiler/localMoltnetAuthority.ts'; const value=await read(${JSON.stringify(release)},'amd64',{platform:process.platform,architecture:${JSON.stringify(process.arch === "arm64" ? "arm64" : "amd64")}}); if(value.source_inputs?.source_sha256!==value.source_sha256) process.exit(2);`], { cwd: repository, stdio: "inherit" });
   } finally { rmSync(temporary, { force: true, recursive: true }); }
 });

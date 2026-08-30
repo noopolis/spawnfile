@@ -132,10 +132,42 @@ export const parseLocalReleaseStamp = (
   return value as unknown as LocalMoltnetReleaseStamp;
 };
 
+/**
+ * The platform actually executing this compile -- never the build target.
+ *
+ * `architecture` is absent when the host CPU is one Spawnfile cannot name as a
+ * Moltnet target (so it can never accidentally equal one), and `platform` is a
+ * raw `process.platform`.
+ */
+export interface MoltnetExecutionHost {
+  readonly architecture?: MoltnetTargetArchitecture;
+  readonly platform: NodeJS.Platform;
+}
+
+/**
+ * Whether this host can run the built binary directly, deciding between the
+ * direct-exec probe and the Docker cross-platform probe below.
+ *
+ * A local Moltnet build is ALWAYS `GOOS=linux` (the asset is
+ * `moltnet_linux_<arch>.tar.gz`), so matching the architecture alone is not
+ * enough: a darwin/arm64 host and a linux/arm64 binary share a CPU
+ * architecture and share nothing else. Executing that ELF on macOS fails with
+ * ENOEXEC and the probe reports the binary as unprovable, rejecting a
+ * perfectly good build. The host must therefore match on OS *and*
+ * architecture; everything else goes through Docker, which can run a
+ * linux/<arch> image anywhere.
+ *
+ * @internal Exported for the branch-selection tests.
+ */
+export const moltnetBinaryIsDirectlyExecutable = (
+  architecture: MoltnetTargetArchitecture,
+  host: MoltnetExecutionHost
+): boolean => host.platform === "linux" && host.architecture === architecture;
+
 const verifyBuiltMoltnetArchive = async (
   releaseAssetPath: string,
   architecture: MoltnetTargetArchitecture,
-  hostArchitecture: MoltnetTargetArchitecture
+  host: MoltnetExecutionHost
 ): Promise<void> => {
   const temporaryDirectory = path.join(path.dirname(releaseAssetPath), `.spawnfile-moltnet-verify-${process.pid}-${Date.now()}`);
   try {
@@ -146,7 +178,7 @@ const verifyBuiltMoltnetArchive = async (
       throw new SpawnfileError("compile_error", "Local Moltnet archive does not contain its moltnet binary");
     }
     await chmod(binaryPath, 0o755);
-    if (architecture === hostArchitecture) {
+    if (moltnetBinaryIsDirectlyExecutable(architecture, host)) {
       const { stdout } = await execFile(binaryPath, ["version"]); if (!stdout.trim()) throw new SpawnfileError("compile_error", "Local Moltnet binary did not produce a bounded version identity");
       await assertBridgeCapability(binaryPath, temporaryDirectory, "pi"); await assertBridgeCapability(binaryPath, temporaryDirectory, "daimon");
     } else {
@@ -165,7 +197,7 @@ const verifyBuiltMoltnetArchive = async (
 export const readLocalMoltnetReleaseIdentity = async (
   releaseDirectory: string,
   architecture: MoltnetTargetArchitecture,
-  hostArchitecture: MoltnetTargetArchitecture
+  host: MoltnetExecutionHost
 ): Promise<LocalMoltnetReleaseIdentity> => {
   const asset = assetName(architecture);
   const assetPath = path.join(releaseDirectory, asset);
@@ -178,7 +210,7 @@ export const readLocalMoltnetReleaseIdentity = async (
   if (stamp.sha256 !== sha256) {
     throw new SpawnfileError("compile_error", "Local Moltnet development stamp does not match its archive bytes");
   }
-  await verifyBuiltMoltnetArchive(assetPath, architecture, hostArchitecture);
+  await verifyBuiltMoltnetArchive(assetPath, architecture, host);
   return Object.freeze({
     architecture,
     asset,

@@ -130,11 +130,11 @@ const assertBuiltBinaryCapabilities = (binaryPath) => {
   }
 };
 
-const assertDockerBinaryCapabilities = (binaryPath) => {
+const assertDockerBinaryCapabilities = (binaryPath, arch) => {
   for (const kind of ["pi", "daimon"]) {
     const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "spawnfile-moltnet-probe-")), configPath = path.join(temporaryDirectory, "config.json"), receiptDirectory = path.join(temporaryDirectory, "receipts"); mkdirSync(receiptDirectory);
     writeFileSync(configPath, JSON.stringify(createCapabilityProbeConfig(kind, "/receipts/agent.json")));
-    const id = execFileSync("docker", ["create", "--platform", "linux/amd64", "--env", "SPAWNFILE_DAIMON_CONTROL_TOKEN=probe", "node:24-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df", "timeout", "2", "/moltnet", "node", "/config.json"], { encoding: "utf8" }).trim();
+    const id = execFileSync("docker", ["create", "--platform", `linux/${arch}`, "--env", "SPAWNFILE_DAIMON_CONTROL_TOKEN=probe", "node:24-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df", "timeout", "2", "/moltnet", "node", "/config.json"], { encoding: "utf8" }).trim();
     try { execFileSync("docker", ["cp", binaryPath, `${id}:/moltnet`]); execFileSync("docker", ["cp", configPath, `${id}:/config.json`]); execFileSync("docker", ["cp", receiptDirectory, `${id}:/receipts`]); const result = spawnSync("docker", ["start", "--attach", id], { encoding: "utf8" }); const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`; if (result.status !== 124 && !/connection refused|connect:|dial tcp|network is unreachable/iu.test(output)) throw new Error(`Built Moltnet binary does not accept ${kind}-bridge: ${output.trim()}`); }
     finally { execFileSync("docker", ["rm", "--force", id], { stdio: "ignore" }); rmSync(temporaryDirectory, { force: true, recursive: true }); }
   }
@@ -166,13 +166,18 @@ const main = () => {
       const source = requiredBundle("SPAWNFILE_MOLTNET_SOURCE_BUNDLE", "build-source"), dependencies = requiredBundle("SPAWNFILE_MOLTNET_GO_DEPENDENCY_BUNDLE", "go-dependencies"), sourceContext = path.join(workDirectory, "source"), dependencyContext = path.join(workDirectory, "dependencies"), output = path.join(workDirectory, "output");
       mkdirSync(sourceContext); mkdirSync(dependencyContext); mkdirSync(output); writeFileSync(path.join(sourceContext, "source.tar"), readFileSync(source.path)); writeFileSync(path.join(dependencyContext, "dependencies.tar"), readFileSync(dependencies.path));
       execFileSync("docker", ["build", "--network=none", "--platform", `linux/${goarchForHost()}`, "--build-context", `source_bundle=${sourceContext}`, "--build-context", `dependency_bundle=${dependencyContext}`, "--output", `type=local,dest=${output}`, "--build-arg", `SOURCE_ARCHIVE_SHA256=${source.archive_sha256}`, "--build-arg", `DEPENDENCY_ARCHIVE_SHA256=${dependencies.archive_sha256}`, "-f", path.join(repoRoot, "runtime-images", "moltnet", "SourceBundle.Dockerfile"), repoRoot], { stdio: "inherit" });
-      writeFileSync(binaryPath, readFileSync(path.join(output, "moltnet")), { mode: 0o755 }); assertDockerBinaryCapabilities(binaryPath);
+      writeFileSync(binaryPath, readFileSync(path.join(output, "moltnet")), { mode: 0o755 }); assertDockerBinaryCapabilities(binaryPath, arch);
     } else execFileSync("go", ["build", "-trimpath", "-ldflags", "-s -w", "-o", binaryPath, "./cmd/moltnet"], {
       cwd: moltnetDir,
       env: { ...process.env, CGO_ENABLED: "0", GOARCH: arch, GOOS: "linux", GOTOOLCHAIN: "local" },
       stdio: "inherit"
     });
-    if (!archiveMode) assertBuiltBinaryCapabilities(binaryPath);
+    // The build is always GOOS=linux, so a matching GOARCH on a non-Linux host
+    // (darwin/arm64 vs linux/arm64) still cannot exec the ELF: probe via Docker.
+    if (!archiveMode) {
+      if (process.platform === "linux") assertBuiltBinaryCapabilities(binaryPath);
+      else assertDockerBinaryCapabilities(binaryPath, arch);
+    }
     mkdirSync(releaseDir, { recursive: true });
     execFileSync("tar", ["-C", workDirectory, "-czf", assetPath, "moltnet"], { stdio: "inherit" });
   } finally {
