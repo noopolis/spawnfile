@@ -20,6 +20,7 @@ concurrency:
 
 jobs:
   publish:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
