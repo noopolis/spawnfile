@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
 
+ARG DAIMON_DEPENDENCY_MODE=registry
 ARG NODE_BASE_IMAGE=node:24-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df
 FROM daimon_package AS daimon_package
 
@@ -18,9 +19,92 @@ RUN test "$(sha256sum /tmp/daimon.tgz | awk '{print "sha256:" $1}')" = "${DAIMON
   && test -f /probe/node_modules/@noopolis/daimon/dist/runtime/contract-manifest.json \
   && cp /tmp/source-inputs.json /probe/source-inputs.json
 
-FROM ${NODE_BASE_IMAGE} AS build
+FROM ${NODE_BASE_IMAGE} AS base_offline-bundle
 
+FROM ${NODE_BASE_IMAGE} AS base_registry
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends ca-certificates curl \
+  && rm -rf /var/lib/apt/lists/*
+
+FROM base_${DAIMON_DEPENDENCY_MODE} AS base
+
+FROM base AS grok_source_registry
+ARG GROK_CLI_URL
+RUN curl -fsSL "${GROK_CLI_URL}" -o /tmp/grok
+
+FROM base AS grok_source_offline-bundle
+COPY --from=daimon_package /grok /tmp/grok
+
+FROM grok_source_${DAIMON_DEPENDENCY_MODE} AS grok_cli
+ARG GROK_CLI_SHA256
+ARG RUNTIME_ROOT=/opt/spawnfile/runtime-installs/daimon
+RUN echo "${GROK_CLI_SHA256}  /tmp/grok" | sha256sum -c - \
+  && mkdir -p ${RUNTIME_ROOT}/bin \
+  && install -m 0755 /tmp/grok ${RUNTIME_ROOT}/bin/grok \
+  && test "$(sha256sum ${RUNTIME_ROOT}/bin/grok | awk '{print "sha256:" $1}')" = "sha256:${GROK_CLI_SHA256#sha256:}" \
+  && rm -f /tmp/grok
+
+FROM grok_cli AS agy_source_registry
+ARG AGY_CLI_URL
+RUN curl -fsSL "${AGY_CLI_URL}" -o /tmp/agy.tar.gz
+
+FROM grok_cli AS agy_source_offline-bundle
+COPY --from=daimon_package /agy.tar.gz /tmp/agy.tar.gz
+
+FROM agy_source_${DAIMON_DEPENDENCY_MODE} AS agy_cli
+ARG AGY_CLI_SHA512
+ARG AGY_CLI_SHA256
+ARG RUNTIME_ROOT=/opt/spawnfile/runtime-installs/daimon
+RUN echo "${AGY_CLI_SHA512}  /tmp/agy.tar.gz" | sha512sum -c - \
+  && rm -rf /tmp/agy-extract \
+  && mkdir -p /tmp/agy-extract \
+  && tar -xzf /tmp/agy.tar.gz -C /tmp/agy-extract \
+  && agy_path="$(find /tmp/agy-extract -type f -name antigravity -print -quit)" \
+  && test -n "${agy_path}" \
+  && install -m 0755 "${agy_path}" ${RUNTIME_ROOT}/bin/agy \
+  && test "$(sha256sum ${RUNTIME_ROOT}/bin/agy | awk '{print "sha256:" $1}')" = "sha256:${AGY_CLI_SHA256#sha256:}" \
+  && rm -rf /tmp/agy.tar.gz /tmp/agy-extract
+
+FROM agy_cli AS codex_registry
 ARG CODEX_CLI_VERSION=0.142.3
+ARG RUNTIME_ROOT=/opt/spawnfile/runtime-installs/daimon
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+  cd ${RUNTIME_ROOT} \
+  && npm install --omit=dev --no-fund --no-audit @openai/codex@${CODEX_CLI_VERSION}
+
+FROM agy_cli AS codex_offline-bundle
+ARG DAIMON_DEPENDENCY_ARCHIVE_SHA256=none
+ARG RUNTIME_ROOT=/opt/spawnfile/runtime-installs/daimon
+COPY --from=daimon_package /dependencies.tar /tmp/dependencies.tar
+RUN test "$(sha256sum /tmp/dependencies.tar | awk '{print "sha256:" $1}')" = "${DAIMON_DEPENDENCY_ARCHIVE_SHA256}" \
+  && mkdir -p ${RUNTIME_ROOT}/node_modules \
+  && tar -xf /tmp/dependencies.tar -C ${RUNTIME_ROOT}/node_modules \
+  && test -x ${RUNTIME_ROOT}/node_modules/@openai/codex/bin/codex.js \
+  && rm -f /tmp/dependencies.tar
+
+FROM codex_registry AS daimon_registry
+ARG DAIMON_PACKAGE_SHA256
+ARG RUNTIME_ROOT=/opt/spawnfile/runtime-installs/daimon
+COPY --from=daimon_package /daimon.tgz /tmp/daimon.tgz
+COPY --from=daimon_package /source-inputs.json /tmp/source-inputs.json
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+  test "$(sha256sum /tmp/daimon.tgz | awk '{print "sha256:" $1}')" = "${DAIMON_PACKAGE_SHA256}" \
+  && cd ${RUNTIME_ROOT} \
+  && npm install --omit=dev --no-fund --no-audit /tmp/daimon.tgz \
+  && rm -f /tmp/daimon.tgz
+
+FROM codex_offline-bundle AS daimon_offline-bundle
+ARG DAIMON_PACKAGE_SHA256
+ARG RUNTIME_ROOT=/opt/spawnfile/runtime-installs/daimon
+COPY --from=daimon_package /daimon.tgz /tmp/daimon.tgz
+COPY --from=daimon_package /source-inputs.json /tmp/source-inputs.json
+RUN test "$(sha256sum /tmp/daimon.tgz | awk '{print "sha256:" $1}')" = "${DAIMON_PACKAGE_SHA256}" \
+  && mkdir -p ${RUNTIME_ROOT}/node_modules/@noopolis/daimon \
+  && tar -xzf /tmp/daimon.tgz -C ${RUNTIME_ROOT}/node_modules/@noopolis/daimon --strip-components=1 \
+  && rm -f /tmp/daimon.tgz
+
+FROM daimon_${DAIMON_DEPENDENCY_MODE} AS build
+
 ARG GROK_CLI_VERSION
 ARG GROK_CLI_URL
 ARG GROK_CLI_SHA256
@@ -38,12 +122,6 @@ ARG CODEX_CLI_SHA256
 ARG TARGETARCH
 ARG RUNTIME_ROOT=/opt/spawnfile/runtime-installs/daimon
 
-COPY --from=daimon_package /daimon.tgz /tmp/daimon.tgz
-COPY --from=daimon_package /dependencies.tar /tmp/dependencies.tar
-COPY --from=daimon_package /source-inputs.json /tmp/source-inputs.json
-COPY --from=daimon_package /grok /tmp/offline-grok
-COPY --from=daimon_package /agy.tar.gz /tmp/offline-agy.tar.gz
-
 RUN test -n "${GROK_CLI_VERSION}" \
   && test -n "${GROK_CLI_URL}" \
   && test -n "${GROK_CLI_SHA256}" \
@@ -58,28 +136,6 @@ RUN test -n "${GROK_CLI_VERSION}" \
   && { test "${DAIMON_DEPENDENCY_MODE}" = registry || test "${DAIMON_DEPENDENCY_MODE}" = offline-bundle; } \
   && test -n "${CODEX_CLI_SHA256}" \
   && test -n "${TARGETARCH}" \
-  && test "$(sha256sum /tmp/daimon.tgz | awk '{print "sha256:" $1}')" = "${DAIMON_PACKAGE_SHA256}" \
-  && if test "${DAIMON_DEPENDENCY_MODE}" = registry; then apt-get update && apt-get install --yes --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*; fi \
-  && mkdir -p ${RUNTIME_ROOT}/bin \
-  && cd ${RUNTIME_ROOT} \
-  && if test "${DAIMON_DEPENDENCY_MODE}" = offline-bundle; then \
-       test "$(sha256sum /tmp/dependencies.tar | awk '{print "sha256:" $1}')" = "${DAIMON_DEPENDENCY_ARCHIVE_SHA256}" \
-       && mkdir -p node_modules/@noopolis/daimon \
-       && tar -xf /tmp/dependencies.tar -C node_modules \
-       && tar -xzf /tmp/daimon.tgz -C node_modules/@noopolis/daimon --strip-components=1 \
-       && test -x node_modules/@openai/codex/bin/codex.js; \
-     else npm install --omit=dev --no-fund --no-audit /tmp/daimon.tgz @openai/codex@${CODEX_CLI_VERSION}; fi \
-  && if test "${DAIMON_DEPENDENCY_MODE}" = offline-bundle; then cp /tmp/offline-grok /tmp/grok; else curl -fsSL "${GROK_CLI_URL}" -o /tmp/grok; fi \
-  && echo "${GROK_CLI_SHA256}  /tmp/grok" | sha256sum -c - \
-  && install -m 0755 /tmp/grok ${RUNTIME_ROOT}/bin/grok \
-  && if test "${DAIMON_DEPENDENCY_MODE}" = offline-bundle; then cp /tmp/offline-agy.tar.gz /tmp/agy.tar.gz; else curl -fsSL "${AGY_CLI_URL}" -o /tmp/agy.tar.gz; fi \
-  && echo "${AGY_CLI_SHA512}  /tmp/agy.tar.gz" | sha512sum -c - \
-  && rm -rf /tmp/agy-extract \
-  && mkdir -p /tmp/agy-extract \
-  && tar -xzf /tmp/agy.tar.gz -C /tmp/agy-extract \
-  && agy_path="$(find /tmp/agy-extract -type f -name antigravity -print -quit)" \
-  && test -n "${agy_path}" \
-  && install -m 0755 "${agy_path}" ${RUNTIME_ROOT}/bin/agy \
   && test -x ${RUNTIME_ROOT}/node_modules/@openai/codex/bin/codex.js \
   && test -f ${RUNTIME_ROOT}/node_modules/@noopolis/daimon/dist/runtime/cli.js \
   && case "${TARGETARCH}" in \
@@ -108,8 +164,6 @@ RUN test -n "${GROK_CLI_VERSION}" \
   && test "$(sha256sum ${RUNTIME_ROOT}/bin/daimon-engine-broker | awk '{print $1}')" = "${broker_sha}" \
   && test "$(sha256sum ${RUNTIME_ROOT}/bin/agy | awk '{print "sha256:" $1}')" = "sha256:${AGY_CLI_SHA256#sha256:}" \
   && node -e 'const fs=require("fs"),path=require("path"),root=path.resolve(process.argv[1]);let count=0;const walk=d=>{for(const n of fs.readdirSync(d)){const p=path.join(d,n),s=fs.lstatSync(p);if(s.isDirectory())walk(p);else if(s.isSymbolicLink()){if(++count>4096)throw Error("too many runtime links");const l=fs.readlinkSync(p);if(path.isAbsolute(l))throw Error("absolute runtime link");const r=fs.realpathSync(p);if(!r.startsWith(root+path.sep))throw Error("runtime link escape");const t=fs.statSync(p);if(!t.isFile()||t.dev!==fs.statSync(root).dev)throw Error("unsafe runtime link target");}}};walk(root)' ${RUNTIME_ROOT} \
-  && rm -rf /tmp/agy.tar.gz /tmp/agy-extract /tmp/grok \
-  && npm cache clean --force \
   && test -f ${RUNTIME_ROOT}/node_modules/@noopolis/daimon/package.json
 
 FROM scratch

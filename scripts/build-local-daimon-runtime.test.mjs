@@ -207,18 +207,30 @@ test("dependency lock truth rejects near-empty graphs and a fake Codex version",
 test("Daimon Dockerfile verifies the AGY archive before extracting antigravity and verifies every installed executable", () => {
   const dockerfile = readFileSync(new URL("../runtime-images/daimon/Dockerfile", import.meta.url), "utf8");
   assert.match(dockerfile, /^ARG NODE_BASE_IMAGE=node:24-bookworm-slim@sha256:[a-f0-9]{64}\nFROM daimon_package AS daimon_package/mu);
-  assert.match(dockerfile, /FROM \$\{NODE_BASE_IMAGE\} AS build/u);
+  assert.match(dockerfile, /FROM base_\$\{DAIMON_DEPENDENCY_MODE\} AS base/u);
+  assert.match(dockerfile, /FROM grok_source_\$\{DAIMON_DEPENDENCY_MODE\} AS grok_cli/u);
+  assert.match(dockerfile, /FROM agy_source_\$\{DAIMON_DEPENDENCY_MODE\} AS agy_cli/u);
+  assert.match(dockerfile, /FROM daimon_\$\{DAIMON_DEPENDENCY_MODE\} AS build/u);
   const archiveDownload = dockerfile.indexOf('curl -fsSL "${AGY_CLI_URL}" -o /tmp/agy.tar.gz');
   const archiveVerification = dockerfile.indexOf("sha512sum -c -");
   const archiveExtraction = dockerfile.indexOf("tar -xzf /tmp/agy.tar.gz");
   const executableLookup = dockerfile.indexOf("-name antigravity");
   const executableInstall = dockerfile.indexOf('install -m 0755 "${agy_path}"');
+  const grokInstall = dockerfile.indexOf("install -m 0755 /tmp/grok");
+  const codexInstall = dockerfile.indexOf("npm install --omit=dev --no-fund --no-audit @openai/codex@");
+  const daimonCopy = dockerfile.indexOf("COPY --from=daimon_package /daimon.tgz /tmp/daimon.tgz", dockerfile.indexOf("FROM codex_registry AS daimon_registry"));
+  const offlineDaimonCopy = dockerfile.indexOf("COPY --from=daimon_package /daimon.tgz /tmp/daimon.tgz", dockerfile.indexOf("FROM codex_offline-bundle AS daimon_offline-bundle"));
 
   assert.ok(archiveDownload >= 0);
   assert.ok(archiveDownload < archiveVerification);
   assert.ok(archiveVerification < archiveExtraction);
   assert.ok(archiveExtraction < executableLookup);
   assert.ok(executableLookup < executableInstall);
+  assert.ok(grokInstall < daimonCopy);
+  assert.ok(executableInstall < daimonCopy);
+  assert.ok(codexInstall < daimonCopy);
+  assert.ok(grokInstall < offlineDaimonCopy);
+  assert.ok(executableInstall < offlineDaimonCopy);
   assert.match(dockerfile, /sha256sum \$\{RUNTIME_ROOT\}\/bin\/agy/u);
   assert.match(dockerfile, /sha256sum \$\{RUNTIME_ROOT\}\/bin\/grok/u);
   assert.match(dockerfile, /sha256sum \$\{RUNTIME_ROOT\}\/node_modules\/@openai\/codex\/bin\/codex\.js/u);
@@ -235,5 +247,11 @@ test("Daimon Dockerfile verifies the AGY archive before extracting antigravity a
   assert.match(dockerfile, /DAIMON_DEPENDENCY_MODE.*offline-bundle/su);
   assert.match(dockerfile, /sha256sum \/tmp\/dependencies\.tar/u);
   assert.match(dockerfile, /source_inputs\?\.dependencies\?\.runtime_archive_sha256/u);
-  assert.match(dockerfile, /tar -xf \/tmp\/dependencies\.tar -C node_modules/u);
+  assert.match(dockerfile, /tar -xf \/tmp\/dependencies\.tar -C \$\{RUNTIME_ROOT\}\/node_modules/u);
+  assert.match(dockerfile, /FROM \$\{NODE_BASE_IMAGE\} AS base_offline-bundle/u);
+  assert.match(dockerfile, /FROM \$\{NODE_BASE_IMAGE\} AS base_registry/u);
+  assert.match(dockerfile, /FROM codex_registry AS daimon_registry/u);
+  assert.match(dockerfile, /FROM codex_offline-bundle AS daimon_offline-bundle/u);
+  assert.match(dockerfile, /--mount=type=cache,target=\/root\/\.npm,sharing=locked/u);
+  assert.doesNotMatch(dockerfile, /npm cache clean/u);
 });
