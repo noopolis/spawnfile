@@ -178,8 +178,11 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).toContain("http://127.0.0.1:43124/mcp");
     expect(rendered).toContain("DAIMON_MCP_CAPABILITY");
     expect(rendered).toContain("/var/lib/daimon-workers/2200");
-    expect(rendered).toContain("/var/lib/daimon-worker-attestations/");
-    expect(rendered).toContain("ensureExactLink(`${configRoot}/sandbox.toml`, profilePath)");
+    expect(rendered).toContain("/var/lib/daimon-workers/");
+    // Grok refuses a profile that is a symlink or carries a hard-link alias, so it is an
+    // unaliased file in the worker's own read-only .grok directory.
+    expect(rendered).toContain("ensureExactFile(profilePath, profileFor(entry), 0, 0, 0o444)");
+    expect(rendered).not.toContain("ensureExactLink");
     expect(rendered).toContain("sandbox-events.jsonl");
     expect(rendered).toContain("restrict_network = true");
     expect(rendered).toContain("fs.chmodSync(target, 0o750)");
@@ -195,7 +198,7 @@ describe("renderDaimonUidEntrypoint", () => {
     const recovery=rendered.indexOf("if (hasMarker)");const durableSentinel=rendered.indexOf("fs.fsyncSync(sentinel)",recovery),durableParent=rendered.indexOf("fs.fsyncSync(parent)",durableSentinel),removeMarker=rendered.indexOf("fs.unlinkSync",durableParent),durableRemoval=rendered.indexOf("fs.fsyncSync(parent)",removeMarker);expect(recovery).toBeGreaterThan(-1);expect(durableSentinel).toBeGreaterThan(recovery);expect(durableParent).toBeGreaterThan(durableSentinel);expect(removeMarker).toBeGreaterThan(durableParent);expect(durableRemoval).toBeGreaterThan(removeMarker);
     expect(rendered).toContain("validateResourceLink(target, info); return;");
     expect(rendered).toContain("worker runtime file identity mismatch");
-    expect(rendered).toContain("worker runtime link identity mismatch");
+    expect(rendered).toContain("worker runtime file identity mismatch");
     expect(rendered).toContain("ensureEventsFile(eventsPath, entry.uid)");
     expect(rendered).toContain("noopolis.daimon.engine-broker-service.v1");
     expect(rendered).toContain("/etc/daimon-engine-broker/service.json");
@@ -393,7 +396,9 @@ describe("renderDaimonUidEntrypoint", () => {
     const usageDirectory = DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath;
     const rendered = renderDaimonUidEntrypoint([daimonPlan]);
 
-    expect(rendered).toContain(`install -d -o 2100 -g 2100 -m 0750 '${usageDirectory}'`);
+    // The broker (2100) writes turn usage; the daimon host (2000) must group-read it or
+    // the wake fuse trips ledger_unavailable and the organization accepts no wake at all.
+    expect(rendered).toContain(`install -d -o 2100 -g 2000 -m 0750 '${usageDirectory}'`);
     expect(rendered).toContain(
       `--reuid 2100 --regid 2100 --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${usageDirectory}/.daimon-usage-probe; umask 027; : > "$probe"; rm "$probe"'`
     );
