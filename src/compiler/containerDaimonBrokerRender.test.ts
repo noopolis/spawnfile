@@ -80,7 +80,7 @@ describe("Daimon broker usage ledger provisioning", () => {
     const program = renderDaimonBrokerProvisioning([plan]).join("\n");
     const { directoryPath } = DAIMON_GROK_TURN_USAGE_LEDGER;
     expect(program).toContain(
-      `fs.mkdirSync('${directoryPath}', { recursive: true, mode: 0o750 }); fs.chownSync('${directoryPath}', 0, 0); fs.chmodSync('${directoryPath}', 0o750); fs.chownSync('${directoryPath}', 2100, 2100);`
+      `fs.mkdirSync('${directoryPath}', { recursive: true, mode: 0o750 }); fs.chownSync('${directoryPath}', 0, 0); fs.chmodSync('${directoryPath}', 0o750); fs.chownSync('${directoryPath}', 2100, 2000);`
     );
   });
 
@@ -102,9 +102,9 @@ describe("Daimon root provisioning capability-safe ordering", () => {
   } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
   const render = () => renderDaimonBrokerProvisioning([plan]).join("\n");
 
-  it("tightens the worker config directory after its last symlink write", () => {
+  it("tightens the worker config directory after its last file write", () => {
     const program = render();
-    const lastWrite = program.indexOf("ensureExactLink(`${configRoot}/sandbox-events.jsonl`, eventsPath)");
+    const lastWrite = program.indexOf("ensureEventsFile(eventsPath, entry.uid)");
     const tighten = program.indexOf("ensureDirectory(configRoot, 0, 0, 0o555)", lastWrite);
 
     expect(lastWrite).toBeGreaterThanOrEqual(0);

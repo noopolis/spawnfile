@@ -109,8 +109,11 @@ const renderStartScript = (agents: Array<{
       : undefined;
     const inbound = path.posix.join(agent.runtimeHomePath, ".daimon-inbound");
     return [
+      // The workspace mode is owned by the uid entrypoint, which grants a grok worker
+      // group access. Forcing 0700 here would lock that worker out of its own workspace,
+      // so create it only when absent and never restate the mode of an existing directory.
+      `[ -d ${JSON.stringify(agent.workspacePath)} ] || install -d -m 700 ${JSON.stringify(agent.workspacePath)}`,
       `install -d -m 700 ${[
-        agent.workspacePath,
         agent.runtimeHomePath,
         ...(credential === undefined ? [] : [inbound])
       ].map((entry) => JSON.stringify(entry)).join(" ")}`,
