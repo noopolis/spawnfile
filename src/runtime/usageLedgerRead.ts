@@ -1,6 +1,6 @@
 /**
  * Transport half of Daimon's per-turn usage ledger reader
- * (`noopolis.daimon.turn-usage.v1`, see `USAGE_ACCOUNTING_DESIGN.md`). Split
+ * (`noopolis.daimon.turn-usage.v1`, see `specs/USAGE_ACCOUNTING_DESIGN.md`). Split
  * out of `usageLedger.ts` so that file stays a pure parser/aggregator and this
  * one owns the single I/O-shaped concern: `cat` two ledger generations through
  * a caller-supplied `exec` and decide, per generation, whether a failed read
