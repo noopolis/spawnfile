@@ -88,11 +88,16 @@ export const resolveLocalImageTag = (value) => {
   return tag;
 };
 
-export const resolveLocalBuildArchitecture = (hostArchitecture) => {
+export const resolveLocalBuildArchitecture = (hostArchitecture, requested = process.env.SPAWNFILE_DAIMON_TARGET_ARCH) => {
   if (hostArchitecture !== "x64" && hostArchitecture !== "arm64") {
-    throw new Error("Local Daimon builds require an x64 or arm64 Docker host for the linux/amd64 artifact");
+    throw new Error("Local Daimon builds require an x64 or arm64 Docker host");
   }
-  return "amd64";
+  if (requested !== undefined && requested !== "amd64" && requested !== "arm64") {
+    throw new Error(`Unsupported SPAWNFILE_DAIMON_TARGET_ARCH: ${requested}`);
+  }
+  // Default to the host architecture. Emulating amd64 on an arm64 host cannot create the
+  // user namespaces the Grok sandbox requires, so a native build is the working default.
+  return requested ?? (hostArchitecture === "arm64" ? "arm64" : "amd64");
 };
 
 export const resolvePushedImageReference = (imageTag, repoDigests) => {
@@ -159,13 +164,13 @@ const stageOfflineCliAssets = (directory, artifacts) => {
   }
 };
 
-const stageBundleBuiltDaimon = (directory, artifacts) => {
+const stageBundleBuiltDaimon = (directory, artifacts, architecture) => {
   const sourceDirectory = path.join(directory, "source_bundle"), dependencyDirectory = path.join(directory, "dependency_bundle");
   mkdirSync(sourceDirectory, { recursive: true }); mkdirSync(dependencyDirectory, { recursive: true });
   const source = requiredBundle("SPAWNFILE_DAIMON_SOURCE_BUNDLE", "source.tar", sourceDirectory, "source");
   const dependencies = requiredBundle("SPAWNFILE_DAIMON_DEPENDENCY_BUNDLE", "dependencies.tar", dependencyDirectory, "dependencies");
   const output = path.join(directory, "package"); mkdirSync(output, { recursive: true });
-  execFileSync("docker", ["build", "--network=none", "--platform", "linux/amd64", "--build-context", `source_bundle=${sourceDirectory}`,
+  execFileSync("docker", ["build", "--network=none", "--platform", `linux/${architecture}`, "--build-context", `source_bundle=${sourceDirectory}`,
     "--build-context", `dependency_bundle=${dependencyDirectory}`, "--output", `type=local,dest=${output}`,
     "--build-arg", `SOURCE_ARCHIVE_SHA256=${source.archive_sha256}`, "--build-arg", `DEPENDENCY_ARCHIVE_SHA256=${dependencies.archive_sha256}`,
     "--build-arg", `SOURCE_MANIFEST_SHA256=${source.manifest_sha256}`, "--build-arg", `DEPENDENCY_MANIFEST_SHA256=${dependencies.manifest_sha256}`,
@@ -181,7 +186,7 @@ const stageBundleBuiltDaimon = (directory, artifacts) => {
     mode: "source-bundle", source: { archive_sha256: source.archive_sha256, manifest_sha256: source.manifest_sha256 },
     version: "spawnfile.daimon-source-inputs.v1" };
   const buildIdentity = JSON.parse(readFileSync(path.join(output, "source-inputs.json"), "utf8"));
-  if (buildIdentity.target !== "linux/amd64" || buildIdentity.source.archive_sha256 !== source.archive_sha256 || buildIdentity.source.manifest_sha256 !== source.manifest_sha256 ||
+  if (buildIdentity.target !== `linux/${architecture}` || buildIdentity.source.archive_sha256 !== source.archive_sha256 || buildIdentity.source.manifest_sha256 !== source.manifest_sha256 ||
     buildIdentity.dependencies.archive_sha256 !== dependencies.archive_sha256 || buildIdentity.dependencies.manifest_sha256 !== dependencies.manifest_sha256) {
     throw new Error("Remote bundle build source identity does not match its attested inputs");
   }
@@ -234,7 +239,7 @@ const main = () => {
   const artifacts = readDaimonCliArtifactPins();
   const packageDirectory = mkdtempSync(path.join(os.tmpdir(), "spawnfile-daimon-package-"));
   try {
-    const bundled = sourceMode === "source-bundle" ? stageBundleBuiltDaimon(packageDirectory, artifacts) : null;
+    const bundled = sourceMode === "source-bundle" ? stageBundleBuiltDaimon(packageDirectory, artifacts, architecture) : null;
     const packagePath = bundled?.packagePath ?? stagePackagedDaimon(packageDirectory);
     const manifestBytes = execFileSync("tar", ["-xOf", packagePath, "package/dist/runtime/contract-manifest.json"]);
     const receipt = createLocalDaimonCapabilityReceipt({
