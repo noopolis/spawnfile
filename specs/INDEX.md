@@ -20,6 +20,7 @@ These are the source of truth. Implementation in `src/` must stay aligned with t
 | [CAUSAL.md](CAUSAL.md) | evolving | Causal event envelope — producer wire rules plus the shared Stele read/verify and reconciliation contract |
 | [TARGETS.md](TARGETS.md) | evolving | Project-neutral target-resource public contracts and staged target-adapter boundary |
 | [ECOSYSTEM_RUNTIME_BOUNDARIES.md](ECOSYSTEM_RUNTIME_BOUNDARIES.md) | normative, evolving | Cross-project runtime authority — lifecycle composition, autonomous agents, world execution, provider ownership, Stele verification, senses/actions/MCP, and enforcement gates |
+| [USAGE_ACCOUNTING_DESIGN.md](USAGE_ACCOUNTING_DESIGN.md) | design, not yet implemented | Usage accounting — the `noopolis.daimon.turn-usage.v1` wire envelope, Daimon-side measurement and ledger, and Spawnfile-side transport, aggregation, and `spawnfile usage` CLI surface |
 
 ## Research
 
@@ -51,6 +52,9 @@ CAUSAL.md                  ← producer wire contract for simfile, moltnet, mnem
 ECOSYSTEM_RUNTIME_BOUNDARIES.md
                            ← normative ownership constraints across Spawnfile,
                               Simfile, Daimon, Moltnet, Mneme, and Stele
+
+USAGE_ACCOUNTING_DESIGN.md ← turn-usage envelope produced by Daimon, read and
+                              aggregated by Spawnfile's usage command
 
 research/RUNTIME-NOTES.md  ← informs adapter implementation and RUNTIMES.md
 research/AUTH-NOTES.md     ← informs auth/profile UX, per-model auth/endpoint config, and future surface provisioning

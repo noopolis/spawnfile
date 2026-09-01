@@ -1,6 +1,6 @@
 /**
  * Pure reader/aggregator for Daimon's per-turn usage ledger
- * (`noopolis.daimon.turn-usage.v1`, see `USAGE_ACCOUNTING_DESIGN.md`). This
+ * (`noopolis.daimon.turn-usage.v1`, see `specs/USAGE_ACCOUNTING_DESIGN.md`). This
  * module never touches Docker, the filesystem, or a deployment record — it
  * only knows how to parse ledger text and window/group already-parsed
  * records. The transport (deciding whether to `docker exec` or fall back to
