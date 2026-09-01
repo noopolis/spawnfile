@@ -492,7 +492,7 @@ describe("daimonAdapter", () => {
 
     const oversized = {
       ...createDaimonNode("oversized"),
-      docs: [{ content: "x".repeat(4_097), path: "AGENTS.md", role: "instructions" }]
+      docs: [{ content: "x".repeat(16_385), path: "AGENTS.md", role: "instructions" }]
     } as any;
     await expect(daimonAdapter.createContainerTargets!([{
       emittedFiles: [], id: "agent:oversized", kind: "agent", slug: "oversized", value: oversized

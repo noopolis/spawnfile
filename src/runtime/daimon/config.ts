@@ -44,7 +44,7 @@ export const DAIMON_WAKE_FUSE_MOUNT_ID = "daimon-wake-fuse";
 export const DAIMON_RUNTIME_HOMES_DIRECTORY = "runtime-homes";
 const DAIMON_MAX_CONFIG_BYTES = 1_048_576;
 const DAIMON_MAX_INSTRUCTION_BYTES = 16_384;
-const DAIMON_MAX_INSTRUCTION_CODEPOINTS = 4_096;
+const DAIMON_MAX_INSTRUCTION_CODEPOINTS = 16_384;
 export const DAIMON_ENGINES = ["agy", "codex", "grok"] as const;
 type DaimonEngine = typeof DAIMON_ENGINES[number];
 
