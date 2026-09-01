@@ -24,7 +24,7 @@ const localDaimonRuntimeIdentitySchema = z
         unsigned: z.literal(true)
       })
       .strict(),
-    image_architecture: z.literal("amd64"),
+    image_architecture: z.union([z.literal("amd64"), z.literal("arm64")]),
     image_config_digest: z.string().regex(DIGEST),
     image_manifest_digest: z.string().regex(DIGEST),
     image_reference: z.string(),
@@ -46,7 +46,7 @@ const localDaimonRuntimeIdentitySchema = z
 
 export interface LocalDaimonRuntimeIdentity {
   capabilityReceipt: string;
-  imageArchitecture: "amd64";
+  imageArchitecture: "amd64" | "arm64";
   imageConfigDigest: string;
   imageManifestDigest: string;
   imageReference: string;
