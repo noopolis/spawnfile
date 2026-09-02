@@ -63,4 +63,25 @@ describe("Daimon schedule image authority", () => {
     process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY = await identity(digest("d"));
     await expect(scheduledTarget()).rejects.toThrow(/Local Daimon runtime identity is invalid or incomplete/u);
   });
+
+  it("lowers schedule.jitter_seconds into the v2 config for cron and every schedules, and omits it when absent", async () => {
+    process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY = await identity();
+    const configFor = async (schedule: Record<string, unknown>, slug: string) => {
+      const node = createPiTestNode({ runtime: { name: "daimon", options: {} }, schedule });
+      const compiled = await daimonAdapter.compileAgent(node);
+      const targets = await daimonAdapter.createContainerTargets!([{ emittedFiles: compiled.files, id: `agent:${slug}`, kind: "agent", slug, value: node }]);
+      return JSON.parse(targets[0]!.files.find((file) => file.path === DAIMON_CONFIG_FILE)!.content);
+    };
+
+    const cronConfig = await configFor({ kind: "cron", cron: "0 10 * * *", timezone: "Europe/Berlin", prompt: "work", jitter_seconds: 900 }, "cron");
+    expect(cronConfig.agents[0].schedule).toEqual({
+      cron: "0 10 * * *", jitter_seconds: 900, kind: "cron", prompt: "work", timezone: "Europe/Berlin"
+    });
+
+    const everyConfig = await configFor({ kind: "every", every: "5m", prompt: "work", jitter_seconds: 30 }, "every-jittered");
+    expect(everyConfig.agents[0].schedule).toEqual({ interval_ms: 300_000, jitter_seconds: 30, kind: "every", prompt: "work" });
+
+    const noJitterConfig = await configFor({ kind: "every", every: "5m", prompt: "work" }, "every-plain");
+    expect(noJitterConfig.agents[0].schedule).not.toHaveProperty("jitter_seconds");
+  });
 });

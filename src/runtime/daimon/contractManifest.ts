@@ -7,7 +7,7 @@ import { SpawnfileError } from "../../shared/index.js";
 export const DAIMON_CONTRACT_MANIFEST_VERSION =
   "noopolis.daimon.runtime-contract-manifest.v3" as const;
 export const DAIMON_CONTRACT_MANIFEST_SHA256 =
-  "sha256:53fd58a2b8da7e05864ff379fb3124db3c16405a0a10e915759308543389ff29" as const;
+  "sha256:444508888e9432f47d423dd996c0556823877c387a5715426cd4c315f28e8698" as const;
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";
@@ -123,6 +123,7 @@ const expectedConfigFields = [
   "agents[].runtimeHomePath", "agents[].engine.kind", "agents[].schedule.kind",
   "agents[].schedule.interval_ms", "agents[].schedule.cron",
   "agents[].schedule.timezone", "agents[].schedule.prompt",
+  "agents[].schedule.jitter_seconds",
   "agents[].mcp", "agents[].moltnet", "agents[].memory"
 ] as const;
 const exactKeys = (value: Record<string, unknown>, keys: readonly string[]): boolean =>

@@ -54,13 +54,17 @@ const normalizeSchedule = (node: ResolvedAgentNode): Record<string, unknown> | u
   if (schedule.kind === "every") {
     const interval_ms = parseEveryScheduleMs(schedule.every);
     if (interval_ms === null) throw new SpawnfileError("validation_error", `invalid every schedule for ${node.name}`);
-    return { kind: "every", interval_ms, prompt: schedule.prompt ?? "Scheduled work" };
+    return {
+      kind: "every", interval_ms, prompt: schedule.prompt ?? "Scheduled work",
+      ...(schedule.jitter_seconds === undefined ? {} : { jitter_seconds: schedule.jitter_seconds })
+    };
   }
   return {
     cron: schedule.cron.trim().replace(/\s+/gu, " "),
     kind: "cron",
     prompt: schedule.prompt ?? "Scheduled work",
-    timezone: schedule.timezone ?? "UTC"
+    timezone: schedule.timezone ?? "UTC",
+    ...(schedule.jitter_seconds === undefined ? {} : { jitter_seconds: schedule.jitter_seconds })
   };
 };
 
