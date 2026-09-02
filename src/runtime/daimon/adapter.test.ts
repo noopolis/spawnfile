@@ -90,7 +90,7 @@ describe("daimonAdapter", () => {
     });
   });
 
-  it("mounts the durable wake-fuse ledger for a codex-only organization", async () => {
+  it("mounts the durable wake-fuse ledger and the per-turn usage ledger for a codex-only organization", async () => {
     const node = createDaimonNode("codex-only", "Codex Only");
     const compiled = await daimonAdapter.compileAgent(node);
     const target = (await daimonAdapter.createContainerTargets!([{
@@ -107,6 +107,18 @@ describe("daimonAdapter", () => {
       lifecycle: "exclusive-reattach",
       mountPath: "/var/lib/spawnfile/daimon/wake-fuse",
       reason: "Daimon durable wake-fuse admission ledger"
+    });
+    // Codex writes its advisory per-turn usage here too (`engineDispatcher.ts`'s
+    // `onTurnUsage`, daimon side), and Daimon's wake fuse now refuses to arm at
+    // all if this directory is missing (`wakeFuse.ts`'s
+    // `ensureUsageLedgerReadable`) — so a codex-only organization needs this
+    // mount exactly as much as a Grok or AGY one does. Mutation-critical:
+    // re-gating this mount on `hasGrok || hasAgy` must turn this red.
+    expect(target.persistentMounts).toContainEqual({
+      id: "daimon-grok-usage-ledger",
+      lifecycle: "exclusive-reattach",
+      mountPath: "/var/lib/spawnfile/daimon/usage",
+      reason: "Daimon per-turn engine usage ledger"
     });
   });
 

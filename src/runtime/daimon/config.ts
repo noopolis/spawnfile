@@ -252,22 +252,27 @@ export const createDaimonContainerTargets = async (
         lifecycle: "exclusive-reattach" as const,
         mountPath: DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath,
         reason: "Daimon host Grok subscription credential realm"
-      }] : []), ...(hasGrok || hasAgy ? [{
+      }] : []), {
         // Non-run-scoped for the same reason as the durable memory mounts (see
         // durableMemoryVolumeName in src/compiler/memoryArtifacts.ts): a
         // run-scoped volume means every `spawnfile up` starts a new empty
         // ledger and cross-deployment usage accounting is impossible. The
-        // broker is the single writer and rotates this log by size, so the
         // exclusive reservation this lifecycle carries is a requirement, not a
         // cost.
-        // The mount id is deliberately unchanged now that AGY writes here too:
-        // it is the volume's identity, and renaming it would orphan every
-        // existing deployment's accumulated ledger.
+        // The mount id is deliberately unchanged now that AGY and Codex write
+        // here too, not just the broker: it is the volume's identity, and
+        // renaming it would orphan every existing deployment's accumulated
+        // ledger. Unconditional (not gated on hasGrok/hasAgy) because Daimon's
+        // wake fuse now refuses to arm at all if this directory or the ledger
+        // file inside it is missing or unreadable (`wakeFuse.ts`,
+        // `ensureUsageLedgerReadable`), and Codex also writes here
+        // (`engineDispatcher.ts`'s `onTurnUsage`) even in a codex-only
+        // organization with no Grok or AGY agent at all.
         id: "daimon-grok-usage-ledger",
         lifecycle: "exclusive-reattach" as const,
         mountPath: DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
         reason: "Daimon per-turn engine usage ledger"
-      }] : []), ...(hasAgy ? [{
+      }, ...(hasAgy ? [{
         id: "daimon-agy-subscription-realm",
         // The AGY subscription credential is an OS-keyring entry created by an
         // interactive browser OAuth that has no headless equivalent; it lives

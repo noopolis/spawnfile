@@ -22,6 +22,7 @@ import {
   DAIMON_BROKER_UID,
   DAIMON_ORGANIZATION_UID,
   renderDaimonBrokerProvisioning,
+  renderDaimonUsageLedgerProvisioning,
   resolveDaimonGrokRegistrations
 } from "./containerDaimonBrokerRender.js";
 
@@ -62,6 +63,24 @@ export const renderDaimonBrokerSocketWait = (
 ];
 
 const SPAWNFILE_PRIVATE_STATE_ROOT = "/var/lib/spawnfile";
+/**
+ * `/var/lib/spawnfile/daimon` hosts several independently-owned children —
+ * the AGY/Grok subscription realms (organization uid), the broker realm and
+ * usage ledger (broker uid, or broker:organization), the wake fuse
+ * (organization uid) — so it must stay a shared, root-owned, universally
+ * traversable ancestor (0711), exactly like `SPAWNFILE_PRIVATE_STATE_ROOT`
+ * itself, never chowned to the organization uid. Before this exclusion, any
+ * organization with an AGY agent (whose realm mount lives here and is not
+ * itself excluded from the ancestor walk below) got this directory chowned
+ * to the organization uid as a side effect of securing that one mount —
+ * which then made every *other* child that must be provisioned here as a
+ * different uid (most concretely, the usage ledger provisioned unconditionally
+ * by `renderDaimonUsageLedgerProvisioning`) fail to be created at all, because
+ * the entrypoint runs that provisioning as root without `CAP_DAC_OVERRIDE`
+ * (`runProject.ts`'s capability set), which cannot write into a directory it
+ * does not own by matching uid or gid.
+ */
+const DAIMON_SHARED_STATE_ROOT = `${SPAWNFILE_PRIVATE_STATE_ROOT}/daimon`;
 const DAIMON_AGY_SUBSCRIPTION_REALM_MOUNT_ID = "daimon-agy-subscription-realm";
 const DAIMON_AGY_RUNTIME_HOME_MOUNT_ID_PREFIX = "daimon-agy-runtime-home-";
 const DAIMON_PORTABLE_ENGINE_HOME_MOUNT_ID_PREFIX = "daimon-engine-home-";
@@ -223,7 +242,7 @@ export const resolveDaimonUidEntrypointOwnershipPlan = (
         privateDirectoriesThrough(path.posix.dirname(configPath))
       )
     ])
-  ].filter((directory) => directory !== SPAWNFILE_PRIVATE_STATE_ROOT).sort();
+  ].filter((directory) => directory !== SPAWNFILE_PRIVATE_STATE_ROOT && directory !== DAIMON_SHARED_STATE_ROOT).sort();
   return {
     creatablePrivateDirectories: creatableTargets.map((target) => ({
       anchor: target === MOLTNET_READINESS_DIRECTORY
@@ -299,6 +318,10 @@ export const renderDaimonUidEntrypoint = (
     'fi',
     'if ! getent passwd "$uid" >/dev/null; then echo "Daimon authorized UID has no local identity" >&2; exit 1; fi',
     `chown 0:0 ${quote(DAIMON_WAKE_FUSE_DIRECTORY)} && chmod 0700 ${quote(DAIMON_WAKE_FUSE_DIRECTORY)} && chown ${DAIMON_ORGANIZATION_UID}:${DAIMON_ORGANIZATION_UID} ${quote(DAIMON_WAKE_FUSE_DIRECTORY)}`,
+    // Unconditional: AGY and Codex write the per-turn usage ledger from the
+    // organization-uid runtime process below, not the (Grok-only) broker, so
+    // this cannot be gated on `resolveDaimonGrokRegistrations`.
+    ...renderDaimonUsageLedgerProvisioning(),
     ...(resolveDaimonGrokRegistrations(runtimePlans).length === 0 ? [] : [
       ...renderDaimonBrokerSocketWait(),
       "startup_children=()",
@@ -308,8 +331,6 @@ export const renderDaimonUidEntrypoint = (
       `install -d -o ${DAIMON_BROKER_UID} -g ${DAIMON_BROKER_UID} -m 0700 ${quote(DAIMON_BROKER_REALM)}`,
       `if [ -e ${quote(`${DAIMON_BROKER_REALM}/auth.json`)} ]; then test -f ${quote(`${DAIMON_BROKER_REALM}/auth.json`)} && test ! -L ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chown 0:0 ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chmod 0600 ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chown ${DAIMON_BROKER_UID}:${DAIMON_BROKER_UID} ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; fi`,
       `setpriv --clear-groups --reuid ${DAIMON_BROKER_UID} --regid ${DAIMON_BROKER_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${DAIMON_BROKER_REALM}/.daimon-ancestry-probe; umask 077; : > "$probe"; rm "$probe"'`,
-      `install -d -o ${DAIMON_BROKER_UID} -g ${DAIMON_ORGANIZATION_UID} -m 0750 ${quote(DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath)}`,
-      `setpriv --clear-groups --reuid ${DAIMON_BROKER_UID} --regid ${DAIMON_BROKER_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath}/.daimon-usage-probe; umask 027; : > "$probe"; rm "$probe"'`,
       `setpriv --clear-groups --reuid ${DAIMON_ORGANIZATION_UID} --regid ${DAIMON_ORGANIZATION_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu '! test -r ${DAIMON_BROKER_REALM}'`,
       ...resolveDaimonGrokRegistrations(runtimePlans).map((entry) =>
         `setpriv --clear-groups --reuid ${entry.uid} --regid ${entry.uid} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu '! test -r ${DAIMON_BROKER_REALM}'`

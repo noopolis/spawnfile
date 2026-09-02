@@ -304,8 +304,12 @@ describe("renderDaimonUidEntrypoint", () => {
         { anchor: "/run", target: "/run/spawnfile/moltnet-readiness" }
       ],
       opaqueDescendantRoots: [codexEngineHome, grokEngineHome],
+      // "/var/lib/spawnfile/daimon" is deliberately absent: it hosts several
+      // independently-owned children (this AGY realm at the organization uid,
+      // the usage ledger at broker:organization) and must stay a shared,
+      // root-owned traversal ancestor (secureFixedTraversalAncestor), never
+      // chowned to the organization uid via this generic per-mount walk.
       privateDirectories: [
-        "/var/lib/spawnfile/daimon",
         agyRealm,
         "/var/lib/spawnfile/instances",
         "/var/lib/spawnfile/instances/daimon",
@@ -392,16 +396,44 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).not.toContain(`state_roots=('${usageDirectory}')`);
   });
 
-  it("provisions the usage ledger directory and probes it for write access on every boot", () => {
+  it("fixes the usage ledger directory group-writable and probes it for write access on every boot, even with no Grok agent", () => {
     const usageDirectory = DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath;
-    const rendered = renderDaimonUidEntrypoint([daimonPlan]);
+    // AGY and Codex write their advisory per-turn usage from the organization-uid
+    // (2000) runtime process, not the (Grok-only) broker (2100), so this must be
+    // unconditional and the directory must be group-*writable* (0770). A mode
+    // that only grants the group read+execute lets the organization uid list the
+    // directory but not create `usage.jsonl` inside it — silently defeating every
+    // AGY/Codex advisory usage write, and with it the wake fuse's token ceiling,
+    // which now refuses to start at all if this ledger is missing or unreadable.
+    // chown-to-root, then chmod, then chown-to-final-owner last (never
+    // `install -d`'s create-then-chown-then-chmod order): the directory is a
+    // persistent volume mount Docker always materializes before the entrypoint
+    // runs, not something this line creates, and chmod-ing after handing
+    // ownership to the broker uid would need CAP_FOWNER, which is not granted
+    // (`runProject.ts`).
+    const codexOnlyPlan: RuntimeTargetPlan = { ...daimonPlan, engineByNodeId: { "agent:Codex One": "codex" } };
+    const rendered = renderDaimonUidEntrypoint([codexOnlyPlan]);
 
-    // The broker (2100) writes turn usage; the daimon host (2000) must group-read it or
-    // the wake fuse trips ledger_unavailable and the organization accepts no wake at all.
-    expect(rendered).toContain(`install -d -o 2100 -g 2000 -m 0750 '${usageDirectory}'`);
+    expect(rendered).toContain(`chown 0:0 ${usageDirectory} && chmod 0770 ${usageDirectory} && chown 2100:2000 ${usageDirectory}`);
     expect(rendered).toContain(
-      `--reuid 2100 --regid 2100 --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${usageDirectory}/.daimon-usage-probe; umask 027; : > "$probe"; rm "$probe"'`
+      `--reuid 2000 --regid 2000 --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${usageDirectory}/.daimon-usage-probe; umask 007; : > "$probe"; rm "$probe"'`
     );
+  });
+
+  it("keeps /var/lib/spawnfile/daimon a shared root-owned traversal ancestor, never chowned to the organization uid", () => {
+    // Regression coverage for the real failure this shape reproduced: an
+    // organization with an AGY agent (whose realm mount lives under
+    // /var/lib/spawnfile/daimon) got that shared ancestor chowned to the
+    // organization uid as a side effect of securing the realm mount, which
+    // then made the unconditional usage-ledger fix-up above fail — root has
+    // no CAP_DAC_OVERRIDE (runProject.ts) and no longer owns the directory.
+    const agyPlan: RuntimeTargetPlan = { ...daimonPlan, engineByNodeId: { "agent:AGY": "agy" }, persistentMounts: [agyRealmMount] };
+    const rendered = renderDaimonUidEntrypoint([agyPlan]);
+
+    expect(rendered).toContain("secureFixedTraversalAncestor('/var/lib/spawnfile/daimon');");
+    const ownership = resolveDaimonUidEntrypointOwnershipPlan([agyPlan], [agyRealm]);
+    expect(ownership.privateDirectories).not.toContain("/var/lib/spawnfile/daimon");
+    expect(ownership.privateDirectories).toContain(agyRealm);
   });
 
   it("provisions the wake-fuse directory for the organization identity", () => {
