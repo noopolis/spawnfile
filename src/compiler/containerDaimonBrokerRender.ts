@@ -56,6 +56,40 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]) => pl
     uid: DAIMON_FIRST_WORKER_UID + slot
   }));
 
+/**
+ * Fixes ownership and mode of the per-turn usage ledger directory for every
+ * Daimon organization, not just ones with a Grok agent. AGY and Codex both
+ * write here too (`onTurnUsage` in Daimon's `engineDispatcher.ts`), from the
+ * organization-uid runtime process (`uid`/`gid` below, set in
+ * `renderDaimonUidEntrypoint`) rather than the privileged broker — so this
+ * must run whether or not any Grok registration exists, and the directory
+ * must be group-writable (0770), not merely group-readable (0750): a mode
+ * that only lets the group list the directory silently defeated every
+ * AGY/Codex advisory usage write and, with it, Daimon's wake-fuse token
+ * ceiling, which now refuses to start at all if this ledger is missing or
+ * unreadable (`wakeFuse.ts`'s `ensureUsageLedgerReadable`).
+ *
+ * The directory itself is never created here: it is a persistent volume
+ * mount (`daimon-grok-usage-ledger` in `config.ts`, unconditional for every
+ * Daimon organization) that Docker always materializes before the entrypoint
+ * runs — exactly like `DAIMON_WAKE_FUSE_DIRECTORY`, whose own fix-up
+ * (`renderDaimonUidEntrypoint`) uses this same three-step order. `chown` to
+ * root first, `chmod` next, `chown` to the final owner last — never
+ * `install -d`'s create-then-chown-then-chmod order, and never a single
+ * `chown owner:group` followed by `chmod`: root only ever chmods a path it
+ * currently owns, so it never needs `CAP_FOWNER` (`runProject.ts`'s
+ * capability set grants `CAP_CHOWN` but not `CAP_FOWNER`) — chmod-ing
+ * *after* the final `chown` hands ownership to the broker uid fails with
+ * `EPERM` the moment root no longer owns the path.
+ */
+export const renderDaimonUsageLedgerProvisioning = (): string[] => {
+  const { directoryPath } = DAIMON_GROK_TURN_USAGE_LEDGER;
+  return [
+    `chown 0:0 ${directoryPath} && chmod 0770 ${directoryPath} && chown ${DAIMON_BROKER_UID}:${DAIMON_ORGANIZATION_UID} ${directoryPath}`,
+    `setpriv --clear-groups --reuid ${DAIMON_ORGANIZATION_UID} --regid ${DAIMON_ORGANIZATION_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${directoryPath}/.daimon-usage-probe; umask 007; : > "$probe"; rm "$probe"'`
+  ];
+};
+
 export const renderDaimonBrokerProvisioning = (plans: RuntimeTargetPlan[]): string[] => {
   const registrations = resolveDaimonGrokRegistrations(plans);
   if (registrations.length === 0) return [];
@@ -83,7 +117,11 @@ export const renderDaimonBrokerProvisioning = (plans: RuntimeTargetPlan[]): stri
     "fs.writeFileSync('/etc/daimon-engine-broker/registrations.bin', Buffer.concat(records), { mode: 0o400, flag: 'wx' });",
     "fs.chownSync('/etc/daimon-engine-broker/registrations.bin', 0, 0); fs.chmodSync('/etc/daimon-engine-broker/registrations.bin', 0o400);",
     `fs.mkdirSync('${DAIMON_BROKER_REALM}', { recursive: true, mode: 0o700 }); fs.chownSync('${DAIMON_BROKER_REALM}', 0, 0); fs.chmodSync('${DAIMON_BROKER_REALM}', 0o700);`,
-    `fs.mkdirSync('${DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath}', { recursive: true, mode: 0o750 }); fs.chownSync('${DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath}', 0, 0); fs.chmodSync('${DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath}', 0o750); fs.chownSync('${DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath}', 2100, ${DAIMON_ORGANIZATION_UID});`,
+    // The usage ledger directory itself is provisioned unconditionally by
+    // `renderDaimonUsageLedgerProvisioning` (every Daimon organization writes
+    // here, not just Grok ones) before this script's caller reaches the
+    // broker startup this function guards; this script only ever reads the
+    // path below, for the sandbox denylist.
     `const bootstrap = '/var/lib/spawnfile/daimon/grok-bootstrap-auth', authority = '${DAIMON_BROKER_REALM}/auth.json';`,
     "const readSecure = (file, owner, label) => { const before = fs.lstatSync(file); if (!before.isFile() || before.isSymbolicLink() || (owner !== undefined && (before.uid !== owner || before.gid !== owner)) || (before.mode & 0o777) !== 0o600 || before.nlink !== 1 || before.size < 2 || before.size > 65536) throw new Error(`unsafe broker credential ${label}`); const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK); try { const opened = fs.fstatSync(fd); if (opened.dev !== before.dev || opened.ino !== before.ino) throw new Error(`unsafe broker credential ${label}`); const bytes = Buffer.alloc(opened.size); let offset = 0; while (offset < bytes.length) { const count = fs.readSync(fd, bytes, offset, bytes.length - offset, offset); if (count < 1) throw new Error(`unsafe broker credential ${label}`); offset += count; } return bytes; } finally { fs.closeSync(fd); } };",
     `const atomicOwned = (target, bytes) => { const temporary = \`${"${target}"}.\${process.pid}.\${crypto.randomUUID()}.tmp\`; try { const output = fs.openSync(temporary, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600); try { let written = 0; while (written < bytes.length) written += fs.writeSync(output, bytes, written, bytes.length - written, written); fs.fchmodSync(output, 0o600); fs.fchownSync(output, 2100, 2100); fs.fsyncSync(output); } finally { fs.closeSync(output); } fs.renameSync(temporary, target); const directory = fs.openSync(require('node:path').dirname(target), fs.constants.O_RDONLY | fs.constants.O_DIRECTORY); try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); } } catch (error) { try { fs.unlinkSync(temporary); } catch {} throw error; } };`,

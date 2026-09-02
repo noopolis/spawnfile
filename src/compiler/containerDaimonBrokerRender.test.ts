@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import {
   renderDaimonBrokerProvisioning,
+  renderDaimonUsageLedgerProvisioning,
   renderDaimonWorkspaceResourceSecurity
 } from "./containerDaimonBrokerRender.js";
 
@@ -76,12 +77,16 @@ describe("Daimon broker usage ledger provisioning", () => {
     instancePaths: { workspacePath: "/workspace" }
   } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
 
-  it("provisions the usage ledger directory alongside the realm", () => {
-    const program = renderDaimonBrokerProvisioning([plan]).join("\n");
+  it("fixes the usage ledger directory group-writable so Codex/AGY's organization-uid process can also write it, unconditionally (not just alongside the realm)", () => {
     const { directoryPath } = DAIMON_GROK_TURN_USAGE_LEDGER;
-    expect(program).toContain(
-      `fs.mkdirSync('${directoryPath}', { recursive: true, mode: 0o750 }); fs.chownSync('${directoryPath}', 0, 0); fs.chmodSync('${directoryPath}', 0o750); fs.chownSync('${directoryPath}', 2100, 2000);`
-    );
+    const lines = renderDaimonUsageLedgerProvisioning();
+    // chown-to-root, then chmod, then chown-to-final-owner last: never
+    // `install -d`'s create-then-chown-then-chmod order, which needs
+    // CAP_FOWNER (not granted; see runProject.ts) once ownership moves off root.
+    expect(lines).toContainEqual(`chown 0:0 ${directoryPath} && chmod 0770 ${directoryPath} && chown 2100:2000 ${directoryPath}`);
+    expect(lines.some((line) => line.includes("--reuid 2000") && line.includes(".daimon-usage-probe"))).toBe(true);
+    // Unlike the broker realm/registrations, this runs even with no Grok agent at all.
+    expect(renderDaimonBrokerProvisioning([])).toEqual([]);
   });
 
   it("denies worker access to the usage ledger directory", () => {
