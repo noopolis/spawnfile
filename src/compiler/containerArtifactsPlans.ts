@@ -175,7 +175,7 @@ export const createRuntimeTargetPlans = async (
           reason: mount.reason,
           volume_name: mount.lifecycle === "exclusive-reattach"
             ? createExclusiveReattachVolumeName(`${plan.root}\0${deploymentLineage}`, mount.id)
-            : createPersistentVolumeName(plan.root, mount.id, undefined, runId)
+            : createPersistentVolumeName(plan.root, mount.id, runId)
         })).sort((left, right) => left.id.localeCompare(right.id)) } : {}),
         port: adapter.container.port ? adapter.container.port + (index * portStride) : undefined,
         publishedPort:
@@ -183,7 +183,7 @@ export const createRuntimeTargetPlans = async (
             ? adapter.container.port + (index * portStride)
             : undefined,
         recipeEnv: recipe.env,
-        resources: resolveTargetResources(target, targetInputs, instancePaths, adapter.container, plan.root, runId),
+        resources: resolveTargetResources(target, targetInputs, instancePaths, adapter.container, plan.root, deploymentLineage),
         runtimeName,
         runtimeRoot: recipe.runtimeRoot,
         sourceIds: [...(target.sourceIds ?? [])].sort(),

@@ -36,6 +36,12 @@ export interface MoltnetNodePlan {
 
 export interface MoltnetPersistentMount {
   id: string;
+  /**
+   * `exclusive-reattach` marks state that MUST survive container replacement
+   * and redeploy: its volume name is deployment-stable (never run-scoped) and
+   * only one live container may hold it at a time.
+   */
+  lifecycle?: "exclusive-reattach";
   mountPath: string;
   reason: string;
   volumeName: string;

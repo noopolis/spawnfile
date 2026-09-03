@@ -7,7 +7,7 @@ import type {
   RuntimeContainerMeta
 } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
-import { createPersistentVolumeName } from "./moltnetArtifactPaths.js";
+import { createExclusiveReattachVolumeName } from "../shared/index.js";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import {
@@ -19,7 +19,6 @@ const CONFIG_FILE_PLACEHOLDER = "<config-file>";
 const INSTANCE_ROOT_PLACEHOLDER = "<instance-root>";
 const SOURCE_AGENT_PLACEHOLDER = "<agent-name>";
 const SOURCE_SLUG_PLACEHOLDER = "<source-slug>";
-const RESOURCE_VOLUME_PREFIX = "spawnfile-workspace-resource";
 
 export interface ResolvedTargetResourcePlan extends WorkspaceResourcePlan {
   canonicalBackingPath: string;
@@ -32,6 +31,7 @@ export interface ResolvedTargetResourcePlan extends WorkspaceResourcePlan {
 
 export interface WorkspaceResourcePersistentMount {
   id: string;
+  lifecycle: "exclusive-reattach";
   mount_path: string;
   reason: string;
   volume_name: string;
@@ -55,8 +55,13 @@ export const resolveWorkspaceResourceVolumes = (
     byBackingPath.set(resource.canonicalBackingPath, resource);
     backingPathByVolumeName.set(resource.volumeName!, resource.canonicalBackingPath);
   }
+  // Workspace `kind: volume` resources are durable product state: an author
+  // declares one precisely so it outlives the container. They are therefore
+  // `exclusive-reattach` — deployment-stable name, reattached rather than
+  // recreated, one live holder at a time.
   return { resources, mounts: [...byBackingPath.values()].map((resource) => ({
-    id: resource.persistentMountId!, mount_path: resource.canonicalBackingPath,
+    id: resource.persistentMountId!, lifecycle: "exclusive-reattach" as const,
+    mount_path: resource.canonicalBackingPath,
     reason: `Workspace ${resource.sharing} resource ${resource.id}`, volume_name: resource.volumeName!
   })) };
 };
@@ -165,7 +170,7 @@ export const resolveTargetResources = (
   instancePaths: RuntimeTargetPlan["instancePaths"],
   meta: RuntimeContainerMeta,
   planRoot: string,
-  runId?: string
+  deploymentLineage = "compile"
 ): ResolvedTargetResourcePlan[] => {
   const sourceIds = new Set(target.sourceIds ?? []);
   if (sourceIds.size === 0) {
@@ -206,7 +211,15 @@ export const resolveTargetResources = (
         persistentMountId: `workspace-resource-${pathDigest.slice(0, 24)}`,
         replacementSentinel: path.posix.join(canonicalBackingPath, ".spawnfile-resource-identity"),
         resolvedIdentity,
-        volumeName: runId ? createPersistentVolumeName(planRoot, `${RESOURCE_VOLUME_PREFIX}-${pathDigest.slice(0, 24)}`, undefined, runId) : `${RESOURCE_VOLUME_PREFIX}-${pathDigest.slice(0, 24)}`
+        // Author-declared `name` verbatim (an operator can pre-create or
+        // migrate the host volume under exactly that name); otherwise a
+        // deployment-stable derived name. Never run-scoped: a fresh
+        // NOOPOLIS_RUN_ID must not strand the previous run's state.
+        volumeName: resource.name?.trim()
+          || createExclusiveReattachVolumeName(
+            `${planRoot}\0${deploymentLineage}`,
+            `workspace-resource-${pathDigest.slice(0, 24)}`
+          )
       };
     });
   });

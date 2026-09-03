@@ -170,6 +170,7 @@ export const createContainerArtifacts = async (
     ...runtimePlans.flatMap((runtimePlan) => runtimePlan.persistentMounts ?? []),
     ...((options.moltnet?.persistentMounts ?? []).map((mount) => ({
       id: mount.id,
+      ...(mount.lifecycle ? { lifecycle: mount.lifecycle } : {}),
       mount_path: mount.mountPath,
       reason: mount.reason,
       volume_name: mount.volumeName
