@@ -47,6 +47,15 @@ export const resolveWorkspaceResourceVolumes = (
   const backingPathByVolumeName = new Map<string, string>();
   for (const resource of resources.filter((candidate) => candidate.kind === "volume")) {
     const existing = byBackingPath.get(resource.canonicalBackingPath);
+    // Two DIFFERENT declared resources landing on one backing path is always a
+    // mistake: the path segment derives from an explicit `name` when one is
+    // given, so `id: a`/`id: b` both declaring `name: X` in one scope used to
+    // collapse into a single directory and volume, silently, with both
+    // workspace symlinks pointing at it. The same id across runtime plans is
+    // the legitimate `sharing: team` case and still merges.
+    if (existing && existing.id !== resource.id) {
+      throw new SpawnfileError("validation_error", `Workspace resources ${existing.id} and ${resource.id} resolve to the same backing volume ${resource.canonicalBackingPath}; a declared volume name must be unique within its scope`);
+    }
     if (existing && (existing.mode !== resource.mode || existing.sharing !== resource.sharing || existing.volumeName !== resource.volumeName || (resource.sharing === "per_agent" && existing.ownerId !== resource.ownerId))) {
       throw new SpawnfileError("validation_error", `Workspace volume ${resource.canonicalBackingPath} has incompatible mode, sharing, or owner declarations`);
     }
@@ -138,6 +147,12 @@ const dedupeAndAssertResourcePlans = (
     byLinkPath.set(resource.linkPath, resource);
     if (resource.kind !== "volume") continue;
     const existingVolume = volumesByBackingPath.get(resource.canonicalBackingPath);
+    if (existingVolume && existingVolume.id !== resource.id) {
+      throw new SpawnfileError(
+        "validation_error",
+        `Container target ${target.id} declares workspace resources ${existingVolume.id} and ${resource.id} that resolve to the same backing volume ${resource.canonicalBackingPath}; a declared volume name must be unique within its scope`
+      );
+    }
     if (existingVolume) {
       const incompatible = existingVolume.mode !== resource.mode ||
         existingVolume.sharing !== resource.sharing ||
