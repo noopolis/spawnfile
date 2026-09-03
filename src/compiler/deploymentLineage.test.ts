@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createExclusiveReattachVolumeName } from "../shared/index.js";
+import { normalizeDeploymentName } from "../deployment/names.js";
 
 import {
   assertNoDeclaredVolumeNames,
@@ -10,14 +11,22 @@ import {
 
 const PLAN_ROOT = "/tmp/newsroom/Spawnfile";
 
-/** The volume a compile of this project would actually derive for a mount. */
+/**
+ * The volume a compile of this project would actually derive for a mount.
+ *
+ * The `\0` join mirrors the compiler exactly (containerArtifactsPlans.ts,
+ * memoryArtifacts.ts, moltnetArtifacts.ts, containerTargetResources.ts all
+ * build `${planRoot}\0${deploymentLineage}`). An earlier version of this
+ * helper joined with a space, which still produced correct inequalities but
+ * was not reproducing the names the compiler emits.
+ */
 const derivedVolume = (
   deploymentName: string,
   namespace: string | undefined,
   mountId: string
 ): string =>
   createExclusiveReattachVolumeName(
-    `${PLAN_ROOT} ${resolveDeploymentLineage(deploymentName, namespace)}`,
+    `${PLAN_ROOT}\0${resolveDeploymentLineage(deploymentName, namespace)}`,
     mountId
   );
 
@@ -46,10 +55,20 @@ describe("resolveDeploymentLineage", () => {
     expect(derivedVolume("blue", undefined, "m")).toBe(derivedVolume("blue", undefined, "m"));
   });
 
-  it("cannot be forged by a deployment name that spells the namespaced form", () => {
-    // A deployment name is normalized to a kebab identifier, so it can never
-    // contain the separator and impersonate a dev lineage (or be impersonated).
-    expect(/^[a-z0-9-]+$/u.test("dev default")).toBe(false);
+  it("cannot be forged: no accepted deployment name reaches a dev lineage", () => {
+    // The separation only holds if a production `up --deployment <x>` can never
+    // produce the lineage a dev deployment produces. Proven against the real
+    // normalizer rather than a hand-written regex: every spelling of the
+    // namespaced form is REJECTED as a deployment name, so it can never be
+    // supplied, and the ones that are accepted resolve to something different.
+    const devLineage = resolveDeploymentLineage("default", DEV_DEPLOYMENT_LINEAGE_NAMESPACE);
+    for (const attempt of ["dev default", `dev\0default`, "dev\u0000default", "dev/default"]) {
+      expect(() => normalizeDeploymentName(attempt)).toThrow(/kebab-case/u);
+    }
+    for (const accepted of ["dev", "dev-default", "default", "devdefault"]) {
+      expect(normalizeDeploymentName(accepted)).toBe(accepted);
+      expect(resolveDeploymentLineage(accepted, undefined)).not.toBe(devLineage);
+    }
   });
 
   it("leaves an un-namespaced lineage exactly as the deployment name", () => {
