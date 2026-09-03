@@ -621,6 +621,14 @@ cannot protect it, so `spawnfile dev up` REFUSES to start when any durable
 mount carries a declared name, listing them; `--allow-declared-volumes` is the
 explicit override for an operator who means to attach that live state.
 
+`spawnfile down --volumes` removes only the volumes the deployment owns. An
+author-declared name is shared project state — verbatim in every mode and every
+deployment — so it is never removed by a deployment teardown, is listed in the
+receipt's `skipped_volumes` (and in `retained_volumes`, which it still is), and
+is removed only by a deliberate `docker volume rm`. Skipping is not an error and
+does not make a lifecycle down incomplete. `skipped_volumes` is omitted entirely
+when nothing was skipped.
+
 Compiler-owned persistent mounts are attached WITHOUT `volume-nocopy`. The
 image is the authority for the bootstrap preimage at those paths, and Docker
 copies image content up only into an empty volume, so an already-populated
