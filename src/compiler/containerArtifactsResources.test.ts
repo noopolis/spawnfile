@@ -136,6 +136,20 @@ describe("container workspace resources", () => {
     finally { if (previous === undefined) delete process.env.NOOPOLIS_RUN_ID; else process.env.NOOPOLIS_RUN_ID = previous; }
   });
 
+  it("rejects two distinct resources whose declared names collapse onto one backing volume", async () => {
+    // The backing path segment derives from an explicit `name`, so two
+    // different resources declaring the same name silently shared one
+    // directory and one volume, with both workspace symlinks pointing at it.
+    const scope = { kind: "team" as const, key: "/tmp/lab/Spawnfile", name: "lab" };
+    const analyst = createAgentNode("analyst", [
+      { id: "edition-state", kind: "volume" as const, mode: "mutable" as const, mount: "./edition", name: "clank-dup", scope, sharing: "team" as const },
+      { id: "morgue-state", kind: "volume" as const, mode: "mutable" as const, mount: "./morgue", name: "clank-dup", scope, sharing: "team" as const }
+    ]);
+    const compiled = [{ emittedFiles: (await openClawAdapter.compileAgent(analyst)).files, kind: "agent" as const, runtimeName: "openclaw", slug: analyst.name, value: analyst }];
+    await expect(createContainerArtifacts(createPlan(["openclaw"]), compiled))
+      .rejects.toThrow(/resolve to the same backing volume/u);
+  });
+
   it("rejects incompatible team declarations that collide on one backing path", async () => {
     const resource = { id: "shared", kind: "volume" as const, mount: "./shared", scope: { kind: "team" as const, key: "/tmp/lab/Spawnfile", name: "lab" }, sharing: "team" as const };
     const analyst = createAgentNode("analyst", [{ ...resource, mode: "mutable" as const }]);

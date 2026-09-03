@@ -16,6 +16,7 @@ import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import type { MoltnetReleaseIdentity } from "./moltnetBinaries.js";
 import type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./containerArtifactsTypes.js";
 import { resolveWorkspaceResourceVolumes, type ResolvedTargetResourcePlan } from "./containerTargetResources.js";
+import { assertPersistentMountVolumeNamesAreUnique } from "./containerPersistentMountCollisions.js";
 import type { CompilePlan } from "./types.js";
 import { SIMFILE_WORLD_BINDINGS_VERSION, WORLD_BINDINGS_OUTPUT_FILE, type ResolvedWorldBindings } from "./worldBindings.js";
 
@@ -202,6 +203,7 @@ export const createContainerArtifacts = async (
       });
       return true;
     });
+  assertPersistentMountVolumeNamesAreUnique(persistentMounts);
 
   const runtimeInternalPorts = runtimePlans.flatMap((plan) =>
     plan.port ? [plan.port] : []
