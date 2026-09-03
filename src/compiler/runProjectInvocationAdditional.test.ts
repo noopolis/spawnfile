@@ -191,8 +191,9 @@ describe("createDockerRunInvocation", () => {
 
     expect(invocation.args).toContain("--mount");
     expect(invocation.args).toContain(
-      "type=volume,source=spawnfile-local-lab-state,target=/var/lib/spawnfile/moltnet/networks/local-lab,volume-nocopy"
+      "type=volume,source=spawnfile-local-lab-state,target=/var/lib/spawnfile/moltnet/networks/local-lab"
     );
+    expect(invocation.args.join("\n")).not.toContain("volume-nocopy");
 
     await removeDirectory(invocation.supportDirectory);
   });
@@ -239,7 +240,8 @@ describe("createDockerRunInvocation", () => {
         report,
         reportPath: path.join(outputDirectory, "spawnfile-report.json")
       }, "spawnfile-agy");
-      expect(invocation.args).toContain("type=volume,source=spawnfile-stable-agy-realm,target=/var/lib/spawnfile/daimon/agy-subscription-realm,volume-nocopy");
+      expect(invocation.args).toContain("type=volume,source=spawnfile-stable-agy-realm,target=/var/lib/spawnfile/daimon/agy-subscription-realm");
+      expect(invocation.args.join("\n")).not.toContain("volume-nocopy");
       expect(invocation.args).toContain(`${unlockPath}:/var/lib/spawnfile/daimon/agy-unlock-secret:ro`);
       expect(invocation.args.join("\n")).not.toContain("unlock-canary");
       expect(await readUtf8File(invocation.envFilePath)).not.toContain("unlock-canary");
