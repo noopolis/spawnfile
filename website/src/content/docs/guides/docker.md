@@ -245,6 +245,14 @@ Pass `--allow-declared-volumes` only when you mean it — a dev agent writing
 into production's message store corrupts live state rather than merely losing
 it.
 
+**`spawnfile down --volumes` will not delete a declared volume.** It removes the
+volumes that deployment owns; an author-declared name belongs to the project,
+not to one deployment, so tearing down a dev or scratch deployment can never
+destroy the production state that name refers to. Those volumes are reported as
+`skipped volume (author-declared, shared with every deployment of this project)`
+and the command prints the `docker volume rm` needed to remove them
+deliberately.
+
 These mounts carry `lifecycle: "exclusive-reattach"`. Their volume names depend on the project root and the deployment lineage, never on the run id, so removing and recreating the container reattaches the same host volumes rather than provisioning empty ones. A `name` you declare yourself — a resource `name`, or `store.persistence.name` — is used verbatim, so you can pre-create or migrate that volume by exactly that name. The trade-off is that only one live container may hold such a volume at a time: an organization declaring any of them cannot use the concurrent blue/green canary path and must stop the live deployment before starting its replacement.
 
 ### Dev Hot Apply
