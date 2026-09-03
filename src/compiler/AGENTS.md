@@ -31,6 +31,7 @@ src/compiler/
 ├── containerRuntimeReadinessRender.ts # Per-runtime /healthz readiness wait rendered into the entrypoint
 ├── containerBackedMountRender.ts # Fail-closed `require_backed_mount` guard for durable mount paths
 ├── containerPersistentMounts.ts # Durable-mount merge across sources + volume-name uniqueness
+├── deploymentLineage.ts        # Dev/production lineage namespacing + declared-volume refusal
 ├── containerEntrypointShell.ts # Shell quoting, recipe env, and CLI credential materialization helpers
 ├── containerDaimonBrokerRender.ts # Fixed Daimon broker identities, registrations, worker config, and root-launch provisioning
 ├── containerArtifactsPlans.ts # Environment inventory and runtime target-plan orchestration
@@ -166,6 +167,20 @@ src/compiler/
   this, an operator who pre-created `clank-newsroom-store` and deployed the
   published image silently got a brand-new empty volume while the spec promised
   the declared name verbatim.
+- `deploymentLineage.ts` namespaces the `dev up` lineage. `devUpProject`
+  delegated straight to `upProject` with no distinguishing identity, so both
+  defaulted to the lineage `default` and derived the SAME host volumes: a dev
+  deployment started while production was stopped attached production's volumes
+  and wrote into live state. That is worse than the loss the rest of this area
+  fixes — loss is recoverable from a backup, a dev agent editing production's
+  message store is not. The namespace applies to the LINEAGE only, never the
+  deployment name, so dev records, labels, and `dev stop --deployment` are
+  unchanged, and it applies under every `--deployment` name. A declared name
+  carries no lineage by design and cannot be protected this way, so `dev up`
+  fails closed on one (`assertNoDeclaredVolumeNames`) with
+  `--allow-declared-volumes` as the explicit override — the same
+  fail-closed-with-a-named-escape-hatch posture as the entrypoint's durable
+  mount guard.
 - `containerBackedMountRender.ts` renders a `require_backed_mount` check per
   durable mount into both the entrypoint and the Daimon root wrapper (before
   the ownership guard). It scans `/proc/self/mountinfo` for an exact mount

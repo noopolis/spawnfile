@@ -8,6 +8,10 @@ import { ensureDirectory, removeDirectory, readUtf8File, writeUtf8File } from ".
 import type { ContainerPersistentMountReport } from "../report/index.js";
 
 import { compileProject } from "./compileProject.js";
+import {
+  DEV_DEPLOYMENT_LINEAGE_NAMESPACE,
+  resolveDeploymentLineage
+} from "./deploymentLineage.js";
 
 vi.mock("./moltnetBinaries.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./moltnetBinaries.js")>();
@@ -137,7 +141,8 @@ interface CompiledDurableState {
 
 const compileUnderRunId = async (
   projectDirectory: string,
-  runId: string
+  runId: string,
+  deploymentLineage = "newsroom-production"
 ): Promise<CompiledDurableState> => {
   const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-durable-volume-out-"));
   temporaryDirectories.push(outputDirectory);
@@ -145,7 +150,7 @@ const compileUnderRunId = async (
   process.env.NOOPOLIS_RUN_ID = runId;
   try {
     const result = await compileProject(projectDirectory, {
-      deploymentLineage: "newsroom-production",
+      deploymentLineage,
       outputDirectory
     });
     const distribution = JSON.parse(
@@ -243,5 +248,40 @@ describe("durable volumes survive a redeploy", () => {
     const causal = mountById(state, (mount) => mount.id === "moltnet-newsroom-causal");
     expect(causal.lifecycle).toBeUndefined();
     expect(causal.volume_name).toContain("run-gamma");
+  }, 120_000);
+});
+
+describe("a dev deployment never shares a production deployment's volumes", () => {
+  // `spawnfile dev up` delegated straight to `spawnfile up` with no
+  // distinguishing identity, so both compiled under the lineage `default` and
+  // derived the SAME host volumes. A dev deployment started while production
+  // was stopped attached production's volumes and wrote into live state —
+  // corruption, where the rest of this branch fixed loss.
+  it("derives different volumes for the dev and production lineages of one project", async () => {
+    const projectDirectory = await createProject();
+    const production = await compileUnderRunId(projectDirectory, "run-alpha", "default");
+    const dev = await compileUnderRunId(
+      projectDirectory,
+      "run-alpha",
+      resolveDeploymentLineage("default", DEV_DEPLOYMENT_LINEAGE_NAMESPACE)
+    );
+
+    const derived = (state: CompiledDurableState): string[] => state.mounts
+      .filter((mount) => mount.lifecycle === "exclusive-reattach" && !mount.declared_volume_name)
+      .map((mount) => mount.volume_name)
+      .sort();
+    expect(derived(production).length).toBeGreaterThan(0);
+    for (const volume of derived(dev)) {
+      expect(derived(production)).not.toContain(volume);
+    }
+
+    // An author-declared name deliberately carries no lineage, so dev WOULD
+    // attach production's volume by that exact name. That is why `dev up`
+    // refuses these outright unless --allow-declared-volumes is passed.
+    const declared = (state: CompiledDurableState): string[] => state.mounts
+      .flatMap((mount) => mount.declared_volume_name ? [mount.declared_volume_name] : [])
+      .sort();
+    expect(declared(dev)).toEqual(declared(production));
+    expect(declared(production)).toContain("clank-newsroom-store");
   }, 120_000);
 });

@@ -5,6 +5,7 @@ export * from "./publishProject.js";
 export * from "./upProject.js";
 export * from "./compileProject.js";
 export * from "./containerBackedMountRender.js";
+export * from "./deploymentLineage.js";
 export * from "./dockerBuildContext.js";
 export * from "./dockerBuildSkip.js";
 export * from "./initProject.js";
