@@ -126,21 +126,18 @@ describe("Grok sandbox deny list: empty, because a non-empty one cannot start", 
     renderDaimonBrokerProvisioning([planWithAgents(agentIds)])
       .join("\n").split("\n").find((line) => line.includes("const deniedPaths ="));
 
-  it("renders an empty deny list regardless of how many Grok agents are registered", () => {
+  it("renders an empty deny list and a profile that interpolates exactly it", () => {
     for (const agentIds of [["agent:solo"], ["agent:cogsworth", "agent:foreman", "agent:graves"]]) {
       expect(deniedPathsLineFor(agentIds)).toBe("const deniedPaths = [];");
     }
-  });
-
-  it("emits a profile whose deny key is present but empty", () => {
-    const program = renderDaimonBrokerProvisioning([planWithAgents(["agent:solo"])]).join("\n");
-    // The profile is a template literal in the rendered program; evaluate the
-    // same expression the container will, so the assertion is over real bytes.
-    const deniedPaths: string[] = [];
-    const profile = `[profiles.daimon-strict]\nextends = "strict"\nrestrict_network = true\ndeny = [${deniedPaths.map((entry) => JSON.stringify(entry)).join(", ")}]\n`;
-    expect(profile).toContain("deny = []\n");
-    expect(program).toContain("const profileFor = () => `[profiles.daimon-strict]");
-    expect(program).toContain("deny = [${deniedPaths.map(JSON.stringify).join(', ')}]");
+    // Run the rendered program's own profile expression rather than a
+    // re-typed copy of it, so this asserts the bytes the container writes.
+    const lines = renderDaimonBrokerProvisioning([planWithAgents(["agent:solo"])]).join("\n").split("\n");
+    const source = lines.filter((line) =>
+      line.startsWith("const deniedPaths =") || line.startsWith("const profileFor =")).join("\n");
+    expect(source.split("\n")).toHaveLength(2);
+    const profile = new Function(`${source}\nreturn profileFor();`)() as string;
+    expect(profile).toBe("[profiles.daimon-strict]\nextends = \"strict\"\nrestrict_network = true\ndeny = []\n");
   });
 
   it("never lists a peer worker's home or workspace, the realm, the credential, or the state directory", () => {
