@@ -3,6 +3,47 @@ import { SpawnfileError } from "../shared/index.js";
 import type { ContainerPersistentMountReport } from "../report/types.js";
 
 /**
+ * Merges every durable-mount source into one report list.
+ *
+ * Sources are independent (memory banks, workspace `kind: volume` resources,
+ * Daimon telemetry, runtime-declared mounts, Moltnet stores and token
+ * directories) and may legitimately name the same mount twice; two sources
+ * describing one id DIFFERENTLY is a compile error, as is two ids claiming one
+ * host volume name.
+ */
+export const mergePersistentMounts = (
+  candidates: readonly ContainerPersistentMountReport[]
+): ContainerPersistentMountReport[] => {
+  const byId = new Map<string, ContainerPersistentMountReport>();
+  const merged = [...candidates]
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .filter((mount) => {
+      const existing = byId.get(mount.id);
+      if (!existing) {
+        byId.set(mount.id, mount);
+        return true;
+      }
+      if (
+        existing.mount_path !== mount.mount_path ||
+        existing.volume_name !== mount.volume_name ||
+        existing.reason !== mount.reason ||
+        existing.lifecycle !== mount.lifecycle
+      ) {
+        throw new SpawnfileError(
+          "validation_error",
+          `Container persistent mount ${mount.id} resolves to conflicting targets`
+        );
+      }
+      // Deliberately kept, not deduplicated: two sources describing one mount
+      // identically was already reported twice before this merge was extracted,
+      // and silently changing that is not this fix's business.
+      return true;
+    });
+  assertPersistentMountVolumeNamesAreUnique(merged);
+  return merged;
+};
+
+/**
  * Durable mount names come from four independent sources — memory banks
  * (`memoryArtifacts.ts`), workspace `kind: volume` resources
  * (`containerTargetResources.ts`), Moltnet stores and token directories

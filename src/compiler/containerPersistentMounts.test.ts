@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { assertPersistentMountVolumeNamesAreUnique } from "./containerPersistentMountCollisions.js";
+import {
+  assertPersistentMountVolumeNamesAreUnique,
+  mergePersistentMounts
+} from "./containerPersistentMounts.js";
 
 const mount = (id: string, mountPath: string, volumeName: string) => ({
   id,
@@ -52,5 +55,26 @@ describe("assertPersistentMountVolumeNamesAreUnique", () => {
       mount("workspace-resource-abc", "/resource", "clank-edition-state"),
       mount("memory-bank", "/memory", "clank-memory")
     ])).not.toThrow();
+  });
+});
+
+describe("mergePersistentMounts", () => {
+  it("orders by id and rejects one id described differently by two sources", () => {
+    expect(mergePersistentMounts([
+      mount("b", "/b", "vb"),
+      mount("a", "/a", "va")
+    ]).map((entry) => entry.id)).toEqual(["a", "b"]);
+
+    expect(() => mergePersistentMounts([
+      mount("store", "/one", "v"),
+      { ...mount("store", "/two", "v2") }
+    ])).toThrow(/resolves to conflicting targets/u);
+  });
+
+  it("still rejects two ids claiming one host volume name", () => {
+    expect(() => mergePersistentMounts([
+      mount("moltnet-store", "/store", "clank-dup"),
+      mount("workspace-resource-abc", "/resource", "clank-dup")
+    ])).toThrow(/claimed by two different mounts/u);
   });
 });
