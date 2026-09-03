@@ -30,7 +30,7 @@ src/compiler/
 ├── containerEntrypointRender.ts # Generated container entrypoint orchestration
 ├── containerRuntimeReadinessRender.ts # Per-runtime /healthz readiness wait rendered into the entrypoint
 ├── containerBackedMountRender.ts # Fail-closed `require_backed_mount` guard for durable mount paths
-├── containerPersistentMountCollisions.ts # Cross-source durable volume-name uniqueness check
+├── containerPersistentMounts.ts # Durable-mount merge across sources + volume-name uniqueness
 ├── containerEntrypointShell.ts # Shell quoting, recipe env, and CLI credential materialization helpers
 ├── containerDaimonBrokerRender.ts # Fixed Daimon broker identities, registrations, worker config, and root-launch provisioning
 ├── containerArtifactsPlans.ts # Environment inventory and runtime target-plan orchestration
@@ -151,7 +151,7 @@ src/compiler/
   volume is untouched. Target/secrets volumes under `src/target/*` keep their
   `volume-nocopy` — no image content backs those paths.
 - Declared names are checked for uniqueness across EVERY mount source
-  (`containerPersistentMountCollisions.ts`), not just within one source. A
+  (`containerPersistentMounts.ts`), not just within one source. A
   resource `name: X` and a store `persistence.name: X` used to compile to two
   mounts at two paths carrying one volume name, so docker mounted one host
   volume at both and their bootstrap-marker and replacement-sentinel protocols

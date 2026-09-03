@@ -16,7 +16,7 @@ import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import type { MoltnetReleaseIdentity } from "./moltnetBinaries.js";
 import type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./containerArtifactsTypes.js";
 import { resolveWorkspaceResourceVolumes, type ResolvedTargetResourcePlan } from "./containerTargetResources.js";
-import { assertPersistentMountVolumeNamesAreUnique } from "./containerPersistentMountCollisions.js";
+import { mergePersistentMounts } from "./containerPersistentMounts.js";
 import type { CompilePlan } from "./types.js";
 import { SIMFILE_WORLD_BINDINGS_VERSION, WORLD_BINDINGS_OUTPUT_FILE, type ResolvedWorldBindings } from "./worldBindings.js";
 
@@ -145,25 +145,6 @@ export const createContainerArtifacts = async (
   const memoryArtifacts = createMemoryArtifactBundle(plan, options.deploymentLineage);
   const { resources: resolvedWorkspaceResources, mounts: workspaceResourceMounts } =
     resolveWorkspaceResourceVolumes(runtimePlans);
-  const persistentMountsById = new Map<string, { lifecycle?: "exclusive-reattach"; mount_path: string; reason: string; volume_name: string }>();
-  for (const mount of memoryArtifacts.mounts) {
-    const existing = persistentMountsById.get(mount.id);
-    if (existing) {
-      if (existing.mount_path !== mount.mount_path || existing.volume_name !== mount.volume_name) {
-        throw new Error(
-          `Container persistent mount ${mount.id} resolves to conflicting targets`
-        );
-      }
-      continue;
-    }
-    persistentMountsById.set(mount.id, {
-      ...(mount.lifecycle ? { lifecycle: mount.lifecycle } : {}),
-      mount_path: mount.mount_path,
-      reason: mount.reason,
-      volume_name: mount.volume_name
-    });
-  }
-
   const persistentMountCandidates: ContainerPersistentMountReport[] = [
     ...memoryArtifacts.mounts,
     ...workspaceResourceMounts,
@@ -178,33 +159,7 @@ export const createContainerArtifacts = async (
       volume_name: mount.volumeName
     })))
   ];
-  const persistentMounts = persistentMountCandidates
-    .sort((left, right) => left.id.localeCompare(right.id))
-    .filter((mount) => {
-      const existing = persistentMountsById.get(mount.id);
-      if (existing) {
-        if (
-          existing.mount_path === mount.mount_path &&
-          existing.volume_name === mount.volume_name &&
-          existing.reason === mount.reason &&
-          existing.lifecycle === mount.lifecycle
-        ) {
-          return true;
-        }
-
-        throw new Error(
-          `Container persistent mount ${mount.id} resolves to conflicting targets`
-        );
-      }
-      persistentMountsById.set(mount.id, {
-        ...(mount.lifecycle ? { lifecycle: mount.lifecycle } : {}),
-        mount_path: mount.mount_path,
-        reason: mount.reason,
-        volume_name: mount.volume_name
-      });
-      return true;
-    });
-  assertPersistentMountVolumeNamesAreUnique(persistentMounts);
+  const persistentMounts = mergePersistentMounts(persistentMountCandidates);
 
   const runtimeInternalPorts = runtimePlans.flatMap((plan) =>
     plan.port ? [plan.port] : []

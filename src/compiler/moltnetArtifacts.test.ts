@@ -422,6 +422,8 @@ describe("moltnetArtifacts", () => {
         volumeName: createPersistentVolumeName("/tmp/team/Spawnfile", "moltnet-local_lab-causal")
       },
       {
+        // Published in the distribution report so image mode honours it too.
+        declaredVolumeName: "custom-local-lab-state",
         id: "moltnet-local_lab-store",
         // Durable product state: deployment-stable, reattached across a
         // redeploy, and the author's `persistence.name` verbatim.
