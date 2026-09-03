@@ -90,6 +90,17 @@ export const distributionReportSchema = z.object({
     }).strict())
   }).strict(),
   persistent_mounts: z.array(z.object({
+    // Used verbatim as a docker volume name by `consumeImage`, so it is
+    // constrained to docker's own volume-name charset here (defence in depth,
+    // exactly as `id` is).
+    declared_volume_name: z
+      .string()
+      .min(1)
+      .max(255)
+      .refine((value) => /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(value) && !value.includes(".."), {
+        message: "must be a docker volume name (letters, digits, '_', '.', '-'; no '/', ':', whitespace, or '..')"
+      })
+      .optional(),
     durability: z.literal("persistent"),
     // Sanitized by deriveVolumeName before use, but constrained here too so the
     // schema alone keeps the volume-name source clean (defense in depth).

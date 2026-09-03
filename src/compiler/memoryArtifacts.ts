@@ -240,6 +240,7 @@ export const createMemoryArtifactBundle = (
 
       if (mountPath !== null) {
         const mountId = createMountId(mountPath);
+        const declaredVolumeName = entry.bank.store.persistence?.name?.trim();
         const volumeName = durableMemoryVolumeName(
           plan.root,
           mountId,
@@ -262,6 +263,7 @@ export const createMemoryArtifactBundle = (
         }
 
         const mount = existingMount ?? {
+          ...(declaredVolumeName ? { declared_volume_name: declaredVolumeName } : {}),
           id: mountId,
           lifecycle: "exclusive-reattach" as const,
           mount_path: mountPath,
