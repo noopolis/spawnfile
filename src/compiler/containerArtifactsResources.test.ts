@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { openClawAdapter } from "../runtime/openclaw/adapter.js";
 
 import { createContainerArtifacts } from "./containerArtifacts.js";
+import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import type { CompilePlan, ResolvedAgentNode } from "./types.js";
 
 const createPlan = (runtimeNames: string[]): CompilePlan => ({
@@ -134,6 +135,35 @@ describe("container workspace resources", () => {
       }
     }
     finally { if (previous === undefined) delete process.env.NOOPOLIS_RUN_ID; else process.env.NOOPOLIS_RUN_ID = previous; }
+  });
+
+  // CALL-SITE lock for mergePersistentMounts. Its uniqueness check is unit
+  // tested, but replacing the mergePersistentMounts(...) call in
+  // containerArtifacts.ts with a plain sort left the whole suite green — a
+  // correct helper that nothing proved was reached. This is the one collision
+  // shape that ONLY the merge can catch: the two mounts come from two
+  // independent sources (a workspace resource and a Moltnet store), so every
+  // per-source check passes and they still claim one host volume at two paths.
+  it("rejects a workspace resource and a Moltnet store that claim one volume name", async () => {
+    const scope = { kind: "team" as const, key: "/tmp/lab/Spawnfile", name: "lab" };
+    const agent = createAgentNode("reporter", [
+      { id: "edition-state", kind: "volume" as const, mode: "mutable" as const, mount: "./edition", name: "clank-dup", scope, sharing: "team" as const }
+    ]);
+    const compiled = [{ emittedFiles: (await openClawAdapter.compileAgent(agent)).files, kind: "agent" as const, runtimeName: "openclaw", slug: agent.name, value: agent }];
+    const moltnet = {
+      files: [], nodePlans: [], ports: [], publishedPorts: [], serverPlans: [],
+      persistentMounts: [{
+        declaredVolumeName: "clank-dup",
+        id: "moltnet-newsroom-store",
+        lifecycle: "exclusive-reattach" as const,
+        mountPath: "/var/lib/spawnfile/moltnet/networks/newsroom",
+        reason: "managed Moltnet sqlite store for newsroom",
+        volumeName: "clank-dup"
+      }]
+    } as unknown as MoltnetArtifacts;
+
+    await expect(createContainerArtifacts(createPlan(["openclaw"]), compiled, { moltnet }))
+      .rejects.toThrow(/claimed by two different mounts/u);
   });
 
   it("rejects two distinct resources whose declared names collapse onto one backing volume", async () => {
