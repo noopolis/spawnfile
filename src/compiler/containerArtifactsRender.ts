@@ -25,6 +25,7 @@ import {
   renderDaimonUidEntrypoint
 } from "./containerDaimonUidEntrypointRender.js";
 import { createStateOwnershipCommand } from "./containerStateOwnershipRender.js";
+import type { BackedMountRequirement } from "./containerBackedMountRender.js";
 import {
   RUNTIME_LINK_MATERIALIZER_PATH,
   renderRuntimeLinkMaterializer
@@ -303,7 +304,8 @@ export const renderDockerfile = async (
 export const createRootfsFiles = (
   runtimePlans: RuntimeTargetPlan[],
   persistentMountPaths: string[] = [],
-  moltnet?: EntrypointOptions["moltnet"]
+  moltnet?: EntrypointOptions["moltnet"],
+  persistentMounts: readonly BackedMountRequirement[] = []
 ): EmittedFile[] => {
   const files = runtimePlans.flatMap((plan) =>
     plan.targetFiles.map((file) => {
@@ -376,7 +378,7 @@ export const createRootfsFiles = (
         mode: 0o600,
         path: `${CONTAINER_ROOTFS_ROOT}${RUNTIME_LINK_MATERIALIZER_PATH}`
       }, {
-        content: renderDaimonUidEntrypoint(runtimePlans, persistentMountPaths, moltnet),
+        content: renderDaimonUidEntrypoint(runtimePlans, persistentMountPaths, moltnet, persistentMounts),
         mode: 0o755,
         path: `${CONTAINER_ROOTFS_ROOT}${DAIMON_UID_ENTRYPOINT_PATH}`
       }, ...files]
