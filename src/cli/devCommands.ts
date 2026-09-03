@@ -20,6 +20,10 @@ export const registerDevCommands = (
     .command("up")
     .description("Compile, build, and start a detached dev deployment under .spawn-dev")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
+    .option(
+      "--allow-declared-volumes",
+      "Attach author-declared volumes by name, which a production deployment of this project also uses"
+    )
     .option("--auth-profile <name>", "Local Spawnfile auth profile")
     .option("--context <name>", "Docker context for the deployment target")
     .option("--deployment <name>", "Detached deployment record name")
@@ -31,6 +35,7 @@ export const registerDevCommands = (
     .action(async (
       inputPath: string,
       options: {
+        allowDeclaredVolumes?: boolean;
         authProfile?: string;
         context?: string;
         deployment?: string;
@@ -42,6 +47,7 @@ export const registerDevCommands = (
       }
     ) => {
       const result = await handlers.devUpProject(inputPath, {
+        allowDeclaredVolumeNames: options.allowDeclaredVolumes,
         authProfile: options.authProfile,
         containerName: options.name,
         deploymentName: options.deployment,

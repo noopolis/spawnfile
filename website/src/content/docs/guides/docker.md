@@ -219,17 +219,31 @@ Managed Moltnet SQLite/JSON stores, durable memory SQLite/JSON stores, workspace
 **Which launcher you use is part of the volume identity.** For a mount with no
 declared name, the derived name folds in the *deployment lineage*, and each
 entrypoint supplies a different default: `spawnfile run` uses `ephemeral`,
-`spawnfile up` and `spawnfile dev up` use `default`, and a bare `spawnfile
-compile` uses `compile`. Starting the same project with a different command, or
-with a different `--deployment` name, therefore attaches a *different* volume
-and the organization starts empty. Two consequences worth knowing:
+`spawnfile up` uses `default`, and a bare `spawnfile compile` uses `compile`.
+Starting the same project with a different command, or with a different
+`--deployment` name, therefore attaches a *different* volume and the
+organization starts empty. Pass the same `--deployment <name>` every time, or
+declare an explicit `name` on anything whose contents you care about — a
+declared name is immune to all of this and is the same volume under every
+launcher.
 
-- Pass the same `--deployment <name>` every time, or declare an explicit `name`
-  on anything whose contents you care about — a declared name is immune to all
-  of this and is the same volume under every launcher.
-- `spawnfile dev up` currently shares the `default` lineage with production
-  `spawnfile up`, so a dev deployment started while production is stopped
-  attaches production's volumes. Give dev its own `--deployment` name.
+**`spawnfile dev up` is isolated from production by construction.** It
+namespaces its lineage, so a dev deployment never resolves to the derived
+volumes of a production `spawnfile up` of the same project, under any
+`--deployment` name. A declared name is the exception, because it deliberately
+carries no deployment identity — dev would attach production's volume by that
+exact name — so `dev up` refuses to start when the project declares one:
+
+```
+This dev deployment would attach 2 author-declared volumes by name, which a
+production deployment of this project uses too: clank-edition-state,
+clank-newsroom-store. ... Remove the declared name, run dev against a copy of
+the project, or pass --allow-declared-volumes to attach them deliberately.
+```
+
+Pass `--allow-declared-volumes` only when you mean it — a dev agent writing
+into production's message store corrupts live state rather than merely losing
+it.
 
 These mounts carry `lifecycle: "exclusive-reattach"`. Their volume names depend on the project root and the deployment lineage, never on the run id, so removing and recreating the container reattaches the same host volumes rather than provisioning empty ones. A `name` you declare yourself — a resource `name`, or `store.persistence.name` — is used verbatim, so you can pre-create or migrate that volume by exactly that name. The trade-off is that only one live container may hold such a volume at a time: an organization declaring any of them cannot use the concurrent blue/green canary path and must stop the live deployment before starting its replacement.
 

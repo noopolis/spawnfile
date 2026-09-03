@@ -606,10 +606,20 @@ cannot use the concurrent canary workflow below.
 
 A derived `exclusive-reattach` name depends on the deployment lineage, and each
 entrypoint supplies a different default lineage (`spawnfile run`: `ephemeral`;
-`spawnfile up` and `spawnfile dev up`: `default`; bare `spawnfile compile`:
-`compile`). Changing launcher or `--deployment` name therefore selects a
-different volume. An author-declared name carries no lineage and is the same
-volume under every launcher and in a sourceless image deployment.
+`spawnfile up`: `default`; bare `spawnfile compile`: `compile`). Changing
+launcher or `--deployment` name therefore selects a different volume.
+
+`spawnfile dev up` additionally namespaces its lineage, so a dev deployment can
+never resolve to the derived volumes of a production `spawnfile up` of the same
+project under ANY `--deployment` name. The namespace applies to the lineage
+only, never to the deployment name, so dev deployment records and labels are
+unchanged.
+
+An author-declared name carries no lineage and is the same volume under every
+launcher and in a sourceless image deployment. The dev namespace therefore
+cannot protect it, so `spawnfile dev up` REFUSES to start when any durable
+mount carries a declared name, listing them; `--allow-declared-volumes` is the
+explicit override for an operator who means to attach that live state.
 
 Compiler-owned persistent mounts are attached WITHOUT `volume-nocopy`. The
 image is the authority for the bootstrap preimage at those paths, and Docker
