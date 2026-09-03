@@ -216,6 +216,21 @@ Command boundaries:
 
 Managed Moltnet SQLite/JSON stores, durable memory SQLite/JSON stores, workspace `kind: volume` resources, and open-registration agent token directories appear in the compile report as `container.persistent_mounts[]`. `spawnfile run` and `spawnfile up` mount those entries as Docker named volumes so messages, registrations, memory state, workspace volumes, and generated open-mode agent tokens survive container replacement.
 
+**Which launcher you use is part of the volume identity.** For a mount with no
+declared name, the derived name folds in the *deployment lineage*, and each
+entrypoint supplies a different default: `spawnfile run` uses `ephemeral`,
+`spawnfile up` and `spawnfile dev up` use `default`, and a bare `spawnfile
+compile` uses `compile`. Starting the same project with a different command, or
+with a different `--deployment` name, therefore attaches a *different* volume
+and the organization starts empty. Two consequences worth knowing:
+
+- Pass the same `--deployment <name>` every time, or declare an explicit `name`
+  on anything whose contents you care about — a declared name is immune to all
+  of this and is the same volume under every launcher.
+- `spawnfile dev up` currently shares the `default` lineage with production
+  `spawnfile up`, so a dev deployment started while production is stopped
+  attaches production's volumes. Give dev its own `--deployment` name.
+
 These mounts carry `lifecycle: "exclusive-reattach"`. Their volume names depend on the project root and the deployment lineage, never on the run id, so removing and recreating the container reattaches the same host volumes rather than provisioning empty ones. A `name` you declare yourself — a resource `name`, or `store.persistence.name` — is used verbatim, so you can pre-create or migrate that volume by exactly that name. The trade-off is that only one live container may hold such a volume at a time: an organization declaring any of them cannot use the concurrent blue/green canary path and must stop the live deployment before starting its replacement.
 
 ### Dev Hot Apply
