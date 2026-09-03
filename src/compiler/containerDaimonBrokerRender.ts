@@ -20,16 +20,27 @@ export const DAIMON_BROKER_SERVICE_CONFIG = "/etc/daimon-engine-broker/service.j
 export const DAIMON_BROKER_REALM = "/var/lib/spawnfile/daimon/grok-subscription-realm";
 export const DAIMON_WORKER_ROOT = "/var/lib/daimon-workers";
 /**
- * The organization runtime state directory. Owned by a non-worker host
- * identity with mode 0755 (verified live: `drwxr-xr-x`, owner/group
- * `spawnfile`) — deliberately world-traversable/listable, per
- * `organizationReadyEvidence.ts`'s readiness receipt path underneath it and
- * every other reader that needs it. That world-read bit is the one thing in
- * `GROK_SANDBOX_DENY_PATHS` below a worker uid can actually open with no
- * sandbox in effect (verified live with `setpriv --reuid <worker> ... open`),
- * which is exactly why it stays denied: Grok's own bwrap mask over it is a
- * real, verifiable effect, not a no-op layered on top of unix permissions
- * that already refuse the worker.
+ * The organization runtime state directory — the parent of the durable wake
+ * acceptance store (`state/wake-acceptance`) and the runtime readiness
+ * receipt inside it.
+ *
+ * It used to be left at mode 0755 because Docker creates it root-owned and
+ * world-readable when it materializes the acceptance-store volume mount, and
+ * nothing tightened it afterwards: the Daimon ownership guard only *chowned*
+ * ancestor `privateDirectories` and never chmoded them. That made it the one
+ * path under `/var/lib/spawnfile` a Grok worker uid could actually open, and
+ * the whole reason a `deny` entry existed at all.
+ *
+ * `resolveDaimonUidEntrypointOwnershipPlan` now lists it as a
+ * `privateModeDirectory`, so the ownership guard secures it to `0700`
+ * `2000:2000` — the same treatment the acceptance store beneath it already
+ * had. That is what actually denies the worker, and it does so for every
+ * Daimon organization, with or without Grok. No non-root, non-organization
+ * reader loses anything: the only content under it is the acceptance store,
+ * which was already `0700 2000:2000`, so every reader that works today is
+ * either the organization uid or a `docker exec` root holding
+ * `CAP_DAC_READ_SEARCH` (`runProject.ts`), and neither is affected by the
+ * parent's mode.
  */
 export const DAIMON_ORGANIZATION_STATE_DIRECTORY = path.posix.join(
   DAIMON_RUNTIME_HOME_ROOT,
@@ -38,29 +49,44 @@ export const DAIMON_ORGANIZATION_STATE_DIRECTORY = path.posix.join(
 );
 /**
  * The Grok worker sandbox profile's `deny` list — see `profileFor` below.
- * Every other candidate a worker might plausibly need masked from (peer
+ * Deliberately empty, which leaves the worker on builtin-`strict` Landlock
+ * confinement plus `restrict_network`.
+ *
+ * A non-empty `deny` list is not a usable mechanism on Grok 1.0.13. Whenever
+ * one is present, Grok re-execs itself inside bubblewrap and then `open()`s
+ * every deny-path placeholder to prove its own bind-over is genuine — but it
+ * creates that placeholder at mode `000` and the re-exec'd process is
+ * capability-stripped (`--cap-drop ALL`), so the open returns `EACCES` and
+ * Grok refuses to start:
+ *
+ *   error: sandbox reports bwrap but required read-deny mounts are not in
+ *   effect (read-deny path <path> could not be opened: Permission denied
+ *   (os error 13)); refusing to start (possible __GROK_INSIDE_BWRAP spoof)
+ *
+ * It never reaches `ProfileApplied`, so `sandbox-events.jsonl` stays empty and
+ * Daimon's attestation never runs either. Reproduced locally against the real
+ * Linux `grok 1.0.13` binary, with controls confirming the deny *target* is
+ * irrelevant: a plain directory, a directory with a child mount, and a vanilla
+ * root-owned home denying an unrelated file all fail identically, while an
+ * empty deny list exits 0 and emits
+ * `ProfileApplied {platform: "linux/landlock", enforced: true,
+ * restrict_network: true}` with no bwrap at all.
+ *
+ * Nothing is lost by emptying it. Every path this list ever carried — peer
  * worker homes/workspaces, the subscription realm, the bootstrap-auth file,
- * the broker's own `/run` socket directory, the usage-ledger directory) is
- * unix-denied to a worker uid unconditionally, by construction, elsewhere in
- * this exact provisioning script or its sibling
- * `renderDaimonUsageLedgerProvisioning`: each is force-chowned/chmoded (never
+ * the broker's `/run` socket directory, the usage-ledger directory, and now
+ * `DAIMON_ORGANIZATION_STATE_DIRECTORY` — is unix-denied to a worker uid
+ * unconditionally, by construction: each is force-chowned/chmoded (never
  * merely checked) to a mode whose "other" class carries no read bit, and a
- * worker uid never matches the owning uid/gid of any of them (workers run
- * with `setresuid`/`setresgid` to their own dedicated uid==gid, cleared of
- * every supplementary group — see `engineBrokerLauncherCore.inc`). Listing an
- * already-unix-denied path in `deny` adds no protection — the kernel already
- * refuses the worker — and it breaks Grok 1.0.13+, which opens every `deny`
- * path at startup to confirm its own bwrap mount actually caused the denial;
- * when the path was already unreadable for an unrelated reason, Grok cannot
- * tell its mask from ambient permissions and refuses to start
- * ("__GROK_INSIDE_BWRAP spoof" guard). Verified live against a running
- * deployment (`clank-newsroom`, worker uid 2202) with
- * `setpriv --reuid 2202 --regid 2202 --clear-groups`: every registrations.bin
- * peer home/workspace, the realm, `grok-bootstrap-auth`, and
- * `/run/daimon-engine-broker` were already unreadable; only the organization
- * state directory below was actually openable.
+ * worker uid never matches the owning uid or gid of any of them (workers run
+ * under `setresuid`/`setresgid` to a dedicated uid==gid with every
+ * supplementary group cleared — see `engineBrokerLauncherCore.inc`).
+ *
+ * Daimon's `grokWorkerAttestation.ts` still pins the profile by SHA-256 to
+ * exactly these bytes, so an empty list is not an unconstrained one: the
+ * worker's profile cannot differ from what is rendered here.
  */
-export const GROK_SANDBOX_DENY_PATHS = [DAIMON_ORGANIZATION_STATE_DIRECTORY];
+export const GROK_SANDBOX_DENY_PATHS: readonly string[] = [];
 
 interface WorkspaceSecurityResource {
   backingPath: string;
@@ -176,19 +202,10 @@ export const renderDaimonBrokerProvisioning = (plans: RuntimeTargetPlan[]): stri
     "const config = '[auth_provider.daimon]\\ntype = \"custom\"\\ncommand = \"/opt/daimon/bin/daimon-engine-broker\"\\nargs = [\"--auth-provider\"]\\n\\n[model.daimon-broker-grok]\\nmodel = \"grok-build\"\\nbase_url = \"http://127.0.0.1:43123/v1\"\\nauth_provider = \"daimon\"\\ncontext_window = 131072\\nsupports_backend_search = false\\n\\n[mcp_servers.daimon]\\nurl = \"http://127.0.0.1:43124/mcp\"\\nheaders = { Authorization = \"Bearer ${DAIMON_MCP_CAPABILITY}\" }\\n';",
     `for (const root of ['${DAIMON_WORKER_ROOT}']) { fs.mkdirSync(root, { recursive: true, mode: 0o711 }); fs.chownSync(root, 0, 0); fs.chmodSync(root, 0o711); }`,
     ...renderDaimonWorkspaceResourceSecurity(workspaceResources),
-    // Every candidate the worker might plausibly need masked from other than
-    // the organization state directory (peer worker homes/workspaces, the
-    // subscription realm, grok-bootstrap-auth, /run/daimon-engine-broker, the
-    // usage ledger) is already unix-denied to a worker uid unconditionally by
-    // this exact script and its `renderDaimonUsageLedgerProvisioning`
-    // sibling, which force-chown/chmod each one to a mode whose "other" class
-    // carries no read bit for uids that are never the owner or group. Listing
-    // an already-unix-denied path adds no protection and breaks Grok
-    // 1.0.13+, which opens every `deny` path at startup to confirm its own
-    // bwrap mount actually caused the denial and refuses to start
-    // ("__GROK_INSIDE_BWRAP spoof" guard) when it can't tell its mask from
-    // ambient permissions. See `GROK_SANDBOX_DENY_PATHS`'s doc comment for
-    // the live verification this rests on.
+    // Empty on purpose: a non-empty `deny` list makes Grok 1.0.13 refuse to
+    // start before it ever applies a profile, and every path it used to carry
+    // is unix-denied to a worker uid unconditionally anyway. See
+    // `GROK_SANDBOX_DENY_PATHS`'s doc comment.
     `const deniedPaths = ${JSON.stringify(GROK_SANDBOX_DENY_PATHS)};`,
     "const profileFor = () => `[profiles.daimon-strict]\\nextends = \"strict\"\\nrestrict_network = true\\ndeny = [${deniedPaths.map(JSON.stringify).join(', ')}]\\n`;",
     "const ensureDirectory = (target, uid, gid, mode) => { fs.mkdirSync(target, { recursive: true, mode }); const info = fs.lstatSync(target); if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('unsafe worker runtime directory'); fs.chownSync(target, 0, 0); fs.chmodSync(target, mode); fs.chownSync(target, uid, gid); };",

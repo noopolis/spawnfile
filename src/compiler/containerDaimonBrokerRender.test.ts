@@ -105,39 +105,46 @@ describe("Daimon broker usage ledger provisioning", () => {
   });
 });
 
-describe("Grok sandbox deny list: only worker-openable paths", () => {
-  // Every candidate a worker might plausibly need masked from other than the
-  // organization state directory is already unix-denied unconditionally —
-  // by construction, elsewhere in this same provisioning script or its
-  // `renderDaimonUsageLedgerProvisioning` sibling. Listing an already-denied
-  // path adds no protection and breaks Grok 1.0.13+'s own startup
-  // verification (it opens every `deny` path to confirm its bwrap mount
-  // caused the denial, and can't tell a pre-existing denial from its own
-  // mask). Verified live: `setpriv --reuid <worker-uid> --regid <worker-uid>
-  // --clear-groups` against a running deployment could not open any
-  // registrations.bin peer home/workspace, the subscription realm,
-  // grok-bootstrap-auth, /run/daimon-engine-broker, or the usage ledger —
-  // only the organization state directory (world-readable, 0755) was
-  // actually openable.
+describe("Grok sandbox deny list: empty, because a non-empty one cannot start", () => {
+  // Grok 1.0.13 re-execs itself inside bubblewrap whenever `deny` is
+  // non-empty, then opens every deny-path placeholder to prove the bind-over
+  // is genuine. It creates that placeholder at mode 000 and the re-exec'd
+  // process is capability-stripped, so the open returns EACCES and Grok
+  // refuses to start ("possible __GROK_INSIDE_BWRAP spoof") without ever
+  // writing a ProfileApplied event — reproduced against the real Linux binary,
+  // with the deny target proven irrelevant. Every path this list once carried
+  // is unix-denied to a worker uid unconditionally anyway, the organization
+  // state directory included now that the ownership guard secures it to 0700
+  // (see `containerDaimonUidEntrypointRender.ts`).
   const planWithAgents = (agentIds: string[]) => ({
     runtimeName: "daimon",
     engineByNodeId: Object.fromEntries(agentIds.map((agentId) => [agentId, "grok"])),
     instancePaths: { workspacePath: "/workspace" }
   } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number]);
 
-  it("contains only the organization state directory, regardless of how many Grok agents are registered", () => {
+  const deniedPathsLineFor = (agentIds: string[]): string | undefined =>
+    renderDaimonBrokerProvisioning([planWithAgents(agentIds)])
+      .join("\n").split("\n").find((line) => line.includes("const deniedPaths ="));
+
+  it("renders an empty deny list regardless of how many Grok agents are registered", () => {
     for (const agentIds of [["agent:solo"], ["agent:cogsworth", "agent:foreman", "agent:graves"]]) {
-      const program = renderDaimonBrokerProvisioning([planWithAgents(agentIds)]).join("\n");
-      const deniedPathsLine = program.split("\n").find((line) => line.includes("const deniedPaths ="));
-      expect(deniedPathsLine).toBe(`const deniedPaths = ${JSON.stringify([DAIMON_ORGANIZATION_STATE_DIRECTORY])};`);
+      expect(deniedPathsLineFor(agentIds)).toBe("const deniedPaths = [];");
     }
   });
 
-  it("never lists a peer worker's home or workspace, the subscription realm, or the bootstrap credential", () => {
-    const program = renderDaimonBrokerProvisioning([
-      planWithAgents(["agent:cogsworth", "agent:foreman", "agent:graves"])
-    ]).join("\n");
-    const deniedPathsLine = program.split("\n").find((line) => line.includes("const deniedPaths ="));
+  it("emits a profile whose deny key is present but empty", () => {
+    const program = renderDaimonBrokerProvisioning([planWithAgents(["agent:solo"])]).join("\n");
+    // The profile is a template literal in the rendered program; evaluate the
+    // same expression the container will, so the assertion is over real bytes.
+    const deniedPaths: string[] = [];
+    const profile = `[profiles.daimon-strict]\nextends = "strict"\nrestrict_network = true\ndeny = [${deniedPaths.map((entry) => JSON.stringify(entry)).join(", ")}]\n`;
+    expect(profile).toContain("deny = []\n");
+    expect(program).toContain("const profileFor = () => `[profiles.daimon-strict]");
+    expect(program).toContain("deny = [${deniedPaths.map(JSON.stringify).join(', ')}]");
+  });
+
+  it("never lists a peer worker's home or workspace, the realm, the credential, or the state directory", () => {
+    const deniedPathsLine = deniedPathsLineFor(["agent:cogsworth", "agent:foreman", "agent:graves"]);
     expect(deniedPathsLine).toBeDefined();
     for (const forbidden of [
       "daimon-workers",
@@ -146,14 +153,16 @@ describe("Grok sandbox deny list: only worker-openable paths", () => {
       "/workspace/agents/graves",
       DAIMON_BROKER_REALM,
       "/var/lib/spawnfile/daimon/grok-bootstrap-auth",
-      "/run/daimon-engine-broker"
+      "/run/daimon-engine-broker",
+      DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
+      DAIMON_ORGANIZATION_STATE_DIRECTORY
     ]) {
       expect(deniedPathsLine).not.toContain(forbidden);
     }
   });
 
   it("keeps the exported deny-path constant in sync with what gets rendered", () => {
-    expect(GROK_SANDBOX_DENY_PATHS).toEqual([DAIMON_ORGANIZATION_STATE_DIRECTORY]);
+    expect(GROK_SANDBOX_DENY_PATHS).toEqual([]);
     expect(DAIMON_ORGANIZATION_STATE_DIRECTORY).toBe(
       "/var/lib/spawnfile/instances/daimon/daimon-organization/state"
     );
