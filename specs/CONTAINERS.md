@@ -604,6 +604,13 @@ the run id, and an author-declared name (`persistence.name`, a resource
 `name`) is used verbatim. They survive a redeploy. A report carrying one
 cannot use the concurrent canary workflow below.
 
+A derived `exclusive-reattach` name depends on the deployment lineage, and each
+entrypoint supplies a different default lineage (`spawnfile run`: `ephemeral`;
+`spawnfile up` and `spawnfile dev up`: `default`; bare `spawnfile compile`:
+`compile`). Changing launcher or `--deployment` name therefore selects a
+different volume. An author-declared name carries no lineage and is the same
+volume under every launcher and in a sourceless image deployment.
+
 Compiler-owned persistent mounts are attached WITHOUT `volume-nocopy`. The
 image is the authority for the bootstrap preimage at those paths, and Docker
 copies image content up only into an empty volume, so an already-populated
