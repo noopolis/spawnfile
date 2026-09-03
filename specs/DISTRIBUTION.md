@@ -118,4 +118,4 @@ Behind `--pull-check` (networked, never default), status compares the recorded `
 
 ## Deferred
 
-Multi-arch builds, image signing, the registry discovery index, durable workspace volumes, private git resource auth, registry-API metadata extraction, compose/k8s/ecs compile targets and the org index, and composition (image members). The network binding report entries ship now so these can layer on without a schema or fingerprint change.
+Multi-arch builds, image signing, the registry discovery index, private git resource auth, registry-API metadata extraction, compose/k8s/ecs compile targets and the org index, and composition (image members). The network binding report entries ship now so these can layer on without a schema or fingerprint change.
