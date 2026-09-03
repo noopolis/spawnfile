@@ -124,7 +124,7 @@ export const registerDownCommand = (
       "Image used to read named volumes during auto export",
     )
     .option("--timeout <ms>", "Bound each Docker call in milliseconds")
-    .option("--volumes", "Also remove named volumes")
+    .option("--volumes", "Also remove this deployment's own named volumes (author-declared names are shared project state and are always skipped)")
     .option(
       "--json",
       "Render a spawnfile.down-receipt.v1 machine-readable receipt",
@@ -157,11 +157,18 @@ export const registerDownCommand = (
           timeoutMs: options.timeout ? Number(options.timeout) : undefined,
           ...(expected ? { expectedLifecycleCorrelation: expected } : {}),
         });
+        // A deliberately skipped declared volume is shared project state, not
+        // an incomplete teardown: retrying can never remove it, so counting it
+        // as incompleteness would make a `--volumes` lifecycle down of any
+        // project with a declared name retry forever.
+        const skipped = new Set(receipt.skipped_volumes ?? []);
+        const unexpectedlyRetained = receipt.retained_volumes.filter(
+          (volume) => !skipped.has(volume),
+        );
         if (
           expectedUnits !== undefined &&
           (receipt.errors.length !== 0 ||
-            (options.volumes === true &&
-              receipt.retained_volumes.length !== 0) ||
+            (options.volumes === true && unexpectedlyRetained.length !== 0) ||
             JSON.stringify([...receipt.units_stopped].sort()) !==
               JSON.stringify(expectedUnits))
         ) {
@@ -228,9 +235,19 @@ export const registerDownCommand = (
       receipt.units_stopped.forEach((unit) =>
         streams.stdout(`stopped: ${unit}`),
       );
+      const skippedVolumes = new Set(receipt.skipped_volumes ?? []);
       receipt.retained_volumes.forEach((volume) =>
-        streams.stdout(`retained volume: ${volume}`),
+        streams.stdout(
+          skippedVolumes.has(volume)
+            ? `skipped volume (author-declared, shared with every deployment of this project): ${volume}`
+            : `retained volume: ${volume}`,
+        ),
       );
+      if (skippedVolumes.size > 0) {
+        streams.stdout(
+          `remove shared project state deliberately: docker volume rm ${[...skippedVolumes].join(" ")}`,
+        );
+      }
       receipt.errors.forEach((error) => streams.stderr(`error: ${error}`));
     });
 };
