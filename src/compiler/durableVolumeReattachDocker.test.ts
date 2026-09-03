@@ -10,9 +10,12 @@ import { createExclusiveReattachVolumeName } from "../shared/index.js";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import {
+  resolveTargetResources,
   resolveWorkspaceResourceVolumes,
   type WorkspaceResourcePersistentMount
 } from "./containerTargetResources.js";
+import type { ResolvedAgentNode } from "./types.js";
+import type { ContainerTarget, ContainerTargetInput, RuntimeContainerMeta } from "../runtime/index.js";
 import { createDockerRunInvocation } from "./runProject.js";
 import { removeDirectory } from "../filesystem/index.js";
 import type { OrganizationReadinessEvidence } from "./organizationReadyEvidence.js";
@@ -124,14 +127,60 @@ interface DurableFixture {
 
 const STORE_MOUNT_PATH = "/var/lib/spawnfile/moltnet/networks/clank-newsroom";
 const STORE_MOUNT_ID = "moltnet-clank-newsroom-store";
-const RESOURCE_MOUNT_PATH =
-  "/var/lib/spawnfile/resources/teams/team-newsroom/clank-edition-state";
+
+const PLAN_ROOT = "/tmp/newsroom/Spawnfile";
 
 /**
- * Resolves the durable mounts the compiler emits for this fixture, through the
- * compiler's own naming path. Called once per "compile"; the caller varies
- * NOOPOLIS_RUN_ID between calls and asserts the results are identical.
+ * The declared team volume, exactly as an author writes it: an explicit `name`
+ * an operator can pre-create on the host.
  */
+const declaredVolumeResource = (declaredName: string) => ({
+  id: "edition-state",
+  kind: "volume" as const,
+  mode: "mutable" as const,
+  mount: "./edition",
+  name: declaredName,
+  scope: { kind: "team" as const, key: PLAN_ROOT, name: "newsroom" },
+  sharing: "team" as const
+});
+
+const createTargetInput = (
+  slug: string,
+  runtimeName: string,
+  declaredName: string
+): ContainerTargetInput => ({
+  emittedFiles: [],
+  id: `agent:${slug}`,
+  kind: "agent",
+  slug,
+  value: {
+    description: "", docs: [], env: {}, execution: undefined, kind: "agent",
+    mcpServers: [], name: slug, policyMode: null, policyOnDegrade: null,
+    runtime: { name: runtimeName, options: {} }, secrets: [], skills: [],
+    source: `${PLAN_ROOT}/agents/${slug}`, subagents: [],
+    workspaceResources: [declaredVolumeResource(declaredName)]
+  } as unknown as ResolvedAgentNode
+});
+
+/**
+ * Runs the compiler's REAL workspace-resource derivation — the code path that
+ * produced run-scoped names and discarded author-declared ones — and returns
+ * both the resolved resource plans and the durable mounts they imply.
+ *
+ * Callers vary NOOPOLIS_RUN_ID around this call. Nothing here may depend on it.
+ */
+const resolveDurableResources = (
+  slug: string,
+  runtimeName: string,
+  declaredName: string,
+  instancePaths: RuntimeTargetPlan["instancePaths"],
+  meta: RuntimeContainerMeta
+): NonNullable<RuntimeTargetPlan["resources"]> => {
+  const input = createTargetInput(slug, runtimeName, declaredName);
+  const target: ContainerTarget = { files: [], id: `${runtimeName}-target`, sourceIds: [input.id] };
+  return resolveTargetResources(target, [input], instancePaths, meta, PLAN_ROOT, DEPLOYMENT_LINEAGE);
+};
+
 const resolveDurableMounts = (plan: RuntimeTargetPlan): DurableFixture => ({
   mounts: resolveWorkspaceResourceVolumes([plan]).mounts,
   storeMount: {
@@ -166,66 +215,59 @@ describe("durable volumes reattach across container replacement", () => {
     const dockerDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-durable-daimon-"));
     const instanceRoot = "/var/lib/spawnfile/instances/daimon/daimon-organization";
     const workspacePath = `${instanceRoot}/workspace`;
-    const sentinelPath = `${RESOURCE_MOUNT_PATH}/.spawnfile-resource-identity`;
     const statePath = `${STORE_MOUNT_PATH}/moltnet.sqlite`;
+    const instancePaths = {
+      configPath: `${instanceRoot}/daimon/config.json`,
+      instanceRoot,
+      workspacePath
+    };
+    const meta = {
+      configFileName: "daimon/config.json",
+      instancePaths: { configPathTemplate: "", workspacePathTemplate: "" },
+      standaloneBaseImage: "node:24-bookworm-slim",
+      startCommand: ["bash", "/opt/spawnfile/durable-probe.sh"],
+      systemDeps: ["bash", "util-linux"]
+    } as unknown as RuntimeContainerMeta;
 
-    const plan: RuntimeTargetPlan = {
-      configEnvBindings: [],
-      envFiles: [],
-      id: "daimon-organization",
-      instancePaths: {
-        configPath: `${instanceRoot}/daimon/config.json`,
-        instanceRoot,
-        workspacePath
-      },
-      meta: {
-        configFileName: "daimon/config.json",
-        instancePaths: { configPathTemplate: "", workspacePathTemplate: "" },
-        standaloneBaseImage: "node:24-bookworm-slim",
-        startCommand: ["bash", "/opt/spawnfile/durable-probe.sh"],
-        systemDeps: ["bash", "util-linux"]
-      },
-      modelAuthMethods: {},
-      modelSecretsRequired: [],
-      packages: [],
-      recipeEnv: {},
-      resources: [{
-        backingPath: RESOURCE_MOUNT_PATH,
-        id: "edition-state",
-        kind: "volume",
-        linkPath: `${workspacePath}/edition`,
-        mode: "mutable",
-        mount: "./edition",
-        name: "clank-edition-state",
-        sharing: "team",
-        canonicalBackingPath: RESOURCE_MOUNT_PATH,
-        ownerId: RESOURCE_MOUNT_PATH,
-        persistentMountId: "workspace-resource-edition",
-        replacementSentinel: sentinelPath,
-        resolvedIdentity: `sha256:${"b".repeat(64)}`,
-        volumeName: "clank-edition-state"
-      } as NonNullable<RuntimeTargetPlan["resources"]>[number]],
-      runtimeName: "daimon",
-      runtimeRoot: "/opt/spawnfile/runtime-installs/daimon",
-      sourceIds: [],
-      targetFiles: [
-        { content: "{}\n", path: "daimon/config.json" },
-        { content: "#!/usr/bin/env bash\nexit 0\n", mode: 0o755, path: "runtime/daimon-start.sh" }
-      ]
-    } as unknown as RuntimeTargetPlan;
+    // A whole "compile" of this fixture: the REAL resource derivation, then
+    // the REAL mount projection over its result.
+    const compile = (): { plan: RuntimeTargetPlan } & DurableFixture => {
+      const plan = {
+        configEnvBindings: [],
+        envFiles: [],
+        id: "daimon-organization",
+        instancePaths,
+        meta,
+        modelAuthMethods: {},
+        modelSecretsRequired: [],
+        packages: [],
+        recipeEnv: {},
+        resources: resolveDurableResources(
+          "reporter", "daimon", "clank-edition-state", instancePaths, meta
+        ),
+        runtimeName: "daimon",
+        runtimeRoot: "/opt/spawnfile/runtime-installs/daimon",
+        sourceIds: [],
+        targetFiles: [
+          { content: "{}\n", path: "daimon/config.json" },
+          { content: "#!/usr/bin/env bash\nexit 0\n", mode: 0o755, path: "runtime/daimon-start.sh" }
+        ]
+      } as unknown as RuntimeTargetPlan;
+      return { plan, ...resolveDurableMounts(plan) };
+    };
 
     // "Compile" twice under two different run ids. An author-declared name is
     // returned verbatim and the derived name never mentions either run id, so
     // the two mount sets MUST be identical — that identity is what makes a
     // redeploy reattach the same host volumes instead of creating empty ones.
     const previousRunId = process.env.NOOPOLIS_RUN_ID;
-    let firstCompile: DurableFixture;
-    let secondCompile: DurableFixture;
+    let firstCompile: { plan: RuntimeTargetPlan } & DurableFixture;
+    let secondCompile: { plan: RuntimeTargetPlan } & DurableFixture;
     try {
       process.env.NOOPOLIS_RUN_ID = "run-one";
-      firstCompile = resolveDurableMounts(plan);
+      firstCompile = compile();
       process.env.NOOPOLIS_RUN_ID = "run-two";
-      secondCompile = resolveDurableMounts(plan);
+      secondCompile = compile();
     } finally {
       if (previousRunId === undefined) delete process.env.NOOPOLIS_RUN_ID;
       else process.env.NOOPOLIS_RUN_ID = previousRunId;
@@ -234,6 +276,9 @@ describe("durable volumes reattach across container replacement", () => {
     expect(secondCompile.storeMount).toEqual(firstCompile.storeMount);
     expect(firstCompile.mounts[0]?.volume_name).toBe("clank-edition-state");
     expect(firstCompile.mounts[0]?.lifecycle).toBe("exclusive-reattach");
+    const plan = firstCompile.plan;
+    // Never hardcoded: the backing path carries compile-derived hash segments.
+    const resourceMountPath = firstCompile.mounts[0]!.mount_path;
 
     const allMounts = namespaceMounts(
       [...firstCompile.mounts, firstCompile.storeMount],
@@ -297,15 +342,18 @@ describe("durable volumes reattach across container replacement", () => {
 
       // Writes durable state on the first start, then proves the SAME bytes
       // and the SAME inode came back on every later start.
+      const editionPath = `${resourceMountPath}/edition.txt`;
       await writeFile(path.join(dockerDirectory, "durable-probe.sh"), [
         "#!/usr/bin/env bash",
         "set -euo pipefail",
         `if [ ! -e '${statePath}' ]; then printf 'story-pitch\\n' > '${statePath}'; fi`,
-        `printf 'state=%s inode=%s owner=%s marker=%s sentinel=%s\\n' \\`,
+        `if [ ! -e '${editionPath}' ]; then printf 'assignment\\n' > '${editionPath}'; fi`,
+        `printf 'state=%s inode=%s owner=%s marker=%s sentinel=%s edition=%s edition_inode=%s\\n' \\`,
         `  "$(cat '${statePath}')" "$(stat -c %i '${statePath}')" \\`,
         `  "$(stat -c '%u:%g' '${STORE_MOUNT_PATH}')" \\`,
-        `  "$(test -e '${RESOURCE_MOUNT_PATH}/.spawnfile-volume-init' && printf present || printf absent)" \\`,
-        `  "$(stat -c '%u:%g' '${RESOURCE_MOUNT_PATH}')"`,
+        `  "$(test -e '${resourceMountPath}/.spawnfile-volume-init' && printf present || printf absent)" \\`,
+        `  "$(stat -c '%u:%g' '${resourceMountPath}')" \\`,
+        `  "$(cat '${editionPath}')" "$(stat -c %i '${editionPath}')"`,
         ""
       ].join("\n"), { encoding: "utf8", mode: 0o755 });
 
@@ -335,13 +383,14 @@ describe("durable volumes reattach across container replacement", () => {
         "create", "--name", containerName, ...daimonRunArgs, ...mountArgs, tag
       ]);
       const first = await execFile("docker", ["start", "-a", containerName], { timeout: 120_000 });
-      const firstState = /state=(\S+) inode=(\d+) owner=(\S+) marker=(\S+) sentinel=(\S+)/u
-        .exec(first.stdout);
+      const probe = /state=(\S+) inode=(\d+) owner=(\S+) marker=(\S+) sentinel=(\S+) edition=(\S+) edition_inode=(\d+)/u;
+      const firstState = probe.exec(first.stdout);
       expect(firstState, first.stdout + first.stderr).not.toBeNull();
       expect(firstState![1]).toBe("story-pitch");
       expect(firstState![3]).toBe(`${AUTHORIZED_UID}:${AUTHORIZED_UID}`);
       expect(firstState![4]).toBe("absent");
       expect(firstState![5]).toBe(`${AUTHORIZED_UID}:${AUTHORIZED_UID}`);
+      expect(firstState![6]).toBe("assignment");
 
       // The routine operation that destroyed the newsroom.
       await execFile("docker", ["rm", "--force", containerName]);
@@ -351,8 +400,9 @@ describe("durable volumes reattach across container replacement", () => {
       process.env.NOOPOLIS_RUN_ID = "run-three";
       let rerunMountArgs: string[];
       try {
+        const rerun = compile();
         rerunMountArgs = await resolveRunMountArgs(
-          namespaceMounts([...resolveDurableMounts(plan).mounts, resolveDurableMounts(plan).storeMount], suffix)
+          namespaceMounts([...rerun.mounts, rerun.storeMount], suffix)
         );
       } finally {
         if (rerunPrevious === undefined) delete process.env.NOOPOLIS_RUN_ID;
@@ -364,13 +414,16 @@ describe("durable volumes reattach across container replacement", () => {
         "create", "--name", containerName, ...daimonRunArgs, ...rerunMountArgs, tag
       ]);
       const second = await execFile("docker", ["start", "-a", containerName], { timeout: 120_000 });
-      const secondState = /state=(\S+) inode=(\d+) owner=(\S+) marker=(\S+) sentinel=(\S+)/u
-        .exec(second.stdout);
+      const secondState = probe.exec(second.stdout);
       expect(secondState, second.stdout + second.stderr).not.toBeNull();
       expect(secondState![1]).toBe("story-pitch");
       expect(secondState![2]).toBe(firstState![2]);
       expect(secondState![3]).toBe(`${AUTHORIZED_UID}:${AUTHORIZED_UID}`);
       expect(secondState![4]).toBe("absent");
+      // The workspace `kind: volume` — the mount whose NAME the compiler
+      // derives — must be the same host volume, not a fresh empty one.
+      expect(secondState![6]).toBe("assignment");
+      expect(secondState![7]).toBe(firstState![7]);
 
       // Fail closed: the same image, hand-launched with no volumes at all.
       await expect(execFile("docker", ["run", "--rm", ...daimonRunArgs, tag], { timeout: 60_000 }))
@@ -396,52 +449,59 @@ describe("durable volumes reattach across container replacement", () => {
     const containerName = `${tag}-container`;
     const dockerDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-durable-openclaw-"));
     const workspacePath = "/var/lib/spawnfile/instances/openclaw/agent-reporter/home/.openclaw/workspace";
-    const backingPath = "/var/lib/spawnfile/resources/teams/team-newsroom/clank-edition-state";
-    const statePath = `${backingPath}/edition.txt`;
+    const instancePaths = {
+      configPath: "/var/lib/spawnfile/instances/openclaw/agent-reporter/config.json",
+      workspacePath
+    };
+    const meta = {
+      configFileName: "config.json",
+      instancePaths: { configPathTemplate: "", workspacePathTemplate: "" },
+      standaloneBaseImage: "node:24-bookworm-slim",
+      startCommand: ["bash", "/opt/spawnfile/durable-probe.sh"],
+      systemDeps: ["bash"]
+    } as unknown as RuntimeContainerMeta;
 
-    const plan: RuntimeTargetPlan = {
-      configEnvBindings: [],
-      envFiles: [],
-      id: "openclaw-reporter",
-      instancePaths: {
-        configPath: "/var/lib/spawnfile/instances/openclaw/agent-reporter/config.json",
-        workspacePath
-      },
-      meta: {
-        configFileName: "config.json",
-        instancePaths: { configPathTemplate: "", workspacePathTemplate: "" },
-        standaloneBaseImage: "node:24-bookworm-slim",
-        startCommand: ["bash", "/opt/spawnfile/durable-probe.sh"],
-        systemDeps: ["bash"]
-      },
-      modelAuthMethods: {},
-      modelSecretsRequired: [],
-      packages: [],
-      recipeEnv: {},
-      resources: [{
-        backingPath,
-        id: "edition-state",
-        kind: "volume",
-        linkPath: `${workspacePath}/edition`,
-        mode: "mutable",
-        mount: "./edition",
-        name: "clank-edition-state",
-        sharing: "team",
-        canonicalBackingPath: backingPath,
-        ownerId: backingPath,
-        persistentMountId: "workspace-resource-edition",
-        replacementSentinel: `${backingPath}/.spawnfile-resource-identity`,
-        resolvedIdentity: `sha256:${"c".repeat(64)}`,
-        volumeName: "clank-edition-state"
-      } as NonNullable<RuntimeTargetPlan["resources"]>[number]],
-      runtimeName: "openclaw",
-      runtimeRoot: "/opt/spawnfile/runtime-installs/openclaw",
-      sourceIds: [],
-      targetFiles: [{ content: "{}\n", path: "config.json" }]
-    } as unknown as RuntimeTargetPlan;
+    const compile = (): { mounts: WorkspaceResourcePersistentMount[]; plan: RuntimeTargetPlan } => {
+      const plan = {
+        configEnvBindings: [],
+        envFiles: [],
+        id: "openclaw-reporter",
+        instancePaths,
+        meta,
+        modelAuthMethods: {},
+        modelSecretsRequired: [],
+        packages: [],
+        recipeEnv: {},
+        resources: resolveDurableResources(
+          "reporter", "openclaw", "clank-edition-state", instancePaths, meta
+        ),
+        runtimeName: "openclaw",
+        runtimeRoot: "/opt/spawnfile/runtime-installs/openclaw",
+        sourceIds: [],
+        targetFiles: [{ content: "{}\n", path: "config.json" }]
+      } as unknown as RuntimeTargetPlan;
+      return { mounts: resolveWorkspaceResourceVolumes([plan]).mounts, plan };
+    };
 
-    const mounts = namespaceMounts(resolveWorkspaceResourceVolumes([plan]).mounts, suffix);
+    const previousRunId = process.env.NOOPOLIS_RUN_ID;
+    let first: ReturnType<typeof compile>;
+    let second: ReturnType<typeof compile>;
+    try {
+      process.env.NOOPOLIS_RUN_ID = "run-one";
+      first = compile();
+      process.env.NOOPOLIS_RUN_ID = "run-two";
+      second = compile();
+    } finally {
+      if (previousRunId === undefined) delete process.env.NOOPOLIS_RUN_ID;
+      else process.env.NOOPOLIS_RUN_ID = previousRunId;
+    }
+    expect(second.mounts).toEqual(first.mounts);
+    const plan = first.plan;
+    const mounts = namespaceMounts(first.mounts, suffix);
     expect(mounts).toHaveLength(1);
+    expect(first.mounts[0]?.volume_name).toBe("clank-edition-state");
+    const backingPath = first.mounts[0]!.mount_path;
+    const statePath = `${backingPath}/edition.txt`;
     for (const mount of mounts) dockerVolumes.push(mount.volume_name);
     const mountArgs = await resolveRunMountArgs(mounts);
     expect(mountArgs.join("\n")).not.toContain("volume-nocopy");
@@ -507,7 +567,21 @@ describe("durable volumes reattach across container replacement", () => {
       expect(firstState![4]).toBe("absent");
 
       await execFile("docker", ["rm", "--force", containerName]);
-      await execFile("docker", ["create", "--name", containerName, ...mountArgs, tag]);
+
+      // Recompile under a THIRD run id and mount whatever that compile says.
+      // A run-scoped name lands on a brand-new empty volume here, and the
+      // inode assertion below is the only thing that notices.
+      const rerunPrevious = process.env.NOOPOLIS_RUN_ID;
+      process.env.NOOPOLIS_RUN_ID = "run-three";
+      let rerunMountArgs: string[];
+      try {
+        rerunMountArgs = await resolveRunMountArgs(namespaceMounts(compile().mounts, suffix));
+      } finally {
+        if (rerunPrevious === undefined) delete process.env.NOOPOLIS_RUN_ID;
+        else process.env.NOOPOLIS_RUN_ID = rerunPrevious;
+      }
+
+      await execFile("docker", ["create", "--name", containerName, ...rerunMountArgs, tag]);
       const second = await execFile("docker", ["start", "-a", containerName], { timeout: 120_000 });
       const secondState = /state=(\S+) inode=(\d+) owner=(\S+) marker=(\S+)/u.exec(second.stdout);
       expect(secondState, second.stdout + second.stderr).not.toBeNull();
