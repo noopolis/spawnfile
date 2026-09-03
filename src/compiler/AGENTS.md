@@ -28,6 +28,8 @@ src/compiler/
 ├── containerTargetResources.ts # Per-runtime workspace resource placement for container targets
 ├── containerConfigEnvRender.ts # Generic JSON config-env command and entrypoint materialization rendering
 ├── containerEntrypointRender.ts # Generated container entrypoint orchestration
+├── containerRuntimeReadinessRender.ts # Per-runtime /healthz readiness wait rendered into the entrypoint
+├── containerBackedMountRender.ts # Fail-closed `require_backed_mount` guard for durable mount paths
 ├── containerEntrypointShell.ts # Shell quoting, recipe env, and CLI credential materialization helpers
 ├── containerDaimonBrokerRender.ts # Fixed Daimon broker identities, registrations, worker config, and root-launch provisioning
 ├── containerArtifactsPlans.ts # Environment inventory and runtime target-plan orchestration
@@ -125,6 +127,34 @@ src/compiler/
   filename, so `/d/a.jsonl` and `/d/b.jsonl` are one physical store with two
   writers; only banks that declare themselves identically (the same bank stated
   in an org scope and again in a nested team scope) may share a directory.
+- Durable state is `exclusive-reattach`, never run-scoped. `containerTargetResources.ts`
+  (workspace `kind: volume` resources) and `moltnetArtifacts.ts` (durable
+  managed Moltnet `sqlite`/`json` stores and open-mode agent token directories)
+  name their volumes from the plan root plus the deployment lineage, honouring
+  an author-declared `name`/`persistence.name` verbatim, exactly as
+  `memoryArtifacts.ts` does. Before this, `createPersistentVolumeName` folded
+  `NOOPOLIS_RUN_ID` into these names AND silently discarded the author's
+  explicit name whenever a run id was present, so every `spawnfile run` handed
+  the organization a brand-new empty volume — a real newsroom lost its whole
+  message history to a routine `docker rm` + recreate. `createPersistentVolumeName`
+  now takes no name at all and is reserved for genuinely run-scoped mounts (the
+  Moltnet causal log, per-network Moltnet runtime state, Pi telemetry). The
+  cost is the same one durable memory already pays: an organization declaring
+  any of these cannot use the concurrent blue/green canary path.
+- `runProject.ts` mounts compiler-owned persistent mounts WITHOUT `volume-nocopy`.
+  `createStateOwnershipCommand` writes the `.spawnfile-volume-init` bootstrap
+  preimage into the image at each mount path, and both the Daimon ownership
+  guard (`secureVolumeIdentity`) and `prepare_volume_resource` require it to
+  accept a fresh volume; `volume-nocopy` suppresses exactly the copy-up that
+  delivers it. Docker copies up only into an EMPTY volume, so a reattached
+  volume is untouched. Target/secrets volumes under `src/target/*` keep their
+  `volume-nocopy` — no image content backs those paths.
+- `containerBackedMountRender.ts` renders a `require_backed_mount` check per
+  durable mount into both the entrypoint and the Daimon root wrapper (before
+  the ownership guard). It scans `/proc/self/mountinfo` for an exact mount
+  point rather than comparing `stat -c %d` against the parent, because nested
+  durable volumes share a host device number. `SPAWNFILE_ALLOW_EPHEMERAL_STATE=1`
+  opts out.
 - `daimonTelemetryArtifacts.ts` retains the legacy generated-Pi telemetry mount
   layout. The Phase-A public `runtime: daimon` host has no Spawnfile telemetry
   mount or Pi implementation path; add its public activity integration only in

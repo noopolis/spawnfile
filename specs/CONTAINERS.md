@@ -595,12 +595,19 @@ target. An arm64 host may drive this amd64 builder, but archive mode does not
 produce an arm64 runtime image. Known credential files/directories are omitted
 and credential-shaped file content fails creation before archive publication.
 
-Blue/green runs use distinct run-scoped volumes, including author-named
-volumes, EXCEPT `exclusive-reattach` mounts. Durable memory stores and the
-Daimon per-turn usage ledger are `exclusive-reattach`: their volumes are
-named from the project root and deployment lineage, never the run id, so
-they survive a redeploy. A report carrying one cannot use the concurrent
-canary workflow below. Product-state transfer is a separate explicit operation over a strict
+Blue/green runs use distinct run-scoped volumes EXCEPT `exclusive-reattach`
+mounts. Durable memory stores, durable managed Moltnet `sqlite`/`json` stores,
+generated open-mode agent token directories, workspace `kind: volume`
+resources, and the Daimon per-turn usage ledger are all `exclusive-reattach`:
+their volumes are named from the project root and deployment lineage, never
+the run id, and an author-declared name (`persistence.name`, a resource
+`name`) is used verbatim. They survive a redeploy. A report carrying one
+cannot use the concurrent canary workflow below.
+
+Compiler-owned persistent mounts are attached WITHOUT `volume-nocopy`. The
+image is the authority for the bootstrap preimage at those paths, and Docker
+copies image content up only into an empty volume, so an already-populated
+volume that is reattached is never overwritten. Product-state transfer is a separate explicit operation over a strict
 `spawnfile.product-state-quiescence.v1` proof. Only listed regular files whose
 checksums remain stable before and after copying are cloned. Auth, credential,
 token, secret, session, wake, and SQLite paths are rejected; live volumes are
