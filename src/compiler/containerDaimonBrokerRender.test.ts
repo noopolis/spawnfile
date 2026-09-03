@@ -113,14 +113,14 @@ describe("Daimon root provisioning capability-safe ordering", () => {
     // Grok creates hook registries under .grok to enforce its deny list, so the worker
     // needs write access there. The sticky bit means it still cannot unlink or rename the
     // root-owned sandbox.toml, which is what the profile attestation depends on.
-    expect(program).toContain("ensureDirectory(configRoot, 0, entry.uid, 0o1731)");
+    expect(program).toContain("ensureDirectory(configRoot, 0, entry.uid, 0o1771)");
     expect(program).toContain("ensureExactFile(profilePath, profileFor(entry), 0, 0, 0o444)");
   });
 
   it("tightens the worker config directory after its last file write", () => {
     const program = render();
     const lastWrite = program.indexOf("ensureEventsFile(eventsPath, entry.uid)");
-    const tighten = program.indexOf("ensureDirectory(configRoot, 0, entry.uid, 0o1731)", lastWrite);
+    const tighten = program.indexOf("ensureDirectory(configRoot, 0, entry.uid, 0o1771)", lastWrite);
 
     expect(lastWrite).toBeGreaterThanOrEqual(0);
     expect(tighten).toBeGreaterThan(lastWrite);
