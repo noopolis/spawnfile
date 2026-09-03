@@ -9,6 +9,9 @@ import type { CompileReport } from "../report/index.js";
 import { createExclusiveReattachVolumeName } from "../shared/index.js";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
+import { escapeMountInfoPath } from "./containerBackedMountRender.js";
+import { generateMoltnetArtifacts } from "./moltnetArtifacts.js";
+import type { CompilePlan } from "./types.js";
 import {
   resolveTargetResources,
   resolveWorkspaceResourceVolumes,
@@ -125,7 +128,6 @@ interface DurableFixture {
   storeMount: { id: string; lifecycle: "exclusive-reattach"; mount_path: string; reason: string; volume_name: string };
 }
 
-const STORE_MOUNT_PATH = "/var/lib/spawnfile/moltnet/networks/clank-newsroom";
 const STORE_MOUNT_ID = "moltnet-clank-newsroom-store";
 
 const PLAN_ROOT = "/tmp/newsroom/Spawnfile";
@@ -181,17 +183,63 @@ const resolveDurableResources = (
   return resolveTargetResources(target, [input], instancePaths, meta, PLAN_ROOT, DEPLOYMENT_LINEAGE);
 };
 
-const resolveDurableMounts = (plan: RuntimeTargetPlan): DurableFixture => ({
+/**
+ * A team declaring one managed Moltnet network whose durable sqlite store
+ * carries an author-declared `persistence.name`. Fed to the REAL
+ * `generateMoltnetArtifacts` so the store mount below is derived, not asserted
+ * against a literal — the same gap that made the resource side of this test
+ * survive a naming mutation.
+ */
+const moltnetPlan = (): CompilePlan => ({
+  edges: [],
+  nodes: [{
+    id: "team-newsroom",
+    kind: "team",
+    runtimeName: null,
+    slug: "newsroom",
+    value: {
+      description: "", docs: [], external: [], kind: "team", lead: "reporter",
+      members: [{ id: "reporter", kind: "agent", nodeSource: `${PLAN_ROOT}/agents/reporter`, runtimeName: "daimon" }],
+      mode: "swarm", name: "newsroom",
+      networks: [{
+        expose: false, id: "clank-newsroom", name: "Clank Newsroom", provider: "moltnet",
+        rooms: [{ id: "floor", members: ["reporter"] }],
+        server: {
+          auth: { mode: "none" as const },
+          listen: { bind: "127.0.0.1", port: 8787 },
+          mode: "managed" as const,
+          store: {
+            kind: "sqlite" as const,
+            persistence: { mode: "durable" as const, name: "clank-newsroom-store" }
+          }
+        }
+      }],
+      policyMode: null, policyOnDegrade: null,
+      shared: { env: {}, mcpServers: [], secrets: [], skills: [] },
+      source: `${PLAN_ROOT}`
+    }
+  }],
+  root: PLAN_ROOT,
+  runtimes: { daimon: { nodeIds: [] } }
+} as unknown as CompilePlan);
+
+const resolveStoreMount = async (): Promise<DurableFixture["storeMount"]> => {
+  const artifacts = await generateMoltnetArtifacts(moltnetPlan(), DEPLOYMENT_LINEAGE);
+  const store = artifacts?.persistentMounts.find((mount) => mount.id === STORE_MOUNT_ID);
+  expect(store, `no ${STORE_MOUNT_ID} mount in ${JSON.stringify(artifacts?.persistentMounts)}`)
+    .toBeDefined();
+  return {
+    id: store!.id,
+    lifecycle: store!.lifecycle!,
+    mount_path: store!.mountPath,
+    reason: store!.reason,
+    volume_name: store!.volumeName
+  };
+};
+
+const resolveDurableMounts = async (plan: RuntimeTargetPlan): Promise<DurableFixture> => ({
   mounts: resolveWorkspaceResourceVolumes([plan]).mounts,
-  storeMount: {
-    id: STORE_MOUNT_ID,
-    lifecycle: "exclusive-reattach",
-    mount_path: STORE_MOUNT_PATH,
-    reason: "managed Moltnet sqlite store for clank-newsroom",
-    // Exactly what moltnetArtifacts.ts derives for a store with an
-    // author-declared `persistence.name`.
-    volume_name: "clank-newsroom-store"
-  }
+  storeMount: await resolveStoreMount()
 });
 
 const uniqueSuffix = (): string =>
@@ -215,7 +263,7 @@ describe("durable volumes reattach across container replacement", () => {
     const dockerDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-durable-daimon-"));
     const instanceRoot = "/var/lib/spawnfile/instances/daimon/daimon-organization";
     const workspacePath = `${instanceRoot}/workspace`;
-    const statePath = `${STORE_MOUNT_PATH}/moltnet.sqlite`;
+
     const instancePaths = {
       configPath: `${instanceRoot}/daimon/config.json`,
       instanceRoot,
@@ -231,7 +279,7 @@ describe("durable volumes reattach across container replacement", () => {
 
     // A whole "compile" of this fixture: the REAL resource derivation, then
     // the REAL mount projection over its result.
-    const compile = (): { plan: RuntimeTargetPlan } & DurableFixture => {
+    const compile = async (): Promise<{ plan: RuntimeTargetPlan } & DurableFixture> => {
       const plan = {
         configEnvBindings: [],
         envFiles: [],
@@ -253,7 +301,7 @@ describe("durable volumes reattach across container replacement", () => {
           { content: "#!/usr/bin/env bash\nexit 0\n", mode: 0o755, path: "runtime/daimon-start.sh" }
         ]
       } as unknown as RuntimeTargetPlan;
-      return { plan, ...resolveDurableMounts(plan) };
+      return { plan, ...(await resolveDurableMounts(plan)) };
     };
 
     // "Compile" twice under two different run ids. An author-declared name is
@@ -265,9 +313,9 @@ describe("durable volumes reattach across container replacement", () => {
     let secondCompile: { plan: RuntimeTargetPlan } & DurableFixture;
     try {
       process.env.NOOPOLIS_RUN_ID = "run-one";
-      firstCompile = compile();
+      firstCompile = await compile();
       process.env.NOOPOLIS_RUN_ID = "run-two";
-      secondCompile = compile();
+      secondCompile = await compile();
     } finally {
       if (previousRunId === undefined) delete process.env.NOOPOLIS_RUN_ID;
       else process.env.NOOPOLIS_RUN_ID = previousRunId;
@@ -277,6 +325,10 @@ describe("durable volumes reattach across container replacement", () => {
     expect(firstCompile.mounts[0]?.volume_name).toBe("clank-edition-state");
     expect(firstCompile.mounts[0]?.lifecycle).toBe("exclusive-reattach");
     const plan = firstCompile.plan;
+    const storeMountPath = firstCompile.storeMount.mount_path;
+    const statePath = `${storeMountPath}/moltnet.sqlite`;
+    expect(firstCompile.storeMount.volume_name).toBe("clank-newsroom-store");
+    expect(firstCompile.storeMount.lifecycle).toBe("exclusive-reattach");
     // Never hardcoded: the backing path carries compile-derived hash segments.
     const resourceMountPath = firstCompile.mounts[0]!.mount_path;
 
@@ -322,7 +374,7 @@ describe("durable volumes reattach across container replacement", () => {
       expect(uidEntrypoint).toContain("require_backed_mount");
       for (const mount of allMounts) {
         expect(uidEntrypoint).toContain(
-          `require_backed_mount '${mount.id}' '${mount.mount_path}' '${mount.volume_name}'`
+          `require_backed_mount '${mount.id}' '${escapeMountInfoPath(mount.mount_path)}' '${mount.mount_path}' '${mount.volume_name}'`
         );
       }
 
@@ -350,7 +402,7 @@ describe("durable volumes reattach across container replacement", () => {
         `if [ ! -e '${editionPath}' ]; then printf 'assignment\\n' > '${editionPath}'; fi`,
         `printf 'state=%s inode=%s owner=%s marker=%s sentinel=%s edition=%s edition_inode=%s\\n' \\`,
         `  "$(cat '${statePath}')" "$(stat -c %i '${statePath}')" \\`,
-        `  "$(stat -c '%u:%g' '${STORE_MOUNT_PATH}')" \\`,
+        `  "$(stat -c '%u:%g' '${storeMountPath}')" \\`,
         `  "$(test -e '${resourceMountPath}/.spawnfile-volume-init' && printf present || printf absent)" \\`,
         `  "$(stat -c '%u:%g' '${resourceMountPath}')" \\`,
         `  "$(cat '${editionPath}')" "$(stat -c %i '${editionPath}')"`,
@@ -400,7 +452,7 @@ describe("durable volumes reattach across container replacement", () => {
       process.env.NOOPOLIS_RUN_ID = "run-three";
       let rerunMountArgs: string[];
       try {
-        const rerun = compile();
+        const rerun = await compile();
         rerunMountArgs = await resolveRunMountArgs(
           namespaceMounts([...rerun.mounts, rerun.storeMount], suffix)
         );
