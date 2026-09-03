@@ -658,10 +658,10 @@ describe("durable volumes reattach across container replacement", () => {
 
 describe("exclusive-reattach volume naming", () => {
   it("derives one host-stable name per mount id and deployment lineage", () => {
-    const lineage = `/tmp/Spawnfile ${DEPLOYMENT_LINEAGE}`;
+    const lineage = `/tmp/Spawnfile\0${DEPLOYMENT_LINEAGE}`;
     expect(createExclusiveReattachVolumeName(lineage, "workspace-resource-abc"))
       .toBe(createExclusiveReattachVolumeName(lineage, "workspace-resource-abc"));
     expect(createExclusiveReattachVolumeName(lineage, "workspace-resource-abc"))
-      .not.toBe(createExclusiveReattachVolumeName(`/tmp/Spawnfile staging`, "workspace-resource-abc"));
+      .not.toBe(createExclusiveReattachVolumeName(`/tmp/Spawnfile\0staging`, "workspace-resource-abc"));
   });
 });
