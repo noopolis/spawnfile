@@ -181,7 +181,7 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).toContain("/var/lib/daimon-workers/");
     // Grok refuses a profile that is a symlink or carries a hard-link alias, so it is an
     // unaliased file in the worker's own read-only .grok directory.
-    expect(rendered).toContain("ensureExactFile(profilePath, profileFor(entry), 0, 0, 0o444)");
+    expect(rendered).toContain("ensureExactFile(profilePath, profileFor(), 0, 0, 0o444)");
     expect(rendered).not.toContain("ensureExactLink");
     expect(rendered).toContain("sandbox-events.jsonl");
     expect(rendered).toContain("restrict_network = true");
@@ -209,7 +209,7 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).toContain("generation: journal.generation + 1");
     expect(rendered).toContain("state: 'promoted'");
     expect(rendered).toContain("bootstrapBytes.fill(0)");
-    expect(rendered).toContain("ensureExactFile(profilePath, profileFor(entry), 0, 0, 0o444)");
+    expect(rendered).toContain("ensureExactFile(profilePath, profileFor(), 0, 0, 0o444)");
     expect(rendered).toContain("--bounding-set=-all,+chown,+setuid,+setgid -- '/opt/daimon/bin/daimon-engine-broker' &");
     expect(rendered).toContain("--bounding-set=-all,+chown,+setuid,+setgid,+setpcap -- '/opt/daimon/bin/daimon-engine-broker' --relay &");
     expect(rendered).toContain('"$relay_pid:2100:0000000000000000"');
