@@ -6,6 +6,10 @@ import { DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID } from "../runtime/daimon/conf
 import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import { MOLTNET_READINESS_DIRECTORY } from "./containerReadinessPaths.js";
 import {
+  createBackedMountGuard,
+  type BackedMountRequirement
+} from "./containerBackedMountRender.js";
+import {
   renderDaimonOwnershipProgram,
   resolveDaimonVolumeIdentityFiles
 } from "./containerDaimonOwnershipGuardRender.js";
@@ -239,7 +243,8 @@ export const resolveDaimonUidEntrypointOwnershipPlan = (
 export const renderDaimonUidEntrypoint = (
   runtimePlans: RuntimeTargetPlan[],
   persistentMountPaths: string[] = [],
-  moltnet?: EntrypointOptions["moltnet"]
+  moltnet?: EntrypointOptions["moltnet"],
+  persistentMounts: readonly BackedMountRequirement[] = []
 ): string => {
   const opaqueTargets = opaqueMountTargets(runtimePlans);
   const daimonPlan = runtimePlans.find((plan) => plan.runtimeName === "daimon");
@@ -269,6 +274,10 @@ export const renderDaimonUidEntrypoint = (
     `  if [ "$#" -ne 5 ] || [ "$1" != auth ] || [ "$2" != agy ] || [ "$3" != login ] || [ "$4" != --config ] || [ "$5" != ${quote(daimonConfigPath ?? "")} ]; then echo "Unsupported Daimon container command" >&2; exit 1; fi`,
     `  runtime_command=(bash ${quote(daimonStartPath)} "$@")`,
     "fi",
+    // Fail closed BEFORE the ownership guard touches anything: an unbacked
+    // durable path would otherwise be bootstrapped, owned and written on the
+    // container's own writable layer, and lost on `docker rm`.
+    ...createBackedMountGuard(persistentMounts),
     `state_roots=(${ownershipPlan.stateRoots.map(quote).join(" ")})`,
     "node - \"$uid\" \"${state_roots[@]}\" <<'SPAWNFILE_DAIMON_OWNERSHIP'",
     renderDaimonOwnershipProgram(

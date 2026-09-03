@@ -349,7 +349,8 @@ export const createContainerArtifacts = async (
             nodePlans: options.moltnet.nodePlans,
             serverPlans: options.moltnet.serverPlans
           }
-        : undefined
+        : undefined,
+      persistentMounts
     ),
     ...(options.moltnet?.files ?? []),
     ...(options.worldBindings
@@ -396,7 +397,9 @@ export const createContainerArtifacts = async (
                 nodePlans: options.moltnet.nodePlans,
                 serverPlans: options.moltnet.serverPlans
               }
-            : undefined
+            : undefined,
+          persistentMounts,
+          persistentMountPaths: persistentMounts.map((mount) => mount.mount_path)
         }
       ),
       path: "entrypoint.sh"
