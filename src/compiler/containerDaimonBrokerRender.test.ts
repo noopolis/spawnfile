@@ -8,6 +8,9 @@ import { describe, expect, it } from "vitest";
 
 import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import {
+  DAIMON_BROKER_REALM,
+  DAIMON_ORGANIZATION_STATE_DIRECTORY,
+  GROK_SANDBOX_DENY_PATHS,
   renderDaimonBrokerProvisioning,
   renderDaimonUsageLedgerProvisioning,
   renderDaimonWorkspaceResourceSecurity
@@ -89,12 +92,70 @@ describe("Daimon broker usage ledger provisioning", () => {
     expect(renderDaimonBrokerProvisioning([])).toEqual([]);
   });
 
-  it("denies worker access to the usage ledger directory", () => {
+  it("never lists the usage ledger directory in the rendered sandbox deny list", () => {
+    // The usage ledger directory is unix-denied to every worker uid
+    // unconditionally by `renderDaimonUsageLedgerProvisioning` (0770,
+    // broker:organization — a worker uid never matches either), so Grok
+    // could never verify a mask over it and would refuse to start if it were
+    // still listed. See `GROK_SANDBOX_DENY_PATHS`'s doc comment.
     const program = renderDaimonBrokerProvisioning([plan]).join("\n");
-    const deniedForLine = program.split("\n").find((line) => line.includes("const deniedFor ="));
-    expect(deniedForLine).toBeDefined();
-    expect(deniedForLine).toContain(
-      `'/var/lib/spawnfile/instances/daimon/daimon-organization/state', '${DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath}']);`
+    const deniedPathsLine = program.split("\n").find((line) => line.includes("const deniedPaths ="));
+    expect(deniedPathsLine).toBeDefined();
+    expect(deniedPathsLine).not.toContain(DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath);
+  });
+});
+
+describe("Grok sandbox deny list: only worker-openable paths", () => {
+  // Every candidate a worker might plausibly need masked from other than the
+  // organization state directory is already unix-denied unconditionally —
+  // by construction, elsewhere in this same provisioning script or its
+  // `renderDaimonUsageLedgerProvisioning` sibling. Listing an already-denied
+  // path adds no protection and breaks Grok 1.0.13+'s own startup
+  // verification (it opens every `deny` path to confirm its bwrap mount
+  // caused the denial, and can't tell a pre-existing denial from its own
+  // mask). Verified live: `setpriv --reuid <worker-uid> --regid <worker-uid>
+  // --clear-groups` against a running deployment could not open any
+  // registrations.bin peer home/workspace, the subscription realm,
+  // grok-bootstrap-auth, /run/daimon-engine-broker, or the usage ledger —
+  // only the organization state directory (world-readable, 0755) was
+  // actually openable.
+  const planWithAgents = (agentIds: string[]) => ({
+    runtimeName: "daimon",
+    engineByNodeId: Object.fromEntries(agentIds.map((agentId) => [agentId, "grok"])),
+    instancePaths: { workspacePath: "/workspace" }
+  } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number]);
+
+  it("contains only the organization state directory, regardless of how many Grok agents are registered", () => {
+    for (const agentIds of [["agent:solo"], ["agent:cogsworth", "agent:foreman", "agent:graves"]]) {
+      const program = renderDaimonBrokerProvisioning([planWithAgents(agentIds)]).join("\n");
+      const deniedPathsLine = program.split("\n").find((line) => line.includes("const deniedPaths ="));
+      expect(deniedPathsLine).toBe(`const deniedPaths = ${JSON.stringify([DAIMON_ORGANIZATION_STATE_DIRECTORY])};`);
+    }
+  });
+
+  it("never lists a peer worker's home or workspace, the subscription realm, or the bootstrap credential", () => {
+    const program = renderDaimonBrokerProvisioning([
+      planWithAgents(["agent:cogsworth", "agent:foreman", "agent:graves"])
+    ]).join("\n");
+    const deniedPathsLine = program.split("\n").find((line) => line.includes("const deniedPaths ="));
+    expect(deniedPathsLine).toBeDefined();
+    for (const forbidden of [
+      "daimon-workers",
+      "/workspace/agents/cogsworth",
+      "/workspace/agents/foreman",
+      "/workspace/agents/graves",
+      DAIMON_BROKER_REALM,
+      "/var/lib/spawnfile/daimon/grok-bootstrap-auth",
+      "/run/daimon-engine-broker"
+    ]) {
+      expect(deniedPathsLine).not.toContain(forbidden);
+    }
+  });
+
+  it("keeps the exported deny-path constant in sync with what gets rendered", () => {
+    expect(GROK_SANDBOX_DENY_PATHS).toEqual([DAIMON_ORGANIZATION_STATE_DIRECTORY]);
+    expect(DAIMON_ORGANIZATION_STATE_DIRECTORY).toBe(
+      "/var/lib/spawnfile/instances/daimon/daimon-organization/state"
     );
   });
 });
@@ -114,7 +175,7 @@ describe("Daimon root provisioning capability-safe ordering", () => {
     // needs write access there. The sticky bit means it still cannot unlink or rename the
     // root-owned sandbox.toml, which is what the profile attestation depends on.
     expect(program).toContain("ensureDirectory(configRoot, 0, entry.uid, 0o1771)");
-    expect(program).toContain("ensureExactFile(profilePath, profileFor(entry), 0, 0, 0o444)");
+    expect(program).toContain("ensureExactFile(profilePath, profileFor(), 0, 0, 0o444)");
   });
 
   it("tightens the worker config directory after its last file write", () => {
