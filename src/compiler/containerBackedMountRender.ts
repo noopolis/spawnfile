@@ -19,6 +19,16 @@
  * durable volumes live on the same host filesystem and therefore share a
  * device number, which would make a device comparison report a genuinely
  * backed inner mount as unbacked.
+ *
+ * The kernel octal-escapes four characters in the mountinfo mount-point field
+ * (`show_mountinfo` passes `" \t\n\\"` to `seq_path_root`), so a declared
+ * `mount: "/var/lib/my store"` appears there as `/var/lib/my\040store`. The
+ * comparison is therefore made against the compiler-escaped form — computed
+ * here, where it is exactly testable — while the operator-facing message keeps
+ * the real path. Escaping at compile time rather than decoding in shell keeps
+ * the check a deterministic string compare with no dependence on how a
+ * particular `printf %b` implementation treats `\nnn` vs `\0nnn`. For a path
+ * containing none of those four characters both forms are identical.
  */
 
 export const EPHEMERAL_STATE_OPT_OUT_ENV = "SPAWNFILE_ALLOW_EPHEMERAL_STATE";
@@ -31,11 +41,25 @@ export interface BackedMountRequirement {
 
 const shellQuote = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
 
+const MOUNTINFO_ESCAPES: Record<string, string> = {
+  "\\": "\\134",
+  " ": "\\040",
+  "\t": "\\011",
+  "\n": "\\012"
+};
+
+/** The mount-point field exactly as `/proc/self/mountinfo` renders this path. */
+export const escapeMountInfoPath = (value: string): string =>
+  value.replace(/[\\ \t\n]/gu, (character) => MOUNTINFO_ESCAPES[character]!);
+
 export const createBackedMountShellFunction = (): string[] => [
   "require_backed_mount() {",
   '  local mount_id="$1"',
-  '  local mount_target="$2"',
-  '  local mount_volume="$3"',
+  // As mountinfo renders it (octal-escaped), for the comparison only.
+  '  local mount_field="$2"',
+  // The real path, for every operator-facing message.
+  '  local mount_target="$3"',
+  '  local mount_volume="$4"',
   "  local mount_point",
   `  if [ "\${${EPHEMERAL_STATE_OPT_OUT_ENV}:-}" = "1" ]; then`,
   "    return 0",
@@ -45,7 +69,7 @@ export const createBackedMountShellFunction = (): string[] => [
   "    exit 1",
   "  fi",
   "  while read -r _ _ _ _ mount_point _; do",
-  '    if [ "$mount_point" = "$mount_target" ]; then',
+  '    if [ "$mount_point" = "$mount_field" ]; then',
   "      return 0",
   "    fi",
   "  done < /proc/self/mountinfo",
@@ -70,7 +94,7 @@ export const createBackedMountChecks = (
   return [...byPath.values()]
     .sort((left, right) => left.mount_path.localeCompare(right.mount_path))
     .map((mount) =>
-      `require_backed_mount ${shellQuote(mount.id)} ${shellQuote(mount.mount_path)} ${shellQuote(mount.volume_name)}`
+      `require_backed_mount ${shellQuote(mount.id)} ${shellQuote(escapeMountInfoPath(mount.mount_path))} ${shellQuote(mount.mount_path)} ${shellQuote(mount.volume_name)}`
     );
 };
 
