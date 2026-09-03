@@ -35,6 +35,8 @@ export interface MoltnetNodePlan {
 }
 
 export interface MoltnetPersistentMount {
+  /** The author's `store.persistence.name`, when declared. */
+  declaredVolumeName?: string;
   id: string;
   /**
    * `exclusive-reattach` marks state that MUST survive container replacement

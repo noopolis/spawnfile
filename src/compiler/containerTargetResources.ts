@@ -30,6 +30,8 @@ export interface ResolvedTargetResourcePlan extends WorkspaceResourcePlan {
 }
 
 export interface WorkspaceResourcePersistentMount {
+  /** The author's `name`, when declared on the resource. */
+  declared_volume_name?: string;
   id: string;
   lifecycle: "exclusive-reattach";
   mount_path: string;
@@ -69,6 +71,7 @@ export const resolveWorkspaceResourceVolumes = (
   // `exclusive-reattach` — deployment-stable name, reattached rather than
   // recreated, one live holder at a time.
   return { resources, mounts: [...byBackingPath.values()].map((resource) => ({
+    ...(resource.name?.trim() ? { declared_volume_name: resource.name.trim() } : {}),
     id: resource.persistentMountId!, lifecycle: "exclusive-reattach" as const,
     mount_path: resource.canonicalBackingPath,
     reason: `Workspace ${resource.sharing} resource ${resource.id}`, volume_name: resource.volumeName!

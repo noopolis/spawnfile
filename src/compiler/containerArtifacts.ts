@@ -170,6 +170,7 @@ export const createContainerArtifacts = async (
     ...daimonTelemetryArtifacts.mounts,
     ...runtimePlans.flatMap((runtimePlan) => runtimePlan.persistentMounts ?? []),
     ...((options.moltnet?.persistentMounts ?? []).map((mount) => ({
+      ...(mount.declaredVolumeName ? { declared_volume_name: mount.declaredVolumeName } : {}),
       id: mount.id,
       ...(mount.lifecycle ? { lifecycle: mount.lifecycle } : {}),
       mount_path: mount.mountPath,
@@ -316,7 +317,15 @@ export const createContainerArtifacts = async (
     modelAuthMethods: mergedModelAuthMethods,
     moltnetNetworks,
     organization,
+    // The report deliberately omits the compiler-DERIVED volume name: it
+    // encodes the creator's plan root and deployment lineage and is private to
+    // that host. An author-DECLARED name is different — it is part of the
+    // declaration the image publishes, so a consumer must honour it verbatim
+    // or an operator who pre-created that volume silently gets an empty one.
     persistentMounts: persistentMounts.map((mount) => ({
+      ...(mount.declared_volume_name
+        ? { declared_volume_name: mount.declared_volume_name }
+        : {}),
       durability: "persistent" as const,
       id: mount.id,
       kind: "volume" as const,

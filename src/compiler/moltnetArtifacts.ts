@@ -86,7 +86,8 @@ export const generateMoltnetArtifacts = async (
     if (
       existing.mountPath !== mount.mountPath ||
       existing.volumeName !== mount.volumeName ||
-      existing.lifecycle !== mount.lifecycle
+      existing.lifecycle !== mount.lifecycle ||
+      existing.declaredVolumeName !== mount.declaredVolumeName
     ) {
       throw new SpawnfileError(
         "validation_error",
@@ -139,6 +140,7 @@ export const generateMoltnetArtifacts = async (
         ? store.persistence?.name
         : undefined;
       addPersistentMount({
+        ...(explicitVolumeName?.trim() ? { declaredVolumeName: explicitVolumeName.trim() } : {}),
         id: mountId,
         lifecycle: "exclusive-reattach",
         mountPath: storeMountPath,

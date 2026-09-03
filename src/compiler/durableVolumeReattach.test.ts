@@ -4,7 +4,7 @@ import { mkdtemp } from "node:fs/promises";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ensureDirectory, removeDirectory, writeUtf8File } from "../filesystem/index.js";
+import { ensureDirectory, removeDirectory, readUtf8File, writeUtf8File } from "../filesystem/index.js";
 import type { ContainerPersistentMountReport } from "../report/index.js";
 
 import { compileProject } from "./compileProject.js";
@@ -130,6 +130,7 @@ const createProject = async (): Promise<string> => {
 };
 
 interface CompiledDurableState {
+  distributionMounts: Array<{ declared_volume_name?: string; id: string }>;
   mounts: ContainerPersistentMountReport[];
   resourceVolumeNames: Record<string, string | null | undefined>;
 }
@@ -147,7 +148,11 @@ const compileUnderRunId = async (
       deploymentLineage: "newsroom-production",
       outputDirectory
     });
+    const distribution = JSON.parse(
+      await readUtf8File(path.join(outputDirectory, "distribution-report.json"))
+    ) as { persistent_mounts: Array<{ declared_volume_name?: string; id: string }> };
     return {
+      distributionMounts: distribution.persistent_mounts,
       mounts: result.report.container?.persistent_mounts ?? [],
       resourceVolumeNames: Object.fromEntries(
         (result.report.container?.workspace_resources ?? []).map(
@@ -194,6 +199,20 @@ describe("durable volumes survive a redeploy", () => {
     expect(second.resourceVolumeNames["scratch"]).toBe(scratch);
     expect(scratch).not.toContain("run-alpha");
     expect(scratch).not.toContain("run-beta");
+
+    // The published image must carry the declared names too: image mode has no
+    // access to the creator's plan root, so without this an operator who
+    // pre-created `clank-newsroom-store` and deployed the image would silently
+    // get an empty volume.
+    const declared = Object.fromEntries(first.distributionMounts.map(
+      (mount) => [mount.id, mount.declared_volume_name]
+    ));
+    expect(declared["moltnet-newsroom-store"]).toBe("clank-newsroom-store");
+    expect(Object.values(declared)).toContain("clank-edition-state");
+    // A DERIVED name never travels: it encodes the creator's plan root.
+    expect(first.distributionMounts.find((mount) => mount.id === "moltnet-newsroom-causal")
+      ?.declared_volume_name).toBeUndefined();
+    expect(second.distributionMounts).toEqual(first.distributionMounts);
 
     // Every durable mount, not just the three named above.
     const durable = (state: CompiledDurableState): Array<[string, string]> => state.mounts
