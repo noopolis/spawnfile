@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 const LOCAL_DAIMON_IMAGE_REPOSITORY = "127.0.0.1:54321/noopolis/spawnfile-runtime-daimon";
+import type { ResolvedAgentNode } from "../../compiler/types.js";
 import { createPiTestNode } from "../pi/testHelpers.js";
 import { daimonAdapter } from "./adapter.js";
 import { DAIMON_CONFIG_FILE } from "./config.js";
@@ -66,7 +67,7 @@ describe("Daimon schedule image authority", () => {
 
   it("lowers schedule.jitter_seconds into the v2 config for cron and every schedules, and omits it when absent", async () => {
     process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY = await identity();
-    const configFor = async (schedule: Record<string, unknown>, slug: string) => {
+    const configFor = async (schedule: NonNullable<ResolvedAgentNode["schedule"]>, slug: string) => {
       const node = createPiTestNode({ runtime: { name: "daimon", options: {} }, schedule });
       const compiled = await daimonAdapter.compileAgent(node);
       const targets = await daimonAdapter.createContainerTargets!([{ emittedFiles: compiled.files, id: `agent:${slug}`, kind: "agent", slug, value: node }]);

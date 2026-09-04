@@ -82,10 +82,23 @@ test("local image authority accepts an ephemeral loopback registry and immutable
   assert.throws(() => resolvePushedImageReference(tag, []), /manifest digest/u);
 });
 
-test("local build architecture fails closed outside the official AGY linux_amd64 target", () => {
+test("local build architecture defaults to the host and fails closed on anything unbuildable", () => {
+  // Native by default: emulating amd64 on an arm64 host cannot create the user
+  // namespaces the Grok sandbox requires, so the host architecture wins unless
+  // SPAWNFILE_DAIMON_TARGET_ARCH explicitly asks for the other one.
   assert.equal(resolveLocalBuildArchitecture("x64"), "amd64");
-  assert.equal(resolveLocalBuildArchitecture("arm64"), "amd64");
-  assert.throws(() => resolveLocalBuildArchitecture("riscv64"), /linux\/amd64/u);
+  assert.equal(resolveLocalBuildArchitecture("arm64"), "arm64");
+
+  // The explicit override is honoured in both directions.
+  assert.equal(resolveLocalBuildArchitecture("arm64", "amd64"), "amd64");
+  assert.equal(resolveLocalBuildArchitecture("x64", "arm64"), "arm64");
+
+  // Both fail-closed edges: an unbuildable host, and an unsupported request.
+  assert.throws(() => resolveLocalBuildArchitecture("riscv64"), /x64 or arm64/u);
+  assert.throws(
+    () => resolveLocalBuildArchitecture("x64", "riscv64"),
+    /Unsupported SPAWNFILE_DAIMON_TARGET_ARCH/u
+  );
 });
 
 test("archive provenance is explicit and cannot silently fall back to Git", () => {
