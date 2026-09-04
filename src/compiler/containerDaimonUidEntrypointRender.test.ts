@@ -10,6 +10,7 @@ import type { EntrypointOptions } from "./containerEntrypointRender.js";
 import { renderEntrypoint } from "./containerEntrypointRender.js";
 import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import { DAIMON_WAKE_FUSE_DIRECTORY } from "../runtime/daimon/config.js";
+import { DAIMON_ORGANIZATION_STATE_DIRECTORY } from "./containerDaimonBrokerRender.js";
 import {
   DAIMON_AUTHORIZED_UID_ENV,
   DAIMON_BROKER_STARTUP_TIMEOUT_SECONDS,
@@ -141,6 +142,34 @@ describe("renderDaimonUidEntrypoint", () => {
 
     expect(ownership.privateModeDirectories).toContain(acceptanceStore);
     expect(ownership.stateRoots).toContain(acceptanceStore);
+  });
+
+  it("secures the organization state directory itself, not only the acceptance store inside it", () => {
+    // Docker creates `<instance-root>/state` root-owned and world-readable as
+    // the acceptance-store mount's parent, and the generic ancestor pass only
+    // chowns it — so it stayed 0755 and was the one path under
+    // /var/lib/spawnfile a Grok worker uid could open. That is what the
+    // sandbox `deny` entry used to (fail to) cover; unix permissions cover it
+    // now. Mutation-critical: dropping the parent from
+    // `privateModeDirectories` must turn this red.
+    const ownership = resolveDaimonUidEntrypointOwnershipPlan(
+      [{ ...daimonPlan, persistentMounts: [acceptanceStoreMount] }],
+      [acceptanceStore]
+    );
+
+    expect(path.posix.dirname(acceptanceStore)).toBe(DAIMON_ORGANIZATION_STATE_DIRECTORY);
+    expect(ownership.privateModeDirectories).toContain(DAIMON_ORGANIZATION_STATE_DIRECTORY);
+    // `securePrivateDirectory` is the only thing that chmods: chown-to-root,
+    // chmod 0700, chown-to-uid, then verify. `privateDirectories` alone would
+    // leave the mode untouched, which is exactly the bug.
+    const rendered = renderDaimonUidEntrypoint(
+      [{ ...daimonPlan, persistentMounts: [acceptanceStoreMount] }],
+      [acceptanceStore]
+    );
+    expect(rendered).toContain(`"${DAIMON_ORGANIZATION_STATE_DIRECTORY}"`);
+    expect(rendered).toContain("const securePrivateDirectory = (fd) => {");
+    expect(rendered).toContain("fs.fchmodSync(fd, 0o700);");
+    expect(rendered).toContain("for (const target of privateModeDirectories)");
   });
 
   it("secures compiler-authored Daimon receipt follower directories", () => {
