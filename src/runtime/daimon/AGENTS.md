@@ -22,9 +22,32 @@ volume name folds in the run id (`createPersistentVolumeName`), so a fresh
 `spawnfile up` gets an empty volume. For the AGY realm that means an empty OS
 keyring and a repeat of the interactive browser OAuth, which has no headless
 equivalent; for the ledger it means cross-deployment accounting is impossible.
-The usage ledger is provisioned for any organization containing a metered
-engine — AGY or Grok — and its mount id stays `daimon-grok-usage-ledger`
-because the id is the volume identity and renaming it orphans existing data.
+The usage ledger is provisioned unconditionally, for every Daimon
+organization — Codex writes its advisory per-turn usage here too, not just
+AGY and Grok, and Daimon's wake fuse now refuses to arm at all if this
+directory is missing or unreadable (`ensureUsageLedgerReadable` in Daimon's
+`wakeFuse.ts`). Its mount id stays `daimon-grok-usage-ledger` because the id
+is the volume identity and renaming it orphans existing data. The container
+entrypoint also fixes this directory group-writable (`0770`, not `0750`):
+Codex and AGY write from the organization-uid runtime process
+(`renderDaimonUsageLedgerProvisioning` in `containerDaimonBrokerRender.ts`),
+not the Grok-only broker, so a mode granting the group only read+execute lets
+that process list the directory but not create `usage.jsonl` inside it. That
+fix-up is `chown root, chmod, chown to the final broker:organization owner`
+— in that order, never `install -d`'s create-then-chown-then-chmod — because
+root only ever chmods a path it currently owns: it has `CAP_CHOWN` but not
+`CAP_FOWNER` (`runProject.ts`'s capability set), so chmod-ing *after* handing
+ownership to the broker uid fails closed with `EPERM`. And it never creates
+the directory itself: `/var/lib/spawnfile/daimon` (the shared parent every
+Daimon-under-`/var/lib/spawnfile/daimon` mount lives under — AGY/Grok realms,
+wake fuse, broker realm, this ledger) must stay a shared, root-owned,
+universally traversable ancestor (`secureFixedTraversalAncestor`,
+`containerDaimonOwnershipGuardRender.ts`), never chowned to the organization
+uid by the generic per-mount ancestor walk that every other private directory
+goes through — an organization with an AGY or Grok agent would otherwise
+leave that shared parent owned by the organization uid as a side effect of
+securing its own realm mount, which then blocks *every other* differently-owned
+child (concretely, this ledger) from ever being created there at all.
 
 All three engines lower declared MCP servers and Moltnet surfaces. AGY was
 excluded until Daimon learned to register its per-wake MCP endpoint through

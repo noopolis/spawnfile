@@ -185,6 +185,13 @@ describe("runtime target plan source identity", () => {
           mount_path: "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/assistant/tool-state",
           reason: "Daimon durable cognition tool receipts for agent:assistant",
           volume_name: createPersistentVolumeName("/tmp/Spawnfile", "daimon-tool-state-assistant", "candidate-blue")
+        },
+        {
+          id: "daimon-wake-fuse",
+          lifecycle: "exclusive-reattach",
+          mount_path: "/var/lib/spawnfile/daimon/wake-fuse",
+          reason: "Daimon durable wake-fuse admission ledger",
+          volume_name: createExclusiveReattachVolumeName("/tmp/Spawnfile\u0000compile", "daimon-wake-fuse")
         }
       ]
     }));
@@ -267,6 +274,13 @@ describe("runtime target plan source identity", () => {
         mount_path: "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/writer/tool-state",
         reason: "Daimon durable cognition tool receipts for agent:writer",
         volume_name: createPersistentVolumeName("/tmp/Spawnfile", "daimon-tool-state-writer")
+      },
+      {
+        id: "daimon-wake-fuse",
+        lifecycle: "exclusive-reattach",
+        mount_path: "/var/lib/spawnfile/daimon/wake-fuse",
+        reason: "Daimon durable wake-fuse admission ledger",
+        volume_name: expect.stringMatching(/^spawnfile-exclusive-daimon-wake-fuse-[a-f0-9]{16}$/u)
       }
     ]);
     expect(JSON.stringify(result[0]?.persistentMounts)).not.toMatch(/daimon-inbound|access_token|refresh_token/u);

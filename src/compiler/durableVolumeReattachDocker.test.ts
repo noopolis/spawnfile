@@ -6,6 +6,11 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import type { CompileReport } from "../report/index.js";
+import {
+  DAIMON_WAKE_FUSE_DIRECTORY,
+  DAIMON_WAKE_FUSE_MOUNT_ID
+} from "../runtime/daimon/config.js";
+import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import { createExclusiveReattachVolumeName } from "../shared/index.js";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
@@ -242,6 +247,52 @@ const resolveDurableMounts = async (plan: RuntimeTargetPlan): Promise<DurableFix
   storeMount: await resolveStoreMount()
 });
 
+/**
+ * The two durable mounts that EVERY Daimon organization target emits
+ * unconditionally (see the `persistentMounts` list in
+ * `src/runtime/daimon/config.ts`), and that `spawnfile run` therefore always
+ * attaches for a Daimon organization.
+ *
+ * They are not decoration for this fixture and must not be trimmed as noise.
+ * A Daimon entrypoint secures `/var/lib/spawnfile/daimon` as a shared,
+ * root-owned traversal ancestor and then provisions the wake fuse and the
+ * per-turn usage ledger inside it — all three unconditionally, for any plan
+ * whose runtime is `daimon`. That ancestor exists only because these two
+ * mounts are attached beneath it, so a hand-built Daimon plan that omits
+ * them is not a valid organization and its container refuses to start with
+ * `Daimon ownership guard: root has a symbolic-link or unavailable path
+ * component`.
+ *
+ * Both names are derived through the real `createExclusiveReattachVolumeName`
+ * over the same `<plan root>\0<deployment lineage>` key the compiler uses
+ * (`containerArtifactsPlans.ts`), so they carry no run id — the property the
+ * assertions below exist to protect.
+ */
+const daimonOrganizationMounts = (): DurableFixture["storeMount"][] => [
+  {
+    id: DAIMON_WAKE_FUSE_MOUNT_ID,
+    lifecycle: "exclusive-reattach",
+    mount_path: DAIMON_WAKE_FUSE_DIRECTORY,
+    reason: "Daimon durable wake-fuse admission ledger",
+    volume_name: createExclusiveReattachVolumeName(
+      `${PLAN_ROOT}\0${DEPLOYMENT_LINEAGE}`,
+      DAIMON_WAKE_FUSE_MOUNT_ID
+    )
+  },
+  {
+    // Frozen by contract: renaming this id would orphan every existing
+    // deployment's accumulated ledger, so `config.ts` spells it literally too.
+    id: "daimon-grok-usage-ledger",
+    lifecycle: "exclusive-reattach",
+    mount_path: DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
+    reason: "Daimon per-turn engine usage ledger",
+    volume_name: createExclusiveReattachVolumeName(
+      `${PLAN_ROOT}\0${DEPLOYMENT_LINEAGE}`,
+      "daimon-grok-usage-ledger"
+    )
+  }
+];
+
 const uniqueSuffix = (): string =>
   `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
 
@@ -332,8 +383,10 @@ describe("durable volumes reattach across container replacement", () => {
     // Never hardcoded: the backing path carries compile-derived hash segments.
     const resourceMountPath = firstCompile.mounts[0]!.mount_path;
 
+    // The organization mounts complete the plan into a valid Daimon org — see
+    // `daimonOrganizationMounts`. Without them the entrypoint never starts.
     const allMounts = namespaceMounts(
-      [...firstCompile.mounts, firstCompile.storeMount],
+      [...firstCompile.mounts, firstCompile.storeMount, ...daimonOrganizationMounts()],
       suffix
     );
     const mountArgs = await resolveRunMountArgs(allMounts);
@@ -453,8 +506,14 @@ describe("durable volumes reattach across container replacement", () => {
       let rerunMountArgs: string[];
       try {
         const rerun = await compile();
+        // Same organization mounts as the first launch: they are derived from
+        // the plan root and the deployment lineage alone, so a new run id must
+        // leave them byte-identical too.
         rerunMountArgs = await resolveRunMountArgs(
-          namespaceMounts([...rerun.mounts, rerun.storeMount], suffix)
+          namespaceMounts(
+            [...rerun.mounts, rerun.storeMount, ...daimonOrganizationMounts()],
+            suffix
+          )
         );
       } finally {
         if (rerunPrevious === undefined) delete process.env.NOOPOLIS_RUN_ID;

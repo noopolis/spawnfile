@@ -11,6 +11,7 @@ specs/
 ├── RUNTIMES.md              # Runtime registry, version pinning, adapter lifecycle
 ├── CAUSAL.md                # Shared causal wire and Stele read/verify contract
 ├── ECOSYSTEM_RUNTIME_BOUNDARIES.md # Cross-project runtime authority and enforcement gates
+├── USAGE_ACCOUNTING_DESIGN.md # Daimon turn-usage envelope and Spawnfile aggregation design
 ├── research/
 │   ├── AUTH-NOTES.md        # Authentication research and implementation notes
 │   ├── DIRECT-SURFACES.md   # Direct protocol surface research

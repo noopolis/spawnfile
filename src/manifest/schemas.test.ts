@@ -827,6 +827,17 @@ describe("manifestSchema", () => {
     expect(normalized.schedule?.kind === "cron" ? normalized.schedule.cron : undefined).toBe("0 5 * * *");
   });
 
+  it("accepts schedule.jitter_seconds within Daimon's bound and rejects out-of-range or non-integer values", () => {
+    const parses = (schedule: unknown) => manifestSchema.safeParse({ kind: "agent", name: "agent", runtime: "daimon", schedule, spawnfile_version: "0.1" }).success;
+    expect(parses({ kind: "cron", cron: "0 10 * * *", timezone: "Europe/Berlin", prompt: "work", jitter_seconds: 900 })).toBe(true);
+    expect(parses({ kind: "every", every: "5m", prompt: "work", jitter_seconds: 0 })).toBe(true);
+    expect(parses({ kind: "every", every: "5m", prompt: "work", jitter_seconds: 3_600 })).toBe(true);
+    expect(parses({ kind: "every", every: "5m", prompt: "work", jitter_seconds: 3_601 })).toBe(false);
+    expect(parses({ kind: "every", every: "5m", prompt: "work", jitter_seconds: -1 })).toBe(false);
+    expect(parses({ kind: "every", every: "5m", prompt: "work", jitter_seconds: 1.5 })).toBe(false);
+    expect(parses({ kind: "disabled", jitter_seconds: 10 })).toBe(false);
+  });
+
   it("rejects schedules on team manifests", () => {
     const result = manifestSchema.safeParse({
       kind: "team",

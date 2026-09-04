@@ -58,11 +58,22 @@ const cronValues = (field: string, [minimum, maximum]: readonly [number, number]
 const everySchema = z.string().trim().min(1).superRefine((value, context) => {
   if (parseEveryScheduleMs(value) === null) context.addIssue({ code: z.ZodIssueCode.custom, message: "every must be a positive duration" });
 });
+/**
+ * Upper bound on `schedule.jitter_seconds`, mirroring Daimon's
+ * `ORGANIZATION_RUNTIME_MAX_SCHEDULE_JITTER_SECONDS` so every jitter value this
+ * schema accepts also lowers cleanly into the Daimon runtime config: one hour,
+ * generous next to the finest cron granularity (a minute) while staying small
+ * relative to the daily/sub-daily cadences jitter exists to blur, so a
+ * jittered wake still lands recognizably near its scheduled instant.
+ */
+const MAX_SCHEDULE_JITTER_SECONDS = 3_600;
+const jitterSecondsSchema = z.number().int().min(0).max(MAX_SCHEDULE_JITTER_SECONDS);
 
 export const agentScheduleSchema = z.discriminatedUnion("kind", [
   z
     .object({
       cron: cronSchema,
+      jitter_seconds: jitterSecondsSchema.optional(),
       kind: z.literal("cron"),
       prompt: schedulePromptSchema.optional(),
       timezone: scheduleTimezoneSchema.optional()
@@ -71,6 +82,7 @@ export const agentScheduleSchema = z.discriminatedUnion("kind", [
   z
     .object({
       every: everySchema,
+      jitter_seconds: jitterSecondsSchema.optional(),
       kind: z.literal("every"),
       prompt: schedulePromptSchema.optional(),
       timezone: scheduleTimezoneSchema.optional()

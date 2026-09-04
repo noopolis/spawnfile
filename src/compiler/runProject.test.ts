@@ -125,6 +125,61 @@ afterEach(async () => {
 });
 
 describe("createDockerRunInvocation", () => {
+  it("adds the complete Daimon capability set only to Daimon runs", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-daimon-capabilities-");
+    const configPath = "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon/runtime.json";
+    const configOutputPath = path.join(outputDirectory, "container", "rootfs", configPath);
+    await ensureDirectory(path.dirname(configOutputPath));
+    await writeUtf8File(configOutputPath, JSON.stringify({
+      agents: [],
+      host: {},
+      version: "noopolis.daimon.organization-runtime.v1"
+    }));
+    const daimonInvocation = await createDockerRunInvocation(
+      {
+        organizationReadinessEvidence: genericOrganizationReadinessEvidence,
+        outputDirectory,
+        report: createCompileReport({
+          runtime_instances: [{ config_path: configPath, id: "daimon", runtime: "daimon" }],
+          runtimes_installed: ["daimon"]
+        }),
+        reportPath: "/tmp/spawnfile-run-out/spawnfile-report.json"
+      },
+      "spawnfile-daimon"
+    );
+    const nonDaimonInvocation = await createDockerRunInvocation(
+      {
+        organizationReadinessEvidence: genericOrganizationReadinessEvidence,
+        outputDirectory: "/tmp/spawnfile-run-out",
+        report: createCompileReport({
+          runtime_instances: [{ config_path: "/picoclaw.json", id: "picoclaw", runtime: "picoclaw" }],
+          runtimes_installed: ["picoclaw"]
+        }),
+        reportPath: "/tmp/spawnfile-run-out/spawnfile-report.json"
+      },
+      "spawnfile-picoclaw"
+    );
+
+    const daimonCapabilities = [
+      "--cap-drop=ALL",
+      "--cap-add=CHOWN",
+      "--cap-add=SETUID",
+      "--cap-add=SETGID",
+      "--cap-add=DAC_READ_SEARCH",
+      "--cap-add=SETPCAP",
+      "--cap-add=KILL"
+    ];
+    expect(daimonInvocation.args).toEqual(expect.arrayContaining(daimonCapabilities));
+    for (const capability of daimonCapabilities) {
+      expect(nonDaimonInvocation.args).not.toContain(capability);
+    }
+
+    await Promise.all([
+      removeDirectory(daimonInvocation.supportDirectory),
+      removeDirectory(nonDaimonInvocation.supportDirectory)
+    ]);
+  });
+
   it("writes env files, publishes ports, and mounts imported auth", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
     process.env.SPAWNFILE_HOME = spawnfileHome;

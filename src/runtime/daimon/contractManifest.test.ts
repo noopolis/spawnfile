@@ -49,7 +49,8 @@ const manifest = () => ({
     "agents[].name", "agents[].instructions", "agents[].workspacePath",
     "agents[].runtimeHomePath", "agents[].engine.kind", "agents[].schedule.kind",
     "agents[].schedule.interval_ms", "agents[].schedule.cron", "agents[].schedule.timezone",
-    "agents[].schedule.prompt", "agents[].mcp", "agents[].moltnet", "agents[].memory"
+    "agents[].schedule.prompt", "agents[].schedule.jitter_seconds",
+    "agents[].mcp", "agents[].moltnet", "agents[].memory"
   ],
   engineCredentialMaterial: {
     codex: { destinationRelativePath: ".codex/auth.json", directoryMode: 0o700, fileMode: 0o600, sourceRelativePath: ".daimon-inbound/codex-auth", sourceSlot: "codex-auth" },

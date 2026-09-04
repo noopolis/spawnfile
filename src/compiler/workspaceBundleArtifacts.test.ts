@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, truncate, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -9,6 +9,15 @@ import { describe, expect, it } from "vitest";
 import { stageWorkspaceBundles, validateWorkspaceBundleTar } from "./workspaceBundleArtifacts.js";
 
 const run = promisify(execFile);
+const tarWithEmptyEntries = (count: number): Buffer => {
+  const tar = Buffer.alloc((count + 2) * 512);
+  for (let index = 0; index < count; index += 1) {
+    const header = tar.subarray(index * 512, (index + 1) * 512);
+    header.write(`entry-${index}`, 0, "ascii"); header.write("0000000", 100, "ascii"); header.write("00000000000", 124, "ascii"); header[156] = "0".charCodeAt(0); header.write("ustar", 257, "ascii");
+    header.fill(32, 148, 156); let checksum = 0; for (const byte of header) checksum += byte; header.write(`${checksum.toString(8).padStart(6, "0")}\0 `, 148, "ascii");
+  }
+  return tar;
+};
 
 describe("offline workspace bundles", () => {
   it("returns false without declarations and rejects unsafe archive identities", async () => {
@@ -69,6 +78,35 @@ describe("offline workspace bundles", () => {
       expect(await readFile(path.join(output, "container/workspace-bundles", `${sha256.slice(7)}.tar`))).toEqual(bytes);
       await writeFile(path.join(root, "bundle.tar"), Buffer.concat([bytes, Buffer.from("drift")]));
       await expect(stageWorkspaceBundles(path.join(root, "bad"), { nodes: [{ kind: "agent", value: { workspaceResources: [resource] } }] } as never)).rejects.toThrow(/checksum mismatch/u);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+  it("accepts a workspace bundle above the former 10,000-entry bound", () => {
+    expect(() => validateWorkspaceBundleTar(tarWithEmptyEntries(10_001))).not.toThrow();
+  });
+  it("rejects a workspace bundle above the 65,536-entry bound with the entry-count message", () => {
+    expect(() => validateWorkspaceBundleTar(tarWithEmptyEntries(65_537))).toThrow("Workspace bundle exceeds the maximum entry count");
+  });
+  it("reports a genuinely truncated workspace bundle with the truncation message", () => {
+    const truncated = tarWithEmptyEntries(1).subarray(0, 1024); truncated.fill(0, 124, 136); truncated.write("00000002000", 124, "ascii");
+    truncated.fill(32, 148, 156); let checksum = 0; for (const byte of truncated.subarray(0, 512)) checksum += byte; truncated.write(`${checksum.toString(8).padStart(6, "0")}\0 `, 148, "ascii");
+    expect(() => validateWorkspaceBundleTar(truncated)).toThrow("Workspace bundle is truncated or exceeds entry bounds");
+  });
+  it("rejects a workspace bundle just over the 512 MiB cap", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-bundle-over-cap-"));
+    try {
+      const source = path.join(root, "oversized.tar"); await writeFile(source, ""); await truncate(source, 536_870_913);
+      const resource = { id: "oversized", kind: "bundle", mode: "readonly", mount: "./oversized", sha256: `sha256:${"0".repeat(64)}`, source: "oversized.tar", sharing: "per_agent", scope: { kind: "agent", key: path.join(root, "Agentfile"), name: "agent" } };
+      await expect(stageWorkspaceBundles(path.join(root, "out"), { nodes: [{ kind: "agent", value: { workspaceResources: [resource] } }] } as never)).rejects.toThrow("Workspace bundle must be a bounded regular tar file");
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+  it("accepts a workspace bundle above the former 64 MiB cap", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-bundle-above-old-cap-"));
+    try {
+      await writeFile(path.join(root, "tracked.txt"), "tracked"); await run("tar", ["--format=ustar", "-cf", "bundle.tar", "tracked.txt"], { cwd: root });
+      const source = path.join(root, "bundle.tar"); await truncate(source, 67_109_376);
+      const bytes = await readFile(source); const sha256 = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+      const resource = { id: "large", kind: "bundle", mode: "readonly", mount: "./large", sha256, source: "bundle.tar", sharing: "per_agent", scope: { kind: "agent", key: path.join(root, "Agentfile"), name: "agent" } };
+      await expect(stageWorkspaceBundles(path.join(root, "out"), { nodes: [{ kind: "agent", value: { workspaceResources: [resource] } }] } as never)).resolves.toBe(true);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 });
