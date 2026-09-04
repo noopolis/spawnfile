@@ -1,6 +1,8 @@
+import type { BigIntStats } from "node:fs";
 import { chmod, link, lstat, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as sleepMs } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { resolveAuthHome, resolveSpawnfileHome, resolveTargetSecretVersionPath, resolveTargetSecretVersionsDirectory, resolveTargetSecretsRoot } from "./paths.js";
@@ -11,6 +13,7 @@ import { createTargetSecretSourceVersionRecordBytes, parseTargetSecretSourceVers
 
 const originalHome = process.env.SPAWNFILE_HOME;
 const cleanup: string[] = [];
+let recordedInodeReuse = false;
 const entropy = (value: number) => (): Uint8Array => new Uint8Array(16).fill(value);
 
 afterEach(async () => {
@@ -345,18 +348,36 @@ describe("targetSecretSourceFsPublishImmutable", () => {
     await expect(lstat(input.final_path)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("fails closed when the final inode is replaced between named and opened observations", async () => {
+  // The old title claimed detection of any inode replacement. Nothing pins the
+  // inode between the named lstat and the open, so that is not deliverable and
+  // the test never proved it: on a filesystem that recycles inode numbers the
+  // replacement can land on the very inode that was just freed, and until the
+  // publish path compared birth times as well it was then indistinguishable.
+  it("fails closed when the final is unlinked and recreated with identical bytes after the named observation", async () => {
     const base = await setup();
     const { input } = packet();
     await base.publishImmutable(input);
-    let replaced = false;
+    let original: BigIntStats | undefined;
+    let replacement: BigIntStats | undefined;
     const reader = await initializeCurrent({ hookForTest: async (phase, file) => {
-      if (phase !== "after_final_lstat" || replaced) return;
-      replaced = true;
+      if (phase !== "after_final_lstat" || original) return;
+      original = await lstat(file, { bigint: true });
       await unlink(file);
+      // One kernel tick at HZ >= 100, so the replacement cannot inherit the
+      // original's birth time from the coarse timestamp clock.
+      await sleepMs(25);
       await writeFile(file, input.bytes, { mode: 0o600 });
+      replacement = await lstat(file, { bigint: true });
     } });
     await expect(reader.publishImmutable(input)).rejects.toThrow(TARGET_SECRET_SOURCE_ERROR);
-    expect(replaced).toBe(true);
+    expect(original).toBeDefined();
+    expect(replacement).toBeDefined();
+    // Without this the run could pass on a filesystem that reports no birth
+    // time, proving nothing about the discriminator the rejection relies on.
+    expect(replacement!.birthtimeNs).not.toBe(original!.birthtimeNs);
+    // Recorded, never asserted: whether the inode number came back is a
+    // property of the host filesystem and its concurrent load, not of this code.
+    recordedInodeReuse = replacement!.dev === original!.dev && replacement!.ino === original!.ino;
+    expect(typeof recordedInodeReuse).toBe("boolean");
   });
 });
