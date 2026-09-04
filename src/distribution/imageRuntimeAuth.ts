@@ -13,8 +13,10 @@ import {
   DAIMON_GROK_SUBSCRIPTION_REALM
 } from "../runtime/daimon/contractManifest.js";
 import {
+  assertDaimonCredentialContainerOwner,
   assertSafeDaimonSourceFile,
   DAIMON_AGY_UNLOCK_SOURCE_ENV,
+  DAIMON_CREDENTIAL_CONTAINER_UID,
   daimonSourcePathForEngine
 } from "../runtime/daimon/runAuth.js";
 import { SpawnfileError } from "../shared/index.js";
@@ -23,6 +25,12 @@ import type { DistributionReport } from "./types.js";
 
 export interface ImageRuntimeAuthInput {
   authProfile: ResolvedAuthProfile | null;
+  /**
+   * The uid the deployed Daimon image reads its credential leaves as. Defaults
+   * to the compiled image's organization uid; only override it against an image
+   * known to run under a different identity.
+   */
+  daimonContainerCredentialUid?: number;
   report: DistributionReport;
   sourceEnvironment?: Record<string, string | undefined>;
   tempRoot: string;
@@ -51,9 +59,10 @@ const daimonInstanceRoot = (
   return root;
 };
 
-const prepareDaimonImageAuthMounts = async (
+export const prepareDaimonImageAuthMounts = async (
   instance: DistributionReport["runtime_instances"][number],
-  environment: Record<string, string | undefined>
+  environment: Record<string, string | undefined>,
+  containerCredentialUid: number = DAIMON_CREDENTIAL_CONTAINER_UID
 ): Promise<string[]> => {
   const engines = Object.entries(instance.engine_by_node_id ?? {}).sort(([left], [right]) => left.localeCompare(right));
   if (engines.length === 0) {
@@ -76,13 +85,18 @@ const prepareDaimonImageAuthMounts = async (
   }
   const codexSource = engines.some(([, engine]) => engine === "codex")
     ? daimonSourcePathForEngine("codex", environment) : null;
-  if (codexSource) await assertSafeDaimonSourceFile(codexSource, "codex", 64 * 1024, "codex");
+  if (codexSource) {
+    const ownerUid = await assertSafeDaimonSourceFile(codexSource, "codex", 64 * 1024, "codex");
+    assertDaimonCredentialContainerOwner(ownerUid, "codex", containerCredentialUid);
+  }
   for (const [nodeId, engine] of engines) {
     if (engine !== "codex") continue;
     const slug = daimonNodeSlug(nodeId);
     const target = path.posix.join(root, "runtime-homes", slug, DAIMON_ENGINE_CREDENTIALS.codex.sourceRelativePath);
     mounts.push("-v", `${codexSource}:${target}:ro`);
   }
+  // The Grok bootstrap leaf is deliberately exempt from the container-owner
+  // assertion; see the matching note in runAuth.ts.
   if (engines.some(([, engine]) => engine === "grok")) {
     const source = daimonSourcePathForEngine("grok", environment);
     await assertSafeDaimonSourceFile(source, "grok", DAIMON_GROK_SUBSCRIPTION_REALM.maxCredentialBytes, "grok");
@@ -91,7 +105,8 @@ const prepareDaimonImageAuthMounts = async (
   if (engines.some(([, engine]) => engine === "agy")) {
     const source = environment[DAIMON_AGY_UNLOCK_SOURCE_ENV]?.trim();
     if (!source) throw new SpawnfileError("validation_error", "Daimon runtime auth is missing the operator-authorized AGY realm unlock artifact");
-    await assertSafeDaimonSourceFile(source, "AGY realm unlock", DAIMON_AGY_SUBSCRIPTION_REALM.maxUnlockBytes);
+    const ownerUid = await assertSafeDaimonSourceFile(source, "AGY realm unlock", DAIMON_AGY_SUBSCRIPTION_REALM.maxUnlockBytes);
+    assertDaimonCredentialContainerOwner(ownerUid, "AGY realm unlock", containerCredentialUid);
     mounts.push("-v", `${source}:${DAIMON_AGY_SUBSCRIPTION_REALM.unlockMountPath}:ro`);
   }
   return mounts;
@@ -116,7 +131,11 @@ export const prepareImageRuntimeAuthMounts = async (
       runtimeHomes.add(instance.home_path);
     }
     if (instance.runtime === "daimon") {
-      mountArgs.push(...await prepareDaimonImageAuthMounts(instance, input.sourceEnvironment ?? process.env));
+      mountArgs.push(...await prepareDaimonImageAuthMounts(
+        instance,
+        input.sourceEnvironment ?? process.env,
+        input.daimonContainerCredentialUid ?? DAIMON_CREDENTIAL_CONTAINER_UID
+      ));
       continue;
     }
     if (!input.authProfile) continue;
