@@ -6,13 +6,14 @@ import {
   type OpaqueTargetHandle, type SelectedTargetReceipt
 } from "../target/index.js";
 import { dockerDeploymentLabelKeys } from "./dockerLabels.js";
+import { ORGANIZATION_HANDOFF_AUTHORITY_ERROR } from "./organizationHandoffAuthorityFsBudget.js";
 import { parseOrganizationHandoff, type OrganizationHandoff } from "./organizationHandoffTypes.js";
 
 export const ORGANIZATION_HANDOFF_CAPABILITY_VERSION =
   "spawnfile.organization-handoff-capability.private.v1" as const;
 export const ORGANIZATION_HANDOFF_RECOVERY_VERSION =
   "spawnfile.organization-handoff-recovery.private.v1" as const;
-export const ORGANIZATION_HANDOFF_AUTHORITY_ERROR = "Organization handoff authority failed";
+export { ORGANIZATION_HANDOFF_AUTHORITY_ERROR };
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const CONTAINER = /^[a-f0-9]{64}$/u;
