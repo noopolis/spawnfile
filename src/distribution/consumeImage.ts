@@ -43,6 +43,8 @@ import type { ResolvedAuthProfile } from "../auth/index.js";
 export interface ConsumeImageUpOptions {
   authProfile?: ResolvedAuthProfile | null;
   authValues?: Record<string, string>;
+  /** See `ImageRuntimeAuthInput.daimonContainerCredentialUid`. */
+  daimonContainerCredentialUid?: number;
   authProfileName?: string | null;
   deploymentName?: string;
   dockerCommand?: string;
@@ -225,6 +227,9 @@ const consumeImageUpLocked = async (
     const authMountArgs = (
       await prepareImageRuntimeAuthMounts({
         authProfile: options.authProfile ?? null,
+        ...(options.daimonContainerCredentialUid === undefined
+          ? {}
+          : { daimonContainerCredentialUid: options.daimonContainerCredentialUid }),
         report,
         tempRoot: workDir
       })

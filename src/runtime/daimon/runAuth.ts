@@ -276,9 +276,9 @@ const prepareNeutralIngress = async (
  * Daimon alone owns writable credential state and refresh reconciliation.
  */
 export const prepareDaimonRuntimeAuth = async (
-  input: RuntimeAuthPreparationInput,
-  containerCredentialUid: number = DAIMON_CREDENTIAL_CONTAINER_UID
+  input: RuntimeAuthPreparationInput
 ): Promise<RuntimeAuthPreparationResult> => {
+  const containerCredentialUid = input.containerCredentialUid ?? DAIMON_CREDENTIAL_CONTAINER_UID;
   const allowedSourceEnvironments = new Set([
     ...Object.values(DAIMON_ENGINE_CREDENTIALS).map((credential) =>
       daimonSourceEnvironmentName(credential.sourceSlot)

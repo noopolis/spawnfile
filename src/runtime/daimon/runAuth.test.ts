@@ -57,11 +57,12 @@ const prepare = (
 ) =>
   prepareDaimonRuntimeAuth({
     authProfile: null,
+    containerCredentialUid,
     env: {},
     instance: { config_path: configPath, home_path: null, id: "daimon-organization", model_auth_methods: {}, model_secrets_required: [], runtime: "daimon" },
     outputDirectory,
     tempRoot
-  }, containerCredentialUid);
+  });
 
 afterEach(async () => {
   if (originalCodexHome === undefined) delete process.env.CODEX_HOME;
@@ -474,11 +475,12 @@ describe("prepareDaimonRuntimeAuth container credential ownership", () => {
     try {
       await expect(prepareDaimonRuntimeAuth({
         authProfile: null,
+        containerCredentialUid: 0,
         env: {},
         instance: { config_path: organization.configPath, home_path: null, id: "daimon-organization", model_auth_methods: {}, model_secrets_required: [], runtime: "daimon" },
         outputDirectory: organization.outputDirectory,
         tempRoot: organization.tempRoot
-      }, 0)).rejects.toThrow(/caller-owned 0600 regular file/u);
+      })).rejects.toThrow(/caller-owned 0600 regular file/u);
     } finally {
       spy.mockRestore();
     }

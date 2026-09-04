@@ -239,7 +239,10 @@ describe("createDockerRunInvocation", () => {
         outputDirectory,
         report,
         reportPath: path.join(outputDirectory, "spawnfile-report.json")
-      }, "spawnfile-agy");
+      // The deploying account owns the unlock fixture, so declare it as the uid
+      // the container reads credentials under; the real default (2000) refuses
+      // the deploy before any mount is rendered.
+      }, "spawnfile-agy", { containerCredentialUid: process.getuid?.() });
       expect(invocation.args).toContain("type=volume,source=spawnfile-stable-agy-realm,target=/var/lib/spawnfile/daimon/agy-subscription-realm");
       expect(invocation.args.join("\n")).not.toContain("volume-nocopy");
       expect(invocation.args).toContain(`${unlockPath}:/var/lib/spawnfile/daimon/agy-unlock-secret:ro`);
