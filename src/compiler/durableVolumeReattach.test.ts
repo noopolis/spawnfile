@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureDirectory, removeDirectory, readUtf8File, writeUtf8File } from "../filesystem/index.js";
 import type { ContainerPersistentMountReport } from "../report/index.js";
 
+import { createFakeMoltnetCli } from "../../fixtures/support/fakeMoltnetCli.js";
+
 import { compileProject } from "./compileProject.js";
 import {
   DEV_DEPLOYMENT_LINEAGE_NAMESPACE,
@@ -29,6 +31,7 @@ vi.mock("./moltnetBinaries.js", async (importOriginal) => {
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(temporaryDirectories.splice(0).map(removeDirectory));
 });
 
@@ -146,6 +149,14 @@ const compileUnderRunId = async (
 ): Promise<CompiledDurableState> => {
   const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-durable-volume-out-"));
   temporaryDirectories.push(outputDirectory);
+  // These tests deliberately drive the real `compileProject`, which shells
+  // out to the Moltnet CLI while injecting workspace files. Resolving it
+  // from PATH would make them pass only on a machine with Moltnet installed;
+  // point the documented escape hatch at a stand-in so the real compile path
+  // stays under test everywhere.
+  vi.stubEnv("SPAWNFILE_MOLTNET_CLI", await createFakeMoltnetCli((directory) => {
+    temporaryDirectories.push(directory);
+  }));
   const previous = process.env.NOOPOLIS_RUN_ID;
   process.env.NOOPOLIS_RUN_ID = runId;
   try {
