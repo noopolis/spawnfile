@@ -2,6 +2,25 @@
 
 This folder owns deployment records and deployment-manager helpers.
 
+## Volume teardown
+
+`down --volumes` removes only the volumes a deployment owns. An author-declared
+volume name (a workspace resource `name`, `store.persistence.name`, a memory
+bank's `persistence.name`) is verbatim in every mode and every deployment, so it
+is shared project state and `partitionDeclaredVolumes` always keeps it. Before
+that, `down --volumes --deployment <dev-or-scratch>` removed the production
+volume of that name whenever production happened to be stopped — Docker only
+refuses a volume that is currently in use, so the destructive case was exactly
+the one an operator reaches during a teardown.
+
+Skipped volumes appear in the receipt's `skipped_volumes` AND in
+`retained_volumes` (they are still on disk, which is what that field means).
+`skipped_volumes` is omitted when empty, so every receipt producible before it
+existed is byte-identical. `downCommand.ts` excludes them from its lifecycle
+completeness check: retrying can never remove them, so counting them as
+incompleteness would make a `--volumes` lifecycle down of any project with a
+declared name retry forever.
+
 ## Structure
 
 ```text

@@ -658,7 +658,7 @@ describe("createContainerArtifacts", () => {
         replacement_sentinel: { path: expect.stringContaining("/.spawnfile-resource-identity"), result: "verified_on_startup" },
         resolved_identity: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
         sharing: "per_agent",
-        volume_name: expect.stringMatching(/^spawnfile-workspace-resource-[a-f0-9]{24}$/u)
+        volume_name: expect.stringMatching(/^spawnfile-exclusive-workspace-resource-[a-f0-9]{24}-[a-f0-9]{16}$/u)
       },
       {
         backing_path: expect.stringContaining("/var/lib/spawnfile/resources/instances/agent-assistant-"),

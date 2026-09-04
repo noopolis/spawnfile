@@ -16,6 +16,7 @@ import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import type { MoltnetReleaseIdentity } from "./moltnetBinaries.js";
 import type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./containerArtifactsTypes.js";
 import { resolveWorkspaceResourceVolumes, type ResolvedTargetResourcePlan } from "./containerTargetResources.js";
+import { mergePersistentMounts } from "./containerPersistentMounts.js";
 import type { CompilePlan } from "./types.js";
 import { SIMFILE_WORLD_BINDINGS_VERSION, WORLD_BINDINGS_OUTPUT_FILE, type ResolvedWorldBindings } from "./worldBindings.js";
 
@@ -144,63 +145,21 @@ export const createContainerArtifacts = async (
   const memoryArtifacts = createMemoryArtifactBundle(plan, options.deploymentLineage);
   const { resources: resolvedWorkspaceResources, mounts: workspaceResourceMounts } =
     resolveWorkspaceResourceVolumes(runtimePlans);
-  const persistentMountsById = new Map<string, { lifecycle?: "exclusive-reattach"; mount_path: string; reason: string; volume_name: string }>();
-  for (const mount of memoryArtifacts.mounts) {
-    const existing = persistentMountsById.get(mount.id);
-    if (existing) {
-      if (existing.mount_path !== mount.mount_path || existing.volume_name !== mount.volume_name) {
-        throw new Error(
-          `Container persistent mount ${mount.id} resolves to conflicting targets`
-        );
-      }
-      continue;
-    }
-    persistentMountsById.set(mount.id, {
-      ...(mount.lifecycle ? { lifecycle: mount.lifecycle } : {}),
-      mount_path: mount.mount_path,
-      reason: mount.reason,
-      volume_name: mount.volume_name
-    });
-  }
-
   const persistentMountCandidates: ContainerPersistentMountReport[] = [
     ...memoryArtifacts.mounts,
     ...workspaceResourceMounts,
     ...daimonTelemetryArtifacts.mounts,
     ...runtimePlans.flatMap((runtimePlan) => runtimePlan.persistentMounts ?? []),
     ...((options.moltnet?.persistentMounts ?? []).map((mount) => ({
+      ...(mount.declaredVolumeName ? { declared_volume_name: mount.declaredVolumeName } : {}),
       id: mount.id,
+      ...(mount.lifecycle ? { lifecycle: mount.lifecycle } : {}),
       mount_path: mount.mountPath,
       reason: mount.reason,
       volume_name: mount.volumeName
     })))
   ];
-  const persistentMounts = persistentMountCandidates
-    .sort((left, right) => left.id.localeCompare(right.id))
-    .filter((mount) => {
-      const existing = persistentMountsById.get(mount.id);
-      if (existing) {
-        if (
-          existing.mount_path === mount.mount_path &&
-          existing.volume_name === mount.volume_name &&
-          existing.reason === mount.reason &&
-          existing.lifecycle === mount.lifecycle
-        ) {
-          return true;
-        }
-
-        throw new Error(
-          `Container persistent mount ${mount.id} resolves to conflicting targets`
-        );
-      }
-      persistentMountsById.set(mount.id, {
-        ...(mount.lifecycle ? { lifecycle: mount.lifecycle } : {}),
-        mount_path: mount.mount_path,
-        reason: mount.reason,
-        volume_name: mount.volume_name
-      });
-      return true;
-    });
+  const persistentMounts = mergePersistentMounts(persistentMountCandidates);
 
   const runtimeInternalPorts = runtimePlans.flatMap((plan) =>
     plan.port ? [plan.port] : []
@@ -313,7 +272,15 @@ export const createContainerArtifacts = async (
     modelAuthMethods: mergedModelAuthMethods,
     moltnetNetworks,
     organization,
+    // The report deliberately omits the compiler-DERIVED volume name: it
+    // encodes the creator's plan root and deployment lineage and is private to
+    // that host. An author-DECLARED name is different — it is part of the
+    // declaration the image publishes, so a consumer must honour it verbatim
+    // or an operator who pre-created that volume silently gets an empty one.
     persistentMounts: persistentMounts.map((mount) => ({
+      ...(mount.declared_volume_name
+        ? { declared_volume_name: mount.declared_volume_name }
+        : {}),
       durability: "persistent" as const,
       id: mount.id,
       kind: "volume" as const,
@@ -348,7 +315,8 @@ export const createContainerArtifacts = async (
             nodePlans: options.moltnet.nodePlans,
             serverPlans: options.moltnet.serverPlans
           }
-        : undefined
+        : undefined,
+      persistentMounts
     ),
     ...(options.moltnet?.files ?? []),
     ...(options.worldBindings
@@ -395,7 +363,9 @@ export const createContainerArtifacts = async (
                 nodePlans: options.moltnet.nodePlans,
                 serverPlans: options.moltnet.serverPlans
               }
-            : undefined
+            : undefined,
+          persistentMounts,
+          persistentMountPaths: persistentMounts.map((mount) => mount.mount_path)
         }
       ),
       path: "entrypoint.sh"

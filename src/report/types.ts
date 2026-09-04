@@ -55,6 +55,16 @@ export interface ContainerWorkspaceResourceReport {
 }
 
 export interface ContainerPersistentMountReport {
+  /**
+   * The author's own volume name, when one was declared (a workspace resource
+   * `name`, a `store.persistence.name`, a memory bank's `persistence.name`).
+   * Present only when declared; `volume_name` equals it in that case. It is
+   * carried separately because it is the one part of the resolved name that is
+   * portable: it belongs to the declaration, not to the creator's plan root or
+   * deployment lineage, so a published image can honour it verbatim while a
+   * derived name must be re-derived per deployment.
+   */
+  declared_volume_name?: string;
   id: string;
   lifecycle?: "exclusive-reattach";
   mount_path: string;

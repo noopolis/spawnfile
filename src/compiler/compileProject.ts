@@ -311,7 +311,7 @@ export const compileProject = async (
     );
   }
 
-  const moltnetArtifacts = await generateMoltnetArtifacts(plan);
+  const moltnetArtifacts = await generateMoltnetArtifacts(plan, options.deploymentLineage);
 
   const moltnetRelease = moltnetArtifacts
     ? await stageMoltnetBinaries(outputDirectory, {

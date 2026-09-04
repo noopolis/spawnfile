@@ -245,7 +245,8 @@ Rules:
 - `id` MUST be unique in the manifest.
 - `id`, `kind`, `mount`, `mode`, `sharing`, and kind-specific source fields make up resource identity.
 - `git` `url`, `branch`, `tag`, and `ref` values are normalized by trimming whitespace only.
-- `volume` resources MAY declare an explicit `name` for backing state naming. When omitted, the compiler derives a stable name from project identity, resource `id`, and effective execution context.
+- `volume` resources MAY declare an explicit `name` for backing state naming. An explicit `name` is used verbatim as the host volume name, unchanged by run or deployment identity, so an operator can pre-create or migrate that volume under exactly that name. It is published in the distribution report as `declared_volume_name` and honoured verbatim by a sourceless image deployment too. When omitted, the compiler derives a name from the project root and the deployment lineage, and that derived name is never published — an image deployment re-derives its own.
+- A `volume` resource's runtime mount is `exclusive-reattach`: its name never folds in the run id, so a redeploy reattaches the same host volume instead of provisioning an empty one, and only one live container may hold it at a time. An organization declaring one therefore cannot use the concurrent blue/green canary workflow and must stop-and-reattach (see `specs/CONTAINERS.md`).
 - `git` resources MUST declare `url`.
 - `git` resources MAY declare optional one-of selectors: `branch`, `tag`, or `ref`.
 - At most one of `branch`, `tag`, or `ref` MAY be set on a single `git` resource.
@@ -1311,7 +1312,9 @@ Rules:
 - If `server.store.persistence` is omitted for `sqlite` or `json`, the compiler treats it as `durable`.
 - `server.store.persistence.mode: durable` emits a persistent runtime mount for the store directory.
 - `server.store.persistence.mode: ephemeral` emits no persistent runtime mount.
-- `server.store.persistence.name` MAY name the runtime volume for durable stores.
+- `server.store.persistence.name` MAY name the runtime volume for durable stores. It is used verbatim as the host volume name, unchanged by run or deployment identity, in project mode and in a sourceless image deployment alike.
+- A durable `sqlite`/`json` store mount is `exclusive-reattach`: with no declared name its volume is named from the project root and the deployment lineage, never the run id, so message history survives a redeploy, and only one live container may hold it at a time.
+- Generated open-mode agent token directories carry the same `exclusive-reattach` lifecycle, so first-claim credentials survive container replacement.
 - `server.store.persistence.mount` MAY override the durable container mount directory; when both `path` and `mount` are declared, `path` MUST be inside `mount`.
 - Open auth without `server.auth.client` emits per-agent generated token files under private agent runtime state and those token directories are durable runtime mounts.
 - `server.direct_messages: false` means any `surfaces.moltnet[].dms` for that network is a validation error.

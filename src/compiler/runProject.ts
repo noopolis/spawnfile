@@ -182,10 +182,22 @@ export const createDockerRunInvocation = async (
       args.push("-p", `${port}:${port}`);
     }
 
+    // Compiler-owned persistent mounts are mounted WITHOUT `volume-nocopy`.
+    // The image is the authority for the bootstrap preimage at these paths:
+    // `createStateOwnershipCommand` writes a `.spawnfile-volume-init` marker
+    // into every one of them at build time, and the Daimon ownership guard
+    // (`secureVolumeIdentity`) and `prepare_volume_resource` both REQUIRE that
+    // marker as the fresh-volume preimage. `volume-nocopy` is exactly the flag
+    // that stops Docker copying image content into an empty volume, so it
+    // starved the guard and no Daimon organization with persistent volumes
+    // could bootstrap. Copy-up only ever populates an EMPTY volume, so a
+    // reattached volume that already holds state is untouched by dropping it.
+    // (Target/secrets volumes under src/target/* keep `volume-nocopy`: no
+    // image content backs those paths and they must stay opaque.)
     for (const mount of containerReport.persistent_mounts ?? []) {
       args.push(
         "--mount",
-        `type=volume,source=${mount.volume_name},target=${mount.mount_path},volume-nocopy`
+        `type=volume,source=${mount.volume_name},target=${mount.mount_path}`
       );
     }
 
