@@ -2,10 +2,16 @@ import { chmod, lstat, mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { removeDirectory } from "../../filesystem/index.js";
-import { prepareDaimonRuntimeAuth } from "./runAuth.js";
+import { DAIMON_ORGANIZATION_UID } from "./runtimeIdentity.js";
+import {
+  assertDaimonCredentialContainerOwner,
+  DAIMON_CREDENTIAL_CONTAINER_UID,
+  isUnsafeDaimonSourceFile,
+  prepareDaimonRuntimeAuth
+} from "./runAuth.js";
 
 const temporaryDirectories: string[] = [];
 const originalCodexHome = process.env.CODEX_HOME;
@@ -38,14 +44,24 @@ const writeConfigSource = async (
   await writeFile(hostPath, source);
   return configPath;
 };
-const prepare = (outputDirectory: string, tempRoot: string, configPath: string) =>
+const callerUid = (): number => {
+  const uid = process.getuid?.();
+  if (typeof uid !== "number") throw new Error("this suite requires a POSIX uid");
+  return uid;
+};
+const prepare = (
+  outputDirectory: string,
+  tempRoot: string,
+  configPath: string,
+  containerCredentialUid: number = callerUid()
+) =>
   prepareDaimonRuntimeAuth({
     authProfile: null,
     env: {},
     instance: { config_path: configPath, home_path: null, id: "daimon-organization", model_auth_methods: {}, model_secrets_required: [], runtime: "daimon" },
     outputDirectory,
     tempRoot
-  });
+  }, containerCredentialUid);
 
 afterEach(async () => {
   if (originalCodexHome === undefined) delete process.env.CODEX_HOME;
@@ -69,13 +85,7 @@ describe("prepareDaimonRuntimeAuth", () => {
     await chmod(path.join(codexHome, "auth.json"), 0o600);
     const home = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex";
     const configPath = await writeConfig(outputDirectory, home);
-    const prepared = await prepareDaimonRuntimeAuth({
-      authProfile: null,
-      env: {},
-      instance: { config_path: configPath, home_path: null, id: "daimon-organization", model_auth_methods: {}, model_secrets_required: [], runtime: "daimon" },
-      outputDirectory,
-      tempRoot
-    });
+    const prepared = await prepare(outputDirectory, tempRoot, configPath);
     const mount = prepared.mountArgs[1]!;
     const source = path.join(codexHome, "auth.json");
     expect(mount).toBe(`${source}:${home}/.daimon-inbound/codex-auth:ro`);
@@ -170,11 +180,7 @@ describe("prepareDaimonRuntimeAuth", () => {
       host: {}, version: "noopolis.daimon.organization-runtime.v2"
     }));
 
-    const prepared = await prepareDaimonRuntimeAuth({
-      authProfile: null, env: {},
-      instance: { config_path: configPath, home_path: null, id: "daimon-organization", model_auth_methods: {}, model_secrets_required: [], runtime: "daimon" },
-      outputDirectory, tempRoot
-    });
+    const prepared = await prepare(outputDirectory, tempRoot, configPath);
 
     expect(prepared.mountArgs).toEqual([
       "-v",
@@ -349,5 +355,159 @@ describe("prepareDaimonRuntimeAuth", () => {
       "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex"
     );
     await expect(prepare(outputDirectory, tempRoot, configPath)).rejects.toThrow(/missing the selected codex/u);
+  });
+});
+
+const safeSourceFacts = (overrides: Partial<Parameters<typeof isUnsafeDaimonSourceFile>[0]> = {}) => ({
+  isFile: true,
+  isSymbolicLink: false,
+  mode: 0o100600,
+  nlink: 1,
+  size: 64,
+  uid: 1_234,
+  ...overrides
+});
+
+describe("isUnsafeDaimonSourceFile", () => {
+  it("accepts one bounded 0600 regular file owned by a non-root caller", () => {
+    expect(isUnsafeDaimonSourceFile(safeSourceFacts(), 1_234, 64 * 1024)).toBe(false);
+  });
+
+  it("refuses a credential the calling process does not own", () => {
+    // The gap this whole change is about: a host file owned by somebody else is
+    // material the deploying process cannot vouch for, and the container would
+    // read it under a third identity again.
+    expect(isUnsafeDaimonSourceFile(safeSourceFacts({ uid: 2_000 }), 1_234, 64 * 1024)).toBe(true);
+    expect(isUnsafeDaimonSourceFile(safeSourceFacts({ uid: 0 }), 1_234, 64 * 1024)).toBe(true);
+  });
+
+  it("refuses a root caller even when it owns the credential", () => {
+    expect(isUnsafeDaimonSourceFile(safeSourceFacts({ uid: 0 }), 0, 64 * 1024)).toBe(true);
+    expect(isUnsafeDaimonSourceFile(safeSourceFacts({ uid: -1 }), -1, 64 * 1024)).toBe(true);
+    expect(isUnsafeDaimonSourceFile(safeSourceFacts(), undefined, 64 * 1024)).toBe(true);
+  });
+
+  it("refuses links, non-files, permissive modes, hard links, and unbounded sizes", () => {
+    for (const overrides of [
+      { isFile: false },
+      { isSymbolicLink: true },
+      { mode: 0o100644 },
+      { mode: 0o100640 },
+      { nlink: 2 },
+      { size: 0 },
+      { size: 64 * 1024 + 1 }
+    ]) {
+      expect(isUnsafeDaimonSourceFile(safeSourceFacts(overrides), 1_234, 64 * 1024)).toBe(true);
+    }
+  });
+});
+
+describe("assertDaimonCredentialContainerOwner", () => {
+  it("pins the required uid to the uid the compiled container drops to", () => {
+    expect(DAIMON_CREDENTIAL_CONTAINER_UID).toBe(DAIMON_ORGANIZATION_UID);
+    expect(DAIMON_CREDENTIAL_CONTAINER_UID).toBe(2_000);
+  });
+
+  it("accepts a credential owned by the container uid", () => {
+    expect(() => assertDaimonCredentialContainerOwner(DAIMON_CREDENTIAL_CONTAINER_UID, "codex"))
+      .not.toThrow();
+  });
+
+  it("names both the required and the observed uid when they disagree", () => {
+    expect(() => assertDaimonCredentialContainerOwner(2_001, "codex"))
+      .toThrow(/owned by uid 2001 but the Daimon container reads it as uid 2000/u);
+  });
+});
+
+describe("prepareDaimonRuntimeAuth container credential ownership", () => {
+  const codexOrganization = async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
+    const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
+    const codexHome = await createTempDirectory("spawnfile-daimon-codex-");
+    process.env.CODEX_HOME = codexHome;
+    const source = path.join(codexHome, "auth.json");
+    await writeFile(source, codexCredential());
+    await chmod(source, 0o600);
+    const configPath = await writeConfig(
+      outputDirectory,
+      "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex"
+    );
+    return { configPath, outputDirectory, source, tempRoot };
+  };
+
+  it("refuses a credential the container cannot own, naming the required and observed uid", async () => {
+    // No injected uid: this is the real deploy default, so the refusal is the
+    // one an operator on a uid-2001 account actually hits.
+    const organization = await codexOrganization();
+    const observed = callerUid();
+    expect(observed).not.toBe(DAIMON_CREDENTIAL_CONTAINER_UID);
+    await expect(prepareDaimonRuntimeAuth({
+      authProfile: null,
+      env: {},
+      instance: { config_path: organization.configPath, home_path: null, id: "daimon-organization", model_auth_methods: {}, model_secrets_required: [], runtime: "daimon" },
+      outputDirectory: organization.outputDirectory,
+      tempRoot: organization.tempRoot
+    })).rejects.toThrow(
+      new RegExp(`owned by uid ${observed} but the Daimon container reads it as uid 2000`, "u")
+    );
+  });
+
+  it("binds a correctly owned credential unchanged and never copies it", async () => {
+    const organization = await codexOrganization();
+    const before = await lstat(organization.source);
+    const prepared = await prepare(
+      organization.outputDirectory, organization.tempRoot, organization.configPath
+    );
+    expect(prepared.mountArgs).toEqual([
+      "-v",
+      `${organization.source}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex/.daimon-inbound/codex-auth:ro`
+    ]);
+    const after = await lstat(organization.source);
+    expect([after.ino, after.uid, after.mode & 0o777, after.nlink])
+      .toEqual([before.ino, before.uid, 0o600, 1]);
+  });
+
+  it("still refuses a root deploy before any mount is built", async () => {
+    const organization = await codexOrganization();
+    const posix = process as unknown as { getuid: () => number };
+    const spy = vi.spyOn(posix, "getuid").mockReturnValue(0);
+    try {
+      await expect(prepareDaimonRuntimeAuth({
+        authProfile: null,
+        env: {},
+        instance: { config_path: organization.configPath, home_path: null, id: "daimon-organization", model_auth_methods: {}, model_secrets_required: [], runtime: "daimon" },
+        outputDirectory: organization.outputDirectory,
+        tempRoot: organization.tempRoot
+      }, 0)).rejects.toThrow(/caller-owned 0600 regular file/u);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("refuses an AGY unlock secret the container cannot own", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
+    const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
+    const unlock = path.join(outputDirectory, "agy-unlock");
+    await writeFile(unlock, "opaque-unlock");
+    await chmod(unlock, 0o600);
+    process.env.SPAWNFILE_DAIMON_SOURCE_AGY_UNLOCK_SECRET = unlock;
+    const configPath = await writeConfigSource(outputDirectory, JSON.stringify({
+      agents: [{
+        engine: { kind: "agy" },
+        id: "agent:agy",
+        runtimeHomePath: "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/agy"
+      }],
+      host: {},
+      version: "noopolis.daimon.organization-runtime.v1"
+    }));
+    await expect(prepareDaimonRuntimeAuth({
+      authProfile: null,
+      env: {},
+      instance: { config_path: configPath, home_path: null, id: "daimon-organization", model_auth_methods: {}, model_secrets_required: [], runtime: "daimon" },
+      outputDirectory,
+      tempRoot
+    })).rejects.toThrow(
+      new RegExp(`AGY realm unlock artifact is owned by uid ${callerUid()} but the Daimon container reads it as uid 2000`, "u")
+    );
   });
 });
