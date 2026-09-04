@@ -4,7 +4,10 @@ import path from "node:path";
 import { SpawnfileError } from "../shared/index.js";
 import type { CompilePlan } from "./types.js";
 
-const CAP = 67_108_864, BLOCK = 512;
+// Sanity bound for an operator-declared local tar; integrity comes from its digest, not its size.
+const CAP = 536_870_912, BLOCK = 512;
+// Sanity bound on an operator-declared local tar; integrity comes from the declared digest.
+const MAX_WORKSPACE_BUNDLE_ENTRIES = 65_536;
 const fail = (message = "Workspace bundle contains an invalid or unsafe tar entry"): never => { throw new SpawnfileError("validation_error", message); };
 const textField = (field: Buffer): string => { const nul = field.indexOf(0); return field.subarray(0, nul < 0 ? field.length : nul).toString("utf8"); };
 const octal = (field: Buffer, allowEmpty = false): number => {
@@ -39,7 +42,9 @@ export const validateWorkspaceBundleTar = (bytes: Buffer): void => {
     const size = octal(header.subarray(124, 136)); if (type === "5" && size !== 0) fail();
     const prefix = textField(header.subarray(345, 500)), rawName = textField(header.subarray(0, 100));
     const effective = validPath(prefix ? `${prefix}/${rawName}` : rawName, type === "5"); if (names.has(effective)) fail("Workspace bundle contains duplicate effective paths"); names.add(effective);
-    offset += BLOCK + Math.ceil(size / BLOCK) * BLOCK; entries += 1; if (offset > bytes.length || entries > 10_000) fail("Workspace bundle is truncated or exceeds entry bounds");
+    offset += BLOCK + Math.ceil(size / BLOCK) * BLOCK; entries += 1;
+    if (offset > bytes.length) fail("Workspace bundle is truncated or exceeds entry bounds");
+    if (entries > MAX_WORKSPACE_BUNDLE_ENTRIES) fail("Workspace bundle exceeds the maximum entry count");
   }
   if (!terminated) fail("Workspace bundle is truncated or lacks exact ustar termination"); if (entries === 0) fail("Workspace bundle is empty");
 };

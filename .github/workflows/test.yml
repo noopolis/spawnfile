@@ -47,6 +47,9 @@ jobs:
       - name: Verify native helper syscalls
         run: node --test scripts/native-helper-artifacts.test.mjs scripts/native-helper-integration.test.mjs
 
+      - name: Verify Daimon image layering
+        run: node --test scripts/build-local-daimon-runtime.test.mjs
+
       # Preseed reads the candidate volume through its Docker Mountpoint and
       # relies on host rename/fsync/hardlink semantics a container cannot give
       # it. On a rootful Linux daemon /var/lib/docker/volumes/*/_data is

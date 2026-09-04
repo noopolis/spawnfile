@@ -8,7 +8,11 @@ import { describe, expect, it } from "vitest";
 
 import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import {
+  DAIMON_BROKER_REALM,
+  DAIMON_ORGANIZATION_STATE_DIRECTORY,
+  GROK_SANDBOX_DENY_PATHS,
   renderDaimonBrokerProvisioning,
+  renderDaimonUsageLedgerProvisioning,
   renderDaimonWorkspaceResourceSecurity
 } from "./containerDaimonBrokerRender.js";
 
@@ -29,6 +33,46 @@ describe("Daimon broker registration ABI", () => {
   });
 });
 
+describe("Daimon broker registration directory provisioning", () => {
+  const plan = {
+    runtimeName: "daimon",
+    engineByNodeId: { "agent:grok": "grok" },
+    instancePaths: { workspacePath: "/workspace" }
+  } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
+
+  it("keeps the broker directory writable until its files are provisioned", () => {
+    const lines = renderDaimonBrokerProvisioning([plan]).join("\n").split("\n");
+    const mkdirIndex = lines.findIndex((line) => line.includes(
+      "fs.mkdirSync('/etc/daimon-engine-broker', { recursive: true, mode: 0o700 })"
+    ));
+    const serviceWriteIndex = lines.findIndex((line) => line.includes(
+      "fs.writeFileSync('/etc/daimon-engine-broker/service.json'"
+    ));
+    const tightenIndex = lines.findIndex((line) => line ===
+      "fs.chmodSync('/etc/daimon-engine-broker', 0o555);"
+    );
+
+    expect(mkdirIndex).toBeGreaterThanOrEqual(0);
+    expect(serviceWriteIndex).toBeGreaterThan(mkdirIndex);
+    expect(tightenIndex).toBeGreaterThan(serviceWriteIndex);
+  });
+
+  it("restores owner-write before removing tightened broker directories", () => {
+    const lines = renderDaimonBrokerProvisioning([plan]);
+    const etcLoosen = lines.indexOf(
+      "if [ -d /etc/daimon-engine-broker ]; then chmod u+rwx /etc/daimon-engine-broker; fi"
+    );
+    const runLoosen = lines.indexOf(
+      "if [ -d /run/daimon-engine-broker ]; then chmod u+rwx /run/daimon-engine-broker; fi"
+    );
+    const remove = lines.indexOf("rm -rf /etc/daimon-engine-broker /run/daimon-engine-broker");
+
+    expect(etcLoosen).toBeGreaterThanOrEqual(0);
+    expect(runLoosen).toBeGreaterThan(etcLoosen);
+    expect(remove).toBeGreaterThan(runLoosen);
+  });
+});
+
 describe("Daimon broker usage ledger provisioning", () => {
   const plan = {
     runtimeName: "daimon",
@@ -36,21 +80,157 @@ describe("Daimon broker usage ledger provisioning", () => {
     instancePaths: { workspacePath: "/workspace" }
   } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
 
-  it("provisions the usage ledger directory alongside the realm", () => {
-    const program = renderDaimonBrokerProvisioning([plan]).join("\n");
+  it("fixes the usage ledger directory group-writable so Codex/AGY's organization-uid process can also write it, unconditionally (not just alongside the realm)", () => {
     const { directoryPath } = DAIMON_GROK_TURN_USAGE_LEDGER;
+    const lines = renderDaimonUsageLedgerProvisioning();
+    // chown-to-root, then chmod, then chown-to-final-owner last: never
+    // `install -d`'s create-then-chown-then-chmod order, which needs
+    // CAP_FOWNER (not granted; see runProject.ts) once ownership moves off root.
+    expect(lines).toContainEqual(`chown 0:0 ${directoryPath} && chmod 0770 ${directoryPath} && chown 2100:2000 ${directoryPath}`);
+    expect(lines.some((line) => line.includes("--reuid 2000") && line.includes(".daimon-usage-probe"))).toBe(true);
+    // Unlike the broker realm/registrations, this runs even with no Grok agent at all.
+    expect(renderDaimonBrokerProvisioning([])).toEqual([]);
+  });
+
+  it("never lists the usage ledger directory in the rendered sandbox deny list", () => {
+    // The usage ledger directory is unix-denied to every worker uid
+    // unconditionally by `renderDaimonUsageLedgerProvisioning` (0770,
+    // broker:organization — a worker uid never matches either), so Grok
+    // could never verify a mask over it and would refuse to start if it were
+    // still listed. See `GROK_SANDBOX_DENY_PATHS`'s doc comment.
+    const program = renderDaimonBrokerProvisioning([plan]).join("\n");
+    const deniedPathsLine = program.split("\n").find((line) => line.includes("const deniedPaths ="));
+    expect(deniedPathsLine).toBeDefined();
+    expect(deniedPathsLine).not.toContain(DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath);
+  });
+});
+
+describe("Grok sandbox deny list: only worker-openable paths", () => {
+  // Every candidate a worker might plausibly need masked from other than the
+  // organization state directory is already unix-denied unconditionally —
+  // by construction, elsewhere in this same provisioning script or its
+  // `renderDaimonUsageLedgerProvisioning` sibling. Listing an already-denied
+  // path adds no protection and breaks Grok 1.0.13+'s own startup
+  // verification (it opens every `deny` path to confirm its bwrap mount
+  // caused the denial, and can't tell a pre-existing denial from its own
+  // mask). Verified live: `setpriv --reuid <worker-uid> --regid <worker-uid>
+  // --clear-groups` against a running deployment could not open any
+  // registrations.bin peer home/workspace, the subscription realm,
+  // grok-bootstrap-auth, /run/daimon-engine-broker, or the usage ledger —
+  // only the organization state directory (world-readable, 0755) was
+  // actually openable.
+  const planWithAgents = (agentIds: string[]) => ({
+    runtimeName: "daimon",
+    engineByNodeId: Object.fromEntries(agentIds.map((agentId) => [agentId, "grok"])),
+    instancePaths: { workspacePath: "/workspace" }
+  } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number]);
+
+  it("contains only the organization state directory, regardless of how many Grok agents are registered", () => {
+    for (const agentIds of [["agent:solo"], ["agent:cogsworth", "agent:foreman", "agent:graves"]]) {
+      const program = renderDaimonBrokerProvisioning([planWithAgents(agentIds)]).join("\n");
+      const deniedPathsLine = program.split("\n").find((line) => line.includes("const deniedPaths ="));
+      expect(deniedPathsLine).toBe(`const deniedPaths = ${JSON.stringify([DAIMON_ORGANIZATION_STATE_DIRECTORY])};`);
+    }
+  });
+
+  it("never lists a peer worker's home or workspace, the subscription realm, or the bootstrap credential", () => {
+    const program = renderDaimonBrokerProvisioning([
+      planWithAgents(["agent:cogsworth", "agent:foreman", "agent:graves"])
+    ]).join("\n");
+    const deniedPathsLine = program.split("\n").find((line) => line.includes("const deniedPaths ="));
+    expect(deniedPathsLine).toBeDefined();
+    for (const forbidden of [
+      "daimon-workers",
+      "/workspace/agents/cogsworth",
+      "/workspace/agents/foreman",
+      "/workspace/agents/graves",
+      DAIMON_BROKER_REALM,
+      "/var/lib/spawnfile/daimon/grok-bootstrap-auth",
+      "/run/daimon-engine-broker"
+    ]) {
+      expect(deniedPathsLine).not.toContain(forbidden);
+    }
+  });
+
+  it("keeps the exported deny-path constant in sync with what gets rendered", () => {
+    expect(GROK_SANDBOX_DENY_PATHS).toEqual([DAIMON_ORGANIZATION_STATE_DIRECTORY]);
+    expect(DAIMON_ORGANIZATION_STATE_DIRECTORY).toBe(
+      "/var/lib/spawnfile/instances/daimon/daimon-organization/state"
+    );
+  });
+});
+
+describe("Daimon root provisioning capability-safe ordering", () => {
+  const plan = {
+    runtimeName: "daimon",
+    engineByNodeId: { "agent:grok": "grok" },
+    instancePaths: { workspacePath: "/workspace" }
+  } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
+  const render = () => renderDaimonBrokerProvisioning([plan]).join("\n");
+
+  it("lets grok write hook state but never replace the sandbox profile", () => {
+    const program = render();
+
+    // Grok creates hook registries under .grok to enforce its deny list, so the worker
+    // needs write access there. The sticky bit means it still cannot unlink or rename the
+    // root-owned sandbox.toml, which is what the profile attestation depends on.
+    expect(program).toContain("ensureDirectory(configRoot, 0, entry.uid, 0o1771)");
+    expect(program).toContain("ensureExactFile(profilePath, profileFor(), 0, 0, 0o444)");
+  });
+
+  it("tightens the worker config directory after its last file write", () => {
+    const program = render();
+    const lastWrite = program.indexOf("ensureEventsFile(eventsPath, entry.uid)");
+    const tighten = program.indexOf("ensureDirectory(configRoot, 0, entry.uid, 0o1771)", lastWrite);
+
+    expect(lastWrite).toBeGreaterThanOrEqual(0);
+    expect(tighten).toBeGreaterThan(lastWrite);
+  });
+
+  it("hands the broker realm to its owner after the last atomic credential write", () => {
+    const program = render();
+    const credentialWrites = program.indexOf("try { const journalPath =");
+    const finalOwnership = program.indexOf(
+      "fs.chownSync('/var/lib/spawnfile/daimon/grok-subscription-realm', 2100, 2100)",
+      credentialWrites
+    );
+
+    expect(credentialWrites).toBeGreaterThanOrEqual(0);
+    expect(finalOwnership).toBeGreaterThan(credentialWrites);
+  });
+
+  it("reclaims, modes, and restores helper-managed inode ownership in that order", () => {
+    const program = render();
+
     expect(program).toContain(
-      `fs.mkdirSync('${directoryPath}', { recursive: true, mode: 0o750 }); fs.chownSync('${directoryPath}', 2100, 2100); fs.chmodSync('${directoryPath}', 0o750);`
+      "fs.chownSync(target, 0, 0); fs.chmodSync(target, mode); fs.chownSync(target, uid, gid)"
+    );
+    expect(program).toContain(
+      "fs.chownSync(target, 0, 0); fs.chmodSync(target, 0o640); fs.chownSync(target, uid, 2100)"
     );
   });
 
-  it("denies worker access to the usage ledger directory", () => {
-    const program = renderDaimonBrokerProvisioning([plan]).join("\n");
-    const deniedForLine = program.split("\n").find((line) => line.includes("const deniedFor ="));
-    expect(deniedForLine).toBeDefined();
-    expect(deniedForLine).toContain(
-      `'/var/lib/spawnfile/instances/daimon/daimon-organization/state', '${DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath}']);`
+  it("modes atomic files and workspace nodes before final ownership", () => {
+    const program = render();
+
+    expect(program).toContain(
+      "fs.fchmodSync(output, 0o600); fs.fchownSync(output, 2100, 2100)"
     );
+    expect(program).toContain(
+      "fs.chownSync(target, 0, 0); fs.chmodSync(target, 0o640); fs.chownSync(target, 2000, uid)"
+    );
+  });
+
+  it("restores the journal directory only after credential journal writes", () => {
+    const program = render();
+    const write = program.indexOf("atomicOwned(journalPath, recovered)");
+    const restore = program.indexOf(
+      "fs.chmodSync(journalRoot, 0o700); fs.chownSync(journalRoot, 2100, 2100)",
+      write
+    );
+
+    expect(write).toBeGreaterThanOrEqual(0);
+    expect(restore).toBeGreaterThan(write);
   });
 });
 

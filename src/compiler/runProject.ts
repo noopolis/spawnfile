@@ -174,6 +174,10 @@ export const createDockerRunInvocation = async (
         "--cap-add=SETUID",
         "--cap-add=SETGID",
         "--cap-add=DAC_READ_SEARCH",
+        // Lets the broker launcher drop its bounding set to 00000000000000c1; without SETPCAP, setpriv --bounding-set silently no-ops.
+        "--cap-add=SETPCAP",
+        // The entrypoint supervises children dropped to uid 2100/2200+; without CAP_KILL, root cannot even kill -0 them, so a live child reads as dead.
+        "--cap-add=KILL",
         "--security-opt=no-new-privileges:true"
       );
     }

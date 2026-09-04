@@ -9,6 +9,7 @@ import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import type { EntrypointOptions } from "./containerEntrypointRender.js";
 import { renderEntrypoint } from "./containerEntrypointRender.js";
 import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
+import { DAIMON_WAKE_FUSE_DIRECTORY } from "../runtime/daimon/config.js";
 import {
   DAIMON_AUTHORIZED_UID_ENV,
   DAIMON_BROKER_STARTUP_TIMEOUT_SECONDS,
@@ -177,8 +178,11 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).toContain("http://127.0.0.1:43124/mcp");
     expect(rendered).toContain("DAIMON_MCP_CAPABILITY");
     expect(rendered).toContain("/var/lib/daimon-workers/2200");
-    expect(rendered).toContain("/var/lib/daimon-worker-attestations/");
-    expect(rendered).toContain("ensureExactLink(`${configRoot}/sandbox.toml`, profilePath)");
+    expect(rendered).toContain("/var/lib/daimon-workers/");
+    // Grok refuses a profile that is a symlink or carries a hard-link alias, so it is an
+    // unaliased file in the worker's own read-only .grok directory.
+    expect(rendered).toContain("ensureExactFile(profilePath, profileFor(), 0, 0, 0o444)");
+    expect(rendered).not.toContain("ensureExactLink");
     expect(rendered).toContain("sandbox-events.jsonl");
     expect(rendered).toContain("restrict_network = true");
     expect(rendered).toContain("fs.chmodSync(target, 0o750)");
@@ -194,7 +198,7 @@ describe("renderDaimonUidEntrypoint", () => {
     const recovery=rendered.indexOf("if (hasMarker)");const durableSentinel=rendered.indexOf("fs.fsyncSync(sentinel)",recovery),durableParent=rendered.indexOf("fs.fsyncSync(parent)",durableSentinel),removeMarker=rendered.indexOf("fs.unlinkSync",durableParent),durableRemoval=rendered.indexOf("fs.fsyncSync(parent)",removeMarker);expect(recovery).toBeGreaterThan(-1);expect(durableSentinel).toBeGreaterThan(recovery);expect(durableParent).toBeGreaterThan(durableSentinel);expect(removeMarker).toBeGreaterThan(durableParent);expect(durableRemoval).toBeGreaterThan(removeMarker);
     expect(rendered).toContain("validateResourceLink(target, info); return;");
     expect(rendered).toContain("worker runtime file identity mismatch");
-    expect(rendered).toContain("worker runtime link identity mismatch");
+    expect(rendered).toContain("worker runtime file identity mismatch");
     expect(rendered).toContain("ensureEventsFile(eventsPath, entry.uid)");
     expect(rendered).toContain("noopolis.daimon.engine-broker-service.v1");
     expect(rendered).toContain("/etc/daimon-engine-broker/service.json");
@@ -205,7 +209,7 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).toContain("generation: journal.generation + 1");
     expect(rendered).toContain("state: 'promoted'");
     expect(rendered).toContain("bootstrapBytes.fill(0)");
-    expect(rendered).toContain("ensureExactFile(profilePath, profileFor(entry), 0, 0, 0o444)");
+    expect(rendered).toContain("ensureExactFile(profilePath, profileFor(), 0, 0, 0o444)");
     expect(rendered).toContain("--bounding-set=-all,+chown,+setuid,+setgid -- '/opt/daimon/bin/daimon-engine-broker' &");
     expect(rendered).toContain("--bounding-set=-all,+chown,+setuid,+setgid,+setpcap -- '/opt/daimon/bin/daimon-engine-broker' --relay &");
     expect(rendered).toContain('"$relay_pid:2100:0000000000000000"');
@@ -300,8 +304,12 @@ describe("renderDaimonUidEntrypoint", () => {
         { anchor: "/run", target: "/run/spawnfile/moltnet-readiness" }
       ],
       opaqueDescendantRoots: [codexEngineHome, grokEngineHome],
+      // "/var/lib/spawnfile/daimon" is deliberately absent: it hosts several
+      // independently-owned children (this AGY realm at the organization uid,
+      // the usage ledger at broker:organization) and must stay a shared,
+      // root-owned traversal ancestor (secureFixedTraversalAncestor), never
+      // chowned to the organization uid via this generic per-mount walk.
       privateDirectories: [
-        "/var/lib/spawnfile/daimon",
         agyRealm,
         "/var/lib/spawnfile/instances",
         "/var/lib/spawnfile/instances/daimon",
@@ -388,13 +396,64 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).not.toContain(`state_roots=('${usageDirectory}')`);
   });
 
-  it("provisions the usage ledger directory and probes it for write access on every boot", () => {
+  it("fixes the usage ledger directory group-writable and probes it for write access on every boot, even with no Grok agent", () => {
     const usageDirectory = DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath;
+    // AGY and Codex write their advisory per-turn usage from the organization-uid
+    // (2000) runtime process, not the (Grok-only) broker (2100), so this must be
+    // unconditional and the directory must be group-*writable* (0770). A mode
+    // that only grants the group read+execute lets the organization uid list the
+    // directory but not create `usage.jsonl` inside it — silently defeating every
+    // AGY/Codex advisory usage write, and with it the wake fuse's token ceiling,
+    // which now refuses to start at all if this ledger is missing or unreadable.
+    // chown-to-root, then chmod, then chown-to-final-owner last (never
+    // `install -d`'s create-then-chown-then-chmod order): the directory is a
+    // persistent volume mount Docker always materializes before the entrypoint
+    // runs, not something this line creates, and chmod-ing after handing
+    // ownership to the broker uid would need CAP_FOWNER, which is not granted
+    // (`runProject.ts`).
+    const codexOnlyPlan: RuntimeTargetPlan = { ...daimonPlan, engineByNodeId: { "agent:Codex One": "codex" } };
+    const rendered = renderDaimonUidEntrypoint([codexOnlyPlan]);
+
+    expect(rendered).toContain(`chown 0:0 ${usageDirectory} && chmod 0770 ${usageDirectory} && chown 2100:2000 ${usageDirectory}`);
+    expect(rendered).toContain(
+      `--reuid 2000 --regid 2000 --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${usageDirectory}/.daimon-usage-probe; umask 007; : > "$probe"; rm "$probe"'`
+    );
+  });
+
+  it("keeps /var/lib/spawnfile/daimon a shared root-owned traversal ancestor, never chowned to the organization uid", () => {
+    // Regression coverage for the real failure this shape reproduced: an
+    // organization with an AGY agent (whose realm mount lives under
+    // /var/lib/spawnfile/daimon) got that shared ancestor chowned to the
+    // organization uid as a side effect of securing the realm mount, which
+    // then made the unconditional usage-ledger fix-up above fail — root has
+    // no CAP_DAC_OVERRIDE (runProject.ts) and no longer owns the directory.
+    const agyPlan: RuntimeTargetPlan = { ...daimonPlan, engineByNodeId: { "agent:AGY": "agy" }, persistentMounts: [agyRealmMount] };
+    const rendered = renderDaimonUidEntrypoint([agyPlan]);
+
+    expect(rendered).toContain("secureFixedTraversalAncestor('/var/lib/spawnfile/daimon');");
+    const ownership = resolveDaimonUidEntrypointOwnershipPlan([agyPlan], [agyRealm]);
+    expect(ownership.privateDirectories).not.toContain("/var/lib/spawnfile/daimon");
+    expect(ownership.privateDirectories).toContain(agyRealm);
+  });
+
+  it("provisions the wake-fuse directory for the organization identity", () => {
+    const ownership = resolveDaimonUidEntrypointOwnershipPlan(
+      [{ ...daimonPlan, persistentMounts: [{
+        id: "daimon-wake-fuse",
+        mount_path: DAIMON_WAKE_FUSE_DIRECTORY,
+        reason: "Daimon durable wake-fuse admission ledger",
+        volume_name: "spawnfile-test-wake-fuse"
+      }] }],
+      [DAIMON_WAKE_FUSE_DIRECTORY]
+    );
+    expect(ownership.stateRoots).not.toContain(DAIMON_WAKE_FUSE_DIRECTORY);
+
     const rendered = renderDaimonUidEntrypoint([daimonPlan]);
 
-    expect(rendered).toContain(`install -d -o 2100 -g 2100 -m 0750 '${usageDirectory}'`);
+    // Mutation-critical: changing either owner identity or the private mode
+    // must turn this assertion red.
     expect(rendered).toContain(
-      `--reuid 2100 --regid 2100 --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${usageDirectory}/.daimon-usage-probe; umask 027; : > "$probe"; rm "$probe"'`
+      `chown 0:0 '${DAIMON_WAKE_FUSE_DIRECTORY}' && chmod 0700 '${DAIMON_WAKE_FUSE_DIRECTORY}' && chown 2000:2000 '${DAIMON_WAKE_FUSE_DIRECTORY}'`
     );
   });
 

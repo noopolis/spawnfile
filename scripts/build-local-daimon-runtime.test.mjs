@@ -82,10 +82,23 @@ test("local image authority accepts an ephemeral loopback registry and immutable
   assert.throws(() => resolvePushedImageReference(tag, []), /manifest digest/u);
 });
 
-test("local build architecture fails closed outside the official AGY linux_amd64 target", () => {
+test("local build architecture defaults to the host and fails closed on anything unbuildable", () => {
+  // Native by default: emulating amd64 on an arm64 host cannot create the user
+  // namespaces the Grok sandbox requires, so the host architecture wins unless
+  // SPAWNFILE_DAIMON_TARGET_ARCH explicitly asks for the other one.
   assert.equal(resolveLocalBuildArchitecture("x64"), "amd64");
-  assert.equal(resolveLocalBuildArchitecture("arm64"), "amd64");
-  assert.throws(() => resolveLocalBuildArchitecture("riscv64"), /linux\/amd64/u);
+  assert.equal(resolveLocalBuildArchitecture("arm64"), "arm64");
+
+  // The explicit override is honoured in both directions.
+  assert.equal(resolveLocalBuildArchitecture("arm64", "amd64"), "amd64");
+  assert.equal(resolveLocalBuildArchitecture("x64", "arm64"), "arm64");
+
+  // Both fail-closed edges: an unbuildable host, and an unsupported request.
+  assert.throws(() => resolveLocalBuildArchitecture("riscv64"), /x64 or arm64/u);
+  assert.throws(
+    () => resolveLocalBuildArchitecture("x64", "riscv64"),
+    /Unsupported SPAWNFILE_DAIMON_TARGET_ARCH/u
+  );
 });
 
 test("archive provenance is explicit and cannot silently fall back to Git", () => {
@@ -207,18 +220,30 @@ test("dependency lock truth rejects near-empty graphs and a fake Codex version",
 test("Daimon Dockerfile verifies the AGY archive before extracting antigravity and verifies every installed executable", () => {
   const dockerfile = readFileSync(new URL("../runtime-images/daimon/Dockerfile", import.meta.url), "utf8");
   assert.match(dockerfile, /^ARG NODE_BASE_IMAGE=node:24-bookworm-slim@sha256:[a-f0-9]{64}\nFROM daimon_package AS daimon_package/mu);
-  assert.match(dockerfile, /FROM \$\{NODE_BASE_IMAGE\} AS build/u);
+  assert.match(dockerfile, /FROM base_\$\{DAIMON_DEPENDENCY_MODE\} AS base/u);
+  assert.match(dockerfile, /FROM grok_source_\$\{DAIMON_DEPENDENCY_MODE\} AS grok_cli/u);
+  assert.match(dockerfile, /FROM agy_source_\$\{DAIMON_DEPENDENCY_MODE\} AS agy_cli/u);
+  assert.match(dockerfile, /FROM daimon_\$\{DAIMON_DEPENDENCY_MODE\} AS build/u);
   const archiveDownload = dockerfile.indexOf('curl -fsSL "${AGY_CLI_URL}" -o /tmp/agy.tar.gz');
   const archiveVerification = dockerfile.indexOf("sha512sum -c -");
   const archiveExtraction = dockerfile.indexOf("tar -xzf /tmp/agy.tar.gz");
   const executableLookup = dockerfile.indexOf("-name antigravity");
   const executableInstall = dockerfile.indexOf('install -m 0755 "${agy_path}"');
+  const grokInstall = dockerfile.indexOf("install -m 0755 /tmp/grok");
+  const codexInstall = dockerfile.indexOf("npm install --omit=dev --no-fund --no-audit @openai/codex@");
+  const daimonCopy = dockerfile.indexOf("COPY --from=daimon_package /daimon.tgz /tmp/daimon.tgz", dockerfile.indexOf("FROM codex_registry AS daimon_registry"));
+  const offlineDaimonCopy = dockerfile.indexOf("COPY --from=daimon_package /daimon.tgz /tmp/daimon.tgz", dockerfile.indexOf("FROM codex_offline-bundle AS daimon_offline-bundle"));
 
   assert.ok(archiveDownload >= 0);
   assert.ok(archiveDownload < archiveVerification);
   assert.ok(archiveVerification < archiveExtraction);
   assert.ok(archiveExtraction < executableLookup);
   assert.ok(executableLookup < executableInstall);
+  assert.ok(grokInstall < daimonCopy);
+  assert.ok(executableInstall < daimonCopy);
+  assert.ok(codexInstall < daimonCopy);
+  assert.ok(grokInstall < offlineDaimonCopy);
+  assert.ok(executableInstall < offlineDaimonCopy);
   assert.match(dockerfile, /sha256sum \$\{RUNTIME_ROOT\}\/bin\/agy/u);
   assert.match(dockerfile, /sha256sum \$\{RUNTIME_ROOT\}\/bin\/grok/u);
   assert.match(dockerfile, /sha256sum \$\{RUNTIME_ROOT\}\/node_modules\/@openai\/codex\/bin\/codex\.js/u);
@@ -235,5 +260,69 @@ test("Daimon Dockerfile verifies the AGY archive before extracting antigravity a
   assert.match(dockerfile, /DAIMON_DEPENDENCY_MODE.*offline-bundle/su);
   assert.match(dockerfile, /sha256sum \/tmp\/dependencies\.tar/u);
   assert.match(dockerfile, /source_inputs\?\.dependencies\?\.runtime_archive_sha256/u);
-  assert.match(dockerfile, /tar -xf \/tmp\/dependencies\.tar -C node_modules/u);
+  assert.match(dockerfile, /tar -xf \/tmp\/dependencies\.tar -C \$\{RUNTIME_ROOT\}\/node_modules/u);
+  assert.match(dockerfile, /FROM \$\{NODE_BASE_IMAGE\} AS base_offline-bundle/u);
+  assert.match(dockerfile, /FROM \$\{NODE_BASE_IMAGE\} AS base_registry/u);
+  assert.match(dockerfile, /FROM codex_registry AS daimon_registry/u);
+  assert.match(dockerfile, /FROM codex_offline-bundle AS daimon_offline-bundle/u);
+  assert.match(dockerfile, /--mount=type=cache,target=\/root\/\.npm,sharing=locked/u);
+  assert.doesNotMatch(dockerfile, /npm cache clean/u);
+});
+
+test("Daimon Dockerfile stage graph preserves cache and offline-network boundaries", () => {
+  const dockerfile = readFileSync(new URL("../runtime-images/daimon/Dockerfile", import.meta.url), "utf8");
+  const stages = new Map();
+  const fromPattern = /^FROM\s+(\S+)\s+AS\s+(\S+)\s*$/gimu;
+  const declarations = [...dockerfile.matchAll(fromPattern)];
+
+  for (const [index, declaration] of declarations.entries()) {
+    const [, rawParent, name] = declaration;
+    const parent = rawParent.replaceAll("${DAIMON_DEPENDENCY_MODE}", "registry");
+    const bodyStart = declaration.index + declaration[0].length;
+    const bodyEnd = declarations[index + 1]?.index ?? dockerfile.length;
+    stages.set(name, { body: dockerfile.slice(bodyStart, bodyEnd), parent });
+  }
+
+  const ancestry = (graph, target) => {
+    const chain = [];
+    const visited = new Set();
+    let current = target;
+    while (graph.has(current)) {
+      assert.ok(!visited.has(current), `stage ancestry must not contain a cycle at ${current}`);
+      visited.add(current);
+      chain.push(current);
+      current = graph.get(current).parent;
+    }
+    chain.push(current);
+    return chain;
+  };
+
+  assert.deepEqual(ancestry(stages, "build"), [
+    "build", "daimon_registry", "codex_registry", "agy_cli", "agy_source_registry",
+    "grok_cli", "grok_source_registry", "base", "base_registry", "${NODE_BASE_IMAGE}"
+  ]);
+
+  const offlineStages = new Map([...stages].map(([name, stage]) => [
+    name,
+    { ...stage, parent: stage.parent.replaceAll("registry", "offline-bundle") }
+  ]));
+  assert.deepEqual(ancestry(offlineStages, "build"), [
+    "build", "daimon_offline-bundle", "codex_offline-bundle", "agy_cli", "agy_source_offline-bundle",
+    "grok_cli", "grok_source_offline-bundle", "base", "base_offline-bundle", "${NODE_BASE_IMAGE}"
+  ]);
+
+  const assertAncestorsExcludeDaimonInputs = (graph, target) => {
+    for (const ancestor of ancestry(graph, target).slice(1, -1)) {
+      assert.doesNotMatch(graph.get(ancestor).body, /daimon\.tgz|source-inputs\.json/u, `${ancestor} must not depend on Daimon package inputs`);
+    }
+  };
+  assertAncestorsExcludeDaimonInputs(stages, "daimon_registry");
+  assertAncestorsExcludeDaimonInputs(offlineStages, "daimon_offline-bundle");
+
+  const stagesContaining = (pattern) => [...stages]
+    .filter(([, stage]) => pattern.test(stage.body))
+    .map(([name]) => name)
+    .sort();
+  assert.deepEqual(stagesContaining(/\bapt-get\b/u), ["base_registry"]);
+  assert.deepEqual(stagesContaining(/\bcurl\s+-/u), ["agy_source_registry", "grok_source_registry"]);
 });

@@ -38,10 +38,13 @@ export const DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY = "state/wake-acceptance"
 export const DAIMON_RUNTIME_ACCEPTANCE_STORE_ENV = "DAIMON_RUNTIME_ACCEPTANCE_STORE";
 export const DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID = "daimon-organization-acceptance-store";
 export const DAIMON_RUNTIME_READINESS_RECEIPT_ENV = "DAIMON_RUNTIME_READINESS_RECEIPT";
+export const DAIMON_WAKE_FUSE_DIRECTORY = "/var/lib/spawnfile/daimon/wake-fuse";
+export const DAIMON_WAKE_FUSE_DIRECTORY_ENV = "DAIMON_WAKE_FUSE_DIRECTORY";
+export const DAIMON_WAKE_FUSE_MOUNT_ID = "daimon-wake-fuse";
 export const DAIMON_RUNTIME_HOMES_DIRECTORY = "runtime-homes";
 const DAIMON_MAX_CONFIG_BYTES = 1_048_576;
 const DAIMON_MAX_INSTRUCTION_BYTES = 16_384;
-const DAIMON_MAX_INSTRUCTION_CODEPOINTS = 4_096;
+const DAIMON_MAX_INSTRUCTION_CODEPOINTS = 16_384;
 export const DAIMON_ENGINES = ["agy", "codex", "grok"] as const;
 type DaimonEngine = typeof DAIMON_ENGINES[number];
 
@@ -51,13 +54,17 @@ const normalizeSchedule = (node: ResolvedAgentNode): Record<string, unknown> | u
   if (schedule.kind === "every") {
     const interval_ms = parseEveryScheduleMs(schedule.every);
     if (interval_ms === null) throw new SpawnfileError("validation_error", `invalid every schedule for ${node.name}`);
-    return { kind: "every", interval_ms, prompt: schedule.prompt ?? "Scheduled work" };
+    return {
+      kind: "every", interval_ms, prompt: schedule.prompt ?? "Scheduled work",
+      ...(schedule.jitter_seconds === undefined ? {} : { jitter_seconds: schedule.jitter_seconds })
+    };
   }
   return {
     cron: schedule.cron.trim().replace(/\s+/gu, " "),
     kind: "cron",
     prompt: schedule.prompt ?? "Scheduled work",
-    timezone: schedule.timezone ?? "UTC"
+    timezone: schedule.timezone ?? "UTC",
+    ...(schedule.jitter_seconds === undefined ? {} : { jitter_seconds: schedule.jitter_seconds })
   };
 };
 
@@ -106,8 +113,11 @@ const renderStartScript = (agents: Array<{
       : undefined;
     const inbound = path.posix.join(agent.runtimeHomePath, ".daimon-inbound");
     return [
+      // The workspace mode is owned by the uid entrypoint, which grants a grok worker
+      // group access. Forcing 0700 here would lock that worker out of its own workspace,
+      // so create it only when absent and never restate the mode of an existing directory.
+      `[ -d ${JSON.stringify(agent.workspacePath)} ] || install -d -m 700 ${JSON.stringify(agent.workspacePath)}`,
       `install -d -m 700 ${[
-        agent.workspacePath,
         agent.runtimeHomePath,
         ...(credential === undefined ? [] : [inbound])
       ].map((entry) => JSON.stringify(entry)).join(" ")}`,
@@ -236,27 +246,37 @@ export const createDaimonContainerTargets = async (
       id: DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID,
       mountPath: `<instance-root>/${DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY}`,
       reason: "Daimon organization durable wake acceptance store"
+    }, {
+      id: DAIMON_WAKE_FUSE_MOUNT_ID,
+      lifecycle: "exclusive-reattach" as const,
+      mountPath: DAIMON_WAKE_FUSE_DIRECTORY,
+      reason: "Daimon durable wake-fuse admission ledger"
     }, ...(hasGrok ? [{
         id: "daimon-grok-subscription-realm",
         lifecycle: "exclusive-reattach" as const,
         mountPath: DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath,
         reason: "Daimon host Grok subscription credential realm"
-      }] : []), ...(hasGrok || hasAgy ? [{
+      }] : []), {
         // Non-run-scoped for the same reason as the durable memory mounts (see
         // durableMemoryVolumeName in src/compiler/memoryArtifacts.ts): a
         // run-scoped volume means every `spawnfile up` starts a new empty
         // ledger and cross-deployment usage accounting is impossible. The
-        // broker is the single writer and rotates this log by size, so the
         // exclusive reservation this lifecycle carries is a requirement, not a
         // cost.
-        // The mount id is deliberately unchanged now that AGY writes here too:
-        // it is the volume's identity, and renaming it would orphan every
-        // existing deployment's accumulated ledger.
+        // The mount id is deliberately unchanged now that AGY and Codex write
+        // here too, not just the broker: it is the volume's identity, and
+        // renaming it would orphan every existing deployment's accumulated
+        // ledger. Unconditional (not gated on hasGrok/hasAgy) because Daimon's
+        // wake fuse now refuses to arm at all if this directory or the ledger
+        // file inside it is missing or unreadable (`wakeFuse.ts`,
+        // `ensureUsageLedgerReadable`), and Codex also writes here
+        // (`engineDispatcher.ts`'s `onTurnUsage`) even in a codex-only
+        // organization with no Grok or AGY agent at all.
         id: "daimon-grok-usage-ledger",
         lifecycle: "exclusive-reattach" as const,
         mountPath: DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
         reason: "Daimon per-turn engine usage ledger"
-      }] : []), ...(hasAgy ? [{
+      }, ...(hasAgy ? [{
         id: "daimon-agy-subscription-realm",
         // The AGY subscription credential is an OS-keyring entry created by an
         // interactive browser OAuth that has no headless equivalent; it lives
