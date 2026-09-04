@@ -86,3 +86,41 @@ it("converges full-size concurrent publishers without leaving staging sidecars",
     await Promise.all(clients.map(async (client) => client.dispose()));
   }
 });
+
+it("reports which request the worker rejected and why", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-handoff-fs-client-")); directories.push(directory);
+  const stat = await lstat(directory);
+  const client = await initializeOrganizationHandoffAuthorityFsClient({
+    cwd: directory, dev: stat.dev, ino: stat.ino,
+    ...(typeof process.getuid === "function" ? { uid: process.getuid() } : {})
+  });
+  const name = `${"a".repeat(128)}.json`;
+  try {
+    expect(await client.read(name)).toBeNull();
+    expect(await client.create(name, "first")).toBe(true);
+    expect(await client.create(name, "first")).toBe(false);
+    // The record is immutable, so a conflicting publication must fail — and
+    // must say which invariant refused it rather than reporting a bare failure.
+    await expect(client.create(name, "second")).rejects.toThrow(/existing_content_mismatch.*op=create/u);
+  } finally {
+    await client.dispose();
+  }
+});
+
+it("names the client-side limit it refused a request against", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-handoff-fs-client-")); directories.push(directory);
+  const stat = await lstat(directory);
+  const client = await initializeOrganizationHandoffAuthorityFsClient({
+    cwd: directory, dev: stat.dev, ino: stat.ino,
+    ...(typeof process.getuid === "function" ? { uid: process.getuid() } : {})
+  });
+  const name = `${"b".repeat(128)}.json`;
+  try {
+    await expect(client.create("not-a-record-name", "x")).rejects.toThrow("invalid_name");
+    await expect(client.create(name, "x".repeat(32_769))).rejects.toThrow(/content_too_large.*limit=32768/u);
+    await expect(client.create(name, "x".repeat(32_700))).rejects.toThrow(/packet_too_large/u);
+  } finally {
+    await client.dispose();
+  }
+  await expect(client.read(name)).rejects.toThrow("client_closed");
+});
