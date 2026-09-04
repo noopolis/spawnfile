@@ -157,6 +157,43 @@ const createFakeExecFile = (options: {
   throw new Error(`unexpected docker args: ${JSON.stringify(args)}`);
 };
 
+/**
+ * A project that declares a volume name. `clank-newsroom-store` is verbatim in
+ * every deployment and every mode, so it is NOT this deployment's volume.
+ */
+const createReportWithDeclaredVolume = (): CompileReport => {
+  const report = createReportWithVolumes();
+  return {
+    ...report,
+    container: {
+      ...report.container!,
+      persistent_mounts: [
+        ...report.container!.persistent_mounts!,
+        {
+          declared_volume_name: "clank-newsroom-store",
+          id: "moltnet-newsroom-store",
+          lifecycle: "exclusive-reattach",
+          mount_path: "/var/lib/spawnfile/moltnet/networks/newsroom",
+          reason: "managed Moltnet sqlite store for newsroom",
+          volume_name: "clank-newsroom-store"
+        }
+      ]
+    }
+  } as CompileReport;
+};
+
+const setupDeclaredVolumeOutput = async (): Promise<string> => {
+  const compiledOutputDirectory = await createTempDirectory("spawnfile-down-declared-");
+  await writeDeploymentRecord(compiledOutputDirectory, createRecord({
+    export_index: { exported_at: "2026-07-11T00:00:00.000Z", path: "/somewhere/export-index.json", run_id: "run-abc123" }
+  }));
+  await writeUtf8File(
+    path.join(compiledOutputDirectory, REPORT_FILENAME),
+    JSON.stringify(createReportWithDeclaredVolume())
+  );
+  return compiledOutputDirectory;
+};
+
 const setupCompiledOutput = async (
   recordOverrides: Partial<DeploymentRecord> = {}
 ): Promise<string> => {
@@ -185,6 +222,40 @@ describe("downDeployment", () => {
     const removed = await downDeployment({ compiledOutputDirectory, deploymentName: "image", execFile, force: true, removeVolumes: true });
     expect(removed.retained_volumes).toEqual([]);
     expect(volumeCalls.some((args) => args.includes("volume") && args.includes("rm"))).toBe(true);
+  });
+
+  it("--volumes never removes a declared volume in image mode either", async () => {
+    // Image mode honours a declared name verbatim (consumeImageSupport.ts), so
+    // a published image deployed anywhere resolves to the SAME host volume.
+    process.env.SPAWNFILE_HOME = await createTempDirectory("spawnfile-image-declared-home-");
+    const compiledOutputDirectory = await createTempDirectory("spawnfile-image-declared-project-");
+    const containerId = "d".repeat(64);
+    const removed: string[] = [];
+    const distribution = buildDistributionReport({
+      envVariables: [], generatedAt: "2026-08-26T00:00:00.000Z", internalPorts: [],
+      modelAuthMethods: {}, moltnetNetworks: [],
+      organization: { agents: [], project: "image", teams: [] },
+      persistentMounts: [
+        { declared_volume_name: "clank-newsroom-store", durability: "persistent", id: "moltnet-newsroom-store", kind: "volume", lifecycle: "exclusive-reattach", target: "/store" },
+        { durability: "persistent", id: "realm", kind: "volume", lifecycle: "exclusive-reattach", target: "/realm" }
+      ],
+      portMappings: [], publishedPorts: [], resources: [], runtimeInstances: []
+    });
+    const imageRecord = createRecord({ compile_fingerprint: distribution.compile_fingerprint, name: "image", output_directory: null, source: { digest: null, kind: "image", ref: "org/image:v1" }, units: [{ ...createRecord().units[0]!, container_id: containerId, container_name: "spawnfile-image", id: "image-container" }] });
+    await writeHomeDeployment(imageRecord, distribution);
+    const execFile = async (_file: string, args: string[]) => {
+      if (args.includes("volume") && args.includes("rm")) removed.push(args[args.length - 1]!);
+      if (args.includes("inspect")) return { stderr: "", stdout: `${JSON.stringify(containerId)}\n${JSON.stringify("/spawnfile-image")}\n${JSON.stringify("image-123")}\n${JSON.stringify({ "com.spawnfile.deployment": "image", "com.spawnfile.compile_fingerprint": distribution.compile_fingerprint, "com.spawnfile.unit": "image-container" })}\n` };
+      return { stderr: "", stdout: "" };
+    };
+
+    const receipt = await downDeployment({ compiledOutputDirectory, deploymentName: "image", execFile, force: true, removeVolumes: true });
+
+    expect(removed).not.toContain("clank-newsroom-store");
+    expect(removed.some((volume) => volume.startsWith("spawnfile-exclusive-realm-"))).toBe(true);
+    expect(receipt.skipped_volumes).toEqual(["clank-newsroom-store"]);
+    expect(receipt.retained_volumes).toEqual(["clank-newsroom-store"]);
+    expect(receipt.errors).toEqual([]);
   });
 
   it("removes image volumes only explicitly and rejects foreign identity", async () => {
@@ -518,6 +589,54 @@ describe("downDeployment", () => {
     expect(receipt.errors).toEqual([
       "unable to remove volume spawnfile-project-memory-office-recall-abc123: unable to remove volume spawnfile-project-memory-office-recall-abc123: in use"
     ]);
+  });
+
+  // `down --volumes --deployment <dev-or-scratch>` used to remove a shared
+  // declared volume outright. Docker refuses a volume that is in use, so it
+  // only fired when production happened to be STOPPED — which is exactly when
+  // an operator runs a teardown. "Destroys production state only while
+  // production is stopped" is a data-loss path, not an inconvenience.
+  it("--volumes never removes an author-declared volume, and says so", async () => {
+    const compiledOutputDirectory = await setupDeclaredVolumeOutput();
+    const removed: string[] = [];
+    const execFile = async (file: string, args: string[]) => {
+      if (args.includes("volume") && args.includes("rm")) removed.push(args[args.length - 1]!);
+      return createFakeExecFile()(file, args);
+    };
+
+    const receipt = await downDeployment({
+      compiledOutputDirectory,
+      deploymentName: "default",
+      execFile,
+      removeVolumes: true
+    });
+
+    expect(removed).not.toContain("clank-newsroom-store");
+    expect(removed).toContain("spawnfile-project-memory-office-recall-abc123");
+    expect(receipt.skipped_volumes).toEqual(["clank-newsroom-store"]);
+    // Still present on disk, so it is retained by the receipt's own definition.
+    expect(receipt.retained_volumes).toEqual(["clank-newsroom-store"]);
+    // Skipping is deliberate, not a failure.
+    expect(receipt.errors).toEqual([]);
+    expect(receipt.units_stopped).toEqual(["default-container"]);
+  });
+
+  it("omits skipped_volumes entirely when a project declares no volume names", async () => {
+    // Every receipt producible before skipped_volumes existed stays byte-identical.
+    const compiledOutputDirectory = await setupCompiledOutput({
+      export_index: { exported_at: "2026-07-11T00:00:00.000Z", path: "/somewhere/export-index.json", run_id: "run-abc123" }
+    });
+
+    const receipt = await downDeployment({
+      compiledOutputDirectory,
+      deploymentName: "default",
+      execFile: createFakeExecFile(),
+      removeVolumes: true
+    });
+
+    expect(receipt.skipped_volumes).toBeUndefined();
+    expect(Object.keys(receipt)).not.toContain("skipped_volumes");
+    expect(receipt.retained_volumes).toEqual([]);
   });
 
   it("is idempotent: a second down call on an already-torn-down container still succeeds", async () => {

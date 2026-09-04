@@ -1,6 +1,6 @@
 import type { EmittedFile } from "../runtime/index.js";
 import { resolveNoopolisRunId } from "../runtime/index.js";
-import { SpawnfileError } from "../shared/index.js";
+import { createExclusiveReattachVolumeName, SpawnfileError } from "../shared/index.js";
 
 import {
   createMoltnetCausalDirectory,
@@ -35,7 +35,8 @@ export type {
 const createServerKey = (networkId: string): string => networkId;
 
 export const generateMoltnetArtifacts = async (
-  plan: CompilePlan
+  plan: CompilePlan,
+  deploymentLineage = "compile"
 ): Promise<MoltnetArtifacts | null> => {
   const teamNodes = plan.nodes
     .filter((node): node is typeof node & { value: ResolvedTeamNode } => node.kind === "team")
@@ -45,10 +46,25 @@ export const generateMoltnetArtifacts = async (
     return null;
   }
 
-  // Run-scoping key for every persistent volume name derived below (see
-  // createPersistentVolumeName's doc comment). Read once per compile so
-  // every mount in this compile agrees on the same value.
+  // Run-scoping key for the RUN-SCOPED mounts derived below — the causal
+  // event log and per-network Moltnet runtime state (see
+  // createPersistentVolumeName's doc comment). Read once per compile so every
+  // such mount in this compile agrees on the same value. Durable stores and
+  // token directories deliberately do NOT use it; see durableVolumeName.
   const runId = resolveNoopolisRunId(process.env);
+  /**
+   * Deployment-stable name for state that must be REATTACHED across a
+   * redeploy, never recreated empty: durable Moltnet `sqlite`/`json` stores
+   * and the open-mode agent token directories. An author-declared name
+   * (`server.store.persistence.name`) is honoured verbatim so an operator can
+   * pre-create or migrate the volume under that exact name; otherwise the
+   * name comes from the plan root plus the deployment lineage, exactly as
+   * durable memory banks are named (`memoryArtifacts.ts`'s
+   * `durableMemoryVolumeName`).
+   */
+  const durableVolumeName = (mountId: string, declaredName?: string): string =>
+    declaredName?.trim()
+    || createExclusiveReattachVolumeName(`${plan.root}\0${deploymentLineage}`, mountId);
 
   const serverPlans = resolveMoltnetServerPlans(plan, teamNodes);
 
@@ -67,7 +83,12 @@ export const generateMoltnetArtifacts = async (
       return;
     }
 
-    if (existing.mountPath !== mount.mountPath || existing.volumeName !== mount.volumeName) {
+    if (
+      existing.mountPath !== mount.mountPath ||
+      existing.volumeName !== mount.volumeName ||
+      existing.lifecycle !== mount.lifecycle ||
+      existing.declaredVolumeName !== mount.declaredVolumeName
+    ) {
       throw new SpawnfileError(
         "validation_error",
         `Moltnet persistent mount ${mount.id} resolves to conflicting targets`
@@ -105,7 +126,7 @@ export const generateMoltnetArtifacts = async (
       id: causalMountId,
       mountPath: createMoltnetCausalDirectory(serverPlan.configPath),
       reason: `managed Moltnet causal event log for ${serverPlan.networkId}`,
-      volumeName: createPersistentVolumeName(plan.root, causalMountId, undefined, runId)
+      volumeName: createPersistentVolumeName(plan.root, causalMountId, runId)
     });
 
     const storeMountPath = resolveMoltnetStorePersistenceMountPath(
@@ -119,15 +140,12 @@ export const generateMoltnetArtifacts = async (
         ? store.persistence?.name
         : undefined;
       addPersistentMount({
+        ...(explicitVolumeName?.trim() ? { declaredVolumeName: explicitVolumeName.trim() } : {}),
         id: mountId,
+        lifecycle: "exclusive-reattach",
         mountPath: storeMountPath,
         reason: `managed Moltnet ${serverPlan.server.store.kind} store for ${serverPlan.networkId}`,
-        volumeName: createPersistentVolumeName(
-          plan.root,
-          mountId,
-          explicitVolumeName,
-          runId
-        )
+        volumeName: durableVolumeName(mountId, explicitVolumeName)
       });
     }
   }
@@ -206,7 +224,7 @@ export const generateMoltnetArtifacts = async (
         );
         if (!covered) {
           const mountId = `moltnet-${attachment.network}-runtime-state`;
-          addPersistentMount({ id: mountId, mountPath: networkRoot, reason: `Moltnet runtime state for ${attachment.network}`, volumeName: createPersistentVolumeName(plan.root, mountId, undefined, runId) });
+          addPersistentMount({ id: mountId, mountPath: networkRoot, reason: `Moltnet runtime state for ${attachment.network}`, volumeName: createPersistentVolumeName(plan.root, mountId, runId) });
         }
       }
       const nodePlanKey = `${attachment.network}::${attachment.memberId}`;
@@ -235,9 +253,10 @@ export const generateMoltnetArtifacts = async (
           const mountId = `agent-${node.slug}-moltnet-tokens`;
           addPersistentMount({
             id: mountId,
+            lifecycle: "exclusive-reattach",
             mountPath: createMoltnetOpenTokenDirectory(node.slug),
             reason: `Moltnet open-mode generated agent tokens for ${agentNode.name}`,
-            volumeName: createPersistentVolumeName(plan.root, mountId, undefined, runId)
+            volumeName: durableVolumeName(mountId)
           });
         }
       }
@@ -256,9 +275,10 @@ export const generateMoltnetArtifacts = async (
         const mountId = `agent-${node.slug}-moltnet-tokens`;
         addPersistentMount({
           id: mountId,
+          lifecycle: "exclusive-reattach",
           mountPath: createMoltnetOpenTokenDirectory(node.slug),
           reason: `Moltnet open-mode generated agent tokens for ${agentNode.name}`,
-          volumeName: createPersistentVolumeName(plan.root, mountId, undefined, runId)
+          volumeName: durableVolumeName(mountId)
         });
       }
 

@@ -84,6 +84,23 @@ describe("parseDistributionReport", () => {
     expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/u);
   });
 
+  it("accepts a declared volume name and rejects one that is not a docker volume name", () => {
+    // It is used verbatim as a `docker run --mount source=`, so a value with
+    // ':' or '..' would inject mount fields or traverse.
+    const report = validReport();
+    report.persistent_mounts = [{
+      declared_volume_name: "clank-newsroom-store", durability: "persistent",
+      id: "moltnet-newsroom-store", kind: "volume",
+      lifecycle: "exclusive-reattach", target: "/var/lib/example/store"
+    }];
+    expect(parseDistributionReport(report).persistent_mounts[0]?.declared_volume_name)
+      .toBe("clank-newsroom-store");
+    for (const hostile of ["../escape", "vol:ro,z", "/absolute", "with space", ""]) {
+      (report.persistent_mounts[0] as { declared_volume_name?: string }).declared_volume_name = hostile;
+      expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/u);
+    }
+  });
+
   it("rejects a runtime home_path containing '..'", () => {
     const report = validReport();
     report.runtime_instances = [

@@ -23,6 +23,11 @@ import {
   shellQuote
 } from "./containerEntrypointShell.js";
 import { MOLTNET_READINESS_DIRECTORY } from "./containerReadinessPaths.js";
+import { createRuntimeReadinessWait } from "./containerRuntimeReadinessRender.js";
+import {
+  createBackedMountGuard,
+  type BackedMountRequirement
+} from "./containerBackedMountRender.js";
 
 const MOLTNET_SERVER_DATA_DIRECTORY = "/var/lib/spawnfile/moltnet/servers";
 
@@ -111,42 +116,6 @@ const resolveStartCommand = (plan: RuntimeTargetPlan): string[] =>
     )
     .filter((token) => token.length > 0);
 
-const createRuntimeReadinessWait = (plan: RuntimeTargetPlan, pidVariable: string): string[] => {
-  if (!plan.port) return [];
-
-  if (plan.runtimeName === "daimon") {
-    return [
-      "attempts=0",
-      `until curl -sf ${shellQuote(`http://127.0.0.1:${plan.port}/healthz`)} >/dev/null; do`,
-      `  if ! kill -0 "$${pidVariable}" 2>/dev/null; then wait "$${pidVariable}" || true; echo ${shellQuote(`Daimon exited before readiness on port ${plan.port}`)} >&2; exit 1; fi`,
-      "  attempts=$((attempts + 1))",
-      '  if [ "$attempts" -ge 180 ]; then',
-      `    echo ${shellQuote(`Timed out waiting for daimon on port ${plan.port}`)} >&2`,
-      "    exit 1",
-      "  fi",
-      "  sleep 1",
-      "done",
-      ""
-    ];
-  }
-
-  if (!["openclaw", "pi"].includes(plan.runtimeName)) return [];
-
-  return [
-    "attempts=0",
-    `until curl -sf ${shellQuote(`http://127.0.0.1:${plan.port}/healthz`)} >/dev/null; do`,
-    `  if ! kill -0 "$${pidVariable}" 2>/dev/null; then wait "$${pidVariable}" || true; echo ${shellQuote(`${plan.runtimeName} exited before readiness on port ${plan.port}`)} >&2; exit 1; fi`,
-    "  attempts=$((attempts + 1))",
-    '  if [ "$attempts" -ge 180 ]; then',
-    `    echo ${shellQuote(`Timed out waiting for ${plan.runtimeName} on port ${plan.port}`)} >&2`,
-    "    exit 1",
-    "  fi",
-    "  sleep 1",
-    "done",
-    ""
-  ];
-};
-
 export interface EntrypointOptions {
   hasMoltnet?: boolean;
   hasStagedMoltnetBinaries?: boolean;
@@ -157,6 +126,11 @@ export interface EntrypointOptions {
     serverPlans: MoltnetArtifacts["serverPlans"];
   };
   moltnetPublishedPorts?: number[];
+  /**
+   * Durable mounts this image requires a launcher to attach. Drives the
+   * fail-closed `require_backed_mount` guard; see containerBackedMountRender.ts.
+   */
+  persistentMounts?: readonly BackedMountRequirement[];
   persistentMountPaths?: string[];
 }
 
@@ -188,6 +162,7 @@ export const renderEntrypoint = (
       "volume_bootstrap_gid=1001"
     ]),
     "",
+    ...createBackedMountGuard(options.persistentMounts ?? []),
     "require_env() {",
     '  local name=\"$1\"',
     '  if [ -z \"${!name:-}\" ]; then',
