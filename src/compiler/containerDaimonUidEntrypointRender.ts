@@ -163,7 +163,20 @@ const privateModeDirectories = (runtimePlans: RuntimeTargetPlan[], moltnet?: Ent
       || mount.id === DAIMON_AGY_SUBSCRIPTION_REALM_MOUNT_ID
       || mount.id.startsWith(DAIMON_AGY_RUNTIME_HOME_MOUNT_ID_PREFIX)
       || mount.id.startsWith(DAIMON_PORTABLE_ENGINE_HOME_MOUNT_ID_PREFIX))
-    .map((mount) => mount.mount_path)
+    // The acceptance store's own parent — `<instance-root>/state`, i.e.
+    // `DAIMON_ORGANIZATION_STATE_DIRECTORY` — is secured with it. Docker
+    // creates that parent root-owned and world-readable when it materializes
+    // this mount, and the ancestor pass below only *chowns* it, so it stayed
+    // 0755 and was the one path under `/var/lib/spawnfile` a Grok worker uid
+    // could open. Securing it to 0700 2000:2000 is what replaces the sandbox
+    // `deny` entry that Grok 1.0.13 can no longer honour (see
+    // `GROK_SANDBOX_DENY_PATHS`). Nothing loses access: the only thing
+    // beneath it is this store, already 0700 2000:2000, so every reader that
+    // works today is the organization uid or a `docker exec` root holding
+    // CAP_DAC_READ_SEARCH.
+    .flatMap((mount) => mount.id === DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID
+      ? [mount.mount_path, path.posix.dirname(mount.mount_path)]
+      : [mount.mount_path])
     .filter((target) => target.startsWith("/"))
     .concat((moltnet?.nodePlans ?? []).flatMap((plan) =>
       plan.receiptStorePath ? [path.posix.dirname(plan.receiptStorePath)] : []
