@@ -5,6 +5,7 @@ import {
   OrganizationHandoffAuthorityBudget, OrganizationHandoffAuthorityFailure,
   toOrganizationHandoffAuthorityFailureDetail
 } from "./organizationHandoffAuthorityFsBudget.js";
+import { createAuthorityLeafInspector } from "./organizationHandoffAuthorityFsElection.js";
 
 const VERSION = "spawnfile.organization-handoff-fs-worker.v1";
 const MAX_BYTES = 32_768;
@@ -50,13 +51,7 @@ const send = (value: unknown): void => {
   const serialized = JSON.stringify(value); if (bytes(serialized) > MAX_BYTES || typeof process.send !== "function") process.exit(1);
   process.send(JSON.parse(serialized));
 };
-const statFile = async (name: string) => {
-  const stat = await lstat(name).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? null : fail("lstat_failed"));
-  if (stat === null) return null;
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink > 2 || stat.size > MAX_BYTES || (stat.mode & 0o077) !== 0
-    || owner !== undefined && stat.uid !== owner) return fail("leaf_not_ordinary");
-  return stat;
-};
+const { aliasesOf, expectedElectionState, statFile } = createAuthorityLeafInspector(owner === undefined ? {} : { owner });
 const publicationSidecars = (name: string): readonly string[] => [`${name}.pending`, `${name}.recovery`];
 /**
  * Structural description of the contending state for a diagnostic. Reports
@@ -73,11 +68,6 @@ const describeContention = async (name: string): Promise<string> => {
   }));
   return parts.join(" ");
 };
-const aliasesOf = (name: string): readonly string[] => [
-  `${name}.pending`, `${name}.recovery`,
-  ...(name.endsWith(".pending") ? [name.slice(0, -".pending".length)] : []),
-  ...(name.endsWith(".recovery") ? [name.slice(0, -".recovery".length)] : [])
-];
 const read = async (name: string): Promise<string | null> => {
   let before = await statFile(name); if (before === null) return null;
   if (before.nlink === 2) {
@@ -119,24 +109,6 @@ const read = async (name: string): Promise<string | null> => {
   } finally { await handle.close().catch(() => undefined); }
 };
 const sync = async (): Promise<void> => { const handle = await open(".", constants.O_RDONLY | constants.O_DIRECTORY).catch(() => fail("directory_open_failed")); try { await handle.sync(); } finally { await handle.close().catch(() => undefined); } };
-const expectedElectionState = async (name: string): Promise<boolean | null> => {
-  let stat = await statFile(name); if (stat === null) return null;
-  if (stat.nlink === 1) return true;
-  for (const alias of aliasesOf(name)) {
-    const counterpart = await lstat(alias).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? null : fail("election_lstat_failed"));
-    if (counterpart?.isFile() && !counterpart.isSymbolicLink() && counterpart.nlink === 2 && counterpart.dev === stat.dev && counterpart.ino === stat.ino) return true;
-  }
-  // The counterpart may have disappeared just before this check. Accept only
-  // the resulting ordinary single-link state, never an unknown hard link.
-  //
-  // The leaf itself may also have been unlinked in that same window: the
-  // helper that won the election removes its staging sidecar immediately after
-  // linking the final record. That is an absence, not an unknown link, and
-  // reporting it as a rejected election is what turned this benign race into a
-  // hard failure for a concurrent publisher.
-  stat = await statFile(name); if (stat === null) return null;
-  return stat.nlink === 1;
-};
 const readDuringPublication = async (name: string, budget: Budget): Promise<string | null> => {
   try { return await read(name); } catch (error) {
     // Re-validate the leaf before retrying. This permits only a checked,
