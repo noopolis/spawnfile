@@ -96,6 +96,8 @@ export const createDockerRunInvocation = async (
   options: {
     authProfile?: ResolvedAuthProfile | null;
     cliCredential?: { name: string; value: string };
+    /** See `RuntimeAuthPreparationInput.containerCredentialUid`. */
+    containerCredentialUid?: number;
     containerName?: string;
     detach?: boolean;
     deploymentName?: string;
@@ -135,7 +137,8 @@ export const createDockerRunInvocation = async (
       containerReport,
       options.authProfile ?? null,
       env,
-      supportDirectory
+      supportDirectory,
+      options.containerCredentialUid
     );
     assertRunEnvironmentSatisfied(containerReport, env, preparedRuntimeAuth.coveredModelSecrets);
     assertMoltnetCredentialValuesDistinct(containerReport, env);
