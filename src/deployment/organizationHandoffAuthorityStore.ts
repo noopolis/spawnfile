@@ -18,7 +18,14 @@ import { parseOrganizationHandoff, type OrganizationHandoff } from "./organizati
 import { initializeOrganizationHandoffAuthorityFsClient, type OrganizationHandoffAuthorityFsClient, type OrganizationHandoffAuthorityFsClientOptions } from "./organizationHandoffAuthorityFsClient.js";
 
 const owner = typeof process.getuid === "function" ? process.getuid() : undefined;
-const fail = (): never => { throw new Error(ORGANIZATION_HANDOFF_AUTHORITY_ERROR); };
+/**
+ * The store's public message stays uniform: it reaches CLI output and must not
+ * describe private resolution state. Diagnostics from the helper are preserved
+ * on `cause` so an operator log still shows which budget or invariant failed.
+ */
+const fail = (cause?: unknown): never => {
+  throw new Error(ORGANIZATION_HANDOFF_AUTHORITY_ERROR, ...(cause === undefined ? [] : [{ cause }] as const));
+};
 const key = (value: string): string => Buffer.from(value, "utf8").toString("hex");
 const same = (left: unknown, right: unknown): boolean => JSON.stringify(left) === JSON.stringify(right);
 const pendingKey = (value: unknown): string => typeof value === "string" && /^[a-f0-9]{64}$/u.test(value) ? value : fail();
@@ -38,8 +45,8 @@ const closeRequest = (value: unknown): {
       expectedHandoff: parseOrganizationHandoff(input.expectedHandoff),
       organizationHandoffHandle: parseOpaqueTargetHandle(input.organizationHandoffHandle)
     });
-  } catch {
-    return fail();
+  } catch (error) {
+    return fail(error);
   }
 };
 
@@ -236,7 +243,7 @@ class Store implements OrganizationHandoffAuthorityStore {
         handoff: final.handoff, network_attachment: Object.freeze({ container_id: final.container_id, deployment_labels: final.deployment_labels,
           network_attachment_handle: final.handoff.network_attachment_handle }), selected_target_binding: Object.freeze({ receipt: final.selected_target,
           receipt_digest: final.selected_target_receipt_digest }) });
-    } catch { return fail(); }
+    } catch (error) { return fail(error); }
   }
 }
 
@@ -262,10 +269,10 @@ export const initializeOrganizationHandoffAuthorityStore = async (options: Organ
       // Transfer each completed helper into rollback ownership immediately.
       clients.set(part, client);
     }
-  } catch {
+  } catch (error) {
     await Promise.all([...clients.values()].map(async (client) => client.dispose()));
     await Promise.all([...anchors.values()].map(async ({ handle }) => { await handle.close().catch(() => undefined); }));
-    return fail();
+    return fail(error);
   }
   return new Store(root, anchors, clients, options.testHooks);
 };
