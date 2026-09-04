@@ -152,7 +152,7 @@ describe("runtime target plan source identity", () => {
           id: "daimon-agy-runtime-home-assistant",
           mount_path: "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/assistant",
           reason: "Daimon AGY subscription runtime home for agent:assistant",
-          volume_name: createPersistentVolumeName("/tmp/Spawnfile", "daimon-agy-runtime-home-assistant", undefined, "candidate-blue")
+          volume_name: createPersistentVolumeName("/tmp/Spawnfile", "daimon-agy-runtime-home-assistant", "candidate-blue")
         },
         {
           // Run-id-free by construction. `createPersistentVolumeName` folds the
@@ -178,13 +178,13 @@ describe("runtime target plan source identity", () => {
           id: "daimon-organization-acceptance-store",
           mount_path: "/var/lib/spawnfile/instances/daimon/daimon-organization/state/wake-acceptance",
           reason: "Daimon organization durable wake acceptance store",
-          volume_name: createPersistentVolumeName("/tmp/Spawnfile", "daimon-organization-acceptance-store", undefined, "candidate-blue")
+          volume_name: createPersistentVolumeName("/tmp/Spawnfile", "daimon-organization-acceptance-store", "candidate-blue")
         },
         {
           id: "daimon-tool-state-assistant",
           mount_path: "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/assistant/tool-state",
           reason: "Daimon durable cognition tool receipts for agent:assistant",
-          volume_name: createPersistentVolumeName("/tmp/Spawnfile", "daimon-tool-state-assistant", undefined, "candidate-blue")
+          volume_name: createPersistentVolumeName("/tmp/Spawnfile", "daimon-tool-state-assistant", "candidate-blue")
         },
         {
           id: "daimon-wake-fuse",

@@ -370,8 +370,9 @@ Rules:
   - `json` + configured or default `path`
   - `postgres` + `dsn_secret`
   - `memory`
-- Durable `sqlite`/`json` stores emit `container.persistent_mounts[]`; `spawnfile run` and `spawnfile up` mount them as Docker named volumes.
-- Generated open-mode agent token directories emit `container.persistent_mounts[]` so first-claim credentials survive container replacement.
+- Durable `sqlite`/`json` stores emit `container.persistent_mounts[]` with `lifecycle: "exclusive-reattach"`; `spawnfile run` and `spawnfile up` mount them as Docker named volumes whose names depend on the deployment lineage, never the run id. A declared `persistence.name` is used verbatim.
+- Generated open-mode agent token directories emit `container.persistent_mounts[]` with the same `exclusive-reattach` lifecycle, so first-claim credentials survive container replacement.
+- The generated entrypoint refuses to start when a path in `container.persistent_mounts[]` is not an actual mount point, naming the mount id, the path, and the volume to attach. `SPAWNFILE_ALLOW_EPHEMERAL_STATE=1` opts out.
 - Secret-backed store fields (postgres DSN secret) are materialized into private runtime files at startup.
 - Auth token materialization is always private and source-controlled outputs never include inline token values.
 - In managed mode, `server.auth.tokens[]` drives server config; each token is emitted as a secret-backed token entry using declared secret names and scopes.

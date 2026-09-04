@@ -20,10 +20,18 @@ const report:CompileReport={
 };
 
 describe("createDockerRunInvocation persistent volume mounts",()=>{
-  it("uses volume-nocopy for compiler-declared volumes",async()=>{
+  // The image is the authority for the bootstrap preimage at every
+  // compiler-declared persistent mount path (`createStateOwnershipCommand`
+  // writes `.spawnfile-volume-init` there at build time), and both the Daimon
+  // ownership guard and `prepare_volume_resource` require that marker to
+  // accept a fresh volume. `volume-nocopy` suppresses exactly the copy-up that
+  // delivers it, so no Daimon organization with persistent volumes could
+  // bootstrap. This test previously asserted the defect.
+  it("mounts compiler-declared volumes with copy-up so the image can seed them",async()=>{
     const invocation=await createDockerRunInvocation({organizationReadinessEvidence:readiness,outputDirectory:"/tmp/spawnfile-run-out",report,reportPath:"/tmp/spawnfile-run-out/spawnfile-report.json"},"spawnfile-test");
     expect(invocation.args).toContain("--mount");
-    expect(invocation.args).toContain("type=volume,source=spawnfile-state,target=/var/lib/spawnfile/state,volume-nocopy");
+    expect(invocation.args).toContain("type=volume,source=spawnfile-state,target=/var/lib/spawnfile/state");
+    expect(invocation.args.join("\n")).not.toContain("volume-nocopy");
     expect(invocation.args).not.toContain("spawnfile-state:/var/lib/spawnfile/state");
   });
 });

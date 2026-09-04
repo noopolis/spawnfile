@@ -7,7 +7,7 @@ import type {
   RuntimeContainerMeta
 } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
-import { createPersistentVolumeName } from "./moltnetArtifactPaths.js";
+import { createExclusiveReattachVolumeName } from "../shared/index.js";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import {
@@ -19,7 +19,6 @@ const CONFIG_FILE_PLACEHOLDER = "<config-file>";
 const INSTANCE_ROOT_PLACEHOLDER = "<instance-root>";
 const SOURCE_AGENT_PLACEHOLDER = "<agent-name>";
 const SOURCE_SLUG_PLACEHOLDER = "<source-slug>";
-const RESOURCE_VOLUME_PREFIX = "spawnfile-workspace-resource";
 
 export interface ResolvedTargetResourcePlan extends WorkspaceResourcePlan {
   canonicalBackingPath: string;
@@ -31,7 +30,10 @@ export interface ResolvedTargetResourcePlan extends WorkspaceResourcePlan {
 }
 
 export interface WorkspaceResourcePersistentMount {
+  /** The author's `name`, when declared on the resource. */
+  declared_volume_name?: string;
   id: string;
+  lifecycle: "exclusive-reattach";
   mount_path: string;
   reason: string;
   volume_name: string;
@@ -47,6 +49,15 @@ export const resolveWorkspaceResourceVolumes = (
   const backingPathByVolumeName = new Map<string, string>();
   for (const resource of resources.filter((candidate) => candidate.kind === "volume")) {
     const existing = byBackingPath.get(resource.canonicalBackingPath);
+    // Two DIFFERENT declared resources landing on one backing path is always a
+    // mistake: the path segment derives from an explicit `name` when one is
+    // given, so `id: a`/`id: b` both declaring `name: X` in one scope used to
+    // collapse into a single directory and volume, silently, with both
+    // workspace symlinks pointing at it. The same id across runtime plans is
+    // the legitimate `sharing: team` case and still merges.
+    if (existing && existing.id !== resource.id) {
+      throw new SpawnfileError("validation_error", `Workspace resources ${existing.id} and ${resource.id} resolve to the same backing volume ${resource.canonicalBackingPath}; a declared volume name must be unique within its scope`);
+    }
     if (existing && (existing.mode !== resource.mode || existing.sharing !== resource.sharing || existing.volumeName !== resource.volumeName || (resource.sharing === "per_agent" && existing.ownerId !== resource.ownerId))) {
       throw new SpawnfileError("validation_error", `Workspace volume ${resource.canonicalBackingPath} has incompatible mode, sharing, or owner declarations`);
     }
@@ -55,8 +66,14 @@ export const resolveWorkspaceResourceVolumes = (
     byBackingPath.set(resource.canonicalBackingPath, resource);
     backingPathByVolumeName.set(resource.volumeName!, resource.canonicalBackingPath);
   }
+  // Workspace `kind: volume` resources are durable product state: an author
+  // declares one precisely so it outlives the container. They are therefore
+  // `exclusive-reattach` — deployment-stable name, reattached rather than
+  // recreated, one live holder at a time.
   return { resources, mounts: [...byBackingPath.values()].map((resource) => ({
-    id: resource.persistentMountId!, mount_path: resource.canonicalBackingPath,
+    ...(resource.name?.trim() ? { declared_volume_name: resource.name.trim() } : {}),
+    id: resource.persistentMountId!, lifecycle: "exclusive-reattach" as const,
+    mount_path: resource.canonicalBackingPath,
     reason: `Workspace ${resource.sharing} resource ${resource.id}`, volume_name: resource.volumeName!
   })) };
 };
@@ -133,6 +150,12 @@ const dedupeAndAssertResourcePlans = (
     byLinkPath.set(resource.linkPath, resource);
     if (resource.kind !== "volume") continue;
     const existingVolume = volumesByBackingPath.get(resource.canonicalBackingPath);
+    if (existingVolume && existingVolume.id !== resource.id) {
+      throw new SpawnfileError(
+        "validation_error",
+        `Container target ${target.id} declares workspace resources ${existingVolume.id} and ${resource.id} that resolve to the same backing volume ${resource.canonicalBackingPath}; a declared volume name must be unique within its scope`
+      );
+    }
     if (existingVolume) {
       const incompatible = existingVolume.mode !== resource.mode ||
         existingVolume.sharing !== resource.sharing ||
@@ -165,7 +188,7 @@ export const resolveTargetResources = (
   instancePaths: RuntimeTargetPlan["instancePaths"],
   meta: RuntimeContainerMeta,
   planRoot: string,
-  runId?: string
+  deploymentLineage = "compile"
 ): ResolvedTargetResourcePlan[] => {
   const sourceIds = new Set(target.sourceIds ?? []);
   if (sourceIds.size === 0) {
@@ -206,7 +229,15 @@ export const resolveTargetResources = (
         persistentMountId: `workspace-resource-${pathDigest.slice(0, 24)}`,
         replacementSentinel: path.posix.join(canonicalBackingPath, ".spawnfile-resource-identity"),
         resolvedIdentity,
-        volumeName: runId ? createPersistentVolumeName(planRoot, `${RESOURCE_VOLUME_PREFIX}-${pathDigest.slice(0, 24)}`, undefined, runId) : `${RESOURCE_VOLUME_PREFIX}-${pathDigest.slice(0, 24)}`
+        // Author-declared `name` verbatim (an operator can pre-create or
+        // migrate the host volume under exactly that name); otherwise a
+        // deployment-stable derived name. Never run-scoped: a fresh
+        // NOOPOLIS_RUN_ID must not strand the previous run's state.
+        volumeName: resource.name?.trim()
+          || createExclusiveReattachVolumeName(
+            `${planRoot}\0${deploymentLineage}`,
+            `workspace-resource-${pathDigest.slice(0, 24)}`
+          )
       };
     });
   });

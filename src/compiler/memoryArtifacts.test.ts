@@ -317,6 +317,8 @@ describe("createMemoryArtifactBundle", () => {
 
     expect(bundle.mounts).toEqual([
       {
+        // Published in the distribution report so image mode honours it too.
+        declared_volume_name: "journal-store",
         id: "memory-var-lib-spawnfile-persist-journal",
         lifecycle: "exclusive-reattach",
         mount_path: "/var/lib/spawnfile/persist/journal",

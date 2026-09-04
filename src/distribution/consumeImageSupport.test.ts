@@ -81,6 +81,37 @@ describe("deriveVolumeName", () => {
     );
   });
 
+  it("honours an author-declared volume name verbatim under any deployment", () => {
+    // An operator pre-creates `clank-newsroom-store`, then deploys the
+    // published image. Before this, image mode derived
+    // `spawnfile-exclusive-<id>-<hash>` and handed them a brand-new empty
+    // volume while the format promised the declared name verbatim.
+    const mount = {
+      declared_volume_name: "clank-newsroom-store",
+      durability: "persistent" as const,
+      id: "moltnet-newsroom-store",
+      kind: "volume" as const,
+      lifecycle: "exclusive-reattach" as const,
+      target: "/var/lib/spawnfile/moltnet/networks/newsroom"
+    };
+    expect(derivePersistentMountVolumeName("blue", mount)).toBe("clank-newsroom-store");
+    expect(derivePersistentMountVolumeName("green", mount)).toBe("clank-newsroom-store");
+  });
+
+  it("still scopes an UNDECLARED mount to its deployment", () => {
+    // Only a declared name travels in the report; a derived name encodes the
+    // creator's plan root and lineage and must be re-derived per deployment.
+    const mount = {
+      durability: "persistent" as const,
+      id: "workspace-resource-abc",
+      kind: "volume" as const,
+      lifecycle: "exclusive-reattach" as const,
+      target: "/var/lib/spawnfile/resources/teams/t/scratch"
+    };
+    expect(derivePersistentMountVolumeName("blue", mount))
+      .not.toBe(derivePersistentMountVolumeName("green", mount));
+  });
+
   it("keeps legacy mounts without exclusive lifecycle deployment-local", () => {
     expect(derivePersistentMountVolumeName("blue", {
       id: "cache",

@@ -24,34 +24,38 @@ const truncateSegment = (value: string, maxLength: number): string =>
   value.length > maxLength ? value.slice(0, maxLength).replace(/[-_.]+$/u, "") : value;
 
 /**
- * Derives the host-mounted docker volume name for a durable mount.
+ * Derives the host-mounted docker volume name for a **run-scoped** durable
+ * mount — state whose whole point is to be fresh per run (today: the Moltnet
+ * causal event log, Daimon telemetry, per-network Moltnet runtime state).
  *
  * `runId` (the compiling process's resolved NOOPOLIS_RUN_ID, see
  * src/runtime/common.ts) is the run-scoping key: `spawnfile run`/`spawnfile
  * up` always call `ensureNoopolisRunId()` before compiling, so a fresh
  * invocation with no host-pinned run id gets a fresh generated one and
  * therefore a fresh volume — two concurrent/successive runs (e.g. two
- * memetics replicates) never share durable state. A cold restart that wants
- * to recall the same run's memory sets the SAME `NOOPOLIS_RUN_ID` before
- * re-running, which reproduces this same volume name and remounts it.
- * Omitted (a bare `spawnfile compile`/`spawnfile build` with no run id in
- * the host env) reproduces the pre-run-scoping name exactly, so standard
- * compiles stay byte-identical.
+ * memetics replicates) never share it. A cold restart that wants the same
+ * run's state sets the SAME `NOOPOLIS_RUN_ID` before re-running, which
+ * reproduces this name and remounts it. Omitted (a bare `spawnfile
+ * compile`/`spawnfile build` with no run id in the host env) reproduces the
+ * pre-run-scoping name exactly, so standard compiles stay byte-identical.
  *
- * `explicitName` (an author-declared `persistence.name`) remains verbatim for
- * a bare compile. During a run it is namespaced by the run identity, preventing
- * blue/green candidates from accidentally sharing live durable state.
+ * State that must SURVIVE a redeploy — workspace `kind: volume` resources,
+ * durable Moltnet stores, open-mode agent token directories, durable memory
+ * banks, the Daimon usage ledger — must NEVER be named here. Those are
+ * `lifecycle: "exclusive-reattach"` and are named by
+ * `createExclusiveReattachVolumeName` from the plan root and the deployment
+ * lineage, honouring an author-declared name verbatim. This function
+ * deliberately takes no author-declared name: a run-scoped volume is never
+ * the thing an author names.
  */
 export const createPersistentVolumeName = (
   planRoot: string,
   id: string,
-  explicitName?: string,
   runId?: string
 ): string => {
   const project = truncateSegment(slugify(planRoot.split("/").slice(-2, -1)[0] ?? "project") || "project", 32);
-  const suffix = truncateSegment(slugify(explicitName?.trim() || id) || "state", 48);
+  const suffix = truncateSegment(slugify(id) || "state", 48);
   const trimmedRunId = runId?.trim();
-  if (explicitName && explicitName.trim().length > 0 && !trimmedRunId) return explicitName.trim();
   if (!trimmedRunId) {
     return `spawnfile-${project}-${suffix}-${createShortHash(`${planRoot}:${id}`)}`;
   }

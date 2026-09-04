@@ -104,13 +104,37 @@ const imageDown = async (
   }
   const report = parseDistributionReport(reportValue, "cached image distribution report");
   if (report.compile_fingerprint !== record.compile_fingerprint) throw new SpawnfileError("runtime_error", "Cached image distribution report does not match its deployment record");
-  const volumes = [...new Set(report.persistent_mounts.map((mount) => derivePersistentMountVolumeName(record.name, mount)))].sort();
+  const { owned, skipped } = partitionDeclaredVolumes(
+    report.persistent_mounts,
+    (mount) => derivePersistentMountVolumeName(record.name, mount)
+  );
+  const volumes = [...owned, ...skipped].sort();
   const removed = await removeDockerContainer(record.target, unit.container_id, runner);
-  if (!removed.removed) return { deployment: record.name, errors: [`unable to remove container ${unit.container_id} (unit ${unit.id}): ${removed.error}`], retained_volumes: volumes, units_stopped: [], version: DOWN_RECEIPT_VERSION };
-  const errors: string[] = [], retained: string[] = [];
-  if (options.removeVolumes) for (const volume of volumes) { const result = await removeDockerVolume(record.target, volume, runner); if (!result.removed) { errors.push(`unable to remove volume ${volume}: ${result.error}`); retained.push(volume); } }
-  else retained.push(...volumes);
-  return { deployment: record.name, errors, retained_volumes: retained, units_stopped: [unit.id], version: DOWN_RECEIPT_VERSION };
+  if (!removed.removed) return { deployment: record.name, errors: [`unable to remove container ${unit.container_id} (unit ${unit.id}): ${removed.error}`], retained_volumes: volumes, units_stopped: [], version: DOWN_RECEIPT_VERSION, ...(skipped.length > 0 ? { skipped_volumes: skipped } : {}) };
+  const errors: string[] = [], retained: string[] = [...skipped];
+  if (options.removeVolumes) for (const volume of owned) { const result = await removeDockerVolume(record.target, volume, runner); if (!result.removed) { errors.push(`unable to remove volume ${volume}: ${result.error}`); retained.push(volume); } }
+  else retained.push(...owned);
+  return { deployment: record.name, errors, retained_volumes: retained.sort(), units_stopped: [unit.id], version: DOWN_RECEIPT_VERSION, ...(skipped.length > 0 ? { skipped_volumes: skipped } : {}) };
+};
+
+/**
+ * Splits the volumes a `--volumes` teardown found into the ones this deployment
+ * owns and the author-declared ones it shares with every other deployment of the
+ * project. See downReceiptTypes.ts for why the declared ones are never removed.
+ */
+const partitionDeclaredVolumes = <T extends { declared_volume_name?: string }>(
+  mounts: readonly T[],
+  volumeNameOf: (mount: T) => string
+): { owned: string[]; skipped: string[] } => {
+  const skipped = new Set<string>();
+  const owned = new Set<string>();
+  for (const mount of mounts) {
+    (mount.declared_volume_name?.trim() ? skipped : owned).add(volumeNameOf(mount));
+  }
+  // A name claimed by both is shared state, and the compiler already rejects that
+  // collision; fail safe here regardless by never removing it.
+  for (const name of skipped) owned.delete(name);
+  return { owned: [...owned].sort(), skipped: [...skipped].sort() };
 };
 
 const targetRefForUnit = (
@@ -276,17 +300,16 @@ export const downDeployment = async (
   }
 
   const report = await readCompileReport(compiledOutputDirectory);
-  const volumeNames = [
-    ...new Set(
-      (report?.container?.persistent_mounts ?? []).map(
-        (mount) => mount.volume_name,
-      ),
-    ),
-  ].sort();
+  const { owned, skipped } = partitionDeclaredVolumes(
+    report?.container?.persistent_mounts ?? [],
+    (mount) => mount.volume_name,
+  );
 
-  const retainedVolumes: string[] = [];
+  // Declared volumes are retained unconditionally: they are shared project
+  // state, not this deployment's, so `--volumes` must never destroy them.
+  const retainedVolumes: string[] = [...skipped];
   if (options.removeVolumes) {
-    for (const volumeName of volumeNames) {
+    for (const volumeName of owned) {
       const outcome = await removeDockerVolume(
         record.target,
         volumeName,
@@ -298,13 +321,14 @@ export const downDeployment = async (
       }
     }
   } else {
-    retainedVolumes.push(...volumeNames);
+    retainedVolumes.push(...owned);
   }
 
   return {
     deployment: record.name,
     errors,
     retained_volumes: retainedVolumes.sort(),
+    ...(skipped.length > 0 ? { skipped_volumes: skipped } : {}),
     units_stopped: unitsStopped.sort(),
     version: DOWN_RECEIPT_VERSION,
   };

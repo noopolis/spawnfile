@@ -72,7 +72,7 @@ export const createDaimonTelemetryArtifacts = (
         id: mountId,
         mount_path: path.join(instanceRoot, "runtime", "agents", agentSlug, "telemetry"),
         reason: `daimon turn/wake causal telemetry for ${agentSlug}`,
-        volume_name: createPersistentVolumeName(plan.root, mountId, undefined, runId)
+        volume_name: createPersistentVolumeName(plan.root, mountId, runId)
       });
       mountIdsByNodeId[nodeId] = mountId;
     }

@@ -214,7 +214,46 @@ Command boundaries:
 - `spawnfile dev up` starts a detached development deployment under `.spawn-dev`; `spawnfile dev apply --agent <id>` hot-loads one Pi agent into that running container without rebuilding or restarting the rest of the org.
 - `spawnfile status` reads the authored graph and compile report by default. With `--live`, it reads the detached deployment record and inspects the recorded Docker target.
 
-Managed Moltnet SQLite/JSON stores, durable memory SQLite/JSON stores, and open-registration agent token directories appear in the compile report as `container.persistent_mounts[]`. `spawnfile run` and `spawnfile up` mount those entries as Docker named volumes so messages, registrations, memory state, and generated open-mode agent tokens survive container replacement.
+Managed Moltnet SQLite/JSON stores, durable memory SQLite/JSON stores, workspace `kind: volume` resources, and open-registration agent token directories appear in the compile report as `container.persistent_mounts[]`. `spawnfile run` and `spawnfile up` mount those entries as Docker named volumes so messages, registrations, memory state, workspace volumes, and generated open-mode agent tokens survive container replacement.
+
+**Which launcher you use is part of the volume identity.** For a mount with no
+declared name, the derived name folds in the *deployment lineage*, and each
+entrypoint supplies a different default: `spawnfile run` uses `ephemeral`,
+`spawnfile up` uses `default`, and a bare `spawnfile compile` uses `compile`.
+Starting the same project with a different command, or with a different
+`--deployment` name, therefore attaches a *different* volume and the
+organization starts empty. Pass the same `--deployment <name>` every time, or
+declare an explicit `name` on anything whose contents you care about — a
+declared name is immune to all of this and is the same volume under every
+launcher.
+
+**`spawnfile dev up` is isolated from production by construction.** It
+namespaces its lineage, so a dev deployment never resolves to the derived
+volumes of a production `spawnfile up` of the same project, under any
+`--deployment` name. A declared name is the exception, because it deliberately
+carries no deployment identity — dev would attach production's volume by that
+exact name — so `dev up` refuses to start when the project declares one:
+
+```
+This dev deployment would attach 2 author-declared volumes by name, which a
+production deployment of this project uses too: clank-edition-state,
+clank-newsroom-store. ... Remove the declared name, run dev against a copy of
+the project, or pass --allow-declared-volumes to attach them deliberately.
+```
+
+Pass `--allow-declared-volumes` only when you mean it — a dev agent writing
+into production's message store corrupts live state rather than merely losing
+it.
+
+**`spawnfile down --volumes` will not delete a declared volume.** It removes the
+volumes that deployment owns; an author-declared name belongs to the project,
+not to one deployment, so tearing down a dev or scratch deployment can never
+destroy the production state that name refers to. Those volumes are reported as
+`skipped volume (author-declared, shared with every deployment of this project)`
+and the command prints the `docker volume rm` needed to remove them
+deliberately.
+
+These mounts carry `lifecycle: "exclusive-reattach"`. Their volume names depend on the project root and the deployment lineage, never on the run id, so removing and recreating the container reattaches the same host volumes rather than provisioning empty ones. A `name` you declare yourself — a resource `name`, or `store.persistence.name` — is used verbatim, so you can pre-create or migrate that volume by exactly that name. The trade-off is that only one live container may hold such a volume at a time: an organization declaring any of them cannot use the concurrent blue/green canary path and must stop the live deployment before starting its replacement.
 
 ### Dev Hot Apply
 
@@ -325,7 +364,9 @@ cp .env.example .env
 docker run --env-file .env -p 18789:18789 my-agent
 ```
 
-If the compile report includes `container.persistent_mounts[]`, add matching `-v <volume_name>:<mount_path>` arguments to manual `docker run` commands.
+If the compile report includes `container.persistent_mounts[]`, add matching `--mount type=volume,source=<volume_name>,target=<mount_path>` arguments to manual `docker run` commands. Do not add `volume-nocopy`: the image seeds a bootstrap marker at each of those paths, and suppressing the copy-up leaves a fresh volume unbootstrappable.
+
+The entrypoint fails closed here. If any durable path is not an actual mount point, the container exits non-zero and names the mount id, the path, and the volume to attach. Set `SPAWNFILE_ALLOW_EPHEMERAL_STATE=1` if you deliberately want a throwaway container that loses its state on removal. `spawnfile compile` and `spawnfile build` print how many durable mounts a launcher owes.
 
 ## Compile Report Container Section
 

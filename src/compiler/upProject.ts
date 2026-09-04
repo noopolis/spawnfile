@@ -29,6 +29,10 @@ import { executeDockerRunWithSupportCleanup } from "./runProjectLifecycle.js";
 import { requireAuthProfile } from "../auth/index.js";
 import { CompileProjectOptions } from "./compileProject.js";
 import { DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
+import {
+  assertNoDeclaredVolumeNames,
+  resolveDeploymentLineage
+} from "./deploymentLineage.js";
 import { ensureNoopolisRunId, resolveNoopolisRunId } from "../runtime/index.js";
 import { fileExists } from "../filesystem/index.js";
 import { resolveHostCliCredential } from "./runProjectAuth.js";
@@ -41,10 +45,21 @@ import {
   verifyRequestedOrganizationHandoffTarget,
 } from "./upProjectHandoff.js";
 export interface UpProjectOptions extends CompileProjectOptions {
+  /**
+   * Opt out of the dev-mode refusal to attach author-declared volumes by name.
+   * Only meaningful together with `deploymentLineageNamespace`.
+   */
+  allowDeclaredVolumeNames?: boolean;
   authProfile?: string;
   buildRunner?: DockerBuildRunner;
   containerName?: string;
   detach?: boolean;
+  /**
+   * Namespaces the deployment LINEAGE (not the deployment name) so a class of
+   * deployment can never resolve to another class's derived volumes. Set to
+   * "dev" by `devUpProject`; see src/compiler/deploymentLineage.ts.
+   */
+  deploymentLineageNamespace?: string;
   deploymentName?: string;
   dockerCommand?: string;
   dockerContext?: string;
@@ -128,7 +143,10 @@ export const upProject = async (
     containerArchitecture: options.containerArchitecture,
     dockerContext: resolvedOptions.dockerContext,
     dockerCommand: options.dockerCommand,
-    deploymentLineage: resolvedOptions.deploymentName ?? "default",
+    deploymentLineage: resolveDeploymentLineage(
+      resolvedOptions.deploymentName ?? "default",
+      options.deploymentLineageNamespace
+    ),
     imageTag: resolvedOptions.imageTag,
     outputDirectory: options.outputDirectory,
     runtimePackageOverrides: options.runtimePackageOverrides,
@@ -136,6 +154,11 @@ export const upProject = async (
       ? { worldBindingsPath: options.worldBindingsPath }
       : {})
   });
+  // Before anything starts: a namespaced (dev) deployment must not silently
+  // attach production's author-declared volumes by name.
+  if (options.deploymentLineageNamespace && !options.allowDeclaredVolumeNames) {
+    assertNoDeclaredVolumeNames(buildResult.report.container?.persistent_mounts ?? []);
+  }
   const handoff = compileOrganizationHandoff(requestedHandoff, buildResult);
   const authProfile = resolvedOptions.authProfile
     ? await requireAuthProfile(resolvedOptions.authProfile)

@@ -14,6 +14,7 @@ import {
   type DeploymentRecord
 } from "../deployment/index.js";
 import { SpawnfileError } from "../shared/index.js";
+import { DEV_DEPLOYMENT_LINEAGE_NAMESPACE } from "../compiler/deploymentLineage.js";
 import {
   chownContainerPaths,
   compileForDevApply,
@@ -85,11 +86,19 @@ export const resolveDevOutputDirectory = async (
   return path.join(path.dirname(plan.root), DEV_OUTPUT_DIRECTORY);
 };
 
+/**
+ * A dev deployment gets its own lineage namespace so it can never resolve to
+ * the derived volumes of a production `spawnfile up` of the same project —
+ * before this, both defaulted to the lineage `default` and dev wrote into
+ * production's state whenever production was stopped. The deployment NAME is
+ * untouched, so dev records, labels, and `dev stop --deployment` are unchanged.
+ */
 export const devUpProject = async (
   inputPath: string,
   options: UpProjectOptions = {}
 ): Promise<UpProjectResult> => upProject(inputPath, {
   ...options,
+  deploymentLineageNamespace: DEV_DEPLOYMENT_LINEAGE_NAMESPACE,
   detach: true,
   outputDirectory: await resolveDevOutputDirectory(inputPath, options.outputDirectory)
 });

@@ -27,12 +27,23 @@ export const deriveVolumeName = (deploymentName: string, mountId: string): strin
   return `spawnfile_${deploymentName}_${safeMount}`;
 };
 
+/**
+ * An author-declared name wins over any derivation, in image mode exactly as
+ * in project mode. Without this, an operator who pre-created
+ * `clank-newsroom-store` and deployed the published image silently got
+ * `spawnfile-exclusive-<id>-<hash>` — a brand-new empty volume — while the
+ * spec promised the declared name verbatim.
+ *
+ * Only a DECLARED name travels in the report; an undeclared mount is still
+ * named per deployment so two deployments of one image never share state.
+ */
 export const derivePersistentMountVolumeName = (
   deploymentName: string,
   mount: DistributionPersistentMount
-): string => mount.lifecycle === "exclusive-reattach"
-  ? createExclusiveReattachVolumeName(deploymentName, mount.id)
-  : deriveVolumeName(deploymentName, mount.id);
+): string => mount.declared_volume_name?.trim()
+  || (mount.lifecycle === "exclusive-reattach"
+    ? createExclusiveReattachVolumeName(deploymentName, mount.id)
+    : deriveVolumeName(deploymentName, mount.id));
 
 export interface ResolveImageEnvironmentInput {
   authValues: Record<string, string>;
