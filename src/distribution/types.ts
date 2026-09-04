@@ -29,6 +29,15 @@ export interface DistributionOrganizationSummary {
 }
 
 export interface DistributionPersistentMount {
+  /**
+   * The author's own volume name for this mount, when the manifest declared
+   * one. The report never carries a compiler-DERIVED name — that encodes the
+   * creator's plan root and deployment lineage and stays private to that host
+   * — but a declared name belongs to the published declaration and a consumer
+   * honours it verbatim, so an operator who pre-created that volume attaches
+   * it instead of silently getting an empty one.
+   */
+  declared_volume_name?: string;
   durability: "persistent";
   id: string;
   kind: "volume";

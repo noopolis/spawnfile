@@ -31,7 +31,7 @@ The image contains a distribution-safe report at `/spawnfile/spawnfile-report.js
 - sourceless-runnable: enough data for consumer-side `up` and `status`;
 - renderer-compatible: enough data to project an `OrganizationView`.
 
-The report carries: schema version `spawnfile.distribution-report.v1`, a compile fingerprint computed over the path-free report body (excluding `generated_at`), the organization summary (project name from the root manifest, agents, teams), secrets bucketed into the compiler's actual categories (`model`, `project`, `runtime`, `surface`) each with `required` and `generated` booleans, provider-keyed `model_auth_methods` at report and per-instance level, ports, persistent mounts (without creator volume names), runtime instances with node ids, and a Moltnet network summary with `binding: "env"`.
+The report carries: schema version `spawnfile.distribution-report.v1`, a compile fingerprint computed over the path-free report body (excluding `generated_at`), the organization summary (project name from the root manifest, agents, teams), secrets bucketed into the compiler's actual categories (`model`, `project`, `runtime`, `surface`) each with `required` and `generated` booleans, provider-keyed `model_auth_methods` at report and per-instance level, ports, persistent mounts (carrying an author-declared volume name when the manifest declared one, never a compiler-derived one), runtime instances with node ids, and a Moltnet network summary with `binding: "env"`.
 
 ### 2. Image labels
 
@@ -77,7 +77,9 @@ Image-mode `up` is always detached (it records a deployment and returns), so `--
 2. Inspects labels and verifies `com.spawnfile.image_contract`.
 3. Extracts the report without starting the entrypoint: a stopped helper container (`spawnfile-inspect-<id>`), `docker cp` of the report path, then `docker rm`, with cleanup guaranteed. The cp tar stream is parsed defensively (single regular file, size cap, no symlinks or traversal). Metadata extraction always uses the local Docker daemon regardless of the deployment manager.
 4. Validates the report schema, secret coverage by category, generated markers, and per-instance auth methods. Missing required non-generated secrets, unsupported auth, invalid labels, or invalid reports fail before the organization container starts.
-5. Starts the container with standard env wiring and labels; persistent mounts get per-deployment volume names (`spawnfile_<deployment>_<mount-id>`).
+5. Starts the container with standard env wiring and labels. A persistent mount that carries an author-declared name (`declared_volume_name` — a workspace resource `name`, a `store.persistence.name`, a memory bank's `persistence.name`) uses that name verbatim, exactly as project mode does, so an operator can pre-create or migrate that volume. Every other mount gets a per-deployment name: `spawnfile-exclusive-<mount-id>-<hash(deployment)>` for `exclusive-reattach`, `spawnfile_<deployment>_<mount-id>` otherwise. A compiler-derived name never travels in the report — it encodes the creator's plan root and deployment lineage and stays private to that host.
+
+Because a declared name is deployment-independent by construction, two deployments of the same image contend for it rather than getting separate state. That is the declaration's own meaning, and the `exclusive-reattach` occupancy check keeps the second one from starting.
 6. Writes a deployment record and caches the report atomically beside it.
 
 Auth scope: sourceless deployment supports `api_key` model auth and import-based auth (Claude Code, Codex) when the consumer supplies the matching local credential import in their auth profile. The OAuth-mode runtime config is baked into the image at compile time, so the consumer only provides their logged-in credential — the same one a project deployment uses. An instance whose auth method the consumer cannot satisfy (no api_key secret and no matching import) fails preflight with a clear message naming the runtime, agent, and method.
@@ -118,4 +120,4 @@ Behind `--pull-check` (networked, never default), status compares the recorded `
 
 ## Deferred
 
-Multi-arch builds, image signing, the registry discovery index, durable workspace volumes, private git resource auth, registry-API metadata extraction, compose/k8s/ecs compile targets and the org index, and composition (image members). The network binding report entries ship now so these can layer on without a schema or fingerprint change.
+Multi-arch builds, image signing, the registry discovery index, private git resource auth, registry-API metadata extraction, compose/k8s/ecs compile targets and the org index, and composition (image members). The network binding report entries ship now so these can layer on without a schema or fingerprint change.

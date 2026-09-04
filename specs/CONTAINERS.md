@@ -595,12 +595,44 @@ target. An arm64 host may drive this amd64 builder, but archive mode does not
 produce an arm64 runtime image. Known credential files/directories are omitted
 and credential-shaped file content fails creation before archive publication.
 
-Blue/green runs use distinct run-scoped volumes, including author-named
-volumes, EXCEPT `exclusive-reattach` mounts. Durable memory stores and the
-Daimon per-turn usage ledger are `exclusive-reattach`: their volumes are
-named from the project root and deployment lineage, never the run id, so
-they survive a redeploy. A report carrying one cannot use the concurrent
-canary workflow below. Product-state transfer is a separate explicit operation over a strict
+Blue/green runs use distinct run-scoped volumes EXCEPT `exclusive-reattach`
+mounts. Durable memory stores, durable managed Moltnet `sqlite`/`json` stores,
+generated open-mode agent token directories, workspace `kind: volume`
+resources, and the Daimon per-turn usage ledger are all `exclusive-reattach`:
+their volumes are named from the project root and deployment lineage, never
+the run id, and an author-declared name (`persistence.name`, a resource
+`name`) is used verbatim. They survive a redeploy. A report carrying one
+cannot use the concurrent canary workflow below.
+
+A derived `exclusive-reattach` name depends on the deployment lineage, and each
+entrypoint supplies a different default lineage (`spawnfile run`: `ephemeral`;
+`spawnfile up`: `default`; bare `spawnfile compile`: `compile`). Changing
+launcher or `--deployment` name therefore selects a different volume.
+
+`spawnfile dev up` additionally namespaces its lineage, so a dev deployment can
+never resolve to the derived volumes of a production `spawnfile up` of the same
+project under ANY `--deployment` name. The namespace applies to the lineage
+only, never to the deployment name, so dev deployment records and labels are
+unchanged.
+
+An author-declared name carries no lineage and is the same volume under every
+launcher and in a sourceless image deployment. The dev namespace therefore
+cannot protect it, so `spawnfile dev up` REFUSES to start when any durable
+mount carries a declared name, listing them; `--allow-declared-volumes` is the
+explicit override for an operator who means to attach that live state.
+
+`spawnfile down --volumes` removes only the volumes the deployment owns. An
+author-declared name is shared project state — verbatim in every mode and every
+deployment — so it is never removed by a deployment teardown, is listed in the
+receipt's `skipped_volumes` (and in `retained_volumes`, which it still is), and
+is removed only by a deliberate `docker volume rm`. Skipping is not an error and
+does not make a lifecycle down incomplete. `skipped_volumes` is omitted entirely
+when nothing was skipped.
+
+Compiler-owned persistent mounts are attached WITHOUT `volume-nocopy`. The
+image is the authority for the bootstrap preimage at those paths, and Docker
+copies image content up only into an empty volume, so an already-populated
+volume that is reattached is never overwritten. Product-state transfer is a separate explicit operation over a strict
 `spawnfile.product-state-quiescence.v1` proof. Only listed regular files whose
 checksums remain stable before and after copying are cloned. Auth, credential,
 token, secret, session, wake, and SQLite paths are rejected; live volumes are

@@ -3,28 +3,12 @@ import { constants, type BigIntStats } from "node:fs";
 import { lstat, mkdir, open } from "node:fs/promises";
 
 import { MAX_JSON_GRAPH_STRING_BYTES, TARGET_SECRET_SOURCE_ERROR, parseTargetSecretSourceOpaqueHandle } from "./targetSecretSourceRecordCommon.js";
+import { directoryIdentityOf, fileIdentityOf, sameDirectory, sameFileExact, type DirectoryIdentity, type FileIdentity } from "./targetSecretSourceFsIdentity.js";
 import { parseTargetSecretSourceAliasRecordBytes, parseTargetSecretSourceVersionRecordBytes, type TargetSecretSourceAliasRecord, type TargetSecretSourceVersionRecord } from "./targetSecretSourceVersionRecords.js";
 import { parseTargetSecretSourceGrantRecordBytes, parseTargetSecretSourceRedemptionRecordBytes, parseTargetSecretSourceRevocationRecordBytes, type TargetSecretSourceGrantRecord, type TargetSecretSourceRedemptionRecord, type TargetSecretSourceRevocationRecord } from "./targetSecretSourceGrantRecords.js";
 import { resolveAuthHome, resolveSpawnfileHome, resolveTargetSecretAliasPath, resolveTargetSecretAliasesDirectory, resolveTargetSecretGrantPath, resolveTargetSecretGrantsDirectory, resolveTargetSecretRedemptionPath, resolveTargetSecretRedemptionsDirectory, resolveTargetSecretRevocationPath, resolveTargetSecretRevocationsDirectory, resolveTargetSecretVersionPath, resolveTargetSecretVersionsDirectory, resolveTargetSecretsRoot } from "./paths.js";
 
 type Handle = ReturnType<typeof parseTargetSecretSourceOpaqueHandle>;
-type DirectoryIdentity = {
-  readonly birthtimeNs: bigint;
-  readonly dev: bigint;
-  readonly ino: bigint;
-  readonly mode: bigint;
-  readonly uid: bigint;
-};
-type FileIdentity = {
-  readonly birthtimeNs: bigint;
-  readonly ctimeNs: bigint;
-  readonly dev: bigint;
-  readonly ino: bigint;
-  readonly mode: bigint;
-  readonly nlink: bigint;
-  readonly size: number;
-  readonly uid: bigint;
-};
 type Parser<T> = (bytes: Uint8Array, expected: Handle) => T;
 export interface TargetSecretSourceFsRead {
   readAlias(handle: unknown): Promise<TargetSecretSourceAliasRecord | null>;
@@ -41,16 +25,8 @@ export interface TargetSecretSourceFsReadOptions {
 const fail = (): never => { throw new Error(TARGET_SECRET_SOURCE_ERROR); };
 const absent = (error: unknown): boolean => (error as NodeJS.ErrnoException).code === "ENOENT";
 const uid = (): number => { const value = process.getuid?.(); if (typeof value !== "number") return fail(); return value; };
-const directoryIdentity = (info: BigIntStats, owner: number): DirectoryIdentity => {
-  if (!info.isDirectory() || info.isSymbolicLink() || info.uid !== BigInt(owner) || (info.mode & 0o7777n) !== 0o700n) return fail();
-  return { birthtimeNs: info.birthtimeNs, dev: info.dev, ino: info.ino, mode: info.mode, uid: info.uid };
-};
-const fileIdentity = (info: BigIntStats, owner: number): FileIdentity => {
-  if (!info.isFile() || info.isSymbolicLink() || info.uid !== BigInt(owner) || info.nlink !== 1n || info.size < 0n || info.size > BigInt(MAX_JSON_GRAPH_STRING_BYTES) || (info.mode & 0o7777n) !== 0o600n) return fail();
-  return { birthtimeNs: info.birthtimeNs, ctimeNs: info.ctimeNs, dev: info.dev, ino: info.ino, mode: info.mode, nlink: info.nlink, size: Number(info.size), uid: info.uid };
-};
-const sameDirectory = (left: DirectoryIdentity, right: DirectoryIdentity): boolean => left.birthtimeNs === right.birthtimeNs && left.dev === right.dev && left.ino === right.ino && left.mode === right.mode && left.uid === right.uid;
-const sameFile = (left: FileIdentity, right: FileIdentity): boolean => left.birthtimeNs === right.birthtimeNs && left.ctimeNs === right.ctimeNs && left.dev === right.dev && left.ino === right.ino && left.mode === right.mode && left.nlink === right.nlink && left.size === right.size && left.uid === right.uid;
+const directoryIdentity = (info: BigIntStats, owner: number): DirectoryIdentity => directoryIdentityOf(info, owner);
+const fileIdentity = (info: BigIntStats, owner: number): FileIdentity => fileIdentityOf(info, owner, [1], MAX_JSON_GRAPH_STRING_BYTES);
 
 const initializeDirectory = async (directory: string, owner: number, create: boolean): Promise<DirectoryIdentity> => {
   let info;
@@ -99,12 +75,12 @@ const readRecord = async <T>(file: string, expected: Handle, parse: Parser<T>, c
   let handle; try { handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW); } catch { return fail(); }
   let bytes: Buffer | undefined;
   try {
-    const opened = fileIdentity(await handle.stat({ bigint: true }), owner); if (!sameFile(before, opened)) return fail();
+    const opened = fileIdentity(await handle.stat({ bigint: true }), owner); if (!sameFileExact(before, opened)) return fail();
     bytes = Buffer.alloc(opened.size + 1); let offset = 0;
     while (offset < bytes.length) { const result = await handle.read(bytes, offset, bytes.length - offset, offset); if (result.bytesRead === 0) break; offset += result.bytesRead; }
     const after = fileIdentity(await handle.stat({ bigint: true }), owner); let pathname;
     try { pathname = fileIdentity(await lstat(file, { bigint: true }), owner); } catch { return fail(); }
-    if (offset !== opened.size || !sameFile(opened, after) || !sameFile(opened, pathname)) return fail();
+    if (offset !== opened.size || !sameFileExact(opened, after) || !sameFileExact(opened, pathname)) return fail();
     await checkChain(chain, owner);
     const content = Uint8Array.from(bytes.subarray(0, offset)); try { return parse(content, expected); } finally { content.fill(0); }
   } catch { return fail(); }

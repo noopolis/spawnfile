@@ -28,6 +28,10 @@ src/compiler/
 ├── containerTargetResources.ts # Per-runtime workspace resource placement for container targets
 ├── containerConfigEnvRender.ts # Generic JSON config-env command and entrypoint materialization rendering
 ├── containerEntrypointRender.ts # Generated container entrypoint orchestration
+├── containerRuntimeReadinessRender.ts # Per-runtime /healthz readiness wait rendered into the entrypoint
+├── containerBackedMountRender.ts # Fail-closed `require_backed_mount` guard for durable mount paths
+├── containerPersistentMounts.ts # Durable-mount merge across sources + volume-name uniqueness
+├── deploymentLineage.ts        # Dev/production lineage namespacing + declared-volume refusal
 ├── containerEntrypointShell.ts # Shell quoting, recipe env, and CLI credential materialization helpers
 ├── containerDaimonBrokerRender.ts # Fixed Daimon broker identities, registrations, worker config, and root-launch provisioning
 ├── containerArtifactsPlans.ts # Environment inventory and runtime target-plan orchestration
@@ -125,6 +129,68 @@ src/compiler/
   filename, so `/d/a.jsonl` and `/d/b.jsonl` are one physical store with two
   writers; only banks that declare themselves identically (the same bank stated
   in an org scope and again in a nested team scope) may share a directory.
+- Durable state is `exclusive-reattach`, never run-scoped. `containerTargetResources.ts`
+  (workspace `kind: volume` resources) and `moltnetArtifacts.ts` (durable
+  managed Moltnet `sqlite`/`json` stores and open-mode agent token directories)
+  name their volumes from the plan root plus the deployment lineage, honouring
+  an author-declared `name`/`persistence.name` verbatim, exactly as
+  `memoryArtifacts.ts` does. Before this, `createPersistentVolumeName` folded
+  `NOOPOLIS_RUN_ID` into these names AND silently discarded the author's
+  explicit name whenever a run id was present, so every `spawnfile run` handed
+  the organization a brand-new empty volume — a real newsroom lost its whole
+  message history to a routine `docker rm` + recreate. `createPersistentVolumeName`
+  now takes no name at all and is reserved for genuinely run-scoped mounts (the
+  Moltnet causal log, per-network Moltnet runtime state, Pi telemetry). The
+  cost is the same one durable memory already pays: an organization declaring
+  any of these cannot use the concurrent blue/green canary path.
+- `runProject.ts` mounts compiler-owned persistent mounts WITHOUT `volume-nocopy`.
+  `createStateOwnershipCommand` writes the `.spawnfile-volume-init` bootstrap
+  preimage into the image at each mount path, and both the Daimon ownership
+  guard (`secureVolumeIdentity`) and `prepare_volume_resource` require it to
+  accept a fresh volume; `volume-nocopy` suppresses exactly the copy-up that
+  delivers it. Docker copies up only into an EMPTY volume, so a reattached
+  volume is untouched. Target/secrets volumes under `src/target/*` keep their
+  `volume-nocopy` — no image content backs those paths.
+- Declared names are checked for uniqueness across EVERY mount source
+  (`containerPersistentMounts.ts`), not just within one source. A
+  resource `name: X` and a store `persistence.name: X` used to compile to two
+  mounts at two paths carrying one volume name, so docker mounted one host
+  volume at both and their bootstrap-marker and replacement-sentinel protocols
+  contradicted each other. `containerTargetResources.ts` separately rejects two
+  distinct resources whose declared names collapse onto one backing path — the
+  path segment derives from the name, so that silently shared one directory.
+- Only an author-DECLARED name is published in the distribution report
+  (`declared_volume_name`), and `consumeImageSupport.ts` honours it verbatim in
+  a sourceless image deployment. A compiler-derived name is never published: it
+  encodes the creator's plan root and deployment lineage and stays private to
+  that host, so an image deployment re-derives its own per deployment. Without
+  this, an operator who pre-created `clank-newsroom-store` and deployed the
+  published image silently got a brand-new empty volume while the spec promised
+  the declared name verbatim.
+- `deploymentLineage.ts` namespaces the `dev up` lineage. `devUpProject`
+  delegated straight to `upProject` with no distinguishing identity, so both
+  defaulted to the lineage `default` and derived the SAME host volumes: a dev
+  deployment started while production was stopped attached production's volumes
+  and wrote into live state. That is worse than the loss the rest of this area
+  fixes — loss is recoverable from a backup, a dev agent editing production's
+  message store is not. The namespace applies to the LINEAGE only, never the
+  deployment name, so dev records, labels, and `dev stop --deployment` are
+  unchanged, and it applies under every `--deployment` name. A declared name
+  carries no lineage by design and cannot be protected this way, so `dev up`
+  fails closed on one (`assertNoDeclaredVolumeNames`) with
+  `--allow-declared-volumes` as the explicit override — the same
+  fail-closed-with-a-named-escape-hatch posture as the entrypoint's durable
+  mount guard.
+- `containerBackedMountRender.ts` renders a `require_backed_mount` check per
+  durable mount into both the entrypoint and the Daimon root wrapper (before
+  the ownership guard). It scans `/proc/self/mountinfo` for an exact mount
+  point rather than comparing `stat -c %d` against the parent, because nested
+  durable volumes share a host device number. The comparison uses the
+  compiler-escaped path (`escapeMountInfoPath`): the kernel octal-escapes
+  space/tab/newline/backslash in that field, so a declared `mount: "/var/lib/my
+  store"` compiled fine and then refused to start.
+  `SPAWNFILE_ALLOW_EPHEMERAL_STATE=1` opts out, but it disables the guard for
+  every mount, so it is not a workaround for one bad path.
 - `daimonTelemetryArtifacts.ts` retains the legacy generated-Pi telemetry mount
   layout. The Phase-A public `runtime: daimon` host has no Spawnfile telemetry
   mount or Pi implementation path; add its public activity integration only in
