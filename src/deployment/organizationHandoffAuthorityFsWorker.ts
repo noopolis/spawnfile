@@ -22,6 +22,18 @@ const fail = (code: string, state?: string): never => {
 const failBudget = (budget: Budget, code: string, loop: string, state?: string): never => {
   throw new OrganizationHandoffAuthorityFailure(budget.snapshot(code, loop, state));
 };
+/**
+ * Re-raise a race failure that the election check refused to retry, recording
+ * the verdict. Without it a fail-closed admission decision is indistinguishable
+ * from the underlying race in a log.
+ */
+const failElection = (error: unknown, election: boolean | null, loop: string): never => {
+  const detail = toOrganizationHandoffAuthorityFailureDetail(error);
+  throw new OrganizationHandoffAuthorityFailure({
+    ...detail,
+    state: `${detail.state === undefined ? "" : `${detail.state} `}loop=${loop} election=${String(election)}`
+  });
+};
 const bytes = (value: string): number => Buffer.byteLength(value, "utf8");
 const validName = (value: unknown): string => typeof value === "string" && NAME.test(value) ? value : fail("invalid_name");
 const validRequest = (raw: unknown): Request => {
@@ -116,7 +128,14 @@ const expectedElectionState = async (name: string): Promise<boolean | null> => {
   }
   // The counterpart may have disappeared just before this check. Accept only
   // the resulting ordinary single-link state, never an unknown hard link.
-  stat = await statFile(name); return stat?.nlink === 1;
+  //
+  // The leaf itself may also have been unlinked in that same window: the
+  // helper that won the election removes its staging sidecar immediately after
+  // linking the final record. That is an absence, not an unknown link, and
+  // reporting it as a rejected election is what turned this benign race into a
+  // hard failure for a concurrent publisher.
+  stat = await statFile(name); if (stat === null) return null;
+  return stat.nlink === 1;
 };
 const readDuringPublication = async (name: string, budget: Budget): Promise<string | null> => {
   try { return await read(name); } catch (error) {
@@ -125,7 +144,7 @@ const readDuringPublication = async (name: string, budget: Budget): Promise<stri
     // extra links, and other malformed states still fail immediately.
     const election = await expectedElectionState(name);
     if (election === null) return null;
-    if (election !== true) throw error;
+    if (election !== true) return failElection(error, election, "read");
     if (budget.exhausted()) return failBudget(budget, "read_budget_exhausted", "read", await describeContention(name));
     await budget.wait(); return readDuringPublication(name, budget);
   }
@@ -154,7 +173,7 @@ const readStaging = async (
     }
     const election = await expectedElectionState(staging);
     if (election === null) return "absent";
-    if (election !== true) throw error;
+    if (election !== true) return failElection(error, election, "staging");
     if (budget.exhausted()) return failBudget(budget, "staging_budget_exhausted", "staging", await describeContention(final));
     await budget.wait(); return readStaging(staging, final, content, budget);
   }
@@ -293,7 +312,24 @@ process.on("message", (raw: unknown) => {
   }));
 });
 process.on("disconnect", () => process.exit(0));
+/**
+ * Expected parent pid read synchronously at module load, before any await.
+ *
+ * The watchdog below previously exited whenever `anchor` was still unset. That
+ * made a liveness net race the startup path: on a loaded host the interpreter
+ * and the anchor's `lstat` can take longer than one 100ms tick, and the helper
+ * killed itself before it could ever report ready. Deriving the pid from the
+ * environment removes the dependency on startup having finished, without
+ * weakening anything: `start` still validates the full anchor independently,
+ * and no request is served until it does.
+ */
+const watchedParentPid = ((): number | undefined => {
+  try {
+    const value = JSON.parse(process.env.SPAWNFILE_AUTHORITY_FS_ANCHOR ?? "{}") as { parent_pid?: unknown };
+    return Number.isSafeInteger(value.parent_pid) ? value.parent_pid as number : undefined;
+  } catch { return undefined; }
+})();
 // IPC disconnect covers a cooperative parent shutdown. ppid surveillance also
 // covers abrupt parent death, where an orphan might otherwise retain its cwd.
-setInterval(() => { if (!anchor || process.ppid !== anchor.parent_pid) process.exit(0); }, 100).unref();
+setInterval(() => { if (watchedParentPid === undefined || process.ppid !== watchedParentPid) process.exit(0); }, 100).unref();
 void start().catch(() => process.exit(1));

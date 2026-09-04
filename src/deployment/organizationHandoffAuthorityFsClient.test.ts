@@ -1,7 +1,9 @@
-import type { ChildProcess } from "node:child_process";
+import { fork, type ChildProcess } from "node:child_process";
 import { lstat, mkdtemp, readdir, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, expect, it } from "vitest";
 
@@ -20,6 +22,48 @@ it("disposes promptly and idempotently after a worker has already exited by sign
   await new Promise<void>((resolve) => child?.exitCode !== null || child?.signalCode !== null ? resolve() : child?.once("exit", () => resolve()));
   await Promise.race([client.dispose(), new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("dispose did not settle")), 500))]);
   await client.dispose();
+});
+
+it("reaches readiness when startup is stalled past a liveness watchdog tick", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-handoff-fs-client-")); directories.push(directory);
+  const stat = await lstat(directory);
+  const require = createRequire(import.meta.url);
+  // Fork the worker directly: the stall has to be injected into the helper's
+  // own startup, which the client API deliberately does not expose.
+  const worker = fork(fileURLToPath(new URL("./organizationHandoffAuthorityFsWorker.ts", import.meta.url)), [], {
+    cwd: directory,
+    env: {
+      SPAWNFILE_AUTHORITY_FS_ANCHOR: JSON.stringify({
+        dev: stat.dev, ino: stat.ino,
+        ...(typeof process.getuid === "function" ? { uid: process.getuid() } : {}),
+        parent_pid: process.pid
+      }),
+      // One threadpool slot, held by the stall preload, so the anchor lstat
+      // cannot complete before the watchdog ticks.
+      UV_THREADPOOL_SIZE: "1"
+    },
+    execArgv: [
+      "--import", require.resolve("tsx"),
+      "--import", fileURLToPath(new URL("./organizationHandoffAuthorityFsWorkerStall.fixture.ts", import.meta.url))
+    ],
+    silent: true
+  });
+  worker.stdout?.resume(); worker.stderr?.resume();
+  try {
+    const outcome = await new Promise<string>((resolve) => {
+      const timer = setTimeout(() => resolve("timeout"), 10_000);
+      worker.on("message", (raw: unknown) => {
+        if ((raw as { ready?: unknown } | null)?.ready === true) { clearTimeout(timer); resolve("ready"); }
+      });
+      worker.once("exit", (code, signal) => { clearTimeout(timer); resolve(`exit:${String(code)}:${String(signal)}`); });
+    });
+    // A watchdog that treats "not yet ready" as "orphaned" reaps the helper
+    // here with a clean exit(0) before it can ever report readiness.
+    expect(outcome).toBe("ready");
+  } finally {
+    worker.kill("SIGKILL");
+    await new Promise<void>((resolve) => { worker.exitCode !== null || worker.signalCode !== null ? resolve() : worker.once("exit", () => resolve()); });
+  }
 });
 
 it("converges full-size concurrent publishers without leaving staging sidecars", async () => {

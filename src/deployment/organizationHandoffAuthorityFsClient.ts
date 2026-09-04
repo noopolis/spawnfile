@@ -17,11 +17,16 @@ const MAX_BYTES = 32_768;
 const REQUEST_DEADLINE_MS = PUBLICATION_BUDGET_MS + 3_000;
 /**
  * Startup deadline for the worker's ready handshake. This bounds a hung or
- * broken helper; it is not a latency budget for process startup. Several
- * helpers are forked concurrently and a loaded host schedules their
- * interpreter startup slowly, so it is sized for a saturated machine.
+ * broken helper; it is not a latency budget for process startup.
+ *
+ * Measured ready latency for eight concurrently forked source-mode helpers on
+ * a host at eleven times CPU oversubscription is 67-411ms, so this is margin
+ * rather than a fix — the observed startup failures were the helper's own
+ * liveness watchdog killing it, not this deadline expiring. It is sized above
+ * that measurement because CI forks far more helpers at once, and a caller
+ * initializes several clients in sequence, which bounds the worst case.
  */
-const READY_DEADLINE_MS = 20_000;
+const READY_DEADLINE_MS = 5_000;
 const DISPOSE_GRACE_MS = 1_000;
 
 const fail = (code: string, state?: string): never => {
@@ -163,7 +168,10 @@ export const initializeOrganizationHandoffAuthorityFsClient = async (options: Or
       function doneResolve(): void { clean(); resolve(); }
       function doneReject(code: string): void {
         clean();
-        detail = { budget: "worker_ready", code, elapsedMs: performance.now() - startedAt, limitMs: READY_DEADLINE_MS, state: `source=${String(tsWorker)}` };
+        detail = {
+          budget: "worker_ready", code, elapsedMs: performance.now() - startedAt, limitMs: READY_DEADLINE_MS,
+          state: `source=${String(tsWorker)} exit=${String(child.exitCode)} signal=${String(child.signalCode)}`
+        };
         reject(createOrganizationHandoffAuthorityError(detail));
       }
       timer = setTimeout(() => doneReject("worker_ready_deadline"), READY_DEADLINE_MS);
