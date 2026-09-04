@@ -1,10 +1,9 @@
-import { constants } from "node:fs";
+import { constants, type BigIntStats } from "node:fs";
 import { link, lstat, open, unlink, type FileHandle } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import { TARGET_SECRET_SOURCE_ERROR, parseTargetSecretSourceOpaqueHandle } from "./targetSecretSourceRecordCommon.js";
-
-type Identity = Readonly<{ dev: number; ino: number; mode: number; nlink: number; size: number; uid: number }>;
+import { directoryIdentityOf, fileIdentityOf, sameDirectory, sameFileExact, sameFileInode, sameFileNode, type DirectoryIdentity, type FileIdentity } from "./targetSecretSourceFsIdentity.js";
 export type TargetSecretSourceFsPublishImmutablePhase =
   | "after_token_create" | "after_claim_link" | "after_claim_snapshot" | "after_mismatch_snapshot"
   | "after_exact_token_snapshot" | "after_final_create" | "after_partial_write" | "after_file_sync"
@@ -33,30 +32,13 @@ const MAX_ATTEMPTS = 512;
 const fail = (): never => { throw new Error(TARGET_SECRET_SOURCE_ERROR); };
 const missing = (error: unknown): boolean => (error as NodeJS.ErrnoException).code === "ENOENT";
 const exists = (error: unknown): boolean => (error as NodeJS.ErrnoException).code === "EEXIST";
-const same = (a: Identity, b: Identity): boolean =>
-  a.dev === b.dev && a.ino === b.ino && a.mode === b.mode && a.nlink === b.nlink && a.size === b.size && a.uid === b.uid;
-const sameNode = (a: Identity, b: Identity): boolean =>
-  a.dev === b.dev && a.ino === b.ino && a.mode === b.mode && a.nlink === b.nlink && a.uid === b.uid;
-const sameInode = (a: Identity, b: Identity): boolean =>
-  a.dev === b.dev && a.ino === b.ino && a.mode === b.mode && a.size === b.size && a.uid === b.uid;
 const ownerUid = (): number => {
   const value = process.getuid?.();
   return typeof value === "number" ? value : fail();
 };
-const directoryIdentity = (
-  value: { isDirectory(): boolean; isSymbolicLink(): boolean; dev: number; ino: number; mode: number; uid: number }, uid: number
-): Identity => {
-  if (!value.isDirectory() || value.isSymbolicLink() || value.uid !== uid || (value.mode & 0o7777) !== 0o700) fail();
-  return { dev: value.dev, ino: value.ino, mode: value.mode, nlink: 0, size: 0, uid: value.uid };
-};
-const fileIdentity = (
-  value: { isFile(): boolean; isSymbolicLink(): boolean; dev: number; ino: number; mode: number; nlink: number; size: number; uid: number },
-  uid: number, links: readonly number[], zero = false
-): Identity => {
-  if (!value.isFile() || value.isSymbolicLink() || value.uid !== uid || !links.includes(value.nlink)
-    || (value.mode & 0o7777) !== 0o600 || value.size < 0 || value.size > MAX_BYTES || (zero && value.size !== 0)) fail();
-  return { dev: value.dev, ino: value.ino, mode: value.mode, nlink: value.nlink, size: value.size, uid: value.uid };
-};
+const directoryIdentity = (value: BigIntStats, uid: number): DirectoryIdentity => directoryIdentityOf(value, uid);
+const fileIdentity = (value: BigIntStats, uid: number, links: readonly number[], zero = false): FileIdentity =>
+  fileIdentityOf(value, uid, links, MAX_BYTES, zero);
 const contentionDelay = (attempt: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, Math.min(5, 1 + Math.floor(attempt / 32))));
 
@@ -67,17 +49,17 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
     || options.directory_chain.some((entry) => typeof entry !== "string" || entry.length < 1)) fail();
   const uid = ownerUid();
   const paths = [...options.directory_chain];
-  const roots = await Promise.all(paths.map(async (path) => directoryIdentity(await lstat(path), uid)));
+  const roots = await Promise.all(paths.map(async (path) => directoryIdentity(await lstat(path, { bigint: true }), uid)));
   const checkChain = async (): Promise<void> => {
     for (let index = 0; index < paths.length; index += 1) {
-      const named = directoryIdentity(await lstat(paths[index]!), uid);
-      if (!same(named, roots[index]!)) fail();
+      const named = directoryIdentity(await lstat(paths[index]!, { bigint: true }), uid);
+      if (!sameDirectory(named, roots[index]!)) fail();
       let fd;
       try {
         fd = await open(paths[index]!, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-        const opened = directoryIdentity(await fd.stat(), uid);
-        const after = directoryIdentity(await lstat(paths[index]!), uid);
-        if (!same(opened, roots[index]!) || !same(after, roots[index]!)) fail();
+        const opened = directoryIdentity(await fd.stat({ bigint: true }), uid);
+        const after = directoryIdentity(await lstat(paths[index]!, { bigint: true }), uid);
+        if (!sameDirectory(opened, roots[index]!) || !sameDirectory(after, roots[index]!)) fail();
       } catch { fail(); } finally { await fd?.close().catch(() => undefined); }
     }
   };
@@ -87,21 +69,21 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
     let fd;
     try {
       fd = await open(paths.at(-1)!, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-      const opened = directoryIdentity(await fd.stat(), uid);
-      if (!same(opened, roots.at(-1)!)) fail();
+      const opened = directoryIdentity(await fd.stat({ bigint: true }), uid);
+      if (!sameDirectory(opened, roots.at(-1)!)) fail();
       await fd.sync();
-      const after = directoryIdentity(await fd.stat(), uid);
-      const named = directoryIdentity(await lstat(paths.at(-1)!), uid);
-      if (!same(after, roots.at(-1)!) || !same(named, roots.at(-1)!)) fail();
+      const after = directoryIdentity(await fd.stat({ bigint: true }), uid);
+      const named = directoryIdentity(await lstat(paths.at(-1)!, { bigint: true }), uid);
+      if (!sameDirectory(after, roots.at(-1)!) || !sameDirectory(named, roots.at(-1)!)) fail();
     } catch { return fail(); } finally { await fd?.close().catch(() => undefined); }
     await checkChain();
   };
-  const snapshotZero = async (path: string, links: readonly number[]): Promise<Identity | null> => {
+  const snapshotZero = async (path: string, links: readonly number[]): Promise<FileIdentity | null> => {
     await checkChain();
-    let before: Identity;
+    let before: FileIdentity;
     try {
-      const beforeInfo = await lstat(path);
-      if (beforeInfo.nlink === 0) { fileIdentity(beforeInfo, uid, [0], true); return null; }
+      const beforeInfo = await lstat(path, { bigint: true });
+      if (beforeInfo.nlink === 0n) { fileIdentity(beforeInfo, uid, [0], true); return null; }
       before = fileIdentity(beforeInfo, uid, links, true);
     } catch (error) { if (missing(error)) return null; return fail(); }
     await options.hookForTest?.("after_zero_lstat", path);
@@ -110,26 +92,26 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
       try { fd = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW); }
       catch (error) { if (missing(error)) return null; return fail(); }
       if (!fd) return fail();
-      const openedInfo = await fd.stat();
-      if (openedInfo.nlink === 0) { fileIdentity(openedInfo, uid, [0], true); return null; }
+      const openedInfo = await fd.stat({ bigint: true });
+      if (openedInfo.nlink === 0n) { fileIdentity(openedInfo, uid, [0], true); return null; }
       const opened = fileIdentity(openedInfo, uid, links, true);
-      let after: Identity;
+      let after: FileIdentity;
       try {
-        const afterInfo = await lstat(path);
-        if (afterInfo.nlink === 0) { fileIdentity(afterInfo, uid, [0], true); return null; }
+        const afterInfo = await lstat(path, { bigint: true });
+        if (afterInfo.nlink === 0n) { fileIdentity(afterInfo, uid, [0], true); return null; }
         after = fileIdentity(afterInfo, uid, links, true);
       } catch (error) { if (missing(error)) return null; return fail(); }
-      if (!sameInode(before, opened) || !sameInode(opened, after) || !same(before, opened) || !same(opened, after)) return null;
+      if (!sameFileInode(before, opened) || !sameFileInode(opened, after) || !sameFileExact(before, opened) || !sameFileExact(opened, after)) return null;
       return opened;
     } catch { return fail(); } finally { await fd?.close().catch(() => undefined); }
   };
-  const unlinkExact = async (path: string, expected: Identity): Promise<boolean> => {
+  const unlinkExact = async (path: string, expected: FileIdentity): Promise<boolean> => {
     await checkChain();
     const current = await snapshotZero(path, [1, 2]);
-    if (current === null || !sameInode(current, expected) || !same(current, expected)) return false;
+    if (current === null || !sameFileInode(current, expected) || !sameFileExact(current, expected)) return false;
     const immediate = await snapshotZero(path, [1, 2]);
     if (immediate === null) { await syncDirectory(); return false; }
-    if (!sameInode(immediate, expected) || !same(immediate, expected)) return false;
+    if (!sameFileInode(immediate, expected) || !sameFileExact(immediate, expected)) return false;
     await options.hookForTest?.("before_unlink_exact", path);
     try { await unlink(path); } catch (error) {
       if (!missing(error)) fail();
@@ -141,16 +123,16 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
   };
   const readFinal = async (path: string, expected: Uint8Array): Promise<"absent" | "exact" | "prefix"> => {
     await checkChain();
-    let before: Identity;
-    try { before = fileIdentity(await lstat(path), uid, [1]); }
+    let before: FileIdentity;
+    try { before = fileIdentity(await lstat(path, { bigint: true }), uid, [1]); }
     catch (error) { if (missing(error)) return "absent"; return fail(); }
     await options.hookForTest?.("after_final_lstat", path);
     if (before.size > expected.length) fail();
     let fd; let bytes: Uint8Array | undefined;
     try {
       fd = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-      const opened = fileIdentity(await fd.stat(), uid, [1]);
-      if (!sameNode(before, opened) || opened.size > expected.length) fail();
+      const opened = fileIdentity(await fd.stat({ bigint: true }), uid, [1]);
+      if (!sameFileNode(before, opened) || opened.size > expected.length) fail();
       bytes = new Uint8Array(opened.size);
       let offset = 0;
       while (offset < bytes.length) {
@@ -158,10 +140,10 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
         if (read.bytesRead === 0) fail();
         offset += read.bytesRead;
       }
-      const after = fileIdentity(await fd.stat(), uid, [1]);
-      const named = fileIdentity(await lstat(path), uid, [1]);
-      if (!sameNode(opened, after) || !sameNode(opened, named)) fail();
-      if (!same(opened, after) || !same(opened, named)) return "prefix";
+      const after = fileIdentity(await fd.stat({ bigint: true }), uid, [1]);
+      const named = fileIdentity(await lstat(path, { bigint: true }), uid, [1]);
+      if (!sameFileNode(opened, after) || !sameFileNode(opened, named)) fail();
+      if (!sameFileExact(opened, after) || !sameFileExact(opened, named)) return "prefix";
       for (let index = 0; index < bytes.length; index += 1) if (bytes[index] !== expected[index]) fail();
       return bytes.length === expected.length ? "exact" : "prefix";
     } catch (error) {
@@ -169,7 +151,7 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
       return fail();
     } finally { bytes?.fill(0); await fd?.close().catch(() => undefined); }
   };
-  const createToken = async (token: string): Promise<Identity | null> => {
+  const createToken = async (token: string): Promise<FileIdentity | null> => {
     await checkChain();
     let fd;
     try {
@@ -178,15 +160,15 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
       await options.hookForTest?.("after_token_open", token);
       // An identical publisher may link or finish tearing down this token as soon
       // as O_EXCL makes the pathname visible, before its creator reaches fstat.
-      const openedInfo = await fd.stat();
-      if (openedInfo.nlink === 0) { fileIdentity(openedInfo, uid, [0], true); return null; }
+      const openedInfo = await fd.stat({ bigint: true });
+      if (openedInfo.nlink === 0n) { fileIdentity(openedInfo, uid, [0], true); return null; }
       const opened = fileIdentity(openedInfo, uid, [1, 2], true);
       await fd.sync();
       await options.hookForTest?.("after_token_sync", token);
-      const afterInfo = await fd.stat();
-      if (afterInfo.nlink === 0) { fileIdentity(afterInfo, uid, [0], true); return null; }
+      const afterInfo = await fd.stat({ bigint: true });
+      if (afterInfo.nlink === 0n) { fileIdentity(afterInfo, uid, [0], true); return null; }
       const after = fileIdentity(afterInfo, uid, [1, 2], true);
-      if (!sameInode(opened, after)) fail();
+      if (!sameFileInode(opened, after)) fail();
       await syncDirectory();
       await options.hookForTest?.("after_token_create", token);
       return after;
@@ -239,12 +221,12 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
           return;
         }
         if (claimState !== null && tokenState === null) {
-          if (finalState !== "exact" || claimState.nlink !== 1) { await retryContention(attempt, claim, "orphan-claim-not-cleanable"); continue; }
+          if (finalState !== "exact" || claimState.nlink !== 1n) { await retryContention(attempt, claim, "orphan-claim-not-cleanable"); continue; }
           if (!await proveFinal()) fail();
           if (!await unlinkExact(claim, claimState)) {
             const latestClaim = await snapshotZero(claim, [1, 2]);
             if (latestClaim === null) { if (!await proveFinal()) fail(); return; }
-            if (!sameInode(latestClaim, claimState)) fail();
+            if (!sameFileInode(latestClaim, claimState)) fail();
             await retryContention(attempt, claim, "orphan-claim-cleanup-race"); continue;
           }
           return;
@@ -253,7 +235,7 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
         if (ownedToken === null) ownedToken = await createToken(token);
         if (ownedToken === null) { await retryContention(attempt, token, "token-election-race"); continue; }
         let currentClaim = await snapshotZero(claim, [1, 2]);
-        if (currentClaim === null && ownedToken.nlink === 1) {
+        if (currentClaim === null && ownedToken.nlink === 1n) {
           try { await checkChain(); await link(token, claim); } catch (error) { if (!exists(error)) fail(); }
           await syncDirectory();
           await options.hookForTest?.("after_claim_link", claim);
@@ -263,14 +245,14 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
         if (!currentClaim || !ownedToken) { await retryContention(attempt, claim, "topology-observation-race"); continue; }
         if (currentClaim.dev !== ownedToken.dev || currentClaim.ino !== ownedToken.ino) {
           await options.hookForTest?.("after_mismatch_snapshot", token);
-          if (ownedToken.nlink === 1) {
+          if (ownedToken.nlink === 1n) {
             const latest = await snapshotZero(token, [1, 2]);
-            if (latest?.nlink === 1 && same(latest, ownedToken)) await unlinkExact(token, latest);
+            if (latest?.nlink === 1n && sameFileExact(latest, ownedToken)) await unlinkExact(token, latest);
           }
           await retryContention(attempt, claim, "foreign-token-race");
           continue;
         }
-        if (currentClaim.nlink !== 2 || ownedToken.nlink !== 2) { await retryContention(attempt, claim, "link-count-race"); continue; }
+        if (currentClaim.nlink !== 2n || ownedToken.nlink !== 2n) { await retryContention(attempt, claim, "link-count-race"); continue; }
         const state = await readFinal(final, owned);
         if (state === "absent") {
           let fd;
@@ -278,7 +260,7 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
             fd = await open(final, constants.O_CREAT | constants.O_EXCL | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
             await fd.chmod(0o600);
             await options.hookForTest?.("after_final_open", final);
-            const created = fileIdentity(await fd.stat(), uid, [1]);
+            const created = fileIdentity(await fd.stat({ bigint: true }), uid, [1]);
             if (created.size > owned.length) fail();
             await options.hookForTest?.("after_final_create", final);
             const split = Math.max(created.size, 1, Math.floor(owned.length / 2));
@@ -287,21 +269,21 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
             await options.hookForTest?.("after_partial_write", final);
             while (offset < owned.length) offset += await writeSome(fd, owned, offset, owned.length - offset);
             await fd.sync();
-            const complete = fileIdentity(await fd.stat(), uid, [1]);
-            if (created.dev !== complete.dev || created.ino !== complete.ino || complete.size !== owned.length) fail();
+            const complete = fileIdentity(await fd.stat({ bigint: true }), uid, [1]);
+            if (!sameFileNode(created, complete) || complete.size !== owned.length) fail();
             await options.hookForTest?.("after_file_sync", final);
           } catch (error) { if (!exists(error)) fail(); } finally { await fd?.close().catch(() => undefined); }
         } else if (state === "prefix") {
           let fd;
           try {
             fd = await open(final, constants.O_RDWR | constants.O_NOFOLLOW);
-            const before = fileIdentity(await fd.stat(), uid, [1]);
+            const before = fileIdentity(await fd.stat({ bigint: true }), uid, [1]);
             if (before.size > owned.length) fail();
             let offset = before.size;
             while (offset < owned.length) offset += await writeSome(fd, owned, offset, owned.length - offset);
             await fd.sync();
-            const after = fileIdentity(await fd.stat(), uid, [1]);
-            if (before.dev !== after.dev || before.ino !== after.ino || after.size !== owned.length) fail();
+            const after = fileIdentity(await fd.stat({ bigint: true }), uid, [1]);
+            if (!sameFileNode(before, after) || after.size !== owned.length) fail();
           } catch { fail(); } finally { await fd?.close().catch(() => undefined); }
         }
         if (!await proveFinal()) { await retryContention(attempt, final, "final-write-race"); continue; }
@@ -311,18 +293,18 @@ export const initializeTargetSecretSourceFsPublishImmutable = async (
         await options.hookForTest?.("after_exact_token_snapshot", token);
         const exactClaim = await snapshotZero(claim, [1, 2]);
         if (!exactToken || !exactClaim || exactToken.dev !== exactClaim.dev || exactToken.ino !== exactClaim.ino
-          || exactToken.nlink !== 2 || exactClaim.nlink !== 2) { await retryContention(attempt, claim, "cleanup-snapshot-race"); continue; }
+          || exactToken.nlink !== 2n || exactClaim.nlink !== 2n) { await retryContention(attempt, claim, "cleanup-snapshot-race"); continue; }
         await unlinkExact(token, exactToken);
         await options.hookForTest?.("after_token_cleanup", token);
         const remainingClaim = await snapshotZero(claim, [1, 2]);
         if (remainingClaim === null) { if (!await proveFinal()) fail(); return; }
-        if (remainingClaim.nlink !== 1) {
+        if (remainingClaim.nlink !== 1n) {
           await retryContention(attempt, claim, "claim-final-cleanup-race"); continue;
         }
         if (!await unlinkExact(claim, remainingClaim)) {
           const latestClaim = await snapshotZero(claim, [1, 2]);
           if (latestClaim === null) { if (!await proveFinal()) fail(); return; }
-          if (!sameInode(latestClaim, remainingClaim)) fail();
+          if (!sameFileInode(latestClaim, remainingClaim)) fail();
           await retryContention(attempt, claim, "claim-final-cleanup-race"); continue;
         }
         await options.hookForTest?.("after_claim_cleanup", claim);
