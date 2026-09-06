@@ -129,6 +129,14 @@ export interface RuntimeAuthPreparationInput {
    * `null` — only the profile-derived `imports` lookups are unavailable.
    */
   authProfile: ResolvedAuthProfile | null;
+  /**
+   * The uid the deployed container reads bind-mounted credential files as.
+   * Credential mounts carry their host owner through unchanged, so an adapter
+   * whose runtime validates a credential's owner in-container must refuse a
+   * mismatch here rather than at readiness. Omitted means "the uid the runtime
+   * is compiled to run as", which is what every real deployment uses.
+   */
+  containerCredentialUid?: number;
   env: Record<string, string>;
   instance: RuntimeAuthInstance;
   outputDirectory: string;

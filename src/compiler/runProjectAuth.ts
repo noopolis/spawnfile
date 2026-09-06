@@ -90,7 +90,8 @@ export const prepareRuntimeAuthMounts = async (
   containerReport: ContainerReport,
   authProfile: ResolvedAuthProfile | null,
   env: Record<string, string>,
-  tempRoot: string
+  tempRoot: string,
+  containerCredentialUid?: number
 ): Promise<PreparedRunAuth> => {
   // No early return when `authProfile` is null: an adapter's
   // `prepareRuntimeAuth` may still have host-credential staging to do that
@@ -111,6 +112,7 @@ export const prepareRuntimeAuthMounts = async (
 
     const prepared = await adapter.prepareRuntimeAuth({
       authProfile,
+      ...(containerCredentialUid === undefined ? {} : { containerCredentialUid }),
       env,
       instance,
       outputDirectory,

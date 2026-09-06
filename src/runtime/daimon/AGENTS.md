@@ -98,3 +98,43 @@ compiling -- and never silently drop it, because a security option that is
 accepted and ignored is worse than one that is refused. Implementing real
 confinement is a daimon sandbox-profile change plus a contract widening, not an
 adapter change.
+
+## Credential ownership is a deploy-time contract
+
+`runtimeIdentity.ts` is the single source of truth for the fixed container-side
+uids a compiled Daimon image runs under (`DAIMON_ORGANIZATION_UID`,
+`DAIMON_BROKER_UID`, `DAIMON_FIRST_WORKER_UID`);
+`src/compiler/containerDaimonBrokerRender.ts` re-exports them so the compiler and
+the deploy path cannot drift apart. They are compiler-wide constants, not
+per-organization values: the rendered entrypoint pins `uid=2000` and drops to it
+with `setpriv --reuid`.
+
+That number leaks into the *host* because Daimon validates a credential file's
+owner against its own `process.getuid()` inside the container
+(`portableCredentialMaterial.ts` for the Codex leaf, `agySubscriptionRealm.ts`
+for the AGY unlock secret), Spawnfile bind-mounts those files read-only with no
+ownership remapping, and both leaves are declared `opaqueMountTargets` so the
+entrypoint ownership guard deliberately never chowns them. A host file therefore
+keeps its host uid inside the container.
+
+`runAuth.ts` consequently imposes two separate gates on the same file and both
+must hold:
+
+- `isUnsafeDaimonSourceFile` — the host gate. One bounded 0600 regular file with
+  a single hard link, owned by the calling process, and never a root caller
+  (`callerUid <= 0` is refused outright so a privileged process cannot launder
+  credential material it does not own). Do not relax either clause.
+- `assertDaimonCredentialContainerOwner` — the container gate, checked at deploy
+  time so an owner mismatch is refused by `spawnfile up` with both uids named,
+  instead of surfacing as `credential materialization failed` inside a candidate
+  container that lives about fifteen seconds.
+
+The Grok bootstrap leaf is deliberately exempt from the second gate: nothing in
+the organization runtime process reads it (the live Grok path goes through the
+engine broker, which runs under `DAIMON_BROKER_UID` and reads only its durable
+realm), so pinning it to the organization uid would refuse deployments that work
+today.
+
+Materializing the credential host-side instead of checking it is not available:
+copying it to a file owned by uid 2000 needs `CAP_CHOWN`, and the host gate
+refuses a root caller by design.

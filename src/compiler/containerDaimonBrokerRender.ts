@@ -7,10 +7,13 @@ import {
   DAIMON_RUNTIME_HOME_ROOT
 } from "../runtime/daimon/contractManifest.js";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
+import {
+  DAIMON_BROKER_UID,
+  DAIMON_FIRST_WORKER_UID,
+  DAIMON_ORGANIZATION_UID
+} from "../runtime/daimon/runtimeIdentity.js";
 
-export const DAIMON_ORGANIZATION_UID = 2_000;
-export const DAIMON_BROKER_UID = 2_100;
-export const DAIMON_FIRST_WORKER_UID = 2_200;
+export { DAIMON_BROKER_UID, DAIMON_FIRST_WORKER_UID, DAIMON_ORGANIZATION_UID };
 export const DAIMON_BROKER_EXECUTABLE = "/opt/daimon/bin/daimon-engine-broker";
 export const DAIMON_BROKER_REGISTRATIONS = "/etc/daimon-engine-broker/registrations.bin";
 export const DAIMON_BROKER_SOCKET = "/run/daimon-engine-broker/control.sock";
