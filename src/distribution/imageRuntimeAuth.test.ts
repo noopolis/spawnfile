@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { chmod, mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -138,6 +138,12 @@ const daimonReport = () => buildDistributionReport({
   }]
 });
 
+const callerUid = (): number => {
+  const uid = process.getuid?.();
+  if (typeof uid !== "number") throw new Error("this suite requires a POSIX uid");
+  return uid;
+};
+
 const directDaimonSources = async () => {
   const root = await tempDir(), codex = path.join(root, "codex.json"), grok = path.join(root, "grok.json");
   await writeFile(codex, JSON.stringify({ tokens: { access_token: "fake-access", refresh_token: "fake-refresh" } }), { mode: 0o600 });
@@ -149,7 +155,8 @@ describe("prepareImageRuntimeAuthMounts", () => {
   it("mounts direct Daimon provider sources from an embedded engine map without an auth profile", async () => {
     const sources = await directDaimonSources();
     const result = await prepareImageRuntimeAuthMounts({
-      authProfile: null, report: daimonReport(), sourceEnvironment: sources.environment,
+      authProfile: null, daimonContainerCredentialUid: callerUid(),
+      report: daimonReport(), sourceEnvironment: sources.environment,
       tempRoot: await tempDir()
     });
     expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`);
@@ -158,16 +165,45 @@ describe("prepareImageRuntimeAuthMounts", () => {
 
   it("fails closed on missing, permissive, or linked direct Daimon sources", async () => {
     const sources = await directDaimonSources();
+    const uid = callerUid();
     await expect(prepareImageRuntimeAuthMounts({
-      authProfile: null, report: daimonReport(),
+      authProfile: null, daimonContainerCredentialUid: uid, report: daimonReport(),
       sourceEnvironment: { ...sources.environment, SPAWNFILE_DAIMON_SOURCE_GROK_AUTH: path.join(await tempDir(), "missing") },
       tempRoot: await tempDir()
     })).rejects.toThrow(/missing the selected grok artifact/u);
     await chmod(sources.grok, 0o644);
-    await expect(prepareImageRuntimeAuthMounts({ authProfile: null, report: daimonReport(), sourceEnvironment: sources.environment, tempRoot: await tempDir() })).rejects.toThrow(/caller-owned 0600 regular file/u);
+    await expect(prepareImageRuntimeAuthMounts({ authProfile: null, daimonContainerCredentialUid: uid, report: daimonReport(), sourceEnvironment: sources.environment, tempRoot: await tempDir() })).rejects.toThrow(/caller-owned 0600 regular file/u);
     await chmod(sources.grok, 0o600);
     const linked = path.join(await tempDir(), "linked.json"); await symlink(sources.grok, linked);
-    await expect(prepareImageRuntimeAuthMounts({ authProfile: null, report: daimonReport(), sourceEnvironment: { ...sources.environment, SPAWNFILE_DAIMON_SOURCE_GROK_AUTH: linked }, tempRoot: await tempDir() })).rejects.toThrow(/caller-owned 0600 regular file/u);
+    await expect(prepareImageRuntimeAuthMounts({ authProfile: null, daimonContainerCredentialUid: uid, report: daimonReport(), sourceEnvironment: { ...sources.environment, SPAWNFILE_DAIMON_SOURCE_GROK_AUTH: linked }, tempRoot: await tempDir() })).rejects.toThrow(/caller-owned 0600 regular file/u);
+  });
+
+  it("refuses a Daimon image credential the container cannot own, naming both uids", async () => {
+    // No daimonContainerCredentialUid override: the real deploy default, which
+    // is what an operator whose account is not uid 2000 actually hits.
+    const sources = await directDaimonSources();
+    const observed = callerUid();
+    expect(observed).not.toBe(2_000);
+    await expect(prepareImageRuntimeAuthMounts({
+      authProfile: null, report: daimonReport(), sourceEnvironment: sources.environment,
+      tempRoot: await tempDir()
+    })).rejects.toThrow(
+      new RegExp(`codex artifact is owned by uid ${observed} but the Daimon container reads it as uid 2000`, "u")
+    );
+  });
+
+  it("bind-mounts a correctly owned Daimon credential without copying it", async () => {
+    const sources = await directDaimonSources();
+    const before = await lstat(sources.codex);
+    const result = await prepareImageRuntimeAuthMounts({
+      authProfile: null, daimonContainerCredentialUid: callerUid(),
+      report: daimonReport(), sourceEnvironment: sources.environment,
+      tempRoot: await tempDir()
+    });
+    expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`);
+    const after = await lstat(sources.codex);
+    expect([after.ino, after.uid, after.mode & 0o777, after.nlink])
+      .toEqual([before.ino, before.uid, 0o600, 1]);
   });
 
   it("does not prepare unrelated runtimes when no auth profile is selected", async () => {

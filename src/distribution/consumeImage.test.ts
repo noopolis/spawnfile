@@ -221,7 +221,14 @@ describe("consumeImageUp", () => {
     process.env.SPAWNFILE_DAIMON_SOURCE_CODEX_AUTH = codex;
     process.env.SPAWNFILE_DAIMON_SOURCE_GROK_AUTH = grok;
     const state: FakeDockerState = { calls: [] };
-    await consumeImageUp("you/org:v3", { deploymentName: "daimon-direct", runDocker: createFakeDocker(state, daimonReport()) });
+    // The deploying account owns the fixture, so declare it as the uid the
+    // image reads credentials under; otherwise the real default (2000) refuses
+    // the deploy before any mount is rendered.
+    await consumeImageUp("you/org:v3", {
+      daimonContainerCredentialUid: process.getuid?.(),
+      deploymentName: "daimon-direct",
+      runDocker: createFakeDocker(state, daimonReport())
+    });
     const run = state.calls.find((call) => call[0] === "run")!;
     expect(run).toContain(`${codex}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`);
     expect(run).toContain(`${grok}:/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro`);
