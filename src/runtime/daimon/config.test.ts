@@ -150,6 +150,18 @@ describe("Daimon memory lowering", () => {
     expect(config.agents[0]!.engine).toEqual({ kind: "codex", model: "gpt-5.4-codex" });
   });
 
+  it("lowers explicit Codex workspace-no-network policy into Daimon engine config", async () => {
+    const config = await emitConfig(createDaimonNode({
+      runtime: { name: "daimon", options: { engine: "codex", codex_policy: "workspace-no-network" } },
+      execution: {
+        model: { primary: { auth: { method: "codex" }, name: "gpt-5.4-codex", provider: "openai" } },
+        sandbox: { mode: "workspace" }
+      }
+    }));
+
+    expect(config.agents[0]!.engine).toEqual({ kind: "codex", model: "gpt-5.4-codex", codexSandbox: { mode: "workspace-write", networkAccess: false, webSearch: "disabled" } });
+  });
+
   it("omits Daimon's engine model selector when no execution model is declared", async () => {
     const config = await emitConfig(createDaimonNode({ execution: undefined }));
 
