@@ -17,6 +17,7 @@ src/distribution/
 ├── dockerRunner.ts              # Shared spawn-based docker command runner
 ├── preflight.ts                 # api_key-only auth and required-secret preflight
 ├── consumeImage.ts              # up <image-ref> orchestration
+├── consumeImageDaimonDocker.ts  # Daimon image config inspection and launch posture
 ├── consumeImageSupport.ts       # Name/volume derivation and env resolution
 ├── projectImageView.ts          # DistributionReport to OrganizationView projection
 ├── renderImageInterface.ts      # Static status <image-ref> interface renderer
