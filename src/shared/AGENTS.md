@@ -8,6 +8,7 @@ This folder owns small cross-cutting helpers and shared value types.
 src/shared/
 ├── index.ts         # Barrel for shared exports
 ├── constants.ts     # Small shared constants
+├── daimonCodexDocker.ts # Shared Daimon Docker posture and strict Codex policy parser
 ├── errors.ts        # Typed error helpers and guards
 ├── types.ts         # Cross-cutting shared types
 └── errors.test.ts   # Shared error tests

@@ -25,7 +25,7 @@ import {
   verifyDockerDeploymentTarget,
   writeDockerDeploymentRecordForRun
 } from "../deployment/index.js";
-import { DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
+import { DAIMON_DOCKER_RUNTIME_SECURITY_ARGS, DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
 import { ensureNoopolisRunId, resolveNoopolisRunId } from "../runtime/index.js";
 
 import {
@@ -172,16 +172,7 @@ export const createDockerRunInvocation = async (
 
     if (hasDaimon) {
       args.push(
-        "--cap-drop=ALL",
-        "--cap-add=CHOWN",
-        "--cap-add=SETUID",
-        "--cap-add=SETGID",
-        "--cap-add=DAC_READ_SEARCH",
-        // Lets the broker launcher drop its bounding set to 00000000000000c1; without SETPCAP, setpriv --bounding-set silently no-ops.
-        "--cap-add=SETPCAP",
-        // The entrypoint supervises children dropped to uid 2100/2200+; without CAP_KILL, root cannot even kill -0 them, so a live child reads as dead.
-        "--cap-add=KILL",
-        "--security-opt=no-new-privileges:true",
+        ...DAIMON_DOCKER_RUNTIME_SECURITY_ARGS,
         ...(await resolveDaimonCodexNativeSandboxDockerSecurityOptions(compileResult))
       );
     }

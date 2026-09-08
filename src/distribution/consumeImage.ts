@@ -31,6 +31,7 @@ import {
   rollbackCandidateContainer
 } from "./consumeImageLifecycle.js";
 import { createConsumerDockerRunner } from "./dockerRunner.js";
+import { resolveDaimonDockerSecurityArgsForImage } from "./consumeImageDaimonDocker.js";
 import type { DockerCommandRunner } from "./dockerRunner.js";
 import { extractImageReport, resolveDockerBaseArgs } from "./extractImage.js";
 import { parseImageReference } from "./imageRef.js";
@@ -234,6 +235,9 @@ const consumeImageUpLocked = async (
         tempRoot: workDir
       })
     ).mountArgs;
+    const daimonDockerSecurityArgs = await resolveDaimonDockerSecurityArgsForImage(
+      imageRef, report, runDocker
+    );
 
     volumeReservation = await acquireExclusiveVolumeReservations(
       report, deploymentName, containerName, imageRef, runDocker
@@ -257,7 +261,9 @@ const consumeImageUpLocked = async (
       }
     }
 
-    const runArgs = ["run", "-d", "--name", containerName, "--env-file", envFilePath];
+    const runArgs = [
+      "run", "-d", "--name", containerName, ...daimonDockerSecurityArgs, "--env-file", envFilePath
+    ];
     for (const port of report.ports) {
       runArgs.push("-p", `${port}:${port}`);
     }
