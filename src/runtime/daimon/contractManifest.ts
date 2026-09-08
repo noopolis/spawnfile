@@ -7,7 +7,7 @@ import { SpawnfileError } from "../../shared/index.js";
 export const DAIMON_CONTRACT_MANIFEST_VERSION =
   "noopolis.daimon.runtime-contract-manifest.v3" as const;
 export const DAIMON_CONTRACT_MANIFEST_SHA256 =
-  "sha256:aa9b5afc3f207569960ecf36486654bee3e27ee59e661a2d740c983848b0d8a5" as const;
+  "sha256:8e7d2c9624c10c4bf4d4e12bff3a4075127d7caf4c63a604aa8f89c99727f68c" as const;
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";
@@ -121,7 +121,7 @@ const expectedConfigFields = [
   "version", "host.bindHost", "host.port", "host.controlTokenEnv", "agents[].id",
   "agents[].name", "agents[].instructions", "agents[].workspacePath",
   "agents[].runtimeHomePath", "agents[].engine.kind", "agents[].engine.model",
-  "agents[].engine.reasoningEffort", "agents[].schedule.kind",
+  "agents[].engine.reasoningEffort", "agents[].engine.codexSandbox", "agents[].schedule.kind",
   "agents[].schedule.interval_ms", "agents[].schedule.cron",
   "agents[].schedule.timezone", "agents[].schedule.prompt",
   "agents[].schedule.jitter_seconds",

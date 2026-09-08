@@ -536,6 +536,10 @@ describe("daimonAdapter", () => {
     // Warn, never reject: a project already declaring the option must keep compiling.
     expect(compiled.diagnostics.every((diagnostic) => diagnostic.level !== "error")).toBe(true);
     expect(daimonAdapter.validateRuntimeOptions?.({ engine: "codex", restrict_to_workspace: true })).toEqual([]);
+    expect(daimonAdapter.validateRuntimeOptions?.({ engine: "codex", codex_policy: "workspace-no-network" })).toEqual([]);
+    expect(daimonAdapter.validateRuntimeOptions?.({ engine: "codex", codex_policy: "weak" })).toEqual([
+      expect.objectContaining({ level: "error", message: "Daimon runtime option codex_policy must be workspace-no-network" })
+    ]);
   });
 
   it("stays silent about restrict_to_workspace when it is absent or explicitly false", async () => {
@@ -549,5 +553,23 @@ describe("daimonAdapter", () => {
       expect(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"))
         .not.toContain("does not enforce restrict_to_workspace");
     }
+  });
+});
+
+
+describe("Daimon Codex policy runtime option", () => {
+  it("rejects policy on non-Codex agents and contradictory sandbox intent", async () => {
+    const agy = createDaimonNode("agy-policy", "AGY Policy", "agy");
+    agy.runtime.options.codex_policy = "workspace-no-network";
+    expect((await daimonAdapter.compileAgent(agy)).diagnostics).toContainEqual(
+      expect.objectContaining({ level: "error", message: expect.stringContaining("only supported for Codex") })
+    );
+
+    const codex = createDaimonNode("codex-policy", "Codex Policy", "codex");
+    codex.runtime.options.codex_policy = "workspace-no-network";
+    codex.execution = { ...codex.execution!, sandbox: { mode: "unrestricted" } };
+    expect((await daimonAdapter.compileAgent(codex)).diagnostics).toContainEqual(
+      expect.objectContaining({ level: "error", message: expect.stringContaining("requires execution.sandbox.mode: workspace") })
+    );
   });
 });

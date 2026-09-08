@@ -79,6 +79,20 @@ const daimonWorkspaceRestrictionWarning = (node: ResolvedAgentNode): string | un
     + "the container boundary as this agent's only isolation.";
 };
 
+const daimonCodexPolicyError = (node: ResolvedAgentNode): string | undefined => {
+  if (node.runtime.options.codex_policy === undefined) return undefined;
+  if (node.runtime.options.codex_policy !== "workspace-no-network") {
+    return "Daimon runtime option codex_policy must be workspace-no-network";
+  }
+  if (resolveDaimonEngine(node) !== "codex") {
+    return "Daimon runtime option codex_policy=workspace-no-network is only supported for Codex agents";
+  }
+  if (node.execution?.sandbox?.mode !== "workspace") {
+    return "Daimon runtime option codex_policy=workspace-no-network requires execution.sandbox.mode: workspace";
+  }
+  return undefined;
+};
+
 /**
  * AGY is no longer excluded here.
  *
@@ -166,6 +180,7 @@ export const daimonAdapter: RuntimeAdapter = {
     const memorySelectionWarning = daimonMemorySelectionWarning(node);
     const memoryVectorWarning = daimonMemoryVectorRecallWarning(node);
     const workspaceRestrictionWarning = daimonWorkspaceRestrictionWarning(node);
+    const codexPolicyError = daimonCodexPolicyError(node);
     return {
       capabilities: createAgentCapabilities(node, {
         mcpOutcome: "supported",
@@ -181,7 +196,8 @@ export const daimonAdapter: RuntimeAdapter = {
           : []),
         ...(memorySelectionWarning ? [createDiagnostic("warn", memorySelectionWarning)] : []),
         ...(memoryVectorWarning ? [createDiagnostic("warn", memoryVectorWarning)] : []),
-        ...(workspaceRestrictionWarning ? [createDiagnostic("warn", workspaceRestrictionWarning)] : [])
+        ...(workspaceRestrictionWarning ? [createDiagnostic("warn", workspaceRestrictionWarning)] : []),
+        ...(codexPolicyError ? [createDiagnostic("error", codexPolicyError)] : [])
       ],
       files: [
         ...createDocumentFiles("workspace", node.docs),
@@ -204,8 +220,14 @@ export const daimonAdapter: RuntimeAdapter = {
       (typeof options.engine !== "string" || !(DAIMON_ENGINES as readonly string[]).includes(options.engine))) {
       diagnostics.push(createDiagnostic("error", `Daimon runtime option engine must be one of ${DAIMON_ENGINES.join(", ")}`));
     }
-    for (const key of Object.keys(options).filter((key) => key !== "engine" && key !== "restrict_to_workspace")) {
+    for (const key of Object.keys(options).filter((key) => key !== "engine" && key !== "restrict_to_workspace" && key !== "codex_policy")) {
       diagnostics.push(createDiagnostic("error", `Daimon runtime option ${key} is not part of organization runtime v1`));
+    }
+    if (options.codex_policy !== undefined && options.codex_policy !== "workspace-no-network") {
+      diagnostics.push(createDiagnostic("error", "Daimon runtime option codex_policy must be workspace-no-network"));
+    }
+    if (options.codex_policy === "workspace-no-network" && options.engine !== undefined && options.engine !== "codex") {
+      diagnostics.push(createDiagnostic("error", "Daimon runtime option codex_policy=workspace-no-network is only supported for Codex agents"));
     }
     return diagnostics;
   }

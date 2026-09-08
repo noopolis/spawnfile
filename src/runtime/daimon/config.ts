@@ -20,6 +20,8 @@ import {
 } from "./memory.js";
 import { assertDaimonScheduleAuthority } from "./scheduleAuthority.js";
 
+export const DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY = { mode: "workspace-write", networkAccess: false, webSearch: "disabled" } as const;
+
 // Re-exported so every existing importer of these names keeps working; the
 // definitions themselves now live in `./memory.js`.
 export {
@@ -97,12 +99,16 @@ export const resolveDaimonEngine = (node: ResolvedAgentNode): DaimonEngine => {
 
 const resolveDaimonEngineConfig = (
   node: ResolvedAgentNode
-): { kind: DaimonEngine; model?: string } => {
+): { kind: DaimonEngine; model?: string; codexSandbox?: typeof DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY } => {
   const kind = resolveDaimonEngine(node);
   const model = kind === "codex" ? node.execution?.model?.primary?.name : undefined;
+  const codexSandbox = kind === "codex" && node.runtime.options.codex_policy === "workspace-no-network"
+    ? DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY
+    : undefined;
   return {
     kind,
-    ...(model === undefined ? {} : { model })
+    ...(model === undefined ? {} : { model }),
+    ...(codexSandbox === undefined ? {} : { codexSandbox })
   };
 };
 
