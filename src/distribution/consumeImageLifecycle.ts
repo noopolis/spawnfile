@@ -195,13 +195,17 @@ const parseCandidateState = (raw: Buffer): { snapshot: ContainerSnapshot; state:
   }
 };
 
+const candidateReadinessTimeoutMs = 120_000;
+const candidateReadinessPollMs = 1_000;
+
 export const assertCandidateContainerReady = async (
   runDocker: DockerCommandRunner,
   candidateId: string,
   expectedName: string
 ): Promise<void> => {
   if (!dockerId.test(candidateId)) throw new SpawnfileError("runtime_error", "Candidate container returned invalid identity");
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  const deadline = Date.now() + candidateReadinessTimeoutMs;
+  for (;;) {
     const { snapshot, state } = parseCandidateState(await runDocker([
       "container", "inspect", "--format", "{{json .Id}}\n{{json .Name}}\n{{json .State}}", candidateId
     ]));
@@ -211,7 +215,9 @@ export const assertCandidateContainerReady = async (
     const health = state.Health?.Status;
     if (state.Running === true && (health === undefined || health === "healthy")) return;
     if (state.Running !== true || (health !== undefined && health !== "starting")) break;
-    await delay(1_000);
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    await delay(Math.min(candidateReadinessPollMs, remainingMs));
   }
   throw new SpawnfileError("runtime_error", "Candidate container did not become ready");
 };

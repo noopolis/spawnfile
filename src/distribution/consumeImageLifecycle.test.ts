@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("node:timers/promises", () => ({
+  setTimeout: (ms: number) => new Promise<void>((resolve) => globalThis.setTimeout(resolve, ms))
+}));
+
 import {
   acquireExclusiveVolumeReservations,
   assertCandidateContainerReady,
@@ -56,16 +60,45 @@ describe("image deployment lifecycle", () => {
     }), candidateId, "candidate")).rejects.toThrow(/did not become ready/u);
   });
 
-  it("waits while a running candidate health check is starting", async () => {
+  it("waits past the former 30 second candidate readiness budget", async () => {
     vi.useFakeTimers();
+    vi.setSystemTime(0);
     let attempts = 0;
+    const readiness = assertCandidateContainerReady(async () => {
+      attempts += 1;
+      return ready(candidateId, "candidate", Date.now() < 35_000
+        ? { Health: { Status: "starting" }, Running: true, Status: "running" }
+        : { Health: { Status: "healthy" }, Running: true, Status: "running" });
+    }, candidateId, "candidate");
+    await vi.runAllTimersAsync();
+    await expect(readiness).resolves.toBeUndefined();
+    expect(attempts).toBe(36);
+  });
+
+  it("checks readiness at the final deadline before failing", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
     const readiness = assertCandidateContainerReady(async () => ready(candidateId, "candidate",
-      attempts++ === 0
+      Date.now() < 120_000
         ? { Health: { Status: "starting" }, Running: true, Status: "running" }
         : { Health: { Status: "healthy" }, Running: true, Status: "running" }
     ), candidateId, "candidate");
     await vi.runAllTimersAsync();
     await expect(readiness).resolves.toBeUndefined();
+  });
+
+  it("fails a candidate that remains starting through the bounded readiness deadline", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    let attempts = 0;
+    const readiness = assertCandidateContainerReady(async () => {
+      attempts += 1;
+      return ready(candidateId, "candidate", { Health: { Status: "starting" }, Running: true, Status: "running" });
+    }, candidateId, "candidate");
+    const rejected = expect(readiness).rejects.toThrow(/did not become ready/u);
+    await vi.runAllTimersAsync();
+    await rejected;
+    expect(attempts).toBe(121);
   });
 
   it("allows the selected container to occupy its realm and blocks a peer", async () => {
