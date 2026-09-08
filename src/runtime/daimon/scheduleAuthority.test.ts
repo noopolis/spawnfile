@@ -82,6 +82,9 @@ describe("Daimon schedule image authority", () => {
     const everyConfig = await configFor({ kind: "every", every: "5m", prompt: "work", jitter_seconds: 30 }, "every-jittered");
     expect(everyConfig.agents[0].schedule).toEqual({ interval_ms: 300_000, jitter_seconds: 30, kind: "every", prompt: "work" });
 
+    const zeroJitterConfig = await configFor({ kind: "every", every: "5m", prompt: "work", jitter_seconds: 0 }, "every-zero-jitter");
+    expect(zeroJitterConfig.agents[0].schedule).toEqual({ interval_ms: 300_000, jitter_seconds: 0, kind: "every", prompt: "work" });
+
     const noJitterConfig = await configFor({ kind: "every", every: "5m", prompt: "work" }, "every-plain");
     expect(noJitterConfig.agents[0].schedule).not.toHaveProperty("jitter_seconds");
   });

@@ -84,8 +84,8 @@ describe("daimonAdapter", () => {
       version: "noopolis.daimon.organization-runtime.v1",
       host: { bindHost: "127.0.0.1", controlTokenEnv: "SPAWNFILE_DAIMON_CONTROL_TOKEN", port: 19700 },
       agents: [
-        { id: "agent:first", engine: { kind: "codex" } },
-        { id: "agent:second", engine: { kind: "codex" } }
+        { id: "agent:first", engine: { kind: "codex", model: "gpt-5.4-mini" } },
+        { id: "agent:second", engine: { kind: "codex", model: "gpt-5.4-mini" } }
       ]
     });
   });
@@ -191,7 +191,7 @@ describe("daimonAdapter", () => {
 
     expect(JSON.parse(target.files.find((file) => file.path === DAIMON_CONFIG_FILE)!.content).agents)
       .toEqual(expect.arrayContaining([
-        expect.objectContaining({ engine: { kind: "codex" } }),
+        expect.objectContaining({ engine: { kind: "codex", model: "gpt-5.4-mini" } }),
         expect.objectContaining({ engine: { kind: "grok" } }),
         expect.objectContaining({ engine: { kind: "agy" } })
       ]));

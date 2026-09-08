@@ -47,7 +47,8 @@ const manifest = () => ({
   consumedConfigFields: [
     "version", "host.bindHost", "host.port", "host.controlTokenEnv", "agents[].id",
     "agents[].name", "agents[].instructions", "agents[].workspacePath",
-    "agents[].runtimeHomePath", "agents[].engine.kind", "agents[].schedule.kind",
+    "agents[].runtimeHomePath", "agents[].engine.kind", "agents[].engine.model",
+    "agents[].engine.reasoningEffort", "agents[].schedule.kind",
     "agents[].schedule.interval_ms", "agents[].schedule.cron", "agents[].schedule.timezone",
     "agents[].schedule.prompt", "agents[].schedule.jitter_seconds",
     "agents[].mcp", "agents[].moltnet", "agents[].memory"
@@ -169,6 +170,42 @@ describe("Daimon contract manifest", () => {
     const bytes = await readFile(path.join(vendoredRoot, DAIMON_CONTRACT_MANIFEST_FILE), "utf8");
     const raw = JSON.parse(bytes) as { consumedConfigFields: string[] };
     expect(raw.consumedConfigFields).toContain("agents[].memory");
+    expect(raw.consumedConfigFields).toContain("agents[].engine.model");
+    expect(raw.consumedConfigFields).toContain("agents[].engine.reasoningEffort");
+    expect(raw).toMatchObject({
+      organizationRuntimeConfigSchema: {
+        properties: {
+          agents: {
+            items: {
+              properties: {
+                engine: {
+                  properties: {
+                    model: { maxLength: 4096, minLength: 1, pattern: "\\S", type: "string" },
+                    reasoningEffort: { enum: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "persistent"] }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      organizationRuntimeConfigV2Schema: {
+        properties: {
+          agents: {
+            items: {
+              properties: {
+                engine: {
+                  properties: {
+                    model: { maxLength: 4096, minLength: 1, pattern: "\\S", type: "string" },
+                    reasoningEffort: { enum: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "persistent"] }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
   });
 
   it("rejects missing, malformed, noncanonical, and digest-mismatched packaged files", async () => {
