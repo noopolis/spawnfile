@@ -95,6 +95,17 @@ export const resolveDaimonEngine = (node: ResolvedAgentNode): DaimonEngine => {
   );
 };
 
+const resolveDaimonEngineConfig = (
+  node: ResolvedAgentNode
+): { kind: DaimonEngine; model?: string } => {
+  const kind = resolveDaimonEngine(node);
+  const model = kind === "codex" ? node.execution?.model?.primary?.name : undefined;
+  return {
+    kind,
+    ...(model === undefined ? {} : { model })
+  };
+};
+
 const moveWorkspaceFile = (file: EmittedFile, slug: string): EmittedFile =>
   file.path.startsWith("workspace/")
     ? { ...file, path: path.posix.join("workspace", "agents", slug, file.path.slice("workspace/".length)) }
@@ -160,7 +171,7 @@ export const createDaimonContainerTargets = async (
     .map((input) => {
       const memory = resolveDaimonAgentMemory(input.value);
       return {
-      engine: { kind: resolveDaimonEngine(input.value) },
+      engine: resolveDaimonEngineConfig(input.value),
       id: input.id,
       instructions: formatInstructions(input.value),
       name: input.value.name,
