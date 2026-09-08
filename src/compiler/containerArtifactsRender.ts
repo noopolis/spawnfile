@@ -239,6 +239,9 @@ export const renderDockerfile = async (
 
   lines.push(
     "COPY container/rootfs/ /",
+    ...(hasDaimon
+      ? ["RUN chown root:root /var /var/lib /var/lib/spawnfile && chmod 755 /var /var/lib && chmod 711 /var/lib/spawnfile"]
+      : []),
     "COPY .env.example /opt/spawnfile/.env.example",
     'COPY entrypoint.sh /opt/spawnfile/entrypoint.sh',
     `RUN chmod +x /opt/spawnfile/entrypoint.sh${hasDaimon ? ` ${DAIMON_UID_ENTRYPOINT_PATH}` : ""}${hasDaimon ? " && chmod 711 /opt /opt/spawnfile" : ""}`

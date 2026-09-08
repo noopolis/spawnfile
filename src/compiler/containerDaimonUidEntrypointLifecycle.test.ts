@@ -216,6 +216,9 @@ describe("renderDaimonUidEntrypoint lifecycle",()=>{
         await mkdir(path.dirname(outputPath), { recursive: true });
         await writeFile(outputPath, file.content, { encoding: "utf8", mode: file.mode });
       }
+      await chmod(path.join(dockerDirectory, "container", "rootfs", "var"), 0o700);
+      await chmod(path.join(dockerDirectory, "container", "rootfs", "var", "lib"), 0o700);
+      await chmod(path.join(dockerDirectory, "container", "rootfs", "var", "lib", "spawnfile"), 0o700);
       const runtimeBinDirectory = path.join(
         dockerDirectory,
         "container/rootfs/opt/spawnfile/runtime-installs/daimon/bin"
@@ -319,7 +322,7 @@ describe("renderDaimonUidEntrypoint lifecycle",()=>{
       );
       await writeFile(
         path.join(dockerDirectory, "Dockerfile"),
-        `${dockerfile}\nCOPY --chmod=755 supervisor-entrypoint.sh /supervisor-entrypoint.sh\nRUN install -d -o ${authorizedUid} -g ${authorizedUid} -m 700 /tmp/supervisor/workspace && printf '{}\\n' > /tmp/supervisor/config.json && chown ${authorizedUid}:${authorizedUid} /tmp/supervisor/config.json && chmod 600 /tmp/supervisor/config.json && install -d -o root -g root -m 711 /untrusted && install -o root -g root -m 600 /dev/null /untrusted/sentinel && printf content > '${volumeResourceRoot}/content' && chmod 0644 '${volumeResourceRoot}/content' && chmod 775 /var /var/lib\n`,
+        `${dockerfile}\nCOPY --chmod=755 supervisor-entrypoint.sh /supervisor-entrypoint.sh\nRUN install -d -o ${authorizedUid} -g ${authorizedUid} -m 700 /tmp/supervisor/workspace && printf '{}\\n' > /tmp/supervisor/config.json && chown ${authorizedUid}:${authorizedUid} /tmp/supervisor/config.json && chmod 600 /tmp/supervisor/config.json && install -d -o root -g root -m 711 /untrusted && install -o root -g root -m 600 /dev/null /untrusted/sentinel && printf content > '${volumeResourceRoot}/content' && chmod 0644 '${volumeResourceRoot}/content'\n`,
         "utf8"
       );
       await execFile("docker", ["build", "--pull=false", "--tag", tag, "."], {

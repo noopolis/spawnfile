@@ -119,6 +119,8 @@ export const renderDaimonOwnershipProgram = (
   "  for (const entry of fs.readdirSync(`/proc/self/fd/${fd}`, { withFileTypes: true })) {",
   "    const childPath = `${currentPath}/${entry.name}`;",
   "    if (opaquePaths.has(childPath) || opaqueDescendantRoots.has(childPath) || volumeIdentityPaths.has(childPath)) continue;",
+  "    if (entry.isSymbolicLink()) continue;",
+  "    if (!entry.isFile() && !entry.isDirectory()) fail('state tree contains an unsupported entry');",
   "    let child;",
   "    try { child = fs.openSync(`/proc/self/fd/${fd}/${entry.name}`, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK | (entry.isDirectory() ? constants.O_DIRECTORY : 0)); } catch { fail('state tree contains a symbolic link or unavailable entry'); }",
   "    try { const childInfo = fs.fstatSync(child); if (childInfo.dev !== device || mountOptionsFor(childPath).includes('ro')) continue; if (childInfo.isDirectory()) ownTree(child, device, childPath); else if (childInfo.isFile() && childInfo.nlink === 1) fs.fchownSync(child, uid, uid); else if (!childInfo.isFile()) fail('state tree contains an unsupported entry'); } finally { fs.closeSync(child); }",
