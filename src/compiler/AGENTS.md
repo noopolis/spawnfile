@@ -152,8 +152,8 @@ src/compiler/
   delivers it. Docker copies up only into an EMPTY volume, so a reattached
   volume is untouched. Target/secrets volumes under `src/target/*` keep their
   `volume-nocopy` — no image content backs those paths.
-- `runProject.ts` adds `--security-opt=seccomp=unconfined` and
-  `--security-opt=apparmor=unconfined` only when the compiled Daimon
+- Project-run and image-up launches add `--security-opt=seccomp=unconfined`
+  and `--security-opt=apparmor=unconfined` only when the compiled Daimon
   organization config contains the exact strict Codex native sandbox policy.
   Codex's Bubblewrap sandbox needs namespace/mount setup that Docker's default
   seccomp/AppArmor profiles can block. The Daimon container still keeps the
