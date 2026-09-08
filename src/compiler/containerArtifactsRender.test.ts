@@ -150,6 +150,9 @@ describe("renderDockerfile", () => {
     expect(dockerfile).toContain("HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=12");
     expect(dockerfile).toContain("/healthz");
     expect(dockerfile).toContain(plan.instancePaths.configPath);
+    expect(dockerfile).toContain("COPY container/rootfs/ /");
+    expect(dockerfile).toContain("RUN chown root:root /var /var/lib /var/lib/spawnfile && chmod 755 /var /var/lib && chmod 711 /var/lib/spawnfile");
+    expect(dockerfile).not.toContain("chmod -R");
   });
 
   it("uses the highest node base image when a multi-runtime image includes node runtimes", async () => {
