@@ -48,7 +48,7 @@ const manifest = () => ({
     "version", "host.bindHost", "host.port", "host.controlTokenEnv", "agents[].id",
     "agents[].name", "agents[].instructions", "agents[].workspacePath",
     "agents[].runtimeHomePath", "agents[].engine.kind", "agents[].engine.model",
-    "agents[].engine.reasoningEffort", "agents[].schedule.kind",
+    "agents[].engine.reasoningEffort", "agents[].engine.codexSandbox", "agents[].schedule.kind",
     "agents[].schedule.interval_ms", "agents[].schedule.cron", "agents[].schedule.timezone",
     "agents[].schedule.prompt", "agents[].schedule.jitter_seconds",
     "agents[].mcp", "agents[].moltnet", "agents[].memory"

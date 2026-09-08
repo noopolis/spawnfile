@@ -138,3 +138,13 @@ today.
 Materializing the credential host-side instead of checking it is not available:
 copying it to a file owned by uid 2000 needs `CAP_CHOWN`, and the host gate
 refuses a root caller by design.
+
+## Optional Codex terminal policy
+
+`runtime.options.codex_policy: workspace-no-network` is supported only for
+Codex with `execution.sandbox.mode: workspace`. It lowers to the canonical
+`engine.codexSandbox` contract. Daimon pins the terminal sandbox, disables
+terminal network and web search, and exposes declared MCP and memory tools
+without Pi's unrestricted filesystem/shell tools. Omission preserves legacy
+behavior. This option does not make claims about filesystem read isolation;
+trusted MCP servers retain their declared host capabilities.
