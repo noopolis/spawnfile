@@ -64,7 +64,7 @@ const daimonReport = () => buildDistributionReport({
   persistentMounts: [{ durability: "persistent", id: "grok-realm", kind: "volume", lifecycle: "exclusive-reattach", target: "/var/lib/spawnfile/daimon/grok-subscription-realm" }],
   portMappings: [], publishedPorts: [], resources: [],
   runtimeInstances: [{
-    config_path: "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon/daimon-organization-runtime.json",
+    config_path: daimonConfigPath,
     engine_by_node_id: { "agent:coder": "codex", "agent:reviewer": "grok" },
     home_path: null, id: "daimon-organization", internal_port: null,
     model_auth_methods: {}, model_secrets_required: [], node_ids: ["agent:coder", "agent:reviewer"],
@@ -72,9 +72,9 @@ const daimonReport = () => buildDistributionReport({
   }]
 });
 
-const buildTar = (content: Buffer): Buffer => {
+const buildTar = (content: Buffer, name = "spawnfile-report.json"): Buffer => {
   const header = Buffer.alloc(512);
-  header.write("spawnfile-report.json", 0, "ascii");
+  header.write(name, 0, "ascii");
   header.write(content.length.toString(8).padStart(11, "0") + "\0", 124, "ascii");
   header.write("0", 156, "ascii");
   const padded = Buffer.alloc(Math.ceil(content.length / 512) * 512);
@@ -88,13 +88,37 @@ interface FakeDockerState {
 
 const candidateContainerId = "c".repeat(64);
 const previousContainerId = "d".repeat(64);
+const daimonConfigPath = "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon/daimon-organization-runtime.json";
+
+const strictCodexAgent = (id = "agent:coder") => ({
+  engine: {
+    codexSandbox: { mode: "workspace-write", networkAccess: false, webSearch: "disabled" },
+    kind: "codex"
+  },
+  id,
+  name: id.split(":").pop() ?? id,
+  runtimeHomePath: `/var/lib/spawnfile/runtime-homes/${id.replace(/[^a-z0-9]/giu, "-")}`,
+  workspacePath: `/var/lib/spawnfile/workspaces/${id.replace(/[^a-z0-9]/giu, "-")}`
+});
+
+const daimonConfig = (agents: unknown[] = [strictCodexAgent()]) => ({
+  agents,
+  host: {},
+  version: "noopolis.daimon.organization-runtime.v1"
+});
+
 
 const createFakeDocker = (
   state: FakeDockerState,
   customReport?: ReturnType<typeof report>,
-  options: { liveExists?: boolean; runOutput?: string } = {}
+  options: {
+    configByPath?: Record<string, unknown>;
+    liveExists?: boolean;
+    runOutput?: string;
+  } = {}
 ) => {
   const distributionReport = customReport ?? report();
+  const configByPath = options.configByPath ?? { [daimonConfigPath]: daimonConfig() };
   const containers = new Map<string, {
     id: string; labels: Record<string, string>; name: string; running: boolean;
   }>();
@@ -122,7 +146,19 @@ const createFakeDocker = (
       return Buffer.from(JSON.stringify(labels));
     }
     if (args[0] === "cp") {
-      return buildTar(Buffer.from(JSON.stringify(distributionReport)));
+      const source = args[1] ?? "";
+      const copiedPath = source.includes(":") ? source.slice(source.indexOf(":") + 1) : source;
+      if (copiedPath === DISTRIBUTION_REPORT_IMAGE_PATH) {
+        return buildTar(Buffer.from(JSON.stringify(distributionReport)));
+      }
+      if (Object.prototype.hasOwnProperty.call(configByPath, copiedPath)) {
+        const value = configByPath[copiedPath]!;
+        return buildTar(
+          Buffer.from(typeof value === "string" ? value : JSON.stringify(value)),
+          "daimon-runtime.json"
+        );
+      }
+      throw new Error(`No such file in image: ${copiedPath}`);
     }
     if (args[0] === "image" && args[1] === "inspect" && args.includes("{{.Id}}")) {
       return Buffer.from("sha256:localimage");
