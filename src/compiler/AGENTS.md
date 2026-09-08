@@ -38,6 +38,7 @@ src/compiler/
 ├── containerTargetPlanResolution.ts # Per-target paths, packages, auth, secrets, and exposure resolution
 ├── teamRoster.ts               # Context-scoped team roster generation and diagnostics
 ├── runProject.ts               # `spawnfile run` docker-run planning and execution
+├── runProjectDaimonCodexDocker.ts # Daimon Codex strict native-sandbox Docker opt-in
 ├── runProjectDocker.ts         # Docker run process runner and detached container metadata capture
 ├── runProjectLifecycle.ts      # Generated run-env cleanup while preserving detached auth bind sources
 ├── initProject.ts              # `spawnfile init` orchestration around runtime-owned scaffolds
@@ -151,6 +152,14 @@ src/compiler/
   delivers it. Docker copies up only into an EMPTY volume, so a reattached
   volume is untouched. Target/secrets volumes under `src/target/*` keep their
   `volume-nocopy` — no image content backs those paths.
+- `runProject.ts` adds `--security-opt=seccomp=unconfined` and
+  `--security-opt=apparmor=unconfined` only when the compiled Daimon
+  organization config contains the exact strict Codex native sandbox policy.
+  Codex's Bubblewrap sandbox needs namespace/mount setup that Docker's default
+  seccomp/AppArmor profiles can block. The Daimon container still keeps the
+  existing uid, capability-drop, and `no-new-privileges` posture; Codex owns the
+  per-turn filesystem/network/tool boundary, while trusted MCP servers and
+  Daimon code outside that native boundary remain trusted container processes.
 - Declared names are checked for uniqueness across EVERY mount source
   (`containerPersistentMounts.ts`), not just within one source. A
   resource `name: X` and a store `persistence.name: X` used to compile to two

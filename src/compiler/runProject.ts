@@ -35,6 +35,7 @@ import {
 } from "./compileProject.js";
 import { createDefaultImageTag, resolveDockerBuildArchitecture } from "./buildProject.js";
 import { slugify } from "./helpers.js";
+import { resolveDaimonCodexNativeSandboxDockerSecurityOptions } from "./runProjectDaimonCodexDocker.js";
 import {
   inspectDetachedContainer as recoverDetachedDockerRun,
   runDockerContainer,
@@ -77,7 +78,6 @@ export interface RunProjectResult extends CompileProjectResult {
   deploymentRecordPath?: string | null;
   imageTag: string;
 }
-
 const resolveImageTagRoot = (inputPath: string): string => {
   const resolvedPath = path.resolve(inputPath);
   return path.basename(resolvedPath).toLowerCase() === "spawnfile"
@@ -181,7 +181,8 @@ export const createDockerRunInvocation = async (
         "--cap-add=SETPCAP",
         // The entrypoint supervises children dropped to uid 2100/2200+; without CAP_KILL, root cannot even kill -0 them, so a live child reads as dead.
         "--cap-add=KILL",
-        "--security-opt=no-new-privileges:true"
+        "--security-opt=no-new-privileges:true",
+        ...(await resolveDaimonCodexNativeSandboxDockerSecurityOptions(compileResult))
       );
     }
 
