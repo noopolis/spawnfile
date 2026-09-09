@@ -198,6 +198,87 @@ describe("spawnfile usage", () => {
     expect(top.output).not.toContain("brass");
   });
 
+
+  it("uses the home store for a named deployment from the default cwd", async () => {
+    const projectRecords = vi.fn(async () => { throw new Error("project store should not be read"); });
+    const homeRecords = vi.fn(async () => [{ path: "/home/deployments/daimon-organization/record.json", record: record() }]);
+    const result = await executeUsageCommand(process.cwd(), { deployment: "daimon-organization", json: true }, {
+      ...handlersFor({ [DAIMON_GROK_TURN_USAGE_LEDGER.filePath]: `${line()}\n` }),
+      listDeploymentRecords: projectRecords as never,
+      listHomeDeploymentRecords: homeRecords as never
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(projectRecords).not.toHaveBeenCalled();
+    expect(homeRecords).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(result.output!).deployment).toBe("daimon-organization");
+  });
+
+  it("falls back to a single home deployment from the default cwd only when the project store is empty", async () => {
+    const projectRecords = vi.fn(async () => []);
+    const homeRecords = vi.fn(async () => [{ path: "/home/deployments/daimon-organization/record.json", record: record() }]);
+    const result = await executeUsageCommand(process.cwd(), { json: true }, {
+      ...handlersFor({ [DAIMON_GROK_TURN_USAGE_LEDGER.filePath]: `${line()}\n` }),
+      listDeploymentRecords: projectRecords as never,
+      listHomeDeploymentRecords: homeRecords as never
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(projectRecords).toHaveBeenCalledTimes(1);
+    expect(homeRecords).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(result.output!).deployment).toBe("daimon-organization");
+  });
+
+  it("keeps explicit project output on the project deployment store", async () => {
+    const projectRecords = vi.fn(async () => [{ path: "/project/out/deployments/daimon-organization.json", record: record() }]);
+    const homeRecords = vi.fn(async () => [{ path: "/home/deployments/home-only/record.json", record: { ...record(), name: "home-only" } }]);
+    const result = await executeUsageCommand(process.cwd(), { json: true, out: "/project/out" }, {
+      ...handlersFor({ [DAIMON_GROK_TURN_USAGE_LEDGER.filePath]: `${line()}\n` }),
+      listDeploymentRecords: projectRecords as never,
+      listHomeDeploymentRecords: homeRecords as never
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(projectRecords).toHaveBeenCalledWith("/project/out");
+    expect(homeRecords).not.toHaveBeenCalled();
+    expect(JSON.parse(result.output!).deployment).toBe("daimon-organization");
+  });
+
+  it("keeps an explicit project path on the project deployment store", async () => {
+    const projectRoot = await mkdtemp(path.join(os.tmpdir(), "spawnfile-usage-project-"));
+    try {
+      const projectRecords = vi.fn(async () => [{ path: path.join(projectRoot, ".spawn/deployments/daimon-organization.json"), record: record() }]);
+      const homeRecords = vi.fn(async () => [{ path: "/home/deployments/home-only/record.json", record: { ...record(), name: "home-only" } }]);
+      const result = await executeUsageCommand(projectRoot, { json: true }, {
+        ...handlersFor({ [DAIMON_GROK_TURN_USAGE_LEDGER.filePath]: `${line()}\n` }),
+        listDeploymentRecords: projectRecords as never,
+        listHomeDeploymentRecords: homeRecords as never
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(projectRecords).toHaveBeenCalledWith(path.join(projectRoot, ".spawn"));
+      expect(homeRecords).not.toHaveBeenCalled();
+      expect(JSON.parse(result.output!).deployment).toBe("daimon-organization");
+    } finally {
+      await rm(projectRoot, { force: true, recursive: true });
+    }
+  });
+
+  it("uses the home store for an image-reference positional argument", async () => {
+    const projectRecords = vi.fn(async () => { throw new Error("project store should not be read"); });
+    const homeRecords = vi.fn(async () => [{ path: "/home/deployments/daimon-organization/record.json", record: record() }]);
+    const result = await executeUsageCommand("registry.example.test/org:1.0.0", { json: true }, {
+      ...handlersFor({ [DAIMON_GROK_TURN_USAGE_LEDGER.filePath]: `${line()}\n` }),
+      listDeploymentRecords: projectRecords as never,
+      listHomeDeploymentRecords: homeRecords as never
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(projectRecords).not.toHaveBeenCalled();
+    expect(homeRecords).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(result.output!).deployment).toBe("daimon-organization");
+  });
+
   it("emits machine-readable JSON that declares its counts a lower bound", async () => {
     const result = await executeUsageCommand("/tmp/project", { json: true }, handlersFor({
       [DAIMON_GROK_TURN_USAGE_LEDGER.filePath]: `${line()}\n`

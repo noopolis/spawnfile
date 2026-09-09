@@ -42,7 +42,14 @@ import {
   devUpProject
 } from "../dev/index.js";
 import { consumeImageUp } from "../distribution/index.js";
-import { downDeployment, exportRunArtifacts } from "../deployment/index.js";
+import {
+  createDockerProbeGateway,
+  downDeployment,
+  exportRunArtifacts,
+  inspectDockerDeployment,
+  listDeploymentRecords,
+  listHomeDeploymentRecords
+} from "../deployment/index.js";
 import { errorExitCode, isSpawnfileError } from "../shared/index.js";
 import { listRuntimeAdapters } from "../runtime/index.js";
 import { registerArtifactsCommands } from "./artifactsCommands.js";
@@ -101,6 +108,10 @@ export interface CliHandlers {
   provisionCredentials: typeof provisionCredentials;
   exportRunArtifacts: typeof exportRunArtifacts;
   downDeployment: typeof downDeployment;
+  createDockerProbeGateway: typeof createDockerProbeGateway;
+  inspectDockerDeployment: typeof inspectDockerDeployment;
+  listDeploymentRecords: typeof listDeploymentRecords;
+  listHomeDeploymentRecords: typeof listHomeDeploymentRecords;
   listRuntimeAdapters: typeof listRuntimeAdapters; removeProjectSurface: typeof removeProjectSurface;
   requireAuthProfile: typeof requireAuthProfile; runProject: typeof runProject;
   upProject: typeof upProject; buildUpReceipt: typeof buildUpReceipt;
@@ -121,7 +132,8 @@ const createDefaultHandlers = (): CliHandlers => ({
   addSubagentProject, addTeamProject, clearProjectModelFallbacks,
   importClaudeCodeAuth, importCodexAuth, importEnvFile, initializeTargetSecretSourceLifecycle,
   provisionCredentials,
-  exportRunArtifacts, downDeployment,
+  createDockerProbeGateway, exportRunArtifacts, downDeployment, inspectDockerDeployment,
+  listDeploymentRecords, listHomeDeploymentRecords,
   initProject, listInitTemplates, listRuntimeAdapters, removeProjectSurface, requireAuthProfile,
   runProject, setProjectPrimaryModel, setProjectRuntime, upProject, buildUpReceipt, consumeImageUp,
   devActivityProject, devApplyProject, devRestartProject, devStopProject, devUpProject,
@@ -320,7 +332,7 @@ export const runCli: RunCli = async (
   });
   registerUsageCommand(program, streams, (exitCode) => {
     commandExitCode = exitCode;
-  });
+  }, handlers);
   registerViewCommand(program, handlers, streams, cliOptions.renderEnvironment);
   registerProductionTargetCommands(program, streams, cliOptions.stdin, (exitCode) => {
     commandExitCode = exitCode;

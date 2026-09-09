@@ -2,6 +2,7 @@ import {
   createDockerProbeGateway,
   inspectDockerDeployment,
   listDeploymentRecords,
+  listHomeDeploymentRecords,
   type DeploymentRecord,
   type DockerInspectionResult
 } from "../deployment/index.js";
@@ -59,6 +60,7 @@ export interface UsageCommandLiveHandlers {
   createDockerProbeGateway?: typeof createDockerProbeGateway;
   inspectDockerDeployment?: typeof inspectDockerDeployment;
   listDeploymentRecords?: typeof listDeploymentRecords;
+  listHomeDeploymentRecords?: typeof listHomeDeploymentRecords;
 }
 
 export interface CollectOrganizationUsageOptions {
