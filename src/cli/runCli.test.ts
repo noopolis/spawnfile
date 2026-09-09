@@ -6,9 +6,11 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { DeploymentRecord } from "../deployment/index.js";
 import { fileExists, removeDirectory } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import type { OrganizationReadinessEvidence } from "../compiler/organizationReadyEvidence.js";
+import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 
 import { runCli } from "./runCli.js";
 
@@ -17,6 +19,45 @@ const fixturesRoot = path.resolve(process.cwd(), "examples");
 const packageVersion = (
   JSON.parse(readFileSync("package.json", "utf8")) as { version: string }
 ).version;
+
+const genericUsageRecord = (name = "usage-home"): DeploymentRecord => ({
+  auth_profile: null,
+  compile_fingerprint: "sf1:usage",
+  created_at: "2026-09-09T00:00:00.000Z",
+  manager: "docker",
+  name,
+  output_directory: null,
+  source: { digest: null, kind: "image", ref: "example.invalid/org:1.0.0" },
+  target: { kind: "host", value: "unix:///var/run/docker.sock" },
+  units: [{
+    container_id: "container-usage",
+    container_name: "spawnfile-usage-home",
+    contains: [{ id: "agent:metered", kind: "agent" }],
+    id: `${name}-container`,
+    image_id: null,
+    image_tag: "example.invalid/org:1.0.0",
+    kind: "container",
+    runtime_instances: ["daimon-usage"]
+  }],
+  version: "spawnfile.deployment.v2"
+});
+
+const genericUsageLine = (): string => `${JSON.stringify({
+  v: "noopolis.daimon.turn-usage.v1",
+  agent: "agent:metered",
+  wake: "wake-usage",
+  engine: "grok",
+  at: new Date().toISOString(),
+  input: 10,
+  output: 5,
+  cache_read: 0,
+  cache_write: 0,
+  total: 15,
+  calls: 1,
+  notional_usd: 0.01,
+  complete: true
+})}\n`;
+
 const genericOrganizationReadinessEvidence: OrganizationReadinessEvidence = {
   compileFingerprint: "sf1:000000000000",
   compileVersion: "0.1",
@@ -61,6 +102,44 @@ describe("runCli", () => {
       implementation: { package: "spawnfile", version: packageVersion },
       version: "spawnfile.capabilities.v1",
     });
+  });
+
+
+  it("routes parsed default usage --deployment to the home deployment store", async () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const projectRecords = vi.fn(async () => { throw new Error("project store should not be read"); });
+    const homeRecords = vi.fn(async () => [{ path: "/home/deployments/usage-home/record.json", record: genericUsageRecord() }]);
+    const exitCode = await runCli(
+      ["usage", "--deployment", "usage-home", "--json"],
+      { stderr: (message) => stderr.push(message), stdout: (message) => stdout.push(message) },
+      {
+        createDockerProbeGateway: (() => ({
+          exec: async (command: string[]) => {
+            const target = command[1];
+            return {
+              stderr: "",
+              stdout: target === DAIMON_GROK_TURN_USAGE_LEDGER.filePath ? genericUsageLine() : ""
+            };
+          },
+          httpGet: async () => ({ body: "", ok: true }),
+          inspectUnit: async () => { throw new Error("unused"); }
+        })) as never,
+        inspectDockerDeployment: (async () => new Map([["usage-home-container", {
+          containerId: "container-usage", drift: [], exists: true, exitCode: null,
+          finishedAt: null, identity: null, imageId: null, message: "", restartCount: null,
+          running: true, severity: "ok" as const, startedAt: null, status: null, unitId: "usage-home-container"
+        }]])) as never,
+        listDeploymentRecords: projectRecords as never,
+        listHomeDeploymentRecords: homeRecords as never
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toEqual([]);
+    expect(projectRecords).not.toHaveBeenCalled();
+    expect(homeRecords).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(stdout[0]!)).toMatchObject({ deployment: "usage-home", source: "live" });
   });
 
   it("requires literal target config stdin and bounds config failures before effects", async () => {

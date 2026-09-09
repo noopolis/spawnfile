@@ -21,6 +21,7 @@ import {
 } from "../runtime/usageLedger.js";
 
 import type { CliStreams } from "./runCli.js";
+import { resolveUsageDeploymentSource } from "./usageDeploymentSource.js";
 import {
   collectOrganizationUsage,
   rosterForRecord,
@@ -301,6 +302,8 @@ export const executeUsageCommand = async (
   const outputDirectory = resolveProjectOutputDirectory(inputPath, options.out, DEFAULT_OUTPUT_DIRECTORY);
   let usage: OrganizationUsage | { error: string };
   try {
+    const source = await resolveUsageDeploymentSource(inputPath, options, handlers, outputDirectory);
+    const sourceHandlers = { ...handlers, listDeploymentRecords: source.loader };
     // Source selection is explicit, never inferred from what happens to be
     // reachable: --exported reads that sealed run and never contacts Docker,
     // and without it the live container is read exactly as before. Passing
@@ -311,10 +314,10 @@ export const executeUsageCommand = async (
       ? await collectOrganizationUsage({
         deployment: options.deployment,
         dockerCommand: options.dockerCommand,
-        outputDirectory,
+        outputDirectory: source.outputDirectory,
         timeoutMs
-      }, handlers)
-      : await collectExportedUsage(options.exported, options, outputDirectory, handlers);
+      }, sourceHandlers)
+      : await collectExportedUsage(options.exported, options, source.outputDirectory, sourceHandlers);
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error), exitCode: errorExitCode(error) };
   }
