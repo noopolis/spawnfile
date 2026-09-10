@@ -71,6 +71,8 @@ spawnfile up you/research-cell:1.0.0 --deployment research --detach --auth-profi
 
 The image already carries the OAuth-mode config; spawnfile injects your credential at start, so the agents run on your subscription rather than a pay-per-token key. If you provide neither an API key nor the matching import, preflight fails before anything starts and tells you exactly which runtime and method it needs.
 
+Refreshing an imported CLI login updates the local auth profile. Run `spawnfile up ... --auth-profile <profile>` again to start a new container with that refreshed credential; restarting an already-running container may keep the old bind-mounted file.
+
 ## Check a Sourceless Deployment
 
 ```bash

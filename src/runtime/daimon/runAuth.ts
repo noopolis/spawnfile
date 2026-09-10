@@ -4,6 +4,7 @@ import { constants } from "node:fs";
 import { chmod, lstat, mkdir, open, readFile } from "node:fs/promises";
 
 import { SpawnfileError } from "../../shared/index.js";
+import type { ResolvedAuthProfile } from "../../auth/index.js";
 import type { RuntimeAuthPreparationInput, RuntimeAuthPreparationResult } from "../types.js";
 
 import {
@@ -37,7 +38,8 @@ export const daimonSourceEnvironmentName = (slot: string): string =>
 
 export const daimonSourcePathForEngine = (
   engine: "codex" | "grok",
-  environment: Record<string, string | undefined> = process.env
+  environment: Record<string, string | undefined> = process.env,
+  authProfile: ResolvedAuthProfile | null = null
 ): string => {
   const declaredSource = environment[
     daimonSourceEnvironmentName(engine === "grok"
@@ -45,6 +47,13 @@ export const daimonSourcePathForEngine = (
       : DAIMON_ENGINE_CREDENTIALS.codex.sourceSlot)
   ]?.trim();
   if (declaredSource) return declaredSource;
+  if (engine === "codex" && authProfile) {
+    const imported = authProfile.imports.codex;
+    return path.join(
+      imported?.path ?? fail("selected auth profile has no imported codex credential"),
+      "auth.json"
+    );
+  }
   const home = os.homedir();
   switch (engine) {
     case "codex":
@@ -247,11 +256,10 @@ const parseConfigAgents = (source: string): DaimonConfigAgent[] => {
   return agents.sort((left, right) => left.id.localeCompare(right.id));
 };
 
-const resolveCredentialSource = async (
-  agent: DaimonConfigAgent & { engine: { kind: "codex" } }
-): Promise<string> => {
-  return daimonSourcePathForEngine(agent.engine.kind);
-};
+const resolveCredentialSource = (
+  agent: DaimonConfigAgent & { engine: { kind: "codex" } },
+  authProfile: ResolvedAuthProfile | null
+): string => daimonSourcePathForEngine(agent.engine.kind, process.env, authProfile);
 
 const prepareNeutralIngress = async (
   outputDirectory: string,
@@ -305,7 +313,7 @@ export const prepareDaimonRuntimeAuth = async (
     const portableAgent = agent as DaimonConfigAgent & {
       engine: { kind: "codex" };
     };
-    const sourcePath = await resolveCredentialSource(portableAgent);
+    const sourcePath = resolveCredentialSource(portableAgent, input.authProfile);
     const ingressPath = await prepareNeutralIngress(input.outputDirectory, portableAgent);
     const ownerUid = await assertSafeDaimonSourceFile(
       sourcePath, agent.engine.kind, MAX_OPAQUE_CREDENTIAL_BYTES, "codex"
