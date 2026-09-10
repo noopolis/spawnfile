@@ -62,6 +62,7 @@ const daimonInstanceRoot = (
 export const prepareDaimonImageAuthMounts = async (
   instance: DistributionReport["runtime_instances"][number],
   environment: Record<string, string | undefined>,
+  authProfile: ResolvedAuthProfile | null,
   containerCredentialUid: number = DAIMON_CREDENTIAL_CONTAINER_UID
 ): Promise<string[]> => {
   const engines = Object.entries(instance.engine_by_node_id ?? {}).sort(([left], [right]) => left.localeCompare(right));
@@ -84,7 +85,7 @@ export const prepareDaimonImageAuthMounts = async (
     slugs.set(slug, nodeId);
   }
   const codexSource = engines.some(([, engine]) => engine === "codex")
-    ? daimonSourcePathForEngine("codex", environment) : null;
+    ? daimonSourcePathForEngine("codex", environment, authProfile) : null;
   if (codexSource) {
     const ownerUid = await assertSafeDaimonSourceFile(codexSource, "codex", 64 * 1024, "codex");
     assertDaimonCredentialContainerOwner(ownerUid, "codex", containerCredentialUid);
@@ -134,6 +135,7 @@ export const prepareImageRuntimeAuthMounts = async (
       mountArgs.push(...await prepareDaimonImageAuthMounts(
         instance,
         input.sourceEnvironment ?? process.env,
+        input.authProfile,
         input.daimonContainerCredentialUid ?? DAIMON_CREDENTIAL_CONTAINER_UID
       ));
       continue;

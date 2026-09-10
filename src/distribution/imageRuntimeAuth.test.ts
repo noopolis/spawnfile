@@ -51,8 +51,10 @@ const codexImportDir = async (): Promise<string> => {
         account_id: "acct",
         refresh_token: "codex-refresh"
       }
-    })
+    }),
+    { mode: 0o600 }
   );
+  await chmod(path.join(importDir, "auth.json"), 0o600);
   return importDir;
 };
 
@@ -161,6 +163,83 @@ describe("prepareImageRuntimeAuthMounts", () => {
     });
     expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`);
     expect(result.mountArgs).toContain(`${sources.grok}:/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro`);
+  });
+
+  it("uses the selected Codex profile import for Daimon image auth", async () => {
+    const sources = await directDaimonSources();
+    const importDir = await codexImportDir();
+    const profile: ResolvedAuthProfile = {
+      authHome: "/auth",
+      env: {},
+      imports: { codex: { kind: "codex", path: importDir } },
+      name: "me",
+      profileDirectory: "/auth/me",
+      profilePath: "/auth/me/profile.json",
+      version: 1
+    };
+    const result = await prepareImageRuntimeAuthMounts({
+      authProfile: profile,
+      daimonContainerCredentialUid: callerUid(),
+      report: daimonReport(),
+      sourceEnvironment: { SPAWNFILE_DAIMON_SOURCE_GROK_AUTH: sources.grok },
+      tempRoot: await tempDir()
+    });
+    expect(result.mountArgs).toContain(`${path.join(importDir, "auth.json")}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`);
+    expect(result.mountArgs.join("\n")).not.toContain(sources.codex);
+  });
+
+  it("lets an explicit Daimon image Codex source override the selected profile", async () => {
+    const sources = await directDaimonSources();
+    const importDir = await codexImportDir();
+    const profile: ResolvedAuthProfile = {
+      authHome: "/auth", env: {}, imports: { codex: { kind: "codex", path: importDir } },
+      name: "me", profileDirectory: "/auth/me", profilePath: "/auth/me/profile.json", version: 1
+    };
+    const result = await prepareImageRuntimeAuthMounts({
+      authProfile: profile, daimonContainerCredentialUid: callerUid(), report: daimonReport(),
+      sourceEnvironment: sources.environment, tempRoot: await tempDir()
+    });
+    expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`);
+    expect(result.mountArgs.join("\n")).not.toContain(path.join(importDir, "auth.json"));
+  });
+
+  it("allows an explicit Daimon image Codex source with an env-only selected profile", async () => {
+    const sources = await directDaimonSources();
+    const profile: ResolvedAuthProfile = {
+      authHome: "/auth", env: {}, imports: {}, name: "me",
+      profileDirectory: "/auth/me", profilePath: "/auth/me/profile.json", version: 1
+    };
+    const result = await prepareImageRuntimeAuthMounts({
+      authProfile: profile, daimonContainerCredentialUid: callerUid(), report: daimonReport(),
+      sourceEnvironment: sources.environment, tempRoot: await tempDir()
+    });
+    expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`);
+  });
+
+  it("fails closed when a Daimon image selected profile has no Codex import", async () => {
+    const sources = await directDaimonSources();
+    const profile: ResolvedAuthProfile = {
+      authHome: "/auth", env: {}, imports: {}, name: "me",
+      profileDirectory: "/auth/me", profilePath: "/auth/me/profile.json", version: 1
+    };
+    await expect(prepareImageRuntimeAuthMounts({
+      authProfile: profile, daimonContainerCredentialUid: callerUid(), report: daimonReport(),
+      sourceEnvironment: { SPAWNFILE_DAIMON_SOURCE_GROK_AUTH: sources.grok }, tempRoot: await tempDir()
+    })).rejects.toThrow(/selected auth profile has no imported codex credential/u);
+  });
+
+  it("fails closed when a Daimon image selected Codex import is malformed", async () => {
+    const sources = await directDaimonSources();
+    const importDir = await tempDir();
+    await writeFile(path.join(importDir, "auth.json"), "{}", { mode: 0o600 });
+    const profile: ResolvedAuthProfile = {
+      authHome: "/auth", env: {}, imports: { codex: { kind: "codex", path: importDir } }, name: "me",
+      profileDirectory: "/auth/me", profilePath: "/auth/me/profile.json", version: 1
+    };
+    await expect(prepareImageRuntimeAuthMounts({
+      authProfile: profile, daimonContainerCredentialUid: callerUid(), report: daimonReport(),
+      sourceEnvironment: { SPAWNFILE_DAIMON_SOURCE_GROK_AUTH: sources.grok }, tempRoot: await tempDir()
+    })).rejects.toThrow(/refreshable subscription credential/u);
   });
 
   it("fails closed on missing, permissive, or linked direct Daimon sources", async () => {
