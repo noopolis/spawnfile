@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { ResolvedAuthProfile } from "../../auth/index.js";
 import { removeDirectory } from "../../filesystem/index.js";
 import { DAIMON_ORGANIZATION_UID } from "./runtimeIdentity.js";
 import {
@@ -49,14 +50,25 @@ const callerUid = (): number => {
   if (typeof uid !== "number") throw new Error("this suite requires a POSIX uid");
   return uid;
 };
+const authProfile = (codexPath?: string): ResolvedAuthProfile => ({
+  authHome: "/auth",
+  env: {},
+  imports: codexPath ? { codex: { kind: "codex", path: codexPath } } : {},
+  name: "selected",
+  profileDirectory: "/auth/selected",
+  profilePath: "/auth/selected/profile.json",
+  version: 1
+});
+
 const prepare = (
   outputDirectory: string,
   tempRoot: string,
   configPath: string,
-  containerCredentialUid: number = callerUid()
+  containerCredentialUid: number = callerUid(),
+  profile: ResolvedAuthProfile | null = null
 ) =>
   prepareDaimonRuntimeAuth({
-    authProfile: null,
+    authProfile: profile,
     containerCredentialUid,
     env: {},
     instance: { config_path: configPath, home_path: null, id: "daimon-organization", model_auth_methods: {}, model_secrets_required: [], runtime: "daimon" },
@@ -94,6 +106,87 @@ describe("prepareDaimonRuntimeAuth", () => {
     expect(prepared.mountArgs.join("\n")).not.toContain(tempRoot);
     expect((await lstat(path.join(outputDirectory, "container", "rootfs", `.${home}`, ".daimon-inbound"))).mode & 0o777)
       .toBe(0o700);
+  });
+
+  it("uses the selected Codex profile import instead of stale ambient auth", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
+    const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
+    const ambientHome = await createTempDirectory("spawnfile-daimon-ambient-codex-");
+    const importedHome = await createTempDirectory("spawnfile-daimon-imported-codex-");
+    process.env.CODEX_HOME = ambientHome;
+    await writeFile(path.join(ambientHome, "auth.json"), codexCredential(), { mode: 0o600 });
+    await writeFile(path.join(importedHome, "auth.json"), codexCredential(), { mode: 0o600 });
+    await chmod(path.join(ambientHome, "auth.json"), 0o600);
+    await chmod(path.join(importedHome, "auth.json"), 0o600);
+    const home = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex";
+    const configPath = await writeConfig(outputDirectory, home);
+
+    const prepared = await prepare(outputDirectory, tempRoot, configPath, callerUid(), authProfile(importedHome));
+
+    expect(prepared.mountArgs).toContain(`${path.join(importedHome, "auth.json")}:${home}/.daimon-inbound/codex-auth:ro`);
+    expect(prepared.mountArgs.join("\n")).not.toContain(path.join(ambientHome, "auth.json"));
+  });
+
+  it("lets an explicit Codex source override a selected profile import", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
+    const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
+    const importedHome = await createTempDirectory("spawnfile-daimon-imported-codex-");
+    const overrideHome = await createTempDirectory("spawnfile-daimon-override-codex-");
+    await writeFile(path.join(importedHome, "auth.json"), codexCredential(), { mode: 0o600 });
+    await writeFile(path.join(overrideHome, "auth.json"), codexCredential(), { mode: 0o600 });
+    await chmod(path.join(importedHome, "auth.json"), 0o600);
+    await chmod(path.join(overrideHome, "auth.json"), 0o600);
+    process.env.SPAWNFILE_DAIMON_SOURCE_CODEX_AUTH = path.join(overrideHome, "auth.json");
+    const home = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex";
+    const configPath = await writeConfig(outputDirectory, home);
+
+    const prepared = await prepare(outputDirectory, tempRoot, configPath, callerUid(), authProfile(importedHome));
+
+    expect(prepared.mountArgs).toContain(`${path.join(overrideHome, "auth.json")}:${home}/.daimon-inbound/codex-auth:ro`);
+    expect(prepared.mountArgs.join("\n")).not.toContain(path.join(importedHome, "auth.json"));
+  });
+
+  it("allows an explicit Codex source with an env-only selected profile", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
+    const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
+    const overrideHome = await createTempDirectory("spawnfile-daimon-override-codex-");
+    await writeFile(path.join(overrideHome, "auth.json"), codexCredential(), { mode: 0o600 });
+    await chmod(path.join(overrideHome, "auth.json"), 0o600);
+    process.env.SPAWNFILE_DAIMON_SOURCE_CODEX_AUTH = path.join(overrideHome, "auth.json");
+    const home = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex";
+    const configPath = await writeConfig(outputDirectory, home);
+
+    const prepared = await prepare(outputDirectory, tempRoot, configPath, callerUid(), authProfile());
+
+    expect(prepared.mountArgs).toContain(`${path.join(overrideHome, "auth.json")}:${home}/.daimon-inbound/codex-auth:ro`);
+  });
+
+  it("fails closed when the selected profile has no Codex import", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
+    const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
+    const ambientHome = await createTempDirectory("spawnfile-daimon-ambient-codex-");
+    process.env.CODEX_HOME = ambientHome;
+    await writeFile(path.join(ambientHome, "auth.json"), codexCredential(), { mode: 0o600 });
+    const configPath = await writeConfig(
+      outputDirectory,
+      "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex"
+    );
+
+    await expect(prepare(outputDirectory, tempRoot, configPath, callerUid(), authProfile()))
+      .rejects.toThrow(/selected auth profile has no imported codex credential/u);
+  });
+
+  it("fails closed when the selected profile Codex import is missing", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
+    const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
+    const missingImport = path.join(await createTempDirectory("spawnfile-daimon-missing-profile-"), "missing");
+    const configPath = await writeConfig(
+      outputDirectory,
+      "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex"
+    );
+
+    await expect(prepare(outputDirectory, tempRoot, configPath, callerUid(), authProfile(missingImport)))
+      .rejects.toThrow(/missing the selected codex artifact/u);
   });
 
   it("accepts the declared native Codex refresh credential variants", async () => {

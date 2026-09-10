@@ -84,6 +84,8 @@ Because a declared name is deployment-independent by construction, two deploymen
 
 Auth scope: sourceless deployment supports `api_key` model auth and import-based auth (Claude Code, Codex) when the consumer supplies the matching local credential import in their auth profile. The OAuth-mode runtime config is baked into the image at compile time, so the consumer only provides their logged-in credential — the same one a project deployment uses. An instance whose auth method the consumer cannot satisfy (no api_key secret and no matching import) fails preflight with a clear message naming the runtime, agent, and method.
 
+Refreshing an imported CLI credential updates the selected local auth profile on disk. Existing running containers may still hold bind mounts to the previous file inode, so the refreshed credential is activated by the next `spawnfile up` redeployment that selects that profile, not by restarting the already-running container.
+
 ## Deployment Record v2
 
 Image and project deployments share `spawnfile.deployment.v2`. A v1 read-compatibility loader upgrades old records on read; new records are written as v2.
