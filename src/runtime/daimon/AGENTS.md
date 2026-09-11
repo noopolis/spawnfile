@@ -148,3 +148,13 @@ terminal network and web search, and exposes declared MCP and memory tools
 without Pi's unrestricted filesystem/shell tools. Omission preserves legacy
 behavior. This option does not make claims about filesystem read isolation;
 trusted MCP servers retain their declared host capabilities.
+
+## Optional attention policy
+
+`attention.ts` validates `runtime.options.attention` and lowers its snake_case
+fields into the public runtime's camelCase agent policy. Explicit opt-in defaults
+to eight messages and 12,000 bytes; omission preserves single-message turns.
+Per-agent execution/token ceilings use the runtime fuse epoch and remain beneath
+the shared runtime ceiling. The selected image must attest the pinned contract;
+never silently emit this policy for an older runtime. Spawnfile does not implement
+the queue, disposition tools, budget accounting, or execution authority.

@@ -156,6 +156,35 @@ index or consolidation mode, that specific capability is `degraded`.
 generated engine, auth, scheduler, MCP, and Moltnet behavior is not part of
 the `runtime: daimon` public-host contract and must not be inferred from it.
 
+### Daimon attention policy
+
+`runtime.options.attention` opts an agent into Daimon's durable inbox. An idle
+agent starts promptly; messages arriving during a turn accumulate for the next
+bounded turn. Spawnfile compiles the policy and requires an image capability
+receipt matching its pinned Daimon contract. It does not select or batch work.
+
+| Authored option | Runtime field | Default and bounds |
+|---|---|---|
+| `max_batch_messages` | `maxBatchMessages` | 8; integer 1–32 |
+| `max_batch_bytes` | `maxBatchBytes` | 12000; integer 1024–12000 |
+| `max_executions` | `maxExecutions` | Optional positive safe integer |
+| `max_tokens` | `maxTokens` | Optional positive safe integer |
+
+An explicit empty mapping enables the batching defaults. Omission retains the
+legacy single-message completion behavior. Unknown keys and invalid limits fail
+compilation. Attention selects the v2 runtime config; agents without schedules
+receive `schedule: { kind: disabled }`.
+
+Execution and token ceilings apply per agent within `DAIMON_WAKE_FUSE_EPOCH`,
+in addition to the shared runtime ceilings. They limit execution, not durable
+message acceptance. Budget pauses preserve pending work. Operator stops remain
+explicit hard blocks. Batching does not promise exactly-once external effects:
+agents use `daimon_inbox` and `daimon_inbox_disposition` to complete or defer each
+delivery, with a stable execution identity for retries. The authenticated runtime
+`GET /v2/availability` exposes pending work and remaining budgets;
+`GET /v2/activity` exposes running execution identities separately from delivery
+receipts. These endpoints are not yet normalized by `spawnfile status --live`.
+
 ### Daimon opaque auth ownership
 
 Daimon credential inputs are opaque local bind sources, not Spawnfile auth
