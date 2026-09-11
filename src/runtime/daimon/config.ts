@@ -19,6 +19,7 @@ import {
   resolveDaimonAgentMemory
 } from "./memory.js";
 import { assertDaimonScheduleAuthority } from "./scheduleAuthority.js";
+import { assertDaimonAttentionAuthority, resolveDaimonAttention } from "./attention.js";
 
 export const DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY = { mode: "workspace-write", networkAccess: false, webSearch: "disabled" } as const;
 
@@ -172,6 +173,9 @@ export const createDaimonContainerTargets = async (
   }
 
   const hasSchedules = agents.some((input) => input.value.schedule !== undefined);
+  const attentionById = new Map(agents.map((input) => [input.id, resolveDaimonAttention(input.value.runtime.options.attention)]));
+  const hasAttention = [...attentionById.values()].some((attention) => attention !== undefined);
+  if (hasAttention) await assertDaimonAttentionAuthority();
   if (hasSchedules) await assertDaimonScheduleAuthority();
   const configAgents = agents
     .map((input) => {
@@ -187,6 +191,7 @@ export const createDaimonContainerTargets = async (
         ...(server.auth?.mode === "bearer" ? { authSecretEnv: server.auth.secret } : {})
       })) }),
       ...(memory ? { memory } : {}),
+      ...(attentionById.get(input.id) === undefined ? {} : { attention: attentionById.get(input.id) }),
       ...(input.value.surfaces?.moltnet?.length ? { moltnet: {
         cliPath: "/usr/local/bin/moltnet",
         configPath: `<workspace-path>/agents/${input.slug}/.moltnet/config.json`,
@@ -194,7 +199,7 @@ export const createDaimonContainerTargets = async (
       } } : {}),
       runtimeHomePath: `<instance-root>/${DAIMON_RUNTIME_HOMES_DIRECTORY}/${input.slug}`,
       workspacePath: `<workspace-path>/agents/${input.slug}`,
-      ...(hasSchedules ? { schedule: normalizeSchedule(input.value) ?? { kind: "disabled" } } : {})
+      ...(hasSchedules || hasAttention ? { schedule: normalizeSchedule(input.value) ?? { kind: "disabled" } } : {})
       };
     })
     .sort((left, right) => left.id.localeCompare(right.id));
@@ -232,7 +237,7 @@ export const createDaimonContainerTargets = async (
       controlTokenEnv: "SPAWNFILE_DAIMON_CONTROL_TOKEN",
       port: DAIMON_CONTROL_PORT
     },
-    version: hasSchedules
+    version: hasSchedules || hasAttention
       ? "noopolis.daimon.organization-runtime.v2"
       : "noopolis.daimon.organization-runtime.v1"
   };

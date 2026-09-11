@@ -23,6 +23,7 @@ import {
 } from "./config.js";
 import { prepareDaimonRuntimeAuth } from "./runAuth.js";
 import { hasDaimonScheduleAuthority } from "./scheduleAuthority.js";
+import { resolveDaimonAttention } from "./attention.js";
 
 const assertDaimonSurfaces = (surfaces: ResolvedAgentSurfaces | undefined): void => {
   if (!surfaces) return;
@@ -220,7 +221,7 @@ export const daimonAdapter: RuntimeAdapter = {
       (typeof options.engine !== "string" || !(DAIMON_ENGINES as readonly string[]).includes(options.engine))) {
       diagnostics.push(createDiagnostic("error", `Daimon runtime option engine must be one of ${DAIMON_ENGINES.join(", ")}`));
     }
-    for (const key of Object.keys(options).filter((key) => key !== "engine" && key !== "restrict_to_workspace" && key !== "codex_policy")) {
+    for (const key of Object.keys(options).filter((key) => !["engine", "restrict_to_workspace", "codex_policy", "attention"].includes(key))) {
       diagnostics.push(createDiagnostic("error", `Daimon runtime option ${key} is not part of organization runtime v1`));
     }
     if (options.codex_policy !== undefined && options.codex_policy !== "workspace-no-network") {
@@ -229,6 +230,8 @@ export const daimonAdapter: RuntimeAdapter = {
     if (options.codex_policy === "workspace-no-network" && options.engine !== undefined && options.engine !== "codex") {
       diagnostics.push(createDiagnostic("error", "Daimon runtime option codex_policy=workspace-no-network is only supported for Codex agents"));
     }
+    try { resolveDaimonAttention(options.attention); }
+    catch (error) { diagnostics.push(createDiagnostic("error", error instanceof Error ? error.message : "Daimon attention is invalid")); }
     return diagnostics;
   }
 };

@@ -51,7 +51,7 @@ const manifest = () => ({
     "agents[].engine.reasoningEffort", "agents[].engine.codexSandbox", "agents[].schedule.kind",
     "agents[].schedule.interval_ms", "agents[].schedule.cron", "agents[].schedule.timezone",
     "agents[].schedule.prompt", "agents[].schedule.jitter_seconds",
-    "agents[].mcp", "agents[].moltnet", "agents[].memory"
+    "agents[].mcp", "agents[].moltnet", "agents[].memory", "agents[].attention"
   ],
   engineCredentialMaterial: {
     codex: { destinationRelativePath: ".codex/auth.json", directoryMode: 0o700, fileMode: 0o600, sourceRelativePath: ".daimon-inbound/codex-auth", sourceSlot: "codex-auth" },
@@ -170,6 +170,7 @@ describe("Daimon contract manifest", () => {
     const bytes = await readFile(path.join(vendoredRoot, DAIMON_CONTRACT_MANIFEST_FILE), "utf8");
     const raw = JSON.parse(bytes) as { consumedConfigFields: string[] };
     expect(raw.consumedConfigFields).toContain("agents[].memory");
+    expect(raw.consumedConfigFields).toContain("agents[].attention");
     expect(raw.consumedConfigFields).toContain("agents[].engine.model");
     expect(raw.consumedConfigFields).toContain("agents[].engine.reasoningEffort");
     expect(raw).toMatchObject({
