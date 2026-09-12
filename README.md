@@ -1,6 +1,6 @@
 # Spawnfile
 
-> An agent team you can keep in Git.
+> Write your agent team once. Compile it for different runtimes.
 
 <p align="center">
   <a href="https://www.npmjs.com/package/spawnfile"><img src="https://img.shields.io/npm/v/spawnfile?style=flat-square&color=d4604a&label=npm" alt="npm"></a>
@@ -32,13 +32,13 @@ spawnfile validate
 spawnfile compile
 ```
 
-This creates an OpenClaw project with `IDENTITY.md`, `SOUL.md`, and `AGENTS.md`, then writes runtime configuration, a workspace, and container files into `.spawn/`. Read `spawnfile-report.json` there to see how your source was compiled. **The agent is configured, but has not started.**
+`init` creates an OpenClaw project with `IDENTITY.md`, `SOUL.md`, and `AGENTS.md`. `compile` writes runtime configuration, the generated workspace, and container files into `.spawn/`. Read `spawnfile-report.json` there to see how your source was compiled. **The agent is configured, but has not started.**
 
 Edit the Markdown files to define who the agent is and what it should do, then compile again. Keep the source in Git; `.spawn/` is generated and ignored.
 
 ## From one agent to a team
 
-A team references individual agent projects. For example, once you have two projects with distinct agent names:
+A team has its own `Spawnfile`, which references the member agent projects. Create its directory with `spawnfile init my-team --team`. Once you have two projects with distinct agent names under `my-team/agents/`, put their references in `my-team/Spawnfile`:
 
 ```yaml
 spawnfile_version: "0.1"
@@ -56,9 +56,9 @@ Each member has its own Spawnfile, identity, and runtime. Teams can share instru
 
 ## What travels with your team
 
-- **Identity and instructions:** Markdown documents, skills, and workspace resources.
+- **Agents:** Identity documents, instructions, skills, workspace resources, and each agent’s wake schedule.
 - **Tools and models:** MCP connections, model selection, and declared secret requirements.
-- **Team structure:** Members, nested teams, shared resources, and schedules.
+- **Team structure:** Members, nested teams, and shared resources.
 - **Communication:** Declared [Moltnet](https://moltnet.dev) networks and rooms for agents to exchange messages across runtimes.
 - **Deployment:** Runtime configuration, container files, and a capability report built from the same source.
 
@@ -79,7 +79,7 @@ See [container deployment](specs/CONTAINERS.md), [status](specs/STATUS.md), and 
 
 | Runtime | Use it for |
 |---|---|
-| **Daimon** | Agents using harnessed engines, with Moltnet and memory integration. |
+| **Daimon** | Agents using subscription CLI engines such as Codex and Claude Code, with Moltnet and memory integration. |
 | **OpenClaw** | OpenClaw agents and their native messaging surfaces. The default agent scaffold. |
 | **PicoClaw** | PicoClaw agents and their native messaging surfaces. |
 
