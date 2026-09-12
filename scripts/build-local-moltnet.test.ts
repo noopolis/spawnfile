@@ -4,18 +4,21 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createCapabilityProbeConfig, hashTrackedSourceEntries } from "./build-local-moltnet.mjs";
+import { createCapabilityProbeConfig, hashTrackedSourceEntries } from "./build-local-moltnet.ts";
 
 test("Daimon capability probe represents the complete required runtime contract", () => {
   const receiptStorePath = "/var/lib/spawnfile/moltnet/networks/capability/daimon-receipts/daimon-agent.json";
   const config = createCapabilityProbeConfig("daimon", receiptStorePath);
-  assert.deepEqual(config.attachments[0].runtime, {
+  const attachment = config.attachments[0];
+  assert.ok(attachment);
+  assert.deepEqual(attachment.runtime, {
     kind: "daimon",
     control_url: "http://127.0.0.1:19700",
     receipt_store_path: receiptStorePath,
     token_env: "SPAWNFILE_DAIMON_CONTROL_TOKEN"
   });
-  assert.equal(path.isAbsolute(config.attachments[0].runtime.receipt_store_path), true);
+  assert.equal(attachment.runtime.kind, "daimon");
+  assert.equal(path.isAbsolute(attachment.runtime.receipt_store_path), true);
 });
 
 test("source hashing accepts contained CLAUDE symlinks deterministically", () => {

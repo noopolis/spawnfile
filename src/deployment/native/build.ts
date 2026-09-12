@@ -10,7 +10,7 @@ mkdirSync(outputDirectory, { recursive: true });
 const sourceSha256 = `sha256:${createHash("sha256").update(readFileSync(path.join(sourceDirectory, "renameNoreplace.c"))).digest("hex")}`;
 const builderImage = "gcc:14.2.0@sha256:b99b86a28812b1e6453a231a947dc43d76fe192788a12f344a9b568bf9f5d24c";
 const compiler = "gcc:14.2.0";
-for (const [nodeArchitecture, dockerArchitecture] of [["x64", "amd64"], ["arm64", "arm64"]]) {
+for (const [nodeArchitecture, dockerArchitecture] of [["x64", "amd64"], ["arm64", "arm64"]] as const) {
   const nonce = randomUUID(); const image = `spawnfile-rename-noreplace:${nonce}`; const container = `spawnfile-rename-noreplace-${nonce}`;
   try {
     execFileSync("docker", ["build", "--platform", `linux/${dockerArchitecture}`, "--tag", image, sourceDirectory], { stdio: "inherit" });
