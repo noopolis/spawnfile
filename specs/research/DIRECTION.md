@@ -3,7 +3,7 @@
 Status: active research direction
 Date: 2026-03-29
 
-This document captures the current design direction for Spawnfile based on 21 structured design discussions. It serves as the roadmap for the evolving v0.1 spec.
+This document began with 21 structured design discussions. Later agreed directions are dated separately below. It serves as an informative roadmap for the evolving spec; proposed features do not extend the implemented schema.
 
 ---
 
@@ -388,6 +388,23 @@ This document captures the current design direction for Spawnfile based on 21 st
 **Open questions:**
 - When to pursue ecosystem partnerships.
 - Which runtime integrations to prioritize beyond the bundled three.
+
+---
+
+## 22. Source Directories and Shared Toolsets
+
+**Status:** agreed design direction; not implemented (2026-09-12)
+
+Keep agent declarations readable: source directories and tool packages remain
+ordinary files; Spawnfile builds, hashes and packages them into generated
+artifacts. Teams declare common tools once and agents select their allowed
+operations. Shared installation never grants shared authority or merges memory.
+File-backed scheduled prompts are a related authoring improvement.
+
+[Workspace packaging](WORKSPACE-PACKAGING.md) records current support,
+illustrative future syntax, ownership boundaries, hashing and build semantics,
+compatibility requirements, acceptance cases and remaining schema decisions.
+Existing prebuilt bundle declarations remain the supported offline path.
 
 ---
 
