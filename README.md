@@ -216,6 +216,7 @@ The source-of-truth specs live in this repo:
 - [`specs/SURFACES.md`](specs/SURFACES.md) — messaging surface model
 - [`specs/STATUS.md`](specs/STATUS.md) — static and live operational status
 - [`specs/DISTRIBUTION.md`](specs/DISTRIBUTION.md) — image distribution, publish, and sourceless run
+- [`specs/research/WORKSPACE-PACKAGING.md`](specs/research/WORKSPACE-PACKAGING.md) — planned source-directory and toolset authoring; not implemented
 - [`test/fixtures/`](test/fixtures/) — canonical example projects
 
 ## From source
