@@ -31,6 +31,7 @@ Working notes and analysis. Informative, not normative. These inform spec decisi
 | [research/AUTH-NOTES.md](research/AUTH-NOTES.md) | Auth research and implementation notes — provider credentials, channel auth, CLI credential stores, and Spawnfile auth profile UX |
 | [research/DIRECT-SURFACES.md](research/DIRECT-SURFACES.md) | Direct protocol surface research — `http`, `webhook`, `a2a`, shared envelope design, and future shared-network compatibility rules |
 | [research/DIRECTION.md](research/DIRECTION.md) | Design direction and roadmap — consolidated findings from 21 design discussions, feature status, implementation priority |
+| [research/WORKSPACE-PACKAGING.md](research/WORKSPACE-PACKAGING.md) | Agreed direction, not implemented — source directories, shared toolsets, generated packaging and per-agent tool authority |
 | [research/MEMORY-BACKENDS.md](research/MEMORY-BACKENDS.md) | Portable memory-backend research and adapter tradeoffs |
 | [research/RUNTIME-NOTES.md](research/RUNTIME-NOTES.md) | Per-runtime research — config surfaces, capabilities, overlap analysis, team lowering patterns, adapter strategies |
 
