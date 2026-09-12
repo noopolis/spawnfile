@@ -6,16 +6,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const GO_IMAGE = "golang:1.24-bookworm@sha256:1a6d4452c65dea36aac2e2d606b01b4a029ec90cc1ae53890540ce6173ea77ac";
-const fail = (message) => { throw new Error(message); };
-const exact = (value, label) => { if (!value || !path.isAbsolute(value) || path.resolve(value) !== value) fail(`${label} must be normalized absolute`); return value; };
+const fail = (message: string): never => { throw new Error(message); };
+const exact = (value: string | undefined, label: string): string => {
+  if (typeof value === "string" && value && path.isAbsolute(value) && path.resolve(value) === value) return value;
+  throw new Error(`${label} must be normalized absolute`);
+};
 
-const run = (input, network, copyBack) => {
+const run = (input: string, network?: "none", copyBack?: string): void => {
   const id = execFileSync("docker", ["create", "--platform", "linux/amd64", ...(network ? ["--network", network] : []), "--env", "GOMODCACHE=/closure/gomodcache", "--env", "GOCACHE=/closure/gobuildcache", GO_IMAGE, "sh", "-ceu", "cd /closure; go mod download; go mod verify; test \"$(go env GOOS)/$(go env GOARCH)\" = linux/amd64; tar -cf /tmp/closure.tar ."], { encoding: "utf8" }).trim();
   try { execFileSync("docker", ["cp", `${input}/.`, `${id}:/closure`]); execFileSync("docker", ["start", "--attach", id], { stdio: "inherit" }); if (copyBack) { const archive = path.join(copyBack, ".closure-transfer.tar"); execFileSync("docker", ["cp", `${id}:/tmp/closure.tar`, archive]); execFileSync("tar", ["-xf", archive, "-C", copyBack]); rmSync(archive); execFileSync("chmod", ["-R", "u+rwX", copyBack]); } }
   finally { execFileSync("docker", ["rm", "--force", id], { stdio: "ignore" }); }
 };
 
-export const createLinuxAmd64GoClosure = (sourcePath, outputPath) => {
+export const createLinuxAmd64GoClosure = (sourcePath: string | undefined, outputPath: string | undefined): { image: string; target: "linux/amd64" } => {
   const source = exact(sourcePath, "source"), output = exact(outputPath, "output");
   if (!lstatSync(source).isDirectory() || lstatSync(source).isSymbolicLink()) fail("source must be a real directory");
   if (existsSync(output) && readdirSync(output).length) fail("output must be absent or empty"); mkdirSync(output, { recursive: true });

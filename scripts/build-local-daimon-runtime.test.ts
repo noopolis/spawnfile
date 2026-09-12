@@ -11,11 +11,16 @@ import {
   resolveLocalBuildArchitecture,
   resolveLocalImageTag,
   resolvePushedImageReference
-} from "./build-local-daimon-runtime.mjs";
-import { collectSourceManifest, createSourceBundle, validateSourceBundle } from "./source-provenance-bundle.mjs";
+} from "./build-local-daimon-runtime.ts";
+import { collectSourceManifest, createSourceBundle, validateSourceBundle } from "./source-provenance-bundle.ts";
 
-const digest = (character, length = 64) => character.repeat(length);
-const artifactEnvironment = () => ({
+type DockerfileStage = {
+  body: string;
+  parent: string;
+};
+
+const digest = (character: string, length = 64): string => character.repeat(length);
+const artifactEnvironment = (): Record<string, string> => ({
   AGY_CLI_SHA256: digest("a"),
   AGY_CLI_SHA512: digest("b", 128),
   AGY_CLI_URL: "https://example.invalid/agy/antigravity-linux-amd64.tar.gz",
@@ -64,6 +69,7 @@ test("artifact pins reject credential-bearing URLs without disclosing credential
 
   let message = "";
   assert.throws(() => readDaimonCliArtifactPins(env), (error) => {
+    if (!(error instanceof Error)) return false;
     message = error.message;
     return /AGY_CLI_URL/u.test(message);
   });
@@ -199,8 +205,10 @@ test("dependency bundle binds its amd64 lock closure and rejects a hostile tar",
     mkdirSync(path.join(root, "npm-cache")); writeFileSync(path.join(root, "npm-cache", "content"), "cache\n"); writeFileSync(path.join(root, "package.json"), '{"name":"closure"}\n');
     writeFileSync(path.join(root, "package-lock.json"), JSON.stringify({ lockfileVersion: 3, name: "closure", packages: { "": {}, "node_modules/@openai/codex": { version: "1.0.0", integrity: `sha512-${"A".repeat(86)}==` }, "node_modules/typescript": { version: "5.0.0", integrity: `sha512-${"B".repeat(86)}==` } } }));
     const verified = validateSourceBundle(readFileSync((createSourceBundle(root, archive, "dependencies"), archive)));
-    assert.equal(verified.manifest.dependency_lock.target, "linux/amd64");
-    assert.equal(verified.manifest.dependency_lock.packages.length, 2);
+    const dependencyLock = verified.manifest.dependency_lock;
+    assert.ok(dependencyLock && "packages" in dependencyLock);
+    assert.equal(dependencyLock.target, "linux/amd64");
+    assert.equal(dependencyLock.packages.length, 2);
     const hostile = readFileSync(archive); hostile.write("../escape", 0, "utf8");
     assert.throws(() => validateSourceBundle(hostile), /checksum|unsafe/u);
   } finally { rmSync(root, { force: true, recursive: true }); rmSync(archive, { force: true }); }
@@ -269,29 +277,48 @@ test("Daimon Dockerfile verifies the AGY archive before extracting antigravity a
   assert.doesNotMatch(dockerfile, /npm cache clean/u);
 });
 
+test("Daimon source-bundle Dockerfile uses public package scripts for native artifacts", () => {
+  const dockerfile = readFileSync(new URL("../runtime-images/daimon/SourceBundle.Dockerfile", import.meta.url), "utf8");
+  const archAssertion = dockerfile.indexOf("const expected={amd64:\"x64\",arm64:\"arm64\"}");
+  const packageBuild = dockerfile.indexOf("DAIMON_REQUIRE_ENGINE_BROKER=1 npm run build");
+  const executableCheck = dockerfile.indexOf("test -x dist/runtime/native/daimon-engine-broker");
+  const verifyNative = dockerfile.indexOf("npm run verify:native");
+  const pack = dockerfile.indexOf("npm pack --ignore-scripts --offline --pack-destination /out");
+
+  assert.ok(archAssertion >= 0);
+  assert.ok(archAssertion < packageBuild);
+  assert.ok(packageBuild < executableCheck);
+  assert.ok(executableCheck < verifyNative);
+  assert.ok(verifyNative < pack);
+  assert.doesNotMatch(dockerfile, /src\/runtime\/native\/(?:copyArtifact|verifyArtifacts)\.mjs/u);
+});
+
 test("Daimon Dockerfile stage graph preserves cache and offline-network boundaries", () => {
   const dockerfile = readFileSync(new URL("../runtime-images/daimon/Dockerfile", import.meta.url), "utf8");
-  const stages = new Map();
+  const stages = new Map<string, DockerfileStage>();
   const fromPattern = /^FROM\s+(\S+)\s+AS\s+(\S+)\s*$/gimu;
   const declarations = [...dockerfile.matchAll(fromPattern)];
 
   for (const [index, declaration] of declarations.entries()) {
     const [, rawParent, name] = declaration;
+    assert.ok(rawParent && name);
     const parent = rawParent.replaceAll("${DAIMON_DEPENDENCY_MODE}", "registry");
     const bodyStart = declaration.index + declaration[0].length;
     const bodyEnd = declarations[index + 1]?.index ?? dockerfile.length;
     stages.set(name, { body: dockerfile.slice(bodyStart, bodyEnd), parent });
   }
 
-  const ancestry = (graph, target) => {
-    const chain = [];
-    const visited = new Set();
+  const ancestry = (graph: Map<string, DockerfileStage>, target: string): string[] => {
+    const chain: string[] = [];
+    const visited = new Set<string>();
     let current = target;
     while (graph.has(current)) {
       assert.ok(!visited.has(current), `stage ancestry must not contain a cycle at ${current}`);
       visited.add(current);
       chain.push(current);
-      current = graph.get(current).parent;
+      const stage = graph.get(current);
+      assert.ok(stage);
+      current = stage.parent;
     }
     chain.push(current);
     return chain;
@@ -311,15 +338,17 @@ test("Daimon Dockerfile stage graph preserves cache and offline-network boundari
     "grok_cli", "grok_source_offline-bundle", "base", "base_offline-bundle", "${NODE_BASE_IMAGE}"
   ]);
 
-  const assertAncestorsExcludeDaimonInputs = (graph, target) => {
+  const assertAncestorsExcludeDaimonInputs = (graph: Map<string, DockerfileStage>, target: string): void => {
     for (const ancestor of ancestry(graph, target).slice(1, -1)) {
-      assert.doesNotMatch(graph.get(ancestor).body, /daimon\.tgz|source-inputs\.json/u, `${ancestor} must not depend on Daimon package inputs`);
+      const stage = graph.get(ancestor);
+      assert.ok(stage);
+      assert.doesNotMatch(stage.body, /daimon\.tgz|source-inputs\.json/u, `${ancestor} must not depend on Daimon package inputs`);
     }
   };
   assertAncestorsExcludeDaimonInputs(stages, "daimon_registry");
   assertAncestorsExcludeDaimonInputs(offlineStages, "daimon_offline-bundle");
 
-  const stagesContaining = (pattern) => [...stages]
+  const stagesContaining = (pattern: RegExp): string[] => [...stages]
     .filter(([, stage]) => pattern.test(stage.body))
     .map(([name]) => name)
     .sort();

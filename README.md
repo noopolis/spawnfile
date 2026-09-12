@@ -191,6 +191,7 @@ v0.1 targets autonomous agent runtimes that share a markdown workspace identity 
 |-----------|---------------|---------|-----------------------------------------------|
 | OpenClaw  | active        | ✅      | Discord, Telegram, WhatsApp, Slack            |
 | PicoClaw  | active        |         | Discord, Telegram, Slack (WhatsApp blocked)   |
+| Daimon    | active        |         | Subscription CLI engines, Moltnet             |
 | Pi        | active        |         | Embedded org app, Moltnet client config       |
 | OpenFang  | exploratory   |         | No active adapter yet                         |
 | Hermes Agent | exploratory |        | No active adapter yet                         |
@@ -217,7 +218,9 @@ The source-of-truth specs live in this repo:
 - [`specs/STATUS.md`](specs/STATUS.md) — static and live operational status
 - [`specs/DISTRIBUTION.md`](specs/DISTRIBUTION.md) — image distribution, publish, and sourceless run
 - [`specs/research/WORKSPACE-PACKAGING.md`](specs/research/WORKSPACE-PACKAGING.md) — planned source-directory and toolset authoring; not implemented
-- [`test/fixtures/`](test/fixtures/) — canonical example projects
+- [`fixtures/`](fixtures/) — test-only projects; [`examples/`](examples/) — user-facing examples
+- [`scripts/README.md`](scripts/README.md) — maintained tooling and its callers
+- [`archive/`](archive/) — historical plans, diagrams, and retired tooling
 
 ## From source
 

@@ -79,7 +79,7 @@ const assertMoltnetDaimonBridgeCapability = (
     `Moltnet release ${release?.version ?? "(unstaged)"} does not advertise the daimon-bridge capability, but `
       + `${daimonNetworks.length} network attachment(s) lower a daimon runtime bridge (${daimonNetworks.join(", ")}). `
       + "The published release implements pi-bridge only and rejects a daimon node config at strict JSON decode, so "
-      + "the container would exit at boot. Build Moltnet locally (scripts/build-local-moltnet.mjs, then "
+      + "the container would exit at boot. Build Moltnet locally (scripts/build-local-moltnet.ts, then "
       + "SPAWNFILE_LOCAL_MOLTNET_RELEASE_DIR with SPAWNFILE_ALLOW_LOCAL_E2E=1) to stage a daimon-bridge release, or "
       + "remove the Moltnet attachment from the daimon agent(s)."
   );
