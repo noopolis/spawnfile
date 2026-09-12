@@ -9,7 +9,7 @@ const volume = `spawnfile-product-preseed-${process.pid}`;
 const rollbackVolume = `${volume}-rollback`;
 const cleanupVolume = `${volume}-cleanup`;
 const container = `spawnfile-product-preseed-${process.pid}`;
-const run = (args) => execFileSync("docker", args, { encoding: "utf8", stdio: "pipe" });
+const run = (args: string[]): string => execFileSync("docker", args, { encoding: "utf8", stdio: "pipe" });
 const runCliAuthorityClone = () => {
   if (process.platform !== "linux") return;
   const sourceVolume = `${volume}-authority-source`, candidateVolume = `${volume}-authority-candidate`, sourceContainer = `${container}-authority`, authority = path.join(source, "authority.json"), proof = path.join(source, "proof.json"), authorityRequest = path.join(source, "authority-request.json"), cloneRequest = path.join(source, "clone-request.json"), cloneReceipt = path.join(source, "clone-receipt.json");

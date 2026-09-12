@@ -1303,7 +1303,7 @@ describe("createContainerArtifacts distribution contract", () => {
     expect(message).toContain("daimon-bridge");
     expect(message).toContain("daimon_lab");
     expect(message).toContain("exit at boot");
-    expect(message).toContain("build-local-moltnet.mjs");
+    expect(message).toContain("build-local-moltnet.ts");
   });
 
   it("fails closed when a daimon Moltnet attachment has no staged release identity at all", async () => {

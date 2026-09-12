@@ -5,17 +5,17 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { createSourceBundle, validateSourceBundle } from "./source-provenance-bundle.mjs";
+import { createSourceBundle, validateSourceBundle } from "./source-provenance-bundle.ts";
 import { renderRuntimeLinkMaterializer } from "../dist/compiler/containerRuntimeLinkMaterializer.js";
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const digest = (file) => `sha256:${execFileSync("shasum", ["-a", "256", file], { encoding: "utf8" }).split(" ")[0]}`;
-const sha512 = (file) => `sha512:${createHash("sha512").update(readFileSync(file)).digest("hex")}`;
+const digest = (file: string): string => `sha256:${execFileSync("shasum", ["-a", "256", file], { encoding: "utf8" }).split(" ")[0] ?? ""}`;
+const sha512 = (file: string): string => `sha512:${createHash("sha512").update(readFileSync(file)).digest("hex")}`;
 
 test("actual Daimon lock produces a real offline linux/amd64 shipped artifact and rejects tampering", { timeout: 360_000 }, () => {
   execFileSync("docker", ["version"], { stdio: "ignore" });
   const temporary = mkdtempSync(path.join(repository, ".spawnfile-source-docker-"));
-  let registry;
+  let registry: string | undefined;
   try {
     const closure = path.join(temporary, "closure"),
       // CI has no sibling checkout, so it points this at a fetched fixture the
@@ -53,13 +53,17 @@ test("actual Daimon lock produces a real offline linux/amd64 shipped artifact an
     writeFileSync(grok, "#!/bin/sh\nexit 0\n", { mode: 0o755 }); mkdirSync(agyTree); writeFileSync(agy, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     execFileSync("tar", ["-czf", agyTar, "-C", agyTree, "antigravity"]);
     const runtimeArchive = digest(path.join(output, "runtime-dependencies.tar"));
-    const sourceInputs = { dependencies: { archive_sha256: dependencyReceipt.archive_sha256, manifest_sha256: dependencyReceipt.manifest_sha256, package_lock_sha256: dependencyReceipt.manifest.dependency_lock.package_lock_sha256, runtime_archive_sha256: runtimeArchive }, mode: "source-bundle", source: { archive_sha256: sourceReceipt.archive_sha256, manifest_sha256: sourceReceipt.manifest_sha256 }, version: "spawnfile.daimon-source-inputs.v1" };
+    const dependencyLock = dependencyReceipt.manifest.dependency_lock;
+    assert.ok(dependencyLock && "package_lock_sha256" in dependencyLock);
+    const sourceInputs = { dependencies: { archive_sha256: dependencyReceipt.archive_sha256, manifest_sha256: dependencyReceipt.manifest_sha256, package_lock_sha256: dependencyLock.package_lock_sha256, runtime_archive_sha256: runtimeArchive }, mode: "source-bundle", source: { archive_sha256: sourceReceipt.archive_sha256, manifest_sha256: sourceReceipt.manifest_sha256 }, version: "spawnfile.daimon-source-inputs.v1" };
     writeFileSync(path.join(packageContext, "source-inputs.json"), `${JSON.stringify(sourceInputs)}\n`);
     const manifestBytes = execFileSync("tar", ["-xOf", path.join(output, "daimon.tgz"), "package/dist/runtime/contract-manifest.json"]), manifestSha = `sha256:${createHash("sha256").update(manifestBytes).digest("hex")}`;
     const installed = path.join(temporary, "installed"); mkdirSync(installed); execFileSync("tar", ["-xf", path.join(output, "runtime-dependencies.tar"), "-C", installed]);
     const codexSha = digest(path.join(installed, "@openai", "codex", "bin", "codex.js")), grokSha = digest(grok), agySha = digest(agy), packageSha = digest(path.join(output, "daimon.tgz"));
     registry = execFileSync("docker", ["run", "--detach", "--publish", "127.0.0.1::5000", "registry:2"], { encoding: "utf8" }).trim();
-    const mapped = execFileSync("docker", ["port", registry, "5000/tcp"], { encoding: "utf8" }).trim().split("\n")[0], port = mapped.slice(mapped.lastIndexOf(":") + 1);
+    const mapped = execFileSync("docker", ["port", registry, "5000/tcp"], { encoding: "utf8" }).trim().split("\n")[0];
+    assert.ok(mapped);
+    const port = mapped.slice(mapped.lastIndexOf(":") + 1);
     const identityPath = path.join(repository, ".local-daimon-runtime-identity.json"), priorIdentity = existsSync(identityPath) ? readFileSync(identityPath) : null;
     try {
       execFileSync("npm", ["run", "--silent", "build:local-daimon"], { cwd: repository, env: { ...process.env, AGY_CLI_SHA256: agySha, AGY_CLI_SHA512: sha512(agyTar), AGY_CLI_URL: "https://invalid.example/agy", AGY_CLI_VERSION: "fixture", CODEX_CLI_SHA256: codexSha, GROK_CLI_SHA256: grokSha, GROK_CLI_URL: "https://invalid.example/grok", GROK_CLI_VERSION: "fixture", SPAWNFILE_AGY_CLI_ARCHIVE: agyTar, SPAWNFILE_DAIMON_DEPENDENCY_BUNDLE: dependencyTar, SPAWNFILE_DAIMON_LOCAL_IMAGE_TAG: `127.0.0.1:${port}/noopolis/spawnfile-runtime-daimon:archive-wrapper`, SPAWNFILE_DAIMON_SOURCE_BUNDLE: sourceTar, SPAWNFILE_GROK_CLI_FILE: grok }, stdio: "ignore" });
@@ -123,7 +127,7 @@ test("actual Daimon lock produces a real offline linux/amd64 shipped artifact an
       mkdirSync(badRoot);execFileSync("tar",["-xf",sourceTar,"-C",badRoot]);rmSync(path.join(badRoot,".spawnfile-source-manifest.json"),{force:true});const artifact=path.join(badRoot,"src","runtime","native","artifacts","daimon-engine-broker-x64");if(fault==="missing")rmSync(artifact);else writeFileSync(artifact,"wrong-native-artifact\n",{mode:0o755});
       const badReceipt=createSourceBundle(badRoot,badTar);mkdirSync(badContext);mkdirSync(badOutput);cpSync(badTar,path.join(badContext,"source.tar"));const badArgs=args.map((value)=>value===`source_bundle=${sourceContext}`?`source_bundle=${badContext}`:value===`SOURCE_ARCHIVE_SHA256=${sourceReceipt.archive_sha256}`?`SOURCE_ARCHIVE_SHA256=${badReceipt.archive_sha256}`:value===`SOURCE_MANIFEST_SHA256=${sourceReceipt.manifest_sha256}`?`SOURCE_MANIFEST_SHA256=${badReceipt.manifest_sha256}`:value===`type=local,dest=${output}`?`type=local,dest=${badOutput}`:value);assert.notEqual(spawnSync("docker",badArgs,{stdio:"ignore"}).status,0);
     }
-    const tampered = readFileSync(path.join(dependencyContext, "dependencies.tar")); tampered[tampered.length - 1025] ^= 1; writeFileSync(path.join(dependencyContext, "dependencies.tar"), tampered);
+    const tampered = readFileSync(path.join(dependencyContext, "dependencies.tar")); const tamperOffset = tampered.length - 1025; tampered[tamperOffset] = (tampered[tamperOffset] ?? 0) ^ 1; writeFileSync(path.join(dependencyContext, "dependencies.tar"), tampered);
     assert.notEqual(spawnSync("docker", args, { stdio: "ignore" }).status, 0);
   } finally { if (registry) spawnSync("docker", ["rm", "--force", registry], { stdio: "ignore" }); rmSync(temporary, { force: true, recursive: true }); }
 });

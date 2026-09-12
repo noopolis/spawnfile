@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const gate = "node --test scripts/native-helper-artifacts.test.mjs scripts/native-helper-integration.test.mjs";
+const gate = "node --experimental-strip-types --test scripts/native-helper-artifacts.test.ts scripts/native-helper-integration.test.ts";
 
 test("PR/main and publish workflows explicitly configure QEMU and run native syscall gates", async () => {
   for (const workflow of [".github/workflows/test.yml", ".github/workflows/publish.yml"]) {
@@ -18,7 +18,7 @@ test("native helper build uses only the pinned compiler image", async () => {
 
 test("normal package build copies shipped helpers without invoking the native rebuild", async () => {
   const packageJson = JSON.parse(await readFile("package.json", "utf8"));
-  assert.match(packageJson.scripts.build, /copyArtifacts\.mjs/u);
-  assert.doesNotMatch(packageJson.scripts.build, /native\/build\.mjs|docker/u);
-  assert.equal(packageJson.scripts["build:native"], "node ./src/deployment/native/build.mjs");
+  assert.match(packageJson.scripts.build, /copyArtifacts\.ts/u);
+  assert.doesNotMatch(packageJson.scripts.build, /native\/build\.ts|docker/u);
+  assert.equal(packageJson.scripts["build:native"], "node --experimental-strip-types ./src/deployment/native/build.ts");
 });

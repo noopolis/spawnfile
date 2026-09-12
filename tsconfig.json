@@ -19,5 +19,11 @@
   "include": [
     "src/**/*.ts",
     "vitest.config.ts"
+  ],
+  "exclude": [
+    "src/deployment/native/build.ts",
+    "src/deployment/native/copyArtifacts.ts",
+    "src/evidenceExportHelper/copyAssets.ts",
+    "src/runtime/copyScaffoldAssets.ts"
   ]
 }

@@ -10,6 +10,7 @@ This repository is the reference implementation of the Spawnfile v0.1 compiler.
 ├── runtimes.yaml             # Runtime registry — pinned versions and status
 ├── moltnet-releases.json     # Pinned, checksum-verified Moltnet release authority
 ├── blueprints/               # Frozen reference layouts per runtime at pinned version
+├── archive/                  # Historical plans, diagrams, and retired tooling
 ├── specs/                    # Specs, architecture docs, and runtime research
 ├── scripts/                  # Bootstrap and repo helper scripts
 ├── src/                      # CLI, compiler, adapters, manifests, reports, target contracts
@@ -33,6 +34,7 @@ This repository is the reference implementation of the Spawnfile v0.1 compiler.
 - Prefer small, composable modules with explicit responsibilities.
 - Do not allow source files to grow past 400 lines. Split early when files start creeping up.
 - Use named exports only. Do not introduce default exports.
+- Write maintained repository scripts in TypeScript and include them in strict typechecking. Keep historical plans and audit diagrams in `archive/`, not at the root or in active documentation.
 - Use barrel exports for folder entry points.
 - Keep test files next to the files they cover: `file.ts` and `file.test.ts`.
 - Aim for 90% or better coverage.

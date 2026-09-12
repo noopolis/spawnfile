@@ -7,7 +7,7 @@ helper. It is a target setup facility, not a target-resource operation.
 
 - `helperProgram.mjs` is the image entrypoint source. It reads only the fixed
   `/spawnfile/evidence` mount and emits strict canonical USTAR to stdout.
-- `copyAssets.mjs` copies that source beside the compiled modules for npm
+- `copyAssets.ts` copies that source beside the compiled modules for npm
   packaging.
 - `recipe.ts` loads the shipped source, creates the fixed Dockerfile and
   canonical build context, and derives source identities.

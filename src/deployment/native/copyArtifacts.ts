@@ -2,7 +2,7 @@ import { cp, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { verifyNativeHelperArtifacts } from "../../../scripts/native-helper-artifacts.mjs";
+import { verifyNativeHelperArtifacts } from "../../../scripts/native-helper-artifacts.ts";
 
 const source = fileURLToPath(new URL("./artifacts", import.meta.url));
 const destination = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../dist/deployment/native");

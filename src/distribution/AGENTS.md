@@ -1,6 +1,6 @@
 # Distribution Guide
 
-This folder owns the distribution report and image-contract artifacts for published Spawnfile images, per `DISTRIBUTION.md` and `specs/DISTRIBUTION.md`.
+This folder owns the distribution report and image-contract artifacts for published Spawnfile images, per [`specs/DISTRIBUTION.md`](../../specs/DISTRIBUTION.md).
 
 ## Structure
 

@@ -8,7 +8,21 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSy
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { validateSourceBundle } from "./source-provenance-bundle.mjs";
+import { validateSourceBundle } from "./source-provenance-bundle.ts";
+import type { SourceBundleProfile, SourceBundleReceipt } from "./source-provenance-bundle.ts";
+
+export type GoArchitecture = "amd64" | "arm64";
+
+export type TrackedSourceEntry = {
+  mode: string;
+  path: string;
+};
+
+type CapabilityKind = "daimon" | "pi";
+
+type ProvenanceArchive = SourceBundleReceipt & {
+  path: string;
+};
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const configuredMoltnetSource = process.env.SPAWNFILE_MOLTNET_SOURCE_DIR?.trim();
@@ -17,22 +31,22 @@ const moltnetDir = configuredMoltnetSource
   : path.resolve(repoRoot, "..", "moltnet");
 const configuredReleaseOutput = process.env.SPAWNFILE_MOLTNET_LOCAL_RELEASE_OUTPUT?.trim();
 const releaseDir = configuredReleaseOutput ? path.resolve(configuredReleaseOutput) : path.join(moltnetDir, "dist", "spawnfile-local-release");
-const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+const sha256 = (value: Buffer | string): string => createHash("sha256").update(value).digest("hex");
 
-export const goarchForHost = () => {
+export const goarchForHost = (): GoArchitecture => {
   if (process.arch === "arm64") return "arm64";
   if (process.arch === "x64") return "amd64";
   throw new Error(`Unsupported host architecture for local Moltnet build: ${process.arch}`);
 };
 
-export const goarchForTarget = () => {
+export const goarchForTarget = (): GoArchitecture => {
   const requested = process.env.MOLTNET_TARGET_GOARCH;
   if (requested === undefined) return goarchForHost();
   if (requested !== "amd64" && requested !== "arm64") throw new Error(`Unsupported MOLTNET_TARGET_GOARCH: ${requested}`);
   return requested;
 };
 
-const normalizedTrackedPath = (root, relativePath) => {
+const normalizedTrackedPath = (root: string, relativePath: string): { relative: string; resolved: string } => {
   if (!relativePath || path.isAbsolute(relativePath)) throw new Error("Tracked source path must be relative");
   const resolved = path.resolve(root, relativePath);
   const relative = path.relative(root, resolved);
@@ -42,7 +56,7 @@ const normalizedTrackedPath = (root, relativePath) => {
   return { relative: relative.split(path.sep).join("/"), resolved };
 };
 
-const containedSymlink = (root, linkPath) => {
+const containedSymlink = (root: string, linkPath: string): { link: string; target: string } => {
   const link = readlinkSync(linkPath);
   if (!link || path.isAbsolute(link)) throw new Error(`Tracked symlink must be nonempty and relative: ${linkPath}`);
   const target = path.resolve(path.dirname(linkPath), link);
@@ -56,7 +70,7 @@ const containedSymlink = (root, linkPath) => {
 /** Hash Git-tracked entries without dereferencing links. The link text and
  * in-tree target identity are both bound, so tracked CLAUDE.md symlinks are
  * accepted deterministically but cannot introduce an out-of-tree read. */
-export const hashTrackedSourceEntries = (root, entries) => {
+export const hashTrackedSourceEntries = (root: string, entries: TrackedSourceEntry[]): string => {
   const digest = createHash("sha256");
   const ordered = [...entries].sort((left, right) => left.path.localeCompare(right.path));
   const trackedPaths = new Set(ordered.map((entry) => normalizedTrackedPath(root, entry.path).relative));
@@ -82,7 +96,7 @@ export const hashTrackedSourceEntries = (root, entries) => {
   return `sha256:${digest.digest("hex")}`;
 };
 
-const readTrackedEntries = (root) => execFileSync("git", ["-C", root, "ls-files", "-s", "-z"], { encoding: "utf8" })
+const readTrackedEntries = (root: string): TrackedSourceEntry[] => execFileSync("git", ["-C", root, "ls-files", "-s", "-z"], { encoding: "utf8" })
   .split("\0").filter(Boolean).map((entry) => {
     const tab = entry.indexOf("\t");
     const [mode] = entry.slice(0, tab).split(" ");
@@ -90,12 +104,12 @@ const readTrackedEntries = (root) => execFileSync("git", ["-C", root, "ls-files"
     return { mode, path: entry.slice(tab + 1) };
   });
 
-const assertCleanSource = (root) => {
+const assertCleanSource = (root: string): void => {
   const status = execFileSync("git", ["-C", root, "status", "--porcelain=v1", "--untracked-files=all"], { encoding: "utf8" });
   if (status.trim()) throw new Error("Local Moltnet build requires a clean source tree");
 };
 
-export const createCapabilityProbeConfig = (kind, receiptStorePath) => ({
+export const createCapabilityProbeConfig = (kind: CapabilityKind, receiptStorePath: string) => ({
   version: "moltnet.node.v1",
   moltnet: { base_url: "http://127.0.0.1:9", network_id: "capability" },
   attachments: [{ agent: { id: `${kind}-agent`, name: `${kind} agent` }, runtime: kind === "daimon"
@@ -103,10 +117,10 @@ export const createCapabilityProbeConfig = (kind, receiptStorePath) => ({
     : { kind, control_url: "http://127.0.0.1:19690/agents/pi-agent/wake" } }]
 });
 
-const assertBuiltBinaryCapabilities = (binaryPath) => {
+const assertBuiltBinaryCapabilities = (binaryPath: string): void => {
   const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "spawnfile-moltnet-capability-"));
   try {
-    for (const kind of ["pi", "daimon"]) {
+    for (const kind of ["pi", "daimon"] as const) {
       const configPath = path.join(temporaryDirectory, `${kind}.json`);
       const receiptDirectory = path.join(temporaryDirectory, "daimon-receipts");
       mkdirSync(receiptDirectory, { mode: 0o700, recursive: true });
@@ -118,7 +132,7 @@ const assertBuiltBinaryCapabilities = (binaryPath) => {
         encoding: "utf8", env: { ...process.env, SPAWNFILE_DAIMON_CONTROL_TOKEN: "local-capability-probe" }, timeout: 1_000
       });
       const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-      if (result.error?.code === "ETIMEDOUT") continue; // parser accepted; the endpoint is deliberately unreachable.
+      if ((result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT") continue; // parser accepted; the endpoint is deliberately unreachable.
       if (/unsupported|only supported|required|invalid/i.test(output)) {
         throw new Error(`Built Moltnet binary does not accept ${kind}-bridge: ${output.trim()}`);
       }
@@ -130,8 +144,8 @@ const assertBuiltBinaryCapabilities = (binaryPath) => {
   }
 };
 
-const assertDockerBinaryCapabilities = (binaryPath, arch) => {
-  for (const kind of ["pi", "daimon"]) {
+const assertDockerBinaryCapabilities = (binaryPath: string, arch: GoArchitecture): void => {
+  for (const kind of ["pi", "daimon"] as const) {
     const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "spawnfile-moltnet-probe-")), configPath = path.join(temporaryDirectory, "config.json"), receiptDirectory = path.join(temporaryDirectory, "receipts"); mkdirSync(receiptDirectory);
     writeFileSync(configPath, JSON.stringify(createCapabilityProbeConfig(kind, "/receipts/agent.json")));
     const id = execFileSync("docker", ["create", "--platform", `linux/${arch}`, "--env", "SPAWNFILE_DAIMON_CONTROL_TOKEN=probe", "node:24-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df", "timeout", "2", "/moltnet", "node", "/config.json"], { encoding: "utf8" }).trim();
@@ -140,13 +154,18 @@ const assertDockerBinaryCapabilities = (binaryPath, arch) => {
   }
 };
 
-const requiredBundle = (name, profile) => {
+const requiredArchiveEnvPath = (name: string): string => {
   const value = process.env[name]?.trim(); if (!value || !path.isAbsolute(value)) throw new Error(`${name} must be an absolute provenance archive`);
+  return value;
+};
+
+const requiredBundle = (name: string, profile: SourceBundleProfile): ProvenanceArchive => {
+  const value = requiredArchiveEnvPath(name);
   const item = lstatSync(value); if (!item.isFile() || item.isSymbolicLink() || !item.size) throw new Error(`${name} must be a nonempty regular file`);
   const receipt = validateSourceBundle(readFileSync(value)); if (receipt.manifest.exclude_policy.profile !== profile) throw new Error(`${name} has the wrong provenance profile`); return { ...receipt, path: value };
 };
 
-const main = () => {
+const main = (): void => {
   if (configuredMoltnetSource && !path.isAbsolute(configuredMoltnetSource)) {
     throw new Error("SPAWNFILE_MOLTNET_SOURCE_DIR must be absolute");
   }
@@ -156,6 +175,8 @@ const main = () => {
   if (!archiveMode) assertCleanSource(moltnetDir);
   const arch = goarchForTarget();
   if (!archiveMode && arch !== goarchForHost()) throw new Error("Cross-compiled local archives cannot prove their binary capabilities on this host");
+  const sourceBundlePath = archiveMode ? requiredArchiveEnvPath("SPAWNFILE_MOLTNET_SOURCE_BUNDLE") : undefined;
+  const goDependencyBundlePath = archiveMode ? requiredArchiveEnvPath("SPAWNFILE_MOLTNET_GO_DEPENDENCY_BUNDLE") : undefined;
   const workDirectory = mkdtempSync(path.join(os.tmpdir(), "spawnfile-moltnet-build-"));
   const binaryPath = path.join(workDirectory, "moltnet");
   const asset = `moltnet_linux_${arch}.tar.gz`;
@@ -183,12 +204,18 @@ const main = () => {
   } finally {
     rmSync(workDirectory, { force: true, recursive: true });
   }
+  const sourceSha256 = archiveMode && sourceBundlePath
+    ? validateSourceBundle(readFileSync(sourceBundlePath)).archive_sha256
+    : hashTrackedSourceEntries(moltnetDir, readTrackedEntries(moltnetDir));
+  const sourceInputs = archiveMode && sourceBundlePath && goDependencyBundlePath
+    ? { dependencies_sha256: validateSourceBundle(readFileSync(goDependencyBundlePath)).archive_sha256, mode: "source-bundle", source_sha256: validateSourceBundle(readFileSync(sourceBundlePath)).archive_sha256, toolchain: "golang:1.24-bookworm@sha256:1a6d4452c65dea36aac2e2d606b01b4a029ec90cc1ae53890540ce6173ea77ac" }
+    : undefined;
   const stamp = {
     arch, asset, capabilities: ["daimon-bridge", "pi-bridge"],
     development: { mode: "local-development", non_production: true, unsigned: true, unpublished: true },
     sha256: sha256(readFileSync(assetPath)),
-    source_sha256: archiveMode ? validateSourceBundle(readFileSync(process.env.SPAWNFILE_MOLTNET_SOURCE_BUNDLE)).archive_sha256 : hashTrackedSourceEntries(moltnetDir, readTrackedEntries(moltnetDir)),
-    ...(archiveMode ? { source_inputs: { dependencies_sha256: validateSourceBundle(readFileSync(process.env.SPAWNFILE_MOLTNET_GO_DEPENDENCY_BUNDLE)).archive_sha256, mode: "source-bundle", source_sha256: validateSourceBundle(readFileSync(process.env.SPAWNFILE_MOLTNET_SOURCE_BUNDLE)).archive_sha256, toolchain: "golang:1.24-bookworm@sha256:1a6d4452c65dea36aac2e2d606b01b4a029ec90cc1ae53890540ce6173ea77ac" } } : {}),
+    source_sha256: sourceSha256,
+    ...(sourceInputs ? { source_inputs: sourceInputs } : {}),
     stamp_version: "spawnfile.local-moltnet-release-stamp.v1"
   };
   writeFileSync(path.join(releaseDir, `local_moltnet_release_stamp_${arch}.json`), `${JSON.stringify(stamp)}\n`);
