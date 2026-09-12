@@ -45,10 +45,10 @@ jobs:
         run: npm run build
 
       - name: Verify native helper syscalls
-        run: node --test scripts/native-helper-artifacts.test.mjs scripts/native-helper-integration.test.mjs
+        run: node --experimental-strip-types --test scripts/native-helper-artifacts.test.ts scripts/native-helper-integration.test.ts
 
-      - name: Verify Daimon image layering
-        run: node --test scripts/build-local-daimon-runtime.test.mjs
+      - name: Verify maintained TypeScript scripts
+        run: npm run test:scripts
 
       # Preseed reads the candidate volume through its Docker Mountpoint and
       # relies on host rename/fsync/hardlink semantics a container cannot give

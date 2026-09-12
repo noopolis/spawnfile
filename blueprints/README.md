@@ -1,6 +1,8 @@
 # Blueprints
 
-Frozen reference layouts for each runtime at the version pinned in `runtimes.yaml`.
+Frozen upstream reference layouts for OpenClaw and PicoClaw at the versions
+pinned in [`runtimes.yaml`](../runtimes.yaml). These files document upstream
+defaults; the compiler does not read this directory during a build.
 
 Each blueprint shows exactly what a runtime expects when you set up a bot — config files, workspace structure, doc locations, skill directories.
 
@@ -18,13 +20,26 @@ same review.
 | OpenClaw | npm | `openclaw.json` | AGENTS, BOOTSTRAP, HEARTBEAT, IDENTITY, SOUL, TOOLS, USER | `openclaw onboard` |
 | PicoClaw | Go | `config.json` | AGENTS, SOUL, USER, IDENTITY, HEARTBEAT, memory/MEMORY | `config.example.json` |
 
+## Compiler-generated runtimes
+
+Daimon has no upstream onboarding scaffold to freeze here. Spawnfile's
+[Daimon adapter](../src/runtime/daimon/AGENTS.md) generates
+`daimon-organization-runtime.json` and each agent's workspace from the resolved
+organization. Its [configuration tests](../src/runtime/daimon/config.test.ts)
+and [adapter tests](../src/runtime/daimon/adapter.test.ts) verify the versioned
+runtime contract, workspace documents, and launch artifacts. A separate
+hand-maintained blueprint is not a compile input or a missing runtime dependency.
+
+The legacy Pi adapter likewise generates its application and configuration;
+see its [working guide](../src/runtime/pi/AGENTS.md).
+
 ## Incompatible Runtimes
 
 These were evaluated but are fundamentally incompatible with Spawnfile's config + markdown workspace model:
 
 - **IronClaw** — env-vars-only orchestrator/worker system, no agent config files
 - **NanoClaw** — code-driven via Claude Code skills, no declarative config surface
-See `specs/research/RUNTIME-NOTES.md` for the full research on each.
+See [runtime research](../specs/research/RUNTIME-NOTES.md) for the full research on each.
 
 ## Adapter Candidates
 

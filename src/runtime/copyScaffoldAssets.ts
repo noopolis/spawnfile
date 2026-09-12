@@ -8,6 +8,13 @@ const destinationRoot = path.join(repoRoot, "dist", "runtime");
 
 const entries = await readdir(sourceRoot, { withFileTypes: true });
 
+const isErrorWithCode = (error: unknown, code: string): boolean => (
+  error !== null
+  && typeof error === "object"
+  && "code" in error
+  && error.code === code
+);
+
 for (const entry of entries) {
   if (!entry.isDirectory()) {
     continue;
@@ -20,10 +27,10 @@ for (const entry of entries) {
     await cp(sourcePath, destinationPath, {
       filter: (source) => !["AGENTS.md", "CLAUDE.md"].includes(path.basename(source)),
       force: true,
-      recursive: true
+      recursive: true,
     });
   } catch (error) {
-    if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+    if (!isErrorWithCode(error, "ENOENT")) {
       throw error;
     }
   }

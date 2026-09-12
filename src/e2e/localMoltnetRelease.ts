@@ -43,7 +43,7 @@ export const localMoltnetReleaseAssetName = (): string =>
   `moltnet_linux_${localMoltnetArch()}.tar.gz`;
 
 /** Companion capability stamp written next to the tarball by
- * build-local-moltnet.mjs; asserted below so a stale pre-pi-bridge same-arch
+ * build-local-moltnet.ts; asserted below so a stale pre-pi-bridge same-arch
  * build cannot silently pass a mere existence check. */
 export const localMoltnetReleaseStampName = (): string =>
   `moltnet_release_stamp_${localMoltnetArch()}.json`;

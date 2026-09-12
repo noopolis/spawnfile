@@ -13,7 +13,7 @@ export type MoltnetTargetArchitecture = "amd64" | "arm64";
  * compare this list by exact equality (`upReceipt.ts`, `localMoltnetAuthority.ts`)
  * rather than as a set, so a differently ordered but equivalent list is
  * rejected as a different release. The local builder
- * (`scripts/build-local-moltnet.mjs`) already writes this order; every producer
+ * (`scripts/build-local-moltnet.ts`) already writes this order; every producer
  * must match it, and `moltnetReleaseAuthority.test.ts` asserts it.
  *
  * This is a UNION, never a replacement: an older pi-only release must keep

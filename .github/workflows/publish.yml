@@ -93,7 +93,7 @@ jobs:
         run: rm -rf -- moltnet-fixture
 
       - name: Verify native helper syscalls
-        run: node --test scripts/native-helper-artifacts.test.mjs scripts/native-helper-integration.test.mjs
+        run: node --experimental-strip-types --test scripts/native-helper-artifacts.test.ts scripts/native-helper-integration.test.ts
 
       - name: Verify package contents
         run: npm run verify:package-closure

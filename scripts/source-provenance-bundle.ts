@@ -2,7 +2,68 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync, readlinkSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+export type SourceBundleProfile = "source" | "build-source" | "dependencies" | "go-dependencies";
+
+export type SourceManifestEntry =
+  | { mode: number; path: string; sha256: string; size: number; type: "file" }
+  | { mode: number; path: string; type: "directory" }
+  | { link: string; mode: number; path: string; type: "symlink" };
+
+export type NodeDependencyLock = {
+  package_lock_sha256: string;
+  packages: { integrity: string; path: string; version: string }[];
+  required: string[];
+  target: "linux/amd64";
+};
+
+export type GoDependencyLock = {
+  go_mod_sha256: string;
+  go_sum_sha256: string;
+  required: string[];
+  target: "linux/amd64";
+};
+
+export type SourceManifest = {
+  dependency_lock?: GoDependencyLock | NodeDependencyLock;
+  entries: SourceManifestEntry[];
+  exclude_policy: {
+    credential_content: string;
+    credential_directories: string[];
+    credential_files: string;
+    editor_backups: true;
+    names: string[];
+    profile: SourceBundleProfile;
+    secret_names: string;
+  };
+  root: ".";
+  version: "spawnfile.source-input-manifest.v1";
+};
+
+export type SourceBundleReceipt = {
+  archive_sha256: string;
+  manifest: SourceManifest;
+  manifest_sha256: string;
+};
+
+type PackageLockEntry = {
+  integrity?: unknown;
+  resolved?: unknown;
+  version?: unknown;
+};
+
+type PackageLock = {
+  lockfileVersion?: unknown;
+  packages?: Record<string, PackageLockEntry>;
+};
+
+type TarEntry = {
+  content: Buffer;
+  link: string;
+  type: "0" | "2" | "5";
+};
+
+const sourceBundleProfiles = ["source", "build-source", "dependencies", "go-dependencies"] as const satisfies readonly SourceBundleProfile[];
+const sha256 = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
 const sourceExcludedNames = new Set([".git", ".hg", ".svn", "node_modules", "dist", "dist-test-runtime", "coverage", ".cache", ".npm", ".runtime", ".spawn", ".spawn-dev"]);
 const buildSourceExcludedNames = new Set([...sourceExcludedNames].filter((name) => name !== "dist"));
 const dependencyExcludedNames = new Set([".git", ".hg", ".svn", ".cache", ".npm"]);
@@ -11,24 +72,41 @@ const secretName = new RegExp(String.raw`^(?:\.env(?:\..+)?|.*(?:credential|cred
 const credentialFile = new RegExp(String.raw`^(?:\.npmrc|\.netrc|\.yarnrc(?:\.yml)?|(?:auth|cookies?|keyrings?|sessions?)(?:\.${credentialStoreExtension})?|id_(?:rsa|dsa|ecdsa|ed25519)(?:\..*)?|.*\.(?:pem|key))$`, "iu");
 const credentialDirectory = new Set([".aws", ".codex", ".config", ".docker", ".gcloud", ".grok", ".ssh", "cookie", "cookies", "credential", "credentials", "gcloud", "keyring", "keyrings", "secrets", "sessions", "tokens"]);
 const credentialContent = /(?:-----BEGIN ((?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY)-----\s+[A-Za-z0-9+/=\r\n]{80,}\s+-----END \1-----|AKIA(?!IOSFODNN7EXAMPLE)[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|gh[pousr]_[0-9A-Za-z]{30,255}|github_pat_[0-9A-Za-z_]{40,255}|xox[baprs]-[0-9A-Za-z-]{20,255}|_authToken\s*[=:]\s*[0-9A-Za-z._~+\/-]{16,}|authorization\s*[=:]\s*["']Bearer\s+(?!should-not-survive)[0-9A-Za-z._~+\/-]{16,})/u;
-const safeRelative = (value) => value && !path.isAbsolute(value) && !value.includes("\\") && value.split("/").every((part) => part && part !== "." && part !== "..");
+const safeRelative = (value: string | undefined): value is string => {
+  if (!value) return false;
+  return !path.isAbsolute(value) && !value.includes("\\") && value.split("/").every((part) => part && part !== "." && part !== "..");
+};
 
-const excluded = (relative, profile, isDirectory = false) => {
+const isTarEntryType = (value: string): value is TarEntry["type"] => value === "0" || value === "2" || value === "5";
+
+const parsePackageLock = (bytes: Buffer): PackageLock => {
+  try {
+    const value = JSON.parse(bytes.toString("utf8")) as unknown;
+    if (!value || typeof value !== "object") throw new Error("not an object");
+    return value as PackageLock;
+  } catch {
+    throw new Error("Dependency closure package-lock.json is invalid JSON");
+  }
+};
+
+const excluded = (relative: string, profile: SourceBundleProfile, isDirectory = false): boolean => {
   const parts = relative.split("/");
   if (profile === "go-dependencies" && relative.startsWith("gomodcache/")) return false;
   const names = profile === "dependencies" || profile === "go-dependencies" ? dependencyExcludedNames : profile === "build-source" ? buildSourceExcludedNames : sourceExcludedNames;
-  return parts.some((part) => names.has(part) || credentialDirectory.has(part)) || (!isDirectory && (secretName.test(parts.at(-1)) || credentialFile.test(parts.at(-1)))) || parts.some((part) => part.endsWith("~"));
+  const basename = parts.at(-1) ?? "";
+  return parts.some((part) => names.has(part) || credentialDirectory.has(part)) || (!isDirectory && (secretName.test(basename) || credentialFile.test(basename))) || parts.some((part) => part.endsWith("~"));
 };
 
-const assertNoCredentialContent = (relative, bytes) => {
+const assertNoCredentialContent = (relative: string, bytes: Buffer): void => {
   if (credentialContent.test(bytes.toString("utf8"))) throw new Error(`Source input contains credential-shaped content: ${relative}`);
 };
 
-const assertSymlinkGraph = (entries) => {
+const assertSymlinkGraph = (entries: SourceManifestEntry[]): void => {
   const byPath = new Map(entries.map((entry) => [entry.path, entry]));
   for (const origin of entries) if (origin.type === "symlink") {
-    let current = origin; const seen = new Set([origin.path]);
+    let current: SourceManifestEntry | undefined = origin; const seen = new Set([origin.path]);
     for (let depth = 0; depth < 40; depth += 1) {
+      if (current.type !== "symlink") break;
       const target = path.posix.normalize(path.posix.join(path.posix.dirname(current.path), current.link));
       if (!safeRelative(target) || seen.has(target)) throw new Error(`Source symlink chain is cyclic or escapes its root: ${origin.path}`);
       const next = byPath.get(target); if (!next) throw new Error(`Source symlink target is not an included input: ${origin.path}`);
@@ -39,11 +117,11 @@ const assertSymlinkGraph = (entries) => {
   }
 };
 
-export const collectSourceManifest = (root, profile = "source") => {
-  if (!["source", "build-source", "dependencies", "go-dependencies"].includes(profile)) throw new Error("Unknown provenance bundle profile");
+export const collectSourceManifest = (root: string, profile: SourceBundleProfile = "source"): SourceManifest => {
+  if (!sourceBundleProfiles.includes(profile)) throw new Error("Unknown provenance bundle profile");
   const canonicalRoot = realpathSync(root);
-  const entries = [];
-  const visit = (relative) => {
+  const entries: SourceManifestEntry[] = [];
+  const visit = (relative: string): void => {
     const absolute = path.join(canonicalRoot, relative);
     for (const name of readdirSync(absolute).sort()) {
       const child = relative ? `${relative}/${name}` : name;
@@ -57,7 +135,7 @@ export const collectSourceManifest = (root, profile = "source") => {
         const target = path.resolve(path.dirname(path.join(canonicalRoot, child)), link);
         const targetRelative = path.relative(canonicalRoot, target);
         if (!safeRelative(targetRelative.split(path.sep).join("/"))) throw new Error(`Source symlink escapes its root: ${child}`);
-        let targetItem; try { targetItem = lstatSync(target); } catch { throw new Error(`Source symlink target is not an included input: ${child}`); }
+        let targetItem: ReturnType<typeof lstatSync>; try { targetItem = lstatSync(target); } catch { throw new Error(`Source symlink target is not an included input: ${child}`); }
         if (excluded(targetRelative, profile, targetItem.isDirectory())) throw new Error(`Source symlink target is not an included input: ${child}`);
         entries.push({ path: child, link, mode: item.mode & 0o777, type: "symlink" });
         continue;
@@ -72,17 +150,17 @@ export const collectSourceManifest = (root, profile = "source") => {
   if (!entries.length) throw new Error("Source bundle is empty");
   assertSymlinkGraph(entries);
   const names = profile === "dependencies" || profile === "go-dependencies" ? dependencyExcludedNames : profile === "build-source" ? buildSourceExcludedNames : sourceExcludedNames;
-  let dependency_lock;
+  let dependency_lock: GoDependencyLock | NodeDependencyLock | undefined;
   if (profile === "dependencies") {
     const lockPath = path.join(canonicalRoot, "package-lock.json"), lock = readFileSync(lockPath);
     assertNoCredentialContent("package-lock.json", lock);
-    let parsedLock; try { parsedLock = JSON.parse(lock.toString("utf8")); } catch { throw new Error("Dependency closure package-lock.json is invalid JSON"); }
+    const parsedLock = parsePackageLock(lock);
     if (parsedLock.lockfileVersion !== 3 || !parsedLock.packages || typeof parsedLock.packages !== "object") throw new Error("Dependency closure requires package-lock v3 package graph truth");
     const required = ["npm-cache", "package-lock.json", "package.json"];
     const included = new Set(entries.map((entry) => entry.path));
     if (required.some((entry) => !included.has(entry))) throw new Error("Dependency bundle lacks the required lock-backed amd64 build/runtime closure");
     const packages = Object.entries(parsedLock.packages).filter(([key]) => key.startsWith("node_modules/")).map(([key, lockEntry]) => {
-      if (typeof lockEntry.version !== "string" || !/^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(lockEntry.integrity ?? "")) throw new Error(`Package-lock dependency lacks immutable version/integrity: ${key.slice(13)}`);
+      if (typeof lockEntry.version !== "string" || typeof lockEntry.integrity !== "string" || !/^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(lockEntry.integrity)) throw new Error(`Package-lock dependency lacks immutable version/integrity: ${key.slice(13)}`);
       return { integrity: lockEntry.integrity, path: key.slice(13), version: lockEntry.version };
     }).sort((left, right) => left.path.localeCompare(right.path));
     if (!["@openai/codex", "typescript"].every((name) => packages.some((entry) => entry.path === name))) throw new Error("Dependency lock lacks pinned Codex or TypeScript");
@@ -96,21 +174,21 @@ export const collectSourceManifest = (root, profile = "source") => {
   return { entries, ...(dependency_lock ? { dependency_lock } : {}), exclude_policy: { credential_content: credentialContent.source, credential_directories: [...credentialDirectory].sort(), credential_files: credentialFile.source, names: [...names].sort(), secret_names: secretName.source, editor_backups: true, profile }, root: ".", version: "spawnfile.source-input-manifest.v1" };
 };
 
-export const canonicalManifestBytes = (manifest) => Buffer.from(`${JSON.stringify(manifest)}\n`);
-export const sourceManifestDigest = (manifest) => `sha256:${sha256(canonicalManifestBytes(manifest))}`;
+export const canonicalManifestBytes = (manifest: SourceManifest): Buffer => Buffer.from(`${JSON.stringify(manifest)}\n`);
+export const sourceManifestDigest = (manifest: SourceManifest): string => `sha256:${sha256(canonicalManifestBytes(manifest))}`;
 
-export const assertManifestStable = (root, expected) => {
+export const assertManifestStable = (root: string, expected: SourceManifest): void => {
   const actual = canonicalManifestBytes(collectSourceManifest(root));
   if (!actual.equals(canonicalManifestBytes(expected))) throw new Error("Source inputs drifted while the provenance bundle was created");
 };
 
-const octal = (value, width) => `${value.toString(8).padStart(width - 1, "0")}\0`;
-const tarHeader = (name, mode, size, type, link = "") => {
+const octal = (value: number, width: number): string => `${value.toString(8).padStart(width - 1, "0")}\0`;
+const tarHeader = (name: string, mode: number, size: number, type: string, link = ""): Buffer => {
   const header = Buffer.alloc(512);
-  const put = (value, offset, length) => header.write(value, offset, Math.min(length, Buffer.byteLength(value)), "utf8");
+  const put = (value: string, offset: number, length: number): number => header.write(value, offset, Math.min(length, Buffer.byteLength(value)), "utf8");
   let basename = name, prefix = "";
   if (Buffer.byteLength(name) > 100) {
-    const candidates = [...name.matchAll(/\//gu)].map((match) => match.index).reverse();
+    const candidates = [...name.matchAll(/\//gu)].map((match) => match.index).filter((index): index is number => index !== undefined).reverse();
     const split = candidates.find((index) => Buffer.byteLength(name.slice(0, index)) <= 155 && Buffer.byteLength(name.slice(index + 1)) <= 100);
     if (split === undefined) throw new Error(`Source bundle path exceeds the deterministic ustar bound: ${name}`);
     prefix = name.slice(0, split); basename = name.slice(split + 1);
@@ -123,26 +201,27 @@ const tarHeader = (name, mode, size, type, link = "") => {
   return header;
 };
 
-const paxPathRecord = (name) => {
+const paxPathRecord = (name: string): Buffer => {
   const body = `path=${name}\n`; let length = Buffer.byteLength(body) + 3;
   for (;;) { const next = Buffer.byteLength(`${length} ${body}`); if (next === length) return Buffer.from(`${length} ${body}`); length = next; }
 };
 
-export const createSourceBundle = (root, outputPath, profile = "source", hooks = {}) => {
+export const createSourceBundle = (root: string, outputPath: string, profile: SourceBundleProfile = "source", hooks: { afterRead?: () => void } = {}): SourceBundleReceipt => {
   const relativeOutput = path.relative(realpathSync(root), path.resolve(outputPath));
   if (relativeOutput && relativeOutput !== ".." && !relativeOutput.startsWith(`..${path.sep}`) && !path.isAbsolute(relativeOutput)) {
     throw new Error("Source bundle output must be outside its input root");
   }
-  const manifest = collectSourceManifest(root, profile), chunks = [];
-  const headerName = (name) => {
+  const manifest = collectSourceManifest(root, profile), chunks: Buffer[] = [];
+  const headerName = (name: string): string => {
     try { tarHeader(name, 0o644, 0, "0"); return name; } catch (error) {
+      if (!(error instanceof Error)) throw error;
       if (!/path exceeds/u.test(error.message)) throw error;
       const pax = paxPathRecord(name), identity = sha256(Buffer.from(name)).slice(0, 32);
       chunks.push(tarHeader(`PaxHeaders/${identity}`, 0o644, pax.length, "x"), pax, Buffer.alloc((512 - pax.length % 512) % 512));
       return `entry-${identity}`;
     }
   };
-  const append = (name, bytes, mode = 0o644) => {
+  const append = (name: string, bytes: Buffer, mode = 0o644): void => {
     chunks.push(tarHeader(headerName(name), mode, bytes.length, "0"), bytes, Buffer.alloc((512 - bytes.length % 512) % 512));
   };
   append(".spawnfile-source-manifest.json", canonicalManifestBytes(manifest));
@@ -159,18 +238,26 @@ export const createSourceBundle = (root, outputPath, profile = "source", hooks =
   return { archive_sha256: `sha256:${sha256(bytes)}`, manifest, manifest_sha256: sourceManifestDigest(manifest) };
 };
 
-const tarText = (field) => { const end = field.indexOf(0); return field.subarray(0, end < 0 ? field.length : end).toString("utf8"); };
-const tarNumber = (field) => { const text = field.toString("ascii").replace(/\0.*$/u, "").trim(); if (!/^[0-7]+$/u.test(text)) throw new Error("Source bundle has an invalid numeric field"); return Number.parseInt(text, 8); };
+const tarText = (field: Buffer): string => { const end = field.indexOf(0); return field.subarray(0, end < 0 ? field.length : end).toString("utf8"); };
+const tarNumber = (field: Buffer): number => { const text = field.toString("ascii").replace(/\0.*$/u, "").trim(); if (!/^[0-7]+$/u.test(text)) throw new Error("Source bundle has an invalid numeric field"); return Number.parseInt(text, 8); };
 
-export const validateSourceBundle = (bytes) => {
+const parseManifest = (bytes: Buffer): SourceManifest => {
+  try {
+    return JSON.parse(bytes.toString("utf8")) as SourceManifest;
+  } catch {
+    throw new Error("Source bundle manifest is invalid JSON");
+  }
+};
+
+export const validateSourceBundle = (bytes: Buffer): SourceBundleReceipt => {
   if (bytes.length < 1024 || bytes.length % 512) throw new Error("Source bundle is truncated");
-  const files = new Map(); let offset = 0, pendingPath, terminated = false;
+  const files = new Map<string, TarEntry>(); let offset = 0, pendingPath: string | undefined, terminated = false;
   while (offset + 512 <= bytes.length) {
     const header = bytes.subarray(offset, offset + 512);
     if (header.every((byte) => byte === 0)) { if (!bytes.subarray(offset).every((byte) => byte === 0)) throw new Error("Source bundle has trailing data"); terminated = true; break; }
     if (tarText(header.subarray(257, 263)) !== "ustar") throw new Error("Source bundle is not strict ustar");
     const expected = tarNumber(header.subarray(148, 156)); let sum = 0;
-    for (let index = 0; index < 512; index += 1) sum += index >= 148 && index < 156 ? 32 : header[index];
+    for (let index = 0; index < 512; index += 1) sum += index >= 148 && index < 156 ? 32 : header[index] ?? 0;
     if (sum !== expected) throw new Error("Source bundle checksum mismatch");
     const basename = tarText(header.subarray(0, 100)), prefix = tarText(header.subarray(345, 500));
     const headerPath = prefix ? `${prefix}/${basename}` : basename, size = tarNumber(header.subarray(124, 136)), type = String.fromCharCode(header[156] || 48);
@@ -182,19 +269,19 @@ export const validateSourceBundle = (bytes) => {
       pendingPath = match[2]; offset += 512 + Math.ceil(size / 512) * 512; continue;
     }
     const rawName = pendingPath ?? headerPath; pendingPath = undefined; const name = type === "5" && rawName.endsWith("/") ? rawName.slice(0, -1) : rawName;
-    if (!safeRelative(name) || files.has(name) || !["0", "2", "5"].includes(type) || (type !== "0" && size !== 0)) throw new Error("Source bundle contains an unsafe entry");
+    if (!safeRelative(name) || files.has(name) || !isTarEntryType(type) || (type !== "0" && size !== 0)) throw new Error("Source bundle contains an unsafe entry");
     files.set(name, { content, link: tarText(header.subarray(157, 257)), type });
     offset += 512 + Math.ceil(size / 512) * 512;
   }
   if (!terminated || pendingPath) throw new Error("Source bundle lacks exact termination");
   const manifestFile = files.get(".spawnfile-source-manifest.json"); if (!manifestFile || manifestFile.type !== "0") throw new Error("Source bundle lacks its input manifest");
-  let manifest; try { manifest = JSON.parse(manifestFile.content.toString("utf8")); } catch { throw new Error("Source bundle manifest is invalid JSON"); }
+  const manifest = parseManifest(manifestFile.content);
   const profile = manifest.exclude_policy?.profile, names = profile === "dependencies" || profile === "go-dependencies" ? dependencyExcludedNames : profile === "build-source" ? buildSourceExcludedNames : sourceExcludedNames;
-  const dependencyLockValid = profile !== "dependencies" || (manifest.dependency_lock?.target === "linux/amd64" && /^sha256:[a-f0-9]{64}$/u.test(manifest.dependency_lock?.package_lock_sha256) &&
-    Array.isArray(manifest.dependency_lock?.packages) && manifest.dependency_lock.packages.every((entry) => /^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(entry.integrity) && typeof entry.path === "string" && typeof entry.version === "string") &&
+  const dependencyLockValid = profile !== "dependencies" || (manifest.dependency_lock?.target === "linux/amd64" && "package_lock_sha256" in manifest.dependency_lock && /^sha256:[a-f0-9]{64}$/u.test(manifest.dependency_lock.package_lock_sha256) &&
+    "packages" in manifest.dependency_lock && Array.isArray(manifest.dependency_lock.packages) && manifest.dependency_lock.packages.every((entry) => /^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(entry.integrity) && typeof entry.path === "string" && typeof entry.version === "string") &&
     JSON.stringify(manifest.dependency_lock?.required) === JSON.stringify(["npm-cache", "package-lock.json", "package.json"]));
-  const goDependencyLockValid = profile !== "go-dependencies" || (manifest.dependency_lock?.target === "linux/amd64" && /^sha256:[a-f0-9]{64}$/u.test(manifest.dependency_lock?.go_mod_sha256) && /^sha256:[a-f0-9]{64}$/u.test(manifest.dependency_lock?.go_sum_sha256) && JSON.stringify(manifest.dependency_lock?.required) === JSON.stringify(["go.mod", "go.sum", "gomodcache"]));
-  if (!["source", "build-source", "dependencies", "go-dependencies"].includes(profile) || manifest.version !== "spawnfile.source-input-manifest.v1" || !Array.isArray(manifest.entries) || manifest.root !== "." ||
+  const goDependencyLockValid = profile !== "go-dependencies" || (manifest.dependency_lock?.target === "linux/amd64" && "go_mod_sha256" in manifest.dependency_lock && "go_sum_sha256" in manifest.dependency_lock && /^sha256:[a-f0-9]{64}$/u.test(manifest.dependency_lock.go_mod_sha256) && /^sha256:[a-f0-9]{64}$/u.test(manifest.dependency_lock.go_sum_sha256) && JSON.stringify(manifest.dependency_lock?.required) === JSON.stringify(["go.mod", "go.sum", "gomodcache"]));
+  if (!sourceBundleProfiles.includes(profile) || manifest.version !== "spawnfile.source-input-manifest.v1" || !Array.isArray(manifest.entries) || manifest.root !== "." ||
     !dependencyLockValid ||
     !goDependencyLockValid ||
     JSON.stringify(manifest.exclude_policy) !== JSON.stringify({ credential_content: credentialContent.source, credential_directories: [...credentialDirectory].sort(), credential_files: credentialFile.source, names: [...names].sort(), secret_names: secretName.source, editor_backups: true, profile }) ||

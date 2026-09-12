@@ -70,7 +70,7 @@ jobs:
           # args the Dockerfile does not declare — so it had never produced an
           # image, only a red check.
           #
-          # `npm run build:local-daimon` (scripts/build-local-daimon-runtime.mjs)
+          # `npm run build:local-daimon` (scripts/build-local-daimon-runtime.ts)
           # assembles all of that and is the supported path today. Publishing
           # from CI means teaching this workflow to call that script with a
           # non-loopback registry target, which `resolveLocalImageTag` currently

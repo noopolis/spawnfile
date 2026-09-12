@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { verifyNativeHelperArtifacts } from "./native-helper-artifacts.mjs";
+import { verifyNativeHelperArtifacts } from "./native-helper-artifacts.ts";
 
 test("native helper closure rejects missing and wrong-architecture artifacts", async () => {
   await verifyNativeHelperArtifacts(path.resolve("src/deployment/native/artifacts"));

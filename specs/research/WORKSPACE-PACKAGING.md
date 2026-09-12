@@ -34,7 +34,7 @@ Implementation references: [workspace schema](../../src/manifest/workspaceSchema
 [resource inheritance](../../src/compiler/workspaceResources.ts),
 [bundle validation](../../src/compiler/workspaceBundleArtifacts.ts),
 [MCP schema](../../src/manifest/mcpSchemas.ts) and
-[source provenance helper](../../scripts/source-provenance-bundle.mjs).
+[source provenance helper](../../scripts/source-provenance-bundle.ts).
 See [offline workspace bundles](../CONTAINERS.md#offline-workspace-bundles).
 
 ## Proposed authoring experience
