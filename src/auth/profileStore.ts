@@ -3,11 +3,11 @@ import path from "node:path";
 import { z } from "zod";
 
 import {
-  ensureDirectory,
+  ensurePrivateDirectory,
   fileExists,
   readUtf8File,
   removeDirectory,
-  writeUtf8File
+  writePrivateUtf8File
 } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
@@ -15,7 +15,8 @@ import {
   resolveAuthHome,
   resolveImportedAuthDirectory,
   resolveProfileDirectory,
-  resolveProfilePath
+  resolveProfilePath,
+  resolveProfilesRoot
 } from "./paths.js";
 import type { AuthProfile, ImportedAuthKind, ResolvedAuthProfile } from "./types.js";
 
@@ -110,16 +111,15 @@ export const ensureAuthProfile = async (
     return existing;
   }
 
-  const profileDirectory = resolveProfileDirectory(profileName);
-  await ensureDirectory(profileDirectory);
-  await writeUtf8File(resolveProfilePath(profileName), `${JSON.stringify(createEmptyProfile(), null, 2)}\n`);
-  return createResolvedAuthProfile(profileName, createEmptyProfile());
+  return writeProfile(profileName, createEmptyProfile());
 };
 
 const writeProfile = async (profileName: string, profile: AuthProfile): Promise<ResolvedAuthProfile> => {
   const profileDirectory = resolveProfileDirectory(profileName);
-  await ensureDirectory(profileDirectory);
-  await writeUtf8File(resolveProfilePath(profileName), `${JSON.stringify(profile, null, 2)}\n`);
+  await ensurePrivateDirectory(resolveAuthHome());
+  await ensurePrivateDirectory(resolveProfilesRoot());
+  await ensurePrivateDirectory(profileDirectory);
+  await writePrivateUtf8File(resolveProfilePath(profileName), `${JSON.stringify(profile, null, 2)}\n`);
   return createResolvedAuthProfile(profileName, profile);
 };
 
@@ -152,8 +152,9 @@ export const registerImportedAuth = async (
 ): Promise<{ directory: string; profile: ResolvedAuthProfile }> => {
   const current = (await loadAuthProfile(profileName)) ?? (await ensureAuthProfile(profileName));
   const importDirectory = resolveImportedAuthDirectory(profileName, kind);
+  await ensurePrivateDirectory(path.dirname(importDirectory));
   await removeDirectory(importDirectory);
-  await ensureDirectory(importDirectory);
+  await ensurePrivateDirectory(importDirectory);
 
   const nextProfile: AuthProfile = {
     env: { ...current.env },
