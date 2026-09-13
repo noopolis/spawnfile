@@ -6,6 +6,7 @@ This folder owns graph resolution, effective configuration, compile planning, an
 
 ```text
 src/compiler/
+├── training/                 # Versioned canonical source context for Paideia; no evaluation or launch
 ├── index.ts                    # Barrel for compiler-facing exports
 ├── types.ts                    # Internal compiler plan and resolved-node types
 ├── helpers.ts                  # Deterministic helper utilities
