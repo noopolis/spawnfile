@@ -114,12 +114,13 @@ describe("failed candidate diagnostics", () => {
     const original = [
       "known-secret", "Bearer abcdefghijklmnop", "sk-proj-abcdefghijklmnopqrstuvwxyz",
       "TOKEN=value", '{"refreshToken":"refresh-value"}', "Authorization: Basic basic-credential",
+      '{"Authorization":"Basic hidden-json-basic"}', "{'refreshToken':'single-quoted-secret'}",
       "https://user:pass@example.org/private?token=foo", "eyJhbGciOiJIUzI1NiJ9.payload.signature",
       "-----BEGIN PRIVATE KEY-----\nprivate-key-bytes\n-----END PRIVATE KEY-----",
       "\u001b[31mError: missing module\u001b[0m"
     ].join("\n");
     const clean = sanitizeCandidateDiagnostic(original, ["known-secret"]);
-    expect(clean).not.toMatch(/known-secret|abcdefghijklmnop|refresh-value|basic-credential|user:pass|eyJhbGci|private-key-bytes|\u001b/u);
+    expect(clean).not.toMatch(/known-secret|abcdefghijklmnop|refresh-value|basic-credential|hidden-json-basic|single-quoted-secret|user:pass|eyJhbGci|private-key-bytes|\u001b/u);
     expect(clean).toContain("Error: missing module");
   });
 });
