@@ -32,6 +32,7 @@ export async function fixture(change?: (report: TrialReport) => void) {
     datasetDigest: 'original-dataset-digest', planDigest: 'original-plan', recordId: 'story',
     paths: { root: '/absent', workspace: '/absent/workspace', control: '/absent/control', runtimeHome: '/absent/runtime' },
     status: 'fail', execution: 'completed', hostWork: 'settled',
+    stop: { state: 'acknowledged', scope: 'native-handle', quiescence: 'unknown', remoteWork: 'unknown', reason: 'completed', detail: 'fixture acknowledged' },
     snapshot: { trialId: 'trial', recordId: 'story', closed: true, events: [], coverage,
       output: 'ARTICLE', inputFiles: { packet: 'Original evidence' }, context: { origin: 'original' },
       artifacts: { article: { name: 'article', checkpointId: 'final/article', digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,

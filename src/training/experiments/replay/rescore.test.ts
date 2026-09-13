@@ -39,6 +39,13 @@ test('retains the selected mechanical stop when replacement criteria pass', asyn
 });
 
 test('infrastructure failure, interruption and partial output cannot become a successful new run', async () => {
+  for (const state of ['missing', 'unknown'] as const) {
+    const { options } = await fixture(report => {
+      if (state === 'missing') delete report.stop;
+      else report.stop!.state = 'unknown';
+    });
+    expect(await rescoreStoredTrial(options)).toMatchObject({ status: 'error', execution: 'completed', evaluation: { status: 'pass' } });
+  }
   for (const execution of ['failed', 'interrupted'] as const) {
     const { options } = await fixture(report => { report.execution = execution; });
     expect(await rescoreStoredTrial(options)).toMatchObject({ execution, status: 'error', evaluation: { status: 'pass' } });

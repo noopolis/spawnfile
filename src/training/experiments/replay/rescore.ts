@@ -29,7 +29,9 @@ export async function rescoreStoredTrial(options: RescoreOptions): Promise<Resco
   if (options.signal?.aborted) throw new Error('Rescore cancelled during evaluation');
   const gates = [result(evaluation.status, 'Rescored final-stage plan')];
   if (original.decisiveFailure) gates.push(original.decisiveFailure);
-  if (original.execution !== 'completed' || original.hostWork !== 'settled') gates.push(result('error', 'Original native execution remains incomplete'));
+  if (original.execution !== 'completed' || original.hostWork !== 'settled' || original.stop?.state !== 'acknowledged') {
+    gates.push(result('error', 'Original native execution or cleanup remains incomplete'));
+  }
   const report: RescoreReport = {
     schema: 'paideia.rescore.v1', id: options.id, runId: options.runId, scope: 'final-stages', notReevaluated: ['live', 'per-turn'],
     original: { evaluationId: source.id, digest: source.digest, candidateId: original.candidateId, datasetDigest: original.datasetDigest,
