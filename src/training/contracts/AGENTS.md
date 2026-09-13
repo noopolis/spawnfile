@@ -1,0 +1,12 @@
+# Neutral Contracts
+
+Owns versioned IDs, capabilities, interfaces and shared result schemas.
+
+- No runtime SDKs, provider calls, filesystem access or product-specific corpora.
+- Model incomplete observations, unsupported controls and unknown usage explicitly.
+- Runtime and inference adapters are different contracts; do not merge them just
+  because both can launch a CLI.
+- Keep wire compatibility and validation versioned. Split schema families into
+  cohesive children when they grow; do not centralize every type in one file.
+- Tests should reject malformed, ambiguous and incompatible values while accepting
+  the supported public contract. Shared contracts must work without Daimon.
