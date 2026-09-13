@@ -170,7 +170,9 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <thead><tr><th>YAML surface</th><th>What it means</th></tr></thead>
 <tbody>
 <tr><td><code>schema, id, subject</code></td><td>Versioned dataset identity and optional native agent identity.</td></tr>
-<tr><td><code>setup</code></td><td>A registered environment recipe: state, clock, delivery, source views and artifact collection. Newsroom behavior belongs in this integration.</td></tr>
+<tr><td><code>setup</code></td><td>The shared registered recipe and defaults: isolation, source views and artifact collection. Fixture/record parameters cannot replace the profile or weaken locked policy.</td></tr>
+<tr><td><code>fixtures</code></td><td>Same-file named partial records: context, setup, input, reference and outputs. Maps merge; arrays/scalars are atomic. Unequal selected-fixture values conflict before local overrides.</td></tr>
+<tr><td><code>records[].use</code></td><td>Explicit fixture names; unknown or repeated names fail. Each record expands independently, then source/split checks and existing visibility rules apply. See <a href="fixtures.md">fixture resolution</a>.</td></tr>
 <tr><td><code>records[].context</code></td><td>Typed setup/evaluator parameters such as edition and story ID; not automatically added to the prompt.</td></tr>
 <tr><td><code>records[].input</code></td><td>The actual task and exact selected source files. Each source has a resource, native-relative path and SHA-256.</td></tr>
 <tr><td><code>records[].reference</code></td><td>Evaluator-only historical output. It is a comparison reference, not a gold answer or material for the agent.</td></tr>
@@ -178,34 +180,16 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 </tbody></table></div>
 <p>The invocation selects project, subject, dataset roles, editable prompt sections, inference routes and budgets. Resolution creates a locked run manifest. There is no mandatory extra experiment YAML; invocation syntax is still to design.</p>
 <details><summary>Read one actual training record</summary>
-<p>From <code>train.yaml</code>. The private archive stays external; these selectors were checked against the pinned Git bytes. The full file supplies its shared setup and evaluation plan.</p>
+<p>From <a href="../examples/newsroom-reporting/train.yaml"><code>train.yaml</code></a>. <code>afternoon-assignment</code> supplies clock/delivery; <code>kestrel-evidence</code> supplies context and the four pinned file selectors, including the evaluator-only reference. The private archive stays external. Shared setup and stages remain in the same YAML.</p>
 <pre><code>  - id: kestrel-reporting
     group: kestrel-2026-09-12
-    context:
-      edition: &quot;2026-09-12&quot;
-      article_id: s-1a2b3c4d
+    use: [afternoon-assignment, kestrel-evidence]
     input:
       prompt: |
         Report the Kestrel salvo and what the reported hardware mix establishes.
         Read the assignment and selected story packet at their usual workspace paths.
         Produce the complete publication JSON, validate it, file it under this wake,
-        and notify Reviewer. Preserve source qualifications and write for readers.
-      files:
-        - resource: private-archive
-          path: 2026-09-12/desks/scribe.index
-          sha256: sha256:0404040404040404040404040404040404040404040404040404040404040404
-        - resource: private-archive
-          path: 2026-09-12/stories/s-1a2b3c4d.md
-          sha256: sha256:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a
-        - resource: private-archive
-          path: 2026-09-12/grok/grok-rolling-0944.md
-          sha256: sha256:0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b
-    reference:
-      # Historical output for evaluator-side comparison, not a gold answer or input.
-      files:
-        - resource: public-content
-          path: content/editions/2026-09-12/articles/s-1a2b3c4d.json
-          sha256: sha256:0707070707070707070707070707070707070707070707070707070707070707</code></pre>
+        and notify Reviewer. Preserve source qualifications and write for readers.</code></pre>
 </details>
 <details><summary>How rules combine, from mechanical checks to prose quality</summary>
 <div class="table"><table>

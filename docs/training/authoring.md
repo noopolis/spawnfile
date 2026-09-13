@@ -52,6 +52,7 @@ starts with fresh state. No implicit trimming, case folding or normalizing occur
 | `id` | Required stable dataset ID |
 | `subject` | Optional native subject identity; must match the selected native project |
 | `setup` | Optional typed environment recipe and declared emulation parameters |
+| `fixtures` | Optional mapping of same-file names to partial record declarations; see [fixtures](fixtures.md) |
 | `checks` or `stages` | Optional shared checks applied to every record; mutually exclusive |
 | `records` | Required nonempty sequence of inline task records |
 
@@ -59,6 +60,7 @@ starts with fresh state. No implicit trimming, case folding or normalizing occur
 | --- | --- |
 | `id` | Required ID, unique within the dataset |
 | `group` | Evidence-family identity, required for optimization/held-out comparison |
+| `use` | Optional sequence of same-file fixture names to expand before record-local values |
 | `context` | Typed setup/evaluator parameters, not automatically sent to the subject |
 | `setup` | Optional declared parameters of the selected preparation recipe |
 | `input` or `turns` | One visible task, or ordered external stimuli within a task; mutually exclusive |
@@ -72,6 +74,15 @@ an ID. Resolve IDs, references, dependencies and effective gates before paid wor
 Record setup parameters cannot silently change native tools, permissions or locked
 source configuration. Unknown fields, duplicate keys and unsupported requirements fail
 resolution; do not drop them and continue.
+
+## Reuse named fixtures
+
+`fixtures` names reusable partial records inside this dataset; record `use` selects
+them explicitly. Dataset `setup` remains the shared recipe and defaults. Fixtures can
+supply context, setup parameters, inputs, references and outputs, while record identity,
+group and checks remain outside them. See [fixture resolution](fixtures.md) for the
+canonical merge, conflict, policy and isolation rules. The real datasets use an
+`afternoon-assignment` fixture and a named evidence packet for each record.
 
 ## Select the actual inputs
 
