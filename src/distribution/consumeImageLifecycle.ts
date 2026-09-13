@@ -214,7 +214,9 @@ export const assertCandidateContainerReady = async (
     }
     const health = state.Health?.Status;
     if (state.Running === true && (health === undefined || health === "healthy")) return;
-    if (state.Running !== true || (health !== undefined && health !== "starting")) break;
+    // Docker may exhaust its health retries while a live process is still
+    // initializing. Honor our full readiness budget; only healthy can pass.
+    if (state.Running !== true || (health !== "starting" && health !== "unhealthy")) break;
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) break;
     await delay(Math.min(candidateReadinessPollMs, remainingMs));
