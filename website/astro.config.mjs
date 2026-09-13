@@ -9,7 +9,7 @@ export default defineConfig({
     sitemap(),
     starlight({
       title: 'Spawnfile',
-      description: 'A fully open-source spec and compiler for autonomous agents and teams.',
+      description: 'Define autonomous AI agents and multi-agent teams once, then compile portable Spawnfile manifests into runtime-native configuration.',
       components: {
         ThemeSelect: './src/components/EmptyThemeSelect.astro',
         SiteTitle: './src/components/SiteTitle.astro',
