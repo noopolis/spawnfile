@@ -281,6 +281,21 @@ matched as their original text. Literal quotes, newlines and backslashes retain 
 meaning after JSON decoding. Validation never trims, normalizes or joins separate
 string values, and text from another named source cannot validate a citation.
 
+Each invoked judge records a unique attempt ID, its configured judge/provider and
+requested model, the provider-returned model/route, and observed usage. Invalid
+JSON, malformed judgments and unsupported citations remain errors with that
+attempt's usage retained. A thrown provider failure has unknown response identity
+and usage unless the inference interface supplies them; unknown is never zero.
+If inference returns a requested model fallback, the judge's response model stays
+unknown while its measured usage remains recorded. Optimizer provenance preserves
+the same attribution; a requested alias is not priced as a confirmed actual model.
+`judgeCalls` is preserved on results and collected on the plan, including stage
+eligibility checks and gates. Reusing a check through `passed` or logical nesting
+retains its attempt ID and does not add another generation. Consumers deduplicate
+IDs across result views; returned model names are reported provenance, not an
+independent attestation of the remote model. Older reports without this metadata
+cannot be assigned retrospective per-judge identity from aggregate token totals.
+
 `tool-sequence.order: happens-before` means predecessor completion precedes successor
 dispatch. Matching is existential over ordered, distinct successful call tuples with
 consistent bindings; repair attempts may occur between matched calls. Retain all matches
@@ -390,6 +405,14 @@ partitions or an optional validation dataset. Freeze the candidate before the fi
 test comparison with baseline. Reject duplicate record identity, repeated membership
 and evidence families shared between those roles. Dataset membership is explicit and
 immutable for the run. One case per role illustrates syntax, not statistical evidence.
+
+Training output includes final chat text and only the task artifacts named by
+`record.outputs` or the trusted preparation's `setup.artifacts`. When artifacts are
+declared, the optimizer receives JSON with `output.text` and named `artifacts`, each
+with `status: available` and its captured value, or `status: unavailable`. Undeclared
+artifacts, snapshot context, input-file contents and record references are not added.
+Without artifact declarations, the original plain-text output is preserved.
+Validation and test return neither output text nor diagnostic feedback to the optimizer.
 
 For a train/test comparison, the normalized shared evaluation plan must have the same
 digest: evaluator/judge versions, rubrics, gates, thresholds, weights and live policy. Resolve both

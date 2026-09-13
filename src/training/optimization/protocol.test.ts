@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DSPY_FRAME_BYTES, DSPY_SCHEMA, decodeMessage, encodeMessage, sameComponents, startSchema } from './protocol.js';
+import { DSPY_FRAME_BYTES, DSPY_SCHEMA, decodeMessage, encodeMessage, inferenceSchema, sameComponents, startSchema } from './protocol.js';
 
 function start(patch: Record<string, unknown> = {}): unknown {
   return { schema: DSPY_SCHEMA, kind: 'optimize', id: 'experiment', components: { A: 'text' },
@@ -48,5 +48,14 @@ describe('strict DSPy protocol', () => {
     expect(sameComponents({ A: 'a' }, { B: 'a' })).toBe(false);
     expect(sameComponents({ A: 'a' }, { A: 'a\n' })).toBe(false);
     expect(sameComponents({ A: 'a' }, { A: 'a', B: 'b' })).toBe(false);
+  });
+
+  it('preserves explicit model attribution and rejects invented bases', () => {
+    const response = { text: 'answer', model: 'requested-alias', usage: null, route: 'subscription' };
+    for (const modelBasis of ['provider-reported', 'requested-assumption']) {
+      expect(inferenceSchema.parse({ ...response, modelBasis }).modelBasis).toBe(modelBasis);
+    }
+    expect(inferenceSchema.parse(response)).not.toHaveProperty('modelBasis');
+    for (const modelBasis of ['actual', null, 1]) expect(() => inferenceSchema.parse({ ...response, modelBasis })).toThrow();
   });
 });

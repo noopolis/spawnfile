@@ -2,6 +2,10 @@
 export interface Usage {
   inputTokens: number | null;
   cachedInputTokens: number | null;
+  /** Cache reads and writes are disjoint subsets of total inputTokens. Missing means unknown. */
+  cacheWriteInputTokens?: number | null;
+  cacheWrite5mInputTokens?: number | null;
+  cacheWrite1hInputTokens?: number | null;
   outputTokens: number | null;
   reasoningTokens: number | null;
   source: string;
@@ -104,9 +108,13 @@ export interface InferenceRequest {
   seed?: number;
 }
 
+export type InferenceModelBasis = 'provider-reported' | 'requested-assumption';
+
 export interface InferenceResult {
   text: string;
   model: string;
+  /** Omitted means provider-reported for existing providers. Requested fallback is never actual-model evidence. */
+  modelBasis?: InferenceModelBasis;
   usage: Usage | null;
   route: string;
 }

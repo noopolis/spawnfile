@@ -56,8 +56,10 @@ export function createClaudeInference(options: ClaudeInferenceOptions = {}): Inf
         if (result === undefined) throw new Error('Claude omitted its terminal result envelope');
         if (!isolationAcknowledged) throw new Error('Claude omitted tool-free isolation acknowledgement');
         const decoded = decodeClaudeResult(result);
+        const actualModel = [decoded.model, reportedModel].find(model => model !== undefined && model.trim().length > 0);
         return { text: decoded.text, usage: decoded.usage,
-          model: decoded.model ?? reportedModel ?? request.model, route: 'claude-subscription' };
+          model: actualModel ?? request.model,
+          modelBasis: actualModel === undefined ? 'requested-assumption' : 'provider-reported', route: 'claude-subscription' };
       } finally { await rm(cwd, { recursive: true, force: true }); }
     },
   };

@@ -51,6 +51,8 @@ async function fixture(editable = true): Promise<{ options: TrainingOptions; eve
 }
 it('runs fixed partitions, freezes selection, then compares fresh sealed baseline and candidate trials', async () => {
   const { options, events, source } = await fixture();
+  const generate = options.inference.provider.generate;
+  options.inference.provider.generate = async request => ({ ...await generate(request), modelBasis: 'requested-assumption' });
   vi.spyOn(optimization, 'runDspyOptimization').mockImplementation(async request => {
     expect(request.trainCaseIds).toEqual(['Alpha']); expect(request.validationCaseIds).toEqual(['Beta']);
     expect(JSON.stringify(request)).not.toContain('Gamma');
@@ -79,6 +81,8 @@ it('runs fixed partitions, freezes selection, then compares fresh sealed baselin
   const frozen = events.findIndex(event => event.type === 'selection.frozen');
   const firstTest = events.findIndex(event => event.type === 'trial.queued' && (event.payload as { phase: string }).phase === 'test');
   expect(firstTest).toBeGreaterThan(frozen); expect(events.at(-1)!.type).toBe('training.completed');
+  expect(events.find(event => event.type === 'optimizer.generation.completed')!.payload)
+    .toMatchObject({ model: 'test-optimizer', modelBasis: 'requested-assumption' });
   expect(await readFile(join(source, 'AGENTS.md'), 'utf8')).toBe('Copy the input token unchanged.');
   const test = report.trials.at(-1)!;
   await expect(options.native.store.readReplay(test.id, { audience: 'optimizer', phase: 'training' })).rejects.toThrow();
@@ -96,4 +100,22 @@ it('rejects locked-only candidates, split drift and unscorable native failures',
     throw new Error('must not continue');
   });
   await expect(trainAgent(options)).rejects.toThrow('infrastructure');
+});
+
+it('reports an attempted optimizer failure with unknown usage rather than a fabricated zero', async () => {
+  const { options, events } = await fixture();
+  options.inference.provider.generate = async () => { throw new Error('Quota exhausted'); };
+  vi.spyOn(optimization, 'runDspyOptimization').mockImplementation(async request => {
+    await request.generate({ purpose: 'reflection', messages: [
+      { role: 'system', content: 'Optimize instructions.' }, { role: 'user', content: 'Reflect.' },
+    ], options: {} }, new AbortController().signal);
+    throw new Error('Must not continue');
+  });
+  await expect(trainAgent(options)).rejects.toThrow('Quota exhausted');
+  expect(events.filter(event => event.type.startsWith('optimizer.'))).toEqual([
+    { type: 'optimizer.generation.started', payload: { attempt: 1 } },
+    { type: 'optimizer.generation.failed', payload: { attempt: 1, requestedModel: 'test-optimizer', model: null,
+      route: null, usage: null, outcome: 'generation-error' } },
+  ]);
+  expect(events.some(event => event.type === 'selection.frozen')).toBe(false);
 });

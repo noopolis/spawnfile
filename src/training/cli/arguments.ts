@@ -5,10 +5,10 @@ export interface CliArguments {
 }
 
 const repeated = new Set(['instructions', 'supporting', 'locked', 'editable', 'resource', 'judge', 'validation-group']);
-const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'resource', 'judge', 'source-root', 'out', 'max-trials', 'timeout-ms', 'view'];
+const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'resource', 'judge', 'source-root', 'out', 'max-trials', 'timeout-ms', 'view', 'cost-config', 'spawnfile-context'];
 const flags: Record<string, readonly string[]> = {
   validate: ['judge'], evaluate: common, view: ['port', 'timeout-ms'],
-  train: [...common, 'train', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed'],
+  train: [...common, 'train', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed', 'dry-run'],
 };
 
 export const helpText = `Paideia — explicit local native-agent experiments
@@ -27,6 +27,9 @@ Repeat --resource NAME=DIRECTORY for hash-pinned dataset inputs; --judge NAME=MO
 Train accepts repeated --validation-group GROUP, or freezes an internal group partition.
 --max-trials N (default 20, ceiling 10000) includes conservative reserved sealed-test trials.
 --max-proposals N (default 3, ceiling 1000), --seed N (GEPA sampling only).
+train --dry-run resolves local inputs and prints an API-equivalent cost plan without launching any runtime or model.
+--cost-config FILE selects a paideia.cost-config.v1 YAML with token assumptions and explicit model prices.
+Dry-run requires no --out or --bridge-command. Unknown costs are reported, never priced at zero.
 --timeout-ms N (default 180000, ceiling 3600000) is the whole-command deadline.
 Output stays local. An invocation index identifies immutable stored report and candidate blobs.
 --view PORT enables persisted live observation during evaluate/train (0 selects a free port).
@@ -46,6 +49,11 @@ export function parseArguments(argv: readonly string[]): CliArguments {
     if (!token.startsWith('-')) { positional.push(token); continue; }
     const name = token.slice(2);
     if (!token.startsWith('--') || !allowed.includes(name)) throw new Error(`Unsupported option ${token} for ${command}`);
+    if (name === 'dry-run') {
+      if (values[name]) throw new Error(`Option ${token} may appear only once`);
+      values[name] = ['true'];
+      continue;
+    }
     const value = argv[++index];
     if (value === undefined || value.length === 0 || value.startsWith('-')) throw new Error(`Option ${token} requires a value`);
     if (values[name] && !repeated.has(name)) throw new Error(`Option ${token} may appear only once`);

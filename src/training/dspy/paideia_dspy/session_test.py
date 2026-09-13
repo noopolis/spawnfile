@@ -100,3 +100,12 @@ def test_unknown_predictor_error_latches_without_replacing_first_failure():
     first = session.latch(RuntimeError("hidden"))
     assert first.code == "optimizer_error"
     assert session.latch(BridgeError("second", "ignored")) is first
+
+
+@pytest.mark.parametrize("basis", ["requested-assumption", "provider-reported"])
+def test_preserves_model_attribution_in_generation_provenance(basis):
+    response = {"text": "{}", "model": "chosen-model", "usage": None, "modelBasis": basis}
+    session = Session(request(), lambda *args: response)
+    result = session.generate([{"role": "user", "content": "reflect"}], {})
+    assert result.modelBasis == basis
+    assert session.generations == [{"model": "chosen-model", "usage": None, "modelBasis": basis}]

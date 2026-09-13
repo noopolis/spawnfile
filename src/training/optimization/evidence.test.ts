@@ -53,6 +53,7 @@ describe('terminal optimization evidence', () => {
     ['pending host work', ({ host }) => { host.pending = 1; }],
     ['capture provenance', ({ result }) => { result.provenance.captures[0]!.captureId = 'forged'; }],
     ['generation identity', ({ result }) => { result.provenance.generations[0]!.model = 'invented'; }],
+    ['generation attribution', ({ result }) => { result.provenance.generations[0]!.modelBasis = 'requested-assumption'; }],
     ['missing validation', ({ result }) => { result.provenance.candidates.pop(); }],
     ['baseline text', ({ result }) => { result.provenance.candidates[0]!.components['AGENTS.md'] = 'altered'; }],
     ['baseline parent count', ({ result }) => { result.provenance.candidates[0]!.parents = []; }],

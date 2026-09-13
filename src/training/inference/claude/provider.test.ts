@@ -21,7 +21,7 @@ it('performs native auth preflight and a tool-free generation in a disposable di
     calls.push(options); return runner([JSON.stringify({ type: 'system', subtype: 'init', tools: [], model: 'actual-model' }), JSON.stringify(result)])(options);
   } });
   const response = await provider.generate({ model: 'selected', prompt: 'task', system: 'instructions' });
-  expect(response).toMatchObject({ text: 'real output', model: 'actual-model', route: 'claude-subscription', usage: null });
+  expect(response).toMatchObject({ text: 'real output', model: 'actual-model', modelBasis: 'provider-reported', route: 'claude-subscription', usage: null });
   expect(calls).toHaveLength(2);
   expect(calls[1]?.args).toContain('--safe-mode');
   expect(calls[1]?.args.slice(calls[1]!.args.indexOf('--tools'), calls[1]!.args.indexOf('--tools') + 2)).toEqual(['--tools', '']);
@@ -53,4 +53,21 @@ it('fails closed on missing result, tool isolation failure and native unsuccessf
   await expect(createClaudeInference({ process: runner([JSON.stringify(result)]) }).generate({ model: 'm', prompt: 'p' })).rejects.toThrow('isolation acknowledgement');
   const plain = await createClaudeInference({ process: runner(['{"type":"system","subtype":"init","tools":[]}', JSON.stringify(result)]) }).generate({ model: 'm', prompt: 'p' });
   expect(plain.model).toBe('m');
+  expect(plain.modelBasis).toBe('requested-assumption');
+});
+
+it.each([undefined, '', '   '])('never labels an unreported model as provider-reported (%j)', async model => {
+  const nativeUsage = { input_tokens: 3, cache_read_input_tokens: 2, cache_creation_input_tokens: 0, output_tokens: 4 };
+  const lines = [JSON.stringify({ type: 'system', subtype: 'init', tools: [], model }),
+    JSON.stringify({ ...result, model, usage: nativeUsage })];
+  const response = await createClaudeInference({ process: runner(lines) }).generate({ model: 'claude-fable-5-1', prompt: 'task' });
+  expect(response).toMatchObject({ model: 'claude-fable-5-1', modelBasis: 'requested-assumption',
+    usage: { inputTokens: 5, cachedInputTokens: 2, outputTokens: 4 } });
+});
+
+it('prefers a reported terminal model over the initialization model', async () => {
+  const lines = [JSON.stringify({ type: 'system', subtype: 'init', tools: [], model: 'initial' }),
+    JSON.stringify({ ...result, model: 'terminal' })];
+  const response = await createClaudeInference({ process: runner(lines) }).generate({ model: 'requested', prompt: 'task' });
+  expect(response).toMatchObject({ model: 'terminal', modelBasis: 'provider-reported' });
 });

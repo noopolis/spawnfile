@@ -70,7 +70,12 @@ messages. No paid API fallback, native tools, hidden judge, teacher or DSPy defa
 model route exists. `options` is always empty. This release rejects requested
 sampling controls, structured-output controls, nontext parts and tool use.
 
-Return the generation's actual model and reported usage (or `null` when unavailable).
+Return the generation's reported model and reported usage (or `null` when unavailable).
+If the inference provider supplied only a requested model fallback, include
+`modelBasis: "requested-assumption"`. `"provider-reported"` is the explicit observed
+alternative; omission retains the existing provider-reported contract. Preserve
+this field in final generation provenance. Requested fallbacks are never evidence
+for actual-model pricing, even when their string matches the rate catalog.
 The bridge retains these without inventing token totals or price estimates. Success
 means completed text generation; auth, quota, cancellation and unsupported controls
 must be errors. The reflection prompt asks for a JSON map replacing exactly the
@@ -94,7 +99,7 @@ original request `id`, selected `components`, and `provenance`:
 - `candidates`: full decoded component maps, parent indices, `validationScore`,
   and GEPA's `discoveryEvaluations` accounting (distinct from host attempt count).
 - `captures`: `{caseId,split,captureId}` for completed host evaluations.
-- `generations`: `{model,usage}` for completed host reflection generations.
+- `generations`: `{model,usage,modelBasis?}` for completed host reflection generations.
 
 Failure emits `kind:"error"`, `error:{code,message}`, and exits 1. A rejected start
 has `id:"unknown"`. Neither a process start nor exit 0 alone is acceptance: the host

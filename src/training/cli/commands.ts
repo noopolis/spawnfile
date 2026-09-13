@@ -1,17 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
-import { freezeCriteria, runStoredTrial, trainAgent, type StoredTrialOptions, type TrialReport } from '../experiments/index.js';
+import { freezeCriteria, planTrainingCost, runStoredTrial, trainAgent, type StoredTrialOptions, type TrialReport } from '../experiments/index.js';
 import { count, helpText, one, pairs, parseArguments, type CliArguments } from './arguments.js';
 import { CliDatasets } from './datasets.js';
-import { prepareNative } from './native.js';
+import { prepareCliInputs, prepareNative } from './native.js';
 import { persistResult, withOutput } from './output.js';
 import type { CliDependencies, CliIO } from './types.js';
 import { startLiveViewer, viewInvocation } from './viewer.js';
-
-function progress(io: CliIO, report: TrialReport): void {
-  io.stdout(`${JSON.stringify({ trialId: report.id, phase: report.phase, candidateId: report.candidateId,
-    status: report.status, execution: report.execution })}\n`);
-}
+import { dryRunTraining, readCostConfig } from './dry-run.js';
+import { createProgressJournal } from './progress/index.js';
 
 async function execute(args: CliArguments, io: CliIO, dependencies: CliDependencies,
   timeoutMs: number, signal: AbortSignal): Promise<number> {
@@ -21,34 +18,49 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     return 0;
   }
   if (args.command === 'validate') {
-    const dataset = new CliDatasets(pairs(args.flags.judge ?? []), io.cwd).load(args.dataset!, false);
+    const dataset = new CliDatasets(pairs(args.flags.judge ?? []), io.cwd, {
+      registry: { preparations: dependencies.spawnfile?.preparations },
+      unlockedSetupPaths: dependencies.spawnfile?.unlockedSetupPaths,
+    }).load(args.dataset!, false);
     io.stdout(`${JSON.stringify({ status: 'valid', datasetId: dataset.id, records: dataset.records.length,
       sourceDigest: dataset.sourceDigest, planDigest: dataset.sharedPlanDigest })}\n`);
     return 0;
   }
-  const native = await prepareNative(args, io, dependencies, timeoutMs);
-  const dataset = native.datasets.load(args.command === 'train' ? one(args, 'train') : args.dataset!, args.command === 'train');
-  const test = args.command === 'train' ? native.datasets.load(one(args, 'test'), true) : undefined;
-  if (args.command === 'evaluate' && dataset.records.length > native.maxTrials) throw new Error('Dataset exceeds --max-trials; no records are silently dropped');
-  const metricCalls = native.maxTrials - (test === undefined ? 0 : 2 * test.records.length);
+  if (args.command === 'train' && args.flags['dry-run']) return dryRunTraining(args, io, dependencies);
+  if (args.flags['spawnfile-context'] && !dependencies.spawnfile) throw new Error('Spawnfile native training requires a supported isolated preparation integration; no native trial was started');
+  const inputs = await prepareCliInputs(args, io, dependencies);
+  const dataset = inputs.datasets.load(args.command === 'train' ? one(args, 'train') : args.dataset!, args.command === 'train');
+  const test = args.command === 'train' ? inputs.datasets.load(one(args, 'test'), true) : undefined;
+  if (args.command === 'evaluate' && dataset.records.length > inputs.maxTrials) throw new Error('Dataset exceeds --max-trials; no records are silently dropped');
+  const metricCalls = inputs.maxTrials - (test === undefined ? 0 : 2 * test.records.length);
   if (metricCalls < 1) throw new Error('--max-trials cannot cover optimizer evaluation plus two reserved sealed-test passes');
   const bridgeCommand = args.command === 'train' ? one(args, 'bridge-command') : undefined;
   const optimizerModel = args.command === 'train' ? one(args, 'optimizer-model') : undefined;
   const maxProposals = count(args, 'max-proposals', 3, 1000);
   const seed = count(args, 'seed', 0, 2 ** 32 - 1, 0);
+  const costConfig = readCostConfig(args, io);
+  const costPlan = test === undefined ? undefined : planTrainingCost({ train: dataset, test,
+    subjectModel: inputs.model, optimizerModel: optimizerModel!, validationGroups: args.flags['validation-group'],
+    judges: Object.fromEntries(Object.entries(inputs.judges).map(([name, model]) => [name, { model, provider: 'claude-subscription' }])),
+    maxTrials: inputs.maxTrials, maxProposals, ...costConfig });
+  const native = await prepareNative(args, io, dependencies, timeoutMs, inputs);
   signal.throwIfAborted();
   return withOutput(native.out, async (store) => {
     const base: Omit<StoredTrialOptions, 'id' | 'phase' | 'record' | 'candidate' | 'datasetId' | 'datasetDigest' | 'planDigest'> = {
       adapter: native.adapter, model: native.model, root: join(native.out, 'trials'), timeoutMs,
       registry: native.registry, evaluation: native.evaluation, resources: native.resources,
+      prepareEnvironment: native.prepareEnvironment,
       store, storeRoot: native.out, protectedPaths: [native.sourceRoot, ...native.datasets.protectedDirectories], signal,
     };
     const id = randomUUID();
+    const journal = await createProgressJournal({ id, datasetId: dataset.id, planDigest: dataset.sharedPlanDigest,
+      candidateId: native.candidate.id, model: native.model, prices: costConfig.prices, store, io, costPlan });
     const live = args.flags.view === undefined ? undefined : await startLiveViewer({
       port: count(args, 'view', 0, 65535, 0), io, store, id, datasetId: dataset.id, planDigest: dataset.sharedPlanDigest,
       baseline: native.candidate, cases: dataset.records.map((record) => ({ id: record.id, split: 'train' })),
       testCases: test?.records.map((record) => ({ id: record.id, split: 'test' })) ?? [],
       budget: test === undefined ? undefined : { maxMetricCalls: metricCalls, maxProposals },
+      costs: { subjectModel: native.model, prices: costConfig.prices, costPlan },
     });
     try {
     if (test !== undefined) {
@@ -58,16 +70,17 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         bridge: { command: bridgeCommand!.includes('/') ? resolve(io.cwd, bridgeCommand!) : bridgeCommand!, cwd: native.sourceRoot, timeoutMs },
         budget: { maxMetricCalls: metricCalls, maxProposals }, seed, signal,
         onProgress: async (event) => {
-          if (event.type === 'trial.finished') progress(io, event.payload as TrialReport);
+          await journal.observe(event);
           await live?.observe(event);
         },
       });
       signal.throwIfAborted();
       const index = await persistResult({ root: native.out, store, id, command: 'train', datasetId: test.id,
-        planDigest: test.sharedPlanDigest, candidate: report.selected, report, trialIds: report.trials.map((trial) => trial.id),
+        planDigest: test.sharedPlanDigest, candidate: report.selected, report: { ...report, costs: journal.costs(), costPlan }, trialIds: report.trials.map((trial) => trial.id),
         optimizerBudget: { maxMetricCalls: metricCalls, maxProposals } });
       io.stdout(`${JSON.stringify({ status: 'completed', index: join(native.out, 'invocation.json'), ...index,
-        evaluations: report.optimizer.provenance.evaluations, proposals: report.optimizer.provenance.proposals })}\n`);
+        evaluations: report.optimizer.provenance.evaluations, proposals: report.optimizer.provenance.proposals,
+        costs: journal.summary(), estimatedApiEquivalentUsd: costPlan?.apiEquivalentUsd })}\n`);
       return report.trials.filter((trial) => trial.phase === 'test' && trial.candidateId === report.selected.id).every((trial) => trial.status === 'pass') ? 0 : 1;
     }
     const evaluation = await freezeCriteria(dataset, native.evaluation, native.registry);
@@ -76,19 +89,21 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
       signal.throwIfAborted();
       const report = await runStoredTrial({ ...base, id: randomUUID(), phase: 'train', record, candidate: native.candidate,
         datasetId: dataset.id, datasetDigest: dataset.sourceDigest, planDigest: dataset.sharedPlanDigest, evaluation });
-      trials.push(report); progress(io, report);
+      trials.push(report); await journal.observe({ type: 'trial.finished', payload: report });
       await live?.observe({ type: 'trial.finished', payload: report });
     }
     signal.throwIfAborted();
     const index = await persistResult({ root: native.out, store, id, command: 'evaluate', datasetId: dataset.id,
       planDigest: dataset.sharedPlanDigest, candidate: native.candidate,
-      report: { schema: 'paideia.cli-evaluation.v1', datasetId: dataset.id, candidateId: native.candidate.id, trials },
+      report: { schema: 'paideia.cli-evaluation.v1', datasetId: dataset.id, candidateId: native.candidate.id, trials, costs: journal.costs() },
       trialIds: trials.map((trial) => trial.id) });
-    io.stdout(`${JSON.stringify({ status: 'completed', index: join(native.out, 'invocation.json'), ...index })}\n`);
+    await journal.observe({ type: 'evaluation.completed', payload: {} });
+    io.stdout(`${JSON.stringify({ status: 'completed', index: join(native.out, 'invocation.json'), ...index, costs: journal.summary() })}\n`);
     await live?.observe({ type: 'evaluation.completed', payload: {} });
     if (trials.some((trial) => trial.execution === 'failed' || trial.status === 'error' || trial.status === 'unknown')) return 2;
     return trials.every((trial) => trial.status === 'pass') ? 0 : 1;
-    } finally { await live?.close(); }
+    } catch (error) { await journal.failed(error); throw error; }
+    finally { await live?.close(); }
   });
 }
 

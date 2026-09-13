@@ -49,7 +49,8 @@ export class DspyHost {
       this.proposals += 1;
       const generated = inferenceSchema.parse(await this.work(() => this.options.generate(request.params, signal), signal));
       this.generations.push(generated);
-      return { text: generated.text, model: generated.model, usage: generated.usage };
+      return { text: generated.text, model: generated.model, usage: generated.usage,
+        ...(generated.modelBasis === undefined ? {} : { modelBasis: generated.modelBasis }) };
     }
     const params = request.params;
     const allowed = params.split === 'train' ? this.start.trainCaseIds : this.start.validationCaseIds;

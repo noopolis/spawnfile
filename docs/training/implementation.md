@@ -13,12 +13,18 @@ separates the executable core from the project integrations still being designed
 | Evaluators | Text/JSON schema, CEL predicates, tool counts and sequences, logic, staged gates, weighted scores, semantic rubrics, explicit embedding/custom providers |
 | Storage | Immutable manifests and blobs, append-only events/evaluations, hash verification, sealed-test access checks |
 | Training | Real DSPy GEPA, subscription reflection, bounded trials/proposals, validation selection and frozen held-out comparison |
+| Costs | Zero-inference dry-run, named judge models, dated API-equivalent estimates and observed usage including cache accounting and failed attempts |
 | Viewer | Local persisted experiment projection, live refresh and saved-run viewing; page requests never invoke an agent or judge |
 | Tooling | TypeScript boundaries, size/layout guides, per-file coverage and a locked, tested Python DSPy bridge |
 
 The CLI supports native Codex and Daimon, explicit Markdown resources, dataset
 validation, evaluation, training and viewing. The TypeScript API exposes the
 underlying contracts for integrations. There is no production deployment command.
+
+The public `@noopolis/paideia/cli` export provides `launch` and the
+`SpawnfileCliIntegration` contract. The actual Spawnfile-to-Paideia dry-run validates
+the canonical handoff and static preparation definitions without native execution.
+It does not prove the selected container, authentication, shell or filing tools work.
 
 The public `runStoredTrial` preparation hook receives `(paths, signal, context)`.
 Its isolated context copy identifies this trial, phase, resolved record, candidate
@@ -61,9 +67,10 @@ generalization, writing quality or fidelity to a newsroom environment.
   one wake with multiple steps; memory-backed episodes need further public seams.
 - Native skills need genuine discovery/loading integrations. Supporting files and
   explicit instructions work; copying a `SKILL.md` is not advertised as loading it.
-- Spawnfile extraction, filtered source views, `.spawnignore` and `spawnfile train`
-  remain owner-level integrations. The newsroom example cannot yet reproduce its
-  production tools, memory, communication and complete prompting environment.
+- Canonical Spawnfile extraction and `spawnfile train` delegation are implemented
+  locally. Registered isolated preparation remains necessary for native execution;
+  filtered source packaging and `.spawnignore` still belong to Spawnfile. The real
+  newsroom training acceptance has not yet completed.
 - Claude-as-subject, standalone Pi and OpenClaw need independent native adapters.
   Claude is currently the subscription inference route for DSPy and judges.
 - Captured-run-to-dataset distillation and optional prompt templates remain future

@@ -79,7 +79,10 @@ class Session:
             result = self._call("generate", {
                 "purpose": "reflection", "messages": messages, "options": {},
             }, GenerationResult)
-            self.generations.append({"model": result.model, "usage": result.usage})
+            generation = {"model": result.model, "usage": result.usage}
+            if "modelBasis" in result.model_fields_set:
+                generation["modelBasis"] = result.modelBasis
+            self.generations.append(generation)
             return result
 
     def should_stop(self, _state):

@@ -58,6 +58,7 @@ class GenerationResult(StrictModel):
     text: Annotated[str, Field(min_length=1)]
     model: TextId
     usage: dict | None
+    modelBasis: Literal["provider-reported", "requested-assumption"] = "provider-reported"
 
 
 class HostError(StrictModel):

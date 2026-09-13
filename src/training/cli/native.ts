@@ -7,6 +7,8 @@ import { createEvaluationRegistry } from '../evaluation/index.js';
 import { count, one, pairs, type CliArguments } from './arguments.js';
 import { CliDatasets } from './datasets.js';
 import type { CliDependencies, CliIO } from './types.js';
+import { prepareSpawnfileInputs } from './spawnfile/index.js';
+import type { StoredTrialOptions } from '../experiments/index.js';
 
 export function resourceMappings(args: CliArguments): ResourceMapping[] {
   const instructions = args.flags.instructions ?? [];
@@ -24,23 +26,44 @@ export function resourceMappings(args: CliArguments): ResourceMapping[] {
   });
 }
 
-export async function prepareNative(args: CliArguments, io: CliIO, dependencies: CliDependencies, timeoutMs: number) {
+/** File selection only; deliberately has no runtime or inference construction. */
+export async function prepareInputs(args: CliArguments, io: CliIO) {
   const runtime = one(args, 'runtime');
   if (runtime !== 'codex' && runtime !== 'daimon') throw new Error('Supported native runtimes: codex, daimon');
   const model = one(args, 'model');
   const sourceRoot = resolve(io.cwd, one(args, 'source-root', io.cwd));
-  const out = resolve(io.cwd, one(args, 'out'));
+  const out = resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/paideia' : undefined));
   const candidate = await snapshotCandidate({ sourceRoot, resources: resourceMappings(args) });
-  const adapter = dependencies.adapter?.(runtime, { model, timeoutMs })
-    ?? (runtime === 'codex' ? createCodexAdapter({ model, timeoutMs }) : createDaimonAdapter({ model, timeoutMs }));
   const judges = pairs(args.flags.judge ?? []);
-  const inference = dependencies.inference?.(timeoutMs) ?? createClaudeInference({ timeoutMs });
   const datasets = new CliDatasets(judges, io.cwd);
-  return { model, sourceRoot, out, candidate, adapter, inference, datasets,
+  return { runtime: runtime as 'codex' | 'daimon', model, sourceRoot, out, candidate, judges, datasets,
     maxTrials: count(args, 'max-trials', 20, 10000),
+    resources: Object.fromEntries(Object.entries(pairs(args.flags.resource ?? [])).map(([name, path]) => [name, resolve(io.cwd, path)])),
+  };
+}
+
+export async function prepareCliInputs(args: CliArguments, io: CliIO, dependencies: CliDependencies) {
+  return args.flags['spawnfile-context']
+    ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile) : await prepareInputs(args, io);
+}
+
+export async function prepareNative(args: CliArguments, io: CliIO, dependencies: CliDependencies, timeoutMs: number,
+  prepared?: Awaited<ReturnType<typeof prepareCliInputs>>) {
+  const inputs = prepared ?? await prepareCliInputs(args, io, dependencies);
+  const { runtime, model, judges, datasets } = inputs;
+  const adapter = 'context' in inputs
+    ? dependencies.spawnfile!.createAdapter(inputs.context, { model, timeoutMs })
+    : dependencies.adapter?.(runtime as 'codex' | 'daimon', { model, timeoutMs })
+      ?? (runtime === 'codex' ? createCodexAdapter({ model, timeoutMs }) : createDaimonAdapter({ model, timeoutMs }));
+  const inference = dependencies.inference?.(timeoutMs) ?? createClaudeInference({ timeoutMs });
+  let prepareEnvironment: StoredTrialOptions['prepareEnvironment'];
+  if ('context' in inputs) {
+    const context = inputs.context;
+    prepareEnvironment = (paths, signal, trial) => dependencies.spawnfile!.prepareEnvironment(paths, signal, trial, context);
+  }
+  return { ...inputs, adapter, inference, prepareEnvironment,
     registry: createEvaluationRegistry(),
     evaluation: { judges: Object.fromEntries(Object.entries(judges).map(([name, model]) => [name, { provider: inference, model }])),
       embeddings: {}, readText: (path: string) => datasets.readCriterion(path) },
-    resources: Object.fromEntries(Object.entries(pairs(args.flags.resource ?? [])).map(([name, path]) => [name, resolve(io.cwd, path)])),
   };
 }

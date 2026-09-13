@@ -25,7 +25,10 @@ export const moduleBoundaries: Rule.RuleModule = {
       const from = pathParts(root, filename);
       if (specifier.startsWith('#')) { context.report({ node, messageId: 'alias' }); return; }
       if (siblingPackages.test(specifier)) {
-        if (!(from[0] === 'src' && from[1] === 'adapters' && from[2] === 'daimon' && specifier === '@noopolis/daimon/pi')) {
+        const daimonPublic = from[0] === 'src' && from[1] === 'adapters' && (
+          from[2] === 'daimon' && specifier === '@noopolis/daimon/pi' ||
+          from[2] === 'daimon-native' && specifier === '@noopolis/daimon/runtime');
+        if (!daimonPublic) {
           context.report({ node, messageId: 'runtime' });
         }
         return;

@@ -33,6 +33,19 @@ describe('actual TypeScript → DSPy GEPA bridge', () => {
     expect(evaluations.every((entry) => entry.components['AGENTS.md'] === options.components['AGENTS.md'])).toBe(true);
   });
 
+  it('round-trips explicit requested and reported model attribution through real DSPy', async () => {
+    const { options } = simulatedOptions();
+    const generate = options.generate;
+    let index = 0;
+    options.generate = async (request, signal) => ({ ...await generate(request, signal),
+      modelBasis: index++ === 0 ? 'requested-assumption' : 'provider-reported' });
+    const result = await runDspyOptimization(options);
+    expect(result.provenance.generations).toEqual([
+      { model: 'simulated-subscription', usage: null, modelBasis: 'requested-assumption' },
+      { model: 'simulated-subscription', usage: null, modelBasis: 'provider-reported' },
+    ]);
+  });
+
   it('returns an explicit baseline-only result when a full optimization iteration cannot fit', async () => {
     const { options } = simulatedOptions();
     options.seed = undefined;

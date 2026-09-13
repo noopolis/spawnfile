@@ -1,4 +1,4 @@
-import type { ObservationCoverage, Usage } from '../src/contracts/index.js';
+import type { InferenceModelBasis, ObservationCoverage, Usage } from '../src/contracts/index.js';
 
 /** A caller-filtered presentation projection. Never pass raw captures or prompts. */
 export interface ViewerData {
@@ -29,6 +29,7 @@ export interface ViewerData {
     editablePaths: string[];
   }[];
   usage: ViewerUsage[];
+  costs?: ViewerCosts;
   optimizer?: {
     name: string;
     status: string;
@@ -54,8 +55,42 @@ export interface ViewerEvent { id: string; type: string; timestamp: string; summ
 export interface ViewerUsage {
   purpose: 'subject' | 'optimizer' | 'judge' | 'embedding';
   model: string | null;
+  modelBasis?: InferenceModelBasis;
   route: string | null;
   usage: Usage | null;
+}
+
+export interface ViewerCostRange { low: number; high: number }
+export interface ViewerPriceSource { checkedAt: string; source: string | null }
+export interface ViewerCostTokens {
+  inputTokens: number | null;
+  cachedInputTokens: number | null;
+  cacheWriteInputTokens: number | null;
+  cacheWrite5mInputTokens: number | null;
+  cacheWrite1hInputTokens: number | null;
+  outputTokens: number | null;
+  reasoningTokens: number | null;
+  invalid: boolean;
+}
+export interface ViewerCosts {
+  planned?: {
+    total: ViewerCostRange | null;
+    knownSubtotal: ViewerCostRange;
+    coverage: 'estimated' | 'partial';
+    lines: { role: string; name: string; phase: string; model: string; provider: string | null;
+      plannedCalls: number; amount: ViewerCostRange | null; price: ViewerPriceSource | null }[];
+  };
+  observed?: {
+    total: ViewerCostRange | null;
+    knownSubtotal: ViewerCostRange;
+    completeness: 'complete' | 'incomplete';
+    usageCoverage: 'observed-only' | 'incomplete';
+    groups: { role: string; name: string; entryCount: number; amount: ViewerCostRange | null; knownSubtotal: ViewerCostRange }[];
+    lines: { role: string; name: string; model: string | null; requestedModel: string | null;
+      modelBasis: 'provider-reported' | 'requested-assumption' | 'unknown';
+      provider: string | null; route: string | null; outcome: string; usage: ViewerCostTokens | null;
+      valuationStatus: string; amount: ViewerCostRange | null; price: ViewerPriceSource | null }[];
+  };
 }
 
 export interface ViewerOptions { load: () => Promise<ViewerData>; port?: number }

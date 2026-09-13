@@ -8,6 +8,7 @@ import { openExperimentStore } from '../storage/index.js';
 import { deriveCandidate, type CandidateManifest } from '../candidates/index.js';
 import type { TrialReport } from '../experiments/index.js';
 import type { DspyResult } from '../optimization/index.js';
+import { summarizeCosts } from '../experiments/costs/index.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -63,24 +64,52 @@ describe('usable persisted viewer command', () => {
     await expect((async () => (await loadInvocationViewer(fixture.out))())()).rejects.toThrow('evaluation report does not match');
   });
 
+  it('replays saved cost valuations without repricing or exposing private accounting evidence', async () => {
+    const fixture = await evaluated();
+    const costs = summarizeCosts(fixture.report.trials, { subjectModel: 'gpt-5.5' });
+    costs.apiEquivalentUsd = { low: 12.34, high: 56.78 };
+    costs.warnings.push('SECRET judge text');
+    costs.entries[0]!.id = 'SECRET call';
+    const report = await fixture.store.putBlob(fixture.index.summaryRunId,
+      JSON.stringify({ ...fixture.report, costs }), 'evaluator');
+    await writeFile(join(fixture.out, 'invocation.json'), JSON.stringify({ ...fixture.index, report }));
+    const snapshot = await (await loadInvocationViewer(fixture.out))();
+    expect(snapshot.costs!.observed!.total).toEqual({ low: 12.34, high: 56.78 });
+    expect(snapshot.costs!.observed!.lines[0]).toMatchObject({ model: 'gpt-5.5', modelBasis: 'requested-assumption' });
+    expect(JSON.stringify(snapshot)).not.toContain('SECRET');
+    expect(fixture.observedInstructions).toHaveLength(1);
+  });
+
   it('publishes only saved presentation snapshots and reveals test identities only after selection freezes', async () => {
     const fixture = await evaluated();
     const urls: string[] = [];
     const live = await startLiveViewer({ port: 0, io: { ...fixture.io, stdout: (text) => { urls.push(JSON.parse(text).viewer); } },
       store: fixture.store, id: 'live', datasetId: 'dataset', planDigest: 'plan', baseline: fixture.candidate,
-      cases: [{ id: 'train', split: 'train' }], testCases: [{ id: 'SEALED-CASE', split: 'test' }], budget: { maxMetricCalls: 4, maxProposals: 1 } });
+      cases: [{ id: 'train', split: 'train' }], testCases: [{ id: 'SEALED-CASE', split: 'test' }], budget: { maxMetricCalls: 4, maxProposals: 1 },
+      costs: { subjectModel: 'gpt-5.5' } });
     try {
       const url = urls[0]!;
       const snapshot = async () => (await fetch(`${url}/api/data`)).json();
       const trial = fixture.report.trials[0]!;
-      await live.observe({ type: 'trial.finished', payload: { ...trial, phase: 'test', recordId: 'SEALED-CASE' } });
+      const sealed = { ...trial, phase: 'test', recordId: 'SEALED-CASE', evaluation: { ...trial.evaluation,
+        judgeCalls: [{ id: 'SEALED-CALL', judge: 'SEALED-JUDGE', providerId: 'subscription', requestedModel: 'SEALED-MODEL',
+          responseModel: 'SEALED-MODEL', responseRoute: 'subscription', outcome: 'completed', usage: null }] } };
+      await live.observe({ type: 'trial.finished', payload: sealed });
       await live.observe({ type: 'ignored', payload: { secret: 'not public' } });
-      expect(JSON.stringify(await snapshot())).not.toContain('SEALED-CASE');
+      expect(JSON.stringify(await snapshot())).not.toContain('SEALED');
       await live.observe({ type: 'training.started', payload: { train: ['train'], validation: [trial.recordId] } });
       await live.observe({ type: 'trial.finished', payload: { ...trial, phase: 'validation' } });
       await live.observe({ type: 'optimizer.generation.started', payload: { attempt: 1 } });
-      await live.observe({ type: 'optimizer.generation.completed', payload: { attempt: 1, model: 'observed', route: 'subscription', usage: null } });
-      expect((await snapshot()).optimizer.proposals).toBe(1);
+      expect((await snapshot()).costs.observed.lines.at(-1)).toMatchObject({ outcome: 'pending', amount: null });
+      await live.observe({ type: 'optimizer.generation.completed', payload: { attempt: 1, model: 'observed', modelBasis: 'requested-assumption', route: 'subscription', usage: null } });
+      await live.observe({ type: 'optimizer.generation.completed', payload: { attempt: 1, model: 'observed', modelBasis: 'requested-assumption', route: 'subscription', usage: null } });
+      await live.observe({ type: 'optimizer.generation.failed', payload: { attempt: 2 } });
+      const progress = await snapshot();
+      expect(progress.optimizer.proposals).toBe(1);
+      expect(progress.costs.observed.lines).toHaveLength(3);
+      expect(progress.costs.observed.lines[1]).toMatchObject({ model: null, requestedModel: 'observed', modelBasis: 'unknown' });
+      expect(progress.costs.observed.lines.at(-1)).toMatchObject({ role: 'optimizer', model: null, outcome: 'generation-error', amount: null });
+      expect(progress.costs.observed.total).toBeNull();
       const optimizer: DspyResult = { schema: 'paideia.dspy.v1', kind: 'result', id: 'live', components: { text: 'PRIVATE' },
         provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0, evaluations: 1, proposals: 1, selectedCandidateIndex: 0,
           candidates: [{ components: { text: 'PRIVATE' }, parents: [null], validationScore: 1, discoveryEvaluations: 0 }],
@@ -90,7 +119,8 @@ describe('usable persisted viewer command', () => {
       await live.observe({ type: 'training.completed', payload: {} });
       const completed = await snapshot();
       expect(completed.cases.some((record: { id: string }) => record.id === 'SEALED-CASE')).toBe(true);
-      expect(completed.usage.at(-1)).toMatchObject({ purpose: 'optimizer', model: 'observed', route: 'subscription' });
+      expect(completed.usage.find((entry: { purpose: string }) => entry.purpose === 'optimizer'))
+        .toMatchObject({ purpose: 'optimizer', model: 'observed', modelBasis: 'requested-assumption', route: 'subscription' });
       expect(JSON.stringify(completed)).not.toMatch(/PRIVATE|Reply OK/);
       vi.spyOn(fixture.store, 'appendEvent').mockRejectedValueOnce(new Error('disk failed'));
       await expect(live.observe({ type: 'training.completed', payload: {} })).resolves.toBeUndefined();

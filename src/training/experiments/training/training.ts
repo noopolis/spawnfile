@@ -10,6 +10,8 @@ import { partitionTraining } from './partition.js';
 import { runStoredTrial, type StoredTrialOptions } from '../trials/index.js';
 import { trialScore } from './scoring.js';
 import { freezeCriteria } from './criteria.js';
+import { trainingFeedback } from './feedback.js';
+import type { CostReport, TrainingCostPlan } from '../costs/index.js';
 
 export interface TrainingOptions {
   id: string;
@@ -35,6 +37,9 @@ export interface TrainingReport {
   partitions: { train: string[]; validation: string[]; test: string[] };
   trials: TrialReport[];
   heldOut: { candidateId: string; meanScore: number; trialIds: string[] }[];
+  /** Optional host reporting, never optimizer feedback or a subscription invoice. */
+  costs?: CostReport;
+  costPlan?: TrainingCostPlan;
 }
 export async function trainAgent(options: TrainingOptions): Promise<TrainingReport> {
   validateCandidate(options.baseline);
@@ -82,18 +87,22 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
     generate: async (request, signal) => {
       const attempt = ++generations;
       await options.onProgress?.({ type: 'optimizer.generation.started', payload: { attempt } });
-      const response = await generate(request, signal);
+      let response;
+      try { response = await generate(request, signal); }
+      catch (error) {
+        await options.onProgress?.({ type: 'optimizer.generation.failed', payload: { attempt,
+          requestedModel: options.inference.model, model: null, route: null, usage: null, outcome: 'generation-error' } });
+        throw error;
+      }
       await options.onProgress?.({ type: 'optimizer.generation.completed', payload: { attempt, model: response.model,
-        route: response.route, usage: response.usage } });
+        modelBasis: response.modelBasis, route: response.route, usage: response.usage } });
       return response;
     },
     evaluate: async (request, signal) => {
       const dataset = request.split === 'train' ? partition.train : partition.validation;
       const report = await trial(dataset, request.caseId, request.split, candidateFor(request.components), signal);
       const record = dataset.records.find(record => record.id === request.caseId)!;
-      return { score: trialScore(report), captureId: report.id, output: request.split === 'train' ? report.snapshot.output : '',
-        feedback: request.split === 'train' ? JSON.stringify({ task: record.input ?? record.turns,
-          criteria: record.effectiveStages, evaluation: report.evaluation, live: report.live }) : '' };
+      return { score: trialScore(report), captureId: report.id, ...trainingFeedback(record, report) };
     } });
   const selected = candidateFor(optimizer.components);
   // Freeze selection BEFORE the sealed test can execute or become feedback.

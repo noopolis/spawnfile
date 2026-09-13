@@ -1,6 +1,6 @@
 import type { CheckNode, LiveCheck, Stage } from '../contracts/dataset.js';
 import type { EvaluationContext, EvaluationRegistry, EvaluationResult, PlanEvaluation } from '../contracts/evaluation.js';
-import { checkThreshold, combine, negate, result, weightedScore } from './logic/index.js';
+import { checkThreshold, collectJudgeCalls, combine, negate, result, weightedScore } from './logic/index.js';
 
 function requireOneOperation(node: CheckNode): void {
   const operators = ['all', 'any', 'not', 'passed', 'score', 'eval'];
@@ -64,14 +64,17 @@ export async function evaluatePlan(stages: readonly Stage[], initial: Evaluation
   const checks = { ...initial.results };
   const scores = { ...initial.scores };
   const results: PlanEvaluation['stages'] = [];
+  const observed: EvaluationResult[] = [];
   const context = { ...initial, results: checks, scores };
   for (const stage of stages) {
     const eligibility = stage.when ? await evaluateNode(stage.when, context, registry) : result('pass', 'No dependency');
+    observed.push(eligibility);
     const children: EvaluationResult[] = [];
     for (const check of stage.checks) {
       const evaluated = eligibility.status === 'pass' ? await evaluateNode(check, context, registry)
         : { ...result('skipped', `Stage dependency ${eligibility.status}`, eligibility.finality === 'final'), id: check.id, children: [eligibility] };
       children.push(evaluated);
+      observed.push(evaluated);
       checks[check.id!] = evaluated;
     }
     const score = stage.score ? weightedScore(stage.score.linear, checks) : undefined;
@@ -79,10 +82,12 @@ export async function evaluatePlan(stages: readonly Stage[], initial: Evaluation
     const gate = eligibility.status !== 'pass' ? result(eligibility.status, 'Stage dependency not satisfied', eligibility.finality === 'final')
       : stage.gate ? await evaluateNode(stage.gate, context, registry) : combine('all', children);
     checks[stage.id] = gate;
+    observed.push(gate);
     results.push({ id: stage.id, checks: children, gate, ...(score ? { score } : {}) });
   }
   const overall = combine('all', results.map(stage => stage.gate));
-  return { status: overall.status, stages: results, checks, scores };
+  const judgeCalls = collectJudgeCalls(observed);
+  return { status: overall.status, stages: results, checks, scores, ...(judgeCalls.length ? { judgeCalls } : {}) };
 }
 
 export function mayStop(check: LiveCheck, registry: EvaluationRegistry): boolean {

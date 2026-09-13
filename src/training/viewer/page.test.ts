@@ -15,6 +15,8 @@ describe('read-only experiment page', () => {
     expect(page).toContain('<th scope="col">');
     expect(viewerScript).toContain('location.reload()');
     expect(viewerScript).not.toMatch(/fetch|POST|localStorage|sendBeacon/);
+    expect(page).toContain('provider-reported');
+    expect(page).not.toContain('Not recorded');
   });
 
   it('escapes all five HTML delimiters in titles, tables, checks, evidence, SVG and attributes', () => {

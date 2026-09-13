@@ -7,8 +7,10 @@ These boundaries now have an implemented TypeScript evaluator, native trial runn
 protected candidate/store interfaces, a real DSPy bridge and a local viewer. The
 [native acceptance example](../examples/native-formatting/README.md) improved a held-out
 formatting task on both Codex and Daimon using a frozen subscription-trained prompt.
-Native skills, memory-backed multi-wake Daimon trials and Spawnfile delegation remain
-unsupported; ordinary Markdown is implemented, template rendering is not.
+Canonical Spawnfile extraction and `spawnfile train` delegation are implemented
+through a registered isolated preparation. Native skills and memory-backed multi-wake
+Daimon trials remain unsupported; ordinary Markdown is implemented, template rendering
+is not. The native newsroom training acceptance has not completed.
 
 ```text
 YAML cases + candidate files + fixtures

@@ -109,15 +109,32 @@ uses an isolated candidate copy and records its explicit overrides, preserving t
 source project as baseline. Dataset location never changes the native working directory.
 
 The agreed dataset naming is `<name>.paideia.yaml`, with `train.paideia.yaml` and
-`test.paideia.yaml` as the example pair. The planned `spawnfile train` entry point
+`test.paideia.yaml` as the example pair. The local `spawnfile train` implementation
 delegates through Paideia's public interface: Spawnfile supplies its canonical agent
 and environment; Paideia owns evaluation, optimization and isolated trials. Paideia
 also has a standalone CLI for explicit Markdown resources and supported native runtimes.
 The selected native runtime executes agent turns. No extra agent declaration or
 mandatory experiment file is required. Commands and
 flags exist for explicit Markdown resources and native Codex/Daimon trials.
-Spawnfile delegation and automatic native project extraction are not implemented.
+Canonical extraction and the strict `spawnfile.training-context.v1` handoff are
+implemented and tested across the actual CLIs. A native run still requires a
+registered isolated project preparation; unsupported projects fail before cognition.
 Dataset roles resolve explicitly in the invocation, never merely from filenames.
+
+An installed project entry point imports `launch` from `@noopolis/paideia/cli` and
+passes a `SpawnfileCliIntegration`. Its static preparation definitions validate case
+parameters, its edit policies may narrow explicitly selected instruction/skill files,
+and its adapter/preparation callbacks consume the canonical receipt. Identity stays
+locked. Spawnfile selects that entry point with `--paideia-command EXECUTABLE`.
+This registration supplies environment construction, not a second training loop:
+the shared CLI owns signals, budgets, DSPy, datasets, judges, costs and stored results.
+Dry-run uses static definitions only and calls neither execution callback.
+
+Static validation and a generic runtime preflight do not prove an exact project
+trial works. Native acceptance must exercise the selected compiled image, mounts,
+authentication, shell and real task tools together, then verify the expected artifact
+and terminal outcome. Missing capabilities may surface after cognition starts; those
+attempts remain failures with retained usage, not successful preflight evidence.
 
 Spawnfile projects add `.spawnignore`, using the proposed patterns `**/evals/` and
 `**/.paideia/` for evaluator definitions and generated experiment artifacts. These files

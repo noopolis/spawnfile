@@ -2,7 +2,9 @@ import type { CandidateManifest } from '../src/candidates/index.js';
 import type { EvaluationResult } from '../src/contracts/index.js';
 import { trialScore, type TrialReport, type TrainingReport } from '../src/experiments/index.js';
 import type { DspyResult } from '../src/optimization/index.js';
+import type { CostReport, TrainingCostPlan } from '../src/experiments/costs/index.js';
 import type { ViewerCheck, ViewerData } from './types.js';
+import { projectCosts } from './costs.js';
 
 export interface TrialProjectionOptions {
   id: string;
@@ -15,6 +17,8 @@ export interface TrialProjectionOptions {
   trials: readonly TrialReport[];
   optimizer?: DspyResult;
   budget?: { maxMetricCalls: number; maxProposals: number };
+  costs?: CostReport;
+  costPlan?: TrainingCostPlan;
 }
 
 function checkView(check: EvaluationResult, fallback: string): ViewerCheck {
@@ -46,6 +50,8 @@ export function projectTrials(options: TrialProjectionOptions): ViewerData {
     usage: options.trials.flatMap((trial) => trial.turns.map((turn) => ({ purpose: 'subject' as const,
       model: null, route: null, usage: turn.native.usage }))),
   };
+  const costs = projectCosts(options.costs, options.costPlan);
+  if (costs !== undefined) data.costs = costs;
   if (options.optimizer !== undefined) {
     const { provenance } = options.optimizer;
     const validation = provenance.captures.filter((capture) => capture.split === 'validation');
@@ -61,7 +67,7 @@ export function projectTrials(options: TrialProjectionOptions): ViewerData {
       validationScore: candidate.validationScore, discoveryEvaluations: candidate.discoveryEvaluations,
       editablePaths: data.candidates[0]!.editablePaths }));
     data.usage.push(...provenance.generations.map((generation) => ({ purpose: 'optimizer' as const,
-      model: generation.model, route: null, usage: generation.usage })));
+      model: generation.model, modelBasis: generation.modelBasis, route: null, usage: generation.usage })));
     if (options.budget !== undefined) data.optimizer = { name: provenance.optimizer, status: 'selection frozen',
       evaluations: provenance.evaluations, proposals: provenance.proposals, ...options.budget,
       selectedCandidateId: labels[provenance.selectedCandidateIndex] };
@@ -72,6 +78,7 @@ export function projectTrials(options: TrialProjectionOptions): ViewerData {
 export function projectTrainingReport(report: TrainingReport, budget?: TrialProjectionOptions['budget']): ViewerData {
   return projectTrials({ id: report.id, title: 'Completed training experiment', phase: 'final-test', status: 'completed',
     updatedAt: 'Recorded completion', baseline: report.baseline, trials: report.trials, optimizer: report.optimizer, budget,
+    costs: report.costs, costPlan: report.costPlan,
     cases: Object.entries(report.partitions).flatMap(([phase, ids]) => ids.map((id) => ({ id,
       split: phase as 'train' | 'validation' | 'test' }))) });
 }

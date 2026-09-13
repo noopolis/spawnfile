@@ -89,17 +89,22 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
       const text = await stageInput(resolveTurnInput(turn.input, bindings), paths.workspace, options.resources ?? {}, inputFiles);
       await persist('turn.input', { id: turn.id, input: text });
       const native = await control.owned(session.run({ id: turn.id, text }, control.signal));
+      // Native work is evidence even if observation draining, collection or
+      // evaluation fails afterwards. Never make retaining usage depend on them.
+      const turnReport: TurnReport = { id: turn.id, native, checks: [] };
+      turns.push(turnReport);
+      output = native.text;
+      coverage = turns.flatMap(prior => prior.native.coverage);
+      await persist('turn.native-result', { id: turn.id, native });
       await control.owned(observationTail);
       if (observationFailure) throw new Error(observationFailure);
-      output = native.text;
-      coverage = [...turns.flatMap(prior => prior.native.coverage), ...native.coverage];
       const state = await control.owned(snapshot());
       const authored = ('checks' in turn ? turn.checks : undefined) ?? [];
       const checks = authored.length ? (await evaluatePlan([{ id: `turn-${turn.id}`, checks: authored }],
         evaluate({ ...state, closed: true, events: state.events.filter(event => event.wakeId === turn.id),
           coverage: native.coverage }), registry)).stages[0]!.checks : [];
-      turns.push({ id: turn.id, native, checks });
-      await persist('turn.completed', turns.at(-1));
+      turnReport.checks = checks;
+      await persist('turn.completed', turnReport);
       if (native.status !== 'completed') { execution = native.status === 'cancelled' ? 'interrupted' : 'failed'; error = native.error; break; }
       if (checks.some(check => check.status !== 'pass' || check.finality !== 'final')) { execution = 'interrupted'; error = 'Turn gate is not satisfied'; break; }
       Object.assign(bindings, captureBindings(('bind' in turn ? turn.bind : undefined) ?? {},

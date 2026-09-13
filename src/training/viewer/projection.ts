@@ -6,6 +6,27 @@ const id = text.min(1);
 const count = z.number().int().nonnegative();
 const score = z.number().min(0).max(1).nullable();
 const strings = z.array(id).max(1000);
+const range = z.object({ low: z.number().nonnegative(), high: z.number().nonnegative() })
+  .refine(value => value.high >= value.low, 'Invalid cost range');
+const price = z.object({ checkedAt: text, source: z.url().refine(value => {
+  const url = new URL(value);
+  return url.protocol === 'https:' && !url.username && !url.password;
+}, 'Price links must use HTTPS without credentials').nullable() }).nullable();
+const costTokens = z.object({ inputTokens: count.nullable(), cachedInputTokens: count.nullable(),
+  cacheWriteInputTokens: count.nullable(), cacheWrite5mInputTokens: count.nullable(), cacheWrite1hInputTokens: count.nullable(),
+  outputTokens: count.nullable(), reasoningTokens: count.nullable(), invalid: z.boolean() }).nullable();
+const costs = z.object({
+  planned: z.object({ total: range.nullable(), knownSubtotal: range, coverage: z.enum(['estimated', 'partial']),
+    lines: z.array(z.object({ role: id, name: text, phase: id, model: text, provider: text.nullable(),
+      plannedCalls: count, amount: range.nullable(), price })).max(1000) }).optional(),
+  observed: z.object({ total: range.nullable(), knownSubtotal: range, completeness: z.enum(['complete', 'incomplete']),
+    usageCoverage: z.enum(['observed-only', 'incomplete']),
+    groups: z.array(z.object({ role: id, name: text, entryCount: count, amount: range.nullable(), knownSubtotal: range })).max(1000),
+    lines: z.array(z.object({ role: id, name: text, model: text.nullable(), requestedModel: text.nullable(),
+      modelBasis: z.enum(['provider-reported', 'requested-assumption', 'unknown']),
+      provider: text.nullable(), route: text.nullable(), outcome: id, usage: costTokens, valuationStatus: id,
+      amount: range.nullable(), price })).max(1000) }).optional(),
+});
 const check: z.ZodType<ViewerCheck> = z.lazy(() => z.object({
   id, label: text, status: z.enum(['pass', 'fail', 'unknown', 'error', 'skipped']), score,
   evidenceIds: strings, children: z.array(check).max(1000),
@@ -25,12 +46,15 @@ const schema = z.object({
   candidates: z.array(z.object({ id, parentIds: strings, validationScore: score,
     discoveryEvaluations: count, editablePaths: strings })).max(1000),
   usage: z.array(z.object({ purpose: z.enum(['subject', 'optimizer', 'judge', 'embedding']),
-    model: text.nullable(), route: text.nullable(), usage: z.object({
+    model: text.nullable(), modelBasis: z.enum(['provider-reported', 'requested-assumption']).optional(), route: text.nullable(), usage: z.object({
       inputTokens: count.nullable(), cachedInputTokens: count.nullable(), outputTokens: count.nullable(),
       reasoningTokens: count.nullable(), source: id,
+      cacheWriteInputTokens: count.nullable().optional(), cacheWrite5mInputTokens: count.nullable().optional(),
+      cacheWrite1hInputTokens: count.nullable().optional(),
     }).nullable() })).max(1000),
   optimizer: z.object({ name: id, status: id, evaluations: count, proposals: count,
-    maxMetricCalls: count, maxProposals: count, selectedCandidateId: id.optional() }).optional(),
+  maxMetricCalls: count, maxProposals: count, selectedCandidateId: id.optional() }).optional(),
+  costs: costs.optional(),
 });
 
 /** Strip undeclared fields, bound check trees and reject invalid projections. */

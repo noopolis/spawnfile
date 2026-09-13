@@ -4,6 +4,18 @@ import type { Observation, ObservationCoverage, InferenceProvider, Usage } from 
 export type Verdict = 'pass' | 'fail' | 'unknown' | 'error' | 'skipped';
 export type Finality = 'provisional' | 'final';
 export interface EvidenceReference { kind: 'event' | 'artifact' | 'input' | 'output' | 'sidecar'; id: string; digest?: string }
+export interface JudgeCall {
+  /** One actual provider.generate attempt; references retain this ID for deduplication. */
+  id: string;
+  judge: string;
+  providerId: string;
+  requestedModel: string;
+  /** Must be a provider-reported identity; requested-model fallbacks and missing identities are null. */
+  responseModel: string | null;
+  responseRoute: string | null;
+  outcome: 'completed' | 'invalid-response' | 'generation-error';
+  usage: Usage | null;
+}
 export interface EvaluationResult {
   id?: string;
   status: Verdict;
@@ -13,6 +25,7 @@ export interface EvaluationResult {
   evidence: EvidenceReference[];
   children?: EvaluationResult[];
   usage?: Usage[];
+  judgeCalls?: JudgeCall[];
 }
 export interface ArtifactSnapshot {
   name: string;
@@ -74,4 +87,5 @@ export interface PlanEvaluation {
   stages: StageEvaluation[];
   checks: Record<string, EvaluationResult>;
   scores: Record<string, WeightedScore>;
+  judgeCalls?: JudgeCall[];
 }

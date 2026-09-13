@@ -5,6 +5,7 @@ export const DSPY_SCHEMA = 'paideia.dspy.v1';
 export const DSPY_FRAME_BYTES = 4 * 1024 * 1024;
 const id = z.string().min(1).max(4096);
 const count = z.number().int().nonnegative();
+const modelBasis = z.enum(['provider-reported', 'requested-assumption']).optional();
 export const componentsSchema = z.record(id, z.string().max(1024 * 1024))
   .refine((value) => Object.keys(value).length > 0 && Object.keys(value).length <= 64, 'Expected 1–64 components');
 export const budgetSchema = z.object({
@@ -29,9 +30,11 @@ export const evaluationSchema = z.object({
 }).strict();
 export const usageSchema = z.object({
   inputTokens: count.nullable(), cachedInputTokens: count.nullable(), outputTokens: count.nullable(),
+  cacheWriteInputTokens: count.nullable().optional(), cacheWrite5mInputTokens: count.nullable().optional(),
+  cacheWrite1hInputTokens: count.nullable().optional(),
   reasoningTokens: count.nullable(), source: id,
 }).strict().nullable();
-export const inferenceSchema = z.object({ text: z.string().min(1), model: id, usage: usageSchema, route: id }).strict();
+export const inferenceSchema = z.object({ text: z.string().min(1), model: id, usage: usageSchema, route: id, modelBasis }).strict();
 export const evaluateParamsSchema = z.object({
   caseId: id, split: z.enum(['train', 'validation']), components: componentsSchema,
 }).strict();
@@ -56,7 +59,7 @@ export const resultSchema = z.object({
       validationScore: z.number().min(0).max(1), discoveryEvaluations: count,
     }).strict()).min(1),
     captures: z.array(captureSchema),
-    generations: z.array(z.object({ model: id, usage: usageSchema }).strict()),
+    generations: z.array(z.object({ model: id, usage: usageSchema, modelBasis }).strict()),
   }).strict(),
 }).strict();
 export const errorSchema = z.object({ ...common, kind: z.literal('error'),

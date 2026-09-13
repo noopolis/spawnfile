@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { InferenceProvider } from '../../contracts/execution.js';
-import { evaluateNode, createEvaluationRegistry } from '../index.js';
+import { evaluateNode, evaluatePlan, createEvaluationRegistry } from '../index.js';
 import { artifact, evaluationContext, snapshot } from '../../testing/index.js';
 
 const check = { eval: 'llm-rubric', input: 'artifact:article#/body', judge: 'editor',
@@ -17,6 +17,9 @@ describe('fixed semantic rubrics', () => {
     const context = evaluationContext({ judges: { editor: { provider: route, model: 'test-model' } } });
     const evaluated = await evaluateNode({ ...check, evidence: 'input:files' }, context, registry);
     expect(evaluated.status).toBe('pass');expect(evaluated.score).toBe(0.9);
+    expect(evaluated.judgeCalls).toEqual([{ id: expect.any(String), judge: 'editor', providerId: 'test-subscription',
+      requestedModel: 'test-model', responseModel: 'test-model', responseRoute: 'test-subscription',
+      outcome: 'completed', usage: null }]);
     const request = vi.mocked(route.generate).mock.calls[0]![0];
     expect(request.system).toContain('untrusted data');expect(request.prompt).toContain('Source evidence');
     expect(request.model).toBe('test-model');
@@ -107,5 +110,82 @@ describe('fixed semantic rubrics', () => {
     const evaluated = await evaluateNode({ ...check, input: 'artifact:article', evidence: 'input:files' }, context, registry);
     expect(evaluated.status).toBe('error');
     expect(evaluated.reason).toContain('Judge citation is not present in selected evidence');
+  });
+  it.each(['not JSON', JSON.stringify({ score: 1 }),
+    JSON.stringify({ ...good, citations: [{ source: 'input', quote: 'invented' }] })])(
+    'retains measured usage and requested/reported judge identity on malformed responses: %s', async (text) => {
+      const route = provider();
+      const usage = { inputTokens: 50, cachedInputTokens: 12, outputTokens: 9, reasoningTokens: null,
+        cacheWriteInputTokens: 6, cacheWrite5mInputTokens: 6, cacheWrite1hInputTokens: 0, source: 'observed' };
+      vi.mocked(route.generate).mockResolvedValue({ text, model: 'resolved-model', route: 'returned-route', usage });
+      const context = evaluationContext({ judges: { editor: { provider: route, model: 'requested-alias' } } });
+
+      const evaluated = await evaluateNode(check, context, registry);
+
+      expect(evaluated.status).toBe('error');
+      expect(evaluated.usage).toEqual([usage]);
+      expect(evaluated.judgeCalls).toEqual([{ id: expect.any(String), judge: 'editor',
+        providerId: 'test-subscription', requestedModel: 'requested-alias', responseModel: 'resolved-model',
+        responseRoute: 'returned-route', outcome: 'invalid-response', usage }]);
+      expect(evaluated.evidence).not.toHaveLength(0);
+    });
+  it('records failed generation attempts with explicitly unknown response identity and usage', async () => {
+    const route = provider();
+    vi.mocked(route.generate).mockRejectedValueOnce(new Error('quota unavailable')).mockRejectedValueOnce('provider failed');
+    const context = evaluationContext({ judges: { editor: { provider: route, model: 'requested-model' } } });
+    const first = await evaluateNode(check, context, registry);
+    expect(first).toMatchObject({ status: 'error', reason: 'quota unavailable', judgeCalls: [{
+      judge: 'editor', providerId: 'test-subscription', requestedModel: 'requested-model',
+      responseModel: null, responseRoute: null, usage: null, outcome: 'generation-error',
+    }] });
+    expect(first.usage).toBeUndefined();
+    const second = await evaluateNode(check, context, registry);
+    expect(second.reason).toBe('provider failed');
+    expect(second.judgeCalls![0]!.id).not.toBe(first.judgeCalls![0]!.id);
+    expect((await evaluateNode(check, { ...context, signal: AbortSignal.abort() }, registry)).judgeCalls).toBeUndefined();
+    expect(route.generate).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([JSON.stringify(good), 'malformed JSON'])('keeps inferred model identity unknown while retaining usage: %s', async text => {
+    const route = provider();
+    const usage = { inputTokens: 50, cachedInputTokens: 12, outputTokens: 9, reasoningTokens: null, source: 'native' };
+    vi.mocked(route.generate).mockResolvedValue({ text, model: 'requested-model', modelBasis: 'requested-assumption',
+      route: 'returned-route', usage });
+    const evaluated = await evaluateNode(check, evaluationContext({ judges: { editor: { provider: route, model: 'requested-model' } } }), registry);
+    expect(evaluated.judgeCalls![0]).toMatchObject({ requestedModel: 'requested-model', responseModel: null, usage });
+    expect(evaluated.usage).toEqual([usage]);
+  });
+  it('keeps distinct judge routes and counts checks, semantic eligibility and gates once per actual call', async () => {
+    const editor = provider();
+    const factChecker = { ...provider(), id: 'second-subscription' };
+    const measured = { inputTokens: 20, cachedInputTokens: 2, outputTokens: 5, reasoningTokens: null, source: 'observed' };
+    vi.mocked(editor.generate).mockResolvedValue({ text: JSON.stringify(good), model: 'editor-resolved', route: 'editor-route', usage: measured });
+    vi.mocked(factChecker.generate).mockResolvedValue({ text: 'invalid JSON', model: 'facts-resolved', route: 'facts-route', usage: measured });
+    const context = evaluationContext({ judges: {
+      editor: { provider: editor, model: 'editor-alias' },
+      facts: { provider: factChecker, model: 'facts-alias' },
+    } });
+    const evaluated = await evaluatePlan([{ id: 'first', when: check,
+      checks: [{ ...check, id: 'prose' }, { ...check, id: 'fidelity', judge: 'facts' }],
+      gate: { any: [{ passed: 'prose' }, { not: { passed: 'prose' } }, { passed: 'fidelity' }, check] },
+    }, { id: 'second', when: { passed: 'first' }, checks: [{ id: 'again', passed: 'prose' }],
+      gate: { passed: 'again' } }], context, registry);
+
+    expect(editor.generate).toHaveBeenCalledTimes(3);
+    expect(factChecker.generate).toHaveBeenCalledTimes(1);
+    expect(evaluated.judgeCalls).toHaveLength(4);
+    expect(new Set(evaluated.judgeCalls!.map(call => call.id)).size).toBe(4);
+    expect(evaluated.judgeCalls!.filter(call => call.judge === 'editor')).toHaveLength(3);
+    expect(evaluated.judgeCalls!.find(call => call.judge === 'facts')).toMatchObject({
+      providerId: 'second-subscription', requestedModel: 'facts-alias', responseModel: 'facts-resolved',
+      responseRoute: 'facts-route', usage: measured, outcome: 'invalid-response',
+    });
+    expect(evaluated.stages[0]!.gate.judgeCalls).toHaveLength(3);
+    const denied = await evaluatePlan([{ id: 'blocked', when: { ...check, judge: 'facts' },
+      checks: [{ ...check, id: 'unreached' }] }], context, registry);
+    expect(denied.judgeCalls).toHaveLength(1);
+    expect(denied.judgeCalls![0]!.outcome).toBe('invalid-response');
+    expect(denied.checks.unreached!.status).toBe('skipped');
+    expect(editor.generate).toHaveBeenCalledTimes(3);
   });
 });

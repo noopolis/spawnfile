@@ -17,16 +17,25 @@ export function decodeClaudeResult(value: Record<string, unknown>): ClaudeResult
   const usage = raw !== null && typeof raw === 'object' ? raw as Record<string, unknown> : undefined;
   const count = (key: string): number | null => {
     const entry = usage?.[key];
-    return typeof entry === 'number' && Number.isFinite(entry) && entry >= 0 ? entry : null;
+    return typeof entry === 'number' && Number.isSafeInteger(entry) && entry >= 0 ? entry : null;
   };
   // Claude input_tokens excludes cache reads/writes, unlike Codex's total input_tokens.
   const uncached = count('input_tokens');
   const reads = count('cache_read_input_tokens');
   const writes = count('cache_creation_input_tokens');
-  const input = uncached === null || reads === null || writes === null ? null : uncached + reads + writes;
+  const creation = usage?.['cache_creation'];
+  const duration = creation !== null && typeof creation === 'object' ? creation as Record<string, unknown> : undefined;
+  const durationCount = (key: string): number | null => {
+    const value = duration?.[key];
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+  };
+  const total = uncached === null || reads === null || writes === null ? null : uncached + reads + writes;
+  const input = total !== null && Number.isSafeInteger(total) ? total : null;
   return { text: value['result'],
     model: typeof value['model'] === 'string' ? value['model'] : undefined,
-    usage: usage === undefined ? null : { inputTokens: input, cachedInputTokens: reads,
+    usage: usage === undefined ? null : { inputTokens: input, cachedInputTokens: reads, cacheWriteInputTokens: writes,
+      cacheWrite5mInputTokens: durationCount('ephemeral_5m_input_tokens'),
+      cacheWrite1hInputTokens: durationCount('ephemeral_1h_input_tokens'),
       outputTokens: count('output_tokens'), reasoningTokens: null, source: 'claude.result.usage' } };
 }
 

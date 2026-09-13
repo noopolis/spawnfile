@@ -12,7 +12,8 @@ export async function verifyDspyResult(result: DspyResult, host: DspyHost, signa
   }
   const captures = completed.map(({ caseId, split, result: evaluated }) => ({ caseId, split, captureId: evaluated.captureId }));
   if (JSON.stringify(captures) !== JSON.stringify(provenance.captures)
-      || JSON.stringify(generations.map(({ model, usage }) => ({ model, usage }))) !== JSON.stringify(provenance.generations)) {
+      || JSON.stringify(generations.map(({ model, usage, modelBasis }) => ({ model, usage,
+        ...(modelBasis === undefined ? {} : { modelBasis }) }))) !== JSON.stringify(provenance.generations)) {
     throw new Error('DSPy terminal capture or inference provenance does not match host evidence');
   }
   const validation = completed.filter((entry) => entry.split === 'validation');

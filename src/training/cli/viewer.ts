@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { validateCandidate, type CandidateManifest } from '../candidates/index.js';
 import type { TrialReport, TrainingReport } from '../experiments/index.js';
+import { summarizeCosts, type CostReport, type ModelPrice, type OptimizerGeneration, type TrainingCostPlan } from '../experiments/costs/index.js';
 import type { DspyResult } from '../optimization/index.js';
 import { openExperimentStore, type ExperimentStore } from '../storage/index.js';
 import { projectTrainingReport, projectTrials, startViewer, type ViewerData } from '../../viewer/index.js';
@@ -41,6 +42,7 @@ export async function loadInvocationViewer(root: string): Promise<() => Promise<
     const trials = report.trials as TrialReport[];
     return projectTrials({ id: index.summaryRunId, title: 'Completed evaluation experiment', phase: 'replay',
       status: replay.completeness, updatedAt: 'Recorded completion', baseline: candidate, trials,
+      costs: report.costs as CostReport | undefined, costPlan: report.costPlan as TrainingCostPlan | undefined,
       cases: trials.map((trial) => ({ id: trial.recordId, split: trial.phase })) });
   };
 }
@@ -63,6 +65,7 @@ export async function startLiveViewer(options: {
   port: number; io: CliIO; store: ExperimentStore; id: string; datasetId: string; planDigest: string;
   baseline: CandidateManifest; cases: ViewerData['cases']; testCases: ViewerData['cases'];
   budget?: { maxMetricCalls: number; maxProposals: number };
+  costs?: { subjectModel: string; prices?: readonly ModelPrice[]; costPlan?: TrainingCostPlan };
 }) {
   const runId = `viewer-${options.id}`;
   await options.store.createRun({ schema: 'paideia.run.v1', id: runId, datasetId: options.datasetId,
@@ -71,17 +74,21 @@ export async function startLiveViewer(options: {
   let optimizer: DspyResult | undefined;
   let status = 'starting';
   let proposalAttempts = 0;
-  const generations: ViewerData['usage'] = [];
+  const generations = new Map<number, OptimizerGeneration>();
   const trials: TrialReport[] = [];
   let cases = options.cases;
   const publish = async () => {
     try {
       const data = projectTrials({ id: options.id, title: 'Live native experiment', phase: frozen ? 'final-test' : 'train',
-        status, updatedAt: new Date().toISOString(), baseline: options.baseline, cases, trials, optimizer, budget: options.budget });
+        status, updatedAt: new Date().toISOString(), baseline: options.baseline, cases, trials, optimizer, budget: options.budget,
+        costs: options.costs === undefined ? undefined : summarizeCosts(trials, { ...options.costs, optimizerGenerations: [...generations.values()] }),
+        costPlan: options.costs?.costPlan });
       if (optimizer === undefined && options.budget !== undefined) data.optimizer = { name: 'dspy.GEPA',
         status: 'Observed progress; evaluation count includes completed trial reports',
         evaluations: trials.filter((trial) => trial.phase !== 'test').length, proposals: proposalAttempts, ...options.budget };
-      data.usage = [...data.usage.filter((entry) => entry.purpose !== 'optimizer'), ...generations];
+      data.usage = [...data.usage.filter((entry) => entry.purpose !== 'optimizer'), ...[...generations.values()].map(generation =>
+        ({ purpose: 'optimizer' as const, model: generation.model, modelBasis: generation.modelBasis,
+          route: generation.route ?? null, usage: generation.usage }))];
       await options.store.appendEvent(runId, { id: randomUUID(), payload: data }, 'public');
       unavailable = false;
     } catch {
@@ -113,9 +120,14 @@ export async function startLiveViewer(options: {
         cases = [...cases, ...options.testCases]; status = 'testing frozen selection';
       } else if (event.type === 'optimizer.generation.started') {
         proposalAttempts = (event.payload as { attempt: number }).attempt; status = 'reflecting';
+        generations.set(proposalAttempts, { model: null, usage: null, outcome: 'pending' });
       } else if (event.type === 'optimizer.generation.completed') {
-        const payload = event.payload as Omit<ViewerData['usage'][number], 'purpose'>;
-        generations.push({ purpose: 'optimizer', model: payload.model, route: payload.route, usage: payload.usage });
+        const payload = event.payload as OptimizerGeneration & { attempt: number };
+        generations.set(payload.attempt, { model: payload.model, modelBasis: payload.modelBasis, route: payload.route, usage: payload.usage });
+      } else if (event.type === 'optimizer.generation.failed') {
+        const payload = event.payload as Partial<OptimizerGeneration> & { attempt: number };
+        generations.set(payload.attempt, { model: payload.model ?? null, modelBasis: payload.modelBasis, route: payload.route, usage: payload.usage ?? null,
+          outcome: payload.outcome ?? 'generation-error' });
       } else if (event.type === 'training.completed' || event.type === 'evaluation.completed') status = 'completed';
       else return;
       await publish();

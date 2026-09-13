@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { snapshotCandidate } from '../src/candidates/index.js';
 import type { TrialReport } from '../src/experiments/index.js';
 import type { DspyResult } from '../src/optimization/index.js';
+import { summarizeCosts } from '../src/experiments/costs/index.js';
 import { projectTrials, projectTrainingReport } from './index.js';
 
 const roots: string[] = [];
@@ -74,14 +75,17 @@ describe('stored native report projection', () => {
           { components: { editable: 'SECRET' }, parents: [null], validationScore: 0.7, discoveryEvaluations: 0 },
           { components: { editable: 'SECRET' }, parents: [0], validationScore: 0.8, discoveryEvaluations: 1 },
         ], captures: trials.map((trial) => ({ caseId: 'case', split: 'validation', captureId: trial.id })),
-        generations: [{ model: 'observed-model', usage: null }] } };
+        generations: [{ model: 'observed-model', modelBasis: 'requested-assumption', usage: null }] } };
     const report = { schema: 'paideia.training.v1' as const, id: 'opt', baseline: candidate, selected: candidate,
-      optimizer, partitions: { train: ['train'], validation: ['case'], test: ['sealed'] }, trials, heldOut: [] };
+      optimizer, partitions: { train: ['train'], validation: ['case'], test: ['sealed'] }, trials, heldOut: [],
+      costs: summarizeCosts(trials, { subjectModel: 'gpt-5.5' }) };
     const data = projectTrainingReport(report, { maxMetricCalls: 6, maxProposals: 2 });
     expect(data.candidates.map((entry) => entry.id)).toEqual(['GEPA 0: native-candidate', 'GEPA 1: native-candidate']);
     expect(data.candidates[1]!.parentIds).toEqual(['GEPA 0: native-candidate']);
     expect(data.optimizer).toMatchObject({ evaluations: 2, proposals: 1, selectedCandidateId: 'GEPA 1: native-candidate' });
-    expect(data.usage.at(-1)).toMatchObject({ purpose: 'optimizer', model: 'observed-model', route: null });
+    expect(data.usage.at(-1)).toMatchObject({ purpose: 'optimizer', model: 'observed-model', modelBasis: 'requested-assumption', route: null });
+    expect(data.costs!.observed!.lines).toHaveLength(2);
+    expect(data.costs!.observed!.lines[0]!.model).toBe('gpt-5.5');
     expect(projectTrainingReport(report).optimizer).toBeUndefined();
     expect(() => projectTrainingReport({ ...report, trials: [] })).toThrow('matching stored native validation');
   });

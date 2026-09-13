@@ -6,17 +6,24 @@ const verdict = z.enum(['pass', 'fail', 'unknown', 'error', 'skipped']);
 const coverage = z.object({ channel: z.enum(['tools', 'output', 'usage']),
   completeness: z.enum(['complete', 'partial', 'absent']), ordering: z.enum(['source', 'causal', 'none']) });
 const usage = z.object({ inputTokens: z.number().nonnegative().nullable(), cachedInputTokens: z.number().nonnegative().nullable(),
+  cacheWriteInputTokens: z.number().nonnegative().nullable().optional(),
+  cacheWrite5mInputTokens: z.number().nonnegative().nullable().optional(),
+  cacheWrite1hInputTokens: z.number().nonnegative().nullable().optional(),
   outputTokens: z.number().nonnegative().nullable(), reasoningTokens: z.number().nonnegative().nullable(), source: z.string() });
+const judgeCall = z.object({ id: identity, judge: identity, providerId: identity, requestedModel: identity,
+  responseModel: z.string().nullable(), responseRoute: z.string().nullable(),
+  outcome: z.enum(['completed', 'invalid-response', 'generation-error']), usage: usage.nullable() });
 const stop = z.object({ state: z.enum(['requested', 'acknowledged', 'unknown']), scope: z.enum(['process', 'process-group', 'native-handle']),
   quiescence: z.enum(['confirmed', 'unknown']), remoteWork: z.literal('unknown'), reason: z.string(), detail: z.string() });
 const result: z.ZodType<EvaluationResult> = z.lazy(() => z.object({ id: z.string().optional(), status: verdict,
   finality: z.enum(['provisional', 'final']), reason: z.string(), score: z.number().min(0).max(1).optional(),
   evidence: z.array(z.object({ kind: z.enum(['event', 'artifact', 'input', 'output', 'sidecar']), id: z.string(), digest: z.string().optional() })),
-  children: z.array(result).optional(), usage: z.array(usage).optional() }));
+  children: z.array(result).optional(), usage: z.array(usage).optional(), judgeCalls: z.array(judgeCall).optional() }));
 const weighted = z.object({ finality: z.enum(['provisional', 'final']), lower: z.number(), upper: z.number(),
   assessedWeight: z.number(), missingWeight: z.number() });
 const plan = z.object({ status: verdict, stages: z.array(z.object({ id: z.string(), checks: z.array(result), gate: result,
-  score: weighted.optional() })), checks: z.record(z.string(), result), scores: z.record(z.string(), weighted) });
+  score: weighted.optional() })), checks: z.record(z.string(), result), scores: z.record(z.string(), weighted),
+  judgeCalls: z.array(judgeCall).optional() });
 const observation = z.object({ id: identity, source: identity, seq: z.number().int().nonnegative(),
   type: z.enum(['tool.dispatch', 'tool.complete', 'output', 'usage', 'diagnostic']), timestamp: z.string(),
   trialId: identity, wakeId: identity, callId: z.string().optional(), tool: z.string().optional(),

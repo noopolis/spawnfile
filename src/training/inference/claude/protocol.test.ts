@@ -22,6 +22,16 @@ it('requires saved first-party subscription and rejects malformed envelopes', ()
   for (const line of ['null', '[]', '0', 'not JSON']) expect(() => parseEnvelope(line)).toThrow();
 });
 
+it('retains cache-write totals and duration without charging writes again as uncached input', () => {
+  const decoded = decodeClaudeResult({ type: 'result', subtype: 'success', result: 'ok',
+    usage: { input_tokens: 5, cache_read_input_tokens: 20, cache_creation_input_tokens: 3, output_tokens: 4,
+      cache_creation: { ephemeral_5m_input_tokens: 2, ephemeral_1h_input_tokens: 1 } } });
+  expect(decoded.usage).toMatchObject({ inputTokens: 28, cachedInputTokens: 20,
+    cacheWriteInputTokens: 3, cacheWrite5mInputTokens: 2, cacheWrite1hInputTokens: 1 });
+  const missing = decodeClaudeResult({ type: 'result', subtype: 'success', result: 'ok', usage: { cache_creation: { ephemeral_5m_input_tokens: -1 } } });
+  expect(missing.usage?.cacheWrite5mInputTokens).toBeNull();
+});
+
 it('strips API/provider overrides while preserving saved login integration', () => {
   for (const name of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_USE_BEDROCK',
     'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDECODE', 'CLAUDE_CODE_SIMPLE', 'OPENAI_API_KEY', 'CODEX_API_KEY']) vi.stubEnv(name, 'sensitive');
@@ -31,4 +41,17 @@ it('strips API/provider overrides while preserving saved login integration', () 
   expect(env['CLAUDE_CODE_USE_BEDROCK']).toBeUndefined();
   expect(env['CLAUDECODE']).toBeUndefined();
   expect(env['CLAUDE_CONFIG_DIR']).toBe('/selected/native/login');
+});
+
+it.each([1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN, Number.POSITIVE_INFINITY])(
+  'keeps invalid token counts unknown at the decoder boundary: %s', count => {
+    const decoded = decodeClaudeResult({ type: 'result', subtype: 'success', result: 'ok',
+      usage: { input_tokens: count, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: count } });
+    expect(decoded.usage).toMatchObject({ inputTokens: null, outputTokens: null, cachedInputTokens: 0 });
+  });
+
+it('does not report an unsafe sum of individually valid input counts', () => {
+  const decoded = decodeClaudeResult({ type: 'result', subtype: 'success', result: 'ok',
+    usage: { input_tokens: Number.MAX_SAFE_INTEGER, cache_read_input_tokens: 1, cache_creation_input_tokens: 0, output_tokens: 1 } });
+  expect(decoded.usage).toMatchObject({ inputTokens: null, cachedInputTokens: 1, outputTokens: 1 });
 });

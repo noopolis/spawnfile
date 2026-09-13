@@ -1,5 +1,7 @@
 import type { InferenceProvider, SubjectAdapter } from '../contracts/index.js';
 import type { BlobReference } from '../storage/index.js';
+import type { DatasetRegistry, EditPolicy, NativePreparationContext, StoredTrialOptions } from '../index.js';
+import type { SpawnfileTrainingContext } from './spawnfile/index.js';
 
 export interface CliIO {
   cwd: string;
@@ -12,6 +14,20 @@ export interface CliIO {
 export interface CliDependencies {
   adapter?: (runtime: 'codex' | 'daimon', options: { model: string; timeoutMs: number }) => SubjectAdapter;
   inference?: (timeoutMs: number) => InferenceProvider;
+  /** Trusted project composition. Registration is static; native factory runs only after preflight. */
+  spawnfile?: SpawnfileCliIntegration;
+}
+
+export interface SpawnfileCliIntegration {
+  id: string;
+  version: string;
+  preparations?: DatasetRegistry['preparations'];
+  unlockedSetupPaths?: readonly string[];
+  /** Narrows explicitly selected editable files to their declared sections. Cannot unlock identity. */
+  editPolicies?: Readonly<Record<string, EditPolicy>>;
+  createAdapter(context: SpawnfileTrainingContext, options: { model: string; timeoutMs: number }): SubjectAdapter;
+  prepareEnvironment(paths: Parameters<NonNullable<StoredTrialOptions['prepareEnvironment']>>[0], signal: AbortSignal,
+    trial: NativePreparationContext, context: SpawnfileTrainingContext): ReturnType<NonNullable<StoredTrialOptions['prepareEnvironment']>>;
 }
 
 export interface InvocationIndex {

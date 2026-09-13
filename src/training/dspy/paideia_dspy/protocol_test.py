@@ -52,6 +52,12 @@ def test_generation_requires_text_actual_model_and_explicit_usage(value):
         GenerationResult.model_validate(value)
 
 
+@pytest.mark.parametrize("basis", ["actual", None, 1])
+def test_rejects_unsupported_model_attribution(basis):
+    with pytest.raises(ValidationError):
+        GenerationResult.model_validate({"text": "answer", "model": "chosen", "usage": None, "modelBasis": basis})
+
+
 @pytest.mark.parametrize("outcome", [{}, {"result": {}, "error": {"code": "x", "message": "x"}}])
 def test_host_response_needs_exactly_one_outcome(outcome):
     with pytest.raises(ValidationError):

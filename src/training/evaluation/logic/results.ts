@@ -1,4 +1,4 @@
-import type { EvaluationResult, Verdict, WeightedScore } from '../../contracts/evaluation.js';
+import type { EvaluationResult, JudgeCall, Verdict, WeightedScore } from '../../contracts/evaluation.js';
 
 export function result(status: Verdict, reason: string, final = true): EvaluationResult {
   return { status, finality: final ? 'final' : 'provisional', reason, evidence: [] };
@@ -8,6 +8,14 @@ export function negate(value: EvaluationResult): EvaluationResult {
   return { ...value, status: value.status === 'pass' ? 'fail' : value.status === 'fail' ? 'pass' : value.status,
     reason: `not: ${value.reason}`, children: [value],
     ...(value.score === undefined ? {} : { score: 1 - value.score }) };
+}
+
+export function collectJudgeCalls(results: readonly EvaluationResult[]): JudgeCall[] {
+  const calls = new Map<string, JudgeCall>();
+  for (const value of results) {
+    for (const call of value.judgeCalls ?? []) if (!calls.has(call.id)) calls.set(call.id, call);
+  }
+  return [...calls.values()];
 }
 
 export function combine(operation: 'all' | 'any', children: EvaluationResult[]): EvaluationResult {
@@ -21,8 +29,9 @@ export function combine(operation: 'all' | 'any', children: EvaluationResult[]):
     : children.some(child => child.status === 'unknown') ? 'unknown' : 'skipped';
   const final = witnesses.length ? witnesses.some(child => child.finality === 'final')
     : children.every(child => child.finality === 'final');
+  const judgeCalls = collectJudgeCalls(children);
   return { ...result(status, `${operation}: ${children.map(child => child.status).join(', ')}`, final),
-    children, evidence: children.flatMap(child => child.evidence) };
+    children, evidence: children.flatMap(child => child.evidence), ...(judgeCalls.length ? { judgeCalls } : {}) };
 }
 
 export function weightedScore(weights: Readonly<Record<string, number>>,
