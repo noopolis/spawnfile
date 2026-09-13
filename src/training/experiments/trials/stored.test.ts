@@ -35,7 +35,11 @@ records: [{id: case, group: evidence, input: {prompt: complete it}}]
     const options: StoredTrialOptions = { id: 'run', phase: 'train', datasetId: 'suite', record, candidate, store, storeRoot,
       datasetDigest: 'digest', planDigest: 'plan', adapter, model: 'model', root: join(root, 'trials'), timeoutMs: 2_000,
       registry: createEvaluationRegistry(), evaluation: { judges: {}, embeddings: {}, readText: async () => '' } };
-    const report = await runStoredTrial(options);
+    const report = await runStoredTrial({ ...options, prepareEnvironment: async (paths, signal) => {
+      expect(signal.aborted).toBe(false);
+      expect(await readFile(join(paths.workspace, 'AGENTS.md'), 'utf8')).toBe('Write DONE.');
+      return {};
+    } });
     expect(report.status).toBe('pass'); expect(paid).toBe(1);
     const replay = await store.readReplay('run', { audience: 'operator', phase: 'replay' });
     expect(replay.completeness).toBe('complete'); expect(replay.evaluations[0]!.report).toMatchObject({ id: 'run', status: 'pass' });
@@ -43,16 +47,38 @@ records: [{id: case, group: evidence, input: {prompt: complete it}}]
     expect((await store.readReplay('run', { audience: 'viewer', phase: 'replay' })).evaluations).toEqual([]);
     record.setup = { profile: 'native' };
     await expect(runStoredTrial({ ...options, id: 'missing' })).rejects.toThrow('preparation');
-    const prepared = await runStoredTrial({ ...options, id: 'prepared', prepareEnvironment: async paths => {
+    const prepared = await runStoredTrial({ ...options, id: 'prepared', prepareEnvironment: async (paths, _signal, context) => {
+      expect(context).toMatchObject({ id: 'prepared', phase: 'train',
+        record: { id: 'case', setup: { profile: 'native' } }, candidate: { id: candidate.id }, resources: {} });
+      expect(context.candidate.resources[0]!.content).toBe('Write DONE.');
+      context.record.context = { leaked: true };
+      context.candidate.resources[0]!.content = 'Do something else.';
       await writeFile(join(paths.workspace, 'fixture.txt'), 'environment'); return { tools: [] };
     } });
     expect(prepared.status).toBe('pass');
+    expect(prepared.snapshot.context).toEqual({});
+    expect(record.context).toEqual({});
+    expect(candidate.resources[0]!.content).toBe('Write DONE.');
+    const resourcePaths = { archive: source };
+    const second = { ...record, id: 'second', context: { edition: '2000-01-02' } };
+    const next = await runStoredTrial({ ...options, id: 'next', phase: 'validation', record: second,
+      resources: resourcePaths, prepareEnvironment: async (paths, signal, context) => {
+        expect(signal.aborted).toBe(false);
+        expect(context).toMatchObject({ id: 'next', phase: 'validation',
+          record: { id: 'second', context: { edition: '2000-01-02' } }, resources: resourcePaths });
+        await writeFile(join(paths.workspace, 'assignment.txt'), context.record.id);
+        context.resources.archive = '/changed-only-in-preparer';
+        return { tools: [] };
+      } });
+    expect(next.status).toBe('pass');
+    expect(await readFile(join(next.paths.workspace, 'assignment.txt'), 'utf8')).toBe('second');
+    expect(resourcePaths.archive).toBe(source);
     const unsupported = await snapshotCandidate({ sourceRoot: source, resources: [{ id: 'support', sourcePath: 'AGENTS.md',
       destinations: [{ kind: 'supporting-files', path: 'support.md' }], edit: 'locked' }] });
     await expect(runStoredTrial({ ...options, id: 'no-instructions', candidate: unsupported })).rejects.toThrow('no native instruction');
     const skills = await snapshotCandidate({ sourceRoot: source, resources: [{ id: 'instruction', sourcePath: 'AGENTS.md',
       destinations: [{ kind: 'instructions', path: 'AGENTS.md' }, { kind: 'native-skills', path: 'skills/write/SKILL.md' }], edit: 'whole-file' }] });
     await expect(runStoredTrial({ ...options, id: 'unsupported', candidate: skills })).rejects.toThrow('does not support');
-    expect(paid).toBe(2); expect(await readFile(join(source, 'AGENTS.md'), 'utf8')).toBe('Write DONE.');
+    expect(paid).toBe(3); expect(await readFile(join(source, 'AGENTS.md'), 'utf8')).toBe('Write DONE.');
   } finally { await rm(root, { recursive: true, force: true }); }
 });

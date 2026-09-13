@@ -5,13 +5,23 @@ import type { ExperimentStore } from '../../storage/index.js';
 import type { TrialOptions, TrialReport } from './types.js';
 import { runTrial } from './trial.js';
 
+/** Evaluator-owned preparation data; never implicitly delivered to the subject. */
+export interface NativePreparationContext {
+  id: string;
+  phase: TrialOptions['phase'];
+  record: TrialOptions['record'];
+  candidate: CandidateManifest;
+  resources: Record<string, string>;
+}
+
 export interface StoredTrialOptions extends Omit<TrialOptions, 'candidateId' | 'persist' | 'prepare'> {
   datasetId: string;
   candidate: CandidateManifest;
   store: ExperimentStore;
   storeRoot: string;
   /** The environment may install tools/state; instructions come from declared candidate resources. */
-  prepareEnvironment?: (paths: Parameters<TrialOptions['prepare']>[0], signal: AbortSignal) => Promise<Omit<Awaited<ReturnType<TrialOptions['prepare']>>, 'instructions'>>;
+  prepareEnvironment?: (paths: Parameters<TrialOptions['prepare']>[0], signal: AbortSignal,
+    context: NativePreparationContext) => Promise<Omit<Awaited<ReturnType<TrialOptions['prepare']>>, 'instructions'>>;
 }
 export async function runStoredTrial(options: StoredTrialOptions): Promise<TrialReport> {
   validateCandidate(options.candidate);
@@ -33,7 +43,10 @@ export async function runStoredTrial(options: StoredTrialOptions): Promise<Trial
     persist: async event => { await options.store.appendEvent(options.id, { id: randomUUID(), payload: event }, 'raw'); },
     prepare: async (paths, signal) => {
       const receipts = await materializeCandidate(options.candidate, paths.workspace);
-      const environment = await options.prepareEnvironment?.(paths, signal);
+      const environment = await options.prepareEnvironment?.(paths, signal, structuredClone({
+        id: options.id, phase: options.phase, record: options.record,
+        candidate: options.candidate, resources: { ...options.resources },
+      }));
       await options.store.appendEvent(options.id, { id: randomUUID(), payload: { type: 'candidate.installed', receipts } }, 'evaluator');
       return { ...environment, instructions: instructions.map(resource => resource.content).join('\n\n') };
     } });

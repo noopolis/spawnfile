@@ -20,6 +20,14 @@ The CLI supports native Codex and Daimon, explicit Markdown resources, dataset
 validation, evaluation, training and viewing. The TypeScript API exposes the
 underlying contracts for integrations. There is no production deployment command.
 
+The public `runStoredTrial` preparation hook receives `(paths, signal, context)`.
+Its isolated context copy identifies this trial, phase, resolved record, candidate
+and resource mappings, so a shared training hook can prepare the correct native
+assignment and tools for each attempt. This is trusted evaluator-side data;
+criteria, reference answers and future stimuli must not become subject inputs.
+Instruction resources remain the declared candidate bytes. Native compilation
+and project-specific environment construction still belong to their integrations.
+
 The public `rescoreStoredTrial` API explicitly reevaluates final stages over a stored
 capture without rerunning the subject. It appends a separate evaluation and preserves
 the immutable original, historical live-stop evidence and per-turn results; it does
