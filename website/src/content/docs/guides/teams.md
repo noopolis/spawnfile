@@ -1,6 +1,6 @@
 ---
 title: Teams
-description: How to define team manifests with members, representatives, team networks, and context artifacts.
+description: Configure multi-agent teams with portable manifests, members, representatives, shared context, communication networks, and runtime adapters.
 ---
 
 A Spawnfile team is an organizational structure that groups multiple first-class agents. It defines who is in the team, what they share, how representatives are selected, and which team networks and context artifacts the compiler emits.
