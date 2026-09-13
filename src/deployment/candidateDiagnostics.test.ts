@@ -123,4 +123,15 @@ describe("failed candidate diagnostics", () => {
     expect(clean).not.toMatch(/known-secret|abcdefghijklmnop|refresh-value|basic-credential|hidden-json-basic|single-quoted-secret|user:pass|eyJhbGci|private-key-bytes|\u001b/u);
     expect(clean).toContain("Error: missing module");
   });
+
+  it("redacts overlapping secrets longest first without leaving suffixes", () => {
+    const secrets = ["abc", "abcdef1"];
+    expect(sanitizeCandidateDiagnostic("before abcdef1 after abc", secrets)).toBe("before [REDACTED] after [REDACTED]");
+    expect(secrets).toEqual(["abc", "abcdef1"]);
+  });
+
+  it("normalizes terminal escapes before matching known secrets", () => {
+    expect(sanitizeCandidateDiagnostic("Error: sec\u001b[0mret value\nsec\rret", ["secret"]))
+      .toBe("Error: [REDACTED] value\n[REDACTED]");
+  });
 });

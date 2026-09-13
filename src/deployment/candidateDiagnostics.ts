@@ -25,12 +25,12 @@ export interface CandidateDiagnosticsResult {
 
 /** Redaction is best effort; diagnostic artifacts remain private operator data. */
 export const sanitizeCandidateDiagnostic = (text: string, secrets: string[]): string =>
-  redactDockerLogText(text, secrets)
+  redactDockerLogText(text.replace(/\x1b\[[0-?]*[ -/]*[@-~]|[\x00-\x08\x0b-\x1f\x7f]/gu, ""),
+    [...secrets].sort((left, right) => right.length - left.length))
     .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/gu, "[REDACTED PRIVATE KEY]")
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/gu, "[REDACTED JWT]")
     .replace(/https?:\/\/[^\s<>"']+/giu, "[REDACTED URL]")
-    .replace(/\b([a-z0-9_-]*(?:authorization|cookie|password|secret|token|api[_-]?key)[a-z0-9_-]*)["']?\s*[:=]\s*[^\r\n]+/giu, "$1: [REDACTED]")
-    .replace(/\x1b\[[0-?]*[ -/]*[@-~]|[\x00-\x08\x0b-\x1f\x7f]/gu, "");
+    .replace(/\b([a-z0-9_-]*(?:authorization|cookie|password|secret|token|api[_-]?key)[a-z0-9_-]*)["']?\s*[:=]\s*[^\r\n]+/giu, "$1: [REDACTED]");
 
 const collect = async (runDocker: DockerCommandRunner, args: string[]) => {
   try {
