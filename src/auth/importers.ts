@@ -2,10 +2,9 @@ import path from "node:path";
 import os from "node:os";
 
 import {
-  ensureDirectory,
   fileExists,
   readUtf8File,
-  writeUtf8File
+  writePrivateUtf8File
 } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
@@ -108,7 +107,7 @@ export const importCodexAuth = async (
   }
 
   const { directory, profile } = await registerImportedAuth(profileName, "codex");
-  await writeUtf8File(path.join(directory, "auth.json"), await readUtf8File(authFilePath));
+  await writePrivateUtf8File(path.join(directory, "auth.json"), await readUtf8File(authFilePath));
   return profile;
 };
 
@@ -142,7 +141,6 @@ export const importClaudeCodeAuth = async (
   }
 
   const { directory, profile } = await registerImportedAuth(profileName, "claude-code");
-  await ensureDirectory(directory);
-  await writeUtf8File(path.join(directory, ".credentials.json"), credentialsContent);
+  await writePrivateUtf8File(path.join(directory, ".credentials.json"), credentialsContent);
   return profile;
 };

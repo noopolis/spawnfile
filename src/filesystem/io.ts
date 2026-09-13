@@ -1,5 +1,5 @@
 import path from "node:path";
-import { cp, mkdir, lstat, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, lstat, open, readFile, rm, stat, writeFile } from "node:fs/promises";
 
 export interface CopyDirectoryOptions {
   filter?: (sourcePath: string, destinationPath: string) => boolean;
@@ -19,6 +19,11 @@ export const copyDirectory = async (
 
 export const ensureDirectory = async (directoryPath: string): Promise<void> => {
   await mkdir(directoryPath, { recursive: true });
+};
+
+export const ensurePrivateDirectory = async (directoryPath: string): Promise<void> => {
+  await mkdir(directoryPath, { recursive: true, mode: 0o700 });
+  await chmod(directoryPath, 0o700);
 };
 
 export const fileExists = async (filePath: string): Promise<boolean> => {
@@ -82,4 +87,15 @@ export const writeUtf8File = async (
   content: string
 ): Promise<void> => {
   await writeFile(filePath, content, "utf8");
+};
+
+export const writePrivateUtf8File = async (filePath: string, content: string): Promise<void> => {
+  const handle = await open(filePath, "w", 0o600);
+  try {
+    // Creation mode does not change an existing file's permissions.
+    await handle.chmod(0o600);
+    await handle.writeFile(content, "utf8");
+  } finally {
+    await handle.close();
+  }
 };
