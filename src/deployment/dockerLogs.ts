@@ -60,15 +60,22 @@ const withDockerTarget = (
 const normalizeTail = (tail: number | undefined): number =>
   typeof tail === "number" && Number.isInteger(tail) && tail > 0 ? tail : 100;
 
+const stripTerminalControls = (value: string): string =>
+  value.replace(/\x1b\[[0-?]*[ -/]*[@-~]|[\x00-\x08\x0b-\x1f\x7f]/gu, "");
+
 const redactKnownSecrets = (text: string, secretValues: string[]): string =>
   secretValues
+    .map(stripTerminalControls)
     .filter((secret) => secret.length > 0)
+    .sort((left, right) => right.length - left.length)
     .reduce((redacted, secret) => redacted.replaceAll(secret, "[REDACTED]"), text);
 
 export const redactDockerLogText = (
   text: string,
   secretValues: string[] = []
-): string => redactSensitiveText(redactKnownSecrets(text, secretValues));
+): string => redactSensitiveText(redactKnownSecrets(
+  stripTerminalControls(text), secretValues
+));
 
 const combineLogStreams = (stdout: string, stderr: string): string => {
   if (!stdout) {

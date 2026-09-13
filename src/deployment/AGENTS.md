@@ -31,6 +31,7 @@ src/deployment/
 ├── dockerLabels.ts  # Docker label construction for managed units
 ├── dockerInspect.ts # Bounded Docker container inspection for status --live
 ├── dockerLogs.ts    # Bounded Docker log collection with redaction for status --logs
+├── candidateDiagnostics.ts # Private startup evidence captured before failed-image rollback
 ├── dockerProbeGateway.ts # Manager-mediated artifact reads and ephemeral same-image network-namespace health probes
 ├── dockerRecover.ts # Docker label recovery for context-backed remote status
 ├── buildImageCacheStore.ts # Strict, atomic Spawnfile-home cache for verified Docker image builds
@@ -55,6 +56,11 @@ src/deployment/
 - Keep deployment records free of secrets. Paths are allowed only for local operator metadata.
 - Docker labels must contain identifiers only, never local paths or secret-bearing values.
 - Records are written only after a detached deployment has successfully started.
+- Failed image candidates save bounded, sanitized stdout/stderr and health
+  evidence under the home deployment's `diagnostics/` before rollback removes
+  the container. Files are 0600 inside an owned 0700 directory; collection or
+  storage failure must never prevent rollback. Logs are still private operator
+  data: redaction cannot recognize every application-specific secret.
 - Build-image cache entries live under the Spawnfile home, are strict-schema
   parsed, mode 0600, and best-effort only: cache corruption or I/O failure must
   never fail a compile/build.
