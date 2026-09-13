@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { collectNativeEvidence, readClosedTraces, writeEvidence } from './evidence.js';
 import type { NativeLaunch } from '../receipt/index.js';
 import type { NativeActivity, NativeAvailability, NativeConfig, NativeEvidence, NativeHost,
-  NativeReceipt, TerminalEvidence, WorkerOptions } from './types.js';
+  NativeReceipt, NativeTrace, TerminalEvidence, WorkerOptions } from './types.js';
 
 export interface NativeStopEvidence {
   schema: 'paideia.daimon-native.stop.v1';
@@ -16,6 +16,22 @@ export interface WorkerController {
   host: NativeHost;
   run(wakeId: string, text: string): Promise<TerminalEvidence>;
   stop(): Promise<NativeStopEvidence>;
+}
+
+export function describeNativeFailure(receipt: NativeReceipt, trace: NativeTrace | undefined): string {
+  const delivery = `${receipt.state}${receipt.deferred ? ' deferred' : ''}`;
+  if (trace?.status !== 'failed') return `Native delivery ended ${delivery}`;
+  const error = trace.error;
+  const message = error && typeof error === 'object' && 'message' in error ? error.message : undefined;
+  // Native lifecycle errors may include upstream content. Only this fixed owner
+  // message contributes detail; never forward arbitrary trace text or objects.
+  const ceiling = typeof message === 'string'
+    ? /^Codex wake exceeded its ([0-9]{1,16})-token per-wake ceiling \(turn usage ([0-9]{1,16}) tokens\)$/u.exec(message)
+    : null;
+  if (ceiling && ceiling[0] === message) {
+    return `Native execution failed: Codex wake exceeded its ${ceiling[1]}-token per-wake ceiling (turn usage ${ceiling[2]} tokens)`;
+  }
+  return `Native execution failed (delivery ${delivery})`;
 }
 
 export function executionClosed(activity: NativeActivity, receipt: NativeReceipt, traces: NativeEvidence['traces'],
@@ -116,7 +132,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
         const trace = native.traces[0];
         const failure = availability.agents.find(row => row.agent_id === agent.id)?.error;
         if (receipt.state !== 'completed' || trace?.status !== 'completed' || failure) {
-          throw new Error(failure ?? `Native delivery ended ${receipt.state}${receipt.deferred ? ' deferred' : ''}`);
+          throw new Error(failure ?? describeNativeFailure(receipt, trace));
         }
         if (!native.usage.length) throw new Error('Closed native execution omitted token usage evidence');
         if (!native.modelContexts.length) throw new Error('Closed native execution omitted model identity evidence');
