@@ -81,6 +81,7 @@ describe('stored native report projection', () => {
       costs: summarizeCosts(trials, { subjectModel: 'gpt-5.5' }) };
     const data = projectTrainingReport(report, { maxMetricCalls: 6, maxProposals: 2 });
     expect(data.candidates.map((entry) => entry.id)).toEqual(['GEPA 0: native-candidate', 'GEPA 1: native-candidate']);
+    expect(data.candidates.map((entry) => entry.nativeId)).toEqual(['native-candidate', 'native-candidate']);
     expect(data.candidates[1]!.parentIds).toEqual(['GEPA 0: native-candidate']);
     expect(data.optimizer).toMatchObject({ evaluations: 2, proposals: 1, selectedCandidateId: 'GEPA 1: native-candidate' });
     expect(data.usage.at(-1)).toMatchObject({ purpose: 'optimizer', model: 'observed-model', modelBasis: 'requested-assumption', route: null });

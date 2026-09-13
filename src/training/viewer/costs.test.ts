@@ -69,6 +69,9 @@ describe('safe cost presentation', () => {
       'subscription quota percentages', 'Unknown', 'https://example.org/prices']) expect(page).toContain(text);
     expect(page).not.toContain(attack);
     expect(page).toContain('&lt;script&gt;SECRET&lt;/script&gt;&quot;&amp;');
+    expect(page).toContain('data-view-pane="costs" hidden');
+    expect(page).toContain('<summary>Models, tokens & pricing evidence</summary>');
+    expect(page).not.toMatch(/<details[^>]*\bopen(?:[\s=>])/);
     fixture.costs = projectCosts(undefined, plan());
     expect(renderViewer(fixture, 'n')).toContain('No recorded cost valuation supplied.');
     fixture.costs = projectCosts(recorded('not-a-url'));

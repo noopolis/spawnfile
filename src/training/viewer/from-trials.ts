@@ -45,7 +45,7 @@ export function projectTrials(options: TrialProjectionOptions): ViewerData {
       events: trial.snapshot.events.map((event) => ({ id: event.id, type: event.type, timestamp: event.timestamp,
         summary: `${event.tool ?? event.type}${event.success === undefined ? '' : event.success ? ' succeeded' : ' failed'}` })),
     })),
-    candidates: [{ id: options.baseline.id, parentIds: [], validationScore: null, discoveryEvaluations: 0,
+    candidates: [{ id: options.baseline.id, nativeId: options.baseline.id, parentIds: [], validationScore: null, discoveryEvaluations: 0,
       editablePaths: options.baseline.resources.filter((resource) => resource.edit !== 'locked').map((resource) => resource.sourcePath) }],
     usage: options.trials.flatMap((trial) => trial.turns.map((turn) => ({ purpose: 'subject' as const,
       model: null, route: null, usage: turn.native.usage }))),
@@ -63,6 +63,7 @@ export function projectTrials(options: TrialProjectionOptions): ViewerData {
       return `GEPA ${index}: ${captured.candidateId}`;
     });
     data.candidates = provenance.candidates.map((candidate, index) => ({ id: labels[index]!,
+      nativeId: trials.get(validation[index * size]!.captureId)!.candidateId,
       parentIds: candidate.parents.filter((parent): parent is number => parent !== null).map((parent) => labels[parent]!),
       validationScore: candidate.validationScore, discoveryEvaluations: candidate.discoveryEvaluations,
       editablePaths: data.candidates[0]!.editablePaths }));

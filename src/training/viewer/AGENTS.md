@@ -4,8 +4,15 @@ Owns the local live/replay experiment interface, separate from website/.
 
 - Read persisted experiment projections through public contracts. The CLI remains
   usable without this UI; opening, refreshing or replaying cannot invoke cognition.
-- Show candidate lineage/diffs, rule trees and matched evidence, lifecycle, coverage,
-  train/validation/final-test results and separated usage without inventing data.
+- Start with a compact visual cockpit: observed training/validation curves,
+  paired candidate comparisons, gate results and known costs. Detailed rule trees,
+  events and identities belong behind navigation and collapsed inspectors.
+- `metrics/` owns pure numeric presentation. Average repeated trials within a
+  case first; pair comparisons on matching case IDs. Display observed/expected
+  coverage and missing values. Never average distinct stages into a new score.
+- `cockpit/` follows Moltnet's console shell, panels and tokens. Keep the page
+  inside 100dvh; long data panes own scrolling. Render only the selected metric
+  and switch via a bounded same-origin GET, not all metric/row combinations.
 - Preserve sealed-test access and trace privacy. Display incomplete/stalled streams
   explicitly; never silently recompute old scores with new criteria.
 - Group future UI by feature boundaries with focused guides and adjacent tests.
@@ -17,8 +24,8 @@ Owns the local live/replay experiment interface, separate from website/.
   GEPA lineage links recorded validation captures to native candidate identities.
 - `projection.ts` strips undeclared fields and bounds arrays, bytes and check
   depth. Callers must redact summary text and filter sealed phases before load.
-- `page.ts` renders escaped local HTML/SVG and refreshes with GET only. Supplied
-  scores and usage are displayed without aggregation or inferred completeness.
+- `page.ts` delegates escaped HTML/SVG to the cockpit. Charts distinguish raw
+  metrics from gated reward; no smoothing, invented points or inferred convergence.
 - `costs.ts` projects supplied estimates and recorded valuations to named roles,
   model attribution, outcomes, bounded token counts and dated HTTPS price sources.
   Never expose raw reports, call IDs, error text, legacy evidence or sealed content.

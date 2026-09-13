@@ -36,11 +36,28 @@ describe('actual local viewer HTTP server', () => {
       expect(response.status).toBe(405); expect(response.headers.get('allow')).toBe('GET');
     }
     expect((await fetch(`${server.url}/unknown`)).status).toBe(404);
+    for (const path of ['/?metric=-1', '/?metric=10000', '/?metric=1&extra=2', '/?metric=Infinity']) {
+      expect((await fetch(`${server.url}${path}`)).status).toBe(404);
+    }
     const status = await new Promise<number | undefined>((resolve, reject) => {
       get(server.url, { headers: { Host: 'attacker.invalid' } }, (response) => { response.resume(); resolve(response.statusCode); }).on('error', reject);
     });
     expect(status).toBe(403);
     expect(load).not.toHaveBeenCalled();
+  });
+
+  it('selects one chart with a bounded read-only query instead of duplicating all overview panels', async () => {
+    const load = vi.fn(async () => viewerFixture());
+    const server = await startViewer({ load }); servers.push(server);
+    const response = await fetch(`${server.url}/?metric=1`);
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('data-metric-panel="1"');
+    expect(html.match(/data-metric-panel="\d+"/g)).toHaveLength(1);
+    expect(html).toContain('<option value="1" selected>');
+    expect(load).toHaveBeenCalledOnce();
+    const fallback = await fetch(`${server.url}/?metric=9999`).then(value => value.text());
+    expect(fallback).toContain('data-metric-panel="0"');
   });
 
   it('discloses neither loader exception details nor invalid private data, and can recover', async () => {

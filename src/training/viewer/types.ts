@@ -23,6 +23,8 @@ export interface ViewerData {
   }[];
   candidates: {
     id: string;
+    /** Native content identity; distinct GEPA discoveries may use identical bytes. */
+    nativeId?: string;
     parentIds: string[];
     validationScore: number | null;
     discoveryEvaluations: number;

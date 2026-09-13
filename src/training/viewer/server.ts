@@ -23,13 +23,14 @@ export async function startViewer(options: ViewerOptions): Promise<ViewerServer>
       response.setHeader('Allow', 'GET');
       return respond(response, 405, 'Read-only viewer: GET required.', 'text/plain');
     }
-    if (request.url !== '/' && request.url !== '/api/data') return respond(response, 404, 'Not found.', 'text/plain');
+    const metric = /^\/\?metric=(\d{1,4})$/.exec(request.url ?? '');
+    if (request.url !== '/' && request.url !== '/api/data' && !metric) return respond(response, 404, 'Not found.', 'text/plain');
     try {
       const data = projectViewerData(await options.load());
       if (request.url === '/api/data') return respond(response, 200, JSON.stringify(data), 'application/json');
       const nonce = randomBytes(18).toString('hex');
       response.setHeader('Content-Security-Policy', `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`);
-      return respond(response, 200, renderViewer(data, nonce), 'text/html');
+      return respond(response, 200, renderViewer(data, nonce, metric ? Number(metric[1]) : 0), 'text/html');
     } catch {
       // Loader errors may contain private paths or prompt text. Never serialize them.
       return respond(response, 503, 'Snapshot unavailable. Refresh to retry.', 'text/plain');
