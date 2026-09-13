@@ -9,10 +9,12 @@ import { openExperimentStore, type ExperimentStore } from '../storage/index.js';
 import { projectTrainingReport, projectTrials, startViewer, type ViewerData } from '../../viewer/index.js';
 import type { CliIO } from './types.js';
 import { readCliText } from './datasets.js';
+import { loadFailureView } from './progress/index.js';
 
 const id = z.string().min(1);
 const reference = z.object({ runId: id, id, digest: id, size: z.number().int().nonnegative() }).strict();
 const indexSchema = z.object({ schema: z.literal('paideia.invocation.v1'), command: z.enum(['evaluate', 'train']),
+  outcome: z.literal('failed').optional(),
   summaryRunId: id, phase: z.enum(['train', 'test']), candidateId: id, trialIds: z.array(id),
   report: reference, candidate: reference }).strict();
 const budgetSchema = z.object({ maxMetricCalls: z.number().int().nonnegative(), maxProposals: z.number().int().nonnegative() });
@@ -20,7 +22,7 @@ const budgetSchema = z.object({ maxMetricCalls: z.number().int().nonnegative(), 
 export async function loadInvocationViewer(root: string): Promise<() => Promise<ViewerData>> {
   // Resolve the explicit existing index before opening the store; an absent view never creates an output directory.
   const index = indexSchema.parse(JSON.parse(readCliText(join(root, 'invocation.json'), 2_000_000)));
-  if (index.phase !== (index.command === 'train' ? 'test' : 'train')
+  if (index.phase !== (index.command === 'train' && index.outcome !== 'failed' ? 'test' : 'train')
       || index.report.runId !== index.summaryRunId || index.candidate.runId !== index.summaryRunId) throw new Error('Invocation index references inconsistent phases or summaries');
   const store = await openExperimentStore(root);
   const access = { audience: 'operator' as const, phase: 'replay' as const,
@@ -32,6 +34,7 @@ export async function loadInvocationViewer(root: string): Promise<() => Promise<
     validateCandidate(candidate);
     if (candidate.id !== index.candidateId) throw new Error('Stored invocation candidate does not match its identity');
     const report = JSON.parse((await store.readBlob(index.report, access)).toString());
+    if (index.outcome === 'failed') return loadFailureView(report, index, store);
     if (index.command === 'train') {
       if (report.schema !== 'paideia.training.v1' || report.id !== index.summaryRunId || report.selected.id !== candidate.id) throw new Error('Stored training report does not match its invocation');
       const metadata = replay.manifest.metadata as { optimizerBudget?: unknown } | undefined;
@@ -80,7 +83,8 @@ export async function startLiveViewer(options: {
   const publish = async () => {
     try {
       const data = projectTrials({ id: options.id, title: 'Live native experiment', phase: frozen ? 'final-test' : 'train',
-        status, updatedAt: new Date().toISOString(), baseline: options.baseline, cases, trials, optimizer, budget: options.budget,
+        status, updatedAt: new Date().toISOString(), baseline: options.baseline, cases,
+        trials: status === 'failed' ? trials.filter(trial => trial.phase !== 'test') : trials, optimizer, budget: options.budget,
         costs: options.costs === undefined ? undefined : summarizeCosts(trials, { ...options.costs, optimizerGenerations: [...generations.values()] }),
         costPlan: options.costs?.costPlan });
       if (optimizer === undefined && options.budget !== undefined) data.optimizer = { name: 'dspy.GEPA',
@@ -89,6 +93,10 @@ export async function startLiveViewer(options: {
       data.usage = [...data.usage.filter((entry) => entry.purpose !== 'optimizer'), ...[...generations.values()].map(generation =>
         ({ purpose: 'optimizer' as const, model: generation.model, modelBasis: generation.modelBasis,
           route: generation.route ?? null, usage: generation.usage }))];
+      if (status === 'failed') {
+        data.usage = [];
+        if (data.optimizer) data.optimizer.status = 'failed';
+      }
       await options.store.appendEvent(runId, { id: randomUUID(), payload: data }, 'public');
       unavailable = false;
     } catch {
@@ -106,6 +114,7 @@ export async function startLiveViewer(options: {
   return {
     close: () => server.close(),
     async observe(event: { type: string; payload: unknown }) {
+      if (status === 'failed') return;
       if (event.type === 'trial.finished') {
         const report = event.payload as TrialReport;
         if (report.phase === 'test' && !frozen) return;
@@ -128,6 +137,12 @@ export async function startLiveViewer(options: {
         const payload = event.payload as Partial<OptimizerGeneration> & { attempt: number };
         generations.set(payload.attempt, { model: payload.model ?? null, modelBasis: payload.modelBasis, route: payload.route, usage: payload.usage ?? null,
           outcome: payload.outcome ?? 'generation-error' });
+      } else if (event.type === 'experiment.failed') {
+        status = 'failed'; frozen = false; optimizer = undefined;
+        cases = cases.filter(record => record.split !== 'test');
+        for (const [attempt, generation] of generations) {
+          if (generation.outcome === 'pending') generations.set(attempt, { ...generation, outcome: 'interrupted; usage unknown' });
+        }
       } else if (event.type === 'training.completed' || event.type === 'evaluation.completed') status = 'completed';
       else return;
       await publish();

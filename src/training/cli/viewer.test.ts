@@ -128,6 +128,25 @@ describe('usable persisted viewer command', () => {
       expect(fixture.stderr.join('')).toContain('native evidence capture continues');
       await live.observe({ type: 'training.completed', payload: {} });
       expect((await fetch(url)).status).toBe(200);
+      await live.observe({ type: 'optimizer.generation.started', payload: { attempt: 3 } });
+      await live.observe({ type: 'experiment.failed', payload: { error: 'PRIVATE provider diagnostic' } });
+      const failed = await snapshot();
+      expect(failed.experiment).toMatchObject({ status: 'failed', phase: 'train' });
+      expect(failed.optimizer.status).toBe('failed');
+      expect(failed.costs.observed.lines.at(-1)).toMatchObject({ outcome: 'interrupted; usage unknown', amount: null });
+      expect(failed.costs.observed.groups.find((group: { role: string }) => group.role === 'subject').entryCount).toBe(2);
+      expect(failed.trials).toHaveLength(1);
+      expect(failed.usage).toEqual([]);
+      expect(JSON.stringify(failed)).not.toMatch(/PRIVATE|SEALED|test-trial|Reply OK/);
+      for (const event of [
+        { type: 'trial.finished', payload: trial },
+        { type: 'optimizer.generation.started', payload: { attempt: 4 } },
+        { type: 'selection.frozen', payload: { optimizer } },
+        { type: 'training.completed', payload: {} },
+      ]) {
+        await live.observe(event);
+        expect(await snapshot()).toEqual(failed);
+      }
     } finally { await live.close(); }
   });
 });

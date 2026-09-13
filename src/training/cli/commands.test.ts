@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { main, type InvocationIndex } from './index.js';
 import { openExperimentStore } from '../storage/index.js';
@@ -79,7 +79,8 @@ describe('CLI through actual cases/candidates/experiments/storage', () => {
     fixture.dependencies.adapter = (id) => fixtureAdapter(id, [], 'stalled');
     expect(await main(['evaluate', 'data.yaml', ...fixture.nativeArgs, '--timeout-ms', '100'], fixture.io, fixture.dependencies)).toBe(2);
     expect(fixture.stderr.join('')).toContain('deadline exceeded');
-    await expect(stat(join(fixture.root, 'out', 'invocation.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(JSON.parse(await readFile(join(fixture.root, 'out', 'invocation.json'), 'utf8')))
+      .toMatchObject({ outcome: 'failed', command: 'evaluate', phase: 'train' });
   });
 
   it('retains completed artifact success when cancellation arrives after persistence', async () => {

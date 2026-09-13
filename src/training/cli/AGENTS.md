@@ -13,8 +13,9 @@ Owns explicit local commands, configuration selection and human diagnostics.
   bounds the whole command. A training report is stored under a test-role summary
   manifest bound to the frozen selected candidate, never an optimizer-readable run.
 - The local invocation index contains references and identities only. Blob/report
-  access still uses storage authorization. Failed attempts may leave honest partial
-  trial evidence; printed trial IDs identify it. No implicit replay/test release.
+  access still uses storage authorization. Failed attempts publish a failure index
+  bound to the baseline and a development-only viewer projection. Raw partial
+  evidence keeps its original permissions; failure replay never releases sealed tests.
 - `view OUT_DIRECTORY` validates the saved invocation and serves its projection
   on loopback until cancellation. `--view PORT` serves persisted presentation
   snapshots during train/evaluate. Pages never launch work or write evidence.

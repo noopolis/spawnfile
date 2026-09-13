@@ -42,6 +42,7 @@ export async function createProgressJournal(options: ProgressOptions) {
     runId,
     costs,
     summary,
+    reports: () => [...trials.values()],
     async observe(event: { type: string; payload: unknown }) {
       const payload = event.payload as Record<string, unknown>;
       if (event.type === 'trial.finished') {
@@ -80,6 +81,7 @@ export async function createProgressJournal(options: ProgressOptions) {
       await options.store.appendEvent(runId, { id: diagnosticId,
         payload: { type: 'experiment.diagnostic', diagnostic } }, 'evaluator');
       await write('experiment.failed', { status: 'failed', error: 'Experiment failed; protected diagnostic is available to the operator.', diagnosticId });
+      return { diagnosticId };
     },
   };
 }

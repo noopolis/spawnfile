@@ -8,7 +8,7 @@ import { persistResult, withOutput } from './output.js';
 import type { CliDependencies, CliIO } from './types.js';
 import { startLiveViewer, viewInvocation } from './viewer.js';
 import { dryRunTraining, readCostConfig } from './dry-run.js';
-import { createProgressJournal } from './progress/index.js';
+import { createFailureReport, createProgressJournal } from './progress/index.js';
 
 async function execute(args: CliArguments, io: CliIO, dependencies: CliDependencies,
   timeoutMs: number, signal: AbortSignal): Promise<number> {
@@ -56,14 +56,16 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     const id = randomUUID();
     const journal = await createProgressJournal({ id, datasetId: dataset.id, planDigest: dataset.sharedPlanDigest,
       candidateId: native.candidate.id, model: native.model, prices: costConfig.prices, store, io, costPlan });
-    const live = args.flags.view === undefined ? undefined : await startLiveViewer({
+    let live: Awaited<ReturnType<typeof startLiveViewer>> | undefined;
+    let failed = false;
+    try {
+    live = args.flags.view === undefined ? undefined : await startLiveViewer({
       port: count(args, 'view', 0, 65535, 0), io, store, id, datasetId: dataset.id, planDigest: dataset.sharedPlanDigest,
       baseline: native.candidate, cases: dataset.records.map((record) => ({ id: record.id, split: 'train' })),
       testCases: test?.records.map((record) => ({ id: record.id, split: 'test' })) ?? [],
       budget: test === undefined ? undefined : { maxMetricCalls: metricCalls, maxProposals },
       costs: { subjectModel: native.model, prices: costConfig.prices, costPlan },
     });
-    try {
     if (test !== undefined) {
       const report = await trainAgent({ id, baseline: native.candidate, train: dataset, test,
         validationGroups: args.flags['validation-group'], native: base,
@@ -103,8 +105,25 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     await live?.observe({ type: 'evaluation.completed', payload: {} });
     if (trials.some((trial) => trial.execution === 'failed' || trial.status === 'error' || trial.status === 'unknown')) return 2;
     return trials.every((trial) => trial.status === 'pass') ? 0 : 1;
-    } catch (error) { await journal.failed(error); throw error; }
-    finally { await live?.close(); }
+    } catch (error) {
+      failed = true;
+      try {
+        const diagnostic = await journal.failed(error);
+        const failureId = `failure-${id}`;
+        const report = createFailureReport({ id: failureId, command: args.command as 'train' | 'evaluate',
+          baseline: native.candidate, progressRunId: journal.runId, ...diagnostic, trials: journal.reports(),
+          costs: journal.costs(), costPlan });
+        await persistResult({ root: native.out, store, id: failureId, command: report.command,
+          datasetId: dataset.id, planDigest: dataset.sharedPlanDigest, candidate: native.candidate,
+          report, trialIds: report.view.trials.map(trial => trial.id), outcome: 'failed' });
+      } catch { io.stderr('Failure report unavailable; original error preserved.\n'); }
+      try { await live?.observe({ type: 'experiment.failed', payload: {} }); }
+      catch { io.stderr('Failed viewer snapshot unavailable; original error preserved.\n'); }
+      throw error;
+    } finally {
+      if (failed) await live?.close().catch(() => undefined);
+      else await live?.close();
+    }
   });
 }
 

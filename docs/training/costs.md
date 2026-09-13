@@ -72,6 +72,13 @@ Its rows retain observed subject, judge and optimizer usage, model attribution,
 outcomes, API-equivalent ranges and incomplete evidence. Costs persist without
 the optional viewer. Failed experiments retain a progress journal and protected
 diagnostics even when they never produce a completed invocation index.
+When execution fails after output initialization, `invocation.json` records
+`outcome: failed` and points to a protected `paideia.cli-failure.v1` report.
+`paideia view OUT_DIRECTORY` replays its partial development results and failure
+status without repeating inference. Recorded costs include all observed calls and
+unknown usage; sealed case/trial identities and provider diagnostics stay out of
+the view. Raw artifacts retain their original access rules. A storage failure can
+prevent this index; it never replaces the original execution error or exit status.
 
 Cached reads and writes are subsets of input; reasoning is included in output and
 is never charged twice. Unknown cache-write duration or session context tier can

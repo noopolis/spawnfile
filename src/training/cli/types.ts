@@ -32,6 +32,8 @@ export interface SpawnfileCliIntegration {
 
 export interface InvocationIndex {
   schema: 'paideia.invocation.v1';
+  /** Absent for existing completed invocations. Failure never releases sealed tests. */
+  outcome?: 'failed';
   command: 'evaluate' | 'train';
   summaryRunId: string;
   phase: 'train' | 'test';
