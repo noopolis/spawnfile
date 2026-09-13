@@ -4,42 +4,46 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Paideia — architectural view</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; }
-:root { color-scheme: light; --ink: #24282d; --muted: #555e67; --line: #d2d6da; --paper: #fafaf8; }
-body { margin: 0; padding: 32px 24px 64px; background: var(--paper); color: var(--ink); font: 16px/1.55 system-ui, sans-serif; }
-main { max-width: 1120px; margin: auto; }
-h1 { font-size: 36px; line-height: 1.15; margin: 8px 0 16px; letter-spacing: -1px; }
+:root { color-scheme: light; --ink: #2d3142; --muted: #4f5d75; --line: #bfc0c0; --paper: #f5f5f5; }
+body { margin: 0; padding: 32px 24px 64px; background: var(--paper); color: var(--ink); font: 16px/1.55 Geist, system-ui, sans-serif; }
+main { max-width: 1280px; margin: auto; }
+h1 { font-family: "Instrument Serif", Georgia, serif; font-weight: 400; font-size: 40px; line-height: 1.15; margin: 8px 0 16px; letter-spacing: -1px; }
 h2 { font-size: 24px; line-height: 1.25; margin: 0 0 16px; }
 h3 { font-size: 16px; margin: 24px 0 8px; }
 p { max-width: 84ch; margin: 12px 0; }
-a { color: #254d70; text-underline-offset: 4px; }
-a:focus-visible, summary:focus-visible, pre:focus-visible { outline: 2px solid #254d70; outline-offset: 4px; }
-.eyebrow, .number { color: var(--muted); font: 12px/1.5 ui-monospace, monospace; letter-spacing: 1px; text-transform: uppercase; }
+a { color: #2e5aa8; text-underline-offset: 4px; }
+a:focus-visible, summary:focus-visible, pre:focus-visible { outline: 2px solid #2e5aa8; outline-offset: 4px; }
+.eyebrow, .number { color: var(--muted); font: 12px/1.5 "Geist Mono", ui-monospace, monospace; letter-spacing: 1px; text-transform: uppercase; }
 .status { border-left: 3px solid var(--ink); padding: 8px 16px; margin: 24px 0; max-width: 92ch; }
 .status p { margin: 0; }
 nav { display: flex; flex-wrap: wrap; gap: 12px 24px; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 section { padding: 32px 0; scroll-margin-top: 16px; border-bottom: 1px solid var(--line); }
 figure { margin: 24px 0; }
 figcaption { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
-pre { max-width: 100%; overflow-x: auto; padding: 16px; background: #f0f1ee; font: 14px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: 2; }
-pre.diagram { padding: 8px 0; background: transparent; font-size: 16px; line-height: 1.5; }
+pre { max-width: 100%; overflow-x: auto; padding: 16px; background: #f0f1ee; font: 16px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: 2; }
+.diagram-scroll { overflow-x: auto; }
+.diagram-scroll svg { width: 100%; min-width: 960px; display: block; }
+.diagram-scroll.narrow { max-width: 960px; margin-inline: auto; }
+.diagram-scroll.narrow svg { min-width: 720px; }
 code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.88em; overflow-wrap: anywhere; }
 pre code { font-size: inherit; overflow-wrap: normal; }
-.split { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(240px, 1fr); gap: 32px; align-items: start; }
+.aside { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 32px; }
 .aside { border-top: 2px solid var(--ink); padding-top: 12px; margin-top: 24px; }
 ul, ol { padding-left: 24px; margin: 12px 0; }
 li { margin: 8px 0; }
 .table { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 16px; }
 th, td { text-align: left; vertical-align: top; padding: 12px 16px 12px 0; border-bottom: 1px solid var(--line); }
 th { font-weight: 600; }
 summary { cursor: pointer; font-weight: 600; padding: 16px 0; }
 details { border-top: 1px solid var(--line); margin-top: 24px; }
 footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
-@media (max-width: 900px) { .split { grid-template-columns: 1fr; gap: 8px; } .aside { margin-top: 0; } }
-@media (max-width: 600px) { body { padding: 24px 12px 40px; } h1 { font-size: 28px; } pre.diagram { font-size: 12px; } pre { padding: 12px; } section { padding: 24px 0; } nav { gap: 8px 16px; } }
-@media print { body { padding: 0; } nav { display: none; } pre { white-space: pre-wrap; } .split { display: block; } section { break-inside: avoid; } }
+@media (max-width: 900px) { .aside { grid-template-columns: 1fr; gap: 8px; } .aside { margin-top: 0; } }
+@media (max-width: 600px) { body { padding: 24px 12px 40px; } h1 { font-size: 28px; } pre { padding: 12px; } section { padding: 24px 0; } nav { gap: 8px 16px; } }
+@media print { body { padding: 0; } nav { display: none; } pre { white-space: pre-wrap; } .diagram-scroll svg { min-width: 0; } .aside { display: block; } section { break-inside: avoid; } }
 </style>
 </head>
 <body>
@@ -54,20 +58,57 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <section id="architecture">
 <p class="number">01 / Components and ownership</p>
 <h2>Paideia surrounds the native agent.</h2>
-<div class="split">
-<figure><figcaption>Architectural decomposition · arrows indicate ownership or integration</figcaption><pre class="diagram" tabindex="0">Paideia
-├─→ Experiment core
-│   ├─→ YAML records + candidate mappings
-│   └─→ Isolation + budgets + capability checks
-├─→ Subject adapters
-│   ├─→ Daimon -&gt; its native engine
-│   └─→ Codex / Claude Code / Pi / OpenClaw
-├─→ Evaluation
-│   ├─→ Mechanical + ordered + logical rules
-│   ├─→ Semantic judges -&gt; inference routes
-│   └─→ Embeddings -&gt; declared backend
-├─→ Optimization ─→ DSPy bridge ─→ Markdown candidates
-└─→ Evidence storage ─→ Local live / replay viewer</pre></figure>
+<div class="diagram-section">
+<figure><figcaption>Architecture · native subjects and independent inference</figcaption><div class="diagram-scroll" tabindex="0" aria-label="Architecture · native subjects and independent inference — scroll horizontally on small screens">
+<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="paideia-system-title paideia-system-desc">
+<title id="paideia-system-title">Architecture · native subjects and independent inference</title><desc id="paideia-system-desc">Paideia resolves native projects, captures isolated agents, evaluates their work and feeds training results to DSPy; independent inference supplies judging and reflection, while a local viewer reads saved evidence.</desc>
+<defs><marker id="paideia-system-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+<marker id="paideia-system-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+<marker id="paideia-system-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<style>.node-name{font:600 20px Geist,Arial,sans-serif;fill:#2d3142}.node-note{font:16px Geist,Arial,sans-serif;fill:#4f5d75}.tech,.edge-label,.zone-label,.legend{font:12px 'Geist Mono',monospace;fill:#4f5d75}.edge{fill:none;stroke:#4f5d75;stroke-width:1.5}.zone{fill:rgba(45,49,66,.02);stroke:#bfc0c0;stroke-dasharray:4 4}.legend-rule{stroke:#bfc0c0;stroke-width:1}</style><rect width="100%" height="100%" fill="#f5f5f5"/>
+<rect class="zone" x="320" y="56" width="912" height="584" rx="8"/><text class="zone-label" x="336" y="80">PAIDEIA / PUBLIC ADAPTER CONTRACTS</text>
+<path class="edge" d="M280 160 H360" marker-end="url(#paideia-system-arrow)"/>
+<path class="edge" d="M540 220 V320" marker-end="url(#paideia-system-arrow)"/>
+<path class="edge" d="M540 440 V520" marker-end="url(#paideia-system-arrow)"/>
+<path class="edge" d="M720 560 H808 Q816 560 816 552 V388 Q816 380 824 380 H920" marker-end="url(#paideia-system-arrow)"/>
+<path class="edge" d="M920 408 H848 Q840 408 840 416 V592 Q840 600 832 600 H720" marker-end="url(#paideia-system-arrow)" stroke-dasharray="4 4"/>
+<path class="edge" d="M1080 320 V220" marker-end="url(#paideia-system-arrow)" stroke-dasharray="4 4"/>
+<path class="edge" d="M920 160 H720" marker-end="url(#paideia-system-arrow)" stroke-dasharray="4 4"/>
+<path class="edge" d="M1120 520 V440" marker-end="url(#paideia-system-link)" style="stroke:#2e5aa8"/>
+<path class="edge" d="M1200 568 H1232 Q1240 568 1240 560 V168 Q1240 160 1232 160 H1200" marker-end="url(#paideia-system-link)" style="stroke:#2e5aa8"/>
+<path class="edge" d="M360 568 H280" marker-end="url(#paideia-system-arrow)" stroke-dasharray="4 4"/>
+<path class="edge" d="M720 192 H752 Q760 192 760 200 V256 Q760 264 768 264 H984 Q992 264 992 272 V320" marker-end="url(#paideia-system-arrow)"/>
+<rect x="848" y="456" width="88" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="892" y="472" text-anchor="middle">RESULTS</text>
+<rect x="764" y="128" width="112" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="820" y="144" text-anchor="middle">CANDIDATE</text>
+<rect x="1088" y="252" width="112" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="1144" y="268" text-anchor="middle">TRAIN ONLY</text>
+<rect x="800" y="232" width="112" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="856" y="248" text-anchor="middle">CHECK PLAN</text>
+<g class="node" data-kind="input"><rect x="40" y="100" width="240" height="120" rx="8" fill="#f5f5f5"/><rect x="40" y="100" width="240" height="120" rx="8" fill="rgba(79,93,117,.10)" stroke="#4f5d75"/>
+<text class="node-name" x="60" y="132" style="font-size:20px">Native project</text><text class="node-note" x="60" y="160">Config + environment</text><text class="node-note" x="60" y="184">Datasets + Markdown</text>
+</g>
+<g class="node" data-kind="focal"><rect x="360" y="100" width="360" height="120" rx="8" fill="#f5f5f5"/><rect x="360" y="100" width="360" height="120" rx="8" fill="rgba(235,108,54,.08)" stroke="#eb6c36"/>
+<text class="node-name" x="380" y="132" style="font-size:20px">Experiment core</text><text class="node-note" x="380" y="160">Resolve inputs and candidates</text><text class="node-note" x="380" y="184">Isolation · budgets · capabilities</text>
+</g>
+<g class="node" data-kind="focal"><rect x="920" y="100" width="280" height="120" rx="8" fill="#f5f5f5"/><rect x="920" y="100" width="280" height="120" rx="8" fill="rgba(235,108,54,.08)" stroke="#eb6c36"/>
+<text class="node-name" x="940" y="132" style="font-size:20px">DSPy optimizer</text><text class="node-note" x="940" y="160">Edit allowed Markdown</text><text class="node-note" x="940" y="184">Training feedback only</text>
+</g>
+<g class="node" data-kind="plain"><rect x="360" y="320" width="360" height="120" rx="8" fill="#f5f5f5"/><rect x="360" y="320" width="360" height="120" rx="8" fill="#ffffff" stroke="#4f5d75"/>
+<text class="node-name" x="380" y="352" style="font-size:20px">Native subject adapter</text><text class="node-note" x="380" y="380">Daimon · Codex · Claude · Pi</text><text class="node-note" x="380" y="404">OpenClaw / future integrations</text>
+</g>
+<g class="node" data-kind="plain"><rect x="920" y="320" width="280" height="120" rx="8" fill="#f5f5f5"/><rect x="920" y="320" width="280" height="120" rx="8" fill="#ffffff" stroke="#4f5d75"/>
+<text class="node-name" x="940" y="352" style="font-size:20px">Evaluation engine</text><text class="node-note" x="940" y="380">Mechanics · logic · judges</text><text class="node-note" x="940" y="404">Embeddings / domain rules</text>
+</g>
+<g class="node" data-kind="store"><rect x="360" y="520" width="360" height="100" rx="8" fill="#f5f5f5"/><rect x="360" y="520" width="360" height="100" rx="8" fill="rgba(45,49,66,.05)" stroke="#4f5d75"/>
+<text class="node-name" x="380" y="552" style="font-size:20px">Capture + evidence ledger</text><text class="node-note" x="380" y="580">Events · artifacts · usage · coverage</text>
+</g>
+<g class="node" data-kind="plain"><rect x="920" y="520" width="280" height="100" rx="8" fill="#f5f5f5"/><rect x="920" y="520" width="280" height="100" rx="8" fill="#ffffff" stroke="#4f5d75"/>
+<text class="node-name" x="940" y="552" style="font-size:20px">Inference adapters</text><text class="node-note" x="940" y="580">Subscriptions / embeddings</text>
+</g>
+<g class="node" data-kind="store"><rect x="40" y="520" width="240" height="100" rx="8" fill="#f5f5f5"/><rect x="40" y="520" width="240" height="100" rx="8" fill="rgba(45,49,66,.05)" stroke="#4f5d75"/>
+<text class="node-name" x="60" y="552" style="font-size:20px">Local viewer</text><text class="node-note" x="60" y="580">Live view + saved replay</text>
+</g>
+<line class="legend-rule" x1="40" y1="668" x2="1240" y2="668"/><text class="legend" x="40" y="696">White: processing   ·   Shaded: inputs / stored evidence   ·   Dashed: feedback / passive read   ·   Blue: inference</text>
+</svg>
+</div></figure>
 <aside class="aside">
 <p><strong>The subject adapter runs the agent.</strong> The inference adapter supplies the optimizer and semantic judges. They are separate routes, even when they use the same subscription.</p>
 <p>Paideia supplies a task, environment and limits. The agent chooses its own actions and tools.</p>
@@ -75,38 +116,56 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <p><strong>Any native agent can be adapted.</strong> Missing observations or editable surfaces remain explicit; an adapter cannot invent evidence to make the same checks pass.</p>
 </aside>
 </div>
-<details><summary>See the complete data flow and feedback path</summary>
-<figure><figcaption>Experiment flow · only training feedback returns to DSPy</figcaption><pre class="diagram" tabindex="0">Native project + environment + datasets
-                   ↓
-        01 Resolve and isolate ←─────────┐
-                   ↓                     │
-       02 Native subject adapter         │
-                   ↓                     │
-03 Agent chooses tools / files / memory  │ DSPy: edit allowed Markdown
-                   ↓                     │
- 04 Capture real events and artifacts    │
-                   ↓                     │
- 05 Mechanical gates + quality scores ───┘
-                   ↓
-    06 Select on training data only
-                   ↓
-   07 Freeze -&gt; compare on test.yaml
-                   ↓
-08 Local report + prompt diff + viewer</pre></figure>
 <p>The viewer reads persisted events, artifacts, scores and usage. Opening it does not run an agent, judge or optimizer. Production scheduling and deployment remain outside this loop.</p>
-</details>
 </section>
 <section id="yaml">
 <p class="number">02 / What the author writes</p>
 <h2>One native project. One YAML file per dataset.</h2>
 <p>The newsroom example has a <a href="../examples/newsroom-reporting/Spawnfile">Spawnfile</a>, its Markdown environment, <a href="../examples/newsroom-reporting/train.yaml">train.yaml</a>, <a href="../examples/newsroom-reporting/test.yaml">test.yaml</a> and <a href="../examples/newsroom-reporting/README.md">one README</a>. Every record is inline. Other agents keep their own native project format.</p>
-<figure><figcaption>Visibility boundary · evaluator data never becomes subject input</figcaption><pre class="diagram" tabindex="0">One dataset YAML
-├─→ setup + record.context ─→ Trusted preparation + evaluator
-├─→ record.input
-│   ├─→ prompt -&gt; native input / authenticated message
-│   └─→ files -&gt; resource + path + SHA-256 -&gt; native mount
-├─→ stages / checks ─→ Evaluator only
-└─→ record.reference ─→ Evaluator only (never mounted for the subject)</pre></figure>
+<figure><figcaption>YAML · what reaches the agent and what stays outside</figcaption><div class="diagram-scroll" tabindex="0" aria-label="YAML · what reaches the agent and what stays outside — scroll horizontally on small screens">
+<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="paideia-yaml-title paideia-yaml-desc">
+<title id="paideia-yaml-title">YAML · what reaches the agent and what stays outside</title><desc id="paideia-yaml-desc">One inline-record dataset sends setup and typed context to trusted preparation, verified prompt and file inputs to the subject, and checks, references and context to evaluators only.</desc>
+<defs><marker id="paideia-yaml-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+<marker id="paideia-yaml-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+<marker id="paideia-yaml-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<style>.node-name{font:600 20px Geist,Arial,sans-serif;fill:#2d3142}.node-note{font:16px Geist,Arial,sans-serif;fill:#4f5d75}.tech,.edge-label,.zone-label,.legend{font:12px 'Geist Mono',monospace;fill:#4f5d75}.edge{fill:none;stroke:#4f5d75;stroke-width:1.5}.zone{fill:rgba(45,49,66,.02);stroke:#bfc0c0;stroke-dasharray:4 4}.legend-rule{stroke:#bfc0c0;stroke-width:1}</style><rect width="100%" height="100%" fill="#f5f5f5"/>
+<rect class="zone" x="880" y="224" width="360" height="208" rx="8"/><text class="zone-label" x="896" y="248">SUBJECT ACCESS</text>
+<rect class="zone" x="880" y="448" width="360" height="176" rx="8"/><text class="zone-label" x="896" y="472">EVALUATOR ACCESS ONLY</text>
+<path class="edge" d="M280 304 H312 Q320 304 320 296 V144 Q320 136 328 136 H400" marker-end="url(#paideia-yaml-arrow)"/>
+<path class="edge" d="M280 332 H400" marker-end="url(#paideia-yaml-arrow)"/>
+<path class="edge" d="M280 360 H312 Q320 360 320 368 V532 Q320 540 328 540 H400" marker-end="url(#paideia-yaml-arrow)"/>
+<path class="edge" d="M680 136 H920" marker-end="url(#paideia-yaml-arrow)"/>
+<path class="edge" d="M1040 184 V272" marker-end="url(#paideia-yaml-arrow)"/>
+<path class="edge" d="M680 328 H920" marker-end="url(#paideia-yaml-arrow)"/>
+<path class="edge" d="M680 560 H920" marker-end="url(#paideia-yaml-arrow)"/>
+<path class="edge" d="M680 160 H784 Q792 160 792 168 V320 a8 8 0 0 0 0 16 V508 Q792 516 800 516 H920" marker-end="url(#paideia-yaml-arrow)" stroke-dasharray="4 4"/>
+<rect x="1048" y="208" width="112" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="1104" y="224" text-anchor="middle">ENVIRONMENT</text>
+<rect x="824" y="296" width="88" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="868" y="312" text-anchor="middle">PATH + HASH</text>
+<rect x="800" y="416" width="88" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="844" y="432" text-anchor="middle">CONTEXT</text>
+<g class="node" data-kind="input"><rect x="40" y="276" width="240" height="112" rx="8" fill="#f5f5f5"/><rect x="40" y="276" width="240" height="112" rx="8" fill="rgba(79,93,117,.10)" stroke="#4f5d75"/>
+<text class="node-name" x="60" y="308" style="font-size:20px">One dataset YAML</text><text class="node-note" x="60" y="336">train.yaml or test.yaml</text><text class="node-note" x="60" y="360">All records inline</text>
+</g>
+<g class="node" data-kind="plain"><rect x="400" y="88" width="280" height="96" rx="8" fill="#f5f5f5"/><rect x="400" y="88" width="280" height="96" rx="8" fill="#ffffff" stroke="#4f5d75"/>
+<text class="node-name" x="420" y="120" style="font-size:20px">Setup + context</text><text class="node-note" x="420" y="148">Recipe + typed parameters</text>
+</g>
+<g class="node" data-kind="plain"><rect x="400" y="272" width="280" height="112" rx="8" fill="#f5f5f5"/><rect x="400" y="272" width="280" height="112" rx="8" fill="#ffffff" stroke="#4f5d75"/>
+<text class="node-name" x="420" y="304" style="font-size:20px">Record input</text><text class="node-note" x="420" y="332">Task prompt</text><text class="node-note" x="420" y="356">Selected evidence files</text>
+</g>
+<g class="node" data-kind="plain"><rect x="400" y="492" width="280" height="96" rx="8" fill="#f5f5f5"/><rect x="400" y="492" width="280" height="96" rx="8" fill="#ffffff" stroke="#4f5d75"/>
+<text class="node-name" x="420" y="524" style="font-size:20px">Checks + references</text><text class="node-note" x="420" y="552">Shared stages / record labels</text>
+</g>
+<g class="node" data-kind="plain"><rect x="920" y="88" width="280" height="96" rx="8" fill="#f5f5f5"/><rect x="920" y="88" width="280" height="96" rx="8" fill="#ffffff" stroke="#4f5d75"/>
+<text class="node-name" x="940" y="120" style="font-size:20px">Trusted preparation</text><text class="node-note" x="940" y="148">State · clock · native paths</text>
+</g>
+<g class="node" data-kind="focal"><rect x="920" y="272" width="280" height="112" rx="8" fill="#f5f5f5"/><rect x="920" y="272" width="280" height="112" rx="8" fill="rgba(235,108,54,.08)" stroke="#eb6c36"/>
+<text class="node-name" x="940" y="304" style="font-size:20px">Agent-visible input</text><text class="node-note" x="940" y="332">Prompt + verified files</text><text class="node-note" x="940" y="356">Preserved environment</text>
+</g>
+<g class="node" data-kind="store"><rect x="920" y="492" width="280" height="96" rx="8" fill="#f5f5f5"/><rect x="920" y="492" width="280" height="96" rx="8" fill="rgba(45,49,66,.05)" stroke="#4f5d75"/>
+<text class="node-name" x="940" y="524" style="font-size:20px">Evaluator material</text><text class="node-note" x="940" y="552">Rules + comparison evidence</text>
+</g>
+<line class="legend-rule" x1="40" y1="668" x2="1240" y2="668"/><text class="legend" x="40" y="696">Solid: selected data   ·   Dashed: typed context   ·   Shaded boundary: access scope   ·   References never reach the subject</text>
+</svg>
+</div></figure>
 <div class="table"><table>
 <thead><tr><th>YAML surface</th><th>What it means</th></tr></thead>
 <tbody>
@@ -166,24 +225,48 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <section id="trial">
 <p class="number">03 / A single concrete execution</p>
 <h2>One Kestrel assignment, one isolated Scribe.</h2>
-<div class="split">
-<figure><figcaption>Proposed native trial · the agent performs the reporting actions</figcaption><pre class="diagram" tabindex="0">          Select one record + candidate
-                        ↓
-   Verify source pins, hashes and capabilities
-                        ↓
-    Fresh container / memory / state / clock
-                        ↓
-   Prepare tools + real authorized assignment
-                        ↓
-   Chief mention -&gt; Moltnet -&gt; one native wake
-                        ↓
-Scribe reads evidence and writes article JSON
-                        ↓
- Validation -&gt; accepted filing -&gt; Reviewer handoff
-                        ↓
-   Collect native outcome + accepted artifact
-                        ↓
-       Mechanical gates -&gt; semantic judges</pre></figure>
+<div class="diagram-section">
+<figure><figcaption>One trial · Scribe reports from the Kestrel packet</figcaption><div class="diagram-scroll narrow" tabindex="0" aria-label="One trial · Scribe reports from the Kestrel packet — scroll horizontally on small screens">
+<svg viewBox="0 0 960 1080" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="paideia-trial-title paideia-trial-desc">
+<title id="paideia-trial-title">One trial · Scribe reports from the Kestrel packet</title><desc id="paideia-trial-desc">A fresh native environment receives one Moltnet wake; Scribe reports, validates, files and hands off the article, then captured acceptance evidence must pass mechanics before semantic judging.</desc>
+<defs><marker id="paideia-trial-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+<marker id="paideia-trial-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+<marker id="paideia-trial-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<style>.node-name{font:600 20px Geist,Arial,sans-serif;fill:#2d3142}.node-note{font:16px Geist,Arial,sans-serif;fill:#4f5d75}.tech,.edge-label,.zone-label,.legend{font:12px 'Geist Mono',monospace;fill:#4f5d75}.edge{fill:none;stroke:#4f5d75;stroke-width:1.5}.zone{fill:rgba(45,49,66,.02);stroke:#bfc0c0;stroke-dasharray:4 4}.legend-rule{stroke:#bfc0c0;stroke-width:1}</style><rect width="100%" height="100%" fill="#f5f5f5"/>
+<path class="edge" d="M480 160 V200" marker-end="url(#paideia-trial-arrow)"/>
+<path class="edge" d="M480 288 V328" marker-end="url(#paideia-trial-arrow)"/>
+<path class="edge" d="M480 416 V456" marker-end="url(#paideia-trial-arrow)"/>
+<path class="edge" d="M480 544 V584" marker-end="url(#paideia-trial-arrow)"/>
+<path class="edge" d="M480 672 V704" marker-end="url(#paideia-trial-arrow)"/>
+<path class="edge" d="M480 816 V880" marker-end="url(#paideia-trial-arrow)"/>
+<path class="edge" d="M592 760 H736" marker-end="url(#paideia-trial-arrow)"/>
+<rect x="488" y="832" width="40" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="508" y="848" text-anchor="middle">YES</text>
+<rect x="628" y="728" width="64" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="660" y="744" text-anchor="middle">NO</text>
+<g class="node" data-kind="input"><rect x="280" y="72" width="400" height="88" rx="8" fill="#f5f5f5"/><rect x="280" y="72" width="400" height="88" rx="8" fill="rgba(79,93,117,.10)" stroke="#4f5d75"/>
+<text class="node-name" x="300" y="100" style="font-size:20px">01 Pin record + candidate</text><text class="node-note" x="300" y="128">Source hashes · contracts · capabilities</text>
+</g>
+<g class="node" data-kind="plain"><rect x="280" y="200" width="400" height="88" rx="8" fill="#f5f5f5"/><rect x="280" y="200" width="400" height="88" rx="8" fill="#ffffff" stroke="#4f5d75"/>
+<text class="node-name" x="300" y="228" style="font-size:20px">02 Reconstruct the environment</text><text class="node-note" x="300" y="256">New state / memory / tools / Berlin clock</text>
+</g>
+<g class="node" data-kind="plain"><rect x="280" y="328" width="400" height="88" rx="8" fill="#f5f5f5"/><rect x="280" y="328" width="400" height="88" rx="8" fill="#ffffff" stroke="#4f5d75"/>
+<text class="node-name" x="300" y="356" style="font-size:20px">03 Deliver one native wake</text><text class="node-note" x="300" y="384">Chief mention → isolated Moltnet room</text>
+</g>
+<g class="node" data-kind="focal"><rect x="280" y="456" width="400" height="88" rx="8" fill="#f5f5f5"/><rect x="280" y="456" width="400" height="88" rx="8" fill="rgba(235,108,54,.08)" stroke="#eb6c36"/>
+<text class="node-name" x="300" y="484" style="font-size:20px">04 Scribe reports</text><text class="node-note" x="300" y="512">Read · write JSON · validate · file · hand off</text>
+</g>
+<g class="node" data-kind="store"><rect x="280" y="584" width="400" height="88" rx="8" fill="#f5f5f5"/><rect x="280" y="584" width="400" height="88" rx="8" fill="rgba(45,49,66,.05)" stroke="#4f5d75"/>
+<text class="node-name" x="300" y="612" style="font-size:20px">05 Collect trusted evidence</text><text class="node-note" x="300" y="640">Native calls · acceptance receipt · Git bytes</text>
+</g>
+<g class="node" data-kind="focal"><polygon points="480,704 592,760 480,816 368,760" fill="#f4eae6" stroke="#eb6c36"/><text class="node-name" x="480" y="756" text-anchor="middle" style="font-size:16px">06 Mechanics</text><text class="node-note" x="480" y="780" text-anchor="middle">pass?</text></g>
+<g class="node" data-kind="plain"><rect x="280" y="880" width="400" height="88" rx="8" fill="#f5f5f5"/><rect x="280" y="880" width="400" height="88" rx="8" fill="#ffffff" stroke="#4f5d75"/>
+<text class="node-name" x="300" y="908" style="font-size:20px">07 Judge grounding and prose</text><text class="node-note" x="300" y="936">Fixed rubrics · individual gates · weighted score</text>
+</g>
+<g class="node" data-kind="store"><rect x="736" y="712" width="184" height="96" rx="8" fill="#f5f5f5"/><rect x="736" y="712" width="184" height="96" rx="8" fill="rgba(45,49,66,.05)" stroke="#4f5d75"/>
+<text class="node-name" x="756" y="744" style="font-size:16px">Stop + record</text><text class="node-note" x="756" y="772">Fail / unknown</text>
+</g>
+<line class="legend-rule" x1="40" y1="1028" x2="920" y2="1028"/><text class="legend" x="40" y="1056">Rectangle: action / evidence   ·   Diamond: required gate   ·   Missing evidence never passes</text>
+</svg>
+</div></figure>
 <aside class="aside">
 <p><strong>Subject:</strong> real Scribe prompts, Daimon with its Codex engine, real validator and filing tools, native source paths and memory interface.</p>
 <p><strong>Reconstruction:</strong> fresh assignment/state, empty memory and a clock starting on 12 September at 13:30 Berlin. This is not a historical replay.</p>
@@ -208,21 +291,48 @@ Scribe reads evidence and writes article JSON
 <section id="training">
 <p class="number">04 / How prompts change</p>
 <h2>Train on feedback; test after freezing.</h2>
-<figure><figcaption>Optimization loop · sealed test feedback has no return edge</figcaption><pre class="diagram" tabindex="0">             Baseline + train.yaml
-                       ↓
-         Evaluate fresh native trials
-                       ↓
-     DSPy proposes allowed Markdown edits ←──────┐
-                       ↓                         │
-   Compile / map all candidate destinations      │ bounded feedback
-                       ↓                         │
- Rerun training; select within training groups ──┘
-                       ↓
-   Freeze candidate + criteria + environment
-                       ↓
-  Baseline and candidate -&gt; sealed test.yaml
-                       ↓
-Report quality / coverage / usage / prompt diff</pre></figure>
+<figure><figcaption>Training · compile candidates, then test after freezing</figcaption><div class="diagram-scroll" tabindex="0" aria-label="Training · compile candidates, then test after freezing — scroll horizontally on small screens">
+<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="paideia-training-title paideia-training-desc">
+<title id="paideia-training-title">Training · compile candidates, then test after freezing</title><desc id="paideia-training-desc">Native training trials supply feedback to DSPy and training-only selection; a frozen candidate is compared with baseline on sealed test data and exported with a local evidence report.</desc>
+<defs><marker id="paideia-training-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+<marker id="paideia-training-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+<marker id="paideia-training-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<style>.node-name{font:600 20px Geist,Arial,sans-serif;fill:#2d3142}.node-note{font:16px Geist,Arial,sans-serif;fill:#4f5d75}.tech,.edge-label,.zone-label,.legend{font:12px 'Geist Mono',monospace;fill:#4f5d75}.edge{fill:none;stroke:#4f5d75;stroke-width:1.5}.zone{fill:rgba(45,49,66,.02);stroke:#bfc0c0;stroke-dasharray:4 4}.legend-rule{stroke:#bfc0c0;stroke-width:1}</style><rect width="100%" height="100%" fill="#f5f5f5"/>
+<rect class="zone" x="360" y="56" width="880" height="392" rx="8"/><text class="zone-label" x="376" y="80">TRAINING / BOUNDED FEEDBACK</text>
+<rect class="zone" x="360" y="472" width="880" height="180" rx="8"/><text class="zone-label" x="376" y="496">SEALED TEST</text>
+<path class="edge" d="M280 160 H400" marker-end="url(#paideia-training-arrow)"/>
+<path class="edge" d="M720 144 H920" marker-end="url(#paideia-training-arrow)"/>
+<path class="edge" d="M1080 200 V312" marker-end="url(#paideia-training-arrow)"/>
+<path class="edge" d="M920 376 H792 Q784 376 784 368 a8 8 0 0 1 0 -16 V192 Q784 184 776 184 H720" marker-end="url(#paideia-training-arrow)" stroke-dasharray="4 4"/>
+<path class="edge" d="M920 184 H840 Q832 184 832 192 V352 Q832 360 824 360 H720" marker-end="url(#paideia-training-arrow)"/>
+<path class="edge" d="M560 416 V520" marker-end="url(#paideia-training-arrow)"/>
+<path class="edge" d="M720 576 H920" marker-end="url(#paideia-training-arrow)"/>
+<rect x="1088" y="244" width="104" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="1140" y="260" text-anchor="middle">FEEDBACK</text>
+<rect x="568" y="444" width="88" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="612" y="460" text-anchor="middle">FREEZE</text>
+<g class="node" data-kind="input"><rect x="40" y="100" width="240" height="100" rx="8" fill="#f5f5f5"/><rect x="40" y="100" width="240" height="100" rx="8" fill="rgba(79,93,117,.10)" stroke="#4f5d75"/>
+<text class="node-name" x="60" y="132" style="font-size:20px">Baseline + train</text><text class="node-note" x="60" y="160">Native project / train.yaml</text>
+</g>
+<g class="node" data-kind="plain"><rect x="400" y="100" width="320" height="100" rx="8" fill="#f5f5f5"/><rect x="400" y="100" width="320" height="100" rx="8" fill="#ffffff" stroke="#4f5d75"/>
+<text class="node-name" x="420" y="132" style="font-size:20px">Native preparation + trials</text><text class="node-note" x="420" y="160">Fresh state; effective prompt verified</text>
+</g>
+<g class="node" data-kind="plain"><rect x="920" y="100" width="280" height="100" rx="8" fill="#f5f5f5"/><rect x="920" y="100" width="280" height="100" rx="8" fill="#ffffff" stroke="#4f5d75"/>
+<text class="node-name" x="940" y="132" style="font-size:20px">Training evaluation</text><text class="node-note" x="940" y="160">Gates · quality · feedback</text>
+</g>
+<g class="node" data-kind="focal"><rect x="920" y="312" width="280" height="104" rx="8" fill="#f5f5f5"/><rect x="920" y="312" width="280" height="104" rx="8" fill="rgba(235,108,54,.08)" stroke="#eb6c36"/>
+<text class="node-name" x="940" y="344" style="font-size:20px">DSPy Markdown edits</text><text class="node-note" x="940" y="372">Allowlisted files / sections</text><text class="node-note" x="940" y="396">Subscription reflection</text>
+</g>
+<g class="node" data-kind="focal"><rect x="400" y="312" width="320" height="104" rx="8" fill="#f5f5f5"/><rect x="400" y="312" width="320" height="104" rx="8" fill="rgba(235,108,54,.08)" stroke="#eb6c36"/>
+<text class="node-name" x="420" y="344" style="font-size:20px">Select and freeze</text><text class="node-note" x="420" y="372">Training-only groups</text><text class="node-note" x="420" y="396">Candidate + criteria + environment</text>
+</g>
+<g class="node" data-kind="plain"><rect x="400" y="520" width="320" height="112" rx="8" fill="#f5f5f5"/><rect x="400" y="520" width="320" height="112" rx="8" fill="#ffffff" stroke="#4f5d75"/>
+<text class="node-name" x="420" y="552" style="font-size:20px">Sealed test comparison</text><text class="node-note" x="420" y="580">Frozen candidate vs baseline</text><text class="node-note" x="420" y="604">Same test.yaml and evaluation plan</text>
+</g>
+<g class="node" data-kind="store"><rect x="920" y="520" width="280" height="112" rx="8" fill="#f5f5f5"/><rect x="920" y="520" width="280" height="112" rx="8" fill="rgba(45,49,66,.05)" stroke="#4f5d75"/>
+<text class="node-name" x="940" y="552" style="font-size:20px">Local evidence report</text><text class="node-note" x="940" y="580">Quality · coverage · usage</text><text class="node-note" x="940" y="604">Prompt diff + replay</text>
+</g>
+<line class="legend-rule" x1="40" y1="668" x2="1240" y2="668"/><text class="legend" x="40" y="696">Dashed: candidate feedback   ·   Shaded: stored inputs / results   ·   No test-feedback return path</text>
+</svg>
+</div></figure>
 <div class="table"><table>
 <thead><tr><th>Candidate source</th><th>Editable area</th><th>How the agent receives it</th></tr></thead>
 <tbody>
@@ -253,7 +363,7 @@ Report quality / coverage / usage / prompt diff</pre></figure>
 <p><strong>No product runtime or website has been implemented or deployed.</strong> Full native compilation currently stops at a runtime-contract attestation mismatch. This view explains the proposed executable contract, not a successful run.</p>
 </section>
 <footer>
-<p>Local authoring artifact · diagrams generated with the global arrow-diagram skill · <a href="architecture.md">module ownership</a> · <a href="authoring.md">YAML semantics</a> · <a href="../examples/newsroom-reporting/README.md">complete example</a></p>
+<p>Local authoring artifact · HTML/SVG diagrams made with the diagram-design skill · <a href="architecture.md">module ownership</a> · <a href="authoring.md">YAML semantics</a> · <a href="../examples/newsroom-reporting/README.md">complete example</a></p>
 </footer>
 </main>
 </body>
