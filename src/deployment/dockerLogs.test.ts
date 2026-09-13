@@ -157,6 +157,13 @@ describe("redactDockerLogText", () => {
       .toBe("Error: [REDACTED] value\n[REDACTED]");
   });
 
+  it("normalizes secret values identically and ignores values that normalize to empty", () => {
+    expect(redactDockerLogText("value token-abc\r\n", ["token-abc\r", "\u001b[0m"]))
+      .toBe("value [REDACTED]\n");
+    expect(redactDockerLogText("value abc\u001b[0mdef", ["abc", "abc\u001b[0mdef"]))
+      .toBe("value [REDACTED]");
+  });
+
   it("redacts direct secret values without touching unrelated text", () => {
     expect(redactDockerLogText("before token-value after", ["token-value"])).toBe(
       "before [REDACTED] after"
