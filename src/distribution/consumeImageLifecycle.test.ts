@@ -87,6 +87,45 @@ describe("image deployment lifecycle", () => {
     await expect(readiness).resolves.toBeUndefined();
   });
 
+  it("allows unhealthy startup at 65 seconds to recover inside the existing 120 second budget", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    let settled = false;
+    const readiness = assertCandidateContainerReady(async () => ready(candidateId, "candidate", {
+      Running: true, Status: "running",
+      Health: { Status: Date.now() < 65_000 ? "starting" : Date.now() < 80_000 ? "unhealthy" : "healthy" }
+    }), candidateId, "candidate");
+    const outcome = readiness.then(() => { settled = true; return "ready"; }, () => { settled = true; return "failed"; });
+    await vi.advanceTimersByTimeAsync(79_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(outcome).resolves.toBe("ready");
+  });
+
+  it("never accepts an unhealthy candidate and fails at the existing deadline", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    let settled = false;
+    const readiness = assertCandidateContainerReady(async () => ready(candidateId, "candidate", {
+      Running: true, Status: "running", Health: { Status: "unhealthy" }
+    }), candidateId, "candidate");
+    const rejected = expect(readiness.finally(() => { settled = true; })).rejects.toThrow(/did not become ready/u);
+    await vi.advanceTimersByTimeAsync(119_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await rejected;
+    expect(Date.now()).toBe(120_000);
+  });
+
+  it.each([
+    { Running: false, Status: "exited", Health: { Status: "unhealthy" } },
+    { Running: true, Status: "running", Health: { Status: "unknown" } }
+  ])("rejects terminal or unrecognized state without polling: %j", async (state) => {
+    const runDocker = vi.fn(async () => ready(candidateId, "candidate", state));
+    await expect(assertCandidateContainerReady(runDocker, candidateId, "candidate")).rejects.toThrow(/did not become ready/u);
+    expect(runDocker).toHaveBeenCalledTimes(1);
+  });
+
   it("fails a candidate that remains starting through the bounded readiness deadline", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
