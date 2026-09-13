@@ -23,7 +23,8 @@ describe("spawnfile train", () => {
     const forbidden = vi.fn(async () => { throw new Error("must not compile, build or authenticate"); });
     const code = await runCli(["train", root, ...base, "--agent", "agent:author", "--dry-run",
       "--paideia-command", "/opt/paideia with space", "--editable", "a.md", "--editable", "b.md", "--resource", "archive=/private/source",
-      "--judge", "editor=fable", "--validation-group", "previous", "--cost-config", "prices.yaml", "--max-trials", "3", "--timeout-ms", "5000"], {
+      "--judge", "editor=fable", "--judge", "grounding=other-model", "--judge-citation-repairs", "editor=1",
+      "--judge-citation-repairs", "grounding=0", "--validation-group", "previous", "--cost-config", "prices.yaml", "--max-trials", "3", "--timeout-ms", "5000"], {
       streams: { stdout: (value) => stdout.push(value), stderr: (value) => stderr.push(value) },
       handlers: { delegatePaideiaTraining: delegate, compileProject: forbidden, buildProject: forbidden, importCodexAuth: forbidden }
     });
@@ -34,7 +35,9 @@ describe("spawnfile train", () => {
     expect(options.command).toBe("/opt/paideia with space");
     expect(options.dryRun).toBe(true); expect(options.timeoutMs).toBe(10_000);
     expect(options.args).toEqual(["--train", "train.paideia.yaml", "--test", "test.paideia.yaml", "--editable", "a.md", "--editable", "b.md",
-      "--resource", "archive=/private/source", "--judge", "editor=fable", "--validation-group", "previous", "--out", "local output", "--max-trials", "3", "--timeout-ms", "5000", "--cost-config", "prices.yaml", "--dry-run"]);
+      "--resource", "archive=/private/source", "--judge", "editor=fable", "--judge", "grounding=other-model",
+      "--judge-citation-repairs", "editor=1", "--judge-citation-repairs", "grounding=0", "--validation-group", "previous",
+      "--out", "local output", "--max-trials", "3", "--timeout-ms", "5000", "--cost-config", "prices.yaml", "--dry-run"]);
     expect(stderr).toEqual([]);
   });
 
@@ -80,5 +83,16 @@ describe("spawnfile train", () => {
       expect(await runCli(args, { handlers: { delegatePaideiaTraining: forbidden }, streams: { stdout: () => undefined, stderr: () => undefined } })).toBe(2);
     }
     expect(forbidden).not.toHaveBeenCalled();
+  });
+  it("forwards literal invalid repair selections for Paideia to validate and preserves receiver failure", async () => {
+    const root = await project();
+    const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 2);
+    const literal = "unknown=$(false) with spaces";
+    expect(await runCli(["train", root, ...base, "--judge-citation-repairs", literal,
+      "--judge-citation-repairs", literal, "--dry-run"], {
+      handlers: { delegatePaideiaTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
+    })).toBe(2);
+    expect(delegate.mock.calls[0]![0].args).toEqual(["--train", "train.paideia.yaml", "--test", "test.paideia.yaml",
+      "--judge-citation-repairs", literal, "--judge-citation-repairs", literal, "--out", "local output", "--dry-run"]);
   });
 });

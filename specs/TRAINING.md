@@ -58,10 +58,17 @@ reach native files through Spawnfile compilation; no generic Pi fallback, second
 declaration or replacement flattened prompt is authorized by this entrypoint. Packaging
 exclusion, state isolation and single-agent preparation are not supplied by this handoff.
 
-Repeated options: `--editable`, `--resource`, `--judge`, `--validation-group`. Other
+Repeated options: `--editable`, `--resource`, `--judge`, `--judge-citation-repairs`, `--validation-group`. Other
 forwarded options: `--train`, `--test`, `--optimizer-model`, `--bridge-command`, `--out`,
 `--max-trials`, `--max-proposals`, `--seed`, `--timeout-ms`, `--view`, `--cost-config`.
 The canonical runtime/model/instruction selection cannot be replaced by generic CLI flags.
+
+`--judge-citation-repairs NAME=0|1` is forwarded literally to Paideia. The receiver
+requires a matching named judge, unique selections and an exact `0` or `1` before
+starting models. Default `0` preserves one judge call per check; `1` reserves one
+additional bounded citation repair. It never retries valid quality failures,
+authentication/quota failures or malformed JSON. Dry-run records the route policy
+and reserves both judge attempts without adding subject trials or optimizer proposals.
 
 Exit 0 requires the mode's final receipt. Completed actual runs also require
 `status: completed` and a nonempty `index` path; exit 1 preserves completed failed checks.
