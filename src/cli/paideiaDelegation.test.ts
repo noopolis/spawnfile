@@ -44,11 +44,13 @@ const fs = require("node:fs");
 const args = process.argv.slice(2), file = args[2];
 console.log(JSON.stringify({args,context:JSON.parse(fs.readFileSync(file,"utf8")),mode:fs.statSync(file).mode & 511,file}));
 process.stderr.write("diagnostic without newline");
-${dryReceipt}`, { args: ["--train", injected, "--editable", "a.md", "--editable", "b.md", "--dry-run"] });
+${dryReceipt}`, { args: ["--train", injected, "--editable", "a.md", "--editable", "b.md",
+      "--judge-citation-repairs", "editor=1", "--judge-citation-repairs", injected, "--dry-run"] });
     expect(await result).toBe(0);
     const observed = JSON.parse(stdout[0]!);
     expect(observed.args.slice(0, 2)).toEqual(["train", "--spawnfile-context"]);
-    expect(observed.args.slice(3)).toEqual(["--train", injected, "--editable", "a.md", "--editable", "b.md", "--dry-run"]);
+    expect(observed.args.slice(3)).toEqual(["--train", injected, "--editable", "a.md", "--editable", "b.md",
+      "--judge-citation-repairs", "editor=1", "--judge-citation-repairs", injected, "--dry-run"]);
     expect(observed.context).toEqual(context);
     expect(observed.mode).toBe(0o600);
     expect(stderr).toEqual(["diagnostic without newline"]);
