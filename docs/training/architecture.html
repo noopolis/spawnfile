@@ -121,7 +121,8 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <section id="yaml">
 <p class="number">02 / What the author writes</p>
 <h2>One native project. One YAML file per dataset.</h2>
-<p>The newsroom example has a <a href="../examples/newsroom-reporting/Spawnfile">Spawnfile</a>, its Markdown environment, <a href="../examples/newsroom-reporting/train.yaml">train.yaml</a>, <a href="../examples/newsroom-reporting/test.yaml">test.yaml</a> and <a href="../examples/newsroom-reporting/README.md">one README</a>. Every record is inline. Other agents keep their own native project format.</p>
+<p>The newsroom example has a <a href="../examples/newsroom-reporting/Spawnfile">Spawnfile</a>, its Markdown environment, <a href="../examples/newsroom-reporting/evals/train.yaml">evals/train.yaml</a>, <a href="../examples/newsroom-reporting/evals/test.yaml">evals/test.yaml</a> and <a href="../examples/newsroom-reporting/README.md">one README</a>. Every record is inline. Other agents keep their own native project format.</p>
+<p>The agreed <a href="../examples/newsroom-reporting/.spawnignore">.spawnignore</a> policy declares planned exclusions for evaluation definitions and generated training artifacts. Enforcement is not implemented; see the <a href="harnessing.md#colocated-evaluation-and-packaging">native packaging contract</a>. The standalone example stays in Paideia; real projects will train their canonical native definition with explicit trial overrides.</p>
 <figure><figcaption>YAML · what reaches the agent and what stays outside</figcaption><div class="diagram-scroll" tabindex="0" aria-label="YAML · what reaches the agent and what stays outside — scroll horizontally on small screens">
 <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="paideia-yaml-title paideia-yaml-desc">
 <title id="paideia-yaml-title">YAML · what reaches the agent and what stays outside</title><desc id="paideia-yaml-desc">One inline-record dataset sends setup and typed context to trusted preparation, verified prompt and file inputs to the subject, and checks, references and context to evaluators only.</desc>
@@ -180,7 +181,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 </tbody></table></div>
 <p>The invocation selects project, subject, dataset roles, editable prompt sections, inference routes and budgets. Resolution creates a locked run manifest. There is no mandatory extra experiment YAML; invocation syntax is still to design.</p>
 <details><summary>Read one actual training record</summary>
-<p>From <a href="../examples/newsroom-reporting/train.yaml"><code>train.yaml</code></a>. <code>afternoon-assignment</code> supplies clock/delivery; <code>kestrel-evidence</code> supplies context and the four pinned file selectors, including the evaluator-only reference. The private archive stays external. Shared setup and stages remain in the same YAML.</p>
+<p>From <a href="../examples/newsroom-reporting/evals/train.yaml"><code>train.yaml</code></a>. <code>afternoon-assignment</code> supplies clock/delivery; <code>kestrel-evidence</code> supplies context and the four pinned file selectors, including the evaluator-only reference. The private archive stays external. Shared setup and stages remain in the same YAML.</p>
 <pre><code>  - id: kestrel-reporting
     group: kestrel-2026-09-12
     use: [afternoon-assignment, kestrel-evidence]
@@ -339,7 +340,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <div class="table"><table>
 <thead><tr><th>Checked in this seed</th><th>Still to build and demonstrate</th></tr></thead>
 <tbody>
-<tr><td>One native Spawnfile, two dataset YAMLs, three real records and twelve pinned source-file hashes.</td><td>Dataset resolver and schema, typed recipe registry, filtered views and concrete run invocation.</td></tr>
+<tr><td>One native Spawnfile, evals/ with two dataset YAMLs, three real records, twelve pinned source-file hashes and a proposed .spawnignore file.</td><td>Dataset resolver and schema, typed recipe registry, filtered views, Spawnfile packaging exclusions and concrete run invocation.</td></tr>
 <tr><td>Production prompt seeds and model/MCP/memory declaration parity; native Spawnfile validation.</td><td>Matching runtime attestation, original tool closures, isolation, emulated clock and truthful native capture. The inspected Daimon/Codex CLI surface omits the internal tool chain: a trusted MCP journal or native event export joined to actual wake/acceptance IDs is required.</td></tr>
 <tr><td>Explicit artifact, delivery and candidate destination bindings; shared-plan equality and mutation checks.</td><td>Mechanical/semantic evaluators, subscription DSPy bridge, candidate propagation and generalization experiment.</td></tr>
 </tbody></table></div>

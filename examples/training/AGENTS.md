@@ -5,7 +5,8 @@ These are draft YAML/native declarations with Markdown explanations, separate fr
 implemented task corpora in evals/.
 
 - Group examples by project or coherent scenario family, with one overview README.
-- Keep one README with native source/environment files and inline-record datasets.
+- Keep one README with native source/environment files and inline-record datasets
+  in adjacent evals/. Spawnfile examples include the proposed .spawnignore policy.
   Do not require agent/runtime/experiment YAML or case-per-file layouts. Reference
   external project inputs; do not copy private corpora, credentials or runtime state.
 - Mark proposed fields and missing fixtures explicitly. YAML syntax acceptance is
