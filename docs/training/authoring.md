@@ -60,6 +60,7 @@ starts with fresh state. No implicit trimming, case folding or normalizing occur
 | `subject` | Optional native subject identity; must match the selected native project |
 | `setup` | Optional typed environment recipe and declared emulation parameters |
 | `fixtures` | Optional mapping of same-file names to partial record declarations; see [fixtures](fixtures.md) |
+| `live` | Optional shared incremental checks and stop policy; see [live evaluation](live-evaluation.md) |
 | `checks` or `stages` | Optional shared checks applied to every record; mutually exclusive |
 | `records` | Required nonempty sequence of inline task records |
 
@@ -224,6 +225,9 @@ Use `turns` only when a task needs successive external inputs. Each turn has a u
 `after: {turn: request, outcome: completed}` requires actual predecessor completion
 and its gates. Record state persists between these turns; different records reset it.
 
+Under the [initial live policy](live-evaluation.md), turn gates must be mechanical;
+semantic/embedding results may gate final record quality only, not continued work.
+
 A `bind` names a trusted observation selector, matching predicate, distinct identity
 and cardinality. `{binding: request.message.json.request_id}` references its typed value.
 Missing or ambiguous required bindings stop dependent work. Ordinary strings are not
@@ -311,8 +315,8 @@ all undesirable prose. JSON syntax/shape cannot establish source truth or writin
 
 `checks` is shorthand for one all-required stage. `stages` is an ordered sequence with
 explicit gates. `when` controls evaluator eligibility; observed event order is a
-separate assertion. IDs have deterministic scope: dataset shared plan per record,
-record additions, then individual turn checks. No implicit cross-record dependencies.
+separate assertion. IDs are scoped to the shared plan, record additions or turn checks.
+Live checks have their own namespace. No implicit cross-record dependencies.
 
 ```yaml
 id: writing
@@ -349,11 +353,14 @@ renormalizing surviving scores. Fixed weights must be nonnegative and sum to one
 - `fail`: observed evidence violates the criterion.
 - `unknown`: observation is insufficient; never satisfies a required check.
 - `error`: infrastructure, evaluator, input or budget failure.
-- `skipped`: an explicit dependency prevented evaluation; never success.
+- `skipped`: an explicit dependency or recorded trial termination prevented evaluation; never success.
 
 `not` reverses pass/fail only. `all` needs every operand to pass; `any` needs a passing
 operand, retaining other diagnostics. No absence claim passes over incomplete capture.
 Checks and scoring always retain evidence and failure reasons.
+
+The [approved initial live policy](live-evaluation.md) permits decisive mechanical
+hard stops only. Semantic checkpoints stay advisory; terminal quality gates remain.
 
 ## Training, testing and prompt resources
 
@@ -375,7 +382,7 @@ and evidence families shared between those roles. Dataset membership is explicit
 immutable for the run. One case per role illustrates syntax, not statistical evidence.
 
 For a train/test comparison, the normalized shared evaluation plan must have the same
-digest: evaluator/judge versions, rubrics, gates, thresholds and weights. Resolve both
+digest: evaluator/judge versions, rubrics, gates, thresholds, weights and live policy. Resolve both
 dataset declarations before work; fail on drift instead of comparing different criteria.
 Keeping both plans inline avoids a mandatory third rules file. The digest gate is a
 proposed resolver requirement, not an implemented check in this seed.

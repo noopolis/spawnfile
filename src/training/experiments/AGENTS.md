@@ -11,5 +11,9 @@ Owns isolated trial lifecycle, budgets, cancellation and phase access.
   usage cannot be advertised as an exact live spending ceiling.
 - A launched process or exit zero is insufficient: require observable completion
   and artifacts. Cancellation must reach owned work and report incomplete evidence.
+- Follow the [initial live policy](../../docs/live-evaluation.md): consume persisted
+  observations, stop only on selected final mechanical failures, and distinguish
+  cancel request, acknowledgement and quiescence. Semantic checkpoints cannot gate
+  continued work. Preserve late effects/usage and separate infrastructure outcomes.
 - Test failed preparation, partial capture, timeout, cancellation and cleanup as
   well as successful isolated trials. Never use mutable production fixtures.

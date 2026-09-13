@@ -78,6 +78,11 @@ YAML combines reusable predicates and evaluators without executable code. Event
 ordering describes what the subject did; evaluation scheduling describes when
 checks run. Preserve this distinction in the UI and ledger.
 
+Under the [initial live policy](live-evaluation.md), experiments schedules evaluation of
+trusted observations while the subject works. Decisive mechanical failures can request
+acknowledged stopping; repairable failures and semantic checkpoints cannot. Immutable
+checkpoints and incomplete-stop reporting are required. This remains design only.
+
 Results include pass, fail, unknown, error and skipped. Missing evidence cannot
 pass a mandatory gate; absence requires a complete declared observation scope.
 Weighted scores retain their denominator and disclose missing coverage. Gates

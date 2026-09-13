@@ -8,6 +8,10 @@ Owns evaluator registration, execution and the shared result contract.
   cannot embed executable code. Untrusted plugins need an explicit boundary.
 - Keep immutable evidence, cancellation and budgets available to evaluators.
 - Separate subject event relationships from evaluator execution dependencies.
+- Apply the [initial live policy](../../docs/live-evaluation.md). Verdict and temporal
+  finality are distinct. Only explicitly selected decisive mechanical failures may
+  stop work; validate eligibility across nested rules and evaluator dependencies.
+  Semantic/embedding observations stay advisory while terminal quality gates remain.
 - Pass, fail, unknown, error and skipped remain distinguishable with evidence.
   Never hide incomplete coverage or let scores compensate mandatory gates.
 - Test malformed evaluator output, unknown registrations, cancellation and versioned
