@@ -63,12 +63,15 @@ const normalizeTail = (tail: number | undefined): number =>
 const redactKnownSecrets = (text: string, secretValues: string[]): string =>
   secretValues
     .filter((secret) => secret.length > 0)
+    .sort((left, right) => right.length - left.length)
     .reduce((redacted, secret) => redacted.replaceAll(secret, "[REDACTED]"), text);
 
 export const redactDockerLogText = (
   text: string,
   secretValues: string[] = []
-): string => redactSensitiveText(redactKnownSecrets(text, secretValues));
+): string => redactSensitiveText(redactKnownSecrets(
+  text.replace(/\x1b\[[0-?]*[ -/]*[@-~]|[\x00-\x08\x0b-\x1f\x7f]/gu, ""), secretValues
+));
 
 const combineLogStreams = (stdout: string, stderr: string): string => {
   if (!stdout) {

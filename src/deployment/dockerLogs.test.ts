@@ -146,6 +146,17 @@ describe("docker deployment logs", () => {
 });
 
 describe("redactDockerLogText", () => {
+  it("masks longer overlapping secrets before their prefixes without mutating the supplied values", () => {
+    const secrets = ["abc", "abcdef1"];
+    expect(redactDockerLogText("before abcdef1 after abc", secrets)).toBe("before [REDACTED] after [REDACTED]");
+    expect(secrets).toEqual(["abc", "abcdef1"]);
+  });
+
+  it("strips terminal controls before matching known secrets", () => {
+    expect(redactDockerLogText("Error: sec\u001b[0mret value\nsec\rret", ["secret"]))
+      .toBe("Error: [REDACTED] value\n[REDACTED]");
+  });
+
   it("redacts direct secret values without touching unrelated text", () => {
     expect(redactDockerLogText("before token-value after", ["token-value"])).toBe(
       "before [REDACTED] after"
