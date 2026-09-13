@@ -19,3 +19,4 @@ export * from "./updateProjectSurfaces.js";
 export * from "./upReceipt.js";
 export * from "./worldBindings.js";
 export * from "./view/index.js";
+export * from "./training/index.js";

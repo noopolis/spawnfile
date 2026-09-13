@@ -22,6 +22,7 @@ import {
   buildUpReceipt,
   clearProjectModelFallbacks,
   compileProject,
+  createTrainingContext,
   initProject,
   listInitTemplates,
   publishProject,
@@ -65,6 +66,8 @@ import { registerStatusCommand } from "./statusCommand.js";
 import { registerUsageCommand } from "./usageCommand.js";
 import { registerProductionTargetCommands } from "./targetProductionCommands.js";
 import { registerViewCommand } from "./viewCommand.js";
+import { registerTrainCommand } from "./trainCommand.js";
+import { delegatePaideiaTraining } from "./paideiaDelegation.js";
 
 const packageJsonPath = new URL("../../package.json", import.meta.url);
 
@@ -95,6 +98,8 @@ const createDefaultRenderEnvironment = (): CliRenderEnvironment => ({
 });
 
 export interface CliHandlers {
+  createTrainingContext: typeof createTrainingContext;
+  delegatePaideiaTraining: typeof delegatePaideiaTraining;
   buildCompilePlan: typeof buildCompilePlan; buildOrganizationView: typeof buildOrganizationView;
   buildProject: typeof buildProject; compileProject: typeof compileProject;
   publishProject: typeof publishProject;
@@ -127,6 +132,7 @@ export interface CliHandlers {
 }
 
 const createDefaultHandlers = (): CliHandlers => ({
+  createTrainingContext, delegatePaideiaTraining,
   buildCompilePlan, buildOrganizationView, buildProject, compileProject, publishProject,
   addAgentProject, addProjectModelFallback, addProjectSurface,
   addSubagentProject, addTeamProject, clearProjectModelFallbacks,
@@ -141,7 +147,7 @@ const createDefaultHandlers = (): CliHandlers => ({
 });
 
 export interface RunCliOptions {
-  handlers?: Partial<CliHandlers>; renderEnvironment?: CliRenderEnvironment; stdin?: AsyncIterable<unknown>; streams?: CliStreams;
+  handlers?: Partial<CliHandlers>; renderEnvironment?: CliRenderEnvironment; stdin?: AsyncIterable<unknown>; streams?: CliStreams; signal?: AbortSignal;
 }
 
 const isCliStreams = (value: CliStreams | RunCliOptions | undefined): value is CliStreams => {
@@ -152,7 +158,7 @@ const isCliStreams = (value: CliStreams | RunCliOptions | undefined): value is C
 const normalizeRunCliOptions = (
   optionsOrStreams?: CliStreams | RunCliOptions,
   handlerOverrides: Partial<CliHandlers> = {}
-): Required<RunCliOptions> => isCliStreams(optionsOrStreams)
+): Required<Omit<RunCliOptions, "signal">> & Pick<RunCliOptions, "signal"> => isCliStreams(optionsOrStreams)
   ? {
       handlers: handlerOverrides,
       renderEnvironment: createDefaultRenderEnvironment(),
@@ -163,7 +169,8 @@ const normalizeRunCliOptions = (
       handlers: optionsOrStreams?.handlers ?? handlerOverrides,
       renderEnvironment: optionsOrStreams?.renderEnvironment ?? createDefaultRenderEnvironment(),
       stdin: optionsOrStreams?.stdin ?? process.stdin,
-      streams: optionsOrStreams?.streams ?? createDefaultStreams()
+      streams: optionsOrStreams?.streams ?? createDefaultStreams(),
+      signal: optionsOrStreams?.signal
     };
 
 const writeCommanderOutput = (
@@ -229,7 +236,7 @@ export const runCli: RunCli = async (
   const streams = cliOptions.streams;
   const handlers = { ...createDefaultHandlers(), ...cliOptions.handlers };
   const isTargetInvocation = argv[0] === "target";
-  let commandExitCode: 0 | 1 | 2 = 0;
+  let commandExitCode = 0;
   const program = new Command();
   program.name("spawnfile").description("Spawnfile v0.1 compiler").version(readPackageVersion());
   program.exitOverride();
@@ -334,6 +341,9 @@ export const runCli: RunCli = async (
     commandExitCode = exitCode;
   }, handlers);
   registerViewCommand(program, handlers, streams, cliOptions.renderEnvironment);
+  registerTrainCommand(program, handlers, streams, readPackageVersion(), (code) => {
+    commandExitCode = code;
+  }, cliOptions.signal);
   registerProductionTargetCommands(program, streams, cliOptions.stdin, (exitCode) => {
     commandExitCode = exitCode;
   });
