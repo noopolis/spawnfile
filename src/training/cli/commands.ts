@@ -41,7 +41,8 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   const costConfig = readCostConfig(args, io);
   const costPlan = test === undefined ? undefined : planTrainingCost({ train: dataset, test,
     subjectModel: inputs.model, optimizerModel: optimizerModel!, validationGroups: args.flags['validation-group'],
-    judges: Object.fromEntries(Object.entries(inputs.judges).map(([name, model]) => [name, { model, provider: 'claude-subscription' }])),
+    judges: Object.fromEntries(Object.entries(inputs.judges).map(([name, model]) => [name,
+      { model, provider: 'claude-subscription', citationRepairs: inputs.citationRepairs[name]! }])),
     maxTrials: inputs.maxTrials, maxProposals, ...costConfig });
   const native = await prepareNative(args, io, dependencies, timeoutMs, inputs);
   signal.throwIfAborted();

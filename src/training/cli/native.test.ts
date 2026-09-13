@@ -27,11 +27,12 @@ describe('explicit native resource and inference selection', () => {
     const fixture = await cliFixture(); roots.push(fixture.root);
     for (const runtime of ['codex', 'daimon']) {
       const args = parseArguments(['evaluate', 'data.yaml', '--runtime', runtime, '--model', 'explicit', '--instructions', 'AGENTS.md',
-        '--out', 'out', '--judge', 'quality=explicit-judge', '--resource', 'archive=archive']);
+        '--out', 'out', '--judge', 'quality=explicit-judge', '--judge-citation-repairs', 'quality=1', '--resource', 'archive=archive']);
       const prepared = await prepareNative(args, fixture.io, {}, 1000);
       expect(prepared.adapter.id).toBe(runtime);
       expect(prepared.inference.capabilities.billing).toBe('subscription');
       expect(prepared.evaluation.judges.quality!.model).toBe('explicit-judge');
+      expect(prepared.evaluation.judges.quality!.citationRepairs).toBe(1);
       expect(prepared.resources.archive).toBe(`${fixture.root}/archive`);
       await expect(prepared.evaluation.readText('unknown')).rejects.toThrow('not frozen');
     }

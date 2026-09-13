@@ -18,3 +18,10 @@ Owns fixed rubric prompts, typed judgments, evidence and judge calibration.
   measured usage without promoting a requested alias to provider evidence.
 - Test malformed judgments and adversarial content offline; actual subscription
   integration requires observed generations and measured/unknown usage labels.
+
+- Named routes may explicitly permit one citation-only repair; the default is zero.
+  Repair only exact citations, retaining the original score/verdict/reasons. Never
+  retry valid grades, JSON/schema failures, cancellation or provider errors.
+- Await the trusted raw-response observer before accepting or repairing. Keep raw
+  responses and violation details out of result/optimizer/viewer projections;
+  observer failure is an infrastructure error, not permission to continue.

@@ -4,10 +4,10 @@ export interface CliArguments {
   flags: Readonly<Record<string, readonly string[]>>;
 }
 
-const repeated = new Set(['instructions', 'supporting', 'locked', 'editable', 'resource', 'judge', 'validation-group']);
-const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'resource', 'judge', 'source-root', 'out', 'max-trials', 'timeout-ms', 'view', 'cost-config', 'spawnfile-context'];
+const repeated = new Set(['instructions', 'supporting', 'locked', 'editable', 'resource', 'judge', 'judge-citation-repairs', 'validation-group']);
+const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'resource', 'judge', 'judge-citation-repairs', 'source-root', 'out', 'max-trials', 'timeout-ms', 'view', 'cost-config', 'spawnfile-context'];
 const flags: Record<string, readonly string[]> = {
-  validate: ['judge'], evaluate: common, view: ['port', 'timeout-ms'],
+  validate: ['judge', 'judge-citation-repairs'], evaluate: common, view: ['port', 'timeout-ms'],
   train: [...common, 'train', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed', 'dry-run'],
 };
 
@@ -24,6 +24,8 @@ All resources are locked by default; train --editable selects a declared whole f
 Source paths and native destinations are identical, relative to --source-root (default cwd).
 Native skills, Spawnfile compilation and custom setup recipes require a public API integration.
 Repeat --resource NAME=DIRECTORY for hash-pinned dataset inputs; --judge NAME=MODEL uses Claude subscriptions.
+--judge-citation-repairs NAME=0|1 selects one optional citation repair for a declared judge (default 0).
+This never retries valid quality failures, authentication/quota failures or malformed JSON.
 Train accepts repeated --validation-group GROUP, or freezes an internal group partition.
 --max-trials N (default 20, ceiling 10000) includes conservative reserved sealed-test trials.
 --max-proposals N (default 3, ceiling 1000), --seed N (GEPA sampling only).
@@ -60,7 +62,9 @@ export function parseArguments(argv: readonly string[]): CliArguments {
     (values[name] ??= []).push(value);
   }
   if (positional.length !== (command === 'train' ? 0 : 1)) throw new Error(`${command} requires ${command === 'train' ? '--train and --test, without positional arguments' : 'exactly one dataset path'}`);
-  return { command: command as CliArguments['command'], dataset: positional[0], flags: values };
+  const args = { command: command as CliArguments['command'], dataset: positional[0], flags: values };
+  judgeCitationRepairs(args);
+  return args;
 }
 
 export function one(args: CliArguments, name: string, fallback?: string): string {
@@ -89,4 +93,13 @@ export function pairs(values: readonly string[]): Record<string, string> {
     result[name] = target;
   }
   return result;
+}
+
+export function judgeCitationRepairs(args: CliArguments, judges = pairs(args.flags.judge ?? [])): Record<string, 0 | 1> {
+  const selections = pairs(args.flags['judge-citation-repairs'] ?? []);
+  for (const [name, value] of Object.entries(selections)) {
+    if (!Object.hasOwn(judges, name)) throw new Error(`--judge-citation-repairs names unknown judge ${name}`);
+    if (value !== '0' && value !== '1') throw new Error('--judge-citation-repairs requires literal NAME=0 or NAME=1');
+  }
+  return Object.fromEntries(Object.keys(judges).map(name => [name, selections[name] === '1' ? 1 : 0]));
 }

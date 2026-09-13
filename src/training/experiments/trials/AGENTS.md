@@ -9,3 +9,7 @@ workspace. Preparing native tools/configuration must preserve declared candidate
 bytes and record any deliberate environment reconstruction.
 
 Public exports live in index.ts. Keep adjacent tests and required guides when extracting cohesive modules. Run targeted tests and retain90% per-file coverage on all four metrics; use real native/DSPy acceptance evidence separately from deterministic facade tests.
+
+Judge response audits use the existing protected trial event sink. They are not
+native observations and never enter subject snapshots. Persistence failure must
+prevent a durable success report and cannot trigger citation repair.

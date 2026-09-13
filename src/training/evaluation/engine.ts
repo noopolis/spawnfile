@@ -20,7 +20,7 @@ function isolatedContext(context: EvaluationContext): EvaluationContext {
   return { ...context,
     snapshot: structuredClone(context.snapshot), results: structuredClone(context.results), scores: structuredClone(context.scores),
     judges: Object.fromEntries(Object.entries(context.judges).map(([id, route]) => [id, {
-      model: route.model, provider: { id: route.provider.id, capabilities: structuredClone(route.provider.capabilities),
+      model: route.model, citationRepairs: route.citationRepairs, provider: { id: route.provider.id, capabilities: structuredClone(route.provider.capabilities),
         generate: route.provider.generate.bind(route.provider) },
     }])),
     embeddings: Object.fromEntries(Object.entries(context.embeddings).map(([id, provider]) => [id, {

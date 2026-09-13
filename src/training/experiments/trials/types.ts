@@ -25,7 +25,7 @@ export interface TrialOptions {
   protectedPaths?: readonly string[];
   prepare(paths: TrialPaths, signal: AbortSignal): Promise<PreparedTrial>;
   registry: EvaluationRegistry;
-  evaluation: Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText'>;
+  evaluation: Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>;
   /** Awaited durable sink. A write failure interrupts the trial. */
   persist(event: TrialEvent): Promise<void>;
   signal?: AbortSignal;

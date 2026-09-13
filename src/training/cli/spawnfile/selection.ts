@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { snapshotCandidate, type ResourceMapping } from '../../candidates/index.js';
-import { count, one, pairs, type CliArguments } from '../arguments.js';
+import { count, judgeCitationRepairs, one, pairs, type CliArguments } from '../arguments.js';
 import { CliDatasets } from '../datasets.js';
 import type { CliIO, SpawnfileCliIntegration } from '../types.js';
 import { readSpawnfileContext } from './context.js';
@@ -36,6 +36,7 @@ export async function prepareSpawnfileInputs(args: CliArguments, io: CliIO, inte
   const judges = pairs(args.flags.judge ?? []);
   if (integration && (!integration.id.trim() || !integration.version.trim())) throw new Error('Project integration requires a stable id and version');
   return { runtime: context.agent.runtime, model, candidate, judges,
+    citationRepairs: judgeCitationRepairs(args, judges),
     sourceRoot: context.project.root,
     out: resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/paideia' : undefined)),
     resources: Object.fromEntries(Object.entries(pairs(args.flags.resource ?? [])).map(([name, path]) => [name, resolve(io.cwd, path)])),

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { combine, evaluatePlan, result } from '../../evaluation/index.js';
 import { freezeCriteria } from '../training/index.js';
 import { capturedTrial } from './source.js';
@@ -11,7 +12,7 @@ export async function rescoreStoredTrial(options: RescoreOptions): Promise<Resco
   const judges = Object.fromEntries(Object.entries(options.evaluation.judges).map(([name, route]) => [name, { ...route }]));
   const embeddings = { ...options.evaluation.embeddings };
   const inferenceRoutes = {
-    judges: Object.fromEntries(Object.entries(judges).map(([name, route]) => [name, { providerId: route.provider.id, model: route.model }])),
+    judges: Object.fromEntries(Object.entries(judges).map(([name, route]) => [name, { providerId: route.provider.id, model: route.model, citationRepairs: route.citationRepairs ?? 0 }])),
     embeddings: Object.fromEntries(Object.entries(embeddings).map(([name, route]) => [name, { providerId: route.id, version: route.version }])),
   };
   const replay = await options.store.readReplay(options.runId, options.access);
@@ -22,7 +23,13 @@ export async function rescoreStoredTrial(options: RescoreOptions): Promise<Resco
   const record = records[0]!;
   if (record.turns?.some(turn => turn.checks?.length)) throw new Error('Per-turn rescoring requires stored turn snapshots; only final stages are supported');
   if (!record.effectiveStages.length) throw new Error('Rescore requires a nonempty final-stage plan');
-  const evaluationContext = await freezeCriteria(dataset, { ...options.evaluation, judges, embeddings }, options.registry);
+  const observer = options.evaluation.observeJudgeAttempt;
+  const evaluationContext = await freezeCriteria(dataset, { ...options.evaluation, judges, embeddings,
+    observeJudgeAttempt: async attempt => {
+      await options.store.appendEvent(options.runId, { id: randomUUID(),
+        payload: { type: 'judge.attempt', evaluationId: options.id, payload: attempt } }, 'evaluator');
+      await observer?.(structuredClone(attempt));
+    } }, options.registry);
   if (options.signal?.aborted) throw new Error('Rescore cancelled before evaluation');
   const evaluation = await evaluatePlan(structuredClone(record.effectiveStages), { ...evaluationContext, snapshot: structuredClone(original.snapshot),
     results: {}, scores: {}, signal: options.signal }, options.registry);

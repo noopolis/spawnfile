@@ -22,7 +22,9 @@ async function fixture() {
 describe('Spawnfile dry-run selection', () => {
   it('preserves canonical system/identity/skill files and honors only selected editable resources', async () => {
     const f = await fixture();
-    const selected = await prepareSpawnfileInputs(parseArguments([...f.args, '--resource', 'archive=fixtures']), f.io);
+    const selected = await prepareSpawnfileInputs(parseArguments([...f.args, '--resource', 'archive=fixtures',
+      '--judge', 'quality=model', '--judge-citation-repairs', 'quality=1']), f.io);
+    expect(selected.citationRepairs).toEqual({ quality: 1 });
     expect(selected.resources).toEqual({ archive: join(f.root, 'fixtures') });
     expect(selected.model).toBe('gpt-5.5');
     expect(selected.candidate.resources.map(resource => [resource.sourcePath, resource.edit]))

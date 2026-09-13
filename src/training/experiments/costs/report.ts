@@ -78,7 +78,8 @@ function usageKey(usage: Usage): string {
 
 function callKey(call: JudgeCall): string {
   return JSON.stringify([call.id, call.judge, call.providerId, call.requestedModel, call.responseModel,
-    call.responseRoute, call.outcome, call.usage === null ? null : usageKey(call.usage)]);
+    call.responseRoute, call.outcome, call.citationRepairs ?? 0, call.repairOf,
+    call.usage === null ? null : usageKey(call.usage)]);
 }
 
 function completeUsage(coverage: readonly ObservationCoverage[]): boolean {

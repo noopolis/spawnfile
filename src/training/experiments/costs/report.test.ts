@@ -276,4 +276,26 @@ describe('recorded experiment cost report', () => {
     expect(report.groups.find(group => group.role === 'judge')!.entryCount).toBe(2);
     expect(report.apiEquivalentUsd!.low).toBeCloseTo(0.00612);
   });
+  it.each([{ citationRepairs: 1 as const }, { repairOf: 'first-call' }])(
+    'retains conflicting repair provenance for one judge call as unknown: %j', changed => {
+      const input = trial();
+      input.evaluation.judgeCalls = [judge('same', { citationRepairs: 0 })];
+      input.live = [{ checkId: 'prose', boundary: 'event', result: check([judge('same', changed)]) }];
+      const report = summarizeCosts([input], options);
+      expect(report.entries.filter(entry => entry.role === 'judge')).toHaveLength(1);
+      expect(report.entries[1]!.judgeCallVersions).toHaveLength(2);
+      expect(report.entries[1]!.valuation.apiEquivalentUsd).toBeNull();
+      expect(report.completeness).toBe('incomplete');
+    });
+  it('counts a distinct repair once and treats absent legacy policy as its default zero', () => {
+    const input = trial();
+    input.evaluation.judgeCalls = [judge('legacy'), judge('first', { citationRepairs: 1 }),
+      judge('repair', { citationRepairs: 1, repairOf: 'first' })];
+    input.live = [{ checkId: 'prose', boundary: 'event', result: check([judge('legacy', { citationRepairs: 0 }),
+      judge('repair', { citationRepairs: 1, repairOf: 'first' })]) }];
+    const report = summarizeCosts([input], options);
+    expect(report.entries.filter(entry => entry.role === 'judge')).toHaveLength(3);
+    expect(report.entries.every(entry => entry.judgeCallVersions === undefined)).toBe(true);
+    expect(report.apiEquivalentUsd!.low).toBeCloseTo(0.00714);
+  });
 });

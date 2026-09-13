@@ -12,7 +12,7 @@ export interface TrainingCostOptions {
   test: ResolvedDataset;
   subjectModel: string;
   optimizerModel: string;
-  judges: Readonly<Record<string, { model: string; provider: string }>>;
+  judges: Readonly<Record<string, { model: string; provider: string; citationRepairs?: 0 | 1 }>>;
   maxTrials: number;
   maxProposals: number;
   assumptions?: Partial<CostAssumptions>;
@@ -36,6 +36,8 @@ export interface TrainingCostPlan {
   coverage: 'estimated' | 'partial';
   budget: { maxTrials: number; maxProposals: number; metricCalls: number; reservedTestTrials: number };
   datasetDigests: { train: string; test: string; validation?: string };
+  /** Always emitted by current planning; absent only in older stored v1 plans. */
+  judgeRoutes?: Record<string, { model: string; provider: string; citationRepairs: 0 | 1 }>;
   lines: PlannedCostLine[];
   apiEquivalentUsd: Range | null;
   pricedSubtotalUsd: Range;
@@ -45,6 +47,11 @@ export interface TrainingCostPlan {
 
 /** Pure planning over resolved cases. Does not construct an adapter or touch credentials. */
 export function planTrainingCost(options: TrainingCostOptions): TrainingCostPlan {
+  const judgeRoutes = Object.fromEntries(Object.entries(options.judges).map(([name, route]) => {
+    const citationRepairs = route.citationRepairs === undefined ? 0 : route.citationRepairs;
+    if (citationRepairs !== 0 && citationRepairs !== 1) throw new Error(`Invalid citation repair policy for judge ${name}`);
+    return [name, { model: route.model, provider: route.provider, citationRepairs }];
+  }));
   for (const [value, max] of [[options.maxTrials, 10000], [options.maxProposals, 1000]]) {
     if (!Number.isSafeInteger(value) || value! < 1 || value! > max!) throw new Error('Invalid training cost budget');
   }
@@ -89,13 +96,15 @@ export function planTrainingCost(options: TrainingCostOptions): TrainingCostPlan
   const testCounts = options.test.records.map(record => countChecks(record, omitCost));
   const names = new Set([...developmentCounts, ...testCounts].flatMap(counts => Object.keys(counts)));
   for (const name of names) {
-    const route = options.judges[name];
+    const route = judgeRoutes[name];
     if (!route) throw new Error(`Missing judge route ${name}`);
     const perCall = assumptions.judges?.[name] ?? assumptions.judge;
     const maxPerMetric = Math.max(...developmentCounts.map(counts => counts[name] ?? 0));
     const testCalls = 2 * testCounts.reduce((sum, counts) => sum + (counts[name] ?? 0), 0);
-    if (maxPerMetric) add('judge', name, 'development', route.model, metricCalls * maxPerMetric, perCall, route.provider);
-    if (testCalls) add('judge', name, 'held-out', route.model, testCalls, perCall, route.provider);
+    const attempts = 1 + route.citationRepairs;
+    if (route.citationRepairs) warnings.add(`Judge ${name} reserves one citation repair per check; valid quality failures, authentication/quota failures and malformed JSON are not retried.`);
+    if (maxPerMetric) add('judge', name, 'development', route.model, metricCalls * maxPerMetric * attempts, perCall, route.provider);
+    if (testCalls) add('judge', name, 'held-out', route.model, testCalls * attempts, perCall, route.provider);
   }
   add('optimizer', 'reflection', 'optimization', options.optimizerModel, options.maxProposals, assumptions.optimizer);
   const pricedSubtotalUsd = lines.reduce((sum, line) => ({ low: sum.low + (line.apiEquivalentUsd?.low ?? 0),
@@ -105,7 +114,7 @@ export function planTrainingCost(options: TrainingCostOptions): TrainingCostPlan
     budget: { maxTrials: options.maxTrials, maxProposals: options.maxProposals, metricCalls, reservedTestTrials },
     datasetDigests: { train: options.train.sourceDigest, test: options.test.sourceDigest,
       ...(options.validation ? { validation: options.validation.sourceDigest } : {}) },
-    lines, apiEquivalentUsd: incomplete ? null : pricedSubtotalUsd, pricedSubtotalUsd, assumptions, warnings: [...warnings] };
+    judgeRoutes, lines, apiEquivalentUsd: incomplete ? null : pricedSubtotalUsd, pricedSubtotalUsd, assumptions, warnings: [...warnings] };
 }
 
 function countChecks(record: ResolvedRecord, omitCost: (warning: string) => void): Record<string, number> {

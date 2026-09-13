@@ -11,7 +11,7 @@ function semantic(node: CheckNode, registry: EvaluationRegistry): boolean {
 export function createLiveMonitor(options: {
   checks: readonly LiveCheck[];
   registry: EvaluationRegistry;
-  evaluation: Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText'>;
+  evaluation: Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>;
   persist(entry: TrialReport['live'][number]): Promise<void>;
   stop(reason: string): void;
   signal?: AbortSignal;

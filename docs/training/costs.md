@@ -4,6 +4,10 @@ Paideia reports the hypothetical API price of model tokens even when a subscript
 pays for inference. This is not a subscription invoice or a quota percentage.
 Every named judge has its own `--judge NAME=MODEL` selection; `--optimizer-model`
 selects reflection independently of the subject model.
+`--judge-citation-repairs NAME=1` permits one bounded citation repair for that
+declared judge; `NAME=0` is the default. Unknown judges, duplicate selections and
+values other than literal `0` or `1` fail before any model starts. This policy
+does not retry valid quality failures, authentication/quota failures or malformed JSON.
 
 ## Before execution
 
@@ -19,6 +23,12 @@ The `paideia.training-cost-plan.v1` result includes:
 - Development calls and two reserved held-out passes, for baseline and selection.
 - Explicit token/cache assumptions, dated source prices and a USD range.
 - A priced subtotal and null total when some work cannot be estimated.
+- A `judgeRoutes` snapshot of each named model, provider and citation repair policy.
+
+Each affected judge check reserves `1 + citationRepairs` calls using its named
+token assumptions, including both held-out passes. Enabling repair adds no subject
+trials or optimizer proposals. The additional call is a reservation, not a claim
+that a repair will occur; actual reports retain only observed attempts and usage.
 
 The scenario assumes the entire allowed trial/proposal budget is used. Subject
 token assumptions cover a whole trial, which may contain many model turns.

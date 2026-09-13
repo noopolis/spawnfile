@@ -293,12 +293,27 @@ string values, and text from another named source cannot validate a citation.
 
 Each invoked judge records a unique attempt ID, its configured judge/provider and
 requested model, the provider-returned model/route, and observed usage. Invalid
-JSON, malformed judgments and unsupported citations remain errors with that
-attempt's usage retained. A thrown provider failure has unknown response identity
+JSON and malformed judgments remain errors with that attempt's usage retained;
+unsupported citations fail exact validation. A thrown provider failure has unknown response identity
 and usage unless the inference interface supplies them; unknown is never zero.
 If inference returns a requested model fallback, the judge's response model stays
 unknown while its measured usage remains recorded. Optimizer provenance preserves
 the same attribution; a requested alias is not priced as a confirmed actual model.
+
+A named judge route may opt into `citationRepairs: 1` (default `0`). Only a
+structurally valid judgment with invalid exact citations gets one citation-only
+repair. The original score, verdict and reasons are retained; valid low scores,
+invalid JSON/schema, cancellation and provider failures never trigger repair.
+Both attempts record usage, the configured policy and a `repairOf` link. Budget
+the extra attempt before launch. Judge routes and criteria are frozen together.
+
+The trusted evaluation host can observe each returned raw response through
+`observeJudgeAttempt`. Stored trials and explicit rescoring persist these responses
+and structured citation violations in protected evaluator events, without copying
+source data into the diagnostic. Optimizer feedback and viewer projections do not
+include raw attempts. A persistence failure is an evaluation error and prevents
+repair; a rescore remains a separate evaluation of the original capture.
+
 `judgeCalls` is preserved on results and collected on the plan, including stage
 eligibility checks and gates. Reusing a check through `passed` or logical nesting
 retains its attempt ID and does not add another generation. Consumers deduplicate

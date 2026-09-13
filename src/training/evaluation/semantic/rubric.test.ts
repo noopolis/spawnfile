@@ -17,7 +17,7 @@ describe('fixed semantic rubrics', () => {
     const context = evaluationContext({ judges: { editor: { provider: route, model: 'test-model' } } });
     const evaluated = await evaluateNode({ ...check, evidence: 'input:files' }, context, registry);
     expect(evaluated.status).toBe('pass');expect(evaluated.score).toBe(0.9);
-    expect(evaluated.judgeCalls).toEqual([{ id: expect.any(String), judge: 'editor', providerId: 'test-subscription',
+    expect(evaluated.judgeCalls).toEqual([{ id: expect.any(String), judge: 'editor', citationRepairs: 0, providerId: 'test-subscription',
       requestedModel: 'test-model', responseModel: 'test-model', responseRoute: 'test-subscription',
       outcome: 'completed', usage: null }]);
     const request = vi.mocked(route.generate).mock.calls[0]![0];
@@ -124,7 +124,7 @@ describe('fixed semantic rubrics', () => {
 
       expect(evaluated.status).toBe('error');
       expect(evaluated.usage).toEqual([usage]);
-      expect(evaluated.judgeCalls).toEqual([{ id: expect.any(String), judge: 'editor',
+      expect(evaluated.judgeCalls).toEqual([{ id: expect.any(String), judge: 'editor', citationRepairs: 0,
         providerId: 'test-subscription', requestedModel: 'requested-alias', responseModel: 'resolved-model',
         responseRoute: 'returned-route', outcome: 'invalid-response', usage }]);
       expect(evaluated.evidence).not.toHaveLength(0);

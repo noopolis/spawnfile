@@ -9,7 +9,7 @@ export interface RescoreOptions {
   access: ReadAccess;
   dataset: ResolvedDataset;
   registry: EvaluationRegistry;
-  evaluation: Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText'>;
+  evaluation: Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>;
   /** Unique immutable evaluation identity, supplied explicitly by the caller. */
   id: string;
   signal?: AbortSignal;
@@ -42,7 +42,7 @@ export interface RescoreReport {
     sidecarDigests: Readonly<Record<string, string>>;
     /** Configured routes, not a claim every route was invoked or its version attested. */
     inferenceRoutes: {
-      judges: Readonly<Record<string, { providerId: string; model: string }>>;
+      judges: Readonly<Record<string, { providerId: string; model: string; citationRepairs: 0 | 1 }>>;
       embeddings: Readonly<Record<string, { providerId: string; version: string }>>;
     };
   };

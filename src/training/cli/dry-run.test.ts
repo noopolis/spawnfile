@@ -52,12 +52,34 @@ describe('training dry-run command', () => {
         records: groups.map(group => ({ id: group, group, input: { prompt: 'Reply OK.' } })) }));
     }
     const inference = vi.fn(() => { throw new Error('No judge construction'); });
-    expect(await main([...f.args, '--judge', 'prose=claude-fable-5-1', '--judge', 'grounding=unpriced-judge-model'], f.io, { inference })).toBe(0);
+    expect(await main([...f.args, '--judge', 'prose=claude-fable-5-1', '--judge', 'grounding=unpriced-judge-model',
+      '--judge-citation-repairs', 'prose=1'], f.io, { inference })).toBe(0);
     const plan = JSON.parse(f.stdout.join(''));
     expect(plan.coverage).toBe('partial'); expect(plan.apiEquivalentUsd).toBeNull();
     expect(plan.lines.filter((line: { role: string }) => line.role === 'judge').map((line: { name: string; model: string }) => [line.name, line.model]))
       .toEqual([['prose', 'claude-fable-5-1'], ['prose', 'claude-fable-5-1'], ['grounding', 'unpriced-judge-model'], ['grounding', 'unpriced-judge-model']]);
+    expect(plan.judgeRoutes).toEqual({ prose: { model: 'claude-fable-5-1', provider: 'claude-subscription', citationRepairs: 1 },
+      grounding: { model: 'unpriced-judge-model', provider: 'claude-subscription', citationRepairs: 0 } });
+    expect(plan.lines.map((line: { role: string; name: string; plannedCalls: number }) => [line.role, line.name, line.plannedCalls]))
+      .toEqual([['subject', 'subject', 18], ['subject', 'subject', 2], ['judge', 'prose', 36], ['judge', 'prose', 4],
+        ['judge', 'grounding', 18], ['judge', 'grounding', 2], ['optimizer', 'reflection', 3]]);
     expect(inference).not.toHaveBeenCalled();
+  });
+  it('rejects unknown, duplicate and invalid repair selections before native or inference factories', async () => {
+    const f = await fixture();
+    const adapter = vi.fn(() => { throw new Error('No native construction'); });
+    const inference = vi.fn(() => { throw new Error('No judge construction'); });
+    for (const command of [f.args, f.args.filter(arg => arg !== '--dry-run')]) {
+      for (const flags of [['--judge-citation-repairs', 'missing=1'], ['--judge-citation-repairs', 'prose=2'],
+        ['--judge-citation-repairs', 'prose=1', '--judge-citation-repairs', 'prose=0']]) {
+        expect(await main([...command, '--judge', 'prose=model', ...flags], f.io, { adapter, inference })).toBe(2);
+      }
+    }
+    expect(adapter).not.toHaveBeenCalled(); expect(inference).not.toHaveBeenCalled();
+    expect(f.stdout).toEqual([]);
+    expect(f.stderr.join('')).toMatch(/unknown judge/);
+    expect(f.stderr.join('')).toMatch(/literal NAME=0 or NAME=1/);
+    expect(f.stderr.join('')).toMatch(/unique NAME=VALUE/);
   });
   it('parses dry-run as a standalone boolean only on training', () => {
     expect(parseArguments(['train', '--dry-run']).flags['dry-run']).toEqual(['true']);

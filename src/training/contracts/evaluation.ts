@@ -15,7 +15,18 @@ export interface JudgeCall {
   responseRoute: string | null;
   outcome: 'completed' | 'invalid-response' | 'generation-error';
   usage: Usage | null;
+  /** Configured maximum, including when no repair was needed. Omitted only in legacy captures. */
+  citationRepairs?: 0 | 1;
+  /** A citation-only protocol repair of this earlier actual attempt. */
+  repairOf?: string;
 }
+export interface JudgeRoute { provider: InferenceProvider; model: string; citationRepairs?: 0 | 1 }
+export interface JudgeProtocolViolation {
+  code: 'invalid-json' | 'invalid-judgment' | 'invalid-citations' | 'invalid-citation-repair';
+  citations?: { index: number; source: string; reason: 'unknown-source' | 'quote-not-found' }[];
+}
+/** Protected evaluator evidence, never part of optimizer feedback or viewer projections. */
+export interface JudgeAttemptObservation { call: JudgeCall; response: string; violation?: JudgeProtocolViolation }
 export interface EvaluationResult {
   id?: string;
   status: Verdict;
@@ -58,10 +69,12 @@ export interface EvaluationContext {
   snapshot: EvaluationSnapshot;
   results: Readonly<Record<string, EvaluationResult>>;
   scores: Readonly<Record<string, WeightedScore>>;
-  judges: Readonly<Record<string, { provider: InferenceProvider; model: string }>>;
+  judges: Readonly<Record<string, JudgeRoute>>;
   embeddings: Readonly<Record<string, EmbeddingProvider>>;
   /** The host confines sidecars to protected evaluator resources. */
   readText: (path: string) => Promise<string>;
+  /** Trusted host sink, awaited before accepting a judgment or making its one permitted repair. */
+  observeJudgeAttempt?: (attempt: JudgeAttemptObservation) => void | Promise<void>;
   signal?: AbortSignal;
 }
 export interface RegisteredEvaluator {

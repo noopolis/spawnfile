@@ -2,8 +2,10 @@ import type { ResolvedDataset } from '../../contracts/dataset.js';
 import type { EvaluationContext, EvaluationRegistry } from '../../contracts/evaluation.js';
 import { createHash } from 'node:crypto';
 
-export async function freezeCriteria(dataset: ResolvedDataset, evaluation: Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText'>,
-  registry: EvaluationRegistry): Promise<Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText'>> {
+export async function freezeCriteria(dataset: ResolvedDataset, evaluation: Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>,
+  registry: EvaluationRegistry): Promise<Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>> {
+  const judges = Object.fromEntries(Object.entries(evaluation.judges).map(([name, route]) => [name, { ...route }]));
+  const observeJudgeAttempt = evaluation.observeJudgeAttempt;
   for (const [key, version] of Object.entries(dataset.registryVersions)) {
     if (key.startsWith('evaluator:') && registry[key.slice(10)]?.definition.version !== version) throw new Error(`Evaluator version drift: ${key}`);
   }
@@ -13,7 +15,7 @@ export async function freezeCriteria(dataset: ResolvedDataset, evaluation: Pick<
     if (`sha256:${createHash('sha256').update(bytes).digest('hex')}` !== expected) throw new Error(`Criterion sidecar changed: ${path}`);
     sidecars.set(path, bytes);
   }
-  return { ...evaluation, readText: async path => {
+  return { ...evaluation, judges, observeJudgeAttempt, readText: async path => {
     const bytes = sidecars.get(path);
     if (bytes === undefined) throw new Error(`Unfrozen criterion sidecar: ${path}`);
     return bytes;

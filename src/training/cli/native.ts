@@ -4,7 +4,7 @@ import { createCodexAdapter, createDaimonAdapter } from '../adapters/index.js';
 import { snapshotCandidate, type ResourceMapping } from '../candidates/index.js';
 import { createClaudeInference } from '../inference/index.js';
 import { createEvaluationRegistry } from '../evaluation/index.js';
-import { count, one, pairs, type CliArguments } from './arguments.js';
+import { count, judgeCitationRepairs, one, pairs, type CliArguments } from './arguments.js';
 import { CliDatasets } from './datasets.js';
 import type { CliDependencies, CliIO } from './types.js';
 import { prepareSpawnfileInputs } from './spawnfile/index.js';
@@ -37,6 +37,7 @@ export async function prepareInputs(args: CliArguments, io: CliIO) {
   const judges = pairs(args.flags.judge ?? []);
   const datasets = new CliDatasets(judges, io.cwd);
   return { runtime: runtime as 'codex' | 'daimon', model, sourceRoot, out, candidate, judges, datasets,
+    citationRepairs: judgeCitationRepairs(args, judges),
     maxTrials: count(args, 'max-trials', 20, 10000),
     resources: Object.fromEntries(Object.entries(pairs(args.flags.resource ?? [])).map(([name, path]) => [name, resolve(io.cwd, path)])),
   };
@@ -63,7 +64,8 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
   }
   return { ...inputs, adapter, inference, prepareEnvironment,
     registry: createEvaluationRegistry(),
-    evaluation: { judges: Object.fromEntries(Object.entries(judges).map(([name, model]) => [name, { provider: inference, model }])),
+    evaluation: { judges: Object.fromEntries(Object.entries(judges).map(([name, model]) => [name,
+      { provider: inference, model, citationRepairs: inputs.citationRepairs[name]! }])),
       embeddings: {}, readText: (path: string) => datasets.readCriterion(path) },
   };
 }

@@ -12,3 +12,7 @@ public indexes; never import or invoke a subject adapter.
 - Freeze new criteria and evaluate a clone of the original final snapshot.
 - Append a separate immutable evaluator-only rescore record; never replace history.
 - Test real-store access, integrity, truncation, immutable append and stopped runs.
+
+Explicit rescoring appends returned raw judge attempts as evaluator-only events
+linked to its evaluation ID. Preserve the trusted observer while freezing routes;
+raw attempts are not native observations or optimizer feedback.

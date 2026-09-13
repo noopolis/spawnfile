@@ -11,6 +11,7 @@ const usage = z.object({ inputTokens: z.number().nonnegative().nullable(), cache
   cacheWrite1hInputTokens: z.number().nonnegative().nullable().optional(),
   outputTokens: z.number().nonnegative().nullable(), reasoningTokens: z.number().nonnegative().nullable(), source: z.string() });
 const judgeCall = z.object({ id: identity, judge: identity, providerId: identity, requestedModel: identity,
+  citationRepairs: z.union([z.literal(0), z.literal(1)]).optional(), repairOf: identity.optional(),
   responseModel: z.string().nullable(), responseRoute: z.string().nullable(),
   outcome: z.enum(['completed', 'invalid-response', 'generation-error']), usage: usage.nullable() });
 const stop = z.object({ state: z.enum(['requested', 'acknowledged', 'unknown']), scope: z.enum(['process', 'process-group', 'native-handle']),

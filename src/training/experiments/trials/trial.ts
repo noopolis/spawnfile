@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import type { EvaluationSnapshot, EvaluationResult } from '../../contracts/evaluation.js';
+import type { EvaluationSnapshot, EvaluationResult, JudgeAttemptObservation } from '../../contracts/evaluation.js';
 import type { Observation, ObservationCoverage } from '../../contracts/execution.js';
 import { captureObservation } from '../../capture/index.js';
 import { combine, evaluatePlan, mayStop, result } from '../../evaluation/index.js';
@@ -51,12 +51,17 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     try { await options.persist({ type, payload }); }
     catch (error) { sinkFailed = true; control.stop('Evidence persistence failed'); throw error; }
   };
+  const observer = options.evaluation.observeJudgeAttempt;
+  const evaluationServices = { ...options.evaluation, observeJudgeAttempt: async (attempt: JudgeAttemptObservation) => {
+    await persist('judge.attempt', attempt);
+    await observer?.(structuredClone(attempt));
+  } };
   const snapshot = async (): Promise<EvaluationSnapshot> => ({ trialId: options.id, recordId: record.id, closed,
     events: structuredClone(events), coverage: structuredClone(coverage), output, inputFiles: { ...inputFiles }, context: record.context ?? {},
     artifacts: { ...await collectOutputs(record.outputs ?? {}, paths.workspace, `${options.id}/${events.length}`), ...await prepared?.collect?.() } });
-  const live = createLiveMonitor({ checks: record.live.checks, registry, evaluation: options.evaluation,
+  const live = createLiveMonitor({ checks: record.live.checks, registry, evaluation: evaluationServices,
     persist: entry => persist('live.evaluation', entry), stop: why => control.stop(why, 'decisive'), signal: control.signal });
-  const evaluate = (state: EvaluationSnapshot) => ({ ...options.evaluation, snapshot: state, results: {}, scores: {}, signal: control.signal });
+  const evaluate = (state: EvaluationSnapshot) => ({ ...evaluationServices, snapshot: state, results: {}, scores: {}, signal: control.signal });
   try {
     await persist('trial.started', { id: options.id, phase: options.phase, candidateId: options.candidateId,
       datasetDigest: options.datasetDigest, planDigest: options.planDigest, recordId: record.id,

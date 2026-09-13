@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { count, one, pairs, parseArguments } from './arguments.js';
+import { count, judgeCitationRepairs, one, pairs, parseArguments } from './arguments.js';
 
 describe('explicit bounded CLI arguments', () => {
   it.each([[], ['help'], ['--help'], ['-h']])('shows help for %j', (...argv) => {
@@ -30,5 +30,17 @@ describe('explicit bounded CLI arguments', () => {
     for (const values of [['missing'], ['=value'], ['name='], ['name=  '], ['__proto__=value'], ['n=a', 'n=b']]) {
       expect(() => pairs(values)).toThrow('unique NAME=VALUE');
     }
+  });
+  it('requires literal citation repair counts for unique declared judges', () => {
+    const args = ['train', '--judge', 'prose=model-a', '--judge', 'grounding=model-b'];
+    expect(judgeCitationRepairs(parseArguments(args))).toEqual({ prose: 0, grounding: 0 });
+    expect(judgeCitationRepairs(parseArguments([...args, '--judge-citation-repairs', 'prose=1',
+      '--judge-citation-repairs', 'grounding=0']))).toEqual({ prose: 1, grounding: 0 });
+    for (const value of ['prose=2', 'prose=-1', 'prose=01', 'prose=1.0', 'prose=true', 'prose= 1',
+      'prose=1 ', 'prose=1=0', 'prose=$(false)', 'missing=1', 'constructor=1']) {
+      expect(() => parseArguments([...args, '--judge-citation-repairs', value])).toThrow();
+    }
+    expect(() => parseArguments([...args, '--judge-citation-repairs', 'prose=1', '--judge-citation-repairs', 'prose=0']))
+      .toThrow('unique NAME=VALUE');
   });
 });

@@ -77,7 +77,7 @@ records: [{id: story, input: {prompt: Never execute}, context: {origin: new}}]
   const rescored = await rescoreStoredTrial(options);
   expect(rescored.evaluation.stages[0]!.checks[0]!.usage).toEqual([expect.objectContaining({ source: 'fixture-judge', inputTokens: 4 })]);
   expect(generate).toHaveBeenCalledTimes(1);
-  expect(rescored.criteria.inferenceRoutes.judges.editor).toEqual({ providerId: 'test', model: 'review-model' });
+  expect(rescored.criteria.inferenceRoutes.judges.editor).toEqual({ providerId: 'test', model: 'review-model', citationRepairs: 0 });
   await store.readReplay('trial', options.access);
   expect(generate).toHaveBeenCalledTimes(1);
   await expect(rescoreStoredTrial({ ...options, id: 'changed', evaluation: { ...options.evaluation, readText: async () => 'Tampered rubric' } })).rejects.toThrow('Criterion sidecar changed');

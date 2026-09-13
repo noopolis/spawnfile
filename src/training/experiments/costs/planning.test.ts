@@ -75,6 +75,35 @@ describe('pure training cost plan', () => {
     expect(plan.coverage).toBe('partial');
     expect(plan.warnings.some(warning => warning.includes('new-unknown-model'))).toBe(true);
   });
+  it('reserves one optional repair per affected check without adding subject or optimizer trials', () => {
+    const input = options();
+    input.judges = { ...input.judges, grounding: { model: 'gpt-5.5', provider: 'custom-subscription' } };
+    for (const record of [...input.train.records, ...input.test.records]) {
+      record.effectiveStages[0]!.checks = [rubric, { ...rubric, judge: 'grounding' }];
+    }
+    const baseline = planTrainingCost(input);
+    input.judges.prose!.citationRepairs = 1;
+    const repaired = planTrainingCost(input);
+    expect(repaired.lines.filter(line => line.role === 'judge').map(line => [line.name, line.phase, line.plannedCalls]))
+      .toEqual([['prose', 'development', 12], ['prose', 'held-out', 8], ['grounding', 'development', 6], ['grounding', 'held-out', 4]]);
+    expect(repaired.lines.filter(line => line.role !== 'judge')).toEqual(baseline.lines.filter(line => line.role !== 'judge'));
+    for (const line of repaired.lines.filter(line => line.name === 'prose')) {
+      const original = baseline.lines.find(other => other.name === line.name && other.phase === line.phase)!;
+      expect(line.apiEquivalentUsd).toEqual({ low: 2 * original.apiEquivalentUsd!.low, high: 2 * original.apiEquivalentUsd!.high });
+    }
+    expect(repaired.judgeRoutes!.prose).toEqual({ model: 'claude-fable-5-1', provider: 'claude-subscription', citationRepairs: 1 });
+    input.judges.prose!.citationRepairs = 0;
+    expect(planTrainingCost(input)).toEqual(baseline);
+    expect(repaired.judgeRoutes!.prose!.citationRepairs).toBe(1);
+    expect(repaired.warnings.some(warning => warning.includes('one citation repair'))).toBe(true);
+  });
+  it('refuses invalid route policies even for a declared judge with no checks', () => {
+    for (const citationRepairs of [-1, 2, 0.5, '1', null, true]) {
+      const input = options();
+      input.judges = { ...input.judges, prose: { ...input.judges.prose!, citationRepairs } as unknown as TrainingCostOptions['judges'][string] };
+      expect(() => planTrainingCost(input)).toThrow('Invalid citation repair policy');
+    }
+  });
   it('rejects impossible budgets, leaked groups and unconfigured judges before execution', () => {
     for (const empty of ['train', 'validation', 'test'] as const) {
       const input = { ...options(), validation: dataset('validation', ['z']) };
