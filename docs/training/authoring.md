@@ -17,11 +17,14 @@ editable prompt resources, inference routes and limits. These become a generated
 immutable run manifest, not four more mandatory files for the author to maintain.
 The invocation API/CLI remains to design; examples are not runnable commands.
 
-Keep datasets under `evals/` beside the native project; use `train.yaml` and
-`test.yaml` for the two datasets when helpful. They have the same
+Keep datasets under `evals/` beside the native project; use `train.paideia.yaml` and
+`test.paideia.yaml` for the two datasets when helpful. They have the same
 schema. Filenames do not confer access control: the invocation binds the training and
 sealed-test roles. A validation partition may be selected by evidence group within
 training data; a separate validation file is optional, not a required third dataset.
+
+The `.paideia.yaml` suffix identifies the authoring surface and preserves ordinary YAML
+tooling. Content declares `schema: paideia.dataset.v1`; the filename never replaces it.
 
 Spawnfile projects use the agreed `.spawnignore` shape to declare packaging exclusions;
 enforcement is not implemented. See [native packaging](harnessing.md#colocated-evaluation-and-packaging).
@@ -113,7 +116,7 @@ records:
         outcome: succeeded
 ```
 
-The hash above and the [actual datasets](../examples/newsroom-reporting/evals/train.yaml) were
+The hash above and the [actual datasets](../examples/newsroom-reporting/evals/train.paideia.yaml) were
 checked against the pinned repository bytes. A missing or wrong hash must fail.
 Calling validation is just one observable behavior, not proof that validation passed
 or the final output is correct. The real example uses stronger chained checks.

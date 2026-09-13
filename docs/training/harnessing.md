@@ -101,6 +101,16 @@ the datasets and editable-source selections belong with the agent they train. A 
 uses an isolated candidate copy and records its explicit overrides, preserving the
 source project as baseline. Dataset location never changes the native working directory.
 
+The agreed dataset naming is `<name>.paideia.yaml`, with `train.paideia.yaml` and
+`test.paideia.yaml` as the example pair. The planned `spawnfile train` entry point
+delegates through Paideia's public interface: Spawnfile supplies its canonical agent
+and environment; Paideia owns evaluation, optimization and isolated trials. Paideia
+also keeps a standalone CLI for Spawnfile projects and other native runtimes.
+The selected native runtime executes agent turns. No extra agent declaration or
+mandatory experiment file is required. Commands,
+flags and delegation contracts are not implemented; dataset roles still resolve
+explicitly in the invocation, never merely from filenames or discovery.
+
 Spawnfile projects add `.spawnignore`, using the proposed patterns `**/evals/` and
 `**/.paideia/` for evaluator definitions and generated experiment artifacts. These files
 remain readable to trusted Paideia preparation; only permitted task inputs and candidate

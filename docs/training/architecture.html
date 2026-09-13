@@ -121,8 +121,9 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <section id="yaml">
 <p class="number">02 / What the author writes</p>
 <h2>One native project. One YAML file per dataset.</h2>
-<p>The newsroom example has a <a href="../examples/newsroom-reporting/Spawnfile">Spawnfile</a>, its Markdown environment, <a href="../examples/newsroom-reporting/evals/train.yaml">evals/train.yaml</a>, <a href="../examples/newsroom-reporting/evals/test.yaml">evals/test.yaml</a> and <a href="../examples/newsroom-reporting/README.md">one README</a>. Every record is inline. Other agents keep their own native project format.</p>
+<p>The newsroom example has a <a href="../examples/newsroom-reporting/Spawnfile">Spawnfile</a>, its Markdown environment, <a href="../examples/newsroom-reporting/evals/train.paideia.yaml">evals/train.paideia.yaml</a>, <a href="../examples/newsroom-reporting/evals/test.paideia.yaml">evals/test.paideia.yaml</a> and <a href="../examples/newsroom-reporting/README.md">one README</a>. Every record is inline. Other agents keep their own native project format.</p>
 <p>The agreed <a href="../examples/newsroom-reporting/.spawnignore">.spawnignore</a> policy declares planned exclusions for evaluation definitions and generated training artifacts. Enforcement is not implemented; see the <a href="harnessing.md#colocated-evaluation-and-packaging">native packaging contract</a>. The standalone example stays in Paideia; real projects will train their canonical native definition with explicit trial overrides.</p>
+<p><strong>Agreed entry point, not implemented:</strong> <code>spawnfile train</code> delegates to Paideia using the canonical native agent/environment. Paideia owns training; its own CLI serves Spawnfile projects and other runtimes. Datasets use <code>&lt;name&gt;.paideia.yaml</code> and declare <code>schema: paideia.dataset.v1</code>; the invocation assigns train/test roles explicitly.</p>
 <figure><figcaption>YAML · what reaches the agent and what stays outside</figcaption><div class="diagram-scroll" tabindex="0" aria-label="YAML · what reaches the agent and what stays outside — scroll horizontally on small screens">
 <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="paideia-yaml-title paideia-yaml-desc">
 <title id="paideia-yaml-title">YAML · what reaches the agent and what stays outside</title><desc id="paideia-yaml-desc">One inline-record dataset sends setup and typed context to trusted preparation, verified prompt and file inputs to the subject, and checks, references and context to evaluators only.</desc>
@@ -144,7 +145,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <rect x="824" y="296" width="88" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="868" y="312" text-anchor="middle">PATH + HASH</text>
 <rect x="800" y="416" width="88" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="844" y="432" text-anchor="middle">CONTEXT</text>
 <g class="node" data-kind="input"><rect x="40" y="276" width="240" height="112" rx="8" fill="#f5f5f5"/><rect x="40" y="276" width="240" height="112" rx="8" fill="rgba(79,93,117,.10)" stroke="#4f5d75"/>
-<text class="node-name" x="60" y="308" style="font-size:20px">One dataset YAML</text><text class="node-note" x="60" y="336">train.yaml or test.yaml</text><text class="node-note" x="60" y="360">All records inline</text>
+<text class="node-name" x="60" y="308" style="font-size:20px">One dataset YAML</text><text class="node-note" x="60" y="336">train.paideia.yaml</text><text class="node-note" x="60" y="360">or test.paideia.yaml</text>
 </g>
 <g class="node" data-kind="plain"><rect x="400" y="88" width="280" height="96" rx="8" fill="#f5f5f5"/><rect x="400" y="88" width="280" height="96" rx="8" fill="#ffffff" stroke="#4f5d75"/>
 <text class="node-name" x="420" y="120" style="font-size:20px">Setup + context</text><text class="node-note" x="420" y="148">Recipe + typed parameters</text>
@@ -181,7 +182,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 </tbody></table></div>
 <p>The invocation selects project, subject, dataset roles, editable prompt sections, inference routes and budgets. Resolution creates a locked run manifest. There is no mandatory extra experiment YAML; invocation syntax is still to design.</p>
 <details><summary>Read one actual training record</summary>
-<p>From <a href="../examples/newsroom-reporting/evals/train.yaml"><code>train.yaml</code></a>. <code>afternoon-assignment</code> supplies clock/delivery; <code>kestrel-evidence</code> supplies context and the four pinned file selectors, including the evaluator-only reference. The private archive stays external. Shared setup and stages remain in the same YAML.</p>
+<p>From <a href="../examples/newsroom-reporting/evals/train.paideia.yaml"><code>train.paideia.yaml</code></a>. <code>afternoon-assignment</code> supplies clock/delivery; <code>kestrel-evidence</code> supplies context and the four pinned file selectors, including the evaluator-only reference. The private archive stays external. Shared setup and stages remain in the same YAML.</p>
 <pre><code>  - id: kestrel-reporting
     group: kestrel-2026-09-12
     use: [afternoon-assignment, kestrel-evidence]
@@ -231,7 +232,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <text class="node-name" x="700" y="112" style="font-size:20px">Review + group</text><text class="node-note" x="700" y="140">Author rules separately</text><text class="node-note" x="700" y="164">Group related runs</text>
 </g>
 <g class="node" data-kind="store"><rect x="1000" y="80" width="240" height="112" rx="8" fill="#f5f5f5"/><rect x="1000" y="80" width="240" height="112" rx="8" fill="rgba(45,49,66,.05)" stroke="#4f5d75"/>
-<text class="node-name" x="1020" y="112" style="font-size:20px">evals/*.yaml</text><text class="node-note" x="1020" y="140">Same record schema</text><text class="node-note" x="1020" y="164">References stay hidden</text>
+<text class="node-name" x="1020" y="112" style="font-size:20px">*.paideia.yaml</text><text class="node-note" x="1020" y="140">Same record schema</text><text class="node-note" x="1020" y="164">References stay hidden</text>
 </g>
 <line class="legend-rule" x1="40" y1="236" x2="1240" y2="236"/><text class="legend" x="40" y="264">Proposed · stored outputs are observations, not gold answers · private captures remain outside agent mounts</text>
 </svg>
@@ -329,7 +330,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <rect x="1088" y="244" width="104" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="1140" y="260" text-anchor="middle">FEEDBACK</text>
 <rect x="568" y="444" width="88" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="612" y="460" text-anchor="middle">FREEZE</text>
 <g class="node" data-kind="input"><rect x="40" y="100" width="240" height="100" rx="8" fill="#f5f5f5"/><rect x="40" y="100" width="240" height="100" rx="8" fill="rgba(79,93,117,.10)" stroke="#4f5d75"/>
-<text class="node-name" x="60" y="132" style="font-size:20px">Baseline + train</text><text class="node-note" x="60" y="160">Native project / train.yaml</text>
+<text class="node-name" x="60" y="132" style="font-size:20px">Baseline + train</text><text class="node-note" x="60" y="160">Native project + dataset</text>
 </g>
 <g class="node" data-kind="plain"><rect x="400" y="100" width="320" height="100" rx="8" fill="#f5f5f5"/><rect x="400" y="100" width="320" height="100" rx="8" fill="#ffffff" stroke="#4f5d75"/>
 <text class="node-name" x="420" y="132" style="font-size:20px">Native preparation + trials</text><text class="node-note" x="420" y="160">Fresh state; effective prompt verified</text>
@@ -344,7 +345,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <text class="node-name" x="420" y="344" style="font-size:20px">Select and freeze</text><text class="node-note" x="420" y="372">Training-only groups</text><text class="node-note" x="420" y="396">Candidate + criteria + environment</text>
 </g>
 <g class="node" data-kind="plain"><rect x="400" y="520" width="320" height="112" rx="8" fill="#f5f5f5"/><rect x="400" y="520" width="320" height="112" rx="8" fill="#ffffff" stroke="#4f5d75"/>
-<text class="node-name" x="420" y="552" style="font-size:20px">Sealed test comparison</text><text class="node-note" x="420" y="580">Frozen candidate vs baseline</text><text class="node-note" x="420" y="604">Same test.yaml and evaluation plan</text>
+<text class="node-name" x="420" y="552" style="font-size:20px">Sealed test comparison</text><text class="node-note" x="420" y="580">Frozen candidate vs baseline</text><text class="node-note" x="420" y="604">Same test data + evaluation plan</text>
 </g>
 <g class="node" data-kind="store"><rect x="920" y="520" width="280" height="112" rx="8" fill="#f5f5f5"/><rect x="920" y="520" width="280" height="112" rx="8" fill="rgba(45,49,66,.05)" stroke="#4f5d75"/>
 <text class="node-name" x="940" y="552" style="font-size:20px">Local evidence report</text><text class="node-note" x="940" y="580">Quality · coverage · usage</text><text class="node-note" x="940" y="604">Prompt diff + replay</text>

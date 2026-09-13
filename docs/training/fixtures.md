@@ -1,8 +1,8 @@
 # Named dataset fixtures
 
 **Authoring specification draft.** This extends the [dataset proposal](authoring.md);
-there is no implemented Paideia resolver. The real [training](../examples/newsroom-reporting/evals/train.yaml)
-and [test](../examples/newsroom-reporting/evals/test.yaml) datasets demonstrate this surface.
+there is no implemented Paideia resolver. The real [training](../examples/newsroom-reporting/evals/train.paideia.yaml)
+and [test](../examples/newsroom-reporting/evals/test.paideia.yaml) datasets demonstrate this surface.
 
 ## Declaration and selection
 
