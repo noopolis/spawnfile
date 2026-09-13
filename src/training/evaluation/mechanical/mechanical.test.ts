@@ -5,6 +5,22 @@ import { predicate, bindingValue, evaluateText, evaluateTool } from './index.js'
 
 const registry = createEvaluationRegistry();
 describe('mechanical evidence', () => {
+  it('enforces required-only schemas without mutating the article or adding constraints', async () => {
+    const schema = { type: 'object', required: ['id', 'title', 'author', 'evidence', 'assignment'],
+      properties: { id: { const: 'synthetic-article' } } };
+    const value = { id: 'synthetic-article', title: 'Title', author: 'Writer', evidence: {}, assignment: 'one' };
+    const check = { eval: 'json-schema', input: 'artifact:article', schema };
+    const context = evaluationContext({ snapshot: snapshot({ artifacts: { article: artifact(value) } }) });
+    expect((await evaluateNode(check, context, registry)).status).toBe('pass');
+    expect(context.snapshot.artifacts['article']!.value).toEqual(value);
+    for (const field of schema.required) {
+      const missing: Record<string, unknown> = { ...value }; delete missing[field];
+      const mutated = evaluationContext({ snapshot: snapshot({ artifacts: { article: artifact(missing) } }) });
+      expect((await evaluateNode(check, mutated, registry)).status).toBe('fail');
+    }
+    const wrongId = evaluationContext({ snapshot: snapshot({ artifacts: { article: artifact({ ...value, id: 'other' }) } }) });
+    expect((await evaluateNode(check, wrongId, registry)).status).toBe('fail');
+  });
   it('cannot certify text equality from absent or partial output', async () => {
     for (const coverage of [[], [{ channel: 'output' as const, completeness: 'partial' as const, ordering: 'source' as const }]]) {
       const evaluated = await evaluateNode({ eval: 'equals', input: 'output.text', value: '4' },

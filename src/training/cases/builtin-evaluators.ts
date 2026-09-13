@@ -1,13 +1,14 @@
 import type { EvaluatorDefinition } from '../contracts/dataset.js';
 import { validatePredicate } from './turn-bindings.js';
+import { compileJsonSchema } from './json-schema.js';
 import { exclusive, fail, fields, number, object, oneOf, safePath, sequence, string, uniqueStrings } from './validation.js';
 
 function descriptor(kind: EvaluatorDefinition['kind'], allowed: string[], required: string[],
-  validate?: EvaluatorDefinition['validate']): EvaluatorDefinition {
+  validate?: EvaluatorDefinition['validate'], version = '1'): EvaluatorDefinition {
   return {
     // Proof capability permits runtime finality assessment, not premature failure.
     // Repairable checks remain provisional; negated presence can fail decisively.
-    version: '1', kind, incremental: true, stopProof: kind === 'mechanical',
+    version, kind, incremental: true, stopProof: kind === 'mechanical',
     validate(parameters, path) {
       fields(parameters, allowed, path);
       for (const name of required) if (parameters[name] === undefined) fail(`${path}.${name}`, 'required field');
@@ -63,8 +64,8 @@ export const builtinEvaluatorDefinitions: Readonly<Record<string, EvaluatorDefin
   'json-schema': descriptor('mechanical', ['input', 'schema'], ['input', 'schema'], (parameters, path) => {
     textParameters(parameters, path);
     if (typeof parameters.schema === 'string') safePath(parameters.schema, `${path}.schema`);
-    else object(parameters.schema, `${path}.schema`);
-  }),
+    else compileJsonSchema(object(parameters.schema, `${path}.schema`));
+  }, '2'),
   'tool-called': descriptor('mechanical', ['tool', 'outcome', 'phase'], ['tool'], toolParameters),
   'tool-count': descriptor('mechanical', ['tool', 'outcome', 'phase', 'exactly', 'at_least', 'at_most'], ['tool'], (parameters, path) => {
     toolParameters(parameters, path);

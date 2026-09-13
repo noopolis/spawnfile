@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
-import { Ajv } from 'ajv';
+import { compileJsonSchema } from '../../cases/index.js';
 import type { CheckNode } from '../../contracts/dataset.js';
 import type { EvaluationContext, EvaluationResult } from '../../contracts/evaluation.js';
 import { result } from '../logic/index.js';
@@ -20,7 +20,7 @@ export async function evaluateText(check: CheckNode, context: EvaluationContext)
     const schemaBytes = typeof check.schema === 'string' ? await context.readText(check.schema) : undefined;
     if (schemaBytes !== undefined) selected.evidence.push(textReference('sidecar', check.schema as string, schemaBytes));
     const schema = schemaBytes === undefined ? check.schema : JSON.parse(schemaBytes);
-    const validator = new Ajv({ strict: true, allErrors: true }).compile(schema as object);
+    const validator = compileJsonSchema(schema);
     passed = validator(selected.value);
   } else throw new Error(`Unknown text evaluator ${check.eval}`);
   return { ...result(passed ? 'pass' : 'fail', `${check.eval}: ${passed ? 'matched' : 'not matched'}`,

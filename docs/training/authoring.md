@@ -259,6 +259,16 @@ failures to resolve or evaluate, not opportunities for best-effort passing.
 | Registered project evaluator | Typed domain checks against real accepted state/artifacts |
 | `all`, `any`, `not` | Logical composition with explicit unknown/error semantics |
 
+`json-schema` evaluator version 2 uses the same compiler during dataset resolution
+and evaluation: Ajv strict mode with only `strictRequired` disabled. A required
+property need not also appear under `properties`; its presence is still enforced.
+Other strictness checks remain enabled. Invalid schemas, unknown keywords and
+unresolved references fail before native or inference construction. Protected sidecar
+schemas are compiled from the exact bytes included in the criterion digest. Validation
+does not coerce values, insert defaults or remove fields. Version 1 captures retain
+their original version and result; evaluating under version 2 requires an explicit
+new evaluation identity.
+
 Selectors include `output.text`, `artifact:name#/json/pointer`, `input:files` and
 resolved binding/check evidence. The environment adapter declares trusted collected
 artifacts; an agent-supplied pathname or claimed receipt cannot manufacture acceptance.

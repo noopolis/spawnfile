@@ -25,6 +25,10 @@ and validates the complete effective records before any native work starts.
   forbidden; semantic/embedding dependencies cannot acquire stop or turn-gate authority.
   Registered stop eligibility is not proof of a particular runtime failure's finality.
 - Criterion sidecars require protected bytes, authenticated into the shared plan digest.
+  Inline JSON schemas and the exact copied sidecar bytes are compiled before native
+  construction. The shared compiler retains Ajv strict checks except strictRequired;
+  required-only properties remain valid and required fields remain enforced. Evaluation
+  uses this same versioned policy; never silently reinterpret historical reports.
   Native binding declarations select trusted observations; only later turn inputs may
   reference them. Binding values/cardinality are verified by experiments at runtime.
   Each turn has its own check-ID namespace; reports must keep the turn identity.

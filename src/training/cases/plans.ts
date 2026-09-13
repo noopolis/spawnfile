@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { CheckNode, Dataset, DatasetRegistry, LiveCheck, Stage } from '../contracts/dataset.js';
 import { builtinEvaluatorDefinitions } from './builtin-evaluators.js';
+import { compileJsonSchema } from './json-schema.js';
 import { validateBindingReferences } from './turn-bindings.js';
 import { checkShape } from './check-schema.js';
 import { fail, object, string } from './validation.js';
@@ -10,6 +11,7 @@ export interface PlanResolution {
   versions: Record<string, string>;
   artifacts?: ReadonlySet<string>;
   criterionFileDigests?: Record<string, string>;
+  criterionFiles?: Map<string, Uint8Array>;
   readCriterionFile?: (path: string) => string | Uint8Array;
 }
 interface Nature { mechanical: boolean; incremental: boolean; stopProof: boolean }
@@ -62,7 +64,14 @@ function expand(node: CheckNode, context: PlanResolution, known: ReadonlyMap<str
         (node.rubric as { file?: string }).file : undefined;
     if (sidecar) {
       if (!context.readCriterionFile || !context.criterionFileDigests) fail(path, `criterion sidecar requires protected bytes: ${sidecar}`);
-      context.criterionFileDigests[sidecar] ??= `sha256:${createHash('sha256').update(context.readCriterionFile(sidecar)).digest('hex')}`;
+      const files = context.criterionFiles ??= new Map<string, Uint8Array>();
+      let bytes = files.get(sidecar);
+      if (bytes === undefined) {
+        bytes = Buffer.from(context.readCriterionFile(sidecar));
+        files.set(sidecar, bytes);
+      }
+      if (node.eval === 'json-schema') compileJsonSchema(JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)));
+      context.criterionFileDigests[sidecar] = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
       context.versions[`criterion-file:${sidecar}`] = context.criterionFileDigests[sidecar];
     }
     if (node.eval === 'llm-rubric') {
