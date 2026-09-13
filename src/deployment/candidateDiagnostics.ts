@@ -29,7 +29,7 @@ export const sanitizeCandidateDiagnostic = (text: string, secrets: string[]): st
     .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/gu, "[REDACTED PRIVATE KEY]")
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/gu, "[REDACTED JWT]")
     .replace(/https?:\/\/[^\s<>"']+/giu, "[REDACTED URL]")
-    .replace(/\b(authorization|cookie|password|secret|token|api[_-]?key)\s*[:=]\s*[^\r\n]+/giu, "$1: [REDACTED]")
+    .replace(/\b([a-z0-9_-]*(?:authorization|cookie|password|secret|token|api[_-]?key)[a-z0-9_-]*)["']?\s*[:=]\s*[^\r\n]+/giu, "$1: [REDACTED]")
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]|[\x00-\x08\x0b-\x1f\x7f]/gu, "");
 
 const collect = async (runDocker: DockerCommandRunner, args: string[]) => {
