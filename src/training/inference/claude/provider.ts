@@ -4,6 +4,7 @@ import path from 'node:path';
 import { runProcess } from '../../platform/process/index.js';
 import type { InferenceProvider, InferenceRequest } from '../../contracts/execution.js';
 import { claudeEnvironment, decodeClaudeResult, parseEnvelope, savedSubscription } from './protocol.js';
+import { claudeRefusal } from './refusal.js';
 
 export interface ClaudeInferenceOptions {
   command?: string;
@@ -50,9 +51,11 @@ export function createClaudeInference(options: ClaudeInferenceOptions = {}): Inf
           },
         });
         const completed = await process.completion;
-        if (completed.error !== undefined || completed.cancelled || completed.exitCode !== 0) {
-          throw new Error(completed.error ?? `Claude inference failed (exit ${completed.exitCode})`);
-        }
+        if (completed.cancelled) throw new Error('Claude inference was cancelled or stopped after a native failure');
+        if (completed.error !== undefined) throw new Error('Claude inference failed (native process or protocol error)');
+        const refusal = claudeRefusal(result, request.model);
+        if (refusal !== undefined) throw refusal;
+        if (completed.exitCode !== 0) throw new Error(`Claude inference failed (exit ${completed.exitCode})`);
         if (result === undefined) throw new Error('Claude omitted its terminal result envelope');
         if (!isolationAcknowledged) throw new Error('Claude omitted tool-free isolation acknowledgement');
         const decoded = decodeClaudeResult(result);

@@ -8,4 +8,8 @@ runs a subject agent or chooses a fallback provider.
 - Reject sampling controls the native CLI does not expose; report native usage or unknown.
 - Set explicit modelBasis: only a nonempty native model identity is provider-reported.
   A requested fallback preserves string compatibility, never actual-model evidence.
+- Recognize strict terminal HTTP 429 refusals before generic exit handling. Report
+  bounded model/provider metadata and only validated reset hints; never echo arbitrary
+  response, stderr or process-error text. Cancellation/protocol failure takes precedence.
+  Quota is not a login failure and never triggers retry or provider fallback.
 - Unit protocol tests do not replace a successful bounded subscription generation.
