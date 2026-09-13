@@ -52,8 +52,8 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <p class="eyebrow">Paideia · local architecture proposal · 13 September 2026</p>
 <h1>The architecture, from YAML to a tested agent.</h1>
 <p>A native project and its environment, one YAML per dataset, and a bounded loop that evaluates and improves selected instructions.</p>
-<div class="status"><p><strong>Design stage.</strong> The example files, native declaration and real source hashes have been checked. Paideia’s runner, adapters, evaluators, DSPy bridge and viewer are proposed; no agent training has run.</p></div>
-<nav aria-label="Architecture sections"><a href="#architecture">01 Architecture</a><a href="#yaml">02 YAML</a><a href="#trial">03 One trial</a><a href="#training">04 Training</a><a href="#readiness">05 Readiness</a></nav>
+<div class="status"><p><strong>Design stage.</strong> The example files, native declaration and real source hashes have been checked. The example is not yet prompt-equivalent to the real organization. Paideia’s runner, adapters, evaluators, DSPy bridge and viewer are proposed; no agent training has run.</p></div>
+<nav aria-label="Architecture sections"><a href="#architecture">01 Architecture</a><a href="#yaml">02 YAML</a><a href="#distillation">03 Real runs</a><a href="#trial">04 One trial</a><a href="#training">05 Training</a><a href="#readiness">06 Readiness</a></nav>
 </header>
 <section id="architecture">
 <p class="number">01 / Components and ownership</p>
@@ -207,8 +207,41 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <p><strong>Event order and evaluation order differ:</strong> a tool sequence checks what the agent did; a stage dependency decides when an evaluator runs. See the <a href="authoring.md">canonical YAML proposal</a>.</p>
 </details>
 </section>
+<section id="distillation">
+<p class="number">03 / Datasets from real experience</p>
+<h2>A real run can seed a reviewed test case.</h2>
+<p><strong>Proposed, not implemented.</strong> Select a real assignment wake, a bounded multi-wake episode or a failure worth repeating. Extract the original task and immutable source references into the same dataset schema; named fixtures reuse shared context. No second dataset format or per-run YAML is required.</p>
+<figure><figcaption>Captured runs · review real experience into datasets</figcaption><div class="diagram-scroll" tabindex="0" aria-label="Captured runs · review real experience into datasets — scroll horizontally on small screens">
+<svg viewBox="0 0 1280 288" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="paideia-distillation-title paideia-distillation-desc">
+<title id="paideia-distillation-title">Captured runs · review real experience into datasets</title><desc id="paideia-distillation-desc">A native run capture supplies an exact task and pre-wake context. Paideia pins available evidence and marks missing state, an author reviews independent criteria and groups related runs, and the result uses the same inline-record dataset schema.</desc>
+<defs><marker id="paideia-distillation-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+<marker id="paideia-distillation-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+<marker id="paideia-distillation-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<style>.node-name{font:600 20px Geist,Arial,sans-serif;fill:#2d3142}.node-note{font:16px Geist,Arial,sans-serif;fill:#4f5d75}.tech,.edge-label,.zone-label,.legend{font:12px 'Geist Mono',monospace;fill:#4f5d75}.edge{fill:none;stroke:#4f5d75;stroke-width:1.5}.zone{fill:rgba(45,49,66,.02);stroke:#bfc0c0;stroke-dasharray:4 4}.legend-rule{stroke:#bfc0c0;stroke-width:1}</style><rect width="100%" height="100%" fill="#f5f5f5"/>
+<path class="edge" d="M280 136 H360" marker-end="url(#paideia-distillation-arrow)"/>
+<path class="edge" d="M600 136 H680" marker-end="url(#paideia-distillation-arrow)"/>
+<path class="edge" d="M920 136 H1000" marker-end="url(#paideia-distillation-arrow)"/>
+<g class="node" data-kind="input"><rect x="40" y="80" width="240" height="112" rx="8" fill="#f5f5f5"/><rect x="40" y="80" width="240" height="112" rx="8" fill="rgba(79,93,117,.10)" stroke="#4f5d75"/>
+<text class="node-name" x="60" y="112" style="font-size:20px">Recorded native run</text><text class="node-note" x="60" y="140">Task · tools · outputs</text><text class="node-note" x="60" y="164">Pre-wake context</text>
+</g>
+<g class="node" data-kind="focal"><rect x="360" y="80" width="240" height="112" rx="8" fill="#f5f5f5"/><rect x="360" y="80" width="240" height="112" rx="8" fill="rgba(235,108,54,.08)" stroke="#eb6c36"/>
+<text class="node-name" x="380" y="112" style="font-size:20px">Distill a draft</text><text class="node-note" x="380" y="140">Pin inputs + native files</text><text class="node-note" x="380" y="164">Mark missing context</text>
+</g>
+<g class="node" data-kind="plain"><rect x="680" y="80" width="240" height="112" rx="8" fill="#f5f5f5"/><rect x="680" y="80" width="240" height="112" rx="8" fill="#ffffff" stroke="#4f5d75"/>
+<text class="node-name" x="700" y="112" style="font-size:20px">Review + group</text><text class="node-note" x="700" y="140">Author rules separately</text><text class="node-note" x="700" y="164">Group related runs</text>
+</g>
+<g class="node" data-kind="store"><rect x="1000" y="80" width="240" height="112" rx="8" fill="#f5f5f5"/><rect x="1000" y="80" width="240" height="112" rx="8" fill="rgba(45,49,66,.05)" stroke="#4f5d75"/>
+<text class="node-name" x="1020" y="112" style="font-size:20px">evals/*.yaml</text><text class="node-note" x="1020" y="140">Same record schema</text><text class="node-note" x="1020" y="164">References stay hidden</text>
+</g>
+<line class="legend-rule" x1="40" y1="236" x2="1240" y2="236"/><text class="legend" x="40" y="264">Proposed · stored outputs are observations, not gold answers · private captures remain outside agent mounts</text>
+</svg>
+</div></figure>
+<p><strong>Capture before work:</strong> native project/runtime identity, effective instructions and tool schemas, generated team context, memory snapshot, clock, room history and resource state at the selected boundary. Preserve what the agent could access then; later messages, edited files and post-task memory are not initial inputs.</p>
+<p><strong>Review before use:</strong> observed tool calls and outputs are evaluator evidence, never an automatic gold answer. Author expected behavior independently. Keep private captures outside Git and subject mounts; YAML pins authorized references. Put related runs in one evidence group, deduplicate and select train/test roles before optimization.</p>
+<p><strong>Two uses:</strong> rescore a captured run without new cognition, or rerun its task in fresh isolated state to test a changed prompt. For alternate tool calls, use the real isolated service or a declared emulator; replay cannot invent unseen answers. Missing snapshots or traces mean reconstructed/partial coverage; exact replay must refuse them.</p>
+</section>
 <section id="trial">
-<p class="number">03 / A single concrete execution</p>
+<p class="number">04 / A single concrete execution</p>
 <h2>One Kestrel assignment, one isolated Scribe.</h2>
 <div class="diagram-section">
 <figure><figcaption>One trial · Scribe reports from the Kestrel packet</figcaption><div class="diagram-scroll narrow" tabindex="0" aria-label="One trial · Scribe reports from the Kestrel packet — scroll horizontally on small screens">
@@ -253,9 +286,9 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 </svg>
 </div></figure>
 <aside class="aside">
-<p><strong>Subject:</strong> real Scribe prompts, Daimon with its Codex engine, real validator and filing tools, native source paths and memory interface.</p>
-<p><strong>Reconstruction:</strong> fresh assignment/state, empty memory and a clock starting on 12 September at 13:30 Berlin. This is not a historical replay.</p>
-<p><strong>Delivery:</strong> setup creates state without waking the agent. One authenticated Chief mention supplies the task and triggers the native wake. Message text is <code>@scribe</code>, one LF, then the YAML-parsed prompt.</p>
+<p><strong>Matched source:</strong> Scribe’s AGENTS, SOUL and RUNBOOK bytes; model, MCP declarations and memory interface match the pinned source. This does not establish equivalent effective context or a deployed-runtime match.</p>
+<p><strong>Known differences:</strong> generated TEAM.md is empty, Scribe replaces Chief as lead, the lead roster is missing and DMs are enabled. Memory is empty; assignment/history and the 12 September 13:30 Berlin clock are reconstructed.</p>
+<p><strong>Delivery:</strong> setup creates state without waking the agent. A fixture service uses the declared Chief participant identity to send one authenticated mention, supplying the task and triggering the native wake. Message text is <code>@scribe</code>, one LF, then the YAML-parsed prompt.</p>
 <p><strong>Evidence:</strong> native calls and terminal outcome, accepted JSON, authentic filing/history receipts and the stored handoff to Reviewer.</p>
 </aside>
 </div>
@@ -264,6 +297,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <tbody>
 <tr><td>Source selection</td><td>Verify revisions and file hashes. Preserve tools, schemas and catalogues; remove target/future output and all held-out content, including sibling reference outputs, every story derivative, aggregate byline rows, Git history, caches and memory paths.</td></tr>
 <tr><td>Isolation</td><td>Fresh container, trial-owned volumes and native control credentials. Fixed native paths remain inside that container; they never mount production state.</td></tr>
+<tr><td>Effective prompt parity</td><td>Restore the real generated TEAM.md, Chief lead/roster and communication scope. Compare native lowered instructions, generated workspace instructions, runtime wake envelope, tool schemas and pre-wake context against a pinned baseline; record every permitted trial difference.</td></tr>
 <tr><td>Native preparation</td><td>Matching attested runtime and original tool dependency closures. Candidate resource overlays must be supported through the native public contract.</td></tr>
 <tr><td>Clock and wake</td><td>Agent, tools and runtime share the declared emulated wall clock. Capture the real active wake ID; do not substitute a record/message ID or submit a duplicate direct wake.</td></tr>
 <tr><td>Accepted artifact</td><td>A read-only collector joins current admitted filing, authentic receipt and committed bytes for this owner/edition/story. Validation JSON, admitted JSON, file hash and Git commit keep their separate identities.</td></tr>
@@ -274,7 +308,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 </details>
 </section>
 <section id="training">
-<p class="number">04 / How prompts change</p>
+<p class="number">05 / How prompts change</p>
 <h2>Train on feedback; test after freezing.</h2>
 <figure><figcaption>Training · compile candidates, then test after freezing</figcaption><div class="diagram-scroll" tabindex="0" aria-label="Training · compile candidates, then test after freezing — scroll horizontally on small screens">
 <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="paideia-training-title paideia-training-desc">
@@ -335,13 +369,14 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <p>The three retrospective newsroom records demonstrate authoring. They cannot establish statistical generalization or guarantee that a model has never encountered these public stories.</p>
 </section>
 <section id="readiness">
-<p class="number">05 / What exists today</p>
+<p class="number">06 / What exists today</p>
 <h2>The next acceptance is a real native trial.</h2>
 <div class="table"><table>
 <thead><tr><th>Checked in this seed</th><th>Still to build and demonstrate</th></tr></thead>
 <tbody>
 <tr><td>One native Spawnfile, evals/ with two dataset YAMLs, three real records, twelve pinned source-file hashes and a proposed .spawnignore file.</td><td>Dataset resolver and schema, typed recipe registry, filtered views, Spawnfile packaging exclusions and concrete run invocation.</td></tr>
-<tr><td>Production prompt seeds and model/MCP/memory declaration parity; native Spawnfile validation.</td><td>Matching runtime attestation, original tool closures, isolation, emulated clock and truthful native capture. The inspected Daimon/Codex CLI surface omits the internal tool chain: a trusted MCP journal or native event export joined to actual wake/acceptance IDs is required.</td></tr>
+<tr><td>Matching agent source files and model/MCP/memory declarations; native Spawnfile validation. Full prompt parity fails on generated team context, hierarchy and DM scope.</td><td>Repair team-context differences, then verify effective input with matching runtime attestation, original tool closures, isolation, emulated clock and truthful native capture. The inspected Daimon/Codex CLI surface omits the internal tool chain: a trusted MCP journal or native event export joined to actual wake/acceptance IDs is required.</td></tr>
+<tr><td>Proposed capture-to-dataset flow; no records have been distilled from captured runs.</td><td>Native capture coverage, pre-wake snapshots, reviewed criteria, evidence grouping and a distiller into the existing YAML schema.</td></tr>
 <tr><td>Explicit artifact, delivery and candidate destination bindings; shared-plan equality and mutation checks.</td><td>Mechanical/semantic evaluators, subscription DSPy bridge, candidate propagation and generalization experiment.</td></tr>
 </tbody></table></div>
 <p>Before declaring runtime independence, run the same cases and evaluation plan on two real native adapters, including one outside Daimon. Before optimization, prove that an allowed Markdown edit changes the effective subject input and that missing/locked mappings fail.</p>
