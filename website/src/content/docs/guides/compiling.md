@@ -1,6 +1,6 @@
 ---
 title: Compiling
-description: How the Spawnfile compile pipeline works, from manifest loading to adapter output, including the output layout and compile report.
+description: Compile AI agent manifests into runtime-native configuration for OpenClaw, PicoClaw, and Daimon with the Spawnfile CLI.
 ---
 
 The `spawnfile compile` command takes a Spawnfile project and produces runtime-specific output files plus a machine-readable compile report. This guide explains the pipeline, output layout, and report format.
