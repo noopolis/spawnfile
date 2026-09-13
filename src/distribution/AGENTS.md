@@ -31,3 +31,7 @@ src/distribution/
 - This folder is pure: no filesystem access, no compiler imports. The compiler projects its plan/report data into the structural input types defined here.
 - The fingerprint is computed over the report body excluding `generated_at`, so identical compiles fingerprint identically across machines and times.
 - Frozen contract values (`spawnfile.distribution-report.v1`, `spawnfile.image.v1`, the in-image report path) live in `types.ts` and change only with a contract version bump.
+- Candidate startup gets the full 120-second readiness budget even if Docker
+  marks a running process unhealthy during initialization. Only running and
+  healthy (or a container without a health check) passes; terminal or unknown
+  health state fails. Deployment diagnostics must finish before candidate removal.

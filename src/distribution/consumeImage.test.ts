@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -581,18 +581,33 @@ describe("consumeImageUp", () => {
   it("restores the previous container when candidate readiness inspection fails", async () => {
     const calls: string[][] = [];
     const base = createFakeDocker({ calls: [] }, undefined, { liveExists: true });
+    const diagnosticsDirectory = path.join(homeDirectory, "deployments", "readiness-rollback", "diagnostics");
+    let evidenceBeforeRemoval = false;
     const runDocker = async (args: string[]): Promise<Buffer> => {
       calls.push(args);
+      if (args[0] === "logs") return Buffer.from("Error: missing startup module\nsecret-value\n");
+      if (args.includes("{{json .State}}")) return Buffer.from(JSON.stringify({
+        Running: false, Status: "exited", ExitCode: 1, Health: { Status: "unhealthy" }
+      }));
       if (args[0] === "container" && args.some((arg) => arg.includes("{{json .State}}"))) {
         throw new Error("readiness transport failed");
+      }
+      if (args[0] === "rm" && args[2] === candidateContainerId) {
+        const files = await readdir(diagnosticsDirectory);
+        const evidence = await readFile(path.join(diagnosticsDirectory, files[0]!), "utf8");
+        expect(evidence).toContain("missing startup module");
+        expect(evidence).not.toContain("secret-value");
+        expect(JSON.parse(evidence).summary).toBe("state=exited, health=unhealthy, exit=1");
+        evidenceBeforeRemoval = true;
       }
       return base(args);
     };
     await expect(consumeImageUp("you/org:1.0.0", {
-      authValues: { ANTHROPIC_API_KEY: "sk", DIST_REQUIRED_TOKEN: "x" },
+      authValues: { ANTHROPIC_API_KEY: "secret-value", DIST_REQUIRED_TOKEN: "x" },
       deploymentName: "readiness-rollback",
       runDocker
     })).rejects.toThrow(/readiness transport failed/u);
+    expect(evidenceBeforeRemoval).toBe(true);
 
     const live = "spawnfile-readiness-rollback";
     const backup = calls.find((call) => call[0] === "rename" && call[1] === live)?.[2];
