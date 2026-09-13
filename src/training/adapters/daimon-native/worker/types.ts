@@ -82,6 +82,8 @@ export interface TerminalEvidence {
   scheduleOverride: 'disabled';
   preparation?: Pick<NativeLaunch, 'sourceConfigSha256' | 'instructions' | 'overrides'>;
   status: 'completed' | 'failed' | 'cancelled';
+  /** A closed execution can leave its delivery deferred; this never marks the trial completed. */
+  blocked?: 'awaiting-external-input';
   startedAt: string;
   completedAt: string;
   executionId?: string;

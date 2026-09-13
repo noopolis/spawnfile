@@ -50,6 +50,10 @@ and built-in tools remain absent. Native attention final prose is absent. Projec
 can evaluate authentic filed artifacts through their own collectors. Missing
 usage remains unknown. The terminal evidence retains preparation receipts.
 
+A completed execution that defers its inbox delivery stays a failed trial with
+`blocked: "awaiting-external-input"` in terminal evidence. Recorded usage and
+receipts remain available; the adapter never retries without new external input.
+
 Cancellation requests native stop, then stops/kills the owned labeled container
 and independently verifies removal. Unknown containment never becomes confirmed.
 Evaluator files are excluded from projections, and native Codex protection denies

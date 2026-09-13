@@ -18,7 +18,12 @@ export interface WorkerController {
   stop(): Promise<NativeStopEvidence>;
 }
 
+function deferredAfterCompletion(receipt: NativeReceipt, trace: NativeTrace | undefined): boolean {
+  return receipt.state === 'accepted' && receipt.deferred === true && trace?.status === 'completed';
+}
+
 export function describeNativeFailure(receipt: NativeReceipt, trace: NativeTrace | undefined): string {
+  if (deferredAfterCompletion(receipt, trace)) return 'Native execution completed; delivery blocked awaiting external input';
   const delivery = `${receipt.state}${receipt.deferred ? ' deferred' : ''}`;
   if (trace?.status !== 'failed') return `Native delivery ended ${delivery}`;
   const error = trace.error;
@@ -95,6 +100,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
       let executionId: string | undefined;
       let status: TerminalEvidence['status'];
       let error: string | undefined;
+      let blocked: TerminalEvidence['blocked'];
       let native: NativeEvidence = { traces: [], usage: [], toolReceipts: [], modelContexts: [] };
       let timedOut = false;
       const timer = setTimeout(() => { timedOut = true; void stop(); }, options.timeoutMs);
@@ -131,6 +137,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
         native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id, executionId, agent.engine.model!);
         const trace = native.traces[0];
         const failure = availability.agents.find(row => row.agent_id === agent.id)?.error;
+        if (!failure && deferredAfterCompletion(receipt, trace)) blocked = 'awaiting-external-input';
         if (receipt.state !== 'completed' || trace?.status !== 'completed' || failure) {
           throw new Error(failure ?? describeNativeFailure(receipt, trace));
         }
@@ -149,6 +156,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
         agentId: agent.id, model: agent.engine.model!, configSha256: options.configSha256, scheduleOverride: 'disabled',
         ...(launch ? { preparation: { sourceConfigSha256: launch.sourceConfigSha256, instructions: launch.instructions, overrides: launch.overrides } } : {}),
         status, startedAt, completedAt: new Date().toISOString(), executionId, receipt, activity, availability, native,
+        ...(blocked ? { blocked } : {}),
         coverage: [{ channel: 'tools', completeness: native.toolReceipts.length || native.traces.some(trace => trace.tools.length) ? 'partial' : 'absent', ordering: 'none' },
           { channel: 'output', completeness: 'absent', ordering: 'none' },
           { channel: 'usage', completeness: native.usage.length ? 'partial' : 'absent', ordering: 'source' }],
