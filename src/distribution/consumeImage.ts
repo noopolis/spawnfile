@@ -4,11 +4,13 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 
 import {
   acquireHomeDeploymentLock,
+  captureCandidateDiagnostics,
   createDockerDeploymentLabels,
   homeDeploymentExists,
   normalizeDeploymentName,
   readHomeDeploymentRecord,
   resolveDockerDeploymentTarget,
+  sanitizeCandidateDiagnostic,
   verifyDockerDeploymentTarget,
   writeHomeDeployment,
   type DeploymentRecord,
@@ -333,14 +335,21 @@ const consumeImageUpLocked = async (
         recordPath: written.recordPath
       };
     } catch (error) {
+      const diagnostics = candidateId ? await captureCandidateDiagnostics({
+        candidateId, deploymentName, runDocker, secretValues: Object.values(env)
+      }) : null;
+      const detail = diagnostics ? ` (${diagnostics.summary}); ${diagnostics.path
+        ? `private diagnostics: ${diagnostics.path}` : "private diagnostics unavailable"}` : "";
+      const failure = (cause: unknown): SpawnfileError => new SpawnfileError("runtime_error",
+        sanitizeCandidateDiagnostic(cause instanceof Error ? cause.message : String(cause), Object.values(env)) + detail);
       try {
         await rollbackCandidateContainer(
           runDocker, candidateId, containerName, previousContainer, backupName
         );
       } catch (rollbackError) {
-        throw rollbackError;
+        throw failure(rollbackError);
       }
-      throw error;
+      throw failure(error);
     }
   } finally {
     try { await volumeReservation?.release(); }
