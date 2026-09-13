@@ -63,6 +63,25 @@ describe('bounded process protocol', () => {
     expect((await process.completion).cancelled).toBe(true);
   });
 
+  it('observes same-group descendants finishing after their native leader is reaped', async () => {
+    let ready!: () => void;
+    const readiness = new Promise<void>((resolve) => { ready = resolve; });
+    const descendant = 'process.on("SIGTERM",()=>setTimeout(()=>process.exit(0),250));'
+      + 'console.log("ready");setInterval(()=>{},100)';
+    const leader = 'const {spawn}=require("node:child_process");'
+      + 'process.on("SIGTERM",()=>process.exit(0));'
+      + `const child=spawn(process.execPath,["-e",${JSON.stringify(descendant)}],`
+      + '{stdio:["ignore","pipe","inherit"]});'
+      + 'child.stdout.once("data",()=>console.log("ready"));setInterval(()=>{},100)';
+    const native = runProcess(options(leader, { onLine: () => ready() }));
+    await readiness;
+
+    const receipt = await native.stop('cooperative group cleanup');
+
+    expect(receipt).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed', scope: 'process-group' });
+    expect((await native.completion).stop).toEqual(receipt);
+  });
+
   it('does not report quiescence when process inspection cannot establish it', async () => {
     const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
     try {

@@ -73,14 +73,15 @@ export function runProcess(options: ProcessOptions): RunningProcess {
       callbackController.abort(new Error(reason));
       send('SIGTERM');
       const deadline = Date.now() + 1_500;
-      while (exists() && !reaped && Date.now() < deadline) {
+      while (exists() && Date.now() < deadline) {
         if (Date.now() > deadline - 1_200) send('SIGKILL');
         await delay(20);
       }
+      const remaining = exists();
       receipt = {
-        state: exists() ? 'unknown' : 'acknowledged',
+        state: remaining ? 'unknown' : 'acknowledged',
         scope: group ? 'process-group' : 'process',
-        quiescence: exists() ? 'unknown' : 'confirmed',
+        quiescence: remaining ? 'unknown' : 'confirmed',
         remoteWork: 'unknown', reason,
         detail: 'No signals are sent after the native leader is reaped. Remaining group ownership, escaped descendants and remote effects may be unknown.',
       };
