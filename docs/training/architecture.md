@@ -1,5 +1,8 @@
 # Architecture
 
+Open the [local architectural view](architecture.html) for component, YAML, native-trial
+and training diagrams.
+
 These are approved module boundaries, not an implemented system. YAML syntax,
 adapter contracts and template selection still require concrete agreement and
 conformance tests. The seeded folders currently contain guidance only.

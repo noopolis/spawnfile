@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paideia — architectural view</title>
+<style>
+* { box-sizing: border-box; }
+:root { color-scheme: light; --ink: #24282d; --muted: #555e67; --line: #d2d6da; --paper: #fafaf8; }
+body { margin: 0; padding: 32px 24px 64px; background: var(--paper); color: var(--ink); font: 16px/1.55 system-ui, sans-serif; }
+main { max-width: 1120px; margin: auto; }
+h1 { font-size: 36px; line-height: 1.15; margin: 8px 0 16px; letter-spacing: -1px; }
+h2 { font-size: 24px; line-height: 1.25; margin: 0 0 16px; }
+h3 { font-size: 16px; margin: 24px 0 8px; }
+p { max-width: 84ch; margin: 12px 0; }
+a { color: #254d70; text-underline-offset: 4px; }
+a:focus-visible, summary:focus-visible, pre:focus-visible { outline: 2px solid #254d70; outline-offset: 4px; }
+.eyebrow, .number { color: var(--muted); font: 12px/1.5 ui-monospace, monospace; letter-spacing: 1px; text-transform: uppercase; }
+.status { border-left: 3px solid var(--ink); padding: 8px 16px; margin: 24px 0; max-width: 92ch; }
+.status p { margin: 0; }
+nav { display: flex; flex-wrap: wrap; gap: 12px 24px; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+section { padding: 32px 0; scroll-margin-top: 16px; border-bottom: 1px solid var(--line); }
+figure { margin: 24px 0; }
+figcaption { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+pre { max-width: 100%; overflow-x: auto; padding: 16px; background: #f0f1ee; font: 14px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: 2; }
+pre.diagram { padding: 8px 0; background: transparent; font-size: 16px; line-height: 1.5; }
+code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.88em; overflow-wrap: anywhere; }
+pre code { font-size: inherit; overflow-wrap: normal; }
+.split { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(240px, 1fr); gap: 32px; align-items: start; }
+.aside { border-top: 2px solid var(--ink); padding-top: 12px; margin-top: 24px; }
+ul, ol { padding-left: 24px; margin: 12px 0; }
+li { margin: 8px 0; }
+.table { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 12px 16px 12px 0; border-bottom: 1px solid var(--line); }
+th { font-weight: 600; }
+summary { cursor: pointer; font-weight: 600; padding: 16px 0; }
+details { border-top: 1px solid var(--line); margin-top: 24px; }
+footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
+@media (max-width: 900px) { .split { grid-template-columns: 1fr; gap: 8px; } .aside { margin-top: 0; } }
+@media (max-width: 600px) { body { padding: 24px 12px 40px; } h1 { font-size: 28px; } pre.diagram { font-size: 12px; } pre { padding: 12px; } section { padding: 24px 0; } nav { gap: 8px 16px; } }
+@media print { body { padding: 0; } nav { display: none; } pre { white-space: pre-wrap; } .split { display: block; } section { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+<p class="eyebrow">Paideia · local architecture proposal · 13 September 2026</p>
+<h1>The architecture, from YAML to a tested agent.</h1>
+<p>A native project and its environment, one YAML per dataset, and a bounded loop that evaluates and improves selected instructions.</p>
+<div class="status"><p><strong>Design stage.</strong> The example files, native declaration and real source hashes have been checked. Paideia’s runner, adapters, evaluators, DSPy bridge and viewer are proposed; no agent training has run.</p></div>
+<nav aria-label="Architecture sections"><a href="#architecture">01 Architecture</a><a href="#yaml">02 YAML</a><a href="#trial">03 One trial</a><a href="#training">04 Training</a><a href="#readiness">05 Readiness</a></nav>
+</header>
+<section id="architecture">
+<p class="number">01 / Components and ownership</p>
+<h2>Paideia surrounds the native agent.</h2>
+<div class="split">
+<figure><figcaption>Architectural decomposition · arrows indicate ownership or integration</figcaption><pre class="diagram" tabindex="0">Paideia
+├─→ Experiment core
+│   ├─→ YAML records + candidate mappings
+│   └─→ Isolation + budgets + capability checks
+├─→ Subject adapters
+│   ├─→ Daimon -&gt; its native engine
+│   └─→ Codex / Claude Code / Pi / OpenClaw
+├─→ Evaluation
+│   ├─→ Mechanical + ordered + logical rules
+│   ├─→ Semantic judges -&gt; inference routes
+│   └─→ Embeddings -&gt; declared backend
+├─→ Optimization ─→ DSPy bridge ─→ Markdown candidates
+└─→ Evidence storage ─→ Local live / replay viewer</pre></figure>
+<aside class="aside">
+<p><strong>The subject adapter runs the agent.</strong> The inference adapter supplies the optimizer and semantic judges. They are separate routes, even when they use the same subscription.</p>
+<p>Paideia supplies a task, environment and limits. The agent chooses its own actions and tools.</p>
+<p>Spawnfile prepares native workspaces. Daimon runs one agent. Moltnet transports messages. Mneme supplies memory. Paideia uses their public contracts.</p>
+<p><strong>Any native agent can be adapted.</strong> Missing observations or editable surfaces remain explicit; an adapter cannot invent evidence to make the same checks pass.</p>
+</aside>
+</div>
+<details><summary>See the complete data flow and feedback path</summary>
+<figure><figcaption>Experiment flow · only training feedback returns to DSPy</figcaption><pre class="diagram" tabindex="0">Native project + environment + datasets
+                   ↓
+        01 Resolve and isolate ←─────────┐
+                   ↓                     │
+       02 Native subject adapter         │
+                   ↓                     │
+03 Agent chooses tools / files / memory  │ DSPy: edit allowed Markdown
+                   ↓                     │
+ 04 Capture real events and artifacts    │
+                   ↓                     │
+ 05 Mechanical gates + quality scores ───┘
+                   ↓
+    06 Select on training data only
+                   ↓
+   07 Freeze -&gt; compare on test.yaml
+                   ↓
+08 Local report + prompt diff + viewer</pre></figure>
+<p>The viewer reads persisted events, artifacts, scores and usage. Opening it does not run an agent, judge or optimizer. Production scheduling and deployment remain outside this loop.</p>
+</details>
+</section>
+<section id="yaml">
+<p class="number">02 / What the author writes</p>
+<h2>One native project. One YAML file per dataset.</h2>
+<p>The newsroom example has a <a href="../examples/newsroom-reporting/Spawnfile">Spawnfile</a>, its Markdown environment, <a href="../examples/newsroom-reporting/train.yaml">train.yaml</a>, <a href="../examples/newsroom-reporting/test.yaml">test.yaml</a> and <a href="../examples/newsroom-reporting/README.md">one README</a>. Every record is inline. Other agents keep their own native project format.</p>
+<figure><figcaption>Visibility boundary · evaluator data never becomes subject input</figcaption><pre class="diagram" tabindex="0">One dataset YAML
+├─→ setup + record.context ─→ Trusted preparation + evaluator
+├─→ record.input
+│   ├─→ prompt -&gt; native input / authenticated message
+│   └─→ files -&gt; resource + path + SHA-256 -&gt; native mount
+├─→ stages / checks ─→ Evaluator only
+└─→ record.reference ─→ Evaluator only (never mounted for the subject)</pre></figure>
+<div class="table"><table>
+<thead><tr><th>YAML surface</th><th>What it means</th></tr></thead>
+<tbody>
+<tr><td><code>schema, id, subject</code></td><td>Versioned dataset identity and optional native agent identity.</td></tr>
+<tr><td><code>setup</code></td><td>A registered environment recipe: state, clock, delivery, source views and artifact collection. Newsroom behavior belongs in this integration.</td></tr>
+<tr><td><code>records[].context</code></td><td>Typed setup/evaluator parameters such as edition and story ID; not automatically added to the prompt.</td></tr>
+<tr><td><code>records[].input</code></td><td>The actual task and exact selected source files. Each source has a resource, native-relative path and SHA-256.</td></tr>
+<tr><td><code>records[].reference</code></td><td>Evaluator-only historical output. It is a comparison reference, not a gold answer or material for the agent.</td></tr>
+<tr><td><code>stages, checks, gate, score</code></td><td>A shared evaluation plan, applied to every record. Records can add criteria without weakening the shared gates.</td></tr>
+</tbody></table></div>
+<p>The invocation selects project, subject, dataset roles, editable prompt sections, inference routes and budgets. Resolution creates a locked run manifest. There is no mandatory extra experiment YAML; invocation syntax is still to design.</p>
+<details><summary>Read one actual training record</summary>
+<p>From <code>train.yaml</code>. The private archive stays external; these selectors were checked against the pinned Git bytes. The full file supplies its shared setup and evaluation plan.</p>
+<pre><code>  - id: kestrel-reporting
+    group: kestrel-2026-09-12
+    context:
+      edition: &quot;2026-09-12&quot;
+      article_id: s-1a2b3c4d
+    input:
+      prompt: |
+        Report the Kestrel salvo and what the reported hardware mix establishes.
+        Read the assignment and selected story packet at their usual workspace paths.
+        Produce the complete publication JSON, validate it, file it under this wake,
+        and notify Reviewer. Preserve source qualifications and write for readers.
+      files:
+        - resource: private-archive
+          path: 2026-09-12/desks/scribe.index
+          sha256: sha256:0404040404040404040404040404040404040404040404040404040404040404
+        - resource: private-archive
+          path: 2026-09-12/stories/s-1a2b3c4d.md
+          sha256: sha256:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a
+        - resource: private-archive
+          path: 2026-09-12/grok/grok-rolling-0944.md
+          sha256: sha256:0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b
+    reference:
+      # Historical output for evaluator-side comparison, not a gold answer or input.
+      files:
+        - resource: public-content
+          path: content/editions/2026-09-12/articles/s-1a2b3c4d.json
+          sha256: sha256:0707070707070707070707070707070707070707070707070707070707070707</code></pre>
+</details>
+<details><summary>How rules combine, from mechanical checks to prose quality</summary>
+<div class="table"><table>
+<thead><tr><th>Rule family</th><th>Concrete meaning</th></tr></thead>
+<tbody>
+<tr><td>Mechanical</td><td>Text contains/equals, schema validity, tool call existence/count and admitted artifact checks.</td></tr>
+<tr><td>Ordered / correlated</td><td>Successful validation completes before the current accepted filing; the same article is filed under the actual active wake ID. Ordered matching permits repair attempts.</td></tr>
+<tr><td>Logical</td><td><code>all</code>, <code>any</code>, <code>not</code>, named rules, conditions and typed CEL predicates. CEL implementation remains to select.</td></tr>
+<tr><td>Semantic</td><td>A subscription judge evaluates fixed grounding and prose rubrics against declared evidence.</td></tr>
+<tr><td>Embedding / custom</td><td>An explicitly selected embedding provider, or a registered typed domain evaluator. Not exercised by these three records.</td></tr>
+<tr><td>Progressive</td><td>Mechanics must pass before writing judges run. Writing score = 0.65 × grounding + 0.35 × prose; thresholds are proposed and need calibration.</td></tr>
+</tbody></table></div>
+<p>Grounding must reach 0.90, prose 0.80 and the combined score 0.88. A good average cannot rescue a failed hard gate. Unknown, failed, errored and skipped results stay visible; missing evidence never counts as success.</p>
+<p><strong>Event order and evaluation order differ:</strong> a tool sequence checks what the agent did; a stage dependency decides when an evaluator runs. See the <a href="authoring.md">canonical YAML proposal</a>.</p>
+</details>
+</section>
+<section id="trial">
+<p class="number">03 / A single concrete execution</p>
+<h2>One Kestrel assignment, one isolated Scribe.</h2>
+<div class="split">
+<figure><figcaption>Proposed native trial · the agent performs the reporting actions</figcaption><pre class="diagram" tabindex="0">          Select one record + candidate
+                        ↓
+   Verify source pins, hashes and capabilities
+                        ↓
+    Fresh container / memory / state / clock
+                        ↓
+   Prepare tools + real authorized assignment
+                        ↓
+   Chief mention -&gt; Moltnet -&gt; one native wake
+                        ↓
+Scribe reads evidence and writes article JSON
+                        ↓
+ Validation -&gt; accepted filing -&gt; Reviewer handoff
+                        ↓
+   Collect native outcome + accepted artifact
+                        ↓
+       Mechanical gates -&gt; semantic judges</pre></figure>
+<aside class="aside">
+<p><strong>Subject:</strong> real Scribe prompts, Daimon with its Codex engine, real validator and filing tools, native source paths and memory interface.</p>
+<p><strong>Reconstruction:</strong> fresh assignment/state, empty memory and a clock starting on 12 September at 13:30 Berlin. This is not a historical replay.</p>
+<p><strong>Delivery:</strong> setup creates state without waking the agent. One authenticated Chief mention supplies the task and triggers the native wake. Message text is <code>@scribe</code>, one LF, then the YAML-parsed prompt.</p>
+<p><strong>Evidence:</strong> native calls and terminal outcome, accepted JSON, authentic filing/history receipts and the stored handoff to Reviewer.</p>
+</aside>
+</div>
+<div class="table"><table>
+<thead><tr><th>Seam</th><th>Required behavior before this becomes a valid trial</th></tr></thead>
+<tbody>
+<tr><td>Source selection</td><td>Verify revisions and file hashes. Preserve tools, schemas and catalogues; remove target/future output and all held-out content, including sibling reference outputs, every story derivative, aggregate byline rows, Git history, caches and memory paths.</td></tr>
+<tr><td>Isolation</td><td>Fresh container, trial-owned volumes and native control credentials. Fixed native paths remain inside that container; they never mount production state.</td></tr>
+<tr><td>Native preparation</td><td>Matching attested runtime and original tool dependency closures. Candidate resource overlays must be supported through the native public contract.</td></tr>
+<tr><td>Clock and wake</td><td>Agent, tools and runtime share the declared emulated wall clock. Capture the real active wake ID; do not substitute a record/message ID or submit a duplicate direct wake.</td></tr>
+<tr><td>Accepted artifact</td><td>A read-only collector joins current admitted filing, authentic receipt and committed bytes for this owner/edition/story. Validation JSON, admitted JSON, file hash and Git commit keep their separate identities.</td></tr>
+</tbody></table></div>
+<p>A failed preflight prevents the paid run. A failed task is recorded; Paideia does not file an article on the agent’s behalf to repair its score.</p>
+<details><summary>Where sensors and multiple turns fit</summary>
+<p>These records use archived sensor packets; no live research is sent. A future research-loop record can use ordered <code>turns</code>: observe a real research request, then deliver a recorded or explicitly emulated response through Moltnet, and observe the resumed native agent. Paideia supplies external stimuli; the agent still decides whether to request research. No historical sensor-answer trace has been supplied for these records.</p>
+</details>
+</section>
+<section id="training">
+<p class="number">04 / How prompts change</p>
+<h2>Train on feedback; test after freezing.</h2>
+<figure><figcaption>Optimization loop · sealed test feedback has no return edge</figcaption><pre class="diagram" tabindex="0">             Baseline + train.yaml
+                       ↓
+         Evaluate fresh native trials
+                       ↓
+     DSPy proposes allowed Markdown edits ←──────┐
+                       ↓                         │
+   Compile / map all candidate destinations      │ bounded feedback
+                       ↓                         │
+ Rerun training; select within training groups ──┘
+                       ↓
+   Freeze candidate + criteria + environment
+                       ↓
+  Baseline and candidate -&gt; sealed test.yaml
+                       ↓
+Report quality / coverage / usage / prompt diff</pre></figure>
+<div class="table"><table>
+<thead><tr><th>Candidate source</th><th>Editable area</th><th>How the agent receives it</th></tr></thead>
+<tbody>
+<tr><td><code>AGENTS.md</code></td><td>“Prose and beat”</td><td>Native instruction/config surface and workspace document, plus the mirrored public agent document.</td></tr>
+<tr><td><code>RUNBOOK.md</code></td><td>“Article craft”, “The article wake”, “Asking for research you do not have”</td><td>The existing on-demand runbook path in the candidate’s isolated public source view.</td></tr>
+<tr><td><code>SOUL.md</code></td><td>Locked</td><td>Preserved in native and mirrored identity surfaces. Tools, policies, evidence and criteria also stay locked.</td></tr>
+</tbody></table></div>
+<p>DSPy receives an explicit mapping of editable Markdown components. The native adapter prepares each candidate and verifies all effective destinations. Installing a file, observing it load and observing the agent follow it are separate claims. Changing a prompt requires a new native run; rescoring old traces is not a trial.</p>
+<ul>
+<li><strong>Inference:</strong> subscription routes for DSPy reflection and judging are selected independently of the subject. No silent paid-API fallback. Embeddings have a separate declared backend.</li>
+<li><strong>Selection:</strong> use training-only groups or an optional validation partition. Compare baseline and frozen candidate on the same test records, environment and evaluation plan.</li>
+<li><strong>Fair comparison:</strong> the normalized shared plan digest must match across train/test, including rubric/judge versions, thresholds and weights. Missing trials retain their denominator.</li>
+<li><strong>Local result:</strong> prompt diff, source/candidate identities, trace, quality, coverage, latency and separate subject/optimizer/judge usage. The viewer reads this ledger; deployment requires a separate decision.</li>
+</ul>
+<p>The three retrospective newsroom records demonstrate authoring. They cannot establish statistical generalization or guarantee that a model has never encountered these public stories.</p>
+</section>
+<section id="readiness">
+<p class="number">05 / What exists today</p>
+<h2>The next acceptance is a real native trial.</h2>
+<div class="table"><table>
+<thead><tr><th>Checked in this seed</th><th>Still to build and demonstrate</th></tr></thead>
+<tbody>
+<tr><td>One native Spawnfile, two dataset YAMLs, three real records and twelve pinned source-file hashes.</td><td>Dataset resolver and schema, typed recipe registry, filtered views and concrete run invocation.</td></tr>
+<tr><td>Production prompt seeds and model/MCP/memory declaration parity; native Spawnfile validation.</td><td>Matching runtime attestation, original tool closures, isolation, emulated clock and truthful native capture. The inspected Daimon/Codex CLI surface omits the internal tool chain: a trusted MCP journal or native event export joined to actual wake/acceptance IDs is required.</td></tr>
+<tr><td>Explicit artifact, delivery and candidate destination bindings; shared-plan equality and mutation checks.</td><td>Mechanical/semantic evaluators, subscription DSPy bridge, candidate propagation and generalization experiment.</td></tr>
+</tbody></table></div>
+<p>Before declaring runtime independence, run the same cases and evaluation plan on two real native adapters, including one outside Daimon. Before optimization, prove that an allowed Markdown edit changes the effective subject input and that missing/locked mappings fail.</p>
+<p><strong>No product runtime or website has been implemented or deployed.</strong> Full native compilation currently stops at a runtime-contract attestation mismatch. This view explains the proposed executable contract, not a successful run.</p>
+</section>
+<footer>
+<p>Local authoring artifact · diagrams generated with the global arrow-diagram skill · <a href="architecture.md">module ownership</a> · <a href="authoring.md">YAML semantics</a> · <a href="../examples/newsroom-reporting/README.md">complete example</a></p>
+</footer>
+</main>
+</body>
+</html>
