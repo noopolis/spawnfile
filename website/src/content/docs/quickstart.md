@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: Install Spawnfile and compile your first agent in 5 minutes.
+description: Install the Spawnfile CLI, create an AI agent manifest, validate it, and compile runtime-native configuration for a supported runtime.
 ---
 
 ## Install

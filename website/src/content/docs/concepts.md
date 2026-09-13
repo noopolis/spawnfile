@@ -1,6 +1,6 @@
 ---
 title: Core Concepts
-description: The key ideas behind Spawnfile.
+description: Understand Spawnfile manifests, identity documents, runtime adapters, compilation, teams, skills, MCP servers, and communication surfaces.
 ---
 
 ## Source Project
