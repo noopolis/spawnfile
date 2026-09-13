@@ -49,10 +49,10 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <body>
 <main>
 <header>
-<p class="eyebrow">Paideia · local architecture proposal · 13 September 2026</p>
+<p class="eyebrow">Paideia · architecture and implementation · 13 September 2026</p>
 <h1>The architecture, from YAML to a tested agent.</h1>
 <p>A native project and its environment, one YAML per dataset, and a bounded loop that evaluates and improves selected instructions.</p>
-<div class="status"><p><strong>Design stage.</strong> The example files, native declaration and real source hashes have been checked. The example is not yet prompt-equivalent to the real organization. Paideia’s runner, adapters, evaluators, DSPy bridge and viewer are proposed; no agent training has run.</p></div>
+<div class="status"><p><strong>Working evaluation and training core.</strong> Real DSPy optimization improved a held-out formatting task through native Codex and Daimon. The YAML resolver, evaluators, capture store and local viewer are implemented. The newsroom example still needs native project preparation, skills and memory parity before it can reproduce the organization.</p></div>
 <nav aria-label="Architecture sections"><a href="#architecture">01 Architecture</a><a href="#yaml">02 YAML</a><a href="#distillation">03 Real runs</a><a href="#trial">04 One trial</a><a href="#training">05 Training</a><a href="#readiness">06 Readiness</a></nav>
 </header>
 <section id="architecture">
@@ -123,7 +123,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <h2>One native project. One YAML file per dataset.</h2>
 <p>The newsroom example has a <a href="../examples/newsroom-reporting/Spawnfile">Spawnfile</a>, its Markdown environment, <a href="../examples/newsroom-reporting/evals/train.paideia.yaml">evals/train.paideia.yaml</a>, <a href="../examples/newsroom-reporting/evals/test.paideia.yaml">evals/test.paideia.yaml</a> and <a href="../examples/newsroom-reporting/README.md">one README</a>. Every record is inline. Other agents keep their own native project format.</p>
 <p>The agreed <a href="../examples/newsroom-reporting/.spawnignore">.spawnignore</a> policy declares planned exclusions for evaluation definitions and generated training artifacts. Enforcement is not implemented; see the <a href="harnessing.md#colocated-evaluation-and-packaging">native packaging contract</a>. The standalone example stays in Paideia; real projects will train their canonical native definition with explicit trial overrides.</p>
-<p><strong>Agreed entry point, not implemented:</strong> <code>spawnfile train</code> delegates to Paideia using the canonical native agent/environment. Paideia owns training; its own CLI serves Spawnfile projects and other runtimes. Datasets use <code>&lt;name&gt;.paideia.yaml</code> and declare <code>schema: paideia.dataset.v1</code>; the invocation assigns train/test roles explicitly.</p>
+<p><strong>Agreed entry point, not implemented:</strong> <code>spawnfile train</code> delegates to Paideia using the canonical native agent/environment. Paideia owns training; its implemented CLI accepts explicit Markdown resources and native Codex/Daimon trials. Automatic Spawnfile project extraction remains pending. Datasets use <code>&lt;name&gt;.paideia.yaml</code> and declare <code>schema: paideia.dataset.v1</code>; the invocation assigns train/test roles explicitly.</p>
 <figure><figcaption>YAML · what reaches the agent and what stays outside</figcaption><div class="diagram-scroll" tabindex="0" aria-label="YAML · what reaches the agent and what stays outside — scroll horizontally on small screens">
 <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="paideia-yaml-title paideia-yaml-desc">
 <title id="paideia-yaml-title">YAML · what reaches the agent and what stays outside</title><desc id="paideia-yaml-desc">One inline-record dataset sends setup and typed context to trusted preparation, verified prompt and file inputs to the subject, and checks, references and context to evaluators only.</desc>
@@ -205,7 +205,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <tr><td>Progressive</td><td>Mechanics must pass before writing judges run. Writing score = 0.65 × grounding + 0.35 × prose; thresholds are proposed and need calibration.</td></tr>
 </tbody></table></div>
 <p>Grounding must reach 0.90, prose 0.80 and the combined score 0.88. A good average cannot rescue a failed hard gate. Unknown, failed, errored and skipped results stay visible; missing evidence never counts as success.</p>
-<p><strong>Event order and evaluation order differ:</strong> a tool sequence checks what the agent did; a stage dependency decides when an evaluator runs. See the <a href="authoring.md">canonical YAML proposal</a>.</p>
+<p><strong>Event order and evaluation order differ:</strong> a tool sequence checks what the agent did; a stage dependency decides when an evaluator runs. See the <a href="authoring.md">canonical YAML reference</a>.</p>
 </details>
 </section>
 <section id="distillation">
@@ -291,7 +291,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <p><strong>Known differences:</strong> generated TEAM.md is empty, Scribe replaces Chief as lead, the lead roster is missing and DMs are enabled. Memory is empty; assignment/history and the 12 September 13:30 Berlin clock are reconstructed.</p>
 <p><strong>Delivery:</strong> setup creates state without waking the agent. A fixture service uses the declared Chief participant identity to send one authenticated mention, supplying the task and triggering the native wake. Message text is <code>@scribe</code>, one LF, then the YAML-parsed prompt.</p>
 <p><strong>Evidence:</strong> native calls and terminal outcome, accepted JSON, authentic filing/history receipts and the stored handoff to Reviewer.</p>
-<p><strong>Live policy during step 04:</strong> persist observations as work proceeds. Explicit decisive mechanical violations can request acknowledged stopping; rejected JSON may be repaired. Semantic checkpoints stay advisory. Steps 05–07 show terminal collection and grading. See the <a href="live-evaluation.md">approved policy and proposed YAML</a>.</p>
+<p><strong>Live policy during step 04:</strong> persist observations as work proceeds. Explicit decisive mechanical violations can request acknowledged stopping; rejected JSON may be repaired. Semantic checkpoints stay advisory. Steps 05–07 show terminal collection and grading. See the <a href="live-evaluation.md">approved policy and YAML</a>.</p>
 </aside>
 </div>
 <div class="table"><table>
@@ -372,18 +372,18 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 </section>
 <section id="readiness">
 <p class="number">06 / What exists today</p>
-<h2>The next acceptance is a real native trial.</h2>
+<h2>Native evaluation and training have passed a first real run.</h2>
 <div class="table"><table>
-<thead><tr><th>Checked in this seed</th><th>Still to build and demonstrate</th></tr></thead>
+<thead><tr><th>Implemented and checked</th><th>Still outside the completed slice</th></tr></thead>
 <tbody>
-<tr><td>One native Spawnfile, evals/ with two dataset YAMLs, three real records, twelve pinned source-file hashes and a proposed .spawnignore file.</td><td>Dataset resolver and schema, typed recipe registry, filtered views, Spawnfile packaging exclusions and concrete run invocation.</td></tr>
+<tr><td>One native Spawnfile, evals/ with two dataset YAMLs, three real records, twelve pinned source-file hashes and a proposed .spawnignore file.</td><td>Strict dataset resolver, fixture merging and generic local invocation are implemented. Newsroom filtered views and Spawnfile packaging exclusions remain pending.</td></tr>
 <tr><td>Matching agent source files and model/MCP/memory declarations; native Spawnfile validation. Full prompt parity fails on generated team context, hierarchy and DM scope.</td><td>Repair team-context differences, then verify effective input with matching runtime attestation, original tool closures, isolation, emulated clock and truthful native capture. The inspected Daimon/Codex CLI surface omits the internal tool chain: a trusted MCP journal or native event export joined to actual wake/acceptance IDs is required.</td></tr>
 <tr><td>Proposed capture-to-dataset flow; no records have been distilled from captured runs.</td><td>Native capture coverage, pre-wake snapshots, reviewed criteria, evidence grouping and a distiller into the existing YAML schema.</td></tr>
-<tr><td>Explicit artifact, delivery and candidate destination bindings; shared-plan equality and mutation checks.</td><td>Mechanical/semantic evaluators, subscription DSPy bridge, candidate propagation and generalization experiment.</td></tr>
-<tr><td>Approved mechanical hard-stop policy and proposed live checks in both datasets; semantic checkpoints remain advisory during execution.</td><td>Trusted boundary audit, incremental finality, immutable checkpoints, acknowledged cancellation and multi-wake lifecycle. No live stopping has been implemented or tested.</td></tr>
+<tr><td>Explicit artifact, delivery and candidate destination bindings; shared-plan equality and mutation checks.</td><td>Mechanical, semantic and embedding evaluators are implemented. Real subscription DSPy changed an editable prompt; native Codex and Daimon both passed the same unseen formatting task with that frozen candidate.</td></tr>
+<tr><td>Approved mechanical hard-stop policy and proposed live checks in both datasets; semantic checkpoints remain advisory during execution.</td><td>Generic incremental finality, immutable checkpoints, bounded cancellation and Codex multi-wake bindings are implemented and tested. The newsroom research audit, native skills and memory-backed Daimon multi-wake parity remain pending.</td></tr>
 </tbody></table></div>
-<p>Before declaring runtime independence, run the same cases and evaluation plan on two real native adapters, including one outside Daimon. Before optimization, prove that an allowed Markdown edit changes the effective subject input and that missing/locked mappings fail.</p>
-<p><strong>No product runtime or website has been implemented or deployed.</strong> Full native compilation currently stops at a runtime-contract attestation mismatch. This view explains the proposed executable contract, not a successful run.</p>
+<p>The <a href="../examples/native-formatting/README.md">native formatting acceptance</a> used real DSPy/GEPA, saved subscription reflection, and fresh Codex/Daimon trials. Both held-out baselines failed; both frozen candidates passed. Locked sources were unchanged. A tiny formatting task proves the integration, not statistical generalization or newsroom readiness.</p>
+<p><strong>The evaluator, native trial runner, candidate/store APIs, DSPy bridge and local viewer are implemented.</strong> These diagrams also describe future project integrations; the newsroom Spawnfile workflow still has the limitations listed above. Publishing and production deployment remain disabled.</p>
 </section>
 <footer>
 <p>Local authoring artifact · HTML/SVG diagrams made with the diagram-design skill · <a href="architecture.md">module ownership</a> · <a href="authoring.md">YAML semantics</a> · <a href="../examples/newsroom-reporting/README.md">complete example</a></p>

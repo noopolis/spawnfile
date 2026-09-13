@@ -1,6 +1,6 @@
 # DSPy Bridge
 
-Owns the minimal proposed Python boundary to actual DSPy.
+Owns the minimal Python boundary to released DSPy 3.3.1 and GEPA 0.1.4.
 
 - Receive versioned candidate components, case references and evaluation feedback
   from the TypeScript owner. Do not reimplement the native subject's cognition.
@@ -12,4 +12,9 @@ Owns the minimal proposed Python boundary to actual DSPy.
   feedback or credentials to optimization requests.
 - Tests belong beside Python source and need a language-appropriate coverage gate.
   First acceptance must show the changed candidate reaches a real native subject.
-- There is no Python package, bridge process or working DSPy integration yet.
+- `protocol.md` specifies the JSONL host contract. `paideia_dspy/` owns the
+  process and tests; the root README contains reproducible installation/checks.
+- `requirements.lock` pins the exercised dependency closure. A dependency upgrade
+  requires the real optimizer conformance test, not source inspection alone.
+- Simulated-host tests run actual DSPy optimization and verify changed multi-file
+  bundles reach callbacks. They do not establish real native-agent acceptance.

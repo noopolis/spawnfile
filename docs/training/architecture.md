@@ -3,9 +3,12 @@
 Open the [local architectural view](architecture.html) for component, YAML, native-trial
 and training diagrams.
 
-These are approved module boundaries, not an implemented system. YAML syntax,
-adapter contracts and template selection still require concrete agreement and
-conformance tests. The seeded folders currently contain guidance only.
+These boundaries now have an implemented TypeScript evaluator, native trial runner,
+protected candidate/store interfaces, a real DSPy bridge and a local viewer. The
+[native acceptance example](../examples/native-formatting/README.md) improved a held-out
+formatting task on both Codex and Daimon using a frozen subscription-trained prompt.
+Native skills, memory-backed multi-wake Daimon trials and Spawnfile delegation remain
+unsupported; ordinary Markdown is implemented, template rendering is not.
 
 ```text
 YAML cases + candidate files + fixtures
@@ -81,7 +84,8 @@ checks run. Preserve this distinction in the UI and ledger.
 Under the [initial live policy](live-evaluation.md), experiments schedules evaluation of
 trusted observations while the subject works. Decisive mechanical failures can request
 acknowledged stopping; repairable failures and semantic checkpoints cannot. Immutable
-checkpoints and incomplete-stop reporting are required. This remains design only.
+checkpoints and incomplete-stop reporting are implemented and regression-tested.
+The project-specific newsroom research audit remains a separate, unimplemented integration.
 
 Results include pass, fail, unknown, error and skipped. Missing evidence cannot
 pass a mandatory gate; absence requires a complete declared observation scope.
@@ -110,6 +114,7 @@ test feedback influences another revision, that holdout becomes development data
 5. Complete a bounded train/validation/sealed-test comparison with cost, quality
    and coverage, then replay locally without new model calls.
 
-GitHub Pages remains deferred until real native-agent optimization is demonstrated
-and publishing is approved. The future site uses a project base path and no custom
-domain. No product or site has been built or deployed by this seed.
+Native-agent optimization has now been demonstrated on a deliberately small task.
+The local documentation site targets a GitHub Pages project base with no custom
+domain. Publishing and production deployment remain disabled. The small acceptance
+corpus proves the integration, not general writing improvement or newsroom readiness.

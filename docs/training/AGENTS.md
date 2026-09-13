@@ -1,7 +1,7 @@
 # Documentation Guide
 
 These documents explain approved architecture and development decisions. Research
-evidence stays in research/; eventual user-facing pages belong in website/.
+evidence stays in research/; user-facing pages belong in website/.
 
 - Keep one canonical account of each contract; link instead of copying it across
   guides. Mark illustrative syntax and unresolved choices explicitly.

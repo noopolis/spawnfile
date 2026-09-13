@@ -1,8 +1,20 @@
 # Development and growth
 
-This specifies the intended toolchain and maintenance workflow. No ESLint config,
-coverage runner, product implementation or website build exists yet. These
-requirements are not automatically enforced today.
+The TypeScript toolchain now enforces the repository's structural and coverage
+rules. CI runs the same gates from a clean install, plus the locked Python bridge
+tests. Native subscription probes remain local; there is no publishing workflow.
+
+```sh
+npm ci
+uv venv --python 3.14 bridges/dspy/.venv
+uv pip install --python bridges/dspy/.venv/bin/python -r bridges/dspy/requirements.lock
+uv pip install --python bridges/dspy/.venv/bin/python --no-deps -e bridges/dspy
+npm run check
+```
+
+The full TypeScript suite includes real DSPy integration tests, so it requires
+the bridge environment. Core package installation itself has no Python or Daimon
+dependency. CI creates the same venv using the selected Python and pip.
 
 ## Place work with its owner
 
@@ -16,25 +28,39 @@ requirements are not automatically enforced today.
 | Private datasets, credentials or captured runs | Local/private storage outside tracked suites |
 | Narrow Python interoperability | bridges/dspy/ |
 | Local live/replay UI | viewer/ |
-| Future product documentation site | website/ |
+| Local product documentation site | website/ |
 | Architecture and contributor guidance | docs/ |
 
 Create adapter folders for actual implementations, not anticipated vendors.
 Extract shared modules for real shared responsibilities; avoid miscellaneous
 utils/ or helpers/ collections.
 
-## Planned lint and coverage gates
+## Installed lint and coverage gates
 
-The future ESLint setup must warn above 400 lines and fail above 600 lines for
+ESLint warns above 400 lines and fails above 600 lines for
 maintained source, tests and configuration. Split before 400 in ordinary work.
 The ceiling protects against unchecked growth, not a justification for a mixed
 590-line file. Count comments and blanks; never compress code to evade limits.
 
-The planned budget is 30 direct maintained files per directory. Dependencies and
-generated output are outside maintained-source counts. Split earlier when
-responsibilities diverge or navigation becomes difficult. Recursively check new
-implementation folders for focused AGENTS.md and CLAUDE.md symlink pairs; moving
-files into a deeper unchecked folder must not bypass enforcement.
+The budget is 30 direct maintained files in each directory under src/, viewer/
+and tooling/. Files and symlinks count; subdirectories and .DS_Store do not.
+Dependencies and generated output are outside the lint scope. Every implementation
+directory and its ancestors within that managed root need a nonempty AGENTS.md
+and a CLAUDE.md symlink to
+that same local file. New nested directories enter the checks automatically.
+
+Cross-owner modules and nested sibling modules import public index files.
+Nested indexes are explicit public seams too, such as platform/process/index.ts;
+an internal-only directory must not expose an index as if it were public.
+The contracts/*.ts files are explicit public type seams. Same-owner directory
+and ancestor helpers remain private implementation details. Relative, absolute
+and file-URL imports cannot escape the repository, including through symlinks.
+Computed imports require a statically known literal or const literal binding.
+Package subpath aliases are rejected; tsconfig path aliases are not part of this
+repository's module design. TypeScript import-equals and path references enter
+the same boundary checks as imports and re-exports.
+The neutral core cannot import native integrations or experiment lifecycle;
+the optional Daimon public package belongs only to its adapter.
 
 Coverage must reach 90% for statements, branches, functions and lines, globally
 and per executable TypeScript file. Include source no test imported. Tool config
@@ -45,7 +71,9 @@ bridge needs language-appropriate tests and coverage when introduced.
 Test observable success, failure, missing evidence and cancellation where relevant.
 Delete or corrupt the property behind a guarantee and verify an actual test fails.
 Checking that a rule is mentioned in configuration does not prove enforcement.
-No gates exist yet, so add runnable validation commands with the real toolchain.
+The structural tests invoke the actual ESLint configuration against temporary
+violations: 401/601 lines, missing or redirected guides, a 31st file, forbidden
+JavaScript and imports crossing implementation or repository boundaries.
 
 ## Repair growth without changing behavior
 

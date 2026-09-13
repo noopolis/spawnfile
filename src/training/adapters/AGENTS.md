@@ -1,7 +1,8 @@
 # Native Subject Adapters
 
 Owns harnessing real subjects through public native CLI, SDK or service APIs.
-No native adapter is implemented yet.
+Codex and the optional Daimon Codex-backed route are implemented; see README.md
+for tested native versions, observations and explicit limitations.
 
 - Daimon, Codex, Claude Code, Pi, OpenClaw and other integrations are peers;
   external agents must not need a Daimon wrapper or a different case language.

@@ -1,0 +1,22 @@
+schema: paideia.dataset.v1
+id: native-formatting-test
+subject: native-formatting
+
+checks:
+  - id: response-shape
+    eval: json-schema
+    input: output.text
+    schema:
+      type: string
+      pattern: '^ack:[a-z]+$'
+
+records:
+  - id: gamma
+    group: gamma-sealed-test
+    input:
+      prompt: 'Token: Gamma'
+    checks:
+      - id: exact-token
+        eval: equals
+        input: output.text
+        value: ack:gamma

@@ -1,0 +1,125 @@
+# DSPy host protocol v1
+
+Run `paideia-dspy` from the bridge virtual environment. One process handles one
+optimization. Send one finite UTF-8 JSON object per line, terminated by LF, maximum
+4 MiB per frame. Duplicate keys, unknown fields and invalid IDs fail closed.
+Stdout contains protocol messages only; DSPy diagnostics use stderr.
+
+The host owns input resolution, grouped splits, sealed tests, candidate policy,
+native isolated trials, scoring, subscription routes, capture, cancellation and
+the total experiment deadline. The bridge receives no datasets, credentials or
+sealed-test cases. It never opens a resource path or invokes a native tool loop.
+Only allowlisted editable text components belong in `components`; locked text stays
+with the host. The host must check every callback candidate before running it.
+
+## Start: host → bridge
+
+```json
+{"schema":"paideia.dspy.v1","kind":"optimize","id":"experiment-1","components":{"AGENTS.md":"Agent instructions\n","skills/report/SKILL.md":"# Report\n"},"trainCaseIds":["train-1"],"validationCaseIds":["validation-1"],"budget":{"maxMetricCalls":10,"maxProposals":2},"seed":7}
+```
+
+Components are a nonempty map of resource IDs to complete text (maximum 64).
+Resource IDs are opaque to Python; TypeScript owns native path mapping. Train and
+validation IDs must be nonempty, unique, disjoint lists. No test role exists.
+The optional seed (default 0) controls GEPA sampling only, never a subscription
+model's generation seed. Both budget fields are required positive integers.
+
+`maxMetricCalls` caps actual native evaluation callback attempts, including failed
+attempts; asking again for feedback from a captured result spends no new attempt.
+GEPA may reevaluate the same candidate/case; each callback requests a fresh trial.
+`maxProposals` caps actual reflection generation callback attempts. One proposal
+can replace all editable components together. No internal API retry is permitted.
+
+The complete baseline validation must fit the budget. Before each later iteration,
+the bridge reserves one training baseline, one proposed-candidate training trial,
+and one complete validation pass. It can finish below the cap. A result with zero
+proposals means baseline-only selection, not demonstrated optimization.
+
+## Trial: bridge → host
+
+```json
+{"schema":"paideia.dspy.v1","kind":"request","id":"call-1","method":"evaluate","params":{"caseId":"train-1","split":"train","components":{"AGENTS.md":"Agent instructions\n","skills/report/SKILL.md":"# Report\n"}}}
+```
+
+```json
+{"schema":"paideia.dspy.v1","kind":"response","id":"call-1","result":{"score":0.5,"feedback":"The filing lacked evidence.","output":"Observed native output","captureId":"capture-1"}}
+```
+
+All four result fields are required. `score` is a finite number in [0,1]; the host
+owns how gates, unknown/error states and coverage affect that scalar. Infrastructure
+failure must use an error response, never a fabricated subject score. `captureId`
+identifies an authentic host capture. Missing evidence is not successful evidence.
+
+For `split:"validation"`, both `feedback` and `output` **must be empty strings**.
+Validation supplies a selection scalar and capture reference only. Training outputs
+and feedback reach reflection. Repeated predictor traces refer to one whole-bundle
+native trial; they do not establish per-file causal attribution or observed loading.
+
+## Reflection: bridge → host
+
+```json
+{"schema":"paideia.dspy.v1","kind":"request","id":"call-2","method":"generate","params":{"purpose":"reflection","messages":[{"role":"system","content":"..."},{"role":"user","content":"..."}],"options":{}}}
+```
+
+```json
+{"schema":"paideia.dspy.v1","kind":"response","id":"call-2","result":{"text":"{\"AGENTS.md\":\"Revised instructions\\n\",\"skills/report/SKILL.md\":\"# Revised skill\\n\"}","model":"observed-subscription-model","usage":null}}
+```
+
+The host uses its explicitly selected subscription inference adapter and the exact
+messages. No paid API fallback, native tools, hidden judge, teacher or DSPy default
+model route exists. `options` is always empty. This release rejects requested
+sampling controls, structured-output controls, nontext parts and tool use.
+
+Return the generation's actual model and reported usage (or `null` when unavailable).
+The bridge retains these without inventing token totals or price estimates. Success
+means completed text generation; auth, quota, cancellation and unsupported controls
+must be errors. The reflection prompt asks for a JSON map replacing exactly the
+selected resource IDs. A malformed response aborts; it is not silently retried.
+
+## Errors and process completion
+
+```json
+{"schema":"paideia.dspy.v1","kind":"response","id":"call-2","error":{"code":"quota_exhausted","message":"Subscription quota exhausted"}}
+```
+
+Exactly one `result` or `error` is allowed, with the pending callback ID. Only one
+callback is outstanding at once. EOF, malformed replies and host errors are latched;
+DSPy's internal score/proposal error handling cannot convert them into success.
+
+The bridge terminates with exit 0 and a `kind:"result"` envelope containing the
+original request `id`, selected `components`, and `provenance`:
+
+- `optimizer:"dspy.GEPA"`, `dspyVersion:"3.3.1"`, `gepaVersion:"0.1.4"`, `seed`.
+- `evaluations`, `proposals`, `selectedCandidateIndex`.
+- `candidates`: full decoded component maps, parent indices, `validationScore`,
+  and GEPA's `discoveryEvaluations` accounting (distinct from host attempt count).
+- `captures`: `{caseId,split,captureId}` for completed host evaluations.
+- `generations`: `{model,usage}` for completed host reflection generations.
+
+Failure emits `kind:"error"`, `error:{code,message}`, and exits 1. A rejected start
+has `id:"unknown"`. Neither a process start nor exit 0 alone is acceptance: the host
+must validate the nonempty terminal result, complete component set, bounds and
+provenance. The host applies final candidate policy, freezes the selected candidate,
+and independently owns any sealed-test comparison or local candidate export.
+
+The host owns timeout/cancellation: terminate this process and cancel its outstanding
+callback work together. Killing Python alone does not stop a native trial owned by
+the TypeScript host. No bridge restart/resume or native-result caching is provided.
+
+## Released integration seam
+
+The actual `dspy.GEPA.compile` receives ordinary named `dspy.Predict` components,
+nonempty separate train/validation examples, whole-program scalar/text feedback,
+and the public `instruction_proposer` hook. GEPA owns proposal iteration, acceptance,
+validation selection and lineage. Python's hook only packages reflection text.
+
+DSPy 3.3.1 normalizes `Signature.instructions` with `inspect.cleandoc`; each native
+text is therefore stored as a single-line JSON envelope and decoded before trials.
+This preserves untouched Markdown indentation and final newlines exactly. Normal
+Predict execution records authentic host results through a custom `dspy.Adapter`.
+The separate reflection model uses `BaseLM.forward_contract = "typed_lm"`.
+
+Checked against the installed releases and their sources:
+[DSPy 3.3.1 GEPA](https://github.com/stanfordnlp/dspy/blob/3.3.1/dspy/teleprompt/gepa/gepa.py),
+[custom proposal hook](https://dspy.ai/api/optimizers/GEPA/GEPA_Advanced/#custom-instruction-proposers),
+[typed BaseLM](https://github.com/stanfordnlp/dspy/blob/3.3.1/dspy/clients/base_lm.py).

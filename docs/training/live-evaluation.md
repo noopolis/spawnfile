@@ -1,9 +1,11 @@
 # Live evaluation and stopping
 
-**Initial policy approved; implementation pending.** Automatic task-failure stops
+**Initial policy implemented.** Automatic task-failure stops
 require explicitly selected, decisive mechanical violations. Semantic and embedding
 checks may observe intermediate work but cannot stop the subject in this version.
-The YAML below proposes the authoring surface for that policy; no live runner exists.
+The trial runner persists observations and checkpoints, enforces these stop rules,
+and records acknowledged or incomplete cancellation. Deterministic tests cover the
+policy; the newsroom-specific research audit below has not been implemented.
 
 ## Repair versus decisive failure
 
@@ -26,8 +28,9 @@ a threshold, missing evidence, or an LLM's prediction of future failure cannot d
 
 ## YAML beside the existing stages
 
-Both [training](../examples/newsroom-reporting/evals/train.paideia.yaml) and
-[test](../examples/newsroom-reporting/evals/test.paideia.yaml) declare this proposed block:
+Both newsroom [training](../examples/newsroom-reporting/evals/train.paideia.yaml) and
+[test](../examples/newsroom-reporting/evals/test.paideia.yaml) declare this block, whose
+custom evaluator still requires a project integration:
 
 ```yaml
 live:
@@ -44,7 +47,7 @@ to every record, with record-local context bindings; records and fixtures cannot
 override it. Live check IDs are unique in their own namespace and cannot be referenced
 as stage gates. Omitting `live` requests terminal evaluation only.
 
-| Field | Proposed meaning |
+| Field | Meaning |
 | --- | --- |
 | `on: event` | Reevaluate on each newly persisted relevant trusted observation, including scope closure |
 | `on: {artifact: accepted-article}` | Reevaluate at each new immutable version collected for that artifact |
@@ -158,8 +161,10 @@ Judge errors are recorded as evaluator errors, never converted to subject violat
 Live record scope spans all its native wakes, research waits and revisions. Memory,
 workspace and conversation remain within that record; another attempt resets them.
 An agent ending a wake to wait for a sensor does not close the whole record or fail
-its final filing checks. Turn boundaries, wait deadlines and acknowledged fixture
-delivery still need a complete multi-wake contract before those cases can run.
+its final filing checks. Native Codex supports exact-thread continuation, per-turn mechanical gates and
+trusted observation bindings for later stimuli. Daimon currently rejects multi-wake
+trials because its CLI route cannot yet preserve that conversation and memory context.
+Moltnet message delivery and project-specific sensor fixtures still require preparation.
 
 ## Who stops what
 
@@ -213,5 +218,18 @@ Before advertising this policy as working, demonstrate:
 5. Late side effects, missing cancellation acknowledgement and unknown usage remain
    visible; replay does not resume the subject or claim unobserved completion.
 
-These are future conformance requirements, not passing tests. The initial native
-acceptance still requires two independent adapters, including one outside Daimon.
+Generic live-policy conformance is covered by failing-path tests, including repair,
+nested semantic-stop rejection, partial traces, concurrent observations and bounded
+cancellation. The newsroom-specific audited-network acceptance in item1 is pending.
+The same small terminal task and frozen prompt have passed on real Codex and Daimon;
+that does not establish production newsroom or network-audit parity.
+
+## Trial closure
+
+Every acquired native session receives bounded terminal cleanup, including handles
+that arrive after startup cancellation. The deadline covers the whole trial and
+late cancellation is reconciled before the result is prepared. A selected decisive
+mechanical failure skips unnecessary terminal judges; already-started advisory work
+receives cancellation. Nonsettling host work remains an infrastructure failure,
+separate from the preserved task-violation witness. Closed reports retain frozen
+observations and live evaluations; late effects do not mutate the stored result.

@@ -1,6 +1,6 @@
 # Local Training Viewer
 
-Owns the future local live/replay experiment interface, separate from website/.
+Owns the local live/replay experiment interface, separate from website/.
 
 - Read persisted experiment projections through public contracts. The CLI remains
   usable without this UI; opening, refreshing or replaying cannot invoke cognition.
@@ -9,5 +9,16 @@ Owns the future local live/replay experiment interface, separate from website/.
 - Preserve sealed-test access and trace privacy. Display incomplete/stalled streams
   explicitly; never silently recompute old scores with new criteria.
 - Group future UI by feature boundaries with focused guides and adjacent tests.
-- Prove live/replay consistency and zero model calls on load/reconnect. No viewer
-  code, framework configuration or executable build exists in this seed.
+- `startViewer` serves the caller's phase-filtered `ViewerData` projection over
+  loopback HTTP. It imports no trial, inference or storage implementation.
+- `projectTrials` and `projectTrainingReport` consume public experiment types and
+  scoring only. They expose recorded identities, verdicts, evidence references,
+  coverage and usage; omit prompts, outputs, tool payloads and judge reasons.
+  GEPA lineage links recorded validation captures to native candidate identities.
+- `projection.ts` strips undeclared fields and bounds arrays, bytes and check
+  depth. Callers must redact summary text and filter sealed phases before load.
+- `page.ts` renders escaped local HTML/SVG and refreshes with GET only. Supplied
+  scores and usage are displayed without aggregation or inferred completeness.
+- Test actual HTTP responses, refreshed snapshots, hostile strings, read-only
+  methods, generic loader errors and shutdown. Run `npx vitest run viewer`;
+  include viewer coverage and lint at the final gate.

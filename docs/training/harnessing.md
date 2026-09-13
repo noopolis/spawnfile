@@ -1,7 +1,10 @@
-# Native harnessing proposal
+# Native harnessing
 
-**Design only. No Paideia adapter or prompt optimizer has been implemented.**
-The authoring surface must be approved before implementation starts.
+**Implemented core, explicit adapter limits.** Native Codex and Daimon adapters,
+Claude subscription inference, candidate installation and real DSPy optimization
+have passed the [native formatting acceptance](../examples/native-formatting/README.md).
+See [adapter support](../src/adapters/README.md) for exact capabilities. The broader
+project-native integrations below remain design contracts where marked.
 
 See the [Example Newsroom source mapping](../examples/newsroom-reporting/README.md#prompt-candidates) for a concrete
 proposal with native declarations, editable prompt resources and isolated state.
@@ -60,7 +63,9 @@ copying credentials into candidate files, fixture contexts or reports.
 | Codex | Pinned `exec` interface, task stdin, controlled project instructions/skills and workspace | Selected files load through native discovery; terminal result and trace coverage are established |
 | OpenClaw | Pinned isolated agent execution interface and controlled workspace/state/config | No ambient production session/channel routing, capability-compatible source mapping, actual terminal work |
 
-These are integration candidates, not implemented adapters. Pi's RPC documentation
+Codex and the Daimon CLI-engine integration are implemented. Standalone Pi,
+Claude-as-subject and OpenClaw remain integration candidates; Claude currently
+supplies tool-free optimizer and judge inference only. Pi's RPC documentation
 explicitly distinguishes prompt acceptance from completion. Claude exposes programmatic
 task execution and instruction configuration. OpenClaw currently documents an isolated
 `agent exec` path; do not confuse it with delivery to a live messaging channel.
@@ -69,8 +74,8 @@ task execution and instruction configuration. OpenClaw currently documents an is
 [OpenClaw agent execution](https://docs.openclaw.ai/cli/agent).
 
 Local Codex `exec --help` was inspected on 2026-09-13: it accepts task input from
-stdin and an explicit working root. All CLI versions and flags still need pinning
-and conformance tests before an adapter is advertised as supported.
+stdin and an explicit working root. The implemented adapters pin the observed protocol contract in their conformance
+tests. New CLI versions need the same checks before their capabilities are advertised.
 
 ## The current Daimon gap
 
@@ -78,7 +83,9 @@ Local source inspection confirms Daimon's public `AgentStartInput` accepts `id`,
 `name`, `instructions`, `workspacePath`, `runtimeHomePath` and optional tool names.
 The handle accepts a `WakeEvent` with task `text` and exposes wake/status/stop.
 The published Pi adapter additionally exposes memory, custom-tool and opt-in native
-capture settings. These are source-level seams, not an executed Paideia trial.
+capture settings. The CLI-engine route has now completed isolated native Paideia trials through
+these public seams. Required isolated-instruction and per-instance causal-context
+changes are in the local Daimon feature worktree; an older runtime fails preflight.
 
 However, the current Pi resource loader returns empty skills, prompt templates and
 agent-file collections. Placing a `SKILL.md` in a workspace does not make that a
@@ -95,7 +102,7 @@ Spawnfile compiler. Other native adapters must work with no Spawnfile installed.
 
 ## Colocated evaluation and packaging
 
-**Agreed layout; implementation pending.** Keep `evals/` next to the canonical native
+**Agreed layout; generic Paideia implementation available.** Keep `evals/` next to the canonical native
 agent/project definition. Paideia remains the shared evaluation and optimization tool;
 the datasets and editable-source selections belong with the agent they train. A trial
 uses an isolated candidate copy and records its explicit overrides, preserving the
@@ -105,11 +112,12 @@ The agreed dataset naming is `<name>.paideia.yaml`, with `train.paideia.yaml` an
 `test.paideia.yaml` as the example pair. The planned `spawnfile train` entry point
 delegates through Paideia's public interface: Spawnfile supplies its canonical agent
 and environment; Paideia owns evaluation, optimization and isolated trials. Paideia
-also keeps a standalone CLI for Spawnfile projects and other native runtimes.
+also has a standalone CLI for explicit Markdown resources and supported native runtimes.
 The selected native runtime executes agent turns. No extra agent declaration or
-mandatory experiment file is required. Commands,
-flags and delegation contracts are not implemented; dataset roles still resolve
-explicitly in the invocation, never merely from filenames or discovery.
+mandatory experiment file is required. Commands and
+flags exist for explicit Markdown resources and native Codex/Daimon trials.
+Spawnfile delegation and automatic native project extraction are not implemented.
+Dataset roles resolve explicitly in the invocation, never merely from filenames.
 
 Spawnfile projects add `.spawnignore`, using the proposed patterns `**/evals/` and
 `**/.paideia/` for evaluator definitions and generated experiment artifacts. These files
@@ -144,12 +152,12 @@ loads, tool dispatch/completion, output artifacts and measured usage. Distinguis
 4. Followed: behavior/output satisfies the declared criteria.
 
 Unavailable observations stay unknown; tool behavior does not prove unobservable
-prompt bytes. The first integration test changes an editable instruction and a skill,
-checks their effective propagation where supported, and uses task-sensitive cases to
-show the change matters. Removing/breaking that mapping must make conformance fail.
-The same cases also run through an independently integrated native agent.
+prompt bytes. The completed integration proof changes a declared Markdown instruction and uses
+task-sensitive cases to show the change matters on native Codex and Daimon. A locked
+identity resource remains unchanged. Native skill loading is still unsupported and
+needs its own propagation and negative conformance tests before being advertised.
 
-Only after that proof should DSPy spend trials proposing changes. It modifies declared
+DSPy modifies declared
 text components, Paideia creates fresh trials, evaluators produce evidence-backed
 feedback, validation selects, and a sealed test measures generalization. Prompt
 optimization does not update model weights or automatically deploy source changes.

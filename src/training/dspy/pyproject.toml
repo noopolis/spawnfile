@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paideia-dspy-bridge"
+version = "0.1.0"
+description = "Host-mediated native trials through the released DSPy GEPA optimizer"
+requires-python = ">=3.11,<3.15"
+dependencies = ["dspy==3.3.1", "gepa==0.1.4"]
+
+[project.optional-dependencies]
+test = ["pytest==8.4.2", "pytest-cov==7.0.0", "coverage==7.16.0"]
+
+[project.scripts]
+paideia-dspy = "paideia_dspy.main:cli"
+
+[tool.setuptools.packages.find]
+include = ["paideia_dspy"]
+
+[tool.pytest.ini_options]
+testpaths = ["paideia_dspy"]
+python_files = ["*_test.py"]
+addopts = "--strict-config --strict-markers --cov=paideia_dspy --cov-branch --cov-report=term-missing --cov-report=json --cov-fail-under=90"
+
+[tool.coverage.run]
+branch = true
+source = ["paideia_dspy"]
+omit = ["*/*_test.py"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 90

@@ -4,7 +4,25 @@ Owns explicit local commands, configuration selection and human diagnostics.
 
 - Keep commands thin; experiment, evaluation and optimization behavior belongs
   in their owning modules, not duplicated argument handlers.
-- No CLI command exists yet. Add documented clean-state examples with real tests.
+- `main(argv, io, dependencies)` validates, evaluates, trains or views through public
+  module exports. Native/inference boundaries alone are injectable in tests.
+- Explicit Markdown selections map to identical native paths. Resources remain
+  locked unless a train invocation selects `--editable`; unsupported native
+  configuration, skills or preparation profiles fail rather than approximate.
+- `--max-trials` includes two conservative sealed-test passes; `--timeout-ms`
+  bounds the whole command. A training report is stored under a test-role summary
+  manifest bound to the frozen selected candidate, never an optimizer-readable run.
+- The local invocation index contains references and identities only. Blob/report
+  access still uses storage authorization. Failed attempts may leave honest partial
+  trial evidence; printed trial IDs identify it. No implicit replay/test release.
+- `view OUT_DIRECTORY` validates the saved invocation and serves its projection
+  on loopback until cancellation. `--view PORT` serves persisted presentation
+  snapshots during train/evaluate. Pages never launch work or write evidence.
+  Live projections omit test identities until selection freezes; completed replay
+  uses the explicit invocation's frozen candidate and operator access.
+- `launch.ts` owns process signals and exit status. `main.ts` is the executable shim.
+  Run adjacent tests, CLI process tests and real DSPy through injected subject
+  callbacks; those tests do not claim subscription/native-agent acceptance.
 - Surface unsupported capabilities, missing credentials, incomplete observations
   and real terminal outcomes plainly. Exit zero requires the intended artifact.
 - Never start deployment, publication or paid API fallback implicitly.

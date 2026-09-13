@@ -1,0 +1,53 @@
+import type { Usage } from '../../contracts/execution.js';
+
+export interface ClaudeResult {
+  text: string;
+  model?: string;
+  usage: Usage | null;
+}
+
+export function decodeClaudeResult(value: Record<string, unknown>): ClaudeResult {
+  if (value['type'] !== 'result' || value['subtype'] !== 'success' || value['is_error'] === true) {
+    throw new Error('Claude generation did not complete successfully');
+  }
+  if (typeof value['result'] !== 'string' || value['result'].trim().length === 0) {
+    throw new Error('Claude generation returned empty output');
+  }
+  const raw = value['usage'];
+  const usage = raw !== null && typeof raw === 'object' ? raw as Record<string, unknown> : undefined;
+  const count = (key: string): number | null => {
+    const entry = usage?.[key];
+    return typeof entry === 'number' && Number.isFinite(entry) && entry >= 0 ? entry : null;
+  };
+  // Claude input_tokens excludes cache reads/writes, unlike Codex's total input_tokens.
+  const uncached = count('input_tokens');
+  const reads = count('cache_read_input_tokens');
+  const writes = count('cache_creation_input_tokens');
+  const input = uncached === null || reads === null || writes === null ? null : uncached + reads + writes;
+  return { text: value['result'],
+    model: typeof value['model'] === 'string' ? value['model'] : undefined,
+    usage: usage === undefined ? null : { inputTokens: input, cachedInputTokens: reads,
+      outputTokens: count('output_tokens'), reasoningTokens: null, source: 'claude.result.usage' } };
+}
+
+export function savedSubscription(value: Record<string, unknown>): boolean {
+  return value['loggedIn'] === true && value['authMethod'] === 'claude.ai' && value['apiProvider'] === 'firstParty';
+}
+
+export function claudeEnvironment(): NodeJS.ProcessEnv {
+  // Saved subscription/keychain transport needs native host integration variables.
+  // The inference child has no tools; provider and API overrides are still removed.
+  const env = { ...process.env };
+  delete env['CLAUDECODE'];
+  delete env['CLAUDE_CODE_SIMPLE'];
+  for (const name of Object.keys(env)) {
+    if (/^(ANTHROPIC_(API_KEY|AUTH_TOKEN|BASE_URL|CUSTOM_HEADERS|PROFILE|FEDERATION_.*|ORGANIZATION_ID|IDENTITY_TOKEN_FILE)|CLAUDE_CODE_(OAUTH_TOKEN.*|USE_.*|API_KEY_HELPER.*)|OPENAI_API_KEY|CODEX_API_KEY)$/u.test(name)) delete env[name];
+  }
+  return env;
+}
+
+export function parseEnvelope(line: string): Record<string, unknown> {
+  const value: unknown = JSON.parse(line);
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('Malformed Claude protocol');
+  return value as Record<string, unknown>;
+}

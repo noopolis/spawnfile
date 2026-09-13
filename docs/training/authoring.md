@@ -1,9 +1,9 @@
 # Paideia dataset YAML
 
-**Authoring specification draft.** This defines the proposed dataset surface; there
-is no implemented Paideia parser, evaluator or trainer yet. Native environment
-configuration stays in the project's own format. Do not implement the product until
-the authoring surface is approved.
+**Implemented authoring surface.** The strict YAML parser, fixture resolver, evaluator
+registry and native training loop use this schema. Native environment configuration
+stays with its owning runtime. Project-specific preparation and custom evaluators
+need registered implementations; an example name alone does not install one.
 
 ## The authoring unit
 
@@ -15,7 +15,9 @@ native project configuration without requiring Spawnfile or Daimon.
 A training invocation selects the native project, subject, train dataset, test dataset,
 editable prompt resources, inference routes and limits. These become a generated
 immutable run manifest, not four more mandatory files for the author to maintain.
-The invocation API/CLI remains to design; examples are not runnable commands.
+The public API and local CLI resolve these selections explicitly. See the
+[native formatting example](../examples/native-formatting/README.md) for a completed
+Codex/Daimon training and held-out comparison.
 
 Keep datasets under `evals/` beside the native project; use `train.paideia.yaml` and
 `test.paideia.yaml` for the two datasets when helpful. They have the same
@@ -30,7 +32,8 @@ Spawnfile projects use the agreed `.spawnignore` shape to declare packaging excl
 enforcement is not implemented. See [native packaging](harnessing.md#colocated-evaluation-and-packaging).
 
 The [Example Newsroom example](../examples/newsroom-reporting/README.md) uses real Spawnfile
-resources and real archived packets with this shape.
+resources and archived packets to exercise the schema. Its newsroom preparation,
+filtered repositories, memory parity and direct-research audit are not implemented.
 
 ## Smallest dataset
 
@@ -280,9 +283,8 @@ call to be the artifact collector's actual accepting call. The newsroom datasets
 this so an earlier valid filing cannot excuse an unvalidated later accepted version.
 The read-only collector joins authentic receipt and captured call identity; absent or
 conflicting lineage cannot satisfy the gate. Step `bind` captures typed fields for later predicates; JSON object comparison
-ignores property order but preserves array order and values. `where.cel` proposes CEL
-for typed predicates, not arbitrary process execution. Its TypeScript implementation
-and supported environment still require selection and conformance testing.
+ignores property order but preserves array order and values. `where.cel` uses the implemented CEL evaluator for typed predicates, with bounded
+expressions and an explicit environment. It cannot execute arbitrary processes.
 
 The CEL predicate scope exposes `call` (the candidate native call), `context` (typed
 record context) and `bindings` (prior matched-step bindings); no ambient globals.
@@ -384,11 +386,12 @@ immutable for the run. One case per role illustrates syntax, not statistical evi
 For a train/test comparison, the normalized shared evaluation plan must have the same
 digest: evaluator/judge versions, rubrics, gates, thresholds, weights and live policy. Resolve both
 dataset declarations before work; fail on drift instead of comparing different criteria.
-Keeping both plans inline avoids a mandatory third rules file. The digest gate is a
-proposed resolver requirement, not an implemented check in this seed.
+Keeping both plans inline avoids a mandatory third rules file. The shared-plan digest gate is
+implemented and checked before native training.
 
-Average repetitions within a record, then weight records equally unless fixed weights
-are explicitly introduced. Missing trials retain their denominator and uncertainty.
+The current runner returns one stored trial per metric request; held-out records
+have equal weight. It does not expose a configurable repetition count. Infrastructure
+failures abort scoring instead of silently removing records or assigning a zero.
 Rescoring a capture is not a new independent trial; changing prompts requires rerunning
 the native subject. Report quality, coverage, latency and separately observed usage for
 subject, optimizer and judges. Missing usage is unknown, never zero.
