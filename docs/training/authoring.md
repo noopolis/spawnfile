@@ -273,6 +273,14 @@ an explicit invocation-selected inference route; record its identity/version and
 resolution if absent. Return typed scores, verdicts, reasons
 and cited spans. Calibrate against human judgments before making quality claims.
 
+Judge citations name `input` or the optional `evidence` source. Selected values are
+encoded once in the source-data JSON. A quote must match an exact substring of that
+source's compact JSON representation, or of one original string value within it
+(including nested objects, arrays and input-file contents). Plain-text sources are
+matched as their original text. Literal quotes, newlines and backslashes retain their
+meaning after JSON decoding. Validation never trims, normalizes or joins separate
+string values, and text from another named source cannot validate a citation.
+
 `tool-sequence.order: happens-before` means predecessor completion precedes successor
 dispatch. Matching is existential over ordered, distinct successful call tuples with
 consistent bindings; repair attempts may occur between matched calls. Retain all matches

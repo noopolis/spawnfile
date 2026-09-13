@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { InferenceProvider } from '../../contracts/execution.js';
 import { evaluateNode, createEvaluationRegistry } from '../index.js';
-import { evaluationContext, snapshot } from '../../testing/index.js';
+import { artifact, evaluationContext, snapshot } from '../../testing/index.js';
 
 const check = { eval: 'llm-rubric', input: 'artifact:article#/body', judge: 'editor',
   rubric: { prompt: 'Grade clear prose.' }, minimum: 0.8 };
@@ -47,5 +47,65 @@ describe('fixed semantic rubrics', () => {
     expect(evaluated.status).toBe('fail');expect(evaluated.finality).toBe('provisional');
     expect(evaluated.evidence[0]!.id).toBe('checkpoint-1');expect(evaluated.usage?.[0]?.inputTokens).toBe(10);
     expect((await evaluateNode(check, context, registry)).status).toBe('fail');
+  });
+  it('presents selected structured sources once and accepts original quoted input-file text', async () => {
+    const passage = 'The sign says "keep left".\nThe archive is C:\\notes\\draft.txt.';
+    const route = provider(JSON.stringify({ ...good,
+      citations: [{ source: 'evidence', quote: passage }] }));
+    const inputFiles = { 'packet.md': passage };
+    const context = evaluationContext({ snapshot: snapshot({ inputFiles }),
+      judges: { editor: { provider: route, model: 'test' } } });
+
+    const evaluated = await evaluateNode({ ...check, evidence: 'input:files' }, context, registry);
+
+    expect(evaluated.status).toBe('pass');
+    const request = vi.mocked(route.generate).mock.calls[0]![0];
+    const sourceData = JSON.parse(request.prompt.split('\n\nSOURCE DATA\n')[1]!);
+    expect(sourceData).toEqual({ input: ['A precise report.'], evidence: inputFiles });
+  });
+  it.each([
+    { value: ['She said "yes".', 'Another paragraph.'], quote: 'said "yes"' },
+    { value: { nested: [{ text: 'First line.\nSecond line.' }] }, quote: 'line.\nSecond' },
+    { value: { nested: { path: 'C:\\notes\\draft.txt' } }, quote: 'C:\\notes\\draft.txt' },
+    { value: { text: 'The literal escape is \\n.' }, quote: 'escape is \\n' },
+  ])('accepts an exact string leaf in selected structured artifacts: $quote', async ({ value, quote }) => {
+    const context = evaluationContext({ snapshot: snapshot({ artifacts: { article: artifact(value) } }),
+      judges: { editor: { provider: provider(JSON.stringify({ ...good,
+        citations: [{ source: 'input', quote }] })), model: 'test' } } });
+    expect((await evaluateNode({ ...check, input: 'artifact:article' }, context, registry)).status).toBe('pass');
+  });
+  it.each([
+    { value: { nested: ['Quoted "line"', null, 7, true] }, quote: '"line"' },
+    { value: { nested: ['Quoted "line"', null, 7, true] }, quote: '\\"line\\"' },
+    { value: ['north', 'south'], quote: '["north","south"]' },
+    { value: { count: 7, empty: null, ready: true }, quote: '"count":7,"empty":null' },
+    { value: 'A literal "quote".\nA new line.', quote: '"quote".\nA new' },
+  ])('retains exact serialized-source and plain-text quotations: $quote', async ({ value, quote }) => {
+    const context = evaluationContext({ snapshot: snapshot({ artifacts: { article: artifact(value) } }),
+      judges: { editor: { provider: provider(JSON.stringify({ ...good,
+        citations: [{ source: 'input', quote }] })), model: 'test' } } });
+    expect((await evaluateNode({ ...check, input: 'artifact:article' }, context, registry)).status).toBe('pass');
+  });
+  it.each([
+    { source: 'input', quote: 'Evidence-only phrase' },
+    { source: 'evidence', quote: 'Input-only phrase' },
+    { source: 'packet.md', quote: 'Evidence-only phrase' },
+    { source: 'toString', quote: 'Input-only phrase' },
+    { source: 'input', quote: 'northsouth' },
+    { source: 'input', quote: 'north\nsouth' },
+    { source: 'input', quote: ' north ' },
+    { source: 'input', quote: 'first second' },
+    { source: 'input', quote: 'Literal\nescape' },
+    { source: 'input', quote: 'INput-only phrase' },
+    { source: 'input', quote: 'invented quote' },
+  ])('rejects invented or transformed quotations without crossing sources: $source/$quote', async (citation) => {
+    const context = evaluationContext({ snapshot: snapshot({
+      artifacts: { article: artifact({ body: ['Input-only phrase', 'north', 'south',
+        'first\nsecond', 'Literal\\nescape'], count: 7, empty: null, ready: true }) },
+      inputFiles: { 'packet.md': 'Evidence-only phrase' },
+    }), judges: { editor: { provider: provider(JSON.stringify({ ...good, citations: [citation] })), model: 'test' } } });
+    const evaluated = await evaluateNode({ ...check, input: 'artifact:article', evidence: 'input:files' }, context, registry);
+    expect(evaluated.status).toBe('error');
+    expect(evaluated.reason).toContain('Judge citation is not present in selected evidence');
   });
 });
