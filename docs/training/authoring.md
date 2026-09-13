@@ -5,6 +5,9 @@ Do not implement the parser, evaluator or runtime adapters until the user approv
 the authoring surface. The architecture is approved; these field names and defaults
 still need agreement. Examples below are synthetic and do not reproduce project data.
 
+The [Example Newsroom example](../examples/newsroom-reporting/README.md) applies these ideas to
+real agent resources and newsroom contracts, including proposed multi-wake extensions.
+
 ## Four separate declarations
 
 | Declaration | Owns | Must not contain |

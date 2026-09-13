@@ -3,6 +3,9 @@
 **Design only. No Paideia adapter or prompt optimizer has been implemented.**
 The authoring surface must be approved before implementation starts.
 
+See the [Example Newsroom source mapping](../examples/newsroom-reporting/sources.md) for a concrete
+proposal using the existing agent declarations, real tool contracts and isolated state.
+
 ```text
 Project files + case ─→ Native adapter ─→ Real agent ─→ Capture + evaluate
 ```
