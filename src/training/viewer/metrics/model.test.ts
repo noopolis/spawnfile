@@ -93,7 +93,7 @@ describe('native candidate presentation', () => {
     const data = fixture();
     data.candidates = []; data.cases = [];
     expect(buildCockpitMetrics(data)).toEqual({ candidates: [], metrics: [{ id: 'strict', label: 'Strict gated trial score', kind: 'strict' }],
-      scores: [], comparisons: [], gates: [], costs: [], trialIndex: [], unknownCaseTrials: 0 });
+      scores: [], comparisons: [], gates: [], costs: [], trialIndex: [], trialMeasurements: [], unknownCaseTrials: 0 });
     data.trials = [trial('native', 'unmapped')];
     expect(buildCockpitMetrics(data).candidates).toEqual([{ id: 'native', label: 'Baseline', sourceIds: ['native'], selected: false, splits: ['unknown'] }]);
   });
@@ -171,6 +171,8 @@ describe('recorded scores and paired evidence', () => {
     expect(model.gates.find(gate => gate.candidateId === 'base' && gate.split === 'train' && gate.stageId === 'quality')).toMatchObject({ pass: 1, unknown: 2 });
     expect(model.gates.find(gate => gate.candidateId === 'base' && gate.split === 'train' && gate.stageId === 'skipped')).toMatchObject({ skipped: 1, unknown: 2 });
     expect(model.metrics.some(metric => metric.id === 'stage:invalid')).toBe(false);
+    expect(model.trialMeasurements.slice(0, 3).map(trial => trial.values.strict)).toEqual([null, null, null]);
+    expect(model.trialMeasurements[0]!.values['stage:invalid']).toBeNull();
   });
 
   it('recognizes generated anonymous paths under explicitly named gate roots', () => {
@@ -264,4 +266,18 @@ describe('recorded usage and cost groups', () => {
     data.usage = [usage, usage];
     expect(buildCockpitMetrics(data).costs[0]!.tokens.inputTokens).toEqual({ value: null, knownSubtotal: null, knownEntries: 2, entryCount: 2 });
   });
+});
+
+
+it('retains repeated trial values in input order using the same selected-check extraction', () => {
+  const data = fixture();
+  data.trials = [trial('base', 'a', 0.2, [check('writing', null, 'pass', [check('prose', 0.4)])]),
+    trial('base', 'a', 0.8, [check('writing', null, 'pass', [check('prose', 0.9)])]),
+    trial('base', 'v', null)];
+  const model = buildCockpitMetrics(data);
+  expect(model.trialMeasurements.map(row => [row.candidateId, row.caseId, row.values.strict,
+    row.values['check:["writing","prose"]']])).toEqual([
+    ['base', 'a', 0.2, 0.4], ['base', 'a', 0.8, 0.9], ['base', 'v', null, undefined],
+  ]);
+  expect(model.scores.find(row => row.candidateId === 'base' && row.split === 'train' && row.metricId === 'strict')?.value).toBe(0.5);
 });

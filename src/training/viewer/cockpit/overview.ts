@@ -48,10 +48,10 @@ export function metricOverview(data: ViewerData, model: CockpitMetrics, metric: 
 ${metricCard('Development trials', number(developmentTrials), `${model.candidates.length} prompt versions observed`)}
 ${metricCard('API equivalent', money(observed?.total ?? observed?.knownSubtotal), note)}</div>
 <div class="chart-grid">
-<section class="panel convergence-panel"><h2 class="panel-title">Learning curve</h2><div class="panel-body">
+<section class="panel convergence-panel"><h2 class="panel-title">Trial trend</h2><div class="panel-body">
 <div class="chart-controls"><strong>${e(metric.label)} <span class="faint">/ 100</span></strong><label class="screen-reader-only" for="metric-${index}">Chart metric</label><select id="metric-${index}" class="chart-select" data-metric-select>${model.metrics.map((item, option) => `<option value="${option}"${index === option ? ' selected' : ''}>${e(item.label)}${item.kind === 'strict' ? ' · gated' : ''}</option>`).join('')}</select></div>
 <div class="chart-legend"><span class="legend-key train">Training</span><span class="legend-key validation">Validation</span></div>
-<div class="chart-wrap">${convergence(model, metric)}</div></div><p class="chart-caption">${kindLabel}. Observed cases only; gaps stay unmeasured.</p></section>
+<div class="chart-wrap">${convergence(model, metric)}</div></div><p class="chart-caption">${kindLabel}. Trial order on x-axis; cases may differ. Missing values stay gaps.</p></section>
 <section class="panel comparison-panel"><h2 class="panel-title">Generalization</h2><div class="panel-body"><p class="eyebrow">Same validation cases</p><h3 class="comparison-title">${comparisonTitle}</h3>${comparison(model, metric)}</div><p class="chart-caption">${model.candidates.length < 3 ? 'Too few prompt versions to establish convergence.' : 'Candidate history is measured progress, not proof of convergence.'}</p></section>
 </div>
 <section class="panel matrix-panel"><h2 class="panel-title">Trial results</h2><div class="matrix-body">${trialMatrix(data, model, metric)}</div></section>

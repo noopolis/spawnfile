@@ -1,6 +1,6 @@
 import type { ViewerCheck, ViewerData } from '../types.js';
 import type { CandidateIndex } from './candidates.js';
-import type { GateSummary, MetricDefinition, MetricSplit, MetricSummary, PairedComparison } from './types.js';
+import type { GateSummary, MetricDefinition, MetricSplit, MetricSummary, PairedComparison, TrialMeasurement } from './types.js';
 
 interface TrialMetrics {
   candidateId: string;
@@ -107,7 +107,7 @@ function gateSummary(trials: TrialMetrics[], candidateId: string, split: MetricS
 
 /** Independent recorded metrics only; no weighting or evaluation is performed here. */
 export function summarizeScores(data: ViewerData, index: CandidateIndex): {
-  metrics: MetricDefinition[]; scores: MetricSummary[]; comparisons: PairedComparison[]; gates: GateSummary[];
+  trialMeasurements: TrialMeasurement[]; metrics: MetricDefinition[]; scores: MetricSummary[]; comparisons: PairedComparison[]; gates: GateSummary[];
 } {
   const definitions = new Map<string, MetricDefinition>();
   const stageLabels = new Map<string, string>();
@@ -149,5 +149,8 @@ export function summarizeScores(data: ViewerData, index: CandidateIndex): {
       }
     }
   }
-  return { metrics, scores, comparisons, gates };
+  const trialMeasurements = trials.map((trial, position) => ({ id: data.trials[position]!.id,
+    candidateId: trial.candidateId, caseId: trial.caseId, split: trial.split,
+    values: Object.fromEntries(trial.values) }));
+  return { trialMeasurements, metrics, scores, comparisons, gates };
 }

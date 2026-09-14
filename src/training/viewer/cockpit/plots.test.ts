@@ -14,45 +14,62 @@ function score(candidateId: string, value: number | null, split: MetricSummary['
 }
 
 describe('measured cockpit plots', () => {
-  it('plots exact zero and one coordinates and connects only adjacent measured points', () => {
+  it('plots each measured trial even when candidate identity repeats', () => {
     const data = model();
-    data.scores = [score('baseline', 0), score('proposal', 1), score('baseline', 0.25, 'validation'),
-      score('proposal', 0.75, 'validation')];
+    data.trialMeasurements = [
+      { id: 't1', candidateId: 'baseline', caseId: 'case-a', split: 'train', values: { strict: 0 } },
+      { id: 't2', candidateId: 'baseline', caseId: 'case-b', split: 'validation', values: { strict: 0.25 } },
+      { id: 't3', candidateId: 'baseline', caseId: 'case-a', split: 'train', values: { strict: 1 } },
+      { id: 't4', candidateId: 'baseline', caseId: 'case-b', split: 'validation', values: { strict: 0.75 } },
+    ];
     const svg = convergence(data, metric);
-    expect(svg).toContain('class="chart-train" x1="8%" y1="82%" x2="91%" y2="12%"');
-    expect(svg).toContain('class="chart-validation" x1="8%" y1="64.5%" x2="91%" y2="29.5%"');
-    expect(svg).toContain('cx="8%" cy="82%" r="5" tabindex="0"');
-    expect(svg).toContain('Baseline, train: 0 / 100, 1 of 2 cases');
-    expect(svg).toContain('Candidate 1, validation: 75 / 100');
+    expect(svg.match(/<circle /g)).toHaveLength(4);
+    expect(svg).toContain('class="chart-train" x1="8%" y1="82%" x2="63.333333333333336%" y2="12%"');
+    expect(svg).toContain('class="chart-validation" x1="35.66666666666667%" y1="64.5%" x2="91%" y2="29.5%"');
+    expect(svg).toContain('Development trial 3, case-a, Baseline (baseline), train: 100 / 100');
+    data.scores = [score('proposal', 0.75, 'validation')];
     expect(scoreAt(data, 'proposal', 'validation', metric.id)?.value).toBe(0.75);
     expect(scoreAt(data, 'proposal', 'test', metric.id)).toBeUndefined();
     expect(scoreAt(data, 'proposal', 'train', 'missing')).toBeUndefined();
   });
 
-  it('leaves missing and null scores as gaps, including the first point', () => {
+  it('leaves absent/null selected metrics as gaps and excludes test/unknown trials', () => {
     const data = model();
-    data.candidates.push({ id: 'third', label: 'Candidate 2', selected: false, sourceIds: [], splits: ['train'] });
-    data.scores = [score('baseline', 0.5), score('proposal', null), score('third', 1), score('third', 0, 'validation')];
-    data.scores[2]!.expectedCases = null;
+    data.trialMeasurements = [null, 0.5, null, 1].map((value, index) => ({
+      id: `t${index}`, caseId: 'case', candidateId: 'baseline', split: 'train', values: { strict: value },
+    }));
+    data.trialMeasurements[0]!.values = {};
+    data.trialMeasurements.push({ id: 'sealed', caseId: 'SECRET', candidateId: 'SECRET', split: 'test', values: { strict: 0.9 } },
+      { id: 'unmapped', caseId: 'UNKNOWN', candidateId: 'unknown', split: 'unknown', values: { strict: 0.9 } });
     const svg = convergence(data, metric);
-    expect(svg.match(/<circle /g)).toHaveLength(3);
+    expect(svg.match(/<circle /g)).toHaveLength(2);
     expect(svg).not.toMatch(/<line class="chart-(?:train|validation)"/);
-    expect(svg).toContain('Candidate 2, train: 100 / 100, 1 of ? cases');
-    expect(svg).not.toContain('NaN');
-    data.candidates = [];
-    expect(convergence(data, metric)).toContain('The first evaluated candidate will appear here.');
+    expect(svg).not.toMatch(/SECRET|UNKNOWN|NaN/);
+    expect(svg).toContain('Development trial 4');
+    data.trialMeasurements = [];
+    expect(convergence(data, metric)).toContain('first measured development trial');
   });
 
   it('places a single observation without fabricating a trend and escapes SVG labels', () => {
     const data = model(), hostile = '"><svg onload="alert(1)">&';
     data.candidates = [{ ...data.candidates[0]!, label: hostile }];
-    data.scores = [score('baseline', 0.5)];
     const svg = convergence(data, { ...metric, label: hostile });
     expect(svg).toContain('cx="8%" cy="47%"');
     expect(svg).not.toContain('<svg onload');
     expect(svg).toContain('&quot;&gt;&lt;svg onload=&quot;alert(1)&quot;&gt;&amp;');
     expect(svg).not.toMatch(/<line class="chart-train"/);
     expect(svg).not.toMatch(/data-(?:candidate|metric)-id=/);
+    data.candidates = [];
+    expect(convergence(data, metric)).toContain('Unmapped');
+  });
+
+  it('bounds ordinal labels for dense histories while keeping every measured point', () => {
+    const data = model();
+    data.trialMeasurements = Array.from({ length: 20 }, (_, i) => ({ ...data.trialMeasurements[0]!, id: `t${i}` }));
+    const svg = convergence(data, metric);
+    expect(svg.match(/<circle /g)).toHaveLength(20);
+    expect(svg.match(/<text /g)).toHaveLength(13);
+    expect(svg).toContain('Development trial 20');
   });
 
   it('compares recorded paired values rather than unmatched summary scores', () => {

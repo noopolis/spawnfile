@@ -41,14 +41,17 @@ export const cockpitResponsiveStyles = `
   .sidebar .panel-title { display: none; }
   .sidebar .nav-item { padding: 4px 2px; font-size: 10px; }
   .sidebar nav .panel-body { padding: 5px; }
-  .metric-view { gap: 16px; grid-template-rows: auto minmax(0, 1fr) minmax(110px, 26%); }
+  .view-pane[data-view-pane="overview"] { overflow: auto; }
+  .metric-view { height: auto; min-height: 100%; gap: 16px; grid-template-rows: max-content max-content minmax(145px, 1fr); }
   .metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
   .metric-card { padding: 7px 6px; }
   .metric-label { font-size: 8px; letter-spacing: 0; }
   .metric-value { font-size: 21px; margin: 4px 0; }
   .metric-card:last-child .metric-value { font-size: 15px; }
   .metric-note { font-size: 8px; line-height: 1.35; }
-  .chart-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 16px; }
+  .chart-grid { min-height: min-content; grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content max-content; gap: 16px; }
+  .convergence-panel .panel-body { flex: none; min-height: min-content; }
+  .chart-wrap { flex: none; height: 140px; min-height: 140px; }
   .panel-body { padding: 14px 10px 6px; }
   .chart-controls { gap: 5px; flex-wrap: nowrap; font-size: 10px; }
   .chart-select { padding: 3px; font-size: 9px; max-width: 54%; }

@@ -14,3 +14,8 @@ Keep an outcome, numeric comparison and charts visible before detailed evidence.
   actual captured run in a browser at desktop and mobile before the final gate.
 - At most three implementation/review rounds and two final cleanup rounds.
   Do not tune criteria or agent instructions to make the charts look better.
+
+- Trial trend uses chronological development trial ordinals, case/candidate point
+  labels and separate train/validation styles. Repeated prompt identities remain
+  distinct measurements. Candidate comparison remains paired by case, separately;
+  a changing trial curve across different cases is not proof of convergence.

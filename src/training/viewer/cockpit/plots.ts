@@ -5,26 +5,33 @@ export function scoreAt(model: CockpitMetrics, candidateId: string, split: Metri
   return model.scores.find(score => score.candidateId === candidateId && score.split === split && score.metricId === metricId);
 }
 
-/** Straight segments join adjacent observed candidates only; missing scores stay gaps. */
+/** Recorded development trial order, never deduplicated candidate means or sealed tests. */
 export function convergence(model: CockpitMetrics, metric: MetricDefinition): string {
-  if (model.candidates.length === 0) return '<p class="empty-state">The first evaluated candidate will appear here.</p>';
-  const x = (index: number) => 8 + index * 83 / Math.max(1, model.candidates.length - 1);
+  const trials = model.trialMeasurements.filter(trial => trial.split === 'train' || trial.split === 'validation');
+  if (trials.length === 0) return '<p class="empty-state">The first measured development trial will appear here.</p>';
+  const x = (index: number) => 8 + index * 83 / Math.max(1, trials.length - 1);
   const y = (value: number) => 82 - value * 70;
   const grid = [0, 0.25, 0.5, 0.75, 1].map(value => `<line class="chart-gridline" x1="8%" x2="91%" y1="${y(value)}%" y2="${y(value)}%"/><text class="chart-tick" x="5%" y="${y(value)}%" dy="4" text-anchor="end">${value * 100}</text>`).join('');
+  const candidateLabels = new Map(model.candidates.map(candidate => [candidate.id, candidate.label]));
   const series = (['train', 'validation'] as const).map(split => {
-    const values = model.candidates.map(candidate => scoreAt(model, candidate.id, split, metric.id));
-    return values.map((score, index) => {
-      if (score?.value == null) return '';
-      const previous = values[index - 1];
-      const line = index > 0 && previous?.value != null
-        ? `<line class="chart-${split}" x1="${x(index - 1)}%" y1="${y(previous.value)}%" x2="${x(index)}%" y2="${y(score.value)}%"/>` : '';
-      const label = `${model.candidates[index]!.label}, ${split}: ${percent(score.value)} / 100, ${score.observedCases} of ${score.expectedCases ?? '?'} cases`;
-      return `${line}<circle class="chart-point chart-${split} ${split}" cx="${x(index)}%" cy="${y(score.value)}%" r="5" tabindex="0"><title>${e(label)}</title></circle>
-<text class="chart-tick chart-${split}" x="${x(index)}%" y="${y(score.value)}%" dy="${split === 'train' ? -12 : 18}" text-anchor="middle">${percent(score.value)}</text>`;
+    let previous: { index: number; value: number } | undefined;
+    return trials.map((trial, index) => {
+      if (trial.split !== split) return '';
+      const value = trial.values[metric.id];
+      if (value == null) { previous = undefined; return ''; }
+      const line = previous === undefined ? ''
+        : `<line class="chart-${split}" x1="${x(previous.index)}%" y1="${y(previous.value)}%" x2="${x(index)}%" y2="${y(value)}%"/>`;
+      previous = { index, value };
+      const candidateLabel = candidateLabels.get(trial.candidateId) ?? 'Unmapped';
+      const label = `Development trial ${index + 1}, ${trial.caseId}, ${candidateLabel} (${trial.candidateId}), ${split}: ${percent(value)} / 100`;
+      const numberLabel = trials.length <= 12 ? `<text class="chart-tick chart-${split}" x="${x(index)}%" y="${y(value)}%" dy="${split === 'train' ? -12 : 18}" text-anchor="middle">${percent(value)}</text>` : '';
+      return `${line}<circle class="chart-point chart-${split} ${split}" cx="${x(index)}%" cy="${y(value)}%" r="5" tabindex="0"><title>${e(label)}</title></circle>${numberLabel}`;
     }).join('');
   }).join('');
-  const labels = model.candidates.map((candidate, index) => `<text class="chart-tick" x="${x(index)}%" y="98%" text-anchor="${index === 0 ? 'start' : index === model.candidates.length - 1 ? 'end' : 'middle'}">${e(candidate.label)}</text>`).join('');
-  return `<svg class="chart-svg" role="img" aria-label="${e(metric.label)} by candidate: training and validation, 0 to 100">${grid}${series}${labels}</svg>`;
+  const stride = Math.max(1, Math.ceil((trials.length - 1) / 7));
+  const labels = trials.map((_, index) => index % stride === 0 || index === trials.length - 1
+    ? `<text class="chart-tick" x="${x(index)}%" y="98%" text-anchor="${index === 0 ? 'start' : index === trials.length - 1 ? 'end' : 'middle'}">${index + 1}</text>` : '').join('');
+  return `<svg class="chart-svg" role="img" aria-label="${e(metric.label)} by measured development trial ordinal: training and validation, 0 to 100">${grid}${series}${labels}</svg>`;
 }
 
 export function comparison(model: CockpitMetrics, metric: MetricDefinition): string {

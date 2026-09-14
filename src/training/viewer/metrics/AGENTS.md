@@ -22,3 +22,7 @@ seam is `index.ts`; consumers use its types and `buildCockpitMetrics`.
 - Success is correct candidate grouping, paired coverage and unknown accounting;
   use at most three fix/review rounds. Stop if the owning projection cannot supply
   the required evidence without changing evaluation semantics.
+
+- `trialMeasurements` preserves recorded trial order and per-trial values from the
+  same extraction as candidate summaries. Never substitute candidate averages for
+  trial history; the cockpit plots only development splits and leaves missing gaps.

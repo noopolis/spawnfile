@@ -80,8 +80,18 @@ export interface RecordedCostGroup {
   tokens: Record<TokenField, TokenSummary>;
 }
 
+export interface TrialMeasurement {
+  id: string;
+  caseId: string;
+  candidateId: string;
+  split: MetricSplit;
+  /** Recorded values in authorized trial order; absent metrics remain unavailable. */
+  values: Readonly<Record<string, number | null>>;
+}
+
 export interface CockpitMetrics {
   candidates: CandidateGroup[];
+  trialMeasurements: TrialMeasurement[];
   metrics: MetricDefinition[];
   scores: MetricSummary[];
   comparisons: PairedComparison[];

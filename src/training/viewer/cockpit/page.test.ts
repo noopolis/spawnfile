@@ -104,3 +104,13 @@ describe('training cockpit page', () => {
     expect(renderCockpit(data, 'n')).toContain('train 1 · validation 1 · test 1');
   });
 });
+
+
+it('keeps the mobile plot readable by scrolling its pane instead of shrinking the SVG', () => {
+  const page = renderCockpit(viewerFixture(), 'n');
+  const mobile = page.slice(page.indexOf('@media (max-width: 600px)'));
+  expect(mobile).toContain('.chart-wrap { flex: none; height: 140px; min-height: 140px; }');
+  expect(mobile).toContain('.view-pane[data-view-pane="overview"] { overflow: auto; }');
+  expect(mobile).toContain('.convergence-panel .panel-body { flex: none; min-height: min-content; }');
+  expect(mobile).toContain('height: auto; min-height: 100%; gap: 16px; grid-template-rows: max-content max-content minmax(145px, 1fr)');
+});

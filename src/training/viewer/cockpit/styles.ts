@@ -227,6 +227,7 @@ input { accent-color: var(--green); }
 text.chart-train { fill: var(--green); stroke: none; }
 text.chart-validation { fill: var(--cyan); stroke: none; }
 .chart-validation { stroke: var(--cyan); }
+line.chart-validation { stroke-dasharray: 6 4; }
 .chart-point { fill: var(--bg); stroke: var(--green); stroke-width: 2; }
 .chart-point.validation { stroke: var(--cyan); }
 .chart-point[data-selected="true"] { fill: var(--cyan); stroke: var(--bg); stroke-width: 3; }
