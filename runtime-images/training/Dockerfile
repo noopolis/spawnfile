@@ -6,7 +6,9 @@ FROM ${NATIVE_IMAGE} AS training
 # Both parents must use the same architecture and Debian release.
 COPY --from=python /usr/local /opt/python
 COPY --from=python /usr/lib/*-linux-gnu/libsqlite3.so.0* /opt/python/lib/
-ENV LD_LIBRARY_PATH=/opt/python/lib
+# The bridge intentionally clears ambient environment variables. Register native
+# libraries in the image so Python extensions also load in that clean process.
+RUN echo /opt/python/lib > /etc/ld.so.conf.d/training-python.conf && ldconfig
 
 WORKDIR /opt/training/paideia
 COPY paideia/package.json paideia/package-lock.json ./
