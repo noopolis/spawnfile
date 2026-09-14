@@ -11,6 +11,11 @@ spawnfile train ./Spawnfile --agent agent:writer \
 ```
 
 Paideia supplies the cost-config format and training options. Dataset roles are explicit.
+
+`--resume` forwards to Paideia for the same output directory. Paideia validates
+unchanged canonical inputs, the isolated integration's execution identity and
+cumulative budgets before restoring its optimizer and native evidence. Spawnfile
+does not interpret checkpoints, repeat trials or deploy the optimized candidate.
 `--agent` is an exact resolved node ID; omission is allowed only for one-agent projects.
 `--paideia-command` selects an installed executable, default `paideia`; no shell,
 automatic installation, model-provider fallback or production launch is involved.
