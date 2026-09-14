@@ -215,3 +215,46 @@ it.each([false, true])('retains restored sealed spending through failure (select
     expect(f.observedInstructions).toHaveLength(1);
   } finally { await live.close(); }
 });
+
+it.each(['experiment.failed', 'training.completed'])('sends saved %s state to an already connected browser during close', async type => {
+  const f = await evaluated(), urls: string[] = [];
+  const live = await startLiveViewer({ port: 0, io: { ...f.io, stdout: text => { urls.push(JSON.parse(text).viewer); } },
+    store: f.store, id: 'terminal', datasetId: 'dataset', planDigest: 'plan', baseline: f.candidate,
+    cases: [{ id: f.report.trials[0]!.recordId, split: 'train' }], testCases: [], costs: { subjectModel: 'gpt-5.5' } });
+  try {
+    const response = await fetch(`${urls[0]}/api/events`), reader = response.body!.getReader();
+    await reader.read();
+    await live.observe({ type: 'trial.finished', payload: f.report.trials[0] });
+    await live.observe({ type, payload: {} });
+    const final = (async () => { let text = ''; while (true) {
+      const chunk = await reader.read(); if (chunk.done) return text; text += new TextDecoder().decode(chunk.value);
+    } })();
+    await live.close();
+    const frame = /event: final\ndata: (.+)\n\n/.exec(await final);
+    expect(frame).not.toBeNull(); const { html } = JSON.parse(frame![1]!);
+    expect(html).toContain(type === 'experiment.failed' ? 'Run stopped' : '>completed<');
+    expect(html).toContain('1 trials'); expect(html).toContain('Costs & usage');
+    expect(html).toContain('gpt-5.5'); expect(html).not.toContain('Reply OK.');
+    const replay = await f.store.readReplay('viewer-terminal', { audience: 'viewer', phase: 'training' });
+    expect((replay.events.at(-1)!.payload as { experiment: { status: string } }).experiment.status)
+      .toBe(type === 'experiment.failed' ? 'failed' : 'completed');
+  } finally { await live.close(); }
+});
+
+it('never sends an unpersisted final snapshot when its storage append fails', async () => {
+  const f = await evaluated(), urls: string[] = [];
+  const live = await startLiveViewer({ port: 0, io: { ...f.io, stdout: text => { urls.push(JSON.parse(text).viewer); } },
+    store: f.store, id: 'terminal-persistence', datasetId: 'dataset', planDigest: 'plan', baseline: f.candidate, cases: [], testCases: [] });
+  try {
+    const response = await fetch(`${urls[0]}/api/events`), reader = response.body!.getReader(); await reader.read();
+    vi.spyOn(f.store, 'appendEvent').mockRejectedValueOnce(new Error('PRIVATE disk failure'));
+    await live.observe({ type: 'experiment.failed', payload: {} });
+    const final = (async () => { let text = ''; while (true) {
+      const chunk = await reader.read(); if (chunk.done) return text; text += new TextDecoder().decode(chunk.value);
+    } })();
+    await live.close();
+    const frame = /event: final\ndata: (.+)\n\n/.exec(await final);
+    expect(frame).not.toBeNull(); const { html } = JSON.parse(frame![1]!);
+    expect(html).toContain('>starting<'); expect(html).not.toMatch(/Run stopped|PRIVATE disk/);
+  } finally { await live.close(); }
+});

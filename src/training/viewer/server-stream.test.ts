@@ -39,5 +39,29 @@ it('sends generic load errors and shuts down even with a pending stream load',as
   expect(new TextDecoder().decode((await reader.read()).value)).toBe('event: unavailable\ndata: {}\n\n');
   await reader.cancel();pending=true;
   const waiting=await fetch(`${server.url}/api/events`);const hanging=waiting.body!.getReader().read().catch(()=>undefined);
-  await server.close();expect(await hanging).toBeUndefined();
+  await server.close();expect(new TextDecoder().decode((await hanging)!.value)).toBe('event: final\ndata: {"html":null}\n\n');
+});
+
+it.each(['failed','completed'])('delivers the final %s snapshot before closing without another GET',async status=>{
+  const data=viewerFixture(),load=vi.fn(async()=>data);
+  const server=await startViewer({load});servers.push(server);
+  const response=await fetch(`${server.url}/api/events?metric=1`),reader=response.body!.getReader();
+  await reader.read();
+  data.experiment.status=status;data.experiment.title='<img src=x onerror=alert(1)>';
+  data.costs={observed:{total:{low:12.34,high:12.34},knownSubtotal:{low:12.34,high:12.34},
+    completeness:'complete',usageCoverage:'observed-only',groups:[],lines:[]}};
+  const finished=(async()=>{let text='';while(true){const next=await reader.read();if(next.done)return text;text+=new TextDecoder().decode(next.value);}})();
+  await server.close({...data,privateCapture:'SECRET'} as typeof data);
+  const text=await finished,match=/event: final\ndata: (.+)\n\n/.exec(text);
+  expect(match).not.toBeNull();const {html}=JSON.parse(match![1]!);
+  expect(html).toContain(status==='failed'?'Run stopped':'>completed<');
+  expect(html).toContain('$12.34');expect(html).toContain('data-metric-panel="1"');expect(html).toContain('1 trials');
+  expect(html).toContain('&lt;img');expect(html).not.toMatch(/<img|SECRET/);
+  expect(load).toHaveBeenCalledOnce();await expect(fetch(server.url)).rejects.toThrow();
+});
+it('ends with no private payload when given an invalid final projection',async()=>{
+  const server=await startViewer({load:()=>new Promise(()=>undefined)});servers.push(server);
+  const response=await fetch(`${server.url}/api/events`);const reading=response.text();
+  await server.close({...viewerFixture(),schema:'PRIVATE'} as never);
+  expect(await reading).toBe('event: final\ndata: {"html":null}\n\n');
 });

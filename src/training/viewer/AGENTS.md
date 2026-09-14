@@ -16,6 +16,10 @@ Owns the local live/replay experiment interface, separate from website/.
 - Preserve sealed-test access and trace privacy. Display incomplete/stalled streams
   explicitly; never silently recompute old scores with new criteria.
 - Group future UI by feature boundaries with focused guides and adjacent tests.
+- `close(finalSnapshot)` sends the last persisted projection as a terminal SSE
+  shell before closing connections. Bound stalled writes, stop pending polls and
+  never rely on a post-shutdown GET or a grace sleep. Clients reject stale GETs
+  after the terminal frame; all final HTML uses the same projection and escaping.
 - `startViewer` serves the caller's phase-filtered `ViewerData` projection over
   loopback HTTP. It imports no trial, inference or storage implementation.
 - `projectTrials` and `projectTrainingReport` consume public experiment types and

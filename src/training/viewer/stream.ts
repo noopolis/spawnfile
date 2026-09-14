@@ -3,12 +3,15 @@ import type { ServerResponse } from 'node:http';
 import type { ViewerData } from './types.js';
 import { projectViewerData } from './projection.js';
 
+export interface SnapshotStream { close(finalHtml?: string): Promise<void> }
+
 /** Revisions of persisted, phase-filtered snapshots. Never streams raw trial events. */
-export function streamSnapshots(response: ServerResponse, load: () => Promise<ViewerData>, closed: () => void): void {
+export function streamSnapshots(response: ServerResponse, load: () => Promise<ViewerData>, closed: () => void): SnapshotStream {
   response.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store',
-    'X-Content-Type-Options': 'nosniff', 'Cross-Origin-Resource-Policy': 'same-origin' });
+    'X-Content-Type-Options': 'nosniff', 'Cross-Origin-Resource-Policy': 'same-origin', Connection: 'close' });
   response.flushHeaders();
   let ended = false, revision = '';
+  let closing: Promise<void> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   response.once('close', () => { ended = true; clearTimeout(timer); closed(); });
   response.once('error', () => response.destroy());
@@ -34,4 +37,17 @@ export function streamSnapshots(response: ServerResponse, load: () => Promise<Vi
     if (!ended && !response.writableEnded && !response.destroyed) timer = setTimeout(() => { void tick(); }, 1000);
   };
   void tick();
+  return { close(finalHtml) {
+    if (closing) return closing;
+    ended = true; clearTimeout(timer);
+    closing = new Promise<void>(resolve => {
+      if (response.destroyed) { resolve(); return; }
+      // This is an I/O deadline, not a grace sleep: normal readers close immediately.
+      const deadline = setTimeout(() => response.destroy(), 1000);
+      response.once('close', () => { clearTimeout(deadline); resolve(); });
+      try { response.end(`event: final\ndata: ${JSON.stringify({ html: finalHtml ?? null })}\n\n`); }
+      catch { response.destroy(); }
+    });
+    return closing;
+  } };
 }

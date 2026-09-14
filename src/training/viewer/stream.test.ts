@@ -8,7 +8,8 @@ afterEach(()=>vi.useRealTimers());
 function fixture() {
   vi.useFakeTimers();
   const response=Object.assign(new EventEmitter(),{writableEnded:false,destroyed:false,
-    writeHead:vi.fn(),flushHeaders:vi.fn(),write:vi.fn((_text:string)=>true),destroy:vi.fn()});
+    writeHead:vi.fn(),flushHeaders:vi.fn(),write:vi.fn((_text:string)=>true),end:vi.fn((_text:string)=>undefined),destroy:vi.fn()});
+  response.end.mockImplementation(()=>{response.writableEnded=true;response.emit('close');});
   response.destroy.mockImplementation(()=>{response.destroyed=true;response.emit('close');});
   const load=vi.fn(async()=>viewerFixture()); const closed=vi.fn();
   const start=()=>streamSnapshots(response as unknown as ServerResponse,load,closed);
@@ -65,4 +66,25 @@ it('does not invoke an already-queued poll after destruction but before close no
   const f=fixture();f.start();await vi.advanceTimersByTimeAsync(0);
   f.response.destroyed=true;await vi.advanceTimersByTimeAsync(5000);
   expect(f.load).toHaveBeenCalledOnce();f.response.emit('close');expect(f.closed).toHaveBeenCalledOnce();
+});
+
+it('ends with the supplied final shell even while a previous snapshot load is pending',async()=>{
+  const f=fixture();let resolve!:(data:ReturnType<typeof viewerFixture>)=>void;
+  f.load.mockImplementation(()=>new Promise(done=>{resolve=done;}));const stream=f.start();
+  const closing=stream.close('<div class="shell">final</div>');expect(stream.close('ignored')).toBe(closing);await closing;
+  expect(f.response.end).toHaveBeenCalledWith('event: final\ndata: {"html":"<div class=\\"shell\\">final</div>"}\n\n');
+  resolve(viewerFixture());await vi.advanceTimersByTimeAsync(5000);
+  expect(f.response.write).not.toHaveBeenCalled();expect(f.load).toHaveBeenCalledOnce();expect(f.closed).toHaveBeenCalledOnce();
+});
+it('bounds final response closure for an unresponsive reader without a grace sleep',async()=>{
+  const f=fixture();const stream=f.start();await vi.advanceTimersByTimeAsync(0);
+  f.response.end.mockImplementation(()=>{f.response.writableEnded=true;});
+  let finished=false;const closing=stream.close('final').then(()=>{finished=true;});
+  await vi.advanceTimersByTimeAsync(999);expect(finished).toBe(false);expect(f.response.destroy).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);await closing;expect(f.response.destroy).toHaveBeenCalledOnce();expect(f.closed).toHaveBeenCalledOnce();
+});
+it('settles already disconnected streams and destroys failed terminal writes',async()=>{
+  const f=fixture(),stream=f.start();f.response.destroy();await stream.close();expect(f.response.end).not.toHaveBeenCalled();
+  const second=fixture(),other=second.start();second.response.end.mockImplementation(()=>{throw new Error('PRIVATE');});
+  await other.close();expect(second.response.destroy).toHaveBeenCalledOnce();
 });

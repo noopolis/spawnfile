@@ -3,8 +3,8 @@ import { createServer, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { renderViewer } from './page.js';
 import { projectViewerData } from './projection.js';
-import type { ViewerOptions, ViewerServer } from './types.js';
-import { streamSnapshots } from './stream.js';
+import type { ViewerData, ViewerOptions, ViewerServer } from './types.js';
+import { streamSnapshots, type SnapshotStream } from './stream.js';
 
 function respond(response: ServerResponse, status: number, text: string, type: string): void {
   if (response.destroyed || response.writableEnded) return;
@@ -19,7 +19,7 @@ export async function startViewer(options: ViewerOptions): Promise<ViewerServer>
   const requestedPort = options.port ?? 0;
   if (!Number.isInteger(requestedPort) || requestedPort < 0 || requestedPort > 65535) throw new Error('Viewer port must be 0–65535');
   let port = 0;
-  let streams = 0;
+  const streams = new Map<ServerResponse, { stream: SnapshotStream; metric: number }>();
   const server = createServer(async (request, response) => {
     if (request.headers.host !== `127.0.0.1:${port}`) return respond(response, 403, 'Invalid local host.', 'text/plain');
     if (request.method !== 'GET') {
@@ -27,10 +27,11 @@ export async function startViewer(options: ViewerOptions): Promise<ViewerServer>
       return respond(response, 405, 'Read-only viewer: GET required.', 'text/plain');
     }
     const metric = /^\/\?metric=(\d{1,4})$/.exec(request.url ?? '');
-    if (request.url === '/api/events') {
-      if (streams >= 16) return respond(response, 503, 'Stream capacity reached.', 'text/plain');
-      streams++;
-      streamSnapshots(response, options.load, () => { streams--; });
+    const streamMetric = /^\/api\/events(?:\?metric=(\d{1,4}))?$/.exec(request.url ?? '');
+    if (streamMetric) {
+      if (streams.size >= 16) return respond(response, 503, 'Stream capacity reached.', 'text/plain');
+      const stream = streamSnapshots(response, options.load, () => { streams.delete(response); });
+      streams.set(response, { stream, metric: Number(streamMetric[1] ?? 0) });
       return;
     }
     if (request.url !== '/' && request.url !== '/api/data' && !metric) return respond(response, 404, 'Not found.', 'text/plain');
@@ -53,11 +54,16 @@ export async function startViewer(options: ViewerOptions): Promise<ViewerServer>
   // listen completed on an explicit TCP host, so the address is an AddressInfo.
   port = (server.address() as AddressInfo).port;
   let closing: Promise<void> | undefined;
-  return { url: `http://127.0.0.1:${port}`, port, close: () => {
-    closing ??= new Promise<void>((resolve) => {
-      server.close(() => resolve());
+  return { url: `http://127.0.0.1:${port}`, port, close: (finalSnapshot) => {
+    closing ??= (async () => {
+      const stopped = new Promise<void>(resolve => server.close(() => resolve()));
+      let data: ViewerData | undefined;
+      try { if (finalSnapshot !== undefined) data = projectViewerData(finalSnapshot); } catch { /* Never expose invalid projections. */ }
+      await Promise.all([...streams.values()].map(({ stream, metric }) =>
+        stream.close(data === undefined ? undefined : renderViewer(data, '', metric))));
       server.closeAllConnections();
-    });
+      await stopped;
+    })();
     return closing;
   } };
 }

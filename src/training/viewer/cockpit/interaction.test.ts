@@ -39,12 +39,12 @@ function fixture(hash='',live=false) {
     querySelectorAll:(selector:string)=>current.querySelectorAll(selector),getElementById:(id:string)=>current.getElementById(id),
     querySelector:()=>({replaceWith:(next:ReturnType<typeof shell>)=>{current=next;}}),
     addEventListener:(name:string,callback:()=>void)=>documentEvents.set(name,callback)};
-  const connections:Array<{path:string;readyState:number;close:ReturnType<typeof vi.fn>;fire:(event:string)=>void}>=[];
+  const connections:Array<{path:string;readyState:number;close:ReturnType<typeof vi.fn>;fire:(event:string,data?:string)=>void}>=[];
   class EventSource {
-    readyState=0;listeners=new Map<string,()=>void>();close=vi.fn(()=>{this.readyState=2;});
+    readyState=0;listeners=new Map<string,(event:{data?:string})=>void>();close=vi.fn(()=>{this.readyState=2;});
     constructor(public path:string){connections.push(this);}
-    addEventListener(name:string,callback:()=>void){this.listeners.set(name,callback);}
-    fire(event:string){if(event==='open')this.readyState=1;this.listeners.get(event)!();}
+    addEventListener(name:string,callback:(event:{data?:string})=>void){this.listeners.set(name,callback);}
+    fire(event:string,data?:string){if(event==='open')this.readyState=1;this.listeners.get(event)!({data});}
   }
   const fetch=vi.fn(async (_path:string,_options:{cache:string;signal:AbortSignal})=>({ok:true,text:async()=>'<html>'}));
   const parse=vi.fn(()=>({querySelector:()=>shell(true) as ReturnType<typeof shell>|null}));
@@ -125,4 +125,29 @@ describe('shipped read-only streaming cockpit controller',()=>{
     expect(f.shell).toBe(original);expect(f.fetch).toHaveBeenCalledOnce();expect(f.connections[1]!.close).toHaveBeenCalledOnce();
     expect(f.fetch.mock.calls[0]![1].signal.aborted).toBe(true);f.connections[1]!.fire('snapshot');expect(f.fetch).toHaveBeenCalledOnce();
   });
+});
+
+it('applies terminal HTML without GET and prevents stale refresh completion or reconnection',async()=>{
+  const f=fixture('#costs/1',true);f.location.search='?metric=1';f.shell.poll.fire('change');
+  expect(f.connections[1]!.path).toBe('/api/events?metric=1');
+  let finish!:(value:{ok:boolean;text:()=>Promise<string>})=>void;
+  f.fetch.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));f.connections[1]!.fire('snapshot');
+  f.connections[1]!.fire('snapshot');
+  const final=shell(false);f.parse.mockReturnValueOnce({querySelector:()=>final});
+  f.connections[1]!.fire('final',JSON.stringify({html:'FINAL failed costs12.34 trials1'}));
+  expect(f.shell).toBe(final);expect(f.shell.label.textContent).toBe('Viewer closed');expect(f.shell.poll.checked).toBe(false);
+  expect(f.fetch.mock.calls[0]![1].signal.aborted).toBe(true);expect(f.connections[1]!.close).toHaveBeenCalledOnce();
+  finish({ok:true,text:async()=>'<html>STALE</html>'});await settle();expect(f.shell).toBe(final);
+  for(const event of ['open','snapshot','error','unavailable','final'])f.connections[1]!.fire(event,'{}');
+  f.shell.refresh.fire('click');f.shell.poll.checked=true;f.shell.poll.fire('change');f.visibility();await settle();
+  expect(f.fetch).toHaveBeenCalledOnce();expect(f.connections).toHaveLength(2);expect(f.shell.label.textContent).toBe('Viewer closed');
+});
+it.each(['{broken','null',JSON.stringify({html:'missing-shell'})])('shows a terminal decoding failure without reconnecting: %s',data=>{
+  const f=fixture('',true);f.parse.mockReturnValue({querySelector:()=>null});
+  f.connections[0]!.fire('final',data);expect(f.shell.label.textContent).toBe('Final snapshot unavailable');
+  f.connections[0]!.fire('error');expect(f.shell.label.textContent).toBe('Final snapshot unavailable');expect(f.connections[0]!.close).toHaveBeenCalledOnce();
+});
+it('closes without replacing the shell when no final snapshot was persisted',()=>{
+  const f=fixture('',true),old=f.shell;f.connections[0]!.fire('final',JSON.stringify({html:null}));
+  expect(f.shell).toBe(old);expect(f.shell.label.textContent).toBe('Viewer closed');expect(f.fetch).not.toHaveBeenCalled();
 });

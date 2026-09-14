@@ -16,7 +16,7 @@ describe('read-only experiment page entry point', () => {
     expect(page).toContain('data-view-pane="trials" hidden');
     expect(page).toContain('provider-reported');
     expect(page).not.toMatch(/<details[^>]*\bopen(?:[\s=>])/);
-    expect(viewerScript).toContain("new EventSource('/api/events')");
+    expect(viewerScript).toContain("new EventSource('/api/events' + location.search)");
     expect(viewerScript).toContain('fetch(');
     expect(viewerScript).not.toMatch(/location\.reload|POST|localStorage|sendBeacon|XMLHttpRequest|WebSocket|invoke|spawn/);
   });

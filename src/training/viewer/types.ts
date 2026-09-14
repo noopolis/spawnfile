@@ -110,4 +110,4 @@ export interface ViewerCosts {
 }
 
 export interface ViewerOptions { load: () => Promise<ViewerData>; port?: number }
-export interface ViewerServer { url: string; port: number; close(): Promise<void> }
+export interface ViewerServer { url: string; port: number; close(finalSnapshot?: ViewerData): Promise<void> }

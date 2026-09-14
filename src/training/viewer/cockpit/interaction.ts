@@ -1,7 +1,7 @@
 /** Shipped read-only browser controller; source data comes only from the local viewer. */
 export const cockpitScript = `
 (function () {
-  let stream, controller, fetching = false, pending = false, unloaded = false;
+  let stream, controller, fetching = false, pending = false, unloaded = false, terminal = false;
   const current = () => location.hash.slice(1).split('/');
   const state = text => { const label = document.getElementById('stream-state'); if (label) label.textContent = text; };
   const drawers = () => Array.from(document.querySelectorAll('[data-view-pane]')).flatMap(pane => {
@@ -27,8 +27,21 @@ export const cockpitScript = `
     for (const select of document.querySelectorAll('[data-metric-select]')) select.value = chosen;
     location.hash = target + '/' + chosen;
   };
+  const apply = next => {
+    // Read presentation state at commit time: the user may interact before a snapshot arrives.
+    const live = document.getElementById('poll').checked;
+    const scroll = new Map(Array.from(document.querySelectorAll('[data-view-pane], .sidebar')).map(pane => [pane.dataset.viewPane ?? 'sidebar', pane.scrollTop]));
+    const opened = new Map(drawers().map(([key, node]) => [key, node.open]));
+    const focusId = document.activeElement?.id;
+    document.querySelector('.shell').replaceWith(next);
+    document.getElementById('poll').checked = live;
+    bind(); display(current()[0], current()[1]);
+    for (const pane of document.querySelectorAll('[data-view-pane], .sidebar')) pane.scrollTop = scroll.get(pane.dataset.viewPane ?? 'sidebar') ?? 0;
+    for (const [key, node] of drawers()) node.open = opened.get(key) ?? false;
+    if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
+  };
   const refresh = async () => {
-    if (unloaded) return;
+    if (unloaded || terminal) return;
     if (fetching) { pending = true; return; }
     fetching = true;
     controller = new AbortController();
@@ -38,30 +51,36 @@ export const cockpitScript = `
       if (!response.ok) throw new Error();
       const next = new DOMParser().parseFromString(await response.text(), 'text/html').querySelector('.shell');
       if (!next) throw new Error();
-      if (unloaded) return;
-      // Read presentation state at commit time: the user may interact during the GET.
+      if (unloaded || terminal) return;
+      apply(next);
       const live = document.getElementById('poll').checked;
-      const scroll = new Map(Array.from(document.querySelectorAll('[data-view-pane], .sidebar')).map(pane => [pane.dataset.viewPane ?? 'sidebar', pane.scrollTop]));
-      const opened = new Map(drawers().map(([key, node]) => [key, node.open]));
-      const focusId = document.activeElement?.id;
-      document.querySelector('.shell').replaceWith(next);
-      document.getElementById('poll').checked = live;
-      bind(); display(current()[0], current()[1]);
-      for (const pane of document.querySelectorAll('[data-view-pane], .sidebar')) pane.scrollTop = scroll.get(pane.dataset.viewPane ?? 'sidebar') ?? 0;
-      for (const [key, node] of drawers()) node.open = opened.get(key) ?? false;
-      if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
       state(live ? (stream?.readyState === 1 ? 'Streaming' : 'Connecting') : 'Paused');
-    } catch { if (!unloaded) state('Snapshot unavailable'); }
+    } catch { if (!unloaded && !terminal) state('Snapshot unavailable'); }
     finally { clearTimeout(timeout); controller = undefined; fetching = false; if (pending) { pending = false; void refresh(); } }
   };
   const connect = () => {
     stream?.close(); stream = undefined;
+    if (terminal) { state('Viewer closed'); return; }
     if (!document.getElementById('poll').checked) { pending = false; state('Paused'); return; }
     state('Connecting');
-    const connection = new EventSource('/api/events'); stream = connection;
-    const active = () => stream === connection && !unloaded;
+    const connection = new EventSource('/api/events' + location.search); stream = connection;
+    const active = () => stream === connection && !unloaded && !terminal;
     stream.addEventListener('open', () => { if (active()) state('Streaming'); });
     stream.addEventListener('snapshot', () => { if (active() && document.visibilityState !== 'hidden') void refresh(); });
+    stream.addEventListener('final', event => {
+      if (!active()) return;
+      terminal = true; pending = false; controller?.abort(); connection.close();
+      try {
+        const payload = JSON.parse(event.data);
+        if (typeof payload.html === 'string') {
+          const next = new DOMParser().parseFromString(payload.html, 'text/html').querySelector('.shell');
+          if (!next) throw new Error();
+          apply(next);
+        }
+        document.getElementById('poll').checked = false;
+        state('Viewer closed');
+      } catch { state('Final snapshot unavailable'); }
+    });
     stream.addEventListener('unavailable', () => { if (active()) state('Snapshot unavailable'); });
     stream.addEventListener('error', () => { if (active()) state('Disconnected · reconnecting'); });
   };

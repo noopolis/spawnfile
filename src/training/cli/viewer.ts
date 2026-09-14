@@ -77,6 +77,7 @@ export async function startLiveViewer(options: {
   let frozen = false, unavailable = false;
   let optimizer: DspyResult | undefined;
   let status = 'starting';
+  let lastPersisted: ViewerData | undefined;
   let proposalAttempts = 0;
   const generations = createGenerationTracker();
   const trials: TrialReport[] = [];
@@ -106,6 +107,7 @@ export async function startLiveViewer(options: {
         if (data.optimizer) data.optimizer.status = 'failed';
       }
       await options.store.appendEvent(runId, { id: randomUUID(), payload: data }, 'public');
+      lastPersisted = data;
       unavailable = false;
     } catch {
       unavailable = true;
@@ -120,7 +122,7 @@ export async function startLiveViewer(options: {
   } });
   options.io.stdout(`${JSON.stringify({ viewer: server.url, progressRunId: runId })}\n`);
   return {
-    close: () => server.close(),
+    close: () => server.close(lastPersisted),
     async observe(event: { type: string; payload: unknown }) {
       if (status === 'failed') return;
       const generationEvent = generations.observe(event);
