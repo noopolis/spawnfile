@@ -25,9 +25,9 @@ const worker = `
 const fs=require('node:fs'),http=require('node:http'),crypto=require('node:crypto'),path=require('node:path');
 const args=Object.fromEntries(process.argv.slice(2).reduce((rows,v,i,all)=>i%2?rows:[...rows,[v.slice(2),all[i+1]]],[]));
 const launch=JSON.parse(fs.readFileSync(args.launch)),token=fs.readFileSync(args['token-file'],'utf8').trim(),trial=args['trial-id'],mode=process.env.UNIT_CHILD_MODE;
-fs.writeFileSync(path.join(launch.controlRoot,'child-env.json'),JSON.stringify({fresh:!process.env.UNIT_PARENT_SECRET,transport:process.env.NATIVE_TRANSPORT_TOKEN,pid:process.pid}));
+fs.writeFileSync(path.join(launch.controlRoot,'child-env.json'),JSON.stringify({fresh:!process.env.UNIT_PARENT_SECRET,home:process.env.HOME,transport:process.env.NATIVE_TRANSPORT_TOKEN,pid:process.pid}));
 if(mode==='noisy'){console.log('Bootstrap progress');process.stderr.write('Unit diagnostic');}
-if(mode==='exit')process.exit(1);if(mode==='overflow'){process.stdout.write('X'.repeat(1100000));setInterval(()=>{},1000);return;}
+if(mode==='exit'){process.stderr.write(JSON.stringify({schema:'paideia.daimon-native.start-failed.v1',error:'unit missing native library'})+'\\n');process.exit(1);}if(mode==='overflow'){process.stdout.write('X'.repeat(1100000));setInterval(()=>{},1000);return;}
 let terminal;const health={version:'noopolis.daimon.organization-runtime-health.v1',state:'running',agents:[{agentId:mode==='bad-health'?'foreign':launch.agent.id}]};
 const server=http.createServer(async(req,res)=>{if(req.headers.authorization!=='Bearer '+token){res.writeHead(401);res.end();return;}res.writeHead(200,{'content-type':'application/json'});
 if(req.url==='/trial/health'){res.end(JSON.stringify(health));return;}

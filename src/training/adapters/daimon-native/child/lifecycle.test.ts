@@ -16,7 +16,7 @@ it('runs a real fresh worker child with explicit environment, observed native us
   const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process' } }).start(f.input);
   expect(verifyChildSandbox).toHaveBeenCalledWith(expect.objectContaining({ configSha256: f.launch.configSha256 }), f.input.trialId, f.input.protectedPaths, expect.any(AbortSignal));
   const env = JSON.parse(await readFile(join(f.launch.controlRoot, 'child-env.json'), 'utf8'));
-  expect(env).toMatchObject({ fresh: true, transport: 'unit-transport-value' });
+  expect(env).toMatchObject({ fresh: true, home: f.launch.projections.find(row => row.role === 'home')!.target, transport: 'unit-transport-value' });
   const result = await session.run({ id: 'task', text: 'Assigned work' });
   expect(result).toMatchObject({ status: 'completed', usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 40 } });
   expect(await session.stop('Finished')).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed', remoteWork: 'unknown' });
@@ -72,6 +72,7 @@ it('handles bootstrap diagnostics and preserves unknown closure after forced wor
 it('rejects actual spawn failure without borrowing another process or claiming containment', async () => {
   const f = await fixture(); f.launch.workerRoot = join(f.root, 'missing-parent/worker');
   await expect(startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000)).rejects.toThrow('before readiness');
+  expect(JSON.parse(await readFile(join(f.launch.controlRoot, 'child-diagnostics.json'), 'utf8'))).toMatchObject({ trialId: f.input.trialId });
 });
 
 it('cancels a pending external research callback without emitting an input or a second wake', async () => {
@@ -89,4 +90,12 @@ it('retains cancellation and metering when operator stops while observing a veri
   const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process', externalInputs: { maxDeliveries: 1, next } } }).start(f.input);
   expect(await session.run({ id: 'task', text: 'Work' })).toMatchObject({ status: 'cancelled', usage: { inputTokens: 100 } });
   expect(next).not.toHaveBeenCalled();
+});
+
+it('persists the actual pre-readiness stderr failure before rejecting without leaking it into the public error', async () => {
+  const f = await fixture('exit');
+  await expect(startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000)).rejects.toThrow('protected diagnostics:');
+  const saved = JSON.parse(await readFile(join(f.launch.controlRoot, 'child-diagnostics.json'), 'utf8'));
+  expect(saved).toMatchObject({ trialId: f.input.trialId, configSha256: f.launch.configSha256, exitCode: 1 });
+  expect(JSON.parse(saved.stderr)).toMatchObject({ schema: 'paideia.daimon-native.start-failed.v1', error: 'unit missing native library' });
 });

@@ -23,9 +23,11 @@ export async function validateChildPaths(launch: VerifiedNativeLaunch): Promise<
 }
 /** Docker env-file semantics: literal values, no shell expansion or inherited host provider settings. */
 export async function nativeChildEnvironment(launch: VerifiedNativeLaunch): Promise<NodeJS.ProcessEnv> {
-  const env: NodeJS.ProcessEnv = {};
+  const home = launch.projections.find(row => row.role === 'home');
+  if (!home || home.source !== home.target) throw new Error('Native child HOME requires the verified materialized home projection');
+  const env: NodeJS.ProcessEnv = { HOME: home.target };
   for (const key of ['PATH', 'LANG', 'LC_ALL', 'TZ']) if (process.env[key] !== undefined) env[key] = process.env[key];
-  const keys = new Set<string>();
+  const keys = new Set<string>(['HOME']);
   for (const line of (await readPrivateFile(launch.envFile, 65536)).split(/\r?\n/u)) {
     if (!line.trim() || line.trimStart().startsWith('#')) continue;
     const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/u.exec(line);

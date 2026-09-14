@@ -44,3 +44,15 @@ it('permits only child fresh home/memory data under the exact materialized works
   f.launch.projections[0]!.role = 'transport'; f.launch.projections[1]!.role = 'home'; await f.save();
   await expect(loadNativeLaunch(f.input, true)).rejects.toThrow('fresh trial data');
 });
+
+it('binds HOME to the fresh verified subject projection and rejects ambient or env-file overrides', async () => {
+  const f = await fixture(); vi.stubEnv('HOME', '/operator/home');
+  const home = f.launch.projections.find(row => row.role === 'home')!;
+  expect((await nativeChildEnvironment(f.launch)).HOME).toBe(home.target);
+  await writeFile(f.launch.envFile, 'HOME=/operator/home\n');
+  await expect(nativeChildEnvironment(f.launch)).rejects.toThrow('explicit native child environment');
+  await writeFile(f.launch.envFile, '');
+  home.target = '/other'; await expect(nativeChildEnvironment(f.launch)).rejects.toThrow('home projection');
+  f.launch.projections = f.launch.projections.filter(row => row.role !== 'home');
+  await expect(nativeChildEnvironment(f.launch)).rejects.toThrow('home projection');
+});

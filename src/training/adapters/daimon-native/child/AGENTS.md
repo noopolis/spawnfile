@@ -10,3 +10,11 @@ only matching closed native work, idle activity, acknowledged native stop and
 observed child exit. Uncertain cancellation fails closed; outer container teardown
 remains the caller's responsibility. Tests use real child/loopback fixtures but
 must not claim actual authenticated model acceptance from those fixtures.
+
+Persist at most 64 KiB of each child output stream into an exclusive 0600 diagnostic
+receipt under the protected canonical control root when stopping the child. Keep
+raw output out of observations, viewer messages and model inputs; it can contain
+sensitive runtime details. Abrupt outer-container termination may prevent saving.
+The child HOME is always its verified fresh home projection, even when the numeric
+container user has no passwd entry. Explicit env files cannot override HOME; never
+inherit the coordinator or host home to repair native startup.

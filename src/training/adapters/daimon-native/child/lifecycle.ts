@@ -8,6 +8,7 @@ import { createNativeHttpClient, type NativeExecutionHandle } from '../transport
 import { nativeChildArguments, nativeChildEnvironment, validateChildPaths } from './arguments.js';
 import { verifyChildSandbox } from './sandbox.js';
 import type { NativeChildExecution } from './types.js';
+import { childDiagnostics } from './diagnostics.js';
 
 /** One fresh worker process in the caller's existing container; no Docker or remote proof. */
 export async function startOwnedChild(execution: NativeChildExecution, launch: VerifiedNativeLaunch, trialId: string,
@@ -30,13 +31,15 @@ export async function startOwnedChild(execution: NativeChildExecution, launch: V
 async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeoutMs: number, env: NodeJS.ProcessEnv,
   token: string, startup: AbortSignal, protectedPaths: readonly string[]): Promise<NativeExecutionHandle> {
   const http = createNativeHttpClient(`http://${launch.host.bindHost}:${launch.host.port}`, token);
+  const diagnostics = await childDiagnostics(launch.controlRoot, trialId, launch.configSha256);
   const child = spawn(process.execPath, nativeChildArguments(launch, trialId, timeoutMs), {
     cwd: dirname(launch.workerRoot), env, stdio: ['ignore', 'pipe', 'pipe'],
   });
-  let exited = false; let exitCode: number | null = null; let ready = false; let failure = false; let buffer = ''; let bytes = 0;
+  let exited = false; let exitCode: number | null = null; let exitSignal: NodeJS.Signals | null = null; let ready = false; let failure = false; let buffer = ''; let bytes = 0;
   child.once('error', () => { failure = true; });
-  child.once('close', code => { exited = true; exitCode = code; });
+  child.once('close', (code, signal) => { exited = true; exitCode = code; exitSignal = signal; });
   const consume = (chunk: Buffer, stdout: boolean) => {
+    diagnostics.append(chunk, stdout);
     bytes += chunk.length;
     if (bytes > 1_048_576) { failure = true; child.kill('SIGTERM'); return; }
     if (!stdout) return;
@@ -66,6 +69,7 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
     const until = Date.now() + 2000;
     while (!exited && Date.now() < until) await pause(20);
     if (!exited) { child.kill('SIGKILL'); const forced = Date.now() + 1000; while (!exited && Date.now() < forced) await pause(20); }
+    await diagnostics.save(exitCode, exitSignal);
     const confirmed = nativeClosed && exited && exitCode === 0;
     return { state: confirmed ? 'acknowledged' : 'unknown', scope: 'native-handle', quiescence: confirmed ? 'confirmed' : 'unknown', remoteWork: 'unknown', reason,
       detail: confirmed ? 'Closed native execution, idle runtime, acknowledged native stop and worker exit' : 'Native child closure unconfirmed; caller must stop the shared container' };
@@ -73,7 +77,7 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
   try {
     while (!ready) {
       startup.throwIfAborted();
-      if (failure || exited) throw new Error('Native worker exited or failed before readiness');
+      if (failure || exited) throw new Error(`Native worker exited or failed before readiness; protected diagnostics: ${diagnostics.file}`);
       await pause(20);
     }
     const health = await http<{ version: string; state: string; agents: { agentId: string }[] }>('/trial/health', undefined, 1000, startup);
