@@ -12,7 +12,11 @@ validateCandidate, assertOriginalPolicy and materializeCandidate.
 - CommonMark parses heading ancestry and byte-preserving string offsets. A heading
   selector must resolve once, and editable subtrees cannot overlap. Heading text
   and all bytes outside selected bodies stay locked; the following line separator
-  belongs to the body. Do not serialize Markdown through an AST formatter.
+  belongs to the body. Derivation supplies missing line separators around a
+  replacement body so unpadded prose cannot consume a locked heading; preserve
+  existing separators and use the original local newline style. A following
+  setext heading needs a blank line. Never trim or rewrite the replacement prose.
+  Do not serialize Markdown through an AST formatter.
 - Derivation always checks the original baseline policy. Complete source bytes let
   validation reconstruct baseline identity and check locked regions independently;
   recomputing a modified candidate checksum cannot authorize a locked edit.

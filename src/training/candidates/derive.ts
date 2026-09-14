@@ -39,7 +39,21 @@ function replaceResource(resource: CandidateResource, replacements: Readonly<Rec
     const sections = selectSections(content, resource.edit.headings).reverse();
     for (const section of sections) {
       const replacement = replacements[componentId(resource.id, section.ancestry)];
-      if (replacement !== undefined) content = content.slice(0, section.start) + replacement + content.slice(section.end);
+      if (replacement !== undefined) {
+        const original = content.slice(section.start, section.end);
+        const suffix = content.slice(section.end);
+        const newline = original.match(/^(?:\r\n|\r|\n)/u)?.[0]
+          ?? content.slice(0, section.start).match(/\r\n|\r|\n/gu)?.at(-1) ?? '\n';
+        let body = replacement;
+        // Delimit the locked heading and following heading; replacement prose need not carry Markdown separators.
+        if (!/^[\r\n]/u.test(body) && (body.length > 0 || suffix.length > 0)) body = newline + body;
+        if (suffix.length > 0) {
+          if (!/[\r\n]$/u.test(body)) body += newline;
+          // A setext heading following a paragraph requires an empty line to retain its own heading text.
+          if (!/^ {0,3}#{1,6}(?:\s|$)/u.test(suffix) && !body.replace(/\r\n|\r/gu, '\n').endsWith('\n\n')) body += newline;
+        }
+        content = content.slice(0, section.start) + body + suffix;
+      }
     }
   }
   return { ...structuredClone(resource), content, digest: digestBytes(content) };
