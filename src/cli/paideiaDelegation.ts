@@ -6,6 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { trainingContextSchema, type TrainingContext } from "../compiler/training/index.js";
+import { launchTrainingContainer } from "../compiler/training/container/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import type { PaideiaProcessOutcome } from "./paideiaSupervisor.js";
 import type { CliStreams } from "./runCli.js";
@@ -15,6 +16,8 @@ export interface DelegatePaideiaTrainingOptions {
   command: string;
   args: readonly string[];
   dryRun: boolean;
+  trainingImage?: string;
+  trainingConfig?: string;
   timeoutMs: number;
   streams: CliStreams;
   signal?: AbortSignal;
@@ -127,6 +130,11 @@ const runChild = (options: DelegatePaideiaTrainingOptions, contextPath: string):
 /** Delegates through the public CLI, never importing Paideia or selecting a fallback adapter. */
 export const delegatePaideiaTraining = async (options: DelegatePaideiaTrainingOptions): Promise<number> => {
   if (options.signal?.aborted) return 130;
+  if (!options.dryRun) {
+    if (!options.trainingImage || !options.trainingConfig) throw failure("Actual training requires --training-image and --training-config; host execution is disabled");
+    return launchTrainingContainer({ image: options.trainingImage, configPath: options.trainingConfig,
+      context: options.context, args: options.args, timeoutMs: options.timeoutMs, streams: options.streams, signal: options.signal });
+  }
   if (process.platform === "win32") throw failure("Paideia delegation requires POSIX process-group supervision");
   const bytes = JSON.stringify(trainingContextSchema.parse(options.context));
   if (Buffer.byteLength(bytes, "utf8") > MAX_LINE_BYTES) throw new SpawnfileError("validation_error", "Training context exceeds 1 MiB");

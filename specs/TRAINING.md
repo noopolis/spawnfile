@@ -4,6 +4,10 @@
 Paideia CLI. Spawnfile owns canonical source resolution and native compilation;
 Paideia owns datasets, evaluation, cost planning, optimization and isolated trials.
 
+The [container boundary](TRAINING_CONTAINERS.md) runs the complete experiment
+inside one immutable image. Actual training requires explicit image and mount
+configuration; dry-run remains a host-only estimate.
+
 ```sh
 spawnfile train ./Spawnfile --agent agent:writer \
   --train evals/train.paideia.yaml --test evals/test.paideia.yaml \
