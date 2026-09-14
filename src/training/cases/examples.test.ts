@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { stringify } from 'yaml';
+import { parse, stringify } from 'yaml';
 import type { DataMap, Dataset, DatasetRegistry, EvaluatorDefinition, ResolvedDataset } from '../contracts/dataset.js';
 import { parseDatasetYaml, resolveDataset, selectedFiles, validateDatasetSplit } from './index.js';
 import { fields, object, string } from './validation.js';
@@ -113,4 +113,16 @@ records:
   expect(() => resolveDataset(parseDatasetYaml(source))).toThrow(/reference material/);
   const renamed = source.replace('reference:\n    files: [{resource: evidence, path: answer.txt', 'reference:\n    files: [{resource: renamed, path: other.txt');
   expect(() => resolveDataset(parseDatasetYaml(renamed))).toThrow(/reference material/);
+});
+
+it('resolves the documented quality/efficiency stage with unchanged hard floors', () => {
+  const text = readFileSync(new URL('../../docs/token-efficiency.md', import.meta.url), 'utf8');
+  const yaml = /```yaml\n([\s\S]*?)```/.exec(text)![1]!;
+  const stage = parse(yaml);
+  const source = stringify({ schema: 'paideia.dataset.v1', id: 'quality-efficiency', stages: [stage],
+    records: [{ id: 'record', input: { prompt: 'Write the article.' }, outputs: { article: 'article.json' } }] });
+  const resolved = resolveDataset(parseDatasetYaml(source), { registry });
+  expect(resolved.sharedStages[0]!.score!.linear).toEqual({ grounded: 52, prose: 28, efficiency: 20 });
+  expect(resolved.sharedStages[0]!.checks.map(check => check.minimum)).toEqual([0.90, 0.80, undefined]);
+  expect(resolved.sharedStages[0]!.gate).toEqual({ all: [{ passed: 'grounded' }, { passed: 'prose' }] });
 });

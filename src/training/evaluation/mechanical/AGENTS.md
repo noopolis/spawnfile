@@ -10,5 +10,8 @@ Owns observable text, schema, tool, count, file and event relationship checks.
   the case requires them. Timestamps alone do not prove cross-source causality.
 - Allow unrelated extra events unless the case explicitly asks for an exact chain.
 - Grow by coherent check families when needed, with tests and fixtures beside them.
+- Token efficiency scores only closed, complete native subject totals. Missing
+  usage never becomes zero; cache/reasoning subsets are not added again. Its
+  normalization reference is not a cap, and it never authorizes a live hard stop.
 - Test missing/failed/reordered calls, stale receipts, changed bytes and truncated
   traces. Do not route negative tests around the default behavior.

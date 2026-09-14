@@ -44,6 +44,8 @@ export interface TrialReport {
   execution: 'completed' | 'interrupted' | 'failed';
   hostWork: 'settled' | 'incomplete';
   snapshot: EvaluationSnapshot;
+  /** Authored turn count, retained independently of returned native results. */
+  expectedTurns?: number;
   turns: TurnReport[];
   evaluation: PlanEvaluation;
   live: { checkId: string; boundary: string; result: EvaluationResult }[];

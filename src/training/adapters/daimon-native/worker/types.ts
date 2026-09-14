@@ -91,6 +91,6 @@ export interface TerminalEvidence {
   activity?: NativeActivity;
   availability?: NativeAvailability;
   native: NativeEvidence;
-  coverage: { channel: 'tools' | 'output' | 'usage'; completeness: 'absent' | 'partial'; ordering: 'source' | 'none' }[];
+  coverage: { channel: 'tools' | 'output' | 'usage'; completeness: 'absent' | 'partial' | 'complete'; ordering: 'source' | 'none' }[];
   error?: string;
 }

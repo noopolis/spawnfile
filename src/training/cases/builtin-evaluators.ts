@@ -77,6 +77,12 @@ export const builtinEvaluatorDefinitions: Readonly<Record<string, EvaluatorDefin
     if (typeof parameters.at_least === 'number' && typeof parameters.at_most === 'number' && parameters.at_least > parameters.at_most) fail(path, 'inverted count bounds');
   }),
   'tool-sequence': descriptor('mechanical', ['order', 'steps', 'ending_at'], ['order', 'steps'], sequenceParameters),
+  'token-efficiency': { ...descriptor('mechanical', ['metric', 'target_tokens'], ['metric', 'target_tokens'], (parameters, path) => {
+    oneOf(parameters.metric, ['input', 'output', 'total'], `${path}.metric`);
+    if (!Number.isSafeInteger(number(parameters.target_tokens, `${path}.target_tokens`, 1, Number.MAX_SAFE_INTEGER))) {
+      fail(`${path}.target_tokens`, 'expected a positive safe integer');
+    }
+  }), stopProof: false },
   'llm-rubric': descriptor('semantic', ['input', 'evidence', 'judge', 'rubric', 'minimum'], ['input', 'judge', 'rubric', 'minimum'], (parameters, path) => {
     textParameters(parameters, path);
     if (parameters.evidence !== undefined) string(parameters.evidence, `${path}.evidence`);

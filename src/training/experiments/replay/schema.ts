@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { subjectUsageMatchesNative } from './subject-usage.js';
 import type { EvaluationResult } from '../../contracts/evaluation.js';
 
 const identity = z.string().min(1).max(512).refine(value => !value.includes('\0'));
@@ -10,6 +11,12 @@ const usage = z.object({ inputTokens: z.number().nonnegative().nullable(), cache
   cacheWrite5mInputTokens: z.number().nonnegative().nullable().optional(),
   cacheWrite1hInputTokens: z.number().nonnegative().nullable().optional(),
   outputTokens: z.number().nonnegative().nullable(), reasoningTokens: z.number().nonnegative().nullable(), source: z.string() });
+const tokenCount = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable();
+const subjectUsage = z.object({ status: z.enum(['complete', 'incomplete']), usage: usage.extend({
+  inputTokens: tokenCount, cachedInputTokens: tokenCount, outputTokens: tokenCount, reasoningTokens: tokenCount,
+  cacheWriteInputTokens: tokenCount.optional(), cacheWrite5mInputTokens: tokenCount.optional(), cacheWrite1hInputTokens: tokenCount.optional(),
+  source: z.string().min(1),
+}).nullable() });
 const judgeCall = z.object({ id: identity, judge: identity, providerId: identity, requestedModel: identity,
   failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'protocol', 'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),
   fallbackOf: identity.optional(),
@@ -34,7 +41,7 @@ const observation = z.object({ id: identity, source: identity, seq: z.number().i
   args: z.unknown().optional(), result: z.unknown().optional(), success: z.boolean().optional(), text: z.string().optional(),
   usage: usage.optional(), causalParents: z.array(z.string()).optional(), native: z.unknown().optional() });
 const snapshot = z.object({ trialId: identity, recordId: identity, closed: z.literal(true), events: z.array(observation),
-  coverage: z.array(coverage), output: z.string(), inputFiles: z.record(z.string(), z.string()), context: z.record(z.string(), z.json()),
+  subjectUsage: subjectUsage.optional(), coverage: z.array(coverage), output: z.string(), inputFiles: z.record(z.string(), z.string()), context: z.record(z.string(), z.json()),
   artifacts: z.record(z.string(), z.object({ name: z.string(), checkpointId: z.string(), digest: z.string(), bytes: z.string(),
     value: z.json(), provenance: z.string(), acceptedCallId: z.string().optional() })) });
 
@@ -44,9 +51,14 @@ export const trialReportSchema = z.object({
   datasetDigest: identity, planDigest: identity, recordId: identity,
   paths: z.object({ root: z.string(), workspace: z.string(), control: z.string(), runtimeHome: z.string() }),
   status: verdict, execution: z.enum(['completed', 'interrupted', 'failed']), hostWork: z.enum(['settled', 'incomplete']), snapshot,
+  expectedTurns: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
   turns: z.array(z.object({ id: identity, checks: z.array(result), native: z.object({
     status: z.enum(['completed', 'failed', 'cancelled']), text: z.string(), coverage: z.array(coverage), usage: usage.nullable(),
     error: z.string().optional(), stop: stop.optional() }) })),
   evaluation: plan, live: z.array(z.object({ checkId: z.string(), boundary: z.string(), result })),
   decisiveFailure: result.optional(), stop: stop.optional(), error: z.string().optional(),
+}).superRefine((report, context) => {
+  if (!subjectUsageMatchesNative(report)) {
+    context.addIssue({ code: 'custom', path: ['snapshot', 'subjectUsage'], message: 'Subject usage does not match authoritative native totals and closure' });
+  }
 });

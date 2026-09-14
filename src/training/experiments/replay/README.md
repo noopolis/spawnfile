@@ -46,3 +46,15 @@ still require the original frozen candidate and an authorized test/release phase
 Missing/ambiguous reports, malformed identities, corrupt digests and torn journal
 or report data reject before evaluator work. A valid partial observation channel
 stays partial and can still yield unknown; rescoring cannot fill missing evidence.
+
+Captured `snapshot.subjectUsage` holds authoritative subject-only usage returned by
+the adapter, summed once across expected turns. Cached input and reasoning are
+subsets, not additional tokens. The capture is complete only after successful native
+closure with settled host work and complete usage coverage. Failed, cancelled or
+partial work retains incomplete measurements and cannot earn an efficiency score.
+Replay validates those measurements against stored native totals and closure;
+legacy captures without the field remain readable with unknown efficiency.
+
+Captures with subject usage also retain the authored `expectedTurns` independently
+of returned turn results. Replay rejects missing/invalid planned counts and complete
+claims with truncated work; legacy reports without subject usage remain readable.

@@ -11,3 +11,10 @@ Keep adjacent tests, files below 400 lines and per-file coverage above 90 percen
 External continuations are opt-in, sourced, bounded to three deliveries and share
 one trial deadline. Deferred work is never success. Preserve per-wake evidence and
 aggregate usage once; cancellation must stop the owned runtime.
+
+Usage coverage can be complete only for one matching completed execution trace
+and its single provider-complete Codex terminal total. Reject duplicate totals and
+invalid cache subsets; never infer completeness from a nonempty ledger. This is
+observed token coverage, not a billing or subscription-quota guarantee. A deferred
+delivery may have complete usage for its closed execution; its overall subject
+trial remains incomplete until the continuation succeeds and containment closes.

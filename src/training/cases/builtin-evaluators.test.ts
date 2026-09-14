@@ -6,6 +6,15 @@ function validate(name: string, parameters: Record<string, unknown>): void {
   builtinEvaluatorDefinitions[name]!.validate(parameters, name);
 }
 describe('strict evaluator parameters', () => {
+  it.each(['input', 'output', 'total'])('accepts token efficiency metric %s', metric => {
+    expect(() => validate('token-efficiency', { metric, target_tokens: 1000 })).not.toThrow();
+  });
+  it.each([{}, { metric: 'total' }, { target_tokens: 1000 }, { metric: 'cache', target_tokens: 1000 },
+    ...[0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, Infinity, NaN, '1000'].map(target_tokens => ({ metric: 'total', target_tokens })),
+    { metric: 'total', target_tokens: 1000, extra: true }])('rejects invalid token efficiency parameters %j', parameters => {
+    expect(() => validate('token-efficiency', parameters)).toThrow();
+  });
+
   it.each([
     ['equals', { input: 'output.text', value: '' }],
     ['contains-any', { input: 'output.text', values: ['x'] }],

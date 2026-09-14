@@ -78,6 +78,15 @@ describe('evaluation plan resolution', () => {
     }
     expect(() => resolve(dataset({ live: { checks: [{ id: 'watch', passed: 'exact', on: 'event' }] } }))).toThrow(/reference/);
   });
+  it('resolves token efficiency as a weighted terminal check but rejects live stop authority', () => {
+    const efficiency: CheckNode = { id: 'efficiency', eval: 'token-efficiency', metric: 'total', target_tokens: 1000 };
+    const resolved = resolve(dataset({ checks: [efficiency] }));
+    expect(resolved.registryVersions['evaluator:token-efficiency']).toBe('1');
+    expect(resolve(dataset({ live: { checks: [{ ...efficiency, id: 'watch', on: 'event' }] } })).live.checks[0]!.on_fail).toBe('continue');
+    for (const node of [efficiency, { not: efficiency }]) {
+      expect(() => resolve(dataset({ live: { checks: [{ ...node, id: 'watch', on: 'event', on_fail: 'stop' }] } }))).toThrow(/finality/);
+    }
+  });
   it('requires incremental and finality support, also through a custom evaluator', () => {
     const live = dataset({ live: { checks: [{ id: 'watch', eval: 'custom', on: 'event', on_fail: 'stop' }] } });
     expect(() => resolve(live, { evaluators: { custom: custom('mechanical', false) } })).toThrow(/incremental/);

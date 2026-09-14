@@ -13,3 +13,9 @@ Public exports live in index.ts. Keep adjacent tests and required guides when ex
 Judge response audits use the existing protected trial event sink. They are not
 native observations and never enter subject snapshots. Persistence failure must
 prevent a durable success report and cannot trigger citation repair.
+
+Subject efficiency consumes only returned per-turn native usage totals, never usage
+observations or judge/optimizer accounting. Attest completeness only after all
+expected native work closes successfully, host work settles and usage coverage is
+complete. Per-turn checks receive that turn's own totals; an open handle is still
+incomplete. Preserve nulls and reject invalid counters/overflow before arithmetic.

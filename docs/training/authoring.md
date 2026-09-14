@@ -408,6 +408,10 @@ for prose. A soft check's failed threshold contributes its measured score; it do
 not fail the plan unless the gate explicitly requires it. A gate may also enforce
 a minimum total score.
 
+The mechanical [`token-efficiency`](token-efficiency.md) check can share that score
+without weakening quality gates. Its complete native-token measurement is a
+continuous reward; missing usage stays unassessed.
+
 Logical `all`, `any` and `not` expressions work in both checks and gates. To express
 “if A, require B”, use `any: [{not: {passed: A}}, {passed: B}]`. Missing evidence
 remains unknown. `stage.when` instead controls a required dependency: when it is

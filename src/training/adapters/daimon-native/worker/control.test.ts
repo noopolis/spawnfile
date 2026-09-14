@@ -83,6 +83,7 @@ test('a paused budget and stale receipt cannot outrun a just-admitted execution'
     assert.ok(receiptReads >= 3, 'Closure rereads the durable receipt after terminal telemetry');
     assert.equal(result.receipt?.state, 'completed');
     assert.equal(result.native.usage[0]?.total, 2);
+    assert.equal(result.coverage.find(row => row.channel === 'usage')?.completeness, 'complete');
     assert.equal(result.native.modelContexts.length, 1);
   } finally { await publishing; await rm(root, { recursive: true, force: true }); }
 });

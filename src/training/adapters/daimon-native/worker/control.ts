@@ -1,6 +1,6 @@
 import { createDeliveryGate, type DeliveryControls } from './deliveries.js';
 import { join } from 'node:path';
-import { collectNativeEvidence, readClosedTraces, writeEvidence } from './evidence.js';
+import { collectNativeEvidence, nativeUsageCoverage, readClosedTraces, writeEvidence } from './evidence.js';
 import type { NativeLaunch } from '../receipt/index.js';
 import type { NativeActivity, NativeAvailability, NativeConfig, NativeEvidence, NativeHost,
   NativeReceipt, NativeTrace, TerminalEvidence, WorkerOptions } from './types.js';
@@ -160,7 +160,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
         ...(blocked ? { blocked } : {}),
         coverage: [{ channel: 'tools', completeness: native.toolReceipts.length || native.traces.some(trace => trace.tools.length) ? 'partial' : 'absent', ordering: 'none' },
           { channel: 'output', completeness: 'absent', ordering: 'none' },
-          { channel: 'usage', completeness: native.usage.length ? 'partial' : 'absent', ordering: 'source' }],
+          { channel: 'usage', completeness: nativeUsageCoverage(native, executionId), ordering: 'source' }],
         ...(error ? { error } : {}) };
       await writeEvidence(options.evidence, result);
       return result;

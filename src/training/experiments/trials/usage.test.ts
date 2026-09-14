@@ -14,6 +14,7 @@ it('retains and persists a returned native result before a post-turn collector f
   task.options.prepare = async () => ({ instructions: 'original instructions', collect: async () => { throw new Error('Receipt rejected'); } });
   const report = await runTrial(task.options);
   expect(report.execution).toBe('failed');
+  expect(report.snapshot.subjectUsage).toEqual({ status: 'incomplete', usage });
   expect(report.turns).toHaveLength(1);
   expect(report.turns[0]!.native).toEqual(native);
   expect(task.journal.find(row => row.type === 'turn.native-result')?.payload).toEqual({ id: 'task', native });
@@ -36,6 +37,7 @@ it.each(['throw', 'failed-return'] as const)('preserves usage observed before co
   const report = await runTrial(task.options);
   expect(report.execution).toBe('failed');
   expect(report.snapshot.events).toHaveLength(1);
+  expect(report.snapshot.subjectUsage).toEqual({ status: 'incomplete', usage: null });
   expect(report.snapshot.events[0]!.usage).toEqual(usage);
   expect(task.journal.some(row => row.type === 'observation')).toBe(true);
   const costs = summarizeCosts([report], { subjectModel: 'unknown-test-model' });

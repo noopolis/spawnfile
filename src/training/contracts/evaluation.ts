@@ -71,10 +71,14 @@ export interface ArtifactSnapshot {
   provenance: string;
   acceptedCallId?: string;
 }
+/** Authoritative subject-only returned turn totals; never reconstructed from observations. */
+export interface SubjectUsageSnapshot { status: 'complete' | 'incomplete'; usage: Usage | null }
 export interface EvaluationSnapshot {
   trialId: string;
   recordId: string;
   closed: boolean;
+  /** Missing in legacy captures means unknown, never zero cost. */
+  subjectUsage?: SubjectUsageSnapshot;
   events: readonly Observation[];
   coverage: readonly ObservationCoverage[];
   artifacts: Readonly<Record<string, ArtifactSnapshot>>;

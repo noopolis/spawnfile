@@ -33,14 +33,31 @@ export async function readClosedTraces(runtimeHome: string, agentId: string): Pr
 }
 
 async function readUsage(file: string, agentId: string, executionId?: string, previous: readonly string[] = []): Promise<NativeUsage[]> {
+  const wakes = new Set<string>();
   return (await jsonLines(file)).map(value => {
     const row = object(value);
     if (row.v !== 'noopolis.daimon.turn-usage.v1' || row.agent !== agentId || row.engine !== 'codex' ||
         typeof row.wake !== 'string' || executionId !== undefined && row.wake !== executionId && !previous.includes(String(row.wake)) || !timestamp(row.at) ||
         typeof row.complete !== 'boolean' || ['input', 'output', 'cache_read', 'total'].some(key =>
           !Number.isSafeInteger(row[key]) || Number(row[key]) < 0)) throw new Error('Native usage schema or execution identity mismatch');
+    // This Codex contract reports one terminal total per execution, not deltas.
+    if (wakes.has(row.wake)) throw new Error('Duplicate native usage execution');
+    wakes.add(row.wake);
+    if (Number(row.cache_read) > Number(row.input) || Number(row.total) !== Number(row.input) + Number(row.output)) {
+      throw new Error('Native Codex token totals or cache subset are inconsistent');
+    }
     return row as NativeUsage;
   }).filter(row => !previous.includes(row.wake));
+}
+
+/** Complete observed terminal usage requires one matching, closed native execution. */
+export function nativeUsageCoverage(native: NativeEvidence, executionId?: string): 'complete' | 'partial' | 'absent' {
+  if (!native.usage.length) return 'absent';
+  const usage = native.usage[0]!;
+  const trace = native.traces[0];
+  return executionId !== undefined && native.usage.length === 1 && native.traces.length === 1
+    && usage.wake === executionId && usage.complete && trace?.turn_id === executionId && trace.status === 'completed'
+    ? 'complete' : 'partial';
 }
 
 async function files(directory: string): Promise<string[]> {

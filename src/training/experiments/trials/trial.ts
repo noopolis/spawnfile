@@ -10,6 +10,7 @@ import { createLiveMonitor } from './live.js';
 import { trialControl } from './control.js';
 import { requireMechanicalTurn } from './preflight.js';
 import { drainObservations } from './closure.js';
+import { subjectUsageSnapshot } from './subject-usage.js';
 import type { PreparedTrial, TrialOptions, TrialPaths, TrialReport, TurnReport } from './types.js';
 
 export async function runTrial(options: TrialOptions): Promise<TrialReport> {
@@ -58,8 +59,11 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     await persist('judge.attempt', attempt);
     await observer?.(structuredClone(attempt));
   } };
+  let nativeClosureConfirmed = false;
+  const subjectUsage = () => subjectUsageSnapshot(turns.map(turn => turn.native), { expectedTurns: inputs.length,
+    complete: closed && execution === 'completed' && control.hostWork === 'settled' && !control.signal.aborted && nativeClosureConfirmed });
   const snapshot = async (): Promise<EvaluationSnapshot> => ({ trialId: options.id, recordId: record.id, closed,
-    events: structuredClone(events), coverage: structuredClone(coverage), output, inputFiles: { ...inputFiles }, context: record.context ?? {},
+    subjectUsage: subjectUsage(), events: structuredClone(events), coverage: structuredClone(coverage), output, inputFiles: { ...inputFiles }, context: record.context ?? {},
     artifacts: { ...await collectOutputs(record.outputs ?? {}, paths.workspace, `${options.id}/${events.length}`), ...await prepared?.collect?.() } });
   const live = createLiveMonitor({ checks: record.live.checks, registry, evaluation: evaluationServices,
     persist: entry => persist('live.evaluation', entry), stop: why => control.stop(why, 'decisive'), signal: control.signal });
@@ -109,7 +113,9 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
       const authored = ('checks' in turn ? turn.checks : undefined) ?? [];
       const checks = authored.length ? (await evaluatePlan([{ id: `turn-${turn.id}`, checks: authored }],
         evaluate({ ...state, closed: true, events: state.events.filter(event => event.wakeId === turn.id),
-          coverage: native.coverage }), registry)).stages[0]!.checks : [];
+          coverage: native.coverage, subjectUsage: subjectUsageSnapshot([native], { expectedTurns: 1,
+            complete: control.hostWork === 'settled' && !control.signal.aborted &&
+              native.stop?.state === 'acknowledged' && native.stop.quiescence === 'confirmed' }) }), registry)).stages[0]!.checks : [];
       turnReport.checks = checks;
       await persist('turn.completed', turnReport);
       if (native.status !== 'completed') { execution = native.status === 'cancelled' ? 'interrupted' : 'failed'; error = native.error; break; }
@@ -125,7 +131,8 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   }
   if (control.signal.aborted && execution === 'completed') execution = 'interrupted';
   control.closeNative('Native trial work ended');
-  await control.receipt();
+  const nativeStop = await control.receipt();
+  nativeClosureConfirmed = nativeStop?.state === 'acknowledged' && nativeStop.quiescence === 'confirmed';
   try {
     await control.owned(drainObservations(() => observationTail));
     if (observationFailure) throw new Error(observationFailure);
@@ -140,7 +147,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     try { finalSnapshot = await control.owned(snapshot()); }
     catch (caught) {
       error = `Final collection failed: ${String(caught)}`; execution = 'failed'; control.stop(error);
-      finalSnapshot = { trialId: options.id, recordId: record.id, closed, events: structuredClone(events),
+      finalSnapshot = { trialId: options.id, recordId: record.id, closed, subjectUsage: subjectUsage(), events: structuredClone(events),
         coverage: structuredClone(coverage), output, inputFiles: { ...inputFiles }, context: record.context ?? {}, artifacts: {} };
     }
     try {
@@ -154,13 +161,15 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     }
     const finalStop = await control.receipt();
     if (control.signal.aborted && execution === 'completed') execution = 'interrupted';
+    // Subject totals were frozen at native closure; judge failures are separate work.
+    if (observationFailure && finalSnapshot.subjectUsage) finalSnapshot.subjectUsage.status = 'incomplete';
     const gates = [result(evaluation.status, 'Terminal plan'), ...liveGates,
       ...(live.decisive ? [live.decisive] : []), ...turns.flatMap(turn => turn.checks)];
     if (execution !== 'completed' && !live.decisive) gates.push(result('error', error ?? control.reason ?? 'Incomplete native execution'));
     const report: TrialReport = { schema: 'paideia.trial.v1', id: options.id, phase: options.phase,
       candidateId: options.candidateId, datasetDigest: options.datasetDigest, planDigest: options.planDigest,
       recordId: record.id, paths, status: combine('all', gates).status, execution, hostWork: control.hostWork, snapshot: finalSnapshot,
-      turns, evaluation, live: structuredClone(live.history), decisiveFailure: structuredClone(live.decisive),
+      expectedTurns: inputs.length, turns, evaluation, live: structuredClone(live.history), decisiveFailure: structuredClone(live.decisive),
       stop: structuredClone(finalStop), ...(error ? { error } : {}) };
     if (sinkFailed) throw new Error('Trial evidence persistence failed; no durable success report');
     await persist('trial.completed', report);
