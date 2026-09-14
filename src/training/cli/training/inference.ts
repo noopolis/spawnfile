@@ -19,7 +19,7 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
     const model = config!.models[name]!;
     const selected = dependencies.modelInference?.(model, timeoutMs) ?? (model.provider === 'claude-subscription'
       ? createClaudeInference({ timeoutMs }) : model.provider === 'grok-subscription'
-        ? createGrokInference({ timeoutMs }) : createOllamaInference({ baseUrl: model.endpoint ?? 'http://127.0.0.1:11434', timeoutMs }));
+        ? createGrokInference({ timeoutMs, reasoningEffort: model.reasoning_effort }) : createOllamaInference({ baseUrl: model.endpoint ?? 'http://127.0.0.1:11434', timeoutMs }));
     providers.set(name, selected);
     return selected;
   }

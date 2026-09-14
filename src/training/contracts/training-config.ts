@@ -3,6 +3,7 @@ export interface TrainingModel {
   provider: 'claude-subscription' | 'grok-subscription' | 'ollama';
   model: string;
   endpoint?: string;
+  reasoning_effort?: 'low' | 'medium' | 'high' | 'xhigh';
 }
 export interface TrainingRoute {
   model: string;

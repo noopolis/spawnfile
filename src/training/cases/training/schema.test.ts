@@ -41,6 +41,7 @@ describe('dataset-authored training configuration', () => {
     const identity = trainingJudgeVersions(initial);
     for (const mutate of [
       (value: typeof initial) => { value.models.cheap!.model = 'different'; },
+      (value: typeof initial) => { value.models.cheap!.reasoning_effort = 'low'; },
       (value: typeof initial) => { value.judges!.prose!.template!.text = 'Different {{ rubric }}'; },
       (value: typeof initial) => { value.judges!.prose!.attempts = 1; },
       (value: typeof initial) => { value.models.local!.endpoint = 'http://another:11434'; },
@@ -70,6 +71,9 @@ describe('dataset-authored training configuration', () => {
   it.each([
     { unexpected: true }, { models: {} }, { models: { x: { provider: 'api', model: 'x' } } },
     { models: { x: { provider: 'ollama', model: '' } } },
+    { models: { x: { provider: 'grok-subscription', model: 'x', reasoning_effort: 'unbounded' } } },
+    { models: { x: { provider: 'ollama', model: 'x', reasoning_effort: 'low' } } },
+    { models: { x: { provider: 'claude-subscription', model: 'x', reasoning_effort: 'low' } } },
     ...['ftp://host', 'http://user:password@host', 'http://host?secret=x', 'http://host#x', 'bad'].map(endpoint =>
       ({ models: { x: { provider: 'ollama', model: 'x', endpoint } } })),
     { models: { x: { provider: 'grok-subscription', model: 'x', endpoint: 'http://host' } } },

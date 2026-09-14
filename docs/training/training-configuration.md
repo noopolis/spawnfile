@@ -13,6 +13,11 @@ training:
     fast:
       provider: grok-subscription
       model: your-installed-model
+      reasoning_effort: low
+    reflection:
+      provider: grok-subscription
+      model: your-installed-model
+      reasoning_effort: medium
     local:
       provider: ollama
       model: your-local-model
@@ -28,7 +33,7 @@ training:
         language: jinja
         text: "Evaluate only this criterion: {{ rubric }}"
   optimizer:
-    model: fast
+    model: reflection
   budget:
     max_trials: 16
     max_proposals: 4
@@ -63,6 +68,12 @@ and every referenced model must exist. Provider names currently accepted by this
 schema are `claude-subscription`, `grok-subscription` and `ollama`; only Ollama accepts
 an endpoint. Endpoints cannot contain credentials, queries or fragments. Model names
 are provider-specific strings, not a claim that a particular model is installed.
+
+Grok models accept `reasoning_effort: low | medium | high | xhigh`. Omission means
+explicit `medium`; the process never inherits effort from local Grok configuration.
+Use separate named model entries to give focused judges and prompt optimization
+different efforts. Effort changes invalidate exact judge reuse. Other providers
+reject this field until their adapters support it.
 
 Judge templates declare Jinja source; parsing validates their shape, while the
 evaluation layer owns rendering and rejects unsupported template behavior before

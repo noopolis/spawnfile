@@ -15,9 +15,13 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
     const location = `${path}.models.${name}`;
     string(name, location);
     const model = object(value, location);
-    fields(model, ['provider', 'model', 'endpoint'], location);
+    fields(model, ['provider', 'model', 'endpoint', 'reasoning_effort'], location);
     oneOf(model.provider, ['claude-subscription', 'grok-subscription', 'ollama'], `${location}.provider`);
     string(model.model, `${location}.model`);
+    if (model.reasoning_effort !== undefined) {
+      if (model.provider !== 'grok-subscription') fail(`${location}.reasoning_effort`, 'only supported for grok-subscription');
+      oneOf(model.reasoning_effort, ['low', 'medium', 'high', 'xhigh'], `${location}.reasoning_effort`);
+    }
     if (model.endpoint !== undefined) {
       if (model.provider !== 'ollama') fail(`${location}.endpoint`, 'only supported for ollama');
       let url: URL;

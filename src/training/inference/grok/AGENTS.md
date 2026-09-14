@@ -11,6 +11,9 @@ The native init must still acknowledge empty tools/MCP servers; abort the owned
 process immediately if it does not. Permissions alone are not tool isolation.
 
 Use `--verbatim` and the exact caller system override for inline judge prompts.
+Always pass `--reasoning-effort`: the provider option accepts low, medium, high
+or xhigh and defaults explicitly to medium. Never inherit a personal CLI reasoning
+preference; reject invalid controls before starting the native process.
 Preserve measured usage/model/route when rejecting completed native envelopes;
 early cancellation may have no usage, which remains unknown. Never retain hidden
 reasoning or substitute partial content for a completed response.

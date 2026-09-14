@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { runProcess, type ProcessOptions, type ProcessResult, type RunningProcess } from '../../platform/process/index.js';
-import { createGrokInference } from './provider.js';
+import { createGrokInference, type GrokInferenceOptions } from './provider.js';
 import { decodeGrok, grokEnvironment, type GrokFrames } from './protocol.js';
 const frames = (): GrokFrames => ({
   init: { type: 'system', subtype: 'init', apiKeySource: 'oauth', tools: [], mcp_servers: [], model: 'grok-actual' },
@@ -24,7 +24,26 @@ it('runs tool-free OAuth in a disposable workspace and decodes lower-bound usage
   expect(call?.args.slice(call.args.indexOf('--tools'), call.args.indexOf('--permission-mode')))
     .toEqual(['--tools', 'read_file', '--disallowed-tools', 'read_file,search_tool,use_tool', '--deny', '*']);
   expect(call?.args).toContain('--verbatim');
+  expect(call?.args[call.args.indexOf('--reasoning-effort') + 1]).toBe('medium');
   const { stat } = await import('node:fs/promises'); await expect(stat(call!.cwd)).rejects.toThrow();
+});
+it.each(['low', 'medium', 'high', 'xhigh'] as const)('forwards explicit %s reasoning effort', async reasoningEffort => {
+  let call: ProcessOptions | undefined;
+  await createGrokInference({ reasoningEffort, process: options => {
+    call = options;
+    return runner(Object.values(frames()))(options);
+  } }).generate({ prompt: 'p', model: 'm' });
+  expect(call?.args.filter(argument => argument === '--reasoning-effort')).toHaveLength(1);
+  expect(call?.args[call.args.indexOf('--reasoning-effort') + 1]).toBe(reasoningEffort);
+});
+it.each(['', 'max', 'LOW', '--help', null, 1, {}])('rejects invalid reasoning effort %j before launching', async value => {
+  let launches = 0;
+  const provider = createGrokInference({ reasoningEffort: value as GrokInferenceOptions['reasoningEffort'], process: options => {
+    launches++;
+    return runner(Object.values(frames()))(options);
+  } });
+  await expect(provider.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'unsupported' });
+  expect(launches).toBe(0);
 });
 it('stops native failures and rejects unsupported requests before execution', async () => {
   const provider = createGrokInference({ process: runner([]) });

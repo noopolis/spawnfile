@@ -6,13 +6,22 @@ import { runProcess } from '../../platform/process/index.js';
 import { InferenceFailure } from '../failure.js';
 import { decodeGrok, grokEnvironment, grokFailureEvidence, validateGrokInitialization, type GrokFrames } from './protocol.js';
 
-export interface GrokInferenceOptions { command?: string; timeoutMs?: number; process?: typeof runProcess }
+export interface GrokInferenceOptions {
+  command?: string;
+  timeoutMs?: number;
+  process?: typeof runProcess;
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+}
 
 export function createGrokInference(options: GrokInferenceOptions = {}): InferenceProvider {
   return {
     id: 'grok-subscription',
     capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },
     async generate(request) {
+      const reasoningEffort = options.reasoningEffort === undefined ? 'medium' : options.reasoningEffort;
+      if (!['low', 'medium', 'high', 'xhigh'].includes(reasoningEffort)) {
+        throw new InferenceFailure('unsupported', 'Invalid Grok reasoning effort');
+      }
       if (!request.prompt.trim() || !request.model.trim() || request.model.startsWith('-') ||
         request.temperature !== undefined || request.seed !== undefined) throw new InferenceFailure('unsupported', 'Invalid Grok inference controls');
       if (request.signal?.aborted) throw new InferenceFailure('cancelled', 'Grok cancelled before launch');
@@ -29,6 +38,7 @@ export function createGrokInference(options: GrokInferenceOptions = {}): Inferen
           args: ['--prompt-file', promptFile, '--model', request.model, '--tools', 'read_file',
             '--disallowed-tools', 'read_file,search_tool,use_tool', '--deny', '*', '--permission-mode', 'plan',
             '--no-memory', '--disable-web-search', '--no-subagents', '--max-turns', '1',
+            '--reasoning-effort', reasoningEffort,
             '--output-format', 'streaming-messages-json', '--verbatim',
             ...(request.system === undefined ? [] : ['--system-prompt-override', request.system])],
           env: grokEnvironment(), stdin: '', timeoutMs: options.timeoutMs ?? 180_000, signal: request.signal,

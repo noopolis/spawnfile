@@ -7,7 +7,10 @@ import { validateTrainingConfiguration } from './schema.js';
 export function trainingJudgeVersions(configuration: TrainingConfiguration): Record<string, { version: string }> {
   const config = validateTrainingConfiguration(configuration);
   return Object.fromEntries(Object.entries(config.judges ?? {}).map(([name, policy]) => {
-    const models = Object.fromEntries([policy.model, ...(policy.fallbacks ?? [])].map(id => [id, config.models[id]]));
+    const models = Object.fromEntries([policy.model, ...(policy.fallbacks ?? [])].map(id => {
+      const model = config.models[id]!;
+      return [id, model.provider === 'grok-subscription' ? { ...model, reasoning_effort: model.reasoning_effort ?? 'medium' } : model];
+    }));
     const digest = createHash('sha256').update(canonical({ policy, models })).digest('hex');
     return [name, { version: `paideia.authored-judge.v1:sha256:${digest}` }];
   }));
