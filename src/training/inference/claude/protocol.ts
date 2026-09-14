@@ -6,13 +6,18 @@ export interface ClaudeResult {
   usage: Usage | null;
 }
 
-export function decodeClaudeResult(value: Record<string, unknown>): ClaudeResult {
+export function decodeClaudeResult(value: Record<string, unknown>, structured = false): ClaudeResult {
   if (value['type'] !== 'result' || value['subtype'] !== 'success' || value['is_error'] === true) {
     throw new Error('Claude generation did not complete successfully');
   }
-  if (typeof value['result'] !== 'string' || value['result'].trim().length === 0) {
+  const text = structured ? JSON.stringify(value['structured_output']) : value['result'];
+  if (typeof text !== 'string' || text.trim().length === 0) {
     throw new Error('Claude generation returned empty output');
   }
+  return { text, model: typeof value['model'] === 'string' ? value['model'] : undefined, usage: claudeResultUsage(value) };
+}
+
+export function claudeResultUsage(value: Record<string, unknown>): Usage | null {
   const raw = value['usage'];
   const usage = raw !== null && typeof raw === 'object' ? raw as Record<string, unknown> : undefined;
   const count = (key: string): number | null => {
@@ -31,12 +36,10 @@ export function decodeClaudeResult(value: Record<string, unknown>): ClaudeResult
   };
   const total = uncached === null || reads === null || writes === null ? null : uncached + reads + writes;
   const input = total !== null && Number.isSafeInteger(total) ? total : null;
-  return { text: value['result'],
-    model: typeof value['model'] === 'string' ? value['model'] : undefined,
-    usage: usage === undefined ? null : { inputTokens: input, cachedInputTokens: reads, cacheWriteInputTokens: writes,
+  return usage === undefined ? null : { inputTokens: input, cachedInputTokens: reads, cacheWriteInputTokens: writes,
       cacheWrite5mInputTokens: durationCount('ephemeral_5m_input_tokens'),
       cacheWrite1hInputTokens: durationCount('ephemeral_1h_input_tokens'),
-      outputTokens: count('output_tokens'), reasoningTokens: null, source: 'claude.result.usage' } };
+      outputTokens: count('output_tokens'), reasoningTokens: null, source: 'claude.result.usage' };
 }
 
 export function savedSubscription(value: Record<string, unknown>): boolean {

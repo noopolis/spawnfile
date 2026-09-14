@@ -125,3 +125,30 @@ def test_fenced_proposal_keeps_exact_resource_and_text_guards_without_retry(text
             with pytest.raises(BridgeError):
                 proposer(*proposal_input())
     assert session.proposals == 1
+
+
+def test_proposer_requests_exact_selected_resource_schema_through_real_typed_lm():
+    calls = []
+
+    def host(method, params):
+        calls.append(params)
+        return {"text": '{"AGENTS.md":"Updated\\n"}', "model": "observed", "usage": None}
+
+    session = Session(request(), host)
+    with dspy.context(lm=SubscriptionLM(session)):
+        ComponentProposer(session)(*proposal_input())
+    assert calls[0]["options"] == {"responseSchema": {
+        "type": "object", "properties": {"AGENTS.md": {"type": "string"}},
+        "required": ["AGENTS.md"], "additionalProperties": False,
+    }}
+
+
+@pytest.mark.parametrize("schema", [None, [], "object", 1])
+def test_typed_lm_rejects_nonobject_schema_before_host_call(schema):
+    calls = []
+    session = Session(request(), lambda *args: calls.append(args))
+    with pytest.raises(BridgeError) as error:
+        SubscriptionLM(session)(messages=[{"role": "user", "content": "reflect"}],
+                                extensions={"responseSchema": schema})
+    assert error.value.code == "unsupported_control"
+    assert calls == []

@@ -67,3 +67,24 @@ it('retains route evidence when a completed generation fails optimizer response 
   await expect(createDspyGeneration(selected, 'model')(request(), new AbortController().signal))
     .rejects.toMatchObject({ kind: 'protocol', attempts, responseModel: null, responseRoute: 'local' });
 });
+
+it('forwards authored JSON response constraints without deriving them from prompt contents', async () => {
+  const selected = provider();
+  const schema = { type: 'object', properties: { 'AGENTS.md': { type: 'string' } }, required: ['AGENTS.md'], additionalProperties: false };
+  selected.generate = vi.fn(async () => ({ text: '{"AGENTS.md":"unchanged whitespace\\n"}', model: 'm', usage: null, route: 'r' }));
+  const input = { ...request(), options: { responseSchema: schema } };
+  await createDspyGeneration(selected, 'model')(input, new AbortController().signal);
+  expect(selected.generate).toHaveBeenCalledWith(expect.objectContaining({ responseSchema: schema, prompt: ' user\n' }));
+});
+
+it('validates schema before a custom provider and its response afterward without losing cost evidence', async () => {
+  const selected = provider();
+  const generate = createDspyGeneration(selected, 'model');
+  await expect(generate({ ...request(), options: { responseSchema: { type: 'invalid' } } }, new AbortController().signal))
+    .rejects.toMatchObject({ kind: 'unsupported' });
+  expect(selected.generate).not.toHaveBeenCalled();
+  const usage = { inputTokens: 15, cachedInputTokens: 0, cacheWriteInputTokens: null, outputTokens: 4, reasoningTokens: null, source: 'observed' };
+  selected.generate = vi.fn(async () => ({ text: '{}', model: 'm', modelBasis: 'provider-reported' as const, usage, route: 'r' }));
+  await expect(generate({ ...request(), options: { responseSchema: { type: 'object', required: ['answer'] } } }, new AbortController().signal))
+    .rejects.toMatchObject({ kind: 'protocol', usage, responseModel: 'm', responseRoute: 'r' });
+});

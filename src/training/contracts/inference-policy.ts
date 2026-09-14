@@ -2,7 +2,7 @@ import type { TrainingConfiguration, TrainingModel, TrainingRoute } from './trai
 
 /** Versions describe maintained invocation policy, not model/account or ambient profile contents. */
 const policies: Readonly<Record<TrainingModel['provider'], string>> = Object.freeze({
-  'grok-subscription': 'paideia.grok-ambient-cli-context.v1',
+  'grok-subscription': 'paideia.grok-no-plan-schema.v2',
   'claude-subscription': 'paideia.claude-inference.v1',
   ollama: 'paideia.ollama-inference.v1',
 });

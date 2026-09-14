@@ -34,6 +34,11 @@ class SubscriptionLM(dspy.BaseLM):
         # sampling control is requested or claimed by removing this disabled cache.
         if options.get("cache") == {"enabled": False}:
             del options["cache"]
+        extensions = options.pop("extensions", {})
+        if extensions:
+            if set(extensions) != {"responseSchema"}:
+                raise BridgeError("unsupported_control", "unsupported reflection extension")
+            options["responseSchema"] = extensions["responseSchema"]
         messages = []
         for message in request.messages:
             if (message.role not in {"system", "user", "assistant"}
@@ -92,7 +97,13 @@ class ComponentProposer:
         lm = dspy.settings.lm
         if not isinstance(lm, SubscriptionLM):
             raise BridgeError("missing_inference", "reflection requires the host subscription LM")
-        response = lm(messages=messages)
+        schema = {
+            "type": "object",
+            "properties": {path: {"type": "string"} for path in selected_paths},
+            "required": selected_paths,
+            "additionalProperties": False,
+        }
+        response = lm(messages=messages, extensions={"responseSchema": schema})
         replacement = parse_component_response(response[0])
         if (not isinstance(replacement, dict) or set(replacement) != set(selected_paths)
                 or any(not isinstance(text, str) for text in replacement.values())):

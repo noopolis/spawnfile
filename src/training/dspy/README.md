@@ -27,7 +27,11 @@ custom-adapter/proposer seams. One native trial consumes the entire candidate; e
 Predict records the same authentic output/capture as a component trace. All files
 are optimized together. A single-line JSON envelope prevents DSPy's instruction
 normalization from stripping Markdown whitespace before native evaluation.
-Model proposal responses accept bare JSON or exactly one whole lowercase `json`
+The proposer requests native JSON-schema output for exactly its selected string
+resources. The TypeScript host validates the completed response independently of
+the provider; unsupported schemas fail before cognition. Plain-text legacy callbacks
+remain readable, but new real schema-constrained generations require bare JSON.
+The bridge's compatible model decoder accepts bare JSON or exactly one whole lowercase `json`
 code fence with LF delimiters; surrounding prose, multiple fences and arbitrary
 JSON extraction are rejected. Duplicate keys, nonfinite constants and changes to
 the selected resource set remain invalid. Replacement text is never trimmed.

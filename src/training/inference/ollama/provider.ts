@@ -1,5 +1,6 @@
 import type { InferenceProvider } from '../../contracts/execution.js';
 import { InferenceFailure } from '../failure.js';
+import { validateInferenceSchema, validateInferenceResponse } from '../response-schema.js';
 
 export interface OllamaInferenceOptions {
   baseUrl: string;
@@ -18,6 +19,11 @@ export function createOllamaInference(options: OllamaInferenceOptions): Inferenc
     id: `ollama:${base.href}`,
     capabilities: { tools: 'disabled', billing: 'local', temperature: true, seed: true },
     async generate(request) {
+      validateInferenceSchema(request.responseSchema);
+      const responseSchema = request.responseSchema === undefined ? undefined : structuredClone(request.responseSchema);
+      if (responseSchema !== undefined && (base.hostname === 'ollama.com' || base.hostname.endsWith('.ollama.com') || request.model.endsWith('-cloud'))) {
+        throw new InferenceFailure('unsupported', 'Ollama Cloud does not support structured output');
+      }
       if (!request.prompt.trim() || !request.model.trim() || request.model.startsWith('-') ||
         (request.temperature !== undefined && (!Number.isFinite(request.temperature) || request.temperature < 0)) ||
         (request.seed !== undefined && !Number.isSafeInteger(request.seed))) throw new InferenceFailure('unsupported', 'Invalid Ollama request');
@@ -29,6 +35,7 @@ export function createOllamaInference(options: OllamaInferenceOptions): Inferenc
         response = await (options.fetch ?? fetch)(endpoint, { method: 'POST', signal,
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ model: request.model, stream: false,
+            ...(responseSchema === undefined ? {} : { format: responseSchema }),
             messages: [...(request.system === undefined ? [] : [{ role: 'system', content: request.system }]),
               { role: 'user', content: request.prompt }],
             options: { temperature: request.temperature, seed: request.seed } }),
@@ -38,7 +45,8 @@ export function createOllamaInference(options: OllamaInferenceOptions): Inferenc
       }
       if (!response.ok) throw new InferenceFailure(response.status === 429 ? 'quota' :
         response.status === 401 || response.status === 403 ? 'authentication' :
-          response.status >= 500 || response.status === 404 ? 'unavailable' : 'protocol', `Ollama HTTP ${response.status}`);
+          response.status >= 500 || response.status === 404 ? 'unavailable' :
+            responseSchema !== undefined && response.status === 400 ? 'unsupported' : 'protocol', `Ollama HTTP ${response.status}`);
       let raw: unknown;
       try { raw = await response.json(); } catch {
         throw new InferenceFailure(request.signal?.aborted ? 'cancelled' : timeout.aborted ? 'timeout' : 'protocol', 'Ollama response body failed');
@@ -55,6 +63,8 @@ export function createOllamaInference(options: OllamaInferenceOptions): Inferenc
       if ((data?.['done_reason'] !== undefined && data['done_reason'] !== 'stop') || data?.['done'] !== true || typeof data['model'] !== 'string' || !data['model'].trim() ||
         typeof message?.['content'] !== 'string' || !message['content'].trim() ||
         (Array.isArray(message['tool_calls']) && message['tool_calls'].length > 0)) throw new InferenceFailure('protocol', 'Ollama omitted a completed text response', evidence);
+      try { validateInferenceResponse(message['content'], responseSchema); }
+      catch { throw new InferenceFailure('protocol', 'Ollama response violated the requested schema', evidence); }
       return { text: message['content'], model: data['model'], modelBasis: 'provider-reported', route: `ollama:${base.href}`,
         usage: evidence.usage };
     },

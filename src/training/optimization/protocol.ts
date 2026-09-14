@@ -53,7 +53,7 @@ export const evaluateParamsSchema = z.object({
 export const generateParamsSchema = z.object({
   purpose: z.literal('reflection'),
   messages: z.array(z.object({ role: z.enum(['system', 'user', 'assistant']), content: z.string() }).strict()).min(1),
-  options: z.object({}).strict(),
+  options: z.object({ responseSchema: z.record(z.string(), z.unknown()).optional() }).strict(),
 }).strict();
 const common = { schema: z.literal(DSPY_SCHEMA), id };
 export const requestSchema = z.discriminatedUnion('method', [

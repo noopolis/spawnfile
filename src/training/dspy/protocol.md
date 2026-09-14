@@ -67,8 +67,12 @@ native trial; they do not establish per-file causal attribution or observed load
 
 The host uses its explicitly selected subscription inference adapter and the exact
 messages. No paid API fallback, native tools, hidden judge, teacher or DSPy default
-model route exists. `options` is always empty. This release rejects requested
-sampling controls, structured-output controls, nontext parts and tool use.
+model route exists. `options` may contain `responseSchema`, an object JSON Schema.
+The public component proposer derives required string properties from exactly the
+selected resource paths and forbids extra properties. The host forwards that schema
+to its selected provider and validates the completed JSON itself; unsupported
+schemas fail before generation. Sampling controls, nontext parts and tool use remain
+unsupported. An omitted schema retains plain-text compatibility.
 
 Return the generation's reported model and reported usage (or `null` when unavailable).
 If the inference provider supplied only a requested model fallback, include

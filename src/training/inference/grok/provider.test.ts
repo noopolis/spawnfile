@@ -24,6 +24,8 @@ it('runs tool-free OAuth in a disposable workspace and decodes lower-bound usage
   expect(call?.args.slice(call.args.indexOf('--tools'), call.args.indexOf('--permission-mode')))
     .toEqual(['--tools', 'read_file', '--disallowed-tools', 'read_file,search_tool,use_tool', '--deny', '*']);
   expect(call?.args).toContain('--verbatim');
+  expect(call?.args).toContain('--no-plan');
+  expect(call?.args[call.args.indexOf('--permission-mode') + 1]).toBe('dontAsk');
   expect(call?.args[call.args.indexOf('--reasoning-effort') + 1]).toBe('medium');
   const { stat } = await import('node:fs/promises'); await expect(stat(call!.cwd)).rejects.toThrow();
 });
@@ -157,4 +159,27 @@ it('requires explicit OAuth and rejects non-object native frames', async () => {
   expect(() => decodeGrok(value, 0)).toThrow(expect.objectContaining({ kind: 'authentication' }));
   for (const event of [null, [], 'invalid']) await expect(createGrokInference({ process: runner([event]) })
     .generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'protocol' });
+});
+
+it('requests native schema output while retaining streaming OAuth and tool attestation', async () => {
+  const schema = { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false };
+  let call: ProcessOptions | undefined;
+  const value = frames();
+  value.assistant!['message'] = { stop_reason: 'end_turn', content: [{ type: 'text', text: '{"text":"exact\\n"}' }] };
+  value.result!['result'] = '{"text":"exact\\n"}';
+  const result = await createGrokInference({ process(options) { call = options; return runner(Object.values(value))(options); } })
+    .generate({ prompt: 'p', model: 'm', responseSchema: schema });
+  expect(call?.args[call.args.indexOf('--json-schema') + 1]).toBe(JSON.stringify(schema));
+  expect(call?.args[call.args.indexOf('--output-format') + 1]).toBe('streaming-messages-json');
+  expect(result.text).toBe('{"text":"exact\\n"}');
+});
+
+it('rejects invalid response schemas before cognition and wrong typed JSON after retaining usage', async () => {
+  let launches = 0;
+  const provider = createGrokInference({ process(options) { launches++; return runner(Object.values(frames()))(options); } });
+  await expect(provider.generate({ prompt: 'p', model: 'm', responseSchema: { type: 'impossible' } })).rejects.toMatchObject({ kind: 'unsupported' });
+  expect(launches).toBe(0);
+  await expect(provider.generate({ prompt: 'p', model: 'm', responseSchema: { type: 'object' } })).rejects.toMatchObject({
+    kind: 'protocol', usage: { inputTokens: 6, outputTokens: 4 }, responseModel: 'grok-actual', responseRoute: 'grok-subscription',
+  });
 });

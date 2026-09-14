@@ -1,5 +1,5 @@
 import type { InferenceProvider } from '../contracts/execution.js';
-import { InferenceFailure } from '../inference/index.js';
+import { InferenceFailure, validateInferenceResponse, validateInferenceSchema } from '../inference/index.js';
 import { generateParamsSchema, inferenceSchema } from './protocol.js';
 import type { DspyOptimizationOptions } from './types.js';
 
@@ -15,9 +15,14 @@ export function createDspyGeneration(provider: InferenceProvider, model: string)
     if (request.messages.length !== 2 || system?.role !== 'system' || user?.role !== 'user') {
       throw new Error('InferenceRequest cannot represent this DSPy message sequence without changing roles');
     }
+    validateInferenceSchema(request.options.responseSchema);
     signal.throwIfAborted();
-    const response = await provider.generate({ system: system.content, prompt: user.content, model, signal });
-    try { return inferenceSchema.parse(response); }
+    const response = await provider.generate({ system: system.content, prompt: user.content, model, signal,
+      ...(request.options.responseSchema === undefined ? {} : { responseSchema: request.options.responseSchema }) });
+    try {
+      validateInferenceResponse(response.text, request.options.responseSchema);
+      return inferenceSchema.parse(response);
+    }
     catch {
       throw new InferenceFailure('protocol', 'Optimizer inference returned invalid completion metadata', {
         attempts: response.attempts, usage: response.usage,

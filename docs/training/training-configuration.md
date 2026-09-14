@@ -138,6 +138,15 @@ constructs no provider and values every permitted fallback attempt; unknown mode
 prices remain unknown. These are API-equivalent estimates, not subscription fees
 or spending guarantees.
 
+DSPy proposals request a JSON object whose exact keys are the selected editable
+resources and whose values are replacement text. Grok and Claude use their native
+JSON-schema controls; local Ollama uses `format`. Paideia also validates the whole
+completed response before accepting it, then checks the candidate's edit policy.
+This does not change the authored rubric or permit edits to locked sections.
+Custom inference integrations receive optional `responseSchema`; unsupported
+schema controls must be rejected. Native tool isolation does not imply the CLI's
+built-in prompt context has been removed.
+
 Cache hits preserve the original attempt IDs, actual model identity and historical
 usage as provenance. They incur no new judge call or current token charge. Exact
 reuse binds the frozen route, rendered instructions, sources, threshold, dataset

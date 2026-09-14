@@ -81,13 +81,14 @@ class Session:
     def generate(self, messages: list[dict], options: dict):
         with self._lock:
             self.healthy()
-            if options:
-                raise BridgeError("unsupported_control", "this bridge requests subscription text without generation controls")
+            if (set(options) - {"responseSchema"}
+                    or ("responseSchema" in options and not isinstance(options["responseSchema"], dict))):
+                raise BridgeError("unsupported_control", "this bridge supports only a JSON response schema, not sampling generation controls")
             if self.proposals + self.extra_proposals >= self.request.budget.maxProposals:
                 raise BridgeError("budget_exhausted", "reflection proposal attempt budget exhausted")
             self.proposals += 1
             result = self._call("generate", {
-                "purpose": "reflection", "messages": messages, "options": {},
+                "purpose": "reflection", "messages": messages, "options": options,
             }, GenerationResult)
             generation = {"model": result.model, "usage": result.usage}
             if "modelBasis" in result.model_fields_set:

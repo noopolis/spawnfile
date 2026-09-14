@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { InferenceProvider } from '../../contracts/execution.js';
 import { runProcess } from '../../platform/process/index.js';
 import { InferenceFailure } from '../failure.js';
+import { validateInferenceResponse, validateInferenceSchema } from '../response-schema.js';
 import { decodeGrok, grokEnvironment, grokFailureEvidence, validateGrokInitialization, type GrokFrames } from './protocol.js';
 
 export interface GrokInferenceOptions {
@@ -18,6 +19,7 @@ export function createGrokInference(options: GrokInferenceOptions = {}): Inferen
     id: 'grok-subscription',
     capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },
     async generate(request) {
+      validateInferenceSchema(request.responseSchema);
       const reasoningEffort = options.reasoningEffort === undefined ? 'medium' : options.reasoningEffort;
       if (!['low', 'medium', 'high', 'xhigh'].includes(reasoningEffort)) {
         throw new InferenceFailure('unsupported', 'Invalid Grok reasoning effort');
@@ -36,11 +38,12 @@ export function createGrokInference(options: GrokInferenceOptions = {}): Inferen
           // Empty --tools means defaults in Grok. Allow one known tool, then remove
           // it and the automatically injected lazy-tool discovery pair.
           args: ['--prompt-file', promptFile, '--model', request.model, '--tools', 'read_file',
-            '--disallowed-tools', 'read_file,search_tool,use_tool', '--deny', '*', '--permission-mode', 'plan',
+            '--disallowed-tools', 'read_file,search_tool,use_tool', '--deny', '*', '--permission-mode', 'dontAsk', '--no-plan',
             '--no-memory', '--disable-web-search', '--no-subagents', '--max-turns', '1',
             '--reasoning-effort', reasoningEffort,
             '--output-format', 'streaming-messages-json', '--verbatim',
-            ...(request.system === undefined ? [] : ['--system-prompt-override', request.system])],
+            ...(request.system === undefined ? [] : ['--system-prompt-override', request.system]),
+            ...(request.responseSchema === undefined ? [] : ['--json-schema', JSON.stringify(request.responseSchema)])],
           env: grokEnvironment(), stdin: '', timeoutMs: options.timeoutMs ?? 180_000, signal: request.signal,
           onLine(line) {
             let event: Record<string, unknown>;
@@ -70,7 +73,10 @@ export function createGrokInference(options: GrokInferenceOptions = {}): Inferen
         if (nativeFailure) throw nativeFailure;
         if (malformed) throw new InferenceFailure('protocol', 'Malformed Grok protocol', evidence);
         if (completed.cancelled || completed.error !== undefined) throw new InferenceFailure('unknown', 'Grok native process did not settle successfully', evidence);
-        return decodeGrok(frames, completed.exitCode);
+        const result = decodeGrok(frames, completed.exitCode);
+        try { validateInferenceResponse(result.text, request.responseSchema); }
+        catch { throw new InferenceFailure('protocol', 'Grok response did not match its requested schema', evidence); }
+        return result;
       } finally { await rm(cwd, { recursive: true, force: true }); }
     },
   };

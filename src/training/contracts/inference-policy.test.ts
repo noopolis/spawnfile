@@ -10,7 +10,7 @@ const config: TrainingConfiguration = {
 };
 it('returns maintained policy versions in declared route order without model or host data', () => {
   expect(trainingRoutePolicies(config, config.judges!.z!)).toEqual([
-    { provider: 'grok-subscription', policy: 'paideia.grok-ambient-cli-context.v1' },
+    { provider: 'grok-subscription', policy: 'paideia.grok-no-plan-schema.v2' },
     { provider: 'claude-subscription', policy: 'paideia.claude-inference.v1' },
   ]);
   const identities = trainingInferencePolicies(config);

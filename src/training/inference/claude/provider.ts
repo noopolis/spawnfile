@@ -3,8 +3,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runProcess } from '../../platform/process/index.js';
 import type { InferenceProvider, InferenceRequest } from '../../contracts/execution.js';
-import { claudeEnvironment, decodeClaudeResult, parseEnvelope, savedSubscription } from './protocol.js';
+import { claudeEnvironment, decodeClaudeResult, claudeResultUsage, parseEnvelope, savedSubscription } from './protocol.js';
 import { claudeRefusal } from './refusal.js';
+import { InferenceFailure } from '../failure.js';
+import { validateInferenceSchema, validateInferenceResponse } from '../response-schema.js';
 
 export interface ClaudeInferenceOptions {
   command?: string;
@@ -18,6 +20,8 @@ export function createClaudeInference(options: ClaudeInferenceOptions = {}): Inf
     id: 'claude-subscription',
     capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },
     async generate(request) {
+      validateInferenceSchema(request.responseSchema);
+      const responseSchema = request.responseSchema === undefined ? undefined : structuredClone(request.responseSchema);
       validateRequest(request);
       const cwd = await mkdtemp(path.join(tmpdir(), 'paideia-inference-'));
       const env = claudeEnvironment();
@@ -35,10 +39,11 @@ export function createClaudeInference(options: ClaudeInferenceOptions = {}): Inf
           throw new Error('Saved Claude subscription is unavailable; run claude auth login');
         }
         let result: Record<string, unknown> | undefined;
+        let resultLine = '';
         let reportedModel: string | undefined;
         let isolationAcknowledged = false;
         const process = execute({ command: options.command ?? 'claude',
-          args: claudeArguments(request), cwd, env, stdin: request.prompt,
+          args: claudeArguments({ ...request, responseSchema }), cwd, env, stdin: request.prompt,
           timeoutMs: options.timeoutMs ?? 180_000, signal: request.signal,
           onLine: (line) => {
             const event = parseEnvelope(line);
@@ -47,7 +52,7 @@ export function createClaudeInference(options: ClaudeInferenceOptions = {}): Inf
               isolationAcknowledged = true;
               if (typeof event['model'] === 'string') reportedModel = event['model'];
             }
-            if (event['type'] === 'result') result = event;
+            if (event['type'] === 'result') { result = event; resultLine = line; }
           },
         });
         const completed = await process.completion;
@@ -55,10 +60,19 @@ export function createClaudeInference(options: ClaudeInferenceOptions = {}): Inf
         if (completed.error !== undefined) throw new Error('Claude inference failed (native process or protocol error)');
         const refusal = claudeRefusal(result, request.model);
         if (refusal !== undefined) throw refusal;
-        if (completed.exitCode !== 0) throw new Error(`Claude inference failed (exit ${completed.exitCode})`);
+        if (completed.exitCode !== 0) throw new InferenceFailure(responseSchema === undefined ? 'protocol' : 'unsupported', `Claude inference failed (exit ${completed.exitCode})`,
+          { usage: result === undefined ? null : claudeResultUsage(result), responseModel: reportedModel, responseRoute: 'claude-subscription' });
         if (result === undefined) throw new Error('Claude omitted its terminal result envelope');
         if (!isolationAcknowledged) throw new Error('Claude omitted tool-free isolation acknowledgement');
-        const decoded = decodeClaudeResult(result);
+        let decoded;
+        try {
+          if (responseSchema !== undefined) validateInferenceResponse(resultLine, { type: 'object' });
+          decoded = decodeClaudeResult(result, responseSchema !== undefined);
+          validateInferenceResponse(decoded.text, responseSchema);
+        } catch {
+          throw new InferenceFailure('protocol', 'Claude response violated the requested output contract', { usage: claudeResultUsage(result),
+            responseModel: typeof result['model'] === 'string' && result['model'].trim() ? result['model'] : reportedModel, responseRoute: 'claude-subscription' });
+        }
         const actualModel = [decoded.model, reportedModel].find(model => model !== undefined && model.trim().length > 0);
         return { text: decoded.text, usage: decoded.usage,
           model: actualModel ?? request.model,
@@ -73,6 +87,7 @@ export function claudeArguments(request: InferenceRequest): string[] {
     '--output-format', 'stream-json', '--verbose', '--no-session-persistence',
     '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--tools', '',
     '--permission-mode', 'dontAsk', '--permission-prompts', 'none', '--max-turns', '1',
+    ...(request.responseSchema === undefined ? [] : ['--json-schema', JSON.stringify(request.responseSchema)]),
     ...(request.system === undefined ? [] : ['--system-prompt', request.system])];
 }
 

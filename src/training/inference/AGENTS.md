@@ -20,3 +20,9 @@ are a separate provider contract and are not supplied by this text-generation ro
 Routed deadlines cover all attempts and audit writes. Reserve each remaining
 route an equal share of remaining time; an attempt timeout may use the next
 authored route, but caller cancellation and total budget exhaustion may not.
+
+`response-schema.ts` validates optional native structured-output controls before
+generation and the entire completed JSON response afterward. Support synchronous
+draft-07 object schemas with local references, no external fetching or custom
+formats, at most 64 KiB. Reject non-finite values and duplicate response keys.
+Providers retain measured usage and model identity when rejecting a completion.

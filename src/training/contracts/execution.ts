@@ -101,6 +101,8 @@ export interface SubjectAdapter {
 export interface InferenceRequest {
   prompt: string;
   system?: string;
+  /** Optional JSON Schema; supported providers constrain and validate the completed text. */
+  responseSchema?: Readonly<Record<string, unknown>>;
   model: string;
   signal?: AbortSignal;
   /** Controls must be rejected if unsupported, never silently discarded. */

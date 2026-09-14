@@ -71,3 +71,51 @@ it('prefers a reported terminal model over the initialization model', async () =
   const response = await createClaudeInference({ process: runner(lines) }).generate({ model: 'requested', prompt: 'task' });
   expect(response).toMatchObject({ model: 'terminal', modelBasis: 'provider-reported' });
 });
+
+const schema = { type: 'object', properties: { answer: { type: 'string' } }, required: ['answer'], additionalProperties: false };
+const schemaUsage = { input_tokens: 3, cache_read_input_tokens: 2, cache_creation_input_tokens: 0, output_tokens: 4 };
+const ready = JSON.stringify({ type: 'system', subtype: 'init', tools: [], model: 'native-model' });
+it('requests native JSON schema and reads the structured terminal field without using conversational text', async () => {
+  const calls: ProcessOptions[] = [];
+  const structured = { answer: 'first\nsecond "quoted"' };
+  const provider = createClaudeInference({ process: options => { calls.push(options); return runner([ready,
+    JSON.stringify({ ...result, result: 'I will return the answer.', structured_output: structured, usage: schemaUsage })])(options); } });
+  const response = await provider.generate({ model: 'm', prompt: 'p', responseSchema: schema });
+  expect(JSON.parse(response.text)).toEqual(structured);
+  expect(response).toMatchObject({ model: 'native-model', usage: { inputTokens: 5, outputTokens: 4 } });
+  const args = calls[1]!.args, index = args.indexOf('--json-schema');
+  expect(index).toBeGreaterThan(-1); expect(JSON.parse(args[index + 1]!)).toEqual(schema);
+  expect(args).toContain('--restricted'); expect(args).toContain('--strict-mcp-config');
+  expect(claudeArguments({ model: 'm', prompt: 'p' })).not.toContain('--json-schema');
+});
+it('rejects invalid schemas before even checking authentication', async () => {
+  const provider = createClaudeInference({ process: () => { throw Error('must not launch'); } });
+  for (const responseSchema of [{ type: 'invalid' }, { type: 'object', unknownKeyword: true }]) {
+    await expect(provider.generate({ model: 'm', prompt: 'p', responseSchema })).rejects.toMatchObject({ kind: 'unsupported' });
+  }
+});
+it.each([undefined, null, {}, { answer: 7 }, { answer: 'ok', unknown: 'not allowed' }])('rejects missing or mismatched structured output and preserves measured usage (%j)', async structured_output => {
+  const provider = createClaudeInference({ process: runner([ready, JSON.stringify({ ...result,
+    result: '{"answer":"must not substitute"}', structured_output, model: 'terminal-model', usage: schemaUsage })]) });
+  await expect(provider.generate({ model: 'm', prompt: 'p', responseSchema: schema })).rejects.toMatchObject({ kind: 'protocol',
+    responseModel: 'terminal-model', responseRoute: 'claude-subscription', usage: { inputTokens: 5, outputTokens: 4 } });
+});
+it('keeps a schema snapshot across asynchronous authentication and refuses unsupported native controls explicitly', async () => {
+  const mutable = structuredClone(schema); const calls: ProcessOptions[] = [];
+  const provider = createClaudeInference({ process: options => {
+    calls.push(options); if (options.args.includes('status')) mutable.properties.answer.type = 'number';
+    return runner([ready, JSON.stringify({ ...result, structured_output: { answer: 'text' }, usage: schemaUsage })])(options);
+  } });
+  expect((await provider.generate({ model: 'm', prompt: 'p', responseSchema: mutable })).text).toBe('{"answer":"text"}');
+  expect(calls[1]!.args[calls[1]!.args.indexOf('--json-schema') + 1]).toBe(JSON.stringify(schema));
+  const rejected = createClaudeInference({ process: options => options.args.includes('status') ? runner([])(options) :
+    runner([ready, JSON.stringify({ ...result, usage: schemaUsage })], { exitCode: 2 })(options) });
+  await expect(rejected.generate({ model: 'm', prompt: 'p', responseSchema: schema })).rejects.toMatchObject({ kind: 'unsupported', usage: { inputTokens: 5 } });
+});
+
+it('rejects duplicate keys in the actual native structured field before serialization erases them', async () => {
+  const envelope = JSON.stringify({ ...result, structured_output: { answer: 'x' }, usage: schemaUsage })
+    .replace('"answer":"x"', '"answer":"x","answer":"y"');
+  await expect(createClaudeInference({ process: runner([ready, envelope]) }).generate({ model: 'm', prompt: 'p', responseSchema: schema }))
+    .rejects.toMatchObject({ kind: 'protocol', usage: { inputTokens: 5, outputTokens: 4 } });
+});

@@ -17,3 +17,13 @@ preference; reject invalid controls before starting the native process.
 Preserve measured usage/model/route when rejecting completed native envelopes;
 early cancellation may have no usage, which remains unknown. Never retain hidden
 reasoning or substitute partial content for a completed response.
+
+Inference uses `--permission-mode dontAsk --no-plan`: a tool-free completion is
+not a planning session. Neither flag promises raw prompt isolation: the CLI can
+still append built-in browser rules and workflow reminders in a clean home.
+System override remains exact; native user-context envelopes are separate.
+
+An optional responseSchema is sent with `--json-schema` while retaining explicit
+streaming-messages-json output. Validate the schema before launching and the whole
+completed JSON after tool/OAuth attestation; retain measured usage on rejection.
+Never extract a JSON substring or treat a native schema flag as validation proof.
