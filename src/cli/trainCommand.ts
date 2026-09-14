@@ -21,6 +21,8 @@ export const registerTrainCommand = (
     .argument("[path]", "Canonical project directory or Spawnfile path", process.cwd())
     .option("--agent <id>", "Exact canonical agent node id (inferred only for a single-agent project)")
     .option("--paideia-command <executable>", "Installed Paideia executable; no shell or automatic install", "paideia")
+    .option("--training-image <immutable-image>", "Pinned image containing the complete training environment")
+    .option("--training-config <json>", "Explicit local Docker inputs, output and auth leaf bindings")
     .option("--dry-run", "Validate and estimate without compiling, authenticating or starting models")
     .option("--resume", "Resume the exact persisted training experiment in --out");
   for (const name of forwarded) {
@@ -32,6 +34,9 @@ export const registerTrainCommand = (
   command.action(async (inputPath: string, options: Record<string, string | string[] | boolean | undefined>) => {
     if (options.dryRun !== true && typeof options.out !== "string") {
       throw new SpawnfileError("validation_error", "Actual training requires --out; dry-run does not write an output directory");
+    }
+    if (options.dryRun !== true && (typeof options.trainingImage !== "string" || typeof options.trainingConfig !== "string")) {
+      throw new SpawnfileError("validation_error", "Actual training requires --training-image and --training-config; host execution is disabled");
     }
     const timeout = options.timeoutMs === undefined ? 3_600_000 : Number(options.timeoutMs);
     if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 3_600_000 ||
@@ -50,6 +55,7 @@ export const registerTrainCommand = (
     if (options.dryRun === true) args.push("--dry-run");
     if (options.resume === true) args.push("--resume");
     setExitCode(await handlers.delegatePaideiaTraining({ context, args,
+      trainingImage: options.trainingImage as string | undefined, trainingConfig: options.trainingConfig as string | undefined,
       command: options.paideiaCommand as string, dryRun: options.dryRun === true,
       timeoutMs: timeout + 5000, streams, signal }));
   });

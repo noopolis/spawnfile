@@ -10,3 +10,5 @@ export * from "./credentialProvisioningRequest.js";
 export * from "./credentialWorldBindings.js";
 export * from "./targetSecretSourceLifecycle.js";
 export * from "./targetSecretSourceResolver.js";
+export { stageTrainingAuth } from "./trainingAuth.js";
+export type { TrainingAuthStageOptions, TrainingAuthProvider } from "./trainingAuth.js";

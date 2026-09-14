@@ -14,6 +14,7 @@ async function project(): Promise<string> {
   await writeFile(path.join(root, "Spawnfile"), 'spawnfile_version: "0.1"\nkind: agent\nname: author\nruntime: daimon\n');
   return root;
 }
+const container = ["--training-image", `sha256:${"a".repeat(64)}`, "--training-config", "/training.json"];
 const base = ["--train", "train.paideia.yaml", "--test", "test.paideia.yaml", "--out", "local output"];
 
 describe("spawnfile train", () => {
@@ -51,7 +52,7 @@ describe("spawnfile train", () => {
 
   it("forwards explicit resume to Paideia without changing canonical agent context", async () => {
     const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 0);
-    expect(await runCli(["train", await project(), ...base, "--resume"], {
+    expect(await runCli(["train", await project(), ...base, ...container, "--resume"], {
       handlers: { delegatePaideiaTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(0);
     expect(delegate.mock.calls[0]![0].args).toEqual([...base, "--resume"]);
@@ -60,7 +61,7 @@ describe("spawnfile train", () => {
   });
 
   it.each([1, 2, 130, 143])("propagates the delegated exit %s", async (exitCode) => {
-    const code = await runCli(["train", await project(), ...base], { handlers: { delegatePaideiaTraining: async () => exitCode },
+    const code = await runCli(["train", await project(), ...base, ...container], { handlers: { delegatePaideiaTraining: async () => exitCode },
       streams: { stdout: () => undefined, stderr: () => undefined } });
     expect(code).toBe(exitCode);
   });
@@ -68,7 +69,7 @@ describe("spawnfile train", () => {
   it("forwards cancellation and default executable/timeout without forcing dry-run", async () => {
     const controller = new AbortController();
     let captured: DelegatePaideiaTrainingOptions | undefined;
-    expect(await runCli(["train", await project(), ...base, "--optimizer-model", "fable", "--bridge-command", "bridge", "--max-proposals", "1", "--seed", "0", "--view", "0"], {
+    expect(await runCli(["train", await project(), ...base, ...container, "--optimizer-model", "fable", "--bridge-command", "bridge", "--max-proposals", "1", "--seed", "0", "--view", "0"], {
       signal: controller.signal, handlers: { delegatePaideiaTraining: async (options) => { captured = options; return 2; } },
       streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(2);

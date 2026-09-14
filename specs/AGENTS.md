@@ -10,6 +10,7 @@ specs/
 ├── CONTAINERS.md            # Container compilation spec
 ├── RUNTIMES.md              # Runtime registry, version pinning, adapter lifecycle
 ├── TRAINING.md              # Canonical source handoff and Paideia CLI delegation
+├── TRAINING_CONTAINERS.md   # Single-container training launch boundary
 ├── CAUSAL.md                # Shared causal wire and Stele read/verify contract
 ├── ECOSYSTEM_RUNTIME_BOUNDARIES.md # Cross-project runtime authority and enforcement gates
 ├── USAGE_ACCOUNTING_DESIGN.md # Daimon turn-usage envelope and Spawnfile aggregation design

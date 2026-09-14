@@ -71,19 +71,12 @@ ${dryReceipt}`, { args: ["--train", injected, "--editable", "a.md", "--editable"
     expect(await run.result).toBe(0);
   });
 
-  it.each([0, 1])("requires actual completion and preserves the completed outcome %s", async (exitCode) => {
-    const run = await invoke(`${completed} process.exitCode=${exitCode};`, { dryRun: false, args: [] });
-    expect(await run.result).toBe(exitCode);
-  });
-
-  it("rejects a dry-run receipt as an actual training completion", async () => {
-    const run = await invoke(dryReceipt, { dryRun: false, args: [] });
-    await expect(run.result).rejects.toThrow("required final training receipt");
-  });
-
-  it("rejects an incomplete actual-completion receipt", async () => {
-    const run = await invoke('console.log(JSON.stringify({status:"completed"}));', { dryRun: false });
-    await expect(run.result).rejects.toThrow("required final training receipt");
+  it("rejects every host actual-training path before invoking a model executable", async () => {
+    for (const body of [completed, dryReceipt, 'console.log("unexpected");']) {
+      const run = await invoke(body, { dryRun: false, args: [] });
+      await expect(run.result).rejects.toThrow("host execution is disabled");
+      expect(run.stdout).toEqual([]);
+    }
   });
 
   it("propagates receiver errors without requiring a success receipt", async () => {

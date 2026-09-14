@@ -1,5 +1,6 @@
 # Canonical Training Context
 
+- `container/` owns the single-container actual-training launch; no model process runs on the host.
 - `contract.ts` owns the strict, versioned public JSON handoff to Paideia.
 - `context.ts` resolves the full compiler graph and pins source files without compiling or launching it.
 - Preserve resolved inheritance and exact agent IDs. Never create a second agent declaration.
