@@ -17,7 +17,8 @@ Owns explicit local commands, configuration selection and human diagnostics.
   bound to the baseline and a development-only viewer projection. Raw partial
   evidence keeps its original permissions; failure replay never releases sealed tests.
 - `view OUT_DIRECTORY` validates the saved invocation and serves its projection
-  on loopback until cancellation. `--view PORT` serves persisted presentation
+  on loopback until cancellation, with no implicit deadline. An explicit
+  `view --timeout-ms` still bounds its lifetime. `--view PORT` serves persisted presentation
   snapshots during train/evaluate. Pages never launch work or write evidence.
   Live projections omit test identities until selection freezes; completed replay
   uses the explicit invocation's frozen candidate and operator access.

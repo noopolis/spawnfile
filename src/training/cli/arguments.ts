@@ -40,10 +40,11 @@ train --dry-run resolves local inputs and prints an API-equivalent cost plan wit
 train --resume reopens the same --out with unchanged execution inputs and cumulative optimizer budgets.
 --cost-config FILE selects a paideia.cost-config.v1 YAML with token assumptions and explicit model prices.
 Dry-run requires no --out or --bridge-command. Unknown costs are reported, never priced at zero.
---timeout-ms N (default 180000, ceiling 3600000) is the whole-command deadline.
+--timeout-ms N (default 180000 for evaluate/train, ceiling 3600000) is the whole-command deadline.
 Output stays local. An invocation index identifies immutable stored report and candidate blobs.
 --view PORT enables persisted live observation during evaluate/train (0 selects a free port).
-view reads a completed invocation with its recorded frozen-candidate authorization; Ctrl+C closes the server.
+view reads a saved invocation with its recorded frozen-candidate authorization and has no default deadline.
+Ctrl+C closes the server; view --timeout-ms N adds an explicit deadline.
 Exit: 0 completed/passing, 1 completed with failed checks, 2 error, 130 cancelled.
 `;
 

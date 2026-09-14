@@ -149,8 +149,10 @@ export async function main(argv: readonly string[], io: CliIO, dependencies: Cli
     if (args.command === 'help') { io.stdout(helpText); return 0; }
     const timeoutMs = count(args, 'timeout-ms', 180000, 3600000);
     const deadline = new AbortController();
-    timer = setTimeout(() => { timedOut = true; deadline.abort(); }, timeoutMs);
-    timer.unref();
+    if (args.command !== 'view' || args.flags['timeout-ms'] !== undefined) {
+      timer = setTimeout(() => { timedOut = true; deadline.abort(); }, timeoutMs);
+      timer.unref();
+    }
     const signal = io.signal === undefined ? deadline.signal : AbortSignal.any([deadline.signal, io.signal]);
     signal.throwIfAborted();
     await validateAuthoredTemplates(args, signal);
