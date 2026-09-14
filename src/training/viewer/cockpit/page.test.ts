@@ -114,3 +114,19 @@ it('keeps the mobile plot readable by scrolling its pane instead of shrinking th
   expect(mobile).toContain('.convergence-panel .panel-body { flex: none; min-height: min-content; }');
   expect(mobile).toContain('height: auto; min-height: 100%; gap: 16px; grid-template-rows: max-content max-content minmax(145px, 1fr)');
 });
+
+it('assigns overflow to data panels while fixing the viewport and navigation', () => {
+  const page = renderCockpit(viewerFixture(), 'n');
+  expect(page).toContain('html, body { margin: 0; height: 100vh; height: 100dvh; overflow: hidden; }');
+  expect(page).toMatch(/\.shell \{\s*height: 100vh;\s*height: 100dvh;\s*overflow: hidden;/);
+  expect(page).toMatch(/\.sidebar \{[^}]*min-height: 0;\s*overflow: hidden;/);
+  expect(page).toContain('.sidebar > section { min-height: 72px; flex: 1 1 0; overflow: auto; }');
+  expect(page).toContain('.sidebar > nav { flex-shrink: 0; }');
+  expect(page).toContain('.sidebar > nav > .panel-body { overflow: visible; gap: 6px; }');
+  expect(page).toMatch(/\.outcome-title \{[^}]*font-size: var\(--font-heading\);/);
+  for (const [role, size] of [['control', 12], ['body', 13], ['heading', 16], ['metric', 24]]) {
+    expect(page).toContain(`--font-${role}: ${size}px;`);
+  }
+  expect(page).not.toMatch(/font-size:\s*(?:\d|clamp\()/);
+  expect(page).toContain('.sidebar .nav-item { padding: 4px; font-size: var(--font-control); }');
+});
