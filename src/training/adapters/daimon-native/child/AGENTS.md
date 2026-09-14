@@ -1,0 +1,12 @@
+# Same-container native trial children
+
+Own explicit child-process execution inside a caller-owned training container.
+Use the maintained native worker and its loopback protocol. Never launch Docker,
+copy subscription authentication, claim fresh-container or held-out exclusion,
+or replace native evidence. The caller prepares credential ingress via its owner.
+
+Fresh actual workspace/home paths must match the compiled launch. Stop confirms
+only matching closed native work, idle activity, acknowledged native stop and
+observed child exit. Uncertain cancellation fails closed; outer container teardown
+remains the caller's responsibility. Tests use real child/loopback fixtures but
+must not claim actual authenticated model acceptance from those fixtures.

@@ -13,6 +13,8 @@ export interface CliIO {
 
 /** Tests inject only the native/inference boundaries; experiment/storage code stays real. */
 export interface CliDependencies {
+  /** Container integrations may bind internally; the launcher must publish only on host loopback. */
+  viewerBindHost?: '127.0.0.1' | '0.0.0.0';
   adapter?: (runtime: 'codex' | 'daimon', options: { model: string; timeoutMs: number }) => SubjectAdapter;
   inference?: (timeoutMs: number) => InferenceProvider;
   modelInference?: (model: TrainingModel, timeoutMs: number) => InferenceProvider;
@@ -28,6 +30,10 @@ export interface CliExecutionIdentityContext {
 export interface SpawnfileCliIntegration {
   id: string;
   version: string;
+  /** Native scratch path inside the launch environment; never an evaluator root. */
+  subjectRoot?: string;
+  /** Trusted immutable inference image + invocation-policy identity; omitted means ambient host execution. */
+  readonly inferenceExecutionIdentity?: string;
   preparations?: DatasetRegistry['preparations'];
   unlockedSetupPaths?: readonly string[];
   /** Narrows explicitly selected editable files to their declared sections. Cannot unlock identity. */

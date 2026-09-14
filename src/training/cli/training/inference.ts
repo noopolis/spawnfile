@@ -1,3 +1,4 @@
+import { trainingRoutePolicies, trainingInferencePolicies } from '../../contracts/inference-policy.js';
 import type { JudgeRoute } from '../../contracts/evaluation.js';
 import { createHash } from 'node:crypto';
 import type { InferenceProvider } from '../../contracts/index.js';
@@ -12,6 +13,8 @@ import type { CliDependencies } from '../types.js';
 export function createTrainingInference(args: CliArguments, dependencies: CliDependencies, timeoutMs: number,
   judges: Record<string, string>, repairs: Record<string, 0 | 1>) {
   const config = args.training;
+  const executionIdentity = dependencies.spawnfile?.inferenceExecutionIdentity;
+  trainingInferencePolicies(config, executionIdentity);
   const legacy = () => dependencies.inference?.(timeoutMs) ?? createClaudeInference({ timeoutMs });
   const providers = new Map<string, InferenceProvider>();
   function provider(name: string): InferenceProvider {
@@ -28,19 +31,26 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
     return createRoutedInference({ id, routes: names.map(name => ({ provider: provider(name), model: config!.models[name]!.model })),
       maxAttempts: policy.attempts ?? names.length, timeoutMs: Math.min(timeoutMs, policy.timeout_ms ?? timeoutMs) });
   }
-  const versions = judgeVersions(config);
+  const versions = judgeVersions(config, executionIdentity, Object.keys(judges));
   let legacyProvider: InferenceProvider | undefined;
-  const getLegacy = () => legacyProvider ??= legacy();
+  const getLegacy = () => {
+    if (legacyProvider) return legacyProvider;
+    const selected = legacy();
+    legacyProvider = executionIdentity === undefined ? selected : { ...selected,
+      id: judgeVersions(undefined, executionIdentity, ['legacy']).legacy!.version,
+      generate: request => selected.generate(request) };
+    return legacyProvider;
+  };
   const evaluationJudges: Record<string, JudgeRoute> = Object.fromEntries(Object.entries(judges).map(([name, model]) => {
     const policy = config?.judges?.[name];
-    if (!policy) return [name, { provider: getLegacy(), model, citationRepairs: repairs[name]! }];
+    if (!policy) return [name, { provider: getLegacy(), model, identity: versions[name]!.version, citationRepairs: repairs[name]! }];
     const identity = versions[name]!.version;
     return [name, { provider: route(policy, identity), model, identity, citationRepairs: repairs[name]!,
       template: policy.template,
       cache: config!.cache?.mode === 'exact' ? createJudgeCache({ maxEntries: config!.cache.max_entries ?? 1000 }) : undefined }];
   }));
   const optimizer = config?.optimizer;
-  const identity = optimizer === undefined ? undefined : createHash('sha256').update(JSON.stringify({ optimizer, models: config!.models })).digest('hex');
+  const identity = optimizer === undefined ? undefined : createHash('sha256').update(JSON.stringify({ optimizer, models: config!.models, providerPolicies: trainingRoutePolicies(config!, optimizer, executionIdentity) })).digest('hex');
   return { inference: optimizer === undefined ? getLegacy() : route(optimizer, `paideia.optimizer:${identity}`), judges: evaluationJudges };
 }
 

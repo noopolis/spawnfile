@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { candidateComponents } from '../../candidates/index.js';
@@ -10,7 +10,7 @@ import { cliFixture, datasetText, fixtureAdapter } from '../fixture.js';
 import type { CliDependencies, InvocationIndex, SpawnfileCliIntegration } from '../types.js';
 import { contextFixture, inventoryDigest } from './fixture.js';
 import { prepareSpawnfileInputs } from './selection.js';
-import { commandCheckpoint } from '../training/index.js';
+import { commandCheckpoint, authoredArguments } from '../training/index.js';
 import { prepareCliInputs } from '../native.js';
 
 const roots: string[] = [];
@@ -28,7 +28,7 @@ async function fixture() {
   const setup = 'setup:\n  profile: fixture/workspace\n  purpose: verify-preparation\n';
   await writeFile(join(cli.root, 'train.yaml'), datasetText([{ id: 'learning', group: 'a' }, { id: 'selection', group: 'b' }]) + setup);
   await writeFile(join(cli.root, 'test.yaml'), datasetText([{ id: 'sealed', group: 'c' }]) + setup);
-  const seen: { phase: string; source: string; contextId: string }[] = [];
+  const seen: { phase: string; source: string; contextId: string; workspace: string }[] = [];
   const integration: SpawnfileCliIntegration = {
     id: 'fixture/workspace', version: '1',
     preparations: { 'fixture/workspace': { version: '1', unlockedPaths: [], validate(parameters) {
@@ -46,7 +46,7 @@ async function fixture() {
       const source = await readFile(join(paths.workspace, 'AGENTS.md'), 'utf8');
       expect(source).toContain('# Policy\nKeep identity locked.');
       expect(await readFile(join(paths.workspace, 'SOUL.md'), 'utf8')).toBe('An independent writer.\n');
-      seen.push({ phase: trial.phase, source, contextId: receipt.agent.id });
+      seen.push({ phase: trial.phase, source, contextId: receipt.agent.id, workspace: paths.workspace });
       return {};
     },
   };
@@ -80,10 +80,12 @@ it('resolves registered fixtures and narrow edits during dry-run without constru
 
 it('delegates real DSPy trials to the registered preparation and persists frozen comparison and costs', async () => {
   const f = await fixture();
+  f.integration.subjectRoot = join(await realpath(f.cli.root), 'native-subjects');
   expect(await main([...f.args, '--bridge-command', f.cli.bridge, '--out', 'out'], f.cli.io, f.dependencies)).toBe(0);
   expect(f.cli.stderr).toEqual([]);
   expect(f.dependencies.adapter).not.toHaveBeenCalled();
   expect(f.seen).toHaveLength(6);
+  expect(f.seen.every(row => row.workspace.startsWith(f.integration.subjectRoot + '/'))).toBe(true);
   expect(f.seen.map(row => row.phase)).toEqual(['validation', 'train', 'train', 'validation', 'test', 'test']);
   expect(f.seen.at(-1)!.source).toContain('IMPROVED');
   const index = JSON.parse(await readFile(join(f.cli.root, 'out', 'invocation.json'), 'utf8')) as InvocationIndex;
@@ -124,4 +126,23 @@ it('requires the immutable native integration identity and rejects source drift'
   const state = JSON.parse(await readFile(join(first.directory, 'command.json'), 'utf8'));
   expect(Object.keys(state).sort()).toEqual(['id', 'identity', 'schema']);
   expect(JSON.stringify(state)).not.toContain('pinned-runtime');
+});
+
+it('binds canonical selection and validate plans to the trusted inference image before any execution', async () => {
+  const f = await fixture();
+  await writeFile(join(f.cli.root, 'train.yaml'), JSON.stringify({ schema: 'paideia.dataset.v1', id: 'execution-plan',
+    training: { models: { judge: { provider: 'ollama', model: 'small' } }, judges: { prose: { model: 'judge' } } },
+    checks: [{ id: 'prose', eval: 'llm-rubric', judge: 'prose', input: 'output.text', minimum: 0.8, rubric: { prompt: 'Clear.' } }],
+    records: [{ id: 'one', input: { prompt: 'Write.' } }] }));
+  const args = authoredArguments(parseArguments(['evaluate', 'train.yaml', '--spawnfile-context', f.context.path, '--out', 'plan']), f.cli.io);
+  const selection = async (inferenceExecutionIdentity?: string) => (await prepareSpawnfileInputs(args, f.cli.io,
+    { ...f.integration, inferenceExecutionIdentity })).datasets.load('train.yaml', false).sharedPlanDigest;
+  const host = await selection(), container = await selection('image:one');
+  expect(container).not.toBe(host);
+  expect(await selection('image:two')).not.toBe(container);
+  expect(await selection('image:one')).toBe(container);
+  expect(await main(['validate', 'train.yaml'], f.cli.io, { ...f.dependencies,
+    spawnfile: { ...f.integration, inferenceExecutionIdentity: 'image:one' } })).toBe(0);
+  expect(JSON.parse(f.cli.stdout.at(-1)!).planDigest).toBe(container);
+  expect(f.seen).toEqual([]);
 });

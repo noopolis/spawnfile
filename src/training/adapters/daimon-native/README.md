@@ -72,3 +72,45 @@ Only one logical Codex task with the workspace-no-network policy is supported.
 Other engines, plain Pi equivalence, unrestricted multi-turn conversations, complete built-in
 tool traces and final-output capture are unsupported. Unit host/command doubles
 test wiring and rejection paths; they are not authenticated native acceptance.
+
+
+## Child execution inside a shared training container
+
+`createDaimonNativeAdapter({ execution: { kind: 'child-process' } })` starts one
+fresh worker child per trial inside the caller-owned Linux training container.
+It uses the same public worker, authenticated loopback protocol, observations,
+usage and sourced continuation loop. It does not create a container or require a
+Docker socket. The default adapter still owns a separate Docker container.
+
+The actual workspace and home/memory paths must match their source/target launch
+receipts. Subject data belongs outside `/run` and `/tmp` (for example under
+`/work/subjects/<trial>`); evaluator inputs, captures, controls and checkpoints
+stay under the native sandbox's denied `/run` root. The launcher runs as a
+non-root user and supplies the existing native sandbox compatibility settings.
+Before any wake the adapter executes the exact Daimon-generated sandbox policy:
+workspace read/write must work, every declared protected path must deny opening,
+and a live local listener must be unreachable. Only a final on-disk completion
+marker establishes success. This preserves native path protection, without
+claiming a fresh per-agent container or general process separation.
+
+The optional `execution.prepare({ launch, trialId, signal })` callback delegates
+credential ingress staging to the caller's public owner API. Paideia validates
+staged leaf modes and paths; it never imports subscription credentials. Worker
+arguments are exposed by `nativeChildArguments`; each uses the actual private
+launch/config/control/token paths. The child's environment contains the declared
+env-file plus basic process locale/PATH, without ambient provider settings.
+
+Child research callbacks live at `execution.externalInputs` and receive
+`executionId`, never a Docker `containerName`. Legacy Docker `externalInputs`
+cannot be combined with child execution. Stopping cancels pending HTTP and
+research callbacks and prevents a subsequent wake.
+
+Normal closure requires matching completed native execution evidence, idle native
+activity, acknowledged native stop and an observed clean worker exit. Cancellation,
+crash or forced termination without that evidence remains `quiescence: unknown`;
+the experiment must fail and the caller stops the whole shared container. No safe
+continuation after uncertain cancellation or remote-model cancellation is claimed.
+
+Real loopback child fixtures verify lifecycle and capture wiring. A separate
+zero-model native-image probe verified the actual protected-path policy; neither
+is an authenticated model optimization run.

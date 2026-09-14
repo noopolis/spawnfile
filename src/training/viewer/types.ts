@@ -109,5 +109,10 @@ export interface ViewerCosts {
   };
 }
 
-export interface ViewerOptions { load: () => Promise<ViewerData>; port?: number }
+export interface ViewerOptions {
+  load: () => Promise<ViewerData>;
+  port?: number;
+  /** Explicit container listener only; caller must publish on host loopback. */
+  bindHost?: '127.0.0.1' | '0.0.0.0';
+}
 export interface ViewerServer { url: string; port: number; close(finalSnapshot?: ViewerData): Promise<void> }

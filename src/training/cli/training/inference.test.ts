@@ -70,3 +70,34 @@ training:
     expect(calls).toEqual(['grok-4.6', 'claude-sonnet-4-6']);
   } finally { vi.useRealTimers(); }
 });
+
+it('binds runtime judge and optimizer identities to the exact trusted execution, including legacy routes', async () => {
+  const training = { models: { primary: { provider: 'claude-subscription' as const, model: 'primary' },
+    backup: { provider: 'grok-subscription' as const, model: 'backup' } },
+    judges: { prose: { model: 'primary', fallbacks: ['backup'] } }, optimizer: { model: 'primary', fallbacks: ['backup'] } };
+  const generate = vi.fn(async () => ({ text: 'result', model: 'primary', route: 'accounting-provider', usage: null }));
+  const provider = { id: 'accounting-provider', capabilities: { tools: 'disabled' as const, billing: 'subscription' as const, temperature: false, seed: false }, generate };
+  const make = (inferenceExecutionIdentity?: string, config: typeof training | undefined = training) => createTrainingInference(
+    { command: 'train', flags: {}, training: config }, { modelInference: () => provider, inference: () => provider,
+      spawnfile: { id: 'execution', version: '1', inferenceExecutionIdentity, createAdapter: vi.fn(), prepareEnvironment: vi.fn() } },
+    1000, { prose: 'primary' }, { prose: 0 });
+  const host = make(), one = make('image:one'), two = make('image:two');
+  expect(one.judges.prose!.identity).toBe(trainingJudgeVersions(training, 'image:one').prose!.version);
+  expect(one.judges.prose!.identity).not.toBe(host.judges.prose!.identity);
+  expect(one.judges.prose!.identity).not.toBe(two.judges.prose!.identity);
+  expect(one.inference.id).not.toBe(host.inference.id);
+  expect(one.inference.id).not.toBe(two.inference.id);
+  expect(make('image:one').inference.id).toBe(one.inference.id);
+  // No training configuration uses the unchanged legacy provider on host, scoped identity in a container.
+  const legacy = (identity?: string) => createTrainingInference({ command: 'train', flags: {} }, {
+    inference: () => provider, spawnfile: { id: 'execution', version: '1', inferenceExecutionIdentity: identity,
+      createAdapter: vi.fn(), prepareEnvironment: vi.fn() } }, 1000, { prose: 'primary' }, { prose: 0 });
+  expect(legacy().inference).toBe(provider);
+  const scoped = legacy('image:one');
+  expect(scoped.judges.prose!.identity).toBe(scoped.inference.id);
+  expect(scoped.judges.prose!.identity).toBe(trainingJudgeVersions(undefined, 'image:one', ['prose']).prose!.version);
+  expect(trainingJudgeVersions(undefined, undefined, ['prose']).prose!.version).toBe('cli.claude-subscription.v1');
+  expect(scoped.inference.id).not.toBe(legacy('image:two').inference.id);
+  expect(await scoped.inference.generate({ prompt: 'test', model: 'primary' })).toMatchObject({ route: 'accounting-provider' });
+  expect(generate).toHaveBeenCalledOnce();
+});

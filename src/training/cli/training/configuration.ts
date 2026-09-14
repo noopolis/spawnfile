@@ -48,8 +48,8 @@ export function authoredArguments(args: CliArguments, io: CliIO): CliArguments {
   return { ...args, flags, training, frozenDataset };
 }
 
-export function judgeVersions(training?: TrainingConfiguration) {
-  return training === undefined ? {} : trainingJudgeVersions(training);
+export function judgeVersions(training?: TrainingConfiguration, executionIdentity?: string, judgeNames: readonly string[] = []) {
+  return trainingJudgeVersions(training, executionIdentity, judgeNames);
 }
 
 export async function validateAuthoredTemplates(args: CliArguments, signal?: AbortSignal): Promise<void> {

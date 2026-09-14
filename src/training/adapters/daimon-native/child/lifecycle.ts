@@ -1,0 +1,103 @@
+import { spawn } from 'node:child_process';
+import { dirname } from 'node:path';
+import { setTimeout as pause } from 'node:timers/promises';
+import type { StopReceipt } from '../../../contracts/execution.js';
+import { readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
+import { executionClosed, type NativeActivity, type NativeStopEvidence, type TerminalEvidence } from '../worker/index.js';
+import { createNativeHttpClient, type NativeExecutionHandle } from '../transport/index.js';
+import { nativeChildArguments, nativeChildEnvironment, validateChildPaths } from './arguments.js';
+import { verifyChildSandbox } from './sandbox.js';
+import type { NativeChildExecution } from './types.js';
+
+/** One fresh worker process in the caller's existing container; no Docker or remote proof. */
+export async function startOwnedChild(execution: NativeChildExecution, launch: VerifiedNativeLaunch, trialId: string,
+  timeoutMs: number, signal?: AbortSignal, startupMs = 60_000, protectedPaths: readonly string[] = []): Promise<NativeExecutionHandle> {
+  if (!Number.isSafeInteger(startupMs) || startupMs < 1 || startupMs > 3_600_000) throw new Error('Invalid native startup deadline');
+  signal?.throwIfAborted();
+  const startup = new AbortController();
+  const abort = () => startup.abort(); signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(abort, Math.min(startupMs, timeoutMs));
+  try {
+    if (execution.prepare) await bounded(execution.prepare({ launch: structuredClone(launch), trialId, signal: startup.signal }), startup.signal);
+    startup.signal.throwIfAborted();
+    await validateChildPaths(launch);
+    const env = await nativeChildEnvironment(launch);
+    const token = (await readPrivateFile(launch.tokenFile, 4096)).trim();
+    return await launchChild(launch, trialId, timeoutMs, env, token, startup.signal, protectedPaths);
+  } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
+}
+
+async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeoutMs: number, env: NodeJS.ProcessEnv,
+  token: string, startup: AbortSignal, protectedPaths: readonly string[]): Promise<NativeExecutionHandle> {
+  const http = createNativeHttpClient(`http://${launch.host.bindHost}:${launch.host.port}`, token);
+  const child = spawn(process.execPath, nativeChildArguments(launch, trialId, timeoutMs), {
+    cwd: dirname(launch.workerRoot), env, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let exited = false; let exitCode: number | null = null; let ready = false; let failure = false; let buffer = ''; let bytes = 0;
+  child.once('error', () => { failure = true; });
+  child.once('close', code => { exited = true; exitCode = code; });
+  const consume = (chunk: Buffer, stdout: boolean) => {
+    bytes += chunk.length;
+    if (bytes > 1_048_576) { failure = true; child.kill('SIGTERM'); return; }
+    if (!stdout) return;
+    buffer += chunk.toString('utf8');
+    for (;;) {
+      const end = buffer.indexOf('\n'); if (end < 0) break;
+      const line = buffer.slice(0, end); buffer = buffer.slice(end + 1);
+      try {
+        const row = JSON.parse(line) as Record<string, unknown>;
+        if (row.schema === 'paideia.daimon-native.ready.v1' && row.trialId === trialId && row.configSha256 === launch.configSha256 &&
+          row.agentId === launch.agent.id && row.model === launch.agent.model && row.port === launch.host.port) ready = true;
+      } catch { /* Bootstrap may emit non-protocol logging; never treat it as readiness. */ }
+    }
+  };
+  child.stdout.on('data', (chunk: Buffer) => consume(chunk, true)); child.stderr.on('data', (chunk: Buffer) => consume(chunk, false));
+  let closed: TerminalEvidence | undefined; let stopping: Promise<StopReceipt> | undefined;
+  const stop = (reason: string): Promise<StopReceipt> => stopping ??= (async () => {
+    let nativeClosed = false;
+    try {
+      if (!ready || exited) throw new Error('Worker is not available for native stop');
+      const activity = await http<NativeActivity>('/v2/activity', undefined, 1500);
+      const native = await http<NativeStopEvidence>('/trial/stop', {}, 6000);
+      nativeClosed = !!closed?.receipt && !!closed.executionId && native.state === 'acknowledged' &&
+        executionClosed(activity, closed.receipt, closed.native.traces, launch.agent.id) === closed.executionId;
+    } catch { /* Uncertain native work requires outer-container termination. */ }
+    if (!exited) child.kill('SIGTERM');
+    const until = Date.now() + 2000;
+    while (!exited && Date.now() < until) await pause(20);
+    if (!exited) { child.kill('SIGKILL'); const forced = Date.now() + 1000; while (!exited && Date.now() < forced) await pause(20); }
+    const confirmed = nativeClosed && exited && exitCode === 0;
+    return { state: confirmed ? 'acknowledged' : 'unknown', scope: 'native-handle', quiescence: confirmed ? 'confirmed' : 'unknown', remoteWork: 'unknown', reason,
+      detail: confirmed ? 'Closed native execution, idle runtime, acknowledged native stop and worker exit' : 'Native child closure unconfirmed; caller must stop the shared container' };
+  })();
+  try {
+    while (!ready) {
+      startup.throwIfAborted();
+      if (failure || exited) throw new Error('Native worker exited or failed before readiness');
+      await pause(20);
+    }
+    const health = await http<{ version: string; state: string; agents: { agentId: string }[] }>('/trial/health', undefined, 1000, startup);
+    if (health.version !== 'noopolis.daimon.organization-runtime-health.v1' || health.state !== 'running' || health.agents.length !== 1 || health.agents[0]?.agentId !== launch.agent.id) throw new Error('Native worker readiness identity mismatch');
+    await verifyChildSandbox(launch, trialId, protectedPaths, startup);
+    startup.throwIfAborted();
+    const request: NativeExecutionHandle['request'] = async <T>(path: Parameters<NativeExecutionHandle['request']>[0], body?: unknown, ms?: number, signal?: AbortSignal) => {
+      if (failure || exited) throw new Error('Owned native worker is no longer alive');
+      if (path === '/trial/run') closed = undefined;
+      const result = await http<T>(path, body, ms, signal);
+      if (path === '/trial/run') {
+        const value = result as TerminalEvidence;
+        if (value.status === 'completed' && value.receipt?.state === 'completed' && value.native.traces[0]?.status === 'completed' && value.schema === 'paideia.daimon-native.trial.v1' && value.trialId === trialId && value.agentId === launch.agent.id && value.model === launch.agent.model &&
+            value.configSha256 === launch.configSha256 && value.wakeId === (body as { wakeId?: string })?.wakeId && value.receipt && value.activity &&
+            executionClosed(value.activity, value.receipt, value.native.traces, launch.agent.id) === value.executionId) closed = value;
+      }
+      return result;
+    };
+    return { name: `child:${child.pid}`, request, stop };
+  } catch (error) { await stop('Native child startup failed'); throw error; }
+}
+
+async function bounded<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted(); let abort!: () => void;
+  const cancelled = new Promise<never>((_resolve, reject) => { abort = () => reject(new Error('Native child preparation cancelled')); signal.addEventListener('abort', abort, { once: true }); });
+  try { return await Promise.race([pending, cancelled]); } finally { signal.removeEventListener('abort', abort); }
+}

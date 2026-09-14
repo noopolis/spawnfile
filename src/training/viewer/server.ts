@@ -14,9 +14,11 @@ function respond(response: ServerResponse, status: number, text: string, type: s
   response.end(text);
 }
 
-/** Loopback-only presentation. The loader is the sole data source and must be read-only. */
+/** Local presentation. A container-wide bind requires caller-enforced host-loopback publication. */
 export async function startViewer(options: ViewerOptions): Promise<ViewerServer> {
   const requestedPort = options.port ?? 0;
+  const bindHost = options.bindHost ?? '127.0.0.1';
+  if (!['127.0.0.1', '0.0.0.0'].includes(bindHost)) throw new Error('Unsupported viewer bind host');
   if (!Number.isInteger(requestedPort) || requestedPort < 0 || requestedPort > 65535) throw new Error('Viewer port must be 0–65535');
   let port = 0;
   const streams = new Map<ServerResponse, { stream: SnapshotStream; metric: number }>();
@@ -49,7 +51,7 @@ export async function startViewer(options: ViewerOptions): Promise<ViewerServer>
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(requestedPort, '127.0.0.1', () => { server.off('error', reject); resolve(); });
+    server.listen(requestedPort, bindHost, () => { server.off('error', reject); resolve(); });
   });
   // listen completed on an explicit TCP host, so the address is an AddressInfo.
   port = (server.address() as AddressInfo).port;

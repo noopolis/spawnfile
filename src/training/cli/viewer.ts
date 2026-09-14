@@ -66,6 +66,7 @@ export async function viewInvocation(root: string, port: number, io: CliIO, sign
 }
 
 export async function startLiveViewer(options: {
+  bindHost?: '127.0.0.1' | '0.0.0.0';
   port: number; io: CliIO; store: ExperimentStore; id: string; datasetId: string; planDigest: string;
   baseline: CandidateManifest; cases: ViewerData['cases']; testCases: ViewerData['cases'];
   budget?: { maxMetricCalls: number; maxProposals: number };
@@ -115,7 +116,7 @@ export async function startLiveViewer(options: {
     }
   };
   await publish();
-  const server = await startViewer({ port: options.port, load: async () => {
+  const server = await startViewer({ port: options.port, bindHost: options.bindHost, load: async () => {
     if (unavailable) throw new Error('Viewer snapshot unavailable');
     const replay = await options.store.readReplay(runId, { audience: 'viewer', phase: 'training' });
     return replay.events.at(-1)!.payload as ViewerData;

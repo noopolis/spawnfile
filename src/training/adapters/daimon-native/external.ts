@@ -9,8 +9,14 @@ export interface NativeExternalInputs {
     signal: AbortSignal): Promise<NativeExternalInput | null>;
 }
 
+export interface NativeChildExternalInputs {
+  maxDeliveries: number;
+  next(context: { trialId: string; turnId: string; executionId: string; launch: NativeLaunch; terminal: TerminalEvidence },
+    signal: AbortSignal): Promise<NativeExternalInput | null>;
+}
+
 /** A callback may supply evidence; it cannot extend the task deadline or invent a retry. */
-export async function nextExternalInput(policy: NativeExternalInputs, context: Parameters<NativeExternalInputs['next']>[0],
+export async function nextExternalInput<T>(policy: { next(context: T, signal: AbortSignal): Promise<NativeExternalInput | null> }, context: T,
   deadline: number, signal: AbortSignal): Promise<NativeExternalInput | null> {
   if (signal.aborted) throw new Error('External input cancelled');
   const remaining = deadline - Date.now();

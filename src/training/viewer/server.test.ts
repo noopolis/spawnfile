@@ -7,6 +7,21 @@ const servers: ViewerServer[] = [];
 afterEach(async () => { await Promise.all(servers.splice(0).map((server) => server.close())); });
 
 describe('actual local viewer HTTP server', () => {
+  it('supports container binding while retaining the loopback URL and Host restriction', async () => {
+    const load = vi.fn(async () => viewerFixture());
+    const server = await startViewer({ load, bindHost: '0.0.0.0' }); servers.push(server);
+    expect(server.url).toBe(`http://127.0.0.1:${server.port}`);
+    expect((await fetch(server.url)).status).toBe(200);
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      get(server.url, { headers: { Host: `192.0.2.1:${server.port}` } }, response => {
+        response.resume(); resolve(response.statusCode);
+      }).on('error', reject);
+    });
+    expect(status).toBe(403);
+    expect(load).toHaveBeenCalledOnce();
+    await expect(startViewer({ load, bindHost: '192.0.2.1' as '127.0.0.1' })).rejects.toThrow('Unsupported viewer bind host');
+  });
+
   it('serves escaped HTML and fresh JSON from only the supplied read-only loader', async () => {
     const data = viewerFixture();
     data.experiment.title = '<img src=x onerror=alert(1)>';

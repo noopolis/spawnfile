@@ -1,3 +1,4 @@
+import { trainingInferencePolicies } from '../../contracts/inference-policy.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { link, mkdir, open, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -18,10 +19,11 @@ export async function commandCheckpoint(args: CliArguments, inputs: Awaited<Retu
   const flags = Object.fromEntries(Object.entries(args.flags).filter(([name]) =>
     !['resume','view','out','spawnfile-context','dry-run'].includes(name)).sort(([a],[b]) => a.localeCompare(b)));
   const identity = createHash('sha256').update(JSON.stringify({
-    version:'paideia.command-execution.v1',flags,training:args.training,candidate:inputs.candidate.id,
+    version:'paideia.command-execution.v1',providerPolicies:trainingInferencePolicies(args.training, integration?.inferenceExecutionIdentity),flags,training:args.training,candidate:inputs.candidate.id,
     sourceRoot:inputs.sourceRoot,resources:inputs.resources,model:inputs.model,
     context:'context' in inputs ? inputs.context : null,
-    integration:integration ? {id:integration.id,version:integration.version,environment:environment ?? null} : null,
+    integration:integration ? {id:integration.id,version:integration.version,environment:environment ?? null,
+      subjectRoot:integration.subjectRoot ?? null} : null,
   })).digest('hex');
   const directory = join(inputs.out,'checkpoint');
   await mkdir(directory,{recursive:true,mode:0o700});

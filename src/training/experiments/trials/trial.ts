@@ -1,5 +1,4 @@
-import { mkdir, mkdtemp } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import type { EvaluationSnapshot, EvaluationResult, JudgeAttemptObservation } from '../../contracts/evaluation.js';
 import type { Observation, ObservationCoverage } from '../../contracts/execution.js';
 import { captureObservation } from '../../capture/index.js';
@@ -11,7 +10,8 @@ import { trialControl } from './control.js';
 import { requireMechanicalTurn } from './preflight.js';
 import { drainObservations } from './closure.js';
 import { subjectUsageSnapshot } from './subject-usage.js';
-import type { PreparedTrial, TrialOptions, TrialPaths, TrialReport, TurnReport } from './types.js';
+import { createTrialPaths, releaseTrialScratch } from './paths.js';
+import type { PreparedTrial, TrialOptions, TrialReport, TurnReport } from './types.js';
 
 export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   const { adapter, registry } = options;
@@ -29,10 +29,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   if (adapter.capabilities.readIsolation !== 'declared-paths' || !adapter.capabilities.protectedPaths) {
     throw new Error('Trial requires native protection for evaluator-owned files');
   }
-  await mkdir(options.root, { recursive: true, mode: 0o700 });
-  const root = await mkdtemp(join(resolve(options.root), 'trial-'));
-  const paths: TrialPaths = { root, workspace: join(root, 'workspace'), control: join(root, 'control'), runtimeHome: join(root, 'runtime') };
-  await Promise.all([paths.workspace, paths.control, paths.runtimeHome].map(path => mkdir(path, { mode: 0o700 })));
+  const paths = await createTrialPaths(options.root, options.subjectRoot);
   const control = trialControl(options.timeoutMs, options.signal);
   const turns: TurnReport[] = [];
   let events: Observation[] = [];
@@ -174,5 +171,8 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     if (sinkFailed) throw new Error('Trial evidence persistence failed; no durable success report');
     await persist('trial.completed', report);
     return report;
-  } finally { control.dispose(); }
+  } finally {
+    control.dispose();
+    await releaseTrialScratch(paths, options.subjectRoot, nativeClosureConfirmed && control.hostWork === 'settled');
+  }
 }

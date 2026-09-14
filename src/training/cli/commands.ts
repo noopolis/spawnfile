@@ -23,7 +23,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     const dataset = new CliDatasets(pairs(args.flags.judge ?? []), io.cwd, {
       registry: { preparations: dependencies.spawnfile?.preparations },
       unlockedSetupPaths: dependencies.spawnfile?.unlockedSetupPaths,
-    }, judgeVersions(args.training), args.frozenDataset).load(args.dataset!, false);
+    }, judgeVersions(args.training, dependencies.spawnfile?.inferenceExecutionIdentity, Object.keys(pairs(args.flags.judge ?? []))), args.frozenDataset).load(args.dataset!, false);
     io.stdout(`${JSON.stringify({ status: 'valid', datasetId: dataset.id, records: dataset.records.length,
       sourceDigest: dataset.sourceDigest, planDigest: dataset.sharedPlanDigest })}\n`);
     return 0;
@@ -55,6 +55,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     const attemptId = randomUUID();
     const base: Omit<StoredTrialOptions, 'id' | 'phase' | 'record' | 'candidate' | 'datasetId' | 'datasetDigest' | 'planDigest'> = {
       adapter: native.adapter, model: native.model, root: join(native.out, 'trials'), timeoutMs,
+      subjectRoot: native.subjectRoot,
       registry: native.registry, evaluation: native.evaluation, resources: native.resources,
       prepareEnvironment: native.prepareEnvironment,
       store, storeRoot: native.out, protectedPaths: [native.sourceRoot, ...native.datasets.protectedDirectories, ...native.cacheRoots], signal,
@@ -66,6 +67,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     let failed = false;
     try {
     live = args.flags.view === undefined ? undefined : await startLiveViewer({
+      bindHost: dependencies.viewerBindHost,
       port: count(args, 'view', 0, 65535, 0), io, store, id: attemptId, datasetId: dataset.id, planDigest: dataset.sharedPlanDigest,
       baseline: native.candidate, cases: dataset.records.map((record) => ({ id: record.id, split: 'train' })),
       testCases: test?.records.map((record) => ({ id: record.id, split: 'test' })) ?? [],

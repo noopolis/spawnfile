@@ -1,13 +1,15 @@
-import { afterEach, expect, it } from 'vitest';
+import * as providerPolicies from '../../contracts/inference-policy.js';
+import { afterEach, expect, it, vi } from 'vitest';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { cliFixture, datasetText } from '../fixture.js';
 import { main } from '../commands.js';
 import { loadInvocationViewer } from '../viewer.js';
+import type { InvocationIndex } from '../types.js';
 import { openExperimentStore } from '../../storage/index.js';
 
 const roots: string[] = [];
-afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 
 it('resumes interrupted real DSPy training from YAML without repeating settled native work', async () => {
   const f = await cliFixture(); roots.push(f.root);
@@ -46,6 +48,25 @@ training:
   const firstIndex = JSON.parse(await readFile(join(f.root, 'out/invocation.json'), 'utf8'));
   expect(firstIndex.outcome).toBe('failed');
   f.stderr.length = 0;
+  const policies = providerPolicies.trainingInferencePolicies();
+  const commandPolicy = vi.spyOn(providerPolicies, 'trainingInferencePolicies').mockReturnValue({ ...policies,
+    optimizer: [{ provider: 'grok-subscription', policy: 'changed-isolation' }] });
+  expect(await main([...argv, '--resume'], f.io, f.dependencies)).not.toBe(0);
+  expect(f.stderr.join(' ')).toContain('Command checkpoint inputs changed');
+  expect(f.observedInstructions).toHaveLength(1); expect(optimizerCalls).toBe(0);
+  commandPolicy.mockRestore(); f.stderr.length = 0;
+  const originalRoute = providerPolicies.trainingRoutePolicies;
+  const optimizerPolicy = vi.spyOn(providerPolicies, 'trainingRoutePolicies').mockImplementation((config, route) =>
+    originalRoute(config, route).map(value => ({ ...value, policy: `${value.policy}:changed` })));
+  expect(await main([...argv, '--resume'], f.io, f.dependencies)).not.toBe(0);
+  const failedStore = await openExperimentStore(join(f.root, 'out'));
+  const failedIndex = JSON.parse(await readFile(join(f.root, 'out/invocation.json'), 'utf8'));
+  const failure = JSON.parse((await failedStore.readBlob(failedIndex.report, { audience: 'operator', phase: 'replay' })).toString());
+  const privateReplay = await failedStore.readReplay(failure.progressRunId, { audience: 'operator', phase: 'replay' });
+  const diagnostic = privateReplay.events.find(event => event.id === failure.diagnosticId)!.payload as { diagnostic: InvocationIndex['report'] };
+  expect((await failedStore.readBlob(diagnostic.diagnostic, { audience: 'operator', phase: 'replay' })).toString()).toContain('Training checkpoint identity or integrity mismatch');
+  expect(f.observedInstructions).toHaveLength(1); expect(optimizerCalls).toBe(0);
+  optimizerPolicy.mockRestore(); f.stderr.length = 0;
   const resumed = await main([...argv, '--resume'], f.io, f.dependencies);
   expect(f.stderr).toEqual([]);
   expect(resumed).toBe(0);

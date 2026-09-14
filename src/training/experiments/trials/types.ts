@@ -20,6 +20,8 @@ export interface TrialOptions {
   adapter: SubjectAdapter;
   model: string;
   root: string;
+  /** Optional caller-owned subject-only scratch; evaluator data remains under root. */
+  subjectRoot?: string;
   timeoutMs: number;
   resources?: Readonly<Record<string, string>>;
   protectedPaths?: readonly string[];

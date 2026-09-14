@@ -1,0 +1,92 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import { readFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { createDaimonNativeAdapter } from '../index.js';
+import { childFixture } from './fixture.js';
+import { startOwnedChild } from './lifecycle.js';
+import { verifyChildSandbox } from './sandbox.js';
+vi.mock('./sandbox.js', () => ({ verifyChildSandbox: vi.fn(async () => undefined) }));
+const roots: string[] = [];
+afterEach(async () => { vi.clearAllMocks(); vi.unstubAllEnvs(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+async function fixture(mode?: string) { const f = await childFixture(mode); roots.push(f.root); return f; }
+
+it('runs a real fresh worker child with explicit environment, observed native usage and verified normal stop', async () => {
+  const f = await fixture(); vi.stubEnv('UNIT_PARENT_SECRET', 'not-in-child');
+  const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process' } }).start(f.input);
+  expect(verifyChildSandbox).toHaveBeenCalledWith(expect.objectContaining({ configSha256: f.launch.configSha256 }), f.input.trialId, f.input.protectedPaths, expect.any(AbortSignal));
+  const env = JSON.parse(await readFile(join(f.launch.controlRoot, 'child-env.json'), 'utf8'));
+  expect(env).toMatchObject({ fresh: true, transport: 'unit-transport-value' });
+  const result = await session.run({ id: 'task', text: 'Assigned work' });
+  expect(result).toMatchObject({ status: 'completed', usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 40 } });
+  expect(await session.stop('Finished')).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed', remoteWork: 'unknown' });
+  expect(await session.stop('Again')).toMatchObject({ state: 'acknowledged' });
+  expect(() => process.kill(env.pid, 0)).toThrow();
+  await expect(session.run({ id: 'again', text: 'Work' })).rejects.toThrow('one delivery');
+});
+it('cancels pending native work honestly as unknown containment until the outer container closes', async () => {
+  const f = await fixture('stall'); const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process' } }).start(f.input);
+  const pending = session.run({ id: 'task', text: 'Work' });
+  await new Promise(resolve => setTimeout(resolve, 30));
+  expect(await session.stop('Cancelled')).toMatchObject({ state: 'unknown', quiescence: 'unknown' });
+  expect(await pending).toMatchObject({ status: 'cancelled', usage: null });
+});
+it('keeps sourced child continuation, immutable callback identity and accumulated native usage', async () => {
+  const f = await fixture('blocked'); const text = 'Verified response';
+  const next = vi.fn(async () => ({ id: 'answer', text, source: { kind: 'transport', id: 'answer', sha256: `sha256:${createHash('sha256').update(text).digest('hex')}` } }));
+  const policy = { maxDeliveries: 1, next }; const execution = { kind: 'child-process' as const, externalInputs: policy };
+  const adapter = createDaimonNativeAdapter({ execution }); policy.maxDeliveries = 999;
+  const session = await adapter.start(f.input); const result = await session.run({ id: 'task', text: 'Work' });
+  expect(result).toMatchObject({ status: 'completed', usage: { inputTokens: 200, outputTokens: 40 } });
+  const context = next.mock.calls[0] as unknown as [Record<string, unknown>];
+  expect(context[0]?.executionId).toMatch(/^child:/u); expect(context[0]).not.toHaveProperty('containerName');
+  expect(await session.stop('Finished')).toMatchObject({ quiescence: 'confirmed' });
+});
+it.each(['bad-ready', 'bad-health', 'exit', 'overflow'])('rejects %s before a native task', async mode => {
+  const f = await fixture(mode);
+  await expect(createDaimonNativeAdapter({ execution: { kind: 'child-process' }, startupMs: 150 }).start(f.input)).rejects.toThrow();
+});
+it.each(['bad-terminal', 'bad-stop'])('does not confirm native closure for %s', async mode => {
+  const f = await fixture(mode); const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process' } }).start(f.input);
+  const result = await session.run({ id: 'task', text: 'Work' });
+  expect(result.status).toBe(mode === 'bad-terminal' ? 'failed' : 'completed');
+  expect(await session.stop('Finished')).toMatchObject({ quiescence: 'unknown' });
+});
+it('rejects unsupported modes, Docker callback mixing, invalid deadlines and cancelled preparation', async () => {
+  const f = await fixture();
+  expect(() => createDaimonNativeAdapter({ execution: { kind: 'child-process' }, externalInputs: { maxDeliveries: 1, next: async () => null } })).toThrow('execution.externalInputs');
+  expect(() => createDaimonNativeAdapter({ execution: { kind: 'wrong' as 'child-process' } })).toThrow('Unsupported');
+  expect(() => createDaimonNativeAdapter({ execution: { kind: 'child-process' }, docker: vi.fn() })).toThrow('one native execution');
+  await expect(startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000, undefined, 0)).rejects.toThrow('deadline');
+  await expect(startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000, AbortSignal.abort())).rejects.toThrow();
+  await expect(startOwnedChild({ kind: 'child-process', prepare: () => new Promise(() => undefined) }, f.launch, f.input.trialId, 1000, undefined, 10)).rejects.toThrow('preparation cancelled');
+});
+
+it('handles bootstrap diagnostics and preserves unknown closure after forced worker kill', async () => {
+  const f = await fixture('noisy'); const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000);
+  await handle.request('/trial/run', { wakeId: 'task', text: 'Work' }); expect((await handle.stop('Finished')).quiescence).toBe('confirmed');
+  await expect(handle.request('/trial/run', { wakeId: 'late', text: 'Work' })).rejects.toThrow('no longer alive');
+  const g = await fixture('ignore-term'); const forced = await startOwnedChild({ kind: 'child-process' }, g.launch, g.input.trialId, 1000);
+  await forced.request('/trial/run', { wakeId: 'task', text: 'Work' }); expect((await forced.stop('Finish')).quiescence).toBe('unknown');
+});
+it('rejects actual spawn failure without borrowing another process or claiming containment', async () => {
+  const f = await fixture(); f.launch.workerRoot = join(f.root, 'missing-parent/worker');
+  await expect(startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000)).rejects.toThrow('before readiness');
+});
+
+it('cancels a pending external research callback without emitting an input or a second wake', async () => {
+  const f = await fixture('blocked'); let signal!: AbortSignal; const inputs: unknown[] = [];
+  f.input.onObservation = event => { if (event.type === 'input') inputs.push(event); };
+  const next = vi.fn((_context: unknown, value: AbortSignal) => { signal = value; return new Promise<null>(() => undefined); });
+  const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process', externalInputs: { maxDeliveries: 1, next } } }).start(f.input);
+  const pending = session.run({ id: 'task', text: 'Work' }); await vi.waitFor(() => expect(next).toHaveBeenCalledOnce());
+  await session.stop('Stop research'); expect(signal.aborted).toBe(true);
+  expect(await pending).toMatchObject({ status: 'cancelled', usage: { inputTokens: 100 } }); expect(inputs).toEqual([]);
+});
+it('retains cancellation and metering when operator stops while observing a verified blocked wake', async () => {
+  const f = await fixture('blocked'); const next = vi.fn(async () => null);
+  f.input.onObservation = async event => { if (event.type === 'diagnostic') await session.stop('Stop observed wake'); };
+  const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process', externalInputs: { maxDeliveries: 1, next } } }).start(f.input);
+  expect(await session.run({ id: 'task', text: 'Work' })).toMatchObject({ status: 'cancelled', usage: { inputTokens: 100 } });
+  expect(next).not.toHaveBeenCalled();
+});

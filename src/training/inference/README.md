@@ -48,3 +48,33 @@ rendered prompt, criterion, model, route policy and provider endpoint. An attemp
 UUID is audit identity, not a reusable cache key. Local exact-result reuse and a
 provider's prompt-prefix cache are different; neither inferred cache savings nor
 unreported usage may be counted as measured tokens.
+
+
+Built-in invocation policies have maintained version identities independent of
+provider accounting IDs. Authored judge versions include ordered primary and
+fallback policy versions, so persistent judgments from an older context policy
+cannot be reused even when the dataset YAML is unchanged. Optimizer route and
+command checkpoint identities bind the same versions; a policy change requires
+a fresh experiment. These versions describe maintained invocation behavior, not
+model weights, subscription accounts or a hash of ambient user configuration.
+Custom inference overrides remain responsible for truthful execution provenance.
+
+## Container training
+
+Training uses one outer Docker container for the experiment coordinator, DSPy,
+native subject processes and inference CLIs. Each subject trial has fresh files
+and memory. Native inference runs directly inside the container with explicitly
+provisioned subscription credentials and a clean home, without the operator's
+host instructions, skills or configuration. This isolates the experiment from the
+host; it is not separate containment between the subject and judges.
+
+The single-container launch path is being integrated. The built-in inference
+providers execute wherever their caller runs; they do not create containers.
+
+Trusted Spawnfile integrations declare `inferenceExecutionIdentity` to bind the
+exact immutable training image and invocation policy to authored judge caches,
+optimizer provenance and command checkpoints. Changing that identity invalidates
+reuse even with unchanged YAML. Omission preserves ambient-host identities; an
+image identity never gets inferred from provider accounting IDs. The integration
+must update the identity for changed execution inputs. This field records its
+attestation; it does not inspect containers, credentials or ambient profiles.

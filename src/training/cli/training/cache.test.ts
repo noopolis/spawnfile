@@ -1,3 +1,5 @@
+import * as inferenceFactory from './inference.js';
+import * as providerPolicies from '../../contracts/inference-policy.js';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -12,7 +14,7 @@ import { authoredArguments } from './configuration.js';
 import { prepareJudgeCaches } from './cache.js';
 
 const roots: string[] = [];
-afterEach(async()=>{await Promise.all(roots.splice(0).map(root=>rm(root,{recursive:true,force:true})));});
+afterEach(async()=>{vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root=>rm(root,{recursive:true,force:true})));});
 const training: TrainingConfiguration = {models:{small:{provider:'ollama',model:'local-small'}},
   judges:{clarity:{model:'small',template:{language:'jinja',text:'FIXED TEMPLATE {{ rubric }}'}}},
   cache:{mode:'persistent',namespace:'calibration',directory:'shared-cache',max_entries:10}};
@@ -106,4 +108,70 @@ it('validates cache namespace, mode fields and recovery bounds before invoking n
   expect(JSON.parse(f.stdout[0]!).budget.maxTrials).toBeGreaterThan(0);
   expect(forbidden).not.toHaveBeenCalled();
   expect(await readdir(join(f.root,'evals'))).toEqual(['data.yaml','test.yaml']);
+});
+
+
+it.each(['grok-subscription', 'claude-subscription'] as const)('misses persistent judgments when primary %s or its fallback policy changes, with unchanged YAML', async primary => {
+  const config: TrainingConfiguration = { ...training, models: {
+    small: { provider: primary, model: 'fixed' },
+    backup: { provider: primary === 'grok-subscription' ? 'claude-subscription' : 'grok-subscription', model: 'fixed-backup' },
+  }, judges: { clarity: { ...training.judges!.clarity!, fallbacks: ['backup'] } } };
+  const f = await fixture(config);
+  let generations = 0;
+  const dependencies = { ...f.dependencies, modelInference: () => ({
+    id: 'unchanged-provider', capabilities: { tools: 'disabled' as const, billing: 'subscription' as const, temperature: false, seed: false },
+    async generate() { generations++; return { model: 'fixed', route: 'unchanged-provider', usage: null,
+      text: JSON.stringify({ score: 0.9, verdict: 'pass', reasons: ['Clear'], citations: [{ source: 'input', quote: 'BAD' }] }) }; },
+  }) };
+  let run = 0;
+  const evaluate = async () => {
+    const argv = [...f.argv]; argv[argv.indexOf('--out') + 1] = `policy-run-${++run}`;
+    expect(await main(argv, f.io, dependencies)).toBe(0);
+  };
+  // Seed the exact former YAML-only route identity; default execution must never reuse it.
+  // Captured hashes from the former canonical({policy, models}) implementation for these exact declarations.
+  const legacyHashes = {
+    'grok-subscription': '06c6c67791a7f48f6803e872e6ab1c88cb5d901775514fb7a970859934359ace',
+    'claude-subscription': '882d117899786d5636216a8528b4dc683d3df672e1bc35fd1e4262c7acdc77ed',
+  };
+  const legacy = `paideia.authored-judge.v1:sha256:${legacyHashes[primary]}`;
+  const factory = inferenceFactory.createTrainingInference;
+  const oldRuntime = vi.spyOn(inferenceFactory, 'createTrainingInference').mockImplementation((...args) => {
+    const result = factory(...args); result.judges.clarity!.identity = legacy; return result;
+  });
+  await evaluate(); expect(generations).toBe(1);
+  oldRuntime.mockRestore();
+  await evaluate(); await evaluate(); expect(generations).toBe(2);
+  const original = providerPolicies.trainingRoutePolicies;
+  let changed: 'grok-subscription' | 'claude-subscription' = 'grok-subscription';
+  vi.spyOn(providerPolicies, 'trainingRoutePolicies').mockImplementation((configuration, route) =>
+    original(configuration, route).map(value => value.provider === changed ? { ...value, policy: `${value.policy}:changed` } : value));
+  await evaluate(); await evaluate(); expect(generations).toBe(3);
+  changed = 'claude-subscription';
+  await evaluate(); await evaluate(); expect(generations).toBe(4);
+  expect(f.stderr).toEqual([]);
+});
+
+it.each([false, true])('never reuses ambient host judgments across declared images (flag-only: %s)', async flagOnly => {
+  const f = await fixture(flagOnly ? { ...training, judges: {} } : training);
+  if (flagOnly) f.argv.push('--judge', 'clarity=small');
+  let generations = 0;
+  const integration = { id: 'execution', version: '1', createAdapter: vi.fn(), prepareEnvironment: vi.fn() };
+  const inference = () => ({
+    id: 'unchanged-provider', capabilities: { tools: 'disabled' as const, billing: 'local' as const, temperature: false, seed: false },
+    async generate() { generations++; return { model: 'local-small', route: 'unchanged-provider', usage: null,
+      text: JSON.stringify({ score: 0.9, verdict: 'pass', reasons: ['Clear'], citations: [{ source: 'input', quote: 'BAD' }] }) }; },
+  });
+  const dependencies = { ...f.dependencies, spawnfile: integration, modelInference: inference, inference };
+  let run = 0;
+  const evaluate = async (inferenceExecutionIdentity?: string) => {
+    const argv = [...f.argv]; argv[argv.indexOf('--out') + 1] = `execution-run-${++run}`;
+    const code = await main(argv, f.io, { ...dependencies, spawnfile: { ...integration, inferenceExecutionIdentity } });
+    expect(f.stderr).toEqual([]); expect(code).toBe(0);
+  };
+  await evaluate(); await evaluate(); expect(generations).toBe(1);
+  await evaluate('image:sha256:one'); await evaluate('image:sha256:one'); expect(generations).toBe(2);
+  await evaluate('image:sha256:two'); await evaluate('image:sha256:two'); expect(generations).toBe(3);
+  await evaluate(); expect(generations).toBe(3);
+  expect(f.stderr).toEqual([]);
 });

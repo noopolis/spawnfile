@@ -1,5 +1,5 @@
 import { lstat, realpath, readdir } from 'node:fs/promises';
-import { join, posix, resolve } from 'node:path';
+import { basename, dirname, join, posix, resolve } from 'node:path';
 import type { SubjectStart } from '../../../contracts/execution.js';
 import { containerPaths, parseNativeLaunch, readPrivateFile, sha256, within, type NativeLaunch, type VerifiedNativeLaunch, type NativeMount } from '../receipt/index.js';
 
@@ -10,7 +10,7 @@ export function nativeMounts(launch: NativeLaunch): NativeMount[] {
 }
 
 /** Only fresh subtrees explicitly projected by trusted preparation enter the subject. */
-export async function loadNativeLaunch(input: SubjectStart): Promise<VerifiedNativeLaunch> {
+export async function loadNativeLaunch(input: SubjectStart, child = false): Promise<VerifiedNativeLaunch> {
   const receiptFile = join(input.runtimeHomePath, 'native-launch.json');
   const launch = parseNativeLaunch(JSON.parse(await readPrivateFile(receiptFile, 65536)));
   const workspace = await realpath(input.workspacePath);
@@ -61,7 +61,9 @@ export async function loadNativeLaunch(input: SubjectStart): Promise<VerifiedNat
     }
     writableSources.push(source);
     if (source !== workspace) {
-      if (!within(runtime, source) || source === runtime || within(source, control) || within(control, source) ||
+      const childData = child && basename(workspace) === 'workspace' && launch.projections.some(row =>
+        row.source === source && ['home', 'memory', 'state'].includes(row.role) && source === join(dirname(workspace), row.role));
+      if ((!within(runtime, source) && !childData) || source === runtime || within(source, control) || within(control, source) ||
           [launch.config, launch.tokenFile, launch.envFile].some(path => within(source, path))) {
         throw new Error('Native projection must be fresh trial data and exclude controls');
       }

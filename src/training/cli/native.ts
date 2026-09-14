@@ -27,7 +27,7 @@ export function resourceMappings(args: CliArguments): ResourceMapping[] {
 }
 
 /** File selection only; deliberately has no runtime or inference construction. */
-export async function prepareInputs(args: CliArguments, io: CliIO) {
+export async function prepareInputs(args: CliArguments, io: CliIO, executionIdentity?: string) {
   const runtime = one(args, 'runtime');
   if (runtime !== 'codex' && runtime !== 'daimon') throw new Error('Supported native runtimes: codex, daimon');
   const model = one(args, 'model');
@@ -35,7 +35,7 @@ export async function prepareInputs(args: CliArguments, io: CliIO) {
   const out = resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/paideia' : undefined));
   const candidate = await snapshotCandidate({ sourceRoot, resources: resourceMappings(args) });
   const judges = pairs(args.flags.judge ?? []);
-  const datasets = new CliDatasets(judges, io.cwd, {}, judgeVersions(args.training), args.frozenDataset);
+  const datasets = new CliDatasets(judges, io.cwd, {}, judgeVersions(args.training, executionIdentity, Object.keys(judges)), args.frozenDataset);
   return { runtime: runtime as 'codex' | 'daimon', model, sourceRoot, out, candidate, judges, datasets,
     citationRepairs: judgeCitationRepairs(args, judges),
     maxTrials: count(args, 'max-trials', 20, 10000),
@@ -45,7 +45,7 @@ export async function prepareInputs(args: CliArguments, io: CliIO) {
 
 export async function prepareCliInputs(args: CliArguments, io: CliIO, dependencies: CliDependencies) {
   return args.flags['spawnfile-context']
-    ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile) : await prepareInputs(args, io);
+    ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile) : await prepareInputs(args, io, dependencies.spawnfile?.inferenceExecutionIdentity);
 }
 
 export async function prepareNative(args: CliArguments, io: CliIO, dependencies: CliDependencies, timeoutMs: number,
@@ -64,7 +64,8 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
     const context = inputs.context;
     prepareEnvironment = (paths, signal, trial) => dependencies.spawnfile!.prepareEnvironment(paths, signal, trial, context);
   }
-  return { ...inputs, adapter, inference, prepareEnvironment, cacheRoots,
+  const subjectRoot = 'context' in inputs ? dependencies.spawnfile!.subjectRoot : undefined;
+  return { ...inputs, adapter, inference, prepareEnvironment, cacheRoots, subjectRoot,
     registry: createEvaluationRegistry(),
     evaluation: { judges: configured.judges,
       embeddings: {}, readText: (path: string) => datasets.readCriterion(path) },
