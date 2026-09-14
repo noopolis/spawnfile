@@ -25,14 +25,14 @@ export const registerTrainCommand = (
   for (const name of forwarded) {
     const flag = `--${name} <value>`;
     if (repeated.has(name)) command.option(flag, `Paideia ${name}; repeatable`, (value: string, previous: string[]) => [...previous, value], []);
-    else if (["train", "test"].includes(name)) command.requiredOption(flag, `Paideia ${name}`);
+    else if (name === "train") command.requiredOption(flag, `Paideia ${name}`);
     else command.option(flag, `Paideia ${name}`);
   }
   command.action(async (inputPath: string, options: Record<string, string | string[] | boolean | undefined>) => {
     if (options.dryRun !== true && typeof options.out !== "string") {
       throw new SpawnfileError("validation_error", "Actual training requires --out; dry-run does not write an output directory");
     }
-    const timeout = options.timeoutMs === undefined ? 180_000 : Number(options.timeoutMs);
+    const timeout = options.timeoutMs === undefined ? 3_600_000 : Number(options.timeoutMs);
     if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 3_600_000 ||
       (options.timeoutMs !== undefined && !/^\d+$/u.test(String(options.timeoutMs)))) {
       throw new SpawnfileError("validation_error", "--timeout-ms must be an integer from 1 to 3600000");
