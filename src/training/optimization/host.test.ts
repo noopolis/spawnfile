@@ -86,3 +86,27 @@ describe('host-owned native trial and proposal boundary', () => {
     await expect(host.handle(evaluateRequest('two', start.components), signal)).rejects.toThrow('fresh native captures');
   });
 });
+it('retains failed inference attempts without sending provider evidence to Python', async () => {
+  const { InferenceFailure } = await import('../inference/index.js');
+  const { host, options, start } = hostFixture();
+  const attempts = [{ id: 'receipt', ordinal: 1, providerId: 'p', requestedModel: 'small', responseModel: null,
+    responseRoute: null, outcome: 'failed' as const, failureKind: 'quota' as const, startedAt: 'start', completedAt: 'end', usage: null }];
+  options.generate = async () => { throw new InferenceFailure('quota', 'unavailable', { attempts }); };
+  await expect(host.handle(generateRequest('failed', start.components), new AbortController().signal)).rejects.toThrow('unavailable');
+  expect(host.inferenceAttempts).toEqual(attempts);
+});
+it('keeps settled attempt receipts when response validation or an outer abort rejects', async () => {
+  const attempts = [{ id: 'receipt', ordinal: 1, providerId: 'p', requestedModel: 'small', responseModel: null,
+    responseRoute: null, outcome: 'completed' as const, failureKind: null, startedAt: 'start', completedAt: 'end', usage: null }];
+  for (const cancel of [false, true]) {
+    const { host, options, start } = hostFixture();
+    const controller = new AbortController();
+    options.generate = async () => {
+      if (cancel) controller.abort();
+      return { text: '', model: 'm', route: 'p', usage: null, attempts };
+    };
+    await expect(host.handle(generateRequest('rejected', start.components), controller.signal)).rejects.toThrow();
+    await Promise.resolve();
+    expect(host.inferenceAttempts).toEqual(attempts);
+  }
+});

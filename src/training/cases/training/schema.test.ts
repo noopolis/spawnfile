@@ -1,0 +1,90 @@
+import { describe, expect, it } from 'vitest';
+import { stringify } from 'yaml';
+import { parseDatasetYaml, resolveDataset } from '../index.js';
+import { trainingJudgeVersions, validateTrainingConfiguration } from './index.js';
+
+const config = {
+  models: { cheap: { provider: 'grok-subscription', model: 'grok-fast' },
+    local: { provider: 'ollama', model: 'local-model', endpoint: 'http://localhost:11434' } },
+  judges: { prose: { model: 'cheap', fallbacks: ['local'], attempts: 2, timeout_ms: 1000,
+    citation_repairs: 1, template: { language: 'jinja', text: 'Check {{ rubric }}.' } } },
+  optimizer: { model: 'cheap' }, budget: { max_trials: 12, max_proposals: 3, timeout_ms: 10000 },
+  cache: { mode: 'exact', max_entries: 100 }, test: 'test.paideia.yaml', validation_groups: ['validation'], seed: 0,
+};
+const dataset = (training?: unknown) => ({ schema: 'paideia.dataset.v1', id: 'example',
+  ...(training ? { training } : {}), checks: [{ id: 'prose', eval: 'llm-rubric', input: 'output.text',
+    judge: 'prose', rubric: { prompt: 'No repetition.' }, minimum: 0.8 }],
+  records: [{ id: 'one', input: { prompt: 'Write.' } }] });
+
+describe('dataset-authored training configuration', () => {
+  it('preserves a standalone YAML configuration without sharing mutable objects', () => {
+    const parsed = parseDatasetYaml(stringify(dataset(config)));
+    const resolved = resolveDataset(parsed, { registry: { judges: trainingJudgeVersions(parsed.dataset.training!) } });
+    expect(resolved.training).toEqual(config);
+    resolved.training!.models.cheap!.model = 'changed';
+    expect(parsed.dataset.training!.models.cheap!.model).toBe('grok-fast');
+    expect(validateTrainingConfiguration({ models: { x: { provider: 'claude-subscription', model: 'haiku' } },
+      judges: { plain: { model: 'x', citation_repairs: 0 } }, cache: { mode: 'off' } })).toBeDefined();
+  });
+  it('does not append an authored identity that is already registered', () => {
+    const registry = { judges: trainingJudgeVersions(validateTrainingConfiguration(config)) };
+    const configured = resolveDataset(parseDatasetYaml(stringify(dataset(config))), { registry });
+    const inherited = resolveDataset(parseDatasetYaml(stringify(dataset())), { registry });
+    expect(configured.sharedPlanDigest).toBe(inherited.sharedPlanDigest);
+    expect(configured.registryVersions).toEqual(inherited.registryVersions);
+  });
+  it('does not claim a declared judge is an installed evaluator', () => {
+    expect(() => resolveDataset(parseDatasetYaml(stringify(dataset(config))))).toThrow(/judge/);
+  });
+  it('tracks model, prompt and route policy changes but excludes optimization controls', () => {
+    const initial = validateTrainingConfiguration(config);
+    const identity = trainingJudgeVersions(initial);
+    for (const mutate of [
+      (value: typeof initial) => { value.models.cheap!.model = 'different'; },
+      (value: typeof initial) => { value.judges!.prose!.template!.text = 'Different {{ rubric }}'; },
+      (value: typeof initial) => { value.judges!.prose!.attempts = 1; },
+      (value: typeof initial) => { value.models.local!.endpoint = 'http://another:11434'; },
+    ]) {
+      const changed = structuredClone(initial);
+      mutate(changed);
+      expect(trainingJudgeVersions(changed)).not.toEqual(identity);
+    }
+    const budgetOnly = validateTrainingConfiguration(config);
+    budgetOnly.budget!.max_trials = 99;
+    expect(trainingJudgeVersions(budgetOnly)).toEqual(identity);
+    expect(trainingJudgeVersions({ models: initial.models })).toEqual({});
+    expect(trainingJudgeVersions({ models: initial.models, judges: { simple: { model: 'cheap' } } }).simple!.version)
+      .toMatch(/^paideia.authored-judge.v1:sha256:/);
+    initial.models.cheap!.model = 'changed';
+    const resolve = (training: unknown) => resolveDataset(parseDatasetYaml(stringify(dataset(training))), {
+      registry: { judges: trainingJudgeVersions(validateTrainingConfiguration(training)) },
+    });
+    expect(resolve(initial).sharedPlanDigest).not.toBe(resolve(config).sharedPlanDigest);
+    const fixedRegistry = { judges: { prose: { version: 'runtime-v1' } } };
+    const fixedResolve = (training: unknown) => resolveDataset(parseDatasetYaml(stringify(dataset(training))), {
+      registry: fixedRegistry,
+    });
+    expect(fixedResolve(initial).sharedPlanDigest).not.toBe(fixedResolve(config).sharedPlanDigest);
+    expect(fixedRegistry.judges.prose.version).toBe('runtime-v1');
+  });
+  it.each([
+    { unexpected: true }, { models: {} }, { models: { x: { provider: 'api', model: 'x' } } },
+    { models: { x: { provider: 'ollama', model: '' } } },
+    ...['ftp://host', 'http://user:password@host', 'http://host?secret=x', 'http://host#x', 'bad'].map(endpoint =>
+      ({ models: { x: { provider: 'ollama', model: 'x', endpoint } } })),
+    { models: { x: { provider: 'grok-subscription', model: 'x', endpoint: 'http://host' } } },
+    { judges: { x: { model: 'missing' } } }, { judges: { x: { model: 'cheap', fallbacks: ['cheap'] } } },
+    { judges: { x: { model: 'cheap', fallbacks: ['local', 'local'] } } },
+    { judges: { x: { model: 'cheap', attempts: 0 } } }, { judges: { x: { model: 'cheap', attempts: 1.5 } } },
+    { judges: { x: { model: 'cheap', attempts: 11 } } },
+    { judges: { x: { model: 'cheap', attempts: 2 } } }, { judges: { x: { model: 'cheap', timeout_ms: 0 } } },
+    { judges: { x: { model: 'cheap', citation_repairs: 2 } } },
+    { judges: { x: { model: 'cheap', template: { language: 'javascript', text: 'code' } } } },
+    { optimizer: { model: 'cheap', template: {} } }, { budget: { max_trials: -1 } },
+    { budget: { max_cost: 10 } }, { budget: { max_trials: 10001 } }, { budget: { max_proposals: 1001 } }, { cache: { mode: 'semantic' } }, { cache: { mode: 'exact', max_entries: 0 } },
+    { cache: { mode: 'exact', max_entries: 10001 } },
+    { test: '../secret.yaml' }, { validation_groups: ['a', 'a'] }, { seed: -1 },
+  ])('rejects unsupported or ambiguous controls: %j', override => {
+    expect(() => parseDatasetYaml(stringify(dataset({ ...config, ...override })))).toThrow();
+  });
+});

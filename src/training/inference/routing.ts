@@ -1,0 +1,93 @@
+import { randomUUID } from 'node:crypto';
+import type { InferenceAttempt, InferenceProvider, InferenceRequest, InferenceResult } from '../contracts/execution.js';
+import { immutableAttempts, InferenceFailure } from './failure.js';
+
+export interface InferenceRoute { provider: InferenceProvider; model: string }
+export interface RoutedInferenceOptions {
+  id: string;
+  routes: readonly InferenceRoute[];
+  maxAttempts: number;
+  timeoutMs: number;
+  attemptTimeoutMs?: number;
+  /** Trusted durable sink; failure stops the route before another generation. */
+  observeAttempt?: (attempt: Readonly<InferenceAttempt>) => void | Promise<void>;
+}
+
+export function createRoutedInference(options: RoutedInferenceOptions): InferenceProvider {
+  if (!options.id.trim() || !options.routes.length || !Number.isSafeInteger(options.maxAttempts) ||
+    options.maxAttempts < 1 || options.maxAttempts > options.routes.length) throw new Error('Invalid inference route budget');
+  for (const ms of [options.timeoutMs, options.attemptTimeoutMs ?? options.timeoutMs]) {
+    if (!Number.isSafeInteger(ms) || ms < 1 || ms > 2_147_483_647) throw new Error('Invalid inference time budget');
+  }
+  const routes = options.routes.map(({ provider, model }) => {
+    if (!provider.id.trim() || !model.trim() || model.startsWith('-') ||
+      provider.capabilities.tools !== 'disabled') throw new Error('Explicit tool-free routes are required');
+    return Object.freeze({ provider, model });
+  });
+  const { maxAttempts, timeoutMs, attemptTimeoutMs = timeoutMs, observeAttempt } = options;
+  return {
+    id: options.id,
+    capabilities: { tools: 'disabled', billing: routes.every(route => route.provider.capabilities.billing === routes[0]!.provider.capabilities.billing) ? routes[0]!.provider.capabilities.billing : 'mixed', temperature: false, seed: false },
+    async generate(request) {
+      if (request.temperature !== undefined || request.seed !== undefined) throw new InferenceFailure('unsupported', 'Routed inference does not support sampling controls');
+      if (!request.prompt.trim()) throw new InferenceFailure('unsupported', 'Inference prompt must not be empty');
+      const attempts: InferenceAttempt[] = [];
+      const deadline = Date.now() + timeoutMs;
+      for (let ordinal = 0; ordinal < maxAttempts; ordinal++) {
+        if (request.signal?.aborted) throw new InferenceFailure('cancelled', 'Routed inference cancelled', { attempts });
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) throw new InferenceFailure('timeout', 'Routed inference time budget exhausted', { attempts });
+        const route = routes[ordinal]!;
+        const startedAt = new Date().toISOString();
+        let result: InferenceResult | undefined;
+        let failure: InferenceFailure | undefined;
+        try { result = await generateBounded(route, request, Math.min(remaining, attemptTimeoutMs)); }
+        catch (error) {
+          failure = error instanceof InferenceFailure ? error : new InferenceFailure('unknown', 'Inference provider failed without a classified refusal');
+        }
+        const attempt = immutableAttempts([{ id: randomUUID(), ordinal: ordinal + 1,
+          providerId: route.provider.id, requestedModel: route.model,
+          responseModel: result === undefined ? failure!.responseModel : result.modelBasis === 'requested-assumption' ? null : result.model,
+          responseRoute: result?.route ?? failure?.responseRoute ?? null,
+          outcome: result === undefined ? 'failed' : 'completed', failureKind: failure?.kind ?? null,
+          startedAt, completedAt: new Date().toISOString(), usage: result?.usage ?? failure?.usage ?? null,
+        }])[0]!;
+        attempts.push(attempt);
+        try { if (observeAttempt !== undefined) await persistBounded(() => observeAttempt(attempt), deadline - Date.now(), request.signal); }
+        catch { throw new InferenceFailure('unknown', 'Inference audit persistence failed', { attempts }); }
+        if (result !== undefined) return { ...result, attempts: immutableAttempts(attempts) };
+        if (!['quota', 'transport', 'unavailable'].includes(failure!.kind) || ordinal + 1 === maxAttempts) {
+          throw new InferenceFailure(failure!.kind, `Routed inference stopped (${failure!.kind})`, { attempts });
+        }
+      }
+      throw new Error('Unreachable inference route state');
+    },
+  };
+}
+
+async function generateBounded(route: InferenceRoute, request: InferenceRequest, timeoutMs: number): Promise<InferenceResult> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let interrupt!: () => void;
+  const boundary = new Promise<never>((_resolve, reject) => {
+    interrupt = () => { controller.abort(); reject(new InferenceFailure('cancelled', 'Inference cancelled')); };
+    request.signal?.addEventListener('abort', interrupt, { once: true });
+    timer = setTimeout(() => { controller.abort(); reject(new InferenceFailure('timeout', 'Inference attempt time budget exhausted')); }, timeoutMs);
+  });
+  try { return await Promise.race([route.provider.generate({ ...request, model: route.model, signal: controller.signal }), boundary]); }
+  finally { clearTimeout(timer); request.signal?.removeEventListener('abort', interrupt); }
+}
+
+/** An unavailable audit store must not leave an unattended route running forever. */
+async function persistBounded(write: () => void | Promise<void>, timeoutMs: number, signal?: AbortSignal): Promise<void> {
+  if (timeoutMs <= 0 || signal?.aborted) throw new Error('Audit boundary expired');
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let interrupt!: () => void;
+  const boundary = new Promise<never>((_resolve, reject) => {
+    interrupt = () => reject(new Error('Audit cancelled'));
+    signal?.addEventListener('abort', interrupt, { once: true });
+    timer = setTimeout(() => reject(new Error('Audit deadline expired')), timeoutMs);
+  });
+  try { await Promise.race([Promise.resolve().then(write), boundary]); }
+  finally { clearTimeout(timer); signal?.removeEventListener('abort', interrupt); }
+}

@@ -68,7 +68,10 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
     if (terminal === undefined) throw new Error('DSPy bridge omitted its terminal optimization result');
     signal.throwIfAborted();
     await verifyDspyResult(terminal, host, signal);
-    return terminal;
+    return { ...terminal, provenance: { ...terminal.provenance,
+      generations: terminal.provenance.generations.map((generation, index) => ({ ...generation,
+        ...(host.generations[index]!.attempts === undefined ? {} : { attempts: host.generations[index]!.attempts }) })),
+    } };
   } catch (error) {
     const cancelled = signal.aborted;
     controller.abort();
@@ -77,7 +80,7 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
     throw new DspyOptimizationError(timedOut ? 'timeout' : cancelled ? 'cancelled' : 'optimization_failed',
       error instanceof Error ? error.message : String(error), {
         evaluations: host.evaluations, proposals: host.proposals,
-        hostWork: host.pending === 0 ? 'settled' : 'incomplete', stop: stop ?? processResult?.stop,
+        hostWork: host.pending === 0 ? 'settled' : 'incomplete', inferenceAttempts: host.inferenceAttempts, stop: stop ?? processResult?.stop,
       });
   } finally { clearTimeout(timer); }
 }

@@ -20,10 +20,10 @@ describe('explicit DSPy subscription inference', () => {
     expect(result).toEqual({ text: 'observed text', model: 'actual-model', usage: null, route: 'native-subscription' });
   });
 
-  it.each([{ billing: 'api' }, { tools: 'enabled' }, { temperature: true }, { seed: true }])('rejects an incompatible route: %j', (patch) => {
+  it.each([{ tools: 'enabled' }])('rejects an incompatible route: %j', (patch) => {
     const selected = provider();
     Object.assign(selected.capabilities, patch);
-    expect(() => createDspyGeneration(selected, 'model')).toThrow('subscription route');
+    expect(() => createDspyGeneration(selected, 'model')).toThrow('inference route');
     expect(selected.generate).not.toHaveBeenCalled();
   });
 
@@ -51,4 +51,19 @@ describe('explicit DSPy subscription inference', () => {
     selected.generate = vi.fn(async () => ({ text: '', model: '', usage: null, route: '' }));
     await expect(createDspyGeneration(selected, 'model')(request(), new AbortController().signal)).rejects.toThrow();
   });
+});
+
+it.each(['local', 'mixed', 'api'] as const)('accepts explicitly selected %s providers without imposing sampling controls', async billing => {
+  const selected = provider(); selected.capabilities.billing = billing;
+  selected.capabilities.temperature = true; selected.capabilities.seed = true;
+  const result = await createDspyGeneration(selected, 'model')(request(), new AbortController().signal);
+  expect(result.text).toBe('observed text');
+});
+it('retains route evidence when a completed generation fails optimizer response validation', async () => {
+  const selected = provider();
+  const attempts = [{ id: 'receipt', ordinal: 1, providerId: 'local', requestedModel: 'small', responseModel: null,
+    responseRoute: 'local', outcome: 'completed' as const, failureKind: null, startedAt: 'start', completedAt: 'end', usage: null }];
+  selected.generate = async () => ({ text: '', model: 'requested', modelBasis: 'requested-assumption', route: 'local', usage: null, attempts });
+  await expect(createDspyGeneration(selected, 'model')(request(), new AbortController().signal))
+    .rejects.toMatchObject({ kind: 'protocol', attempts, responseModel: null, responseRoute: 'local' });
 });

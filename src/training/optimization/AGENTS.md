@@ -19,7 +19,11 @@ Owns candidate proposals, train feedback, editable components and selection.
 `host.ts` counts actual callback attempts and checks editable components/splits.
 `evidence.ts` verifies every selected candidate against complete observed validation
 captures. `inference.ts` maps the exact system/user reflection pair to an explicit
-tool-free subscription provider; unsupported role sequences or controls fail.
+tool-free inference provider; unsupported role sequences or controls fail. Models and subscription/local/API routes
+are explicitly selected by the caller. Host attempt receipts never enter Python
+messages: the strict wire response contains final generation metadata only. After
+wire provenance verification, results gain trusted host attempt receipts; failed
+optimization evidence retains classified attempt receipts too.
 
 Consume callbacks for trials and candidate policy; never import experiments'
 implementation. This module accepts no sealed-test role or data. Tests exercise

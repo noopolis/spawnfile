@@ -1,3 +1,4 @@
+import { configuredCostRoutes } from './training/index.js';
 import { resolve } from 'node:path';
 import { parseDocument } from 'yaml';
 import { candidateComponents } from '../candidates/index.js';
@@ -23,8 +24,7 @@ export async function dryRunTraining(args: CliArguments, io: CliIO, dependencies
   if (!candidateComponents(native.candidate).length) throw new Error('No declared editable components');
   const plan = planTrainingCost({ train, test, validationGroups: args.flags['validation-group'],
     subjectModel: native.model, optimizerModel: one(args, 'optimizer-model'),
-    judges: Object.fromEntries(Object.entries(native.judges).map(([name, model]) => [name,
-      { model, provider: 'claude-subscription', citationRepairs: native.citationRepairs[name]! }])),
+    ...configuredCostRoutes(args, native.judges, native.citationRepairs),
     maxTrials: native.maxTrials, maxProposals: count(args, 'max-proposals', 3, 1000), ...readCostConfig(args, io) });
   io.stdout(`${JSON.stringify({ ...plan, candidateId: native.candidate.id,
     ...('context' in native ? { spawnfile: native.context, readiness: native.readiness } : {}) })}\n`);

@@ -1,4 +1,4 @@
-import type { InferenceResult, StopReceipt } from '../contracts/execution.js';
+import type { InferenceAttempt, InferenceResult, StopReceipt } from '../contracts/execution.js';
 import type { DspyEvaluation, DspyEvaluateParams, DspyGenerateParams } from './protocol.js';
 
 export interface DspyOptimizationOptions {
@@ -27,6 +27,7 @@ export interface DspyFailureEvidence {
   evaluations: number;
   proposals: number;
   hostWork: 'settled' | 'incomplete';
+  inferenceAttempts?: readonly InferenceAttempt[];
   stop?: StopReceipt;
 }
 

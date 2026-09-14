@@ -6,13 +6,18 @@ import { validateBindingReferences } from './turn-bindings.js';
 import { validateReferenceIsolation } from './splits.js';
 import { validateDataset, validateRecord } from './schema.js';
 import { canonical, fail, object } from './validation.js';
+import { trainingJudgeVersions } from './training/index.js';
 
 export function resolveDataset(document: DatasetDocument, options: ResolutionOptions = {}): ResolvedDataset {
   const dataset = validateDataset(document.dataset);
   if (options.subject !== undefined && dataset.subject !== undefined && options.subject !== dataset.subject) {
     fail('$.subject', 'does not match the selected native subject');
   }
-  const registry = options.registry ?? {};
+  const registry = { ...options.registry, judges: { ...options.registry?.judges } };
+  for (const [name, authored] of Object.entries(dataset.training ? trainingJudgeVersions(dataset.training) : {})) {
+    const installed = registry.judges[name];
+    if (installed && installed.version !== authored.version) registry.judges[name] = { version: `${installed.version}|${authored.version}` };
+  }
   const versions: Record<string, string> = {};
   const criterionFileDigests: Record<string, string> = {};
   const context = { registry, versions, criterionFileDigests, criterionFiles: new Map<string, Uint8Array>(),
@@ -60,6 +65,7 @@ export function resolveDataset(document: DatasetDocument, options: ResolutionOpt
   validateReferenceIsolation(records);
   return {
     schema: dataset.schema, id: dataset.id, ...(dataset.subject ? { subject: dataset.subject } : {}), records,
+    ...(dataset.training ? { training: structuredClone(dataset.training) } : {}),
     sharedStages, live, sharedPlanDigest: `sha256:${createHash('sha256').update(canonical({ stages: sharedStages, live, versions: sharedVersions })).digest('hex')}`,
     sourceDigest: document.sourceDigest, sourceName: document.sourceName, registryVersions: versions, criterionFileDigests,
   };

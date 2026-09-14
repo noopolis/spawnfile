@@ -58,11 +58,12 @@ export async function createProgressJournal(options: ProgressOptions) {
       } else if (event.type === 'optimizer.generation.completed') {
         const generation = payload as unknown as OptimizerGeneration & { attempt: number };
         generations.set(generation.attempt, { model: generation.model, usage: generation.usage,
-          modelBasis: generation.modelBasis, route: generation.route, outcome: 'completed' });
+          modelBasis: generation.modelBasis, route: generation.route, attempts: generation.attempts, outcome: 'completed' });
         await write(event.type, { attempt: generation.attempt, model: generation.model,
           modelBasis: generation.modelBasis, route: generation.route });
       } else if (event.type === 'optimizer.generation.failed') {
-        generations.set(payload.attempt as number, { model: null, usage: null, outcome: 'generation-error' });
+        const generation = payload as unknown as Partial<OptimizerGeneration>;
+        generations.set(payload.attempt as number, { model: null, usage: null, attempts: generation.attempts, outcome: 'generation-error' });
         await write(event.type, { attempt: payload.attempt, outcome: 'generation-error' });
       } else if (event.type === 'training.started') {
         await write(event.type, { budget: payload.budget });

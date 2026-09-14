@@ -1,6 +1,9 @@
+import type { TrainingConfiguration } from '../contracts/training-config.js';
 export interface CliArguments {
   command: 'help' | 'validate' | 'evaluate' | 'train' | 'view';
   dataset?: string;
+  training?: TrainingConfiguration;
+  frozenDataset?: { path: string; sourceDigest: string };
   flags: Readonly<Record<string, readonly string[]>>;
 }
 
@@ -16,7 +19,7 @@ export const helpText = `Paideia — explicit local native-agent experiments
 validate DATASET [--judge NAME=MODEL]
 view OUT_DIRECTORY [--port PORT] [--timeout-ms N]
 evaluate DATASET --runtime codex|daimon --model MODEL --instructions FILE --out DIRECTORY
-train --train DATASET --test DATASET --runtime codex|daimon --model MODEL
+train --train DATASET [--test DATASET] --runtime codex|daimon --model MODEL
       --instructions FILE --editable FILE --optimizer-model MODEL --bridge-command EXECUTABLE --out DIRECTORY
 
 Repeat --instructions FILE, --supporting FILE or --locked FILE to select Markdown resources.
@@ -26,6 +29,10 @@ Native skills, Spawnfile compilation and custom setup recipes require a public A
 Repeat --resource NAME=DIRECTORY for hash-pinned dataset inputs; --judge NAME=MODEL uses Claude subscriptions.
 --judge-citation-repairs NAME=0|1 selects one optional citation repair for a declared judge (default 0).
 This never retries valid quality failures, authentication/quota failures or malformed JSON.
+Dataset training controls declare named models, focused judges, fallbacks, templates, cache, optimizer, test and budgets.
+YAML test paths are relative to the training dataset; scalar CLI flags override authored defaults.
+Configured judge policies cannot be replaced by --judge or conflicting citation repair flags.
+The optimizer bridge defaults to the installed paideia-dspy executable for YAML-configured training.
 Train accepts repeated --validation-group GROUP, or freezes an internal group partition.
 --max-trials N (default 20, ceiling 10000) includes conservative reserved sealed-test trials.
 --max-proposals N (default 3, ceiling 1000), --seed N (GEPA sampling only).

@@ -299,3 +299,20 @@ describe('recorded experiment cost report', () => {
     expect(report.apiEquivalentUsd!.low).toBeCloseTo(0.00714);
   });
 });
+
+it('accounts for optimizer fallback attempts instead of adding the wrapper usage again', () => {
+  const report = summarizeCosts([trial()], { ...options, optimizerGenerations: [{
+    model:'judge-model',usage,attempts:[
+      {id:'first',ordinal:1,providerId:'primary',requestedModel:'judge-model',responseModel:'judge-model',responseRoute:'subscription',
+        outcome:'failed',failureKind:'quota',startedAt:'start',completedAt:'end',usage},
+      {id:'second',ordinal:2,providerId:'fallback',requestedModel:'other-model',responseModel:null,responseRoute:'local',
+        outcome:'completed',failureKind:null,startedAt:'start',completedAt:'end',usage},
+    ],
+  }] });
+  const entries = report.entries.filter(entry=>entry.role==='optimizer');
+  expect(entries).toHaveLength(2);
+  expect(entries.map(entry=>entry.id)).toEqual(['optimizer:first','optimizer:second']);
+  expect(entries[0]!.usage).toEqual(usage);
+  expect(entries[1]!).toMatchObject({model:null,modelBasis:'unknown'});
+  expect(report.completeness).toBe('incomplete');
+});

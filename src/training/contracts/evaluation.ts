@@ -1,5 +1,5 @@
 import type { CheckNode, EvaluatorDefinition, DataMap } from './dataset.js';
-import type { Observation, ObservationCoverage, InferenceProvider, Usage } from './execution.js';
+import type { Observation, ObservationCoverage, InferenceProvider, Usage, InferenceFailureKind } from './execution.js';
 
 export type Verdict = 'pass' | 'fail' | 'unknown' | 'error' | 'skipped';
 export type Finality = 'provisional' | 'final';
@@ -19,8 +19,23 @@ export interface JudgeCall {
   citationRepairs?: 0 | 1;
   /** A citation-only protocol repair of this earlier actual attempt. */
   repairOf?: string;
+  failureKind?: InferenceFailureKind;
+  fallbackOf?: string;
 }
-export interface JudgeRoute { provider: InferenceProvider; model: string; citationRepairs?: 0 | 1 }
+export interface CachedJudgment { response: string; sourceCallId: string }
+/** Host-owned, bounded evaluation cache; no subject access and no infrastructure errors. */
+export interface JudgeCache {
+  get(key: string): CachedJudgment | undefined;
+  put(key: string, value: CachedJudgment): void;
+}
+export interface JudgeRoute {
+  provider: InferenceProvider;
+  model: string;
+  citationRepairs?: 0 | 1;
+  identity?: string;
+  template?: { language: 'jinja'; text: string };
+  cache?: JudgeCache;
+}
 export interface JudgeProtocolViolation {
   code: 'invalid-json' | 'invalid-judgment' | 'invalid-citations' | 'invalid-citation-repair';
   citations?: { index: number; source: string; reason: 'unknown-source' | 'quote-not-found' }[];
@@ -37,6 +52,7 @@ export interface EvaluationResult {
   children?: EvaluationResult[];
   usage?: Usage[];
   judgeCalls?: JudgeCall[];
+  cache?: { key: string; sourceCallId: string };
 }
 export interface ArtifactSnapshot {
   name: string;

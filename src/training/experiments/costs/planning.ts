@@ -5,6 +5,13 @@ import { resolveCostAssumptions } from './assumptions.js';
 import { valueUsage } from './valuation.js';
 import type { CostAssumptions, ModelPrice, Range, TokenAssumption } from './types.js';
 
+export interface PlannedInferenceRoute {
+  model: string;
+  provider: string;
+  fallbacks?: readonly { model: string; provider: string }[];
+  attempts?: number;
+}
+
 export interface TrainingCostOptions {
   train: ResolvedDataset;
   validation?: ResolvedDataset;
@@ -12,7 +19,8 @@ export interface TrainingCostOptions {
   test: ResolvedDataset;
   subjectModel: string;
   optimizerModel: string;
-  judges: Readonly<Record<string, { model: string; provider: string; citationRepairs?: 0 | 1 }>>;
+  judges: Readonly<Record<string, PlannedInferenceRoute & { citationRepairs?: 0 | 1 }>>;
+  optimizerRoute?: PlannedInferenceRoute;
   maxTrials: number;
   maxProposals: number;
   assumptions?: Partial<CostAssumptions>;
@@ -37,7 +45,7 @@ export interface TrainingCostPlan {
   budget: { maxTrials: number; maxProposals: number; metricCalls: number; reservedTestTrials: number };
   datasetDigests: { train: string; test: string; validation?: string };
   /** Always emitted by current planning; absent only in older stored v1 plans. */
-  judgeRoutes?: Record<string, { model: string; provider: string; citationRepairs: 0 | 1 }>;
+  judgeRoutes?: Record<string, PlannedInferenceRoute & { citationRepairs: 0 | 1 }>;
   lines: PlannedCostLine[];
   apiEquivalentUsd: Range | null;
   pricedSubtotalUsd: Range;
@@ -50,7 +58,7 @@ export function planTrainingCost(options: TrainingCostOptions): TrainingCostPlan
   const judgeRoutes = Object.fromEntries(Object.entries(options.judges).map(([name, route]) => {
     const citationRepairs = route.citationRepairs === undefined ? 0 : route.citationRepairs;
     if (citationRepairs !== 0 && citationRepairs !== 1) throw new Error(`Invalid citation repair policy for judge ${name}`);
-    return [name, { model: route.model, provider: route.provider, citationRepairs }];
+    return [name, { ...route, citationRepairs }];
   }));
   for (const [value, max] of [[options.maxTrials, 10000], [options.maxProposals, 1000]]) {
     if (!Number.isSafeInteger(value) || value! < 1 || value! > max!) throw new Error('Invalid training cost budget');
@@ -90,6 +98,17 @@ export function planTrainingCost(options: TrainingCostOptions): TrainingCostPlan
     lines.push({ role, name, phase, model, provider, plannedCalls, tokensPerCall, apiEquivalentUsd, price: low.price });
   };
   const development = [...partition.train.records, ...partition.validation.records];
+  const addRoute = (role: 'judge' | 'optimizer', name: string, phase: PlannedCostLine['phase'],
+    route: PlannedInferenceRoute, calls: number, perCall: TokenAssumption) => {
+    const routes = [route, ...route.fallbacks ?? []];
+    const attempts = route.attempts ?? routes.length;
+    if (!Number.isSafeInteger(attempts) || attempts < 1 || attempts > routes.length) throw new Error('Invalid planned route attempt budget');
+    for (const [index, selected] of routes.slice(0, attempts).entries()) {
+      add(role, name, phase, selected.model, calls, perCall, selected.provider);
+      if (index && lines.at(-1)!.apiEquivalentUsd) lines.at(-1)!.apiEquivalentUsd!.low = 0;
+    }
+    if (attempts > 1) warnings.add(`${role} ${name}: reserves every permitted fallback attempt; fallback lower cost is zero and provider prefix-cache reuse is not guaranteed.`);
+  };
   add('subject', options.train.subject ?? 'subject', 'development', options.subjectModel, metricCalls, assumptions.subject);
   add('subject', options.train.subject ?? 'subject', 'held-out', options.subjectModel, reservedTestTrials, assumptions.subject);
   const developmentCounts = development.map(record => countChecks(record, omitCost));
@@ -103,10 +122,10 @@ export function planTrainingCost(options: TrainingCostOptions): TrainingCostPlan
     const testCalls = 2 * testCounts.reduce((sum, counts) => sum + (counts[name] ?? 0), 0);
     const attempts = 1 + route.citationRepairs;
     if (route.citationRepairs) warnings.add(`Judge ${name} reserves one citation repair per check; valid quality failures, authentication/quota failures and malformed JSON are not retried.`);
-    if (maxPerMetric) add('judge', name, 'development', route.model, metricCalls * maxPerMetric * attempts, perCall, route.provider);
-    if (testCalls) add('judge', name, 'held-out', route.model, testCalls * attempts, perCall, route.provider);
+    if (maxPerMetric) addRoute('judge', name, 'development', route, metricCalls * maxPerMetric * attempts, perCall);
+    if (testCalls) addRoute('judge', name, 'held-out', route, testCalls * attempts, perCall);
   }
-  add('optimizer', 'reflection', 'optimization', options.optimizerModel, options.maxProposals, assumptions.optimizer);
+  addRoute('optimizer', 'reflection', 'optimization', options.optimizerRoute ?? {model: options.optimizerModel, provider: 'claude-subscription'}, options.maxProposals, assumptions.optimizer);
   const pricedSubtotalUsd = lines.reduce((sum, line) => ({ low: sum.low + (line.apiEquivalentUsd?.low ?? 0),
     high: sum.high + (line.apiEquivalentUsd?.high ?? 0) }), { low: 0, high: 0 });
   return { schema: 'paideia.training-cost-plan.v1', modelCallsMade: 0,

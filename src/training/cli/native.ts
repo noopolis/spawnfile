@@ -1,8 +1,8 @@
+import { judgeVersions, createTrainingInference } from './training/index.js';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { createCodexAdapter, createDaimonAdapter } from '../adapters/index.js';
 import { snapshotCandidate, type ResourceMapping } from '../candidates/index.js';
-import { createClaudeInference } from '../inference/index.js';
 import { createEvaluationRegistry } from '../evaluation/index.js';
 import { count, judgeCitationRepairs, one, pairs, type CliArguments } from './arguments.js';
 import { CliDatasets } from './datasets.js';
@@ -35,7 +35,7 @@ export async function prepareInputs(args: CliArguments, io: CliIO) {
   const out = resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/paideia' : undefined));
   const candidate = await snapshotCandidate({ sourceRoot, resources: resourceMappings(args) });
   const judges = pairs(args.flags.judge ?? []);
-  const datasets = new CliDatasets(judges, io.cwd);
+  const datasets = new CliDatasets(judges, io.cwd, {}, judgeVersions(args.training), args.frozenDataset);
   return { runtime: runtime as 'codex' | 'daimon', model, sourceRoot, out, candidate, judges, datasets,
     citationRepairs: judgeCitationRepairs(args, judges),
     maxTrials: count(args, 'max-trials', 20, 10000),
@@ -56,7 +56,8 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
     ? dependencies.spawnfile!.createAdapter(inputs.context, { model, timeoutMs })
     : dependencies.adapter?.(runtime as 'codex' | 'daimon', { model, timeoutMs })
       ?? (runtime === 'codex' ? createCodexAdapter({ model, timeoutMs }) : createDaimonAdapter({ model, timeoutMs }));
-  const inference = dependencies.inference?.(timeoutMs) ?? createClaudeInference({ timeoutMs });
+  const configured = createTrainingInference(args, dependencies, timeoutMs, judges, inputs.citationRepairs);
+  const inference = configured.inference;
   let prepareEnvironment: StoredTrialOptions['prepareEnvironment'];
   if ('context' in inputs) {
     const context = inputs.context;
@@ -64,8 +65,7 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
   }
   return { ...inputs, adapter, inference, prepareEnvironment,
     registry: createEvaluationRegistry(),
-    evaluation: { judges: Object.fromEntries(Object.entries(judges).map(([name, model]) => [name,
-      { provider: inference, model, citationRepairs: inputs.citationRepairs[name]! }])),
+    evaluation: { judges: configured.judges,
       embeddings: {}, readText: (path: string) => datasets.readCriterion(path) },
   };
 }

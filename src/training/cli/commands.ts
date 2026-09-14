@@ -1,3 +1,5 @@
+import { configuredCostRoutes } from './training/index.js';
+import { authoredArguments, judgeVersions, validateAuthoredTemplates } from './training/index.js';
 import { randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { freezeCriteria, planTrainingCost, runStoredTrial, trainAgent, type StoredTrialOptions, type TrialReport } from '../experiments/index.js';
@@ -21,7 +23,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     const dataset = new CliDatasets(pairs(args.flags.judge ?? []), io.cwd, {
       registry: { preparations: dependencies.spawnfile?.preparations },
       unlockedSetupPaths: dependencies.spawnfile?.unlockedSetupPaths,
-    }).load(args.dataset!, false);
+    }, judgeVersions(args.training), args.frozenDataset).load(args.dataset!, false);
     io.stdout(`${JSON.stringify({ status: 'valid', datasetId: dataset.id, records: dataset.records.length,
       sourceDigest: dataset.sourceDigest, planDigest: dataset.sharedPlanDigest })}\n`);
     return 0;
@@ -41,8 +43,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   const costConfig = readCostConfig(args, io);
   const costPlan = test === undefined ? undefined : planTrainingCost({ train: dataset, test,
     subjectModel: inputs.model, optimizerModel: optimizerModel!, validationGroups: args.flags['validation-group'],
-    judges: Object.fromEntries(Object.entries(inputs.judges).map(([name, model]) => [name,
-      { model, provider: 'claude-subscription', citationRepairs: inputs.citationRepairs[name]! }])),
+    ...configuredCostRoutes(args, inputs.judges, inputs.citationRepairs),
     maxTrials: inputs.maxTrials, maxProposals, ...costConfig });
   const native = await prepareNative(args, io, dependencies, timeoutMs, inputs);
   signal.throwIfAborted();
@@ -132,7 +133,7 @@ export async function main(argv: readonly string[], io: CliIO, dependencies: Cli
   let timer: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
   try {
-    const args = parseArguments(argv);
+    const args = authoredArguments(parseArguments(argv), io);
     if (args.command === 'help') { io.stdout(helpText); return 0; }
     const timeoutMs = count(args, 'timeout-ms', 180000, 3600000);
     const deadline = new AbortController();
@@ -140,6 +141,7 @@ export async function main(argv: readonly string[], io: CliIO, dependencies: Cli
     timer.unref();
     const signal = io.signal === undefined ? deadline.signal : AbortSignal.any([deadline.signal, io.signal]);
     signal.throwIfAborted();
+    await validateAuthoredTemplates(args, signal);
     const code = await execute(args, io, dependencies, timeoutMs, signal);
     // A persisted completion is authoritative even if cancellation arrives while closing optional UI.
     return code;

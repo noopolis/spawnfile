@@ -119,3 +119,19 @@ describe('pure training cost plan', () => {
     expect(() => planTrainingCost(input)).toThrow('Missing judge');
   });
 });
+
+it('budgets every permitted optimizer route and leaves unknown rates explicit', () => {
+  const input = options();
+  input.optimizerRoute = { model: 'claude-fable-5-1', provider: 'claude-subscription',
+    fallbacks: [{ model: 'gpt-5.5', provider: 'other' }], attempts: 2 };
+  const plan = planTrainingCost(input);
+  const rows = plan.lines.filter(line => line.role === 'optimizer');
+  expect(rows).toHaveLength(2);
+  expect(rows.map(row => row.plannedCalls)).toEqual([2,2]);
+  expect(rows[1]!.apiEquivalentUsd!.low).toBe(0);
+  expect(rows[1]!.apiEquivalentUsd!.high).toBeGreaterThan(0);
+  input.optimizerRoute.fallbacks = [{ model: 'unpriced-local-model', provider: 'ollama' }];
+  expect(planTrainingCost(input)).toMatchObject({coverage:'partial',apiEquivalentUsd:null});
+  input.optimizerRoute.attempts = 3;
+  expect(() => planTrainingCost(input)).toThrow('attempt budget');
+});

@@ -1,5 +1,5 @@
 import type { EvaluationResult, JudgeCall } from '../../contracts/evaluation.js';
-import type { InferenceModelBasis, ObservationCoverage, Usage } from '../../contracts/execution.js';
+import type { InferenceAttempt, InferenceModelBasis, ObservationCoverage, Usage } from '../../contracts/execution.js';
 import type { TrialReport } from '../trials/index.js';
 import type { CostValuation, ModelPrice, Range } from './types.js';
 import { valueUsage } from './valuation.js';
@@ -11,6 +11,7 @@ export interface OptimizerGeneration {
   usage: Usage | null;
   route?: string;
   outcome?: string;
+  attempts?: readonly InferenceAttempt[];
 }
 export interface CostReportOptions {
   subjectModel: string;
@@ -78,7 +79,7 @@ function usageKey(usage: Usage): string {
 
 function callKey(call: JudgeCall): string {
   return JSON.stringify([call.id, call.judge, call.providerId, call.requestedModel, call.responseModel,
-    call.responseRoute, call.outcome, call.citationRepairs ?? 0, call.repairOf,
+    call.responseRoute, call.outcome, call.citationRepairs ?? 0, call.repairOf, call.failureKind, call.fallbackOf,
     call.usage === null ? null : usageKey(call.usage)]);
 }
 
@@ -216,6 +217,15 @@ export function summarizeCosts(trials: readonly TrialReport[], options: CostRepo
     } else append(entry);
   }
   for (const [index, generation] of (options.optimizerGenerations ?? []).entries()) {
+    if (generation.attempts?.length) {
+      for (const attempt of generation.attempts) append({
+        id: `optimizer:${attempt.id}`, role: 'optimizer', name: 'optimizer', model: attempt.responseModel,
+        requestedModel: attempt.requestedModel, providerId: attempt.providerId,
+        modelBasis: attempt.responseModel === null ? 'unknown' : 'provider-reported',
+        responseRoute: attempt.responseRoute, outcome: attempt.outcome, usage: attempt.usage,
+      });
+      continue;
+    }
     const actualModel = generation.modelBasis === 'requested-assumption' ? null : generation.model;
     append({ id: `optimizer:${index}`, role: 'optimizer', name: 'optimizer', model: actualModel,
       ...(generation.modelBasis === 'requested-assumption' && generation.model !== null ? { requestedModel: generation.model } : {}),

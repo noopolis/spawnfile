@@ -63,10 +63,11 @@ test('a paused budget and stale receipt cannot outrun a just-admitted execution'
     let publish!: () => void;
     const released = new Promise<void>(resolve => { publish = resolve; });
     publishing = released.then(async () => {
-      await writeFile(join(root, 'runtime', 'telemetry/turns.ndjson'), `${JSON.stringify(traceFixture())}\n`);
       await writeFile(join(root, 'control/usage.jsonl'), `${JSON.stringify({ v: 'noopolis.daimon.turn-usage.v1', agent: 'agent:writer',
         wake: executionId, engine: 'codex', at: '2026-09-13T00:00:01.000Z', input: 1, output: 1, cache_read: 0, total: 2, complete: true })}\n`);
       await writeFile(join(root, 'runtime/.codex/sessions/2026/09/13/rollout-unit.jsonl'), `${JSON.stringify({ type: 'turn_context', payload: { model: 'test-model-v1' } })}\n`);
+      // Closed telemetry is the fixture's publication barrier: all evidence exists first.
+      await writeFile(join(root, 'runtime', 'telemetry/turns.ndjson'), `${JSON.stringify(traceFixture())}\n`);
     });
     const host = {
       accept: async () => ({ state: 'accepted', acceptance_id: receiptFixture().acceptance_id }),
@@ -82,5 +83,6 @@ test('a paused budget and stale receipt cannot outrun a just-admitted execution'
     assert.ok(receiptReads >= 3, 'Closure rereads the durable receipt after terminal telemetry');
     assert.equal(result.receipt?.state, 'completed');
     assert.equal(result.native.usage[0]?.total, 2);
+    assert.equal(result.native.modelContexts.length, 1);
   } finally { await publishing; await rm(root, { recursive: true, force: true }); }
 });

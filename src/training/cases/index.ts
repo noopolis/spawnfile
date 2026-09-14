@@ -5,3 +5,4 @@ export { normalizeStages } from './plans.js';
 export { builtinEvaluatorDefinitions } from './builtin-evaluators.js';
 export { compileJsonSchema } from './json-schema.js';
 export { DatasetError } from './validation.js';
+export { validateTrainingConfiguration, trainingJudgeVersions } from './training/index.js';

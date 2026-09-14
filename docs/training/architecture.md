@@ -9,8 +9,8 @@ protected candidate/store interfaces, a real DSPy bridge and a local viewer. The
 formatting task on both Codex and Daimon using a frozen subscription-trained prompt.
 Canonical Spawnfile extraction and `spawnfile train` delegation are implemented
 through a registered isolated preparation. Native skills and memory-backed multi-wake
-Daimon trials remain unsupported; ordinary Markdown is implemented, template rendering
-is not. The native newsroom training acceptance has not completed.
+Daimon trials remain unsupported; ordinary Markdown is implemented. Judge templates use bounded Jinja rendering;
+candidate-resource template compilation remains unsupported. The native newsroom training acceptance has not completed.
 
 ```text
 YAML cases + candidate files + fixtures

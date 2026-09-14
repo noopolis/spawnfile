@@ -1,5 +1,6 @@
 import { parseDocument } from 'yaml';
 import { z } from 'zod';
+import type { InferenceAttempt } from '../contracts/execution.js';
 
 export const DSPY_SCHEMA = 'paideia.dspy.v1';
 export const DSPY_FRAME_BYTES = 4 * 1024 * 1024;
@@ -34,7 +35,16 @@ export const usageSchema = z.object({
   cacheWrite1hInputTokens: count.nullable().optional(),
   reasoningTokens: count.nullable(), source: id,
 }).strict().nullable();
-export const inferenceSchema = z.object({ text: z.string().min(1), model: id, usage: usageSchema, route: id, modelBasis }).strict();
+const inferenceAttemptSchema = z.object({
+  id, ordinal: z.number().int().positive(), providerId: id, requestedModel: id,
+  responseModel: id.nullable(), responseRoute: id.nullable(),
+  outcome: z.enum(['completed', 'failed']),
+  failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'protocol', 'cancelled', 'timeout', 'unsupported', 'unknown']).nullable(),
+  startedAt: id, completedAt: id, usage: usageSchema,
+}).strict();
+/** Host-only evidence. Attempts never cross the strict Python response protocol. */
+export const inferenceSchema = z.object({ text: z.string().min(1), model: id, usage: usageSchema, route: id, modelBasis,
+  attempts: z.array(inferenceAttemptSchema).optional() }).strict();
 export const evaluateParamsSchema = z.object({
   caseId: id, split: z.enum(['train', 'validation']), components: componentsSchema,
 }).strict();
@@ -68,7 +78,13 @@ export const errorSchema = z.object({ ...common, kind: z.literal('error'),
 export const messageSchema = z.union([requestSchema, resultSchema, errorSchema]);
 export type DspyStart = z.infer<typeof startSchema>;
 export type DspyRequest = z.infer<typeof requestSchema>;
-export type DspyResult = z.infer<typeof resultSchema>;
+type DspyWireResult = z.infer<typeof resultSchema>;
+/** Trusted host enrichment is added only after validating the unextended bridge result. */
+export type DspyResult = Omit<DspyWireResult, 'provenance'> & {
+  provenance: Omit<DspyWireResult['provenance'], 'generations'> & {
+    generations: Array<DspyWireResult['provenance']['generations'][number] & { attempts?: readonly InferenceAttempt[] }>;
+  };
+};
 export type DspyEvaluation = z.infer<typeof evaluationSchema>;
 export type DspyEvaluateParams = z.infer<typeof evaluateParamsSchema>;
 export type DspyGenerateParams = z.infer<typeof generateParamsSchema>;

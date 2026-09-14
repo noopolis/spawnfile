@@ -110,6 +110,24 @@ export interface InferenceRequest {
 
 export type InferenceModelBasis = 'provider-reported' | 'requested-assumption';
 
+export type InferenceFailureKind = 'quota' | 'transport' | 'unavailable' | 'authentication' |
+  'protocol' | 'cancelled' | 'timeout' | 'unsupported' | 'unknown';
+
+/** One settled or interrupted inference attempt, without prompts or provider diagnostics. */
+export interface InferenceAttempt {
+  id: string;
+  ordinal: number;
+  providerId: string;
+  requestedModel: string;
+  responseModel: string | null;
+  responseRoute: string | null;
+  outcome: 'completed' | 'failed';
+  failureKind: InferenceFailureKind | null;
+  startedAt: string;
+  completedAt: string;
+  usage: Usage | null;
+}
+
 export interface InferenceResult {
   text: string;
   model: string;
@@ -117,10 +135,12 @@ export interface InferenceResult {
   modelBasis?: InferenceModelBasis;
   usage: Usage | null;
   route: string;
+  /** All attempted declared routes, including failures. Omitted by unrouted legacy providers. */
+  attempts?: readonly InferenceAttempt[];
 }
 
 export interface InferenceProvider {
   id: string;
-  capabilities: { tools: 'disabled'; billing: 'subscription'; temperature: false; seed: false };
+  capabilities: { tools: 'disabled'; billing: 'subscription' | 'api' | 'local' | 'mixed'; temperature: boolean; seed: boolean };
   generate(request: InferenceRequest): Promise<InferenceResult>;
 }

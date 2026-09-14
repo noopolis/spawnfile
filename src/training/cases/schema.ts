@@ -1,5 +1,6 @@
 import type { Dataset, DatasetRecord, RecordFields } from '../contracts/dataset.js';
 import { bindingShape } from './turn-bindings.js';
+import { validateTrainingConfiguration } from './training/index.js';
 import { checkShape, planShape } from './check-schema.js';
 import { exclusive, fail, fields, json, object, oneOf, safePath, sequence, string, uniqueStrings } from './validation.js';
 
@@ -84,10 +85,11 @@ export function validateRecord(value: unknown, path: string, expanded = false): 
 }
 export function validateDataset(value: unknown): Dataset {
   const dataset = object(json(value, '$'), '$');
-  fields(dataset, ['schema', 'id', 'subject', 'setup', 'fixtures', 'checks', 'stages', 'live', 'records'], '$');
+  fields(dataset, ['schema', 'id', 'subject', 'training', 'setup', 'fixtures', 'checks', 'stages', 'live', 'records'], '$');
   oneOf(dataset.schema, ['paideia.dataset.v1'], '$.schema');
   string(dataset.id, '$.id');
   if (dataset.subject !== undefined) string(dataset.subject, '$.subject');
+  if (dataset.training !== undefined) validateTrainingConfiguration(dataset.training);
   if (dataset.setup !== undefined) object(dataset.setup, '$.setup');
   planShape(dataset, '$');
   if (dataset.fixtures !== undefined) {

@@ -1,3 +1,4 @@
+import type { TrainingConfiguration } from './training-config.js';
 /** Versioned, runtime-neutral authored and resolved dataset contracts. */
 export type DataValue = null | boolean | number | string | DataValue[] | DataMap;
 export interface DataMap { [key: string]: DataValue }
@@ -67,6 +68,7 @@ export interface Dataset {
   schema: 'paideia.dataset.v1';
   id: string;
   subject?: string;
+  training?: TrainingConfiguration;
   setup?: DataMap;
   fixtures?: Record<string, RecordFields>;
   checks?: CheckNode[];
@@ -89,6 +91,7 @@ export interface ResolvedDataset {
   schema: 'paideia.dataset.v1';
   id: string;
   subject?: string;
+  training?: TrainingConfiguration;
   records: ResolvedRecord[];
   sharedStages: Stage[];
   live: { checks: LiveCheck[] };

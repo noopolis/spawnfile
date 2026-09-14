@@ -83,3 +83,20 @@ it('does not promote a requested optimizer model to provider-reported pricing', 
   expect(f.journal.costs().apiEquivalentUsd).toBeNull();
   expect(f.journal.costs().entries[0]).toMatchObject({ model: null, requestedModel: 'claude-fable-5-1' });
 });
+
+it('accounts for every fallback attempt on completed and failed optimizer generations', async () => {
+  const f = await fixture();
+  const attempt = { id: 'attempt-a', ordinal: 1, providerId: 'claude-subscription', requestedModel: 'claude-fable-5-1',
+    responseModel: 'claude-fable-5-1', responseRoute: 'claude-subscription', outcome: 'failed', failureKind: 'quota',
+    startedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:00:01Z',
+    usage: { inputTokens: 1000, cachedInputTokens: 0, outputTokens: 100, reasoningTokens: null, source: 'provider' } };
+  await f.journal.observe({ type: 'optimizer.generation.completed', payload: { attempt: 1,
+    model: 'claude-fable-5-1', usage: attempt.usage,
+    attempts: [attempt, { ...attempt, id: 'attempt-b', ordinal: 2, outcome: 'completed', failureKind: null }] } });
+  await f.journal.observe({ type: 'optimizer.generation.failed', payload: { attempt: 2,
+    attempts: [{ ...attempt, id: 'attempt-c' }] } });
+  expect(f.journal.costs().entries).toHaveLength(3);
+  expect(f.journal.costs().entries.map(entry => entry.usage?.inputTokens)).toEqual([1000, 1000, 1000]);
+  const replay = await f.store.readReplay(f.journal.runId, { audience: 'viewer', phase: 'training' });
+  expect(replay.events.at(-1)!.payload).toMatchObject({ type: 'optimizer.generation.failed', cost: { knownSubtotalUsd: { low: expect.any(Number) } } });
+});

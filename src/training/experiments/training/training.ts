@@ -4,6 +4,7 @@ import { candidateComponents, deriveCandidate, validateCandidate } from '../../c
 import { validateDatasetSplit } from '../../cases/index.js';
 import type { ResolvedDataset } from '../../contracts/dataset.js';
 import type { InferenceProvider } from '../../contracts/execution.js';
+import { InferenceFailure } from '../../inference/index.js';
 import { createDspyGeneration, runDspyOptimization, type DspyOptimizationOptions, type DspyResult } from '../../optimization/index.js';
 import type { TrialReport } from '../trials/index.js';
 import { partitionTraining } from './partition.js';
@@ -91,11 +92,13 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
       try { response = await generate(request, signal); }
       catch (error) {
         await options.onProgress?.({ type: 'optimizer.generation.failed', payload: { attempt,
-          requestedModel: options.inference.model, model: null, route: null, usage: null, outcome: 'generation-error' } });
+          requestedModel: options.inference.model, model: null, route: null, usage: null, outcome: 'generation-error',
+          ...(error instanceof InferenceFailure ? { attempts: error.attempts } : {}) } });
         throw error;
       }
       await options.onProgress?.({ type: 'optimizer.generation.completed', payload: { attempt, model: response.model,
-        modelBasis: response.modelBasis, route: response.route, usage: response.usage } });
+        modelBasis: response.modelBasis, route: response.route, usage: response.usage,
+        ...(response.attempts ? { attempts: response.attempts } : {}) } });
       return response;
     },
     evaluate: async (request, signal) => {

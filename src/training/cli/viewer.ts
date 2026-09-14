@@ -132,11 +132,11 @@ export async function startLiveViewer(options: {
         generations.set(proposalAttempts, { model: null, usage: null, outcome: 'pending' });
       } else if (event.type === 'optimizer.generation.completed') {
         const payload = event.payload as OptimizerGeneration & { attempt: number };
-        generations.set(payload.attempt, { model: payload.model, modelBasis: payload.modelBasis, route: payload.route, usage: payload.usage });
+        generations.set(payload.attempt, { model: payload.model, modelBasis: payload.modelBasis, route: payload.route, usage: payload.usage, attempts: payload.attempts });
       } else if (event.type === 'optimizer.generation.failed') {
         const payload = event.payload as Partial<OptimizerGeneration> & { attempt: number };
         generations.set(payload.attempt, { model: payload.model ?? null, modelBasis: payload.modelBasis, route: payload.route, usage: payload.usage ?? null,
-          outcome: payload.outcome ?? 'generation-error' });
+          attempts: payload.attempts, outcome: payload.outcome ?? 'generation-error' });
       } else if (event.type === 'experiment.failed') {
         status = 'failed'; frozen = false; optimizer = undefined;
         cases = cases.filter(record => record.split !== 'test');

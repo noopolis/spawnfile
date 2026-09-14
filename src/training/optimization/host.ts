@@ -1,4 +1,5 @@
-import type { InferenceResult } from '../contracts/execution.js';
+import type { InferenceAttempt, InferenceResult } from '../contracts/execution.js';
+import { InferenceFailure } from '../inference/index.js';
 import { evaluationSchema, inferenceSchema, type DspyEvaluation, type DspyEvaluateParams,
   type DspyRequest, type DspyStart } from './protocol.js';
 import type { DspyOptimizationOptions } from './types.js';
@@ -11,6 +12,7 @@ export class DspyHost {
   pending = 0;
   readonly completed: CompletedEvaluation[] = [];
   readonly generations: InferenceResult[] = [];
+  readonly inferenceAttempts: InferenceAttempt[] = [];
   private readonly calls = new Set<string>();
   private readonly captures = new Set<string>();
 
@@ -47,7 +49,17 @@ export class DspyHost {
     if (request.method === 'generate') {
       if (this.proposals >= this.start.budget.maxProposals) throw new Error('DSPy exceeded its proposal budget');
       this.proposals += 1;
-      const generated = inferenceSchema.parse(await this.work(() => this.options.generate(request.params, signal), signal));
+      const generated = await this.work(async () => {
+        let response: InferenceResult;
+        try { response = await this.options.generate(request.params, signal); }
+        catch (error) {
+          if (error instanceof InferenceFailure) this.inferenceAttempts.push(...error.attempts);
+          throw error;
+        }
+        // Capture settled provider evidence before validation or the outer abort race.
+        this.inferenceAttempts.push(...response.attempts ?? []);
+        return inferenceSchema.parse(response);
+      }, signal);
       this.generations.push(generated);
       return { text: generated.text, model: generated.model, usage: generated.usage,
         ...(generated.modelBasis === undefined ? {} : { modelBasis: generated.modelBasis }) };

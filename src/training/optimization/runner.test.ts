@@ -164,3 +164,13 @@ describe('owned cancellation', () => {
     await expect(runDspyOptimization(options)).rejects.toMatchObject({ message: 'invalid resource', evidence: { evaluations: 0 } });
   });
 });
+it('retains host fallback receipts while keeping the actual DSPy wire protocol unchanged', async () => {
+  const { options } = simulatedOptions();
+  const generate = options.generate;
+  const attempts = [{ id: 'receipt', ordinal: 1, providerId: 'local', requestedModel: 'small', responseModel: 'actual',
+    responseRoute: 'local', outcome: 'completed' as const, failureKind: null, startedAt: 'start', completedAt: 'end', usage: null }];
+  options.generate = async (request, signal) => ({ ...await generate(request, signal), attempts });
+  const result = await runDspyOptimization(options);
+  expect(result.provenance.generations).toHaveLength(2);
+  expect(result.provenance.generations.every(generation => JSON.stringify(generation.attempts) === JSON.stringify(attempts))).toBe(true);
+});

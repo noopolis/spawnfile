@@ -1,3 +1,4 @@
+import { judgeVersions } from '../training/index.js';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { snapshotCandidate, type ResourceMapping } from '../../candidates/index.js';
@@ -41,7 +42,7 @@ export async function prepareSpawnfileInputs(args: CliArguments, io: CliIO, inte
     out: resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/paideia' : undefined)),
     resources: Object.fromEntries(Object.entries(pairs(args.flags.resource ?? [])).map(([name, path]) => [name, resolve(io.cwd, path)])),
     datasets: new CliDatasets(judges, io.cwd, { subject: context.agent.name,
-      registry: { preparations: integration?.preparations }, unlockedSetupPaths: integration?.unlockedSetupPaths }),
+      registry: { preparations: integration?.preparations }, unlockedSetupPaths: integration?.unlockedSetupPaths }, judgeVersions(args.training), args.frozenDataset),
     maxTrials: count(args, 'max-trials', 20, 10000), context,
     readiness: { runnable: false, integration: integration ? { id: integration.id, version: integration.version } : null,
       reason: 'Native compilation, authentication and isolated startup are checked during execution. Dry-run probes none of them.' },
