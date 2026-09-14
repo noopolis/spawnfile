@@ -17,13 +17,20 @@ Generation runs in a fresh disposable directory with no subject workspace mounte
 ## Explicit fallback routes
 
 `createRoutedInference` consumes ordered `{ provider, model }` routes with a
-finite attempt count and deadline. Only classified quota, transport and service
-unavailability advance to the next declared route. A successful response,
+finite attempt count and overall deadline. Classified quota, transport, service
+unavailability and individual attempt timeouts advance to the next declared route.
+Each attempt gets an equal share of the remaining deadline divided by remaining
+authored attempts; unused time carries forward. The optional `attemptTimeoutMs`
+is an additional cap on that share. For example, a 180-second deadline with two
+attempts gives the first at most 90 seconds and leaves the rest for the fallback. A successful response,
 including a poor grade, terminates routing. Authentication, malformed output,
-cancellation and timeouts fail closed. Attempt receipts preserve requested and
+operator cancellation and exhaustion of the overall deadline fail closed. Attempt receipts preserve requested and
 reported models, known usage and sanitized failure classes; callers must persist
 them through `observeAttempt` when they require a durable audit. Audit writes share
 the route deadline; an unavailable sink fails closed before another generation.
+A timed-out attempt retains usage returned synchronously when its provider handles
+the abort; receipts arriving only after asynchronous cleanup remain unknown.
+There is no extra cleanup wait beyond the declared route deadline.
 Each listed route is tried at most once; explicitly repeat a route to budget a retry.
 Routed providers reject sampling overrides; native Ollama controls are available
 when using its provider directly.

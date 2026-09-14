@@ -16,3 +16,7 @@ are a separate provider contract and are not supplied by this text-generation ro
   protocol tests local and verify positive live output before claiming support.
 - Test incomplete output, process cancellation, route selection and unavailable
   capabilities. Separate measured tokens, unknown values and price estimates.
+
+Routed deadlines cover all attempts and audit writes. Reserve each remaining
+route an equal share of remaining time; an attempt timeout may use the next
+authored route, but caller cancellation and total budget exhaustion may not.

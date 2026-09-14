@@ -7,7 +7,9 @@ export interface RoutedInferenceOptions {
   id: string;
   routes: readonly InferenceRoute[];
   maxAttempts: number;
+  /** Deadline shared by all attempts and their audit writes. */
   timeoutMs: number;
+  /** Optional additional cap on each attempt's share of remaining time. */
   attemptTimeoutMs?: number;
   /** Trusted durable sink; failure stops the route before another generation. */
   observeAttempt?: (attempt: Readonly<InferenceAttempt>) => void | Promise<void>;
@@ -41,7 +43,9 @@ export function createRoutedInference(options: RoutedInferenceOptions): Inferenc
         const startedAt = new Date().toISOString();
         let result: InferenceResult | undefined;
         let failure: InferenceFailure | undefined;
-        try { result = await generateBounded(route, request, Math.min(remaining, attemptTimeoutMs)); }
+        // Reserve time for each remaining authored route; unused time carries forward.
+        const share = Math.max(1, Math.floor(remaining / (maxAttempts - ordinal)));
+        try { result = await generateBounded(route, request, Math.min(remaining, share, attemptTimeoutMs)); }
         catch (error) {
           failure = error instanceof InferenceFailure ? error : new InferenceFailure('unknown', 'Inference provider failed without a classified refusal');
         }
@@ -54,9 +58,12 @@ export function createRoutedInference(options: RoutedInferenceOptions): Inferenc
         }])[0]!;
         attempts.push(attempt);
         try { if (observeAttempt !== undefined) await persistBounded(() => observeAttempt(attempt), deadline - Date.now(), request.signal); }
-        catch { throw new InferenceFailure('unknown', 'Inference audit persistence failed', { attempts }); }
+        catch {
+          const kind = request.signal?.aborted ? 'cancelled' : Date.now() >= deadline ? 'timeout' : 'unknown';
+          throw new InferenceFailure(kind, 'Inference audit persistence failed', { attempts });
+        }
         if (result !== undefined) return { ...result, attempts: immutableAttempts(attempts) };
-        if (!['quota', 'transport', 'unavailable'].includes(failure!.kind) || ordinal + 1 === maxAttempts) {
+        if (!['quota', 'transport', 'unavailable', 'timeout'].includes(failure!.kind) || ordinal + 1 === maxAttempts) {
           throw new InferenceFailure(failure!.kind, `Routed inference stopped (${failure!.kind})`, { attempts });
         }
       }
@@ -67,15 +74,32 @@ export function createRoutedInference(options: RoutedInferenceOptions): Inferenc
 
 async function generateBounded(route: InferenceRoute, request: InferenceRequest, timeoutMs: number): Promise<InferenceResult> {
   const controller = new AbortController();
+  let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let interrupt!: () => void;
   const boundary = new Promise<never>((_resolve, reject) => {
     interrupt = () => { controller.abort(); reject(new InferenceFailure('cancelled', 'Inference cancelled')); };
     request.signal?.addEventListener('abort', interrupt, { once: true });
-    timer = setTimeout(() => { controller.abort(); reject(new InferenceFailure('timeout', 'Inference attempt time budget exhausted')); }, timeoutMs);
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      reject(new InferenceFailure('timeout', 'Inference attempt time budget exhausted'));
+    }, timeoutMs);
   });
-  try { return await Promise.race([route.provider.generate({ ...request, model: route.model, signal: controller.signal }), boundary]); }
-  finally { clearTimeout(timer); request.signal?.removeEventListener('abort', interrupt); }
+  try {
+    const result = await Promise.race([route.provider.generate({ ...request, model: route.model, signal: controller.signal }), boundary]);
+    if (timedOut) throw new InferenceFailure('timeout', 'Inference attempt time budget exhausted', {
+      usage: result.usage, responseModel: result.modelBasis === 'requested-assumption' ? null : result.model, responseRoute: result.route,
+    });
+    return result;
+  } catch (error) {
+    // Abort-responsive providers may settle with known counters immediately. Keep
+    // that receipt while attributing cancellation to our timer, not the operator.
+    if (timedOut && (!(error instanceof InferenceFailure) || ['cancelled', 'timeout'].includes(error.kind))) {
+      throw new InferenceFailure('timeout', 'Inference attempt time budget exhausted', error instanceof InferenceFailure ? error : {});
+    }
+    throw error;
+  } finally { clearTimeout(timer); request.signal?.removeEventListener('abort', interrupt); }
 }
 
 /** An unavailable audit store must not leave an unattended route running forever. */

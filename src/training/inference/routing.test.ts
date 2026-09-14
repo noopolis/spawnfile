@@ -18,7 +18,7 @@ it('does not shop a valid low score and preserves unreported model uncertainty',
   const answer = await createRoutedInference(options([provider(async () => ({ ...result, modelBasis: 'requested-assumption' })), provider(next)])).generate({ prompt: 'p', model: 'm' });
   expect(answer.text).toBe('score: 0'); expect(next).not.toHaveBeenCalled(); expect(answer.attempts?.[0]?.responseModel).toBeNull();
 });
-it.each(['authentication', 'protocol', 'unsupported', 'unknown', 'timeout', 'cancelled'] as const)('never falls back on %s', async kind => {
+it.each(['authentication', 'protocol', 'unsupported', 'unknown', 'cancelled'] as const)('never falls back on %s', async kind => {
   const next = vi.fn();
   await expect(createRoutedInference(options([provider(async () => { throw new InferenceFailure(kind, 'x'); }), provider(next)])).generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind });
   expect(next).not.toHaveBeenCalled();
@@ -50,7 +50,7 @@ it('bounds a stalled audit store and never begins another route', async () => {
   const next = vi.fn();
   const route = createRoutedInference({ ...options([provider(async () => { throw new InferenceFailure('quota', 'q'); }), provider(next)]),
     timeoutMs: 10, observeAttempt: async () => new Promise(() => undefined) });
-  await expect(route.generate({ prompt: 'p', model: 'm' })).rejects.toThrow('audit persistence');
+  await expect(route.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'timeout', attempts: [{ failureKind: 'quota' }] });
   expect(next).not.toHaveBeenCalled();
 });
 it('cancels an audit wait while retaining the completed attempt', async () => {
@@ -61,5 +61,5 @@ it('cancels an audit wait while retaining the completed attempt', async () => {
     observeAttempt: async () => { began(); await new Promise(() => undefined); } });
   const waiting = route.generate({ prompt: 'p', model: 'm', signal: controller.signal });
   await started; controller.abort();
-  await expect(waiting).rejects.toMatchObject({ attempts: [{ outcome: 'completed' }] });
+  await expect(waiting).rejects.toMatchObject({ kind: 'cancelled', attempts: [{ outcome: 'completed' }] });
 });

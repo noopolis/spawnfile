@@ -121,9 +121,13 @@ sealed test. A registered isolated project preparation is still required for a
 canonical Spawnfile environment. Install the packaged DSPy bridge executable
 `paideia-dspy` on PATH, or select its explicit executable with `--bridge-command`.
 
-Only settled quota, transport or unavailable failures advance to the next
-configured model. Authentication, malformed judgments, cancellation and timeouts
-stop that request. A valid failing grade is final. Citation repair, when selected,
+Classified quota, transport, unavailable and individual attempt timeout failures
+advance to the next configured model. `timeout_ms` bounds the whole route, including
+all attempts and audit writes. Each attempt receives an equal share of remaining
+time divided by remaining authored attempts; unused time carries forward. With
+`attempts: 2` and `timeout_ms: 180000`, the first model gets at most 90 seconds,
+leaving the rest for its fallback. Authentication, malformed judgments, operator
+cancellation and exhaustion of the overall deadline stop that request. A valid failing grade is final. Citation repair, when selected,
 can change only citations, never the score, verdict or reasons. Failed attempts
 retain their known token usage and actual model identities where available.
 
