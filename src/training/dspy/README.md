@@ -27,6 +27,12 @@ custom-adapter/proposer seams. One native trial consumes the entire candidate; e
 Predict records the same authentic output/capture as a component trace. All files
 are optimized together. A single-line JSON envelope prevents DSPy's instruction
 normalization from stripping Markdown whitespace before native evaluation.
+Model proposal responses accept bare JSON or exactly one whole lowercase `json`
+code fence with LF delimiters; surrounding prose, multiple fences and arbitrary
+JSON extraction are rejected. Duplicate keys, nonfinite constants and changes to
+the selected resource set remain invalid. Replacement text is never trimmed.
+This model-response normalization does not change the strict host JSONL transport
+or trigger another model call.
 
 The conformance test uses the actual installed optimizer with a **simulated host**:
 two proposals update two files, seven trial callbacks compare three candidates,

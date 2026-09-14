@@ -6,7 +6,7 @@ import pytest
 from .fixtures_test import request
 from .native import decode_component, encode_component
 from .protocol import BridgeError
-from .reflection import ComponentProposer, SubscriptionLM
+from .reflection import ComponentProposer, SubscriptionLM, parse_component_response
 from .session import Session
 
 
@@ -60,10 +60,14 @@ def proposal_input():
     }, ["component_0"]
 
 
-def test_public_proposer_preserves_json_text_and_does_not_request_model_controls():
-    replacement = "\n  Revised\n\n"
+@pytest.mark.parametrize("fenced", [False, True])
+def test_public_proposer_preserves_json_text_and_does_not_request_model_controls(fenced):
+    replacement = "\n  Revised café\n```text\nkeep this skill example\n```\n\n"
+    response = json.dumps({"AGENTS.md": replacement})
+    if fenced:
+        response = "```json\n" + response + "\n```"
     session = Session(request(), lambda method, params: {
-        "text": json.dumps({"AGENTS.md": replacement}), "model": "observed", "usage": None,
+        "text": response, "model": "observed", "usage": None,
     })
     with dspy.context(lm=SubscriptionLM(session)):
         result = ComponentProposer(session)(*proposal_input())
@@ -88,3 +92,36 @@ def test_missing_subscription_route_never_uses_a_dspy_default_lm():
     with dspy.context(lm=None), pytest.raises(BridgeError) as error:
         ComponentProposer(session)(*proposal_input())
     assert error.value.code == "missing_inference"
+
+
+@pytest.mark.parametrize("text", [
+    'Before\n```json\n{"AGENTS.md":"x"}\n```',
+    '```json\n{"AGENTS.md":"x"}\n```\nAfter',
+    '```json\n{"AGENTS.md":"x"}\n```\n```json\n{"AGENTS.md":"y"}\n```',
+    '```\n{"AGENTS.md":"x"}\n```',
+    '```JSON\n{"AGENTS.md":"x"}\n```',
+    '```json {"AGENTS.md":"x"}```',
+    '```json\n{"AGENTS.md":"x"}\n',
+    '```json\n{"AGENTS.md":"x","AGENTS.md":"y"}\n```',
+    '```json\n{"AGENTS.md":NaN}\n```',
+    '```json\n{"AGENTS.md":Infinity}\n```',
+])
+def test_model_envelope_never_extracts_arbitrary_json_or_weakens_strict_json(text):
+    with pytest.raises(BridgeError) as error:
+        parse_component_response(text)
+    assert error.value.code == "invalid_json"
+
+
+@pytest.mark.parametrize("text", [
+    '```json\n{"AGENTS.md":"x","SOUL.md":"changed locked text"}\n```',
+    '```json\n{"AGENTS.md":1e999}\n```',
+    '```json\n["replacement"]\n```',
+])
+def test_fenced_proposal_keeps_exact_resource_and_text_guards_without_retry(text):
+    session = Session(request(), lambda *args: {"text": text, "model": "m", "usage": None})
+    proposer = ComponentProposer(session)
+    with dspy.context(lm=SubscriptionLM(session)):
+        for _ in range(2):
+            with pytest.raises(BridgeError):
+                proposer(*proposal_input())
+    assert session.proposals == 1

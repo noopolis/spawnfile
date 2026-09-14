@@ -46,6 +46,14 @@ class SubscriptionLM(dspy.BaseLM):
         return dspy.LMResponse.from_text(result.text, model=result.model, usage=result.usage)
 
 
+def parse_component_response(text):
+    """Unwrap only a whole JSON fence; host JSONL framing remains strict."""
+    body = text.strip()
+    if body.startswith("```json\n") and body.endswith("\n```"):
+        body = body[len("```json\n"):-len("\n```")]
+    return parse_json(body)
+
+
 class ComponentProposer:
     """Formatting only: upstream DSPy/GEPA owns search, scoring and selection."""
 
@@ -85,7 +93,7 @@ class ComponentProposer:
         if not isinstance(lm, SubscriptionLM):
             raise BridgeError("missing_inference", "reflection requires the host subscription LM")
         response = lm(messages=messages)
-        replacement = parse_json(response[0])
+        replacement = parse_component_response(response[0])
         if (not isinstance(replacement, dict) or set(replacement) != set(selected_paths)
                 or any(not isinstance(text, str) for text in replacement.values())):
             raise BridgeError("invalid_proposal", "reflection must replace exactly the selected text components")

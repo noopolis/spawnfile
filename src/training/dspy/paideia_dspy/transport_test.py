@@ -7,7 +7,7 @@ from .protocol import BridgeError, SCHEMA
 from .transport import JsonlHost, parse_json, read_message, write_message
 
 
-@pytest.mark.parametrize("text", ['{"a":1,"a":2}', '{"a":NaN}', '{"a":Infinity}', '{broken'])
+@pytest.mark.parametrize("text", ['{"a":1,"a":2}', '{"a":NaN}', '{"a":Infinity}', '{broken', '```json\n{}\n```'])
 def test_json_rejects_duplicate_nonfinite_or_malformed_content(text):
     with pytest.raises(BridgeError) as error:
         parse_json(text)

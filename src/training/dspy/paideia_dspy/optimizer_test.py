@@ -5,10 +5,17 @@ from .optimizer import optimize
 from .protocol import BridgeError
 
 
-def test_real_dspy_gepa_optimizes_two_files_through_host_callbacks():
+@pytest.mark.parametrize("fenced", [False, True])
+def test_real_dspy_gepa_optimizes_two_files_through_host_callbacks(fenced):
     host = SimulatedHost()
+
+    def generate_envelope(method, params):
+        response = host(method, params)
+        if fenced and method == "generate":
+            response = {**response, "text": "```json\n" + response["text"] + "\n```"}
+        return response
     original = request()
-    result = optimize(original, host)
+    result = optimize(original, generate_envelope)
     provenance = result["provenance"]
     assert provenance["optimizer"] == "dspy.GEPA"
     assert provenance["dspyVersion"] == "3.3.1"
