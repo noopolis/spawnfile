@@ -21,7 +21,8 @@ export const registerTrainCommand = (
     .argument("[path]", "Canonical project directory or Spawnfile path", process.cwd())
     .option("--agent <id>", "Exact canonical agent node id (inferred only for a single-agent project)")
     .option("--paideia-command <executable>", "Installed Paideia executable; no shell or automatic install", "paideia")
-    .option("--dry-run", "Validate and estimate without compiling, authenticating or starting models");
+    .option("--dry-run", "Validate and estimate without compiling, authenticating or starting models")
+    .option("--resume", "Resume the exact persisted training experiment in --out");
   for (const name of forwarded) {
     const flag = `--${name} <value>`;
     if (repeated.has(name)) command.option(flag, `Paideia ${name}; repeatable`, (value: string, previous: string[]) => [...previous, value], []);
@@ -47,6 +48,7 @@ export const registerTrainCommand = (
       else if (Array.isArray(value)) for (const item of value) args.push(`--${name}`, item);
     }
     if (options.dryRun === true) args.push("--dry-run");
+    if (options.resume === true) args.push("--resume");
     setExitCode(await handlers.delegatePaideiaTraining({ context, args,
       command: options.paideiaCommand as string, dryRun: options.dryRun === true,
       timeoutMs: timeout + 5000, streams, signal }));

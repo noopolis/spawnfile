@@ -49,6 +49,16 @@ describe("spawnfile train", () => {
     expect(delegate.mock.calls[0]![0]).toMatchObject({ timeoutMs: 3_605_000, args: ["--train", "train.paideia.yaml", "--dry-run"] });
   });
 
+  it("forwards explicit resume to Paideia without changing canonical agent context", async () => {
+    const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 0);
+    expect(await runCli(["train", await project(), ...base, "--resume"], {
+      handlers: { delegatePaideiaTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
+    })).toBe(0);
+    expect(delegate.mock.calls[0]![0].args).toEqual([...base, "--resume"]);
+    expect(delegate.mock.calls[0]![0].context.agent.id).toBe("agent:author");
+    expect(delegate.mock.calls[0]![0].dryRun).toBe(false);
+  });
+
   it.each([1, 2, 130, 143])("propagates the delegated exit %s", async (exitCode) => {
     const code = await runCli(["train", await project(), ...base], { handlers: { delegatePaideiaTraining: async () => exitCode },
       streams: { stdout: () => undefined, stderr: () => undefined } });
