@@ -138,7 +138,9 @@ def test_proposer_requests_exact_selected_resource_schema_through_real_typed_lm(
     with dspy.context(lm=SubscriptionLM(session)):
         ComponentProposer(session)(*proposal_input())
     assert calls[0]["options"] == {"responseSchema": {
-        "type": "object", "properties": {"AGENTS.md": {"type": "string"}},
+        "type": "object", "properties": {"AGENTS.md": {"type": "string", "description": (
+            "Complete replacement instructions for this editable resource, ready for the agent to execute. "
+            "Use the observed training failures to improve its decisions while preserving its role and required interfaces.")}},
         "required": ["AGENTS.md"], "additionalProperties": False,
     }}
 
@@ -152,3 +154,35 @@ def test_typed_lm_rejects_nonobject_schema_before_host_call(schema):
                                 extensions={"responseSchema": schema})
     assert error.value.code == "unsupported_control"
     assert calls == []
+
+
+@pytest.mark.parametrize("structured", [False, True])
+def test_response_contract_has_one_unambiguous_shape_and_meaningful_native_schema(structured):
+    calls = []
+    replacement = {"AGENTS.md": "Read the evidence, state the supported conclusion, and verify citations before filing."}
+    envelope = {"components": replacement, "hypothesis": "Citation verification addresses the observed unsupported attribution.",
+                "expectedImpact": {"grounding": "Fewer unsupported attributions after explicit verification."}}
+    def host(method, params):
+        calls.append(params)
+        return {"text": json.dumps(envelope if structured else replacement), "model": "fixture", "usage": None}
+    session = Session(request(**({"proposal": {"strategy": "rewrite"}} if structured else {})), host)
+    with dspy.context(lm=SubscriptionLM(session)):
+        ComponentProposer(session)(*proposal_input())
+    system = calls[0]["messages"][0]["content"]
+    schema = calls[0]["options"]["responseSchema"]
+    direct_map_instruction = "Return only a JSON object mapping exactly the updateOnly resource paths"
+    envelope_instruction = "Return only a JSON object with exactly three top-level fields: components, hypothesis, and expectedImpact."
+    if structured:
+        assert envelope_instruction in system
+        assert direct_map_instruction not in system
+        assert set(schema["required"]) == {"components", "hypothesis", "expectedImpact"}
+        assert "observed training failures" in schema["properties"]["hypothesis"]["description"]
+        assert "criterion IDs" in schema["properties"]["expectedImpact"]["description"]
+        resource_schema = schema["properties"]["components"]
+    else:
+        assert direct_map_instruction in system
+        assert envelope_instruction not in system
+        resource_schema = schema
+    assert resource_schema["required"] == ["AGENTS.md"]
+    assert "ready for the agent to execute" in resource_schema["properties"]["AGENTS.md"]["description"]
+    assert "full instruction text the agent will actually receive" in system or "instruction text the agent will actually receive" in system
