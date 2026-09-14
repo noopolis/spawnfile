@@ -1,4 +1,4 @@
-import { judgeVersions, createTrainingInference } from './training/index.js';
+import { judgeVersions, createTrainingInference, prepareJudgeCaches } from './training/index.js';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { createCodexAdapter, createDaimonAdapter } from '../adapters/index.js';
@@ -57,13 +57,14 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
     : dependencies.adapter?.(runtime as 'codex' | 'daimon', { model, timeoutMs })
       ?? (runtime === 'codex' ? createCodexAdapter({ model, timeoutMs }) : createDaimonAdapter({ model, timeoutMs }));
   const configured = createTrainingInference(args, dependencies, timeoutMs, judges, inputs.citationRepairs);
+  const cacheRoots = await prepareJudgeCaches(args, configured.judges, inputs.out);
   const inference = configured.inference;
   let prepareEnvironment: StoredTrialOptions['prepareEnvironment'];
   if ('context' in inputs) {
     const context = inputs.context;
     prepareEnvironment = (paths, signal, trial) => dependencies.spawnfile!.prepareEnvironment(paths, signal, trial, context);
   }
-  return { ...inputs, adapter, inference, prepareEnvironment,
+  return { ...inputs, adapter, inference, prepareEnvironment, cacheRoots,
     registry: createEvaluationRegistry(),
     evaluation: { judges: configured.judges,
       embeddings: {}, readText: (path: string) => datasets.readCriterion(path) },

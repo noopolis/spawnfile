@@ -1,3 +1,4 @@
+import type { RescoreReport } from '../../experiments/replay/index.js';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -99,4 +100,31 @@ it('accounts for every fallback attempt on completed and failed optimizer genera
   expect(f.journal.costs().entries.map(entry => entry.usage?.inputTokens)).toEqual([1000, 1000, 1000]);
   const replay = await f.store.readReplay(f.journal.runId, { audience: 'viewer', phase: 'training' });
   expect(replay.events.at(-1)!.payload).toMatchObject({ type: 'optimizer.generation.failed', cost: { knownSubtotalUsd: { low: expect.any(Number) } } });
+});
+
+it('restores native, rescore and optimizer receipts once and retains their cumulative costs', async () => {
+  const f = await fixture(), native = trial();
+  const call = { id: 'judge-one', judge: 'prose', providerId: 'subscription', requestedModel: 'gpt-5.5',
+    responseModel: 'gpt-5.5', responseRoute: 'subscription', outcome: 'completed' as const, usage: native.turns[0]!.native.usage };
+  native.evaluation.judgeCalls = [call];
+  const rescore: RescoreReport = { schema: 'paideia.rescore.v1', id: 'rescore', runId: native.id, scope: 'final-stages',
+    notReevaluated: ['live', 'per-turn'], original: { evaluationId: 'old', digest: 'old', candidateId: native.candidateId,
+      datasetDigest: 'old', planDigest: 'old', recordId: native.recordId, phase: native.phase, status: native.status },
+    criteria: { datasetId: 'dataset', datasetDigest: 'digest', sharedPlanDigest: 'plan', stages: [], registryVersions: {},
+      sidecarDigests: {}, inferenceRoutes: { judges: {}, embeddings: {} } },
+    execution: native.execution, hostWork: native.hostWork, coverage: [], status: 'pass',
+    evaluation: { ...native.evaluation, judgeCalls: [call, { ...call, id: 'judge-two' }] } };
+  const restored = { generations: [{ callbackId: 'generate-2', model: 'gpt-5.5', usage: call.usage }], failedAttempts: [],
+    reservations: [{ id: 'generate-2', method: 'generate', attempts: 1, settledAttempts: 1, completed: true }] };
+  for (let duplicate = 0; duplicate < 2; duplicate++) {
+    await f.journal.observe({ type: 'trial.restored', payload: native });
+    await f.journal.observe({ type: 'trial.rescore.restored', payload: rescore });
+    await f.journal.observe({ type: 'optimizer.restored', payload: restored });
+  }
+  await f.journal.observe({ type: 'trial.rescored', payload: rescore });
+  expect(f.journal.reports()).toEqual([native]); expect(f.journal.rescores()).toEqual([rescore]);
+  expect(f.journal.costs().entries.map(entry => entry.role)).toEqual(['subject', 'judge', 'judge', 'optimizer']);
+  expect(f.journal.costs().knownSubtotalUsd.low).toBeGreaterThan(0);
+  const replay = await f.store.readReplay(f.journal.runId, { audience: 'viewer', phase: 'training' });
+  expect(JSON.stringify(replay.events)).not.toMatch(/SEALED CASE|SECRET OUTPUT|PRIVATE EVIDENCE/);
 });

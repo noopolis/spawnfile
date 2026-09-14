@@ -38,3 +38,10 @@ controls, changed component sets and budget overrun are negative tests.
 These tests establish the bridge seam. Real subscription generations and native
 agent acceptance are separate TypeScript integration evidence; simulated scores
 are not measurements of a real agent. Python 3.14.7 was used for the checked run.
+
+The checkpoint conformance test interrupts actual GEPA mid-iteration, restores its
+paired state and sampler, then verifies seven unique native captures and two total
+generations. Repeated restoration returns the same selected components without new
+host work. Corrupt/changed identities fail; cumulative failed-attempt offsets cannot
+reset the proposal or evaluation budgets. All checkpoint directories are private
+local evaluator state, never candidate inputs.

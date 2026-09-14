@@ -12,3 +12,12 @@ released DSPy GEPA integration. Inherit the bridge guide.
   fallback here. Native component bytes must survive DSPy's text normalization.
 - Tests sit beside source. Run the bridge's pinned pytest/coverage command.
 - Simulated hosts establish integration conformance, not real native acceptance.
+
+- `checkpoint.py` pairs upstream GEPA state with this session's exact callback
+  sequence and upstream epoch sampler/RNG state. Never substitute optimizer replay
+  from scratch or accept an unpaired upstream pickle. Checkpoint bytes are trusted
+  evaluator state; they are not an import format for agent-produced artifacts.
+- Resume reuses the original seed validation, because upstream invokes it before
+  loading its state. Host callbacks following the saved boundary replay only if their
+  exact identities match. Recovery attempt offsets are host-owned accounting, never
+  optimizer feedback or newly generated trials.

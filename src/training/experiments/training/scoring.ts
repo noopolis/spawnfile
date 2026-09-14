@@ -1,7 +1,7 @@
 import type { TrialReport } from '../trials/index.js';
 
 /** A missing or interrupted measurement is not a cheap zero-quality observation. */
-export function trialScore(report: TrialReport): number {
+export function trialScore(report: Pick<TrialReport, 'id' | 'execution' | 'hostWork' | 'stop' | 'decisiveFailure' | 'status' | 'evaluation'>): number {
   if (report.execution === 'failed') throw new Error(`Trial ${report.id} failed in infrastructure`);
   if (report.hostWork !== 'settled' || report.stop?.state !== 'acknowledged') throw new Error(`Trial ${report.id} has incomplete infrastructure cleanup`);
   const decisive = report.decisiveFailure?.status === 'fail' && report.decisiveFailure.finality === 'final' && report.status === 'fail';

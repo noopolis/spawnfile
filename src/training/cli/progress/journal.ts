@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { summarizeCosts, type ModelPrice, type OptimizerGeneration, type TrainingCostPlan, type TrialReport } from '../../experiments/index.js';
 import type { ExperimentStore } from '../../storage/index.js';
+import type { RescoreReport } from '../../experiments/replay/index.js';
 import type { CliIO } from '../types.js';
+import { createGenerationTracker } from './generations.js';
 
 export interface ProgressOptions {
   id: string;
@@ -22,9 +24,10 @@ export async function createProgressJournal(options: ProgressOptions) {
     datasetRole: 'train', candidateId: options.candidateId, planDigest: options.planDigest,
     metadata: { costPlan: options.costPlan } });
   const trials = new Map<string, TrialReport>();
-  const generations = new Map<number, OptimizerGeneration>();
+  const rescores = new Map<string, RescoreReport>();
+  const generations = createGenerationTracker();
   const costs = () => summarizeCosts([...trials.values()], { subjectModel: options.model,
-    prices: options.prices, optimizerGenerations: [...generations.values()] });
+    prices: options.prices, rescores: [...rescores.values()], optimizerGenerations: generations.snapshot() });
   const summary = () => {
     const cost = costs();
     return { apiEquivalentUsd: cost.apiEquivalentUsd, knownSubtotalUsd: cost.knownSubtotalUsd,
@@ -43,28 +46,32 @@ export async function createProgressJournal(options: ProgressOptions) {
     costs,
     summary,
     reports: () => [...trials.values()],
+    rescores: () => [...rescores.values()],
     async observe(event: { type: string; payload: unknown }) {
       const payload = event.payload as Record<string, unknown>;
-      if (event.type === 'trial.finished') {
+      generations.observe(event);
+      if (event.type === 'trial.finished' || event.type === 'trial.restored') {
         const report = event.payload as TrialReport;
         trials.set(report.id, report);
         await write(event.type, { trialId: report.id, phase: report.phase, candidateId: report.candidateId,
           status: report.status, execution: report.execution });
+      } else if (event.type === 'trial.rescored' || event.type === 'trial.rescore.restored') {
+        const report = event.payload as RescoreReport;
+        rescores.set(report.id, report);
+        await write(event.type, { trialId: report.runId, evaluationId: report.id,
+          phase: report.original.phase, status: report.status });
       } else if (event.type === 'trial.queued') {
         await write(event.type, { phase: payload.phase, candidateId: payload.candidateId });
       } else if (event.type === 'optimizer.generation.started') {
-        generations.set(payload.attempt as number, { model: null, usage: null, outcome: 'pending' });
         await write(event.type, { attempt: payload.attempt });
       } else if (event.type === 'optimizer.generation.completed') {
         const generation = payload as unknown as OptimizerGeneration & { attempt: number };
-        generations.set(generation.attempt, { model: generation.model, usage: generation.usage,
-          modelBasis: generation.modelBasis, route: generation.route, attempts: generation.attempts, outcome: 'completed' });
         await write(event.type, { attempt: generation.attempt, model: generation.model,
           modelBasis: generation.modelBasis, route: generation.route });
       } else if (event.type === 'optimizer.generation.failed') {
-        const generation = payload as unknown as Partial<OptimizerGeneration>;
-        generations.set(payload.attempt as number, { model: null, usage: null, attempts: generation.attempts, outcome: 'generation-error' });
         await write(event.type, { attempt: payload.attempt, outcome: 'generation-error' });
+      } else if (event.type === 'optimizer.restored') {
+        await write(event.type, { attempts: generations.attempts() });
       } else if (event.type === 'training.started') {
         await write(event.type, { budget: payload.budget });
       } else if (event.type === 'selection.frozen') {
@@ -74,9 +81,7 @@ export async function createProgressJournal(options: ProgressOptions) {
       }
     },
     async failed(error: unknown) {
-      for (const [id, generation] of generations) {
-        if (generation.outcome === 'pending') generations.set(id, { ...generation, outcome: 'interrupted; usage unknown' });
-      }
+      generations.interrupt();
       const diagnostic = await options.store.putBlob(runId, String(error).slice(0, 16384), 'evaluator');
       const diagnosticId = randomUUID();
       await options.store.appendEvent(runId, { id: diagnosticId,

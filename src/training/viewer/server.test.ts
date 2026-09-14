@@ -86,4 +86,17 @@ describe('actual local viewer HTTP server', () => {
     const pending = fetch(server.url).catch(() => undefined);
     await loading; await server.close(); expect(await pending).toBeUndefined();
   });
+
+  it('ignores a late successful or rejected loader after its client disconnects', async () => {
+    for(const failure of [false,true]) {
+      let settle!:(value:ViewerData)=>void, reject!:(error:Error)=>void;
+      const loaded=new Promise<ViewerData>((resolve,fail)=>{settle=resolve;reject=fail;});
+      const entered=vi.fn();
+      const server=await startViewer({load:()=>{entered();return loaded;}});servers.push(server);
+      const pending=fetch(server.url).catch(()=>undefined);await vi.waitFor(()=>expect(entered).toHaveBeenCalledOnce());
+      await server.close();expect(await pending).toBeUndefined();
+      if(failure)reject(new Error('PRIVATE late failure'));else settle(viewerFixture());
+      await new Promise(resolve=>setTimeout(resolve,10));
+    }
+  });
 });

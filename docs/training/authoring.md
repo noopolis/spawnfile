@@ -397,7 +397,23 @@ gate:
 This is a stage fragment. The complete real datasets show it inside a dataset plan.
 A weighted sum never compensates for a failed hard gate. Missing or skipped components
 retain their contribution to the denominator; show uncertainty/coverage rather than
-renormalizing surviving scores. Fixed weights must be nonnegative and sum to one.
+renormalizing surviving scores. Relative weights must be finite and nonnegative
+with a positive total. For example, `2` and `1` give the first criterion twice the
+influence; normalization uses the complete declared total, never only observed checks.
+
+Every check outside an explicit gate requires an explicit weight in `score.linear`.
+For example, `gate: {passed: grounded}` with `linear: {prose: 2, clarity: 1}` makes
+grounding mandatory and scores the two writing criteria with twice as much influence
+for prose. A soft check's failed threshold contributes its measured score; it does
+not fail the plan unless the gate explicitly requires it. A gate may also enforce
+a minimum total score.
+
+Logical `all`, `any` and `not` expressions work in both checks and gates. To express
+“if A, require B”, use `any: [{not: {passed: A}}, {passed: B}]`. Missing evidence
+remains unknown. `stage.when` instead controls a required dependency: when it is
+unsatisfied the stage is unassessed, not silently accepted as an optional success.
+Only explicitly selected, decisive mechanical live checks can stop native work early;
+semantic live checks remain advisory.
 
 - `pass`: criterion met; a score may still be fractional.
 - `fail`: observed evidence violates the criterion.

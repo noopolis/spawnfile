@@ -132,8 +132,14 @@ export function resolveStages(stages: Stage[], context: PlanResolution, mechanic
     }
     known.set(stage.id, nature);
     const gate = stage.gate ? expand(stage.gate, context, known, `${path}.gate`) : undefined;
-    if (gate && referencesPassed(gate.node, stage.id)) fail(path, 'stage gate cannot depend on its own verdict');
     if (gate && mechanicalOnly && !gate.nature.mechanical) fail(path, 'semantic/embedding gates cannot block later work');
+    if (gate) for (const check of checks) {
+      const id = check.node.id!;
+      if (!Object.hasOwn(stage.score?.linear ?? {}, id) && !referencesPassed(gate.node, id)) {
+        fail(path, `non-gate criterion ${id} requires an explicit score weight`);
+      }
+    }
+    if (gate && referencesPassed(gate.node, stage.id)) fail(path, 'stage gate cannot depend on its own verdict');
     known.set(stage.id, combine([nature, ...(gate ? [gate.nature] : [])]));
     return { id: stage.id, checks: checks.map(check => check.node),
       ...(when ? { when: when.node } : {}), ...(stage.score ? { score: structuredClone(stage.score) } : {}),

@@ -22,7 +22,7 @@ export interface Observation {
   source: string;
   /** Monotonic within this source; never a global causal-order claim. */
   seq: number;
-  type: 'tool.dispatch' | 'tool.complete' | 'output' | 'usage' | 'diagnostic';
+  type: 'tool.dispatch' | 'tool.complete' | 'output' | 'usage' | 'diagnostic' | 'input';
   timestamp: string;
   trialId: string;
   wakeId: string;

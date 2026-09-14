@@ -8,6 +8,7 @@ describe('collapsed recorded evidence', () => {
     const data = viewerFixture();
     const html = trialDetails(data);
     expect(html).toContain('id="trial-0"');
+    expect(html).toContain('data-trial-key="trial-1"');
     expect(html).toContain('Trial 01 · train');
     expect(html).toContain('Optimizer reward: score 0.5');
     expect(html).toContain('A known check');

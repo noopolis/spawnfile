@@ -4,6 +4,7 @@ from importlib.metadata import version
 
 import dspy
 
+from .checkpoint import Checkpoint
 from .native import NativeProgram, metric
 from .protocol import BridgeError, OptimizeRequest
 from .reflection import ComponentProposer, SubscriptionLM
@@ -17,12 +18,13 @@ def optimize(request: OptimizeRequest, host):
     if version("dspy") != DSPY_VERSION or version("gepa") != GEPA_VERSION:
         raise BridgeError("version_mismatch", "install the pinned DSPy and GEPA releases")
     session = Session(request, host)
+    checkpoint = Checkpoint(session) if request.checkpoint else None
     student = NativeProgram(session)
     reflection_lm = SubscriptionLM(session)
     optimizer = dspy.GEPA(
         metric=metric,
-        max_metric_calls=request.budget.maxMetricCalls,
-        reflection_minibatch_size=1,
+        max_metric_calls=max(1, request.budget.maxMetricCalls - session.extra_evaluations),
+        reflection_minibatch_size=None if checkpoint else 1,
         reflection_lm=reflection_lm,
         instruction_proposer=ComponentProposer(session),
         component_selector="all",
@@ -30,8 +32,9 @@ def optimize(request: OptimizeRequest, host):
         use_merge=False,
         num_threads=1,
         track_stats=True,
+        log_dir=str(checkpoint.work) if checkpoint else None,
         seed=request.seed,
-        gepa_kwargs={"stop_callbacks": [session.should_stop]},
+        gepa_kwargs={"stop_callbacks": [session.should_stop], **(checkpoint.kwargs() if checkpoint else {})},
     )
     # The only generation route is reflection_lm. Native Predict overrides its
     # adapter and LM in forward; no global DSPy model or teacher is consulted.

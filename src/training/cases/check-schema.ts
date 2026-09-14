@@ -41,9 +41,10 @@ export function planShape(value: Record<string, unknown>, path: string): void {
       const score = object(stage.score, `${stagePath}.score`);
       fields(score, ['linear'], `${stagePath}.score`);
       const weights = object(score.linear, `${stagePath}.score.linear`);
-      const values = Object.entries(weights).map(([key, weight]) => number(weight, `${stagePath}.score.linear.${key}`));
-      if (Math.abs(values.reduce((sum, weight) => sum + weight, 0) - 1) > 1e-9) {
-        fail(`${stagePath}.score.linear`, 'weights must sum to one');
+      const values = Object.entries(weights).map(([key, weight]) => number(weight, `${stagePath}.score.linear.${key}`, 0, Number.MAX_VALUE));
+      const total = values.reduce((sum, weight) => sum + weight, 0);
+      if (!Number.isFinite(total) || total <= 0) {
+        fail(`${stagePath}.score.linear`, 'weights must have a finite positive total');
       }
     }
   });

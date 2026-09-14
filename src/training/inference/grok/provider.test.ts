@@ -1,9 +1,9 @@
 import { expect, it } from 'vitest';
-import type { ProcessOptions, RunningProcess } from '../../platform/process/index.js';
+import { runProcess, type ProcessOptions, type ProcessResult, type RunningProcess } from '../../platform/process/index.js';
 import { createGrokInference } from './provider.js';
 import { decodeGrok, grokEnvironment, type GrokFrames } from './protocol.js';
 const frames = (): GrokFrames => ({
-  init: { type: 'system', subtype: 'init', apiKeySource: 'oauth', tools: [], model: 'grok-actual' },
+  init: { type: 'system', subtype: 'init', apiKeySource: 'oauth', tools: [], mcp_servers: [], model: 'grok-actual' },
   assistant: { type: 'assistant', session_id: 's', message: { stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: 'hidden' }, { type: 'text', text: 'answer' }] } },
   result: { type: 'result', subtype: 'success', is_error: false, stop_reason: 'end_turn', session_id: 's', result: 'answer', usage: { input_tokens: 3, cache_read_input_tokens: 2, cache_creation_input_tokens: 1, output_tokens: 4 } },
 });
@@ -21,6 +21,9 @@ it('runs tool-free OAuth in a disposable workspace and decodes lower-bound usage
   const result = await createGrokInference({ process: options => { call = options; return runner(Object.values(frames()))(options); } }).generate({ prompt: 'p', system: 's', model: 'requested' });
   expect(result).toMatchObject({ text: 'answer', model: 'grok-actual', usage: { inputTokens: 6, cachedInputTokens: 2, outputTokens: 4 } });
   expect(call?.args).toContain('--no-memory'); expect(call?.args).toContain('--system-prompt-override');
+  expect(call?.args.slice(call.args.indexOf('--tools'), call.args.indexOf('--permission-mode')))
+    .toEqual(['--tools', 'read_file', '--disallowed-tools', 'read_file,search_tool,use_tool', '--deny', '*']);
+  expect(call?.args).toContain('--verbatim');
   const { stat } = await import('node:fs/promises'); await expect(stat(call!.cwd)).rejects.toThrow();
 });
 it('stops native failures and rejects unsupported requests before execution', async () => {
@@ -35,7 +38,7 @@ it.each([[429, 'quota'], [503, 'unavailable'], [401, 'authentication'], [403, 'a
 });
 it('rejects missing auth, isolation, terminal mismatch and arbitrary tool content', () => {
   expect(() => decodeGrok({}, 0)).toThrow(expect.objectContaining({ kind: 'protocol' }));
-  for (const patch of [{ tools: ['read'] }, { tools: undefined }, { mcp_servers: [{}] }]) {
+  for (const patch of [{ tools: ['read'] }, { tools: undefined }, { mcp_servers: [{}] }, { mcp_servers: {} }, { mcp_servers: undefined }]) {
     const value = frames(); Object.assign(value.init!, patch); expect(() => decodeGrok(value, 0)).toThrow('isolation');
   }
   for (const mutate of [
@@ -50,6 +53,62 @@ it('rejects missing auth, isolation, terminal mismatch and arbitrary tool conten
     (v: GrokFrames) => { delete v.assistant; },
   ]) { const value = frames(); mutate(value); expect(() => decodeGrok(value, 0)).toThrow('matching completed'); }
   expect(() => decodeGrok(frames(), 1)).toThrow('matching completed');
+});
+
+it('retains attributable metadata when a completed native envelope fails isolation', () => {
+  const value = frames(); value.init!['tools'] = ['search_tool', 'use_tool'];
+  expect(() => decodeGrok(value, 0)).toThrow(expect.objectContaining({ kind: 'protocol',
+    responseModel: 'grok-actual', responseRoute: 'grok-subscription',
+    usage: expect.objectContaining({ inputTokens: 6, cachedInputTokens: 2, outputTokens: 4 }) }));
+});
+
+it('stops at unsafe initialization before another native frame is consumed', async () => {
+  const value = frames(); value.init!['tools'] = ['read_file'];
+  let delivered = 0;
+  const process = (options: ProcessOptions) => runner(Object.values(value))({ ...options,
+    onLine(line, signal) { delivered++; return options.onLine(line, signal); } });
+  await expect(createGrokInference({ process }).generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({
+    kind: 'protocol', responseModel: 'grok-actual', responseRoute: 'grok-subscription', usage: null });
+  expect(delivered).toBe(1);
+});
+
+it('stops on assistant output before init while retaining typed pre-init refusals', async () => {
+  let delivered = 0;
+  const value = frames();
+  const process = (options: ProcessOptions) => runner([value.assistant, value.init, value.result])({ ...options,
+    onLine(line, signal) { delivered++; return options.onLine(line, signal); } });
+  await expect(createGrokInference({ process }).generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'protocol' });
+  expect(delivered).toBe(1);
+  await expect(createGrokInference({ process: runner([{ type: 'error', status: 429 }]) })
+    .generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'quota' });
+});
+
+it('terminates the actual owned process when initialization exposes tools', async () => {
+  const init = { ...frames().init, tools: ['read_file'] };
+  const script = `process.stdout.write(${JSON.stringify(JSON.stringify(init) + '\n')});setInterval(()=>{},10000);`;
+  let completed: ProcessResult | undefined;
+  const provider = createGrokInference({ timeoutMs: 5000, process(options) {
+    const child = runProcess({ ...options, command: process.execPath, args: ['-e', script] });
+    return { ...child, completion: child.completion.then(result => { completed = result; return result; }) };
+  } });
+  await expect(provider.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'protocol' });
+  expect(completed).toMatchObject({ cancelled: true,
+    stop: { state: 'acknowledged', quiescence: 'confirmed', reason: 'observation or output failure' } });
+});
+
+it('passes large prompt and system text verbatim through the disposable files and arguments', async () => {
+  const prompt = 'PREFACE\n' + 'evidence '.repeat(1800) + '\nEXACT-TAIL';
+  const system = 'Judge this supplied text only.';
+  const { readFile } = await import('node:fs/promises');
+  let actual = '';
+  const result = await createGrokInference({ process(options) {
+    return { ...runner([])(options), completion: (async () => {
+      actual = await readFile(options.args[options.args.indexOf('--prompt-file') + 1]!, 'utf8');
+      expect(options.args[options.args.indexOf('--system-prompt-override') + 1]).toBe(system);
+      return runner(Object.values(frames()))(options).completion;
+    })() };
+  } }).generate({ prompt, system, model: 'm' });
+  expect(result.text).toBe('answer'); expect(actual).toBe(prompt);
 });
 it('retains unknown counts and strips ambient API credentials', () => {
   const value = frames(); value.result!['usage'] = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };

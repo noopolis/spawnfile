@@ -15,6 +15,8 @@ export const budgetSchema = z.object({
 export const startSchema = z.object({
   schema: z.literal(DSPY_SCHEMA), kind: z.literal('optimize'), id, components: componentsSchema,
   trainCaseIds: z.array(id).min(1).max(10000), validationCaseIds: z.array(id).min(1).max(10000),
+  recovery: z.object({ evaluations: count, proposals: count }).strict().optional(),
+  checkpoint: z.object({ directory: id, identity: id }).strict().optional(),
   budget: budgetSchema, seed: z.number().int().min(0).max(2 ** 32 - 1).default(0),
 }).strict().superRefine((value, context) => {
   const train = new Set(value.trainCaseIds), validation = new Set(value.validationCaseIds);

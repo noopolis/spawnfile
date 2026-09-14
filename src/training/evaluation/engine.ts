@@ -20,6 +20,10 @@ function isolatedContext(context: EvaluationContext): EvaluationContext {
   return { ...context,
     snapshot: structuredClone(context.snapshot), results: structuredClone(context.results), scores: structuredClone(context.scores),
     judges: Object.fromEntries(Object.entries(context.judges).map(([id, route]) => [id, {
+      identity: route.identity, cacheScope: route.cacheScope,
+      ...(route.template ? { template: structuredClone(route.template) } : {}),
+      ...(route.cache ? { cache: { persistent: route.cache.persistent,
+        get: route.cache.get.bind(route.cache), put: route.cache.put.bind(route.cache) } } : {}),
       model: route.model, citationRepairs: route.citationRepairs, provider: { id: route.provider.id, capabilities: structuredClone(route.provider.capabilities),
         generate: route.provider.generate.bind(route.provider) },
     }])),
@@ -76,6 +80,13 @@ export async function evaluatePlan(stages: readonly Stage[], initial: Evaluation
       children.push(evaluated);
       observed.push(evaluated);
       checks[check.id!] = evaluated;
+      const weight = stage.score?.linear[check.id!];
+      const raw = evaluated.status === 'pass' || evaluated.status === 'fail'
+        ? evaluated.score ?? (evaluated.status === 'pass' ? 1 : 0) : null;
+      await context.observeMeasurement?.({ stageId: stage.id, criterionId: check.id!, kind: 'criterion',
+        status: evaluated.status, score: raw,
+        ...(weight === undefined ? {} : { weight, weightedContribution: raw === null ? null :
+          raw * weight / Object.values(stage.score!.linear).reduce((sum, value) => sum + value, 0) }) });
     }
     const score = stage.score ? weightedScore(stage.score.linear, checks) : undefined;
     if (score) scores[stage.id] = score;
@@ -83,7 +94,9 @@ export async function evaluatePlan(stages: readonly Stage[], initial: Evaluation
       : stage.gate ? await evaluateNode(stage.gate, context, registry) : combine('all', children);
     checks[stage.id] = gate;
     observed.push(gate);
-    results.push({ id: stage.id, checks: children, gate, ...(score ? { score } : {}) });
+    results.push({ id: stage.id, checks: children, gate, ...(score ? { score, weights: { ...stage.score!.linear } } : {}) });
+    await context.observeMeasurement?.({ stageId: stage.id, criterionId: stage.id, kind: 'gate', status: gate.status,
+      score: score?.missingWeight === 0 ? score.lower : null });
   }
   const overall = combine('all', results.map(stage => stage.gate));
   const judgeCalls = collectJudgeCalls(observed);

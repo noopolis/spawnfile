@@ -10,6 +10,8 @@ import { cliFixture, datasetText, fixtureAdapter } from '../fixture.js';
 import type { CliDependencies, InvocationIndex, SpawnfileCliIntegration } from '../types.js';
 import { contextFixture, inventoryDigest } from './fixture.js';
 import { prepareSpawnfileInputs } from './selection.js';
+import { commandCheckpoint } from '../training/index.js';
+import { prepareCliInputs } from '../native.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -102,4 +104,24 @@ it('rejects unsupported preparation before constructing native or inference clie
   expect(f.cli.stderr.join('')).toContain('unsupported preparation');
   expect(f.integration.createAdapter).not.toHaveBeenCalled(); expect(f.dependencies.inference).not.toHaveBeenCalled();
   await expect(stat(join(f.cli.root, 'out'))).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it('requires the immutable native integration identity and rejects source drift', async () => {
+  const fixture = await contextFixture(); roots.push(fixture.root);
+  let execution = 'pinned-runtime-and-evidence';
+  const integration: SpawnfileCliIntegration = { id: 'fixture', version: '1', executionIdentity: () => execution,
+    createAdapter: () => fixtureAdapter('daimon', []), prepareEnvironment: async () => ({}) };
+  const args = parseArguments(['train', '--spawnfile-context', fixture.path, '--out', 'out', '--train', 'train.yaml']);
+  const io = { cwd: fixture.root, stdout: () => undefined, stderr: () => undefined };
+  const inputs = await prepareCliInputs(args, io, { spawnfile: integration });
+  const first = await commandCheckpoint(args, inputs, { spawnfile: integration });
+  const resume = { ...args, flags: { ...args.flags, resume: ['true'] } };
+  expect((await commandCheckpoint(resume, inputs, { spawnfile: integration })).id).toBe(first.id);
+  execution = 'updated-runtime';
+  await expect(commandCheckpoint(resume, inputs, { spawnfile: integration })).rejects.toThrow('inputs changed');
+  await expect(commandCheckpoint(resume, inputs, { spawnfile: { ...integration, executionIdentity: undefined } }))
+    .rejects.toThrow('immutable execution identity');
+  const state = JSON.parse(await readFile(join(first.directory, 'command.json'), 'utf8'));
+  expect(Object.keys(state).sort()).toEqual(['id', 'identity', 'schema']);
+  expect(JSON.stringify(state)).not.toContain('pinned-runtime');
 });

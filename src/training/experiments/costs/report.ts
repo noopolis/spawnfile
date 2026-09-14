@@ -1,12 +1,14 @@
 import type { EvaluationResult, JudgeCall } from '../../contracts/evaluation.js';
 import type { InferenceAttempt, InferenceModelBasis, ObservationCoverage, Usage } from '../../contracts/execution.js';
 import type { TrialReport } from '../trials/index.js';
+import type { RescoreReport } from '../replay/index.js';
 import type { CostValuation, ModelPrice, Range } from './types.js';
 import { valueUsage } from './valuation.js';
 
 export interface OptimizerGeneration {
   text?: string;
   model: string | null;
+  requestedModel?: string;
   modelBasis?: InferenceModelBasis;
   usage: Usage | null;
   route?: string;
@@ -17,6 +19,7 @@ export interface CostReportOptions {
   subjectModel: string;
   optimizerGenerations?: readonly OptimizerGeneration[];
   prices?: readonly ModelPrice[];
+  rescores?: readonly RescoreReport[];
 }
 export interface CostEntry {
   id: string;
@@ -81,6 +84,12 @@ function callKey(call: JudgeCall): string {
   return JSON.stringify([call.id, call.judge, call.providerId, call.requestedModel, call.responseModel,
     call.responseRoute, call.outcome, call.citationRepairs ?? 0, call.repairOf, call.failureKind, call.fallbackOf,
     call.usage === null ? null : usageKey(call.usage)]);
+}
+
+function attemptKey(attempt: InferenceAttempt): string {
+  return JSON.stringify([attempt.id, attempt.providerId, attempt.requestedModel, attempt.responseModel,
+    attempt.responseRoute, attempt.outcome, attempt.failureKind,
+    attempt.usage === null ? null : usageKey(attempt.usage)]);
 }
 
 function completeUsage(coverage: readonly ObservationCoverage[]): boolean {
@@ -169,10 +178,21 @@ export function summarizeCosts(trials: readonly TrialReport[], options: CostRepo
       warnings.add('Subject valuation assumes the requested model; the actual subject model is not verified by TrialReport.');
     }
 
+  }
+
+  const measurements = [
+    ...trials.map(trial => ({ id: trial.id, trialId: trial.id, evaluation: trial.evaluation,
+      additional: [...trial.turns.flatMap(turn => turn.checks.map((check, index) => ({ check, location: `turn.${turn.id}.checks[${index}]` }))),
+        ...trial.live.map((entry, index) => ({ check: entry.result, location: `live[${index}]` })),
+        ...(trial.decisiveFailure ? [{ check: trial.decisiveFailure, location: 'decisiveFailure' }] : [])] })),
+    ...(options.rescores ?? []).map(rescore => ({ id: rescore.id, trialId: rescore.runId,
+      evaluation: rescore.evaluation, additional: [] })),
+  ];
+  for (const measurement of measurements) {
     const legacy: NonNullable<CostEntry['observedUsageReports']> = [];
     const visit = (result: EvaluationResult, location: string): Map<string, JudgeCall> => {
       const represented = new Map<string, JudgeCall>();
-      for (const call of result.judgeCalls ?? []) { rememberJudge(call, trial.id); represented.set(call.id, call); }
+      for (const call of result.judgeCalls ?? []) { rememberJudge(call, measurement.trialId); represented.set(call.id, call); }
       for (const [index, child] of (result.children ?? []).entries()) {
         for (const [id, call] of visit(child, `${location}.children[${index}]`)) represented.set(id, call);
       }
@@ -188,23 +208,20 @@ export function summarizeCosts(trials: readonly TrialReport[], options: CostRepo
       if (unmatched.length) legacy.push({ location, usage: unmatched });
       return represented;
     };
-    for (const call of trial.evaluation.judgeCalls ?? []) rememberJudge(call, trial.id);
-    for (const [id, check] of Object.entries(trial.evaluation.checks)) visit(check, `plan.checks.${id}`);
-    for (const [index, stage] of trial.evaluation.stages.entries()) {
+    for (const call of measurement.evaluation.judgeCalls ?? []) rememberJudge(call, measurement.trialId);
+    for (const [id, check] of Object.entries(measurement.evaluation.checks)) visit(check, `plan.checks.${id}`);
+    for (const [index, stage] of measurement.evaluation.stages.entries()) {
       stage.checks.forEach((check, offset) => visit(check, `plan.stages[${index}].checks[${offset}]`));
       visit(stage.gate, `plan.stages[${index}].gate`);
     }
-    for (const turn of trial.turns) turn.checks.forEach((check, index) => visit(check, `turn.${turn.id}.checks[${index}]`));
-    trial.live.forEach((check, index) => visit(check.result, `live[${index}]`));
-    if (trial.decisiveFailure) visit(trial.decisiveFailure, 'decisiveFailure');
+    measurement.additional.forEach(({ check, location }) => visit(check, location));
     if (legacy.length) {
-      append({ id: JSON.stringify(['legacy', trial.id]), role: 'unattributed', name: 'legacy-evaluators', trialId: trial.id,
+      append({ id: JSON.stringify(['legacy', measurement.id]), role: 'unattributed', name: 'legacy-evaluators', trialId: measurement.trialId,
         model: null, modelBasis: 'unknown', outcome: 'unattributed', usage: null, observedUsageReports: legacy },
       unknown('Legacy evaluator usage has no call identity; model attribution and distinct call count are unknown.'));
       usageCoverage = 'incomplete';
     }
   }
-
   for (const [id, { trialId, versions }] of judges) {
     const call = versions[0]!;
     const entry: Omit<CostEntry, 'valuation'> = { id, role: 'judge', name: call.judge, trialId,
@@ -216,21 +233,32 @@ export function summarizeCosts(trials: readonly TrialReport[], options: CostRepo
       usageCoverage = 'incomplete';
     } else append(entry);
   }
+  const optimizerCalls = new Map<string, InferenceAttempt[]>();
   for (const [index, generation] of (options.optimizerGenerations ?? []).entries()) {
     if (generation.attempts?.length) {
-      for (const attempt of generation.attempts) append({
-        id: `optimizer:${attempt.id}`, role: 'optimizer', name: 'optimizer', model: attempt.responseModel,
-        requestedModel: attempt.requestedModel, providerId: attempt.providerId,
-        modelBasis: attempt.responseModel === null ? 'unknown' : 'provider-reported',
-        responseRoute: attempt.responseRoute, outcome: attempt.outcome, usage: attempt.usage,
-      });
+      for (const attempt of generation.attempts) {
+        const versions = optimizerCalls.get(attempt.id) ?? [];
+        if (!versions.some(version => attemptKey(version) === attemptKey(attempt))) versions.push(attempt);
+        optimizerCalls.set(attempt.id, versions);
+      }
       continue;
     }
     const actualModel = generation.modelBasis === 'requested-assumption' ? null : generation.model;
     append({ id: `optimizer:${index}`, role: 'optimizer', name: 'optimizer', model: actualModel,
-      ...(generation.modelBasis === 'requested-assumption' && generation.model !== null ? { requestedModel: generation.model } : {}),
+      requestedModel: generation.requestedModel ?? (generation.modelBasis === 'requested-assumption' ? generation.model ?? undefined : undefined),
       modelBasis: actualModel === null ? 'unknown' : 'provider-reported', responseRoute: generation.route,
       outcome: generation.outcome ?? 'completed', usage: generation.usage });
+  }
+  for (const [id, versions] of optimizerCalls) {
+    const attempt = versions[0]!;
+    const entry = { id: `optimizer:${id}`, role: 'optimizer' as const, name: 'optimizer', model: attempt.responseModel,
+      requestedModel: attempt.requestedModel, providerId: attempt.providerId,
+      modelBasis: attempt.responseModel === null ? 'unknown' as const : 'provider-reported' as const,
+      responseRoute: attempt.responseRoute, outcome: attempt.outcome, usage: attempt.usage };
+    if (versions.length > 1) {
+      append(entry, unknown('Conflicting representations of one optimizer call; cost cannot be selected.'));
+      usageCoverage = 'incomplete';
+    } else append(entry);
   }
   const grouped = new Map<string, CostEntry[]>();
   for (const entry of entries) {

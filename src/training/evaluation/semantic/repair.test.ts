@@ -47,6 +47,14 @@ it('repairs only citations once and preserves the original failing score, verdic
   expect(repair!.model).toBe(initial!.model);
   expect(repair!.prompt).toContain(initial!.prompt);
   expect(repair!.system).toContain('only citations');
+  expect(initial!.system).toContain('literal ID "input" or "evidence"');
+  expect(initial!.system).toContain('Never use a URL, filename, article section or publication name as source');
+  expect(repair!.system).toContain('{"citations":[{"source":"input","quote":"exact source substring"}]}');
+  expect(repair!.system).not.toContain('"source":"input or evidence"');
+  expect(initial!.system).toContain('with score (0..1)');
+  expect(repair!.system).not.toContain('with score (0..1)');
+  expect(repair!.system).not.toContain('nonempty reasons[]');
+  expect(repair!.system).toContain('literal ID "input" or "evidence"');
 });
 
 it.each([undefined, 0] as const)('defaults to no repair and records the disabled policy (%j)', async citationRepairs => {
@@ -72,6 +80,8 @@ it.each([JSON.stringify({ citations: [{ source: 'input', quote: 'invented again'
   JSON.stringify({ citations: [{ source: 'input', quote: 'Second line.next paragraph' }] }),
   JSON.stringify({ citations: [{ source: 'input', quote: 'Literal "phrase". Second line.' }] }),
   JSON.stringify({ citations: [{ source: 'packet', quote: 'Evidence-only material.' }] }),
+  JSON.stringify({ citations: [{ source: 'article body', quote: citations[0]!.quote }] }),
+  JSON.stringify({ citations: [{ source: 'iea.org', quote: 'Evidence-only material.' }] }),
   JSON.stringify({ citations: [...citations, { source: 'input', quote: 'invented' }] }),
   JSON.stringify({ ...judgment, score: 1, verdict: 'pass' }), 'not JSON', new Error('quota unavailable')])(
   'rejects a bad repair without a third attempt or relaxed exact-match rules (%j)', async reply => {

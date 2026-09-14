@@ -28,6 +28,8 @@ describe('local invocation evidence', () => {
     const bytes = await readFile(join(root, 'invocation.json'), 'utf8');
     expect(JSON.parse(bytes)).toEqual(index); expect(bytes).not.toContain('SEALED');
     expect((await stat(join(root, 'invocation.json'))).mode & 0o777).toBe(0o600);
+    expect((await stat(join(root, 'invocations'))).mode & 0o777).toBe(0o700);
+    expect(await readFile(join(root, 'invocations', 'summary.json'), 'utf8')).toBe(bytes);
     const store = await openExperimentStore(root);
     await expect(store.readBlob(index.report, { audience: 'optimizer', phase: 'training' })).rejects.toThrow();
     await expect(store.readBlob(index.report, { audience: 'evaluator', phase: 'replay' })).rejects.toThrow('Sealed');

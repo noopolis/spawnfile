@@ -1,11 +1,12 @@
 import { runProcess, type ProcessResult, type RunningProcess } from '../platform/process/index.js';
 import { verifyDspyResult } from './evidence.js';
+import { OptimizationCheckpoint, restoredDspyEvidence } from './checkpoint.js';
 import { DspyHost } from './host.js';
 import { DSPY_SCHEMA, decodeMessage, encodeMessage, startSchema, type DspyResult } from './protocol.js';
 import { DspyOptimizationError, type DspyOptimizationOptions } from './types.js';
 
 const optionKeys = new Set(['id', 'components', 'trainCaseIds', 'validationCaseIds', 'budget', 'seed',
-  'bridge', 'validateComponents', 'evaluate', 'generate', 'signal']);
+  'bridge', 'checkpoint', 'onRestore', 'validateComponents', 'evaluate', 'generate', 'signal']);
 
 /** The bridge has no credential/provider environment; inference remains in host callbacks. */
 export function dspyEnvironment(): NodeJS.ProcessEnv {
@@ -21,13 +22,21 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
   if (!Number.isFinite(options.bridge.timeoutMs) || options.bridge.timeoutMs <= 0) throw new Error('DSPy timeout must be positive');
   const start = startSchema.parse({ schema: DSPY_SCHEMA, kind: 'optimize', id: options.id,
     components: options.components, trainCaseIds: options.trainCaseIds, validationCaseIds: options.validationCaseIds,
-    budget: options.budget, seed: options.seed });
-  const startLine = encodeMessage(start);
+    budget: options.budget, seed: options.seed,
+    ...(options.checkpoint ? { checkpoint: { directory: options.checkpoint.directory, identity: options.checkpoint.identity } } : {}) });
   const controller = new AbortController();
   const signal = options.signal === undefined ? controller.signal : AbortSignal.any([controller.signal, options.signal]);
   let timedOut = false;
+  const checkpoint = options.checkpoint ? await OptimizationCheckpoint.open(start, options.checkpoint) : undefined;
+  if (checkpoint && options.checkpoint?.resume) {
+    const extra = (method: 'evaluate' | 'generate') => checkpoint.entries.filter(entry => entry.request.method === method)
+      .reduce((sum, entry) => sum + entry.attempts - (entry.result === undefined ? 0 : 1), 0);
+    start.recovery = { evaluations: extra('evaluate'), proposals: extra('generate') };
+  }
+  const startLine = encodeMessage(start);
+  const host = new DspyHost(start, options, checkpoint);
+  if (checkpoint && options.checkpoint?.resume) await options.onRestore?.(restoredDspyEvidence(checkpoint));
   const timer = setTimeout(() => { timedOut = true; controller.abort(); }, options.bridge.timeoutMs);
-  const host = new DspyHost(start, options);
   let running: RunningProcess | undefined;
   let processResult: ProcessResult | undefined;
   let terminal: DspyResult | undefined;

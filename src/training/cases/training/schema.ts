@@ -8,7 +8,7 @@ function integer(value: unknown, path: string, min = 1, max = Number.MAX_SAFE_IN
 /** Validate controls without executing templates or contacting declared providers. */
 export function validateTrainingConfiguration(value: unknown, path = '$.training'): TrainingConfiguration {
   const config = object(value, path);
-  fields(config, ['models', 'judges', 'optimizer', 'budget', 'cache', 'test', 'validation_groups', 'seed'], path);
+  fields(config, ['models', 'judges', 'optimizer', 'budget', 'cache', 'recovery', 'test', 'validation_groups', 'seed'], path);
   const models = object(config.models, `${path}.models`);
   if (!Object.keys(models).length) fail(`${path}.models`, 'requires a named model');
   for (const [name, value] of Object.entries(models)) {
@@ -61,9 +61,20 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
   }
   if (config.cache !== undefined) {
     const cache = object(config.cache, `${path}.cache`);
-    fields(cache, ['mode', 'max_entries'], `${path}.cache`);
-    oneOf(cache.mode, ['off', 'exact'], `${path}.cache.mode`);
+    fields(cache, ['mode', 'max_entries', 'namespace', 'directory'], `${path}.cache`);
+    oneOf(cache.mode, ['off', 'exact', 'persistent'], `${path}.cache.mode`);
+    if (cache.mode === 'persistent') {
+      const namespace = string(cache.namespace, `${path}.cache.namespace`);
+      if (!namespace.trim()) fail(`${path}.cache.namespace`, 'namespace cannot be whitespace');
+      if (namespace.length > 512) fail(`${path}.cache.namespace`, 'namespace exceeds 512 characters');
+      if (cache.directory !== undefined) safePath(cache.directory, `${path}.cache.directory`);
+    } else if (cache.namespace !== undefined || cache.directory !== undefined) fail(`${path}.cache`, 'namespace and directory require persistent mode');
     if (cache.max_entries !== undefined) integer(cache.max_entries, `${path}.cache.max_entries`, 1, 10_000);
+  }
+  if (config.recovery !== undefined) {
+    const recovery = object(config.recovery, `${path}.recovery`);
+    fields(recovery, ['max_attempts'], `${path}.recovery`);
+    if (recovery.max_attempts !== undefined) integer(recovery.max_attempts, `${path}.recovery.max_attempts`, 0, 10);
   }
   if (config.test !== undefined) safePath(config.test, `${path}.test`);
   if (config.validation_groups !== undefined) uniqueStrings(config.validation_groups, `${path}.validation_groups`);

@@ -28,6 +28,7 @@ const costs = z.object({
       amount: range.nullable(), price })).max(1000) }).optional(),
 });
 const check: z.ZodType<ViewerCheck> = z.lazy(() => z.object({
+  weight: z.number().finite().nonnegative().optional(), weightedContribution: z.number().min(0).max(1).nullable().optional(),
   id, label: text, status: z.enum(['pass', 'fail', 'unknown', 'error', 'skipped']), score,
   evidenceIds: strings, children: z.array(check).max(1000),
 }));
@@ -55,6 +56,11 @@ const schema = z.object({
   optimizer: z.object({ name: id, status: id, evaluations: count, proposals: count,
   maxMetricCalls: count, maxProposals: count, selectedCandidateId: id.optional() }).optional(),
   costs: costs.optional(),
+  activity: z.object({ trialId: id, caseId: id, phase: z.enum(['train', 'validation', 'test']), status: id,
+    toolCalls: count, judgeCalls: count, measurements: z.array(z.object({stageId:id,criterionId:id,
+      kind:z.enum(['criterion','gate','score']),status:id,score,
+      weight:z.number().finite().nonnegative().optional(),weightedContribution:score.optional()})).max(1000),
+  }).optional(),
 });
 
 /** Strip undeclared fields, bound check trees and reject invalid projections. */

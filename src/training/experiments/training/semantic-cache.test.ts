@@ -103,3 +103,16 @@ it('fails closed when successful fallback evidence cannot be persisted and does 
   expect((await evaluateRubric(check,f.context)).status).toBe('pass');
   expect(f.generate).toHaveBeenCalledTimes(2);
 });
+
+it.each(['quota','transport','unavailable','authentication','protocol','cancelled','timeout','unsupported','unknown'] as const)('preserves a direct provider typed %s failure for bounded recovery policy',async kind=>{
+  const f=fixture(); f.generate.mockRejectedValue(new InferenceFailure(kind,'Provider failure'));
+  const evaluated=await evaluateRubric(check,f.context);
+  expect(evaluated.status).toBe('error');
+  expect(evaluated.judgeCalls).toHaveLength(1);
+  expect(evaluated.judgeCalls![0]).toMatchObject({outcome:'generation-error',failureKind:kind});
+});
+it.each([new Error('quota unavailable'),Object.assign(new Error('unknown'),{kind:'invented'}),'quota'])('does not infer retry classification from arbitrary error prose %#',async error=>{
+  const f=fixture(); f.generate.mockRejectedValue(error);
+  const evaluated=await evaluateRubric(check,f.context);
+  expect(evaluated.status).toBe('error'); expect(evaluated.judgeCalls![0]!.failureKind).toBeUndefined();
+});

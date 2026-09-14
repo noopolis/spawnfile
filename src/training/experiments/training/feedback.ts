@@ -1,3 +1,4 @@
+import type { PlanEvaluation } from '../../contracts/evaluation.js';
 import type { DataMap, ResolvedRecord } from '../../contracts/dataset.js';
 import type { TrialReport } from '../trials/index.js';
 
@@ -15,8 +16,8 @@ function taskOutput(record: ResolvedRecord, report: TrialReport): string {
 }
 
 /** Validation and test captures never supply optimizer text, even when outputs are declared. */
-export function trainingFeedback(record: ResolvedRecord, report: TrialReport): { output: string; feedback: string } {
+export function trainingFeedback(record: ResolvedRecord, report: TrialReport, evaluation: PlanEvaluation = report.evaluation): { output: string; feedback: string } {
   if (report.phase !== 'train') return { output: '', feedback: '' };
   return { output: taskOutput(record, report), feedback: JSON.stringify({ task: record.input ?? record.turns,
-    criteria: record.effectiveStages, evaluation: report.evaluation, live: report.live }) };
+    criteria: record.effectiveStages, evaluation, live: report.live }) };
 }

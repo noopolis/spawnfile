@@ -1,12 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateNode, evaluatePlan, mayStop, createEvaluationRegistry, result } from './index.js';
 import { evaluationContext } from '../testing/index.js';
-import type { EmbeddingProvider, EvaluationResult, RegisteredEvaluator } from '../contracts/evaluation.js';
+import type { EmbeddingProvider, EvaluationMeasurement, EvaluationResult, RegisteredEvaluator } from '../contracts/evaluation.js';
 import type { InferenceProvider } from '../contracts/execution.js';
 import type { LiveCheck } from '../contracts/dataset.js';
 
 const registry = createEvaluationRegistry();
 describe('evaluation execution', () => {
+  it('streams measured relative contributions and never lets soft success compensate for a hard failure', async () => {
+    const measurements: EvaluationMeasurement[] = [];
+    const report = await evaluatePlan([{ id: 'writing', checks: [
+      { id: 'format', eval: 'equals', input: 'output.text', value: 'wrong' },
+      { id: 'voice', eval: 'equals', input: 'output.text', value: '4' },
+      { id: 'clarity', eval: 'equals', input: 'output.text', value: '4' },
+    ], score: { linear: { voice: 2, clarity: 1 } }, gate: { passed: 'format' } }],
+    evaluationContext({ observeMeasurement: async measurement => { measurements.push(measurement); } }), registry);
+    expect(report.status).toBe('fail');
+    expect(report.scores.writing!.lower).toBe(1);
+    expect(report.stages[0]!.weights).toEqual({ voice: 2, clarity: 1 });
+    expect(measurements).toEqual([
+      { stageId: 'writing', criterionId: 'format', kind: 'criterion', status: 'fail', score: 0 },
+      { stageId: 'writing', criterionId: 'voice', kind: 'criterion', status: 'pass', score: 1, weight: 2, weightedContribution: 2 / 3 },
+      { stageId: 'writing', criterionId: 'clarity', kind: 'criterion', status: 'pass', score: 1, weight: 1, weightedContribution: 1 / 3 },
+      { stageId: 'writing', criterionId: 'writing', kind: 'gate', status: 'fail', score: 1 },
+    ]);
+    await expect(evaluatePlan([{ id: 'work', checks: [{ id: 'check', eval: 'equals', input: 'output.text', value: '4' }] }],
+      evaluationContext({ observeMeasurement: async () => { throw new Error('durable sink failed'); } }), registry))
+      .rejects.toThrow('durable sink failed');
+  });
   it('keeps evaluator mutations out of criteria, shared observations, routes and returned evidence', async () => {
     const check = { id: 'mutator', eval: 'mutator', schema: { title: 'original' } };
     const context = evaluationContext({ judges: { judge: { provider: { id: 'fixture',

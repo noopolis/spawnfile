@@ -4,7 +4,7 @@ import { escapeHtml, shown, table } from './format.js';
 function checkTree(checks: ViewerCheck[]): string {
   if (checks.length === 0) return '<p class="muted">No checks supplied.</p>';
   return `<ul>${checks.map((check) => `<li><strong>${escapeHtml(check.label)}</strong> — ${escapeHtml(check.status)};
-score ${shown(check.score)} <span class="muted">(${escapeHtml(check.id)})</span>
+score ${shown(check.score)}${check.weight === undefined ? '' : ` · weight ${shown(check.weight)} · contribution ${shown(check.weightedContribution ?? null)}`} <span class="muted">(${escapeHtml(check.id)})</span>
 <p>Evidence: ${escapeHtml(check.evidenceIds.join(', ') || 'None supplied')}</p>
 ${check.children.length === 0 ? '' : checkTree(check.children)}</li>`).join('')}</ul>`;
 }
@@ -47,7 +47,7 @@ ${references ? `<ul>${references}</ul>` : '<p class="muted">No dated rate source
 
 export function trialDetails(data: ViewerData): string {
   if (data.trials.length === 0) return '<p class="empty-state">No trials supplied.</p>';
-  return data.trials.map((trial, index) => `<details class="detail-drawer" id="trial-${index}"><summary>Trial ${String(index + 1).padStart(2, '0')} · ${escapeHtml(trial.caseId)} <span class="badge">${escapeHtml(trial.status.split(' ')[0]!)}</span></summary>
+  return data.trials.map((trial, index) => `<details class="detail-drawer" id="trial-${index}" data-trial-key="${escapeHtml(trial.id)}"><summary>Trial ${String(index + 1).padStart(2, '0')} · ${escapeHtml(trial.caseId)} <span class="badge">${escapeHtml(trial.status.split(' ')[0]!)}</span></summary>
 <div class="panel-body"><p class="mono-id">${escapeHtml(trial.id)} · candidate ${escapeHtml(trial.candidateId)}</p><p>Optimizer reward: score ${shown(trial.score)}</p>
 <h3>Required checks</h3>${checkTree(trial.checks)}
 <details><summary>Evidence events · ${trial.events.length}</summary>${table(['ID', 'Type', 'Timestamp', 'Summary'], trial.events.map(event => [event.id, event.type, event.timestamp, event.summary]))}</details>

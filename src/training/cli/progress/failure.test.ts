@@ -1,3 +1,4 @@
+import type { RescoreReport } from '../../experiments/replay/index.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -106,4 +107,26 @@ describe('protected failure report and development-only replay', () => {
       trials: [{ ...f.report.view.trials[0]!, id: 'SEALED-trial', caseId: 'SEALED-trial-case' }] } };
     await expect(loadFailureView(report, { ...f.index, trialIds: ['SEALED-trial'] }, f.store)).rejects.toThrow('Sealed');
   });
+});
+
+it('retains development rescores while hiding sealed rescore identity and retaining costs', async () => {
+  const f = await fixture(), native = f.trials[0]!;
+  const rescore: RescoreReport = { schema: 'paideia.rescore.v1', id: 'rescore', runId: native.id, scope: 'final-stages',
+    notReevaluated: ['live', 'per-turn'], original: { evaluationId: 'old', digest: 'old', candidateId: native.candidateId,
+      datasetDigest: 'old', planDigest: 'old', recordId: native.recordId, phase: native.phase, status: native.status },
+    criteria: { datasetId: 'dataset', datasetDigest: 'digest', sharedPlanDigest: 'plan', stages: [], registryVersions: {},
+      sidecarDigests: {}, inferenceRoutes: { judges: {}, embeddings: {} } },
+    execution: native.execution, hostWork: native.hostWork, coverage: [], status: 'fail', evaluation: native.evaluation };
+  const sealed: RescoreReport = { ...rescore, id: 'SEALED-rescore', runId: f.trials[1]!.id,
+    original: { ...rescore.original, phase: 'test', recordId: 'SEALED-case' }, evaluation: { ...native.evaluation,
+      judgeCalls: [{ id: 'SEALED-call', judge: 'SEALED-judge', providerId: 'SEALED-provider', requestedModel: 'gpt-5.5',
+        responseModel: 'gpt-5.5', responseRoute: 'subscription', outcome: 'completed', usage: native.turns[0]!.native.usage }] } };
+  const rescores = [rescore, sealed], costs = summarizeCosts(f.trials, { subjectModel: 'gpt-5.5', rescores });
+  const report = createFailureReport({ id: 'rescore-failure', command: 'train', baseline: f.baseline,
+    progressRunId: 'progress', diagnosticId: 'diagnostic', trials: f.trials, rescores, costs });
+  expect(report.view.trials).toHaveLength(1);
+  expect(report.view.trials[0]!.status).toContain('fail (rescored; original pass;');
+  expect(report.view.costs!.observed!.knownSubtotal).toEqual(costs.knownSubtotalUsd);
+  expect(report.view.costs!.observed!.lines).toHaveLength(3);
+  expect(JSON.stringify(report)).not.toMatch(/SEALED|PRIVATE/);
 });

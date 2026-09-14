@@ -52,7 +52,9 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     catch (error) { sinkFailed = true; control.stop('Evidence persistence failed'); throw error; }
   };
   const observer = options.evaluation.observeJudgeAttempt;
-  const evaluationServices = { ...options.evaluation, observeJudgeAttempt: async (attempt: JudgeAttemptObservation) => {
+  const evaluationServices = { ...options.evaluation,
+    observeMeasurement: async (measurement: import('../../contracts/evaluation.js').EvaluationMeasurement) => { await persist('evaluation.measurement', measurement); },
+    observeJudgeAttempt: async (attempt: JudgeAttemptObservation) => {
     await persist('judge.attempt', attempt);
     await observer?.(structuredClone(attempt));
   } };

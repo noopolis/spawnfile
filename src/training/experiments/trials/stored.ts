@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { CandidateManifest } from '../../candidates/index.js';
 import { materializeCandidate, validateCandidate } from '../../candidates/index.js';
 import type { ExperimentStore } from '../../storage/index.js';
-import type { TrialOptions, TrialReport } from './types.js';
+import type { TrialOptions, TrialReport, TrialEvent } from './types.js';
 import { runTrial } from './trial.js';
 
 /** Evaluator-owned preparation data; never implicitly delivered to the subject. */
@@ -19,6 +19,8 @@ export interface StoredTrialOptions extends Omit<TrialOptions, 'candidateId' | '
   candidate: CandidateManifest;
   store: ExperimentStore;
   storeRoot: string;
+  /** Called only after the event has reached the protected durable store. */
+  observeEvent?: (event: TrialEvent) => Promise<void>;
   /** The environment may install tools/state; instructions come from declared candidate resources. */
   prepareEnvironment?: (paths: Parameters<TrialOptions['prepare']>[0], signal: AbortSignal,
     context: NativePreparationContext) => Promise<Omit<Awaited<ReturnType<TrialOptions['prepare']>>, 'instructions'>>;
@@ -40,7 +42,10 @@ export async function runStoredTrial(options: StoredTrialOptions): Promise<Trial
   await options.store.putBlob(options.id, JSON.stringify(options.record), 'evaluator');
   const report = await runTrial({ ...options, candidateId: options.candidate.id,
     protectedPaths: [options.storeRoot, ...(options.protectedPaths ?? [])],
-    persist: async event => { await options.store.appendEvent(options.id, { id: randomUUID(), payload: event }, 'raw'); },
+    persist: async event => {
+      await options.store.appendEvent(options.id, { id: randomUUID(), payload: event }, 'raw');
+      await options.observeEvent?.(event);
+    },
     prepare: async (paths, signal) => {
       const receipts = await materializeCandidate(options.candidate, paths.workspace);
       const environment = await options.prepareEnvironment?.(paths, signal, structuredClone({

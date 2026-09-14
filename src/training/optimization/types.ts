@@ -18,8 +18,10 @@ export interface DspyOptimizationOptions {
     maxBytes?: number;
   };
   validateComponents(components: Readonly<Record<string, string>>, signal: AbortSignal): void | Promise<void>;
-  evaluate(request: Readonly<DspyEvaluateParams>, signal: AbortSignal): Promise<DspyEvaluation>;
-  generate(request: Readonly<DspyGenerateParams>, signal: AbortSignal): Promise<InferenceResult>;
+  evaluate(request: Readonly<DspyEvaluateParams>, signal: AbortSignal, callbackId?: string): Promise<DspyEvaluation>;
+  generate(request: Readonly<DspyGenerateParams>, signal: AbortSignal, callbackId?: string): Promise<InferenceResult>;
+  onRestore?: (evidence: DspyRestoredEvidence) => Promise<void>;
+  checkpoint?: { directory: string; resume: boolean; identity: string };
   signal?: AbortSignal;
 }
 
@@ -36,4 +38,10 @@ export class DspyOptimizationError extends Error {
     super(message);
     this.name = 'DspyOptimizationError';
   }
+}
+
+export interface DspyRestoredEvidence {
+  generations: Array<Omit<InferenceResult, 'text'> & { callbackId: string }>;
+  failedAttempts: InferenceAttempt[];
+  reservations: Array<{ id: string; method: 'evaluate' | 'generate'; attempts: number; settledAttempts: number; completed: boolean }>;
 }

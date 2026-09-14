@@ -11,7 +11,7 @@ const repeated = new Set(['instructions', 'supporting', 'locked', 'editable', 'r
 const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'resource', 'judge', 'judge-citation-repairs', 'source-root', 'out', 'max-trials', 'timeout-ms', 'view', 'cost-config', 'spawnfile-context'];
 const flags: Record<string, readonly string[]> = {
   validate: ['judge', 'judge-citation-repairs'], evaluate: common, view: ['port', 'timeout-ms'],
-  train: [...common, 'train', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed', 'dry-run'],
+  train: [...common, 'train', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed', 'dry-run', 'resume'],
 };
 
 export const helpText = `Paideia — explicit local native-agent experiments
@@ -37,6 +37,7 @@ Train accepts repeated --validation-group GROUP, or freezes an internal group pa
 --max-trials N (default 20, ceiling 10000) includes conservative reserved sealed-test trials.
 --max-proposals N (default 3, ceiling 1000), --seed N (GEPA sampling only).
 train --dry-run resolves local inputs and prints an API-equivalent cost plan without launching any runtime or model.
+train --resume reopens the same --out with unchanged execution inputs and cumulative optimizer budgets.
 --cost-config FILE selects a paideia.cost-config.v1 YAML with token assumptions and explicit model prices.
 Dry-run requires no --out or --bridge-command. Unknown costs are reported, never priced at zero.
 --timeout-ms N (default 180000, ceiling 3600000) is the whole-command deadline.
@@ -58,7 +59,7 @@ export function parseArguments(argv: readonly string[]): CliArguments {
     if (!token.startsWith('-')) { positional.push(token); continue; }
     const name = token.slice(2);
     if (!token.startsWith('--') || !allowed.includes(name)) throw new Error(`Unsupported option ${token} for ${command}`);
-    if (name === 'dry-run') {
+    if (name === 'dry-run' || name === 'resume') {
       if (values[name]) throw new Error(`Option ${token} may appear only once`);
       values[name] = ['true'];
       continue;

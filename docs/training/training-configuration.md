@@ -34,8 +34,11 @@ training:
     max_proposals: 4
     timeout_ms: 3600000
   cache:
-    mode: exact
+    mode: persistent
+    namespace: editorial-calibration-v1
     max_entries: 1000
+  recovery:
+    max_attempts: 2
   test: test.paideia.yaml
   validation_groups: [held-out-development]
   seed: 0
@@ -120,12 +123,54 @@ constructs no provider and values every permitted fallback attempt; unknown mode
 prices remain unknown. These are API-equivalent estimates, not subscription fees
 or spending guarantees.
 
-Cache hits preserve a reference to the original judgment and incur no new judge
-call. Stable instructions precede source data, allowing provider prefix caching
-where supported; only reported cache counters establish actual reuse. The local
-exact cache does not implement semantic similarity caching, cross-process restart
-resume, or automatic retry after all routes fail. Completed native captures remain
-available for explicit rescoring. Missing research remains a blocked task.
+Cache hits preserve the original attempt IDs, actual model identity and historical
+usage as provenance. They incur no new judge call or current token charge. Exact
+reuse binds the frozen route, rendered instructions, sources, threshold, dataset
+identity and phase. A held-out judgment cannot satisfy a training request.
+
+Persistent caches use a private SQLite store, an explicit calibration namespace,
+entry and payload-byte bounds, and oldest-insertion eviction. Change the namespace
+when a mutable model alias or calibration changes. Transactions survive process
+exit without stale application locks; hashes and schema checks reject corrupted
+entries. This is host-owned storage, outside the subject's accessible paths. The
+first valid exact judgment wins, including a failing grade. Infrastructure errors
+and invalid responses are never cached. A cache hit is reused evidence, not an
+independent native trial or a new quality measurement.
+
+`cache.mode: persistent` requires a nonblank `namespace`. Its default directory is
+inside the command output; optional `directory` is contained beneath the dataset
+directory, with symbolic path components rejected. The same namespace and exact
+evidence can reuse judgments across commands; distinct judge names remain separate.
+
+## Interruption and resume
+
+Repeat the same command with `--resume` and the same `--out`. Resume validates
+the candidate, resources, dataset and criterion identities, runtime integration,
+budgets and optimizer checkpoint. Presentation flags may change. Native Spawnfile
+integrations must provide an immutable execution identity; changed runtime images,
+tools or fixture evidence reject resume.
+
+Completed native work is restored from immutable captures. A settled native result
+whose judgment failed transiently can be rescored without rewriting the article.
+`recovery.max_attempts` bounds these rescoring attempts across invocations (default
+two, zero disables them). Valid failed grades are never retried for a better score.
+Incomplete native execution or unconfirmed shutdown blocks reuse.
+
+The real GEPA state, sampler state and callback journal resume together. Trial and
+proposal attempt budgets remain cumulative; each command invocation has its own
+deadline. A process lock prevents overlapping commands and releases on process
+death. Reports distinguish new trials, restored captures and rescoring. Resume is
+not production deployment and does not alter the selected native source files.
+
+With `--view`, persisted measurements stream to the local console. The displayed
+chart can rise, fall or stay flat. Browser updates invoke no agent or judge work.
+Each scored criterion shows its authored weight and measured contribution; gates
+remain independent of that score.
+
+Stable instructions precede source data, allowing provider prefix caching where
+supported; only reported cache counters establish actual reuse. Exact response
+caching does not imply semantic similarity caching or optimizer checkpoint resume.
+Missing research remains a blocked task.
 
 The acceptance tests use the real DSPy bridge with isolated deterministic subject
 and inference fixtures. They verify YAML-only control, failure routing, frozen

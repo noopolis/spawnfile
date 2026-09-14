@@ -19,7 +19,8 @@ export interface TrainingConfiguration {
   judges?: Record<string, TrainingJudge>;
   optimizer?: TrainingRoute;
   budget?: { max_trials?: number; max_proposals?: number; timeout_ms?: number };
-  cache?: { mode: 'off' | 'exact'; max_entries?: number };
+  cache?: { mode: 'off' | 'exact' | 'persistent'; max_entries?: number; namespace?: string; directory?: string };
+  recovery?: { max_attempts?: number };
   test?: string;
   validation_groups?: string[];
   seed?: number;

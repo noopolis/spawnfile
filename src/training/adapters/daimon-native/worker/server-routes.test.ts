@@ -21,9 +21,11 @@ test('HTTP surface forwards health, receipt, availability, native run and stop r
     assert.equal((await call('/unknown')).status, 404);
     assert.equal((await call('/trial/run', { method: 'POST' })).status, 400);
     const post = (value: string) => call('/trial/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: value });
-    for (const value of ['{}', 'null', '[]', '{', JSON.stringify({ wakeId: 'wake', text: 'text', injected: true })]) assert.equal((await post(value)).status, 400);
+    for (const value of ['{}', 'null', '[]', '{', JSON.stringify({ wakeId: 'wake', text: 'text', injected: true }),
+      ...[null, [], 1].map(controls => JSON.stringify({ wakeId: 'wake', text: 'text', controls }))]) assert.equal((await post(value)).status, 400);
     assert.equal((await post(JSON.stringify({ wakeId: 'wake', text: 'text' }))).status, 200);
     assert.deepEqual(body, { wakeId: 'wake', text: 'text' });
+    assert.equal((await post(JSON.stringify({ wakeId: 'wake', text: 'text', controls: { maxExternalDeliveries: 1 } }))).status, 200);
     available = false;
     assert.equal((await call('/v2/activity')).status, 503);
     assert.equal((await call('/v2/availability')).status, 503);

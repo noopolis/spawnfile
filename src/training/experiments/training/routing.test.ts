@@ -191,3 +191,72 @@ it('does not invoke any judge or rerun an agent that failed before producing the
   expect(start).toHaveBeenCalledTimes(1); expect(generate).not.toHaveBeenCalled();
   expect(progress.some(event => event.type === 'selection.frozen')).toBe(false);
 });
+
+it('resumes real DSPy after a judge outage using a distinct rescore of the already-written article', async () => {
+  let failing = true;
+  const judge = provider('stable-policy', async () => {
+    if (failing) throw new InferenceFailure('quota', 'provider unavailable');
+    return judgment();
+  });
+  const { options, starts, writes } = await fixture(judge);
+  options.bridge = { command: join(process.cwd(), 'bridges/dspy/.venv/bin/paideia-dspy'),
+    cwd: process.cwd(), timeoutMs: 10_000 };
+  options.budget = { maxMetricCalls: 3, maxProposals: 1 };
+  options.checkpoint = { directory: `${options.native.storeRoot}-checkpoint`, resume: false, identity: 'real-training-fixture' };
+  await expect(trainAgent(options)).rejects.toThrow('unscorable');
+  expect(starts).toHaveBeenCalledTimes(1);
+  failing = false;
+  options.checkpoint.resume = true;
+  const report = await trainAgent(options);
+  expect(starts).toHaveBeenCalledTimes(2);
+  expect(writes).toHaveBeenCalledTimes(2);
+  expect(report.trials).toHaveLength(2);
+  expect(report.rescores).toHaveLength(1);
+  expect(report.trials[0]!.status).toBe('error');
+  expect(report.rescores![0]).toMatchObject({ schema: 'paideia.rescore.v1', runId: report.trials[0]!.id, status: 'pass' });
+  expect(report.optimizer.provenance.captures).toEqual([{ caseId: 'validation', split: 'validation', captureId: report.trials[0]!.id }]);
+  expect(report.heldOut[0]!.meanScore).toBe(1);
+  const { recoverMeasurement } = await import('./recovery.js');
+  const recovery = { options, dataset: options.validation!, report: report.trials[0]!, evaluation: options.native.evaluation,
+    reserve: async (): Promise<string> => { throw new Error('must not reserve settled rescore'); } };
+  expect((await recoverMeasurement({ ...recovery, pendingRescoreId: report.rescores![0]!.id }))!.id).toBe(report.rescores![0]!.id);
+  await expect(recoverMeasurement({ ...recovery, pendingRescoreId: 'not-settled' })).rejects.toThrow('must not reserve');
+  const failedGrade = { ...report.rescores![0]!, status: 'fail' as const };
+  expect(await recoverMeasurement({ ...recovery, previous: failedGrade })).toBe(failedGrade);
+  const error = Object.values(report.trials[0]!.evaluation.checks).find(check => check.status === 'error')!;
+  const nested = { ...error, children: [error] };
+  await expect(recoverMeasurement({ ...recovery, report: { ...report.trials[0]!, evaluation: {
+    ...report.trials[0]!.evaluation, checks: { nested } } } })).rejects.toThrow('must not reserve');
+  await expect(recoverMeasurement({ ...recovery, report: { ...report.trials[0]!, evaluation: {
+    ...report.trials[0]!.evaluation, checks: { error: { ...error, judgeCalls: [] } } } } })).rejects.toThrow('classified');
+  const again = await trainAgent(options);
+  expect(again.optimizer).toEqual(report.optimizer);
+  expect(starts).toHaveBeenCalledTimes(2);
+  await expect(trainAgent({ ...options, checkpoint: { ...options.checkpoint, identity: 'changed-runtime' } })).rejects.toThrow('identity');
+});
+
+it('bounds recovery reservations cumulatively and cannot mutate a frozen selection or trust missing shutdown', async () => {
+  const { TrainingCheckpoint } = await import('./checkpoint.js');
+  const { recoverStoredReport, recoverMeasurement } = await import('./recovery.js');
+  const { options } = await fixture(provider('judge', async () => judgment()));
+  baselineOptimizer();
+  const report = await trainAgent(options);
+  options.checkpoint = { directory: `${options.native.storeRoot}-checkpoint`, resume: false, identity: 'guards', maxRecoveryAttempts: 1 };
+  const checkpoint = (await TrainingCheckpoint.open(options, [options.train, options.test]))!;
+  await checkpoint.begin('pending'); expect(checkpoint.reports).toHaveLength(0);
+  await checkpoint.reserveRecovery(1);
+  options.checkpoint.resume = true;
+  const resumed = (await TrainingCheckpoint.open(options, [options.train, options.test]))!;
+  await expect(resumed.reserveRecovery(1)).rejects.toThrow('budget');
+  await expect(resumed.reserveRecovery(-1)).rejects.toThrow('budget');
+  await resumed.freeze(report.optimizer);
+  await expect(resumed.freeze({ ...report.optimizer, components: { changed: 'no' } })).rejects.toThrow('Frozen');
+  const original = report.trials[0]!;
+  await expect(recoverStoredReport(options, original.id, original.phase, 'another')).rejects.toThrow('shutdown');
+  await expect(recoverStoredReport(options, original.id, original.phase, original.candidateId, { ...original, status: 'error' })).rejects.toThrow('differs');
+  const input = { options, dataset: options.train, report: original, evaluation: options.native.evaluation, reserve: async () => 'reserved-id' };
+  await expect(recoverMeasurement({ ...input, report: { ...original, status: 'error', execution: 'failed' } })).rejects.toThrow('incomplete');
+  await expect(recoverMeasurement({ ...input, report: { ...original, status: 'unknown' } })).rejects.toThrow('missing evidence');
+  await expect(recoverMeasurement({ ...input, report: { ...original, status: 'error' } })).rejects.toThrow('missing evidence');
+  expect(await recoverMeasurement({ ...input, report: { ...original, status: 'fail' } })).toBeUndefined();
+});

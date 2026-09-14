@@ -31,7 +31,7 @@ describe('logical and scoring semantics', () => {
     expect(score).toEqual({ lower: 0.6, upper: 1, assessedWeight: 0.6, missingWeight: 0.4, finality: 'provisional' });
     expect(checkThreshold(score, 0.5).status).toBe('unknown');
     expect(checkThreshold(undefined, 0.5).status).toBe('unknown');
-    for (const weights of [{}, { x: -1, y: 2 }, { x: NaN }, { x: 0.2 }] as Record<string, number>[]) {
+    for (const weights of [{}, { x: -1, y: 2 }, { x: NaN }, { x: 0 }] as Record<string, number>[]) {
       expect(() => weightedScore(weights, {})).toThrow('weights');
     }
     const checks = { good: { ...result('pass', 'good'), score: 0.8 }, bad: result('fail', 'bad'), missing: result('unknown', 'missing') };
@@ -44,4 +44,14 @@ describe('logical and scoring semantics', () => {
       expect(() => checkThreshold(complete, value)).toThrow('threshold');
     }
   });
+});
+
+it('normalizes relative weights once against every declared criterion', () => {
+  const checks = { first: { ...result('pass', 'graded'), score: 0.9 }, second: { ...result('fail', 'graded'), score: 0.3 } };
+  expect(weightedScore({first:2,second:1}, checks).lower).toBeCloseTo(0.7);
+  const partial = weightedScore({first:2,second:1}, {first:checks.first});
+  expect(partial.lower).toBeCloseTo(0.6);
+  expect(partial.missingWeight).toBeCloseTo(1/3);
+  expect(checkThreshold(partial,0.5).status).toBe('unknown');
+  expect(() => weightedScore({first:Number.MAX_VALUE,second:Number.MAX_VALUE},checks)).toThrow('positive total');
 });

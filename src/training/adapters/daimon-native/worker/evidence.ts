@@ -32,15 +32,15 @@ export async function readClosedTraces(runtimeHome: string, agentId: string): Pr
   });
 }
 
-async function readUsage(file: string, agentId: string, executionId?: string): Promise<NativeUsage[]> {
+async function readUsage(file: string, agentId: string, executionId?: string, previous: readonly string[] = []): Promise<NativeUsage[]> {
   return (await jsonLines(file)).map(value => {
     const row = object(value);
     if (row.v !== 'noopolis.daimon.turn-usage.v1' || row.agent !== agentId || row.engine !== 'codex' ||
-        typeof row.wake !== 'string' || executionId !== undefined && row.wake !== executionId || !timestamp(row.at) ||
+        typeof row.wake !== 'string' || executionId !== undefined && row.wake !== executionId && !previous.includes(String(row.wake)) || !timestamp(row.at) ||
         typeof row.complete !== 'boolean' || ['input', 'output', 'cache_read', 'total'].some(key =>
           !Number.isSafeInteger(row[key]) || Number(row[key]) < 0)) throw new Error('Native usage schema or execution identity mismatch');
     return row as NativeUsage;
-  });
+  }).filter(row => !previous.includes(row.wake));
 }
 
 async function files(directory: string): Promise<string[]> {
@@ -92,14 +92,14 @@ async function readModelContexts(runtimeHome: string): Promise<NativeEvidence['m
 }
 
 export async function collectNativeEvidence(runtimeHome: string, usageFile: string, agentId: string,
-  executionId: string | undefined, expectedModel: string): Promise<NativeEvidence> {
+  executionId: string | undefined, expectedModel: string, previous: readonly string[] = []): Promise<NativeEvidence> {
   const [traces, usage, toolReceipts, modelContexts] = await Promise.all([
-    readClosedTraces(runtimeHome, agentId), readUsage(usageFile, agentId, executionId),
+    readClosedTraces(runtimeHome, agentId), readUsage(usageFile, agentId, executionId, previous),
     readToolReceipts(runtimeHome, agentId), readModelContexts(runtimeHome),
   ]);
-  if (traces.some(row => executionId !== undefined && row.turn_id !== executionId)) throw new Error('Foreign native execution trace');
+  if (traces.some(row => executionId !== undefined && row.turn_id !== executionId && !previous.includes(row.turn_id))) throw new Error('Foreign native execution trace');
   if (modelContexts.some(row => row.model !== expectedModel)) throw new Error('Native model differs from the declared model');
-  return { traces, usage, toolReceipts, modelContexts };
+  return { traces: traces.filter(row => !previous.includes(row.turn_id)), usage, toolReceipts, modelContexts };
 }
 
 export async function assertFreshNativeEvidence(runtimeHome: string, usageFile: string, agentId: string, expectedModel: string): Promise<void> {

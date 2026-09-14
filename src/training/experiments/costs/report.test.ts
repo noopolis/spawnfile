@@ -1,3 +1,4 @@
+import type { RescoreReport } from '../replay/index.js';
 import { describe, expect, it } from 'vitest';
 import type { EvaluationResult, JudgeCall } from '../../contracts/evaluation.js';
 import type { Observation, Usage } from '../../contracts/execution.js';
@@ -315,4 +316,42 @@ it('accounts for optimizer fallback attempts instead of adding the wrapper usage
   expect(entries[0]!.usage).toEqual(usage);
   expect(entries[1]!).toMatchObject({model:null,modelBasis:'unknown'});
   expect(report.completeness).toBe('incomplete');
+});
+
+it('deduplicates restored optimizer receipts and rejects conflicting costs for one identity', () => {
+  const attempt = { id: 'receipt', ordinal: 1, providerId: 'subscription', requestedModel: 'judge-model',
+    responseModel: 'judge-model', responseRoute: 'subscription', outcome: 'completed' as const, failureKind: null,
+    startedAt: 'start', completedAt: 'end', usage };
+  const generation = { model: 'judge-model', usage, attempts: [attempt] };
+  const duplicate = summarizeCosts([], { ...options, optimizerGenerations: [generation, structuredClone(generation)] });
+  expect(duplicate.entries).toHaveLength(1);
+  expect(duplicate.entries[0]!.id).toBe('optimizer:receipt');
+  expect(duplicate.completeness).toBe('complete');
+  const conflicting = summarizeCosts([], { ...options, optimizerGenerations: [generation,
+    { ...generation, attempts: [{ ...attempt, usage: null }] }] });
+  expect(conflicting.entries).toHaveLength(1);
+  expect(conflicting.entries[0]!.valuation.assumptions[0]).toContain('Conflicting');
+  expect(conflicting.apiEquivalentUsd).toBeNull();
+});
+
+it('prices distinct rescore calls once, including nested evidence, without inventing another native run', () => {
+  const native = trial(), originalCall = judge('original'), newCall = judge('new');
+  native.evaluation.judgeCalls = [originalCall];
+  const rescore: RescoreReport = { schema: 'paideia.rescore.v1', id: 'rescore', runId: native.id, scope: 'final-stages',
+    notReevaluated: ['live', 'per-turn'], original: { evaluationId: 'old', digest: 'old', candidateId: native.candidateId,
+      datasetDigest: 'old', planDigest: 'old', recordId: native.recordId, phase: native.phase, status: native.status },
+    criteria: { datasetId: 'dataset', datasetDigest: 'digest', sharedPlanDigest: 'plan', stages: [], registryVersions: {},
+      sidecarDigests: {}, inferenceRoutes: { judges: {}, embeddings: {} } },
+    execution: native.execution, hostWork: native.hostWork, coverage: [], status: 'pass', evaluation: {
+      status: 'pass', scores: {}, judgeCalls: [originalCall], checks: { cached: check([originalCall]) },
+      stages: [{ id: 'stage', checks: [check([newCall])], gate: { ...check(), children: [check([newCall])] } }],
+    } };
+  const report = summarizeCosts([native, structuredClone(native)], { ...options, rescores: [rescore, structuredClone(rescore)] });
+  expect(report.entries.map(entry => entry.role)).toEqual(['subject', 'judge', 'judge']);
+  expect(report.entries.map(entry => entry.trialId)).toEqual([native.id, native.id, native.id]);
+  expect(report.apiEquivalentUsd!.low).toBeCloseTo(0.0051);
+  rescore.evaluation.checks.legacy = { ...check(), usage: [usage] };
+  const legacy = summarizeCosts([native], { ...options, rescores: [rescore] });
+  expect(legacy.entries.find(entry => entry.role === 'unattributed')).toMatchObject({ trialId: native.id, usage: null });
+  expect(legacy.apiEquivalentUsd).toBeNull();
 });

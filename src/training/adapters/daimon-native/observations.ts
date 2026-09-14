@@ -1,3 +1,4 @@
+import type { NativeExternalInput } from './external.js';
 import type { Observation, SubjectStart, Usage } from '../../contracts/execution.js';
 import { readToolReceipts } from './worker/index.js';
 import type { NativeUsage, TerminalEvidence } from './worker/index.js';
@@ -12,6 +13,9 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
       timestamp, trialId: input.trialId, wakeId, ...value });
   };
   return {
+    async externalInput(wakeId: string, value: NativeExternalInput): Promise<void> {
+      await emit(wakeId, { type: 'input', text: value.text, native: { schema: 'paideia.external-input.v1', deliveryId: value.id, source: value.source } });
+    },
     async checkpoint(wakeId: string): Promise<void> {
       for (const row of await readToolReceipts(runtimeHome, agentId)) {
         const callId = String(row.delivery_id);

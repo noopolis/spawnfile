@@ -21,9 +21,19 @@ capture and unknown score; do not silently repeat the subject or count it as zer
 semantic-evaluation path with deterministic inference/subject fixtures. The DSPy
 callback is a test facade; this does not establish real-model writing improvement.
 
-Training restart/resume is not implemented. Stored evidence can be explicitly
-rescored through the replay public interface, but that does not resume DSPy's
-optimizer state and is not a new native trial. A future resume implementation must
-pin candidate, source dataset, criteria/routes, environment and callback identities,
-retain native/rescore distinction, and restore a verified optimizer checkpoint.
-Do not rebrand rerunning optimization or substituting a rescore as a native report.
+Durable resume uses evaluator-owned checkpoint files with a caller-held exclusive
+lock. The core binds candidate, datasets, routes/environment identity, model, seed,
+budgets and bridge versions. `checkpoint.ts` preserves exact native reports and
+freezes optimizer selection before any sealed test. `recovery.ts` verifies original
+stored evidence and confirmed cleanup; an unacknowledged native attempt blocks.
+Only classified transient final judge errors may reserve a bounded rescore. Rescores
+remain separate immutable measurements; no successful native capture is repeated.
+Persist each recovery reservation before inference, and recover a settled rescore by
+its exact reserved ID after a crash. Missing evidence and valid failing grades never
+trigger recovery. A cumulative recovery budget cannot reset on resume.
+
+Progress restores original reports and separate rescored measurements, and forwards
+observed events only through the trusted caller's projection. Never expose sealed
+text or inference prompts through operator summary views. `routing.test.ts` now
+executes actual DSPy restart after a judge outage with an isolated deterministic
+subject; it proves replay/rescore identity, not writing improvement.

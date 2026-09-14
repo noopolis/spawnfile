@@ -45,13 +45,18 @@ export function createOllamaInference(options: OllamaInferenceOptions): Inferenc
       }
       const data = raw as Record<string, unknown> | null;
       const message = data?.['message'] as Record<string, unknown> | undefined;
+      const count = (key: string): number | null => typeof data?.[key] === 'number' && Number.isSafeInteger(data[key]) && data[key] >= 0 ? data[key] : null;
+      const evidence = {
+        responseModel: typeof data?.['model'] === 'string' && data['model'].trim() ? data['model'] : null,
+        responseRoute: `ollama:${base.href}`,
+        usage: { inputTokens: count('prompt_eval_count'), outputTokens: count('eval_count'), cachedInputTokens: null,
+          reasoningTokens: null, source: 'ollama.chat.counts' },
+      };
       if ((data?.['done_reason'] !== undefined && data['done_reason'] !== 'stop') || data?.['done'] !== true || typeof data['model'] !== 'string' || !data['model'].trim() ||
         typeof message?.['content'] !== 'string' || !message['content'].trim() ||
-        (Array.isArray(message['tool_calls']) && message['tool_calls'].length > 0)) throw new InferenceFailure('protocol', 'Ollama omitted a completed text response');
-      const count = (key: string): number | null => typeof data[key] === 'number' && Number.isSafeInteger(data[key]) && data[key] >= 0 ? data[key] : null;
+        (Array.isArray(message['tool_calls']) && message['tool_calls'].length > 0)) throw new InferenceFailure('protocol', 'Ollama omitted a completed text response', evidence);
       return { text: message['content'], model: data['model'], modelBasis: 'provider-reported', route: `ollama:${base.href}`,
-        usage: { inputTokens: count('prompt_eval_count'), outputTokens: count('eval_count'), cachedInputTokens: null,
-          reasoningTokens: null, source: 'ollama.chat.counts' } };
+        usage: evidence.usage };
     },
   };
 }

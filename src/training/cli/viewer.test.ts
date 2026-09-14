@@ -6,6 +6,7 @@ import { cliFixture, fixtureAdapter } from './fixture.js';
 import { loadInvocationViewer, startLiveViewer } from './viewer.js';
 import { openExperimentStore } from '../storage/index.js';
 import { deriveCandidate, type CandidateManifest } from '../candidates/index.js';
+import type { RescoreReport } from '../experiments/replay/index.js';
 import type { TrialReport } from '../experiments/index.js';
 import type { DspyResult } from '../optimization/index.js';
 import { summarizeCosts } from '../experiments/costs/index.js';
@@ -91,10 +92,12 @@ describe('usable persisted viewer command', () => {
       const url = urls[0]!;
       const snapshot = async () => (await fetch(`${url}/api/data`)).json();
       const trial = fixture.report.trials[0]!;
-      const sealed = { ...trial, phase: 'test', recordId: 'SEALED-CASE', evaluation: { ...trial.evaluation,
+      const sealed = { ...trial, id: 'sealed-restored', phase: 'test', recordId: 'SEALED-CASE', evaluation: { ...trial.evaluation,
         judgeCalls: [{ id: 'SEALED-CALL', judge: 'SEALED-JUDGE', providerId: 'subscription', requestedModel: 'SEALED-MODEL',
           responseModel: 'SEALED-MODEL', responseRoute: 'subscription', outcome: 'completed', usage: null }] } };
       await live.observe({ type: 'trial.finished', payload: sealed });
+      await live.observe({ type: 'trial.progress', payload: { trialId: sealed.id, caseId: 'SEALED-CASE', phase: 'test',
+        event: { type: 'observation', payload: { type: 'tool.dispatch', arguments: 'SECRET' } } } });
       await live.observe({ type: 'ignored', payload: { secret: 'not public' } });
       expect(JSON.stringify(await snapshot())).not.toContain('SEALED');
       await live.observe({ type: 'training.started', payload: { train: ['train'], validation: [trial.recordId] } });
@@ -105,9 +108,12 @@ describe('usable persisted viewer command', () => {
       await live.observe({ type: 'optimizer.generation.completed', payload: { attempt: 1, model: 'observed', modelBasis: 'requested-assumption', route: 'subscription', usage: null } });
       await live.observe({ type: 'optimizer.generation.failed', payload: { attempt: 2 } });
       const progress = await snapshot();
-      expect(progress.optimizer.proposals).toBe(1);
-      expect(progress.costs.observed.lines).toHaveLength(3);
-      expect(progress.costs.observed.lines[1]).toMatchObject({ model: null, requestedModel: 'observed', modelBasis: 'unknown' });
+      expect(progress.optimizer.proposals).toBe(2);
+      await live.observe({ type: 'trial.progress', payload: { trialId: trial.id, caseId: trial.recordId, phase: 'validation',
+        event: { type: 'observation', payload: { type: 'tool.dispatch', arguments: 'SECRET' } } } });
+      expect((await snapshot()).activity).toMatchObject({ trialId: trial.id, toolCalls: 1 });
+      expect(progress.costs.observed.lines).toHaveLength(5);
+      expect(progress.costs.observed.lines[3]).toMatchObject({ model: null, requestedModel: 'observed', modelBasis: 'unknown' });
       expect(progress.costs.observed.lines.at(-1)).toMatchObject({ role: 'optimizer', model: null, outcome: 'generation-error', amount: null });
       expect(progress.costs.observed.total).toBeNull();
       const optimizer: DspyResult = { schema: 'paideia.dspy.v1', kind: 'result', id: 'live', components: { text: 'PRIVATE' },
@@ -115,6 +121,8 @@ describe('usable persisted viewer command', () => {
           candidates: [{ components: { text: 'PRIVATE' }, parents: [null], validationScore: 1, discoveryEvaluations: 0 }],
           captures: [{ caseId: trial.recordId, split: 'validation', captureId: trial.id }], generations: [{ model: 'observed', usage: null }] } };
       await live.observe({ type: 'selection.frozen', payload: { optimizer } });
+      await live.observe({ type: 'trial.progress', payload: { trialId: 'test-progress', caseId: 'SEALED-CASE', phase: 'test',
+        event: { type: 'trial.started', payload: {} } } });
       await live.observe({ type: 'trial.finished', payload: { ...trial, id: 'test-trial', phase: 'test', recordId: 'SEALED-CASE' } });
       await live.observe({ type: 'training.completed', payload: {} });
       const completed = await snapshot();
@@ -134,7 +142,7 @@ describe('usable persisted viewer command', () => {
       expect(failed.experiment).toMatchObject({ status: 'failed', phase: 'train' });
       expect(failed.optimizer.status).toBe('failed');
       expect(failed.costs.observed.lines.at(-1)).toMatchObject({ outcome: 'interrupted; usage unknown', amount: null });
-      expect(failed.costs.observed.groups.find((group: { role: string }) => group.role === 'subject').entryCount).toBe(2);
+      expect(failed.costs.observed.groups.find((group: { role: string }) => group.role === 'subject').entryCount).toBe(3);
       expect(failed.trials).toHaveLength(1);
       expect(failed.usage).toEqual([]);
       expect(JSON.stringify(failed)).not.toMatch(/PRIVATE|SEALED|test-trial|Reply OK/);
@@ -149,4 +157,61 @@ describe('usable persisted viewer command', () => {
       }
     } finally { await live.close(); }
   });
+});
+
+it.each([false, true])('retains restored sealed spending through failure (selection frozen: %s)', async frozen => {
+  const f = await evaluated(), urls: string[] = [], native = f.report.trials[0]!;
+  const sealed: TrialReport = { ...native, id: 'SEALED-trial', recordId: 'SEALED-case', phase: 'test' };
+  const call = { id: 'SEALED-call', judge: 'SEALED-judge', providerId: 'SEALED-provider', requestedModel: 'gpt-5.5',
+    responseModel: 'gpt-5.5', responseRoute: 'SEALED-route', outcome: 'completed' as const,
+    usage: { inputTokens: 100, cachedInputTokens: 0, outputTokens: 10, reasoningTokens: null, source: 'SECRET' } };
+  const rescore: RescoreReport = { schema: 'paideia.rescore.v1', id: 'SEALED-rescore', runId: sealed.id, scope: 'final-stages',
+    notReevaluated: ['live', 'per-turn'], original: { evaluationId: 'old', digest: 'old', candidateId: sealed.candidateId,
+      datasetDigest: 'old', planDigest: 'old', recordId: sealed.recordId, phase: sealed.phase, status: sealed.status },
+    criteria: { datasetId: 'dataset', datasetDigest: 'digest', sharedPlanDigest: 'plan', stages: [], registryVersions: {},
+      sidecarDigests: {}, inferenceRoutes: { judges: {}, embeddings: {} } },
+    execution: sealed.execution, hostWork: sealed.hostWork, coverage: [], status: 'pass',
+    evaluation: { ...sealed.evaluation, judgeCalls: [call] } };
+  const live = await startLiveViewer({ port: 0, io: { ...f.io, stdout: text => { urls.push(JSON.parse(text).viewer); } },
+    store: f.store, id: 'restore-failure', datasetId: 'dataset', planDigest: 'plan', baseline: f.candidate,
+    cases: [], testCases: [{ id: sealed.recordId, split: 'test' }], budget: { maxMetricCalls: 4, maxProposals: 1 },
+    costs: { subjectModel: 'gpt-5.5' } });
+  try {
+    for (let duplicate = 0; duplicate < 2; duplicate++) {
+      await live.observe({ type: 'trial.restored', payload: sealed });
+      await live.observe({ type: 'trial.rescore.restored', payload: rescore });
+    }
+    const expected = summarizeCosts([sealed], { subjectModel: 'gpt-5.5', rescores: [rescore] });
+    let before = await (await fetch(`${urls[0]}/api/data`)).json();
+    expect(before.trials).toEqual([]); expect(before.cases).toEqual([]);
+    expect(before.costs.observed.knownSubtotal).toEqual(expected.knownSubtotalUsd);
+    expect(before.costs.observed.lines).toHaveLength(2);
+    expect(before.costs.observed.lines[1]).toMatchObject({ name: 'judge', model: null, provider: null, route: null });
+    expect(JSON.stringify(before)).not.toMatch(/SEALED|SECRET/);
+    if (frozen) {
+      await live.observe({ type: 'training.started', payload: { train: [], validation: [native.recordId] } });
+      await live.observe({ type: 'trial.restored', payload: { ...native, phase: 'validation' } });
+      const optimizer: DspyResult = { schema: 'paideia.dspy.v1', kind: 'result', id: 'restored', components: {},
+        provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
+          evaluations: 1, proposals: 0, selectedCandidateIndex: 0, generations: [],
+          candidates: [{ components: {}, parents: [null], validationScore: 1, discoveryEvaluations: 0 }],
+          captures: [{ caseId: native.recordId, split: 'validation', captureId: native.id }] } };
+      await live.observe({ type: 'selection.frozen', payload: { optimizer } });
+      await live.observe({ type: 'trial.rescored', payload: rescore });
+      await live.observe({ type: 'trial.rescored', payload: { ...rescore, id: 'development-rescore', runId: native.id,
+        original: { ...rescore.original, phase: 'validation' }, evaluation: native.evaluation } });
+      before = await (await fetch(`${urls[0]}/api/data`)).json();
+      expect(before.trials).toHaveLength(2);
+      expect(before.trials.find((row: { id: string }) => row.id === sealed.id).status).toContain('rescored');
+      expect(before.costs.observed.lines).toHaveLength(3);
+    }
+    await live.observe({ type: 'experiment.failed', payload: {} });
+    const failed = await (await fetch(`${urls[0]}/api/data`)).json();
+    expect(failed.experiment.status).toBe('failed');
+    expect(failed.costs.observed.knownSubtotal).toEqual(before.costs.observed.knownSubtotal);
+    expect(failed.costs.observed.lines).toHaveLength(before.costs.observed.lines.length);
+    expect(failed.trials).toHaveLength(frozen ? 1 : 0);
+    expect(JSON.stringify(failed)).not.toMatch(/SEALED|SECRET/);
+    expect(f.observedInstructions).toHaveLength(1);
+  } finally { await live.close(); }
 });

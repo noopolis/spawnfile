@@ -3,6 +3,7 @@ import type { EvaluationResult } from '../src/contracts/index.js';
 import { trialScore, type TrialReport, type TrainingReport } from '../src/experiments/index.js';
 import type { DspyResult } from '../src/optimization/index.js';
 import type { CostReport, TrainingCostPlan } from '../src/experiments/costs/index.js';
+import type { RescoreReport } from '../src/experiments/replay/index.js';
 import type { ViewerCheck, ViewerData } from './types.js';
 import { projectCosts } from './costs.js';
 
@@ -19,29 +20,35 @@ export interface TrialProjectionOptions {
   budget?: { maxMetricCalls: number; maxProposals: number };
   costs?: CostReport;
   costPlan?: TrainingCostPlan;
+  rescores?: readonly RescoreReport[];
 }
 
-function checkView(check: EvaluationResult, fallback: string): ViewerCheck {
+function checkView(check: EvaluationResult, fallback: string, weights?: Record<string, number>): ViewerCheck {
+  const weight = check.id === undefined ? undefined : weights?.[check.id];
+  const raw = check.status === 'pass' || check.status === 'fail' ? check.score ?? (check.status === 'pass' ? 1 : 0) : null;
   return { id: check.id ?? fallback, label: check.id ?? fallback, status: check.status, score: check.score ?? null,
+    ...(weight === undefined ? {} : { weight, weightedContribution: raw === null ? null :
+      raw * weight / Object.values(weights!).reduce((sum, value) => sum + value, 0) }),
     evidenceIds: check.evidence.map((reference) => reference.id),
     children: (check.children ?? []).map((child, index) => checkView(child, `${fallback}/${index}`)) };
 }
 
-function displayedScore(trial: TrialReport): number | null {
+function displayedScore(trial: TrialReport | RescoreReport): number | null {
   try { return trialScore(trial); } catch { return null; }
 }
 
 /** Observable presentation fields only: never subject output, prompts, context, tool args/results or judge reasons. */
 export function projectTrials(options: TrialProjectionOptions): ViewerData {
+  const measurement = (trial:TrialReport) => options.rescores?.findLast(score=>score.runId===trial.id) ?? trial;
   const data: ViewerData = {
     schema: 'paideia.viewer.v1', experiment: { id: options.id, title: options.title, phase: options.phase,
       status: options.status, updatedAt: options.updatedAt }, cases: options.cases,
     trials: options.trials.map((trial) => ({ id: trial.id, caseId: trial.recordId, candidateId: trial.candidateId,
-      status: `${trial.status} (${trial.execution}; host work ${trial.hostWork})`, score: displayedScore(trial),
+      status: `${measurement(trial).status} (${measurement(trial) === trial ? '' : `rescored; original ${trial.status}; `}${trial.execution}; host work ${trial.hostWork})`, score: displayedScore(measurement(trial)),
       coverage: [...trial.snapshot.coverage],
-      checks: trial.evaluation.stages.map((stage) => ({ id: stage.id, label: stage.id, status: stage.gate.status,
+      checks: measurement(trial).evaluation.stages.map((stage) => ({ id: stage.id, label: stage.id, status: stage.gate.status,
         score: stage.score?.lower ?? null, evidenceIds: stage.gate.evidence.map((reference) => reference.id),
-        children: [...stage.checks.map((check, index) => checkView(check, `${stage.id}/${index}`)), checkView(stage.gate, `${stage.id}/gate`)] })),
+        children: [...stage.checks.map((check, index) => checkView(check, `${stage.id}/${index}`, stage.weights)), checkView(stage.gate, `${stage.id}/gate`)] })),
       events: trial.snapshot.events.map((event) => ({ id: event.id, type: event.type, timestamp: event.timestamp,
         summary: `${event.tool ?? event.type}${event.success === undefined ? '' : event.success ? ' succeeded' : ' failed'}` })),
     })),
@@ -50,7 +57,9 @@ export function projectTrials(options: TrialProjectionOptions): ViewerData {
     usage: options.trials.flatMap((trial) => trial.turns.map((turn) => ({ purpose: 'subject' as const,
       model: null, route: null, usage: turn.native.usage }))),
   };
-  const costs = projectCosts(options.costs, options.costPlan);
+  const visibleIds = new Set(options.trials.map(trial => trial.id));
+  const hiddenIds = new Set(options.costs?.entries.flatMap(entry => entry.trialId && !visibleIds.has(entry.trialId) ? [entry.trialId] : []));
+  const costs = projectCosts(options.costs, options.costPlan, hiddenIds);
   if (costs !== undefined) data.costs = costs;
   if (options.optimizer !== undefined) {
     const { provenance } = options.optimizer;
@@ -79,7 +88,7 @@ export function projectTrials(options: TrialProjectionOptions): ViewerData {
 export function projectTrainingReport(report: TrainingReport, budget?: TrialProjectionOptions['budget']): ViewerData {
   return projectTrials({ id: report.id, title: 'Completed training experiment', phase: 'final-test', status: 'completed',
     updatedAt: 'Recorded completion', baseline: report.baseline, trials: report.trials, optimizer: report.optimizer, budget,
-    costs: report.costs, costPlan: report.costPlan,
+    costs: report.costs, costPlan: report.costPlan, rescores: report.rescores,
     cases: Object.entries(report.partitions).flatMap(([phase, ids]) => ids.map((id) => ({ id,
       split: phase as 'train' | 'validation' | 'test' }))) });
 }

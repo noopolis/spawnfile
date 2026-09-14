@@ -43,7 +43,9 @@ The optional Daimon dependency is loaded only by the native worker.
 The authenticated HTTP endpoint forwards actual native activity for production
 backends. One v2 acceptance must reach idle execution plus matching closed native
 telemetry, usage and observed Codex model identity. An inbox completion receipt
-alone cannot complete a trial. Native metering retains cached-input tokens.
+alone cannot complete a trial. Native metering retains cached-input tokens. Per-wake records stay available and
+the logical task returns their aggregate once; any unknown wake makes the total
+unknown. Tool receipts can be cumulative and are deduplicated as observations.
 
 Real MCP/Moltnet receipts yield partial tool observations; unobserved arguments
 and built-in tools remain absent. Native attention final prose is absent. Projects
@@ -52,7 +54,13 @@ usage remains unknown. The terminal evidence retains preparation receipts.
 
 A completed execution that defers its inbox delivery stays a failed trial with
 `blocked: "awaiting-external-input"` in terminal evidence. Recorded usage and
-receipts remain available; the adapter never retries without new external input.
+receipts remain available. An optional `externalInputs` callback can supply at most
+three genuinely sourced deliveries, only after this deferred state. Each delivery
+requires a stable identity and exact content hash, becomes an `input` observation,
+and gets its own public native acceptance. The original deadline covers all wakes;
+usage is aggregated once. Missing or unmatched responses leave the trial blocked and stop its owned runtime.
+The callback owns isolated transport and must honor cancellation; the adapter never
+fabricates a response or connects an organization on its own.
 
 Cancellation requests native stop, then stops/kills the owned labeled container
 and independently verifies removal. Unknown containment never becomes confirmed.
@@ -60,7 +68,7 @@ Evaluator files are excluded from projections, and native Codex protection denie
 runtime controls and engine credentials. Prepared memory must be fresh local state;
 this adapter does not create or copy historical memory.
 
-Only single-turn Codex attention with the workspace-no-network policy is supported.
-Other engines, plain Pi equivalence, multi-wake conversations, complete built-in
+Only one logical Codex task with the workspace-no-network policy is supported.
+Other engines, plain Pi equivalence, unrestricted multi-turn conversations, complete built-in
 tool traces and final-output capture are unsupported. Unit host/command doubles
 test wiring and rejection paths; they are not authenticated native acceptance.

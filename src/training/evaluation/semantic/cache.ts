@@ -2,11 +2,14 @@ import { createHash } from 'node:crypto';
 import type { CachedJudgment, JudgeCache } from '../../contracts/evaluation.js';
 
 /** Invocation-local LRU. A hit is reused evidence, never another inference or trial. */
-export function createJudgeCache({ maxEntries }: { maxEntries: number }): JudgeCache {
+export function createJudgeCache({ maxEntries }: { maxEntries: number }): Omit<JudgeCache, 'get' | 'put'> & {
+  get(key: string): CachedJudgment | undefined;
+  put(key: string, value: CachedJudgment): void;
+} {
   if (!Number.isSafeInteger(maxEntries) || maxEntries < 1 || maxEntries > 10000) throw new Error('Invalid judge cache entry bound');
   const entries = new Map<string, CachedJudgment>();
   let bytes = 0;
-  const size = (key: string, value: CachedJudgment) => Buffer.byteLength(key + value.response + value.sourceCallId);
+  const size = (key: string, value: CachedJudgment) => Buffer.byteLength(key + JSON.stringify(value));
   return {
     get(key) {
       const found = entries.get(key);
@@ -31,6 +34,6 @@ export function createJudgeCache({ maxEntries }: { maxEntries: number }): JudgeC
   };
 }
 
-export function judgmentCacheKey(identity: string, system: string, prompt: string, minimum: number): string {
-  return `sha256:${createHash('sha256').update(JSON.stringify(['paideia.judgment-cache.v1', identity, system, prompt, minimum])).digest('hex')}`;
+export function judgmentCacheKey(identity: string, system: string, prompt: string, minimum: number, scope = ''): string {
+  return `sha256:${createHash('sha256').update(JSON.stringify(['paideia.judgment-cache.v2', scope, identity, system, prompt, minimum])).digest('hex')}`;
 }

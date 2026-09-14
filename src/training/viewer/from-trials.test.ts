@@ -3,6 +3,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { snapshotCandidate } from '../src/candidates/index.js';
+import type { RescoreReport } from '../src/experiments/replay/index.js';
+import { trialDetails } from './cockpit/evidence.js';
 import type { TrialReport } from '../src/experiments/index.js';
 import type { DspyResult } from '../src/optimization/index.js';
 import { summarizeCosts } from '../src/experiments/costs/index.js';
@@ -90,4 +92,32 @@ describe('stored native report projection', () => {
     expect(projectTrainingReport(report).optimizer).toBeUndefined();
     expect(() => projectTrainingReport({ ...report, trials: [] })).toThrow('matching stored native validation');
   });
+});
+
+it('shows the latest rescore and weighted criteria on the original native capture', async () => {
+  const candidate = await baseline(), trial = reportFixture(); trial.status = 'error';
+  const gate = { status: 'pass' as const, finality: 'final' as const, evidence: [], reason: 'SECRET' };
+  const score: RescoreReport = { schema: 'paideia.rescore.v1', id: 'rescore', runId: trial.id, scope: 'final-stages',
+    notReevaluated: ['live', 'per-turn'], original: { evaluationId: 'old', digest: 'old', candidateId: trial.candidateId,
+      datasetDigest: 'old', planDigest: 'old', recordId: trial.recordId, phase: trial.phase, status: trial.status },
+    criteria: { datasetId: 'dataset', datasetDigest: 'digest', sharedPlanDigest: 'plan', stages: [], registryVersions: {},
+      sidecarDigests: {}, inferenceRoutes: { judges: {}, embeddings: {} } },
+    execution: trial.execution, hostWork: trial.hostWork, stop: trial.stop, coverage: [], status: 'pass',
+    evaluation: { status: 'pass', checks: {}, scores: {}, stages: [{ id: 'quality', gate, weights: { prose: 3, facts: 1, pending: 1 },
+      checks: [{ ...gate, id: 'prose', score: 0.5 }, { ...gate, id: 'facts' }, { ...gate, id: 'pending', status: 'unknown' }],
+      score: { finality: 'final', lower: 0.8, upper: 0.8, assessedWeight: 5, missingWeight: 0 } }] } };
+  const original = structuredClone(trial);
+  const data = projectTrials({ id: 'view', title: 'Rescore', phase: 'train', status: 'running', updatedAt: 'now',
+    cases: [{ id: trial.recordId, split: trial.phase }], baseline: candidate, trials: [trial],
+    rescores: [{ ...score, id: 'earlier', status: 'fail' }, score] });
+  expect(data.trials).toHaveLength(1); expect(data.usage).toHaveLength(1);
+  expect(data.trials[0]).toMatchObject({ id: trial.id, score: 0.8, status: 'pass (rescored; original error; completed; host work settled)' });
+  expect(data.trials[0]!.checks[0]!.children).toMatchObject([
+    { id: 'prose', weight: 3, weightedContribution: 0.3 }, { id: 'facts', weight: 1, weightedContribution: 0.2 },
+    { id: 'pending', weight: 1, weightedContribution: null }, { status: 'pass' },
+  ]);
+  expect(data.trials[0]!.events).toHaveLength(trial.snapshot.events.length);
+  const html = trialDetails(data);
+  expect(html).toContain('weight 3'); expect(html).toContain('contribution 0.3'); expect(html).not.toMatch(/SECRET|NaN/);
+  expect(trial).toEqual(original);
 });

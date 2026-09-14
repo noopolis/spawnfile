@@ -29,3 +29,12 @@ Consume callbacks for trials and candidate policy; never import experiments'
 implementation. This module accepts no sealed-test role or data. Tests exercise
 the installed Python process with a simulated host and separately test cancellation
 and malformed protocol evidence. Native-agent acceptance is an integration gate.
+
+`checkpoint.ts` journals callback reservations and completed responses using atomic
+publication and directory sync. Resume verifies canonical execution identity,
+callback identities and immutable generation provenance. It replays settled calls
+without invoking their hosts and retains failed inference receipts. Pending calls
+consume additional cumulative budget if retried. The runner supplies consumed-attempt
+offsets so real GEPA stops cleanly within the remaining budget. `onRestore` exposes
+sanitized accounting only. Checkpoint paths must be evaluator-owned, excluded from
+subject access, and protected by the caller's exclusive output lock.

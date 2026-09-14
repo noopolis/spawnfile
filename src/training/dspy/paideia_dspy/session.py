@@ -11,10 +11,14 @@ from .protocol import BridgeError, EvaluationResult, GenerationResult, OptimizeR
 class Session:
     def __init__(self, request: OptimizeRequest, host: Callable[[str, dict], dict]):
         self.request, self.host = request, host
+        self.extra_evaluations = request.recovery.evaluations if request.recovery else 0
+        self.extra_proposals = request.recovery.proposals if request.recovery else 0
         self.evaluations = 0
         self.proposals = 0
         self.captures: list[dict] = []
         self.generations: list[dict] = []
+        self.results: list[dict] = []
+        self.seed_replay: dict[str, EvaluationResult] = {}
         self.failure: BridgeError | None = None
         self._lock = threading.RLock()
 
@@ -36,7 +40,9 @@ class Session:
     def _call(self, method, params, response_type):
         self.healthy()
         try:
-            return response_type.model_validate(self.host(method, params))
+            result = response_type.model_validate(self.host(method, params))
+            self.results.append({"method": method, "params": params, "result": result.model_dump()})
+            return result
         except Exception as error:
             self.failure = error if isinstance(error, BridgeError) else BridgeError(
                 "invalid_response" if isinstance(error, ValidationError) else "host_error",
@@ -55,7 +61,11 @@ class Session:
                 split = "validation"
             else:
                 raise BridgeError("invalid_case", "optimizer requested a case outside its declared splits")
-            if self.evaluations >= self.request.budget.maxMetricCalls:
+            if self.seed_replay:
+                if split != "validation" or components != self.request.components or case_id not in self.seed_replay:
+                    raise BridgeError("checkpoint_mismatch", "unexpected resumed seed evaluation")
+                return self.seed_replay.pop(case_id)
+            if self.evaluations + self.extra_evaluations >= self.request.budget.maxMetricCalls:
                 raise BridgeError("budget_exhausted", "native evaluation attempt budget exhausted")
             # A failed host attempt consumes a slot; repeated feedback calls do not.
             self.evaluations += 1
@@ -73,7 +83,7 @@ class Session:
             self.healthy()
             if options:
                 raise BridgeError("unsupported_control", "this bridge requests subscription text without generation controls")
-            if self.proposals >= self.request.budget.maxProposals:
+            if self.proposals + self.extra_proposals >= self.request.budget.maxProposals:
                 raise BridgeError("budget_exhausted", "reflection proposal attempt budget exhausted")
             self.proposals += 1
             result = self._call("generate", {
@@ -89,6 +99,6 @@ class Session:
         # GEPA checks at iteration boundaries. Reserve one training baseline, one
         # proposal trial and a complete validation pass before starting an iteration.
         return (self.failure is not None
-                or self.proposals >= self.request.budget.maxProposals
-                or self.evaluations + 2 + len(self.request.validationCaseIds)
+                or self.proposals + self.extra_proposals >= self.request.budget.maxProposals
+                or self.evaluations + self.extra_evaluations + 2 + len(self.request.validationCaseIds)
                 > self.request.budget.maxMetricCalls)

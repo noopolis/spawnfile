@@ -3,13 +3,14 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { validateCandidate, type CandidateManifest } from '../candidates/index.js';
 import type { TrialReport, TrainingReport } from '../experiments/index.js';
-import { summarizeCosts, type CostReport, type ModelPrice, type OptimizerGeneration, type TrainingCostPlan } from '../experiments/costs/index.js';
+import { summarizeCosts, type CostReport, type ModelPrice, type TrainingCostPlan } from '../experiments/costs/index.js';
 import type { DspyResult } from '../optimization/index.js';
+import type { RescoreReport } from '../experiments/replay/index.js';
 import { openExperimentStore, type ExperimentStore } from '../storage/index.js';
 import { projectTrainingReport, projectTrials, startViewer, type ViewerData } from '../../viewer/index.js';
 import type { CliIO } from './types.js';
 import { readCliText } from './datasets.js';
-import { loadFailureView } from './progress/index.js';
+import { loadFailureView, createActivityTracker, createGenerationTracker } from './progress/index.js';
 
 const id = z.string().min(1);
 const reference = z.object({ runId: id, id, digest: id, size: z.number().int().nonnegative() }).strict();
@@ -77,20 +78,27 @@ export async function startLiveViewer(options: {
   let optimizer: DspyResult | undefined;
   let status = 'starting';
   let proposalAttempts = 0;
-  const generations = new Map<number, OptimizerGeneration>();
+  const generations = createGenerationTracker();
   const trials: TrialReport[] = [];
+  const rescores: RescoreReport[] = [];
+  const sealedTrials = new Map<string, TrialReport>();
+  const sealedRescores = new Map<string, RescoreReport>();
+  const activity = createActivityTracker();
   let cases = options.cases;
   const publish = async () => {
     try {
       const data = projectTrials({ id: options.id, title: 'Live native experiment', phase: frozen ? 'final-test' : 'train',
         status, updatedAt: new Date().toISOString(), baseline: options.baseline, cases,
         trials: status === 'failed' ? trials.filter(trial => trial.phase !== 'test') : trials, optimizer, budget: options.budget,
-        costs: options.costs === undefined ? undefined : summarizeCosts(trials, { ...options.costs, optimizerGenerations: [...generations.values()] }),
+        rescores: status === 'failed' ? rescores.filter(score=>score.original.phase!=='test') : rescores,
+        costs: options.costs === undefined ? undefined : summarizeCosts([...new Map([...trials, ...sealedTrials.values()].map(trial => [trial.id, trial])).values()], { ...options.costs,
+          rescores: [...new Map([...rescores, ...sealedRescores.values()].map(score => [score.id, score])).values()], optimizerGenerations: generations.snapshot() }),
         costPlan: options.costs?.costPlan });
       if (optimizer === undefined && options.budget !== undefined) data.optimizer = { name: 'dspy.GEPA',
         status: 'Observed progress; evaluation count includes completed trial reports',
         evaluations: trials.filter((trial) => trial.phase !== 'test').length, proposals: proposalAttempts, ...options.budget };
-      data.usage = [...data.usage.filter((entry) => entry.purpose !== 'optimizer'), ...[...generations.values()].map(generation =>
+      data.activity = status === 'failed' ? undefined : activity.snapshot();
+      data.usage = [...data.usage.filter((entry) => entry.purpose !== 'optimizer'), ...generations.snapshot().map(generation =>
         ({ purpose: 'optimizer' as const, model: generation.model, modelBasis: generation.modelBasis,
           route: generation.route ?? null, usage: generation.usage }))];
       if (status === 'failed') {
@@ -115,10 +123,20 @@ export async function startLiveViewer(options: {
     close: () => server.close(),
     async observe(event: { type: string; payload: unknown }) {
       if (status === 'failed') return;
-      if (event.type === 'trial.finished') {
+      const generationEvent = generations.observe(event);
+      proposalAttempts = generations.attempts();
+      if (event.type === 'trial.progress') {
+        const payload = event.payload as Parameters<typeof activity.observe>[0];
+        if (payload.phase === 'test' && !frozen) return;
+        activity.observe(payload);
+      } else if (event.type === 'trial.rescored' || event.type === 'trial.rescore.restored') {
+        const score=event.payload as RescoreReport;
+        if(score.original.phase === 'test' && !frozen) { sealedRescores.set(score.id, score); await publish(); return; }
+        if(!rescores.some(row=>row.id===score.id)) rescores.push(score);
+      } else if (event.type === 'trial.finished' || event.type === 'trial.restored') {
         const report = event.payload as TrialReport;
-        if (report.phase === 'test' && !frozen) return;
-        trials.push(report); status = 'running';
+        if (report.phase === 'test' && !frozen) { sealedTrials.set(report.id, report); await publish(); return; }
+        if(!trials.some(row=>row.id===report.id)) trials.push(report); status = 'running';
       } else if (event.type === 'training.started') {
         const payload = event.payload as { train: string[]; validation: string[] };
         cases = [...payload.train.map((id) => ({ id, split: 'train' as const })),
@@ -126,23 +144,18 @@ export async function startLiveViewer(options: {
         status = 'optimizing';
       } else if (event.type === 'selection.frozen') {
         frozen = true; optimizer = (event.payload as { optimizer: DspyResult }).optimizer;
+        for (const report of sealedTrials.values()) if (!trials.some(trial => trial.id === report.id)) trials.push(report);
+        for (const report of sealedRescores.values()) if (!rescores.some(score => score.id === report.id)) rescores.push(report);
+        sealedTrials.clear(); sealedRescores.clear();
         cases = [...cases, ...options.testCases]; status = 'testing frozen selection';
       } else if (event.type === 'optimizer.generation.started') {
-        proposalAttempts = (event.payload as { attempt: number }).attempt; status = 'reflecting';
-        generations.set(proposalAttempts, { model: null, usage: null, outcome: 'pending' });
-      } else if (event.type === 'optimizer.generation.completed') {
-        const payload = event.payload as OptimizerGeneration & { attempt: number };
-        generations.set(payload.attempt, { model: payload.model, modelBasis: payload.modelBasis, route: payload.route, usage: payload.usage, attempts: payload.attempts });
-      } else if (event.type === 'optimizer.generation.failed') {
-        const payload = event.payload as Partial<OptimizerGeneration> & { attempt: number };
-        generations.set(payload.attempt, { model: payload.model ?? null, modelBasis: payload.modelBasis, route: payload.route, usage: payload.usage ?? null,
-          attempts: payload.attempts, outcome: payload.outcome ?? 'generation-error' });
+        status = 'reflecting';
+      } else if (generationEvent) {
+        status = 'running';
       } else if (event.type === 'experiment.failed') {
         status = 'failed'; frozen = false; optimizer = undefined;
         cases = cases.filter(record => record.split !== 'test');
-        for (const [attempt, generation] of generations) {
-          if (generation.outcome === 'pending') generations.set(attempt, { ...generation, outcome: 'interrupted; usage unknown' });
-        }
+        generations.interrupt();
       } else if (event.type === 'training.completed' || event.type === 'evaluation.completed') status = 'completed';
       else return;
       await publish();

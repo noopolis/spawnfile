@@ -16,3 +16,8 @@ public indexes; never import or invoke a subject adapter.
 Explicit rescoring appends returned raw judge attempts as evaluator-only events
 linked to its evaluation ID. Preserve the trusted observer while freezing routes;
 raw attempts are not native observations or optimizer feedback.
+
+`capturedTrial` is the shared public read/verify seam for an authenticated original
+report, its manifest, snapshot observations and artifact hashes. Preserve current
+judge failure/fallback/cache provenance and authored stage weights through schema
+validation; dropping those fields changes recovery policy and cost evidence.

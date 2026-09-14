@@ -29,7 +29,8 @@ it('rejects invalid endpoint and controls, handles transport and cancellation', 
 });
 it('rejects truncation and classifies interrupted response bodies', async () => {
   await expect(createOllamaInference({ baseUrl: 'http://localhost', fetch: respond({ ...body, done_reason: 'length' }) })
-    .generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'protocol' });
+    .generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'protocol',responseModel:'actual:tag',responseRoute:'ollama:http://localhost/',
+      usage:{inputTokens:10,outputTokens:2,cachedInputTokens:null,reasoningTokens:null} });
   const controller = new AbortController();
   const interrupted = async () => Object.assign(new Response('{}'), { json: async () => { controller.abort(); throw Error('cancelled'); } });
   await expect(createOllamaInference({ baseUrl: 'http://localhost', fetch: interrupted })

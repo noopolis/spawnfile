@@ -57,7 +57,7 @@ describe('strict YAML authoring', () => {
     ['records: [{id: x, turns: [{id: a, after: {turn: b, outcome: completed}, input: {prompt: a}}]}]', /earlier turn/],
     ['checks: [{id: a, all: []}]\nrecords: [{id: x}]', /nonempty/],
     ['checks: [{id: a, not: {passed: x, extra: 1}}]\nrecords: [{id: x}]', /unknown field/],
-    ['stages: [{id: a, checks: [{id: x, passed: y}], score: {linear: {x: 0.8}}}]\nrecords: [{id: x}]', /sum to one/],
+    ['stages: [{id: a, checks: [{id: x, passed: y}], score: {linear: {x: 0}}}]\nrecords: [{id: x}]', /positive total/],
   ])('rejects invalid declared structures', (body, message) => {
     expect(() => parseDatasetYaml(`schema: paideia.dataset.v1\nid: invalid\n${body}`)).toThrow(message);
   });

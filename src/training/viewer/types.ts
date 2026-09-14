@@ -32,6 +32,7 @@ export interface ViewerData {
   }[];
   usage: ViewerUsage[];
   costs?: ViewerCosts;
+  activity?: ViewerActivity;
   optimizer?: {
     name: string;
     status: string;
@@ -43,7 +44,20 @@ export interface ViewerData {
   };
 }
 
+export interface ViewerActivity {
+  trialId: string;
+  caseId: string;
+  phase: 'train' | 'validation' | 'test';
+  status: string;
+  toolCalls: number;
+  judgeCalls: number;
+  measurements: { stageId: string; criterionId: string; kind: 'criterion' | 'gate' | 'score';
+    status: string; score: number | null; weight?: number; weightedContribution?: number | null }[];
+}
+
 export interface ViewerCheck {
+  weight?: number;
+  weightedContribution?: number | null;
   id: string;
   label: string;
   status: 'pass' | 'fail' | 'unknown' | 'error' | 'skipped';

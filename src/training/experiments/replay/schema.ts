@@ -11,6 +11,8 @@ const usage = z.object({ inputTokens: z.number().nonnegative().nullable(), cache
   cacheWrite1hInputTokens: z.number().nonnegative().nullable().optional(),
   outputTokens: z.number().nonnegative().nullable(), reasoningTokens: z.number().nonnegative().nullable(), source: z.string() });
 const judgeCall = z.object({ id: identity, judge: identity, providerId: identity, requestedModel: identity,
+  failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'protocol', 'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),
+  fallbackOf: identity.optional(),
   citationRepairs: z.union([z.literal(0), z.literal(1)]).optional(), repairOf: identity.optional(),
   responseModel: z.string().nullable(), responseRoute: z.string().nullable(),
   outcome: z.enum(['completed', 'invalid-response', 'generation-error']), usage: usage.nullable() });
@@ -19,14 +21,15 @@ const stop = z.object({ state: z.enum(['requested', 'acknowledged', 'unknown']),
 const result: z.ZodType<EvaluationResult> = z.lazy(() => z.object({ id: z.string().optional(), status: verdict,
   finality: z.enum(['provisional', 'final']), reason: z.string(), score: z.number().min(0).max(1).optional(),
   evidence: z.array(z.object({ kind: z.enum(['event', 'artifact', 'input', 'output', 'sidecar']), id: z.string(), digest: z.string().optional() })),
+  cache: z.object({ key: z.string(), sourceCallId: z.string(), sourceCalls: z.array(judgeCall).optional() }).optional(),
   children: z.array(result).optional(), usage: z.array(usage).optional(), judgeCalls: z.array(judgeCall).optional() }));
 const weighted = z.object({ finality: z.enum(['provisional', 'final']), lower: z.number(), upper: z.number(),
   assessedWeight: z.number(), missingWeight: z.number() });
 const plan = z.object({ status: verdict, stages: z.array(z.object({ id: z.string(), checks: z.array(result), gate: result,
-  score: weighted.optional() })), checks: z.record(z.string(), result), scores: z.record(z.string(), weighted),
+  score: weighted.optional(), weights: z.record(z.string(), z.number().finite().nonnegative()).optional() })), checks: z.record(z.string(), result), scores: z.record(z.string(), weighted),
   judgeCalls: z.array(judgeCall).optional() });
 const observation = z.object({ id: identity, source: identity, seq: z.number().int().nonnegative(),
-  type: z.enum(['tool.dispatch', 'tool.complete', 'output', 'usage', 'diagnostic']), timestamp: z.string(),
+  type: z.enum(['tool.dispatch', 'tool.complete', 'output', 'usage', 'diagnostic', 'input']), timestamp: z.string(),
   trialId: identity, wakeId: identity, callId: z.string().optional(), tool: z.string().optional(),
   args: z.unknown().optional(), result: z.unknown().optional(), success: z.boolean().optional(), text: z.string().optional(),
   usage: usage.optional(), causalParents: z.array(z.string()).optional(), native: z.unknown().optional() });

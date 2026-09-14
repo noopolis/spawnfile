@@ -3,8 +3,8 @@ import type { EvaluationContext, EvaluationRegistry } from '../../contracts/eval
 import { createHash } from 'node:crypto';
 
 export async function freezeCriteria(dataset: ResolvedDataset, evaluation: Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>,
-  registry: EvaluationRegistry): Promise<Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>> {
-  const judges = Object.fromEntries(Object.entries(evaluation.judges).map(([name, route]) => [name, { ...route }]));
+  registry: EvaluationRegistry, scope?: string): Promise<Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>> {
+  const judges = Object.fromEntries(Object.entries(evaluation.judges).map(([name, route]) => [name, { ...route, cacheScope: scope ?? route.cacheScope ?? `${dataset.id}:${dataset.sourceDigest}:${dataset.sharedPlanDigest}` }]));
   const observeJudgeAttempt = evaluation.observeJudgeAttempt;
   for (const [key, version] of Object.entries(dataset.registryVersions)) {
     if (key.startsWith('evaluator:') && registry[key.slice(10)]?.definition.version !== version) throw new Error(`Evaluator version drift: ${key}`);

@@ -18,13 +18,23 @@ function custom(kind: EvaluatorDefinition['kind'], incremental = true, stopProof
   return { version: '1', kind, incremental, stopProof, validate: () => undefined };
 }
 describe('evaluation plan resolution', () => {
+  it('requires explicit relative weights for every criterion outside a hard gate', () => {
+    const stage = { id: 'writing', checks: [exact, semantic], gate: { passed: 'exact' } };
+    expect(() => resolveStages([stage], { registry, versions: {} })).toThrow(/semantic requires an explicit score weight/);
+    expect(() => resolveStages([{ ...stage, score: { linear: { exact: 2 } } }], { registry, versions: {} }))
+      .toThrow(/semantic requires an explicit score weight/);
+    expect(resolveStages([{ ...stage, score: { linear: { exact: 2, semantic: 1 } } }], { registry, versions: {} })[0]!.score)
+      .toEqual({ linear: { exact: 2, semantic: 1 } });
+    expect(resolveStages([{ ...stage, score: { linear: { semantic: 2 } } }], { registry, versions: {} })[0]!.gate)
+      .toEqual({ passed: 'exact' });
+  });
   it('resolves ordered stages, weights, logical gates and references without weakening checks', () => {
     const result = resolve(dataset({ checks: undefined, stages: [
       { id: 'mechanics', checks: [exact], gate: { passed: 'exact' } },
       { id: 'writing', when: { passed: 'mechanics' }, checks: [semantic], score: { linear: { semantic: 1 } }, gate: { all: [{ passed: 'semantic' }, { score: 'writing', at_least: 0.8 }] } },
     ] }));
     expect(result.records[0]!.effectiveStages).toHaveLength(2);
-    expect(result.registryVersions).toEqual({ 'evaluator:equals': '1', 'evaluator:llm-rubric': '1', 'judge:judge': 'judge-v1' });
+    expect(result.registryVersions).toEqual({ 'evaluator:equals': '1', 'evaluator:llm-rubric': '2', 'judge:judge': 'judge-v1' });
     expect(normalizeStages({})).toEqual([]);
     expect(resolve(dataset({ records: [{ id: 'r', input: { prompt: '4' }, checks: [{ id: 'local', not: { eval: 'contains-any', input: 'output.text', values: ['bad'] } }] }] })).records[0]!.effectiveStages).toHaveLength(2);
   });

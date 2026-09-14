@@ -1,3 +1,4 @@
+import { createDeliveryGate, type DeliveryControls } from './deliveries.js';
 import { join } from 'node:path';
 import { collectNativeEvidence, readClosedTraces, writeEvidence } from './evidence.js';
 import type { NativeLaunch } from '../receipt/index.js';
@@ -14,7 +15,7 @@ export interface NativeStopEvidence {
 }
 export interface WorkerController {
   host: NativeHost;
-  run(wakeId: string, text: string): Promise<TerminalEvidence>;
+  run(wakeId: string, text: string, controls?: DeliveryControls): Promise<TerminalEvidence>;
   stop(): Promise<NativeStopEvidence>;
 }
 
@@ -56,7 +57,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
   token: string, launch?: NativeLaunch): WorkerController {
   const agent = config.agents[0]!;
   const cancellation = new AbortController();
-  let invoked = false;
+  const gate = createDeliveryGate(options.timeoutMs);
   let stopping: Promise<NativeStopEvidence> | undefined;
   const owned = <T>(operation: Promise<T>): Promise<T> => {
     if (cancellation.signal.aborted) return Promise.reject(new Error('Native trial cancelled'));
@@ -85,12 +86,10 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
   };
   return {
     host, stop,
-    async run(wakeId, text) {
-      if (invoked || cancellation.signal.aborted) throw new Error('Worker accepts exactly one native trial delivery');
-      if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(wakeId) || !text.trim() || Buffer.byteLength(text) > 16384) {
-        throw new Error('Invalid bounded trial delivery');
-      }
-      invoked = true;
+    async run(wakeId, text, controls) {
+      if (cancellation.signal.aborted) throw new Error('Worker accepts exactly one native trial delivery');
+      const remaining = gate.begin(wakeId, text, controls);
+      const previous = [...gate.executions];
       const startedAt = new Date().toISOString();
       const deliveryId = `${options.trialId}:${wakeId}`;
       const usageFile = join(options.controlRoot, 'usage.jsonl');
@@ -103,7 +102,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
       let blocked: TerminalEvidence['blocked'];
       let native: NativeEvidence = { traces: [], usage: [], toolReceipts: [], modelContexts: [] };
       let timedOut = false;
-      const timer = setTimeout(() => { timedOut = true; void stop(); }, options.timeoutMs);
+      const timer = setTimeout(() => { timedOut = true; void stop(); }, remaining);
       try {
         const accepted = await owned(host.accept({ token, agent_id: agent.id, delivery_id: deliveryId,
           event: { version: 'noopolis.daimon.wake.v2', kind: 'manual', text, occurred_at: startedAt } }));
@@ -118,13 +117,13 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
           if (!Array.isArray(activity.executions)) throw new Error('Native activity omitted execution authority');
           if (!activity.executions.length) {
             const traces = await readClosedTraces(agent.runtimeHomePath, agent.id);
-            executionId = executionClosed(activity, receipt, traces, agent.id);
+            executionId = executionClosed(activity, receipt, traces.filter(trace => !previous.includes(trace.turn_id)), agent.id);
             if (executionId) {
               receipt = await owned(host.wakeReceipt(token, accepted.acceptance_id));
               activity = await owned(host.activityV2(token));
               availability = await owned(host.availability(token));
               if (!receipt || !activity || !availability) throw new Error('Authenticated terminal control evidence disappeared');
-              executionId = executionClosed(activity, receipt, traces, agent.id);
+              executionId = executionClosed(activity, receipt, traces.filter(trace => !previous.includes(trace.turn_id)), agent.id);
               if (executionId) break;
             }
             const failure = availability.agents.find(row => row.agent_id === agent.id)?.error;
@@ -134,24 +133,26 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
           }
           await pause(100, cancellation.signal);
         }
-        native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id, executionId, agent.engine.model!);
+        native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id, executionId, agent.engine.model!, previous);
         const trace = native.traces[0];
         const failure = availability.agents.find(row => row.agent_id === agent.id)?.error;
+        if (!native.usage.length) throw new Error('Closed native execution omitted token usage evidence');
+        if (!native.modelContexts.length) throw new Error('Closed native execution omitted model identity evidence');
         if (!failure && deferredAfterCompletion(receipt, trace)) blocked = 'awaiting-external-input';
         if (receipt.state !== 'completed' || trace?.status !== 'completed' || failure) {
           throw new Error(failure ?? describeNativeFailure(receipt, trace));
         }
-        if (!native.usage.length) throw new Error('Closed native execution omitted token usage evidence');
-        if (!native.modelContexts.length) throw new Error('Closed native execution omitted model identity evidence');
         status = 'completed';
       } catch (failure) {
         error = timedOut ? 'Native trial deadline exceeded' : failure instanceof Error ? failure.message : String(failure);
         status = cancellation.signal.aborted && !timedOut ? 'cancelled' : 'failed';
-        await stop();
+        if (!blocked) await stop();
         try {
-          native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id, executionId, agent.engine.model!);
-        } catch (collectionError) { error += `; evidence collection failed: ${String(collectionError)}`; }
+          native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id, executionId, agent.engine.model!, previous);
+        } catch (collectionError) { blocked = undefined; await stop(); error += `; evidence collection failed: ${String(collectionError)}`; }
       } finally { clearTimeout(timer); }
+      const continuing = gate.finish(executionId, blocked === 'awaiting-external-input');
+      if (blocked && !continuing) await stop();
       const result: TerminalEvidence = { schema: 'paideia.daimon-native.trial.v1', trialId: options.trialId, wakeId,
         agentId: agent.id, model: agent.engine.model!, configSha256: options.configSha256, scheduleOverride: 'disabled',
         ...(launch ? { preparation: { sourceConfigSha256: launch.sourceConfigSha256, instructions: launch.instructions, overrides: launch.overrides } } : {}),

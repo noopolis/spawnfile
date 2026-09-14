@@ -1,4 +1,4 @@
-import { configuredCostRoutes } from './training/index.js';
+import { configuredCostRoutes, commandCheckpoint } from './training/index.js';
 import { authoredArguments, judgeVersions, validateAuthoredTemplates } from './training/index.js';
 import { randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
@@ -48,20 +48,22 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   const native = await prepareNative(args, io, dependencies, timeoutMs, inputs);
   signal.throwIfAborted();
   return withOutput(native.out, async (store) => {
+    const checkpoint = test === undefined ? undefined : await commandCheckpoint(args, inputs, dependencies);
+    const attemptId = randomUUID();
     const base: Omit<StoredTrialOptions, 'id' | 'phase' | 'record' | 'candidate' | 'datasetId' | 'datasetDigest' | 'planDigest'> = {
       adapter: native.adapter, model: native.model, root: join(native.out, 'trials'), timeoutMs,
       registry: native.registry, evaluation: native.evaluation, resources: native.resources,
       prepareEnvironment: native.prepareEnvironment,
-      store, storeRoot: native.out, protectedPaths: [native.sourceRoot, ...native.datasets.protectedDirectories], signal,
+      store, storeRoot: native.out, protectedPaths: [native.sourceRoot, ...native.datasets.protectedDirectories, ...native.cacheRoots], signal,
     };
-    const id = randomUUID();
-    const journal = await createProgressJournal({ id, datasetId: dataset.id, planDigest: dataset.sharedPlanDigest,
+    const id = checkpoint?.id ?? attemptId;
+    const journal = await createProgressJournal({ id: attemptId, datasetId: dataset.id, planDigest: dataset.sharedPlanDigest,
       candidateId: native.candidate.id, model: native.model, prices: costConfig.prices, store, io, costPlan });
     let live: Awaited<ReturnType<typeof startLiveViewer>> | undefined;
     let failed = false;
     try {
     live = args.flags.view === undefined ? undefined : await startLiveViewer({
-      port: count(args, 'view', 0, 65535, 0), io, store, id, datasetId: dataset.id, planDigest: dataset.sharedPlanDigest,
+      port: count(args, 'view', 0, 65535, 0), io, store, id: attemptId, datasetId: dataset.id, planDigest: dataset.sharedPlanDigest,
       baseline: native.candidate, cases: dataset.records.map((record) => ({ id: record.id, split: 'train' })),
       testCases: test?.records.map((record) => ({ id: record.id, split: 'test' })) ?? [],
       budget: test === undefined ? undefined : { maxMetricCalls: metricCalls, maxProposals },
@@ -73,19 +75,22 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         inference: { provider: native.inference, model: optimizerModel! },
         bridge: { command: bridgeCommand!.includes('/') ? resolve(io.cwd, bridgeCommand!) : bridgeCommand!, cwd: native.sourceRoot, timeoutMs },
         budget: { maxMetricCalls: metricCalls, maxProposals }, seed, signal,
+        checkpoint: {...checkpoint!,maxRecoveryAttempts:args.training?.recovery?.max_attempts ?? 2},
         onProgress: async (event) => {
           await journal.observe(event);
           await live?.observe(event);
         },
       });
       signal.throwIfAborted();
-      const index = await persistResult({ root: native.out, store, id, command: 'train', datasetId: test.id,
-        planDigest: test.sharedPlanDigest, candidate: report.selected, report: { ...report, costs: journal.costs(), costPlan }, trialIds: report.trials.map((trial) => trial.id),
+      const index = await persistResult({ root: native.out, store, id: attemptId, command: 'train', datasetId: test.id,
+        planDigest: test.sharedPlanDigest, candidate: report.selected, report: { ...report, id: attemptId, experimentId: id, costs: journal.costs(), costPlan }, trialIds: report.trials.map((trial) => trial.id),
+        replaceIndex:Boolean(args.flags.resume),
         optimizerBudget: { maxMetricCalls: metricCalls, maxProposals } });
       io.stdout(`${JSON.stringify({ status: 'completed', index: join(native.out, 'invocation.json'), ...index,
         evaluations: report.optimizer.provenance.evaluations, proposals: report.optimizer.provenance.proposals,
         costs: journal.summary(), estimatedApiEquivalentUsd: costPlan?.apiEquivalentUsd })}\n`);
-      return report.trials.filter((trial) => trial.phase === 'test' && trial.candidateId === report.selected.id).every((trial) => trial.status === 'pass') ? 0 : 1;
+      return report.trials.filter((trial) => trial.phase === 'test' && trial.candidateId === report.selected.id)
+        .every((trial) => (report.rescores?.findLast(score => score.runId === trial.id)?.status ?? trial.status) === 'pass') ? 0 : 1;
     }
     const evaluation = await freezeCriteria(dataset, native.evaluation, native.registry);
     const trials: TrialReport[] = [];
@@ -110,13 +115,13 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
       failed = true;
       try {
         const diagnostic = await journal.failed(error);
-        const failureId = `failure-${id}`;
+        const failureId = `failure-${attemptId}`;
         const report = createFailureReport({ id: failureId, command: args.command as 'train' | 'evaluate',
           baseline: native.candidate, progressRunId: journal.runId, ...diagnostic, trials: journal.reports(),
-          costs: journal.costs(), costPlan });
+          costs: journal.costs(), costPlan, rescores: journal.rescores() });
         await persistResult({ root: native.out, store, id: failureId, command: report.command,
           datasetId: dataset.id, planDigest: dataset.sharedPlanDigest, candidate: native.candidate,
-          report, trialIds: report.view.trials.map(trial => trial.id), outcome: 'failed' });
+          report, trialIds: report.view.trials.map(trial => trial.id), outcome: 'failed', replaceIndex:Boolean(args.flags.resume) });
       } catch { io.stderr('Failure report unavailable; original error preserved.\n'); }
       try { await live?.observe({ type: 'experiment.failed', payload: {} }); }
       catch { io.stderr('Failed viewer snapshot unavailable; original error preserved.\n'); }
@@ -125,7 +130,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
       if (failed) await live?.close().catch(() => undefined);
       else await live?.close();
     }
-  });
+  }, Boolean(args.flags.resume));
 }
 
 /** Injectable argv/IO and native boundaries; all command orchestration uses public owners. */

@@ -2,6 +2,7 @@ import { cockpitResponsiveStyles } from './responsive.js';
 
 /** Local cockpit shell and data graphics, following the Moltnet console system. */
 export const cockpitStyles = `
+.activity-measurements { max-height:180px; overflow:auto; }
 :root {
   color-scheme: dark;
   --bg: #0b0b0b;

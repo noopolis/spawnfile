@@ -22,11 +22,17 @@ export interface JudgeCall {
   failureKind?: InferenceFailureKind;
   fallbackOf?: string;
 }
-export interface CachedJudgment { response: string; sourceCallId: string }
+export interface CachedJudgment {
+  response: string;
+  sourceCallId: string;
+  /** Historical inference provenance, never current inference or billable usage. */
+  sourceCalls?: JudgeCall[];
+}
 /** Host-owned, bounded evaluation cache; no subject access and no infrastructure errors. */
 export interface JudgeCache {
-  get(key: string): CachedJudgment | undefined;
-  put(key: string, value: CachedJudgment): void;
+  readonly persistent?: boolean;
+  get(key: string): CachedJudgment | undefined | Promise<CachedJudgment | undefined>;
+  put(key: string, value: CachedJudgment): void | Promise<void>;
 }
 export interface JudgeRoute {
   provider: InferenceProvider;
@@ -35,6 +41,8 @@ export interface JudgeRoute {
   identity?: string;
   template?: { language: 'jinja'; text: string };
   cache?: JudgeCache;
+  /** Host-frozen dataset and phase identity, required for persistent reuse. */
+  cacheScope?: string;
 }
 export interface JudgeProtocolViolation {
   code: 'invalid-json' | 'invalid-judgment' | 'invalid-citations' | 'invalid-citation-repair';
@@ -52,7 +60,7 @@ export interface EvaluationResult {
   children?: EvaluationResult[];
   usage?: Usage[];
   judgeCalls?: JudgeCall[];
-  cache?: { key: string; sourceCallId: string };
+  cache?: { key: string; sourceCallId: string; sourceCalls?: JudgeCall[] };
 }
 export interface ArtifactSnapshot {
   name: string;
@@ -91,7 +99,18 @@ export interface EvaluationContext {
   readText: (path: string) => Promise<string>;
   /** Trusted host sink, awaited before accepting a judgment or making its one permitted repair. */
   observeJudgeAttempt?: (attempt: JudgeAttemptObservation) => void | Promise<void>;
+  /** Trusted persisted measurement sink; never receives prompt text or judge reasons. */
+  observeMeasurement?: (measurement: EvaluationMeasurement) => void | Promise<void>;
   signal?: AbortSignal;
+}
+export interface EvaluationMeasurement {
+  stageId: string;
+  criterionId: string;
+  kind: 'criterion' | 'gate' | 'score';
+  status: Verdict;
+  score: number | null;
+  weight?: number;
+  weightedContribution?: number | null;
 }
 export interface RegisteredEvaluator {
   definition: EvaluatorDefinition;
@@ -110,6 +129,8 @@ export interface StageEvaluation {
   checks: EvaluationResult[];
   gate: EvaluationResult;
   score?: WeightedScore;
+  /** Authored relative weights; normalize against the complete declared denominator. */
+  weights?: Record<string, number>;
 }
 export interface PlanEvaluation {
   status: Verdict;

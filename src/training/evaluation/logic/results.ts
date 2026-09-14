@@ -37,9 +37,10 @@ export function combine(operation: 'all' | 'any', children: EvaluationResult[]):
 export function weightedScore(weights: Readonly<Record<string, number>>,
   checks: Readonly<Record<string, EvaluationResult>>): WeightedScore {
   const entries = Object.entries(weights);
+  const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
   if (entries.length === 0 || entries.some(([, weight]) => !Number.isFinite(weight) || weight < 0) ||
-      Math.abs(entries.reduce((sum, [, weight]) => sum + weight, 0) - 1) > 1e-9) {
-    throw new Error('Score weights must be finite, nonnegative and sum to one');
+      !Number.isFinite(total) || total <= 0) {
+    throw new Error('Score weights must be finite, nonnegative with a positive total');
   }
   let lower = 0;
   let assessedWeight = 0;
@@ -48,8 +49,8 @@ export function weightedScore(weights: Readonly<Record<string, number>>,
     if (!check || (check.status !== 'pass' && check.status !== 'fail')) continue;
     const score = check.score ?? (check.status === 'pass' ? 1 : 0);
     if (!Number.isFinite(score) || score < 0 || score > 1) throw new Error('Invalid evaluator score');
-    lower += weight * score;
-    assessedWeight += weight;
+    lower += (weight / total) * score;
+    assessedWeight += weight / total;
   }
   const missingWeight = Math.max(0, 1 - assessedWeight);
   const finality = entries.every(([id, weight]) => weight === 0 || checks[id]?.finality === 'final')

@@ -1,5 +1,5 @@
 import type { InferenceResult, Usage } from '../../contracts/execution.js';
-import { InferenceFailure } from '../failure.js';
+import { InferenceFailure, type InferenceFailureEvidence } from '../failure.js';
 
 export interface GrokFrames {
   init?: Record<string, unknown>;
@@ -24,19 +24,33 @@ function usageOf(result: Record<string, unknown>): Usage | null {
     cacheWriteInputTokens: write, outputTokens: output, reasoningTokens: null, source: 'grok.result.usage.lower-bound' };
 }
 
+export function grokFailureEvidence({ init, result }: GrokFrames): InferenceFailureEvidence {
+  return { usage: result === undefined ? null : usageOf(result),
+    responseModel: typeof init?.['model'] === 'string' && init['model'].trim() ? init['model'] : null,
+    responseRoute: 'grok-subscription' };
+}
+
+/** Validate before generation proceeds; permission denial alone is not tool isolation. */
+export function validateGrokInitialization(frames: GrokFrames): void {
+  const { init } = frames, evidence = grokFailureEvidence(frames);
+  if (init === undefined) throw new InferenceFailure('protocol', 'Grok omitted initialization', evidence);
+  if (init['apiKeySource'] !== 'oauth') throw new InferenceFailure('authentication', 'Grok did not acknowledge subscription OAuth', evidence);
+  if (!Array.isArray(init['tools']) || init['tools'].length !== 0 ||
+    !Array.isArray(init['mcp_servers']) || init['mcp_servers'].length !== 0) {
+    throw new InferenceFailure('protocol', 'Grok tool isolation was not acknowledged', evidence);
+  }
+}
+
 export function decodeGrok(frames: GrokFrames, exitCode: number | null): InferenceResult {
   const { init, assistant, result } = frames;
-  const usage = result === undefined ? null : usageOf(result);
+  const evidence = grokFailureEvidence(frames), usage = evidence.usage ?? null;
   const model = typeof init?.['model'] === 'string' && init['model'].trim() ? init['model'] : null;
   const status = result?.['status'] ?? result?.['status_code'] ?? refusalStatus(result);
   if (status === 402 || status === 429 || status === 503 || status === 401 || status === 403) {
     throw new InferenceFailure(status === 402 || status === 429 ? 'quota' : status === 503 ? 'unavailable' : 'authentication',
-      'Grok refused inference', { usage, responseModel: model, responseRoute: 'grok-subscription' });
+      'Grok refused inference', evidence);
   }
-  if (init === undefined) throw new InferenceFailure('protocol', 'Grok omitted initialization');
-  if (init['apiKeySource'] !== 'oauth') throw new InferenceFailure('authentication', 'Grok did not acknowledge subscription OAuth');
-  if (!Array.isArray(init['tools']) || init['tools'].length !== 0 ||
-    (Array.isArray(init['mcp_servers']) && init['mcp_servers'].length !== 0)) throw new InferenceFailure('protocol', 'Grok tool isolation was not acknowledged');
+  validateGrokInitialization(frames);
   const message = assistant?.['message'] as Record<string, unknown> | undefined;
   const blocks = message?.['content'];
   const validBlocks = Array.isArray(blocks) && blocks.every((block: unknown) =>
@@ -50,7 +64,7 @@ export function decodeGrok(frames: GrokFrames, exitCode: number | null): Inferen
     !text.trim() || result['result'] !== text || assistant?.['session_id'] !== result['session_id'] ||
     message?.['stop_reason'] !== result['stop_reason'] || model === null ||
     !validBlocks) {
-    throw new InferenceFailure('protocol', 'Grok omitted a matching completed response', { usage, responseModel: model });
+    throw new InferenceFailure('protocol', 'Grok omitted a matching completed response', evidence);
   }
   return { text, model, modelBasis: 'provider-reported', usage, route: 'grok-subscription' };
 }

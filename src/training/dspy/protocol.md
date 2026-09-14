@@ -109,7 +109,19 @@ and independently owns any sealed-test comparison or local candidate export.
 
 The host owns timeout/cancellation: terminate this process and cancel its outstanding
 callback work together. Killing Python alone does not stop a native trial owned by
-the TypeScript host. No bridge restart/resume or native-result caching is provided.
+the TypeScript host. An optional `checkpoint:{directory,identity}` selects caller-protected durable
+state. The caller owns exclusive access. The host journal records exact callback
+reservations/results; the Python bridge pairs released GEPA state with session and
+sampler state. On resume, host-derived `recovery:{evaluations,proposals}` accounts for
+prior failed or uncertain attempts without inventing completed captures. These
+offsets reduce remaining budget; they are not candidate feedback. No arbitrary
+agent-produced checkpoint or pickle is accepted.
+
+Seed validation is reused on restore, because released GEPA calls it before loading
+state. Completed callbacks after the last checkpoint are replayed by exact original
+callback identity. Model/criteria/environment drift rejects resume before native work.
+The TypeScript training owner separately persists frozen selection and sealed-test
+reports; sealed test data never enters this bridge.
 
 ## Released integration seam
 

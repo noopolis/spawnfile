@@ -7,3 +7,7 @@ Project profiles and transport bootstrap remain caller-owned. Require exact laun
 receipts, authenticated native activity, closed telemetry and verified containment.
 Use public module indexes across child boundaries; no sibling implementation imports.
 Keep adjacent tests, files below 400 lines and per-file coverage above 90 percent.
+
+External continuations are opt-in, sourced, bounded to three deliveries and share
+one trial deadline. Deferred work is never success. Preserve per-wake evidence and
+aggregate usage once; cancellation must stop the owned runtime.

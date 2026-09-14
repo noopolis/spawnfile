@@ -4,6 +4,7 @@ import type { CostReport, TrainingCostPlan, TrialReport } from '../../experiment
 import type { ExperimentStore } from '../../storage/index.js';
 import { projectTrials, projectViewerData, type ViewerData } from '../../../viewer/index.js';
 import type { InvocationIndex } from '../types.js';
+import type { RescoreReport } from '../../experiments/replay/index.js';
 
 export interface CliFailureReport {
   schema: 'paideia.cli-failure.v1';
@@ -20,12 +21,14 @@ export function createFailureReport(options: {
   id: string; command: CliFailureReport['command']; baseline: CandidateManifest;
   progressRunId: string; diagnosticId: string; trials: readonly TrialReport[];
   costs: CostReport; costPlan?: TrainingCostPlan;
+  rescores?: readonly RescoreReport[];
 }): CliFailureReport {
   const trials = options.trials.filter(trial => trial.phase !== 'test');
   const cases = [...new Map(trials.map(trial => [trial.recordId, { id: trial.recordId, split: trial.phase }])).values()];
   const view = projectTrials({ id: options.id, title: 'Failed experiment; partial development results', phase: 'replay',
     status: 'failed', updatedAt: new Date().toISOString(), baseline: options.baseline, cases, trials,
-    costs: options.costs, costPlan: options.costPlan });
+    costs: options.costs, costPlan: options.costPlan,
+    rescores: options.rescores?.filter(score => score.original.phase !== 'test') });
   // The cost projection keeps every observed call, including sealed work, while
   // omitting call/trial identities and provider text. Do not expose usage sources.
   view.usage = [];

@@ -1,3 +1,4 @@
+import type { DeliveryControls } from './deliveries.js';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { WorkerController } from './control.js';
@@ -34,12 +35,12 @@ export function createWorkerServer(controller: WorkerController, token: string):
       if (request.method === 'POST' && url.pathname === '/trial/run') {
         if (request.headers['content-type'] !== 'application/json') return reply(response, 400, { error: 'content_type_required' });
         const value = await body(request);
-        if (Object.keys(value).sort().join(',') !== 'text,wakeId' || typeof value.wakeId !== 'string' || typeof value.text !== 'string') {
+        if (Object.keys(value).some(key => !['text', 'wakeId', 'controls'].includes(key)) || value.controls !== undefined && (!value.controls || typeof value.controls !== 'object' || Array.isArray(value.controls)) || typeof value.wakeId !== 'string' || typeof value.text !== 'string') {
           return reply(response, 400, { error: 'invalid_trial_delivery' });
         }
         const abandoned = (): void => { if (!response.writableEnded) void controller.stop(); };
         response.once('close', abandoned);
-        try { return reply(response, 200, await controller.run(value.wakeId, value.text)); }
+        try { return reply(response, 200, await controller.run(value.wakeId, value.text, value.controls as DeliveryControls | undefined)); }
         finally { response.removeListener('close', abandoned); }
       }
       return reply(response, 404, { error: 'not_found' });

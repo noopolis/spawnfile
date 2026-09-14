@@ -25,6 +25,16 @@ class Budget(StrictModel):
     maxProposals: Annotated[int, Field(ge=1, le=1000)]
 
 
+class Checkpoint(StrictModel):
+    directory: TextId
+    identity: TextId
+
+
+class Recovery(StrictModel):
+    evaluations: Annotated[int, Field(ge=0)] = 0
+    proposals: Annotated[int, Field(ge=0)] = 0
+
+
 class OptimizeRequest(StrictModel):
     schema_version: Literal["paideia.dspy.v1"] = Field(alias="schema")
     kind: Literal["optimize"]
@@ -33,6 +43,8 @@ class OptimizeRequest(StrictModel):
     trainCaseIds: Annotated[list[TextId], Field(min_length=1, max_length=10000)]
     validationCaseIds: Annotated[list[TextId], Field(min_length=1, max_length=10000)]
     budget: Budget
+    checkpoint: Checkpoint | None = None
+    recovery: Recovery | None = None
     seed: Annotated[int, Field(ge=0, le=2**32 - 1)] = 0
 
     @model_validator(mode="after")
