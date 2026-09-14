@@ -19,14 +19,15 @@ function validResult(value: EvaluationResult): boolean {
 function isolatedContext(context: EvaluationContext): EvaluationContext {
   return { ...context,
     snapshot: structuredClone(context.snapshot), results: structuredClone(context.results), scores: structuredClone(context.scores),
-    judges: Object.fromEntries(Object.entries(context.judges).map(([id, route]) => [id, {
-      identity: route.identity, cacheScope: route.cacheScope,
-      ...(route.template ? { template: structuredClone(route.template) } : {}),
-      ...(route.cache ? { cache: { persistent: route.cache.persistent,
-        get: route.cache.get.bind(route.cache), put: route.cache.put.bind(route.cache) } } : {}),
-      model: route.model, citationRepairs: route.citationRepairs, provider: { id: route.provider.id, capabilities: structuredClone(route.provider.capabilities),
-        generate: route.provider.generate.bind(route.provider) },
-    }])),
+    judges: Object.fromEntries(Object.entries(context.judges).map(([id, route]) => {
+      const { provider, cache, ...policy } = route;
+      return [id, { ...structuredClone(policy),
+        ...(cache ? { cache: { persistent: cache.persistent,
+          get: cache.get.bind(cache), put: cache.put.bind(cache) } } : {}),
+        provider: { id: provider.id, capabilities: structuredClone(provider.capabilities),
+          generate: provider.generate.bind(provider) },
+      }];
+    })),
     embeddings: Object.fromEntries(Object.entries(context.embeddings).map(([id, provider]) => [id, {
       id: provider.id, version: provider.version, embed: provider.embed.bind(provider),
     }])),
