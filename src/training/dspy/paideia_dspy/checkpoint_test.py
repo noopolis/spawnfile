@@ -10,7 +10,8 @@ from .session import Session
 
 
 class JournalHost:
-    def __init__(self):
+    def __init__(self, fail_at=4):
+        self.fail_at = fail_at
         self._sequence = 0
         self.entries = {}
         self.subject = SimulatedHost()
@@ -18,7 +19,7 @@ class JournalHost:
 
     def __call__(self, method, params):
         self._sequence += 1
-        if self._sequence == 4 and self.fail:
+        if self._sequence == self.fail_at and self.fail:
             self.fail = False
             raise BridgeError("interrupted", "deliberate interruption")
         if self._sequence in self.entries:
@@ -88,3 +89,18 @@ def test_consumed_attempt_offsets_bound_real_gepa_and_session_calls():
     with pytest.raises(BridgeError, match="budget"):
         session.generate([], {})
     assert session.should_stop(None)
+
+
+def test_resume_after_prior_proposal_keeps_exact_serialized_history_request(tmp_path):
+    host = JournalHost(fail_at=8)
+    original = request(checkpoint={"directory": str(tmp_path), "identity": "execution"})
+    with pytest.raises(BridgeError, match="deliberate"):
+        optimize(original, host)
+    saved = json.loads((tmp_path / "optimizer.json").read_text())["payload"]["session"]
+    assert saved["proposal_records"] and len(saved["results"]) >= 5
+    generation = host.entries[7][1]["messages"][1]["content"]
+    assert json.loads(generation)["trajectory"]["entries"]
+    result = optimize(original, host)
+    assert result["provenance"]["evaluations"] == 7
+    assert len(host.subject.calls) == 9
+    assert host.entries[7][1]["messages"][1]["content"] == generation

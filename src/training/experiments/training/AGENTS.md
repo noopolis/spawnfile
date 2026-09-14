@@ -37,3 +37,8 @@ observed events only through the trusted caller's projection. Never expose seale
 text or inference prompts through operator summary views. `routing.test.ts` now
 executes actual DSPy restart after a judge outage with an isolated deterministic
 subject; it proves replay/rescore identity, not writing improvement.
+
+Optimizer feedback projects criterion reasons/status/scores, stage weights and
+native subject usage once, omitting duplicate aggregate trees and judge accounting.
+The original TrialReport remains unmodified. This compact train-only projection
+must not strip meaningful nested criterion failures or expose validation content.

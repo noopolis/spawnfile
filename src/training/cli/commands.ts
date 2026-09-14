@@ -81,6 +81,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         inference: { provider: native.inference, model: optimizerModel! },
         bridge: bridge!,
         budget: { maxMetricCalls: metricCalls, maxProposals }, seed, signal,
+        proposal: args.training?.optimizer?.proposal,
         checkpoint: {...checkpoint!,maxRecoveryAttempts:args.training?.recovery?.max_attempts ?? 2},
         onProgress: async (event) => {
           await journal.observe(event);

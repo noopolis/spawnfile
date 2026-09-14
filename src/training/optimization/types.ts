@@ -1,4 +1,5 @@
 import type { InferenceAttempt, InferenceResult, StopReceipt } from '../contracts/execution.js';
+import type { TrainingProposalPolicy } from '../contracts/training-config.js';
 import type { DspyEvaluation, DspyEvaluateParams, DspyGenerateParams } from './protocol.js';
 
 export interface DspyOptimizationOptions {
@@ -7,6 +8,7 @@ export interface DspyOptimizationOptions {
   trainCaseIds: readonly string[];
   validationCaseIds: readonly string[];
   budget: { maxMetricCalls: number; maxProposals: number };
+  proposal?: TrainingProposalPolicy;
   /** GEPA sampling only; this is not a native model sampling control. */
   seed?: number;
   bridge: {

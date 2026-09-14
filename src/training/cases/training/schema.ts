@@ -15,13 +15,20 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
     const location = `${path}.models.${name}`;
     string(name, location);
     const model = object(value, location);
-    fields(model, ['provider', 'model', 'endpoint', 'reasoning_effort'], location);
+    fields(model, ['provider', 'model', 'endpoint', 'reasoning_effort', 'think', 'keep_alive_seconds', 'max_output_tokens', 'context_window'], location);
     oneOf(model.provider, ['claude-subscription', 'grok-subscription', 'ollama'], `${location}.provider`);
     string(model.model, `${location}.model`);
     if (model.reasoning_effort !== undefined) {
       if (model.provider !== 'grok-subscription') fail(`${location}.reasoning_effort`, 'only supported for grok-subscription');
       oneOf(model.reasoning_effort, ['low', 'medium', 'high', 'xhigh'], `${location}.reasoning_effort`);
     }
+    for (const field of ['think', 'keep_alive_seconds', 'max_output_tokens', 'context_window']) {
+      if (model[field] !== undefined && model.provider !== 'ollama') fail(`${location}.${field}`, 'only supported for ollama');
+    }
+    if (model.think !== undefined && typeof model.think !== 'boolean') fail(`${location}.think`, 'expected a boolean');
+    if (model.keep_alive_seconds !== undefined) integer(model.keep_alive_seconds, `${location}.keep_alive_seconds`, 0, 86400);
+    if (model.context_window !== undefined) integer(model.context_window, `${location}.context_window`, 512, 1048576);
+    if (model.max_output_tokens !== undefined) integer(model.max_output_tokens, `${location}.max_output_tokens`, 1, 131072);
     if (model.endpoint !== undefined) {
       if (model.provider !== 'ollama') fail(`${location}.endpoint`, 'only supported for ollama');
       let url: URL;
@@ -34,7 +41,7 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
   }
   function route(value: unknown, location: string, judge = false): void {
     const policy = object(value, location);
-    fields(policy, ['model', 'fallbacks', 'attempts', 'timeout_ms', ...(judge ? ['template', 'citation_repairs'] : [])], location);
+    fields(policy, ['model', 'fallbacks', 'attempts', 'timeout_ms', ...(judge ? ['template', 'citation_repairs', 'protocol'] : ['proposal'])], location);
     const primary = string(policy.model, `${location}.model`);
     const fallbacks = policy.fallbacks === undefined ? [] : uniqueStrings(policy.fallbacks, `${location}.fallbacks`);
     if (fallbacks.includes(primary)) fail(`${location}.fallbacks`, 'primary model cannot be its own fallback');
@@ -42,6 +49,17 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
     if (policy.attempts !== undefined) integer(policy.attempts, `${location}.attempts`, 1, Math.min(10, 1 + fallbacks.length));
     if (policy.timeout_ms !== undefined) integer(policy.timeout_ms, `${location}.timeout_ms`, 1, 3_600_000);
     if (policy.citation_repairs !== undefined) oneOf(policy.citation_repairs, [0, 1], `${location}.citation_repairs`);
+    if (policy.protocol !== undefined) oneOf(policy.protocol, ['citations', 'evidence-ids'], `${location}.protocol`);
+    if (policy.protocol === 'evidence-ids' && policy.citation_repairs === 1) fail(`${location}.citation_repairs`, 'citation repair is not supported for evidence-ids');
+    if (policy.proposal !== undefined) {
+      const proposal = object(policy.proposal, `${location}.proposal`);
+      fields(proposal, ['strategy', 'min_change', 'max_attempts', 'history_entries', 'history_bytes'], `${location}.proposal`);
+      if (proposal.strategy !== undefined) oneOf(proposal.strategy, ['refine', 'rewrite'], `${location}.proposal.strategy`);
+      if (proposal.min_change !== undefined) number(proposal.min_change, `${location}.proposal.min_change`, 0, 1);
+      for (const [field, min, max] of [['max_attempts', 1, 5], ['history_entries', 1, 100], ['history_bytes', 1024, 262144]] as const) {
+        if (proposal[field] !== undefined) integer(proposal[field], `${location}.proposal.${field}`, min, max);
+      }
+    }
     if (policy.template !== undefined) {
       const template = object(policy.template, `${location}.template`);
       fields(template, ['language', 'text'], `${location}.template`);

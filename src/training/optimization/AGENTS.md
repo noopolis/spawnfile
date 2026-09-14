@@ -44,3 +44,10 @@ configuration. Checkpointed runs place it beside protected checkpoint files;
 standalone runs use fresh temporary storage. Confirm process closure before deleting
 that home; unknown closure fails and preserves it for caller cleanup. This home is
 ephemeral cache state and never enters resume/checkpoint identity.
+
+Authored `proposal` policy is forwarded unchanged to the DSPy bridge and binds the
+checkpoint identity. The bridge owns train-only chronological reflection context,
+lexical novelty rejection and bounded repair attempts; all generation attempts use
+the same total budget. Keep full native reports/raw callbacks durable. Compact
+reflection projections must retain criterion score vectors and subject usage before
+bounded reasons or article excerpts. See bridges/dspy/README.md for exact defaults.

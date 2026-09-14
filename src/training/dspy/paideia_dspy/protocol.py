@@ -35,6 +35,14 @@ class Recovery(StrictModel):
     proposals: Annotated[int, Field(ge=0)] = 0
 
 
+class ProposalPolicy(StrictModel):
+    strategy: Literal["refine", "rewrite"] | None = None
+    min_change: Annotated[float, Field(ge=0, le=1)] | None = None
+    max_attempts: Annotated[int, Field(ge=1, le=5)] | None = None
+    history_entries: Annotated[int, Field(ge=1, le=100)] | None = None
+    history_bytes: Annotated[int, Field(ge=1024, le=262144)] | None = None
+
+
 class OptimizeRequest(StrictModel):
     schema_version: Literal["paideia.dspy.v1"] = Field(alias="schema")
     kind: Literal["optimize"]
@@ -43,6 +51,7 @@ class OptimizeRequest(StrictModel):
     trainCaseIds: Annotated[list[TextId], Field(min_length=1, max_length=10000)]
     validationCaseIds: Annotated[list[TextId], Field(min_length=1, max_length=10000)]
     budget: Budget
+    proposal: ProposalPolicy | None = None
     checkpoint: Checkpoint | None = None
     recovery: Recovery | None = None
     seed: Annotated[int, Field(ge=0, le=2**32 - 1)] = 0

@@ -50,7 +50,7 @@ class Checkpoint:
             raise BridgeError("checkpoint_mismatch", "optimizer checkpoint integrity or identity mismatch")
         (self.work / "gepa_state.bin").write_bytes(base64.b64decode(saved["gepa"], validate=True))
         state = saved["session"]
-        for name in ["evaluations", "proposals", "captures", "generations", "results"]:
+        for name in ["evaluations", "proposals", "captures", "generations", "results", "proposal_records", "proposal_stopped"]:
             setattr(self.session, name, state[name])
         self.session.seed_replay = {
             item["params"]["caseId"]: EvaluationResult.model_validate(item["result"])
@@ -78,7 +78,7 @@ class Checkpoint:
         payload = {
             "identity": self.identity, "gepa": base64.b64encode(state.read_bytes()).decode(),
             "session": {name: getattr(self.session, name) for name in
-                        ["evaluations", "proposals", "captures", "generations", "results"]},
+                        ["evaluations", "proposals", "captures", "generations", "results", "proposal_records", "proposal_stopped"]},
             "sampler": sample,
         }
         temporary = self.path.with_suffix(".tmp")

@@ -22,7 +22,7 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
     const model = config!.models[name]!;
     const selected = dependencies.modelInference?.(model, timeoutMs) ?? (model.provider === 'claude-subscription'
       ? createClaudeInference({ timeoutMs }) : model.provider === 'grok-subscription'
-        ? createGrokInference({ timeoutMs, reasoningEffort: model.reasoning_effort }) : createOllamaInference({ baseUrl: model.endpoint ?? 'http://127.0.0.1:11434', timeoutMs }));
+        ? createGrokInference({ timeoutMs, reasoningEffort: model.reasoning_effort }) : createOllamaInference({ baseUrl: model.endpoint ?? 'http://127.0.0.1:11434', timeoutMs, think: model.think, keepAliveSeconds: model.keep_alive_seconds, maxOutputTokens: model.max_output_tokens, contextWindowTokens: model.context_window }));
     providers.set(name, selected);
     return selected;
   }
@@ -46,7 +46,7 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
     if (!policy) return [name, { provider: getLegacy(), model, identity: versions[name]!.version, citationRepairs: repairs[name]! }];
     const identity = versions[name]!.version;
     return [name, { provider: route(policy, identity), model, identity, citationRepairs: repairs[name]!,
-      template: policy.template,
+      template: policy.template, protocol: policy.protocol,
       cache: config!.cache?.mode === 'exact' ? createJudgeCache({ maxEntries: config!.cache.max_entries ?? 1000 }) : undefined }];
   }));
   const optimizer = config?.optimizer;

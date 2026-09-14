@@ -47,6 +47,10 @@ def optimize(request: OptimizeRequest, host):
                     for case_id in request.validationCaseIds],
         )
     session.healthy()
+    if checkpoint:
+        # GEPA writes its final state without dispatching on_state_saved. Pair
+        # that state with final benign-stop/history bookkeeping before returning.
+        checkpoint.on_state_saved(None)
     stats = selected.detailed_results
     return {
         "components": selected.components(),

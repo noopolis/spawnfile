@@ -23,3 +23,11 @@ released DSPy GEPA integration. Inherit the bridge guide.
   loading its state. Host callbacks following the saved boundary replay only if their
   exact identities match. Recovery attempt offsets are host-owned accounting, never
   optimizer feedback or newly generated trials.
+
+- `proposal_history.py` mechanically projects train-only callback history and
+  proposal metadata into bounded reflection context. It never scores outputs or
+  summarizes through another model. Preserve full source records and explicit
+  omission/excerpt metadata; numerical criterion results take priority over prose.
+- Benign duplicate/novelty exhaustion uses GEPA's skip seam and stops the session;
+  it must not latch a provider failure or launch duplicate native trials. Pair the
+  upstream final state save too: GEPA omits the final state-saved callback.

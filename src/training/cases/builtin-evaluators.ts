@@ -93,7 +93,7 @@ export const builtinEvaluatorDefinitions: Readonly<Record<string, EvaluatorDefin
     exclusive(rubric, ['prompt', 'file'], `${path}.rubric`, true);
     if (rubric.prompt !== undefined) string(rubric.prompt, `${path}.rubric.prompt`);
     if (rubric.file !== undefined) safePath(rubric.file, `${path}.rubric.file`);
-  }, '2'),
+  }, '3'),
   'embedding-similarity': descriptor('embedding', ['input', 'reference', 'provider', 'model', 'metric', 'calibration', 'minimum'],
     ['input', 'reference', 'provider', 'model', 'metric', 'calibration', 'minimum'], (parameters, path) => {
       for (const key of ['input', 'reference', 'provider', 'model', 'calibration']) string(parameters[key], `${path}.${key}`);

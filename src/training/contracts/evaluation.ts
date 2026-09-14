@@ -38,6 +38,7 @@ export interface JudgeRoute {
   provider: InferenceProvider;
   model: string;
   citationRepairs?: 0 | 1;
+  protocol?: 'citations' | 'evidence-ids';
   identity?: string;
   template?: { language: 'jinja'; text: string };
   cache?: JudgeCache;
@@ -45,7 +46,7 @@ export interface JudgeRoute {
   cacheScope?: string;
 }
 export interface JudgeProtocolViolation {
-  code: 'invalid-json' | 'invalid-judgment' | 'invalid-citations' | 'invalid-citation-repair';
+  code: 'invalid-json' | 'invalid-judgment' | 'invalid-citations' | 'invalid-citation-repair' | 'invalid-evidence-ids';
   citations?: { index: number; source: string; reason: 'unknown-source' | 'quote-not-found' }[];
 }
 /** Protected evaluator evidence, never part of optimizer feedback or viewer projections. */

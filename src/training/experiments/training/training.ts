@@ -28,6 +28,7 @@ export interface TrainingOptions {
   inference: { provider: InferenceProvider; model: string };
   bridge: DspyOptimizationOptions['bridge'];
   budget: DspyOptimizationOptions['budget'];
+  proposal?: DspyOptimizationOptions['proposal'];
   checkpoint?: { directory: string; resume: boolean; identity: string; maxRecoveryAttempts?: number };
   seed?: number;
   signal?: AbortSignal;
@@ -121,12 +122,12 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
   if (checkpoint?.optimizer && options.checkpoint) {
     const restored = await readDspyCheckpointEvidence({ id: options.id, components: baselineComponents,
       trainCaseIds: partition.train.records.map(record => record.id), validationCaseIds: partition.validation.records.map(record => record.id),
-      budget: options.budget, seed: options.seed, checkpoint: options.checkpoint });
+      budget: options.budget, seed: options.seed, proposal: options.proposal, checkpoint: options.checkpoint });
     await options.onProgress?.({ type: 'optimizer.restored', payload: restored });
   }
   const optimizer = checkpoint?.optimizer ?? await runDspyOptimization({ id: options.id, components: baselineComponents,
     trainCaseIds: partition.train.records.map(record => record.id), validationCaseIds: partition.validation.records.map(record => record.id),
-    bridge: options.bridge, checkpoint: options.checkpoint,
+    bridge: options.bridge, checkpoint: options.checkpoint, proposal: options.proposal,
     onRestore: async evidence => { await options.onProgress?.({ type: 'optimizer.restored', payload: evidence }); }, budget: options.budget, seed: options.seed, signal: options.signal,
     validateComponents: components => { candidateFor(components); },
     generate: async (request, signal) => {

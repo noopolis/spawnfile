@@ -42,7 +42,7 @@ it('preserves plain-text behavior and existing train diagnostics when no task ar
   const selected = record(), captured = report();
   const result = trainingFeedback(selected, captured);
   expect(result.output).toBe('Original chat answer.\n');
-  expect(JSON.parse(result.feedback)).toEqual({ task: selected.input, criteria: selected.effectiveStages, evaluation: captured.evaluation, live: [] });
+  expect(JSON.parse(result.feedback)).toEqual({ task: selected.input, criteria: selected.effectiveStages, evaluation: { status: captured.evaluation.status, stages: [] }, subjectUsage: null, live: [] });
   expect(JSON.stringify(result)).not.toContain('SECRET');
 });
 
@@ -147,4 +147,20 @@ it('feeds an actual stored trial’s file output and trusted collected article d
     bridge: { command: 'unused', cwd: root, timeoutMs: 2_000 }, budget: { maxMetricCalls: 4, maxProposals: 1 } });
   expect(trained.trials.map(trial => trial.phase)).toEqual(['train', 'validation', 'test']);
   expect(trained.trials.every(trial => trial.snapshot.output === '' && trial.snapshot.artifacts['accepted-article'] !== undefined)).toBe(true);
+});
+
+it('keeps criterion failures and subject cost once, excluding duplicated gates and judge accounting', () => {
+  const captured = report();
+  const failure = { id: 'prose', status: 'fail' as const, finality: 'final' as const, score: 0.4,
+    reason: 'The ending repeats the lead.', evidence: [], usage: [{ inputTokens: 999999, cachedInputTokens: null, outputTokens: 3, reasoningTokens: null, source: 'judge' }] };
+  captured.evaluation.stages = [{ id: 'writing', checks: [failure], gate: { ...failure, children: [failure] } }];
+  captured.evaluation.checks = { prose: failure };
+  captured.snapshot.subjectUsage = { status: 'complete', usage: { inputTokens: 20, cachedInputTokens: 5, outputTokens: 4, reasoningTokens: null, source: 'native' } };
+  captured.live = [{ checkId: 'live', boundary: 'close', result: { ...failure, children: [{ ...failure, reason: 'Useful nested failure.' }] } }];
+  const feedback = JSON.parse(trainingFeedback(record(), captured).feedback);
+  expect(feedback.evaluation.stages[0].checks[0].reason).toBe(failure.reason);
+  expect(feedback.evaluation.stages[0].gate).toEqual({ status: 'fail' });
+  expect(feedback.subjectUsage).toEqual(captured.snapshot.subjectUsage);
+  expect(feedback.live[0].result.children[0].reason).toBe('Useful nested failure.');
+  expect(JSON.stringify(feedback)).not.toContain('999999');
 });

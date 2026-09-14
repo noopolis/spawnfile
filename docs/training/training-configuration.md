@@ -211,3 +211,39 @@ operator's home and provider credentials. Checkpointed runs place it under the
 protected checkpoint directory. Its disposable caches are removed after confirmed
 process closure and are not resume state; uncertain closure preserves them and
 fails the optimization.
+
+
+## Proposal memory and diversity
+
+```yaml
+training:
+  optimizer:
+    model: reflection
+    proposal:
+      strategy: rewrite
+      min_change: 0.15
+      max_attempts: 2
+      history_entries: 20
+      history_bytes: 65536
+```
+
+`rewrite` asks for structural changes inside already-editable resources, with a
+hypothesis and predicted criterion impacts. The default is `refine`. Prior training
+prompt bodies, results, failed proposals and token usage inform each generation;
+validation text and sealed test data stay excluded. Full originals remain durable,
+while explicit excerpts and omission counts bound the reflection context.
+
+Whitespace-equivalent and previously proposed bundles are rejected before native
+trials. `min_change` (default `0`, range `0–1`) adds a token-trigram lexical-distance
+guard; it does not measure semantic quality. Repair attempts (default `2`, range
+`1–5`) consume the existing total `max_proposals` budget. Exhaustion stops cleanly
+with the measured best candidate; provider failures remain failures.
+
+History defaults to `20` entries (`1–100`) and `65536` bytes (`1024–262144`), with
+criterion score vectors and native usage ahead of optional prose. These are
+reflection bounds, not storage limits or a promise of convergence. See the
+[bridge contract](../bridges/dspy/README.md#proposal-memory-and-authored-rewrites)
+for response-envelope, truncation and exact-resume semantics.
+
+[Focused evidence-ID judges and native Ollama controls](../src/evaluation/semantic/README.md)
+describes the separate judge authoring and calibration surface.

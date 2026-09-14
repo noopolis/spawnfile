@@ -35,5 +35,5 @@ export function createJudgeCache({ maxEntries }: { maxEntries: number }): Omit<J
 }
 
 export function judgmentCacheKey(identity: string, system: string, prompt: string, minimum: number, scope = ''): string {
-  return `sha256:${createHash('sha256').update(JSON.stringify(['paideia.judgment-cache.v2', scope, identity, system, prompt, minimum])).digest('hex')}`;
+  return `sha256:${createHash('sha256').update(JSON.stringify(['paideia.judgment-cache.v3', scope, identity, system, prompt, minimum])).digest('hex')}`;
 }

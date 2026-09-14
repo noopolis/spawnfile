@@ -144,3 +144,19 @@ it.each([true, false])('rejects changed dataset bytes after configuration select
   expect(() => selected.datasets.load(file, authored)).toThrow('Dataset changed');
   expect(f.observedInstructions).toEqual([]);
 });
+
+it('maps authored fast-judge controls through the actual YAML factory without extra calls', async () => {
+  const config: TrainingConfiguration = { models: { small: { provider: 'ollama', model: 'qwen3:4b', endpoint: 'http://localhost:11434',
+    think: false, keep_alive_seconds: 300, max_output_tokens: 256, context_window: 8192 } },
+  judges: { narrow: { model: 'small', protocol: 'evidence-ids', timeout_ms: 10000 } } };
+  const f = await fixture(config), args = authoredArguments(parseArguments(f.args), f.io);
+  const fetch = vi.fn<typeof globalThis.fetch>(async url => new Response(JSON.stringify(String(url).endsWith('/api/version') ? { version: '0.34.0' } : { done: true, model: 'qwen3:4b', message: { content: 'ok' } })));
+  vi.stubGlobal('fetch', fetch);
+  try {
+    const routes = createTrainingInference(args, {}, 120000, { narrow: 'small' }, { narrow: 0 });
+    expect(routes.judges.narrow!.protocol).toBe('evidence-ids');
+    await routes.judges.narrow!.provider.generate({ model: 'small', prompt: 'p' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetch.mock.calls[1]![1]!.body as string)).toMatchObject({ think: false, keep_alive: '300s', truncate: false, shift: false, options: { num_predict: 256, num_ctx: 8192 } });
+  } finally { vi.unstubAllGlobals(); }
+});

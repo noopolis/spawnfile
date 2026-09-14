@@ -30,7 +30,7 @@ export class TrainingCheckpoint {
       execution: options.checkpoint.identity, id: options.id, baseline: options.baseline, datasets,
       adapter: options.native.adapter.id, model: options.native.model, resources: options.native.resources,
       optimizer: { provider: options.inference.provider.id, model: options.inference.model },
-      seed: options.seed ?? 0, budget: options.budget, maxRecoveryAttempts: options.checkpoint.maxRecoveryAttempts ?? 2, versions: ['dspy3.3.1', 'gepa0.1.4', 'training-checkpoint1'],
+      seed: options.seed ?? 0, budget: options.budget, proposal: options.proposal, maxRecoveryAttempts: options.checkpoint.maxRecoveryAttempts ?? 2, versions: ['dspy3.3.1', 'gepa0.1.4', 'training-checkpoint1'],
     });
     const path = join(options.checkpoint.directory, 'training.json');
     await mkdir(options.checkpoint.directory, { recursive: true, mode: 0o700 });

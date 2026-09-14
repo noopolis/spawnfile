@@ -18,6 +18,8 @@ class Session:
         self.captures: list[dict] = []
         self.generations: list[dict] = []
         self.results: list[dict] = []
+        self.proposal_records: list[dict] = []
+        self.proposal_stopped = False
         self.seed_replay: dict[str, EvaluationResult] = {}
         self.failure: BridgeError | None = None
         self._lock = threading.RLock()
@@ -99,7 +101,7 @@ class Session:
     def should_stop(self, _state):
         # GEPA checks at iteration boundaries. Reserve one training baseline, one
         # proposal trial and a complete validation pass before starting an iteration.
-        return (self.failure is not None
+        return (self.failure is not None or self.proposal_stopped
                 or self.proposals + self.extra_proposals >= self.request.budget.maxProposals
                 or self.evaluations + self.extra_evaluations + 2 + len(self.request.validationCaseIds)
                 > self.request.budget.maxMetricCalls)

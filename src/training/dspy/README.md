@@ -55,3 +55,48 @@ generations. Repeated restoration returns the same selected components without n
 host work. Corrupt/changed identities fail; cumulative failed-attempt offsets cannot
 reset the proposal or evaluation budgets. All checkpoint directories are private
 local evaluator state, never candidate inputs.
+
+## Proposal memory and authored rewrites
+
+The optimizer reflects on earlier **training** prompts and results, including
+criterion score/status vectors, native token usage, rejected proposals, hypotheses
+and expected impacts. Validation remains scalar selection evidence; neither its
+text nor sealed test data enters reflection. GEPA still owns search and selection.
+
+```yaml
+training:
+  optimizer:
+    model: reflection
+    proposal:
+      strategy: rewrite
+      min_change: 0.15
+      max_attempts: 2
+      history_entries: 20
+      history_bytes: 65536
+```
+
+Defaults are `refine`, `0`, `2`, `20`, and `65536`. Omitted `proposal` retains the
+legacy exact resource-map response; authored policy requests a structured
+`components`, `hypothesis`, `expectedImpact` envelope. Expected impacts are the
+optimizer's predictions, never measured grades. Rewrite permits reorganizing only
+already-editable text; all locked resource policies still apply.
+
+Whitespace-equivalent or previously proposed bundles never run a native trial.
+`min_change` measures token-trigram Jaccard distance from the parent, a lexical
+novelty guard rather than semantic quality. Each repair generation consumes the
+existing total proposal budget. Once `max_attempts` is exhausted, GEPA skips the
+proposal and stops cleanly with its measured best candidate. Real provider and
+malformed-protocol failures retain their failure classification.
+
+Full prompt bodies, raw train outputs and callback results remain in protected
+checkpoints and original trial reports. Reflection receives recent chronological
+entries, with per-criterion scores/status and native usage before optional prose.
+Large prompt/reason/output fields carry explicit excerpts, original byte counts
+and SHA-256 references; historical outputs reference the original callback rather
+than repeat articles. The current training batch is separately bounded by the
+same byte allowance and deduplicates GEPA's per-component repeated feedback.
+`history_entries` and `history_bytes` bound the historical projection, not durable
+storage. If mandatory summaries alone cannot fit, oldest rows are omitted with an
+explicit count. These limits describe partial context; they never claim all text
+was shown. Final upstream state is paired with proposal bookkeeping on completion;
+exact resume restores rejected proposals and does not repeat completed work.

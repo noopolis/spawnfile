@@ -79,7 +79,7 @@ it('drives the actual optimizer reward with both quality and subject tokens', as
   expect(cheaper.report.snapshot.subjectUsage?.usage?.inputTokens).toBe(490);
   const feedback = JSON.parse(trainingFeedback(cheaper.record, cheaper.report).feedback);
   expect(feedback.criteria[0].score.linear).toEqual({ quality: 80, efficiency: 20 });
-  expect(feedback.evaluation.checks.efficiency.score).toBeCloseTo(2 / 3);
+  expect(feedback.evaluation.stages[0].checks.find((check: { id: string }) => check.id === 'efficiency').score).toBeCloseTo(2 / 3);
 });
 
 it('authored relative weights change the preferred tradeoff without relaxing quality floors', async () => {

@@ -29,3 +29,11 @@ Owns fixed rubric prompts, typed judgments, evidence and judge calibration.
 - Await the trusted raw-response observer before accepting or repairing. Keep raw
   responses and violation details out of result/optimizer/viewer projections;
   observer failure is an infrastructure error, not permission to continue.
+
+- Opt-in evidence-ids uses lossless bounded units with source pointers and digests.
+  IDs validate references, never truth. Keep reasons short and preserve hard floors.
+  Reject excess evidence before inference; no silent truncation or ID repair.
+- Both protocols request native response schemas. Keep semantic parsing runtime
+  neutral; never import inference implementations into evaluation.
+- Protocol/evidence/control changes invalidate exact cache identities. Current
+  llm-rubric descriptor is version 3; judgment cache format is v3.

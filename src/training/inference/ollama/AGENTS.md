@@ -16,3 +16,9 @@ fetch; HTTP400 marks the structured request unsupported without inferring which
 request field the server rejected. Do not provision
 models or silently ignore format when a route cannot support it.
 See https://docs.ollama.com/capabilities/structured-outputs for the native contract.
+
+Authored think/keepAliveSeconds/maxOutputTokens/contextWindowTokens are explicit
+native controls. Freeze them at construction and reject invalid values before I/O.
+Context requires verified Ollama >=0.34.0 and sends truncate:false/shift:false;
+version discovery shares the generation deadline and never performs cognition.
+No server provisioning, model downloads, silent truncation or hidden warmup calls.

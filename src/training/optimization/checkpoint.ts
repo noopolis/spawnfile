@@ -126,11 +126,11 @@ export function restoredDspyEvidence(checkpoint: OptimizationCheckpoint): DspyRe
 
 /** Accounting-only restore; validates identity and never starts Python or inference. */
 export async function readDspyCheckpointEvidence(options: Pick<DspyOptimizationOptions,
-  'id' | 'components' | 'trainCaseIds' | 'validationCaseIds' | 'budget' | 'seed'> & {
+  'id' | 'components' | 'trainCaseIds' | 'validationCaseIds' | 'budget' | 'seed' | 'proposal'> & {
     checkpoint: NonNullable<DspyOptimizationOptions['checkpoint']>;
   }): Promise<DspyRestoredEvidence> {
   const start = startSchema.parse({ schema: DSPY_SCHEMA, kind: 'optimize', id: options.id,
     components: options.components, trainCaseIds: options.trainCaseIds, validationCaseIds: options.validationCaseIds,
-    budget: options.budget, seed: options.seed });
+    budget: options.budget, seed: options.seed, proposal: options.proposal });
   return restoredDspyEvidence(await OptimizationCheckpoint.open(start, { ...options.checkpoint, resume: true }));
 }

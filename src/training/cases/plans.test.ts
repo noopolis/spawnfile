@@ -34,7 +34,7 @@ describe('evaluation plan resolution', () => {
       { id: 'writing', when: { passed: 'mechanics' }, checks: [semantic], score: { linear: { semantic: 1 } }, gate: { all: [{ passed: 'semantic' }, { score: 'writing', at_least: 0.8 }] } },
     ] }));
     expect(result.records[0]!.effectiveStages).toHaveLength(2);
-    expect(result.registryVersions).toEqual({ 'evaluator:equals': '1', 'evaluator:llm-rubric': '2', 'judge:judge': 'judge-v1' });
+    expect(result.registryVersions).toEqual({ 'evaluator:equals': '1', 'evaluator:llm-rubric': '3', 'judge:judge': 'judge-v1' });
     expect(normalizeStages({})).toEqual([]);
     expect(resolve(dataset({ records: [{ id: 'r', input: { prompt: '4' }, checks: [{ id: 'local', not: { eval: 'contains-any', input: 'output.text', values: ['bad'] } }] }] })).records[0]!.effectiveStages).toHaveLength(2);
   });
