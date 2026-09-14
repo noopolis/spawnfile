@@ -41,6 +41,14 @@ describe("spawnfile train", () => {
     expect(stderr).toEqual([]);
   });
 
+  it("delegates YAML-owned test selection and permits the complete YAML time budget", async () => {
+    const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 0);
+    expect(await runCli(["train", await project(), "--train", "train.paideia.yaml", "--dry-run"], {
+      handlers: { delegatePaideiaTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
+    })).toBe(0);
+    expect(delegate.mock.calls[0]![0]).toMatchObject({ timeoutMs: 3_605_000, args: ["--train", "train.paideia.yaml", "--dry-run"] });
+  });
+
   it.each([1, 2, 130, 143])("propagates the delegated exit %s", async (exitCode) => {
     const code = await runCli(["train", await project(), ...base], { handlers: { delegatePaideiaTraining: async () => exitCode },
       streams: { stdout: () => undefined, stderr: () => undefined } });
@@ -54,7 +62,7 @@ describe("spawnfile train", () => {
       signal: controller.signal, handlers: { delegatePaideiaTraining: async (options) => { captured = options; return 2; } },
       streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(2);
-    expect(captured).toMatchObject({ command: "paideia", timeoutMs: 185_000, signal: controller.signal, dryRun: false });
+    expect(captured).toMatchObject({ command: "paideia", timeoutMs: 3_605_000, signal: controller.signal, dryRun: false });
     expect(captured?.args).toContain("--bridge-command");
     expect(captured?.args).not.toContain("--dry-run");
   });
