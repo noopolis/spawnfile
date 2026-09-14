@@ -9,6 +9,8 @@ it('renders observed tool/judge counts, criterion weights, gate verdicts and mis
       {stageId:'writing',criterionId:'gate',kind:'gate',status:'fail <img>',score:0},
       {stageId:'writing',criterionId:'unknown',kind:'score',status:'unknown',score:null}]};
   const html=liveActivity(data);
+  expect(html).toContain('<span>Observed tools</span>');
+  expect(data.trials[0]!.coverage[0]!.completeness).toBe('partial');
   expect(html).toContain('<strong>4</strong>');expect(html).toContain('<strong>2</strong>');
   expect(html).toContain('<strong>90</strong>');expect(html).toContain('2×');expect(html).toContain('fail &lt;img&gt;');
   expect(html).toContain('—');expect(html).not.toMatch(/<script>|<img>/);

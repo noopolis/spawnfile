@@ -97,7 +97,7 @@ describe('usable persisted viewer command', () => {
           responseModel: 'SEALED-MODEL', responseRoute: 'subscription', outcome: 'completed', usage: null }] } };
       await live.observe({ type: 'trial.finished', payload: sealed });
       await live.observe({ type: 'trial.progress', payload: { trialId: sealed.id, caseId: 'SEALED-CASE', phase: 'test',
-        event: { type: 'observation', payload: { type: 'tool.dispatch', arguments: 'SECRET' } } } });
+        event: { type: 'observation', payload: { type: 'tool.dispatch', callId: 'call', arguments: 'SECRET' } } } });
       await live.observe({ type: 'ignored', payload: { secret: 'not public' } });
       expect(JSON.stringify(await snapshot())).not.toContain('SEALED');
       await live.observe({ type: 'training.started', payload: { train: ['train'], validation: [trial.recordId] } });
@@ -110,7 +110,7 @@ describe('usable persisted viewer command', () => {
       const progress = await snapshot();
       expect(progress.optimizer.proposals).toBe(2);
       await live.observe({ type: 'trial.progress', payload: { trialId: trial.id, caseId: trial.recordId, phase: 'validation',
-        event: { type: 'observation', payload: { type: 'tool.dispatch', arguments: 'SECRET' } } } });
+        event: { type: 'observation', payload: { type: 'tool.dispatch', callId: 'call', arguments: 'SECRET' } } } });
       expect((await snapshot()).activity).toMatchObject({ trialId: trial.id, toolCalls: 1 });
       expect(progress.costs.observed.lines).toHaveLength(5);
       expect(progress.costs.observed.lines[3]).toMatchObject({ model: null, requestedModel: 'observed', modelBasis: 'unknown' });
@@ -256,5 +256,32 @@ it('never sends an unpersisted final snapshot when its storage append fails', as
     const frame = /event: final\ndata: (.+)\n\n/.exec(await final);
     expect(frame).not.toBeNull(); const { html } = JSON.parse(frame![1]!);
     expect(html).toContain('>starting<'); expect(html).not.toMatch(/Run stopped|PRIVATE disk/);
+  } finally { await live.close(); }
+});
+
+it('shows receipt-only native activity over HTTP before closure without promoting partial tool coverage', async () => {
+  const fixture = await evaluated();
+  const urls: string[] = [];
+  const live = await startLiveViewer({ port: 0, io: { ...fixture.io, stdout: text => { urls.push(JSON.parse(text).viewer); } },
+    store: fixture.store, id: 'receipts', datasetId: 'dataset', planDigest: 'plan', baseline: fixture.candidate,
+    cases: [{ id: 'case', split: 'train' }], testCases: [] });
+  try {
+    const trial = fixture.report.trials[0]!;
+    for (let index = 0; index < 4; index++) {
+      await live.observe({ type: 'trial.progress', payload: { trialId: trial.id, caseId: trial.recordId, phase: 'train',
+        event: { type: 'observation', payload: { id: `receipt-${index}`, source: 'daimon.native-evidence', seq: index + 1,
+          trialId: trial.id, wakeId: 'wake', timestamp: new Date().toISOString(), type: 'tool.complete', callId: `call-${index}`,
+          tool: 'mcp_newsroom_file_article', success: true, result: 'PRIVATE TOOL PAYLOAD' } } } });
+    }
+    const snapshot = await (await fetch(`${urls[0]}/api/data`)).json();
+    expect(snapshot.activity).toMatchObject({ status: 'Agent working', toolCalls: 4 });
+    expect(snapshot.trials).toEqual([]);
+    const html = await (await fetch(urls[0]!)).text();
+    expect(html).toContain('<span>Observed tools</span><strong>4</strong>');
+    expect(html).not.toContain('PRIVATE TOOL PAYLOAD');
+    await live.observe({ type: 'trial.finished', payload: { ...trial, snapshot: { ...trial.snapshot,
+      coverage: [{ channel: 'tools', completeness: 'partial', ordering: 'none' }] } } });
+    const completed = await (await fetch(`${urls[0]}/api/data`)).json();
+    expect(completed.trials[0].coverage).toEqual([{ channel: 'tools', completeness: 'partial', ordering: 'none' }]);
   } finally { await live.close(); }
 });

@@ -11,3 +11,7 @@ label in an index or report must never grant access to a sealed trial.
 
 Exercise generation failure, duplicate completion, settled success and replay of
 persisted projections. Displaying progress never triggers inference.
+
+Observed tool counts deduplicate native call IDs across dispatch and completion;
+receipt-only traces count without inventing dispatches or complete coverage.
+Reset identities per trial and expose only the count, never tool payloads.

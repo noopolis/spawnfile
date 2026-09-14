@@ -10,7 +10,7 @@ it('projects persisted activity without tool payloads or judge text and resets p
   });
   emit('trial.started', {});
   expect(tracker.snapshot()?.status).toBe('Preparing');
-  emit('observation', { type: 'tool.dispatch', arguments: 'PRIVATE' });
+  emit('observation', { type: 'tool.dispatch', callId: 'call', arguments: 'PRIVATE' });
   emit('observation', { type: 'output', text: 'PRIVATE' });
   emit('judge.attempt', { prompt: 'PRIVATE' });
   expect(tracker.snapshot()).toMatchObject({ toolCalls: 1, judgeCalls: 1, status: 'Evaluating' });
@@ -40,4 +40,22 @@ it('bounds retained measurements without mixing identities', () => {
       kind: 'gate', status: 'pass', score: 1 } } });
   expect(tracker.snapshot()?.measurements).toHaveLength(1000);
   expect(tracker.snapshot()?.measurements[0]?.criterionId).toBe('2');
+});
+
+it('counts receipt-only tools once and resets call identities per trial', () => {
+  const tracker = createActivityTracker();
+  const emit = (type: string, callId: unknown, trialId = 'one') => tracker.observe({ trialId, caseId: 'case', phase: 'train',
+    event: { type: 'observation', payload: { type, callId, result: 'PRIVATE RECEIPT' } } });
+  emit('tool.complete', 'receipt-only');
+  emit('tool.complete', 'receipt-only');
+  expect(tracker.snapshot()?.toolCalls).toBe(1);
+  emit('tool.dispatch', 'paired');
+  emit('tool.complete', 'paired');
+  emit('tool.complete', 'paired');
+  expect(tracker.snapshot()?.toolCalls).toBe(2);
+  for (const missing of [undefined, null, '', 42]) emit('tool.complete', missing);
+  expect(tracker.snapshot()?.toolCalls).toBe(2);
+  expect(JSON.stringify(tracker.snapshot())).not.toContain('PRIVATE');
+  emit('tool.complete', 'paired', 'next');
+  expect(tracker.snapshot()).toMatchObject({ trialId: 'next', toolCalls: 1 });
 });
