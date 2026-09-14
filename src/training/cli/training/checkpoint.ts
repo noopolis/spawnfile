@@ -3,7 +3,7 @@ import { link, mkdir, open, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { CliArguments } from '../arguments.js';
-import type { CliDependencies } from '../types.js';
+import type { CliDependencies, CliExecutionIdentityContext } from '../types.js';
 import type { prepareCliInputs } from '../native.js';
 import { readCliText } from '../datasets.js';
 
@@ -11,9 +11,9 @@ const stateSchema = z.object({schema:z.literal('paideia.command-checkpoint.v1'),
   identity:z.string().regex(/^[a-f0-9]{64}$/)}).strict();
 
 export async function commandCheckpoint(args: CliArguments, inputs: Awaited<ReturnType<typeof prepareCliInputs>>,
-  dependencies: CliDependencies) {
+  dependencies: CliDependencies, context: CliExecutionIdentityContext = {}) {
   const integration = dependencies.spawnfile;
-  const environment = await integration?.executionIdentity?.();
+  const environment = await integration?.executionIdentity?.(context);
   if ('context' in inputs && args.flags.resume && !environment) throw new Error('Resuming a native project requires its immutable execution identity');
   const flags = Object.fromEntries(Object.entries(args.flags).filter(([name]) =>
     !['resume','view','out','spawnfile-context','dry-run'].includes(name)).sort(([a],[b]) => a.localeCompare(b)));

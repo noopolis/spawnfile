@@ -37,6 +37,9 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   const metricCalls = inputs.maxTrials - (test === undefined ? 0 : 2 * test.records.length);
   if (metricCalls < 1) throw new Error('--max-trials cannot cover optimizer evaluation plus two reserved sealed-test passes');
   const bridgeCommand = args.command === 'train' ? one(args, 'bridge-command') : undefined;
+  const bridge = bridgeCommand === undefined ? undefined : Object.freeze({
+    command: bridgeCommand.includes('/') ? resolve(io.cwd, bridgeCommand) : bridgeCommand, cwd: inputs.sourceRoot, timeoutMs,
+  });
   const optimizerModel = args.command === 'train' ? one(args, 'optimizer-model') : undefined;
   const maxProposals = count(args, 'max-proposals', 3, 1000);
   const seed = count(args, 'seed', 0, 2 ** 32 - 1, 0);
@@ -48,7 +51,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   const native = await prepareNative(args, io, dependencies, timeoutMs, inputs);
   signal.throwIfAborted();
   return withOutput(native.out, async (store) => {
-    const checkpoint = test === undefined ? undefined : await commandCheckpoint(args, inputs, dependencies);
+    const checkpoint = test === undefined ? undefined : await commandCheckpoint(args, inputs, dependencies, { bridge });
     const attemptId = randomUUID();
     const base: Omit<StoredTrialOptions, 'id' | 'phase' | 'record' | 'candidate' | 'datasetId' | 'datasetDigest' | 'planDigest'> = {
       adapter: native.adapter, model: native.model, root: join(native.out, 'trials'), timeoutMs,
@@ -73,7 +76,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
       const report = await trainAgent({ id, baseline: native.candidate, train: dataset, test,
         validationGroups: args.flags['validation-group'], native: base,
         inference: { provider: native.inference, model: optimizerModel! },
-        bridge: { command: bridgeCommand!.includes('/') ? resolve(io.cwd, bridgeCommand!) : bridgeCommand!, cwd: native.sourceRoot, timeoutMs },
+        bridge: bridge!,
         budget: { maxMetricCalls: metricCalls, maxProposals }, seed, signal,
         checkpoint: {...checkpoint!,maxRecoveryAttempts:args.training?.recovery?.max_attempts ?? 2},
         onProgress: async (event) => {

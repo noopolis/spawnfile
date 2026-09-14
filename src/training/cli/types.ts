@@ -20,6 +20,11 @@ export interface CliDependencies {
   spawnfile?: SpawnfileCliIntegration;
 }
 
+export interface CliExecutionIdentityContext {
+  /** Exact normalized bridge launch passed to execution; absent outside training. */
+  bridge?: Readonly<{ command: string; cwd: string }>;
+}
+
 export interface SpawnfileCliIntegration {
   id: string;
   version: string;
@@ -28,7 +33,7 @@ export interface SpawnfileCliIntegration {
   /** Narrows explicitly selected editable files to their declared sections. Cannot unlock identity. */
   editPolicies?: Readonly<Record<string, EditPolicy>>;
   /** Hash of immutable preparation/image/tool/evidence inputs; excludes credentials and generated state. */
-  executionIdentity?: () => string | Promise<string>;
+  executionIdentity?: (context: CliExecutionIdentityContext) => string | Promise<string>;
   createAdapter(context: SpawnfileTrainingContext, options: { model: string; timeoutMs: number }): SubjectAdapter;
   prepareEnvironment(paths: Parameters<NonNullable<StoredTrialOptions['prepareEnvironment']>>[0], signal: AbortSignal,
     trial: NativePreparationContext, context: SpawnfileTrainingContext): ReturnType<NonNullable<StoredTrialOptions['prepareEnvironment']>>;

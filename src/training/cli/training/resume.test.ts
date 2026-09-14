@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from 'vitest';
 import { readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { cliFixture, datasetText } from '../fixture.js';
 import { main } from '../commands.js';
 import { loadInvocationViewer } from '../viewer.js';
@@ -22,8 +22,13 @@ training:
   test: test.paideia.yaml
 `);
   await writeFile(join(f.root, 'test.paideia.yaml'), datasetText([{ id: 'sealed', group: 'sealed' }]));
+  const bridgeContexts: unknown[] = [];
+  f.dependencies.spawnfile = { id: 'identity-test', version: '1', executionIdentity(context) {
+    bridgeContexts.push(context); return 'fixed-test-environment';
+  }, createAdapter() { throw new Error('Unused native project adapter'); },
+  async prepareEnvironment() { throw new Error('Unused native project preparation'); } };
   const argv = ['train', '--train', 'train.paideia.yaml', ...f.nativeArgs, '--editable', 'AGENTS.md',
-    '--bridge-command', f.bridge, '--view', '0'];
+    '--bridge-command', relative(f.root, f.bridge), '--view', '0'];
   let optimizerCalls = 0;
   const reflection = f.dependencies.inference!(20000);
   f.dependencies.modelInference = () => ({ ...reflection, async generate(request) {
@@ -36,6 +41,7 @@ training:
     if (JSON.parse(text).type === 'trial.finished') controller.abort();
   } }, f.dependencies);
   expect(first).toBe(130);
+  expect(bridgeContexts[0]).toMatchObject({ bridge: { command: f.bridge, cwd: f.root } });
   expect(f.observedInstructions).toHaveLength(1);
   const firstIndex = JSON.parse(await readFile(join(f.root, 'out/invocation.json'), 'utf8'));
   expect(firstIndex.outcome).toBe('failed');
