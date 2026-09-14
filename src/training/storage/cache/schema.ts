@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseDocument } from 'yaml';
 import type { CachedJudgment } from '../../contracts/evaluation.js';
 
 const token = z.number().int().nonnegative().nullable();
@@ -18,10 +19,17 @@ const call = z.object({
 }).strict();
 const entry = z.object({ response: z.string().min(1), sourceCallId: z.string().min(1),
   sourceCalls: z.array(call).min(1).max(64) }).strict();
-const judgment = z.object({ score: z.number().min(0).max(1), verdict: z.enum(['pass', 'fail']),
+const citationJudgment = z.object({ score: z.number().min(0).max(1), verdict: z.enum(['pass', 'fail']),
   reasons: z.array(z.string().min(1)).min(1), citations: z.array(z.object({
     source: z.string().min(1), quote: z.string().min(1),
   }).strict()).min(1) }).strict();
+
+const evidenceJudgment = z.object({ score: z.number().min(0).max(1), verdict: z.enum(['pass', 'fail']),
+  reasons: z.array(z.string().min(1).max(240)).min(1).max(3),
+  evidenceIds: z.array(z.string().regex(/^e-[a-f0-9]{20}$/u)).min(1).max(8)
+    .refine(ids => new Set(ids).size === ids.length, 'Evidence IDs must be unique'),
+}).strict();
+const judgment = z.union([citationJudgment, evidenceJudgment]);
 
 export function validateCachedJudgment(value: unknown): CachedJudgment {
   const parsed = entry.safeParse(value);
@@ -39,6 +47,6 @@ export function validateCachedJudgment(value: unknown): CachedJudgment {
   let response: unknown;
   try { response = JSON.parse(parsed.data.response); }
   catch { throw new Error('Invalid cached judgment JSON'); }
-  if (!judgment.safeParse(response).success) throw new Error('Invalid cached judgment response');
+  if (parseDocument(parsed.data.response, { uniqueKeys: true }).errors.length || !judgment.safeParse(response).success) throw new Error('Invalid cached judgment response');
   return parsed.data;
 }

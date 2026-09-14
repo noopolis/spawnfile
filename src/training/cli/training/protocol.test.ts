@@ -6,7 +6,7 @@ import { cliFixture } from '../fixture.js';
 import type { CliDependencies } from '../types.js';
 import { openExperimentStore } from '../../storage/index.js';
 
-it('runs authored evidence-ID judges through CLI training, real GEPA and frozen evaluation', async () => {
+it.each(['off', 'exact', 'persistent'] as const)('runs evidence-ID CLI training with %s cache, real GEPA and completed resume', async mode => {
   const f = await cliFixture();
   try {
     const dataset = { schema: 'paideia.dataset.v1', id: 'protocol',
@@ -18,6 +18,7 @@ it('runs authored evidence-ID judges through CLI training, real GEPA and frozen 
       records: [record('train', 'train'), record('validation', 'validation')], training: {
         models: { judge: { provider: 'ollama', model: 'judge' }, reflection: { provider: 'ollama', model: 'reflection' } },
         judges: { editor: { model: 'judge', protocol: 'evidence-ids' } },
+        cache: mode === 'persistent' ? { mode, namespace: 'protocol-test', directory: 'judge-cache' } : { mode },
         optimizer: { model: 'reflection' }, test: 'test.yaml', validation_groups: ['validation'],
         budget: { max_trials: 6, max_proposals: 1, timeout_ms: 15000 },
       } }));
@@ -43,12 +44,13 @@ it('runs authored evidence-ID judges through CLI training, real GEPA and frozen 
         return { text, model: selected.model, route: selected.model, usage: null };
       },
     }) };
-    const code = await main(['train', '--train', 'train.yaml', ...f.nativeArgs,
-      '--editable', 'AGENTS.md', '--bridge-command', f.bridge], f.io, dependencies);
+    const args = ['train', '--train', 'train.yaml', ...f.nativeArgs,
+      '--editable', 'AGENTS.md', '--bridge-command', f.bridge];
+    const code = await main(args, f.io, dependencies);
     expect(f.stderr).toEqual([]);
     expect(code).toBe(0);
     expect(proposals).toBe(1);
-    expect(judgments).toBeGreaterThanOrEqual(4);
+    expect(judgments).toBeGreaterThanOrEqual(2);
     const index = JSON.parse(await readFile(join(f.root, 'out/invocation.json'), 'utf8'));
     const store = await openExperimentStore(join(f.root, 'out'));
     const report = JSON.parse((await store.readBlob(index.report, { audience: 'operator', phase: 'test',
@@ -57,5 +59,12 @@ it('runs authored evidence-ID judges through CLI training, real GEPA and frozen 
     expect(index.outcome).not.toBe('failed');
     expect(JSON.stringify(report)).not.toContain('invalid-response');
     expect(f.observedInstructions).toContain('IMPROVED\n');
+    const completed = { judgments, proposals, native: f.observedInstructions.length };
+    expect(await main([...args, '--resume'], f.io, dependencies)).toBe(0);
+    expect(f.stderr).toEqual([]);
+    expect({ judgments, proposals, native: f.observedInstructions.length }).toEqual(completed);
+    const resumed = JSON.parse(await readFile(join(f.root, 'out/invocation.json'), 'utf8'));
+    expect(resumed.candidateId).toBe(index.candidateId);
+    expect(resumed.trialIds).toEqual(index.trialIds);
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });

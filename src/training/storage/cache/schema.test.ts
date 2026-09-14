@@ -28,3 +28,31 @@ it.each([
 ])('rejects malformed or infrastructure evidence %#', invalid => {
   expect(()=>validateCachedJudgment(invalid)).toThrow();
 });
+
+
+const evidenceResponse = { score: 0.84, verdict: 'fail', reasons: ['The quantity is supported; attribution is weak.'],
+  evidenceIds: ['e-0123456789abcdef0123', 'e-aaaaaaaaaaaaaaaaaaaa'] };
+it('accepts exact evidence-ID responses with native provenance without converting them to citations', () => {
+  const evidence = { ...value, response: JSON.stringify(evidenceResponse) };
+  expect(validateCachedJudgment(evidence)).toEqual(evidence);
+});
+it.each([
+  { ...evidenceResponse, evidenceIds: [] },
+  { ...evidenceResponse, evidenceIds: ['e-0123456789abcdef0123', 'e-0123456789abcdef0123'] },
+  { ...evidenceResponse, evidenceIds: Array.from({ length: 9 }, (_, index) => `e-${String(index).padStart(20, '0')}`) },
+  { ...evidenceResponse, evidenceIds: ['foreign-id'] },
+  { ...evidenceResponse, evidenceIds: ['e-0123456789ABCDEF0123'] },
+  { ...evidenceResponse, evidenceIds: [4] },
+  { ...evidenceResponse, reasons: [] },
+  { ...evidenceResponse, reasons: ['one', 'two', 'three', 'four'] },
+  { ...evidenceResponse, reasons: ['x'.repeat(241)] },
+  { ...evidenceResponse, citations: [{ source: 'input', quote: 'article' }] },
+  { ...evidenceResponse, score: 2 },
+  { ...evidenceResponse, verdict: 'error' },
+])('rejects malformed, hybrid or out-of-bounds evidence-ID response %#', response => {
+  expect(() => validateCachedJudgment({ ...value, response: JSON.stringify(response) })).toThrow('response');
+});
+it('rejects duplicate JSON keys even when parsing would hide a conflicting field', () => {
+  const response = JSON.stringify(evidenceResponse).replace('"score":0.84', '"score":0.2,"score":0.84');
+  expect(() => validateCachedJudgment({ ...value, response })).toThrow('response');
+});

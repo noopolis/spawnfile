@@ -17,3 +17,9 @@ subject execution, score computation or provider selection belongs here.
   cache use does not imply independence or silently recalibrate a model alias.
 - Test real reopen/process boundaries, concurrency, corruption, isolation and
   eviction. Preserve inherited per-file coverage and source-size limits.
+
+Persist either strict citation judgments or evidence-ID judgments, never a hybrid.
+Evidence-ID storage validates current unit-ID syntax, uniqueness, and bounded
+reasons/IDs; membership in the exact selected source packet stays with the semantic
+evaluator and is revalidated on hits. Keep raw responses and source-call attribution
+unchanged. Storage imports contracts only, not evaluator implementation modules.

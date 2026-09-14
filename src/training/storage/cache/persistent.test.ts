@@ -149,3 +149,36 @@ it('does not charge evicted oversized rows against the capacity of remaining val
     expect(await limited.get(key)).toEqual(value);
   } finally {db.close();}
 });
+
+
+it('reopens evidence-ID grades in another process and preserves first-write provenance', async () => {
+  const options = await fixture();
+  const cache = await openJudgeCache(options);
+  const evidence = { ...value, response: JSON.stringify({ score: 0.84, verdict: 'fail',
+    reasons: ['The quantity is supported; attribution is weak.'], evidenceIds: ['e-0123456789abcdef0123'] }) };
+  await cache.put(key, evidence);
+  await cache.put(key, { ...evidence, response: evidence.response.replace('0.84', '0.95') });
+  const reopened = await child(process.execPath, ['--import', 'tsx', '--input-type=module', '-e',
+    `import {openJudgeCache} from ${JSON.stringify(modulePath)}; const cache=await openJudgeCache(${JSON.stringify(options)}); console.log(JSON.stringify(await cache.get(${JSON.stringify(key)})));`],
+  { cwd: fileURLToPath(new URL('../../..', import.meta.url)) });
+  expect(JSON.parse(reopened.stdout)).toEqual(evidence);
+  const invalidKey = contentDigest('invalid-evidence');
+  await expect(cache.put(invalidKey, { ...evidence, response: evidence.response.replace('e-0123456789abcdef0123', 'unknown') }))
+    .rejects.toThrow('response');
+  expect(await cache.get(invalidKey)).toBeUndefined();
+  await expect(cache.put(invalidKey, { ...evidence, sourceCalls: [{ ...value.sourceCalls[0]!, outcome: 'generation-error' }] }))
+    .rejects.toThrow('completed inference');
+  expect(await cache.get(invalidKey)).toBeUndefined();
+  expect(await (await openJudgeCache({ ...options, namespace: 'different-calibration' })).get(key)).toBeUndefined();
+  const path = join(options.root, `${contentDigest(options.namespace).slice(7)}.sqlite`);
+  const db = new DatabaseSync(path);
+  try {
+    // Recomputed envelope digest cannot make structurally corrupt evidence valid.
+    const stored = JSON.parse(db.prepare('SELECT body FROM judgments WHERE key=?').get(key)!.body as string);
+    stored.value.response = evidence.response.replace('e-0123456789abcdef0123', 'unknown');
+    const body = JSON.stringify(stored);
+    db.prepare('UPDATE judgments SET body=?,digest=?,bytes=? WHERE key=?')
+      .run(body, contentDigest(body), Buffer.byteLength(body), key);
+    await expect(cache.get(key)).rejects.toThrow('response');
+  } finally { db.close(); }
+});
