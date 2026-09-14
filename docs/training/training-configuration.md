@@ -154,7 +154,12 @@ independent native trial or a new quality measurement.
 
 `cache.mode: persistent` requires a nonblank `namespace`. Its default directory is
 inside the command output; optional `directory` is contained beneath the dataset
-directory, with symbolic path components rejected. The same namespace and exact
+directory, with symbolic path components rejected. A trusted container integration
+can provide `judgeCacheRoot`, an existing canonical writable directory. Its explicit
+relative YAML directory then resolves beneath that base; without a YAML directory,
+`judge-cache` is used beneath the base. The dataset stays readonly. Cache identities
+and namespaces are unchanged, and the actual cache directory is protected from the
+subject. Dry-run creates no cache or directories. The same namespace and exact
 evidence can reuse judgments across commands; distinct judge names remain separate.
 
 ## Interruption and resume
@@ -191,3 +196,9 @@ The acceptance tests use the real DSPy bridge with isolated deterministic subjec
 and inference fixtures. They verify YAML-only control, failure routing, frozen
 held-out comparison and persisted artifacts. They do not establish that a
 particular newsroom agent's writing improves, nor guarantee convergence.
+
+DSPy receives a fresh private home for each bridge process, separate from the
+operator's home and provider credentials. Checkpointed runs place it under the
+protected checkpoint directory. Its disposable caches are removed after confirmed
+process closure and are not resume state; uncertain closure preserves them and
+fails the optimization.

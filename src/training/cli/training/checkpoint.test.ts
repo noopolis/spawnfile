@@ -51,5 +51,7 @@ it('rejects ambient-to-container and changed-image resume before inference with 
   const secondInputs = { ...inputs, out: join(fixture.root, 'container') };
   await commandCheckpoint(args, secondInputs, scoped);
   await expect(commandCheckpoint(resume, secondInputs, { ...scoped,
+    spawnfile: { ...scoped.spawnfile, judgeCacheRoot: '/different/cache-base' } })).rejects.toThrow('inputs changed');
+  await expect(commandCheckpoint(resume, secondInputs, { ...scoped,
     spawnfile: { ...integration, inferenceExecutionIdentity: 'image:two' } })).rejects.toThrow('inputs changed');
 });

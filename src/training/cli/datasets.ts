@@ -24,7 +24,7 @@ export class CliDatasets {
   readonly protectedDirectories = new Set<string>();
 
   constructor(private readonly judges: Readonly<Record<string, string>>, private readonly cwd: string,
-    private readonly preparation: Pick<ResolutionOptions, 'registry' | 'unlockedSetupPaths' | 'subject'> = {},
+    private readonly preparation: Pick<ResolutionOptions, 'registry' | 'unlockedSetupPaths' | 'subject' | 'inferenceExecutionIdentity'> = {},
     private readonly versions: Record<string, { version: string }> = {},
     private readonly frozen?: { path: string; sourceDigest: string }) {}
 

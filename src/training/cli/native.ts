@@ -35,7 +35,7 @@ export async function prepareInputs(args: CliArguments, io: CliIO, executionIden
   const out = resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/paideia' : undefined));
   const candidate = await snapshotCandidate({ sourceRoot, resources: resourceMappings(args) });
   const judges = pairs(args.flags.judge ?? []);
-  const datasets = new CliDatasets(judges, io.cwd, {}, judgeVersions(args.training, executionIdentity, Object.keys(judges)), args.frozenDataset);
+  const datasets = new CliDatasets(judges, io.cwd, { inferenceExecutionIdentity: executionIdentity }, judgeVersions(args.training, executionIdentity, Object.keys(judges)), args.frozenDataset);
   return { runtime: runtime as 'codex' | 'daimon', model, sourceRoot, out, candidate, judges, datasets,
     citationRepairs: judgeCitationRepairs(args, judges),
     maxTrials: count(args, 'max-trials', 20, 10000),
@@ -57,7 +57,7 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
     : dependencies.adapter?.(runtime as 'codex' | 'daimon', { model, timeoutMs })
       ?? (runtime === 'codex' ? createCodexAdapter({ model, timeoutMs }) : createDaimonAdapter({ model, timeoutMs }));
   const configured = createTrainingInference(args, dependencies, timeoutMs, judges, inputs.citationRepairs);
-  const cacheRoots = await prepareJudgeCaches(args, configured.judges, inputs.out);
+  const cacheRoots = await prepareJudgeCaches(args, configured.judges, inputs.out, dependencies.spawnfile?.judgeCacheRoot);
   const inference = configured.inference;
   let prepareEnvironment: StoredTrialOptions['prepareEnvironment'];
   if ('context' in inputs) {

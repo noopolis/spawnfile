@@ -21,6 +21,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   }
   if (args.command === 'validate') {
     const dataset = new CliDatasets(pairs(args.flags.judge ?? []), io.cwd, {
+      inferenceExecutionIdentity: dependencies.spawnfile?.inferenceExecutionIdentity,
       registry: { preparations: dependencies.spawnfile?.preparations },
       unlockedSetupPaths: dependencies.spawnfile?.unlockedSetupPaths,
     }, judgeVersions(args.training, dependencies.spawnfile?.inferenceExecutionIdentity, Object.keys(pairs(args.flags.judge ?? []))), args.frozenDataset).load(args.dataset!, false);

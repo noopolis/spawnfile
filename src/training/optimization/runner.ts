@@ -1,3 +1,7 @@
+import { chmod, mkdtemp, realpath, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { StopReceipt } from '../contracts/execution.js';
 import { runProcess, type ProcessResult, type RunningProcess } from '../platform/process/index.js';
 import { verifyDspyResult } from './evidence.js';
 import { OptimizationCheckpoint, restoredDspyEvidence } from './checkpoint.js';
@@ -9,8 +13,8 @@ const optionKeys = new Set(['id', 'components', 'trainCaseIds', 'validationCaseI
   'bridge', 'checkpoint', 'onRestore', 'validateComponents', 'evaluate', 'generate', 'signal']);
 
 /** The bridge has no credential/provider environment; inference remains in host callbacks. */
-export function dspyEnvironment(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { LANG: 'C.UTF-8', PYTHONNOUSERSITE: '1', PYTHONUNBUFFERED: '1' };
+export function dspyEnvironment(home: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { HOME: home, LANG: 'C.UTF-8', PYTHONNOUSERSITE: '1', PYTHONUNBUFFERED: '1' };
   for (const key of ['PATH', 'SYSTEMROOT', 'WINDIR', 'TMPDIR', 'TEMP', 'TMP']) {
     if (process.env[key] !== undefined) env[key] = process.env[key];
   }
@@ -37,6 +41,8 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
   const host = new DspyHost(start, options, checkpoint);
   if (checkpoint && options.checkpoint?.resume) await options.onRestore?.(restoredDspyEvidence(checkpoint));
   const timer = setTimeout(() => { timedOut = true; controller.abort(); }, options.bridge.timeoutMs);
+  let home: string | undefined;
+  let closure: StopReceipt | undefined;
   let running: RunningProcess | undefined;
   let processResult: ProcessResult | undefined;
   let terminal: DspyResult | undefined;
@@ -44,8 +50,11 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
   try {
     await host.validate(start.components, signal);
     signal.throwIfAborted();
+    home = await realpath(await mkdtemp(join(options.checkpoint?.directory ?? tmpdir(), '.paideia-dspy-home-')));
+    await chmod(home, 0o700);
+    signal.throwIfAborted();
     running = runProcess({ command: options.bridge.command, args: options.bridge.args ?? [],
-      cwd: options.bridge.cwd, env: dspyEnvironment(), stdin: startLine,
+      cwd: options.bridge.cwd, env: dspyEnvironment(home), stdin: startLine,
       keepStdinOpen: true, requireLineTerminator: true,
       closureDrainMs: options.bridge.closureDrainMs, maxBytes: options.bridge.maxBytes ?? 64 * 1024 * 1024,
       timeoutMs: options.bridge.timeoutMs, signal,
@@ -70,6 +79,8 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
       },
     });
     processResult = await running.completion;
+    closure = await running.stop('DSPy bridge process completed');
+    if (closure.quiescence !== 'confirmed') throw new Error('DSPy process closure is unconfirmed');
     if (protocolFailure !== undefined) throw protocolFailure;
     if (processResult.error !== undefined || processResult.cancelled || processResult.exitCode !== 0) {
       throw new Error(processResult.error ?? `DSPy bridge exited unsuccessfully (${processResult.exitCode})`);
@@ -84,12 +95,17 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
   } catch (error) {
     const cancelled = signal.aborted;
     controller.abort();
-    const stop = await running?.stop('DSPy optimization interrupted');
-    if (running !== undefined) await running.completion;
+    closure = await running?.stop('DSPy optimization interrupted');
+    if (running !== undefined) processResult = await running.completion;
     throw new DspyOptimizationError(timedOut ? 'timeout' : cancelled ? 'cancelled' : 'optimization_failed',
       error instanceof Error ? error.message : String(error), {
         evaluations: host.evaluations, proposals: host.proposals,
-        hostWork: host.pending === 0 ? 'settled' : 'incomplete', inferenceAttempts: host.inferenceAttempts, stop: stop ?? processResult?.stop,
+        hostWork: host.pending === 0 ? 'settled' : 'incomplete', inferenceAttempts: host.inferenceAttempts, stop: closure ?? processResult?.stop,
       });
-  } finally { clearTimeout(timer); }
+  } finally {
+    clearTimeout(timer);
+    if (home && (running === undefined || closure?.quiescence === 'confirmed')) {
+      await rm(home, { recursive: true, force: true, maxRetries: 2, retryDelay: 25 });
+    }
+  }
 }

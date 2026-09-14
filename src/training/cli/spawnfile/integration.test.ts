@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
+import { validateDatasetSplit } from '../../cases/index.js';
 import { candidateComponents } from '../../candidates/index.js';
 import { openExperimentStore } from '../../storage/index.js';
 import { parseArguments } from '../arguments.js';
@@ -144,5 +145,14 @@ it('binds canonical selection and validate plans to the trusted inference image 
   expect(await main(['validate', 'train.yaml'], f.cli.io, { ...f.dependencies,
     spawnfile: { ...f.integration, inferenceExecutionIdentity: 'image:one' } })).toBe(0);
   expect(JSON.parse(f.cli.stdout.at(-1)!).planDigest).toBe(container);
+  const trainDocument = JSON.parse(await readFile(join(f.cli.root, 'train.yaml'), 'utf8'));
+  trainDocument.records[0].group = 'train';
+  await writeFile(join(f.cli.root, 'train.yaml'), JSON.stringify(trainDocument));
+  delete trainDocument.training; trainDocument.id = 'heldout';
+  trainDocument.records = [{ id: 'heldout', group: 'heldout', input: { prompt: 'Write heldout.' } }];
+  await writeFile(join(f.cli.root, 'test.yaml'), JSON.stringify(trainDocument));
+  const splitArgs = authoredArguments(parseArguments(['evaluate', 'train.yaml', '--spawnfile-context', f.context.path, '--out', 'plan']), f.cli.io);
+  const split = await prepareSpawnfileInputs(splitArgs, f.cli.io, { ...f.integration, inferenceExecutionIdentity: 'image:one' });
+  expect(() => validateDatasetSplit(split.datasets.load('train.yaml', true), split.datasets.load('test.yaml', true))).not.toThrow();
   expect(f.seen).toEqual([]);
 });

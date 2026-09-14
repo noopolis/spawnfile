@@ -1,7 +1,7 @@
 import * as inferenceFactory from './inference.js';
 import * as providerPolicies from '../../contracts/inference-policy.js';
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { JudgeRoute } from '../../contracts/evaluation.js';
 import type { TrainingConfiguration } from '../../contracts/training-config.js';
@@ -103,7 +103,8 @@ it('validates cache namespace, mode fields and recovery bounds before invoking n
     records:[{id:'test',group:'test',input:{prompt:'Write held-out.'}}]}));
   const forbidden=vi.fn(()=>{throw new Error('No native or inference construction');});
   const code=await main(['train','--train','evals/data.yaml','--runtime','codex','--model','subject',
-    '--instructions','AGENTS.md','--editable','AGENTS.md','--dry-run'],f.io,{adapter:forbidden,inference:forbidden,modelInference:forbidden});
+    '--instructions','AGENTS.md','--editable','AGENTS.md','--dry-run'],f.io,{adapter:forbidden,inference:forbidden,modelInference:forbidden,
+    spawnfile:{id:'dry',version:'1',judgeCacheRoot:join(f.root,'must-not-exist'),createAdapter:forbidden,prepareEnvironment:forbidden}});
   expect(f.stderr).toEqual([]); expect(code).toBe(0);
   expect(JSON.parse(f.stdout[0]!).budget.maxTrials).toBeGreaterThan(0);
   expect(forbidden).not.toHaveBeenCalled();
@@ -174,4 +175,52 @@ it.each([false, true])('never reuses ambient host judgments across declared imag
   await evaluate('image:sha256:two'); await evaluate('image:sha256:two'); expect(generations).toBe(3);
   await evaluate(); expect(generations).toBe(3);
   expect(f.stderr).toEqual([]);
+});
+
+
+it('uses writable execution cache storage with readonly dataset inputs through the real CLI, preserving hits and protection', async () => {
+  const f = await fixture(); let generations = 0; const protectedPaths: string[][] = [];
+  const outputBase = join(f.root, 'writable'); await mkdir(outputBase);
+  const judgeCacheRoot = await realpath(outputBase);
+  const dependencies = { ...f.dependencies,
+    spawnfile: { id: 'container', version: '1', judgeCacheRoot, inferenceExecutionIdentity: 'image:one', createAdapter: vi.fn(), prepareEnvironment: vi.fn() },
+    adapter: (runtime: 'codex' | 'daimon', options: { model: string; timeoutMs: number }) => {
+      const adapter = f.dependencies.adapter!(runtime, options);
+      return { ...adapter, async start(input: Parameters<typeof adapter.start>[0]) {
+        protectedPaths.push([...input.protectedPaths ?? []]); return adapter.start(input);
+      } };
+    }, modelInference: () => ({ id: 'local', capabilities: { tools: 'disabled' as const, billing: 'local' as const, temperature: false, seed: false },
+      async generate() { generations++; return { model: 'local-small', route: 'local', usage: null,
+        text: JSON.stringify({ score: 0.9, verdict: 'pass', reasons: ['Clear'], citations: [{ source: 'input', quote: 'BAD' }] }) }; } }) };
+  const datasetDirectory = join(f.root, 'evals'); await chmod(datasetDirectory, 0o500); await chmod(f.path, 0o400);
+  try {
+    // Prove the fixture actually cannot create the cache next to its readonly YAML.
+    await expect(mkdir(join(datasetDirectory, 'forbidden'))).rejects.toMatchObject({ code: 'EACCES' });
+    for (const name of ['one', 'two']) {
+      const argv = [...f.argv]; argv[argv.indexOf('--out') + 1] = join(outputBase, name);
+      expect(await main(argv, f.io, dependencies)).toBe(0);
+    }
+    expect(f.stderr).toEqual([]); expect(generations).toBe(1);
+    const cache = await realpath(join(judgeCacheRoot, 'shared-cache'));
+    expect(protectedPaths).toHaveLength(2); expect(protectedPaths.every(paths => paths.includes(cache))).toBe(true);
+    expect(await readdir(datasetDirectory)).toEqual(['data.yaml']);
+    expect((await readdir(cache)).length).toBeGreaterThan(0);
+  } finally { await chmod(datasetDirectory, 0o700); await chmod(f.path, 0o600); }
+});
+
+it('uses an explicit writable base for default caches and rejects aliases, non-directories and relative escapes', async () => {
+  const f = await fixture({ ...training, cache: { mode: 'persistent', namespace: 'test' } });
+  const directory = join(f.root, 'writable'); await mkdir(directory); const base = await realpath(directory);
+  expect(await prepareJudgeCaches(f.args, routes(), join(f.root, 'out'), base)).toEqual([join(base, 'judge-cache')]);
+  const alias = join(f.root, 'alias'); await symlink(base, alias);
+  for (const invalid of ['relative', alias, await realpath(f.path)]) {
+    await expect(prepareJudgeCaches(f.args, routes(), join(f.root, 'out'), invalid)).rejects.toThrow('canonical absolute directory');
+  }
+  for (const relative of ['../escape', '/absolute']) {
+    await expect(prepareJudgeCaches({ ...f.args, training: { ...training, cache: { ...training.cache!, directory: relative } } },
+      routes(), join(f.root, 'out'), base)).rejects.toThrow('contained relative');
+  }
+  await symlink(base, join(base, 'link'));
+  await expect(prepareJudgeCaches({ ...f.args, training: { ...training, cache: { ...training.cache!, directory: 'link/escape' } } },
+    routes(), join(f.root, 'out'), base)).rejects.toThrow('symlink');
 });

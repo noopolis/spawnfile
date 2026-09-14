@@ -26,10 +26,10 @@ describe('dataset-authored training configuration', () => {
     expect(validateTrainingConfiguration({ models: { x: { provider: 'claude-subscription', model: 'haiku' } },
       judges: { plain: { model: 'x', citation_repairs: 0 } }, cache: { mode: 'off' } })).toBeDefined();
   });
-  it('does not append an authored identity that is already registered', () => {
-    const registry = { judges: trainingJudgeVersions(validateTrainingConfiguration(config)) };
-    const configured = resolveDataset(parseDatasetYaml(stringify(dataset(config))), { registry });
-    const inherited = resolveDataset(parseDatasetYaml(stringify(dataset())), { registry });
+  it.each([undefined, 'image:one'])('does not append an authored identity already registered in execution %s', inferenceExecutionIdentity => {
+    const registry = { judges: trainingJudgeVersions(validateTrainingConfiguration(config), inferenceExecutionIdentity) };
+    const configured = resolveDataset(parseDatasetYaml(stringify(dataset(config))), { registry, inferenceExecutionIdentity });
+    const inherited = resolveDataset(parseDatasetYaml(stringify(dataset())), { registry, inferenceExecutionIdentity });
     expect(configured.sharedPlanDigest).toBe(inherited.sharedPlanDigest);
     expect(configured.registryVersions).toEqual(inherited.registryVersions);
   });

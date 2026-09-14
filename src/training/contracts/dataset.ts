@@ -128,6 +128,8 @@ export interface DatasetRegistry {
   embeddings?: Readonly<Record<string, { version: string }>>;
 }
 export interface ResolutionOptions {
+  /** Trusted runtime invocation identity, shared with installed judge versions; never authored YAML. */
+  inferenceExecutionIdentity?: string;
   registry?: DatasetRegistry;
   subject?: string;
   unlockedSetupPaths?: readonly string[];

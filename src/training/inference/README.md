@@ -78,3 +78,8 @@ reuse even with unchanged YAML. Omission preserves ambient-host identities; an
 image identity never gets inferred from provider accounting IDs. The integration
 must update the identity for changed execution inputs. This field records its
 attestation; it does not inspect containers, credentials or ambient profiles.
+
+Dataset resolution receives the same trusted `inferenceExecutionIdentity` as the
+installed judges. A training dataset with authored model settings and its test
+dataset inheriting those settings therefore share one evaluation plan. Different
+execution identities, model policies or criteria still fail split validation.

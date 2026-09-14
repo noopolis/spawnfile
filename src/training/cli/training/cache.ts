@@ -1,15 +1,19 @@
-import { dirname, resolve } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import { lstat, realpath } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import type { JudgeRoute } from '../../contracts/evaluation.js';
 import { openJudgeCache } from '../../storage/index.js';
 import type { CliArguments } from '../arguments.js';
 
-/** Persistent caches are host resources, opened only on actual execution. */
-export async function prepareJudgeCaches(args: CliArguments, judges: Record<string, JudgeRoute>, out: string): Promise<string[]> {
+/** Persistent caches are protected execution resources, opened only on actual execution. */
+export async function prepareJudgeCaches(args: CliArguments, judges: Record<string, JudgeRoute>, out: string, executionRoot?: string): Promise<string[]> {
   const policy = args.training?.cache;
   if (policy?.mode !== 'persistent' || !Object.keys(judges).length) return [];
-  const root = policy.directory === undefined ? resolve(out, 'judge-cache')
+  if (executionRoot !== undefined && (!isAbsolute(executionRoot) || await realpath(executionRoot) !== executionRoot || !(await lstat(executionRoot)).isDirectory())) {
+    throw new Error('Judge cache execution root must be an existing canonical absolute directory');
+  }
+  const root = executionRoot !== undefined ? await containedCacheRoot(executionRoot, policy.directory ?? 'judge-cache')
+    : policy.directory === undefined ? resolve(out, 'judge-cache')
     : await containedCacheRoot(dirname(args.frozenDataset!.path), policy.directory);
   for (const [name, route] of Object.entries(judges)) {
     if (!route.identity) throw new Error('Persistent cache requires an authored judge route');

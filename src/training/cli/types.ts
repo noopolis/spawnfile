@@ -34,6 +34,8 @@ export interface SpawnfileCliIntegration {
   subjectRoot?: string;
   /** Trusted immutable inference image + invocation-policy identity; omitted means ambient host execution. */
   readonly inferenceExecutionIdentity?: string;
+  /** Existing canonical writable cache base; relative YAML directories resolve beneath it in this execution. */
+  readonly judgeCacheRoot?: string;
   preparations?: DatasetRegistry['preparations'];
   unlockedSetupPaths?: readonly string[];
   /** Narrows explicitly selected editable files to their declared sections. Cannot unlock identity. */

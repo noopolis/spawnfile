@@ -38,3 +38,9 @@ consume additional cumulative budget if retried. The runner supplies consumed-at
 offsets so real GEPA stops cleanly within the remaining budget. `onRestore` exposes
 sanitized accounting only. Checkpoint paths must be evaluator-owned, excluded from
 subject access, and protected by the caller's exclusive output lock.
+
+The bridge receives an owned private home, never the caller's HOME or provider
+configuration. Checkpointed runs place it beside protected checkpoint files;
+standalone runs use fresh temporary storage. Confirm process closure before deleting
+that home; unknown closure fails and preserves it for caller cleanup. This home is
+ephemeral cache state and never enters resume/checkpoint identity.

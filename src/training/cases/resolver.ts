@@ -14,7 +14,7 @@ export function resolveDataset(document: DatasetDocument, options: ResolutionOpt
     fail('$.subject', 'does not match the selected native subject');
   }
   const registry = { ...options.registry, judges: { ...options.registry?.judges } };
-  for (const [name, authored] of Object.entries(dataset.training ? trainingJudgeVersions(dataset.training) : {})) {
+  for (const [name, authored] of Object.entries(dataset.training ? trainingJudgeVersions(dataset.training, options.inferenceExecutionIdentity) : {})) {
     const installed = registry.judges[name];
     if (installed && installed.version !== authored.version) registry.judges[name] = { version: `${installed.version}|${authored.version}` };
   }

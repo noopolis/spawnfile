@@ -23,7 +23,8 @@ export async function commandCheckpoint(args: CliArguments, inputs: Awaited<Retu
     sourceRoot:inputs.sourceRoot,resources:inputs.resources,model:inputs.model,
     context:'context' in inputs ? inputs.context : null,
     integration:integration ? {id:integration.id,version:integration.version,environment:environment ?? null,
-      subjectRoot:integration.subjectRoot ?? null} : null,
+      subjectRoot:integration.subjectRoot ?? null,
+      ...(integration.judgeCacheRoot === undefined ? {} : {judgeCacheRoot:integration.judgeCacheRoot})} : null,
   })).digest('hex');
   const directory = join(inputs.out,'checkpoint');
   await mkdir(directory,{recursive:true,mode:0o700});

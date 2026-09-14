@@ -101,10 +101,11 @@ describe('protocol/process failures', () => {
     vi.stubEnv('OPENAI_API_KEY', 'test-secret');
     vi.stubEnv('PYTHONPATH', '/injected');
     vi.stubEnv('PATH', '/bin');
+    vi.stubEnv('HOME', '/ambient-secret-home');
     try {
-      expect(dspyEnvironment()).toMatchObject({ PATH: '/bin', PYTHONNOUSERSITE: '1' });
-      expect(dspyEnvironment()).not.toHaveProperty('OPENAI_API_KEY');
-      expect(dspyEnvironment()).not.toHaveProperty('PYTHONPATH');
+      expect(dspyEnvironment('/fresh-home')).toMatchObject({ HOME: '/fresh-home', PATH: '/bin', PYTHONNOUSERSITE: '1' });
+      expect(dspyEnvironment('/fresh-home')).not.toHaveProperty('OPENAI_API_KEY');
+      expect(dspyEnvironment('/fresh-home')).not.toHaveProperty('PYTHONPATH');
     } finally { vi.unstubAllEnvs(); }
   });
 });
