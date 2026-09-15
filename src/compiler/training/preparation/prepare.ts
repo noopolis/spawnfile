@@ -7,11 +7,13 @@ import { trainingPreparationSchema, parseTrainingMappedPreparation, type Trainin
 import { assertInputRoot, exactPath, fileIdentity, hashJson, sealTree, within } from "./files.js";
 import { planInputs, readBoundedJson, stageInput, verifyCanonicalPins } from "./inputs.js";
 import { planTrainingImage, buildTrainingImage } from "./image.js";
+import { planMeasurementRepair, stageMeasurementRepair, writeTrainingWitness } from "../repair/index.js";
 
 function mappedReceipt(digest: string, image: string, config: ReturnType<typeof trainingPreparationSchema.parse>): TrainingMappedPreparation {
   return parseTrainingMappedPreparation({ version: "spawnfile.training-preparation.v1", preparationDigest: digest, imageId: image,
     bindings: config.inputs.map(input => ({ inputId: input.id, destination: input.destination })), outputRoot: "/run/training/output",
-    packagePaths: { spawnfile: "/opt/training/spawnfile/dist/cli/index.js", paideia: "/opt/training/paideia", bridge: "/opt/training/paideia/bridges/dspy",
+    packagePaths: { spawnfile: "build" in config.image && config.image.build.compiler
+      ? "/opt/training/compiler/dist/cli/index.js" : "/opt/training/spawnfile/dist/cli/index.js", paideia: "/opt/training/paideia", bridge: "/opt/training/paideia/bridges/dspy",
       nativeWorker: "/opt/training/paideia/dist/src/adapters/daimon-native", integration: "/opt/training/integration", bootstrap: "/opt/training/bootstrap" }, integration: config.integration });
 }
 
@@ -21,9 +23,10 @@ export interface PrepareTrainingOptions {
   streams: { stdout(line: string): void; stderr(line: string): void };
   /** Test-only package fixture; production always resolves its own installed distribution. */
   packageRoot?: string;
+  repairMeasurements?: string; repairWitness?: string;
 }
 export interface PreparedTraining {
-  digest: string; image: string; configPath: string; preparationPath: string; context: TrainingContext; args: string[];
+  digest: string; image: string; configPath: string; preparationPath: string; repairPath?: string; context: TrainingContext; args: string[];
 }
 
 /** Reads only until the explicit dry-run boundary; preparation never executes project code. */
@@ -48,14 +51,26 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
       within(input.destination, other.destination) || within(other.destination, input.destination)) throw Error("Training inputs overlap");
   }
   const imagePlan = "build" in config.image ? await planTrainingImage(config.image.build, root, auth.map(entry => entry.source), options.packageRoot) : undefined;
+  if (options.repairWitness && !options.repairMeasurements) throw Error("A repair witness requires --repair-measurements");
+  if (options.repairMeasurements && !imagePlan) throw Error("Measurement repair requires a verifiable image build recipe");
+  const repair = options.repairMeasurements ? await planMeasurementRepair({ parent: options.repairMeasurements,
+    witness: options.repairWitness, output, auth: auth.map(entry => entry.source), image: imagePlan!, inputs,
+    context: options.context, resume: options.args.includes("--resume") }) : undefined;
+  if (repair && hashJson(config.integration) !== hashJson(repair.witness.manifest.config.integration)) throw Error("Repair integration settings binding changed");
   const digest = hashJson({ config, sources: inputs.map(input => ({ id: input.id, digest: input.digest })), image: imagePlan?.digest ?? config.image,
-    canonical: options.context.project.sourceDigest });
+    canonical: options.context.project.sourceDigest, ...(repair ? { repair: { witness: repair.witness.digest, parent: repair.manifestDigest } } : {}) });
   if (options.dryRun) return { digest, dryRun: true };
   options.signal?.throwIfAborted();
   for (const entry of auth) if (await exactPath(entry.source) !== entry.source || !(await lstat(entry.source)).isFile()) throw Error("Training auth must be a canonical regular leaf");
   const execute = (args: string[]) => options.process(args, { timeoutMs: options.timeoutMs, signal: options.signal });
   const endpoint = await execute(["context", "inspect", config.dockerContext, "--format", "{{json .Endpoints.docker.Host}}"]);
   if (endpoint.code !== 0 || !/^unix:\/\//u.test(JSON.parse(endpoint.stdout))) throw Error("Training preparation requires a local Unix Docker context");
+  if (repair) {
+    const label = await execute(["--context", config.dockerContext, "image", "inspect", repair.witness.manifest.parentImage,
+      "--format", '{{json .Id}}\n{{json (index .Config.Labels "com.spawnfile.training.recipe")}}']);
+    const values = label.stdout.trim().split("\n").map(value => JSON.parse(value));
+    if (label.code !== 0 || values[0] !== repair.witness.manifest.parentImage || values[1] !== repair.witness.manifest.imagePlanDigest) throw Error("Parent image recipe witness is unverified");
+  }
   const staging = path.join(parent, `.spawnfile-training-preparation-${hashJson(output).slice(7, 23)}`);
   const configPath = path.join(staging, "launch.json"), preparationPath = path.join(staging, "mapped.json"), statePath = path.join(staging, "state.json");
   const resume = options.args.includes("--resume");
@@ -91,6 +106,9 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
       await writeFile(preparationPath, JSON.stringify(parseTrainingMappedPreparation(mapped)), { flag: "wx", mode: 0o400 });
       const snapshots = await Promise.all(inputs.map(async (input, index) => input.git || input.files ? hashJson(fileIdentity(await sealTree(staged[index]!, "input", { ignoreGit: true, internalSymlinks: true }))) : null));
       await writeFile(statePath, JSON.stringify({ digest, image, staged, snapshots }), { flag: "wx", mode: 0o600 });
+      if (imagePlan) await writeTrainingWitness({ directory: staging, digest, image, config, context: options.context,
+        args: options.args, inputs, staged, snapshots, plan: imagePlan,
+        ...(repair ? { repair: { witness: repair.witness.digest, parent: repair.manifestDigest } } : {}) });
     } catch (error) { if (owned) await rm(staging, { recursive: true, force: true }); throw error; }
   }
   const expectedLaunch = trainingContainerConfigSchema.parse({ version: "spawnfile.training-container.v1", dockerContext: config.dockerContext,
@@ -114,6 +132,17 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   for (let index = 0; index < args.length; index++) {
     if (["--train", "--test", "--cost-config"].includes(args[index]!)) args[++index] = map(args[index]!);
     else if (args[index] === "--resource") { const value = args[++index]!, split = value.indexOf("="); args[index] = `${value.slice(0, split)}=${map(value.slice(split + 1))}`; }
+  }
+  if (repair) {
+    const projected = await stageMeasurementRepair(repair, staging, image, options.context.project.sourceDigest, resume);
+    const repairLaunch = { ...expectedLaunch, inputs: [...expectedLaunch.inputs,
+      { source: projected.root, destination: "/run/training/inputs/repair-parent" }] };
+    const repairConfig = path.join(staging, "repair-launch.json");
+    if (resume) {
+      if (hashJson(await readBoundedJson(repairConfig)) !== hashJson(repairLaunch)) throw Error("Saved repair launch changed");
+    } else await writeFile(repairConfig, JSON.stringify(repairLaunch), { flag: "wx", mode: 0o600 });
+    return { digest, image, configPath: repairConfig, preparationPath, repairPath: projected.repairPath, context,
+      args: [...args, "--repair-context", "/run/paideia/repair.json"] };
   }
   return { digest, image, configPath, preparationPath, context, args };
 }

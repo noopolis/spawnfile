@@ -76,3 +76,22 @@ it("supports integration-owned bootstrap generation without a host snapshot", as
       return docker.process(args, options);
     } });
 });
+
+
+it("pins an explicitly preserved compiler independently of the current launcher", async () => {
+  const f = await fixture();
+  const { cp } = await import("node:fs/promises");
+  await cp(f.own, path.join(f.root, "old-compiler"), { recursive: true });
+  f.build.compiler = "old-compiler";
+  const plan = () => planTrainingImage(f.build, f.root, [], f.own);
+  const old = await plan();
+  const compiler = old.files.find(file => file.destination === "compiler/dist/cli/index.js")!;
+  await f.put("own/dist/cli/index.js", "new launcher");
+  const changed = await plan();
+  expect(changed.digest).not.toBe(old.digest);
+  expect(changed.files.find(file => file.destination === compiler.destination)?.sha256).toBe(compiler.sha256);
+  await f.put("old-compiler/dist/cli/index.js", "changed compiler");
+  expect((await plan()).files.find(file => file.destination === compiler.destination)?.sha256).not.toBe(compiler.sha256);
+  await f.put("old-compiler/package-lock.json", JSON.stringify({ lockfileVersion: 3, packages: { "": {}, injected: { resolved: "file:../host" } } }));
+  await expect(plan()).rejects.toThrow("unsupported local dependencies");
+});

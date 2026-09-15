@@ -177,3 +177,42 @@ preparation writes. Exact resume checks current source identity and preserved
 snapshots/receipts, then requires the saved immutable image. It never rebuilds
 a replacement under an existing experiment identity. Paideia independently
 checks its experiment checkpoint and cumulative budgets.
+
+## Explicit measurement repair fork
+
+`spawnfile train PROJECT --training-config evals/training.json --train evals/train.paideia.yaml --out runs/repair --repair-measurements runs/parent`
+creates a new experiment from captured work. The declaration's output must match
+`--out` and be fresh/disjoint. It does not weaken ordinary `--resume`. To resume
+this child, retain the same repair arguments and add `--resume`.
+
+V2 builds now seal an automatic `spawnfile.training-witness.v1` beside their
+preparation state, including exact image input bytes, recipe, input identities and
+canonical context. Legacy parents require `--repair-witness /path/manifest.json`:
+its envelope, complete copied image closure, original preparation digest and
+installed parent image's recipe label must all verify. A caller's unverified image
+name or compatibility assertion is insufficient. Image-reference-only declarations
+cannot establish this compatibility and reject repair.
+
+The `daimon-dspy.v1` recipe supports optional `image.build.compiler`, a complete
+registry-locked Spawnfile distribution used only for native compilation under
+`/opt/training/compiler`. Omission uses the current installed compiler. Repair may
+pin the parent's original compiler while using corrected evaluation/launch code.
+The mapped preparation receipt supplies that exact compiler executable path.
+
+`spawnfile.daimon-dspy-compatibility.v1` requires unchanged native/Python images,
+platform, compiler closure, installed integration, native adapter/trial code,
+canonical source and every declared input digest/binding. Optimizer Python and
+locks stay pinned; only checkpoint/protocol import plumbing and documentation may
+change. Generated `.coverage`, `.pytest_cache` and `coverage.json` are excluded
+explicitly, never arbitrary dotfiles. Paideia separately verifies candidate,
+criteria, budgets, splits, native capture closure and repair eligibility.
+
+Only `runs/`, `blobs/` and the four command/training/host/optimizer checkpoint JSON
+files are copied into a sealed read-only parent projection. Runtime homes, auth,
+mutable caches and invocation databases are excluded. The exact projection manifest
+and checkpoint bytes are hashed. `/run/paideia/repair.json` is a protected read-only
+`paideia.measurement-repair.v1` receipt; the launcher forwards its fixed path via
+`--repair-context`. It contains container paths and digests, no host credentials.
+Paideia owns error-only rescoring, retaining successful historical pass/fail results,
+paired optimizer import, cumulative accounting and the new experiment lineage.
+A repair receipt does not itself assert that any judgment or continuation succeeded.

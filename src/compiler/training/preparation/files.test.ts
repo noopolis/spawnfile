@@ -30,3 +30,11 @@ it("does not allow a crafted sealed destination to write outside its owned stagi
   const sealed = await sealFile(file, "../escape");
   await expect(copySealed([sealed], root)).rejects.toThrow("escapes");
 });
+
+it("omits only explicit generated Python test state, preserving dotfiles and executable bytes", async () => {
+  const root = await fixture();
+  await mkdir(path.join(root, ".pytest_cache"));
+  for (const name of [".coverage", "coverage.json", ".pytest_cache/nodeids", ".runtime-policy", "optimizer.py"]) await writeFile(path.join(root, name), "data");
+  const files = await sealTree(root, "bridge", { ignoreDevelopment: true });
+  expect(files.map(file => file.destination)).toEqual(["bridge/.runtime-policy", "bridge/optimizer.py"]);
+});

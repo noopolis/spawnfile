@@ -7,7 +7,7 @@ import path from "node:path";
 export const within = (root: string, file: string): boolean => file === root || file.startsWith(root + path.sep);
 export const hashJson = (value: unknown): string => `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
 export interface SealedFile { source: string; destination: string; sha256: string; mode: number; size: number }
-const ignored = new Set(["node_modules", ".venv", ".git", "__pycache__", "coverage", ".runtime", "AGENTS.md", "CLAUDE.md"]);
+const ignored = new Set(["node_modules", ".venv", ".git", "__pycache__", "coverage", "coverage.json", ".coverage", ".pytest_cache", ".runtime", "AGENTS.md", "CLAUDE.md"]);
 
 export function assertInputRoot(source: string, auth: readonly string[]): void {
   const home = os.homedir();

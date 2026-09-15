@@ -19,6 +19,7 @@ export interface DelegatePaideiaTrainingOptions {
   command: string;
   args: readonly string[];
   dryRun: boolean;
+  repairMeasurements?: string; repairWitness?: string;
   trainingImage?: string;
   trainingConfig?: string;
   timeoutMs: number;
@@ -133,17 +134,21 @@ const runChild = (options: DelegatePaideiaTrainingOptions, contextPath: string):
 /** Delegates through the public CLI, never importing Paideia or selecting a fallback adapter. */
 export const delegatePaideiaTraining = async (options: DelegatePaideiaTrainingOptions): Promise<number> => {
   if (options.signal?.aborted) return 130;
+  if (options.repairWitness && !options.repairMeasurements) throw failure("--repair-witness requires --repair-measurements");
   if (options.trainingConfig) {
     const config = await readBoundedJson(options.trainingConfig) as { version?: unknown };
     if (config.version === "spawnfile.training-container.v2") {
       if (options.trainingImage) throw failure("V2 owns its image declaration; --training-image is only for v1");
       const prepared = await prepareTraining({ configPath: options.trainingConfig, context: options.context, args: options.args,
+        repairMeasurements: options.repairMeasurements, repairWitness: options.repairWitness,
         dryRun: options.dryRun, process: runTrainingDocker, timeoutMs: options.timeoutMs, signal: options.signal, streams: options.streams });
       if (!("dryRun" in prepared)) return launchTrainingContainer({ ...prepared,
         timeoutMs: options.timeoutMs, signal: options.signal, streams: options.streams });
       options.streams.stderr(`Training preparation plan ${prepared.digest}; no Docker, auth or filesystem mutations`);
+      options = { ...options, repairMeasurements: undefined, repairWitness: undefined };
     }
   }
+  if (options.repairMeasurements) throw failure("Measurement repair requires the v2 preparation declaration");
   if (!options.dryRun) {
     if (!options.trainingImage || !options.trainingConfig) throw failure("Actual training requires --training-image and --training-config; host execution is disabled");
     return launchTrainingContainer({ image: options.trainingImage, configPath: options.trainingConfig,

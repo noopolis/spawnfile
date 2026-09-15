@@ -10,7 +10,7 @@ const destination = z.string().regex(/^\/run\/training\/inputs\/[A-Za-z0-9._/-]+
 export const trainingBuildSchema = z.object({
   recipe: z.literal("daimon-dspy.v1"), nativeImage: trainingImageSchema, pythonImage: trainingImageSchema,
   platform: z.enum(["linux/arm64", "linux/amd64"]),
-  paideia: local, bridge: local, claude: local,
+  paideia: local, bridge: local, claude: local, compiler: local.optional(),
   grok: z.object({ source: local, sha256: sha }).strict(),
   integration: z.object({ source: local, entry: relative.refine(value => /^[A-Za-z0-9._/-]+$/u.test(value)) }).strict(), bootstrap: local.optional()
 }).strict();
