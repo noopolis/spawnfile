@@ -55,7 +55,7 @@ it("seals future witness automatically and projects repair captures with exact i
   const manifest = JSON.parse(await readFile(path.join(mounted.source, "projection-manifest.json"), "utf8"));
   expect(hashJson(manifest)).toBe(envelope.receipt.parent.manifestDigest);
   expect(manifest.files).toHaveLength(6);
-  expect(prepared.args.slice(-2)).toEqual(["--repair-context", "/run/paideia/repair.json"]);
+  expect(prepared.args.slice(-4)).toEqual(["--repair-measurements", "/run/training/inputs/repair-parent", "--repair-context", "/run/paideia/repair.json"]);
   expect(await readFile(path.join(f.parent, "checkpoint/host.json"))).toEqual(parentBytes);
   expect(await prepareTraining({ ...f.options, args: [...f.options.args, "--resume"] })).toMatchObject({ repairPath: prepared.repairPath });
   await writeFile(path.join(mounted.source, "blobs/digest"), "tamper");
