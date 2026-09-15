@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, readdir, rm, writeFile, symlink } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, cp, rm, writeFile, symlink } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { preparationFixture, imageDocker, image } from "../preparation/fixtures.test-helper.js";
@@ -128,3 +128,41 @@ it("records a valid future witness for a repaired child and accepts verified leg
   expect(future.manifest.repair?.witness).toBe(envelope.digest);
   expect(future.manifest.parentPreparationDigest).toBe(prepared.digest);
 });
+
+
+it("chains a repair from its automatic witness while preserving completed captures and rescores", async () => {
+  const f = await fixture();
+  const first = await prepareTraining(f.options); if ("dryRun" in first) throw Error("actual");
+  const parent = path.join(f.root, "child"), childId = "00000000-0000-4000-8000-000000000002";
+  const firstReceipt = JSON.parse(await readFile(first.repairPath!, "utf8"));
+  const lineage = { parentId: firstReceipt.receipt.parent.experimentId,
+    parentIdentity: firstReceipt.receipt.parent.executionIdentity, receiptDigest: firstReceipt.digest };
+  await f.put("child/checkpoint/command.json", JSON.stringify({ schema: "paideia.command-checkpoint.v1", id: childId, identity: "c".repeat(64), lineage }));
+  await f.put("child/checkpoint/training.json", JSON.stringify({ state: { identity: "d".repeat(64), recoveries: 1 } }));
+  for (const name of ["host", "optimizer"]) await f.put(`child/checkpoint/${name}.json`, "{}");
+  await cp(path.join(f.parent, "runs"), path.join(parent, "runs"), { recursive: true });
+  await cp(path.join(f.parent, "blobs"), path.join(parent, "blobs"), { recursive: true });
+  await f.put("child/runs/record/evaluations/rescore.json", "retained successful rescore");
+  f.config.output.source = "grandchild"; await f.save();
+  const next = await prepareTraining({ ...f.options, repairMeasurements: parent,
+    args: ["--train", f.args[1]!, "--out", path.join(f.root, "grandchild")] });
+  if ("dryRun" in next) throw Error("actual");
+  const receipt = JSON.parse(await readFile(next.repairPath!, "utf8"));
+  expect(receipt.receipt.parent.experimentId).toBe(childId);
+  expect(receipt.receipt.parent.executionIdentity).toBe("c".repeat(64));
+  const witness = await readTrainingWitness(path.join(path.dirname(first.preparationPath), "witness/manifest.json"));
+  expect(receipt.receipt.compatibility.components["parent-witness"]).toBe(witness.digest);
+  const projected = path.join(path.dirname(next.repairPath!), "repair-parent");
+  expect(await readFile(path.join(projected, "checkpoint/command.json"))).toEqual(await readFile(path.join(parent, "checkpoint/command.json")));
+  expect(await readFile(path.join(projected, "runs/record/evaluations/rescore.json"), "utf8")).toBe("retained successful rescore");
+});
+
+it.each([{}, { parentId: "not-uuid", parentIdentity: "a".repeat(64), receiptDigest: `sha256:${"b".repeat(64)}` },
+  { parentId: "00000000-0000-4000-8000-000000000001", parentIdentity: "invalid", receiptDigest: "invalid" },
+  { parentId: "00000000-0000-4000-8000-000000000001", parentIdentity: "a".repeat(64), receiptDigest: `sha256:${"b".repeat(64)}`, extra: true }])(
+  "rejects malformed or unknown parent lineage fields", async lineage => {
+    const f = await fixture();
+    const file = path.join(f.parent, "checkpoint/command.json"), original = JSON.parse(await readFile(file, "utf8"));
+    await writeFile(file, JSON.stringify({ ...original, lineage }));
+    await expect(prepareTraining({ ...f.options, dryRun: true })).rejects.toThrow();
+  });
