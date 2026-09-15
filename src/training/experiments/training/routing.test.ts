@@ -192,10 +192,10 @@ it('does not invoke any judge or rerun an agent that failed before producing the
   expect(progress.some(event => event.type === 'selection.frozen')).toBe(false);
 });
 
-it('resumes real DSPy after a judge outage using a distinct rescore of the already-written article', async () => {
+it.each(['quota', 'invalid-response'] as const)('resumes real DSPy after %s using a distinct rescore of the already-written article', async kind => {
   let failing = true;
   const judge = provider('stable-policy', async () => {
-    if (failing) throw new InferenceFailure('quota', 'provider unavailable');
+    if (failing) throw new InferenceFailure(kind, 'provider unavailable');
     return judgment();
   });
   const { options, starts, writes } = await fixture(judge);

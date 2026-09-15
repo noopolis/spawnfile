@@ -1,3 +1,4 @@
+import { captureInferenceDiagnostic } from '../diagnostic.js';
 import type { InferenceResult, Usage } from '../../contracts/execution.js';
 import { InferenceFailure, type InferenceFailureEvidence } from '../failure.js';
 
@@ -33,11 +34,11 @@ export function grokFailureEvidence({ init, result }: GrokFrames): InferenceFail
 /** Validate before generation proceeds; permission denial alone is not tool isolation. */
 export function validateGrokInitialization(frames: GrokFrames): void {
   const { init } = frames, evidence = grokFailureEvidence(frames);
-  if (init === undefined) throw new InferenceFailure('protocol', 'Grok omitted initialization', evidence);
-  if (init['apiKeySource'] !== 'oauth') throw new InferenceFailure('authentication', 'Grok did not acknowledge subscription OAuth', evidence);
+  if (init === undefined) throw new InferenceFailure('protocol', 'Grok omitted initialization', { ...evidence, diagnostic: captureInferenceDiagnostic('initialization') });
+  if (init['apiKeySource'] !== 'oauth') throw new InferenceFailure('authentication', 'Grok did not acknowledge subscription OAuth', { ...evidence, diagnostic: captureInferenceDiagnostic('subscription') });
   if (!Array.isArray(init['tools']) || init['tools'].length !== 0 ||
     !Array.isArray(init['mcp_servers']) || init['mcp_servers'].length !== 0) {
-    throw new InferenceFailure('protocol', 'Grok tool isolation was not acknowledged', evidence);
+    throw new InferenceFailure('protocol', 'Grok tool isolation was not acknowledged', { ...evidence, diagnostic: captureInferenceDiagnostic('tool-isolation') });
   }
 }
 
@@ -58,15 +59,17 @@ export function decodeGrok(frames: GrokFrames, exitCode: number | null): Inferen
     ((block as Record<string, unknown>)['type'] === 'thinking' ||
       ((block as Record<string, unknown>)['type'] === 'text' && typeof (block as Record<string, unknown>)['text'] === 'string')));
   const text = validBlocks ? blocks.filter((b: Record<string, unknown>) => b['type'] === 'text').map((b: Record<string, unknown>) => b['text']).join('') : ''; 
-  if (exitCode !== 0 || result?.['subtype'] !== 'success' || result['is_error'] !== false ||
-    !['end_turn', 'stop_sequence'].includes(String(result['stop_reason'])) ||
-    (Array.isArray(result['errors']) && result['errors'].length > 0) ||
-    !text.trim() || result['result'] !== text || assistant?.['session_id'] !== result['session_id'] ||
-    message?.['stop_reason'] !== result['stop_reason'] || model === null ||
-    !validBlocks) {
-    throw new InferenceFailure('protocol', 'Grok omitted a matching completed response', evidence);
-  }
-  return { text, model, modelBasis: 'provider-reported', usage, route: 'grok-subscription' };
+  const issue = exitCode !== 0 ? 'native-process'
+    : result?.['subtype'] !== 'success' || result['is_error'] !== false || (Array.isArray(result['errors']) && result['errors'].length > 0) ? 'terminal-error'
+    : !['end_turn', 'stop_sequence'].includes(String(result['stop_reason'])) ? 'unfinished-response'
+    : !validBlocks ? 'content-shape' : !text.trim() ? 'empty-response'
+    : result['result'] !== text ? 'response-mismatch'
+    : assistant?.['session_id'] !== result['session_id'] ? 'session-mismatch'
+    : message?.['stop_reason'] !== result['stop_reason'] ? 'stop-mismatch' : model === null ? 'model-missing' : undefined;
+  if (issue) throw new InferenceFailure('protocol', 'Grok omitted a matching completed response', {
+    ...evidence, diagnostic: captureInferenceDiagnostic(issue),
+  });
+  return { text, model: model!, modelBasis: 'provider-reported', usage, route: 'grok-subscription' };
 }
 
 /** Decode the native error wrapper, never search arbitrary model output for HTTP text. */

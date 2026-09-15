@@ -97,7 +97,7 @@ it('rejects invalid schemas before even checking authentication', async () => {
 it.each([undefined, null, {}, { answer: 7 }, { answer: 'ok', unknown: 'not allowed' }])('rejects missing or mismatched structured output and preserves measured usage (%j)', async structured_output => {
   const provider = createClaudeInference({ process: runner([ready, JSON.stringify({ ...result,
     result: '{"answer":"must not substitute"}', structured_output, model: 'terminal-model', usage: schemaUsage })]) });
-  await expect(provider.generate({ model: 'm', prompt: 'p', responseSchema: schema })).rejects.toMatchObject({ kind: 'protocol',
+  await expect(provider.generate({ model: 'm', prompt: 'p', responseSchema: schema })).rejects.toMatchObject({ kind: structured_output === undefined ? 'protocol' : 'invalid-response',
     responseModel: 'terminal-model', responseRoute: 'claude-subscription', usage: { inputTokens: 5, outputTokens: 4 } });
 });
 it('keeps a schema snapshot across asynchronous authentication and refuses unsupported native controls explicitly', async () => {

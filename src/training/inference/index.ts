@@ -4,3 +4,4 @@ export { createRoutedInference, type InferenceRoute, type RoutedInferenceOptions
 export { createGrokInference, type GrokInferenceOptions } from './grok/index.js';
 export { createOllamaInference, type OllamaInferenceOptions } from './ollama/index.js';
 export { validateInferenceSchema, validateInferenceResponse } from './response-schema.js';
+export { captureInferenceDiagnostic } from './diagnostic.js';

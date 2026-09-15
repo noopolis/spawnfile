@@ -59,3 +59,33 @@ test.each(['sink', 'observer'] as const)('does not retry or claim a successful r
   expect(rescored.evaluation.judgeCalls![0]!.usage!.inputTokens).toBe(10);
   expect(generate).toHaveBeenCalledTimes(1);
 });
+
+test.each([false, true])('preserves schema-failure evidence only in protected audit (routed=%s)', async routed => {
+  const { InferenceFailure, createRoutedInference } = await import('../../inference/index.js');
+  const { captureInferenceDiagnostic } = await import('../../inference/index.js');
+  const { options, store } = await auditFixture();
+  const rejected = 'PRIVATE-ATTESTED-SCHEMA-REJECTION';
+  const primary = { ...options.evaluation.judges.editor!.provider, id: 'primary', generate: async () => {
+    throw new InferenceFailure('invalid-response', 'Schema rejected', { diagnostic: captureInferenceDiagnostic('response-schema', rejected),
+      usage: { inputTokens: 15847, outputTokens: 695, cachedInputTokens: 0, reasoningTokens: null, source: 'fixture' } });
+  } };
+  const fallback = { ...primary, id: 'fallback', generate: async () => ({ model: 'actual', route: 'fallback', usage: null,
+    text: JSON.stringify({ score: 0.9, verdict: 'pass', reasons: ['Good'], citations: [{ source: 'input', quote: 'ARTICLE' }] }) }) };
+  const provider = routed ? createRoutedInference({ id: 'route', routes: [{ provider: primary, model: 'first' }, { provider: fallback, model: 'second' }],
+    maxAttempts: 2, timeoutMs: 1000 }) : primary;
+  options.evaluation.judges = { editor: { model: 'requested', provider } };
+  const result = await rescoreStoredTrial(options);
+  expect(result.status).toBe(routed ? 'pass' : 'error');
+  expect(JSON.stringify(result)).not.toContain(rejected);
+  const replay = await store.readReplay('trial', options.access);
+  const attempts = replay.events.filter(event => (event.payload as { type: string }).type === 'judge.attempt');
+  expect(attempts).toHaveLength(routed ? 2 : 1);
+  const first = attempts[0]!.payload as { payload: { call: { id: string; failureKind: string }; response: string; diagnostic: unknown } };
+  expect(first.payload.call.failureKind).toBe('invalid-response');
+  expect(first.payload.call.id).toBe(result.evaluation.judgeCalls![0]!.id);
+  expect(first.payload.response).toBe(rejected);
+  expect(first.payload.diagnostic).toMatchObject({ code: 'response-schema', response: { text: rejected } });
+  for (const audience of ['optimizer', 'viewer'] as const) {
+    expect(JSON.stringify(await store.readReplay('trial', { audience, phase: 'training' }))).not.toContain(rejected);
+  }
+});

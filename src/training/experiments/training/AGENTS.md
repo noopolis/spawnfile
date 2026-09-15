@@ -42,3 +42,7 @@ Optimizer feedback projects criterion reasons/status/scores, stage weights and
 native subject usage once, omitting duplicate aggregate trees and judge accounting.
 The original TrialReport remains unmodified. This compact train-only projection
 must not strip meaningful nested criterion failures or expose validation content.
+
+A newly classified `invalid-response` judge failure may use existing bounded
+measurement recovery after native closure. Generic legacy `protocol` failures
+remain ineligible; never infer their missing cause or rewrite historical receipts.

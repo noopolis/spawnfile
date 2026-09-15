@@ -104,7 +104,7 @@ it('fails closed when successful fallback evidence cannot be persisted and does 
   expect(f.generate).toHaveBeenCalledTimes(2);
 });
 
-it.each(['quota','transport','unavailable','authentication','protocol','cancelled','timeout','unsupported','unknown'] as const)('preserves a direct provider typed %s failure for bounded recovery policy',async kind=>{
+it.each(['quota','transport','unavailable','authentication','protocol','invalid-response','cancelled','timeout','unsupported','unknown'] as const)('preserves a direct provider typed %s failure for bounded recovery policy',async kind=>{
   const f=fixture(); f.generate.mockRejectedValue(new InferenceFailure(kind,'Provider failure'));
   const evaluated=await evaluateRubric(check,f.context);
   expect(evaluated.status).toBe('error');

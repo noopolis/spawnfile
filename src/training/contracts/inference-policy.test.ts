@@ -10,19 +10,19 @@ const config: TrainingConfiguration = {
 };
 it('returns maintained policy versions in declared route order without model or host data', () => {
   expect(trainingRoutePolicies(config, config.judges!.z!)).toEqual([
-    { provider: 'grok-subscription', policy: 'paideia.grok-no-plan-schema.v2' },
-    { provider: 'claude-subscription', policy: 'paideia.claude-schema-completion.v2' },
+    { provider: 'grok-subscription', policy: 'paideia.grok-attested-response.v3' },
+    { provider: 'claude-subscription', policy: 'paideia.claude-attested-response.v3' },
   ]);
   const identities = trainingInferencePolicies(config);
   expect(Object.keys(identities.judges)).toEqual(['a', 'z']);
   expect(identities.optimizer.map(value => value.provider)).toEqual(['claude-subscription', 'grok-subscription']);
-  expect(identities.judges.a).toEqual([{ provider: 'ollama', policy: 'paideia.ollama-inference.v1' }]);
+  expect(identities.judges.a).toEqual([{ provider: 'ollama', policy: 'paideia.ollama-attested-response.v2' }]);
   identities.optimizer[0]!.policy = 'external mutation';
-  expect(trainingInferencePolicies(config).optimizer[0]!.policy).toBe('paideia.claude-schema-completion.v2');
+  expect(trainingInferencePolicies(config).optimizer[0]!.policy).toBe('paideia.claude-attested-response.v3');
 });
 it('identifies legacy Claude execution without constructing a provider', () => {
   expect(trainingInferencePolicies()).toEqual({ judges: {}, optimizer: [
-    { provider: 'claude-subscription', policy: 'paideia.claude-schema-completion.v2' },
+    { provider: 'claude-subscription', policy: 'paideia.claude-attested-response.v3' },
   ] });
   expect(trainingInferencePolicies({ models: config.models })).toEqual(trainingInferencePolicies());
 });

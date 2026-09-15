@@ -2,9 +2,9 @@ import type { TrainingConfiguration, TrainingModel, TrainingRoute } from './trai
 
 /** Versions describe maintained invocation policy, not model/account or ambient profile contents. */
 const policies: Readonly<Record<TrainingModel['provider'], string>> = Object.freeze({
-  'grok-subscription': 'paideia.grok-no-plan-schema.v2',
-  'claude-subscription': 'paideia.claude-schema-completion.v2',
-  ollama: 'paideia.ollama-inference.v1',
+  'grok-subscription': 'paideia.grok-attested-response.v3',
+  'claude-subscription': 'paideia.claude-attested-response.v3',
+  ollama: 'paideia.ollama-attested-response.v2',
 });
 
 /** Preserve route order and include every declared fallback, whether invoked or not. */

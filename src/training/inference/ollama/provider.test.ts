@@ -63,7 +63,7 @@ it('refuses malformed schemas and known unsupported Cloud routes before network 
 });
 it.each(['prose {"answer":"x"}', '{}', '{"answer":5}', '{"answer":"x","extra":1}', '{"answer":"x","answer":"y"}'])('rejects schema output failure while retaining measured tokens (%s)', async content => {
   await expect(createOllamaInference({ baseUrl: 'http://localhost', fetch: respond({ ...body, message: { content } }) })
-    .generate({ prompt: 'p', model: 'm', responseSchema: schema })).rejects.toMatchObject({ kind: 'protocol', responseModel: 'actual:tag',
+    .generate({ prompt: 'p', model: 'm', responseSchema: schema })).rejects.toMatchObject({ kind: 'invalid-response', responseModel: 'actual:tag',
       responseRoute: 'ollama:http://localhost/', usage: { inputTokens: 10, outputTokens: 2 } });
 });
 it('does not revalidate against a caller-mutated schema and reports server rejection as unsupported', async () => {

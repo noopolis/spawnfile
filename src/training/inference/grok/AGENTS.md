@@ -27,3 +27,8 @@ An optional responseSchema is sent with `--json-schema` while retaining explicit
 streaming-messages-json output. Validate the schema before launching and the whole
 completed JSON after tool/OAuth attestation; retain measured usage on rejection.
 Never extract a JSON substring or treat a native schema flag as validation proof.
+
+Keep finite refusal diagnostics for native envelope guards without response text.
+Only after the full decode succeeds may schema rejection retain the bounded final
+answer as protected evidence. The old generic `protocol` category is never
+retroactively reclassified from usage counts or an empty saved response.

@@ -28,3 +28,10 @@ generation and the entire completed JSON response afterward. Support synchronous
 draft-07 object schemas with local references, no external fetching or custom
 formats, at most 64 KiB. Reject non-finite values and duplicate response keys.
 Providers retain measured usage and model identity when rejecting a completion.
+
+Only a completed isolation-attested response that fails its requested schema is
+`invalid-response`; the next authored fallback may run inside the existing budget.
+Framing, unfinished envelopes, OAuth and tool-isolation failures stay terminal.
+Protected failure diagnostics have finite codes and bounded final-answer text;
+never retain thinking/native stderr. Route observers are awaited under the audit
+deadline before fallback. Diagnostics must not enter serialized public results.

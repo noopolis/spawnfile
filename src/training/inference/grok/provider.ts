@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { InferenceProvider } from '../../contracts/execution.js';
 import { runProcess } from '../../platform/process/index.js';
+import { captureInferenceDiagnostic } from '../diagnostic.js';
 import { InferenceFailure } from '../failure.js';
 import { validateInferenceResponse, validateInferenceSchema } from '../response-schema.js';
 import { decodeGrok, grokEnvironment, grokFailureEvidence, validateGrokInitialization, type GrokFrames } from './protocol.js';
@@ -20,6 +21,7 @@ export function createGrokInference(options: GrokInferenceOptions = {}): Inferen
     capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },
     async generate(request) {
       validateInferenceSchema(request.responseSchema);
+      const responseSchema = request.responseSchema === undefined ? undefined : structuredClone(request.responseSchema);
       const reasoningEffort = options.reasoningEffort === undefined ? 'medium' : options.reasoningEffort;
       if (!['low', 'medium', 'high', 'xhigh'].includes(reasoningEffort)) {
         throw new InferenceFailure('unsupported', 'Invalid Grok reasoning effort');
@@ -43,7 +45,7 @@ export function createGrokInference(options: GrokInferenceOptions = {}): Inferen
             '--reasoning-effort', reasoningEffort,
             '--output-format', 'streaming-messages-json', '--verbatim',
             ...(request.system === undefined ? [] : ['--system-prompt-override', request.system]),
-            ...(request.responseSchema === undefined ? [] : ['--json-schema', JSON.stringify(request.responseSchema)])],
+            ...(responseSchema === undefined ? [] : ['--json-schema', JSON.stringify(responseSchema)])],
           env: grokEnvironment(), stdin: '', timeoutMs: options.timeoutMs ?? 180_000, signal: request.signal,
           onLine(line) {
             let event: Record<string, unknown>;
@@ -71,11 +73,11 @@ export function createGrokInference(options: GrokInferenceOptions = {}): Inferen
         const evidence = grokFailureEvidence(frames);
         if (request.signal?.aborted) throw new InferenceFailure('cancelled', 'Grok inference cancelled', evidence);
         if (nativeFailure) throw nativeFailure;
-        if (malformed) throw new InferenceFailure('protocol', 'Malformed Grok protocol', evidence);
-        if (completed.cancelled || completed.error !== undefined) throw new InferenceFailure('unknown', 'Grok native process did not settle successfully', evidence);
+        if (malformed) throw new InferenceFailure('protocol', 'Malformed Grok protocol', { ...evidence, diagnostic: captureInferenceDiagnostic('transport-framing') });
+        if (completed.cancelled || completed.error !== undefined) throw new InferenceFailure('unknown', 'Grok native process did not settle successfully', { ...evidence, diagnostic: captureInferenceDiagnostic('native-process') });
         const result = decodeGrok(frames, completed.exitCode);
-        try { validateInferenceResponse(result.text, request.responseSchema); }
-        catch { throw new InferenceFailure('protocol', 'Grok response did not match its requested schema', evidence); }
+        try { validateInferenceResponse(result.text, responseSchema); }
+        catch { throw new InferenceFailure('invalid-response', 'Grok response did not match its requested schema', { ...evidence, diagnostic: captureInferenceDiagnostic('response-schema', result.text) }); }
         return result;
       } finally { await rm(cwd, { recursive: true, force: true }); }
     },

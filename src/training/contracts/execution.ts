@@ -103,6 +103,8 @@ export interface InferenceRequest {
   system?: string;
   /** Optional JSON Schema; supported providers constrain and validate the completed text. */
   responseSchema?: Readonly<Record<string, unknown>>;
+  /** Trusted evaluator-only sink; never serialize into prompts, results or checkpoints. */
+  observeFailure?: (observation: { attempt: Readonly<InferenceAttempt>; fallbackOf?: string; diagnostic: InferenceDiagnostic }) => void | Promise<void>;
   model: string;
   signal?: AbortSignal;
   /** Controls must be rejected if unsupported, never silently discarded. */
@@ -113,7 +115,18 @@ export interface InferenceRequest {
 export type InferenceModelBasis = 'provider-reported' | 'requested-assumption';
 
 export type InferenceFailureKind = 'quota' | 'transport' | 'unavailable' | 'authentication' |
-  'protocol' | 'cancelled' | 'timeout' | 'unsupported' | 'unknown';
+  'protocol' | 'invalid-response' | 'cancelled' | 'timeout' | 'unsupported' | 'unknown';
+
+export const inferenceDiagnosticCodes = ['initialization', 'tool-isolation', 'subscription', 'transport-framing', 'native-process',
+    'terminal-error', 'unfinished-response', 'empty-response', 'response-mismatch', 'session-mismatch',
+    'stop-mismatch', 'model-missing', 'content-shape', 'response-envelope', 'response-schema'] as const;
+
+/** Protected provider evidence. Codes never contain arbitrary native error prose. */
+export interface InferenceDiagnostic {
+  code: (typeof inferenceDiagnosticCodes)[number];
+  /** Only an attested completed schema-rejected answer; oversized text is explicitly omitted. */
+  response?: { bytes: number; sha256: string; text?: string; omitted: boolean };
+}
 
 /** One settled or interrupted inference attempt, without prompts or provider diagnostics. */
 export interface InferenceAttempt {

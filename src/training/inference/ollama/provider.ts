@@ -1,5 +1,6 @@
 import type { InferenceProvider } from '../../contracts/execution.js';
 import { ollamaContextSupport } from './context.js';
+import { captureInferenceDiagnostic } from '../diagnostic.js';
 import { InferenceFailure } from '../failure.js';
 import { validateInferenceSchema, validateInferenceResponse } from '../response-schema.js';
 
@@ -81,10 +82,10 @@ export function createOllamaInference(options: OllamaInferenceOptions): Inferenc
       };
       if ((data?.['done_reason'] !== undefined && data['done_reason'] !== 'stop') || data?.['done'] !== true || typeof data['model'] !== 'string' || !data['model'].trim() ||
         typeof message?.['content'] !== 'string' || !message['content'].trim() ||
-        (Array.isArray(message['tool_calls']) && message['tool_calls'].length > 0)) throw new InferenceFailure('protocol', 'Ollama omitted a completed text response', evidence);
+        (Array.isArray(message['tool_calls']) && message['tool_calls'].length > 0)) throw new InferenceFailure('protocol', 'Ollama omitted a completed text response', { ...evidence, diagnostic: captureInferenceDiagnostic('response-envelope') });
       if (think === false && typeof message['thinking'] === 'string' && message['thinking'].length) throw new InferenceFailure('unsupported', 'Ollama returned thinking despite think:false', evidence);
       try { validateInferenceResponse(message['content'], responseSchema); }
-      catch { throw new InferenceFailure('protocol', 'Ollama response violated the requested schema', evidence); }
+      catch { throw new InferenceFailure('invalid-response', 'Ollama response violated the requested schema', { ...evidence, diagnostic: captureInferenceDiagnostic('response-schema', message['content']) }); }
       return { text: message['content'], model: data['model'], modelBasis: 'provider-reported', route: `ollama:${base.href}`,
         usage: evidence.usage };
     },

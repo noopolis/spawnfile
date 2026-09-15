@@ -18,7 +18,7 @@ const subjectUsage = z.object({ status: z.enum(['complete', 'incomplete']), usag
   source: z.string().min(1),
 }).nullable() });
 const judgeCall = z.object({ id: identity, judge: identity, providerId: identity, requestedModel: identity,
-  failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'protocol', 'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),
+  failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'protocol', 'invalid-response', 'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),
   fallbackOf: identity.optional(),
   citationRepairs: z.union([z.literal(0), z.literal(1)]).optional(), repairOf: identity.optional(),
   responseModel: z.string().nullable(), responseRoute: z.string().nullable(),

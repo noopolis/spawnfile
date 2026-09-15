@@ -5,6 +5,7 @@ import { runProcess, type ProcessResult } from '../../platform/process/index.js'
 import type { InferenceProvider, InferenceRequest } from '../../contracts/execution.js';
 import { claudeEnvironment, decodeClaudeResult, claudeFailureEvidence, validateClaudeInitialization, parseEnvelope, savedSubscription } from './protocol.js';
 import { claudeRefusal } from './refusal.js';
+import { captureInferenceDiagnostic } from '../diagnostic.js';
 import { InferenceFailure, type InferenceFailureEvidence } from '../failure.js';
 import { validateInferenceSchema, validateInferenceResponse } from '../response-schema.js';
 
@@ -73,10 +74,14 @@ export function createClaudeInference(options: ClaudeInferenceOptions = {}): Inf
         try {
           if (responseSchema !== undefined) validateInferenceResponse(resultLine, { type: 'object' });
           decoded = decodeClaudeResult(result, responseSchema !== undefined);
-          validateInferenceResponse(decoded.text, responseSchema);
+
         } catch {
-          throw new InferenceFailure('protocol', 'Claude response violated the requested output contract', evidence());
+          throw new InferenceFailure('protocol', 'Claude response violated the requested output contract', { ...evidence(), diagnostic: captureInferenceDiagnostic('response-envelope') });
         }
+        try { validateInferenceResponse(decoded.text, responseSchema); }
+        catch { throw new InferenceFailure('invalid-response', 'Claude response violated the requested schema', {
+          ...evidence(), diagnostic: captureInferenceDiagnostic('response-schema', decoded.text),
+        }); }
         const actualModel = [decoded.model, reportedModel].find(model => model !== undefined && model.trim().length > 0);
         return { text: decoded.text, usage: decoded.usage,
           model: actualModel ?? request.model,

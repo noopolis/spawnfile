@@ -5,7 +5,7 @@ import { result } from '../logic/index.js';
 import { selectEvidence, textReference } from '../selectors.js';
 import { parseJudgment, violationReason, type Judgment } from './judgment.js';
 import { judgmentCacheKey } from './cache.js';
-import { directFailureEvidence, failedInferenceAttempts, routedJudgeCalls } from './attempts.js';
+import { directFailureDiagnostic, directFailureEvidence, failedInferenceAttempts, routedJudgeCalls } from './attempts.js';
 import { citationSchema, citationRepairSchema, evidenceProtocol } from './protocol.js';
 import { renderJudgeTemplate } from './templates.js';
 
@@ -63,13 +63,26 @@ export async function evaluateRubric(check: CheckNode, context: EvaluationContex
       responseModel: null, responseRoute: null, outcome: 'generation-error', usage: null,
       ...(original ? { repairOf: calls.at(-1)!.id } : {}) };
     calls.push(call);
+    const audited = new Set<string>();
     let response;
-    try { response = await route.provider.generate({ ...request, responseSchema: ids?.schema ?? (original ? citationRepairSchema : citationSchema), model: route.model, signal: context.signal }); }
+    try { response = await route.provider.generate({ ...request, responseSchema: ids?.schema ?? (original ? citationRepairSchema : citationSchema), model: route.model, signal: context.signal,
+      observeFailure: async ({ attempt, diagnostic, fallbackOf }) => {
+        const failed = { ...routedJudgeCalls(call, [attempt])[0]!, ...(fallbackOf ? { fallbackOf } : {}) };
+        audited.add(failed.id);
+        await observe?.({ call: structuredClone(failed), response: diagnostic.response?.text ?? '', diagnostic });
+      },
+    }); }
     catch (error) {
       Object.assign(call, directFailureEvidence(error));
       const expanded = routedJudgeCalls(call, failedInferenceAttempts(error));
       if (expanded.length) calls.splice(calls.indexOf(call), 1, ...expanded);
-      try { for (const failed of expanded.length ? expanded : [call]) await observe?.({ call: structuredClone(failed), response: '' }); }
+      try {
+        for (const failed of expanded.length ? expanded : [call]) {
+          if (audited.has(failed.id)) continue;
+          const diagnostic = !expanded.length ? directFailureDiagnostic(error) : undefined;
+          await observe?.({ call: structuredClone(failed), response: diagnostic?.response?.text ?? '', ...(diagnostic ? { diagnostic } : {}) });
+        }
+      }
       catch { throw new Error('Judge attempt evidence persistence failed'); }
       throw error;
     }
@@ -80,7 +93,7 @@ export async function evaluateRubric(check: CheckNode, context: EvaluationContex
     const expanded = routedJudgeCalls(call, response.attempts ?? []);
     if (expanded.length) calls.splice(calls.indexOf(call), 1, ...expanded);
     try {
-      for (const failed of expanded.slice(0, -1)) await observe?.({ call: structuredClone(failed), response: '' });
+      for (const failed of expanded.slice(0, -1)) if (!audited.has(failed.id)) await observe?.({ call: structuredClone(failed), response: '' });
       await observe?.({ call: structuredClone(expanded.at(-1) ?? call), response: response.text, ...(parsed.violation ? { violation: structuredClone(parsed.violation) } : {}) });
     }
     catch { throw new Error('Judge attempt evidence persistence failed'); }

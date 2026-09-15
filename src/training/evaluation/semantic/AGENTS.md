@@ -37,3 +37,8 @@ Owns fixed rubric prompts, typed judgments, evidence and judge calibration.
   neutral; never import inference implementations into evaluation.
 - Protocol/evidence/control changes invalidate exact cache identities. Current
   llm-rubric descriptor is version 3; judgment cache format is v3.
+
+Provider schema rejections retain attested response text and diagnostic codes in
+protected judge.attempt events only. Await and deduplicate routed failure audits
+before fallback; observer failure stops further model calls. Public JudgeCall,
+results, optimizer feedback, caches and viewers carry accounting, never diagnostics.

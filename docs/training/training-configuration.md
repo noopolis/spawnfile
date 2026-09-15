@@ -121,12 +121,12 @@ sealed test. A registered isolated project preparation is still required for a
 canonical Spawnfile environment. Install the packaged DSPy bridge executable
 `paideia-dspy` on PATH, or select its explicit executable with `--bridge-command`.
 
-Classified quota, transport, unavailable and individual attempt timeout failures
-advance to the next configured model. `timeout_ms` bounds the whole route, including
+Classified quota, transport, unavailable, individual attempt timeout and attested
+`invalid-response` schema failures advance to the next configured model. `timeout_ms` bounds the whole route, including
 all attempts and audit writes. Each attempt receives an equal share of remaining
 time divided by remaining authored attempts; unused time carries forward. With
 `attempts: 2` and `timeout_ms: 180000`, the first model gets at most 90 seconds,
-leaving the rest for its fallback. Authentication, malformed judgments, operator
+leaving the rest for its fallback. Authentication, native protocol failures, operator
 cancellation and exhaustion of the overall deadline stop that request. A valid failing grade is final. Citation repair, when selected,
 can change only citations, never the score, verdict or reasons. Failed attempts
 retain their known token usage and actual model identities where available.
@@ -255,3 +255,13 @@ splits. Its `preparationValidation` lists profiles whose availability, parameter
 semantics and override permissions remain **unverified**. A cost estimate is not
 execution readiness; normal training validates these with the installed integration.
 The estimate uses a separate projection containing no executable task inputs.
+
+A completed provider response that passes native authentication, isolation and
+completion checks but fails the requested JSON schema is `invalid-response`.
+It may use the next configured fallback within the same attempt/deadline budget;
+valid grades are never retried. Completed native captures may use existing bounded
+measurement recovery for this class. Framing, unfinished output, authentication
+and tool-isolation failures remain terminal, as do older generic protocol errors.
+Failed answer diagnostics are retained only in protected evaluator audit events.
+Oversized answers are explicitly omitted with their byte count and SHA-256; raw
+provider stderr and hidden reasoning are never captured by this diagnostic path.

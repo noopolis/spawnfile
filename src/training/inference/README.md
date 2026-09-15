@@ -18,12 +18,12 @@ Generation runs in a fresh disposable directory with no subject workspace mounte
 
 `createRoutedInference` consumes ordered `{ provider, model }` routes with a
 finite attempt count and overall deadline. Classified quota, transport, service
-unavailability and individual attempt timeouts advance to the next declared route.
+unavailability, individual attempt timeouts and attested schema-invalid answers advance to the next declared route.
 Each attempt gets an equal share of the remaining deadline divided by remaining
 authored attempts; unused time carries forward. The optional `attemptTimeoutMs`
 is an additional cap on that share. For example, a 180-second deadline with two
 attempts gives the first at most 90 seconds and leaves the rest for the fallback. A successful response,
-including a poor grade, terminates routing. Authentication, malformed output,
+including a poor grade, terminates routing. Authentication, native protocol violations,
 operator cancellation and exhaustion of the overall deadline fail closed. Attempt receipts preserve requested and
 reported models, known usage and sanitized failure classes; callers must persist
 them through `observeAttempt` when they require a durable audit. Audit writes share
@@ -83,3 +83,10 @@ Dataset resolution receives the same trusted `inferenceExecutionIdentity` as the
 installed judges. A training dataset with authored model settings and its test
 dataset inheriting those settings therefore share one evaluation plan. Different
 execution identities, model policies or criteria still fail split validation.
+
+A trusted `observeFailure` sink receives finite diagnostic codes plus bounded
+schema-rejected final text, tied to its exact attempt. This protected audit is
+awaited before fallback and shares the route deadline. Provider errors expose
+these diagnostics through a non-enumerable getter only; serialized results,
+attempts and checkpoints never include them. Semantic judges persist them as
+evaluator-only events. Native thinking, stderr and unsafe envelopes supply no text.

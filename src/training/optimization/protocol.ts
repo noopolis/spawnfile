@@ -47,7 +47,7 @@ const inferenceAttemptSchema = z.object({
   id, ordinal: z.number().int().positive(), providerId: id, requestedModel: id,
   responseModel: id.nullable(), responseRoute: id.nullable(),
   outcome: z.enum(['completed', 'failed']),
-  failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'protocol', 'cancelled', 'timeout', 'unsupported', 'unknown']).nullable(),
+  failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'protocol', 'invalid-response', 'cancelled', 'timeout', 'unsupported', 'unknown']).nullable(),
   startedAt: id, completedAt: id, usage: usageSchema,
 }).strict();
 /** Host-only evidence. Attempts never cross the strict Python response protocol. */

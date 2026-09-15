@@ -14,7 +14,7 @@ const call = z.object({
   outcome: z.enum(['completed', 'invalid-response', 'generation-error']), usage: usage.nullable(),
   citationRepairs: z.union([z.literal(0), z.literal(1)]).optional(),
   repairOf: z.string().optional(), fallbackOf: z.string().optional(),
-  failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'protocol',
+  failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'protocol', 'invalid-response',
     'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),
 }).strict();
 const entry = z.object({ response: z.string().min(1), sourceCallId: z.string().min(1),

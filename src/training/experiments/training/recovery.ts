@@ -5,7 +5,7 @@ import { capturedTrial, rescoreStoredTrial, type RescoreReport } from '../replay
 import type { StoredTrialOptions, TrialReport } from '../trials/index.js';
 import type { TrainingOptions } from './training.js';
 
-const retryable = new Set(['quota', 'transport', 'unavailable', 'timeout', 'cancelled']);
+const retryable = new Set(['quota', 'transport', 'unavailable', 'timeout', 'cancelled', 'invalid-response']);
 function transientJudgeFailure(check: EvaluationResult): boolean {
   if (check.children?.length) return check.children.filter(child => child.status === 'error').every(transientJudgeFailure);
   const last = check.judgeCalls?.at(-1);

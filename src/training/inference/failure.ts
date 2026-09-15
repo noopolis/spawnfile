@@ -1,10 +1,11 @@
-import type { InferenceAttempt, InferenceFailureKind, Usage } from '../contracts/execution.js';
+import type { InferenceAttempt, InferenceFailureKind, InferenceDiagnostic, Usage } from '../contracts/execution.js';
 
 export interface InferenceFailureEvidence {
   usage?: Usage | null;
   responseModel?: string | null;
   responseRoute?: string | null;
   attempts?: readonly InferenceAttempt[];
+  diagnostic?: InferenceDiagnostic;
 }
 
 /** Adapters classify native evidence; routing never guesses from arbitrary error text. */
@@ -14,11 +15,19 @@ export class InferenceFailure extends Error {
   readonly responseModel: string | null;
   readonly responseRoute: string | null;
   readonly attempts: readonly InferenceAttempt[];
+  #diagnostic?: InferenceDiagnostic;
+  /** Prototype getter keeps protected text out of JSON.stringify/spread of errors. */
+  get diagnostic(): InferenceDiagnostic | undefined { return this.#diagnostic; }
 
   constructor(kind: InferenceFailureKind, message: string, evidence: InferenceFailureEvidence = {}) {
     super(message);
     this.name = 'InferenceFailure';
     this.kind = kind;
+    if (evidence.diagnostic) {
+      const diagnostic = structuredClone(evidence.diagnostic);
+      if (diagnostic.response) Object.freeze(diagnostic.response);
+      this.#diagnostic = Object.freeze(diagnostic);
+    }
     this.usage = evidence.usage == null ? null : Object.freeze(structuredClone(evidence.usage));
     this.responseModel = evidence.responseModel ?? null;
     this.responseRoute = evidence.responseRoute ?? null;

@@ -1,5 +1,5 @@
 import type { CheckNode, EvaluatorDefinition, DataMap } from './dataset.js';
-import type { Observation, ObservationCoverage, InferenceProvider, Usage, InferenceFailureKind } from './execution.js';
+import type { Observation, ObservationCoverage, InferenceProvider, Usage, InferenceFailureKind, InferenceDiagnostic } from './execution.js';
 
 export type Verdict = 'pass' | 'fail' | 'unknown' | 'error' | 'skipped';
 export type Finality = 'provisional' | 'final';
@@ -50,7 +50,7 @@ export interface JudgeProtocolViolation {
   citations?: { index: number; source: string; reason: 'unknown-source' | 'quote-not-found' }[];
 }
 /** Protected evaluator evidence, never part of optimizer feedback or viewer projections. */
-export interface JudgeAttemptObservation { call: JudgeCall; response: string; violation?: JudgeProtocolViolation }
+export interface JudgeAttemptObservation { call: JudgeCall; response: string; violation?: JudgeProtocolViolation; diagnostic?: InferenceDiagnostic }
 export interface EvaluationResult {
   id?: string;
   status: Verdict;

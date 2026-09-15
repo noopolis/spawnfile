@@ -57,13 +57,18 @@ export function createRoutedInference(options: RoutedInferenceOptions): Inferenc
           startedAt, completedAt: new Date().toISOString(), usage: result?.usage ?? failure?.usage ?? null,
         }])[0]!;
         attempts.push(attempt);
-        try { if (observeAttempt !== undefined) await persistBounded(() => observeAttempt(attempt), deadline - Date.now(), request.signal); }
+        try {
+          if (observeAttempt || (failure?.diagnostic && request.observeFailure)) await persistBounded(async () => {
+            await observeAttempt?.(attempt);
+            if (failure?.diagnostic) await request.observeFailure?.({ attempt, ...(ordinal ? { fallbackOf: attempts[0]!.id } : {}), diagnostic: failure.diagnostic });
+          }, deadline - Date.now(), request.signal);
+        }
         catch (error) {
           const kind = request.signal?.aborted ? 'cancelled' : error instanceof AuditBoundaryFailure ? error.kind : Date.now() >= deadline ? 'timeout' : 'unknown';
           throw new InferenceFailure(kind, 'Inference audit persistence failed', { attempts });
         }
         if (result !== undefined) return { ...result, attempts: immutableAttempts(attempts) };
-        if (!['quota', 'transport', 'unavailable', 'timeout'].includes(failure!.kind) || ordinal + 1 === maxAttempts) {
+        if (!['quota', 'transport', 'unavailable', 'timeout', 'invalid-response'].includes(failure!.kind) || ordinal + 1 === maxAttempts) {
           throw new InferenceFailure(failure!.kind, `Routed inference stopped (${failure!.kind})`, { attempts });
         }
       }

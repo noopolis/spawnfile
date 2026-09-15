@@ -22,3 +22,22 @@ it('keeps independently valid counters and rejects malformed or unattributed acc
   }
   expect(directFailureEvidence(new Error('quota'))).toEqual({});
 });
+
+it('projects only finite bounded protected diagnostic fields from typed failures', async () => {
+  const { directFailureDiagnostic } = await import('./attempts.js');
+  const error = (diagnostic: unknown) => Object.assign(new Error('private'), { kind: 'invalid-response', diagnostic });
+  const hash = 'sha256:' + 'a'.repeat(64);
+  expect(directFailureDiagnostic(error({ code: 'transport-framing', extra: 'omit' }))).toEqual({ code: 'transport-framing' });
+  expect(directFailureDiagnostic(error({ code: 'response-schema', response: { bytes: 1, sha256: hash, omitted: false, text: 'x', extra: 'omit' } })))
+    .toEqual({ code: 'response-schema', response: { bytes: 1, sha256: hash, omitted: false, text: 'x' } });
+  expect(directFailureDiagnostic(error({ code: 'response-schema', response: { bytes: 65_537, sha256: hash, omitted: true } })))
+    .toEqual({ code: 'response-schema', response: { bytes: 65_537, sha256: hash, omitted: true } });
+  for (const value of [null, {}, { code: 'invented' }, { code: 'tool-isolation', response: {} },
+    { code: 'response-schema', response: null }, { code: 'response-schema', response: { bytes: NaN } },
+    ...[{ bytes: -1 }, { bytes: 1.5 }, { sha256: 'bad' }, { bytes: 2 }, { text: 5 }, { omitted: true },
+      { omitted: false, bytes: 65_537, text: 'x'.repeat(65_537) }].map(patch => ({ code: 'response-schema', response: { bytes: 1, sha256: hash, omitted: false, text: 'x', ...patch } }))]) {
+    expect(directFailureDiagnostic(error(value))).toBeUndefined();
+  }
+  expect(directFailureDiagnostic(new Error('unknown'))).toBeUndefined();
+  expect(directFailureDiagnostic(Object.assign(new Error('typed without evidence'), { kind: 'protocol' }))).toBeUndefined();
+});

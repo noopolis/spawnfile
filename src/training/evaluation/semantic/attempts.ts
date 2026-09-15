@@ -1,5 +1,5 @@
 import type { JudgeCall } from '../../contracts/evaluation.js';
-import type { InferenceAttempt, InferenceFailureKind, Usage } from '../../contracts/execution.js';
+import { inferenceDiagnosticCodes, type InferenceDiagnostic, type InferenceAttempt, type InferenceFailureKind, type Usage } from '../../contracts/execution.js';
 
 /** Expand transport attempts into actual calls so retries cannot disappear from costs. */
 export function routedJudgeCalls(base: JudgeCall, attempts: readonly InferenceAttempt[]): JudgeCall[] {
@@ -23,7 +23,7 @@ export function failedInferenceAttempts(error: unknown): readonly InferenceAttem
 export function inferenceFailureKind(error: unknown): InferenceFailureKind | undefined {
   if (!(error instanceof Error) || !('kind' in error)) return undefined;
   const kinds: readonly unknown[] = ['quota', 'transport', 'unavailable', 'authentication',
-    'protocol', 'cancelled', 'timeout', 'unsupported', 'unknown'];
+    'protocol', 'invalid-response', 'cancelled', 'timeout', 'unsupported', 'unknown'];
   return kinds.includes(error.kind) ? error.kind as InferenceFailureKind : undefined;
 }
 
@@ -45,4 +45,22 @@ export function directFailureEvidence(error: unknown): Partial<JudgeCall> {
     }
   }
   return { failureKind, responseModel: text('responseModel'), responseRoute: text('responseRoute'), usage };
+}
+
+/** Project only bounded trusted diagnostic fields; never forward arbitrary error objects. */
+export function directFailureDiagnostic(error: unknown): InferenceDiagnostic | undefined {
+  if (!inferenceFailureKind(error) || !(error instanceof Error) || !('diagnostic' in error)) return undefined;
+  const value = error.diagnostic;
+  if (!value || typeof value !== 'object' || !('code' in value) || !inferenceDiagnosticCodes.includes(value.code as never)) return undefined;
+  const code = value.code as InferenceDiagnostic['code'];
+  if (!('response' in value)) return { code };
+  const response = value.response;
+  if (code !== 'response-schema' || !response || typeof response !== 'object') return undefined;
+  const raw = response as Record<string, unknown>;
+  if (!Number.isSafeInteger(raw.bytes) || (raw.bytes as number) < 0 || typeof raw.sha256 !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(raw.sha256)) return undefined;
+  if (raw.omitted === true && (raw.bytes as number) > 65_536 && raw.text === undefined) {
+    return { code, response: { bytes: raw.bytes as number, sha256: raw.sha256, omitted: true } };
+  }
+  if (raw.omitted !== false || typeof raw.text !== 'string' || Buffer.byteLength(raw.text) !== raw.bytes || (raw.bytes as number) > 65_536) return undefined;
+  return { code, response: { bytes: raw.bytes as number, sha256: raw.sha256, omitted: false, text: raw.text } };
 }

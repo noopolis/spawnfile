@@ -180,6 +180,6 @@ it('rejects invalid response schemas before cognition and wrong typed JSON after
   await expect(provider.generate({ prompt: 'p', model: 'm', responseSchema: { type: 'impossible' } })).rejects.toMatchObject({ kind: 'unsupported' });
   expect(launches).toBe(0);
   await expect(provider.generate({ prompt: 'p', model: 'm', responseSchema: { type: 'object' } })).rejects.toMatchObject({
-    kind: 'protocol', usage: { inputTokens: 6, outputTokens: 4 }, responseModel: 'grok-actual', responseRoute: 'grok-subscription',
+    kind: 'invalid-response', usage: { inputTokens: 6, outputTokens: 4 }, responseModel: 'grok-actual', responseRoute: 'grok-subscription',
   });
 });
