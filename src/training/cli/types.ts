@@ -25,7 +25,7 @@ export interface CliDependencies {
 export interface CliExecutionIdentityContext {
   /** Content identity of the frozen authored replacement; no optimizer bridge in comparison mode. */
   comparisonCandidateId?: string;
-  /** Exact normalized bridge launch passed to execution; absent outside training. */
+  /** Exact normalized optimizer bridge launch; absent for authored comparison. */
   bridge?: Readonly<{ command: string; cwd: string }>;
 }
 

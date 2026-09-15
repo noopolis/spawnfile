@@ -39,11 +39,20 @@ async function report(root: string) {
 }
 it('runs authored YAML through the real CLI, records paired arms, streams and resumes without an optimizer', async () => {
   const f = await fixture();
+  const identities: { candidateId: string; nativeCalls: number }[] = [];
+  f.dependencies.spawnfile = { id: 'comparison-identity', version: '1', executionIdentity(context) {
+    expect(context.bridge).toBeUndefined();
+    expect(context.comparisonCandidateId).toMatch(/^sha256:[a-f0-9]{64}$/);
+    identities.push({ candidateId: context.comparisonCandidateId!, nativeCalls: f.observedInstructions.length });
+    return `isolated-comparison:${context.comparisonCandidateId}`;
+  }, createAdapter() { throw new Error('Unused project adapter'); },
+  async prepareEnvironment() { throw new Error('Unused project preparation'); } };
   const argv = [...f.argv, '--view', '0'];
   expect(await main(argv, f.io, f.dependencies), f.stderr.join('')).toBe(0);
   expect(f.observedInstructions).toEqual(['BASE\n', 'IMPROVED\n', 'BASE\n', 'IMPROVED\n', 'BASE\n', 'IMPROVED\n']);
   const first = await report(f.root);
   expect(first.schema).toBe('paideia.comparison.v1');
+  expect(identities[0]).toEqual({ candidateId: first.candidate.id, nativeCalls: 0 });
   expect(first.optimizer).toBeUndefined();
   expect(first.provenance).toEqual({ mode: 'authored-comparison', optimizerCalls: 0 });
   expect(first.pairs.map((p: { baselineScore: number; candidateScore: number; delta: number }) => [p.baselineScore, p.candidateScore, p.delta])).toEqual([[0,1,1],[0,1,1],[0,1,1]]);

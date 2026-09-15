@@ -338,3 +338,8 @@ failed grades are retained; infrastructure interruptions remain incomplete. Exac
 can rescore eligible judge outages without repeating the subject. Measurement-repair
 forks are currently rejected for comparison runs. Exit status reflects the authored
 arm's held-out verdicts, not a claim of statistical superiority.
+
+Trusted integrations receive `CliExecutionIdentityContext.comparisonCandidateId`
+with the frozen authored content identity and no `bridge` for this mode. Bind that
+explicit comparison identity into the environment receipt; do not require or invent
+a DSPy launch. Ordinary optimizer execution still supplies its actual bridge launch.
