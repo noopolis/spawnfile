@@ -1,11 +1,11 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { runProcess } from '../../platform/process/index.js';
+import { runProcess, type ProcessResult } from '../../platform/process/index.js';
 import type { InferenceProvider, InferenceRequest } from '../../contracts/execution.js';
-import { claudeEnvironment, decodeClaudeResult, claudeResultUsage, parseEnvelope, savedSubscription } from './protocol.js';
+import { claudeEnvironment, decodeClaudeResult, claudeFailureEvidence, validateClaudeInitialization, parseEnvelope, savedSubscription } from './protocol.js';
 import { claudeRefusal } from './refusal.js';
-import { InferenceFailure } from '../failure.js';
+import { InferenceFailure, type InferenceFailureEvidence } from '../failure.js';
 import { validateInferenceSchema, validateInferenceResponse } from '../response-schema.js';
 
 export interface ClaudeInferenceOptions {
@@ -25,6 +25,9 @@ export function createClaudeInference(options: ClaudeInferenceOptions = {}): Inf
       validateRequest(request);
       const cwd = await mkdtemp(path.join(tmpdir(), 'paideia-inference-'));
       const env = claudeEnvironment();
+      let result: Record<string, unknown> | undefined;
+      let reportedModel: string | undefined;
+      const evidence = () => claudeFailureEvidence(result, reportedModel);
       try {
         let authText = '';
         const auth = await execute({ command: options.command ?? 'claude',
@@ -32,23 +35,26 @@ export function createClaudeInference(options: ClaudeInferenceOptions = {}): Inf
           stdin: '', timeoutMs: 15_000, signal: request.signal,
           onLine: (line) => { authText += line; },
         }).completion;
-        let authenticated = false;
-        try { authenticated = savedSubscription(parseEnvelope(authText)); } catch { /* Discard raw account details. */ }
-        authText = '';
-        if (auth.exitCode !== 0 || auth.cancelled || auth.error !== undefined || !authenticated) {
-          throw new Error('Saved Claude subscription is unavailable; run claude auth login');
-        }
-        let result: Record<string, unknown> | undefined;
+        rejectInterruptedProcess(auth, request.signal, undefined, evidence());
+        if (auth.exitCode !== 0) throw new InferenceFailure('authentication', 'Saved Claude subscription could not be verified; run claude auth login');
+        let authenticated: boolean;
+        try { authenticated = savedSubscription(parseEnvelope(authText)); }
+        catch { throw new InferenceFailure('protocol', 'Claude authentication status was malformed'); }
+        finally { authText = ''; }
+        if (!authenticated) throw new InferenceFailure('authentication', 'Saved Claude subscription is unavailable; run claude auth login');
         let resultLine = '';
-        let reportedModel: string | undefined;
+        let protocolIssue: string | undefined;
         let isolationAcknowledged = false;
         const process = execute({ command: options.command ?? 'claude',
           args: claudeArguments({ ...request, responseSchema }), cwd, env, stdin: request.prompt,
           timeoutMs: options.timeoutMs ?? 180_000, signal: request.signal,
           onLine: (line) => {
-            const event = parseEnvelope(line);
+            let event: Record<string, unknown>;
+            try { event = parseEnvelope(line); }
+            catch { protocolIssue = 'Malformed Claude streaming protocol'; throw new Error(protocolIssue); }
             if (event['type'] === 'system' && event['subtype'] === 'init') {
-              if (!Array.isArray(event['tools']) || event['tools'].length !== 0) throw new Error('Claude tool-free isolation was not acknowledged');
+              try { validateClaudeInitialization(event, responseSchema !== undefined); }
+              catch { protocolIssue = 'Claude tool-free isolation was not acknowledged'; throw new Error(protocolIssue); }
               isolationAcknowledged = true;
               if (typeof event['model'] === 'string') reportedModel = event['model'];
             }
@@ -56,27 +62,28 @@ export function createClaudeInference(options: ClaudeInferenceOptions = {}): Inf
           },
         });
         const completed = await process.completion;
-        if (completed.cancelled) throw new Error('Claude inference was cancelled or stopped after a native failure');
-        if (completed.error !== undefined) throw new Error('Claude inference failed (native process or protocol error)');
-        const refusal = claudeRefusal(result, request.model);
+        rejectInterruptedProcess(completed, request.signal, protocolIssue, evidence());
+        const refusal = claudeRefusal(result, request.model, reportedModel);
         if (refusal !== undefined) throw refusal;
         if (completed.exitCode !== 0) throw new InferenceFailure(responseSchema === undefined ? 'protocol' : 'unsupported', `Claude inference failed (exit ${completed.exitCode})`,
-          { usage: result === undefined ? null : claudeResultUsage(result), responseModel: reportedModel, responseRoute: 'claude-subscription' });
-        if (result === undefined) throw new Error('Claude omitted its terminal result envelope');
-        if (!isolationAcknowledged) throw new Error('Claude omitted tool-free isolation acknowledgement');
+          evidence());
+        if (result === undefined) throw new InferenceFailure('protocol', 'Claude omitted its terminal result envelope', evidence());
+        if (!isolationAcknowledged) throw new InferenceFailure('protocol', 'Claude omitted tool-free isolation acknowledgement', evidence());
         let decoded;
         try {
           if (responseSchema !== undefined) validateInferenceResponse(resultLine, { type: 'object' });
           decoded = decodeClaudeResult(result, responseSchema !== undefined);
           validateInferenceResponse(decoded.text, responseSchema);
         } catch {
-          throw new InferenceFailure('protocol', 'Claude response violated the requested output contract', { usage: claudeResultUsage(result),
-            responseModel: typeof result['model'] === 'string' && result['model'].trim() ? result['model'] : reportedModel, responseRoute: 'claude-subscription' });
+          throw new InferenceFailure('protocol', 'Claude response violated the requested output contract', evidence());
         }
         const actualModel = [decoded.model, reportedModel].find(model => model !== undefined && model.trim().length > 0);
         return { text: decoded.text, usage: decoded.usage,
           model: actualModel ?? request.model,
           modelBasis: actualModel === undefined ? 'requested-assumption' : 'provider-reported', route: 'claude-subscription' };
+      } catch (error) {
+        if (error instanceof InferenceFailure) throw error;
+        throw new InferenceFailure(request.signal?.aborted ? 'cancelled' : 'unknown', 'Claude native inference did not settle successfully', evidence());
       } finally { await rm(cwd, { recursive: true, force: true }); }
     },
   };
@@ -92,8 +99,17 @@ export function claudeArguments(request: InferenceRequest): string[] {
 }
 
 function validateRequest(request: InferenceRequest): void {
-  if (request.temperature !== undefined || request.seed !== undefined) throw new Error('Subscription route does not support temperature or seed');
-  if (request.prompt.trim().length === 0) throw new Error('Inference prompt must not be empty');
-  if (request.model.trim().length === 0 || request.model.startsWith('-')) throw new Error('An explicit native model is required');
-  if (request.signal?.aborted === true) throw new Error('Inference was cancelled before launch');
+  if (request.temperature !== undefined || request.seed !== undefined) throw new InferenceFailure('unsupported', 'Subscription route does not support temperature or seed');
+  if (request.prompt.trim().length === 0) throw new InferenceFailure('unsupported', 'Inference prompt must not be empty');
+  if (request.model.trim().length === 0 || request.model.startsWith('-')) throw new InferenceFailure('unsupported', 'An explicit native model is required');
+  if (request.signal?.aborted === true) throw new InferenceFailure('cancelled', 'Inference was cancelled before launch');
+}
+
+/** The process owner may stop on callback failure; cancelled alone is not caller cancellation. */
+function rejectInterruptedProcess(result: ProcessResult, signal: AbortSignal | undefined,
+  protocolIssue: string | undefined, evidence: InferenceFailureEvidence): void {
+  if (signal?.aborted) throw new InferenceFailure('cancelled', 'Claude inference was cancelled', evidence);
+  if (protocolIssue !== undefined) throw new InferenceFailure('protocol', protocolIssue, evidence);
+  if (result.stop?.reason === 'timeout') throw new InferenceFailure('timeout', 'Claude native process deadline expired', evidence);
+  if (result.cancelled || result.error !== undefined) throw new InferenceFailure('unknown', 'Claude native process did not settle successfully', evidence);
 }

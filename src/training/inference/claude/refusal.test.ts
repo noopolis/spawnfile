@@ -6,7 +6,7 @@ const quota = { type: 'result', subtype: 'success', is_error: true,
   terminal_reason: 'api_error', api_error_status: 429,
   result: "You've hit your session limit · resets 12:20am (Europe/Berlin)",
   usage: { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 0 } };
-const init = JSON.stringify({ type: 'system', subtype: 'init', tools: [] });
+const init = JSON.stringify({ type: 'system', subtype: 'init', tools: [], mcp_servers: [] });
 const secret = 'PRIVATE PROMPT AUTH OUTPUT';
 
 function run(lines: string[], patch: Partial<ProcessResult> = {}, model = 'claude-fable-5-1') {

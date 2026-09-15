@@ -1,3 +1,4 @@
+import type { InferenceFailureEvidence } from '../failure.js';
 import type { Usage } from '../../contracts/execution.js';
 
 export interface ClaudeResult {
@@ -62,4 +63,20 @@ export function parseEnvelope(line: string): Record<string, unknown> {
   const value: unknown = JSON.parse(line);
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('Malformed Claude protocol');
   return value as Record<string, unknown>;
+}
+
+/** Preserve only independently observed model and usage, never raw provider output. */
+export function claudeFailureEvidence(value: Record<string, unknown> | undefined, reportedModel?: string): InferenceFailureEvidence {
+  const terminalModel = value?.['model'];
+  const model = [typeof terminalModel === 'string' ? terminalModel : undefined, reportedModel]
+    .find(candidate => candidate !== undefined && candidate.trim().length > 0);
+  return { usage: value === undefined ? null : claudeResultUsage(value), responseModel: model ?? null, responseRoute: 'claude-subscription' };
+}
+
+/** StructuredOutput is the pinned CLI's schema completion, never an arbitrary agent tool. */
+export function validateClaudeInitialization(value: Record<string, unknown>, structured: boolean): void {
+  const tools = value['tools'], servers = value['mcp_servers'];
+  const allowed = Array.isArray(tools) && (tools.length === 0 ||
+    (structured && tools.length === 1 && tools[0] === 'StructuredOutput'));
+  if (!allowed || !Array.isArray(servers) || servers.length !== 0) throw new Error('Claude inference isolation was not acknowledged');
 }

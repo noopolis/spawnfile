@@ -1,14 +1,17 @@
+import { claudeFailureEvidence } from './protocol.js';
 import { InferenceFailure } from '../failure.js';
 /** Only verified provider refusal fields may enter operator diagnostics. */
-export function claudeRefusal(value: Record<string, unknown> | undefined, model: string): Error | undefined {
+export function claudeRefusal(value: Record<string, unknown> | undefined, model: string, reportedModel?: string): Error | undefined {
   if (value?.['type'] !== 'result' || value['is_error'] !== true ||
-    value['terminal_reason'] !== 'api_error' || value['api_error_status'] !== 429) return undefined;
+    value['terminal_reason'] !== 'api_error') return undefined;
+  if (value['api_error_status'] === 401) return new InferenceFailure('authentication', 'Claude API authentication failed (HTTP 401)', claudeFailureEvidence(value, reportedModel));
+  if (value['api_error_status'] !== 429) return new InferenceFailure('unknown', 'Claude API request failed without a classified refusal', claudeFailureEvidence(value, reportedModel));
 
   const resetHint = sessionReset(value['result']);
   const code = resetHint === undefined ? 'rate-limit' : 'subscription-limit';
   const requestedModel = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/u.test(model) && model.trim() === model ? model : null;
   const message = `Claude ${code} (provider claude-subscription, requested model ${requestedModel ?? 'unavailable'}; HTTP 429)`;
-  return Object.assign(new InferenceFailure('quota', `${message}${resetHint === undefined ? '' : `; resets ${resetHint}`}`), {
+  return Object.assign(new InferenceFailure('quota', `${message}${resetHint === undefined ? '' : `; resets ${resetHint}`}`, claudeFailureEvidence(value, reportedModel)), {
     name: 'ClaudeProviderRefusalError', provider: 'claude-subscription', requestedModel, code, httpStatus: 429,
     ...(resetHint === undefined ? {} : { resetHint }),
   });

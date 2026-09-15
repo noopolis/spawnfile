@@ -18,7 +18,7 @@ function runner(lines: string[], patch: Partial<Awaited<RunningProcess['completi
 it('performs native auth preflight and a tool-free generation in a disposable directory', async () => {
   const calls: ProcessOptions[] = [];
   const provider = createClaudeInference({ process: (options) => {
-    calls.push(options); return runner([JSON.stringify({ type: 'system', subtype: 'init', tools: [], model: 'actual-model' }), JSON.stringify(result)])(options);
+    calls.push(options); return runner([JSON.stringify({ type: 'system', subtype: 'init', tools: [], mcp_servers: [], model: 'actual-model' }), JSON.stringify(result)])(options);
   } });
   const response = await provider.generate({ model: 'selected', prompt: 'task', system: 'instructions' });
   expect(response).toMatchObject({ text: 'real output', model: 'actual-model', modelBasis: 'provider-reported', route: 'claude-subscription', usage: null });
@@ -51,14 +51,14 @@ it('fails closed on missing result, tool isolation failure and native unsuccessf
     await expect(createClaudeInference({ process: runner(lines) }).generate({ model: 'm', prompt: 'p' })).rejects.toThrow();
   }
   await expect(createClaudeInference({ process: runner([JSON.stringify(result)]) }).generate({ model: 'm', prompt: 'p' })).rejects.toThrow('isolation acknowledgement');
-  const plain = await createClaudeInference({ process: runner(['{"type":"system","subtype":"init","tools":[]}', JSON.stringify(result)]) }).generate({ model: 'm', prompt: 'p' });
+  const plain = await createClaudeInference({ process: runner(['{"type":"system","subtype":"init","tools":[],"mcp_servers":[]}', JSON.stringify(result)]) }).generate({ model: 'm', prompt: 'p' });
   expect(plain.model).toBe('m');
   expect(plain.modelBasis).toBe('requested-assumption');
 });
 
 it.each([undefined, '', '   '])('never labels an unreported model as provider-reported (%j)', async model => {
   const nativeUsage = { input_tokens: 3, cache_read_input_tokens: 2, cache_creation_input_tokens: 0, output_tokens: 4 };
-  const lines = [JSON.stringify({ type: 'system', subtype: 'init', tools: [], model }),
+  const lines = [JSON.stringify({ type: 'system', subtype: 'init', tools: [], mcp_servers: [], model }),
     JSON.stringify({ ...result, model, usage: nativeUsage })];
   const response = await createClaudeInference({ process: runner(lines) }).generate({ model: 'claude-fable-5-1', prompt: 'task' });
   expect(response).toMatchObject({ model: 'claude-fable-5-1', modelBasis: 'requested-assumption',
@@ -66,7 +66,7 @@ it.each([undefined, '', '   '])('never labels an unreported model as provider-re
 });
 
 it('prefers a reported terminal model over the initialization model', async () => {
-  const lines = [JSON.stringify({ type: 'system', subtype: 'init', tools: [], model: 'initial' }),
+  const lines = [JSON.stringify({ type: 'system', subtype: 'init', tools: [], mcp_servers: [], model: 'initial' }),
     JSON.stringify({ ...result, model: 'terminal' })];
   const response = await createClaudeInference({ process: runner(lines) }).generate({ model: 'requested', prompt: 'task' });
   expect(response).toMatchObject({ model: 'terminal', modelBasis: 'provider-reported' });
@@ -74,7 +74,7 @@ it('prefers a reported terminal model over the initialization model', async () =
 
 const schema = { type: 'object', properties: { answer: { type: 'string' } }, required: ['answer'], additionalProperties: false };
 const schemaUsage = { input_tokens: 3, cache_read_input_tokens: 2, cache_creation_input_tokens: 0, output_tokens: 4 };
-const ready = JSON.stringify({ type: 'system', subtype: 'init', tools: [], model: 'native-model' });
+const ready = JSON.stringify({ type: 'system', subtype: 'init', tools: [], mcp_servers: [], model: 'native-model' });
 it('requests native JSON schema and reads the structured terminal field without using conversational text', async () => {
   const calls: ProcessOptions[] = [];
   const structured = { answer: 'first\nsecond "quoted"' };
@@ -118,4 +118,39 @@ it('rejects duplicate keys in the actual native structured field before serializ
     .replace('"answer":"x"', '"answer":"x","answer":"y"');
   await expect(createClaudeInference({ process: runner([ready, envelope]) }).generate({ model: 'm', prompt: 'p', responseSchema: schema }))
     .rejects.toMatchObject({ kind: 'protocol', usage: { inputTokens: 5, outputTokens: 4 } });
+});
+
+
+it('accepts only native schema completion with explicit structured output, preserving data without granting command tools', async () => {
+  const commands: ProcessOptions[] = [], data = '$(touch /tmp/should-not-execute); cat /etc/passwd';
+  const provider = createClaudeInference({ process: options => {
+    commands.push(options);
+    return runner([JSON.stringify({ type: 'system', subtype: 'init', tools: ['StructuredOutput'], mcp_servers: [] }),
+      JSON.stringify({ ...result, structured_output: { answer: data }, usage: schemaUsage })])(options);
+  } });
+  const response = await provider.generate({ model: 'm', prompt: 'p', responseSchema: schema });
+  expect(JSON.parse(response.text)).toEqual({ answer: data });
+  expect(commands.every(command => command.command === 'claude')).toBe(true);
+  expect(commands[1]!.args).toContain('--strict-mcp-config');
+  expect(commands[1]!.args[commands[1]!.args.indexOf('--tools') + 1]).toBe('');
+  expect(commands[1]!.args[commands[1]!.args.indexOf('--mcp-config') + 1]).toBe('{"mcpServers":{}}');
+});
+
+it.each([
+  { tools: ['StructuredOutput'], mcp_servers: [], structured: false },
+  { tools: ['StructuredOutput', 'Bash'], mcp_servers: [], structured: true },
+  { tools: ['Read'], mcp_servers: [], structured: true },
+  { tools: ['StructuredOutput', 'StructuredOutput'], mcp_servers: [], structured: true },
+  { tools: ['mcp__external__StructuredOutput'], mcp_servers: [], structured: true },
+  { tools: [{ name: 'StructuredOutput', input_schema: { type: 'object', properties: { command: { type: 'string' } } } }], mcp_servers: [], structured: true },
+  { tools: ['StructuredOutput'], mcp_servers: [{ name: 'custom', tools: ['StructuredOutput'] }], structured: true },
+  { tools: [], mcp_servers: ['custom'], structured: false },
+  { tools: [], mcp_servers: undefined, structured: false },
+])('rejects any unacknowledged tool/MCP configuration (%j)', async ({ structured, ...initialization }) => {
+  const provider = createClaudeInference({ process: runner([
+    JSON.stringify({ type: 'system', subtype: 'init', ...initialization }),
+    JSON.stringify({ ...result, structured_output: { answer: 'ok' } }),
+  ]) });
+  await expect(provider.generate({ model: 'm', prompt: 'p', ...(structured ? { responseSchema: schema } : {}) }))
+    .rejects.toMatchObject({ kind: 'protocol' });
 });
