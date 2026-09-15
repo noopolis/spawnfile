@@ -8,6 +8,13 @@ import { assertInputRoot, exactPath, fileIdentity, hashJson, sealTree, within } 
 import { planInputs, readBoundedJson, stageInput, verifyCanonicalPins } from "./inputs.js";
 import { planTrainingImage, buildTrainingImage } from "./image.js";
 
+function mappedReceipt(digest: string, image: string, config: ReturnType<typeof trainingPreparationSchema.parse>): TrainingMappedPreparation {
+  return parseTrainingMappedPreparation({ version: "spawnfile.training-preparation.v1", preparationDigest: digest, imageId: image,
+    bindings: config.inputs.map(input => ({ inputId: input.id, destination: input.destination })), outputRoot: "/run/training/output",
+    packagePaths: { spawnfile: "/opt/training/spawnfile/dist/cli/index.js", paideia: "/opt/training/paideia", bridge: "/opt/training/paideia/bridges/dspy",
+      nativeWorker: "/opt/training/paideia/dist/src/adapters/daimon-native", integration: "/opt/training/integration", bootstrap: "/opt/training/bootstrap" }, integration: config.integration });
+}
+
 export interface PrepareTrainingOptions {
   configPath: string; context: TrainingContext; args: readonly string[]; dryRun: boolean;
   process: TrainingDockerProcess; timeoutMs: number; signal?: AbortSignal;
@@ -51,9 +58,9 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   if (resume) {
     const previous = JSON.parse(await readFile(statePath, "utf8")) as { digest: string; image: string; staged: string[]; snapshots: (string | null)[] };
     if (previous.digest !== digest || !/^sha256:[a-f0-9]{64}$/u.test(previous.image) ||
-      JSON.stringify(previous.staged) !== JSON.stringify(inputs.map(input => input.git ? path.join(staging, input.id) : input.source))) throw Error("Training preparation changed; exact resume rejected");
+      JSON.stringify(previous.staged) !== JSON.stringify(inputs.map(input => input.git || input.files ? path.join(staging, input.id) : input.source))) throw Error("Training preparation changed; exact resume rejected");
     image = previous.image; staged = previous.staged;
-    const snapshots = await Promise.all(inputs.map(async (input, index) => input.git ? hashJson(fileIdentity(await sealTree(staged[index]!, "input", { ignoreGit: true }))) : null));
+    const snapshots = await Promise.all(inputs.map(async (input, index) => input.git || input.files ? hashJson(fileIdentity(await sealTree(staged[index]!, "input", { ignoreGit: true, internalSymlinks: true }))) : null));
     if (JSON.stringify(previous.snapshots) !== JSON.stringify(snapshots)) throw Error("Persisted training input snapshot changed");
     const mapped = parseTrainingMappedPreparation(await readBoundedJson(preparationPath));
     if (mapped.preparationDigest !== digest || mapped.imageId !== image) throw Error("Persisted training preparation identity mismatch");
@@ -72,18 +79,19 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
         const inspected = await execute(["--context", config.dockerContext, "image", "inspect", image, "--format", "{{.Id}}"]);
         if (inspected.code !== 0) throw Error("Training image is unavailable"); image = inspected.stdout.trim();
       }
-      const mapped: TrainingMappedPreparation = { version: "spawnfile.training-preparation.v1", preparationDigest: digest, imageId: image,
-        bindings: inputs.map(input => ({ inputId: input.id, destination: input.destination })), outputRoot: "/run/training/output",
-        packagePaths: { spawnfile: "/opt/training/spawnfile/dist/cli/index.js", paideia: "/opt/training/paideia", bridge: "/opt/training/paideia/bridges/dspy",
-          nativeWorker: "/opt/training/paideia/dist/src/adapters/daimon-native", integration: "/opt/training/integration", bootstrap: "/opt/training/bootstrap" }, integration: config.integration };
+      const mapped = mappedReceipt(digest, image, config);
       const launch = trainingContainerConfigSchema.parse({ version: "spawnfile.training-container.v1", dockerContext: config.dockerContext,
         inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth });
       await writeFile(configPath, JSON.stringify(launch), { flag: "wx", mode: 0o600 });
       await writeFile(preparationPath, JSON.stringify(parseTrainingMappedPreparation(mapped)), { flag: "wx", mode: 0o400 });
-      const snapshots = await Promise.all(inputs.map(async (input, index) => input.git ? hashJson(fileIdentity(await sealTree(staged[index]!, "input", { ignoreGit: true }))) : null));
+      const snapshots = await Promise.all(inputs.map(async (input, index) => input.git || input.files ? hashJson(fileIdentity(await sealTree(staged[index]!, "input", { ignoreGit: true, internalSymlinks: true }))) : null));
       await writeFile(statePath, JSON.stringify({ digest, image, staged, snapshots }), { flag: "wx", mode: 0o600 });
     } catch (error) { if (owned) await rm(staging, { recursive: true, force: true }); throw error; }
   }
+  const expectedLaunch = trainingContainerConfigSchema.parse({ version: "spawnfile.training-container.v1", dockerContext: config.dockerContext,
+    inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth });
+  if (hashJson(await readBoundedJson(configPath)) !== hashJson(expectedLaunch) ||
+    hashJson(await readBoundedJson(preparationPath)) !== hashJson(mappedReceipt(digest, image, config))) throw Error("Saved training launch or mapped receipt changed");
   const inspected = await execute(["--context", config.dockerContext, "image", "inspect", image, "--format", "{{.Id}}"]);
   if (inspected.code !== 0 || inspected.stdout.trim() !== image) throw Error("Saved training image is missing or changed");
   const map = (file: string): string => {

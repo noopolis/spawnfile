@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { TrainingDockerProcess } from "../container/process.js";
@@ -26,7 +26,7 @@ async function packageFiles(root: string, target: string, withDist: boolean, loc
 
 export async function planTrainingImage(build: TrainingImageBuild, root: string, auth: readonly string[], ownRoot = packageRoot): Promise<TrainingImagePlan> {
   const resolve = (value: string) => path.resolve(root, value);
-  for (const source of [build.paideia, build.bridge, build.claude, build.grok.source, build.integration.source, build.bootstrap]) assertInputRoot(resolve(source), auth);
+  for (const source of [build.paideia, build.bridge, build.claude, build.grok.source, build.integration.source, ...build.bootstrap ? [build.bootstrap] : []]) assertInputRoot(resolve(source), auth);
   const assets = ownRoot === packageRoot ? trainingAssets : path.join(ownRoot, "runtime-images/training");
   const dockerfile = await readFile(path.join(assets, "Dockerfile"), "utf8");
   const ownLock = path.extname(fileURLToPath(import.meta.url)) === ".ts" || ownRoot !== packageRoot
@@ -37,7 +37,7 @@ export async function planTrainingImage(build: TrainingImageBuild, root: string,
     ...await packageFiles(resolve(build.claude), "claude", false),
     ...await sealTree(resolve(build.bridge), "bridge", { ignoreDevelopment: true }),
     ...await sealTree(resolve(build.integration.source), "integration", { ignoreDevelopment: true }),
-    ...await sealTree(resolve(build.bootstrap), "bootstrap", { ignoreDevelopment: true }),
+    ...build.bootstrap ? await sealTree(resolve(build.bootstrap), "bootstrap", { ignoreDevelopment: true }) : [],
     await sealFile(resolve(build.grok.source), "grok"),
     await sealFile(path.join(ownRoot, "runtimes.yaml"), "spawnfile/runtimes.yaml"),
     await sealFile(path.join(ownRoot, "moltnet-releases.json"), "spawnfile/moltnet-releases.json")
@@ -72,6 +72,7 @@ export async function buildTrainingImage(plan: TrainingImagePlan, options: {
   const staging = await mkdtemp(path.join(options.parent, ".spawnfile-training-image-"));
   try {
     await copySealed(plan.files, staging);
+    await mkdir(path.join(staging, "bootstrap"), { recursive: true, mode: 0o700 });
     await writeFile(path.join(staging, "Dockerfile"), `${plan.dockerfile}\nLABEL com.spawnfile.training.recipe=${JSON.stringify(plan.digest)}\n`, { mode: 0o600 });
     await writeFile(path.join(staging, "train"), plan.entry, { mode: 0o755 });
     const result = await call(["build", "--platform", plan.build.platform, "--build-arg", `NATIVE_IMAGE=${plan.build.nativeImage}`,

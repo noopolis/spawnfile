@@ -37,7 +37,7 @@ COPY integration /opt/training/integration
 COPY bootstrap /opt/training/bootstrap
 COPY train /opt/training/bin/train
 RUN chmod 0555 /opt/training/bin/train /opt/training/bin/grok \
- && chmod -R a+rX /opt/training/bootstrap /opt/training/integration \
+ && chmod -R a+rX /opt/training \
  && ln -s /opt/training/claude/node_modules/.bin/claude /opt/training/bin/claude \
  && ln -s /opt/training/paideia/dist/src/cli/main.js /opt/training/bin/paideia \
  && ln -s /opt/training/spawnfile/dist/cli/index.js /opt/training/bin/spawnfile \
