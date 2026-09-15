@@ -9,7 +9,10 @@ import { readTrainingWitness } from "./witness.js";
 import { verifyTrainingCompatibility } from "./compatibility.js";
 import { repairEnvelopeSchema } from "./contract.js";
 
-const commandSchema = z.object({ schema: z.literal("paideia.command-checkpoint.v1"), id: z.string().uuid(), identity: z.string().regex(/^[a-f0-9]{64}$/u) }).strict();
+const commandSchema = z.object({ schema: z.literal("paideia.command-checkpoint.v1"), id: z.string().uuid(),
+  identity: z.string().regex(/^[a-f0-9]{64}$/u),
+  lineage: z.object({ parentId: z.string().uuid(), parentIdentity: z.string().regex(/^[a-f0-9]{64}$/u),
+    receiptDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/u) }).strict().optional() }).strict();
 export async function planMeasurementRepair(options: { parent: string; witness?: string; output: string;
   auth: string[]; image: TrainingImagePlan; inputs: PlannedInput[]; context: TrainingContext; resume: boolean }) {
   const parent = await exactPath(options.parent);
