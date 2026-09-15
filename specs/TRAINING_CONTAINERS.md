@@ -8,7 +8,7 @@ host-only estimate and does not use Docker or model authentication.
 
 ## Launch contract
 
-Actual training requires both `--training-image` (a digest reference or immutable
+The advanced v1 path requires both `--training-image` (a digest reference or immutable
 image ID already installed locally) and `--training-config` (JSON below).
 `--paideia-command` applies only to dry-run; actual execution always starts the
 image-owned `/opt/training/bin/train`. No shell or executable from the host is
@@ -100,3 +100,80 @@ This is a single-container boundary. Native Daimon sandbox policy still controls
 individual agent access inside it. The image build, usable private integration,
 authenticated model run and live terminal receipt require end-to-end verification
 before calling this deployment ready.
+
+## Declarative preparation (v2)
+
+Use the same command with `--training-config evals/training.json`; v2 owns the
+image, so omit `--training-image`. `--train`, `--out`, `--resume` and `--view`
+retain their meanings. Docker must already be available in the named local
+context. The command does not configure or start a machine-global VM.
+
+```json
+{
+  "version": "spawnfile.training-container.v2",
+  "dockerContext": "desktop-linux",
+  "image": {
+    "build": {
+      "recipe": "daimon-dspy.v1",
+      "nativeImage": "registry.example/native@sha256:<64 hex characters>",
+      "pythonImage": "docker.io/library/python@sha256:<64 hex characters>",
+      "platform": "linux/arm64",
+      "paideia": "./packages/paideia",
+      "bridge": "./packages/dspy",
+      "claude": "./packages/claude",
+      "grok": { "source": "./bin/grok", "sha256": "sha256:<64 hex characters>" },
+      "integration": { "source": "./integration", "entry": "container/entry.ts" },
+      "bootstrap": "./bootstrap"
+    }
+  },
+  "integration": { "settings": { "input": "evals", "path": "settings.json" } },
+  "inputs": [
+    { "id": "project", "source": "../project", "destination": "/run/training/inputs/project" },
+    { "id": "evals", "source": ".", "include": ["settings.json", "train.paideia.yaml", "test.paideia.yaml"], "destination": "/run/training/inputs/evals" }
+  ],
+  "output": { "source": "../runs/author", "destination": "/run/training/output" },
+  "auth": []
+}
+```
+
+Replace digest placeholders with verified immutable pins. This recipe supports
+Daimon with DSPy only; it does not promise other native runtime layouts.
+`bootstrap` is optional: omit it when the installed integration builds its own
+verified runtime bootstrap from maintained source inside the writable output. An
+already-built image can instead use `"image": {"ref": "sha256:..."}`.
+
+Source paths resolve relative to the config file. The output parent must exist;
+the command creates the output and its private preparation directory. Plain
+inputs are readonly bindings. `include` stages only declared files/subtrees,
+preserving their paths, and avoids mounting historical runs or host dependencies.
+
+A Git input may declare `"git": {"revision": "<full commit>", "overlays":
+[{"source": "./generated/tools.tar", "path": "tools.tar", "sha256": "sha256:..."}]}`.
+Its source must be a repository root. Spawnfile creates a self-contained pinned
+Git snapshot and adds new hash-verified generated files. It never copies a
+worktree's `.git` pointer or overwrites tracked files. The selected canonical
+agent's pinned source bytes must match that snapshot. Confined internal links
+are supported; escaping links and submodules are rejected. Git and local
+`include` modes are separate.
+
+Build staging includes explicit distributions, locks, the installed Spawnfile,
+and its packaged recipe. Local `file:`/link dependency closures are unsupported
+and fail before building; provide complete registry-locked distributions instead.
+The recipe supplies the Daimon peer from its native parent. Credentials and
+datasets never enter the image context. Cache identity includes actual source,
+lock, executable and recipe bytes, parent images, architecture and entrypoint;
+reuse also verifies the image ID and recipe label in the selected Docker context.
+
+The installed integration reads `/run/paideia/preparation.json` using
+`parseTrainingMappedPreparation` from `spawnfile/training`. This protected
+`spawnfile.training-preparation.v1` receipt contains the preparation digest,
+immutable image ID, named container bindings, output root, installed package
+paths and the input-relative settings reference. It contains no host paths or
+credentials. The integration resolves its own typed settings; Spawnfile never
+rewrites arbitrary JSON strings or invokes a host project preparation script.
+
+Dry-run hashes and validates local inputs but performs no Docker, auth or
+preparation writes. Exact resume checks current source identity and preserved
+snapshots/receipts, then requires the saved immutable image. It never rebuilds
+a replacement under an existing experiment identity. Paideia independently
+checks its experiment checkpoint and cumulative budgets.

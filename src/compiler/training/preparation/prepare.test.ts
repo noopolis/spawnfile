@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { lstat, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, expect, it } from "vitest";
@@ -88,4 +88,43 @@ it("uses an explicit immutable image without package preparation", async () => {
   const f = await fixture(); f.config.image = { ref: image }; await f.save();
   const result = await prepareTraining(f.options); expect(result).toMatchObject({ image });
   expect(f.docker.calls.some(args => args[2] === "build")).toBe(false);
+});
+
+it("validates preserved launch and mapped receipts instead of trusting their declared digest", async () => {
+  const f = await fixture(); const prepared = await prepareTraining(f.options); if ("dryRun" in prepared) throw Error("actual expected");
+  const original = await readFile(prepared.preparationPath, "utf8"), mapped = JSON.parse(original);
+  await chmod(prepared.preparationPath, 0o600);
+  mapped.bindings[0].destination = "/run/training/inputs/elsewhere";
+  await writeFile(prepared.preparationPath, JSON.stringify(mapped));
+  await expect(prepareTraining({ ...f.options, args: [...f.args, "--resume"] })).rejects.toThrow("mapped receipt changed");
+  await writeFile(prepared.preparationPath, original);
+  mapped.imageId = `sha256:${"b".repeat(64)}`; await writeFile(prepared.preparationPath, JSON.stringify(mapped));
+  await expect(prepareTraining({ ...f.options, args: [...f.args, "--resume"] })).rejects.toThrow("identity mismatch");
+  await writeFile(prepared.preparationPath, original);
+  const launch = JSON.parse(await readFile(prepared.configPath, "utf8")); launch.auth = [];
+  await writeFile(prepared.configPath, JSON.stringify(launch));
+  await expect(prepareTraining({ ...f.options, args: [...f.args, "--resume"] })).rejects.toThrow("launch or mapped receipt changed");
+});
+
+it("stages selective input closure and forwards resource paths through the snapshot on resume", async () => {
+  const f = await fixture(); f.config.inputs[0]!.include = ["Spawnfile", "train.yaml"]; await f.save();
+  const args = [...f.args, "--resource", `archive=${f.context.project.root}`, "--test", f.args[1]!, "--cost-config", f.args[1]!];
+  const prepared = await prepareTraining({ ...f.options, args }); if ("dryRun" in prepared) throw Error("actual expected");
+  expect(prepared.args).toContain(`archive=${prepared.context.project.root}`);
+  expect(prepared.args.filter(value => value === path.join(prepared.context.project.root, "train.yaml"))).toHaveLength(3);
+  await prepareTraining({ ...f.options, args: [...args, "--resume"] });
+});
+
+it("resolves immutable repository references and rejects missing images, overlapping inputs and preexisting files", async () => {
+  const f = await fixture(); f.config.image = { ref: `registry.invalid/image@${image}` }; await f.save();
+  const prepared = await prepareTraining({ ...f.options, process: async args => args[0] === "context"
+    ? { code: 0, stdout: '"unix:///socket"', stderr: "" } : { code: 0, stdout: image, stderr: "" } });
+  expect(prepared).toMatchObject({ image });
+  f.config.output.source = "missing-image"; await f.save();
+  await expect(prepareTraining({ ...f.options, args: ["--out", path.join(f.root, "missing-image")], process: async args => args[0] === "context"
+    ? { code: 0, stdout: '"unix:///socket"', stderr: "" } : { code: 1, stdout: "", stderr: "" } })).rejects.toThrow("unavailable");
+  f.config.inputs[1]!.source = "project"; await f.save(); await expect(prepareTraining(f.options)).rejects.toThrow("inputs overlap");
+  f.config.inputs[1]!.source = "settings"; f.config.output.source = "file"; await f.put("file"); await f.save();
+  await expect(prepareTraining({ ...f.options, args: ["--out", path.join(f.root, "file")] })).rejects.toThrow();
+  f.config.auth[0]!.source = "own"; await f.save(); await expect(prepareTraining(f.options)).rejects.toThrow("regular leaf");
 });

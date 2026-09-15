@@ -12,7 +12,7 @@ export const trainingBuildSchema = z.object({
   platform: z.enum(["linux/arm64", "linux/amd64"]),
   paideia: local, bridge: local, claude: local,
   grok: z.object({ source: local, sha256: sha }).strict(),
-  integration: z.object({ source: local, entry: relative.refine(value => /^[A-Za-z0-9._/-]+$/u.test(value)) }).strict(), bootstrap: local
+  integration: z.object({ source: local, entry: relative.refine(value => /^[A-Za-z0-9._/-]+$/u.test(value)) }).strict(), bootstrap: local.optional()
 }).strict();
 export const trainingPreparationSchema = z.object({
   version: z.literal("spawnfile.training-container.v2"),
@@ -21,6 +21,7 @@ export const trainingPreparationSchema = z.object({
   integration: z.object({ settings: reference }).strict(),
   inputs: z.array(z.object({
     id: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/u), source: local, destination,
+    include: z.array(relative).min(1).max(256).optional(),
     git: z.object({ revision: z.string().regex(/^[a-f0-9]{40}$/u),
       overlays: z.array(z.object({ source: local, path: relative, sha256: sha }).strict()).max(256).default([])
     }).strict().optional()
@@ -31,6 +32,7 @@ export const trainingPreparationSchema = z.object({
   if (new Set(value.inputs.map(input => input.id)).size !== value.inputs.length) context.addIssue({ code: "custom", message: "Input IDs must be unique" });
   if (new Set(value.auth.map(auth => auth.provider)).size !== value.auth.length) context.addIssue({ code: "custom", message: "Auth providers must be unique" });
   if (!value.inputs.some(input => input.id === value.integration.settings.input)) context.addIssue({ code: "custom", message: "Integration settings require a declared input" });
+  if (value.inputs.some(input => input.git && input.include)) context.addIssue({ code: "custom", message: "Git snapshots and selective local inputs are separate modes" });
 });
 export type TrainingPreparationConfig = z.infer<typeof trainingPreparationSchema>;
 export type TrainingImageBuild = z.infer<typeof trainingBuildSchema>;

@@ -22,7 +22,7 @@ export const registerTrainCommand = (
     .option("--agent <id>", "Exact canonical agent node id (inferred only for a single-agent project)")
     .option("--paideia-command <executable>", "Installed Paideia executable; no shell or automatic install", "paideia")
     .option("--training-image <immutable-image>", "Pinned image containing the complete training environment")
-    .option("--training-config <json>", "Explicit local Docker inputs, output and auth leaf bindings")
+    .option("--training-config <json>", "V2 image recipe and declared inputs, or advanced v1 local bindings")
     .option("--dry-run", "Validate and estimate without compiling, authenticating or starting models")
     .option("--resume", "Resume the exact persisted training experiment in --out");
   for (const name of forwarded) {
