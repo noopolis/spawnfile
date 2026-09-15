@@ -11,6 +11,11 @@ observed child exit. Uncertain cancellation fails closed; outer container teardo
 remains the caller's responsibility. Tests use real child/loopback fixtures but
 must not claim actual authenticated model acceptance from those fixtures.
 
+A completed trace can close an execution whose delivery remains accepted and
+deferred awaiting external input. Require that explicit blocked receipt and all
+identity/idle/stop/exit proofs. Confirming closure never changes the task outcome
+or makes an unanswered delivery eligible as completed training evidence.
+
 Persist at most 64 KiB of each child output stream into an exclusive 0600 diagnostic
 receipt under the protected canonical control root when stopping the child. Keep
 raw output out of observations, viewer messages and model inputs; it can contain

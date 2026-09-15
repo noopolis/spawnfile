@@ -90,7 +90,10 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
       const result = await http<T>(path, body, ms, signal);
       if (path === '/trial/run') {
         const value = result as TerminalEvidence;
-        if (value.status === 'completed' && value.receipt?.state === 'completed' && value.native.traces[0]?.status === 'completed' && value.schema === 'paideia.daimon-native.trial.v1' && value.trialId === trialId && value.agentId === launch.agent.id && value.model === launch.agent.model &&
+        const completed = value.status === 'completed' && value.receipt?.state === 'completed';
+        const deferred = value.status === 'failed' && value.blocked === 'awaiting-external-input' &&
+          value.receipt?.state === 'accepted' && value.receipt.deferred === true;
+        if ((completed || deferred) && value.native.traces[0]?.status === 'completed' && value.schema === 'paideia.daimon-native.trial.v1' && value.trialId === trialId && value.agentId === launch.agent.id && value.model === launch.agent.model &&
             value.configSha256 === launch.configSha256 && value.wakeId === (body as { wakeId?: string })?.wakeId && value.receipt && value.activity &&
             executionClosed(value.activity, value.receipt, value.native.traces, launch.agent.id) === value.executionId) closed = value;
       }

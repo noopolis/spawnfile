@@ -36,7 +36,12 @@ if(req.url==='/trial/stop'){res.end(JSON.stringify({schema:'paideia.daimon-nativ
 if(req.url==='/trial/run'){if(mode==='stall')return;let text='';for await(const chunk of req)text+=chunk;const input=JSON.parse(text),id=crypto.randomUUID(),at=new Date().toISOString();
 const receipt={version:'noopolis.daimon.wake-receipt-status.v2',acceptance_id:crypto.randomUUID(),agent_id:launch.agent.id,delivery_id:trial+':'+input.wakeId,request_digest:'a'.repeat(64),state:'completed',accepted_at:at,updated_at:at,execution_id:id};
 terminal={schema:'paideia.daimon-native.trial.v1',trialId:trial,wakeId:input.wakeId,agentId:launch.agent.id,model:launch.agent.model,configSha256:launch.configSha256,status:'completed',startedAt:at,completedAt:at,executionId:id,receipt,activity:{version:'noopolis.daimon.organization-runtime-activity.v2',items:[{...receipt,active:false}],executions:[]},native:{traces:[{schema:'daimon.turn_trace.v1',agent_id:launch.agent.id,turn_id:id,started_at:at,completed_at:at,status:'completed',tools:[]}],usage:[{v:'noopolis.daimon.turn-usage.v1',agent:launch.agent.id,wake:id,engine:'codex',input:100,output:20,cache_read:40,total:120,complete:true}],toolReceipts:[],modelContexts:[{model:launch.agent.model}]},coverage:[{channel:'usage',completeness:'complete',ordering:'source'}]};
-if(mode==='blocked'&&input.wakeId==='task'){terminal.status='failed';terminal.blocked='awaiting-external-input';}
+if(mode.startsWith('blocked')&&input.wakeId==='task'){terminal.status='failed';terminal.blocked='awaiting-external-input';receipt.state='accepted';receipt.deferred=true;
+terminal.error='Native execution completed; delivery blocked awaiting external input';
+if(mode==='blocked-no-deferred')delete receipt.deferred;
+if(mode==='blocked-failed-trace')terminal.native.traces[0].status='failed';
+if(mode==='blocked-active')terminal.activity.executions=[{agent_id:launch.agent.id,turn_id:id}];
+if(mode==='blocked-wrong-execution')terminal.executionId='foreign';}
 if(mode==='bad-terminal')terminal.trialId='foreign';res.end(JSON.stringify(terminal));return;}
 res.end('{}');});
 server.listen(launch.host.port,'127.0.0.1',()=>console.log(JSON.stringify({schema:'paideia.daimon-native.ready.v1',trialId:mode==='bad-ready'?'foreign':trial,configSha256:launch.configSha256,agentId:launch.agent.id,model:launch.agent.model,port:launch.host.port})));

@@ -42,6 +42,21 @@ it('keeps sourced child continuation, immutable callback identity and accumulate
   expect(context[0]?.executionId).toMatch(/^child:/u); expect(context[0]).not.toHaveProperty('containerName');
   expect(await session.stop('Finished')).toMatchObject({ quiescence: 'confirmed' });
 });
+it('confirms a closed deferred execution without claiming the unanswered task completed', async () => {
+  const f = await fixture('blocked'); const next = vi.fn(async () => null);
+  const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process', externalInputs: { maxDeliveries: 1, next } } }).start(f.input);
+  const result = await session.run({ id: 'task', text: 'Work' });
+  expect(result).toMatchObject({ status: 'failed', error: 'Native execution completed; delivery blocked awaiting external input',
+    usage: { inputTokens: 100, outputTokens: 20 }, stop: { state: 'acknowledged', quiescence: 'confirmed', reason: 'No matching external input' } });
+  expect(next).toHaveBeenCalledOnce();
+  expect(await session.stop('Finished')).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed' });
+});
+it.each(['blocked-no-deferred', 'blocked-failed-trace', 'blocked-active', 'blocked-wrong-execution'])(
+  'does not infer closed deferred execution from %s', async mode => {
+    const f = await fixture(mode); const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000);
+    await handle.request('/trial/run', { wakeId: 'task', text: 'Work' });
+    expect(await handle.stop('Unanswered task')).toMatchObject({ state: 'unknown', quiescence: 'unknown' });
+  });
 it.each(['bad-ready', 'bad-health', 'exit', 'overflow'])('rejects %s before a native task', async mode => {
   const f = await fixture(mode);
   await expect(createDaimonNativeAdapter({ execution: { kind: 'child-process' }, startupMs: 150 }).start(f.input)).rejects.toThrow();
