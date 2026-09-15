@@ -212,7 +212,7 @@ files are copied into a sealed read-only parent projection. Runtime homes, auth,
 mutable caches and invocation databases are excluded. The exact projection manifest
 and checkpoint bytes are hashed. `/run/paideia/repair.json` is a protected read-only
 `paideia.measurement-repair.v1` receipt; the launcher forwards its fixed path via
-`--repair-context`. It contains container paths and digests, no host credentials.
+`--repair-context` together with `--repair-measurements /run/training/inputs/repair-parent`. Both refer to the verified read-only projection; no host paths or credentials are forwarded.
 Paideia owns error-only rescoring, retaining successful historical pass/fail results,
 paired optimizer import, cumulative accounting and the new experiment lineage.
 A repair receipt does not itself assert that any judgment or continuation succeeded.

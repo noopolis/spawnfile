@@ -142,7 +142,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
       if (hashJson(await readBoundedJson(repairConfig)) !== hashJson(repairLaunch)) throw Error("Saved repair launch changed");
     } else await writeFile(repairConfig, JSON.stringify(repairLaunch), { flag: "wx", mode: 0o600 });
     return { digest, image, configPath: repairConfig, preparationPath, repairPath: projected.repairPath, context,
-      args: [...args, "--repair-context", "/run/paideia/repair.json"] };
+      args: [...args, "--repair-measurements", "/run/training/inputs/repair-parent", "--repair-context", "/run/paideia/repair.json"] };
   }
   return { digest, image, configPath, preparationPath, context, args };
 }
