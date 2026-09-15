@@ -7,6 +7,9 @@ import { fileURLToPath } from "node:url";
 
 import { trainingContextSchema, type TrainingContext } from "../compiler/training/index.js";
 import { launchTrainingContainer } from "../compiler/training/container/index.js";
+import { runTrainingDocker } from "../compiler/training/container/process.js";
+import { prepareTraining } from "../compiler/training/preparation/index.js";
+import { readBoundedJson } from "../compiler/training/preparation/inputs.js";
 import { SpawnfileError } from "../shared/index.js";
 import type { PaideiaProcessOutcome } from "./paideiaSupervisor.js";
 import type { CliStreams } from "./runCli.js";
@@ -130,6 +133,17 @@ const runChild = (options: DelegatePaideiaTrainingOptions, contextPath: string):
 /** Delegates through the public CLI, never importing Paideia or selecting a fallback adapter. */
 export const delegatePaideiaTraining = async (options: DelegatePaideiaTrainingOptions): Promise<number> => {
   if (options.signal?.aborted) return 130;
+  if (options.trainingConfig) {
+    const config = await readBoundedJson(options.trainingConfig) as { version?: unknown };
+    if (config.version === "spawnfile.training-container.v2") {
+      if (options.trainingImage) throw failure("V2 owns its image declaration; --training-image is only for v1");
+      const prepared = await prepareTraining({ configPath: options.trainingConfig, context: options.context, args: options.args,
+        dryRun: options.dryRun, process: runTrainingDocker, timeoutMs: options.timeoutMs, signal: options.signal, streams: options.streams });
+      if (!("dryRun" in prepared)) return launchTrainingContainer({ ...prepared,
+        timeoutMs: options.timeoutMs, signal: options.signal, streams: options.streams });
+      options.streams.stderr(`Training preparation plan ${prepared.digest}; no Docker, auth or filesystem mutations`);
+    }
+  }
   if (!options.dryRun) {
     if (!options.trainingImage || !options.trainingConfig) throw failure("Actual training requires --training-image and --training-config; host execution is disabled");
     return launchTrainingContainer({ image: options.trainingImage, configPath: options.trainingConfig,

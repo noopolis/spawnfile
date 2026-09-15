@@ -35,8 +35,8 @@ export const registerTrainCommand = (
     if (options.dryRun !== true && typeof options.out !== "string") {
       throw new SpawnfileError("validation_error", "Actual training requires --out; dry-run does not write an output directory");
     }
-    if (options.dryRun !== true && (typeof options.trainingImage !== "string" || typeof options.trainingConfig !== "string")) {
-      throw new SpawnfileError("validation_error", "Actual training requires --training-image and --training-config; host execution is disabled");
+    if (options.dryRun !== true && typeof options.trainingConfig !== "string") {
+      throw new SpawnfileError("validation_error", "Actual training requires --training-config; v1 additionally requires --training-image; host execution is disabled");
     }
     const timeout = options.timeoutMs === undefined ? 3_600_000 : Number(options.timeoutMs);
     if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 3_600_000 ||

@@ -1,0 +1,107 @@
+import { lstat, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import type { TrainingContext } from "../contract.js";
+import { trainingContainerConfigSchema } from "../container/contract.js";
+import type { TrainingDockerProcess } from "../container/process.js";
+import { trainingPreparationSchema, parseTrainingMappedPreparation, type TrainingMappedPreparation } from "./contract.js";
+import { assertInputRoot, exactPath, fileIdentity, hashJson, sealTree, within } from "./files.js";
+import { planInputs, readBoundedJson, stageInput, verifyCanonicalPins } from "./inputs.js";
+import { planTrainingImage, buildTrainingImage } from "./image.js";
+
+export interface PrepareTrainingOptions {
+  configPath: string; context: TrainingContext; args: readonly string[]; dryRun: boolean;
+  process: TrainingDockerProcess; timeoutMs: number; signal?: AbortSignal;
+  streams: { stdout(line: string): void; stderr(line: string): void };
+  /** Test-only package fixture; production always resolves its own installed distribution. */
+  packageRoot?: string;
+}
+export interface PreparedTraining {
+  digest: string; image: string; configPath: string; preparationPath: string; context: TrainingContext; args: string[];
+}
+
+/** Reads only until the explicit dry-run boundary; preparation never executes project code. */
+export async function prepareTraining(options: PrepareTrainingOptions): Promise<PreparedTraining | { digest: string; dryRun: true }> {
+  const config = trainingPreparationSchema.parse(await readBoundedJson(options.configPath));
+  const root = path.dirname(path.resolve(options.configPath));
+  const auth = config.auth.map(entry => ({ ...entry, source: path.resolve(root, entry.source) }));
+  const output = path.resolve(root, config.output.source), parent = path.dirname(output);
+  assertInputRoot(output, auth.map(entry => entry.source));
+  if (await realpath(parent) !== parent) throw Error("Training output parent must be canonical and already exist");
+  const inputs = await planInputs(config, root, auth.map(entry => entry.source));
+  const roots = inputs.map(input => input.source);
+  for (let index = 0; index < inputs.length; index++) {
+    const input = inputs[index]!;
+    if (within(input.source, output) || within(output, input.source)) throw Error("Training output overlaps readonly input");
+    for (const other of inputs.slice(index + 1)) if (within(input.source, other.source) || within(other.source, input.source) ||
+      within(input.destination, other.destination) || within(other.destination, input.destination)) throw Error("Training inputs overlap");
+  }
+  const imagePlan = "build" in config.image ? await planTrainingImage(config.image.build, root, auth.map(entry => entry.source), options.packageRoot) : undefined;
+  const digest = hashJson({ config, sources: inputs.map(input => ({ id: input.id, digest: input.digest })), image: imagePlan?.digest ?? config.image,
+    canonical: options.context.project.sourceDigest });
+  if (options.dryRun) return { digest, dryRun: true };
+  options.signal?.throwIfAborted();
+  for (const entry of auth) if (await exactPath(entry.source) !== entry.source || !(await lstat(entry.source)).isFile()) throw Error("Training auth must be a canonical regular leaf");
+  const execute = (args: string[]) => options.process(args, { timeoutMs: options.timeoutMs, signal: options.signal });
+  const endpoint = await execute(["context", "inspect", config.dockerContext, "--format", "{{json .Endpoints.docker.Host}}"]);
+  if (endpoint.code !== 0 || !/^unix:\/\//u.test(JSON.parse(endpoint.stdout))) throw Error("Training preparation requires a local Unix Docker context");
+  const staging = path.join(parent, `.spawnfile-training-preparation-${hashJson(output).slice(7, 23)}`);
+  const configPath = path.join(staging, "launch.json"), preparationPath = path.join(staging, "mapped.json"), statePath = path.join(staging, "state.json");
+  const resume = options.args.includes("--resume");
+  let image: string, staged: string[];
+  if (resume) {
+    const previous = JSON.parse(await readFile(statePath, "utf8")) as { digest: string; image: string; staged: string[]; snapshots: (string | null)[] };
+    if (previous.digest !== digest || !/^sha256:[a-f0-9]{64}$/u.test(previous.image) ||
+      JSON.stringify(previous.staged) !== JSON.stringify(inputs.map(input => input.git ? path.join(staging, input.id) : input.source))) throw Error("Training preparation changed; exact resume rejected");
+    image = previous.image; staged = previous.staged;
+    const snapshots = await Promise.all(inputs.map(async (input, index) => input.git ? hashJson(fileIdentity(await sealTree(staged[index]!, "input", { ignoreGit: true }))) : null));
+    if (JSON.stringify(previous.snapshots) !== JSON.stringify(snapshots)) throw Error("Persisted training input snapshot changed");
+    const mapped = parseTrainingMappedPreparation(await readBoundedJson(preparationPath));
+    if (mapped.preparationDigest !== digest || mapped.imageId !== image) throw Error("Persisted training preparation identity mismatch");
+    await verifyCanonicalPins(inputs, options.context.sources, staged);
+  } else {
+    let owned = false;
+    try {
+      await mkdir(staging, { mode: 0o700 }); owned = true;
+      try { await mkdir(output, { mode: 0o700 }); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST" || !(await lstat(output)).isDirectory() || await realpath(output) !== output) throw error; }
+      staged = await Promise.all(inputs.map(input => stageInput(input, path.join(staging, input.id))));
+      await verifyCanonicalPins(inputs, options.context.sources, staged);
+      image = imagePlan ? (await buildTrainingImage(imagePlan, { parent, dockerContext: config.dockerContext, process: options.process,
+        timeoutMs: options.timeoutMs, signal: options.signal, streams: options.streams })).imageId : "ref" in config.image ? config.image.ref : "";
+      if (!image.startsWith("sha256:")) {
+        const inspected = await execute(["--context", config.dockerContext, "image", "inspect", image, "--format", "{{.Id}}"]);
+        if (inspected.code !== 0) throw Error("Training image is unavailable"); image = inspected.stdout.trim();
+      }
+      const mapped: TrainingMappedPreparation = { version: "spawnfile.training-preparation.v1", preparationDigest: digest, imageId: image,
+        bindings: inputs.map(input => ({ inputId: input.id, destination: input.destination })), outputRoot: "/run/training/output",
+        packagePaths: { spawnfile: "/opt/training/spawnfile/dist/cli/index.js", paideia: "/opt/training/paideia", bridge: "/opt/training/paideia/bridges/dspy",
+          nativeWorker: "/opt/training/paideia/dist/src/adapters/daimon-native", integration: "/opt/training/integration", bootstrap: "/opt/training/bootstrap" }, integration: config.integration };
+      const launch = trainingContainerConfigSchema.parse({ version: "spawnfile.training-container.v1", dockerContext: config.dockerContext,
+        inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth });
+      await writeFile(configPath, JSON.stringify(launch), { flag: "wx", mode: 0o600 });
+      await writeFile(preparationPath, JSON.stringify(parseTrainingMappedPreparation(mapped)), { flag: "wx", mode: 0o400 });
+      const snapshots = await Promise.all(inputs.map(async (input, index) => input.git ? hashJson(fileIdentity(await sealTree(staged[index]!, "input", { ignoreGit: true }))) : null));
+      await writeFile(statePath, JSON.stringify({ digest, image, staged, snapshots }), { flag: "wx", mode: 0o600 });
+    } catch (error) { if (owned) await rm(staging, { recursive: true, force: true }); throw error; }
+  }
+  const inspected = await execute(["--context", config.dockerContext, "image", "inspect", image, "--format", "{{.Id}}"]);
+  if (inspected.code !== 0 || inspected.stdout.trim() !== image) throw Error("Saved training image is missing or changed");
+  const map = (file: string): string => {
+    const absolute = path.resolve(file);
+    const index = roots.findIndex(source => within(source, absolute));
+    return index < 0 ? absolute : path.join(staged[index]!, path.relative(roots[index]!, absolute));
+  };
+  const context: TrainingContext = { ...options.context,
+    project: { ...options.context.project, root: map(options.context.project.root), manifest: map(options.context.project.manifest) },
+    agent: { ...options.context.agent, source: map(options.context.agent.source) },
+    sources: options.context.sources.map(source => ({ ...source, sourcePath: map(source.sourcePath) })),
+    documents: options.context.documents.map(source => ({ ...source, sourcePath: map(source.sourcePath) })),
+    skills: options.context.skills.map(source => ({ ...source, sourcePath: map(source.sourcePath) })) };
+  const args = [...options.args];
+  for (let index = 0; index < args.length; index++) {
+    if (["--train", "--test", "--cost-config"].includes(args[index]!)) args[++index] = map(args[index]!);
+    else if (args[index] === "--resource") { const value = args[++index]!, split = value.indexOf("="); args[index] = `${value.slice(0, split)}=${map(value.slice(split + 1))}`; }
+    else if (args[index] === "--out" && path.resolve(args[++index]!) !== output) throw Error("Training --out must match configured output");
+  }
+  return { digest, image, configPath, preparationPath, context, args };
+}
