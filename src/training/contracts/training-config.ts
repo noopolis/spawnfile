@@ -29,7 +29,11 @@ export interface TrainingJudge extends TrainingRoute {
   template?: { language: 'jinja'; text: string };
   citation_repairs?: 0 | 1;
 }
+export interface TrainingComparison {
+  candidate: { name: string; replacements: { resource: string; source: string }[] };
+}
 export interface TrainingConfiguration {
+  comparison?: TrainingComparison;
   models: Record<string, TrainingModel>;
   judges?: Record<string, TrainingJudge>;
   optimizer?: TrainingOptimizer;

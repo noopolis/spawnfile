@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { rm } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { createDaimonNativeAdapter } from './adapter.js';
 import { dockerFixture, launchFixture } from './test-fixtures.js';
+import { join } from 'node:path';
 import type { Observation } from '../../contracts/execution.js';
 
 test('adapter preserves terminal identity and actual usage while keeping unavailable output absent', async () => {
@@ -37,5 +38,25 @@ test('adapter rejects a terminal record from another trial and shuts down its ow
     assert.equal(result.status, 'failed');
     assert.match(result.error!, /identity mismatch/);
     assert.equal(result.stop?.quiescence, 'confirmed');
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
+
+test('admits native skills as prepared workspace files without inventing loaded observations', async () => {
+  const fixture = await launchFixture();
+  try {
+    for (const root of ['.agents/skills', '.codex/skills']) {
+      const folder = join(fixture.input.workspacePath, root, 'writer');
+      await mkdir(folder, { recursive: true });
+      await writeFile(join(folder, 'SKILL.md'), '---\nname: writer\ndescription: Writing\n---\nWrite.');
+    }
+    const docker = dockerFixture(fixture.launch, fixture.input.trialId);
+    const adapter = createDaimonNativeAdapter({ docker: docker.run });
+    assert.ok(adapter.capabilities.resources.includes('native-skills'));
+    const events: Observation[] = []; fixture.input.onObservation = event => { events.push(event); };
+    const session = await adapter.start(fixture.input);
+    assert.match(await readFile(join(fixture.input.workspacePath, '.codex/skills/writer/SKILL.md'), 'utf8'), /name: writer/);
+    assert.equal(events.length, 0);
+    await session.stop('Installed skill admission checked; no cognition claimed');
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
 });

@@ -25,7 +25,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
   return {
     id: 'daimon-native',
     capabilities: { toolTrace: 'partial', liveObservations: true, cancellation: 'native-handle', multiTurn: false,
-      resources: ['instructions', 'supporting-files'], readIsolation: 'declared-paths', protectedPaths: true,
+      resources: ['instructions', 'native-skills', 'supporting-files'], readIsolation: 'declared-paths', protectedPaths: true,
       isolation: execution ? 'Fresh worker child in shared caller container; exact native sandbox protects declared paths' :
         'Fresh local Linux container; canonical native sandbox denies /run and runtime credentials; evaluator files excluded from mounts' },
     async start(input) {

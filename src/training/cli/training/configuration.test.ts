@@ -160,3 +160,14 @@ it('maps authored fast-judge controls through the actual YAML factory without ex
     expect(JSON.parse(fetch.mock.calls[1]![1]!.body as string)).toMatchObject({ think: false, keep_alive: '300s', truncate: false, shift: false, options: { num_predict: 256, num_ctx: 8192 } });
   } finally { vi.unstubAllGlobals(); }
 });
+
+it('does not construct an optimizer route for comparison and rejects requesting one', () => {
+  const config = { models: { unused: { provider: 'grok-subscription' as const, model: 'unused' } },
+    comparison: { candidate: { name: 'fixed', replacements: [{ resource: 'AGENTS.md', source: 'variant.md' }] } } };
+  const inference = createTrainingInference({ command: 'train', flags: {}, training: config }, {
+    inference: () => { throw new Error('unexpected legacy provider'); },
+    modelInference: () => { throw new Error('unexpected model provider'); },
+  }, 1000, {}, {});
+  expect(inference.judges).toEqual({});
+  expect(() => inference.inference).toThrow('no optimizer');
+});

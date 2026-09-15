@@ -30,7 +30,7 @@ describe('explicit native resource and inference selection', () => {
         '--out', 'out', '--judge', 'quality=explicit-judge', '--judge-citation-repairs', 'quality=1', '--resource', 'archive=archive']);
       const prepared = await prepareNative(args, fixture.io, {}, 1000);
       expect(prepared.adapter.id).toBe(runtime);
-      expect(prepared.inference.capabilities.billing).toBe('subscription');
+      expect(prepared.inference!.capabilities.billing).toBe('subscription');
       expect(prepared.evaluation.judges.quality!.model).toBe('explicit-judge');
       expect(prepared.evaluation.judges.quality!.citationRepairs).toBe(1);
       expect(prepared.resources.archive).toBe(`${fixture.root}/archive`);

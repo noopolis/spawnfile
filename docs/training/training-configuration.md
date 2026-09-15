@@ -290,3 +290,51 @@ new independent native trial or evidence of a writing improvement. The child can
 subsequently use ordinary `--resume` with the same repair declaration. `--dry-run`
 does not import captures or invoke models and conservatively estimates a full run;
 it does not certify that a parent is compatible.
+
+## Compare a fixed authored candidate
+
+Use `spawnfile train` with `training.comparison` to measure a baseline against a
+supplied candidate, without DSPy or optimizer calls. Both arms use the same declared
+resources, runtime, tools, cases and frozen criteria. For example:
+
+```yaml
+training:
+  models:
+    editor: { provider: grok-subscription, model: grok-4.6 }
+  judges:
+    prose: { model: editor, protocol: evidence-ids, timeout_ms: 10000 }
+  comparison:
+    candidate:
+      name: skill-guided
+      replacements:
+        - resource: agents/foreman/AGENTS.md
+          source: variants/skill-guided/AGENTS.md
+  validation_groups: [validation]
+  test: test.paideia.yaml
+  budget: { max_trials: 10, timeout_ms: 3600000 }
+```
+
+`resource` names an already-declared editable candidate file. `source` is a bounded
+UTF-8 file relative to the training dataset directory; it cannot escape that root.
+Complete replacement bytes must preserve every locked section. Missing, unchanged,
+undeclared and locked replacements fail before native execution. File contents enter
+the command identity: changing bytes at the same path rejects exact `--resume`.
+Skills can remain locked and identical in both arms while only their instruction
+index differs. Available native skill catalogs can still affect either arm; this
+comparison does not establish that unused skills have zero context cost.
+
+Each train, validation and test case runs once per arm, baseline then authored,
+using fresh native trials. `max_trials` must cover the complete pair count (five
+cases require ten trials). There is no optimizer selection or automatic promotion.
+Omit `optimizer`, `max_proposals` and bridge flags. `--dry-run` estimates those exact
+pairs and judge routes with zero optimizer cost, retaining the usual unknown-cost
+and unverified-preparation disclosures.
+
+The separate `paideia.comparison.v1` report records both candidate identities,
+per-case scores and differences, original captures and costs. The cockpit names
+both arms and shows their chronological measurements without a GEPA panel. Valid
+failed grades are retained; infrastructure interruptions remain incomplete. Exact
+`--resume` verifies and reuses completed captures, and existing bounded recovery
+can rescore eligible judge outages without repeating the subject. Measurement-repair
+forks are currently rejected for comparison runs. Exit status reflects the authored
+arm's held-out verdicts, not a claim of statistical superiority.

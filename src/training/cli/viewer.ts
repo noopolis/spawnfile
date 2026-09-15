@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { validateCandidate, type CandidateManifest } from '../candidates/index.js';
+import { assertOriginalPolicy, validateCandidate, type CandidateManifest } from '../candidates/index.js';
 import type { TrialReport, TrainingReport } from '../experiments/index.js';
 import { summarizeCosts, type CostReport, type ModelPrice, type TrainingCostPlan } from '../experiments/costs/index.js';
 import type { DspyResult } from '../optimization/index.js';
 import type { RescoreReport } from '../experiments/replay/index.js';
 import { openExperimentStore, type ExperimentStore } from '../storage/index.js';
-import { projectTrainingReport, projectTrials, startViewer, type ViewerData } from '../../viewer/index.js';
+import { projectComparisonReport, projectTrainingReport, projectTrials, startViewer, type ViewerData } from '../../viewer/index.js';
 import type { CliIO } from './types.js';
 import { readCliText } from './datasets.js';
 import { loadFailureView, createActivityTracker, createGenerationTracker } from './progress/index.js';
@@ -37,6 +37,11 @@ export async function loadInvocationViewer(root: string): Promise<() => Promise<
     const report = JSON.parse((await store.readBlob(index.report, access)).toString());
     if (index.outcome === 'failed') return loadFailureView(report, index, store);
     if (index.command === 'train') {
+      if (report.schema === 'paideia.comparison.v1') {
+        if (report.id !== index.summaryRunId || report.candidate.id !== candidate.id) throw new Error('Stored comparison does not match its invocation');
+        assertOriginalPolicy(report.baseline, report.candidate);
+        return projectComparisonReport(report);
+      }
       if (report.schema !== 'paideia.training.v1' || report.id !== index.summaryRunId || report.selected.id !== candidate.id) throw new Error('Stored training report does not match its invocation');
       const metadata = replay.manifest.metadata as { optimizerBudget?: unknown } | undefined;
       const budget = metadata?.optimizerBudget === undefined ? undefined : budgetSchema.parse(metadata.optimizerBudget);
@@ -69,6 +74,7 @@ export async function startLiveViewer(options: {
   bindHost?: '127.0.0.1' | '0.0.0.0';
   port: number; io: CliIO; store: ExperimentStore; id: string; datasetId: string; planDigest: string;
   baseline: CandidateManifest; cases: ViewerData['cases']; testCases: ViewerData['cases'];
+  comparison?: { candidate: CandidateManifest; name: string };
   budget?: { maxMetricCalls: number; maxProposals: number };
   costs?: { subjectModel: string; prices?: readonly ModelPrice[]; costPlan?: TrainingCostPlan };
 }) {
@@ -89,14 +95,14 @@ export async function startLiveViewer(options: {
   let cases = options.cases;
   const publish = async () => {
     try {
-      const data = projectTrials({ id: options.id, title: 'Live native experiment', phase: frozen ? 'final-test' : 'train',
-        status, updatedAt: new Date().toISOString(), baseline: options.baseline, cases,
+      const data = projectTrials({ id: options.id, title: options.comparison ? `Authored comparison: ${options.comparison.name}` : 'Live native experiment', phase: frozen ? 'final-test' : 'train',
+        status, updatedAt: new Date().toISOString(), baseline: options.baseline, comparison: options.comparison, cases,
         trials: status === 'failed' ? trials.filter(trial => trial.phase !== 'test') : trials, optimizer, budget: options.budget,
         rescores: status === 'failed' ? rescores.filter(score=>score.original.phase!=='test') : rescores,
         costs: options.costs === undefined ? undefined : summarizeCosts([...new Map([...trials, ...sealedTrials.values()].map(trial => [trial.id, trial])).values()], { ...options.costs,
           rescores: [...new Map([...rescores, ...sealedRescores.values()].map(score => [score.id, score])).values()], optimizerGenerations: generations.snapshot() }),
         costPlan: options.costs?.costPlan });
-      if (optimizer === undefined && options.budget !== undefined) data.optimizer = { name: 'dspy.GEPA',
+      if (!options.comparison && optimizer === undefined && options.budget !== undefined) data.optimizer = { name: 'dspy.GEPA',
         status: 'Observed progress; evaluation count includes completed trial reports',
         evaluations: trials.filter((trial) => trial.phase !== 'test').length, proposals: proposalAttempts, ...options.budget };
       data.activity = status === 'failed' ? undefined : activity.snapshot();
@@ -140,17 +146,18 @@ export async function startLiveViewer(options: {
         const report = event.payload as TrialReport;
         if (report.phase === 'test' && !frozen) { sealedTrials.set(report.id, report); await publish(); return; }
         if(!trials.some(row=>row.id===report.id)) trials.push(report); status = 'running';
-      } else if (event.type === 'training.started') {
+      } else if (event.type === 'training.started' || event.type === 'comparison.started') {
         const payload = event.payload as { train: string[]; validation: string[] };
         cases = [...payload.train.map((id) => ({ id, split: 'train' as const })),
           ...payload.validation.map((id) => ({ id, split: 'validation' as const }))];
-        status = 'optimizing';
-      } else if (event.type === 'selection.frozen') {
-        frozen = true; optimizer = (event.payload as { optimizer: DspyResult }).optimizer;
+        status = options.comparison ? 'comparing frozen arms' : 'optimizing';
+      } else if (event.type === 'selection.frozen' || event.type === 'comparison.frozen') {
+        frozen = true;
+        if (!options.comparison) optimizer = (event.payload as { optimizer: DspyResult }).optimizer;
         for (const report of sealedTrials.values()) if (!trials.some(trial => trial.id === report.id)) trials.push(report);
         for (const report of sealedRescores.values()) if (!rescores.some(score => score.id === report.id)) rescores.push(report);
         sealedTrials.clear(); sealedRescores.clear();
-        cases = [...cases, ...options.testCases]; status = 'testing frozen selection';
+        cases = [...cases, ...options.testCases]; status = options.comparison ? 'testing frozen arms' : 'testing frozen selection';
       } else if (event.type === 'optimizer.generation.started') {
         status = 'reflecting';
       } else if (generationEvent) {
@@ -159,7 +166,7 @@ export async function startLiveViewer(options: {
         status = 'failed'; frozen = false; optimizer = undefined;
         cases = cases.filter(record => record.split !== 'test');
         generations.interrupt();
-      } else if (event.type === 'training.completed' || event.type === 'evaluation.completed') status = 'completed';
+      } else if (event.type === 'training.completed' || event.type === 'comparison.completed' || event.type === 'evaluation.completed') status = 'completed';
       else return;
       await publish();
     },

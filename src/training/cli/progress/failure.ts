@@ -12,6 +12,7 @@ export interface CliFailureReport {
   command: 'train' | 'evaluate';
   candidateId: string;
   status: 'failed';
+  comparison?: { candidateId: string; name: string };
   progressRunId: string;
   diagnosticId: string;
   view: ViewerData;
@@ -22,24 +23,27 @@ export function createFailureReport(options: {
   progressRunId: string; diagnosticId: string; trials: readonly TrialReport[];
   costs: CostReport; costPlan?: TrainingCostPlan;
   rescores?: readonly RescoreReport[];
+  comparison?: { candidate: CandidateManifest; name: string };
 }): CliFailureReport {
   const trials = options.trials.filter(trial => trial.phase !== 'test');
   const cases = [...new Map(trials.map(trial => [trial.recordId, { id: trial.recordId, split: trial.phase }])).values()];
   const view = projectTrials({ id: options.id, title: 'Failed experiment; partial development results', phase: 'replay',
-    status: 'failed', updatedAt: new Date().toISOString(), baseline: options.baseline, cases, trials,
+    status: 'failed', updatedAt: new Date().toISOString(), baseline: options.baseline, comparison: options.comparison, cases, trials,
     costs: options.costs, costPlan: options.costPlan,
     rescores: options.rescores?.filter(score => score.original.phase !== 'test') });
   // The cost projection keeps every observed call, including sealed work, while
   // omitting call/trial identities and provider text. Do not expose usage sources.
   view.usage = [];
   return { schema: 'paideia.cli-failure.v1', id: options.id, command: options.command,
-    candidateId: options.baseline.id, status: 'failed', progressRunId: options.progressRunId,
+    candidateId: options.baseline.id, status: 'failed',
+    ...(options.comparison ? {comparison:{candidateId:options.comparison.candidate.id,name:options.comparison.name}} : {}), progressRunId: options.progressRunId,
     diagnosticId: options.diagnosticId, view: projectViewerData(view) };
 }
 
 const id = z.string().min(1).max(16384);
 const failureSchema = z.object({ schema: z.literal('paideia.cli-failure.v1'), id,
   command: z.enum(['train', 'evaluate']), candidateId: id, status: z.literal('failed'),
+  comparison: z.object({candidateId:id,name:id}).strict().optional(),
   progressRunId: id, diagnosticId: id, view: z.unknown() }).strict();
 
 export async function loadFailureView(value: unknown, index: InvocationIndex, store: ExperimentStore): Promise<ViewerData> {
@@ -49,7 +53,8 @@ export async function loadFailureView(value: unknown, index: InvocationIndex, st
   }
   const view = projectViewerData(report.view as ViewerData);
   if (view.experiment.id !== report.id || view.experiment.status !== 'failed' || view.experiment.phase !== 'replay'
-      || view.candidates.length !== 1 || view.candidates[0]!.id !== index.candidateId || view.usage.length
+      || view.candidates.length !== (report.comparison ? 2 : 1) || view.candidates[0]!.id !== index.candidateId
+      || (report.comparison && (view.candidates[1]!.id !== report.comparison.candidateId || view.candidates[1]!.label !== report.comparison.name)) || view.usage.length
       || view.cases.some(record => record.split === 'test')
       || new Set(index.trialIds).size !== index.trialIds.length
       || JSON.stringify(view.trials.map(trial => trial.id)) !== JSON.stringify(index.trialIds)) {

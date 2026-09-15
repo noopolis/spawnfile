@@ -14,7 +14,7 @@ function transientJudgeFailure(check: EvaluationResult): boolean {
 
 /** Only a completed native capture with failed final measurement is eligible. */
 export async function recoverMeasurement(input: {
-  options: TrainingOptions;
+  options: Pick<TrainingOptions, 'baseline' | 'native'>;
   dataset: ResolvedDataset;
   report: TrialReport;
   previous?: RescoreReport;
@@ -50,7 +50,7 @@ export async function recoverMeasurement(input: {
 }
 
 /** Restore only an integrity-checked terminal report; pending work is never presumed stopped. */
-export async function recoverStoredReport(options: TrainingOptions, id: string, phase: TrialReport['phase'], candidateId: string,
+export async function recoverStoredReport(options: Pick<TrainingOptions, 'baseline' | 'native'>, id: string, phase: TrialReport['phase'], candidateId: string,
   expected?: TrialReport): Promise<TrialReport> {
   const replay = await options.native.store.readReplay(id, { audience: 'evaluator', phase: phase === 'train' ? 'training' : phase,
     ...(phase === 'test' ? { frozenCandidateIds: [options.baseline.id, candidateId] } : {}) });

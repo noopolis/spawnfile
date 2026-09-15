@@ -7,3 +7,5 @@ export { trialScore } from './training/index.js';
 export { freezeCriteria } from './training/index.js';
 export { rescoreStoredTrial, type RescoreOptions, type RescoreReport } from './replay/index.js';
 export * from './costs/index.js';
+
+export { compareCandidates, type ComparisonOptions, type ComparisonReport } from "./comparison/index.js";

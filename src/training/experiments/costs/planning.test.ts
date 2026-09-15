@@ -135,3 +135,19 @@ it('budgets every permitted optimizer route and leaves unknown rates explicit', 
   input.optimizerRoute.attempts = 3;
   expect(() => planTrainingCost(input)).toThrow('attempt budget');
 });
+
+it('plans every fixed comparison pair and heterogeneous judge exactly with zero optimizer', () => {
+  const input = options();
+  input.train.records[0]!.effectiveStages[0]!.checks = [rubric, rubric];
+  input.train.records[1]!.effectiveStages[0]!.checks = [rubric];
+  const comparison: TrainingCostOptions = { ...input, mode: 'comparison', optimizerModel: undefined, maxProposals: 0, maxTrials: 20 };
+  const plan = planTrainingCost(comparison);
+  expect(plan.budget).toEqual({ maxTrials: 20, maxProposals: 0, metricCalls: 6, reservedTestTrials: 4 });
+  expect(plan.lines.filter(line => line.role === 'judge').map(line => line.plannedCalls)).toEqual([6]);
+  expect(plan.lines.filter(line => line.role === 'subject').map(line => line.plannedCalls)).toEqual([6,4]);
+  expect(plan.lines.some(line => line.role === 'optimizer')).toBe(false);
+  expect(() => planTrainingCost({ ...comparison, maxTrials: 9 })).toThrow('both arms');
+  expect(() => planTrainingCost({ ...comparison, maxProposals: 1 })).toThrow('no optimizer');
+  expect(() => planTrainingCost({ ...comparison, optimizerModel: 'no' })).toThrow('no optimizer');
+  expect(() => planTrainingCost({ ...input, optimizerModel: undefined })).toThrow('Optimizer model');
+});

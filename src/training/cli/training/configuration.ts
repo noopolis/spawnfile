@@ -29,7 +29,11 @@ export function authoredArguments(args: CliArguments, io: CliIO): CliArguments {
       throw new Error('Configured YAML optimizer conflicts with --optimizer-model');
     }
     fallback('optimizer-model', training.optimizer === undefined ? undefined : training.models[training.optimizer.model]!.model);
-    fallback('bridge-command', 'paideia-dspy');
+    if (training.comparison) {
+      for (const flag of ['optimizer-model', 'bridge-command', 'max-proposals', 'repair-measurements', 'repair-context']) {
+        if (flags[flag]) throw new Error(`Comparison cannot use --${flag}`);
+      }
+    } else fallback('bridge-command', 'paideia-dspy');
     if (flags['validation-group'] === undefined && training.validation_groups !== undefined) flags['validation-group'] = training.validation_groups;
   }
   const explicit = pairs(flags.judge ?? []);

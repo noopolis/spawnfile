@@ -44,7 +44,7 @@ const schema = z.object({
     checks: z.array(check).max(1000),
     events: z.array(z.object({ id, type: id, timestamp: text, summary: text })).max(1000),
   })).max(1000),
-  candidates: z.array(z.object({ id, nativeId: id.optional(), parentIds: strings, validationScore: score,
+  candidates: z.array(z.object({ id, label: text.optional(), nativeId: id.optional(), parentIds: strings, validationScore: score,
     discoveryEvaluations: count, editablePaths: strings })).max(1000),
   usage: z.array(z.object({ purpose: z.enum(['subject', 'optimizer', 'judge', 'embedding']),
     model: text.nullable(), modelBasis: z.enum(['provider-reported', 'requested-assumption']).optional(), route: text.nullable(), usage: z.object({

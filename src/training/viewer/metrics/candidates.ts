@@ -39,7 +39,10 @@ export function indexCandidates(data: ViewerData): CandidateIndex {
     if (!group.sourceIds.includes(sourceId)) group.sourceIds.push(sourceId);
     return group;
   };
-  for (const candidate of data.candidates) add(candidate.id);
+  for (const candidate of data.candidates) {
+    const group = add(candidate.id);
+    if (candidate.label !== undefined) group.label = candidate.label;
+  }
   for (const trial of data.trials) {
     const group = add(trial.candidateId);
     const trialSplit = split(trial.caseId);

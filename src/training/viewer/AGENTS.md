@@ -38,3 +38,8 @@ Owns the local live/replay experiment interface, separate from website/.
 - Test actual HTTP responses, refreshed snapshots, hostile strings, read-only
   methods, generic loader errors and shutdown. Run `npx vitest run viewer`;
   include viewer coverage and lint at the final gate.
+
+Authored comparison projections name two frozen arms and reuse existing measured
+trends/pairing. They have no optimizer provenance or GEPA panel. Candidate labels
+are escaped presentation text; scores and held-out visibility retain their existing
+owners. Failed comparisons show development-only partial measurements.

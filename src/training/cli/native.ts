@@ -58,7 +58,7 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
       ?? (runtime === 'codex' ? createCodexAdapter({ model, timeoutMs }) : createDaimonAdapter({ model, timeoutMs }));
   const configured = createTrainingInference(args, dependencies, timeoutMs, judges, inputs.citationRepairs);
   const cacheRoots = await prepareJudgeCaches(args, configured.judges, inputs.out, dependencies.spawnfile?.judgeCacheRoot);
-  const inference = configured.inference;
+  const inference = args.training?.comparison ? undefined : configured.inference;
   let prepareEnvironment: StoredTrialOptions['prepareEnvironment'];
   if ('context' in inputs) {
     const context = inputs.context;

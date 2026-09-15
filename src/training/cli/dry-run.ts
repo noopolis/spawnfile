@@ -1,4 +1,4 @@
-import { configuredCostRoutes } from './training/index.js';
+import { configuredCostRoutes, prepareComparison } from './training/index.js';
 import { resolve } from 'node:path';
 import { parseDocument } from 'yaml';
 import { candidateComponents } from '../candidates/index.js';
@@ -22,11 +22,12 @@ export async function dryRunTraining(args: CliArguments, io: CliIO, dependencies
   const train = native.datasets.loadForCost(one(args, 'train'), true);
   const test = native.datasets.loadForCost(one(args, 'test'), true);
   if (!candidateComponents(native.candidate).length) throw new Error('No declared editable components');
+  const comparison = prepareComparison(args, io, native.candidate);
   const plan = planTrainingCost({ train, test, validationGroups: args.flags['validation-group'],
-    subjectModel: native.model, optimizerModel: one(args, 'optimizer-model'),
+    subjectModel: native.model, ...(comparison ? { mode: 'comparison' as const } : { optimizerModel: one(args, 'optimizer-model') }),
     ...configuredCostRoutes(args, native.judges, native.citationRepairs),
-    maxTrials: native.maxTrials, maxProposals: count(args, 'max-proposals', 3, 1000), ...readCostConfig(args, io) });
-  io.stdout(`${JSON.stringify({ ...plan, candidateId: native.candidate.id,
+    maxTrials: native.maxTrials, maxProposals: comparison ? 0 : count(args, 'max-proposals', 3, 1000), ...readCostConfig(args, io) });
+  io.stdout(`${JSON.stringify({ ...plan, candidateId: native.candidate.id, ...(comparison ? { comparison: { name: comparison.name, candidateId: comparison.candidate.id, optimizerCalls: 0 } } : {}),
     ...('context' in native ? { spawnfile: native.context, readiness: native.readiness } : {}) })}\n`);
   return 0;
 }

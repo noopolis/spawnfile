@@ -2,5 +2,5 @@ export { trainAgent, type TrainingOptions, type TrainingReport } from './trainin
 export { partitionTraining } from './partition.js';
 export { trialScore } from './scoring.js';
 export { freezeCriteria } from './criteria.js';
-export { trainingDigest } from './checkpoint.js';
-export { recoverMeasurement } from './recovery.js';
+export { TrainingCheckpoint, trainingDigest } from './checkpoint.js';
+export { recoverMeasurement, recoverStoredReport } from './recovery.js';

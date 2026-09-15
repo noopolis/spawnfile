@@ -21,7 +21,7 @@ export function trainingInferencePolicies(configuration?: TrainingConfiguration,
   return {
     judges: Object.fromEntries(Object.entries(configuration?.judges ?? {}).sort(([a], [b]) => a.localeCompare(b))
       .map(([name, route]) => [name, trainingRoutePolicies(configuration!, route, executionIdentity)])),
-    optimizer: configuration?.optimizer ? trainingRoutePolicies(configuration, configuration.optimizer, executionIdentity) : legacy,
+    optimizer: configuration?.comparison ? [] : configuration?.optimizer ? trainingRoutePolicies(configuration, configuration.optimizer, executionIdentity) : legacy,
   };
 }
 

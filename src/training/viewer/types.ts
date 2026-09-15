@@ -23,6 +23,8 @@ export interface ViewerData {
   }[];
   candidates: {
     id: string;
+    /** Explicit authored arm name; absent for historical optimizer candidates. */
+    label?: string;
     /** Native content identity; distinct GEPA discoveries may use identical bytes. */
     nativeId?: string;
     parentIds: string[];

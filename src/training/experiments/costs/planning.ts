@@ -18,7 +18,8 @@ export interface TrainingCostOptions<Dataset = ResolvedDataset> {
   validationGroups?: readonly string[];
   test: Dataset;
   subjectModel: string;
-  optimizerModel: string;
+  mode?: 'comparison';
+  optimizerModel?: string;
   judges: Readonly<Record<string, PlannedInferenceRoute & { citationRepairs?: 0 | 1 }>>;
   optimizerRoute?: PlannedInferenceRoute;
   maxTrials: number;
@@ -65,7 +66,9 @@ export function planTrainingCost(options: TrainingCostOptions<ResolvedDataset | 
     if (citationRepairs !== 0 && citationRepairs !== 1) throw new Error(`Invalid citation repair policy for judge ${name}`);
     return [name, { ...route, citationRepairs }];
   }));
-  for (const [value, max] of [[options.maxTrials, 10000], [options.maxProposals, 1000]]) {
+  if (options.mode === 'comparison' && (options.maxProposals !== 0 || options.optimizerRoute || options.optimizerModel)) throw new Error('Comparison has no optimizer budget or route');
+  if (options.mode !== 'comparison' && !options.optimizerRoute && !options.optimizerModel) throw new Error('Optimizer model is required');
+  for (const [value, max] of [[options.maxTrials, 10000], ...options.mode === 'comparison' ? [] : [[options.maxProposals, 1000]]]) {
     if (!Number.isSafeInteger(value) || value! < 1 || value! > max!) throw new Error('Invalid training cost budget');
   }
   const partition = validation ? { train, validation } : partitionTraining(train, options.validationGroups);
@@ -74,11 +77,12 @@ export function planTrainingCost(options: TrainingCostOptions<ResolvedDataset | 
   }
   validateCostDatasetSplit(partition.train, test, partition.validation);
   const reservedTestTrials = test.records.length * 2;
-  const metricCalls = options.maxTrials - reservedTestTrials;
+  const metricCalls = options.mode === 'comparison' ? 2 * (partition.train.records.length + partition.validation.records.length) : options.maxTrials - reservedTestTrials;
+  if (options.mode === 'comparison' && metricCalls + reservedTestTrials > options.maxTrials) throw new Error('Comparison budget cannot cover both arms on every case');
   if (metricCalls < partition.validation.records.length) throw new Error('Trial budget cannot cover baseline validation and two held-out passes');
   const assumptions = resolveCostAssumptions(options.assumptions);
   const warnings = new Set<string>([
-    'Budget scenario assumes every permitted trial and optimizer proposal is used; early stopping may use less.',
+    options.mode === 'comparison' ? 'Fixed comparison: both arms run once on every case; no optimizer calls.' : 'Budget scenario assumes every permitted trial and optimizer proposal is used; early stopping may use less.',
     'Token ranges are uncalibrated assumptions per full subject trial or judge/optimizer call, not a guaranteed spending ceiling.',
     'Prompt growth, tool output and private environment size can exceed these assumptions; calibrate them from recorded trials.',
     'Only standard global API text-token prices are valued; subscription quota percentages, tools and infrastructure are excluded.',
@@ -129,10 +133,11 @@ export function planTrainingCost(options: TrainingCostOptions<ResolvedDataset | 
     const testCalls = 2 * testCounts.reduce((sum, counts) => sum + (counts[name] ?? 0), 0);
     const attempts = 1 + route.citationRepairs;
     if (route.citationRepairs) warnings.add(`Judge ${name} reserves one citation repair per check; valid quality failures, authentication/quota failures and malformed JSON are not retried.`);
-    if (maxPerMetric) addRoute('judge', name, 'development', route, metricCalls * maxPerMetric * attempts, perCall);
+    const developmentCalls = options.mode === 'comparison' ? 2 * developmentCounts.reduce((sum, counts) => sum + (counts[name] ?? 0), 0) : metricCalls * maxPerMetric;
+    if (developmentCalls) addRoute('judge', name, 'development', route, developmentCalls * attempts, perCall);
     if (testCalls) addRoute('judge', name, 'held-out', route, testCalls * attempts, perCall);
   }
-  addRoute('optimizer', 'reflection', 'optimization', options.optimizerRoute ?? {model: options.optimizerModel, provider: 'claude-subscription'}, options.maxProposals, assumptions.optimizer);
+  if (options.mode !== 'comparison') addRoute('optimizer', 'reflection', 'optimization', options.optimizerRoute ?? {model: options.optimizerModel!, provider: 'claude-subscription'}, options.maxProposals, assumptions.optimizer);
   const pricedSubtotalUsd = lines.reduce((sum, line) => ({ low: sum.low + (line.apiEquivalentUsd?.low ?? 0),
     high: sum.high + (line.apiEquivalentUsd?.high ?? 0) }), { low: 0, high: 0 });
   return { schema: 'paideia.training-cost-plan.v1', modelCallsMade: 0,

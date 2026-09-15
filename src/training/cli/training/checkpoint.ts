@@ -23,7 +23,7 @@ export async function commandCheckpoint(args: CliArguments, inputs: Awaited<Retu
     !['resume','view','out','spawnfile-context','dry-run'].includes(name)).sort(([a],[b]) => a.localeCompare(b)));
   const identity = createHash('sha256').update(JSON.stringify({
     ...(repair ? {measurementRepair:repair.digest} : {}),
-    version:'paideia.command-execution.v1',providerPolicies:trainingInferencePolicies(args.training, integration?.inferenceExecutionIdentity),flags,training:args.training,candidate:inputs.candidate.id,
+    version:'paideia.command-execution.v1',comparisonCandidateId:context.comparisonCandidateId,providerPolicies:trainingInferencePolicies(args.training, integration?.inferenceExecutionIdentity),flags,training:args.training,candidate:inputs.candidate.id,
     sourceRoot:inputs.sourceRoot,resources:inputs.resources,model:inputs.model,
     context:'context' in inputs ? inputs.context : null,
     integration:integration ? {id:integration.id,version:integration.version,environment:environment ?? null,

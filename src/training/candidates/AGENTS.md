@@ -34,3 +34,7 @@ Tests live beside source. Exercise changed multi-file components, mirrored nativ
 bytes, unchanged original files, source escapes, heading ambiguity/escapes and forged
 locked changes. Run targeted tests/coverage, ESLint and TypeScript during iteration;
 retain at least 90% for each executable file and coverage dimension.
+
+`deriveAuthoredCandidate` accepts exact full-file replacements for declared editable
+paths. It preserves the original policy and every locked byte, rejects no-op bundles,
+and performs no optimizer section-body normalization or prose rewriting.

@@ -8,7 +8,7 @@ function integer(value: unknown, path: string, min = 1, max = Number.MAX_SAFE_IN
 /** Validate controls without executing templates or contacting declared providers. */
 export function validateTrainingConfiguration(value: unknown, path = '$.training'): TrainingConfiguration {
   const config = object(value, path);
-  fields(config, ['models', 'judges', 'optimizer', 'budget', 'cache', 'recovery', 'test', 'validation_groups', 'seed'], path);
+  fields(config, ['models', 'judges', 'optimizer', 'comparison', 'budget', 'cache', 'recovery', 'test', 'validation_groups', 'seed'], path);
   const models = object(config.models, `${path}.models`);
   if (!Object.keys(models).length) fail(`${path}.models`, 'requires a named model');
   for (const [name, value] of Object.entries(models)) {
@@ -71,6 +71,31 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
     for (const [name, value] of Object.entries(object(config.judges, `${path}.judges`))) {
       string(name, `${path}.judges`);
       route(value, `${path}.judges.${name}`, true);
+    }
+  }
+  if (config.comparison !== undefined) {
+    const comparison = object(config.comparison, `${path}.comparison`);
+    fields(comparison, ['candidate'], `${path}.comparison`);
+    const candidate = object(comparison.candidate, `${path}.comparison.candidate`);
+    fields(candidate, ['name', 'replacements'], `${path}.comparison.candidate`);
+    const name = string(candidate.name, `${path}.comparison.candidate.name`);
+    if (!name.trim() || name.length > 120) fail(`${path}.comparison.candidate.name`, 'expected 1..120 characters');
+    if (!Array.isArray(candidate.replacements) || !candidate.replacements.length || candidate.replacements.length > 128) {
+      fail(`${path}.comparison.candidate.replacements`, 'requires 1..128 resource replacements');
+    }
+    const resources = new Set<string>();
+    for (const [index, value] of (candidate.replacements as unknown[]).entries()) {
+      const location = `${path}.comparison.candidate.replacements[${index}]`;
+      const row = object(value, location);
+      fields(row, ['resource', 'source'], location);
+      const resource = safePath(row.resource, `${location}.resource`);
+      safePath(row.source, `${location}.source`);
+      if (resources.has(resource)) fail(location, 'duplicate comparison resource');
+      resources.add(resource);
+    }
+    if (config.optimizer !== undefined) fail(`${path}.optimizer`, 'comparison does not run an optimizer');
+    if (config.budget !== undefined && Object.hasOwn(object(config.budget, `${path}.budget`), 'max_proposals')) {
+      fail(`${path}.budget.max_proposals`, 'comparison has no proposals; omit this field');
     }
   }
   if (config.optimizer !== undefined) route(config.optimizer, `${path}.optimizer`);

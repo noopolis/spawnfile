@@ -52,3 +52,7 @@ remeasure their failed final semantic leaves. New child trials use ordinary reco
 Training lineage records inherited IDs; costs and viewer progress restore them once.
 The checkpoint may finish interrupted fork initialization on resume, but an ordinary
 resume never fabricates a missing journal. Parent imports remain development-only.
+
+The comparison owner reuses `TrainingCheckpoint.openComparison` and capture/recovery
+APIs with an explicit comparison identity. It neither opens nor imports optimizer
+state. Ordinary training identity and measurement-repair behavior stay unchanged.

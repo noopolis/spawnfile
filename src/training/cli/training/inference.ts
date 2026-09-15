@@ -51,7 +51,11 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
   }));
   const optimizer = config?.optimizer;
   const identity = optimizer === undefined ? undefined : createHash('sha256').update(JSON.stringify({ optimizer, models: config!.models, providerPolicies: trainingRoutePolicies(config!, optimizer, executionIdentity) })).digest('hex');
-  return { inference: optimizer === undefined ? getLegacy() : route(optimizer, `paideia.optimizer:${identity}`), judges: evaluationJudges };
+  const inference = config?.comparison ? undefined : optimizer === undefined ? getLegacy() : route(optimizer, `paideia.optimizer:${identity}`);
+  return { get inference() {
+    if (inference === undefined) throw new Error('Authored comparison has no optimizer inference');
+    return inference;
+  }, judges: evaluationJudges };
 }
 
 /** Plain data only: dry-run must never construct a provider. */

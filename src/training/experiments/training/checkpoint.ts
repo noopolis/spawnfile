@@ -6,6 +6,7 @@ import type { ResolvedDataset } from '../../contracts/dataset.js';
 import type { DspyResult } from '../../optimization/index.js';
 import type { RescoreReport } from '../replay/index.js';
 import type { TrialReport } from '../trials/index.js';
+import type { CandidateManifest } from '../../candidates/index.js';
 import type { TrainingOptions } from './training.js';
 
 interface Entry { id: string; report?: TrialReport; rescores?: RescoreReport[]; pendingRescoreId?: string }
@@ -35,6 +36,20 @@ export class TrainingCheckpoint {
       optimizer: { provider: options.inference.provider.id, model: options.inference.model },
       seed: options.seed ?? 0, budget: options.budget, proposal: options.proposal, maxRecoveryAttempts: options.checkpoint.maxRecoveryAttempts ?? 2, versions: ['dspy3.3.1', 'gepa0.1.4', 'training-checkpoint1'],
     });
+    return this.load(options, identity);
+  }
+
+  static async openComparison(options: Pick<TrainingOptions, 'id' | 'baseline' | 'native' | 'checkpoint'> & { candidate: CandidateManifest; name: string; maxTrials: number }, datasets: ResolvedDataset[]) {
+    if (options.checkpoint?.fork) throw new Error('Comparison does not support measurement-repair forks');
+    if (!options.checkpoint) return undefined;
+    return this.load(options, trainingDigest({ version: 'paideia.comparison-checkpoint.v1',
+      execution: options.checkpoint.identity, id: options.id, baseline: options.baseline, candidate: options.candidate,
+      name: options.name, datasets, adapter: options.native.adapter.id, model: options.native.model,
+      resources: options.native.resources, maxTrials: options.maxTrials, maxRecoveryAttempts: options.checkpoint.maxRecoveryAttempts ?? 2 }));
+  }
+
+  private static async load(options: Pick<TrainingOptions, 'id' | 'baseline' | 'native'> & { checkpoint?: TrainingOptions['checkpoint'] }, identity: string) {
+    if (!options.checkpoint) return undefined;
     const path = join(options.checkpoint.directory, 'training.json');
     await mkdir(options.checkpoint.directory, { recursive: true, mode: 0o700 });
     let state: State = { identity, entries: {}, recoveries: 0 };

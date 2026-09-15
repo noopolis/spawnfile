@@ -72,11 +72,11 @@ export async function createProgressJournal(options: ProgressOptions) {
         await write(event.type, { attempt: payload.attempt, outcome: 'generation-error' });
       } else if (event.type === 'optimizer.restored') {
         await write(event.type, { attempts: generations.attempts() });
-      } else if (event.type === 'training.started') {
+      } else if (event.type === 'training.started' || event.type === 'comparison.started') {
         await write(event.type, { budget: payload.budget });
-      } else if (event.type === 'selection.frozen') {
-        await write(event.type, { candidateId: payload.selectedId });
-      } else if (event.type === 'training.completed' || event.type === 'evaluation.completed') {
+      } else if (event.type === 'selection.frozen' || event.type === 'comparison.frozen') {
+        await write(event.type, { candidateId: payload.selectedId ?? payload.candidateId });
+      } else if (event.type === 'training.completed' || event.type === 'comparison.completed' || event.type === 'evaluation.completed') {
         await write(event.type, { status: 'completed' });
       }
     },

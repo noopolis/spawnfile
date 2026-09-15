@@ -1,6 +1,6 @@
 import type { CandidateManifest } from '../src/candidates/index.js';
 import type { EvaluationResult } from '../src/contracts/index.js';
-import { trialScore, type TrialReport, type TrainingReport } from '../src/experiments/index.js';
+import { trialScore, type TrialReport, type TrainingReport, type ComparisonReport } from '../src/experiments/index.js';
 import type { DspyResult } from '../src/optimization/index.js';
 import type { CostReport, TrainingCostPlan } from '../src/experiments/costs/index.js';
 import type { RescoreReport } from '../src/experiments/replay/index.js';
@@ -16,6 +16,7 @@ export interface TrialProjectionOptions {
   cases: ViewerData['cases'];
   baseline: CandidateManifest;
   trials: readonly TrialReport[];
+  comparison?: { candidate: CandidateManifest; name: string };
   optimizer?: DspyResult;
   budget?: { maxMetricCalls: number; maxProposals: number };
   costs?: CostReport;
@@ -39,6 +40,7 @@ function displayedScore(trial: TrialReport | RescoreReport): number | null {
 
 /** Observable presentation fields only: never subject output, prompts, context, tool args/results or judge reasons. */
 export function projectTrials(options: TrialProjectionOptions): ViewerData {
+  if (options.comparison && options.optimizer) throw new Error('Authored comparison cannot contain optimizer provenance');
   const measurement = (trial:TrialReport) => options.rescores?.findLast(score=>score.runId===trial.id) ?? trial;
   const data: ViewerData = {
     schema: 'paideia.viewer.v1', experiment: { id: options.id, title: options.title, phase: options.phase,
@@ -57,6 +59,11 @@ export function projectTrials(options: TrialProjectionOptions): ViewerData {
     usage: options.trials.flatMap((trial) => trial.turns.map((turn) => ({ purpose: 'subject' as const,
       model: null, route: null, usage: turn.native.usage }))),
   };
+  if (options.comparison) {
+    data.candidates[0]!.label = 'Baseline';
+    data.candidates.push({ ...data.candidates[0]!, id: options.comparison.candidate.id, nativeId: options.comparison.candidate.id,
+      label: options.comparison.name, parentIds: [options.baseline.id] });
+  }
   const visibleIds = new Set(options.trials.map(trial => trial.id));
   const hiddenIds = new Set(options.costs?.entries.flatMap(entry => entry.trialId && !visibleIds.has(entry.trialId) ? [entry.trialId] : []));
   const costs = projectCosts(options.costs, options.costPlan, hiddenIds);
@@ -91,4 +98,11 @@ export function projectTrainingReport(report: TrainingReport, budget?: TrialProj
     costs: report.costs, costPlan: report.costPlan, rescores: report.rescores,
     cases: Object.entries(report.partitions).flatMap(([phase, ids]) => ids.map((id) => ({ id,
       split: phase as 'train' | 'validation' | 'test' }))) });
+}
+
+export function projectComparisonReport(report: ComparisonReport): ViewerData {
+  return projectTrials({ id: report.id, title: `Authored comparison: ${report.name}`, phase: 'final-test', status: 'completed',
+    updatedAt: 'Recorded completion', baseline: report.baseline, comparison: { candidate: report.candidate, name: report.name },
+    trials: report.trials, costs: report.costs, costPlan: report.costPlan, rescores: report.rescores,
+    cases: Object.entries(report.partitions).flatMap(([phase, ids]) => ids.map(id => ({ id, split: phase as 'train' | 'validation' | 'test' }))) });
 }

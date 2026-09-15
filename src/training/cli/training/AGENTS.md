@@ -8,3 +8,9 @@ Tests cover YAML-only control selection, provider routes and refusal before exec
 Map each declared model's native Ollama controls through the provider factory;
 never apply them globally across fallback providers or silently omit them. Pass
 named judge protocol alongside the frozen route/cache identity. Dry-run stays I/O-free.
+
+Comparison YAML supplies a frozen replacement candidate, with dataset-relative bytes
+read before runtime construction and hashed into command identity. It has no bridge
+or optimizer route. Reject incompatible optimizer/repair flags rather than ignoring
+them. Dry-run and execution share candidate preflight, but cost datasets remain
+non-executable projections.

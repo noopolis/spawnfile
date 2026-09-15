@@ -1,10 +1,10 @@
 import { readMeasurementRepair, verifyRepairProjection, importMeasurementCaptures, readParentCheckpoints } from '../experiments/repair/index.js';
 import { partitionTraining } from '../experiments/training/index.js';
-import { configuredCostRoutes, commandCheckpoint } from './training/index.js';
+import { configuredCostRoutes, commandCheckpoint, prepareComparison } from './training/index.js';
 import { authoredArguments, judgeVersions, validateAuthoredTemplates } from './training/index.js';
 import { randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
-import { freezeCriteria, planTrainingCost, runStoredTrial, trainAgent, type StoredTrialOptions, type TrialReport } from '../experiments/index.js';
+import { compareCandidates, freezeCriteria, planTrainingCost, runStoredTrial, trainAgent, type StoredTrialOptions, type TrialReport } from '../experiments/index.js';
 import { count, helpText, one, pairs, parseArguments, type CliArguments } from './arguments.js';
 import { CliDatasets } from './datasets.js';
 import { prepareCliInputs, prepareNative } from './native.js';
@@ -37,18 +37,19 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   const dataset = inputs.datasets.load(args.command === 'train' ? one(args, 'train') : args.dataset!, args.command === 'train');
   const test = args.command === 'train' ? inputs.datasets.load(one(args, 'test'), true) : undefined;
   if (args.command === 'evaluate' && dataset.records.length > inputs.maxTrials) throw new Error('Dataset exceeds --max-trials; no records are silently dropped');
+  const comparison = prepareComparison(args, io, inputs.candidate);
   const metricCalls = inputs.maxTrials - (test === undefined ? 0 : 2 * test.records.length);
   if (metricCalls < 1) throw new Error('--max-trials cannot cover optimizer evaluation plus two reserved sealed-test passes');
-  const bridgeCommand = args.command === 'train' ? one(args, 'bridge-command') : undefined;
+  const bridgeCommand = args.command === 'train' && !comparison ? one(args, 'bridge-command') : undefined;
   const bridge = bridgeCommand === undefined ? undefined : Object.freeze({
     command: bridgeCommand.includes('/') ? resolve(io.cwd, bridgeCommand) : bridgeCommand, cwd: inputs.sourceRoot, timeoutMs,
   });
-  const optimizerModel = args.command === 'train' ? one(args, 'optimizer-model') : undefined;
-  const maxProposals = count(args, 'max-proposals', 3, 1000);
+  const optimizerModel = args.command === 'train' && !comparison ? one(args, 'optimizer-model') : undefined;
+  const maxProposals = comparison ? 0 : count(args, 'max-proposals', 3, 1000);
   const seed = count(args, 'seed', 0, 2 ** 32 - 1, 0);
   const costConfig = readCostConfig(args, io);
   const costPlan = test === undefined ? undefined : planTrainingCost({ train: dataset, test,
-    subjectModel: inputs.model, optimizerModel: optimizerModel!, validationGroups: args.flags['validation-group'],
+    subjectModel: inputs.model, ...(comparison ? {mode:'comparison' as const} : {optimizerModel: optimizerModel!}), validationGroups: args.flags['validation-group'],
     ...configuredCostRoutes(args, inputs.judges, inputs.citationRepairs),
     maxTrials: inputs.maxTrials, maxProposals, ...costConfig });
   const native = await prepareNative(args, io, dependencies, timeoutMs, inputs);
@@ -60,7 +61,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   }) : undefined;
   if (repair) await verifyRepairProjection(repair.receipt);
   return withOutput(native.out, async (store) => {
-    const checkpoint = test === undefined ? undefined : await commandCheckpoint(args, inputs, dependencies, { bridge }, repair);
+    const checkpoint = test === undefined ? undefined : await commandCheckpoint(args, inputs, dependencies, { bridge, comparisonCandidateId: comparison?.candidate.id }, repair);
     const fork = repair ? await (async () => {
       const parent = await readParentCheckpoints(repair.receipt);
       await importMeasurementCaptures({ receipt: repair.receipt, store, baseline: native.candidate,
@@ -89,13 +90,27 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
       port: count(args, 'view', 0, 65535, 0), io, store, id: attemptId, datasetId: dataset.id, planDigest: dataset.sharedPlanDigest,
       baseline: native.candidate, cases: dataset.records.map((record) => ({ id: record.id, split: 'train' })),
       testCases: test?.records.map((record) => ({ id: record.id, split: 'test' })) ?? [],
-      budget: test === undefined ? undefined : { maxMetricCalls: metricCalls, maxProposals },
+      comparison,
+      budget: test === undefined || comparison ? undefined : { maxMetricCalls: metricCalls, maxProposals },
       costs: { subjectModel: native.model, prices: costConfig.prices, costPlan },
     });
+    if (test !== undefined && comparison) {
+      const report = await compareCandidates({ id, baseline: native.candidate, ...comparison, train: dataset, test,
+        validationGroups: args.flags['validation-group'], native: base, maxTrials: inputs.maxTrials, signal,
+        checkpoint: { ...checkpoint!, maxRecoveryAttempts: args.training?.recovery?.max_attempts ?? 2 },
+        onProgress: async event => { await journal.observe(event); await live?.observe(event); } });
+      const index = await persistResult({ root: native.out, store, id: attemptId, command: 'train', datasetId: test.id,
+        planDigest: test.sharedPlanDigest, candidate: report.candidate, report: { ...report, id: attemptId, experimentId: id, costs: journal.costs(), costPlan },
+        trialIds: report.trials.map(trial => trial.id), replaceIndex: Boolean(args.flags.resume) });
+      io.stdout(`${JSON.stringify({ status: 'completed', mode: 'comparison', index: join(native.out, 'invocation.json'), ...index,
+        nativeTrials: report.trials.length, proposals: 0, pairs: report.pairs, costs: journal.summary(), estimatedApiEquivalentUsd: costPlan?.apiEquivalentUsd })}\n`);
+      return report.trials.filter(trial => trial.phase === 'test' && trial.candidateId === report.candidate.id)
+        .every(trial => (report.rescores?.findLast(score => score.runId === trial.id)?.status ?? trial.status) === 'pass') ? 0 : 1;
+    }
     if (test !== undefined) {
       const report = await trainAgent({ id, baseline: native.candidate, train: dataset, test,
         validationGroups: args.flags['validation-group'], native: base,
-        inference: { provider: native.inference, model: optimizerModel! },
+        inference: { provider: native.inference!, model: optimizerModel! },
         bridge: bridge!,
         budget: { maxMetricCalls: metricCalls, maxProposals }, seed, signal,
         proposal: args.training?.optimizer?.proposal,
@@ -141,7 +156,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         const diagnostic = await journal.failed(error);
         const failureId = `failure-${attemptId}`;
         const report = createFailureReport({ id: failureId, command: args.command as 'train' | 'evaluate',
-          baseline: native.candidate, progressRunId: journal.runId, ...diagnostic, trials: journal.reports(),
+          baseline: native.candidate, comparison, progressRunId: journal.runId, ...diagnostic, trials: journal.reports(),
           costs: journal.costs(), costPlan, rescores: journal.rescores() });
         await persistResult({ root: native.out, store, id: failureId, command: report.command,
           datasetId: dataset.id, planDigest: dataset.sharedPlanDigest, candidate: native.candidate,
