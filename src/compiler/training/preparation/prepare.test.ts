@@ -69,7 +69,7 @@ it("rejects auth/input overlap, missing auth, unsafe context and output mismatch
   await expect(prepareTraining(f.options)).rejects.toThrow("auth leaf"); expect(f.docker.calls).toEqual([]);
   f.config.auth[0]!.source = "missing"; await f.save(); await expect(prepareTraining(f.options)).rejects.toThrow();
   f.config.auth[0]!.source = "auth"; f.config.output.source = "project/run"; await f.save();
-  await expect(prepareTraining(f.options)).rejects.toThrow("overlaps");
+  await expect(prepareTraining({ ...f.options, args: ["--out", path.join(f.root, "project/run")] })).rejects.toThrow("overlaps");
   f.config.output.source = "output"; await f.save();
   await expect(prepareTraining({ ...f.options, process: async () => ({ code: 0, stdout: '"tcp://remote"', stderr: "" }) })).rejects.toThrow("Unix");
   await expect(prepareTraining({ ...f.options, args: ["--out", "/different"] })).rejects.toThrow("match configured output");
@@ -123,8 +123,29 @@ it("resolves immutable repository references and rejects missing images, overlap
   f.config.output.source = "missing-image"; await f.save();
   await expect(prepareTraining({ ...f.options, args: ["--out", path.join(f.root, "missing-image")], process: async args => args[0] === "context"
     ? { code: 0, stdout: '"unix:///socket"', stderr: "" } : { code: 1, stdout: "", stderr: "" } })).rejects.toThrow("unavailable");
-  f.config.inputs[1]!.source = "project"; await f.save(); await expect(prepareTraining(f.options)).rejects.toThrow("inputs overlap");
+  f.config.inputs[1]!.source = "project"; await f.save();
+  await expect(prepareTraining({ ...f.options, args: ["--out", path.join(f.root, "missing-image")] })).rejects.toThrow("inputs overlap");
   f.config.inputs[1]!.source = "settings"; f.config.output.source = "file"; await f.put("file"); await f.save();
   await expect(prepareTraining({ ...f.options, args: ["--out", path.join(f.root, "file")] })).rejects.toThrow();
-  f.config.auth[0]!.source = "own"; await f.save(); await expect(prepareTraining(f.options)).rejects.toThrow("regular leaf");
+  f.config.auth[0]!.source = "own"; await f.save();
+  await expect(prepareTraining({ ...f.options, args: ["--out", path.join(f.root, "file")] })).rejects.toThrow("regular leaf");
+});
+
+it("rejects mismatched output before Docker or staging for cold, dry-run and exact resume", async () => {
+  const f = await fixture();
+  const before = await readdir(f.root);
+  for (const args of [["--out", path.join(f.root, "other")], ["--out"]]) {
+    for (const mode of [{ dryRun: false }, { dryRun: true }, { dryRun: false, resume: true }]) {
+      await expect(prepareTraining({ ...f.options, dryRun: mode.dryRun, args: [...args, ...("resume" in mode ? ["--resume"] : [])] }))
+        .rejects.toThrow("Training --out must match configured output");
+      expect(f.docker.calls).toEqual([]);
+      expect(await readdir(f.root)).toEqual(before);
+    }
+  }
+  const prepared = await prepareTraining(f.options);
+  if ("dryRun" in prepared) throw Error("actual preparation expected");
+  const calls = f.docker.calls.length, saved = await readFile(prepared.preparationPath);
+  await expect(prepareTraining({ ...f.options, args: ["--out", path.join(f.root, "other")] })).rejects.toThrow("match configured output");
+  expect(f.docker.calls).toHaveLength(calls);
+  expect(await readFile(prepared.preparationPath)).toEqual(saved);
 });

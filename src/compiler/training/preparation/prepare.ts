@@ -32,6 +32,11 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   const root = path.dirname(path.resolve(options.configPath));
   const auth = config.auth.map(entry => ({ ...entry, source: path.resolve(root, entry.source) }));
   const output = path.resolve(root, config.output.source), parent = path.dirname(output);
+  for (let index = 0; index < options.args.length; index++) {
+    if (options.args[index] !== "--out") continue;
+    const declared = options.args[++index];
+    if (declared === undefined || path.resolve(declared) !== output) throw Error("Training --out must match configured output");
+  }
   assertInputRoot(output, auth.map(entry => entry.source));
   if (await realpath(parent) !== parent) throw Error("Training output parent must be canonical and already exist");
   const inputs = await planInputs(config, root, auth.map(entry => entry.source));
@@ -109,7 +114,6 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   for (let index = 0; index < args.length; index++) {
     if (["--train", "--test", "--cost-config"].includes(args[index]!)) args[++index] = map(args[index]!);
     else if (args[index] === "--resource") { const value = args[++index]!, split = value.indexOf("="); args[index] = `${value.slice(0, split)}=${map(value.slice(split + 1))}`; }
-    else if (args[index] === "--out" && path.resolve(args[++index]!) !== output) throw Error("Training --out must match configured output");
   }
   return { digest, image, configPath, preparationPath, context, args };
 }
