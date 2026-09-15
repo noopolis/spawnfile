@@ -49,6 +49,24 @@ export async function openExperimentStore(rootPath: string): Promise<ExperimentS
       await immutableWrite(await runPath(runId, 'blobs', `${digestName(record.id)}.json`), jsonBytes(record));
       return { runId, id: record.id, digest, size: content.length };
     },
+    async listBlobs(runId, access) {
+      await authorize(runId, access);
+      let names: string[];
+      try { names = await readdir(await runPath(runId, 'blobs')); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; names = []; }
+      const references: (BlobReference & { visibility: Visibility })[] = [];
+      for (const name of names.filter(name => name.endsWith('.json')).sort()) {
+        const metadata = JSON.parse((await readStored(await runPath(runId, 'blobs', name))).toString('utf8')) as BlobMetadata;
+        const { id, ...body } = metadata;
+        validateVisibility(metadata.visibility);
+        if (id !== identity(body) || name !== `${digestName(id)}.json` || metadata.runId !== runId ||
+            !Number.isSafeInteger(metadata.size) || metadata.size < 0 || metadata.size > 67_108_864) {
+          throw new Error('Blob reference integrity mismatch');
+        }
+        if (canReadVisibility(metadata.visibility, access)) references.push({ runId, id, digest: metadata.digest, size: metadata.size, visibility: metadata.visibility });
+      }
+      return references;
+    },
     async readBlob(reference, access) {
       await authorize(reference.runId, access);
       const metadata = JSON.parse((await readStored(await runPath(reference.runId, 'blobs', `${digestName(reference.id)}.json`))).toString('utf8')) as BlobMetadata;

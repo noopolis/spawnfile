@@ -265,3 +265,28 @@ and tool-isolation failures remain terminal, as do older generic protocol errors
 Failed answer diagnostics are retained only in protected evaluator audit events.
 Oversized answers are explicitly omitted with their byte count and SHA-256; raw
 provider stderr and hidden reasoning are never captured by this diagnostic path.
+
+## Repair measurements after an evaluator upgrade
+
+`spawnfile train … --repair-measurements <parent-output> --out <fresh-output>`
+creates a separate experiment with explicit parent lineage. It is not an exact
+resume: ordinary `--resume` still rejects changed execution identities. The public
+Spawnfile training preparation must prove unchanged native worker, setup, pinned
+compiler, project inputs and dataset semantics before allowing future native work.
+For older runs without an automatic preparation witness, the command also requires
+`--repair-witness <preserved-image-witness>`; an operator assertion is insufficient.
+
+The parent is projected read-only. Original native reports, prompts, valid grades,
+trial IDs, proposal history and costs remain intact. Only failed final semantic
+checks are measured again; valid passing and failing checks are retained exactly.
+New rescoring records link to the original capture and compatibility receipt, and
+aggregate scores are recalculated. Native trials and completed optimizer calls are
+not repeated. Recovery and optimizer budgets remain cumulative across the fork.
+
+The initial repair contract accepts development-stage parents only. Frozen
+selection, sealed-test state, unconfirmed native shutdown, changed criteria and
+unsupported runtime compatibility are rejected. A repaired measurement is not a
+new independent native trial or evidence of a writing improvement. The child can
+subsequently use ordinary `--resume` with the same repair declaration. `--dry-run`
+does not import captures or invoke models and conservatively estimates a full run;
+it does not certify that a parent is compatible.

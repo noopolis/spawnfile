@@ -1,3 +1,4 @@
+import { measurementRepair, type CheckReuse, type PlanMeasurementRepair } from './repair.js';
 import type { CheckNode, LiveCheck, Stage } from '../contracts/dataset.js';
 import type { EvaluationContext, EvaluationRegistry, EvaluationResult, PlanEvaluation } from '../contracts/evaluation.js';
 import { checkThreshold, collectJudgeCalls, combine, negate, result, weightedScore } from './logic/index.js';
@@ -36,15 +37,24 @@ function isolatedContext(context: EvaluationContext): EvaluationContext {
 
 export async function evaluateNode(check: CheckNode, context: EvaluationContext,
   registry: EvaluationRegistry): Promise<EvaluationResult> {
+  return evaluate(check, context, registry);
+}
+
+async function evaluate(check: CheckNode, context: EvaluationContext, registry: EvaluationRegistry,
+  reuse?: CheckReuse, path = ''): Promise<EvaluationResult> {
+  const retained = reuse?.(path);
+  if (retained !== undefined) return retained;
   if (context.signal?.aborted) return { ...result('error', 'Evaluation cancelled', context.snapshot.closed), id: check.id };
   try {
     requireOneOperation(check);
     let evaluated: EvaluationResult;
     if (check.all || check.any) {
       const children: EvaluationResult[] = [];
-      for (const child of check.all ?? check.any!) children.push(await evaluateNode(child, context, registry));
+      for (const [index, child] of (check.all ?? check.any!).entries()) {
+        children.push(await evaluate(child, context, registry, reuse, `${path}/${check.all ? 'all' : 'any'}/${index}`));
+      }
       evaluated = combine(check.all ? 'all' : 'any', children);
-    } else if (check.not) evaluated = negate(await evaluateNode(check.not, context, registry));
+    } else if (check.not) evaluated = negate(await evaluate(check.not, context, registry, reuse, `${path}/not`));
     else if (check.passed) evaluated = context.results[check.passed] ?? result('unknown', `Missing check ${check.passed}`, context.snapshot.closed);
     else if (check.score) {
       const child = context.results[check.score];
@@ -65,18 +75,19 @@ export async function evaluateNode(check: CheckNode, context: EvaluationContext,
 }
 
 export async function evaluatePlan(stages: readonly Stage[], initial: EvaluationContext,
-  registry: EvaluationRegistry): Promise<PlanEvaluation> {
+  registry: EvaluationRegistry, repair?: PlanMeasurementRepair): Promise<PlanEvaluation> {
+  const reuse = repair === undefined ? undefined : measurementRepair(stages, repair, registry);
   const checks = { ...initial.results };
   const scores = { ...initial.scores };
   const results: PlanEvaluation['stages'] = [];
   const observed: EvaluationResult[] = [];
   const context = { ...initial, results: checks, scores };
-  for (const stage of stages) {
+  for (const [stageIndex, stage] of stages.entries()) {
     const eligibility = stage.when ? await evaluateNode(stage.when, context, registry) : result('pass', 'No dependency');
     observed.push(eligibility);
     const children: EvaluationResult[] = [];
-    for (const check of stage.checks) {
-      const evaluated = eligibility.status === 'pass' ? await evaluateNode(check, context, registry)
+    for (const [checkIndex, check] of stage.checks.entries()) {
+      const evaluated = eligibility.status === 'pass' ? await evaluate(check, context, registry, reuse, `/stages/${stageIndex}/checks/${checkIndex}`)
         : { ...result('skipped', `Stage dependency ${eligibility.status}`, eligibility.finality === 'final'), id: check.id, children: [eligibility] };
       children.push(evaluated);
       observed.push(evaluated);

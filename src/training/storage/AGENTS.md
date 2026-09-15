@@ -36,3 +36,8 @@ Tests live beside source and cover actual persisted effects, forged ACL referenc
 corruption, interrupted tails, immutable history, native identity retention, concurrent
 writes and phase access. Target this module during edits; preserve inherited 90% per-file
 coverage, TypeScript and ESLint gates. Full project checks belong to the final boundary.
+
+`listBlobs` exposes only validated content-addressed reference metadata permitted by
+the same run, audience, phase and frozen-candidate policy as `readBlob`. It does not
+provide a way to enumerate sealed test evidence during optimization. Measurement
+repair copies verified development captures through these public store methods.

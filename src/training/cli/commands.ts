@@ -1,3 +1,5 @@
+import { readMeasurementRepair, verifyRepairProjection, importMeasurementCaptures, readParentCheckpoints } from '../experiments/repair/index.js';
+import { partitionTraining } from '../experiments/training/index.js';
 import { configuredCostRoutes, commandCheckpoint } from './training/index.js';
 import { authoredArguments, judgeVersions, validateAuthoredTemplates } from './training/index.js';
 import { randomUUID } from 'node:crypto';
@@ -51,8 +53,23 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     maxTrials: inputs.maxTrials, maxProposals, ...costConfig });
   const native = await prepareNative(args, io, dependencies, timeoutMs, inputs);
   signal.throwIfAborted();
+  const repair = args.flags['repair-measurements'] ? await readMeasurementRepair(resolve(io.cwd, one(args, 'repair-context')), {
+    parentRoot: resolve(io.cwd, one(args, 'repair-measurements')), out: native.out,
+    imageId: dependencies.spawnfile?.inferenceExecutionIdentity, adapterId: native.adapter.id,
+    canonicalSourceDigest: 'context' in inputs ? inputs.context.project.sourceDigest : undefined,
+  }) : undefined;
+  if (repair) await verifyRepairProjection(repair.receipt);
   return withOutput(native.out, async (store) => {
-    const checkpoint = test === undefined ? undefined : await commandCheckpoint(args, inputs, dependencies, { bridge });
+    const checkpoint = test === undefined ? undefined : await commandCheckpoint(args, inputs, dependencies, { bridge }, repair);
+    const fork = repair ? await (async () => {
+      const parent = await readParentCheckpoints(repair.receipt);
+      await importMeasurementCaptures({ receipt: repair.receipt, store, baseline: native.candidate,
+        datasets: partitionTraining(dataset, args.flags['validation-group']) });
+      return { directory: parent.directory, identity: repair.receipt.parent.executionIdentity,
+        id: repair.receipt.parent.experimentId, digest: repair.receipt.parent.checkpoints.optimizer,
+        hostDigest: repair.receipt.parent.checkpoints.host, trainingDigest: repair.receipt.parent.checkpoints.training,
+        trainingIdentity: repair.receipt.parent.trainingIdentity, receiptDigest: repair.digest };
+    })() : undefined;
     const attemptId = randomUUID();
     const base: Omit<StoredTrialOptions, 'id' | 'phase' | 'record' | 'candidate' | 'datasetId' | 'datasetDigest' | 'planDigest'> = {
       adapter: native.adapter, model: native.model, root: join(native.out, 'trials'), timeoutMs,
@@ -82,7 +99,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         bridge: bridge!,
         budget: { maxMetricCalls: metricCalls, maxProposals }, seed, signal,
         proposal: args.training?.optimizer?.proposal,
-        checkpoint: {...checkpoint!,maxRecoveryAttempts:args.training?.recovery?.max_attempts ?? 2},
+        checkpoint: {...checkpoint!,maxRecoveryAttempts:args.training?.recovery?.max_attempts ?? 2, ...(fork ? {fork} : {})},
         onProgress: async (event) => {
           await journal.observe(event);
           await live?.observe(event);

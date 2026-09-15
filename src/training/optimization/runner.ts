@@ -27,19 +27,21 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
   const start = startSchema.parse({ schema: DSPY_SCHEMA, kind: 'optimize', id: options.id,
     components: options.components, trainCaseIds: options.trainCaseIds, validationCaseIds: options.validationCaseIds,
     budget: options.budget, seed: options.seed, proposal: options.proposal,
-    ...(options.checkpoint ? { checkpoint: { directory: options.checkpoint.directory, identity: options.checkpoint.identity } } : {}) });
+    ...(options.checkpoint ? { checkpoint: { directory: options.checkpoint.directory, identity: options.checkpoint.identity,
+      ...(options.checkpoint.fork ? { fork: { directory: options.checkpoint.fork.directory, identity: options.checkpoint.fork.identity,
+        id: options.checkpoint.fork.id, digest: options.checkpoint.fork.digest } } : {}) } } : {}) });
   const controller = new AbortController();
   const signal = options.signal === undefined ? controller.signal : AbortSignal.any([controller.signal, options.signal]);
   let timedOut = false;
   const checkpoint = options.checkpoint ? await OptimizationCheckpoint.open(start, options.checkpoint) : undefined;
-  if (checkpoint && options.checkpoint?.resume) {
+  if (checkpoint && (options.checkpoint?.resume || options.checkpoint?.fork)) {
     const extra = (method: 'evaluate' | 'generate') => checkpoint.entries.filter(entry => entry.request.method === method)
       .reduce((sum, entry) => sum + entry.attempts - (entry.result === undefined ? 0 : 1), 0);
     start.recovery = { evaluations: extra('evaluate'), proposals: extra('generate') };
   }
   const startLine = encodeMessage(start);
   const host = new DspyHost(start, options, checkpoint);
-  if (checkpoint && options.checkpoint?.resume) await options.onRestore?.(restoredDspyEvidence(checkpoint));
+  if (checkpoint && (options.checkpoint?.resume || options.checkpoint?.fork)) await options.onRestore?.(restoredDspyEvidence(checkpoint));
   const timer = setTimeout(() => { timedOut = true; controller.abort(); }, options.bridge.timeoutMs);
   let home: string | undefined;
   let closure: StopReceipt | undefined;

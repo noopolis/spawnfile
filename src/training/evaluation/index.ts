@@ -6,3 +6,5 @@ export { predicate, bindingValue } from './mechanical/index.js';
 export { createJudgeCache, evidenceUnits } from './semantic/index.js';
 export { renderJudgeTemplate, validateJudgeTemplate } from './semantic/index.js';
 export type { EvidenceUnit, EvidencePacket } from './semantic/index.js';
+export type { PlanMeasurementRepair } from './repair.js';
+export { validateMeasurementRepair } from './repair.js';

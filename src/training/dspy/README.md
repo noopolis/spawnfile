@@ -56,6 +56,14 @@ host work. Corrupt/changed identities fail; cumulative failed-attempt offsets ca
 reset the proposal or evaluation budgets. All checkpoint directories are private
 local evaluator state, never candidate inputs.
 
+Explicit host-authorized checkpoint forks preserve that paired state under a new
+experiment/execution identity. Exact parent bytes and unchanged optimizer inputs
+are verified before callbacks; the child durably records lineage and never writes
+the parent. The real GEPA fork test resumes a checkpoint two completed callbacks
+behind the host journal, replays those exact calls, then continues pending call 17
+without duplicate native or generation work. This is a trusted-state continuation,
+not permission to change criteria, budgets or historical successful measurements.
+
 ## Proposal memory and authored rewrites
 
 The optimizer reflects on earlier **training** prompts and results, including

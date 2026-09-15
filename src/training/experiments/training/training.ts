@@ -1,3 +1,4 @@
+import { repairMeasurement } from '../repair/index.js';
 import { recoverMeasurement, recoverStoredReport } from './recovery.js';
 import type { RescoreReport } from '../replay/index.js';
 import { TrainingCheckpoint } from './checkpoint.js';
@@ -29,7 +30,8 @@ export interface TrainingOptions {
   bridge: DspyOptimizationOptions['bridge'];
   budget: DspyOptimizationOptions['budget'];
   proposal?: DspyOptimizationOptions['proposal'];
-  checkpoint?: { directory: string; resume: boolean; identity: string; maxRecoveryAttempts?: number };
+  checkpoint?: { directory: string; resume: boolean; identity: string; maxRecoveryAttempts?: number;
+    fork?: NonNullable<DspyOptimizationOptions['checkpoint']>['fork'] & { trainingDigest: string; trainingIdentity: string; receiptDigest: string } };
   seed?: number;
   signal?: AbortSignal;
   onProgress?: (event: { type: string; payload: unknown }) => Promise<void>;
@@ -48,6 +50,8 @@ export interface TrainingReport {
   /** Optional host reporting, never optimizer feedback or a subscription invoice. */
   costs?: CostReport;
   costPlan?: TrainingCostPlan;
+  lineage?: { kind: 'measurement-repair'; parentExperimentId: string; parentExecutionIdentity: string;
+    executionIdentity: string; receiptDigest: string; inheritedTrialIds: string[] };
 }
 export async function trainAgent(options: TrainingOptions): Promise<TrainingReport> {
   validateCandidate(options.baseline);
@@ -64,6 +68,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
   const checkpoint = await TrainingCheckpoint.open(options, [partition.train, partition.validation, options.test]);
   const trials: TrialReport[] = [...checkpoint?.reports ?? []];
   const rescores = [...checkpoint?.rescores ?? []];
+  const inheritedTrialIds = checkpoint?.inheritedTrialIds ?? [];
   for (const report of trials) await options.onProgress?.({ type: 'trial.restored', payload: report });
   for (const report of rescores) await options.onProgress?.({ type: 'trial.rescore.restored', payload: report });
   const measured = (report: TrialReport) => rescores.findLast(rescore => rescore.runId === report.id) ?? report;
@@ -91,10 +96,13 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
       if (!entry.report) { await checkpoint!.complete(key, report); entry.report = report; trials.push(report); }
     }
     if (entry?.report) {
-      const rescore = await recoverMeasurement({ options, dataset, report: entry.report, previous: entry.rescores?.at(-1),
+      const recovery = { options, dataset, report: entry.report, previous: entry.rescores?.at(-1),
         evaluation: criteria.get(dataset)!, signal: signal ?? options.signal,
         pendingRescoreId: entry.pendingRescoreId,
-        reserve: () => checkpoint!.reserveRecovery(options.checkpoint?.maxRecoveryAttempts ?? 2, key) });
+        reserve: () => checkpoint!.reserveRecovery(options.checkpoint?.maxRecoveryAttempts ?? 2, key) };
+      const rescore = options.checkpoint?.fork && checkpoint!.inheritedTrialIds.includes(entry.report.id)
+        ? await repairMeasurement(recovery, options.checkpoint.fork.receiptDigest)
+        : await recoverMeasurement(recovery);
       if (rescore && rescore !== entry.rescores?.at(-1)) {
         await checkpoint!.rescore(key, rescore); rescores.push(rescore);
         await options.onProgress?.({ type: 'trial.rescored', payload: rescore });
@@ -166,7 +174,10 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
   }
   const report: TrainingReport = { schema: 'paideia.training.v1', id: options.id, baseline: options.baseline, selected, optimizer,
     partitions: { train: partition.train.records.map(record => record.id), validation: partition.validation.records.map(record => record.id),
-      test: options.test.records.map(record => record.id) }, trials, heldOut, ...(rescores.length ? { rescores } : {}) };
+      test: options.test.records.map(record => record.id) }, trials, heldOut, ...(rescores.length ? { rescores } : {}),
+    ...(options.checkpoint?.fork ? { lineage: { kind: 'measurement-repair' as const,
+      parentExperimentId: options.checkpoint.fork.id, parentExecutionIdentity: options.checkpoint.fork.identity,
+      executionIdentity: options.checkpoint.identity, receiptDigest: options.checkpoint.fork.receiptDigest, inheritedTrialIds } } : {}) };
   await options.onProgress?.({ type: 'training.completed', payload: report });
   return report;
 }

@@ -51,3 +51,10 @@ lexical novelty rejection and bounded repair attempts; all generation attempts u
 the same total budget. Keep full native reports/raw callbacks durable. Compact
 reflection projections must retain criterion score vectors and subject usage before
 bounded reasons or article excerpts. See bridges/dspy/README.md for exact defaults.
+
+Measurement forks carry an explicit parent descriptor and byte digest into both
+host and Python checkpoint owners. Each validates the old semantic request, then
+publishes a new child identity with parent lineage before callbacks. Completed calls
+replay exactly, pending calls preserve cumulative attempt counts, and the paired
+GEPA checkpoint restores its sampler/history. Missing child journals can finish
+interrupted fork initialization; missing ordinary resume journals still fail.

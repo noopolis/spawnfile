@@ -1,5 +1,6 @@
+import { recoverStoredReport } from './recovery.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, rename, link, unlink } from 'node:fs/promises';
+import { mkdir, open, readFile, readdir, rename, link, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { ResolvedDataset } from '../../contracts/dataset.js';
 import type { DspyResult } from '../../optimization/index.js';
@@ -13,6 +14,7 @@ interface State {
   entries: Record<string, Entry>;
   optimizer?: DspyResult;
   recoveries: number;
+  lineage?: { parentIdentity: string; parentDigest: string; parentId: string; childId: string; inheritedTrialIds: string[] };
 }
 export const trainingDigest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
@@ -20,6 +22,7 @@ export const trainingDigest = (value: unknown) => createHash('sha256').update(JS
 export class TrainingCheckpoint {
   private readonly restored: Set<string>;
   private constructor(private readonly path: string, private readonly state: State) { this.restored = new Set(Object.keys(state.entries)); }
+  get inheritedTrialIds() { return [...this.state.lineage?.inheritedTrialIds ?? []]; }
   get optimizer() { return this.state.optimizer; }
   get rescores() { return Object.values(this.state.entries).flatMap(entry => entry.rescores ?? []); }
   get reports() { return Object.values(this.state.entries).flatMap(entry => entry.report ? [entry.report] : []); }
@@ -35,13 +38,42 @@ export class TrainingCheckpoint {
     const path = join(options.checkpoint.directory, 'training.json');
     await mkdir(options.checkpoint.directory, { recursive: true, mode: 0o700 });
     let state: State = { identity, entries: {}, recoveries: 0 };
-    if (options.checkpoint.resume) {
-      const saved = JSON.parse(await readFile(path, 'utf8')) as { state: State; digest: string };
-      if (saved.state.identity !== identity || trainingDigest(saved.state) !== saved.digest) throw new Error('Training checkpoint identity or integrity mismatch');
+    let create = !options.checkpoint.resume;
+    if (options.checkpoint.resume || options.checkpoint.fork) {
+      let importing = !options.checkpoint.resume ? options.checkpoint.fork : undefined;
+      let bytes: Buffer;
+      try { bytes = await readFile(importing ? join(importing.directory, 'training.json') : path); }
+      catch (error) {
+        if (!options.checkpoint.resume || !options.checkpoint.fork || (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        if ((await readdir(options.checkpoint.directory)).some(name => name === 'host.json' || name === 'optimizer.json')) {
+          throw new Error('Missing training checkpoint after optimizer initialization', { cause: error });
+        }
+        importing = options.checkpoint.fork; create = true;
+        bytes = await readFile(join(importing.directory, 'training.json'));
+      }
+      if (importing && `sha256:${createHash('sha256').update(bytes).digest('hex')}` !== importing.trainingDigest) {
+        throw new Error('Parent training checkpoint digest mismatch');
+      }
+      const saved = JSON.parse(bytes.toString('utf8')) as { state: State; digest: string };
+      if (saved.state.identity !== (importing ? importing.trainingIdentity : identity) || trainingDigest(saved.state) !== saved.digest) {
+        throw new Error('Training checkpoint identity or integrity mismatch');
+      }
       state = saved.state;
+      if (importing) {
+        if (!Number.isSafeInteger(state.recoveries) || state.recoveries < 0 || state.recoveries > (options.checkpoint.maxRecoveryAttempts ?? 2)) {
+          throw new Error('Parent measurement recovery counter is invalid');
+        }
+        for (const entry of Object.values(state.entries)) {
+          if (!entry.report || entry.id !== entry.report.id) throw new Error('Measurement fork requires settled captured native work');
+          await recoverStoredReport(options, entry.id, entry.report.phase, entry.report.candidateId, entry.report);
+        }
+        state = { ...state, identity, lineage: { parentIdentity: importing.trainingIdentity,
+          parentDigest: importing.trainingDigest, parentId: importing.id, childId: options.id,
+          inheritedTrialIds: Object.values(state.entries).map(entry => entry.id) } };
+      }
     }
     const checkpoint = new TrainingCheckpoint(path, state);
-    if (!options.checkpoint.resume) await checkpoint.save(true);
+    if (create) await checkpoint.save(true);
     return checkpoint;
   }
 

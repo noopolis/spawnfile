@@ -25,9 +25,17 @@ class Budget(StrictModel):
     maxProposals: Annotated[int, Field(ge=1, le=1000)]
 
 
+class CheckpointFork(StrictModel):
+    directory: TextId
+    identity: TextId
+    id: TextId
+    digest: Annotated[str, Field(pattern=r"^sha256:[0-9a-f]{64}$")]
+
+
 class Checkpoint(StrictModel):
     directory: TextId
     identity: TextId
+    fork: CheckpointFork | None = None
 
 
 class Recovery(StrictModel):

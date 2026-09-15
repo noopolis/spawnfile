@@ -127,6 +127,34 @@ callback identity. Model/criteria/environment drift rejects resume before native
 The TypeScript training owner separately persists frozen selection and sealed-test
 reports; sealed test data never enters this bridge.
 
+## Explicit checkpoint fork
+
+An authorized host may start a **new** experiment from a trusted paired checkpoint:
+
+```json
+{"checkpoint":{"directory":"/child/checkpoint/dspy","identity":"new-execution","fork":{"directory":"/parent/checkpoint/dspy","identity":"original-execution","id":"original-experiment","digest":"sha256:<64 lowercase hex characters>"}}}
+```
+
+`fork.digest` binds the exact parent `optimizer.json` bytes. Its envelope digest and
+old optimizer identity must also match. The old identity is recomputed from the
+current request with only experiment ID and execution identity reverted: components,
+case splits, budgets, seed, proposal policy and pinned bridge versions stay exact.
+Host-derived recovery offsets remain separately accountable as on ordinary resume.
+
+The bridge copies committed GEPA bytes, session outcomes/history/counters and
+sampler/RNG state into a disjoint child directory, then atomically commits the new
+identity and parent lineage **before any host callback**. It never writes the
+parent. Subsequent child resume requires the same fork descriptor and uses its own
+committed state; it does not require the parent directory to remain online. Further
+forks retain previous lineage. Forks are explicit authorization to use trusted local
+pickle state, not a format for importing untrusted agent artifacts.
+
+Callbacks retain their original `call-N` sequence. A paired Python checkpoint can
+lag the host journal: the host must replay matching completed calls byte-for-byte
+and fulfill only the pending work. Historical successful outcomes are not rescored
+by this import. The host owns any separately authorized measurement repair and must
+preserve cumulative failed-attempt accounting; copying state is not a new budget.
+
 ## Released integration seam
 
 The actual `dspy.GEPA.compile` receives ordinary named `dspy.Predict` components,

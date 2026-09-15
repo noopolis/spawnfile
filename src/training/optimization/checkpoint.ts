@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, open, link, unlink } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, open, link, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { InferenceResult } from '../contracts/execution.js';
 import { requestSchema, evaluationSchema, inferenceSchema, startSchema, DSPY_SCHEMA, type DspyRequest, type DspyStart } from './protocol.js';
@@ -26,16 +26,34 @@ function generationResult(inference: InferenceResult) {
 export class OptimizationCheckpoint {
   private history: CallbackEntry[] = [];
   get entries(): readonly CallbackEntry[] { return structuredClone(this.history); }
-  private constructor(private readonly path: string, private readonly identity: string) {}
+  private constructor(private readonly path: string, private readonly identity: string,
+    private readonly lineage?: { fork: NonNullable<DspyOptimizationOptions['checkpoint']>['fork']; childId: string }) {}
 
   static async open(start: DspyStart, options: NonNullable<DspyOptimizationOptions['checkpoint']>) {
     await mkdir(options.directory, { recursive: true, mode: 0o700 });
-    const checkpoint = new OptimizationCheckpoint(join(options.directory, 'host.json'), digest({
-      start: { ...start, checkpoint: undefined, recovery: undefined }, execution: options.identity, bridge: 'dspy3.3.1-gepa0.1.4-checkpoint1',
-    }));
-    if (options.resume) {
-      const raw = JSON.parse(await readFile(checkpoint.path, 'utf8')) as { identity: string; entries: CallbackEntry[]; digest: string };
-      if (raw.identity !== checkpoint.identity || digest({ identity: raw.identity, entries: raw.entries }) !== raw.digest) {
+    const identity = (id: string, execution: string) => digest({
+      start: { ...start, id, checkpoint: undefined, recovery: undefined }, execution, bridge: 'dspy3.3.1-gepa0.1.4-checkpoint1',
+    });
+    const lineage = options.fork ? { fork: options.fork, childId: start.id } : undefined;
+    const checkpoint = new OptimizationCheckpoint(join(options.directory, 'host.json'), identity(start.id, options.identity), lineage);
+    if (options.resume || options.fork) {
+      let importing = !options.resume ? options.fork : undefined;
+      let bytes: Buffer;
+      try { bytes = await readFile(importing ? join(importing.directory, 'host.json') : checkpoint.path); }
+      catch (error) {
+        if (!options.resume || !options.fork || (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        if ((await readdir(options.directory)).includes('optimizer.json')) throw new Error('Missing host checkpoint after optimizer initialization', { cause: error });
+        importing = options.fork;
+        bytes = await readFile(join(importing.directory, 'host.json'));
+      }
+      if (importing && `sha256:${createHash('sha256').update(bytes).digest('hex')}` !== importing.hostDigest) {
+        throw new Error('Parent optimizer callback journal digest mismatch');
+      }
+      const raw = JSON.parse(bytes.toString('utf8')) as { identity: string; entries: CallbackEntry[]; digest: string; lineage?: unknown };
+      const expected = importing ? identity(importing.id, importing.identity) : checkpoint.identity;
+      const payload = { identity: raw.identity, entries: raw.entries, ...(raw.lineage === undefined ? {} : { lineage: raw.lineage }) };
+      if (raw.identity !== expected || digest(payload) !== raw.digest ||
+          (!importing && canonical(raw.lineage) !== canonical(lineage))) {
         throw new Error('Optimizer checkpoint identity or integrity mismatch');
       }
       const ids = new Set<string>();
@@ -46,6 +64,7 @@ export class OptimizationCheckpoint {
         checkpoint.validateResult(entry);
         checkpoint.history.push(entry);
       }
+      if (importing) await checkpoint.save(checkpoint.history, true);
     } else { await checkpoint.save([], true); }
     return checkpoint;
   }
@@ -99,7 +118,7 @@ export class OptimizationCheckpoint {
   }
 
   private async save(entries: CallbackEntry[], create = false) {
-    const payload = { identity: this.identity, entries };
+    const payload = { identity: this.identity, entries, ...(this.lineage === undefined ? {} : { lineage: this.lineage }) };
     const target = `${this.path}.${randomUUID()}.tmp`;
     const handle = await open(target, 'wx', 0o600);
     try { await handle.writeFile(canonical({ ...payload, digest: digest(payload) })); await handle.sync(); }

@@ -41,6 +41,8 @@ export interface ExperimentStore {
   createRun(manifest: RunManifest): Promise<void>;
   putBlob(runId: string, bytes: string | Uint8Array, visibility?: Visibility): Promise<BlobReference>;
   readBlob(reference: BlobReference, access: ReadAccess): Promise<Buffer>;
+  /** Authorized metadata only; content still requires readBlob access. */
+  listBlobs(runId: string, access: ReadAccess): Promise<(BlobReference & { visibility: Visibility })[]>;
   appendEvent(runId: string, event: { id: string; payload: unknown }, visibility?: Visibility): Promise<'appended' | 'duplicate'>;
   appendEvaluation(runId: string, evaluation: { id: string; report: unknown }, visibility?: Visibility): Promise<void>;
   readReplay(runId: string, access: ReadAccess): Promise<Replay>;

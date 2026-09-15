@@ -31,3 +31,9 @@ released DSPy GEPA integration. Inherit the bridge guide.
 - Benign duplicate/novelty exhaustion uses GEPA's skip seam and stops the session;
   it must not latch a provider failure or launch duplicate native trials. Pair the
   upstream final state save too: GEPA omits the final state-saved callback.
+
+- An explicit checkpoint fork verifies the exact parent optimizer bytes and old
+  request/execution identity, imports paired state under the new identity, and
+  commits parent lineage before callbacks. Parent directories remain read-only.
+  Child resume requires the same lineage; importing never resets callback IDs,
+  completed outcomes, sampler state or attempt budgets.

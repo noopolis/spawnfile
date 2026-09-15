@@ -46,3 +46,9 @@ must not strip meaningful nested criterion failures or expose validation content
 A newly classified `invalid-response` judge failure may use existing bounded
 measurement recovery after native closure. Generic legacy `protocol` failures
 remain ineligible; never infer their missing cause or rewrite historical receipts.
+
+Explicit measurement-repair forks preserve inherited native reports and only
+remeasure their failed final semantic leaves. New child trials use ordinary recovery.
+Training lineage records inherited IDs; costs and viewer progress restore them once.
+The checkpoint may finish interrupted fork initialization on resume, but an ordinary
+resume never fabricates a missing journal. Parent imports remain development-only.

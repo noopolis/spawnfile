@@ -11,7 +11,7 @@ const repeated = new Set(['instructions', 'supporting', 'locked', 'editable', 'r
 const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'resource', 'judge', 'judge-citation-repairs', 'source-root', 'out', 'max-trials', 'timeout-ms', 'view', 'cost-config', 'spawnfile-context'];
 const flags: Record<string, readonly string[]> = {
   validate: ['judge', 'judge-citation-repairs'], evaluate: common, view: ['port', 'timeout-ms'],
-  train: [...common, 'train', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed', 'dry-run', 'resume'],
+  train: [...common, 'train', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed', 'dry-run', 'resume', 'repair-measurements', 'repair-context'],
 };
 
 export const helpText = `Paideia — explicit local native-agent experiments
@@ -38,6 +38,8 @@ Train accepts repeated --validation-group GROUP, or freezes an internal group pa
 --max-proposals N (default 3, ceiling 1000), --seed N (GEPA sampling only).
 train --dry-run resolves local inputs and prints an API-equivalent cost plan without launching any runtime or model.
 train --resume reopens the same --out with unchanged execution inputs and cumulative optimizer budgets.
+train --repair-measurements PARENT --out FRESH forks verified development evidence using a launcher-produced --repair-context receipt.
+Repair preserves valid grades and native work; its dry-run conservatively estimates a full run without importing evidence.
 --cost-config FILE selects a paideia.cost-config.v1 YAML with token assumptions and explicit model prices.
 Dry-run requires no --out or --bridge-command. Unknown costs are reported, never priced at zero.
 --timeout-ms N (default 180000 for evaluate/train, ceiling 3600000) is the whole-command deadline.
@@ -72,6 +74,9 @@ export function parseArguments(argv: readonly string[]): CliArguments {
   }
   if (positional.length !== (command === 'train' ? 0 : 1)) throw new Error(`${command} requires ${command === 'train' ? '--train and --test, without positional arguments' : 'exactly one dataset path'}`);
   const args = { command: command as CliArguments['command'], dataset: positional[0], flags: values };
+  if (Boolean(values['repair-context']) !== Boolean(values['repair-measurements']) && !values['dry-run']) {
+    throw new Error('Measurement repair requires both a parent and a protected launcher receipt');
+  }
   judgeCitationRepairs(args);
   return args;
 }

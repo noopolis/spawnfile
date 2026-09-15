@@ -23,8 +23,20 @@ export interface DspyOptimizationOptions {
   evaluate(request: Readonly<DspyEvaluateParams>, signal: AbortSignal, callbackId?: string): Promise<DspyEvaluation>;
   generate(request: Readonly<DspyGenerateParams>, signal: AbortSignal, callbackId?: string): Promise<InferenceResult>;
   onRestore?: (evidence: DspyRestoredEvidence) => Promise<void>;
-  checkpoint?: { directory: string; resume: boolean; identity: string };
+  checkpoint?: { directory: string; resume: boolean; identity: string; fork?: OptimizationFork };
+
   signal?: AbortSignal;
+}
+
+/** Trusted measurement-repair import, bound to separately verified parent evidence. */
+export interface OptimizationFork {
+  directory: string;
+  identity: string;
+  id: string;
+  /** Exact parent Python paired checkpoint file digest. */
+  digest: string;
+  /** Exact parent host callback journal file digest. */
+  hostDigest: string;
 }
 
 export interface DspyFailureEvidence {
