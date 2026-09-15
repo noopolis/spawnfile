@@ -7,12 +7,14 @@ import type { TrainingContext } from "../contract.js";
 import { trainingImageSchema } from "./contract.js";
 import { prepareTrainingContainer } from "./prepare.js";
 import { runTrainingDocker, type TrainingDockerProcess } from "./process.js";
+import { parseTrainingMappedPreparation } from "../preparation/contract.js";
 
 export interface LaunchTrainingContainerOptions {
   image: string; configPath: string; context: TrainingContext; args: readonly string[];
   timeoutMs: number; signal?: AbortSignal;
   streams: { stdout(line: string): void; stderr(line: string): void };
   process?: TrainingDockerProcess;
+  preparationPath?: string;
 }
 const inspectFormat = "{{json .Id}}\n{{json .Name}}\n{{json .Image}}\n{{json .Config.Labels}}";
 export const launchTrainingContainer = async (options: LaunchTrainingContainerOptions): Promise<number> => {
@@ -23,6 +25,10 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
   const configBytes = await readFile(options.configPath, "utf8");
   if (Buffer.byteLength(configBytes) > 1024 * 1024) throw Error("Training launch config exceeds 1 MiB");
   const prepared = await prepareTrainingContainer(JSON.parse(configBytes), options.context, options.args);
+  if (options.preparationPath) {
+    if (await realpath(options.preparationPath) !== options.preparationPath) throw Error("Preparation receipt path must be canonical");
+    parseTrainingMappedPreparation(JSON.parse(await readFile(options.preparationPath, "utf8")));
+  }
   const execute = options.process ?? runTrainingDocker;
   const controller = new AbortController(), deadline = Date.now() + options.timeoutMs;
   let interrupted = false, timedOut = false;
@@ -55,6 +61,7 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     const mounts = [...prepared.config.inputs.map((entry) => `type=bind,src=${entry.source},dst=${entry.destination},readonly`),
       `type=bind,src=${prepared.config.output.source},dst=/run/training/output`,
       `type=bind,src=${contextFile},dst=/run/paideia/context.json,readonly`,
+      ...options.preparationPath ? [`type=bind,src=${options.preparationPath},dst=/run/paideia/preparation.json,readonly`] : [],
       ...prepared.config.auth.map((entry) => `type=bind,src=${entry.source},dst=/run/paideia-auth/${entry.provider},readonly`)];
     const args = ["create", "--name", name, "--label", `com.spawnfile.training.owner=${name}`,
       "--init", "--read-only", "--user", `${uid}:${gid}`, "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
