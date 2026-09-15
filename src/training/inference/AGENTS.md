@@ -20,6 +20,8 @@ are a separate provider contract and are not supplied by this text-generation ro
 Routed deadlines cover all attempts and audit writes. Reserve each remaining
 route an equal share of remaining time; an attempt timeout may use the next
 authored route, but caller cancellation and total budget exhaustion may not.
+Audit timeout/cancellation classification comes from the actual boundary event,
+not a second wall-clock comparison; real persistence failures remain failures.
 
 `response-schema.ts` validates optional native structured-output controls before
 generation and the entire completed JSON response afterward. Support synchronous

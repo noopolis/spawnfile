@@ -53,6 +53,16 @@ it('bounds a stalled audit store and never begins another route', async () => {
   await expect(route.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'timeout', attempts: [{ failureKind: 'quota' }] });
   expect(next).not.toHaveBeenCalled();
 });
+it('classifies an expired audit timer even when the wall clock has not reached its deadline', async () => {
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(1000);
+  const next = vi.fn();
+  try {
+    const route = createRoutedInference({ ...options([provider(async () => { throw new InferenceFailure('quota', 'q'); }), provider(next)]),
+      timeoutMs: 10, observeAttempt: async () => new Promise(() => undefined) });
+    await expect(route.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'timeout', attempts: [{ failureKind: 'quota' }] });
+    expect(next).not.toHaveBeenCalled();
+  } finally { clock.mockRestore(); }
+});
 it('cancels an audit wait while retaining the completed attempt', async () => {
   const controller = new AbortController();
   let began!: () => void;

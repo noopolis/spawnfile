@@ -58,8 +58,8 @@ export function createRoutedInference(options: RoutedInferenceOptions): Inferenc
         }])[0]!;
         attempts.push(attempt);
         try { if (observeAttempt !== undefined) await persistBounded(() => observeAttempt(attempt), deadline - Date.now(), request.signal); }
-        catch {
-          const kind = request.signal?.aborted ? 'cancelled' : Date.now() >= deadline ? 'timeout' : 'unknown';
+        catch (error) {
+          const kind = request.signal?.aborted ? 'cancelled' : error instanceof AuditBoundaryFailure ? error.kind : Date.now() >= deadline ? 'timeout' : 'unknown';
           throw new InferenceFailure(kind, 'Inference audit persistence failed', { attempts });
         }
         if (result !== undefined) return { ...result, attempts: immutableAttempts(attempts) };
@@ -102,15 +102,20 @@ async function generateBounded(route: InferenceRoute, request: InferenceRequest,
   } finally { clearTimeout(timer); request.signal?.removeEventListener('abort', interrupt); }
 }
 
+class AuditBoundaryFailure extends Error {
+  constructor(readonly kind: 'cancelled' | 'timeout') { super(`Audit boundary ${kind}`); }
+}
+
 /** An unavailable audit store must not leave an unattended route running forever. */
 async function persistBounded(write: () => void | Promise<void>, timeoutMs: number, signal?: AbortSignal): Promise<void> {
-  if (timeoutMs <= 0 || signal?.aborted) throw new Error('Audit boundary expired');
+  if (signal?.aborted) throw new AuditBoundaryFailure('cancelled');
+  if (timeoutMs <= 0) throw new AuditBoundaryFailure('timeout');
   let timer: ReturnType<typeof setTimeout> | undefined;
   let interrupt!: () => void;
   const boundary = new Promise<never>((_resolve, reject) => {
-    interrupt = () => reject(new Error('Audit cancelled'));
+    interrupt = () => reject(new AuditBoundaryFailure('cancelled'));
     signal?.addEventListener('abort', interrupt, { once: true });
-    timer = setTimeout(() => reject(new Error('Audit deadline expired')), timeoutMs);
+    timer = setTimeout(() => reject(new AuditBoundaryFailure('timeout')), timeoutMs);
   });
   try { await Promise.race([Promise.resolve().then(write), boundary]); }
   finally { clearTimeout(timer); signal?.removeEventListener('abort', interrupt); }
