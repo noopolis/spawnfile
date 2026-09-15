@@ -7,6 +7,8 @@ import type { TrainingContext } from "../contract.js";
 import { trainingImageSchema } from "./contract.js";
 import { prepareTrainingContainer } from "./prepare.js";
 import { runTrainingDocker, type TrainingDockerProcess } from "./process.js";
+import { repairEnvelopeSchema } from "../repair/contract.js";
+import { hashJson } from "../preparation/files.js";
 import { parseTrainingMappedPreparation } from "../preparation/contract.js";
 
 export interface LaunchTrainingContainerOptions {
@@ -15,6 +17,7 @@ export interface LaunchTrainingContainerOptions {
   streams: { stdout(line: string): void; stderr(line: string): void };
   process?: TrainingDockerProcess;
   preparationPath?: string;
+  repairPath?: string;
 }
 const inspectFormat = "{{json .Id}}\n{{json .Name}}\n{{json .Image}}\n{{json .Config.Labels}}";
 export const launchTrainingContainer = async (options: LaunchTrainingContainerOptions): Promise<number> => {
@@ -28,6 +31,13 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
   if (options.preparationPath) {
     if (await realpath(options.preparationPath) !== options.preparationPath) throw Error("Preparation receipt path must be canonical");
     parseTrainingMappedPreparation(JSON.parse(await readFile(options.preparationPath, "utf8")));
+  }
+  if (options.repairPath) {
+    if (await realpath(options.repairPath) !== options.repairPath) throw Error("Repair receipt path must be canonical");
+    const raw = JSON.parse(await readFile(options.repairPath, "utf8"));
+    const envelope = repairEnvelopeSchema.parse(raw);
+    if (hashJson(raw.receipt) !== envelope.digest || envelope.receipt.current.imageId !== image ||
+      !prepared.config.inputs.some(input => input.destination === envelope.receipt.parent.root)) throw Error("Repair receipt launch identity mismatch");
   }
   const execute = options.process ?? runTrainingDocker;
   const controller = new AbortController(), deadline = Date.now() + options.timeoutMs;
@@ -62,6 +72,7 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
       `type=bind,src=${prepared.config.output.source},dst=/run/training/output`,
       `type=bind,src=${contextFile},dst=/run/paideia/context.json,readonly`,
       ...options.preparationPath ? [`type=bind,src=${options.preparationPath},dst=/run/paideia/preparation.json,readonly`] : [],
+      ...options.repairPath ? [`type=bind,src=${options.repairPath},dst=/run/paideia/repair.json,readonly`] : [],
       ...prepared.config.auth.map((entry) => `type=bind,src=${entry.source},dst=/run/paideia-auth/${entry.provider},readonly`)];
     const args = ["create", "--name", name, "--label", `com.spawnfile.training.owner=${name}`,
       "--init", "--read-only", "--user", `${uid}:${gid}`, "--cap-drop", "ALL", "--security-opt", "no-new-privileges",

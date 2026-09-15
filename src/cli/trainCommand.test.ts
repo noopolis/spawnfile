@@ -115,3 +115,13 @@ describe("spawnfile train", () => {
       "--judge-citation-repairs", literal, "--judge-citation-repairs", literal, "--out", "local output", "--dry-run"]);
   });
 });
+
+it("keeps public repair authority separate from forwarded optimizer flags", async () => {
+  const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 0);
+  expect(await runCli(["train", await project(), ...base, "--training-config", "/recipe.json", "--repair-measurements", "/parent", "--repair-witness", "/witness.json"], {
+    handlers: { delegatePaideiaTraining: delegate }, streams: { stdout() {}, stderr() {} }
+  })).toBe(0);
+  expect(delegate.mock.calls[0]![0]).toMatchObject({ repairMeasurements: "/parent", repairWitness: "/witness.json" });
+  expect(delegate.mock.calls[0]![0].args).not.toContain("--repair-measurements");
+  expect(delegate.mock.calls[0]![0].args).not.toContain("--repair-context");
+});

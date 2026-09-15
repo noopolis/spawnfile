@@ -26,7 +26,7 @@ async function packageFiles(root: string, target: string, withDist: boolean, loc
 
 export async function planTrainingImage(build: TrainingImageBuild, root: string, auth: readonly string[], ownRoot = packageRoot): Promise<TrainingImagePlan> {
   const resolve = (value: string) => path.resolve(root, value);
-  for (const source of [build.paideia, build.bridge, build.claude, build.grok.source, build.integration.source, ...build.bootstrap ? [build.bootstrap] : []]) assertInputRoot(resolve(source), auth);
+  for (const source of [build.paideia, build.bridge, build.claude, build.grok.source, build.integration.source, ...build.compiler ? [build.compiler] : [], ...build.bootstrap ? [build.bootstrap] : []]) assertInputRoot(resolve(source), auth);
   const assets = ownRoot === packageRoot ? trainingAssets : path.join(ownRoot, "runtime-images/training");
   const dockerfile = await readFile(path.join(assets, "Dockerfile"), "utf8");
   const ownLock = path.extname(fileURLToPath(import.meta.url)) === ".ts" || ownRoot !== packageRoot
@@ -34,16 +34,20 @@ export async function planTrainingImage(build: TrainingImageBuild, root: string,
   const files = [
     ...await packageFiles(resolve(build.paideia), "paideia", true),
     ...await packageFiles(ownRoot, "spawnfile", true, ownLock),
+    ...await packageFiles(build.compiler ? resolve(build.compiler) : ownRoot, "compiler", true,
+      build.compiler ? path.join(resolve(build.compiler), "package-lock.json") : ownLock),
     ...await packageFiles(resolve(build.claude), "claude", false),
     ...await sealTree(resolve(build.bridge), "bridge", { ignoreDevelopment: true }),
     ...await sealTree(resolve(build.integration.source), "integration", { ignoreDevelopment: true }),
     ...build.bootstrap ? await sealTree(resolve(build.bootstrap), "bootstrap", { ignoreDevelopment: true }) : [],
     await sealFile(resolve(build.grok.source), "grok"),
     await sealFile(path.join(ownRoot, "runtimes.yaml"), "spawnfile/runtimes.yaml"),
-    await sealFile(path.join(ownRoot, "moltnet-releases.json"), "spawnfile/moltnet-releases.json")
+    await sealFile(path.join(ownRoot, "moltnet-releases.json"), "spawnfile/moltnet-releases.json"),
+    ...await Promise.all(["runtimes.yaml", "moltnet-releases.json"].map(name =>
+      sealFile(path.join(build.compiler ? resolve(build.compiler) : ownRoot, name), `compiler/${name}`)))
   ];
   if (files.find(file => file.destination === "grok")!.sha256 !== build.grok.sha256) throw Error("Grok executable digest mismatch");
-  for (const required of [`integration/${build.integration.entry}`, "bridge/pyproject.toml", "bridge/requirements.lock", "bridge/paideia_dspy/__init__.py", "paideia/dist/src/cli/main.js", "spawnfile/dist/cli/index.js"]) {
+  for (const required of [`integration/${build.integration.entry}`, "bridge/pyproject.toml", "bridge/requirements.lock", "bridge/paideia_dspy/__init__.py", "paideia/dist/src/cli/main.js", "spawnfile/dist/cli/index.js", "compiler/dist/cli/index.js"]) {
     if (!files.some(file => file.destination === required)) throw Error(`Training distribution is missing ${required}`);
   }
   const entry = `#!/bin/sh\nexec /usr/local/bin/node --experimental-strip-types ${JSON.stringify(`/opt/training/integration/${build.integration.entry}`)} "$@"\n`;

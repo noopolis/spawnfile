@@ -20,6 +20,10 @@ WORKDIR /opt/training/spawnfile
 COPY spawnfile/package.json spawnfile/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts
 
+WORKDIR /opt/training/compiler
+COPY compiler/package.json compiler/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
+
 COPY bridge /opt/training/paideia/bridges/dspy
 RUN /opt/python/bin/python3 -m venv /opt/training/paideia/bridges/dspy/.venv \
  && /opt/training/paideia/bridges/dspy/.venv/bin/pip install --no-cache-dir -r /opt/training/paideia/bridges/dspy/requirements.lock \
@@ -32,6 +36,8 @@ COPY grok /opt/training/bin/grok
 
 COPY paideia/dist /opt/training/paideia/dist
 COPY spawnfile/dist /opt/training/spawnfile/dist
+COPY compiler/dist /opt/training/compiler/dist
+COPY compiler/runtimes.yaml compiler/moltnet-releases.json /opt/training/compiler/
 COPY spawnfile/runtimes.yaml spawnfile/moltnet-releases.json /opt/training/spawnfile/
 COPY integration /opt/training/integration
 COPY bootstrap /opt/training/bootstrap

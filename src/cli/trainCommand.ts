@@ -24,6 +24,8 @@ export const registerTrainCommand = (
     .option("--training-image <immutable-image>", "Pinned image containing the complete training environment")
     .option("--training-config <json>", "V2 image recipe and declared inputs, or advanced v1 local bindings")
     .option("--dry-run", "Validate and estimate without compiling, authenticating or starting models")
+    .option("--repair-measurements <parent-out>", "Fork captured work into a fresh output for authorized measurement repair")
+    .option("--repair-witness <manifest>", "Explicit verified image witness for a legacy parent")
     .option("--resume", "Resume the exact persisted training experiment in --out");
   for (const name of forwarded) {
     const flag = `--${name} <value>`;
@@ -55,6 +57,7 @@ export const registerTrainCommand = (
     if (options.dryRun === true) args.push("--dry-run");
     if (options.resume === true) args.push("--resume");
     setExitCode(await handlers.delegatePaideiaTraining({ context, args,
+      repairMeasurements: options.repairMeasurements as string | undefined, repairWitness: options.repairWitness as string | undefined,
       trainingImage: options.trainingImage as string | undefined, trainingConfig: options.trainingConfig as string | undefined,
       command: options.paideiaCommand as string, dryRun: options.dryRun === true,
       timeoutMs: timeout + 5000, streams, signal }));
