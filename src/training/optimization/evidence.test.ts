@@ -44,6 +44,24 @@ describe('terminal optimization evidence', () => {
     await expect(verifyDspyResult(result, host, signal)).resolves.toBeUndefined();
   });
 
+  it('accepts checkpoint object-key reordering while preserving every nested usage value', async () => {
+    const f = await fixture();
+    const usage = { cachedInputTokens: 128, cacheWriteInputTokens: 0, inputTokens: 8030,
+      outputTokens: 843, reasoningTokens: null, source: 'grok.result.usage.lower-bound' };
+    f.host.generations[0]!.usage = usage;
+    f.host.generations[0]!.modelBasis = 'provider-reported';
+    f.result = resultSchema.parse({ ...f.result, provenance: { ...f.result.provenance,
+      generations: [{ model: f.host.generations[0]!.model, usage, modelBasis: 'provider-reported' }] } });
+    expect(Object.keys(f.host.generations[0]!.usage!)).not.toEqual(Object.keys(f.result.provenance.generations[0]!.usage!));
+    await expect(verifyDspyResult(f.result, f.host, f.signal)).resolves.toBeUndefined();
+    for (const field of ['inputTokens', 'cachedInputTokens', 'outputTokens', 'cacheWriteInputTokens', 'reasoningTokens'] as const) {
+      const changed = structuredClone(f.result); changed.provenance.generations[0]!.usage![field] = 1;
+      await expect(verifyDspyResult(changed, f.host, f.signal)).rejects.toThrow('provenance');
+    }
+    const reordered = structuredClone(f.result); reordered.provenance.captures.reverse();
+    await expect(verifyDspyResult(reordered, f.host, f.signal)).rejects.toThrow('provenance');
+  });
+
   it.each<[string, (value: Fixture) => void]>([
     ['identity', ({ result }) => { result.id = 'another'; }],
     ['seed', ({ result }) => { result.provenance.seed += 1; }],

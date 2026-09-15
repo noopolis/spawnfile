@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { sameComponents, type DspyResult } from './protocol.js';
 import type { DspyHost } from './host.js';
 
@@ -11,9 +12,10 @@ export async function verifyDspyResult(result: DspyResult, host: DspyHost, signa
     throw new Error('DSPy terminal identity, counters or candidate count do not match host evidence');
   }
   const captures = completed.map(({ caseId, split, result: evaluated }) => ({ caseId, split, captureId: evaluated.captureId }));
-  if (JSON.stringify(captures) !== JSON.stringify(provenance.captures)
-      || JSON.stringify(generations.map(({ model, usage, modelBasis }) => ({ model, usage,
-        ...(modelBasis === undefined ? {} : { modelBasis }) }))) !== JSON.stringify(provenance.generations)) {
+  // Checkpoint JSON canonicalizes object keys; array order and every value remain authoritative.
+  if (!isDeepStrictEqual(captures, provenance.captures)
+      || !isDeepStrictEqual(generations.map(({ model, usage, modelBasis }) => ({ model, usage,
+        ...(modelBasis === undefined ? {} : { modelBasis }) })), provenance.generations)) {
     throw new Error('DSPy terminal capture or inference provenance does not match host evidence');
   }
   const validation = completed.filter((entry) => entry.split === 'validation');

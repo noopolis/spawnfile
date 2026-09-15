@@ -50,7 +50,8 @@ async function project() {
         const model = selected.model as keyof typeof calls; calls[model]++;
         if (model === 'reflection') {
           const payload = JSON.parse(request.prompt);
-          return { model, route: 'fixture', usage: null,
+          return { model, route: 'fixture', modelBasis: 'provider-reported' as const,
+            usage: { inputTokens: 8030, cachedInputTokens: 128, outputTokens: 843, cacheWriteInputTokens: 0, reasoningTokens: null, source: 'optimizer-fixture' },
             text: JSON.stringify(Object.fromEntries(Object.keys(payload.currentComponents).map(key => [key, 'IMPROVED\n']))) };
         }
         if (model === 'grounding' && failure && native.length === 3) throw new InferenceFailure('protocol', 'Original invalid judgment');
