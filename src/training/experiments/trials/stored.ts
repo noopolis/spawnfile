@@ -26,6 +26,7 @@ export interface StoredTrialOptions extends Omit<TrialOptions, 'candidateId' | '
     context: NativePreparationContext) => Promise<Omit<Awaited<ReturnType<TrialOptions['prepare']>>, 'instructions'>>;
 }
 export async function runStoredTrial(options: StoredTrialOptions): Promise<TrialReport> {
+  if ('schema' in options.record && options.record.schema === 'paideia.cost-record.v1') throw new Error('Cost-only records cannot execute trials');
   validateCandidate(options.candidate);
   const instructions = options.candidate.resources.filter(resource => resource.destinations.some(destination => destination.kind === 'instructions'));
   if (!instructions.length) throw new Error('Candidate has no native instruction resource');

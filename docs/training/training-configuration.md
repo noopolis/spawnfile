@@ -247,3 +247,11 @@ for response-envelope, truncation and exact-resume semantics.
 
 [Focused evidence-ID judges and native Ollama controls](../src/evaluation/semantic/README.md)
 describes the separate judge authoring and calibration surface.
+
+`spawnfile train --dry-run` estimates the authored workload without loading native
+preparation plugins, credentials, containers or models. It still checks YAML,
+fixtures, context/binding references, criterion files, judge routes and dataset
+splits. Its `preparationValidation` lists profiles whose availability, parameter
+semantics and override permissions remain **unverified**. A cost estimate is not
+execution readiness; normal training validates these with the installed integration.
+The estimate uses a separate projection containing no executable task inputs.

@@ -41,3 +41,9 @@ and validates the complete effective records before any native work starts.
 Run targeted tests and coverage for `src/cases` during edits, plus TypeScript and ESLint.
 Keep every executable file above the inherited 90% coverage thresholds. Every claimed
 rejection needs an adversarial case; a registry stub must never imply native support.
+
+Cost-only resolution uses an explicit separate projection: no native inputs,
+setup, executable stages or validated plan identity escape it. Resolve structural
+fixtures, bindings, criterion files and split references, but never call preparation
+validators or claim profile availability, parameter semantics or override locks.
+Normal executable resolution stays strict; no authored bypass flag exists.

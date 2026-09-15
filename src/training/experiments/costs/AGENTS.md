@@ -16,3 +16,6 @@ No model calls, authentication, subprocesses, runtime construction or deployment
   without a declared cumulative/delta relationship. Report ids are not call ids.
   Partial capture or no observed work yields an unknown overall total; separately
   retain known observed subtotals and every unsummed usage report.
+- Accept only validated execution datasets or explicitly non-executable cost
+  projections. Report preparation checks as unverified; never imply readiness.
+  Cost projections preserve call counts and split identities without native inputs.

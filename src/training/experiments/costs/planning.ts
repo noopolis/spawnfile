@@ -1,5 +1,5 @@
-import type { CheckNode, ResolvedDataset, ResolvedRecord } from '../../contracts/dataset.js';
-import { builtinEvaluatorDefinitions, validateDatasetSplit } from '../../cases/index.js';
+import type { CheckNode, ResolvedDataset } from '../../contracts/dataset.js';
+import { builtinEvaluatorDefinitions, validateCostDatasetSplit, projectDatasetCost, type CostDataset, type CostRecord } from '../../cases/index.js';
 import { partitionTraining } from '../training/index.js';
 import { resolveCostAssumptions } from './assumptions.js';
 import { valueUsage } from './valuation.js';
@@ -12,11 +12,11 @@ export interface PlannedInferenceRoute {
   attempts?: number;
 }
 
-export interface TrainingCostOptions {
-  train: ResolvedDataset;
-  validation?: ResolvedDataset;
+export interface TrainingCostOptions<Dataset = ResolvedDataset> {
+  train: Dataset;
+  validation?: Dataset;
   validationGroups?: readonly string[];
-  test: ResolvedDataset;
+  test: Dataset;
   subjectModel: string;
   optimizerModel: string;
   judges: Readonly<Record<string, PlannedInferenceRoute & { citationRepairs?: 0 | 1 }>>;
@@ -51,10 +51,15 @@ export interface TrainingCostPlan {
   pricedSubtotalUsd: Range;
   assumptions: CostAssumptions;
   warnings: string[];
+  /** Present in current estimates; older persisted v1 plans omit this disclosure. */
+  preparationValidation?: CostDataset['preparation'];
 }
 
 /** Pure planning over resolved cases. Does not construct an adapter or touch credentials. */
-export function planTrainingCost(options: TrainingCostOptions): TrainingCostPlan {
+export function planTrainingCost(options: TrainingCostOptions<ResolvedDataset | CostDataset>): TrainingCostPlan {
+  const project = (dataset: ResolvedDataset | CostDataset) => dataset.schema === 'paideia.cost-dataset.v1' ? dataset : projectDatasetCost(dataset);
+  const train = project(options.train), test = project(options.test);
+  const validation = options.validation ? project(options.validation) : undefined;
   const judgeRoutes = Object.fromEntries(Object.entries(options.judges).map(([name, route]) => {
     const citationRepairs = route.citationRepairs === undefined ? 0 : route.citationRepairs;
     if (citationRepairs !== 0 && citationRepairs !== 1) throw new Error(`Invalid citation repair policy for judge ${name}`);
@@ -63,13 +68,12 @@ export function planTrainingCost(options: TrainingCostOptions): TrainingCostPlan
   for (const [value, max] of [[options.maxTrials, 10000], [options.maxProposals, 1000]]) {
     if (!Number.isSafeInteger(value) || value! < 1 || value! > max!) throw new Error('Invalid training cost budget');
   }
-  const partition = options.validation ? { train: options.train, validation: options.validation }
-    : partitionTraining(options.train, options.validationGroups);
-  if ([partition.train, partition.validation, options.test].some(dataset => dataset.records.length === 0)) {
+  const partition = validation ? { train, validation } : partitionTraining(train, options.validationGroups);
+  if ([partition.train, partition.validation, test].some(dataset => dataset.records.length === 0)) {
     throw new Error('Cost planning requires nonempty training, validation and test partitions');
   }
-  validateDatasetSplit(partition.train, options.test, partition.validation);
-  const reservedTestTrials = options.test.records.length * 2;
+  validateCostDatasetSplit(partition.train, test, partition.validation);
+  const reservedTestTrials = test.records.length * 2;
   const metricCalls = options.maxTrials - reservedTestTrials;
   if (metricCalls < partition.validation.records.length) throw new Error('Trial budget cannot cover baseline validation and two held-out passes');
   const assumptions = resolveCostAssumptions(options.assumptions);
@@ -80,6 +84,9 @@ export function planTrainingCost(options: TrainingCostOptions): TrainingCostPlan
     'Only standard global API text-token prices are valued; subscription quota percentages, tools and infrastructure are excluded.',
     'Cache creation and unknown session context tiers are included as pricing ranges. No batch discount is assumed.',
   ]);
+  const profiles = [...new Set([train, test, ...(validation ? [validation] : [])].flatMap(dataset => dataset.preparation.profiles))].sort();
+  const preparationValidation: CostDataset['preparation'] = { status: 'unverified', profiles, checks: ['availability', 'locks', 'parameter-semantics'] };
+  if (profiles.length) warnings.add(`Preparation profiles ${profiles.join(', ')}: availability, parameter semantics and override locks are unverified; this estimate is not execution readiness.`);
   const lines: PlannedCostLine[] = [];
   let incomplete = false;
   const omitCost = (warning: string) => { incomplete = true; warnings.add(warning); };
@@ -112,7 +119,7 @@ export function planTrainingCost(options: TrainingCostOptions): TrainingCostPlan
   add('subject', options.train.subject ?? 'subject', 'development', options.subjectModel, metricCalls, assumptions.subject);
   add('subject', options.train.subject ?? 'subject', 'held-out', options.subjectModel, reservedTestTrials, assumptions.subject);
   const developmentCounts = development.map(record => countChecks(record, omitCost));
-  const testCounts = options.test.records.map(record => countChecks(record, omitCost));
+  const testCounts = test.records.map(record => countChecks(record, omitCost));
   const names = new Set([...developmentCounts, ...testCounts].flatMap(counts => Object.keys(counts)));
   for (const name of names) {
     const route = judgeRoutes[name];
@@ -133,10 +140,10 @@ export function planTrainingCost(options: TrainingCostOptions): TrainingCostPlan
     budget: { maxTrials: options.maxTrials, maxProposals: options.maxProposals, metricCalls, reservedTestTrials },
     datasetDigests: { train: options.train.sourceDigest, test: options.test.sourceDigest,
       ...(options.validation ? { validation: options.validation.sourceDigest } : {}) },
-    judgeRoutes, lines, apiEquivalentUsd: incomplete ? null : pricedSubtotalUsd, pricedSubtotalUsd, assumptions, warnings: [...warnings] };
+    judgeRoutes, preparationValidation, lines, apiEquivalentUsd: incomplete ? null : pricedSubtotalUsd, pricedSubtotalUsd, assumptions, warnings: [...warnings] };
 }
 
-function countChecks(record: ResolvedRecord, omitCost: (warning: string) => void): Record<string, number> {
+function countChecks(record: CostRecord, omitCost: (warning: string) => void): Record<string, number> {
   const counts: Record<string, number> = {};
   const visit = (node: CheckNode, live = false) => {
     if (node.eval === 'llm-rubric') {
@@ -149,12 +156,6 @@ function countChecks(record: ResolvedRecord, omitCost: (warning: string) => void
     if (node.not) visit(node.not, live);
     // passed/score references reuse results and never cause another model call.
   };
-  for (const stage of record.effectiveStages) {
-    if (stage.when) visit(stage.when);
-    stage.checks.forEach(check => visit(check));
-    if (stage.gate) visit(stage.gate);
-  }
-  for (const turn of record.turns ?? []) for (const check of turn.checks ?? []) visit(check);
-  for (const check of record.live.checks) visit(check, true);
+  for (const { check, live } of record.costChecks) visit(check, live);
   return counts;
 }

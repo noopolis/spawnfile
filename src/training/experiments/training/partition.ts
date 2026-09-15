@@ -1,8 +1,7 @@
-import type { ResolvedDataset } from '../../contracts/dataset.js';
 
 /** One train YAML can provide an explicitly frozen internal validation partition. */
-export function partitionTraining(dataset: ResolvedDataset, selectedGroups?: readonly string[]): {
-  train: ResolvedDataset; validation: ResolvedDataset;
+export function partitionTraining<T extends { id: string; records: Array<{ group?: string }> }>(dataset: T, selectedGroups?: readonly string[]): {
+  train: T; validation: T;
 } {
   const groups = [...new Set(dataset.records.map(record => record.group))];
   if (groups.some(group => !group) || groups.length < 2) throw new Error('Training requires at least two nonempty evidence groups');

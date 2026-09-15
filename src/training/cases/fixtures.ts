@@ -50,7 +50,7 @@ function changedPaths(base: unknown, local: unknown, prefix = ''): string[] {
 function allowed(path: string, paths: readonly string[]): boolean {
   return paths.some(prefix => path === prefix || path.startsWith(`${prefix}.`));
 }
-export function expandRecord(dataset: Dataset, record: DatasetRecord, options: ResolutionOptions): DatasetRecord {
+export function expandRecord(dataset: Dataset, record: DatasetRecord, options: ResolutionOptions, costOnly = false): DatasetRecord {
   let merged: unknown = {};
   for (const name of record.use ?? []) {
     const fixture = dataset.fixtures?.[name];
@@ -65,9 +65,9 @@ export function expandRecord(dataset: Dataset, record: DatasetRecord, options: R
     const profile = rootSetup.profile;
     if (typeof profile !== 'string') fail(`record.${record.id}.setup`, 'record parameters require a dataset preparation profile');
     const preparation = options.registry?.preparations?.[profile];
-    if (!preparation) fail(`record.${record.id}.setup`, `unsupported preparation ${profile}`);
+    if (!preparation && !costOnly) fail(`record.${record.id}.setup`, `unsupported preparation ${profile}`);
     for (const path of changes) {
-      if (path === 'profile' || !allowed(path, preparation.unlockedPaths) || !allowed(path, options.unlockedSetupPaths ?? [])) {
+      if (path === 'profile' || (!costOnly && (!allowed(path, preparation!.unlockedPaths) || !allowed(path, options.unlockedSetupPaths ?? [])))) {
         fail(`record.${record.id}.setup.${path}`, 'locked preparation parameter');
       }
     }
@@ -84,9 +84,9 @@ export function expandRecord(dataset: Dataset, record: DatasetRecord, options: R
     const profile = expanded.setup.profile;
     if (typeof profile !== 'string') fail(`record.${record.id}.setup.profile`, 'required preparation profile');
     const preparation = options.registry?.preparations?.[profile];
-    if (!preparation) fail(`record.${record.id}.setup`, `unsupported preparation ${profile}`);
+    if (!preparation && !costOnly) fail(`record.${record.id}.setup`, `unsupported preparation ${profile}`);
     const { profile: _profile, ...resolvedParameters } = expanded.setup;
-    preparation.validate(resolvedParameters, `record.${record.id}.setup`);
+    if (!costOnly) preparation!.validate(resolvedParameters, `record.${record.id}.setup`);
   }
   if (expanded.input) {
     expanded.input = resolveFields(expanded.input as unknown as DataMap, expanded.context, `record.${record.id}.input`, false);

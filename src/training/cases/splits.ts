@@ -5,7 +5,20 @@ export function selectedFiles(record: ResolvedRecord): FileSelector[] {
   return [ ...(record.input?.files ?? []), ...(record.turns?.flatMap(turn => turn.input.files ?? []) ?? []),
     ...(record.reference?.files ?? []) ];
 }
+export interface SplitProjection {
+  subject?: string;
+  structureDigest: string;
+  records: Array<{ id: string; group?: string; selectedFiles: FileSelector[] }>;
+}
 export function validateDatasetSplit(train: ResolvedDataset, test: ResolvedDataset, validation?: ResolvedDataset): void {
+  const project = (dataset: ResolvedDataset): SplitProjection => ({ subject: dataset.subject,
+    structureDigest: dataset.sharedPlanDigest, records: dataset.records.map(record => ({
+      id: record.id, group: record.group, selectedFiles: selectedFiles(record) })) });
+  validateCostDatasetSplit(project(train), project(test), validation ? project(validation) : undefined);
+}
+
+/** Shared role checks over file identities only; this projection cannot execute a trial. */
+export function validateCostDatasetSplit(train: SplitProjection, test: SplitProjection, validation?: SplitProjection): void {
   const roles = [{ name: 'train', dataset: train }, ...(validation ? [{ name: 'validation', dataset: validation }] : []),
     { name: 'test', dataset: test }];
   const records = new Map<string, string>();
@@ -13,7 +26,7 @@ export function validateDatasetSplit(train: ResolvedDataset, test: ResolvedDatas
   const files = new Map<string, string>();
   for (const { name, dataset } of roles) {
     if (dataset.subject !== train.subject) fail(name, 'native subject identity differs between roles');
-    if (dataset.sharedPlanDigest !== train.sharedPlanDigest) fail(name, 'shared evaluation plan drift');
+    if (dataset.structureDigest !== train.structureDigest) fail(name, 'shared evaluation plan drift');
     for (const record of dataset.records) {
       if (!record.group) fail(`${name}.${record.id}`, 'evidence group is required');
       if (records.has(record.id)) fail(`${name}.${record.id}`, 'duplicate record membership across roles');
@@ -21,7 +34,7 @@ export function validateDatasetSplit(train: ResolvedDataset, test: ResolvedDatas
       const previousGroup = groups.get(record.group);
       if (previousGroup && previousGroup !== name) fail(name, `evidence-family leakage: ${record.group}`);
       groups.set(record.group, name);
-      for (const file of selectedFiles(record)) {
+      for (const file of record.selectedFiles) {
         // Catch same source through changed hashes and identical bytes through renamed selectors.
         for (const identity of [`path:${file.resource}:${file.path}`, `bytes:${file.sha256}`]) {
           const previousRole = files.get(identity);

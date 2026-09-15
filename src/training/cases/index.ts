@@ -1,8 +1,10 @@
 export { parseDatasetYaml } from './parser.js';
-export { resolveDataset } from './resolver.js';
-export { validateDatasetSplit, selectedFiles } from './splits.js';
+export { resolveDataset, resolveDatasetForCost } from './resolver.js';
+export { validateDatasetSplit, validateCostDatasetSplit, selectedFiles } from './splits.js';
 export { normalizeStages } from './plans.js';
 export { builtinEvaluatorDefinitions } from './builtin-evaluators.js';
 export { compileJsonSchema } from './json-schema.js';
 export { DatasetError } from './validation.js';
 export { validateTrainingConfiguration, trainingJudgeVersions } from './training/index.js';
+export { projectDatasetCost } from './cost-projection.js';
+export type { CostDataset, CostRecord } from './cost-projection.js';

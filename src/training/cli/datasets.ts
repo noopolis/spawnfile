@@ -1,6 +1,7 @@
 import { constants, closeSync, fstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import { parseDatasetYaml, resolveDataset } from '../cases/index.js';
+import { parseDatasetYaml, resolveDataset, resolveDatasetForCost } from '../cases/index.js';
+import type { CostDataset } from '../cases/index.js';
 import type { ResolvedDataset, ResolutionOptions } from '../contracts/index.js';
 
 export function readCliBytes(path: string, maximum: number): Buffer {
@@ -29,6 +30,14 @@ export class CliDatasets {
     private readonly frozen?: { path: string; sourceDigest: string }) {}
 
   load(file: string, groups: boolean): ResolvedDataset {
+    return this.resolve(file, groups, resolveDataset);
+  }
+
+  loadForCost(file: string, groups: boolean): CostDataset {
+    return this.resolve(file, groups, resolveDatasetForCost);
+  }
+
+  private resolve<T>(file: string, groups: boolean, resolver: (document: ReturnType<typeof parseDatasetYaml>, options: ResolutionOptions) => T): T {
     const path = resolve(this.cwd, file);
     const root = realpathSync(dirname(path));
     this.protectedDirectories.add(root);
@@ -36,7 +45,7 @@ export class CliDatasets {
     if (this.frozen?.path === path && this.frozen.sourceDigest !== document.sourceDigest) {
       throw new Error('Dataset changed after authored configuration was selected');
     }
-    return resolveDataset(document, {
+    return resolver(document, {
       requireGroups: groups,
       ...this.preparation,
       registry: { ...this.preparation.registry, judges: Object.fromEntries(Object.keys(this.judges).map((name) => [name, this.versions[name] ?? { version: 'cli.claude-subscription.v1' }])) },
