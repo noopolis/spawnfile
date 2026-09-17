@@ -192,7 +192,16 @@ src/compiler/
   `GROK_HOME` layout — `root:<worker> 1771` home and `sessions/`, `root:root
   0444` config/sandbox/trust/managed/requirements files, events under
   `sessions/` — and refuses any registration or deny path that is missing, a
-  symlink, or not its own realpath. Production registrations all point
+  symlink, or not its own realpath. It also provisions Daimon's temp and spill
+  contract: `<worker home>/tmp` `<worker>:<worker> 0700` (the launcher's
+  `TMPDIR`); `/tmp` and `/var/tmp` `root:2000 1774` (Grok refuses to start if
+  they are denied, so modes close them); `<runtime home>/tool-output`
+  `2000:<worker> 2750` under a runtime home `2000:<worker> 0710` whose
+  `/var/lib/spawnfile` ancestors are made traversable by reclaim-mode-restore.
+  The broker and relay (uid 2100, outside group 2000) run with
+  `TMPDIR=/run/daimon-engine-broker/tmp`; every other entrypoint process runs as
+  root or uid 2000, and workers get their `TMPDIR` from the launcher. The start
+  script never restates a Grok agent's runtime home mode. Production registrations all point
   `usageLedgerPath` at the one container ledger, because `spawnfile usage` and
   Daimon's wake fuse read only that file.
 - Declared names are checked for uniqueness across EVERY mount source

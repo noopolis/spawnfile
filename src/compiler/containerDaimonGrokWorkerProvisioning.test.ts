@@ -109,6 +109,22 @@ describe("Grok worker home provisioning", () => {
     for (const optional of ["/run/secrets", "/run/spawnfile", "/run/spawnfile-secrets"]) expect(nodes.get(optional)).toMatchObject({ kind: "dir", mode: 0o700, uid: 0 });
   });
 
+  it("provisions the P1b temp and spill contract: private TMPDIR, closed shared temp, setgid spills under a traversable runtime home", () => {
+    const runtimeHomes = `${INSTANCE}/runtime-homes`;
+    const nodes = run(registrations, { ...seedFor(registrations), [runtimeHomes]: { gid: 2000, kind: "dir", mode: 0o700, uid: 2000 }, "/tmp": { kind: "dir", mode: 0o1777 } });
+    for (const shared of ["/tmp", "/var/tmp"]) expect(nodes.get(shared), shared).toMatchObject({ gid: 2000, kind: "dir", mode: 0o1774, uid: 0 });
+    // Owner and group survive the traversal fix: root reclaims, modes, and restores (no CAP_FOWNER).
+    expect(nodes.get(runtimeHomes)).toMatchObject({ gid: 2000, mode: 0o711, uid: 2000 });
+    for (const entry of registrations) {
+      expect(entry.privateTmp).toBe(`${entry.home}/tmp`);
+      expect(nodes.get(entry.privateTmp)).toMatchObject({ gid: entry.uid, kind: "dir", mode: 0o700, uid: entry.uid });
+      expect(nodes.get(entry.runtimeHome)).toMatchObject({ gid: entry.uid, kind: "dir", mode: 0o710, uid: 2000 });
+      expect(entry.spillDirectory).toBe(`${entry.runtimeHome}/tool-output`);
+      expect(nodes.get(entry.spillDirectory)).toMatchObject({ gid: entry.uid, kind: "dir", mode: 0o2750, uid: 2000 });
+      expect(entry.profilePath).toBe(`${entry.home}/.grok/sandbox.toml`);
+    }
+  });
+
   it("allows a peer resource backing to be absent at provisioning (the entrypoint prepares it later) but never a symlink", () => {
     const withResource = resolveDaimonGrokRegistrations([{
       ...plan({ "agent:a": "grok", "agent:b": "grok" }),
