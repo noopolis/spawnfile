@@ -9,6 +9,15 @@ inside one immutable image. The v2 training configuration prepares its pinned
 image and inputs behind the same command; the v1 image/mount path remains
 available. Dry-run remains a host-only estimate.
 
+`spawnfile.training-container.v3` adds a brokered Grok slot to that boundary:
+the subject's model runs in the same container under a root-provisioned broker,
+the evaluator recycles that slot between trials through a single-verb root
+supervisor, and judges spend the one dedicated training Grok login through
+bounded inference grants instead of holding it. Import that login with
+`spawnfile auth import grok --profile paideia-training --from <directory>`; the
+desktop `~/.grok` is refused, because a training run rotates the credential it
+is given.
+
 ```sh
 spawnfile train ./Spawnfile --agent agent:writer \
   --train evals/train.paideia.yaml --test evals/test.paideia.yaml \

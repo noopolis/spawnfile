@@ -216,3 +216,147 @@ and checkpoint bytes are hashed. `/run/paideia/repair.json` is a protected read-
 Paideia owns error-only rescoring, retaining successful historical pass/fail results,
 paired optimizer import, cumulative accounting and the new experiment lineage.
 A repair receipt does not itself assert that any judgment or continuation succeeded.
+
+## Broker-capable training (v3)
+
+`spawnfile.training-container.v3` is v2 plus one brokered Grok slot, so the
+subject's model runs beside the evaluator in the same container instead of
+reaching a model the evaluator also holds. It is selected by adding a `broker`
+block to the declarative preparation; everything else in v2 is unchanged.
+
+```json
+{
+  "version": "spawnfile.training-container.v3",
+  "broker": {
+    "engine": "grok",
+    "agentId": "agent:author",
+    "model": "grok-4.6",
+    "reasoningEffort": "low",
+    "architecture": "arm64",
+    "limits": { "maxRequests": 32, "maxTokens": 300000, "timeoutMs": 240000 },
+    "realmVolume": "spawnfile-training-grok-realm",
+    "bootstrap": "./secrets/paideia-training-grok/auth.json",
+    "unenforcedBindPolicy": "refuse"
+  }
+}
+```
+
+`image.build.grok` is refused under v3 and ignored under v2: the image copies no
+Grok binary at all, and the `grok` auth provider is gone from `auth` and from
+`stageTrainingAuth`. Judges run the native parent's pinned `/usr/local/bin/grok`
+through a broker inference grant, so there is exactly one Grok build and exactly
+one Grok credential in the container.
+
+### Privilege table
+
+| Process | uid | Capability bounding set | Where it comes from |
+| --- | --- | --- | --- |
+| container | 0 | `CHOWN,SETUID,SETGID,SETPCAP,KILL,DAC_READ_SEARCH` | `docker create` (`no-new-privileges`, read-only root, pids 2048) |
+| root entrypoint | 0 | same | image `/opt/training/bin/train-broker` |
+| engine broker launcher | 0 | `CHOWN,SETUID,SETGID` (`…c1`) | `setpriv --bounding-set` |
+| engine broker backend | 2100 | empty | `setpriv --reuid 2100` |
+| control relay | 2100 | empty | `setpriv --reuid 2100` |
+| slot supervisor | 0 | same as the entrypoint | in-process with the entrypoint |
+| `train` — Paideia, DSPy, judges | 2000 | empty, verified from `/proc/self/status` | `setpriv --bounding-set=-all` |
+| model tools | 2200 | empty | the native launcher alone can `setuid` there |
+
+`CAP_FOWNER` and `CAP_DAC_OVERRIDE` are deliberately absent, so provisioning
+always reclaims an inode before it chmods one, creates every directory while the
+tree is still root-owned, and sets ownership from the deepest path upwards.
+
+Grok 1.0.34 runs every sandbox profile inside bubblewrap, so the container adds
+the pinned `seccomp-default-plus-userns` profile and `apparmor=unconfined`, and
+the Docker host must allow unprivileged user namespaces
+(`kernel.apparmor_restrict_unprivileged_userns=0`); the entrypoint refuses to
+provision a slot otherwise, naming that sysctl.
+
+### Slot lifecycle
+
+Every per-trial path is tmpfs, never the realm volume: the worker home, the slot
+workspace, the agent runtime home and its setgid `tool-output/`, the
+wake-acceptance store, the broker turn store, and the per-slot usage ledger. The
+realm volume holds only `auth.json` and the broker credential journal, so an
+identical `(agent, wake, prompt)` in trial N+1 can never replay trial N's sealed
+turn.
+
+The root slot supervisor listens on `/run/training/supervisor/control.sock` with
+one verb and one argument:
+
+```json
+{"v": "spawnfile.training-slot-supervisor.v1", "verb": "recycle", "nonce": "<32 random bytes, hex>"}
+```
+
+It answers `{"ok": true, "generation": N, "receipt": "/run/training/slot/preflight.json", "durationMs": …}`.
+`recycle` drains (no active turn in the registry and a settled credential
+journal), stops the relay, backend and launcher in that order, wipes the slot,
+replays the same audited provisioning the entrypoint ran — credential-journal
+recovery included, so a crash during a refresh either recovers or fails closed
+with a named error — restarts and re-verifies all three identities, runs the
+worker-uid denial canaries, and only then publishes
+`noopolis.daimon.grok-slot-preflight.v2` with a monotonic `generation` and the
+caller's `nonce`. Recycles are serialized; the caller never names a path or a
+command. Measured: three recycles at 611–620 ms each.
+
+The socket node is `root:2000 0660` inside a root-owned `0711` directory on
+tmpfs, which is the uid gate: the kernel enforces it on `connect()` and uid 2200
+gets `EACCES`. Node exposes no `SO_PEERCRED`, and a `0600` root-owned socket
+would deny the one caller it exists for.
+
+### Credential lineage
+
+```
+spawnfile auth import grok --profile paideia-training --from <dir>
+        │  refuses ~/.grok and $GROK_HOME outright; --from is required
+        ▼
+  profile store  ──►  declaration `broker.bootstrap`  ──►  read-only bind
+                                                          /var/lib/spawnfile/daimon/grok-bootstrap-auth
+                                                                       │
+                                            root entrypoint promotes it into the named realm volume
+                                                                       ▼
+                                          /var/lib/spawnfile/daimon/grok-subscription-realm/auth.json
+                                                  (broker uid 2100, rotated in place, journalled)
+                                                       │                        │
+                                              subject turns              judge/optimizer grants
+```
+
+The launch refuses a bootstrap that resolves to the desktop `~/.grok/auth.json`,
+both at preparation and again before `docker create`. Judges never hold the
+credential: the container exports `PAIDEIA_GROK_BROKER_CONTROL_SOCKET` and a
+private `PAIDEIA_GROK_GRANT_HOME_ROOT` (`2000:2000 0700`, denied to every worker
+uid) to the `train` child, and each judge lane asks the broker for a bounded
+inference grant.
+
+Both ledger directories are setgid to the organization group
+(`2100:2000 2750`): the broker writes rows `0640` in its own group, so without
+setgid uid 2000 could not read a single usage or inference row it paid for.
+
+### Evaluator roots and deny list
+
+`paideia.daimon-native.launch.v2`'s five evaluator roles carry these real
+container paths, and every one of them is a deny entry in the worker's sandbox
+profile and a canary in the receipt:
+
+| role | path |
+| --- | --- |
+| run-root | `/run/training/output` |
+| context | `/run/paideia` |
+| sealed-inputs | `/run/training/inputs` |
+| judge-home | `/run/training/grants` |
+| slot-ledger | `/run/training/slot/usage` |
+
+The rest of the deny list is `/etc/daimon-engine-broker`,
+`/run/daimon-engine-broker`, `/run/training/inference`,
+`/run/training/slot/turns`, `/run/training/supervisor`,
+`/var/lib/spawnfile/daimon/{usage,wake-fuse}`, and Daimon's own protected set
+(the Grok bootstrap, the realm and the wake-acceptance store). The caller's
+`config.json`, `launch.json`, `token`, `env`, `control`, `preparation.json` and
+`repair.json` are covered by the single `/run/paideia` mask rather than listed
+individually — Grok materializes each deny target inside bubblewrap as the
+worker uid and cannot create one inside a directory only uid 2000 may write.
+
+A canary is a worker-uid `open()` that must fail. For a deny entry that is a
+host bind mount, or sits on a filesystem that ignores unix ownership (Docker
+Desktop and Colima both do), that probe proves nothing, so
+`unenforcedBindPolicy` decides: `refuse` (the default) fails the recycle and
+writes no receipt; `profile-only` accepts the bubblewrap-enforced `deny` list as
+that path's only boundary and names every such path in the supervisor log.
