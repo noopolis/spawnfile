@@ -17,6 +17,7 @@ src/runtime/
 ├── registry.ts            # Bundled adapter registration and lookup
 ├── usageLedger.ts         # Pure parser/aggregator for Daimon's per-turn usage ledger
 ├── usageLedgerRead.ts     # Ledger read transport: `cat`s both generations through a caller-supplied exec and separates "absent" from "unreadable"
+├── usageRequestLedger.ts  # Pure parser for Daimon's per-request stream (`requests.jsonl`): timing, model, usage source, broker-turn dedupe
 ├── scheduleUtils.ts       # Shared duration schedule helpers for runtime lowering
 ├── daimon/                # Public Daimon organization-host adapter
 ├── openclaw/              # OpenClaw adapter implementation
@@ -36,7 +37,7 @@ calls it to decide whether to emit an agent `memory` block at all. Keep those tw
 sides on this one function: a config that points an in-process Mneme runtime at a
 path the container does not mount fails at its first write instead of degrading.
 
-`common.ts` owns where declared `workspace.skills` are emitted. `createSkillFiles` accepts either one root or a list of roots, and the roots are named constants there: `WORKSPACE_SKILL_BASE_DIRECTORY` (`workspace/skills`) for OpenClaw and PicoClaw, which read that directory with their own skill loaders, and `CLI_ENGINE_SKILL_BASE_DIRECTORIES` (`workspace/.agents/skills` and `workspace/.codex/skills`) for Daimon and Pi, whose skills are discovered by an external coding-agent CLI. Both CLI-engine roots are required and their files are byte-identical on purpose: `.codex/skills` is Codex's own discovery root and `.agents/skills` is the generic root grok, agy, and other file-reading engines use. This mirrors the Moltnet skill install exactly — `resolveMoltnetWorkspaceLayout` in `src/compiler/moltnetClientConfig.ts` runs `moltnet skill install --runtime codex` for these runtimes and Moltnet writes both roots — and it is the reason declared skills now reach an engine at all: a plain `workspace/skills/` root is read by no engine Daimon or Pi can host, so everything emitted there was invisible.
+`common.ts` owns where declared `workspace.skills` are emitted. `createSkillFiles` accepts either one root or a list of roots, and the roots are named constants there: `WORKSPACE_SKILL_BASE_DIRECTORY` (`workspace/skills`) for OpenClaw and PicoClaw, which read that directory with their own skill loaders, and `CLI_ENGINE_SKILL_BASE_DIRECTORIES` (`workspace/.agents/skills` and `workspace/.codex/skills`) for Daimon and Pi, whose skills are discovered by an external coding-agent CLI. Both CLI-engine roots are required and their files are byte-identical on purpose: `.codex/skills` is Codex's own discovery root and `.agents/skills` is the generic root grok, agy, and other file-reading engines use. This mirrors the Moltnet skill install exactly — `resolveMoltnetWorkspaceLayout` in `src/compiler/moltnetClientConfig.ts` runs `moltnet skill install --runtime codex` for these runtimes and Moltnet writes both roots — and it is the reason declared skills now reach an engine at all: a plain `workspace/skills/` root is read by no engine Daimon or Pi can host, so everything emitted there was invisible. The one exception is a brokered Daimon Grok agent (`daimonSkillBaseDirectories` in `daimon/adapter.ts`): Grok 1.0.34 discovers `.agents/skills` (never `.codex/skills`) only in a trusted workspace, and Daimon keeps the worker workspace untrusted and overrides the system prompt, so no root is emitted and a compile warning names the declared skills.
 
 `common.ts` also owns the `NOOPOLIS_RUN_ID` container env constant (`NOOPOLIS_RUN_ID_ENV` / `resolveNoopolisRunId`); `container.ts` reads it via `createRuntimeContainerEnv` and stamps it into every generated `RuntimeInstallRecipe.env` so every authority container agrees on one run id for causal event envelopes (see `specs/CAUSAL.md`). Never read `run_id` or `principal_id` from model output here.
 
@@ -63,3 +64,14 @@ or receipt environment overrides fail closed. With no identity path,
 - Adapters receive resolved nodes, not raw manifests.
 - Keep runtime-specific behavior isolated here.
 - Share only the adapter contract, not runtime-specific implementation details.
+
+Daimon's Grok broker is the single sealed usage writer, and a replayed turn may
+re-append its sealed rows. `usageLedger.ts` therefore dedupes every
+`turn-usage.v1` row by its `turn` key (`dedupeUsageRecordsByTurn`) in parsing,
+across both ledger generations (`usageLedgerRead.ts`), and inside every
+aggregate; rows without a key are kept. It reads the broker's additive fields
+only from Daimon's closed vocabularies — `limit_reason`, `model`, `outcome`,
+`estimated_requests` — dropping a malformed optional field rather than the
+row's spend. Rows with `estimated_requests` carry a conservative charge for
+requests whose provider response had no valid usage; `spawnfile usage` marks
+them `~` and says so, never presenting them as measured.

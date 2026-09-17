@@ -5,8 +5,10 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  assertPinnedGrokCli,
   createLocalDaimonCapabilityReceipt,
   readDaimonCliArtifactPins,
+  readPinnedGrokCli,
   resolveDaimonSourceMode,
   resolveLocalBuildArchitecture,
   resolveLocalImageTag,
@@ -354,4 +356,24 @@ test("Daimon Dockerfile stage graph preserves cache and offline-network boundari
     .sort();
   assert.deepEqual(stagesContaining(/\bapt-get\b/u), ["base_registry"]);
   assert.deepEqual(stagesContaining(/\bcurl\s+-/u), ["agy_source_registry", "grok_source_registry"]);
+});
+
+test("local Daimon builds accept only the Grok CLI build the vendored contract manifest pins", () => {
+  const amd64 = readPinnedGrokCli("amd64"), arm64 = readPinnedGrokCli("arm64");
+  assert.equal(amd64.version, "1.0.34");
+  assert.equal(amd64.url, "https://storage.googleapis.com/grok-build-public-artifacts/cli/grok-1.0.34-linux-x86_64");
+  assert.equal(amd64.sha256, "sha256:be5905e107d2b8b5f3c142d21ecfe4c8fd32a913d2fd551b788707930c4dc80d");
+  assert.equal(arm64.sha256, "sha256:39ab87666877d64ef3a40aa60fbe0c3b6a6acd7001b78fe60e2c76bb6cfc4a94");
+  const pinned = { executable_sha256: amd64.sha256, url: amd64.url, version: amd64.version };
+  assert.doesNotThrow(() => assertPinnedGrokCli(pinned, amd64));
+  assert.throws(() => assertPinnedGrokCli(pinned, arm64), /pinned Grok CLI 1\.0\.34/u);
+  assert.throws(() => assertPinnedGrokCli({ ...pinned, version: "1.0.13" }, amd64), /pinned Grok CLI/u);
+  assert.throws(() => assertPinnedGrokCli({ ...pinned, url: "https://example.invalid/grok" }, amd64), /pinned Grok CLI/u);
+});
+
+test("the runtime image derives broker and Grok pins from the attested Daimon manifest instead of literals", () => {
+  const dockerfile = readFileSync(new URL("../runtime-images/daimon/Dockerfile", import.meta.url), "utf8");
+  assert.doesNotMatch(dockerfile, /broker_sha=[a-f0-9]{64}/u);
+  assert.match(dockerfile, /grokCliArtifacts\?\.\[process\.argv\[2\]\]/u);
+  assert.match(dockerfile, /m\.grokCliVersion!==process\.argv\[3\]/u);
 });

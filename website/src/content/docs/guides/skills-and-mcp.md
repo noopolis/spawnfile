@@ -1,6 +1,6 @@
 ---
 title: Skills and MCP
-description: How to define skills with SKILL.md, declare MCP servers, and connect skills to MCP dependencies using requires.mcp.
+description: Add SKILL.md skills and MCP servers to AI agent configurations, declare dependencies, and compile them for supported runtimes.
 ---
 
 Skills and MCP servers are the two mechanisms Spawnfile provides for giving agents capabilities beyond conversation. Skills define what an agent can do in natural language. MCP servers provide the tool infrastructure that backs those skills.

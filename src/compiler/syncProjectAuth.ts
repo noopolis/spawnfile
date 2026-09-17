@@ -7,7 +7,7 @@ import {
   setAuthProfileEnv
 } from "../auth/index.js";
 import { readUtf8File } from "../filesystem/index.js";
-import { SpawnfileError } from "../shared/index.js";
+import { type ModelAuthMethod, SpawnfileError } from "../shared/index.js";
 
 import { listAgentSurfaceSecretNames } from "./agentSurfaces.js";
 import { buildCompilePlan } from "./buildCompilePlan.js";
@@ -28,12 +28,12 @@ export interface SyncProjectAuthOptions {
 const resolveAuthRequirements = async (
   inputPath: string
 ): Promise<{
-  methods: Set<"api_key" | "claude-code" | "codex" | "none">;
+  methods: Set<ModelAuthMethod>;
   optionalEnvNames: Set<string>;
   requiredEnvNames: Set<string>;
 }> => {
   const plan = await buildCompilePlan(inputPath);
-  const methods = new Set<"api_key" | "claude-code" | "codex" | "none">();
+  const methods = new Set<ModelAuthMethod>();
   const optionalEnvNames = new Set<string>();
   const requiredEnvNames = new Set<string>();
 

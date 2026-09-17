@@ -238,7 +238,7 @@ const consumeImageUpLocked = async (
       })
     ).mountArgs;
     const daimonDockerSecurityArgs = await resolveDaimonDockerSecurityArgsForImage(
-      imageRef, report, runDocker
+      imageRef, report, runDocker, workDir
     );
 
     volumeReservation = await acquireExclusiveVolumeReservations(

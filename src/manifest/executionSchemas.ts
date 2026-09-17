@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-const modelAuthMethodSchema = z.enum(["api_key", "claude-code", "codex", "none"]);
+const modelAuthMethodSchema = z.enum(["api_key", "claude-code", "codex", "grok", "none"]);
+/**
+ * The closed reasoning-effort vocabulary a brokered Daimon Grok worker accepts
+ * (`DAIMON_GROK_BROKER_REASONING_EFFORTS`). Only valid on a target that
+ * declares `auth.method: grok` itself; it is never inherited.
+ */
+export const MODEL_REASONING_EFFORTS = ["low", "medium", "high"] as const;
 const modelEndpointCompatibilitySchema = z.enum(["anthropic", "openai"]);
 
 const modelAuthSchema = z
@@ -66,10 +72,25 @@ export const modelTargetSchema = z
     auth: modelEntryAuthSchema.optional(),
     endpoint: modelEndpointSchema.optional(),
     name: z.string(),
-    provider: z.string()
+    provider: z.string(),
+    reasoning_effort: z.enum(MODEL_REASONING_EFFORTS).optional()
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.auth?.method === "grok" && (value.provider !== "xai" || value.endpoint)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "grok auth is only valid for provider xai without an endpoint"
+      });
+    }
+
+    if (value.reasoning_effort !== undefined && value.auth?.method !== "grok") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "reasoning_effort is only valid on a model that declares auth.method grok"
+      });
+    }
+
     const usesCustomEndpoint = value.provider === "custom" || value.provider === "local";
 
     if (usesCustomEndpoint && !value.endpoint) {
