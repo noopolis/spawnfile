@@ -1,6 +1,7 @@
 import { lstat, realpath, readdir } from 'node:fs/promises';
 import { basename, dirname, join, posix, resolve } from 'node:path';
 import type { SubjectStart } from '../../../contracts/execution.js';
+import { grokContainerUnsupported } from './preflight.js';
 import { containerPaths, parseNativeLaunch, readPrivateFile, sha256, within, type NativeLaunch, type VerifiedNativeLaunch, type NativeMount } from '../receipt/index.js';
 
 export function nativeMounts(launch: NativeLaunch): NativeMount[] {
@@ -13,6 +14,7 @@ export function nativeMounts(launch: NativeLaunch): NativeMount[] {
 export async function loadNativeLaunch(input: SubjectStart, child = false): Promise<VerifiedNativeLaunch> {
   const receiptFile = join(input.runtimeHomePath, 'native-launch.json');
   const launch = parseNativeLaunch(JSON.parse(await readPrivateFile(receiptFile, 65536)));
+  if (launch.agent.engine === 'grok' && !child) throw new Error(grokContainerUnsupported);
   const workspace = await realpath(input.workspacePath);
   const runtime = await realpath(input.runtimeHomePath);
   if (input.model !== launch.agent.model) throw new Error('Subject model differs from the prepared native model');
@@ -48,7 +50,8 @@ export async function loadNativeLaunch(input: SubjectStart, child = false): Prom
       throw new Error('Native bind overlaps worker-owned control paths');
     }
     if (mount.readonly) {
-      if (mount.target !== posix.join(home.target, '.daimon-inbound', 'codex-auth') || !stat.isFile() || (stat.mode & 0o077) !== 0 || stat.nlink !== 1) {
+      // Only Codex has a portable ingress credential; Grok launches carry none (schema) and use the broker realm.
+      if (launch.agent.engine !== 'codex' || mount.target !== posix.join(home.target, '.daimon-inbound', 'codex-auth') || !stat.isFile() || (stat.mode & 0o077) !== 0 || stat.nlink !== 1) {
         throw new Error('Credential mount must be one private read-only native ingress file');
       }
       const exposedSources = [launch.workspace.source, ...launch.projections.map(row => row.source), launch.workerRoot,

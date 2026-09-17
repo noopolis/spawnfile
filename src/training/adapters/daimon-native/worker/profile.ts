@@ -1,6 +1,6 @@
 import { lstat, realpath } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import { readPrivateFile, sha256, within, type NativeLaunch } from '../receipt/index.js';
+import { isGrokLaunch, readPrivateFile, sha256, within, type NativeLaunch } from '../receipt/index.js';
 import type { NativeConfig, WorkerOptions } from './types.js';
 
 export function parseWorkerArguments(args: readonly string[]): WorkerOptions {
@@ -36,10 +36,18 @@ export function assertNativeProfile(config: NativeConfig, launch: NativeLaunch):
   if (config.version !== 'noopolis.daimon.organization-runtime.v2' || config.agents.length !== 1 || agent?.id !== launch.agent.id) {
     throw new Error('Native config must contain exactly the selected agent');
   }
-  if (agent.engine.kind !== 'codex' || agent.engine.model !== launch.agent.model) throw new Error('Only the declared Codex model is supported');
-  const sandbox = agent.engine.codexSandbox;
-  if (!sandbox || sandbox.mode !== 'workspace-write' || sandbox.networkAccess !== false || sandbox.webSearch !== 'disabled') {
-    throw new Error('Native trials require the Codex workspace-no-network sandbox');
+  if (isGrokLaunch(launch)) {
+    if (agent.engine.kind !== 'grok' || agent.engine.model !== launch.agent.model || agent.engine.reasoningEffort !== launch.agent.reasoningEffort) {
+      throw new Error('Only the declared Grok model and reasoning effort are supported');
+    }
+    if (agent.engine.codexSandbox !== undefined) throw new Error('Grok broker trials cannot declare a Codex sandbox');
+    if (launch.broker.limits.maxTokens > launch.limits.wakeTokenCeiling) throw new Error('Grok broker token limit exceeds the launch wake ceiling');
+  } else {
+    if (agent.engine.kind !== 'codex' || agent.engine.model !== launch.agent.model) throw new Error('Only the declared Codex model is supported');
+    const sandbox = agent.engine.codexSandbox;
+    if (!sandbox || sandbox.mode !== 'workspace-write' || sandbox.networkAccess !== false || sandbox.webSearch !== 'disabled') {
+      throw new Error('Native trials require the Codex workspace-no-network sandbox');
+    }
   }
   if (!agent.attention) throw new Error('Native trials require durable attention admission');
   if (agent.schedule?.kind !== 'disabled') throw new Error('The receipted isolated schedule override must be applied');

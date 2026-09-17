@@ -38,7 +38,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
           ...owned, request: <T>(path: Parameters<NativeExecutionHandle['request']>[0], body?: unknown, ms?: number, signal?: AbortSignal) =>
             workerRequest<T>(docker, owned.name, path, body, ms, signal, launch.host.port),
         }));
-      const observer = createNativeObserver(input, launch.projections.find(row => row.role === 'home')!.source, launch.agent.id);
+      const observer = createNativeObserver(input, launch.projections.find(row => row.role === 'home')!.source, launch.agent.id, launch.agent.engine);
       let used = false;
       let stopped = false;
       const sessionCancellation = new AbortController();

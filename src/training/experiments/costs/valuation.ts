@@ -13,13 +13,19 @@ export function valueUsage(charge: UsageCharge, catalog: readonly ModelPrice[] =
   const prices = catalog.filter(price => price.model === charge.model);
   if (prices.length > 1) throw new Error(`Ambiguous price for ${charge.model}`);
   const price = prices[0] ?? null;
+  const native = charge.usage?.notionalUsd;
+  if (native !== undefined && native !== null) {
+    if (!Number.isFinite(native) || native < 0) throw new Error('Native notional USD must be finite and nonnegative');
+    return { status: 'priced', apiEquivalentUsd: { low: native, high: native }, price,
+      assumptions: [`Runtime-reported notional USD from ${charge.usage!.source}; catalog token rates were not applied.`] };
+  }
   if (price === null) return { status: 'unpriced', apiEquivalentUsd: null, price, assumptions: [`No exact price for ${charge.model}.`] };
   for (const rate of Object.values(price.perMillion)) {
     if (!Number.isFinite(rate) || rate < 0) throw new Error('Token rates must be finite and nonnegative');
   }
   const usage = charge.usage;
   if (usage === null) return incomplete(price, 'Provider did not report usage.');
-  for (const [key, value] of Object.entries(usage)) if (key !== 'source') count(value as number | null | undefined);
+  for (const [key, value] of Object.entries(usage)) if (key !== 'source' && key !== 'notionalUsd') count(value as number | null | undefined);
   if (!count(usage.inputTokens) || !count(usage.outputTokens)) return incomplete(price, 'Input or output token usage is missing.');
   const input = usage.inputTokens;
   const rates = price.perMillion;

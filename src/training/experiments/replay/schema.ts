@@ -10,7 +10,8 @@ const usage = z.object({ inputTokens: z.number().nonnegative().nullable(), cache
   cacheWriteInputTokens: z.number().nonnegative().nullable().optional(),
   cacheWrite5mInputTokens: z.number().nonnegative().nullable().optional(),
   cacheWrite1hInputTokens: z.number().nonnegative().nullable().optional(),
-  outputTokens: z.number().nonnegative().nullable(), reasoningTokens: z.number().nonnegative().nullable(), source: z.string() });
+  outputTokens: z.number().nonnegative().nullable(), reasoningTokens: z.number().nonnegative().nullable(),
+  notionalUsd: z.number().nonnegative().finite().nullable().optional(), source: z.string() });
 const tokenCount = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable();
 const subjectUsage = z.object({ status: z.enum(['complete', 'incomplete']), usage: usage.extend({
   inputTokens: tokenCount, cachedInputTokens: tokenCount, outputTokens: tokenCount, reasoningTokens: tokenCount,

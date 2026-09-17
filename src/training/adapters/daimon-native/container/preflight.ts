@@ -6,6 +6,15 @@ import { verifyPreparedNativeSandbox } from './native-preflight.js';
 
 /** Same namespace compatibility policy as Spawnfile's strict native Codex launch. */
 export const codexSandboxContainerSecurity = ['--security-opt', 'seccomp=unconfined', '--security-opt', 'apparmor=unconfined'] as const;
+/** Separate-container Grok needs a broker, realm and root slot supervisor this adapter does not own. */
+export const grokContainerUnsupported = 'Separate-container Grok native trials are unsupported: run Grok through child-process execution in the broker-capable training container';
+
+/** Codex's bubblewrap needs unconfined outer profiles; no other engine inherits them. */
+export function containerSecurityOptions(launch: VerifiedNativeLaunch): readonly string[] {
+  if (launch.agent.engine !== 'codex') throw new Error(grokContainerUnsupported);
+  return codexSandboxContainerSecurity;
+}
+
 export const sandboxPreflightSchema = 'paideia.daimon-native.sandbox-preflight.v1';
 export const sandboxChecks = ['namespace', 'workspaceRead', 'workspaceWrite', 'runDenied', 'authDenied', 'ingressDenied', 'networkDenied'] as const;
 

@@ -8,6 +8,8 @@ export interface Usage {
   cacheWrite1hInputTokens?: number | null;
   outputTokens: number | null;
   reasoningTokens: number | null;
+  /** Runtime-reported notional API-equivalent USD for exactly these tokens, labelled by `source`. Missing means unreported. */
+  notionalUsd?: number | null;
   source: string;
 }
 

@@ -1,9 +1,9 @@
 import { readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createWorkerController } from './control.js';
 import { assertFreshNativeEvidence } from './evidence.js';
 import { assertNativeProfile, parseWorkerArguments, verifyWorkerPaths } from './profile.js';
-import { parseNativeLaunch, readPrivateFile, sha256 } from '../receipt/index.js';
+import { isGrokLaunch, parseNativeLaunch, readPrivateFile, sha256 } from '../receipt/index.js';
 import { loadDaimonRuntime } from './public.js';
 import { createWorkerServer, listenWorker } from './server.js';
 import { persistNativeSandboxProjection } from './sandbox.js';
@@ -14,7 +14,8 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
   const launch = parseNativeLaunch(JSON.parse(await readPrivateFile(options.launch, 65536)));
   const bytes = await readPrivateFile(options.config);
   if (sha256(bytes) !== options.configSha256 || launch.configSha256 !== options.configSha256) throw new Error('Compiled native config digest mismatch');
-  const runtime = await loadDaimonRuntime();
+  const runtime = await loadDaimonRuntime(launch.agent.engine);
+  const grok = isGrokLaunch(launch) ? launch : undefined;
   const { createOrganizationRuntimeControlHost, parseOrganizationRuntimeConfig } = runtime;
   const config = parseOrganizationRuntimeConfig(JSON.parse(bytes));
   assertNativeProfile(config, launch);
@@ -22,20 +23,26 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
   if ((await readdir(options.controlRoot)).length) throw new Error('Native control root must be empty before startup');
   const token = (await readPrivateFile(options.tokenFile, 4096)).trim();
   if (token.length < 24 || /\s/u.test(token)) throw new Error('Invalid isolated control token');
-  const usageFile = join(options.controlRoot, 'usage.jsonl');
-  await assertFreshNativeEvidence(config.agents[0]!.runtimeHomePath, usageFile, config.agents[0]!.id, launch.agent.model);
+  // Codex meters in this process; the Grok broker is the single sealed writer of its per-slot ledger.
+  const usageFile = grok ? grok.broker.usageLedgerPath : join(options.controlRoot, 'usage.jsonl');
+  const requestsFile = grok ? join(dirname(usageFile), 'requests.jsonl') : join(options.controlRoot, 'requests.jsonl');
+  await assertFreshNativeEvidence(config.agents[0]!.runtimeHomePath, usageFile, config.agents[0]!.id, launch.agent.model,
+    grok ? { engine: 'grok', requestsFile } : { engine: 'codex' });
   process.env[config.host.controlTokenEnv] = token;
   process.env.NOOPOLIS_RUN_ID = options.trialId;
   process.env.DAIMON_RUNTIME_ACCEPTANCE_STORE = options.controlRoot;
   process.env.DAIMON_TURN_USAGE_LEDGER_PATH = usageFile;
-  process.env.DAIMON_TURN_REQUESTS_LEDGER_PATH = join(options.controlRoot, 'requests.jsonl');
+  process.env.DAIMON_TURN_REQUESTS_LEDGER_PATH = requestsFile;
   process.env.DAIMON_WAKE_FUSE_DIRECTORY = options.controlRoot;
   process.env.DAIMON_WAKE_FUSE_EPOCH = options.trialId;
   process.env.DAIMON_WAKE_FUSE_MAX_WAKES = '1';
   process.env.DAIMON_WAKE_FUSE_MAX_TOKENS = String(launch.limits.maxTokens);
   delete process.env.DAIMON_WAKE_FUSE;
-  process.env.DAIMON_CODEX_WAKE_TIMEOUT_MS = String(options.timeoutMs);
-  process.env.DAIMON_CODEX_WAKE_TOKEN_CEILING = String(launch.limits.wakeTokenCeiling);
+  // Engine-neutral names; the Codex aliases stay equal so older Codex runtimes keep their bound and Daimon never sees a conflict.
+  process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS = String(options.timeoutMs);
+  process.env.DAIMON_ENGINE_WAKE_TOKEN_CEILING = String(launch.limits.wakeTokenCeiling);
+  process.env.DAIMON_CODEX_WAKE_TIMEOUT_MS = process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS;
+  process.env.DAIMON_CODEX_WAKE_TOKEN_CEILING = process.env.DAIMON_ENGINE_WAKE_TOKEN_CEILING;
   const host = createOrganizationRuntimeControlHost(config, { acceptanceStorePath: options.controlRoot, controlToken: token });
   const controller = createWorkerController(host, config, options, token, launch);
   const server = createWorkerServer(controller, token);
@@ -46,10 +53,11 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
     if (health.state !== 'running' || !activity || !Array.isArray(activity.executions) || activity.executions.length || activity.items.length) {
       throw new Error('Native host did not start as a fresh idle runtime');
     }
-    await persistNativeSandboxProjection(runtime, config, options);
+    await persistNativeSandboxProjection(runtime, config, options, launch);
     await listenWorker(server, config.host.bindHost, config.host.port);
     process.stdout.write(`${JSON.stringify({ schema: 'paideia.daimon-native.ready.v1', trialId: options.trialId,
-      agentId: config.agents[0]!.id, model: config.agents[0]!.engine.model, configSha256: options.configSha256,
+      agentId: config.agents[0]!.id, model: config.agents[0]!.engine.model,
+      ...(grok ? { engine: 'grok', reasoningEffort: config.agents[0]!.engine.reasoningEffort } : {}), configSha256: options.configSha256,
       port: config.host.port, nativeHealth: health, nativeActivity: activity })}\n`);
   } catch (error) { await controller.stop(); server.closeAllConnections(); server.close(); throw error; }
   let shuttingDown = false;

@@ -4,10 +4,12 @@ import { lstat, mkdir, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/pr
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { nativeChildProbe } from './probe.js';
-import { parseNativeSandboxReceipt, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
+import { isGrokLaunch, parseNativeSandboxReceipt, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
+import { verifyChildGrokSlot } from './grok.js';
 
 /** Runs the actual owner-produced permission projection, not an approximate test profile. */
 export async function verifyChildSandbox(launch: VerifiedNativeLaunch, trialId: string, protectedPaths: readonly string[], signal: AbortSignal): Promise<void> {
+  if (isGrokLaunch(launch)) return verifyChildGrokSlot(launch, trialId, protectedPaths);
   const home = launch.projections.find(row => row.role === 'home')!.target;
   const receipt = parseNativeSandboxReceipt(JSON.parse(await readPrivateFile(join(launch.controlRoot, 'sandbox-projection.json'), 262144)), {
     trialId, configSha256: launch.configSha256, agentId: launch.agent.id, workspacePath: launch.workspace.target, runtimeHomePath: home,

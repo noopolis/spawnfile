@@ -16,6 +16,7 @@ function validUsage(usage: Usage): boolean {
   if (usage.inputTokens !== null && usage.cacheWriteInputTokens != null &&
     (usage.cachedInputTokens ?? 0) + usage.cacheWriteInputTokens > usage.inputTokens) return false;
   if (usage.cacheWriteInputTokens != null && (usage.cacheWrite5mInputTokens ?? 0) + (usage.cacheWrite1hInputTokens ?? 0) > usage.cacheWriteInputTokens) return false;
+  if (usage.notionalUsd != null && (typeof usage.notionalUsd !== 'number' || !Number.isFinite(usage.notionalUsd) || usage.notionalUsd < 0)) return false;
   return true;
 }
 
@@ -36,6 +37,9 @@ export function subjectUsageSnapshot(turns: readonly SubjectTurnResult[], option
       const total = totals.reduce((sum, row) => sum + row[key]!, 0);
       if (!Number.isSafeInteger(total)) return missing;
       usage[key] = total;
+    }
+    if (totals.some(row => row.notionalUsd !== undefined)) {
+      usage.notionalUsd = totals.some(row => row.notionalUsd == null) ? null : totals.reduce((sum, row) => sum + row.notionalUsd!, 0);
     }
     if (!validUsage(usage)) return missing;
   }

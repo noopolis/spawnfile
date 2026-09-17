@@ -55,7 +55,7 @@ export interface NativeTrace extends Record<string, unknown> {
   status: 'completed' | 'failed';
   tools: unknown[];
 }
-export interface NativeUsage extends Record<string, unknown> {
+export interface NativeCodexUsage extends Record<string, unknown> {
   v: 'noopolis.daimon.turn-usage.v1';
   agent: string;
   wake: string;
@@ -66,18 +66,64 @@ export interface NativeUsage extends Record<string, unknown> {
   total: number;
   complete: boolean;
 }
+/** Broker-sealed Grok row: disjoint buckets, `total = input + cache_read + cache_write + output`, deduplicated by `turn`. */
+export interface NativeGrokUsage extends Record<string, unknown> {
+  v: 'noopolis.daimon.turn-usage.v1';
+  agent: string;
+  wake: string;
+  engine: 'grok';
+  turn: string;
+  model: string;
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_write: number;
+  total: number;
+  notional_usd: number;
+  complete: boolean;
+  limit_reason?: 'tokens' | 'requests' | 'timeout' | 'none';
+  estimated_requests?: number;
+}
+export type NativeUsage = NativeCodexUsage | NativeGrokUsage;
+/** One `noopolis.daimon.turn-requests.v1` Grok row with its proxy-measured clock and usage source. */
+export interface NativeRequestUsage extends Record<string, unknown> {
+  v: 'noopolis.daimon.turn-requests.v1';
+  agent: string;
+  wake: string;
+  engine: 'grok';
+  turn: string;
+  model: string;
+  request: number;
+  requests: number;
+  input: number;
+  cached_input: number;
+  fresh_input: number;
+  cache_write: number;
+  output: number;
+  total: number;
+  usage_source?: 'stream' | 'upstream' | 'estimated';
+  started_at?: string;
+  ended_at?: string;
+}
 export interface NativeEvidence {
   traces: NativeTrace[];
   usage: NativeUsage[];
   toolReceipts: Record<string, unknown>[];
   modelContexts: { model: string; approvalPolicy: unknown; sandboxPolicy: unknown }[];
+  /** Grok only: per-request broker rows. Codex evidence never carries this member. */
+  requests?: NativeRequestUsage[];
 }
+/** Where native evidence lives for the selected engine. */
+export type NativeEvidenceSource = { engine: 'codex' } | { engine: 'grok'; requestsFile: string };
 export interface TerminalEvidence {
   schema: 'paideia.daimon-native.trial.v1';
   trialId: string;
   wakeId: string;
   agentId: string;
   model: string;
+  /** Grok only; Codex terminal evidence keeps its original members. */
+  engine?: 'grok';
+  reasoningEffort?: string;
   configSha256: string;
   scheduleOverride: 'disabled';
   preparation?: Pick<NativeLaunch, 'sourceConfigSha256' | 'instructions' | 'overrides'>;

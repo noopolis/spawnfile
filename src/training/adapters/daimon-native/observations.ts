@@ -1,9 +1,9 @@
 import type { NativeExternalInput } from './external.js';
 import type { Observation, SubjectStart, Usage } from '../../contracts/execution.js';
 import { readToolReceipts } from './worker/index.js';
-import type { NativeUsage, TerminalEvidence } from './worker/index.js';
+import type { NativeGrokUsage, NativeUsage, TerminalEvidence } from './worker/index.js';
 
-export function createNativeObserver(input: SubjectStart, runtimeHome: string, agentId: string) {
+export function createNativeObserver(input: SubjectStart, runtimeHome: string, agentId: string, engine: 'codex' | 'grok' = 'codex') {
   let seq = 0;
   const seen = new Set<string>();
   const emit = async (wakeId: string, value: Omit<Observation, 'id' | 'source' | 'seq' | 'timestamp' | 'trialId' | 'wakeId'>,
@@ -17,7 +17,7 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
       await emit(wakeId, { type: 'input', text: value.text, native: { schema: 'paideia.external-input.v1', deliveryId: value.id, source: value.source } });
     },
     async checkpoint(wakeId: string): Promise<void> {
-      for (const row of await readToolReceipts(runtimeHome, agentId)) {
+      for (const row of await readToolReceipts(runtimeHome, agentId, engine)) {
         const callId = String(row.delivery_id);
         if (seen.has(callId)) continue;
         seen.add(callId);
@@ -38,11 +38,21 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
 
 export function aggregateUsage(rows: NativeUsage[]): Usage | null {
   if (!rows.length) return null;
-  const sum = (key: 'input' | 'output' | 'cache_read'): number => {
-    const value = rows.reduce((total, row) => total + row[key], 0);
+  const sum = (values: number[]): number => {
+    const value = values.reduce((total, item) => total + item, 0);
     if (!Number.isSafeInteger(value) || value < 0) throw new Error('Native token aggregate is invalid');
     return value;
   };
-  return { inputTokens: sum('input'), cachedInputTokens: sum('cache_read'), outputTokens: sum('output'),
-    reasoningTokens: null, source: 'noopolis.daimon.turn-usage.v1' };
+  const grok = rows.filter((row): row is NativeGrokUsage => row.engine === 'grok');
+  if (!grok.length) {
+    return { inputTokens: sum(rows.map(row => row.input)), cachedInputTokens: sum(rows.map(row => row.cache_read)), outputTokens: sum(rows.map(row => row.output)),
+      reasoningTokens: null, source: 'noopolis.daimon.turn-usage.v1' };
+  }
+  if (grok.length !== rows.length) throw new Error('Native usage mixes engines');
+  // Grok buckets are disjoint; Paideia's inputTokens counts every prompt-side token, with reads and writes as subsets.
+  const notionalUsd = grok.reduce((total, row) => total + row.notional_usd, 0);
+  if (!Number.isFinite(notionalUsd) || notionalUsd < 0) throw new Error('Native notional USD aggregate is invalid');
+  return { inputTokens: sum(grok.flatMap(row => [row.input, row.cache_read, row.cache_write])), cachedInputTokens: sum(grok.map(row => row.cache_read)),
+    cacheWriteInputTokens: sum(grok.map(row => row.cache_write)), outputTokens: sum(grok.map(row => row.output)), reasoningTokens: null,
+    notionalUsd, source: 'noopolis.daimon.turn-usage.v1' };
 }

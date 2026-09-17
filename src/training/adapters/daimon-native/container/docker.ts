@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { posix } from 'node:path';
 import { nativeMounts } from './manifest.js';
-import { codexSandboxContainerSecurity } from './preflight.js';
+import { containerSecurityOptions } from './preflight.js';
 import { containerPaths, type VerifiedNativeLaunch, type NativeMount } from '../receipt/index.js';
 
 export interface DockerResult { code: number; stdout: string; stderr: string }
@@ -44,6 +44,7 @@ export function dockerCommand(command = 'docker'): DockerCommand {
 
 export function createContainerArguments(launch: VerifiedNativeLaunch, name: string, owner: string, trialId: string,
   timeoutMs: number, user = `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`): string[] {
+  const security = containerSecurityOptions(launch);
   const mounts: NativeMount[] = [...nativeMounts(launch),
     { source: launch.config, target: containerPaths.config, readonly: true },
     { source: launch.tokenFile, target: containerPaths.token, readonly: true },
@@ -54,7 +55,7 @@ export function createContainerArguments(launch: VerifiedNativeLaunch, name: str
   ];
   return ['create', '--name', name, '--label', `${ownerLabel}=${owner}`, '--label', `${trialLabel}=${trialId}`,
     '--pull', 'never', '--init', '--read-only', '--user', user, '--cap-drop', 'ALL',
-    '--security-opt', 'no-new-privileges', ...codexSandboxContainerSecurity, '--pids-limit', '256',
+    '--security-opt', 'no-new-privileges', ...security, '--pids-limit', '256',
     '--tmpfs', '/tmp:rw,nosuid,nodev,size=268435456', '--tmpfs', '/run:rw,nosuid,nodev,size=16777216',
     '--env-file', launch.envFile, '--workdir', '/opt/paideia',
     ...mounts.flatMap(mount => ['--mount', `type=bind,source=${mount.source},target=${mount.target}${mount.readonly ? ',readonly' : ''}`]),

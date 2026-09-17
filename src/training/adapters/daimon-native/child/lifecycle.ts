@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
 import type { StopReceipt } from '../../../contracts/execution.js';
-import { readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
+import { isGrokLaunch, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
 import { executionClosed, type NativeActivity, type NativeStopEvidence, type TerminalEvidence } from '../worker/index.js';
 import { createNativeHttpClient, type NativeExecutionHandle } from '../transport/index.js';
 import { nativeChildArguments, nativeChildEnvironment, validateChildPaths } from './arguments.js';
@@ -50,7 +50,8 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
       try {
         const row = JSON.parse(line) as Record<string, unknown>;
         if (row.schema === 'paideia.daimon-native.ready.v1' && row.trialId === trialId && row.configSha256 === launch.configSha256 &&
-          row.agentId === launch.agent.id && row.model === launch.agent.model && row.port === launch.host.port) ready = true;
+          row.agentId === launch.agent.id && row.model === launch.agent.model && row.port === launch.host.port &&
+          (!isGrokLaunch(launch) || row.engine === 'grok' && row.reasoningEffort === launch.agent.reasoningEffort)) ready = true;
       } catch { /* Bootstrap may emit non-protocol logging; never treat it as readiness. */ }
     }
   };

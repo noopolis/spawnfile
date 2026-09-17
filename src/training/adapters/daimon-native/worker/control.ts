@@ -1,9 +1,9 @@
 import { createDeliveryGate, type DeliveryControls } from './deliveries.js';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { collectNativeEvidence, nativeUsageCoverage, readClosedTraces, writeEvidence } from './evidence.js';
-import type { NativeLaunch } from '../receipt/index.js';
-import type { NativeActivity, NativeAvailability, NativeConfig, NativeEvidence, NativeHost,
-  NativeReceipt, NativeTrace, TerminalEvidence, WorkerOptions } from './types.js';
+import { isGrokLaunch, type NativeLaunch } from '../receipt/index.js';
+import type { NativeActivity, NativeAvailability, NativeConfig, NativeEvidence, NativeEvidenceSource, NativeHost,
+  NativeReceipt, NativeTrace, NativeUsage, TerminalEvidence, WorkerOptions } from './types.js';
 
 export interface NativeStopEvidence {
   schema: 'paideia.daimon-native.stop.v1';
@@ -23,7 +23,7 @@ function deferredAfterCompletion(receipt: NativeReceipt, trace: NativeTrace | un
   return receipt.state === 'accepted' && receipt.deferred === true && trace?.status === 'completed';
 }
 
-export function describeNativeFailure(receipt: NativeReceipt, trace: NativeTrace | undefined): string {
+export function describeNativeFailure(receipt: NativeReceipt, trace: NativeTrace | undefined, usage: readonly NativeUsage[] = []): string {
   if (deferredAfterCompletion(receipt, trace)) return 'Native execution completed; delivery blocked awaiting external input';
   const delivery = `${receipt.state}${receipt.deferred ? ' deferred' : ''}`;
   if (trace?.status !== 'failed') return `Native delivery ended ${delivery}`;
@@ -37,6 +37,11 @@ export function describeNativeFailure(receipt: NativeReceipt, trace: NativeTrace
   if (ceiling && ceiling[0] === message) {
     return `Native execution failed: Codex wake exceeded its ${ceiling[1]}-token per-wake ceiling (turn usage ${ceiling[2]} tokens)`;
   }
+  // Grok broker limits: the sealed usage row's closed limit_reason, else the broker client's fixed code prefix.
+  const row = usage.find(item => item.engine === 'grok' && item.wake === trace.turn_id && ['tokens', 'requests', 'timeout'].includes(String(item.limit_reason)));
+  const broker = typeof message === 'string' ? /^engine broker turn failed \(limit_exceeded; limit=(tokens|requests|timeout)[;)]/u.exec(message) : null;
+  const limit = row ? String(row.limit_reason) : broker?.[1];
+  if (limit) return `Native execution failed: Grok broker turn limit_exceeded (limit_reason ${limit})`;
   return `Native execution failed (delivery ${delivery})`;
 }
 
@@ -56,6 +61,10 @@ export function executionClosed(activity: NativeActivity, receipt: NativeReceipt
 export function createWorkerController(host: NativeHost, config: NativeConfig, options: WorkerOptions,
   token: string, launch?: NativeLaunch): WorkerController {
   const agent = config.agents[0]!;
+  if (agent.engine.kind === 'grok' && (!launch || !isGrokLaunch(launch))) throw new Error('Grok native trials require their Grok broker launch receipt');
+  const grok = launch && isGrokLaunch(launch) ? launch : undefined;
+  const usageFile = grok ? grok.broker.usageLedgerPath : join(options.controlRoot, 'usage.jsonl');
+  const source: NativeEvidenceSource = grok ? { engine: 'grok', requestsFile: join(dirname(usageFile), 'requests.jsonl') } : { engine: 'codex' };
   const cancellation = new AbortController();
   const gate = createDeliveryGate(options.timeoutMs);
   let stopping: Promise<NativeStopEvidence> | undefined;
@@ -92,7 +101,6 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
       const previous = [...gate.executions];
       const startedAt = new Date().toISOString();
       const deliveryId = `${options.trialId}:${wakeId}`;
-      const usageFile = join(options.controlRoot, 'usage.jsonl');
       let receipt: NativeReceipt | undefined;
       let activity: NativeActivity | undefined;
       let availability: NativeAvailability | undefined;
@@ -133,14 +141,14 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
           }
           await pause(100, cancellation.signal);
         }
-        native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id, executionId, agent.engine.model!, previous);
+        native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id, executionId, agent.engine.model!, previous, source);
         const trace = native.traces[0];
         const failure = availability.agents.find(row => row.agent_id === agent.id)?.error;
         if (!native.usage.length) throw new Error('Closed native execution omitted token usage evidence');
         if (!native.modelContexts.length) throw new Error('Closed native execution omitted model identity evidence');
         if (!failure && deferredAfterCompletion(receipt, trace)) blocked = 'awaiting-external-input';
         if (receipt.state !== 'completed' || trace?.status !== 'completed' || failure) {
-          throw new Error(failure ?? describeNativeFailure(receipt, trace));
+          throw new Error(failure ?? describeNativeFailure(receipt, trace, native.usage));
         }
         status = 'completed';
       } catch (failure) {
@@ -148,13 +156,13 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
         status = cancellation.signal.aborted && !timedOut ? 'cancelled' : 'failed';
         if (!blocked) await stop();
         try {
-          native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id, executionId, agent.engine.model!, previous);
+          native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id, executionId, agent.engine.model!, previous, source);
         } catch (collectionError) { blocked = undefined; await stop(); error += `; evidence collection failed: ${String(collectionError)}`; }
       } finally { clearTimeout(timer); }
       const continuing = gate.finish(executionId, blocked === 'awaiting-external-input');
       if (blocked && !continuing) await stop();
       const result: TerminalEvidence = { schema: 'paideia.daimon-native.trial.v1', trialId: options.trialId, wakeId,
-        agentId: agent.id, model: agent.engine.model!, configSha256: options.configSha256, scheduleOverride: 'disabled',
+        agentId: agent.id, model: agent.engine.model!, ...(grok ? { engine: 'grok' as const, reasoningEffort: grok.agent.reasoningEffort } : {}), configSha256: options.configSha256, scheduleOverride: 'disabled',
         ...(launch ? { preparation: { sourceConfigSha256: launch.sourceConfigSha256, instructions: launch.instructions, overrides: launch.overrides } } : {}),
         status, startedAt, completedAt: new Date().toISOString(), executionId, receipt, activity, availability, native,
         ...(blocked ? { blocked } : {}),

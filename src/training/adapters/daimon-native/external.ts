@@ -51,8 +51,14 @@ export function sumNativeUsage(rows: readonly (Usage | null)[]): Usage | null {
     return total;
   };
   const totals = { inputTokens: sum('inputTokens'), cachedInputTokens: sum('cachedInputTokens'), outputTokens: sum('outputTokens') };
+  // Optional members appear only when a wake reported them, so Codex aggregates keep their exact shape.
+  const extra: Partial<Usage> = {};
+  if (rows.some(row => row!.cacheWriteInputTokens !== undefined)) extra.cacheWriteInputTokens = rows.some(row => row!.cacheWriteInputTokens == null) ? null
+    : rows.reduce((total, row) => total + row!.cacheWriteInputTokens!, 0);
+  if (rows.some(row => row!.notionalUsd !== undefined)) extra.notionalUsd = rows.some(row => row!.notionalUsd == null) ? null
+    : rows.reduce((total, row) => total + row!.notionalUsd!, 0);
   return rows.length === 1 ? { ...rows[0]!, ...totals }
-    : { ...totals, reasoningTokens: null, source: 'noopolis.daimon.turn-usage.v1' };
+    : { ...totals, ...extra, reasoningTokens: null, source: 'noopolis.daimon.turn-usage.v1' };
 }
 
 

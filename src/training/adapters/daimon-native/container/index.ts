@@ -2,4 +2,4 @@ export { dockerCommand, createContainerArguments, inspectOwned, workerRequest, o
 export type { DockerCommand, DockerResult, ContainerInspection } from './docker.js';
 export { startOwnedContainer } from './lifecycle.js';
 export { loadNativeLaunch, nativeMounts } from './manifest.js';
-export { sandboxChecks, sandboxPreflightSchema } from './preflight.js';
+export { containerSecurityOptions, grokContainerUnsupported, sandboxChecks, sandboxPreflightSchema } from './preflight.js';

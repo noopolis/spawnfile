@@ -2,7 +2,7 @@ import { lstat, readdir, readFile, rename, open } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readPrivateFile } from '../receipt/index.js';
-import type { NativeEvidence, NativeTrace, NativeUsage } from './types.js';
+import type { NativeCodexUsage, NativeEvidence, NativeEvidenceSource, NativeGrokUsage, NativeRequestUsage, NativeTrace } from './types.js';
 
 const MAX_STREAM = 64 * 1024 * 1024;
 function object(value: unknown): Record<string, unknown> {
@@ -32,7 +32,7 @@ export async function readClosedTraces(runtimeHome: string, agentId: string): Pr
   });
 }
 
-async function readUsage(file: string, agentId: string, executionId?: string, previous: readonly string[] = []): Promise<NativeUsage[]> {
+async function readUsage(file: string, agentId: string, executionId?: string, previous: readonly string[] = []): Promise<NativeCodexUsage[]> {
   const wakes = new Set<string>();
   return (await jsonLines(file)).map(value => {
     const row = object(value);
@@ -46,7 +46,7 @@ async function readUsage(file: string, agentId: string, executionId?: string, pr
     if (Number(row.cache_read) > Number(row.input) || Number(row.total) !== Number(row.input) + Number(row.output)) {
       throw new Error('Native Codex token totals or cache subset are inconsistent');
     }
-    return row as NativeUsage;
+    return row as NativeCodexUsage;
   }).filter(row => !previous.includes(row.wake));
 }
 
@@ -55,7 +55,9 @@ export function nativeUsageCoverage(native: NativeEvidence, executionId?: string
   if (!native.usage.length) return 'absent';
   const usage = native.usage[0]!;
   const trace = native.traces[0];
-  return executionId !== undefined && native.usage.length === 1 && native.traces.length === 1
+  // A Grok request charged an estimate is bounded spend, not observed usage.
+  const estimated = usage.engine === 'grok' && (usage.estimated_requests ?? 0) > 0;
+  return executionId !== undefined && native.usage.length === 1 && native.traces.length === 1 && !estimated
     && usage.wake === executionId && usage.complete && trace?.turn_id === executionId && trace.status === 'completed'
     ? 'complete' : 'partial';
 }
@@ -68,13 +70,13 @@ async function files(directory: string): Promise<string[]> {
   } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw error; }
 }
 
-export async function readToolReceipts(runtimeHome: string, agentId: string): Promise<Record<string, unknown>[]> {
+export async function readToolReceipts(runtimeHome: string, agentId: string, engine: NativeEvidenceSource['engine'] = 'codex'): Promise<Record<string, unknown>[]> {
   const directory = join(runtimeHome, 'tool-state');
   const entries = (await files(directory)).filter(name => /^[a-f0-9]{64}\.json$/u.test(name));
   if (entries.length > 2048) throw new Error('Native tool receipt count exceeds its bound');
   return Promise.all(entries.sort().map(async name => {
     const row = object(JSON.parse(await readPrivateFile(join(directory, name), 65536)));
-    if (row.agent_id !== agentId || row.engine !== 'codex' || !['mcp', 'moltnet'].includes(String(row.kind)) ||
+    if (row.agent_id !== agentId || row.engine !== engine || !['mcp', 'moltnet'].includes(String(row.kind)) ||
         typeof row.delivery_id !== 'string' || !timestamp(row.at)) throw new Error('Native tool receipt identity mismatch');
     if (row.kind === 'mcp' && (typeof row.server !== 'string' || typeof row.tool !== 'string' || typeof row.is_error !== 'boolean')) {
       throw new Error('Malformed native MCP receipt');
@@ -109,7 +111,9 @@ async function readModelContexts(runtimeHome: string): Promise<NativeEvidence['m
 }
 
 export async function collectNativeEvidence(runtimeHome: string, usageFile: string, agentId: string,
-  executionId: string | undefined, expectedModel: string, previous: readonly string[] = []): Promise<NativeEvidence> {
+  executionId: string | undefined, expectedModel: string, previous: readonly string[] = [],
+  source: NativeEvidenceSource = { engine: 'codex' }): Promise<NativeEvidence> {
+  if (source.engine === 'grok') return collectGrokEvidence(runtimeHome, usageFile, source.requestsFile, agentId, executionId, expectedModel, previous);
   const [traces, usage, toolReceipts, modelContexts] = await Promise.all([
     readClosedTraces(runtimeHome, agentId), readUsage(usageFile, agentId, executionId, previous),
     readToolReceipts(runtimeHome, agentId), readModelContexts(runtimeHome),
@@ -119,8 +123,90 @@ export async function collectNativeEvidence(runtimeHome: string, usageFile: stri
   return { traces: traces.filter(row => !previous.includes(row.turn_id)), usage, toolReceipts, modelContexts };
 }
 
-export async function assertFreshNativeEvidence(runtimeHome: string, usageFile: string, agentId: string, expectedModel: string): Promise<void> {
-  const evidence = await collectNativeEvidence(runtimeHome, usageFile, agentId, undefined, expectedModel);
+async function collectGrokEvidence(runtimeHome: string, usageFile: string, requestsFile: string, agentId: string,
+  executionId: string | undefined, expectedModel: string, previous: readonly string[]): Promise<NativeEvidence> {
+  const [traces, usage, requests, toolReceipts] = await Promise.all([
+    readClosedTraces(runtimeHome, agentId), readGrokUsage(usageFile, agentId, executionId, expectedModel, previous),
+    readGrokRequests(requestsFile, agentId, executionId, expectedModel, previous), readToolReceipts(runtimeHome, agentId, 'grok'),
+  ]);
+  if (traces.some(row => executionId !== undefined && row.turn_id !== executionId && !previous.includes(row.turn_id))) throw new Error('Foreign native execution trace');
+  // Grok has no Codex session rollout: the broker-sealed usage row is its model identity.
+  const modelContexts = usage.map(() => ({ model: expectedModel, approvalPolicy: null, sandboxPolicy: null }));
+  return { traces: traces.filter(row => !previous.includes(row.turn_id)), usage, toolReceipts, modelContexts, requests };
+}
+
+/** Grok reports `grok-4.6` usage under its `-build` key; anything else is another model. */
+const grokModel = (value: unknown, declared: string): string => {
+  if (value !== declared && value !== `${declared}-build`) throw new Error('Native usage model differs from the declared model');
+  return declared;
+};
+const tokens = (row: Record<string, unknown>, keys: readonly string[]): boolean => keys.every(key => Number.isSafeInteger(row[key]) && Number(row[key]) >= 0);
+const turnKey = /^[a-f0-9]{64}$/u;
+
+/** Collapse byte-identical re-appends of one sealed key (Daimon replays); differing rows under one key are refused. */
+function dedupe<T>(rows: readonly { key: string; row: T }[]): T[] {
+  const seen = new Map<string, string>();
+  return rows.flatMap(({ key, row }) => {
+    const bytes = JSON.stringify(row);
+    const prior = seen.get(key);
+    if (prior === undefined) { seen.set(key, bytes); return [row]; }
+    if (prior !== bytes) throw new Error('Conflicting native Grok ledger rows share one turn');
+    return [];
+  });
+}
+
+const belongs = (wake: unknown, executionId: string | undefined, previous: readonly string[]): boolean =>
+  typeof wake === 'string' && (executionId === undefined || wake === executionId || previous.includes(wake));
+
+async function readGrokUsage(file: string, agentId: string, executionId: string | undefined, expectedModel: string,
+  previous: readonly string[]): Promise<NativeGrokUsage[]> {
+  const rows = (await jsonLines(file)).map(value => {
+    const row = object(value);
+    if (row.v !== 'noopolis.daimon.turn-usage.v1' || row.agent !== agentId || row.engine !== 'grok' || !belongs(row.wake, executionId, previous) ||
+        !timestamp(row.at) || typeof row.complete !== 'boolean' || typeof row.turn !== 'string' || !turnKey.test(row.turn) ||
+        !tokens(row, ['input', 'output', 'cache_read', 'cache_write', 'total']) || typeof row.notional_usd !== 'number' ||
+        !Number.isFinite(row.notional_usd) || row.notional_usd < 0 ||
+        row.limit_reason !== undefined && !['tokens', 'requests', 'timeout', 'none'].includes(String(row.limit_reason)) ||
+        row.estimated_requests !== undefined && (!Number.isSafeInteger(row.estimated_requests) || Number(row.estimated_requests) < 1)) {
+      throw new Error('Native Grok usage schema or execution identity mismatch');
+    }
+    grokModel(row.model, expectedModel);
+    if (Number(row.total) !== Number(row.input) + Number(row.cache_read) + Number(row.cache_write) + Number(row.output)) {
+      throw new Error('Native Grok token totals are inconsistent');
+    }
+    return { key: row.turn, row: row as NativeGrokUsage };
+  });
+  const wakes = new Set<string>();
+  return dedupe(rows).filter(row => {
+    if (wakes.has(row.wake)) throw new Error('Duplicate native usage execution');
+    wakes.add(row.wake);
+    return !previous.includes(row.wake);
+  });
+}
+
+async function readGrokRequests(file: string, agentId: string, executionId: string | undefined, expectedModel: string,
+  previous: readonly string[]): Promise<NativeRequestUsage[]> {
+  const rows = (await jsonLines(file)).map(value => {
+    const row = object(value);
+    if (row.v !== 'noopolis.daimon.turn-requests.v1' || row.agent !== agentId || row.engine !== 'grok' || !belongs(row.wake, executionId, previous) ||
+        !timestamp(row.at) || typeof row.turn !== 'string' || !turnKey.test(row.turn) ||
+        !tokens(row, ['request', 'requests', 'input', 'cached_input', 'fresh_input', 'cache_write', 'output', 'total']) ||
+        row.usage_source !== undefined && !['stream', 'upstream', 'estimated'].includes(String(row.usage_source)) ||
+        row.started_at !== undefined && !timestamp(row.started_at) || row.ended_at !== undefined && !timestamp(row.ended_at) ||
+        timestamp(row.started_at) && timestamp(row.ended_at) && Date.parse(row.ended_at) < Date.parse(row.started_at)) {
+      throw new Error('Native Grok request schema or execution identity mismatch');
+    }
+    grokModel(row.model, expectedModel);
+    if (Number(row.input) !== Number(row.fresh_input) + Number(row.cached_input) ||
+        Number(row.total) !== Number(row.input) + Number(row.cache_write) + Number(row.output)) throw new Error('Native Grok request totals are inconsistent');
+    return { key: `${row.turn}:${String(row.request)}`, row: row as NativeRequestUsage };
+  });
+  return dedupe(rows).filter(row => !previous.includes(row.wake));
+}
+
+export async function assertFreshNativeEvidence(runtimeHome: string, usageFile: string, agentId: string, expectedModel: string,
+  source: NativeEvidenceSource = { engine: 'codex' }): Promise<void> {
+  const evidence = await collectNativeEvidence(runtimeHome, usageFile, agentId, undefined, expectedModel, [], source);
   if (Object.values(evidence).some(rows => rows.length > 0)) throw new Error('A native trial requires fresh execution evidence');
 }
 
