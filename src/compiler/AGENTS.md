@@ -177,9 +177,17 @@ src/compiler/
   `src/runtime/daimon/grokWorkerConfigBytes.ts`, refused unless they hash to the
   manifest pin for the agent's declared model x effort. The sandbox profile's
   `deny` list is never empty: Daimon's protected set (realms, bootstrap, peers,
-  acceptance store) plus the broker's `/etc` and `/run` directories, the usage
-  ledger and wake fuse, every other worker's home, and the container secret
-  roots. Entries never nest. Provisioning
+  acceptance store, kept verbatim) plus the organization config directory,
+  every persistent mount of every runtime plan (the worker's own tool state,
+  credential home, and memory banks included), other runtime instance roots,
+  `/var/lib/spawnfile/{moltnet,agents,memory}`, every workspace resource backing
+  path not linked from the agent's own workspace, the broker's `/etc` and `/run`
+  directories, the usage ledger and wake fuse, every other worker's home, and
+  `/run/{secrets,spawnfile,spawnfile-secrets,world}`. Allowed on purpose: own
+  workspace, own worker home, own runtime home directory, own resource
+  backings. Masks never nest; `containerDaimonGrokWorkerDenyCoverage.test.ts`
+  enumerates everything the container provisions and fails on any uncovered,
+  unjustified path. Provisioning
   (`containerDaimonGrokWorkerProvisioning.ts`) writes Daimon's attested
   `GROK_HOME` layout — `root:<worker> 1771` home and `sessions/`, `root:root
   0444` config/sandbox/trust/managed/requirements files, events under

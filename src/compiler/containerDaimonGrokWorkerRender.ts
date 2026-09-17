@@ -30,7 +30,7 @@ import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 export const DAIMON_WORKER_ROOT = "/var/lib/daimon-workers";
 export const DAIMON_GROK_WORKER_READ_ONLY_FILES = DAIMON_GROK_ENGINE_BROKER.worker.home.readOnlyFiles.names;
 /** Container paths no Grok worker may read that nothing else guarantees to exist; provisioning creates them root-owned 0700 when absent. */
-export const DAIMON_GROK_OPTIONAL_DENY_PATHS = ["/run/secrets", "/run/spawnfile", "/run/spawnfile-secrets"] as const;
+export const DAIMON_GROK_OPTIONAL_DENY_PATHS = ["/run/secrets", "/run/spawnfile", "/run/spawnfile-secrets", "/run/world"] as const;
 
 /**
  * The organization runtime state directory — the parent of the durable wake
@@ -49,6 +49,8 @@ export interface DaimonGrokRegistration {
   config: string;
   configSha256: string;
   denyPaths: string[];
+  /** Deny entries the main entrypoint materializes after root provisioning (workspace resource backings); absent is allowed there, a symlink never. */
+  deferredDenyPaths: string[];
   eventsPath: string;
   grokHome: string;
   home: string;
@@ -80,19 +82,47 @@ const declaredModel = (plan: RuntimeTargetPlan, agentId: string): { model: Daimo
 };
 
 /**
+ * Spawnfile-managed state roots no Grok worker needs: the shared Moltnet store
+ * (server data, node/bridge configs, receipt stores, network state), per-agent
+ * Moltnet open-mode token directories, and declared Mneme memory banks. A
+ * worker reaches Moltnet and memory only through Daimon's MCP tools, which run
+ * in the organization process, never by reading these files. Provisioning
+ * creates each root-owned `0700` when absent so the mask always has a target.
+ */
+export const DAIMON_GROK_DENIED_STATE_ROOTS = ["/var/lib/spawnfile/agents", "/var/lib/spawnfile/memory", "/var/lib/spawnfile/moltnet"] as const;
+
+const within = (candidate: string, root: string): boolean => candidate === root || candidate.startsWith(`${root}/`);
+
+/**
  * One brokered worker's sandbox deny list.
  *
  * Daimon's own protected set for the agent (`grokSandboxProtectedPaths`: the
  * Grok bootstrap and realm, the AGY realm and unlock secret when any agent is
  * AGY, the wake-acceptance store, and every peer's runtime home and workspace)
- * plus what this deployment adds: the broker's registration/service directory
- * and control/relay socket directory, the usage-ledger and wake-fuse volumes,
- * every other worker's home, and the container secret roots. Grok 1.0.34's
- * strict base reads all of `/run`, `/var`, `/tmp` and `/etc`, and bind mounts
- * from a macOS host ignore unix modes, so this list — not file modes — is the
- * boundary. Entries must never nest: one mask inside another cannot be applied.
+ * is always kept verbatim, so a Daimon projection over the same inputs renders
+ * the same profile. This deployment adds everything else the container
+ * provisions that the worker does not need: the organization config directory
+ * (all agents' instructions and any env files), every persistent mount of
+ * every runtime plan (the worker's own tool state, credential home and memory
+ * included — it reaches them only through Daimon), every other runtime
+ * instance root, the shared Moltnet/agent/memory state roots, every workspace
+ * resource backing path not linked from this agent's own workspace, the broker's
+ * `/etc` and `/run` directories, the usage ledger and wake fuse, every other
+ * worker's home, and the container secret roots.
+ *
+ * Allowed on purpose: the agent's own workspace (the worker's cwd), its own
+ * runtime home directory itself (Daimon's tool-result spill contract names paths
+ * under it; its contents are persistent mounts and denied), its own worker home,
+ * and backing paths of resources linked into its own workspace (a mask over the
+ * backing inode would also hide the agent's own resource through its link).
+ *
+ * Grok 1.0.34's strict base reads all of `/run`, `/var`, `/tmp` and `/etc`, and
+ * macOS bind mounts ignore unix modes, so this list — not file modes — is the
+ * boundary. Masks cannot nest: an added entry already covered by another entry
+ * is dropped, and an added entry that would cover a Daimon entry is refused.
  */
 export const resolveDaimonGrokWorkerDenyPaths = (
+  plans: readonly RuntimeTargetPlan[],
   plan: RuntimeTargetPlan,
   agentId: string,
   workerHomes: readonly string[],
@@ -100,8 +130,10 @@ export const resolveDaimonGrokWorkerDenyPaths = (
 ): string[] => {
   const instanceRoot = plan.instancePaths.instanceRoot ?? fail("Daimon Grok registrations require an instance root");
   const agents = Object.entries(plan.engineByNodeId ?? {});
+  const ownWorkspace = path.posix.join(plan.instancePaths.workspacePath, "agents", nodeSlug(agentId));
+  const ownRuntimeHome = path.posix.join(instanceRoot, DAIMON_RUNTIME_HOMES_DIRECTORY, nodeSlug(agentId));
   const peers = agents.filter(([id]) => id !== agentId).map(([id]) => nodeSlug(id));
-  const denied = [...new Set([
+  const daimonOwn = [
     DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath,
     DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath,
     ...(agents.some(([, engine]) => engine === "agy") ? [DAIMON_AGY_SUBSCRIPTION_REALM.unlockMountPath, DAIMON_AGY_SUBSCRIPTION_REALM.durableMountPath] : []),
@@ -109,17 +141,42 @@ export const resolveDaimonGrokWorkerDenyPaths = (
     ...peers.flatMap((slug) => [
       path.posix.join(instanceRoot, DAIMON_RUNTIME_HOMES_DIRECTORY, slug),
       path.posix.join(plan.instancePaths.workspacePath, "agents", slug)
+    ])
+  ];
+  const ownResourceBackings = new Set((plan.resources ?? [])
+    .filter((resource) => within(resource.linkPath, ownWorkspace))
+    .map((resource) => resource.backingPath));
+  const added = [
+    path.posix.dirname(plan.instancePaths.configPath),
+    ...plans.flatMap((candidate) => (candidate.persistentMounts ?? []).map((mount) => mount.mount_path)),
+    ...plans.filter((candidate) => candidate !== plan).flatMap((candidate) => [
+      candidate.instancePaths.instanceRoot ?? path.posix.dirname(candidate.instancePaths.configPath),
+      ...(candidate.envFiles ?? []).map((binding) => binding.filePath)
     ]),
+    ...(plan.envFiles ?? []).map((binding) => binding.filePath),
+    ...plans.flatMap((candidate) => candidate.resources ?? []).map((resource) => resource.backingPath)
+      .filter((backing) => !ownResourceBackings.has(backing)),
+    ...DAIMON_GROK_DENIED_STATE_ROOTS,
     path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.registrationPath),
     path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.controlSocketPath),
     DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
     DAIMON_WAKE_FUSE_DIRECTORY,
     ...workerHomes.filter((home) => home !== ownHome),
     ...DAIMON_GROK_OPTIONAL_DENY_PATHS
-  ])].sort();
+  ].filter((entry) => entry.startsWith("/"));
+  for (const entry of added) {
+    if (within(ownWorkspace, entry) || within(ownHome, entry) || entry === ownRuntimeHome || within(ownRuntimeHome, entry)
+      || [...ownResourceBackings].some((backing) => within(backing, entry))) {
+      fail(`Grok worker deny path ${entry} would hide ${agentId}'s own workspace, home, or resources`);
+    }
+  }
+  const candidates = [...new Set([...daimonOwn, ...added])];
+  const daimonSet = new Set(daimonOwn);
+  const denied = candidates.filter((entry) => daimonSet.has(entry)
+    || !candidates.some((other) => other !== entry && within(entry, other))).sort();
   for (const entry of denied) {
-    const ancestor = denied.find((other) => other !== entry && entry.startsWith(`${other}/`));
-    if (ancestor) fail(`Grok worker deny path ${entry} nests inside ${ancestor}`);
+    const ancestor = denied.find((other) => other !== entry && within(entry, other));
+    if (ancestor) fail(`Grok worker deny path ${ancestor} would cover ${entry}; masks cannot nest`);
   }
   return denied;
 };
@@ -137,9 +194,11 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]): Daim
     const grokHome = path.posix.join(home, DAIMON_GROK_WORKER_HOME_DIRECTORY);
     const { model, reasoningEffort } = declaredModel(plan, agentId);
     const config = resolveDaimonGrokWorkerConfig(model, reasoningEffort);
-    const denyPaths = resolveDaimonGrokWorkerDenyPaths(plan, agentId, homes, home);
+    const denyPaths = resolveDaimonGrokWorkerDenyPaths(plans, plan, agentId, homes, home);
     const profile = renderDaimonGrokWorkerSandboxProfile(denyPaths);
+    const backings = new Set(plans.flatMap((candidate) => candidate.resources ?? []).map((resource) => resource.backingPath));
     return {
+      deferredDenyPaths: denyPaths.filter((entry) => backings.has(entry)),
       agentId,
       config: config.bytes,
       configSha256: config.sha256,

@@ -1,6 +1,7 @@
 import { DAIMON_GROK_ENGINE_BROKER } from "../runtime/daimon/contractManifest.js";
 import { DAIMON_BROKER_UID } from "../runtime/daimon/runtimeIdentity.js";
 import {
+  DAIMON_GROK_DENIED_STATE_ROOTS,
   DAIMON_GROK_OPTIONAL_DENY_PATHS,
   DAIMON_GROK_WORKER_READ_ONLY_FILES,
   DAIMON_WORKER_ROOT,
@@ -13,6 +14,7 @@ const programRegistration = (entry: DaimonGrokRegistration) => ({
   agentId: entry.agentId,
   config: entry.config,
   configSha256: entry.configSha256,
+  deferredDenyPaths: entry.deferredDenyPaths,
   denyPaths: entry.denyPaths,
   eventsPath: entry.eventsPath,
   grokHome: entry.grokHome,
@@ -46,7 +48,7 @@ const programRegistration = (entry: DaimonGrokRegistration) => ({
  */
 export const renderDaimonGrokWorkerProvisioning = (registrations: readonly DaimonGrokRegistration[]): string[] => [
   `const grokWorkers = ${JSON.stringify(registrations.map(programRegistration))};`,
-  `const optionalDenyPaths = new Set(${JSON.stringify(DAIMON_GROK_OPTIONAL_DENY_PATHS)});`,
+  `const optionalDenyPaths = new Set(${JSON.stringify([...DAIMON_GROK_OPTIONAL_DENY_PATHS, ...DAIMON_GROK_DENIED_STATE_ROOTS])});`,
   `const pinnedConfigSha256 = new Set(${JSON.stringify(Object.values(DAIMON_GROK_ENGINE_BROKER.worker.configSha256).flatMap((efforts) => Object.values(efforts)))});`,
   "const sha256Hex = (value) => crypto.createHash('sha256').update(value).digest('hex');",
   "for (const entry of grokWorkers) { if (sha256Hex(entry.config) !== entry.configSha256 || !pinnedConfigSha256.has(entry.configSha256) || sha256Hex(entry.profile) !== entry.profileSha256 || entry.denyPaths.length === 0) throw new Error(`Grok worker contract bytes for ${entry.agentId} do not match their pins`); }",
@@ -58,7 +60,7 @@ export const renderDaimonGrokWorkerProvisioning = (registrations: readonly Daimo
   // Pass 1: every workspace and home exists, root-held, before any deny list is checked.
   `for (const entry of grokWorkers) { for (let ancestor = require('node:path').dirname(entry.workspace); ancestor.startsWith('/var/lib/spawnfile/') && ancestor.length > '/var/lib/spawnfile'.length; ancestor = require('node:path').dirname(ancestor)) fs.chmodSync(ancestor, fs.statSync(ancestor).mode & 0o7777 | 0o011); secureWorkspace(entry.workspace, entry.uid); assertCanonical(entry.workspace, 'workspace'); ensureDirectory(entry.home, 0, 0, 0o700); ensureDirectory(entry.grokHome, 0, 0, 0o700); ensureDirectory(\`\${entry.grokHome}/sessions\`, 0, 0, 0o700); for (const target of [entry.home, entry.grokHome]) assertCanonical(target, 'home'); }`,
   "for (const denied of optionalDenyPaths) { try { fs.lstatSync(denied); } catch (error) { if (error.code !== 'ENOENT') throw error; fs.mkdirSync(denied, { mode: 0o700 }); fs.chownSync(denied, 0, 0); fs.chmodSync(denied, 0o700); } }",
-  "for (const entry of grokWorkers) for (const denied of entry.denyPaths) { try { assertCanonical(denied, 'deny path'); } catch (error) { if (error.code === 'ENOENT') throw new Error(`Grok worker deny path is missing: ${denied}`); throw error; } }",
+  "for (const entry of grokWorkers) for (const denied of entry.denyPaths) { try { assertCanonical(denied, 'deny path'); } catch (error) { if (error.code === 'ENOENT' && entry.deferredDenyPaths.includes(denied)) continue; if (error.code === 'ENOENT') throw new Error(`Grok worker deny path is missing: ${denied}`); throw error; } }",
   // Pass 2: exact root-owned read-only files, the events file, then the final sticky modes.
   `for (const entry of grokWorkers) { ensureExactFile(\`\${entry.grokHome}/config.toml\`, entry.config, 0o444); ensureExactFile(entry.profilePath, entry.profile, 0o444); for (const name of ${JSON.stringify(DAIMON_GROK_WORKER_READ_ONLY_FILES.filter((name) => name !== "config.toml" && name !== "sandbox.toml"))}) ensureExactFile(\`\${entry.grokHome}/\${name}\`, '', 0o444); ensureEventsFile(entry.eventsPath, entry.uid); ensureDirectory(\`\${entry.grokHome}/sessions\`, 0, entry.uid, 0o1771); ensureDirectory(entry.grokHome, 0, entry.uid, 0o1771); ensureDirectory(entry.home, entry.uid, ${DAIMON_BROKER_UID}, 0o710); for (const target of [entry.profilePath, entry.eventsPath, \`\${entry.grokHome}/config.toml\`]) assertCanonical(target, 'home file'); }`,
   `const service = ${JSON.stringify(renderDaimonGrokServiceConfig(registrations))};`,

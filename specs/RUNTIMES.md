@@ -249,9 +249,14 @@ is enforced inside bubblewrap for both shell and `read_file`, and it is
 mandatory: Grok's strict base reads all of `/run`, `/var`, `/tmp`, and `/etc`,
 and macOS bind mounts ignore unix modes. Each worker denies the Grok bootstrap
 and realm, AGY realm and unlock secret when present, the wake-acceptance store,
-every peer agent's runtime home and workspace, every other worker's home, the
-broker's `/etc` and `/run` directories, the usage-ledger and wake-fuse volumes,
-and `/run/secrets`, `/run/spawnfile`, `/run/spawnfile-secrets`. Every deny
+every peer agent's runtime home and workspace, the organization config
+directory, every persistent mount (its own tool state, credential home and
+memory included), other runtime instance roots, the shared Moltnet, agent-token
+and memory roots under `/var/lib/spawnfile`, every workspace resource backing
+path not linked into its own workspace, every other worker's home, the broker's
+`/etc` and `/run` directories, the usage-ledger and wake-fuse volumes, and
+`/run/secrets`, `/run/spawnfile`, `/run/spawnfile-secrets`, `/run/world`. It
+reaches Moltnet and memory only through Daimon's MCP tools. Every deny
 entry and registration path must be canonical (present, not a symlink, its own
 realpath) at provisioning or the container refuses to start.
 
