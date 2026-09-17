@@ -28,6 +28,14 @@ describe("readUsageLedgerViaExec", () => {
     rotatedFilePath: "/var/lib/spawnfile/daimon/usage/usage.jsonl.1"
   };
 
+  it("counts a broker turn re-appended across a rotation exactly once", async () => {
+    const sealed = line({ turn: "d".repeat(64) });
+    const exec = async (command: string[]) => ({ stderr: "", stdout: `${sealed}\n` });
+    const read = await readUsageLedgerViaExec(exec, paths);
+    expect(read.records).toHaveLength(1);
+    expect(read.unreadable).toEqual([]);
+  });
+
   it("merges both generations, rotated (older) first", async () => {
     const exec = async (command: string[]) => {
       const target = command[1];

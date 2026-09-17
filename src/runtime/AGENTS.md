@@ -17,6 +17,7 @@ src/runtime/
 ├── registry.ts            # Bundled adapter registration and lookup
 ├── usageLedger.ts         # Pure parser/aggregator for Daimon's per-turn usage ledger
 ├── usageLedgerRead.ts     # Ledger read transport: `cat`s both generations through a caller-supplied exec and separates "absent" from "unreadable"
+├── usageRequestLedger.ts  # Pure parser for Daimon's per-request stream (`requests.jsonl`): timing, model, usage source, broker-turn dedupe
 ├── scheduleUtils.ts       # Shared duration schedule helpers for runtime lowering
 ├── daimon/                # Public Daimon organization-host adapter
 ├── openclaw/              # OpenClaw adapter implementation
@@ -63,3 +64,14 @@ or receipt environment overrides fail closed. With no identity path,
 - Adapters receive resolved nodes, not raw manifests.
 - Keep runtime-specific behavior isolated here.
 - Share only the adapter contract, not runtime-specific implementation details.
+
+Daimon's Grok broker is the single sealed usage writer, and a replayed turn may
+re-append its sealed rows. `usageLedger.ts` therefore dedupes every
+`turn-usage.v1` row by its `turn` key (`dedupeUsageRecordsByTurn`) in parsing,
+across both ledger generations (`usageLedgerRead.ts`), and inside every
+aggregate; rows without a key are kept. It reads the broker's additive fields
+only from Daimon's closed vocabularies — `limit_reason`, `model`, `outcome`,
+`estimated_requests` — dropping a malformed optional field rather than the
+row's spend. Rows with `estimated_requests` carry a conservative charge for
+requests whose provider response had no valid usage; `spawnfile usage` marks
+them `~` and says so, never presenting them as measured.

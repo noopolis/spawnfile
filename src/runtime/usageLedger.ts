@@ -34,7 +34,51 @@ export interface UsageRecord {
   total: number;
   v: typeof USAGE_TURN_RECORD_VERSION;
   wake: string;
+  /** Broker rows: the sha256 turn id every reader dedupes on (a replay may re-append a sealed row). */
+  turn?: string;
+  /** Broker rows: which per-turn limit ended the turn (`none` when none did). */
+  limit_reason?: UsageLimitReason;
+  /** Broker rows: the declared model the broker verified the turn ran. */
+  model?: string;
+  /** Broker rows: requests charged a conservative estimate because the provider response carried no valid usage. */
+  estimated_requests?: number;
+  outcome?: "completed" | "failed";
 }
+
+export const USAGE_LIMIT_REASONS = ["tokens", "requests", "timeout", "none"] as const;
+export type UsageLimitReason = typeof USAGE_LIMIT_REASONS[number];
+const USAGE_MODELS = ["grok-4.6", "grok-4.5", "grok-build"] as const;
+
+/**
+ * The additive broker fields of a `turn-usage.v1` row. Each is copied only when
+ * it is a member of Daimon's closed vocabulary; a malformed optional field is
+ * dropped rather than discarding the row's spend.
+ */
+const brokerFields = (record: Record<string, unknown>): Partial<UsageRecord> => ({
+  ...(typeof record.turn === "string" && /^[a-f0-9]{64}$/u.test(record.turn) ? { turn: record.turn } : {}),
+  ...((USAGE_LIMIT_REASONS as readonly unknown[]).includes(record.limit_reason) ? { limit_reason: record.limit_reason as UsageLimitReason } : {}),
+  ...((USAGE_MODELS as readonly unknown[]).includes(record.model) ? { model: record.model as string } : {}),
+  ...(Number.isSafeInteger(record.estimated_requests) && (record.estimated_requests as number) > 0 ? { estimated_requests: record.estimated_requests as number } : {}),
+  ...(record.outcome === "completed" || record.outcome === "failed" ? { outcome: record.outcome } : {})
+});
+
+/**
+ * Keeps the first row of every `turn` and every row without one.
+ *
+ * Daimon's broker seals a turn's ledger bytes into the turn record and appends
+ * them again on replay when it cannot see the row, so two replays of one sealed
+ * turn can both append identical bytes. The key exists precisely so such a turn
+ * is never counted twice; every aggregate here must see deduplicated rows.
+ */
+export const dedupeUsageRecordsByTurn = (records: UsageRecord[]): UsageRecord[] => {
+  const seen = new Set<string>();
+  return records.filter((record) => {
+    if (record.turn === undefined) return true;
+    if (seen.has(record.turn)) return false;
+    seen.add(record.turn);
+    return true;
+  });
+};
 
 const NUMERIC_FIELDS = [
   "input",
@@ -115,7 +159,8 @@ export const parseUsageLedgerLine = (line: string): UsageRecord | null => {
     output: record.output as number,
     total: record.total as number,
     v: USAGE_TURN_RECORD_VERSION,
-    wake: record.wake
+    wake: record.wake,
+    ...brokerFields(record)
   };
 };
 
@@ -125,10 +170,10 @@ export const parseUsageLedgerLine = (line: string): UsageRecord | null => {
  * skipped, and the rest of the file still parses.
  */
 export const parseUsageLedger = (text: string): UsageRecord[] =>
-  text
+  dedupeUsageRecordsByTurn(text
     .split("\n")
     .map(parseUsageLedgerLine)
-    .filter((record): record is UsageRecord => record !== null);
+    .filter((record): record is UsageRecord => record !== null));
 
 const DURATION_UNIT_MS: Record<string, number> = {
   d: 24 * 60 * 60 * 1000,
@@ -180,6 +225,9 @@ export interface UsageRosterEntry {
 export interface UsageAgentGroup {
   agent: string;
   engine: string | null;
+  /** Requests charged an estimate (no provider-reported usage); their tokens are a conservative charge, not a measurement. */
+  estimatedRequests: number;
+  estimatedTurns: number;
   incompleteTurns: number;
   notionalUsd: number;
   tokens: number;
@@ -189,6 +237,8 @@ export interface UsageAgentGroup {
 const emptyAgentGroup = (agent: string, engine: string | null): UsageAgentGroup => ({
   agent,
   engine,
+  estimatedRequests: 0,
+  estimatedTurns: 0,
   incompleteTurns: 0,
   notionalUsd: 0,
   tokens: 0,
@@ -206,9 +256,11 @@ export const groupUsageByAgent = (
   for (const entry of roster) {
     byAgent.set(entry.agent, emptyAgentGroup(entry.agent, entry.engine));
   }
-  for (const record of records) {
+  for (const record of dedupeUsageRecordsByTurn(records)) {
     const existing = byAgent.get(record.agent) ?? emptyAgentGroup(record.agent, record.engine);
     existing.turns += 1;
+    existing.estimatedRequests += record.estimated_requests ?? 0;
+    if (record.estimated_requests !== undefined) existing.estimatedTurns += 1;
     existing.tokens += record.total;
     existing.notionalUsd += record.notional_usd;
     if (!record.complete) {
@@ -224,6 +276,8 @@ export const groupUsageByAgent = (
 
 export interface UsageEngineGroup {
   engine: string;
+  estimatedRequests: number;
+  estimatedTurns: number;
   incompleteTurns: number;
   notionalUsd: number;
   tokens: number;
@@ -232,6 +286,8 @@ export interface UsageEngineGroup {
 
 const emptyEngineGroup = (engine: string): UsageEngineGroup => ({
   engine,
+  estimatedRequests: 0,
+  estimatedTurns: 0,
   incompleteTurns: 0,
   notionalUsd: 0,
   tokens: 0,
@@ -249,9 +305,11 @@ export const groupUsageByEngine = (
   for (const engine of engines) {
     byEngine.set(engine, emptyEngineGroup(engine));
   }
-  for (const record of records) {
+  for (const record of dedupeUsageRecordsByTurn(records)) {
     const existing = byEngine.get(record.engine) ?? emptyEngineGroup(record.engine);
     existing.turns += 1;
+    existing.estimatedRequests += record.estimated_requests ?? 0;
+    if (record.estimated_requests !== undefined) existing.estimatedTurns += 1;
     existing.tokens += record.total;
     existing.notionalUsd += record.notional_usd;
     if (!record.complete) {
@@ -265,6 +323,8 @@ export const groupUsageByEngine = (
 export interface UsageCoverage {
   agentsReporting: number;
   agentsTotal: number;
+  /** Turns whose total includes an estimated charge for at least one request. */
+  estimatedTurnCount: number;
   /** Count of `complete:false` records in the window — every count here is a
    * lower bound regardless of this number (see module doc / design
    * "Verification" — grok's `streaming-messages-json` carries no
@@ -291,11 +351,13 @@ export const computeUsageCoverage = (
   totalAgents: number,
   unreadableUnitCount = 0
 ): UsageCoverage => {
-  const reporting = new Set(records.map((record) => record.agent)).size;
+  const unique = dedupeUsageRecordsByTurn(records);
+  const reporting = new Set(unique.map((record) => record.agent)).size;
   return {
     agentsReporting: reporting,
     agentsTotal: totalAgents,
-    incompleteRecordCount: records.filter((record) => !record.complete).length,
+    estimatedTurnCount: unique.filter((record) => record.estimated_requests !== undefined).length,
+    incompleteRecordCount: unique.filter((record) => !record.complete).length,
     partial: reporting < totalAgents || unreadableUnitCount > 0,
     unreadableUnitCount
   };

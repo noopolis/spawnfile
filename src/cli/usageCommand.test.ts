@@ -170,6 +170,23 @@ describe("spawnfile usage", () => {
     expect(result.output).toMatch(/^agy\s+\S*\s*1\s+45\.4k\s+—/mu);
   });
 
+  it("counts a replayed broker turn once and marks estimated usage distinctly", async () => {
+    const turn = "a".repeat(64);
+    const sealed = line({ turn, limit_reason: "none", model: "grok-4.6", total: 100_000, notional_usd: 1, estimated_requests: 2, outcome: "completed" });
+    const result = await executeUsageCommand("/tmp/project", { json: true }, handlersFor({
+      [DAIMON_GROK_TURN_USAGE_LEDGER.rotatedFilePath]: `${sealed}\n`,
+      [DAIMON_GROK_TURN_USAGE_LEDGER.filePath]: `${sealed}\n${sealed}\n${line({ agent: "foreman", wake: "w2", total: 5_000, turn: "b".repeat(64) })}\n`
+    }));
+    const rendered = JSON.parse(result.output!);
+    expect(rendered.byEngine).toEqual([expect.objectContaining({ engine: "grok", estimatedRequests: 2, estimatedTurns: 1, tokens: 105_000, turns: 2 })]);
+    expect(rendered.coverage).toMatchObject({ estimatedTurnCount: 1 });
+    const table = await executeUsageCommand("/tmp/project", {}, handlersFor({
+      [DAIMON_GROK_TURN_USAGE_LEDGER.filePath]: `${sealed}\n${sealed}\n`
+    }));
+    expect(table.output).toMatch(/^cogsworth\s+grok\s+1\s+~100\.0k/mu);
+    expect(table.output).toContain("~ 1 turn(s) include ESTIMATED usage: 2 request(s) returned no provider-reported usage");
+  });
+
   it("counts an all-zero turn as unknown rather than free", async () => {
     const result = await executeUsageCommand("/tmp/project", {}, handlersFor({
       [DAIMON_GROK_TURN_USAGE_LEDGER.filePath]: `${line({ complete: false, input: 0, output: 0, cache_read: 0, cache_write: 0, total: 0 })}\n`
