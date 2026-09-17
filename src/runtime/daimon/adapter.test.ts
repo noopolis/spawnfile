@@ -76,6 +76,22 @@ describe("daimonAdapter", () => {
     expect(compiled.files.some((file) => file.path.startsWith("workspace/skills/"))).toBe(false);
   });
 
+  it("emits no workspace skill root for a brokered Grok agent, never .codex/skills, and reports the declaration", async () => {
+    const grok = await daimonAdapter.compileAgent(createDaimonNode("grok", "Grok", "grok"));
+    const skillPaths = grok.files.map((file) => file.path).filter((filePath) => filePath.includes("/skills/"));
+    expect(skillPaths).toEqual([]);
+    expect(grok.files.some((file) => file.path.startsWith("workspace/.codex/"))).toBe(false);
+    expect(grok.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ level: "warn", message: expect.stringContaining("declares workspace skills (note)") })
+    ]));
+    for (const engine of ["codex", "agy"]) {
+      const compiled = await daimonAdapter.compileAgent(createDaimonNode(engine, engine, engine));
+      expect(compiled.files.map((file) => file.path).filter((filePath) => filePath.endsWith("/SKILL.md")))
+        .toEqual(["workspace/.agents/skills/note/SKILL.md", "workspace/.codex/skills/note/SKILL.md"]);
+      expect(compiled.diagnostics.some((diagnostic) => diagnostic.message.includes("declares workspace skills"))).toBe(false);
+    }
+  });
+
   it("emits one strict organization host and no generated engine application", async () => {
     const plan = await createPlan();
     const config = plan.targetFiles.find((file) => file.path === DAIMON_CONFIG_FILE);

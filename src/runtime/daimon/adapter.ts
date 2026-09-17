@@ -82,6 +82,26 @@ const daimonWorkspaceRestrictionWarning = (node: ResolvedAgentNode): string | un
     + "the container boundary as this agent's only isolation.";
 };
 
+/**
+ * Workspace skill roots per Daimon engine.
+ *
+ * Codex and AGY keep both CLI-engine roots. A brokered Grok worker loads no
+ * workspace skill at all: Grok 1.0.34 discovers `.agents/skills` (never
+ * `.codex/skills`) only in a trusted folder, and Daimon keeps the workspace
+ * untrusted (root-owned empty `trusted_folders.toml`) and replaces the system
+ * prompt, whose fixed text references no skill. Emitting either root would ship
+ * files nothing reads, so none are emitted and the declaration is reported.
+ */
+export const daimonSkillBaseDirectories = (node: ResolvedAgentNode): readonly string[] =>
+  resolveDaimonEngine(node) === "grok" ? [] : CLI_ENGINE_SKILL_BASE_DIRECTORIES;
+
+const daimonGrokSkillWarning = (node: ResolvedAgentNode): string | undefined => {
+  if (resolveDaimonEngine(node) !== "grok" || node.skills.length === 0) return undefined;
+  return `Daimon Grok agent ${node.name} declares workspace skills (${node.skills.map((skill) => skill.name).sort().join(", ")}) `
+    + "that its brokered worker never loads: Grok discovers project skills only in a trusted workspace, and Daimon keeps the "
+    + "workspace untrusted and supplies instructions through the prompt. No skill files are emitted; move the guidance into the agent's docs.";
+};
+
 const daimonCodexPolicyError = (node: ResolvedAgentNode): string | undefined => {
   if (node.runtime.options.codex_policy === undefined) return undefined;
   if (node.runtime.options.codex_policy !== "workspace-no-network") {
@@ -189,6 +209,7 @@ export const daimonAdapter: RuntimeAdapter = {
     const memoryVectorWarning = daimonMemoryVectorRecallWarning(node);
     const workspaceRestrictionWarning = daimonWorkspaceRestrictionWarning(node);
     const codexPolicyError = daimonCodexPolicyError(node);
+    const grokSkillWarning = daimonGrokSkillWarning(node);
     return {
       capabilities: createAgentCapabilities(node, {
         mcpOutcome: "supported",
@@ -205,11 +226,12 @@ export const daimonAdapter: RuntimeAdapter = {
         ...(memorySelectionWarning ? [createDiagnostic("warn", memorySelectionWarning)] : []),
         ...(memoryVectorWarning ? [createDiagnostic("warn", memoryVectorWarning)] : []),
         ...(workspaceRestrictionWarning ? [createDiagnostic("warn", workspaceRestrictionWarning)] : []),
+        ...(grokSkillWarning ? [createDiagnostic("warn", grokSkillWarning)] : []),
         ...(codexPolicyError ? [createDiagnostic("error", codexPolicyError)] : [])
       ],
       files: [
         ...createDocumentFiles("workspace", node.docs),
-        ...createSkillFiles(CLI_ENGINE_SKILL_BASE_DIRECTORIES, node.skills)
+        ...createSkillFiles(daimonSkillBaseDirectories(node), node.skills)
       ]
     };
   },
