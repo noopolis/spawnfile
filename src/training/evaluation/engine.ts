@@ -95,6 +95,13 @@ function independentResources(node: CheckNode, context: EvaluationContext, regis
   } catch { return undefined; }
 }
 
+/** Mechanical-only trees spend no inference, so they never occupy a bounded judge slot. */
+function mechanicalOnly(node: CheckNode, registry: EvaluationRegistry): boolean {
+  if (node.eval) return registry[node.eval]?.definition.kind === 'mechanical';
+  const children = node.all ?? node.any ?? (node.not ? [node.not] : []);
+  return children.length > 0 && children.every(child => mechanicalOnly(child, registry));
+}
+
 export async function evaluatePlan(stages: readonly Stage[], initial: EvaluationContext,
   registry: EvaluationRegistry, repair?: PlanMeasurementRepair): Promise<PlanEvaluation> {
   const limit = checkConcurrency(initial.checkConcurrency);
@@ -109,7 +116,7 @@ export async function evaluatePlan(stages: readonly Stage[], initial: Evaluation
     observed.push(eligibility);
     const children: EvaluationResult[] = [];
     const tasks = stage.checks.map((check, checkIndex) => eligibility.status === 'pass'
-      ? { resources: independentResources(check, context, registry),
+      ? { resources: independentResources(check, context, registry), slot: !mechanicalOnly(check, registry),
         run: () => evaluate(check, context, registry, reuse, `/stages/${stageIndex}/checks/${checkIndex}`) }
       : { resources: [], run: async () => ({ ...result('skipped', `Stage dependency ${eligibility.status}`, eligibility.finality === 'final'),
         id: check.id, children: [eligibility] }) });

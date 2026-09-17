@@ -25,5 +25,8 @@ embedding provider) never overlap, and results, scores and measurements commit i
 declaration order, so a plan is identical to sequential evaluation apart from random
 call IDs. Protected judge.attempt audits are still awaited before acceptance, so they
 persist in arrival order across concurrent judges; each judge's own attempts stay
-ordered. After a commit failure nothing new starts and started work settles first.
+ordered. A bounded slot or shared resource passes to the next check only after its
+holder's ordered commit outcome is known, so no run starts after a known commit
+failure; started work settles first. Mechanical-only checks spend no inference and
+take no slot. A test enforces that opted-in builtins never read results or scores.
 Cancellation leaves checks that already finished with their own outcome.

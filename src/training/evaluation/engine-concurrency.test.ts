@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createEvaluationRegistry, createJudgeCache, evaluatePlan, result } from './index.js';
-import { evaluationContext } from '../testing/index.js';
-import type { Stage } from '../contracts/dataset.js';
+import { evaluationContext, observation, snapshot } from '../testing/index.js';
+import type { CheckNode, Stage } from '../contracts/dataset.js';
 import type { EvaluationContext, EvaluationMeasurement, JudgeAttemptObservation, JudgeRoute, PlanEvaluation } from '../contracts/evaluation.js';
 import type { InferenceProvider, InferenceRequest, InferenceResult } from '../contracts/execution.js';
 
@@ -140,7 +140,8 @@ describe('concurrent independent judges', () => {
     await expect(plan).rejects.toThrow('durable sink failed');
     expect(after).not.toHaveBeenCalled();
     expect(sink).toHaveBeenCalledTimes(1);
-    expect(pending.length).toBeLessThanOrEqual(3);
+    // The queued judge only receives grounding's slot once that commit has failed.
+    expect(pending.map(entry => entry.judge)).toEqual(['grounding', 'prose']);
   });
 
   it('serializes checks sharing a judge cache so a duplicate still reuses the first verdict', async () => {
@@ -184,6 +185,38 @@ describe('concurrent independent judges', () => {
     expect(registry['llm-rubric']!.concurrency!({ eval: 'llm-rubric', judge: 'cached' }, context)).toEqual([cache]);
     expect(registry['llm-rubric']!.concurrency!({ eval: 'llm-rubric', judge: 42 }, context)).toEqual([]);
     expect(registry['tool-called']!.concurrency!({ eval: 'tool-called' }, context)).toEqual([]);
+  });
+
+  it('enforces that every builtin opted into concurrency never reads sibling results or scores', async () => {
+    const good = { score: 0.9, verdict: 'pass', reasons: ['ok'], citations: [{ source: 'input', quote: 'precise' }] };
+    const embedding = { id: 'local', version: '1', embed: async () => ({ vectors: [[1, 0], [1, 0]], usage: null }) };
+    const judge = deferredJudges(['editor']).judges.editor!;
+    judge.provider.generate = async () => ({ text: JSON.stringify(good), model: 'm', route: 'r', usage: null });
+    const cases: Record<string, CheckNode> = {
+      equals: { eval: 'equals', input: 'output.text', value: '4' },
+      'contains-any': { eval: 'contains-any', input: 'artifact:article#/body', values: ['precise'] },
+      'json-schema': { eval: 'json-schema', input: 'artifact:article', schema: { type: 'object' } },
+      'tool-called': { eval: 'tool-called', tool: 'validate' },
+      'tool-count': { eval: 'tool-count', tool: 'validate', at_least: 1 },
+      'tool-sequence': { eval: 'tool-sequence', order: 'happens-before', steps: [{ tool: 'validate' }] },
+      'token-efficiency': { eval: 'token-efficiency', metric: 'total', target_tokens: 1000 },
+      'llm-rubric': rubric('grade', 'editor'),
+      'embedding-similarity': { eval: 'embedding-similarity', input: 'output.text', reference: 'reference.txt',
+        provider: 'local', model: 'test-vector', metric: 'cosine', calibration: 'calibration.json', minimum: 0.8 },
+    };
+    const opted = Object.entries(registry).filter(([, entry]) => entry.concurrency).map(([id]) => id).sort();
+    expect(opted).toEqual(Object.keys(cases).sort());
+    for (const [id, check] of Object.entries(cases)) {
+      const context = evaluationContext({ judges: { editor: { ...judge, model: 'm' } }, embeddings: { local: embedding },
+        snapshot: snapshot({ events: [observation()], subjectUsage: { status: 'complete', usage: { inputTokens: 800, cachedInputTokens: 0,
+          outputTokens: 200, reasoningTokens: 0, source: 'native-total' } } }),
+        readText: async path => path === 'calibration.json' ? JSON.stringify({ model: 'test-vector', metric: 'cosine', version: '1' }) : 'reference' });
+      for (const field of ['results', 'scores'] as const) {
+        Object.defineProperty(context, field, { get: () => { throw new Error(`${id} read sibling ${field}`); } });
+      }
+      const evaluated = await registry[id]!.evaluate(structuredClone(check), context);
+      expect(evaluated.status, `${id}: ${evaluated.reason}`).not.toBe('error');
+    }
   });
 
   it('rejects an invalid concurrency bound before any evaluation', async () => {

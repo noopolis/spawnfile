@@ -45,6 +45,36 @@ describe('stage check scheduling', () => {
     expect(blocked).not.toHaveBeenCalled();
   });
 
+  it('never hands a shared resource to a queued check before the holder commit outcome is known', async () => {
+    const shared = {};
+    const queued = vi.fn(async () => pass('must not run'));
+    await expect(runStageChecks([
+      { resources: [shared], run: async () => pass('a') },
+      { resources: [shared], run: queued },
+    ], 4, async () => {
+      await new Promise(resolve => setTimeout(resolve, 5));
+      throw new Error('sink failed');
+    })).rejects.toThrow('sink failed');
+    expect(queued).not.toHaveBeenCalled();
+  });
+
+  it('never hands a freed slot to a queued check before the holder commit outcome is known', async () => {
+    const slow = deferred();
+    const queued = vi.fn(async () => pass('must not run'));
+    const running = runStageChecks([
+      { resources: [], run: async () => pass('a fails to commit') },
+      { resources: [], run: async () => { await slow.promise; return pass('b in flight'); } },
+      { resources: [], run: queued },
+    ], 2, async value => {
+      if (value.reason.startsWith('a')) { await new Promise(resolve => setTimeout(resolve, 5)); throw new Error('sink failed'); }
+    });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(queued).not.toHaveBeenCalled();
+    slow.resolve();
+    await expect(running).rejects.toThrow('sink failed');
+    expect(queued).not.toHaveBeenCalled();
+  });
+
   it('stops before independent work that follows a failed dependent commit', async () => {
     const later = vi.fn(async () => pass('must not run'));
     await expect(runStageChecks([
