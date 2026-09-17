@@ -26,6 +26,8 @@ export interface RuntimeTargetPlan {
   /** Passthrough of `ContainerTarget.engineByNodeId` (see `runtime/types.ts`), for
    * `containerArtifacts.ts` to stamp onto `ContainerRuntimeInstanceReport.engine_by_node_id`. */
   engineByNodeId?: Record<string, string>;
+  /** Passthrough of `ContainerTarget.grokModelByNodeId` for the Daimon broker worker render. */
+  grokModelByNodeId?: Record<string, { model: string; reasoningEffort: string }>;
   packages?: ResolvedPackage[];
   envFiles: Array<{
     envName: string;

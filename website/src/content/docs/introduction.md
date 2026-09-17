@@ -1,6 +1,6 @@
 ---
 title: Introduction
-description: What Spawnfile is and why it exists.
+description: Learn how Spawnfile defines autonomous agents once and compiles their identity, tools, and configuration for supported runtimes.
 ---
 
 Spawnfile is a spec and compiler for **autonomous agent runtimes** -- systems that host agents as long-lived services with markdown workspace identity.

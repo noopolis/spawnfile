@@ -146,6 +146,30 @@ export const readDaimonCliArtifactPins = (env: Record<string, string | undefined
   }
 });
 
+type GrokCliPin = { sha256: string; url: string; version: string };
+const vendoredDaimonManifestPath = path.join(repoRoot, "src", "runtime", "daimon", "contract-manifest.json");
+
+/**
+ * The one Grok CLI build the vendored Daimon contract pins for this
+ * architecture. The broker's worker config, lean argv, and client-version
+ * header are only valid for that exact build, so any other executable is
+ * refused before Docker runs rather than failing turn attestation later.
+ */
+export const readPinnedGrokCli = (architecture: DaimonBuildArchitecture, manifestPath = vendoredDaimonManifestPath): GrokCliPin => {
+  const broker = (JSON.parse(readFileSync(manifestPath, "utf8")) as { grokEngineBroker?: { grokCliArtifacts?: Record<string, { sha256?: unknown; url?: unknown }>; grokCliVersion?: unknown } }).grokEngineBroker;
+  const artifact = broker?.grokCliArtifacts?.[architecture === "amd64" ? "x64" : "arm64"];
+  if (typeof broker?.grokCliVersion !== "string" || typeof artifact?.url !== "string" || typeof artifact.sha256 !== "string" || !sha256Digest.test(artifact.sha256)) {
+    throw new Error("Vendored Daimon contract manifest does not pin a Grok CLI artifact");
+  }
+  return { sha256: `sha256:${artifact.sha256}`, url: artifact.url, version: broker.grokCliVersion };
+};
+
+export const assertPinnedGrokCli = (grok: DaimonCliArtifacts["grok"], pin: GrokCliPin): void => {
+  if (grok.version !== pin.version || grok.url !== pin.url || grok.executable_sha256 !== pin.sha256) {
+    throw new Error(`GROK_CLI_VERSION/GROK_CLI_URL/GROK_CLI_SHA256 must be the pinned Grok CLI ${pin.version} (${pin.url}, ${pin.sha256})`);
+  }
+};
+
 export const resolveLocalImageTag = (value: string | undefined): string => {
   const tag = value?.trim();
   const match = tag?.match(/^127\.0\.0\.1:((?:[1-9]\d{0,3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5]))\/noopolis\/spawnfile-runtime-daimon:([A-Za-z0-9_][A-Za-z0-9_.-]{0,127})$/u);
@@ -315,6 +339,7 @@ const main = (): void => {
   const imageTag = resolveLocalImageTag(process.env.SPAWNFILE_DAIMON_LOCAL_IMAGE_TAG);
   const architecture = resolveLocalBuildArchitecture(process.arch);
   const artifacts = readDaimonCliArtifactPins();
+  assertPinnedGrokCli(artifacts.grok, readPinnedGrokCli(architecture));
   const packageDirectory = mkdtempSync(path.join(os.tmpdir(), "spawnfile-daimon-package-"));
   try {
     const bundled = sourceMode === "source-bundle" ? stageBundleBuiltDaimon(packageDirectory, artifacts, architecture) : null;

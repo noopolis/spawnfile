@@ -1,6 +1,6 @@
 ---
 title: Writing a Spawnfile
-description: Guide to the common Spawnfile manifest fields for agents and teams, with examples for the main portable sections.
+description: Write YAML manifests for autonomous AI agents and teams, including runtimes, models, identity documents, skills, MCP servers, and secrets.
 ---
 
 A Spawnfile manifest is a YAML file named exactly `Spawnfile` (no extension) at the root of your agent or team project directory. It must be valid YAML 1.2 and UTF-8 encoded with no BOM.

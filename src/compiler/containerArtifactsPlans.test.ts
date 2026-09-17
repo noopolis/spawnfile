@@ -205,6 +205,7 @@ describe("runtime target plan source identity", () => {
     ] as const).map(([slug, engine]) => ({
       node: {
         ...createAgent(),
+        ...(engine === "grok" ? { execution: { model: { primary: { auth: { method: "grok" }, name: "grok-4.6", provider: "xai", reasoning_effort: "low" } } } } : {}),
         name: slug,
         runtime: { name: "daimon", options: { engine } }
       } as ResolvedAgentNode,

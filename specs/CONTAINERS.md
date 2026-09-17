@@ -161,10 +161,28 @@ official AGY artifact exists for another architecture, this seam accepts only
 `linux/amd64` and fails closed elsewhere.
 
 The helper requires explicit `AGY_CLI_VERSION`, `AGY_CLI_URL`,
-`AGY_CLI_SHA512`, and extracted `AGY_CLI_SHA256` pins. It preserves the Grok
-artifact's `GROK_CLI_URL`/`GROK_CLI_SHA256` pin and additionally requires
-`GROK_CLI_VERSION` for provenance. `CODEX_CLI_SHA256` remains required. All
-artifact URLs must be credential-free HTTPS URLs without query or fragment.
+`AGY_CLI_SHA512`, and extracted `AGY_CLI_SHA256` pins. `GROK_CLI_VERSION`,
+`GROK_CLI_URL`, and `GROK_CLI_SHA256` must equal the Grok CLI build the vendored
+Daimon contract manifest pins for the target architecture (1.0.34:
+`grok-1.0.34-linux-aarch64` `39ab8766…c4a94`, `grok-1.0.34-linux-x86_64`
+`be5905e1…c80d`); the image build re-checks them against the packaged manifest,
+derives the native broker digest from it rather than a literal, and generated
+organization images re-verify `/usr/local/bin/grok` against the same pin.
+`CODEX_CLI_SHA256` remains required. All artifact URLs must be credential-free
+HTTPS URLs without query or fragment.
+
+`npm run vendor:daimon-contract` (optionally `-- --check`) is the only way the
+Daimon contract enters Spawnfile: it reads a Daimon checkout
+(`SPAWNFILE_DAIMON_SOURCE_DIR`) and writes the canonical contract manifest and
+digest plus Daimon's worker `config.toml` renderer bytes.
+
+Daimon organizations containing a Grok agent run with
+`--security-opt=seccomp=<pinned default-plus-userns profile>` and
+`--security-opt=apparmor=unconfined`; the profile ships with Spawnfile and is
+materialized for each `docker run`. Codex's fully unconfined options are used
+instead only when a strict Codex agent is present. The Docker host must have
+`kernel.apparmor_restrict_unprivileged_userns=0`; the container entrypoint
+fails with that instruction otherwise.
 
 OpenClaw and PicoClaw have equivalent overrides:
 

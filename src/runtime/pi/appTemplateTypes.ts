@@ -34,7 +34,7 @@ export interface PiGeneratedAgent {
   id: string;
   instructions: string;
   model: {
-    auth_method: "api_key" | "claude-code" | "codex" | "none" | "unknown";
+    auth_method: "api_key" | "claude-code" | "codex" | "grok" | "none" | "unknown";
     name: string;
     provider: string;
   };

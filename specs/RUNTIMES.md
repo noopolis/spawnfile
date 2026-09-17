@@ -200,12 +200,91 @@ The consumed Daimon manifest declares one per-agent opaque slot for Codex.
 For Grok it declares one durable rotating-credential realm and one read-only
 operator bootstrap slot; Daimon serializes Grok turns through that authority,
 atomically reconciles provider rotation, and leaves sessions/cache per agent.
-The generated Linux container installs `bubblewrap`, which Grok requires to
-fail closed while applying the realm and peer-home deny set.
+The generated Linux container installs `bubblewrap` and `ca-certificates`:
+Grok CLI 1.0.34 runs every sandbox profile inside bubblewrap (even an empty
+deny list), and its HTTP MCP client refuses to build without CA certificates
+even for Daimon's loopback `http://` endpoint.
 The realm mount is `exclusive-reattach`: its host-stable volume survives run
 and deployment identities, cannot be attached by two live deployments, and is
 never copied by product-state migration. Standard concurrent canary is
 rejected; stop the old deployment and reattach the same realm for replacement.
+### Daimon brokered Grok workers (Grok CLI 1.0.34)
+
+Every Daimon Grok agent runs through Daimon's engine broker as a lean worker
+pinned to Grok CLI 1.0.34. Its model is declared, never inherited:
+
+```yaml
+runtime:
+  name: daimon
+  options:
+    engine: grok
+execution:
+  model:
+    primary:
+      provider: xai
+      name: grok-4.6          # grok-4.6 | grok-4.5 | grok-build
+      auth:
+        method: grok
+      reasoning_effort: low   # low | medium | high
+```
+
+Both fields are required together, target-level, with no fallback; they lower
+to Daimon's `engine.model`/`engine.reasoningEffort`. `grok` auth is only valid
+for provider `xai` and is Daimon-owned (never a host import or an api-key
+secret); `reasoning_effort` is only valid with it. Codex and AGY are unchanged.
+
+The worker `config.toml` is Daimon's own renderer output for that model x
+effort, vendored and refused unless it hashes to the contract manifest pin the
+broker attests every turn. Each worker's `GROK_HOME` is root-owned `1771` with
+root-owned `0444` `config.toml`, `sandbox.toml`, `trusted_folders.toml`,
+`managed_config.toml`, and `requirements.toml`, so the worker cannot change
+model, trust, sandbox, or managed layers between turns; sandbox events are read
+from `$GROK_HOME/sessions/sandbox-events.jsonl`. `service.json` is v2 with a
+per-registration usage ledger (the container ledger in production), limits
+(the manifest's v1 defaults), and model.
+
+On 1.0.13 a non-empty sandbox `deny` list made Grok refuse to start, so the
+list was empty and unix modes were the only boundary. On 1.0.34 the deny list
+is enforced inside bubblewrap for both shell and `read_file`, and it is
+mandatory: Grok's strict base reads all of `/run`, `/var`, `/tmp`, and `/etc`,
+and macOS bind mounts ignore unix modes. Each worker denies the Grok bootstrap
+and realm, AGY realm and unlock secret when present, the wake-acceptance store,
+every peer agent's runtime home and workspace, the organization config
+directory, every persistent mount (its own tool state, credential home and
+memory included), other runtime instance roots, the shared Moltnet, agent-token
+and memory roots under `/var/lib/spawnfile`, every workspace resource backing
+path not linked into its own workspace, every other worker's home, the broker's
+`/etc` and `/run` directories, the usage-ledger and wake-fuse volumes, and
+`/run/secrets`, `/run/spawnfile`, `/run/spawnfile-secrets`, `/run/world`. It
+reaches Moltnet and memory only through Daimon's MCP tools. Every deny
+entry and registration path must be canonical (present, not a symlink, its own
+realpath) at provisioning or the container refuses to start.
+
+Workspace skills are not emitted for Grok agents: the worker workspace stays
+untrusted and Daimon overrides the system prompt, so Grok loads neither
+`.agents/skills` nor `.codex/skills`; a declared skill produces a compile
+warning.
+
+Grok containers run with Docker's default seccomp profile plus bubblewrap's
+namespace syscalls (a pinned profile) and `apparmor=unconfined` unless a strict
+Codex agent already requires both fully unconfined. The Docker host must allow
+unprivileged user namespaces: set `kernel.apparmor_restrict_unprivileged_userns=0`
+(Ubuntu 24.04+ and Colima default to `1`). The entrypoint refuses to start a
+Grok organization, naming the sysctl, when it is not.
+
+Grok refuses a profile whose deny list contains a path equal to or above a
+base-profile grant (`/tmp`, `/var/tmp`, `/run`, `/etc`, `/var`, the workspace,
+`GROK_HOME`, `sessions`, the worker's `TMPDIR`); Spawnfile refuses such an entry
+at compile time. Shared temp is therefore closed by modes: `/tmp` and
+`/var/tmp` are `root:2000 1774` (a worker can list names, not read or create),
+each worker writes only its launcher-compiled `TMPDIR` `<worker home>/tmp`
+(`<worker>:<worker> 0700`), and the broker and relay, the only non-root
+processes outside group 2000, run with `TMPDIR=/run/daimon-engine-broker/tmp`.
+Tool-result spills go to `<runtime home>/tool-output` `2000:<worker> 2750`
+under a runtime home `2000:<worker> 0710`, so only the agent's own worker can
+read them. Registered workspace and home paths are canonical and at most 255
+bytes.
+
 For AGY it declares one host-realm durable mount plus one independent opaque
 unlock source slot. Spawnfile emits the stable RW volume, metadata-authorizes
 the caller-owned `0600` unlock source, and mounts it read-only; it never reads
