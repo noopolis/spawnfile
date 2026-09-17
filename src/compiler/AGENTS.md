@@ -177,7 +177,8 @@ src/compiler/
   `src/runtime/daimon/grokWorkerConfigBytes.ts`, refused unless they hash to the
   manifest pin for the agent's declared model x effort. The sandbox profile's
   `deny` list is never empty: Daimon's protected set (realms, bootstrap, peers,
-  acceptance store, kept verbatim) plus the organization config directory,
+  and the organization `state` directory holding the acceptance store, kept
+  verbatim) plus the organization config directory,
   every persistent mount of every runtime plan (the worker's own tool state,
   credential home, and memory banks included), other runtime instance roots,
   `/var/lib/spawnfile/{moltnet,agents,memory}`, every workspace resource backing
@@ -192,12 +193,25 @@ src/compiler/
   `GROK_HOME` layout — `root:<worker> 1771` home and `sessions/`, `root:root
   0444` config/sandbox/trust/managed/requirements files, events under
   `sessions/` — and refuses any registration or deny path that is missing, a
-  symlink, or not its own realpath. It also provisions Daimon's temp and spill
-  contract: `<worker home>/tmp` `<worker>:<worker> 0700` (the launcher's
+  symlink, or not its own realpath, and — once every mode below is final — any
+  deny entry bubblewrap could not *place*. Grok 1.0.34 materializes each deny
+  target inside bubblewrap as the worker uid, so the target must exist and the
+  worker must be able to search every ancestor directory; one unplaceable entry
+  makes Grok refuse the whole profile and every turn of that worker fails with a
+  bare `bwrap: Can't create file at …: Permission denied` (matrix:
+  `.runtime/grok-deny-placement/EVIDENCE.md`). That is why the wake-acceptance
+  store is masked through its `0700 2000:2000` parent
+  (`daimonGrokAcceptanceStoreDenyPath`) rather than directly: lifting a mask to a
+  private ancestor is strictly stronger and, unlike opening that ancestor with
+  `o+x`, adds the worker no reach at all. It also provisions Daimon's temp and
+  spill contract: `<worker home>/tmp` `<worker>:<worker> 0700` (the launcher's
   `TMPDIR`); `/tmp` and `/var/tmp` `root:2000 1774` (Grok refuses to start if
   they are denied, so modes close them); `<runtime home>/tool-output`
   `2000:<worker> 2750` under a runtime home `2000:<worker> 0710` whose
   `/var/lib/spawnfile` ancestors are made traversable by reclaim-mode-restore.
+  Root here holds no `CAP_DAC_OVERRIDE`, so the private temp is created while the
+  worker home is still root-owned and the spill directory before the runtime home
+  is narrowed to `0710`; either done the other way round fails outright.
   The broker and relay (uid 2100, outside group 2000) run with
   `TMPDIR=/run/daimon-engine-broker/tmp`; every other entrypoint process runs as
   root or uid 2000, and workers get their `TMPDIR` from the launcher. The start

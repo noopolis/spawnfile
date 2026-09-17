@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { daimonGrokWorkerSandboxProfileSha256, renderDaimonGrokWorkerSandboxProfile } from "../runtime/daimon/grokWorkerContract.js";
 import { DAIMON_GROK_WORKER_CONFIG_BYTES } from "../runtime/daimon/grokWorkerConfigBytes.js";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import { renderDaimonGrokHostPreflight, renderDaimonGrokWorkerProvisioning } from "./containerDaimonGrokWorkerProvisioning.js";
@@ -192,5 +193,35 @@ describe("Grok host user-namespace preflight", () => {
     expect((await preflight("0", "0")).stderr).toContain("user.max_user_namespaces is 0");
     expect((await preflight("0", "63000")).stdout).toContain("preflight-ok");
     expect((await preflight(null, null)).stdout).toContain("preflight-ok");
+  });
+});
+
+describe("Grok deny-path placement", () => {
+  const registrations = resolveDaimonGrokRegistrations([plan({ "agent:a": "grok", "agent:b": "grok" })]);
+
+  it("refuses a deny entry under a directory the worker uid cannot search", () => {
+    // Grok 1.0.34 materializes every deny target inside bubblewrap as the worker uid, so a private
+    // ancestor makes the whole profile unusable — every turn dies with `bwrap: Can't create file at …`.
+    const shared = "/var/lib/spawnfile/daimon";
+    expect(() => run(registrations, { ...seedFor(registrations), [shared]: { gid: 0, kind: "dir", mode: 0o700, uid: 0 } }))
+      .toThrow(/is not placeable: worker uid 2200 cannot search \/var\/lib\/spawnfile\/daimon \(700 0:0\); deny that directory itself instead/u);
+    // 0711 — search without read — is exactly what the shared state ancestor is provisioned as, and is enough.
+    expect(() => run(registrations, { ...seedFor(registrations), [shared]: { gid: 0, kind: "dir", mode: 0o711, uid: 0 } })).not.toThrow();
+  });
+
+  it("refuses the wake-acceptance store as a deny entry, and accepts the private state directory that covers it", () => {
+    const state = `${INSTANCE}/state`;
+    const store = `${state}/wake-acceptance`;
+    const asDenied = (denyPaths: readonly string[]): DaimonGrokRegistration[] => registrations.map((entry, index) => {
+      const denied = index === 0 ? [...denyPaths].sort() : entry.denyPaths;
+      const profile = renderDaimonGrokWorkerSandboxProfile(denied);
+      return { ...entry, denyPaths: denied, profile, profileSha256: daimonGrokWorkerSandboxProfileSha256(denied) };
+    });
+    const privateState = { [state]: { gid: 2000, kind: "dir" as const, mode: 0o700, uid: 2000 }, [store]: { gid: 2000, kind: "dir" as const, mode: 0o700, uid: 2000 } };
+    const leaf = asDenied([...registrations[0]!.denyPaths.filter((entry) => entry !== state), store]);
+    expect(() => run(leaf, { ...seedFor(leaf), ...privateState })).toThrow(new RegExp(`is not placeable: worker uid 2200 cannot search ${state} \\(700 2000:2000\\)`, "u"));
+    // What the collector emits instead: the mask on the directory itself, which bubblewrap can place.
+    expect(registrations[0]!.denyPaths).toContain(state);
+    expect(() => run(registrations, { ...seedFor(registrations), ...privateState })).not.toThrow();
   });
 });
