@@ -32,7 +32,6 @@ RUN /opt/python/bin/python3 -m venv /opt/training/paideia/bridges/dspy/.venv \
 
 COPY claude/package.json claude/package-lock.json /opt/training/claude/
 RUN cd /opt/training/claude && npm ci --omit=dev
-COPY grok /opt/training/bin/grok
 
 COPY paideia/dist /opt/training/paideia/dist
 COPY spawnfile/dist /opt/training/spawnfile/dist
@@ -42,7 +41,8 @@ COPY spawnfile/runtimes.yaml spawnfile/moltnet-releases.json /opt/training/spawn
 COPY integration /opt/training/integration
 COPY bootstrap /opt/training/bootstrap
 COPY train /opt/training/bin/train
-RUN chmod 0555 /opt/training/bin/train /opt/training/bin/grok \
+COPY train-broker /opt/training/bin/train-broker
+RUN chmod 0555 /opt/training/bin/train /opt/training/bin/train-broker \
  && chmod -R a+rX /opt/training \
  && ln -s /opt/training/claude/node_modules/.bin/claude /opt/training/bin/claude \
  && ln -s /opt/training/paideia/dist/src/cli/main.js /opt/training/bin/paideia \

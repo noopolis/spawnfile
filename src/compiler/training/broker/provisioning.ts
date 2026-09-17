@@ -53,6 +53,8 @@ export const trainingSlotDirectories = (): readonly { path: string; mode: string
   { path: "/run/training", mode: "0755", uid: 0, gid: 0 },
   { path: TRAINING_SLOT_ROOT, mode: "0755", uid: 0, gid: 0 },
   { path: TRAINING_PAIDEIA_ROOT, mode: "0750", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
+  { path: "/home/training", mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
+  { path: "/work", mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: TRAINING_SLOT_WORKSPACE, mode: "0750", uid: DAIMON_ORGANIZATION_UID, gid: TRAINING_WORKER_UID },
   { path: TRAINING_SLOT_RUNTIME_HOME, mode: "0710", uid: DAIMON_ORGANIZATION_UID, gid: TRAINING_WORKER_UID },
   { path: TRAINING_SLOT_STATE_ROOT, mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },

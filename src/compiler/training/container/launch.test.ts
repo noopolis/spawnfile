@@ -26,7 +26,7 @@ it("launches one immutable container, streams a verified persisted completion an
   expect(create.some((value) => value.startsWith("/work:") && value.includes(`uid=${process.getuid!()}`))).toBe(true);
   expect(create).toContain(image); expect(create).not.toContain("--privileged");
   expect(create.join(" ")).not.toContain("docker.sock");
-  expect(create.join(" ")).toContain("dst=/run/paideia-auth/grok,readonly");
+  expect(create.join(" ")).toContain("dst=/run/paideia-auth/codex,readonly");
   expect(output.stdout).toHaveBeenLastCalledWith('{"status":"completed","index":"/run/training/output/index.json"}');
   expect(docker.calls.some((args) => args[2] === "rm" && args.at(-1) === id)).toBe(true);
 });

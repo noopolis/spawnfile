@@ -24,10 +24,8 @@ it("binds actual runtime bytes, locks, recipe, native parent, platform and entry
   expect((await plan()).digest).toBe(initial.digest);
 });
 
-it("rejects dependency drift, executable pin mismatch, missing required entries and image symlink escapes", async () => {
+it("rejects dependency drift, missing required entries and image symlink escapes", async () => {
   const f = await fixture(); const plan = () => planTrainingImage(f.build, f.root, [], f.own);
-  f.build.grok.sha256 = image; await expect(plan()).rejects.toThrow("digest mismatch");
-  const { sha } = await import("./fixtures.test-helper.js"); f.build.grok.sha256 = sha("native-binary");
   f.build.integration.entry = "missing.ts"; await expect(plan()).rejects.toThrow("missing integration"); f.build.integration.entry = "entry.ts";
   await f.put("claude/package.json", JSON.stringify({ dependencies: { injected: "1" } })); await expect(plan()).rejects.toThrow("manifest/lock mismatch");
   await f.put("claude/package.json", JSON.stringify({ dependencies: {} }));

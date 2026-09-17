@@ -3,7 +3,14 @@ import { constants } from "node:fs";
 import { link, lstat, mkdir, open, realpath, unlink } from "node:fs/promises";
 import path from "node:path";
 
-export type TrainingAuthProvider = "codex" | "grok" | "claude";
+/**
+ * Grok is deliberately absent. `spawnfile.training-container.v3` holds the one
+ * dedicated training Grok login in a broker-owned realm volume seeded from a
+ * read-only bootstrap leaf, and judges spend it through short inference grants
+ * (D2). Staging a Grok credential into a shared runtime home would put a
+ * rotating login where the evaluator and the image both reach it.
+ */
+export type TrainingAuthProvider = "codex" | "claude";
 export interface TrainingAuthStageOptions {
   /** Caller-provisioned, existing private runtime home; never a host home mount. */
   home: string;
@@ -13,7 +20,6 @@ export interface TrainingAuthStageOptions {
 }
 const targets: Record<TrainingAuthProvider, readonly [string, string]> = {
   codex: [".daimon-inbound", "codex-auth"],
-  grok: [".grok", "auth.json"],
   claude: [".claude", ".credentials.json"]
 };
 /** Stages opaque credential bytes once. Never imports configuration, logs bytes, or overwrites renewed auth. */
