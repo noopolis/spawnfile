@@ -7,6 +7,7 @@ import { trainingPreparationSchema, parseTrainingMappedPreparation, type Trainin
 import { assertInputRoot, exactPath, fileIdentity, hashJson, sealTree, within } from "./files.js";
 import { planInputs, readBoundedJson, stageInput, verifyCanonicalPins } from "./inputs.js";
 import { planTrainingImage, buildTrainingImage } from "./image.js";
+import { openSealMemo } from "./sealMemo.js";
 import { planMeasurementRepair, stageMeasurementRepair, writeTrainingWitness } from "../repair/index.js";
 
 function mappedReceipt(digest: string, image: string, config: ReturnType<typeof trainingPreparationSchema.parse>): TrainingMappedPreparation {
@@ -23,6 +24,8 @@ export interface PrepareTrainingOptions {
   streams: { stdout(line: string): void; stderr(line: string): void };
   /** Test-only package fixture; production always resolves its own installed distribution. */
   packageRoot?: string;
+  /** Plan-side digest memo; defaults to the private Spawnfile cache. Dry-run never writes it. */
+  sealMemoPath?: string;
   repairMeasurements?: string; repairWitness?: string;
 }
 export interface PreparedTraining {
@@ -50,7 +53,8 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
     for (const other of inputs.slice(index + 1)) if (within(input.source, other.source) || within(other.source, input.source) ||
       within(input.destination, other.destination) || within(other.destination, input.destination)) throw Error("Training inputs overlap");
   }
-  const imagePlan = "build" in config.image ? await planTrainingImage(config.image.build, root, auth.map(entry => entry.source), options.packageRoot) : undefined;
+  const sealMemo = "build" in config.image ? await openSealMemo(options.sealMemoPath) : undefined;
+  const imagePlan = "build" in config.image ? await planTrainingImage(config.image.build, root, auth.map(entry => entry.source), options.packageRoot, sealMemo) : undefined;
   if (options.repairWitness && !options.repairMeasurements) throw Error("A repair witness requires --repair-measurements");
   if (options.repairMeasurements && !imagePlan) throw Error("Measurement repair requires a verifiable image build recipe");
   const repair = options.repairMeasurements ? await planMeasurementRepair({ parent: options.repairMeasurements,
@@ -60,6 +64,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   const digest = hashJson({ config, sources: inputs.map(input => ({ id: input.id, digest: input.digest })), image: imagePlan?.digest ?? config.image,
     canonical: options.context.project.sourceDigest, ...(repair ? { repair: { witness: repair.witness.digest, parent: repair.manifestDigest } } : {}) });
   if (options.dryRun) return { digest, dryRun: true };
+  await sealMemo?.save();
   options.signal?.throwIfAborted();
   for (const entry of auth) if (await exactPath(entry.source) !== entry.source || !(await lstat(entry.source)).isFile()) throw Error("Training auth must be a canonical regular leaf");
   const execute = (args: string[]) => options.process(args, { timeoutMs: options.timeoutMs, signal: options.signal });

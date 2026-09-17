@@ -8,7 +8,7 @@ inputs. Dry-run performs reads only; resume validates the preserved preparation.
 
 `contract.ts` declares authoring and runtime receipts; `files.ts` safely seals
 declared bytes; `image.ts` prepares/builds the recipe; `inputs.ts` snapshots Git;
-`prepare.ts` combines those operations. Keep tests adjacent and files below 400
+`sealMemo.ts` is the private plan-side digest memo; `prepare.ts` combines those operations. Keep tests adjacent and files below 400
 lines. Source/lock/recipe mutation must invalidate cache and exact resume.
 
 - Built preparations seal original image bytes in a protected witness for explicit
@@ -17,3 +17,6 @@ lines. Source/lock/recipe mutation must invalidate cache and exact resume.
 - Exclude explicit generated Python coverage/cache files, not arbitrary dotfiles.
 - Repair transport/compatibility lives in sibling `repair/`; it never changes
   candidate, criteria or checkpoint semantics owned by Paideia.
+- The seal memo (`sealMemo.ts`) is used only by `planTrainingImage`. Never pass it
+  to `copySealed`, input snapshots, resume, pins or repair verification; those
+  always rehash. Its key must keep ctime (content rewrites that restore mtime).
