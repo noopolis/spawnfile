@@ -31,6 +31,30 @@ export function parseWorkerArguments(args: readonly string[]): WorkerOptions {
   return result;
 }
 
+/**
+ * Whether the config's declared Mneme root is one the launch actually admits.
+ *
+ * Codex answers it with its own fresh `memory` projection, which
+ * `loadNativeLaunch` validated as separate, non-overlapping trial data.
+ *
+ * A Grok launch admits exactly one projection — the slot runtime home — so the
+ * only placement it can offer is inside that home, and containment rather than
+ * exact match is what admits it. That is safe because the question here is
+ * different from the caller-protected-path exemption, which stayed exact-match:
+ * there, a descendant rule would *subtract* protection from an evaluator-owned
+ * file the subject must not read. Here nothing is subtracted. The home
+ * projection is already wholly writable, wholly inside the subject's reach and
+ * digest-bound as the projection's `runtimeHomePath`, so a root inside it adds
+ * no path, no writability and no reachability the launch did not already grant,
+ * and it inherits the home's freshness (the slot supervisor's recycle wipes the
+ * runtime home whole). A root outside the home is a root no projection admits
+ * and no digest covers, and stays refused; so does the home itself, which would
+ * make Mneme's store the runtime home rather than a place inside it.
+ */
+const nativeMemoryAdmitted = (launch: NativeLaunch, home: string, memory: string): boolean => (isGrokLaunch(launch)
+  ? memory !== home && within(home, memory)
+  : launch.projections.some(row => row.role === 'memory' && row.target === memory));
+
 export function assertNativeProfile(config: NativeConfig, launch: NativeLaunch): void {
   const agent = config.agents[0];
   if (config.version !== 'noopolis.daimon.organization-runtime.v2' || config.agents.length !== 1 || agent?.id !== launch.agent.id) {
@@ -52,10 +76,14 @@ export function assertNativeProfile(config: NativeConfig, launch: NativeLaunch):
   if (!agent.attention) throw new Error('Native trials require durable attention admission');
   if (agent.schedule?.kind !== 'disabled') throw new Error('The receipted isolated schedule override must be applied');
   if (config.host.bindHost !== launch.host.bindHost || config.host.port !== launch.host.port) throw new Error('Native host differs from the declared loopback endpoint');
-  const home = launch.projections.find(row => row.role === 'home')!;
-  if (agent.workspacePath !== launch.workspace.target || agent.runtimeHomePath !== home.target) throw new Error('Native workspace or home projection identity mismatch');
-  if (agent.memory && !launch.projections.some(row => row.role === 'memory' && row.target === agent.memory!.runtimeHomePath)) {
-    throw new Error('Native Mneme state requires its declared fresh memory projection');
+  const home = launch.projections.find(row => row.role === 'home');
+  if (!home || agent.workspacePath !== launch.workspace.target || agent.runtimeHomePath !== home.target) {
+    throw new Error('Native workspace or home projection identity mismatch');
+  }
+  if (agent.memory && !nativeMemoryAdmitted(launch, home.target, agent.memory.runtimeHomePath)) {
+    throw new Error(isGrokLaunch(launch)
+      ? 'Grok Mneme state must be declared inside the single projected runtime home'
+      : 'Native Mneme state requires its declared fresh memory projection');
   }
   if (launch.limits.maxTokens > agent.attention.maxTokens) throw new Error('Trial token budget exceeds native attention policy');
 }

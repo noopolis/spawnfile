@@ -94,3 +94,35 @@ test('Grok profile requires the declared broker model and effort without a Codex
     expect(() => assertNativeProfile(grokConfigFor(configFixture()), f.launch.schema === 'paideia.daimon-native.launch.v2' ? { ...launch, agent: { id: launch.agent.id, engine: 'codex', model: 'grok-4.6' } } as never : launch)).toThrow('Codex');
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
+
+test('a Grok launch admits the declared Mneme root only inside its single projected runtime home', async () => {
+  const f = await launchFixture();
+  try {
+    const launch = await grokLaunchFrom(f.launch, f.root);
+    const home = launch.projections[0]!.target;
+    const config = grokConfigFor(JSON.parse(await readFile(f.launch.config, 'utf8')) as NativeConfig);
+    // Preparation's only possible placement for a one-projection launch: inside the digest-bound runtime home.
+    const inside = { ...config, agents: [{ ...config.agents[0]!, memory: { runtimeHomePath: join(home, 'paideia/memory') } }] };
+    expect(() => assertNativeProfile(inside, launch)).not.toThrow();
+    for (const outside of [join(f.root, 'memory'), `${home}-sibling`, home]) {
+      const moved = { ...config, agents: [{ ...config.agents[0]!, memory: { runtimeHomePath: outside } }] };
+      expect(() => assertNativeProfile(moved, launch)).toThrow('inside the single projected runtime home');
+    }
+    // A memory root is never admitted without the home projection that contains it.
+    expect(() => assertNativeProfile(inside, { ...launch, projections: [] } as never)).toThrow('home projection identity mismatch');
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('a Codex launch still requires its own fresh memory projection for the declared Mneme root', async () => {
+  const f = await launchFixture();
+  try {
+    const config = configFixture('/native');
+    config.agents[0]!.runtimeHomePath = '/native/home';
+    expect(() => assertNativeProfile(config, f.launch)).not.toThrow();
+    // Containment is a Grok rule only: a Codex root inside the home still needs its own projection.
+    config.agents[0]!.memory = { runtimeHomePath: '/native/home/paideia/memory' };
+    expect(() => assertNativeProfile(config, f.launch)).toThrow('declared fresh memory projection');
+    config.agents[0]!.memory = { runtimeHomePath: '/elsewhere/memory' };
+    expect(() => assertNativeProfile(config, f.launch)).toThrow('declared fresh memory projection');
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});

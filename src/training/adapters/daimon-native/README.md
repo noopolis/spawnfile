@@ -157,8 +157,16 @@ preparation must produce exactly this shape:
 | `native-launch.json` | written `0600` in the trial runtime home; for Grok that directory is the subject's own home |
 | `slotPreflightReceipt` | a canonical `0640`-or-tighter file owned by the container root, whose `projection_sha256` equals `broker.projectionSha256` |
 
-The compiled config declares no Mneme memory root: a Grok launch projects one
-root, so a declared memory home would have no projection to match.
+A declared Mneme root is admitted by containment, not by its own projection: a
+Grok launch projects one root, so preparation materializes the store inside the
+runtime home (`<slot runtime home>/paideia/memory`) and the profile check accepts
+any root strictly inside `runtimeHomePath`. A root equal to the runtime home, or
+outside it, is still refused, and Codex keeps its separate fresh `memory`
+projection unchanged. Containment is safe here because the home is already wholly
+writable, digest-bound and inside the subject's reach, so a place inside it grants
+nothing new — and it is fresh per trial, because the slot supervisor's recycle
+wipes the runtime home whole. Nothing else is bound to a projection role: the
+adapter never ties `moltnet`, `mcp`, tool state or the acceptance store to one.
 
 The trial runner stays engine-neutral and keeps protecting its own layout,
 including the runtime home it allocated. For a Grok slot that root is the
