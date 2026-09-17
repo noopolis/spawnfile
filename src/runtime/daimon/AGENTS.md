@@ -59,6 +59,17 @@ digests, fixed root/org/broker/worker identities, root-only registrations,
 and loopback-only provider/MCP endpoints. Container provisioning must match
 that authority exactly and must not publish either broker port.
 
+Every Grok agent is brokered, so `grokModel.ts` requires its model in full:
+`execution.model.primary` with `provider: xai`, a name from the manifest's
+closed list (`grok-4.6`, `grok-4.5`, `grok-build`), a target-level
+`auth.method: grok`, and `reasoning_effort` (`low`, `medium`, `high`), with no
+fallback and no model-level auth. The pair lowers to `engine.model` and
+`engine.reasoningEffort` and selects the manifest-pinned worker `config.toml`.
+Nothing is defaulted: Grok 1.0.34 silently drops an undeclared effort and its
+catalog default for `grok-4.6` is `high`. `grok` auth is Daimon-owned — it
+never becomes `SPAWNFILE_CLI_AUTH_JSON`, an api-key secret, or a host import.
+AGY still refuses any `execution.model`; Codex refuses Grok auth.
+
 Codex keeps an isolated per-agent credential home. Grok keeps isolated
 per-agent non-auth state but one durable rotating subscription credential
 realm; never fan out Grok refresh authority across writable homes.

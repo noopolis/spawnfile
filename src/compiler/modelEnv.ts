@@ -15,8 +15,13 @@ const MODEL_PROVIDER_ENV_VARS = new Map<string, string>([
 
 export const CLI_CREDENTIAL_SECRET_NAME = "SPAWNFILE_CLI_AUTH_JSON";
 
+/**
+ * Only the host-imported CLI logins travel as `SPAWNFILE_CLI_AUTH_JSON`. `grok`
+ * is a Daimon-owned subscription: its credential is the broker's bootstrap
+ * slot (`runtime/daimon/runAuth.ts`), never this secret.
+ */
 export const modelAuthMethodNeedsCliCredential = (method: ModelAuthMethod): boolean =>
-  method !== "api_key" && method !== "none";
+  method === "claude-code" || method === "codex";
 
 const resolveLegacyModelAuthMethod = (
   execution: ExecutionBlock | undefined,
@@ -122,7 +127,8 @@ export const resolveEffectiveModelTarget = (
     },
     ...(target.endpoint ? { endpoint: target.endpoint } : {}),
     name: target.name,
-    provider: target.provider
+    provider: target.provider,
+    ...(target.reasoning_effort ? { reasoningEffort: target.reasoning_effort } : {})
   };
 };
 

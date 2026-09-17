@@ -27,6 +27,7 @@ const MODEL_AUTH_IMPORT_KINDS: Record<string, ImportedAuthKind | null> = {
   api_key: null,
   "claude-code": "claude-code",
   codex: "codex",
+  grok: null,
   none: null
 };
 

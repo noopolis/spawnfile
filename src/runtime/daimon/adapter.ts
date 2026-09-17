@@ -21,6 +21,7 @@ import {
   DAIMON_ENGINES,
   resolveDaimonEngine
 } from "./config.js";
+import { resolveDaimonGrokModel } from "./grokModel.js";
 import { prepareDaimonRuntimeAuth } from "./runAuth.js";
 import { hasDaimonScheduleAuthority } from "./scheduleAuthority.js";
 import { resolveDaimonAttention } from "./attention.js";
@@ -40,10 +41,11 @@ const assertDaimonSurfaces = (surfaces: ResolvedAgentSurfaces | undefined): void
 };
 
 const assertDaimonModel = (target: EffectiveModelTarget): void => {
-  if (target.provider === "openai" && target.auth.method === "codex" && !target.endpoint) return;
+  if (target.provider === "openai" && target.auth.method === "codex" && !target.endpoint && !target.reasoningEffort) return;
+  if (target.provider === "xai" && target.auth.method === "grok" && !target.endpoint) return;
   throw new SpawnfileError(
     "validation_error",
-    "Daimon organization runtime v1 accepts only the optional OpenAI Codex subscription intent; Grok and AGY engine auth stays Daimon-owned"
+    "Daimon organization runtime v1 accepts only the optional OpenAI Codex subscription intent or a brokered xAI Grok declaration; AGY engine auth stays Daimon-owned"
   );
 };
 
@@ -109,12 +111,17 @@ const unsupportedAgentFeatures = (node: ResolvedAgentNode): void => {
     if (!server.tools?.length) throw new SpawnfileError("validation_error", `Daimon MCP server ${server.name} requires an explicit tools allowlist`);
     if (server.transport === "stdio" && !server.command?.startsWith("/")) throw new SpawnfileError("validation_error", `Daimon stdio MCP server ${server.name} requires an absolute command`);
   }
-  if (resolveDaimonEngine(node) !== "codex" && node.execution?.model) {
+  const engine = resolveDaimonEngine(node);
+  if (engine === "agy" && node.execution?.model) {
     throw new SpawnfileError(
       "validation_error",
-      "Daimon Grok and AGY agents must omit Spawnfile execution.model; their subscription auth and model selection are Daimon-owned"
+      "Daimon AGY agents must omit Spawnfile execution.model; their subscription auth and model selection are Daimon-owned"
     );
   }
+  if (engine === "codex" && node.execution?.model?.primary.auth?.method === "grok") {
+    throw new SpawnfileError("validation_error", `Daimon Codex agent ${node.name} cannot declare Grok model auth`);
+  }
+  if (engine === "grok") resolveDaimonGrokModel(node);
 };
 
 const scheduleCapabilityFor = async (

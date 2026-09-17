@@ -162,6 +162,14 @@ describe("Daimon memory lowering", () => {
     expect(config.agents[0]!.engine).toEqual({ kind: "codex", model: "gpt-5.4-codex", codexSandbox: { mode: "workspace-write", networkAccess: false, webSearch: "disabled" } });
   });
 
+  it("lowers a brokered Grok agent's declared model and reasoning effort into Daimon's engine config", async () => {
+    const config = await emitConfig(createDaimonNode({
+      execution: { model: { primary: { auth: { method: "grok" }, name: "grok-4.5", provider: "xai", reasoning_effort: "medium" } } },
+      runtime: { name: "daimon", options: { engine: "grok" } }
+    }));
+    expect(config.agents[0]!.engine).toEqual({ kind: "grok", model: "grok-4.5", reasoningEffort: "medium" });
+  });
+
   it("omits Daimon's engine model selector when no execution model is declared", async () => {
     const config = await emitConfig(createDaimonNode({ execution: undefined }));
 
