@@ -19,9 +19,11 @@ const programRegistration = (entry: DaimonGrokRegistration) => ({
   eventsPath: entry.eventsPath,
   grokHome: entry.grokHome,
   home: entry.home,
+  model: entry.model,
   profile: entry.profile,
   profilePath: entry.profilePath,
   profileSha256: entry.profileSha256,
+  reasoningEffort: entry.reasoningEffort,
   slot: entry.slot,
   uid: entry.uid,
   workspace: entry.workspace
@@ -49,9 +51,9 @@ const programRegistration = (entry: DaimonGrokRegistration) => ({
 export const renderDaimonGrokWorkerProvisioning = (registrations: readonly DaimonGrokRegistration[]): string[] => [
   `const grokWorkers = ${JSON.stringify(registrations.map(programRegistration))};`,
   `const optionalDenyPaths = new Set(${JSON.stringify([...DAIMON_GROK_OPTIONAL_DENY_PATHS, ...DAIMON_GROK_DENIED_STATE_ROOTS])});`,
-  `const pinnedConfigSha256 = new Set(${JSON.stringify(Object.values(DAIMON_GROK_ENGINE_BROKER.worker.configSha256).flatMap((efforts) => Object.values(efforts)))});`,
+  `const pinnedConfigSha256 = ${JSON.stringify(DAIMON_GROK_ENGINE_BROKER.worker.configSha256)};`,
   "const sha256Hex = (value) => crypto.createHash('sha256').update(value).digest('hex');",
-  "for (const entry of grokWorkers) { if (sha256Hex(entry.config) !== entry.configSha256 || !pinnedConfigSha256.has(entry.configSha256) || sha256Hex(entry.profile) !== entry.profileSha256 || entry.denyPaths.length === 0) throw new Error(`Grok worker contract bytes for ${entry.agentId} do not match their pins`); }",
+  "for (const entry of grokWorkers) { if (sha256Hex(entry.config) !== entry.configSha256 || !Object.hasOwn(pinnedConfigSha256, entry.model) || !Object.hasOwn(pinnedConfigSha256[entry.model], entry.reasoningEffort) || pinnedConfigSha256[entry.model][entry.reasoningEffort] !== entry.configSha256 || sha256Hex(entry.profile) !== entry.profileSha256 || entry.denyPaths.length === 0) throw new Error(`Grok worker contract bytes for ${entry.agentId} do not match their pins`); }",
   "const assertCanonical = (target, label) => { const info = fs.lstatSync(target); if (info.isSymbolicLink() || fs.realpathSync(target) !== target) throw new Error(`Grok worker ${label} is not a canonical non-symlink path: ${target}`); return info; };",
   "const ensureDirectory = (target, uid, gid, mode) => { fs.mkdirSync(target, { recursive: true, mode: 0o700 }); const info = fs.lstatSync(target); if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('unsafe worker runtime directory'); fs.chownSync(target, 0, 0); fs.chmodSync(target, mode); fs.chownSync(target, uid, gid); };",
   "const ensureExactFile = (target, content, mode) => { let info; try { info = fs.lstatSync(target); } catch (error) { if (error.code !== 'ENOENT') throw error; fs.writeFileSync(target, content, { mode, flag: 'wx' }); info = fs.lstatSync(target); } if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) throw new Error('unsafe worker runtime file'); if (fs.readFileSync(target, 'utf8') !== content) throw new Error(`worker runtime file identity mismatch: ${target}`); fs.chownSync(target, 0, 0); fs.chmodSync(target, mode); };",

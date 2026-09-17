@@ -138,6 +138,11 @@ describe("Grok worker home provisioning", () => {
       .toThrow(/canonical non-symlink/u);
     const tampered = registrations.map((entry, index) => index === 0 ? { ...entry, config: entry.config.replace("grok-4.6", "grok-4.5") } : entry);
     expect(() => run(tampered, seedFor(tampered))).toThrow(/do not match their pins/u);
+    // Another model's pinned bytes are still refused: the pin is per declared model x effort, not any pin.
+    const otherPair = registrations.map((entry, index) => index === 0 ? { ...entry, config: DAIMON_GROK_WORKER_CONFIG_BYTES["grok-4.5"].high, configSha256: crypto.createHash("sha256").update(DAIMON_GROK_WORKER_CONFIG_BYTES["grok-4.5"].high).digest("hex") } : entry);
+    expect(() => run(otherPair, seedFor(otherPair))).toThrow(/do not match their pins/u);
+    const otherEffort = registrations.map((entry, index) => index === 0 ? { ...entry, reasoningEffort: "medium" as const } : entry);
+    expect(() => run(otherEffort, seedFor(otherEffort))).toThrow(/do not match their pins/u);
     const unpinned = registrations.map((entry, index) => index === 0 ? { ...entry, denyPaths: [] } : entry);
     expect(() => run(unpinned, seedFor(unpinned))).toThrow(/do not match their pins/u);
     const replaced = run(registrations, seedFor(registrations));
