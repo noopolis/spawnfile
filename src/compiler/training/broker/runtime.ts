@@ -19,6 +19,7 @@ import {
   DAIMON_ORGANIZATION_UID,
   TRAINING_HOST_BIND_DENY_PATHS,
   TRAINING_SLOT_ACCEPTANCE_STORE,
+  TRAINING_WIPE_TARGETS,
   TRAINING_SLOT_GENERATION_FILE,
   TRAINING_SLOT_PREFLIGHT_RECEIPT,
   TRAINING_SLOT_RUNTIME_HOME,
@@ -116,7 +117,7 @@ export const createTrainingSlotRuntime = (options: TrainingSlotRuntimeOptions): 
     wipe: async () => {
       // Root holds `CAP_CHOWN` and `CAP_DAC_READ_SEARCH` but not `CAP_DAC_OVERRIDE`, so it cannot delete
       // inside a directory it handed to the worker or the broker. Reclaim each tree first, then remove it.
-      const targets = [options.registration.home, TRAINING_SLOT_RUNTIME_HOME, TRAINING_SLOT_TURN_STORE, TRAINING_SLOT_ACCEPTANCE_STORE, DAIMON_GROK_ENGINE_BROKER.serviceConfigPath, DAIMON_GROK_ENGINE_BROKER.registrationPath];
+      const targets = TRAINING_WIPE_TARGETS;
       const contents = [TRAINING_SLOT_WORKSPACE, TRAINING_SLOT_USAGE_DIRECTORY];
       const script = [
         ...MOUNT_AWARE_CLEAR_HELPER,

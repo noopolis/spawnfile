@@ -165,6 +165,34 @@ export const TRAINING_DEFERRED_DENY_PATHS: readonly string[] = [
  */
 export const TRAINING_HOST_BIND_DENY_PATHS: readonly string[] = [TRAINING_RUN_ROOT, TRAINING_SEALED_INPUTS_ROOT];
 
+/**
+ * What a recycle removes outright, and what it only empties.
+ *
+ * Nothing the launch mounts may be at or below any of these. A mount point
+ * cannot be unlinked while it is mounted, so a wipe target holding one aborts
+ * the recycle — which is how the broker/relay `TMPDIR` took down a live launch
+ * when it still lived at `<control root>/tmp`. `paths.test.ts` enforces that
+ * against the launch's own mount list; the rendered shell skips mount points
+ * anyway, so an undeclared one degrades to "left in place and reported" rather
+ * than a failed provision.
+ */
+export const TRAINING_WIPE_TARGETS: readonly string[] = [
+  TRAINING_WORKER_HOME,
+  TRAINING_SLOT_RUNTIME_HOME,
+  TRAINING_SLOT_TURN_STORE,
+  TRAINING_SLOT_ACCEPTANCE_STORE,
+  DAIMON_GROK_ENGINE_BROKER.serviceConfigPath,
+  DAIMON_GROK_ENGINE_BROKER.registrationPath
+];
+
+/** Emptied but kept: their paths are registered with Daimon and must stay canonical across a recycle. */
+export const TRAINING_CLEAR_TARGETS: readonly string[] = [
+  TRAINING_SLOT_WORKSPACE,
+  TRAINING_SLOT_USAGE_DIRECTORY,
+  path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.controlSocketPath),
+  path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.registrationPath)
+];
+
 export const TRAINING_REALM_MOUNT = DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath;
 export const TRAINING_BOOTSTRAP_MOUNT = DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath;
 export { DAIMON_BROKER_UID, DAIMON_ORGANIZATION_UID };
