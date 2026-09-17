@@ -107,6 +107,8 @@ export interface DaimonGrokRegistration {
   reasoningEffort: DaimonGrokBrokerReasoningEffort;
   /** The organization runtime home whose `tool-output/` this worker reads. */
   runtimeHome: string;
+  /** Persistent mounts inside this agent's runtime home; Spawnfile keeps each `0700` under the traversable home. */
+  runtimeHomeMounts: string[];
   /** `<runtimeHome>/tool-output`: setgid spill directory in the worker's group. */
   spillDirectory: string;
   slot: number;
@@ -283,6 +285,8 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]): Daim
       privateTmp: path.posix.join(home, DAIMON_GROK_ENGINE_BROKER.worker.home.privateTmp.relativeToWorkerHome),
       reasoningEffort,
       runtimeHome,
+      runtimeHomeMounts: [...new Set(plans.flatMap((candidate) => (candidate.persistentMounts ?? []).map((mount) => mount.mount_path))
+        .filter((mountPath) => mountPath.startsWith(`${runtimeHome}/`)))].sort(),
       spillDirectory: path.posix.join(runtimeHome, DAIMON_GROK_ENGINE_BROKER.worker.home.spillDirectory.relativeToRuntimeHome),
       slot,
       uid: DAIMON_FIRST_WORKER_UID + slot,
