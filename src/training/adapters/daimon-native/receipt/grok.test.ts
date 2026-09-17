@@ -38,6 +38,7 @@ test('persisted Grok projection is bound to the trial, launch, digest and every 
       [rebind({ ...projection, profileSha256: 'e'.repeat(64) }), /projection_sha256/],
       [{ ...bound, slotPreflight: { ...bound.slotPreflight, projection_sha256: 'f'.repeat(64) } }, /projection_sha256/],
       [{ ...bound, slotPreflight: { ...bound.slotPreflight, worker_uid: 2201 } }, /slot_preflight/],
+      [{ ...bound, slotPreflight: { ...bound.slotPreflight, slot: projection.slot + 1 } }, /slot_preflight/],
       [{ ...bound, slotPreflight: { ...bound.slotPreflight, sandbox_profile_sha256: 'e'.repeat(64) } }, /slot_preflight/],
       [{ ...bound, slotPreflight: { ...bound.slotPreflight, canaries: bound.slotPreflight.canaries.slice(1) } }, /canaries/],
       [{ ...bound, slotPreflight: { ...bound.slotPreflight, canaries: bound.slotPreflight.canaries.map((row, index) => index ? row : { ...row, result: 'readable' }) } }, /invalid|Invalid/],

@@ -73,6 +73,12 @@ test('Grok slot projection is resolved by Daimon, digest-bound to the launch and
     await assert.rejects(persist(), /omits a denied canary for evaluator path/);
     projection = grokProjectionFor(launch); launch.broker.projectionSha256 = grokProjectionSha256(projection);
     await writeGrokSlotReceipt(launch);
+    // Even behind a permissive verifier, the worker's own re-bind refuses a receipt from another recycle.
+    await writeGrokSlotReceipt(launch, slotPreflightFor(projection, projection.denyPaths, launch.broker.minGeneration, 'b'.repeat(64)));
+    await assert.rejects(persist(), /stale: nonce/);
+    await writeGrokSlotReceipt(launch, slotPreflightFor(projection, projection.denyPaths, launch.broker.minGeneration - 1, launch.broker.expectedNonce));
+    await assert.rejects(persist(), /stale: generation/);
+    await writeGrokSlotReceipt(launch);
     await assert.rejects(persistNativeSandboxProjection(runtime, config, { ...options, timeoutMs: 1000 }, launch), /timeout exceeds/);
     await assert.rejects(readFile(join(launch.controlRoot, 'sandbox-projection.json')), /ENOENT/);
     await persist();
