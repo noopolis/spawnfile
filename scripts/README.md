@@ -7,6 +7,7 @@ in the npm package. Scripts run as native TypeScript on Node 22.19+.
 | Entrypoint | Caller | Purpose / prerequisites |
 | --- | --- | --- |
 | `build-local-daimon-runtime.ts` | `npm run build:local-daimon` | Build a locally sourced runtime; explicit artifact pins, Docker, and loopback registry required |
+| `vendor-daimon-grok-contract.ts` | `npm run vendor:daimon-contract [-- --check]` | Vendor Daimon's contract manifest and Grok worker renderer bytes from a Daimon checkout (`SPAWNFILE_DAIMON_SOURCE_DIR`) |
 | `build-local-moltnet.ts` | `npm run build:local-moltnet` | Build and stamp release binaries from an explicit source checkout |
 | `create-source-provenance-bundle.ts` | `npm run bundle:source-provenance` | Create deterministic archives with manifests and credential exclusions |
 | `create-linux-amd64-dependency-closure.ts` | `npm run prepare:linux-amd64-closure` | Prepare reviewed npm dependencies/cache in the pinned build container |

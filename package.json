@@ -35,6 +35,7 @@
     "audit:generate": "tsx src/audit/auditCli.ts",
     "build:local-moltnet": "node --experimental-strip-types ./scripts/build-local-moltnet.ts",
     "build:local-daimon": "node --experimental-strip-types ./scripts/build-local-daimon-runtime.ts",
+    "vendor:daimon-contract": "node --import tsx ./scripts/vendor-daimon-grok-contract.ts",
     "bundle:source-provenance": "node --experimental-strip-types ./scripts/create-source-provenance-bundle.ts",
     "prepare:linux-amd64-closure": "node --experimental-strip-types ./scripts/create-linux-amd64-dependency-closure.ts",
     "prepare:linux-amd64-go-closure": "node --experimental-strip-types ./scripts/create-linux-amd64-go-closure.ts",
