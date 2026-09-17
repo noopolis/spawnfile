@@ -4,14 +4,14 @@
  * compares mode, owner, group, type and link target of every entry.
  *
  * npx tsx scripts/verify-training-image-modes.ts --build-config <training.json> \
- *   [--root <dir>] [--control-ref 47050be] [--docker-context default] [--keep-images]
+ *   [--root <dir>] [--control-ref <commit>] [--docker-context default] [--keep-images]
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertControlRecipe, assertNewRecipe, diffModeListings, identicalModes, LISTING_ROOTS, MODE_LISTING_FORMAT } from "./training-image-modes.ts";
+import { assertControlRecipe, assertNewRecipe, deriveControlRecipe, diffModeListings, identicalModes, LISTING_ROOTS, MODE_LISTING_FORMAT } from "./training-image-modes.ts";
 
 type ImageModule = typeof import("../src/compiler/training/preparation/image.js");
 type FilesModule = typeof import("../src/compiler/training/preparation/files.js");
@@ -35,10 +35,10 @@ function docker(context: string, args: string[], capture = false): string {
 async function main(): Promise<void> {
   const configPath = option("--build-config");
   if (!configPath) throw Error("--build-config <training preparation or image build JSON> is required");
-  // The control must stage the same file set as the recipe under test, or its build fails before a
-  // single mode is compared. `ccbe537` is the last `spawnfile.training-container.v3` recipe that still
-  // ran `chmod -R a+rX /opt/training`: same `train`/`train-broker` context, no Grok binary.
-  const controlRef = option("--control-ref") ?? "ccbe537";
+  // Default: derive the control from the recipe under test, so the only difference between the two
+  // images is the mode mechanism. `--control-ref <commit>` still compares against a historical recipe,
+  // which only works while that commit stages the same file set.
+  const controlRef = option("--control-ref");
   const dockerContext = option("--docker-context") ?? "default";
   const { planTrainingImage } = await import("../src/compiler/training/preparation/image.js") as ImageModule;
   const { copySealed } = await import("../src/compiler/training/preparation/files.js") as FilesModule;
@@ -49,8 +49,10 @@ async function main(): Promise<void> {
   const build = trainingBuildSchema.parse(raw.image?.build ?? raw);
   const root = path.resolve(option("--root") ?? path.dirname(configPath));
   const plan = await planTrainingImage(build, root, [], repository);
-  const controlRecipe = execFileSync("git", ["-C", repository, "show", `${controlRef}:runtime-images/training/Dockerfile`], { encoding: "utf8" });
   assertNewRecipe(plan.dockerfile);
+  const controlRecipe = controlRef
+    ? execFileSync("git", ["-C", repository, "show", `${controlRef}:runtime-images/training/Dockerfile`], { encoding: "utf8" })
+    : deriveControlRecipe(plan.dockerfile);
   assertControlRecipe(controlRecipe);
 
   // `copySealed` re-seals every staged file through `exactPath`, which refuses a symlinked
