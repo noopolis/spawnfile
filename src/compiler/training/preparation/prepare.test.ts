@@ -34,6 +34,15 @@ it("dry-run reads declarations without Docker, auth access, output or staging mu
   const before = await readdir(f.root);
   expect(await prepareTraining({ ...f.options, dryRun: true })).toMatchObject({ dryRun: true });
   expect(f.docker.calls).toEqual([]); expect(await readdir(f.root)).toEqual(before);
+  const memo = path.join(process.env.SPAWNFILE_HOME!, "cache", "training-seal.v1.json");
+  await expect(lstat(memo)).rejects.toThrow();
+  f.config.auth[0]!.source = "auth"; await f.save();
+  // Outlive the racy-clean window so an actual preparation would record digests.
+  await new Promise(resolve => setTimeout(resolve, 2100));
+  expect(await prepareTraining({ ...f.options, dryRun: true })).toMatchObject({ dryRun: true });
+  await expect(lstat(memo)).rejects.toThrow();
+  await prepareTraining(f.options);
+  expect((await lstat(memo)).mode & 0o777).toBe(0o600);
 });
 
 it("rejects changed executable, fixture, declaration and saved image on exact resume", async () => {
