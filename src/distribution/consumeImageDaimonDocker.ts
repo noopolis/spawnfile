@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import { SpawnfileError } from "../shared/errors.js";
 import {
-  codexNativeSandboxDockerSecurityArgsForConfigs,
-  DAIMON_DOCKER_RUNTIME_SECURITY_ARGS
+  DAIMON_DOCKER_RUNTIME_SECURITY_ARGS,
+  daimonEngineDockerSecurityArgsForConfigs,
+  materializeDaimonGrokSeccompProfile
 } from "../shared/daimonCodexDocker.js";
 
 import type { DockerCommandRunner } from "./dockerRunner.js";
@@ -56,13 +57,14 @@ const readDaimonConfigSourcesFromImage = async (
 export const resolveDaimonDockerSecurityArgsForImage = async (
   imageRef: string,
   report: DistributionReport,
-  runDocker: DockerCommandRunner
+  runDocker: DockerCommandRunner,
+  securityDirectory: string
 ): Promise<string[]> => {
   const daimonInstances = daimonInstancesFrom(report);
   if (daimonInstances.length === 0) return [];
   const sources = await readDaimonConfigSourcesFromImage(imageRef, daimonInstances, runDocker);
   return [
     ...DAIMON_DOCKER_RUNTIME_SECURITY_ARGS,
-    ...codexNativeSandboxDockerSecurityArgsForConfigs(sources)
+    ...(await daimonEngineDockerSecurityArgsForConfigs(sources, () => materializeDaimonGrokSeccompProfile(securityDirectory)))
   ];
 };

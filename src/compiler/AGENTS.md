@@ -162,6 +162,16 @@ src/compiler/
   existing uid, capability-drop, and `no-new-privileges` posture; Codex owns the
   per-turn filesystem/network/tool boundary, while trusted MCP servers and
   Daimon code outside that native boundary remain trusted container processes.
+- Without a strict Codex agent, a Daimon organization with a Grok agent gets
+  `--security-opt=seccomp=<pinned profile>` plus `apparmor=unconfined` instead:
+  Docker's default seccomp profile with bubblewrap's seven namespace syscalls
+  (`src/shared/daimonGrokSeccompProfile.ts`, sha-pinned, materialized under
+  `<output>/container/security/` or the image-up work directory), the narrowest
+  combination under which Grok 1.0.34's always-on bubblewrap starts. Codex's
+  fully unconfined options are a superset and win when both engines are
+  present. The Docker host must allow unprivileged user namespaces
+  (`kernel.apparmor_restrict_unprivileged_userns=0`); the Daimon entrypoint
+  refuses to start a Grok organization, naming that sysctl, when it is not.
 - Brokered Grok workers (`containerDaimonGrokWorkerRender.ts`) take their
   `config.toml` bytes only from Daimon's renderer output vendored in
   `src/runtime/daimon/grokWorkerConfigBytes.ts`, refused unless they hash to the

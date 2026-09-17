@@ -65,3 +65,18 @@ export const renderDaimonGrokWorkerProvisioning = (registrations: readonly Daimo
   "for (const registration of service.registrations) { const entry = grokWorkers.find((worker) => worker.agentId === registration.agentId); if (!entry || registration.profileSha256 !== sha256Hex(fs.readFileSync(entry.profilePath, 'utf8'))) throw new Error('Grok broker service registration does not match its provisioned profile'); }",
   `fs.writeFileSync('${DAIMON_GROK_ENGINE_BROKER.serviceConfigPath}', \`\${JSON.stringify(service)}\\n\`, { mode: 0o440, flag: 'wx' }); fs.chownSync('${DAIMON_GROK_ENGINE_BROKER.serviceConfigPath}', 0, ${DAIMON_BROKER_UID}); fs.chmodSync('${DAIMON_GROK_ENGINE_BROKER.serviceConfigPath}', 0o440);`
 ];
+
+const shellQuote = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
+
+/**
+ * Grok 1.0.34 runs every sandbox profile inside bubblewrap, which needs
+ * unprivileged user namespaces. Ubuntu 24.04+ hosts (and Colima's default VM)
+ * ship `kernel.apparmor_restrict_unprivileged_userns=1`, under which bubblewrap
+ * cannot create them even with the pinned seccomp profile — every worker turn
+ * would then fail attestation long after startup. The container sees the host
+ * kernel's sysctls read-only, so this refuses to start with the fix named.
+ */
+export const renderDaimonGrokHostPreflight = (procSys = "/proc/sys"): string[] => [
+  `if [ -r ${shellQuote(`${procSys}/kernel/apparmor_restrict_unprivileged_userns`)} ] && [ "$(cat ${shellQuote(`${procSys}/kernel/apparmor_restrict_unprivileged_userns`)})" != 0 ]; then echo "Daimon Grok workers need unprivileged user namespaces for bubblewrap: set kernel.apparmor_restrict_unprivileged_userns=0 on the Docker host (sysctl -w kernel.apparmor_restrict_unprivileged_userns=0; persist it in /etc/sysctl.d)" >&2; exit 1; fi`,
+  `if [ -r ${shellQuote(`${procSys}/user/max_user_namespaces`)} ] && [ "$(cat ${shellQuote(`${procSys}/user/max_user_namespaces`)})" = 0 ]; then echo "Daimon Grok workers need unprivileged user namespaces for bubblewrap: user.max_user_namespaces is 0 on the Docker host" >&2; exit 1; fi`
+];

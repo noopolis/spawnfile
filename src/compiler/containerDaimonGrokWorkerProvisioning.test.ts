@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { DAIMON_GROK_WORKER_CONFIG_BYTES } from "../runtime/daimon/grokWorkerConfigBytes.js";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
-import { renderDaimonGrokWorkerProvisioning } from "./containerDaimonGrokWorkerProvisioning.js";
+import { renderDaimonGrokHostPreflight, renderDaimonGrokWorkerProvisioning } from "./containerDaimonGrokWorkerProvisioning.js";
 import { resolveDaimonGrokRegistrations, type DaimonGrokRegistration } from "./containerDaimonGrokWorkerRender.js";
 
 const INSTANCE = "/var/lib/spawnfile/instances/daimon/daimon-organization";
@@ -131,5 +131,32 @@ describe("Grok worker home provisioning", () => {
     const reseeded = Object.fromEntries([...replaced.entries()].filter(([target]) => target !== "/etc/daimon-engine-broker/service.json"));
     reseeded[`${registrations[0]!.grokHome}/trusted_folders.toml`] = { ...reseeded[`${registrations[0]!.grokHome}/trusted_folders.toml`], content: "[trusted]\n" };
     expect(() => run(registrations, reseeded)).toThrow(/identity mismatch/u);
+  });
+});
+
+describe("Grok host user-namespace preflight", () => {
+  const preflight = async (restrict: string | null, maxNamespaces: string | null) => {
+    const { mkdtemp, mkdir, rm, writeFile } = await import("node:fs/promises");
+    const os = await import("node:os");
+    const { spawnSync } = await import("node:child_process");
+    const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-grok-procsys-"));
+    try {
+      await mkdir(path.join(root, "kernel")); await mkdir(path.join(root, "user"));
+      if (restrict !== null) await writeFile(path.join(root, "kernel", "apparmor_restrict_unprivileged_userns"), `${restrict}\n`);
+      if (maxNamespaces !== null) await writeFile(path.join(root, "user", "max_user_namespaces"), `${maxNamespaces}\n`);
+      const script = ["set -euo pipefail", ...renderDaimonGrokHostPreflight(root), "echo preflight-ok"].join("\n");
+      return spawnSync("bash", ["-c", script], { encoding: "utf8" });
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  };
+
+  it("refuses to start when the host restricts unprivileged user namespaces, naming the sysctl", async () => {
+    const restricted = await preflight("1", "63000");
+    expect(restricted.status).toBe(1);
+    expect(restricted.stderr).toContain("kernel.apparmor_restrict_unprivileged_userns=0");
+    expect((await preflight("0", "0")).stderr).toContain("user.max_user_namespaces is 0");
+    expect((await preflight("0", "63000")).stdout).toContain("preflight-ok");
+    expect((await preflight(null, null)).stdout).toContain("preflight-ok");
   });
 });
