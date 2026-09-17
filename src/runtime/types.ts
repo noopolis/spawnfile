@@ -58,6 +58,8 @@ export interface ContainerTarget {
    */
   engineByNodeId?: Record<string, string>;
   envFiles?: ContainerTargetEnvFile[];
+  /** Daimon only: each brokered Grok agent's declared model and reasoning effort, which select its pinned worker config. */
+  grokModelByNodeId?: Record<string, { model: string; reasoningEffort: string }>;
   files: EmittedFile[];
   id: string;
   opaqueMountTargets?: string[];

@@ -209,6 +209,9 @@ export const createDaimonContainerTargets = async (
     })
     .sort((left, right) => left.id.localeCompare(right.id));
   const engineByNodeId = Object.fromEntries(configAgents.map((agent) => [agent.id, agent.engine.kind]));
+  const grokModelByNodeId = Object.fromEntries(configAgents
+    .filter((agent) => agent.engine.kind === "grok" && agent.engine.model !== undefined && agent.engine.reasoningEffort !== undefined)
+    .map((agent) => [agent.id, { model: agent.engine.model!, reasoningEffort: agent.engine.reasoningEffort! }]));
   const hasAgy = configAgents.some((agent) => agent.engine.kind === "agy");
   const hasGrok = configAgents.some((agent) => agent.engine.kind === "grok");
   const agyRuntimeHomeMounts = configAgents
@@ -253,6 +256,7 @@ export const createDaimonContainerTargets = async (
 
   return [{
     engineByNodeId,
+    ...(hasGrok ? { grokModelByNodeId } : {}),
     files: [
       ...agents.flatMap((input) => input.emittedFiles.map((file) => moveWorkspaceFile(file, input.slug))),
       { content: serializedConfig, path: DAIMON_CONFIG_FILE },

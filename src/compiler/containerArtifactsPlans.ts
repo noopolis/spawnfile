@@ -160,6 +160,7 @@ export const createRuntimeTargetPlans = async (
       runtimePlans.push({
         configEnvBindings: resolveTargetConfigEnvBindings(adapter.container, target) ?? [],
         ...(target.engineByNodeId ? { engineByNodeId: target.engineByNodeId } : {}),
+        ...(target.grokModelByNodeId ? { grokModelByNodeId: target.grokModelByNodeId } : {}),
         envFiles: resolveTargetEnvFiles(instancePaths.configPath, target),
         packages: resolveTargetPackages(target, targetInputs),
         id: target.id,

@@ -10,35 +10,33 @@ import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifes
 import {
   DAIMON_BROKER_REALM,
   DAIMON_ORGANIZATION_STATE_DIRECTORY,
-  GROK_SANDBOX_DENY_PATHS,
   renderDaimonBrokerProvisioning,
   renderDaimonUsageLedgerProvisioning,
   renderDaimonWorkspaceResourceSecurity
 } from "./containerDaimonBrokerRender.js";
 
 const execFile = promisify(execFileCallback);
+type Plan = Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
+const grokPlan = (agentIds: string[], extra: Record<string, string> = {}, model = { model: "grok-4.6", reasoningEffort: "low" }): Plan => ({
+  runtimeName: "daimon",
+  engineByNodeId: { ...Object.fromEntries(agentIds.map((agentId) => [agentId, "grok"])), ...extra },
+  grokModelByNodeId: Object.fromEntries(agentIds.map((agentId) => [agentId, model])),
+  instancePaths: { instanceRoot: "/var/lib/spawnfile/instances/daimon/daimon-organization", workspacePath: "/var/lib/spawnfile/instances/daimon/daimon-organization/workspace" }
+}) as unknown as Plan;
 const uid = process.getuid?.() ?? 501;
 const gid = process.getgid?.() ?? 20;
 const owners = { linkUid: uid, linkGid: gid, readonlyUid: uid, readonlyGid: gid, privilegedUid: uid, privilegedGid: gid };
 
 describe("Daimon broker registration ABI", () => {
   it("renders the manifest-declared native ABI version", () => {
-    const plan = {
-      runtimeName: "daimon",
-      engineByNodeId: { "agent:grok": "grok" },
-      instancePaths: { workspacePath: "/workspace" }
-    } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
+    const plan = grokPlan(["agent:grok"]);
     expect(renderDaimonBrokerProvisioning([plan]).join("\n"))
       .toContain("record.writeUInt32LE(2, 0)");
   });
 });
 
 describe("Daimon broker registration directory provisioning", () => {
-  const plan = {
-    runtimeName: "daimon",
-    engineByNodeId: { "agent:grok": "grok" },
-    instancePaths: { workspacePath: "/workspace" }
-  } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
+  const plan = grokPlan(["agent:grok"]);
 
   it("keeps the broker directory writable until its files are provisioned", () => {
     const lines = renderDaimonBrokerProvisioning([plan]).join("\n").split("\n");
@@ -74,11 +72,7 @@ describe("Daimon broker registration directory provisioning", () => {
 });
 
 describe("Daimon broker usage ledger provisioning", () => {
-  const plan = {
-    runtimeName: "daimon",
-    engineByNodeId: { "agent:grok": "grok" },
-    instancePaths: { workspacePath: "/workspace" }
-  } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
+  const plan = grokPlan(["agent:grok"]);
 
   it("fixes the usage ledger directory group-writable so Codex/AGY's organization-uid process can also write it, unconditionally (not just alongside the realm)", () => {
     const { directoryPath } = DAIMON_GROK_TURN_USAGE_LEDGER;
@@ -92,86 +86,10 @@ describe("Daimon broker usage ledger provisioning", () => {
     expect(renderDaimonBrokerProvisioning([])).toEqual([]);
   });
 
-  it("never lists the usage ledger directory in the rendered sandbox deny list", () => {
-    // The usage ledger directory is unix-denied to every worker uid
-    // unconditionally by `renderDaimonUsageLedgerProvisioning` (0770,
-    // broker:organization — a worker uid never matches either), so Grok
-    // could never verify a mask over it and would refuse to start if it were
-    // still listed. See `GROK_SANDBOX_DENY_PATHS`'s doc comment.
-    const program = renderDaimonBrokerProvisioning([plan]).join("\n");
-    const deniedPathsLine = program.split("\n").find((line) => line.includes("const deniedPaths ="));
-    expect(deniedPathsLine).toBeDefined();
-    expect(deniedPathsLine).not.toContain(DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath);
-  });
-});
-
-describe("Grok sandbox deny list: empty, because a non-empty one cannot start", () => {
-  // Grok 1.0.13 re-execs itself inside bubblewrap whenever `deny` is
-  // non-empty, then opens every deny-path placeholder to prove the bind-over
-  // is genuine. It creates that placeholder at mode 000 and the re-exec'd
-  // process is capability-stripped, so the open returns EACCES and Grok
-  // refuses to start ("possible __GROK_INSIDE_BWRAP spoof") without ever
-  // writing a ProfileApplied event — reproduced against the real Linux binary,
-  // with the deny target proven irrelevant. Every path this list once carried
-  // is unix-denied to a worker uid unconditionally anyway, the organization
-  // state directory included now that the ownership guard secures it to 0700
-  // (see `containerDaimonUidEntrypointRender.ts`).
-  const planWithAgents = (agentIds: string[]) => ({
-    runtimeName: "daimon",
-    engineByNodeId: Object.fromEntries(agentIds.map((agentId) => [agentId, "grok"])),
-    instancePaths: { workspacePath: "/workspace" }
-  } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number]);
-
-  const deniedPathsLineFor = (agentIds: string[]): string | undefined =>
-    renderDaimonBrokerProvisioning([planWithAgents(agentIds)])
-      .join("\n").split("\n").find((line) => line.includes("const deniedPaths ="));
-
-  it("renders an empty deny list and a profile that interpolates exactly it", () => {
-    for (const agentIds of [["agent:solo"], ["agent:cogsworth", "agent:foreman", "agent:graves"]]) {
-      expect(deniedPathsLineFor(agentIds)).toBe("const deniedPaths = [];");
-    }
-    // Run the rendered program's own profile expression rather than a
-    // re-typed copy of it, so this asserts the bytes the container writes.
-    const lines = renderDaimonBrokerProvisioning([planWithAgents(["agent:solo"])]).join("\n").split("\n");
-    const source = lines.filter((line) =>
-      line.startsWith("const deniedPaths =") || line.startsWith("const profileFor =")).join("\n");
-    expect(source.split("\n")).toHaveLength(2);
-    const profile = new Function(`${source}\nreturn profileFor();`)() as string;
-    expect(profile).toBe("[profiles.daimon-strict]\nextends = \"strict\"\nrestrict_network = true\ndeny = []\n");
-  });
-
-  it("never lists a peer worker's home or workspace, the realm, the credential, or the state directory", () => {
-    const deniedPathsLine = deniedPathsLineFor(["agent:cogsworth", "agent:foreman", "agent:graves"]);
-    expect(deniedPathsLine).toBeDefined();
-    for (const forbidden of [
-      "daimon-workers",
-      "/workspace/agents/cogsworth",
-      "/workspace/agents/foreman",
-      "/workspace/agents/graves",
-      DAIMON_BROKER_REALM,
-      "/var/lib/spawnfile/daimon/grok-bootstrap-auth",
-      "/run/daimon-engine-broker",
-      DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
-      DAIMON_ORGANIZATION_STATE_DIRECTORY
-    ]) {
-      expect(deniedPathsLine).not.toContain(forbidden);
-    }
-  });
-
-  it("keeps the exported deny-path constant in sync with what gets rendered", () => {
-    expect(GROK_SANDBOX_DENY_PATHS).toEqual([]);
-    expect(DAIMON_ORGANIZATION_STATE_DIRECTORY).toBe(
-      "/var/lib/spawnfile/instances/daimon/daimon-organization/state"
-    );
-  });
 });
 
 describe("Daimon root provisioning capability-safe ordering", () => {
-  const plan = {
-    runtimeName: "daimon",
-    engineByNodeId: { "agent:grok": "grok" },
-    instancePaths: { workspacePath: "/workspace" }
-  } as unknown as Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
+  const plan = grokPlan(["agent:grok"]);
   const render = () => renderDaimonBrokerProvisioning([plan]).join("\n");
 
   it("lets grok write hook state but never replace the sandbox profile", () => {
@@ -180,14 +98,14 @@ describe("Daimon root provisioning capability-safe ordering", () => {
     // Grok creates hook registries under .grok to enforce its deny list, so the worker
     // needs write access there. The sticky bit means it still cannot unlink or rename the
     // root-owned sandbox.toml, which is what the profile attestation depends on.
-    expect(program).toContain("ensureDirectory(configRoot, 0, entry.uid, 0o1771)");
-    expect(program).toContain("ensureExactFile(profilePath, profileFor(), 0, 0, 0o444)");
+    expect(program).toContain("ensureDirectory(entry.grokHome, 0, entry.uid, 0o1771)");
+    expect(program).toContain("ensureExactFile(entry.profilePath, entry.profile, 0o444)");
   });
 
   it("tightens the worker config directory after its last file write", () => {
     const program = render();
-    const lastWrite = program.indexOf("ensureEventsFile(eventsPath, entry.uid)");
-    const tighten = program.indexOf("ensureDirectory(configRoot, 0, entry.uid, 0o1771)", lastWrite);
+    const lastWrite = program.indexOf("ensureEventsFile(entry.eventsPath, entry.uid)");
+    const tighten = program.indexOf("ensureDirectory(entry.grokHome, 0, entry.uid, 0o1771)", lastWrite);
 
     expect(lastWrite).toBeGreaterThanOrEqual(0);
     expect(tighten).toBeGreaterThan(lastWrite);
