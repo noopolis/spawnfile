@@ -269,6 +269,37 @@ usage-adjacent command is `du`.
    not rewritten as failed. Each must turn a test red.
 7. **Regression** — targeted `src/pi` and `src/runtime`, then the full suite.
 
+## Revision 4 — Grok 1.0.34 broker accounting (2026-09-17)
+
+The broker remains the single sealed writer. What changed for readers:
+
+- **Dedupe by `turn`.** A broker row carries `turn` (64-hex turn id). The broker
+  seals a turn's ledger bytes into its turn record and re-appends them on replay
+  when it cannot find the row, so two replays can append identical bytes.
+  `spawnfile usage` keeps the first row per `turn` — within each generation,
+  across `usage.jsonl.1` and `usage.jsonl`, and inside every aggregate. Rows
+  without a key are kept.
+- **Additive fields.** `limit_reason` (`tokens`/`requests`/`timeout`/`none`),
+  `model` (the declared model the broker verified), `outcome`, and
+  `estimated_requests` stay inside the unchanged `turn-usage.v1` record. A
+  malformed optional field is dropped, never the row.
+- **Estimated usage is shown as estimated.** A request whose response carried no
+  valid usage is charged `ceil(bodyBytes/2) + 4096` tokens; the row counts those
+  in `estimated_requests`. The table prefixes such tokens with `~` and states
+  how many turns and requests are estimates; JSON exposes `estimatedTurns`,
+  `estimatedRequests`, and `coverage.estimatedTurnCount`.
+- **Per-request stream.** `requests.jsonl` Grok rows carry `turn`, `model`,
+  proxy-measured `started_at`/`ended_at`, and `usage_source`
+  (`stream`/`upstream`/`estimated`); `src/runtime/usageRequestLedger.ts` parses
+  them and dedupes by `(turn, request)`.
+- **Ledger location.** `service.json` v2 names a `usageLedgerPath` per
+  registration. Production points every registration at the container ledger,
+  because both `spawnfile usage` and Daimon's wake fuse read only that file.
+- **Deny list.** Grok 1.0.13 could not start with a non-empty sandbox deny list,
+  so the ledger directory's protection was its unix mode alone. On 1.0.34 the
+  ledger directory is an enforced deny entry for every worker, as originally
+  designed above.
+
 ## Findings folded in (revision 2 → 3)
 
 Found independently by two reviewers, by tracing container machinery:
