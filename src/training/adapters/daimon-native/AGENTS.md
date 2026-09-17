@@ -39,6 +39,22 @@ Credential-shaped text is withheld with its detector named; digests and counts
 always publish. A read that fails publishes its failure and never fails the
 metered turn.
 
+**It cannot fire for a brokered Grok turn, and every Grok launch here is
+brokered** (`grokBrokerLaunchSchema`), so treat the capture as implemented for
+the direct engine path and structurally silent for this adapter's real traffic.
+The brokered worker writes its session tree inside its own provisioned engine
+home (`root:<worker> 1771` under a `<worker>:<broker> 0710` home), not under the
+slot runtime home this module reads — which nothing creates. The evaluator uid
+is neither that owner nor in that group, so it cannot even traverse the home.
+Every path the evaluator can read is one the worker cannot write, and the
+reverse, which is the isolation working rather than a gap to patch: making the
+transcript readable would mean changing an owner, a mode or a deny entry, and
+instrumentation never earns that. A seam, if one is ever wanted, is owned by the
+provisioner and the launcher together — never by this adapter. Until then the
+silence is why a failed Grok turn can publish `output: absent` while having
+really produced text, and Daimon's own redacted worker reason is the evidence to
+read instead.
+
 `grants/` binds evaluator inference grants (judges and DSPy optimizer) to Daimon's
 public control client and client-config renderer behind a Paideia-owned pin.
 
