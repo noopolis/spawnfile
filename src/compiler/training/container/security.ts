@@ -3,10 +3,10 @@ import {
   materializeDaimonGrokSeccompProfile
 } from "../../../shared/index.js";
 import { DAIMON_GROK_ENGINE_BROKER } from "../../../runtime/daimon/contractManifest.js";
-import { DAIMON_BROKER_TMPDIR } from "../../containerDaimonBrokerRender.js";
 import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../../../runtime/daimon/contractManifest.js";
 import { DAIMON_WAKE_FUSE_DIRECTORY } from "../../../runtime/daimon/config.js";
 import {
+  TRAINING_BROKER_TMPDIR,
   TRAINING_GRANT_HOME_ROOT,
   TRAINING_INFERENCE_DIRECTORY,
   TRAINING_PAIDEIA_ROOT,
@@ -40,7 +40,7 @@ export const trainingBrokerTmpfsTargets = (): readonly { path: string; size: str
   { path: TRAINING_WORKER_ROOT, size: "1g", mode: "0755" },
   { path: "/etc/daimon-engine-broker", size: "16m", mode: "0755" },
   { path: "/run/daimon-engine-broker", size: "64m", mode: "0755" },
-  { path: DAIMON_BROKER_TMPDIR, size: "64m", mode: "0755" },
+  { path: TRAINING_BROKER_TMPDIR, size: "64m", mode: "0755" },
   { path: DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath, size: "64m", mode: "0755" },
   { path: DAIMON_WAKE_FUSE_DIRECTORY, size: "16m", mode: "0755" }
 ];

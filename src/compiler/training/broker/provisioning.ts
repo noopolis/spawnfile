@@ -20,6 +20,7 @@ import {
   TRAINING_SLOT_USAGE_DIRECTORY,
   TRAINING_SLOT_USAGE_LEDGER,
   TRAINING_SUPERVISOR_DIRECTORY,
+  TRAINING_BROKER_TMPDIR,
   TRAINING_SLOT_WORKSPACE,
   TRAINING_WORKER_ROOT,
   TRAINING_WORKER_UID
@@ -69,6 +70,9 @@ export const trainingSlotDirectories = (): readonly { path: string; mode: string
   // Traverse only: the supervisor socket inside it is the uid gate, and a directory nobody but root may
   // write is what keeps that socket from being replaced by a laxer one.
   { path: TRAINING_SUPERVISOR_DIRECTORY, mode: "0711", uid: 0, gid: 0 },
+  // The broker and its relay run as uid 2100, outside the organization group, and shared `/tmp` is closed
+  // to them; this is their own temp, outside every wipe target (see `TRAINING_BROKER_TMPDIR`).
+  { path: TRAINING_BROKER_TMPDIR, mode: "0700", uid: DAIMON_BROKER_UID, gid: DAIMON_BROKER_UID },
   { path: TRAINING_WORKER_ROOT, mode: "0711", uid: 0, gid: 0 },
   // Denied and unused by training, which meters per slot — but a world-readable directory would make its
   // worker-uid canary meaningless, so both get the modes the production organization gives them.
@@ -121,7 +125,7 @@ export const renderTrainingBrokerProvisioning = (registration: DaimonGrokRegistr
   ...renderDaimonBrokerProvisioningProgram([registration], [], {
     turnStore: TRAINING_SLOT_TURN_STORE,
     inferenceLedgerPath: TRAINING_INFERENCE_LEDGER
-  }, "clear", TRAINING_OPTIONAL_DENY_DIRECTORIES),
+  }, "clear", TRAINING_OPTIONAL_DENY_DIRECTORIES, TRAINING_BROKER_TMPDIR),
   // The shared program leaves the broker's `/etc` root `0555 root:root`, which every uid can list. Training
   // denies that directory to its worker, and a canary can only observe a denial the kernel actually enforces.
   `chmod 0550 /etc/daimon-engine-broker; chown 0:${DAIMON_BROKER_UID} /etc/daimon-engine-broker`,

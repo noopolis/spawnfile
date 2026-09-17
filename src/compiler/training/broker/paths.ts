@@ -54,6 +54,20 @@ export const TRAINING_INFERENCE_LEDGER = `${TRAINING_INFERENCE_DIRECTORY}/infere
 /** Judge grant homes: `2000:2000 0700`, denied to every worker uid. Paideia reads it as `PAIDEIA_GROK_GRANT_HOME_ROOT`. */
 export const TRAINING_GRANT_HOME_ROOT = "/run/training/grants";
 
+/**
+ * Private temp for the broker and its relay (uid 2100, outside the organization
+ * group), deliberately **outside** `/run/daimon-engine-broker`.
+ *
+ * Production puts it at `<control root>/tmp`, which is fine there: that root is
+ * removed and recreated exactly once, at container start. Training
+ * re-provisions the same root on every recycle, and the launch mounts this
+ * directory as its own tmpfs — so a `tmp/` inside the cleared root is a *mount
+ * point*, and clearing a mount point fails `EBUSY`. A live P8 launch died
+ * exactly there. Its own tmpfs under `/run/training` is never a wipe target and
+ * is denied to every worker uid.
+ */
+export const TRAINING_BROKER_TMPDIR = "/run/training/broker-tmp";
+
 export const TRAINING_SUPERVISOR_DIRECTORY = "/run/training/supervisor";
 export const TRAINING_SUPERVISOR_SOCKET = `${TRAINING_SUPERVISOR_DIRECTORY}/control.sock`;
 export const TRAINING_SUPERVISOR_LOG = `${TRAINING_SUPERVISOR_DIRECTORY}/supervisor.log`;
@@ -98,6 +112,7 @@ export const TRAINING_EVALUATOR_ROOTS = [
  * or `/tmp` — and no entry covers another, because masks cannot nest.
  */
 export const TRAINING_ADDED_DENY_PATHS: readonly string[] = [
+  TRAINING_BROKER_TMPDIR,
   path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.controlSocketPath),
   path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.registrationPath),
   DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
@@ -113,6 +128,7 @@ export const TRAINING_ADDED_DENY_PATHS: readonly string[] = [
 
 /** Paths the provisioning program creates root-owned `0700` when absent, so every deny entry always has a target inode. */
 export const TRAINING_OPTIONAL_DENY_DIRECTORIES: readonly string[] = [
+  TRAINING_BROKER_TMPDIR,
   TRAINING_INFERENCE_DIRECTORY,
   TRAINING_SLOT_STATE_ROOT,
   TRAINING_SLOT_TURN_STORE,

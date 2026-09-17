@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import { renderDaimonGrokServiceConfig } from "../../containerDaimonGrokWorkerRender.js";
+import { trainingBrokerTmpfsTargets } from "../container/security.js";
+import { brokerProcessPlan } from "./processes.js";
 import { renderTrainingBrokerProvisioning, trainingSlotDirectories } from "./provisioning.js";
 import { resolveTrainingGrokDenyPaths, resolveTrainingGrokRegistration } from "./registration.js";
 import {
   TRAINING_ADDED_DENY_PATHS,
+  TRAINING_BROKER_TMPDIR,
+  TRAINING_SLOT_RUNTIME_HOME,
+  TRAINING_WORKER_HOME,
+  TRAINING_SLOT_WORKSPACE,
   TRAINING_CALLER_PROTECTED_PATHS,
   TRAINING_EVALUATOR_ROOTS,
   TRAINING_GRANT_HOME_ROOT,
@@ -116,5 +122,37 @@ describe("training slot provisioning", () => {
   it("reclaims every directory before it chmods it, because root holds no CAP_FOWNER", () => {
     const script = renderTrainingBrokerProvisioning(slot()).join("\n");
     expect(script).toContain('chown 0:0 "$target"; chmod "$mode" "$target"; chown "$owner:$group" "$target"');
+  });
+});
+
+describe("training wipe targets and the broker temp", () => {
+  it("keeps the broker and relay temp outside every directory provisioning or recycle clears", () => {
+    const cleared = ["/etc/daimon-engine-broker", "/run/daimon-engine-broker", TRAINING_SLOT_TURN_STORE,
+      TRAINING_SLOT_USAGE_DIRECTORY, TRAINING_WORKER_HOME, TRAINING_SLOT_WORKSPACE, TRAINING_SLOT_RUNTIME_HOME,
+      TRAINING_SLOT_ACCEPTANCE_STORE];
+    for (const root of cleared) {
+      expect(TRAINING_BROKER_TMPDIR === root || TRAINING_BROKER_TMPDIR.startsWith(`${root}/`), root).toBe(false);
+    }
+    expect(slot().denyPaths).toContain(TRAINING_BROKER_TMPDIR);
+  });
+
+  it("gives the broker temp to uid 2100 alone and mounts it as its own tmpfs", () => {
+    expect(trainingSlotDirectories().find((entry) => entry.path === TRAINING_BROKER_TMPDIR))
+      .toMatchObject({ mode: "0700", uid: 2100, gid: 2100 });
+    expect(trainingBrokerTmpfsTargets().map((entry) => entry.path)).toContain(TRAINING_BROKER_TMPDIR);
+  });
+
+  it("runs the broker and relay with that temp, never the production control-root one", () => {
+    for (const entry of brokerProcessPlan().filter((process) => process.uid === 2100)) {
+      expect(entry.argv).toContain(`TMPDIR=${TRAINING_BROKER_TMPDIR}`);
+      expect(entry.argv.join(" ")).not.toContain("TMPDIR=/run/daimon-engine-broker/tmp");
+    }
+  });
+
+  it("clears the broker roots through the mount-aware helper, never a bare recursive delete", () => {
+    const script = renderTrainingBrokerProvisioning(slot()).join("\n");
+    expect(script).toContain("spawnfile_clear_tree \"$broker_root\"");
+    expect(script).not.toContain("-mindepth 1 -delete");
+    expect(script).toContain("spawnfile_holds_mount");
   });
 });
