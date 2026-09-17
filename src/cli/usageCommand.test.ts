@@ -184,6 +184,7 @@ describe("spawnfile usage", () => {
       [DAIMON_GROK_TURN_USAGE_LEDGER.filePath]: `${sealed}\n${sealed}\n`
     }));
     expect(table.output).toMatch(/^cogsworth\s+grok\s+1\s+~100\.0k/mu);
+    expect(table.output).toMatch(/^grok\s+1\s+~100\.0k/mu);
     expect(table.output).toContain("~ 1 turn(s) include ESTIMATED usage: 2 request(s) returned no provider-reported usage");
   });
 

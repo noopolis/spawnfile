@@ -138,7 +138,7 @@ const renderTable = (
     .sort((left, right) => right.tokens - left.tokens || left.engine.localeCompare(right.engine));
   const engineWidth = Math.max(8, ...engineRows.map((row) => row.engine.length));
   for (const row of engineRows) {
-    lines.push(`${pad(row.engine, engineWidth)}  ${pad("", 8)}${padStart(String(row.turns), 7)}${padStart(formatTokens(row.tokens), 9)}${padStart(formatUsd(row.notionalUsd, row.turns), 11)}`);
+    lines.push(`${pad(row.engine, engineWidth)}  ${pad("", 8)}${padStart(String(row.turns), 7)}${padStart(`${row.estimatedTurns > 0 ? "~" : ""}${formatTokens(row.tokens)}`, 9)}${padStart(formatUsd(row.notionalUsd, row.turns), 11)}`);
   }
   if (engineRows.length === 0) lines.push("no metered turns in this window");
 
