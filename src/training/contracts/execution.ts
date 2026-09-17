@@ -116,7 +116,8 @@ export interface InferenceRequest {
 
 export type InferenceModelBasis = 'provider-reported' | 'requested-assumption';
 
-export type InferenceFailureKind = 'quota' | 'transport' | 'unavailable' | 'authentication' |
+/** `auth-stale`: a shared credential authority (a broker realm) is stale; routes on that authority fail fast. */
+export type InferenceFailureKind = 'quota' | 'transport' | 'unavailable' | 'authentication' | 'auth-stale' |
   'protocol' | 'invalid-response' | 'cancelled' | 'timeout' | 'unsupported' | 'unknown';
 
 export const inferenceDiagnosticCodes = ['initialization', 'tool-isolation', 'subscription', 'transport-framing', 'native-process',
@@ -158,6 +159,8 @@ export interface InferenceResult {
 
 export interface InferenceProvider {
   id: string;
-  capabilities: { tools: 'disabled'; billing: 'subscription' | 'api' | 'local' | 'mixed'; temperature: boolean; seed: boolean };
+  capabilities: { tools: 'disabled'; billing: 'subscription' | 'api' | 'local' | 'mixed'; temperature: boolean; seed: boolean;
+    /** Shared credential authority; after `auth-stale` routing skips every later route naming the same authority. */
+    credentialAuthority?: string };
   generate(request: InferenceRequest): Promise<InferenceResult>;
 }

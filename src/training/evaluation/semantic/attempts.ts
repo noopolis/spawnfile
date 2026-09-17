@@ -22,7 +22,7 @@ export function failedInferenceAttempts(error: unknown): readonly InferenceAttem
 /** Only a trusted provider's typed discriminator; never infer policy from prose. */
 export function inferenceFailureKind(error: unknown): InferenceFailureKind | undefined {
   if (!(error instanceof Error) || !('kind' in error)) return undefined;
-  const kinds: readonly unknown[] = ['quota', 'transport', 'unavailable', 'authentication',
+  const kinds: readonly unknown[] = ['quota', 'transport', 'unavailable', 'authentication', 'auth-stale',
     'protocol', 'invalid-response', 'cancelled', 'timeout', 'unsupported', 'unknown'];
   return kinds.includes(error.kind) ? error.kind as InferenceFailureKind : undefined;
 }

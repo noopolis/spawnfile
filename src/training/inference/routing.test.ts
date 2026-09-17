@@ -73,3 +73,23 @@ it('cancels an audit wait while retaining the completed attempt', async () => {
   await started; controller.abort();
   await expect(waiting).rejects.toMatchObject({ kind: 'cancelled', attempts: [{ outcome: 'completed' }] });
 });
+it('fails a stale credential authority fast: later routes on it are skipped, other authorities remain authored fallbacks', async () => {
+  const on = (authority: string | undefined, generate: InferenceProvider['generate']): InferenceProvider => ({ ...provider(generate), id: authority ?? 'plain',
+    capabilities: { tools: 'disabled', billing: 'subscription', seed: false, temperature: false, ...(authority === undefined ? {} : { credentialAuthority: authority }) } });
+  const stale = vi.fn(async () => { throw new InferenceFailure('auth-stale', 'stale realm'); });
+  const sameRealm = vi.fn(async () => result);
+  const claude = vi.fn(async () => ({ ...result, route: 'claude' }));
+  const routed = createRoutedInference({ ...options([on('broker', stale), on('broker', sameRealm), on(undefined, claude)]) });
+  const answer = await routed.generate({ prompt: 'p', model: 'm' });
+  expect(stale).toHaveBeenCalledTimes(1); expect(sameRealm).not.toHaveBeenCalled(); expect(claude).toHaveBeenCalledTimes(1);
+  expect(answer.attempts).toMatchObject([{ ordinal: 1, failureKind: 'auth-stale' }, { ordinal: 2, outcome: 'completed', responseRoute: 'claude' }]);
+  const only = createRoutedInference({ ...options([on('broker', stale), on('broker', sameRealm)]) });
+  await expect(only.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'auth-stale', attempts: [{ failureKind: 'auth-stale' }] });
+  expect(sameRealm).not.toHaveBeenCalled();
+  const budget = createRoutedInference({ ...options([on('broker', stale), on(undefined, claude)]), maxAttempts: 1 });
+  await expect(budget.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'auth-stale' });
+  const unnamed = vi.fn(async () => { throw new InferenceFailure('auth-stale', 'stale'); });
+  const plainTwin = vi.fn(async () => result);
+  await expect(createRoutedInference(options([on(undefined, unnamed), on(undefined, plainTwin)])).generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'auth-stale' });
+  expect(plainTwin).not.toHaveBeenCalled();
+});

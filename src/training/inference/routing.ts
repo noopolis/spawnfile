@@ -35,11 +35,14 @@ export function createRoutedInference(options: RoutedInferenceOptions): Inferenc
       if (!request.prompt.trim()) throw new InferenceFailure('unsupported', 'Inference prompt must not be empty');
       const attempts: InferenceAttempt[] = [];
       const deadline = Date.now() + timeoutMs;
+      // A stale shared credential authority fails fast: later routes on it are never attempted.
+      const stale = new Set<string>();
+      let index = 0;
       for (let ordinal = 0; ordinal < maxAttempts; ordinal++) {
         if (request.signal?.aborted) throw new InferenceFailure('cancelled', 'Routed inference cancelled', { attempts });
         const remaining = deadline - Date.now();
         if (remaining <= 0) throw new InferenceFailure('timeout', 'Routed inference time budget exhausted', { attempts });
-        const route = routes[ordinal]!;
+        const route = routes[index++]!;
         const startedAt = new Date().toISOString();
         let result: InferenceResult | undefined;
         let failure: InferenceFailure | undefined;
@@ -68,7 +71,10 @@ export function createRoutedInference(options: RoutedInferenceOptions): Inferenc
           throw new InferenceFailure(kind, 'Inference audit persistence failed', { attempts });
         }
         if (result !== undefined) return { ...result, attempts: immutableAttempts(attempts) };
-        if (!['quota', 'transport', 'unavailable', 'timeout', 'invalid-response'].includes(failure!.kind) || ordinal + 1 === maxAttempts) {
+        if (failure!.kind === 'auth-stale') stale.add(authority(route));
+        while (index < routes.length && stale.has(authority(routes[index]!))) index++;
+        if (!['quota', 'transport', 'unavailable', 'timeout', 'invalid-response', 'auth-stale'].includes(failure!.kind) ||
+          ordinal + 1 === maxAttempts || index === routes.length) {
           throw new InferenceFailure(failure!.kind, `Routed inference stopped (${failure!.kind})`, { attempts });
         }
       }
@@ -76,6 +82,8 @@ export function createRoutedInference(options: RoutedInferenceOptions): Inferenc
     },
   };
 }
+
+const authority = (route: InferenceRoute): string => route.provider.capabilities.credentialAuthority ?? `provider:${route.provider.id}`;
 
 async function generateBounded(route: InferenceRoute, request: InferenceRequest, timeoutMs: number): Promise<InferenceResult> {
   const controller = new AbortController();
