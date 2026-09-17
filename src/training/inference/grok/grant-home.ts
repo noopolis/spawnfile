@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { Stats } from 'node:fs';
 import { lstat, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { grokGrantEnvKey, type GrokInferenceGrant, type GrokInferenceGrantAuthority } from '../../contracts/inference-grants.js';
@@ -27,13 +28,16 @@ export async function prepareGrokGrantCall(root: string, authority: GrokInferenc
   }
   // Exactly the key Daimon's renderer declares; any other name means the client config and the child environment disagree.
   if (authority.envKey !== grokGrantEnvKey) throw new InferenceFailure('unsupported', `Grok grant environment key must be ${grokGrantEnvKey}`);
-  await privateDirectory(root, 0o022, 'Grok grant home root');
+  const before = await privateDirectory(root, 'Grok grant home root');
   const dir = await mkdtemp(path.join(root, 'grok-grant-'));
   try {
-    await privateDirectory(dir, 0o077, 'Grok grant call directory');
+    // The root this call actually wrote into must still be the directory that passed the check.
+    const after = await privateDirectory(root, 'Grok grant home root');
+    if (after.dev !== before.dev || after.ino !== before.ino) throw new InferenceFailure('unsupported', 'Grok grant home root changed while preparing the call');
+    await privateDirectory(dir, 'Grok grant call directory');
     const home = path.join(dir, 'home'), work = path.join(dir, 'work');
     await mkdir(home, { mode: 0o700 }); await mkdir(work, { mode: 0o700 });
-    await privateDirectory(home, 0o077, 'Grok grant home'); await privateDirectory(work, 0o077, 'Grok grant workspace');
+    await privateDirectory(home, 'Grok grant home'); await privateDirectory(work, 'Grok grant workspace');
     await writeFile(path.join(home, 'config.toml'), config, { mode: 0o600, flag: 'wx' });
     const promptFile = path.join(work, 'prompt.txt');
     await writeFile(promptFile, prompt, { mode: 0o600, flag: 'wx' });
@@ -45,11 +49,13 @@ export async function prepareGrokGrantCall(root: string, authority: GrokInferenc
   }
 }
 
-async function privateDirectory(target: string, forbidden: number, label: string): Promise<void> {
+/** Absolute, a real directory (never a symlink), mode exactly 0700 and owned by this uid. */
+async function privateDirectory(target: string, label: string): Promise<Stats> {
   const uid = process.getuid?.();
-  let stat;
+  let stat: Stats;
   try { stat = await lstat(target); } catch { throw new InferenceFailure('unsupported', `${label} is unavailable`); }
-  if (!path.isAbsolute(target) || !stat.isDirectory() || stat.isSymbolicLink() || (uid !== undefined && stat.uid !== uid) || (stat.mode & forbidden) !== 0) {
-    throw new InferenceFailure('unsupported', `${label} must be an absolute private directory owned by this user`);
+  if (!path.isAbsolute(target) || !stat.isDirectory() || stat.isSymbolicLink() || (uid !== undefined && stat.uid !== uid) || (stat.mode & 0o777) !== 0o700) {
+    throw new InferenceFailure('unsupported', `${label} must be an absolute directory owned by this user with mode 0700`);
   }
+  return stat;
 }
