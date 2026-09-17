@@ -107,7 +107,7 @@ export interface EvaluationContext {
   /** Trusted persisted measurement sink; never receives prompt text or judge reasons. */
   observeMeasurement?: (measurement: EvaluationMeasurement) => void | Promise<void>;
   signal?: AbortSignal;
-  /** Maximum independent checks of one stage in flight; 1 is strictly sequential. Defaults to 2. */
+  /** Maximum slotted (inference-capable) stage checks in flight; built-in mechanical checks take no slot. Defaults to 2. */
   checkConcurrency?: number;
 }
 export interface EvaluationMeasurement {

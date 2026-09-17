@@ -19,7 +19,7 @@ Owns evaluator registration, execution and the shared result contract.
 
 Stage checks run concurrently only when every evaluator in the check opts in with
 `concurrency` (it never reads sibling results) and no node references another result.
-The bound is `checkConcurrency` (default 2, max 8; 1 is strictly sequential). Checks
+The bound is `checkConcurrency` (default 2, max 8; 1 allows one slotted check at a time). Checks
 start in declaration order, checks sharing a declared resource (a judge cache, an
 embedding provider) never overlap, and results, scores and measurements commit in
 declaration order, so a plan is identical to sequential evaluation apart from random
@@ -28,5 +28,6 @@ persist in arrival order across concurrent judges; each judge's own attempts sta
 ordered. A bounded slot or shared resource passes to the next check only after its
 holder's ordered commit outcome is known, so no run starts after a known commit
 failure; started work settles first. Mechanical-only checks spend no inference and
-take no slot. A test enforces that opted-in builtins never read results or scores.
+take no slot; the exemption is recorded when createEvaluationRegistry builds its frozen
+built-ins, so custom evaluators always take a slot whatever kind they declare. A test enforces that opted-in builtins never read results or scores.
 Cancellation leaves checks that already finished with their own outcome.

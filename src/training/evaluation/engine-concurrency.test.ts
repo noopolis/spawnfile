@@ -219,6 +219,60 @@ describe('concurrent independent judges', () => {
     }
   });
 
+  it('lets a judge start at bound one while a built-in mechanical check is still pending', async () => {
+    const { pending, judges } = deferredJudges(['grounding']);
+    let releaseSchema!: (text: string) => void;
+    const schema = new Promise<string>(resolve => { releaseSchema = resolve; });
+    const plan = evaluatePlan([{ id: 'writing', checks: [
+      { id: 'shape', eval: 'json-schema', input: 'artifact:article', schema: 'schema.json' }, rubric('grounding', 'grounding'),
+    ] }], evaluationContext({ judges, checkConcurrency: 1, readText: () => schema }), registry);
+    // Mutation evidence: slotting built-in mechanical checks leaves the judge queued here.
+    await inFlight(pending, 1);
+    releaseSchema(JSON.stringify({ type: 'object' }));
+    pending[0]!.resolve(judgment(0.9));
+    const settled = await plan;
+    expect(settled.checks.shape!.status).toBe('pass');
+    expect(Object.keys(settled.checks)).toEqual(['shape', 'grounding', 'writing']);
+  });
+
+  it('always slots custom evaluators, even when they declare a mechanical kind', async () => {
+    const { pending, judges } = deferredJudges(['grounding']);
+    let finish!: () => void;
+    const custom = createEvaluationRegistry({ spender: {
+      definition: { version: '1', kind: 'mechanical', incremental: false, stopProof: false, validate() {} },
+      concurrency: () => [],
+      evaluate: () => new Promise(resolve => { finish = () => resolve(result('pass', 'could have spent inference')); }),
+    } });
+    const plan = evaluatePlan([{ id: 'writing', checks: [{ id: 'spender', eval: 'spender' }, rubric('grounding', 'grounding')] }],
+      evaluationContext({ judges, checkConcurrency: 1 }), custom);
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(pending).toHaveLength(0);
+    finish();
+    await inFlight(pending, 1);
+    pending[0]!.resolve(judgment(0.9));
+    expect((await plan).status).toBe('pass');
+  });
+
+  it('settles dependent, bound-one and all-mechanical graphs within a bounded time', async () => {
+    const immediate: Record<string, JudgeRoute> = {};
+    for (const name of ['grounding', 'prose']) {
+      immediate[name] = { model: 'm', provider: { id: name, capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },
+        generate: async () => ({ text: judgment(0.9), model: 'm', route: 'r', usage: null }) } };
+    }
+    const mechanical = { id: 'format', eval: 'equals', input: 'output.text', value: '4' };
+    const graphs: [Stage[], number][] = [
+      [[{ id: 'deps', checks: [{ id: 'a', passed: 'missing' }, { id: 'b', all: [{ passed: 'a' }] }, { id: 'c', not: { passed: 'b' } }] }], 2],
+      [stages(), 1],
+      [[{ id: 'mech', checks: [mechanical, { ...mechanical, id: 'again' }, { id: 'count', eval: 'tool-count', tool: 'x', at_most: 1 }] }], 1],
+      [[{ id: 'mech', checks: [mechanical, { ...mechanical, id: 'again' }] }, { id: 'next', when: { passed: 'mech' }, checks: [rubric('grounding', 'grounding')] }], 8],
+    ];
+    for (const [plan, checkConcurrency] of graphs) {
+      const timeout = new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('evaluation hung')), 1000));
+      await expect(Promise.race([evaluatePlan(plan, evaluationContext({ judges: immediate, checkConcurrency }), registry), timeout])).resolves.toBeDefined();
+    }
+  });
+
   it('rejects an invalid concurrency bound before any evaluation', async () => {
     for (const value of [0, 9, 1.5]) {
       await expect(evaluatePlan(stages(), evaluationContext({ checkConcurrency: value }), registry)).rejects.toThrow('concurrency');

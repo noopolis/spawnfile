@@ -53,7 +53,7 @@ export async function runStageChecks(tasks: readonly StageCheckTask[], limit: nu
     return committed;
   };
   for (const [index, task] of tasks.entries()) {
-    if (task.resources === undefined || limit === 1) {
+    if (task.resources === undefined) {
       await committed;
       if (failure) break;
       settle(index, task.run(), false);
@@ -75,6 +75,8 @@ export async function runStageChecks(tasks: readonly StageCheckTask[], limit: nu
       if (failure) throw new Error('Stage evaluation stopped after an earlier commit failure');
       return task.run();
     })();
+    // The ordered commit chain observes a rejection later; mark it handled now.
+    running.catch(() => undefined);
     // Resource successors wait for this commit outcome, not merely for the run.
     const outcome = settle(index, running, slotted);
     for (const resource of task.resources) holders.set(resource, outcome);

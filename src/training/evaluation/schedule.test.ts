@@ -102,7 +102,19 @@ describe('stage check scheduling', () => {
     expect(settled).toBe(true);
   });
 
-  it('runs every task inline when the bound is one', async () => {
+  it('starts slotted work at bound one while slot-free work is still pending', async () => {
+    const mechanical = deferred();
+    const judged = vi.fn(async () => pass('judge'));
+    const running = runStageChecks([
+      { resources: [], slot: false, run: async () => { await mechanical.promise; return pass('mechanical'); } },
+      { resources: [], run: judged },
+    ], 1, async () => undefined);
+    await vi.waitFor(() => expect(judged).toHaveBeenCalledTimes(1));
+    mechanical.resolve();
+    await running;
+  });
+
+  it('runs slotted tasks one at a time when the bound is one', async () => {
     const seen: number[] = [];
     let active = 0;
     await runStageChecks([0, 1, 2].map(index => ({ resources: [], run: async () => {

@@ -3,6 +3,7 @@ import type { CheckNode, LiveCheck, Stage } from '../contracts/dataset.js';
 import type { EvaluationContext, EvaluationRegistry, EvaluationResult, PlanEvaluation } from '../contracts/evaluation.js';
 import { checkThreshold, collectJudgeCalls, combine, negate, result, weightedScore } from './logic/index.js';
 import { checkConcurrency, runStageChecks } from './schedule.js';
+import { isBuiltinMechanical } from './registry.js';
 
 function requireOneOperation(node: CheckNode): void {
   const operators = ['all', 'any', 'not', 'passed', 'score', 'eval'];
@@ -95,9 +96,9 @@ function independentResources(node: CheckNode, context: EvaluationContext, regis
   } catch { return undefined; }
 }
 
-/** Mechanical-only trees spend no inference, so they never occupy a bounded judge slot. */
+/** Built-in mechanical-only trees spend no inference, so they never occupy a bounded slot. */
 function mechanicalOnly(node: CheckNode, registry: EvaluationRegistry): boolean {
-  if (node.eval) return registry[node.eval]?.definition.kind === 'mechanical';
+  if (node.eval) return isBuiltinMechanical(registry[node.eval]);
   const children = node.all ?? node.any ?? (node.not ? [node.not] : []);
   return children.length > 0 && children.every(child => mechanicalOnly(child, registry));
 }
