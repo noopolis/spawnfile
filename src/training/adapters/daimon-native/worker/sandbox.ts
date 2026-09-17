@@ -37,7 +37,7 @@ async function persistGrokBrokerProjection(runtime: NativeRuntimeModule, config:
   let slot: unknown;
   try { slot = JSON.parse(await readPrivateFile(broker.slotPreflightReceipt, 262144)); }
   catch (error) { throw new Error('Grok subject turns require the root slot supervisor preflight receipt', { cause: error }); }
-  const verified = verify(slot, projection);
+  const verified = verify(slot, projection, { expectedNonce: broker.expectedNonce, minGeneration: broker.minGeneration });
   const receipt = parseGrokBrokerReceipt(bindGrokBrokerProjection(projection, verified, options.trialId, options.configSha256), launch, options.trialId);
   await writeFile(join(options.controlRoot, 'sandbox-projection.json'), `${JSON.stringify(receipt)}\n`, { flag: 'wx', mode: 0o600 });
 }

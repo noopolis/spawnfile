@@ -42,14 +42,15 @@ test('Grok slot projection is resolved by Daimon, digest-bound to the launch and
     let daimonDigest: ((value: unknown) => string) | undefined;
     let verifyFailure: string | undefined;
     const calls: unknown[] = [];
-    const runtime = {
+    const grokRuntime: Partial<NativeRuntimeModule> = {
       resolveOrganizationGrokBrokerProjection: (value, agentId, context) => { calls.push([value, agentId, context]); return projection; },
       grokBrokerProjectionSha256: value => daimonDigest ? daimonDigest(value) : grokProjectionSha256(value as typeof projection),
-      verifyGrokSlotPreflightReceipt: (value, bound) => {
+      verifyGrokSlotPreflightReceipt: (value, bound, freshness) => {
         if (verifyFailure) throw new Error(verifyFailure);
-        assert.deepEqual(bound, projection); return value;
+        assert.deepEqual(bound, projection); calls.push(freshness); return value;
       },
-    } as NativeRuntimeModule;
+    };
+    const runtime = grokRuntime as NativeRuntimeModule;
     const persist = () => persistNativeSandboxProjection(runtime, config, options, launch);
     await assert.rejects(persistNativeSandboxProjection({} as NativeRuntimeModule, config, options, launch), /lacks the Grok broker/);
     await assert.rejects(persist(), /root slot supervisor preflight receipt/);
@@ -75,6 +76,7 @@ test('Grok slot projection is resolved by Daimon, digest-bound to the launch and
     await assert.rejects(persistNativeSandboxProjection(runtime, config, { ...options, timeoutMs: 1000 }, launch), /timeout exceeds/);
     await assert.rejects(readFile(join(launch.controlRoot, 'sandbox-projection.json')), /ENOENT/);
     await persist();
+    assert.deepEqual(calls.at(-1), { expectedNonce: launch.broker.expectedNonce, minGeneration: launch.broker.minGeneration });
     const receipt = JSON.parse(await readFile(join(launch.controlRoot, 'sandbox-projection.json'), 'utf8'));
     assert.equal(receipt.schema, 'paideia.daimon-native.grok-broker-projection.v1');
     assert.equal(receipt.projectionSha256, launch.broker.projectionSha256);

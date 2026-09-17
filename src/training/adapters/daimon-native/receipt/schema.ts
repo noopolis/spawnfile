@@ -59,8 +59,12 @@ export const grokBrokerLaunchSchema = z.strictObject({
   seccompProfileSha256: digest,
   limits: z.strictObject({ maxRequests: positive, maxTokens: positive, timeoutMs: positive }),
   evaluatorPaths: z.array(z.strictObject({ role: z.enum(grokEvaluatorRoles), path: nativePath })).min(grokEvaluatorRoles.length).max(64),
-  /** Root slot supervisor output (`noopolis.daimon.grok-slot-preflight.v1`), written after provisioning or recycle. */
+  /** Root slot supervisor output (`noopolis.daimon.grok-slot-preflight.v2`), written after provisioning or recycle. */
   slotPreflightReceipt: nativePath,
+  /** The 32-byte hex nonce Paideia sent with this trial's recycle request; the receipt must echo it. */
+  expectedNonce: digest,
+  /** One above the last generation Paideia accepted for this slot (1 for an unseen slot). */
+  minGeneration: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
 });
 
 const launchV1 = z.strictObject({ schema: z.literal('paideia.daimon-native.launch.v1'), ...common, agent: codexAgent, credentials: z.array(credential).max(1) });

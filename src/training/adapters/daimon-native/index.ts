@@ -8,5 +8,5 @@ export type { NativeExternalInputs, NativeExternalInput, NativeChildExternalInpu
 export { createNativeHttpClient } from './transport/index.js';
 export type { NativeExecutionHandle, NativeWorkerPath, NativeWorkerRequest } from './transport/index.js';
 
-export { nativeChildArguments } from './child/index.js';
-export type { NativeChildExecution } from './child/index.js';
+export { createGrokSlotFreshnessStore, nativeChildArguments } from './child/index.js';
+export type { GrokSlotFreshness, GrokSlotFreshnessStore, NativeChildExecution } from './child/index.js';

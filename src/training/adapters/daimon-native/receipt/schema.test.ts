@@ -57,6 +57,9 @@ test('launch v2 selects Codex or Grok and v1 receipts still parse as Codex', asy
       { ...valid, broker: { ...broker, evaluatorPaths: broker.evaluatorPaths.map(row => row.role === 'context' ? { ...row, path: '/native' } : row) } },
       { ...valid, broker: { ...broker, limits: { ...broker.limits, maxTokens: valid.limits.wakeTokenCeiling + 1 } } },
       { ...valid, broker: { ...broker, extra: true } },
+      { ...valid, broker: { ...broker, expectedNonce: undefined } },
+      { ...valid, broker: { ...broker, expectedNonce: 'B'.repeat(64) } },
+      { ...valid, broker: { ...broker, minGeneration: 0 } },
     ]) expect(() => parseNativeLaunch(mutation), JSON.stringify(mutation).slice(0, 80)).toThrow();
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });

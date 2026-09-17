@@ -15,7 +15,7 @@ async function fixture(mode?: string) { const f = await childFixture(mode); root
 it('runs a real fresh worker child with explicit environment, observed native usage and verified normal stop', async () => {
   const f = await fixture(); vi.stubEnv('UNIT_PARENT_SECRET', 'not-in-child');
   const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process' } }).start(f.input);
-  expect(verifyChildSandbox).toHaveBeenCalledWith(expect.objectContaining({ configSha256: f.launch.configSha256 }), f.input.trialId, f.input.protectedPaths, expect.any(AbortSignal));
+  expect(verifyChildSandbox).toHaveBeenCalledWith(expect.objectContaining({ configSha256: f.launch.configSha256 }), f.input.trialId, f.input.protectedPaths, expect.any(AbortSignal), undefined);
   const env = JSON.parse(await readFile(join(f.launch.controlRoot, 'child-env.json'), 'utf8'));
   expect(env).toMatchObject({ fresh: true, home: f.launch.projections.find(row => row.role === 'home')!.target, transport: 'unit-transport-value' });
   const result = await session.run({ id: 'task', text: 'Assigned work' });

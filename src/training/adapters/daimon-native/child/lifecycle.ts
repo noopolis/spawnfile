@@ -8,6 +8,7 @@ import { createNativeHttpClient, type NativeExecutionHandle } from '../transport
 import { nativeChildArguments, nativeChildEnvironment, validateChildPaths } from './arguments.js';
 import { verifyChildSandbox } from './sandbox.js';
 import type { NativeChildExecution } from './types.js';
+import type { GrokSlotFreshnessStore } from './slot-freshness.js';
 import { childDiagnostics } from './diagnostics.js';
 
 /** One fresh worker process in the caller's existing container; no Docker or remote proof. */
@@ -24,12 +25,12 @@ export async function startOwnedChild(execution: NativeChildExecution, launch: V
     await validateChildPaths(launch);
     const env = await nativeChildEnvironment(launch);
     const token = (await readPrivateFile(launch.tokenFile, 4096)).trim();
-    return await launchChild(launch, trialId, timeoutMs, env, token, startup.signal, protectedPaths);
+    return await launchChild(launch, trialId, timeoutMs, env, token, startup.signal, protectedPaths, execution.grokSlots);
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
 }
 
 async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeoutMs: number, env: NodeJS.ProcessEnv,
-  token: string, startup: AbortSignal, protectedPaths: readonly string[]): Promise<NativeExecutionHandle> {
+  token: string, startup: AbortSignal, protectedPaths: readonly string[], grokSlots?: GrokSlotFreshnessStore): Promise<NativeExecutionHandle> {
   const http = createNativeHttpClient(`http://${launch.host.bindHost}:${launch.host.port}`, token);
   const diagnostics = await childDiagnostics(launch.controlRoot, trialId, launch.configSha256);
   const child = spawn(process.execPath, nativeChildArguments(launch, trialId, timeoutMs), {
@@ -83,7 +84,7 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
     }
     const health = await http<{ version: string; state: string; agents: { agentId: string }[] }>('/trial/health', undefined, 1000, startup);
     if (health.version !== 'noopolis.daimon.organization-runtime-health.v1' || health.state !== 'running' || health.agents.length !== 1 || health.agents[0]?.agentId !== launch.agent.id) throw new Error('Native worker readiness identity mismatch');
-    await verifyChildSandbox(launch, trialId, protectedPaths, startup);
+    await verifyChildSandbox(launch, trialId, protectedPaths, startup, grokSlots);
     startup.throwIfAborted();
     const request: NativeExecutionHandle['request'] = async <T>(path: Parameters<NativeExecutionHandle['request']>[0], body?: unknown, ms?: number, signal?: AbortSignal) => {
       if (failure || exited) throw new Error('Owned native worker is no longer alive');

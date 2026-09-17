@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { bindGrokBrokerProjection, grokProjectionSha256, type GrokBrokerProjection, type GrokSlotPreflight } from './receipt/grok.js';
-import type { GrokNativeLaunch, NativeLaunch, VerifiedNativeLaunch } from './receipt/index.js';
+import { grokProjectionSha256, type GrokBrokerProjection, type GrokSlotPreflight } from './receipt/grok.js';
+import type { GrokNativeLaunch, NativeLaunch } from './receipt/index.js';
 import type { NativeConfig } from './worker/index.js';
 
 /** Byte-exact output of Daimon's resolver for its `fixtures/grok-slot-preflight/projection-input.json`. */
@@ -21,6 +21,7 @@ export const daimonProjectionGolden: GrokBrokerProjection = {
 };
 export const daimonProjectionGoldenSha256 = '9e8bbd4e9337df40b90d5a382ece6c3745cb5e11038d10ea17b5032408bf30e4';
 
+export const fixtureNonce = '5f0e2a1c9b8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f';
 const realm = ['/var/lib/spawnfile/daimon/grok-bootstrap-auth', '/var/lib/spawnfile/daimon/grok-subscription-realm'];
 
 /** Turns a Codex launch fixture into a Grok v2 child launch whose evaluator roots are real directories under `root`. */
@@ -35,7 +36,7 @@ export async function grokLaunchFrom<T extends NativeLaunch>(launch: T, root: st
     broker: { projectionVersion: 'noopolis.daimon.grok-broker-projection.v1', projectionSha256: '0'.repeat(64), slot: 0, workerUid: 2200,
       workerHomePath: join(slot, 'worker-home'), architecture: 'arm64', usageLedgerPath: join(roots['slot-ledger'], 'usage.jsonl'),
       seccompProfileSha256: '7'.repeat(64), limits: { maxRequests: 24, maxTokens: 400000, timeoutMs: 480000 },
-      evaluatorPaths: Object.entries(roots).map(([role, path]) => ({ role, path })), slotPreflightReceipt: join(slot, 'slot-preflight.json') } });
+      evaluatorPaths: Object.entries(roots).map(([role, path]) => ({ role, path })), slotPreflightReceipt: join(slot, 'slot-preflight.json'), expectedNonce: fixtureNonce, minGeneration: 3 } });
   next.broker.projectionSha256 = grokProjectionSha256(grokProjectionFor(next));
   return next;
 }
@@ -57,8 +58,8 @@ export function grokProjectionFor(launch: GrokNativeLaunch, extraDeny: readonly 
     seccompProfileSha256: broker.seccompProfileSha256, attestation: { ...daimonProjectionGolden.attestation, eventsPath: `${broker.workerHomePath}/.grok/sessions/sandbox-events.jsonl` } };
 }
 
-export function slotPreflightFor(projection: GrokBrokerProjection, paths = projection.denyPaths): GrokSlotPreflight {
-  return { version: 'noopolis.daimon.grok-slot-preflight.v1', slot: projection.slot, worker_uid: projection.workerUid,
+export function slotPreflightFor(projection: GrokBrokerProjection, paths = projection.denyPaths, generation = 3, nonce = fixtureNonce): GrokSlotPreflight {
+  return { version: 'noopolis.daimon.grok-slot-preflight.v2', slot: projection.slot, worker_uid: projection.workerUid, generation, nonce,
     projection_sha256: grokProjectionSha256(projection), sandbox_profile_sha256: projection.profileSha256,
     seccomp_profile_sha256: projection.seccompProfileSha256, sandbox_runtime: 'bubblewrap', grok_executable_sha256: projection.grokExecutableSha256,
     canaries: paths.map(path => ({ path, method: 'sandboxed-read', result: 'denied' })), created_at: '2026-09-17T12:00:00.000Z' };
@@ -67,9 +68,4 @@ export function slotPreflightFor(projection: GrokBrokerProjection, paths = proje
 export async function writeGrokSlotReceipt(launch: GrokNativeLaunch, value: unknown = slotPreflightFor(grokProjectionFor(launch))): Promise<void> {
   await mkdir(dirname(launch.broker.slotPreflightReceipt), { recursive: true });
   await writeFile(launch.broker.slotPreflightReceipt, JSON.stringify(value));
-}
-
-export async function writeGrokProjectionReceipt(launch: VerifiedNativeLaunch & GrokNativeLaunch, trialId: string, projection = grokProjectionFor(launch)): Promise<void> {
-  await writeFile(join(launch.controlRoot, 'sandbox-projection.json'),
-    JSON.stringify(bindGrokBrokerProjection(projection, slotPreflightFor(projection), trialId, launch.configSha256)), { mode: 0o600 });
 }

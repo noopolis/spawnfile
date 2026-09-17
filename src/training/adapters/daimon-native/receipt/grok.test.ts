@@ -8,7 +8,12 @@ import { daimonProjectionGolden, daimonProjectionGoldenSha256, grokLaunchFrom, g
 test('canonical projection digest equals the digest Daimon binds into slot receipts', () => {
   expect(grokProjectionSha256(daimonProjectionGolden)).toBe(daimonProjectionGoldenSha256);
   expect(canonicalJson({ b: [1, 'x', null, true], a: { d: 2, c: 1 } })).toBe('{"a":{"c":1,"d":2},"b":[1,"x",null,true]}');
-  for (const invalid of [Number.NaN, -0, new Date(0), undefined]) expect(() => canonicalJson(invalid)).toThrow();
+  const sparse = [1]; sparse.length = 2;
+  const accessor = Object.defineProperty({}, 'a', { get: () => 1, enumerable: true });
+  for (const invalid of [Number.NaN, -0, new Date(0), undefined, String.fromCharCode(0xd800), { [String.fromCharCode(0xdc00)]: 1 },
+    String.fromCharCode(0xdc00), sparse, accessor, { [Symbol('s')]: 1 }]) expect(() => canonicalJson(invalid)).toThrow();
+  const pair = String.fromCodePoint(0x1f600);
+  expect(canonicalJson(Object.assign(Object.create(null) as object, { [pair]: pair, b: [[]], B: 1 }))).toBe(`{"B":1,"b":[[]],"${pair}":"${pair}"}`);
 });
 
 test('persisted Grok projection is bound to the trial, launch, digest and every evaluator canary', async () => {
@@ -36,6 +41,12 @@ test('persisted Grok projection is bound to the trial, launch, digest and every 
       [{ ...bound, slotPreflight: { ...bound.slotPreflight, sandbox_profile_sha256: 'e'.repeat(64) } }, /slot_preflight/],
       [{ ...bound, slotPreflight: { ...bound.slotPreflight, canaries: bound.slotPreflight.canaries.slice(1) } }, /canaries/],
       [{ ...bound, slotPreflight: { ...bound.slotPreflight, canaries: bound.slotPreflight.canaries.map((row, index) => index ? row : { ...row, result: 'readable' }) } }, /invalid|Invalid/],
+      [{ ...bound, slotPreflight: { ...bound.slotPreflight, canaries: [...bound.slotPreflight.canaries, bound.slotPreflight.canaries[0]] } }, /duplicate canary path/],
+      [{ ...bound, slotPreflight: { ...bound.slotPreflight, worker_uid: 2199 } }, /worker_uid/],
+      [{ ...bound, slotPreflight: { ...bound.slotPreflight, created_at: '2026-02-30T12:00:00.000Z' } }, /exact RFC3339/],
+      [{ ...bound, slotPreflight: { ...bound.slotPreflight, version: 'noopolis.daimon.grok-slot-preflight.v1' } }, /version/],
+      [{ ...bound, slotPreflight: { ...bound.slotPreflight, nonce: 'b'.repeat(64) } }, /stale: nonce/],
+      [{ ...bound, slotPreflight: { ...bound.slotPreflight, generation: launch.broker.minGeneration - 1 } }, /stale: generation/],
     ];
     for (const [value, message, trial] of cases) expect(() => parseGrokBrokerReceipt(value, launch, trial ?? 'trial')).toThrow(message);
   } finally { await rm(f.root, { recursive: true, force: true }); }

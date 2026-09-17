@@ -14,7 +14,7 @@ export interface NativeRuntimeModule {
   resolveOrganizationCodexSandboxProjection(value: unknown, agentId: string, options: { acceptanceStorePath: string }): Promise<NativeSandboxProjection>;
   resolveOrganizationGrokBrokerProjection?(value: unknown, agentId: string, options: GrokBrokerProjectionOptions): unknown;
   grokBrokerProjectionSha256?(projection: unknown): string;
-  verifyGrokSlotPreflightReceipt?(value: unknown, projection: unknown): unknown;
+  verifyGrokSlotPreflightReceipt?(value: unknown, projection: unknown, freshness: { expectedNonce: string; minGeneration: number }): unknown;
 }
 
 const grokExports = ['resolveOrganizationGrokBrokerProjection', 'grokBrokerProjectionSha256', 'verifyGrokSlotPreflightReceipt'] as const;
