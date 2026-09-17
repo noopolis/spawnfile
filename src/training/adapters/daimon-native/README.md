@@ -191,6 +191,13 @@ Only the deny mask Daimon lifts stays the control root itself — that is the va
 `projection_sha256` binds, and it must not become the per-trial directory. Codex
 control roots are already per trial and are used unchanged.
 
+A trial's Daimon runtime acceptance store and wake fuse directory are that same
+per-trial directory, so an acceptance from trial N cannot be replayed into trial
+N+1 whatever a recycle does. The container's provisioned `<state>/wake-acceptance`
+stays the supervisor's own store and recycle target; it is not where a Paideia
+trial accepts, and the wipe target does not need to widen to the state root. If it
+ever did widen, it would have to stay between trials, never during one.
+
 Startup, in order, with no model call and no `codex sandbox` process:
 
 1. The worker loads Daimon's Grok exports (`resolveOrganizationGrokBrokerProjection`,
