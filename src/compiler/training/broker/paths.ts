@@ -97,7 +97,9 @@ export const TRAINING_ADDED_DENY_PATHS: readonly string[] = [
   DAIMON_WAKE_FUSE_DIRECTORY,
   TRAINING_BROKER_DECLARATION_FILE,
   TRAINING_INFERENCE_DIRECTORY,
-  TRAINING_SLOT_STATE_ROOT,
+  // `TRAINING_SLOT_STATE_ROOT` is deliberately absent: Daimon's own protected set
+  // already denies the wake-acceptance store beneath it, and masks cannot nest,
+  // so denying the parent as well would make Grok refuse the whole profile.
   TRAINING_SLOT_TURN_STORE,
   TRAINING_SUPERVISOR_DIRECTORY,
   ...TRAINING_CALLER_PROTECTED_PATHS,
