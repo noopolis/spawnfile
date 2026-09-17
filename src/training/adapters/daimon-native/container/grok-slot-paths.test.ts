@@ -63,8 +63,9 @@ async function slotFixture() {
     await writeFile(launch.broker.slotPreflightReceipt,
       JSON.stringify(slotPreflightFor(projection, projection.denyPaths, launch.broker.minGeneration, launch.broker.expectedNonce)), { mode: 0o640 });
   };
+  // Exactly what the engine-neutral trial runner injects: its storage root, its control root and its runtime home.
   const input: SubjectStart = { trialId: 'slot-trial', workspacePath: paths.workspace, runtimeHomePath: paths.runtimeHome,
-    protectedPaths: [paths.runRoot, paths.controls], instructions, model: 'grok-4.6', onObservation: () => undefined };
+    protectedPaths: [paths.runRoot, paths.controls, paths.runtimeHome], instructions, model: 'grok-4.6', onObservation: () => undefined };
   await publish();
   return { root, paths, launch, input, save, publish };
 }
@@ -75,10 +76,26 @@ test('the training container fixed slot paths load as a Grok child launch', asyn
     // Neither anchor the Codex rules use is available: the control root is outside the runtime home and is not empty.
     expect(f.launch.controlRoot.startsWith(`${f.input.runtimeHomePath}/`)).toBe(false);
     expect(await readdir(f.launch.controlRoot)).toEqual(['wake-acceptance']);
+    // The runner protects its runtime home without knowing the engine; for this slot that root is the subject's own home.
+    expect(f.input.protectedPaths).toContain(f.input.runtimeHomePath);
     const loaded = await loadNativeLaunch(f.input, true);
     expect(loaded.controlRoot).toBe(f.paths.state);
     expect(loaded.projections).toEqual([{ role: 'home', source: f.paths.runtimeHome, target: f.paths.runtimeHome }]);
     expect(nativeTrialArtifactsRoot(loaded, f.input.trialId).startsWith(`${f.paths.state}/`)).toBe(true);
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('a caller-protected path inside a Grok subject root is still refused', async () => {
+  const f = await slotFixture();
+  try {
+    const inside = join(f.paths.runtimeHome, 'evaluator-secret');
+    await writeFile(inside, 'sealed', { mode: 0o600 });
+    await expect(loadNativeLaunch({ ...f.input, protectedPaths: [...f.input.protectedPaths!, inside] }, true))
+      .rejects.toThrow('evaluator-owned files');
+    const workspaceSide = join(f.paths.workspace, 'evaluator-secret');
+    await writeFile(workspaceSide, 'sealed', { mode: 0o600 });
+    await expect(loadNativeLaunch({ ...f.input, protectedPaths: [...f.input.protectedPaths!, workspaceSide] }, true))
+      .rejects.toThrow('evaluator-owned files');
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 

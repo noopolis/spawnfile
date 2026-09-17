@@ -16,11 +16,12 @@ async function fixture(generation?: number, nonce?: string) {
   const f = await childFixture(); roots.push(f.root);
   const launch = await grokLaunchFrom(f.launch, f.root);
   // Grok protects evaluator roots the slot receipt denies, never the subject's own workspace or runtime home.
-  f.input.protectedPaths = grokProtectedPaths(f.root);
+  // The engine-neutral trial runner also protects the workspace and runtime home it allocated.
+  f.input.protectedPaths = [...grokProtectedPaths(f.root), f.launch.workspace.source, launch.projections[0]!.source];
   const slots = createGrokSlotFreshnessStore(join(f.root, 'slot-freshness.json'));
   const freshness = await slots.request(launch.broker.slot);
   Object.assign(launch.broker, freshness);
-  const projection = grokProjectionFor(launch, f.input.protectedPaths);
+  const projection = grokProjectionFor(launch, grokProtectedPaths(f.root));
   launch.broker.projectionSha256 = grokProjectionSha256(projection); await f.save();
   const artifacts = async (trial = f.input.trialId): Promise<string> => {
     const root = nativeTrialArtifactsRoot(launch, trial);
@@ -43,7 +44,10 @@ it('accepts only the fresh supervisor receipt that denies every evaluator and ca
   const receipt = JSON.parse(await readFile(preflight(await f.artifacts()), 'utf8'));
   expect(receipt).toMatchObject({ schema: 'paideia.daimon-native.child-grok-slot-preflight.v1', trialId: f.input.trialId, modelCallsMade: 0,
     localSandboxProbe: false, slotGeneration: 1, projectionSha256: f.launch.broker.projectionSha256 });
-  expect(receipt.evaluatorPathsDenied).toEqual(expect.arrayContaining([...f.input.protectedPaths!, f.launch.controlRoot]));
+  // The two digest-bound subject roots are exempt; every other protected path is still required denied.
+  expect(receipt.evaluatorPathsDenied).toEqual(expect.arrayContaining([...grokProtectedPaths(f.root), f.launch.controlRoot]));
+  expect(receipt.evaluatorPathsDenied).not.toContain(f.launch.projections[0]!.source);
+  expect(receipt.evaluatorPathsDenied).not.toContain(f.launch.workspace.source);
   expect((await f.slots.request(f.launch.broker.slot)).minGeneration).toBe(2);
 });
 
@@ -56,6 +60,9 @@ it('fails closed without the slot receipt or freshness store, for another trial,
   expect(cause(await f.verify(f.input.protectedPaths, 'other-trial').catch(error => error))).toContain('not bound to this trial');
   const extra = join(f.root, 'extra-evaluator'); await writeFile(extra, 'sealed');
   expect(cause(await f.verify([...f.input.protectedPaths!, extra]).catch(error => error))).toContain(`omits a denied canary for evaluator path ${extra}`);
+  // Only the subject roots themselves are exempt; a protected path inside one has no denied canary and never gets one.
+  const inside = join(f.launch.projections[0]!.source, 'evaluator-secret'); await writeFile(inside, 'sealed');
+  expect(cause(await f.verify([...f.input.protectedPaths!, inside]).catch(error => error))).toContain(`omits a denied canary for evaluator path ${inside}`);
   const link = join(f.root, 'protected-link'); await symlink(f.launch.controlRoot, link);
   expect(cause(await f.verify([link]).catch(error => error))).toContain('Unsupported protected native path');
   await expect(access(preflight(await f.artifacts()))).rejects.toThrow();

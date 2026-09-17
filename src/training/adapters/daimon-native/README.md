@@ -8,7 +8,10 @@ Mneme. Caller preparation supplies canonical native config and immutable code.
 
 ## Public entry points
 
-- `@noopolis/paideia/adapters/daimon-native`: adapter, launch schema and types.
+- `@noopolis/paideia/adapters/daimon-native`: adapter, launch schema and types,
+  plus `loadNativeLaunch` (receipt and path preflight, starts nothing) and
+  `nativeTrialArtifactsRoot` (where a trial's private control artifacts land).
+  Callers prepare against these rather than re-deriving either.
 - `@noopolis/paideia/adapters/daimon-native/worker`: `runDaimonNativeWorker(args)`.
   Importing this subpath never starts a worker. The separate built `worker/cli.js`
   file is the container CLI entrypoint when no project bootstrap is declared.
@@ -153,6 +156,19 @@ preparation must produce exactly this shape:
 | `config`, `tokenFile`, `envFile` | canonical private files inside some denied slot root (`/run/paideia/...`), never inside the workspace |
 | `native-launch.json` | written `0600` in the trial runtime home; for Grok that directory is the subject's own home |
 | `slotPreflightReceipt` | a canonical `0640`-or-tighter file owned by the container root, whose `projection_sha256` equals `broker.projectionSha256` |
+
+The compiled config declares no Mneme memory root: a Grok launch projects one
+root, so a declared memory home would have no projection to match.
+
+The trial runner stays engine-neutral and keeps protecting its own layout,
+including the runtime home it allocated. For a Grok slot that root is the
+subject's own home, so the adapter — the only layer holding the receipt, the
+projection digest and the closed writable set — exempts exactly the two
+digest-bound subject roots from the caller's protected set, at load and again in
+the parent slot preflight. A caller cannot both hand the subject a root and
+demand the subject be denied it. Nothing else is exempt: a protected path
+*inside* a subject root is still refused, and a Codex launch has no exemption at
+all.
 
 Before any process starts the adapter reads that receipt and refuses a launch
 whose control root or control inputs are not inside a denied canary root, whose

@@ -81,6 +81,22 @@ export const grokProjectionSha256 = (projection: GrokBrokerProjection): string =
 
 const within = (root: string, path: string): boolean => path === root || path.startsWith(`${root}/`);
 
+/**
+ * The two digest-bound writable roots a Grok launch runs the subject in.
+ *
+ * The trial runner protects its own layout without knowing the engine, so it
+ * also names the runtime home — which for a Grok slot is the subject's own home
+ * and one of the roots the projection binds as `workspacePath`/`runtimeHomePath`.
+ * A caller cannot both hand the subject a root and demand the subject be denied
+ * it, so these exact roots are exempt from the caller's protected set. Nothing
+ * else is: a protected path *inside* one of them is still refused, because the
+ * exemption matches the root itself, never a descendant.
+ */
+export function grokSubjectRoots(launch: GrokNativeLaunch): string[] {
+  const home = launch.projections.find(row => row.role === 'home')!;
+  return [...new Set([launch.workspace.source, launch.workspace.target, home.source, home.target])];
+}
+
 /** Every evaluator root a Grok launch declares, plus its control root (Daimon's acceptance store). */
 export function requiredGrokEvaluatorPaths(launch: GrokNativeLaunch): string[] {
   return [...new Set([...launch.broker.evaluatorPaths.map(row => row.path), launch.controlRoot])].sort();

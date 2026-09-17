@@ -3,7 +3,7 @@ import { basename, dirname, join, posix, resolve } from 'node:path';
 import type { SubjectStart } from '../../../contracts/execution.js';
 import { grokContainerUnsupported } from './preflight.js';
 import { readGrokSlotDenials } from './grok-slot.js';
-import { containerPaths, isGrokLaunch, nativeTrialArtifactsRoot, parseNativeLaunch, readPrivateFile, sha256, within,
+import { containerPaths, grokSubjectRoots, isGrokLaunch, nativeTrialArtifactsRoot, parseNativeLaunch, readPrivateFile, sha256, within,
   type NativeLaunch, type VerifiedNativeLaunch, type NativeMount } from '../receipt/index.js';
 
 export function nativeMounts(launch: NativeLaunch): NativeMount[] {
@@ -66,6 +66,8 @@ export async function loadNativeLaunch(input: SubjectStart, child = false): Prom
   }
   if (touchesDenied(workspace)) throw new Error('The Grok slot workspace cannot be, contain or sit inside a denied slot root');
   const protectedRoots = await Promise.all((input.protectedPaths ?? []).map(path => realpath(path)));
+  // The engine-neutral trial runner protects its own runtime home; for a Grok slot that root is the subject's home.
+  const subjectRoots = isGrokLaunch(launch) ? grokSubjectRoots(launch) : [];
   const home = launch.projections.find(row => row.role === 'home')!;
   const targets = new Set<string>();
   const writableSources: string[] = [];
@@ -113,7 +115,7 @@ export async function loadNativeLaunch(input: SubjectStart, child = false): Prom
         throw new Error('Native projections cannot alias into the engine home');
       }
     }
-    if (protectedRoots.some(root => within(source, root))) throw new Error('Native bind contains evaluator-owned files');
+    if (protectedRoots.some(root => within(source, root) && !subjectRoots.includes(root))) throw new Error('Native bind contains evaluator-owned files');
   }
   for (const source of [launch.workerRoot, ...(launch.bootstrap ? [launch.bootstrap.root] : [])]) {
     if (await realpath(source) !== source || !(await lstat(source)).isDirectory() || source === '/' ||
