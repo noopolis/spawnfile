@@ -2,7 +2,9 @@
 // Explicit opt-in live check for a one-agent brokered Grok 1.0.34 organization:
 // deploy fixtures/grok-lean-worker against a locally built Daimon runtime image,
 // dump the worker home/sandbox/service attestation inputs, run one cheap wake,
-// and require exactly one deduplicated usage row written by the broker.
+// assert the P1b temp/spill layout and broker TMPDIR, and require exactly one
+// deduplicated usage row written by the broker. The spill read is a unix-level
+// read as the worker uid; a `read_file` spill read needs a >16 KiB tool result.
 // Needs Docker, a built CLI (`npm run build`), a local Daimon runtime identity
 // built from the Daimon Grok accounting contract, and a dedicated Grok login
 // file (never the desktop ~/.grok/auth.json). Makes one real model call.
@@ -59,6 +61,18 @@ const main = (): void => {
     for (const required of ["/var/lib/spawnfile/moltnet", "/var/lib/spawnfile/memory", "/run/daimon-engine-broker"]) if (!profile.includes(JSON.stringify(required))) throw new Error(`worker sandbox profile does not deny ${required}`);
     // /run denies rely on /var/run being the /run symlink (a bind mask covers both spellings); report what the image has.
     process.stdout.write(`/var/run -> ${exec(container, "readlink /var/run || echo not-a-symlink").trim()}\n`);
+    const runtimeHome = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/grok-lean-worker";
+    const tempLayout = exec(container, `stat -c '%u:%g %a %n' /tmp /var/tmp ${workerHome}/tmp ${runtimeHome} ${runtimeHome}/tool-output`);
+    process.stdout.write(tempLayout);
+    for (const expected of [
+      "0:2000 1774 /tmp\n", "0:2000 1774 /var/tmp\n", `2200:2200 700 ${workerHome}/tmp\n`, `2000:2200 710 ${runtimeHome}\n`, `2000:2200 2750 ${runtimeHome}/tool-output\n`
+    ]) if (!tempLayout.includes(expected)) throw new Error(`temp/spill layout is missing: ${expected.trim()}`);
+    for (const pattern of ["engine-broker serve", "daimon-engine-broker --relay"]) {
+      const environ = exec(container, `pid=$(pgrep -f -o ${JSON.stringify(pattern)}); tr '\\0' '\\n' < /proc/$pid/environ | grep '^TMPDIR=' || true`).trim();
+      if (environ !== "TMPDIR=/run/daimon-engine-broker/tmp") throw new Error(`${pattern} runs without its private TMPDIR (${environ || "unset"})`);
+    }
+    // A spill as Daimon writes it (uid 2000, 0640, setgid group) must be readable by the worker, and shared /tmp must not be.
+    exec(container, `setpriv --reuid 2000 --regid 2000 --clear-groups bash -c 'umask 027; printf spill-ok > ${runtimeHome}/tool-output/live-check.log' && setpriv --reuid 2200 --regid 2200 --clear-groups bash -c 'test "$(cat ${runtimeHome}/tool-output/live-check.log)" = spill-ok && ! printf x > /tmp/worker-probe' && rm -f ${runtimeHome}/tool-output/live-check.log`);
     const service = JSON.parse(exec(container, "cat /etc/daimon-engine-broker/service.json")) as { version: string; registrations: Array<{ model: { id: string } }> };
     if (service.version !== "noopolis.daimon.engine-broker-service.v2" || service.registrations[0]?.model.id !== "grok-4.6") throw new Error("service.json is not the declared v2 registration");
     exec(container, `setpriv --reuid 2200 --regid 2200 --clear-groups bash -c '! printf x >> ${workerHome}/.grok/trusted_folders.toml' && setpriv --reuid 2200 --regid 2200 --clear-groups bash -c '! test -r /var/lib/spawnfile/daimon/grok-subscription-realm'`);
