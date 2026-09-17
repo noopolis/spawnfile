@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assertControlRecipe, assertNewRecipe, diffModeListings, identicalModes } from "./training-image-modes.ts";
+import { assertControlRecipe, assertNewRecipe, diffModeListings, identicalModes, LISTING_ROOTS, MODE_ROOTS } from "./training-image-modes.ts";
 
 const row = (entry: string, mode = "755", type = "d", target = "") => `${entry}\t${mode}\troot\troot\t${type}\t${target}`;
 const base = [row("/opt/training"), row("/opt/training/paideia/bridges/dspy/.venv"), row("/opt/training/bin/grok", "555", "f"),
@@ -40,4 +40,11 @@ test("recipes must actually differ in the recursive closure", () => {
   assert.throws(() => assertNewRecipe("RUN chmod -R a+rX /opt/training"), /still runs/u);
   assert.throws(() => assertControlRecipe("# chmod -R a+rX /opt/training\nRUN true"), /Control recipe/u);
   assert.doesNotThrow(() => assertNewRecipe("# Exactly `chmod -R a+rX /opt/training`, but change-only\nRUN find /opt/training"));
+});
+
+test("the listing roots never nest, so find cannot emit a duplicate entry", () => {
+  for (const root of LISTING_ROOTS) {
+    assert.equal(LISTING_ROOTS.some(other => other !== root && root.startsWith(other + "/")), false, root);
+  }
+  for (const required of MODE_ROOTS) assert.equal(LISTING_ROOTS.some(root => required === root || required.startsWith(root + "/")), true, required);
 });

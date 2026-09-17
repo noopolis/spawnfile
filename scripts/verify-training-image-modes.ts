@@ -7,11 +7,11 @@
  *   [--root <dir>] [--control-ref 47050be] [--docker-context default] [--keep-images]
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertControlRecipe, assertNewRecipe, diffModeListings, identicalModes, MODE_LISTING_FORMAT, MODE_ROOTS } from "./training-image-modes.ts";
+import { assertControlRecipe, assertNewRecipe, diffModeListings, identicalModes, LISTING_ROOTS, MODE_LISTING_FORMAT } from "./training-image-modes.ts";
 
 type ImageModule = typeof import("../src/compiler/training/preparation/image.js");
 type FilesModule = typeof import("../src/compiler/training/preparation/files.js");
@@ -50,7 +50,9 @@ async function main(): Promise<void> {
   assertNewRecipe(plan.dockerfile);
   assertControlRecipe(controlRecipe);
 
-  const parent = await mkdtemp(path.join(os.tmpdir(), "spawnfile-training-modes-"));
+  // `copySealed` re-seals every staged file through `exactPath`, which refuses a symlinked
+  // ancestor; macOS `os.tmpdir()` is `/var/folders/...` and `/var` is a symlink.
+  const parent = await realpath(await mkdtemp(path.join(os.tmpdir(), "spawnfile-training-modes-")));
   const tags = { next: "spawnfile-training-modes:new", control: "spawnfile-training-modes:control" };
   try {
     // Mirror buildTrainingImage staging; only the new side normalizes modes, as in each recipe's era.
@@ -68,7 +70,7 @@ async function main(): Promise<void> {
     docker(dockerContext, ["build", ...buildArgs, "--tag", tags.next, await stage("new", plan.dockerfile, true)]);
     docker(dockerContext, ["build", ...buildArgs, "--tag", tags.control, await stage("control", controlRecipe, false)]);
     const listing = (tag: string) => docker(dockerContext, ["run", "--rm", "--platform", build.platform, "--user", "0:0", "--network", "none",
-      "--entrypoint", "find", tag, ...MODE_ROOTS, "-printf", MODE_LISTING_FORMAT], true);
+      "--entrypoint", "find", tag, ...LISTING_ROOTS, "-printf", MODE_LISTING_FORMAT], true);
     const diff = diffModeListings(listing(tags.next), listing(tags.control));
     if (!identicalModes(diff)) {
       for (const entry of diff.onlyNew.slice(0, 50)) console.error(`only in new: ${entry}`);
