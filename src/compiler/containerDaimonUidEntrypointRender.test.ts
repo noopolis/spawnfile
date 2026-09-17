@@ -234,6 +234,9 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).not.toContain("noopolis.daimon.engine-broker-service.v1");
     expect(rendered).toContain("/var/lib/daimon-workers/2200/.grok/sessions/sandbox-events.jsonl");
     expect(rendered).not.toContain("[auth_provider.daimon]");
+    const preflight = rendered.indexOf("kernel.apparmor_restrict_unprivileged_userns=0 on the Docker host");
+    expect(preflight).toBeGreaterThan(-1);
+    expect(preflight).toBeLessThan(rendered.indexOf("node <<'SPAWNFILE_DAIMON_BROKER_PROVISION'"));
     expect(rendered).toContain("/etc/daimon-engine-broker/service.json");
     expect(rendered).toContain("readSecure(bootstrap, undefined, 'bootstrap')");
     expect(rendered).toContain("noopolis.daimon.broker-credential-journal.v1");

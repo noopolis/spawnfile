@@ -17,6 +17,7 @@ import {
   resolveDaimonVolumeIdentityFiles
 } from "./containerDaimonOwnershipGuardRender.js";
 export { resolveDaimonVolumeIdentityFiles } from "./containerDaimonOwnershipGuardRender.js";
+import { renderDaimonGrokHostPreflight } from "./containerDaimonGrokWorkerProvisioning.js";
 import {
   DAIMON_BROKER_EXECUTABLE,
   DAIMON_BROKER_BACKEND_SOCKET,
@@ -168,9 +169,9 @@ const privateModeDirectories = (runtimePlans: RuntimeTargetPlan[], moltnet?: Ent
     // creates that parent root-owned and world-readable when it materializes
     // this mount, and the ancestor pass below only *chowns* it, so it stayed
     // 0755 and was the one path under `/var/lib/spawnfile` a Grok worker uid
-    // could open. Securing it to 0700 2000:2000 is what replaces the sandbox
-    // `deny` entry that Grok 1.0.13 can no longer honour (see
-    // `GROK_SANDBOX_DENY_PATHS`). Nothing loses access: the only thing
+    // could open. Securing it to 0700 2000:2000 backs the acceptance store's
+    // sandbox `deny` entry with unix modes as defense in depth (see
+    // `containerDaimonGrokWorkerRender.ts`). Nothing loses access: the only thing
     // beneath it is this store, already 0700 2000:2000, so every reader that
     // works today is the organization uid or a `docker exec` root holding
     // CAP_DAC_READ_SEARCH.
@@ -331,6 +332,7 @@ export const renderDaimonUidEntrypoint = (
     '  if ! getent group "$fixed_uid" >/dev/null; then groupadd -K GID_MIN=1 --gid "$fixed_uid" "daimon-$fixed_uid"; fi',
     '  if ! getent passwd "$fixed_uid" >/dev/null; then useradd -K UID_MIN=1 --no-create-home --no-log-init --uid "$fixed_uid" --gid "$fixed_uid" --home-dir /nonexistent --shell /usr/sbin/nologin "daimon-$fixed_uid"; fi',
     "done",
+    ...(resolveDaimonGrokRegistrations(runtimePlans).length === 0 ? [] : renderDaimonGrokHostPreflight()),
     ...renderDaimonBrokerProvisioning(runtimePlans),
     'if ! getent passwd "$uid" >/dev/null; then',
     '  runtime_identity="daimon-$uid"',
