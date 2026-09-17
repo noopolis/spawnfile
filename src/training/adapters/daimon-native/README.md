@@ -134,7 +134,8 @@ records the declared `model` (`grok-4.6`, `grok-4.5`, `grok-build`) and
 | `projectionVersion`, `projectionSha256` | `noopolis.daimon.grok-broker-projection.v1` and the canonical digest the slot supervisor bound |
 | `slot`, `workerUid`, `workerHomePath`, `architecture`, `usageLedgerPath`, `seccompProfileSha256`, `limits` | Passed verbatim to Daimon's `resolveOrganizationGrokBrokerProjection` |
 | `evaluatorPaths[]` | `{role, path}` for `run-root`, `context`, `sealed-inputs`, `judge-home`, `slot-ledger` (the usage ledger directory); passed as the projection's `denyPaths` |
-| `slotPreflightReceipt` | Input path contract: the root slot supervisor writes `noopolis.daimon.grok-slot-preflight.v1` here after provisioning or recycling the slot |
+| `slotPreflightReceipt` | Input path contract: the root slot supervisor writes `noopolis.daimon.grok-slot-preflight.v2` here after provisioning or recycling the slot |
+| `expectedNonce`, `minGeneration` | This trial's recycle freshness: the nonce Paideia sent with the recycle request and one above the last generation it accepted for the slot |
 
 Startup, in order, with no model call and no `codex sandbox` process:
 
@@ -145,12 +146,18 @@ Startup, in order, with no model call and no `codex sandbox` process:
 2. The resolved projection's canonical digest must equal Daimon's digest and the
    launch receipt; its turn timeout must fit the trial deadline.
 3. The slot receipt must exist and pass Daimon's verifier (exact deny-path canaries,
-   profile, seccomp, executable). Paideia then requires the control root and every
+   profile, seccomp, executable, and freshness: the launch nonce and a generation
+   of at least `minGeneration`; v1 receipts are refused). Paideia then requires the control root and every
    evaluator root to be an exact denied canary and the config/token/env files to
    sit inside a denied root, and persists `sandbox-projection.json`.
 4. The ready line adds `engine` and `reasoningEffort`; the parent requires them to
    match the launch. The parent re-binds the persisted receipt without Daimon and
    additionally requires every caller `protectedPaths` entry as a denied canary.
+   Child execution must supply `grokSlots`, a `createGrokSlotFreshnessStore(file)`
+   kept in the experiment state: preparation calls `request(slot)` to mint the nonce
+   and generation floor it writes into the launch and sends with the recycle request;
+   the parent's `accept` requires the pending nonce and a strictly higher generation
+   and persists it, so a receipt can never be replayed into a later trial.
 
 Separate-container Grok is refused before any Docker call. The worker sets the
 engine-neutral `DAIMON_ENGINE_WAKE_TIMEOUT_MS`/`_TOKEN_CEILING` (Codex aliases equal)
@@ -167,3 +174,8 @@ stays on the usage row and makes usage coverage partial. Normalized usage has
 runtime-reported `notionalUsd` (labelled with its source) over catalog rates; there
 is no built-in Grok rate card, but `paideia.cost-config.v1` `prices` can add one.
 A broker limit failure is reported only as its closed `limit_reason`.
+
+Request budget: `broker.limits.maxRequests` is enforced per broker turn by Daimon
+and is the only request cap. Paideia adds no trial-level request limit; a trial's
+upper bound is `(1 + external deliveries) × maxRequests`, with at most three
+external deliveries. Token and time budgets remain bounded by the launch limits.

@@ -27,3 +27,5 @@ inherit the coordinator or host home to repair native startup.
 Grok children never run a local `codex sandbox` probe. The parent re-binds the
 worker's persisted Grok projection receipt and requires every caller-protected
 path, evaluator root and the control root to be an exact denied slot canary.
+Grok children require a persisted slot freshness store: a receipt must echo this
+trial's recycle nonce and exceed the last accepted generation, which then advances.
