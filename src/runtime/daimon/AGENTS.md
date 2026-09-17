@@ -54,6 +54,15 @@ excluded until Daimon learned to register its per-wake MCP endpoint through
 `agy mcp add`; the compiler-side MCP validations (explicit tools allowlist,
 absolute stdio command) are engine-independent and still apply.
 
+`contract-manifest.json`/`.sha256` and `grokWorkerConfigBytes.ts` are vendored
+from a Daimon checkout by `scripts/vendor-daimon-grok-contract.ts` and never
+edited by hand. `grokWorkerContract.ts` serves Daimon's worker `config.toml`
+bytes only when they hash to the manifest's per model x effort pin, and mirrors
+Daimon's sandbox-profile renderer byte for byte (pinned by Daimon-rendered
+samples). The manifest also pins Grok CLI 1.0.34 (URL + sha256 per
+architecture), which the runtime image, the local builder, and generated
+organization images all verify.
+
 The consumed manifest also pins the native Grok broker source/x64/arm64
 digests, fixed root/org/broker/worker identities, root-only registrations,
 and loopback-only provider/MCP endpoints. Container provisioning must match
