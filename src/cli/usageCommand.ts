@@ -12,6 +12,7 @@ import {
   computeUsageCoverage,
   dedupeUsageRecordsByTurn,
   DEFAULT_USAGE_SINCE,
+  findConflictingUsageTurns,
   filterUsageRecordsSince,
   groupUsageByAgent,
   groupUsageByEngine,
@@ -144,6 +145,10 @@ const renderTable = (
 
   lines.push("");
   lines.push("Counts are a lower bound: the engine stream carries no completeness marker.");
+  const conflicts = findConflictingUsageTurns(windowed);
+  if (conflicts.length > 0) {
+    lines.push(`WARNING ${conflicts.length} turn(s) carry differing ledger rows under one turn key; the first row is counted and coverage is PARTIAL: ${conflicts.map((turn) => turn.slice(0, 12)).join(", ")}`);
+  }
   if (coverage.estimatedTurnCount > 0) {
     const estimatedRequests = engineRows.reduce((sum, row) => sum + row.estimatedRequests, 0);
     lines.push(`~ ${coverage.estimatedTurnCount} turn(s) include ESTIMATED usage: ${estimatedRequests} request(s) returned no provider-reported usage and were charged a conservative estimate, not a measurement.`);

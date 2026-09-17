@@ -69,6 +69,8 @@ const brokerFields = (record: Record<string, unknown>): Partial<UsageRecord> => 
  * them again on replay when it cannot see the row, so two replays of one sealed
  * turn can both append identical bytes. The key exists precisely so such a turn
  * is never counted twice; every aggregate here must see deduplicated rows.
+ * Readers keep every parsed row so {@link findConflictingUsageTurns} can see
+ * rows that share a key but differ.
  */
 export const dedupeUsageRecordsByTurn = (records: UsageRecord[]): UsageRecord[] => {
   const seen = new Set<string>();
@@ -78,6 +80,28 @@ export const dedupeUsageRecordsByTurn = (records: UsageRecord[]): UsageRecord[] 
     seen.add(record.turn);
     return true;
   });
+};
+
+const canonicalRecord = (record: UsageRecord): string =>
+  JSON.stringify(Object.keys(record).sort().map((key) => [key, record[key as keyof UsageRecord]]));
+
+/**
+ * `turn` keys whose rows are not byte-for-byte the same record. A replay
+ * re-appends identical sealed bytes, so differing rows under one key mean the
+ * ledger is not what the broker sealed; the first row is still the one counted,
+ * but the window is reported PARTIAL and the keys are named.
+ */
+export const findConflictingUsageTurns = (records: UsageRecord[]): string[] => {
+  const first = new Map<string, string>();
+  const conflicts = new Set<string>();
+  for (const record of records) {
+    if (record.turn === undefined) continue;
+    const canonical = canonicalRecord(record);
+    const seen = first.get(record.turn);
+    if (seen === undefined) first.set(record.turn, canonical);
+    else if (seen !== canonical) conflicts.add(record.turn);
+  }
+  return [...conflicts].sort();
 };
 
 const NUMERIC_FIELDS = [
@@ -170,10 +194,10 @@ export const parseUsageLedgerLine = (line: string): UsageRecord | null => {
  * skipped, and the rest of the file still parses.
  */
 export const parseUsageLedger = (text: string): UsageRecord[] =>
-  dedupeUsageRecordsByTurn(text
+  text
     .split("\n")
     .map(parseUsageLedgerLine)
-    .filter((record): record is UsageRecord => record !== null));
+    .filter((record): record is UsageRecord => record !== null);
 
 const DURATION_UNIT_MS: Record<string, number> = {
   d: 24 * 60 * 60 * 1000,
@@ -323,6 +347,8 @@ export const groupUsageByEngine = (
 export interface UsageCoverage {
   agentsReporting: number;
   agentsTotal: number;
+  /** `turn` keys carrying differing rows (first row counted); nonzero forces `partial`. */
+  conflictingTurnCount: number;
   /** Turns whose total includes an estimated charge for at least one request. */
   estimatedTurnCount: number;
   /** Count of `complete:false` records in the window — every count here is a
@@ -353,12 +379,14 @@ export const computeUsageCoverage = (
 ): UsageCoverage => {
   const unique = dedupeUsageRecordsByTurn(records);
   const reporting = new Set(unique.map((record) => record.agent)).size;
+  const conflictingTurnCount = findConflictingUsageTurns(records).length;
   return {
     agentsReporting: reporting,
     agentsTotal: totalAgents,
+    conflictingTurnCount,
     estimatedTurnCount: unique.filter((record) => record.estimated_requests !== undefined).length,
     incompleteRecordCount: unique.filter((record) => !record.complete).length,
-    partial: reporting < totalAgents || unreadableUnitCount > 0,
+    partial: reporting < totalAgents || unreadableUnitCount > 0 || conflictingTurnCount > 0,
     unreadableUnitCount
   };
 };
