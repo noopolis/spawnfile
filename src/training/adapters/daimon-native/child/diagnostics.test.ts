@@ -101,16 +101,45 @@ it('errs toward withholding: any long opaque run that is not a content digest is
   expect(redactNativeDiagnostic('z'.repeat(39), []).clean).toBe(true);
 });
 
-it('replaces a reason it cannot publish safely while keeping the exit status', async () => {
+it('publishes a frame schema and its detector when the frame message itself cannot be published', async () => {
   const f = await capture();
   const leaking = await f.make();
   leaking.append(Buffer.from(`${JSON.stringify({ schema: 'paideia.daimon-native.start-failed.v1',
     error: `upstream refused Bearer sk-${'A1b2C3d4'.repeat(6)}` })}\n`), false);
   await leaking.save(1, null);
   const diagnostic = leaking.startupFailure(new Error('boom')).diagnostic;
-  expect(diagnostic.reason).toBe('Native worker failed before readiness; its stated reason could not be published safely');
+  // The bytes are withheld, but the layer that failed and the reason it was withheld both land.
   expect(diagnostic.redaction).toBe('withheld');
+  expect(diagnostic.frames).toEqual([{ stream: 'stderr', schema: 'paideia.daimon-native.start-failed.v1', withheldBy: ['bearer', 'opaque-run'] }]);
+  expect(diagnostic.withheld).toEqual([{ stream: 'stderr', bytes: expect.any(Number), lines: 2,
+    frame: 'paideia.daimon-native.start-failed.v1', detectors: ['bearer', 'opaque-run'] }]);
+  expect(diagnostic.reason).toBe('Native worker exited with code 1: boom');
   expect(diagnostic.exitCode).toBe(1);
+  expect(JSON.stringify(diagnostic)).not.toContain('sk-');
+});
+
+it('publishes a caller bootstrap frame as the reason when the worker itself never spoke', async () => {
+  const f = await capture();
+  const bootstrap = await f.make();
+  bootstrap.append(Buffer.from('plain progress line\n'), false);
+  bootstrap.append(Buffer.from(`${JSON.stringify({ schema: 'example.paideia.bootstrap-failed.v1',
+    message: 'launch.v2 receipt rejected by the private bootstrap' })}\n`), false);
+  await bootstrap.save(1, null);
+  const diagnostic = bootstrap.startupFailure(new Error('Native worker exited or failed before readiness')).diagnostic;
+  expect(diagnostic.reason).toBe('example.paideia.bootstrap-failed.v1: launch.v2 receipt rejected by the private bootstrap');
+  expect(diagnostic.redaction).toBe('applied');
+});
+
+it('hands the caller an unredacted operator capture it never publishes itself', async () => {
+  const f = await capture();
+  const leaking = await f.make(['unit-transport-value-not-a-login']);
+  leaking.append(Buffer.from('token unit-transport-value-not-a-login and Bearer sk-live-xyz\n'), false);
+  await leaking.save(1, null);
+  const failure = leaking.startupFailure(new Error('boom'));
+  expect(failure.capture.basename).toBe('OPERATOR-ONLY.native-startup-capture.json');
+  expect(JSON.parse(failure.capture.content)).toMatchObject({ schema: 'paideia.daimon-native.operator-capture.v1', exitCode: 1 });
+  expect(failure.capture.content).toContain('unit-transport-value-not-a-login');
+  expect(JSON.stringify(failure.diagnostic)).not.toContain('unit-transport-value-not-a-login');
 });
 
 it('refuses a control directory that is not the protected canonical root', async () => {

@@ -30,6 +30,18 @@ file paths; an environment assignment publishes its name only; and text still
 carrying credential-shaped material nobody declared is withheld rather than
 published, leaving the failure class stated.
 
+Publication is per field, not per stream. Every `{"schema":…}` line the runtime
+printed publishes its schema, plus its stated message when that message redacts
+cleanly and the names of the detectors that stopped it when it does not. Any
+layer's own frame — the worker's or a caller bootstrap's — outranks an exit code
+as the reason. A stream that cannot be published still reports which stream it
+was, its byte and line counts, the frame it carried and which detector fired, so
+a runtime that threw with a token in its message is distinguishable from one that
+printed a blob. Whole-stream withholding is the last resort, never the first.
+
+The failure also hands the caller one unredacted `SubjectStartupCapture` with a
+suggested plain file name. The adapter never writes it anywhere itself.
+
 The child HOME is always its verified fresh home projection, even when the numeric
 container user has no passwd entry. Explicit env files cannot override HOME; never
 inherit the coordinator or host home to repair native startup.

@@ -11,7 +11,7 @@ import { requireMechanicalTurn } from './preflight.js';
 import { drainObservations } from './closure.js';
 import { subjectUsageSnapshot } from './subject-usage.js';
 import { createTrialPaths, releaseTrialScratch } from './paths.js';
-import { subjectStartupDiagnostic } from './diagnostics.js';
+import { subjectStartupCapture, subjectStartupDiagnostic, writeOperatorCapture } from './diagnostics.js';
 import type { PreparedTrial, TrialOptions, TrialReport, TurnReport } from './types.js';
 
 export async function runTrial(options: TrialOptions): Promise<TrialReport> {
@@ -127,6 +127,10 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     const abortedByPolicy = control.cause === 'decisive' && caught instanceof Error && caught.name === 'AbortError';
     execution = control.cause === 'operator' || control.cause === 'deadline' || abortedByPolicy ? 'interrupted' : 'failed';
     diagnostic = subjectStartupDiagnostic(caught);
+    const capture = diagnostic ? subjectStartupCapture(caught) : undefined;
+    // The adapter's own copy can be runtime-local; the operator's trial directory outlives it.
+    const operatorCapture = capture ? await writeOperatorCapture(paths.root, capture) : undefined;
+    if (diagnostic && operatorCapture) diagnostic = { ...diagnostic, operatorCapture };
     control.stop(error);
   }
   if (diagnostic) {

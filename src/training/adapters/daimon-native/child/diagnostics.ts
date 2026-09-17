@@ -1,6 +1,6 @@
 import { lstat, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { SubjectStartupDiagnostic } from '../../../contracts/execution.js';
+import type { SubjectStartupCapture, SubjectStartupDiagnostic } from '../../../contracts/execution.js';
 
 const limit = 65_536;
 /** Published tails are for identifying a defect class, not for reading a transcript. */
@@ -24,10 +24,28 @@ export const redactedPathMarker = '[redacted-path]';
 
 const truncate = (text: string): string => text.length > published ? `${text.slice(0, published)}…` : text;
 
-/** A long opaque run that is not a content digest is the shape of a credential nobody declared. */
-const carriesUndeclaredCredential = (text: string): boolean =>
-  credentialShaped.some(pattern => pattern.test(text)) ||
-  [...text.matchAll(opaqueRun)].some(match => !/^[0-9a-f]+$/u.test(match[0]));
+/** Longest message published from a frame; a frame is an identity and a sentence, not a transcript. */
+const framedMessage = 512;
+const maximumFrames = 8;
+export const withholdDetectors = ['declared-secret', 'bearer', 'pem', 'opaque-run'] as const;
+export type WithholdDetector = typeof withholdDetectors[number];
+
+/**
+ * Which detector refuses this text, named rather than counted.
+ *
+ * Knowing that a bearer header fired tells an operator "the runtime threw with a
+ * capability token in the message"; knowing that a long opaque run fired tells
+ * them "something printed a blob". Without the name, a withheld stream is
+ * indistinguishable from a crash with no output at all.
+ */
+function withholdingDetectors(text: string, survivingSecret: boolean): WithholdDetector[] {
+  const detectors: WithholdDetector[] = [];
+  if (survivingSecret) detectors.push('declared-secret');
+  if (credentialShaped[0]!.test(text)) detectors.push('bearer');
+  if (credentialShaped[1]!.test(text)) detectors.push('pem');
+  if ([...text.matchAll(opaqueRun)].some(match => !/^[0-9a-f]+$/u.test(match[0]))) detectors.push('opaque-run');
+  return detectors;
+}
 
 /**
  * Removes every value this adapter knows to be secret, then refuses to call the
@@ -40,33 +58,56 @@ const carriesUndeclaredCredential = (text: string): boolean =>
  * bearer header, a PEM block, a long opaque token — so its presence makes the
  * text unpublishable rather than published in the hope that it is harmless.
  */
-export function redactNativeDiagnostic(text: string, secrets: readonly string[]): { text: string; clean: boolean } {
+export function redactNativeDiagnostic(text: string, secrets: readonly string[]): { text: string; clean: boolean; detectors: readonly WithholdDetector[] } {
   const substitutable = [...new Set(secrets.filter(secret => secret.length >= shortestRedactableSecret))];
   let value = text;
   for (const secret of substitutable.sort((left, right) => right.length - left.length)) value = value.split(secret).join(redactedMarker);
   value = value.replace(assignment, (_match, lead: string, key: string) => `${lead}${key}=${redactedMarker}`);
   value = value.replace(credentialPath, redactedPathMarker);
-  const clean = !substitutable.some(secret => value.includes(secret)) && !carriesUndeclaredCredential(value);
-  return { text: value, clean };
+  const detectors = withholdingDetectors(value, substitutable.some(secret => value.includes(secret)));
+  return { text: value, clean: !detectors.length, detectors };
 }
 
-/** The worker's own stated failure is the best reason; an exit status is the fallback. */
-function classify(stderr: string, exitCode: number | null, exitSignal: string | null, fallback: string): string {
-  for (const line of stderr.split(/\r?\n/u).reverse()) {
-    if (!line.trim().startsWith('{')) continue;
-    try {
-      const row = JSON.parse(line) as { schema?: unknown; error?: unknown };
-      if (row.schema === 'paideia.daimon-native.start-failed.v1' && typeof row.error === 'string' && row.error) return row.error;
-    } catch { /* Bootstrap logging is not protocol; keep looking for the real frame. */ }
+/** Every `{"schema":…}` line the runtime printed, with the field it states its failure in. */
+function readFrames(stream: 'stdout' | 'stderr', text: string, secrets: readonly string[]): SubjectStartupDiagnostic['frames'] {
+  const frames: NonNullable<SubjectStartupDiagnostic['frames']> = [];
+  for (const line of text.split(/\r?\n/u)) {
+    if (frames.length >= maximumFrames || !line.trim().startsWith('{')) continue;
+    let row: Record<string, unknown>;
+    try { row = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
+    if (!row || typeof row !== 'object' || typeof row.schema !== 'string' || !row.schema) continue;
+    const stated = [row.error, row.reason, row.message].find(value => typeof value === 'string' && value);
+    if (stated === undefined) { frames.push({ stream, schema: row.schema }); continue; }
+    // The schema is an identity, never a secret, so it publishes even when the message it carries cannot.
+    const message = redactNativeDiagnostic(String(stated).slice(0, framedMessage), secrets);
+    frames.push({ stream, schema: row.schema, ...(message.clean ? { message: message.text } : { withheldBy: message.detectors }) });
   }
+  return frames.length ? frames : undefined;
+}
+
+const lineCount = (text: string): number => text ? text.split(/\r?\n/u).length : 0;
+
+/** The worker's own stated failure is the best reason; a frame from any layer beats an exit status. */
+function classify(frames: SubjectStartupDiagnostic['frames'], exitCode: number | null, exitSignal: string | null, fallback: string): string {
+  const stated = frames?.filter(frame => frame.message !== undefined) ?? [];
+  const worker = stated.find(frame => frame.schema === 'paideia.daimon-native.start-failed.v1');
+  // Any layer's own account — the worker's, or a caller bootstrap's — outranks an exit code.
+  const frame = worker ?? stated.at(-1);
+  if (frame) return `${frame.schema}: ${frame.message!}`;
   if (exitSignal) return `Native worker terminated by signal ${exitSignal}: ${fallback}`;
   if (exitCode !== null && exitCode !== 0) return `Native worker exited with code ${exitCode}: ${fallback}`;
   return fallback;
 }
 
-/** Carries the publishable record out of startup so the caller can persist it durably. */
+/**
+ * Carries the publishable record, and the unredacted capture, out of startup.
+ *
+ * The caller persists the record durably and writes the capture to the
+ * operator's own run output as an operator-only file. The capture never reaches
+ * the event stream, a report or a viewer projection.
+ */
 export class NativeStartupFailure extends Error {
-  constructor(message: string, readonly diagnostic: SubjectStartupDiagnostic) {
+  constructor(message: string, readonly diagnostic: SubjectStartupDiagnostic, readonly capture: SubjectStartupCapture) {
     super(message);
     this.name = 'NativeStartupFailure';
   }
@@ -109,10 +150,17 @@ export async function childDiagnostics(root: string, trialId: string, configSha2
      */
     startupFailure(caught: unknown): NativeStartupFailure {
       const fallback = caught instanceof Error ? caught.message : String(caught);
-      const out = redactNativeDiagnostic(streams.stdout.bytes.toString('utf8'), secrets);
-      const err = redactNativeDiagnostic(streams.stderr.bytes.toString('utf8'), secrets);
-      const reason = redactNativeDiagnostic(classify(streams.stderr.bytes.toString('utf8'), status.exitCode, status.exitSignal, fallback), secrets);
+      const raw = { stdout: streams.stdout.bytes.toString('utf8'), stderr: streams.stderr.bytes.toString('utf8') };
+      const out = redactNativeDiagnostic(raw.stdout, secrets);
+      const err = redactNativeDiagnostic(raw.stderr, secrets);
+      // Frames publish per field, so one unpublishable message never costs the whole account of the failure.
+      const frames = [...readFrames('stdout', raw.stdout, secrets) ?? [], ...readFrames('stderr', raw.stderr, secrets) ?? []];
+      const reason = redactNativeDiagnostic(classify(frames, status.exitCode, status.exitSignal, fallback), secrets);
       const clean = out.clean && err.clean;
+      const withheld = ([['stdout', raw.stdout, out], ['stderr', raw.stderr, err]] as const)
+        .filter(([, , result]) => !result.clean)
+        .map(([stream, text, result]) => ({ stream, bytes: Buffer.byteLength(text), lines: lineCount(text),
+          frame: frames.find(row => row.stream === stream)?.schema ?? null, detectors: result.detectors }));
       const diagnostic: SubjectStartupDiagnostic = {
         schema: 'paideia.daimon-native.startup-diagnostic.v1', trialId,
         // A withheld stream still leaves the class identified, so the reason is kept whenever it is itself clean.
@@ -121,9 +169,16 @@ export async function childDiagnostics(root: string, trialId: string, configSha2
         redaction: clean ? 'applied' : 'withheld',
         ...(clean ? { streams: { stdout: truncate(out.text), stderr: truncate(err.text),
           truncated: { stdout: streams.stdout.truncated || out.text.length > published, stderr: streams.stderr.truncated || err.text.length > published } } } : {}),
+        ...(frames.length ? { frames } : {}),
+        ...(withheld.length ? { withheld } : {}),
         protectedArtifact: file,
       };
-      return new NativeStartupFailure(`Native worker failed before readiness: ${diagnostic.reason}`, diagnostic);
+      const capture: SubjectStartupCapture = { basename: 'OPERATOR-ONLY.native-startup-capture.json',
+        content: `${JSON.stringify({ schema: 'paideia.daimon-native.operator-capture.v1', trialId, configSha256,
+          exitCode: status.exitCode, exitSignal: status.exitSignal, protectedArtifact: file,
+          limitBytesPerStream: limit, stdout: raw.stdout, stderr: raw.stderr,
+          truncated: { stdout: streams.stdout.truncated, stderr: streams.stderr.truncated } }, null, 2)}\n` };
+      return new NativeStartupFailure(`Native worker failed before readiness: ${diagnostic.reason}`, diagnostic, capture);
     },
   };
 }

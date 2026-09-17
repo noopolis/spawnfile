@@ -79,7 +79,25 @@ export interface SubjectStartupDiagnostic {
   exitSignal: string | null;
   redaction: 'applied' | 'withheld';
   streams?: { stdout: string; stderr: string; truncated: { stdout: boolean; stderr: boolean } };
+  /** Structured frames the runtime printed. A frame's schema publishes even when its message cannot. */
+  frames?: { stream: 'stdout' | 'stderr'; schema: string; message?: string; withheldBy?: readonly string[] }[];
+  /** Why a stream could not be published, in enough detail to tell one failure class from another. */
+  withheld?: { stream: 'stdout' | 'stderr'; bytes: number; lines: number; frame: string | null; detectors: readonly string[] }[];
   protectedArtifact?: string;
+  /** Operator-only full capture on the operator's own run output, written by the caller. Never shipped to a viewer or report. */
+  operatorCapture?: string;
+}
+
+/**
+ * The unredacted capture an adapter hands its caller exactly once.
+ *
+ * It never enters the durable event stream, a report or a viewer projection: the
+ * caller writes it to the operator's own run output as an operator-only file and
+ * then keeps only its path. `basename` is adapter-suggested and caller-validated.
+ */
+export interface SubjectStartupCapture {
+  basename: string;
+  content: string;
 }
 
 export interface FixtureTool {

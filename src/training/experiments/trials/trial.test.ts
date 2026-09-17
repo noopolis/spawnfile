@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { writeFile, symlink } from 'node:fs/promises';
+import { readFile, stat, writeFile, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createEvaluationRegistry, result } from '../../evaluation/index.js';
 import { runTrial } from '../index.js';
@@ -36,6 +36,39 @@ describe('native trial lifecycle', () => {
     expect(report.diagnostic).toEqual(diagnostic);
     // The record reaches the durable sink, not only the returned report.
     expect(task.journal.filter(row => row.type === 'subject.startup-diagnostic')).toEqual([{ type: 'subject.startup-diagnostic', payload: diagnostic }]);
+  });
+  it('writes the adapter capture as an operator-only trial file and publishes only its path', async () => {
+    const task = await setup();
+    const diagnostic = { schema: 'paideia.daimon-native.startup-diagnostic.v1', trialId: 'trial',
+      reason: 'example.paideia.bootstrap-failed.v1: launch.v2 receipt rejected', exitCode: 1, exitSignal: null,
+      redaction: 'withheld' as const,
+      frames: [{ stream: 'stderr' as const, schema: 'example.paideia.bootstrap-failed.v1', withheldBy: ['bearer'] }],
+      withheld: [{ stream: 'stderr' as const, bytes: 120, lines: 3, frame: 'example.paideia.bootstrap-failed.v1', detectors: ['bearer'] }],
+      protectedArtifact: '/run/training/slot/state/paideia-trials/trial-x/child-diagnostics.json' };
+    const capture = { basename: 'OPERATOR-ONLY.native-startup-capture.json', content: '{"stderr":"Bearer sk-live-secret"}\n' };
+    task.options.adapter = { ...task.options.adapter,
+      start: async () => { throw Object.assign(new Error('Native worker failed before readiness'), { diagnostic, capture }); } };
+    const report = await runTrial(task.options);
+    const file = join(report.paths.root, capture.basename);
+    expect(report.diagnostic).toEqual({ ...diagnostic, operatorCapture: file });
+    expect(await readFile(file, 'utf8')).toBe(capture.content);
+    expect((await stat(file)).mode & 0o777).toBe(0o600);
+    // It sits beside the trial's own scratch, never in the content store the viewer and reports replay.
+    expect(file.startsWith(`${report.paths.root}/`)).toBe(true);
+    expect(JSON.stringify(report)).not.toContain('sk-live-secret');
+    expect(JSON.stringify(task.journal)).not.toContain('sk-live-secret');
+    expect(JSON.stringify(report.snapshot.artifacts)).not.toContain(capture.basename);
+  });
+  it('refuses an adapter capture whose name is not a plain trial file', async () => {
+    const task = await setup();
+    task.options.adapter = { ...task.options.adapter, start: async () => {
+      throw Object.assign(new Error('Native worker failed before readiness'), {
+        diagnostic: { schema: 'x', trialId: 'trial', reason: 'boom', exitCode: 1, exitSignal: null, redaction: 'withheld' as const,
+          withheld: [{ stream: 'stderr' as const, bytes: 1, lines: 1, frame: null, detectors: ['bearer'] }] },
+        capture: { basename: '../escape.json', content: 'x' } });
+    } };
+    const report = await runTrial(task.options);
+    expect(report.diagnostic?.operatorCapture).toBeUndefined();
   });
   it('ignores a startup failure that publishes no documented diagnostic', async () => {
     const task = await setup();

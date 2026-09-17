@@ -24,3 +24,11 @@ An adapter may publish a redacted `SubjectStartupDiagnostic` on a subject that
 never became ready. The runner accepts it structurally — it never imports an
 adapter — refuses any other shape, persists it through its own durable sink and
 carries it on the report, so a failure explains itself without a second run.
+
+The same failure may hand over an unredacted capture. The runner writes it once
+into the trial's own directory as an operator-only `0600` file, refusing any name
+that is not a plain file name, and keeps only its path in the record. That
+directory is the operator's own run output beside the trial scratch, never inside
+the content store, so no replay, viewer projection or report can reach it: the
+boundary this repository enforces is the audience of a shipped artifact, not the
+existence of bytes on the operator's disk.

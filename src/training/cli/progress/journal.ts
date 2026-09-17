@@ -99,7 +99,9 @@ export async function createProgressJournal(options: ProgressOptions) {
       await write('experiment.failed', { status: 'failed',
         error: reason ? `Experiment failed: ${reason}` : 'Experiment failed; protected diagnostic is available to the operator.',
         diagnosticId,
-        ...(published && options.storeRoot ? { startupDiagnostics: blobContentPath(options.storeRoot, published) } : {}) });
+        ...(published && options.storeRoot ? { startupDiagnostics: blobContentPath(options.storeRoot, published) } : {}),
+        // An operator-only capture is the last account of a failure whose bytes could not be published.
+        ...(startup.find(row => row.operatorCapture)?.operatorCapture ? { operatorCapture: startup.find(row => row.operatorCapture)!.operatorCapture } : {}) });
       return { diagnosticId };
     },
   };

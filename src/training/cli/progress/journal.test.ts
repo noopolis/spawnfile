@@ -134,11 +134,12 @@ it('publishes the adapter-stated startup reason and a durable path for the redac
   const diagnostic = { schema: 'paideia.daimon-native.startup-diagnostic.v1', trialId: 'trial',
     reason: 'installed Daimon lacks the Grok broker projection capability', exitCode: 1, exitSignal: null,
     redaction: 'applied' as const, streams: { stdout: '', stderr: 'boom', truncated: { stdout: false, stderr: false } },
-    protectedArtifact: '/run/training/slot/state/paideia-trials/trial-x/child-diagnostics.json' };
+    protectedArtifact: '/run/training/slot/state/paideia-trials/trial-x/child-diagnostics.json',
+    operatorCapture: '/out/trial-x/OPERATOR-ONLY.native-startup-capture.json' };
   await f.journal.observe({ type: 'trial.finished', payload: { ...trial(), execution: 'failed', diagnostic } });
   await f.journal.failed(new Error('Experiment failed while evaluating SEALED CASE'));
   const replay = await f.store.readReplay(f.journal.runId, { audience: 'viewer', phase: 'training' });
-  const failure = replay.events.at(-1)!.payload as { type: string; error: string; startupDiagnostics?: string };
+  const failure = replay.events.at(-1)!.payload as { type: string; error: string; startupDiagnostics?: string; operatorCapture?: string };
   expect(failure.type).toBe('experiment.failed');
   // The operator sees what broke instead of a second run, and the raw error string stays protected.
   expect(failure.error).toBe('Experiment failed: installed Daimon lacks the Grok broker projection capability');
@@ -148,6 +149,8 @@ it('publishes the adapter-stated startup reason and a durable path for the redac
   expect(failure.startupDiagnostics!.startsWith(join(f.root, 'blobs'))).toBe(true);
   expect(JSON.parse(await readFile(failure.startupDiagnostics!, 'utf8'))).toMatchObject({
     schema: 'paideia.startup-diagnostics.v1', diagnostics: [diagnostic] });
+  // The last account of a failure whose bytes were withheld is named where the operator can open it.
+  expect((failure as { operatorCapture?: string }).operatorCapture).toBe(diagnostic.operatorCapture);
   expect(f.stdout.join('')).not.toContain('SEALED CASE');
 });
 

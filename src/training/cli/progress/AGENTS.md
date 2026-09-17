@@ -20,3 +20,7 @@ Reset identities per trial and expose only the count, never tool payloads.
 exists, plus the durable path of the redacted startup-diagnostics blob. The raw
 error string stays a protected evaluator blob; the progress stream never carries
 it.
+
+When a diagnostic names an operator-only capture, the failure line names that
+path too. It is the last account of a failure whose bytes could not be published,
+and a path is not content.
