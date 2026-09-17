@@ -62,9 +62,10 @@ const main = (): void => {
     // /run denies rely on /var/run being the /run symlink (a bind mask covers both spellings); report what the image has.
     process.stdout.write(`/var/run -> ${exec(container, "readlink /var/run || echo not-a-symlink").trim()}\n`);
     const runtimeHome = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/grok-lean-worker";
-    const tempLayout = exec(container, `stat -c '%u:%g %a %n' /tmp /var/tmp ${workerHome}/tmp ${runtimeHome} ${runtimeHome}/tool-output`);
+    const tempLayout = exec(container, `stat -c '%u:%g %a %n' /tmp /var/tmp ${workerHome}/tmp ${runtimeHome} ${runtimeHome}/tool-output ${runtimeHome}/tool-state ${runtimeHome}/.grok`);
     process.stdout.write(tempLayout);
     for (const expected of [
+      `2000:2000 700 ${runtimeHome}/tool-state\n`, `2000:2000 700 ${runtimeHome}/.grok\n`,
       "0:2000 1774 /tmp\n", "0:2000 1774 /var/tmp\n", `2200:2200 700 ${workerHome}/tmp\n`, `2000:2200 710 ${runtimeHome}\n`, `2000:2200 2750 ${runtimeHome}/tool-output\n`
     ]) if (!tempLayout.includes(expected)) throw new Error(`temp/spill layout is missing: ${expected.trim()}`);
     for (const pattern of ["engine-broker serve", "daimon-engine-broker --relay"]) {
