@@ -248,7 +248,8 @@ list was empty and unix modes were the only boundary. On 1.0.34 the deny list
 is enforced inside bubblewrap for both shell and `read_file`, and it is
 mandatory: Grok's strict base reads all of `/run`, `/var`, `/tmp`, and `/etc`,
 and macOS bind mounts ignore unix modes. Each worker denies the Grok bootstrap
-and realm, AGY realm and unlock secret when present, the wake-acceptance store,
+and realm, AGY realm and unlock secret when present, the organization `state`
+directory that holds the wake-acceptance store,
 every peer agent's runtime home and workspace, the organization config
 directory, every persistent mount (its own tool state, credential home and
 memory included), other runtime instance roots, the shared Moltnet, agent-token
@@ -258,7 +259,14 @@ path not linked into its own workspace, every other worker's home, the broker's
 `/run/secrets`, `/run/spawnfile`, `/run/spawnfile-secrets`, `/run/world`. It
 reaches Moltnet and memory only through Daimon's MCP tools. Every deny
 entry and registration path must be canonical (present, not a symlink, its own
-realpath) at provisioning or the container refuses to start.
+realpath) at provisioning or the container refuses to start, and must be
+*placeable*: Grok materializes each deny target inside bubblewrap as the worker
+uid, so the worker must be able to search every ancestor directory and the
+target must already exist. A single unplaceable entry makes Grok refuse the
+whole profile, failing every turn of that worker. Provisioning asserts this once
+every mode is final; where a protected path sits under a private parent — the
+wake-acceptance store under the `0700 2000:2000` organization state directory —
+the mask is lifted to that parent rather than opening it with `o+x`.
 
 Workspace skills are not emitted for Grok agents: the worker workspace stays
 untrusted and Daimon overrides the system prompt, so Grok loads neither
