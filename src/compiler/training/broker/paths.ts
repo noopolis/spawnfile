@@ -95,14 +95,56 @@ export const TRAINING_CALLER_PROTECTED_PATHS = [
   `${TRAINING_PAIDEIA_ROOT}/repair.json`
 ] as const;
 
-/** `paideia.daimon-native.launch.v2`'s five `broker.evaluatorPaths` roles, at this container's real paths. */
-export const TRAINING_EVALUATOR_ROOTS = [
+/**
+ * `paideia.daimon-native.launch.v2`'s `broker.evaluatorPaths`, in full.
+ *
+ * This is not a summary of the five roles — it is the **whole** set of deny
+ * entries this container adds beyond Daimon's own protected paths, because
+ * Paideia's worker resolves the projection from exactly
+ * `[...new Set(broker.evaluatorPaths.map(row => row.path))].sort()`. A launch
+ * that carried only the five roles made Daimon hash a different deny list than
+ * the one provisioning wrote, and a live run died on
+ * `Grok broker projection digest differs from the launch receipt`.
+ *
+ * `role` is Paideia's closed five-value enum and may repeat; only `path` is
+ * unique. The four roles with a dedicated path keep it, and everything else is
+ * tagged `context` — the caller-state role — since there is no other way to
+ * carry a path through that contract.
+ */
+export const TRAINING_EVALUATOR_PATHS: readonly { role: "run-root" | "context" | "sealed-inputs" | "judge-home" | "slot-ledger"; path: string }[] = [
   { role: "run-root", path: TRAINING_RUN_ROOT },
-  { role: "context", path: TRAINING_PAIDEIA_ROOT },
   { role: "sealed-inputs", path: TRAINING_SEALED_INPUTS_ROOT },
   { role: "judge-home", path: TRAINING_GRANT_HOME_ROOT },
-  { role: "slot-ledger", path: TRAINING_SLOT_USAGE_DIRECTORY }
-] as const;
+  { role: "slot-ledger", path: TRAINING_SLOT_USAGE_DIRECTORY },
+  { role: "context", path: TRAINING_PAIDEIA_ROOT },
+  { role: "context", path: TRAINING_BROKER_TMPDIR },
+  { role: "context", path: TRAINING_INFERENCE_DIRECTORY },
+  { role: "context", path: TRAINING_SLOT_TURN_STORE },
+  { role: "context", path: TRAINING_SUPERVISOR_DIRECTORY },
+  { role: "context", path: path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.controlSocketPath) },
+  { role: "context", path: path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.registrationPath) },
+  { role: "context", path: DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath },
+  { role: "context", path: DAIMON_WAKE_FUSE_DIRECTORY }
+];
+
+/**
+ * One entry per evaluator role, in declaration order: the launch receipt requires all five roles,
+ * and several `context` paths share that role, so the first of each role is the role's root.
+ */
+export const TRAINING_EVALUATOR_ROOTS = TRAINING_EVALUATOR_PATHS
+  .filter((entry, index) => TRAINING_EVALUATOR_PATHS.findIndex((first) => first.role === entry.role) === index);
+
+/**
+ * What `paideia.daimon-native.launch.v2`'s `controlRoot` must be.
+ *
+ * Paideia's worker passes it to Daimon as `acceptanceStorePath`, and Daimon adds
+ * it to the projection's deny list, so it has to be the same path this
+ * container masks as its slot state root. Its own default
+ * (`/run/paideia/control`) would both change the digest and nest inside the
+ * `/run/paideia` mask, which Grok refuses — Daimon renders a nested mask
+ * without complaining, so the failure would only appear at the first turn.
+ */
+export const TRAINING_CALLER_CONTROL_ROOT = TRAINING_SLOT_STATE_ROOT;
 
 /**
  * Everything this container provisions that the one training worker must not
@@ -111,20 +153,13 @@ export const TRAINING_EVALUATOR_ROOTS = [
  * refuses a profile whose deny entry equals or contains `/run`, `/var`, `/etc`
  * or `/tmp` — and no entry covers another, because masks cannot nest.
  */
-export const TRAINING_ADDED_DENY_PATHS: readonly string[] = [
-  TRAINING_BROKER_TMPDIR,
-  path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.controlSocketPath),
-  path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.registrationPath),
-  DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
-  DAIMON_WAKE_FUSE_DIRECTORY,
-  TRAINING_INFERENCE_DIRECTORY,
-  // `TRAINING_SLOT_STATE_ROOT` is Daimon's own protected entry here (it covers the
-  // wake-acceptance store, which is itself unplaceable under a `2000:2000 0700`
-  // parent), so it is not repeated in this set.
-  TRAINING_SLOT_TURN_STORE,
-  TRAINING_SUPERVISOR_DIRECTORY,
-  ...TRAINING_EVALUATOR_ROOTS.map((entry) => entry.path)
-];
+/**
+ * The added deny set is exactly the launch's `evaluatorPaths`, so Spawnfile and
+ * Paideia hand Daimon's resolver the same list. `TRAINING_SLOT_STATE_ROOT` is
+ * deliberately absent: Daimon adds it itself, from the control root above.
+ */
+export const TRAINING_ADDED_DENY_PATHS: readonly string[] =
+  [...new Set(TRAINING_EVALUATOR_PATHS.map((entry) => entry.path))].sort();
 
 /** Paths the provisioning program creates root-owned `0700` when absent, so every deny entry always has a target inode. */
 export const TRAINING_OPTIONAL_DENY_DIRECTORIES: readonly string[] = [
