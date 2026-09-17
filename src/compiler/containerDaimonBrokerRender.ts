@@ -19,6 +19,13 @@ export const DAIMON_BROKER_BACKEND_SOCKET = "/run/daimon-engine-broker/backend.s
 export const DAIMON_BROKER_LAUNCHER_SOCKET = "/run/daimon-engine-broker/launcher.sock";
 export const DAIMON_BROKER_SERVICE_CONFIG = "/etc/daimon-engine-broker/service.json";
 export const DAIMON_BROKER_REALM = "/var/lib/spawnfile/daimon/grok-subscription-realm";
+/**
+ * Private temp for the broker and its relay (uid 2100, outside the organization
+ * group): shared `/tmp` and `/var/tmp` are `root:2000 1774` in a Grok
+ * organization, so any non-root process outside group 2000 needs its own
+ * `TMPDIR`. It lives in the broker's `/run` directory, which every worker denies.
+ */
+export const DAIMON_BROKER_TMPDIR = "/run/daimon-engine-broker/tmp";
 export {
   DAIMON_ORGANIZATION_STATE_DIRECTORY,
   DAIMON_WORKER_ROOT,
@@ -128,6 +135,7 @@ export const renderDaimonBrokerProvisioning = (plans: RuntimeTargetPlan[]): stri
     "if [ -d /run/daimon-engine-broker ]; then chmod u+rwx /run/daimon-engine-broker; fi",
     "rm -rf /etc/daimon-engine-broker /run/daimon-engine-broker",
     `install -d -o root -g ${DAIMON_BROKER_UID} -m 0731 /run/daimon-engine-broker`,
+    `install -d -o ${DAIMON_BROKER_UID} -g ${DAIMON_BROKER_UID} -m 0700 ${DAIMON_BROKER_TMPDIR}`,
     "node <<'SPAWNFILE_DAIMON_BROKER_PROVISION'",
     program,
     "SPAWNFILE_DAIMON_BROKER_PROVISION"

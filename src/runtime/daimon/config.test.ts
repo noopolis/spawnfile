@@ -170,6 +170,17 @@ describe("Daimon memory lowering", () => {
     expect(config.agents[0]!.engine).toEqual({ kind: "grok", model: "grok-4.5", reasoningEffort: "medium" });
   });
 
+  it("never restates a Grok agent's runtime home mode, which its worker's group must traverse for spills", async () => {
+    const [target] = await createDaimonContainerTargets([{ emittedFiles: [], id: "agent:grok", kind: "agent", slug: "grok", value: createPiTestNode({
+      execution: { model: { primary: { auth: { method: "grok" }, name: "grok-4.6", provider: "xai", reasoning_effort: "low" } } },
+      runtime: { name: "daimon", options: { engine: "grok" } }
+    }) }, { emittedFiles: [], id: "agent:codex", kind: "agent", slug: "codex", value: createDaimonNode() }]);
+    const start = target!.files.find((file) => file.path === "runtime/daimon-start.sh")!.content as string;
+    expect(start).toContain('[ -d "<instance-root>/runtime-homes/grok" ] || install -d -m 700 "<instance-root>/runtime-homes/grok"');
+    expect(start).not.toMatch(/^install -d -m 700 "<instance-root>\/runtime-homes\/grok"/mu);
+    expect(start).toContain('install -d -m 700 "<instance-root>/runtime-homes/codex"');
+  });
+
   it("omits Daimon's engine model selector when no execution model is declared", async () => {
     const config = await emitConfig(createDaimonNode({ execution: undefined }));
 

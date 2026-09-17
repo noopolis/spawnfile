@@ -140,10 +140,15 @@ const renderStartScript = (agents: Array<{
       // group access. Forcing 0700 here would lock that worker out of its own workspace,
       // so create it only when absent and never restate the mode of an existing directory.
       `[ -d ${JSON.stringify(agent.workspacePath)} ] || install -d -m 700 ${JSON.stringify(agent.workspacePath)}`,
-      `install -d -m 700 ${[
-        agent.runtimeHomePath,
-        ...(credential === undefined ? [] : [inbound])
-      ].map((entry) => JSON.stringify(entry)).join(" ")}`,
+      // A Grok agent's runtime home is traversable by its worker's group (the
+      // broker provisioning grants `0710` so the worker can read its setgid
+      // `tool-output/` spills); restating 0700 here would revoke that.
+      agent.engine.kind === "grok"
+        ? `[ -d ${JSON.stringify(agent.runtimeHomePath)} ] || install -d -m 700 ${JSON.stringify(agent.runtimeHomePath)}`
+        : `install -d -m 700 ${[
+          agent.runtimeHomePath,
+          ...(credential === undefined ? [] : [inbound])
+        ].map((entry) => JSON.stringify(entry)).join(" ")}`,
       ...(credential === undefined ? [] : [
         `if [ -e ${JSON.stringify(path.posix.join(agent.runtimeHomePath, credential.sourceRelativePath))} ]; then test "$(stat -c %a ${JSON.stringify(path.posix.join(agent.runtimeHomePath, credential.sourceRelativePath))})" = 600; fi`
       ])

@@ -58,7 +58,13 @@ export interface DaimonGrokRegistration {
   profile: string;
   profilePath: string;
   profileSha256: string;
+  /** `<home>/tmp`: the launcher's compiled `TMPDIR` for this worker. */
+  privateTmp: string;
   reasoningEffort: DaimonGrokBrokerReasoningEffort;
+  /** The organization runtime home whose `tool-output/` this worker reads. */
+  runtimeHome: string;
+  /** `<runtimeHome>/tool-output`: setgid spill directory in the worker's group. */
+  spillDirectory: string;
   slot: number;
   uid: number;
   usageLedgerPath: string;
@@ -192,6 +198,8 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]): Daim
   return entries.map(({ agentId, plan }, slot) => {
     const home = homes[slot]!;
     const grokHome = path.posix.join(home, DAIMON_GROK_WORKER_HOME_DIRECTORY);
+    const instanceRoot = plan.instancePaths.instanceRoot ?? fail("Daimon Grok registrations require an instance root");
+    const runtimeHome = path.posix.join(instanceRoot, DAIMON_RUNTIME_HOMES_DIRECTORY, nodeSlug(agentId));
     const { model, reasoningEffort } = declaredModel(plan, agentId);
     const config = resolveDaimonGrokWorkerConfig(model, reasoningEffort);
     const denyPaths = resolveDaimonGrokWorkerDenyPaths(plans, plan, agentId, homes, home);
@@ -210,7 +218,10 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]): Daim
       profile,
       profilePath: path.posix.join(grokHome, "sandbox.toml"),
       profileSha256: daimonGrokWorkerSandboxProfileSha256(denyPaths),
+      privateTmp: path.posix.join(home, DAIMON_GROK_ENGINE_BROKER.worker.home.privateTmp.relativeToWorkerHome),
       reasoningEffort,
+      runtimeHome,
+      spillDirectory: path.posix.join(runtimeHome, DAIMON_GROK_ENGINE_BROKER.worker.home.spillDirectory.relativeToRuntimeHome),
       slot,
       uid: DAIMON_FIRST_WORKER_UID + slot,
       // Production keeps one container ledger: `spawnfile usage` and Daimon's

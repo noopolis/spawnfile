@@ -247,7 +247,11 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).toContain("bootstrapBytes.fill(0)");
     expect(rendered).toContain("ensureExactFile(entry.profilePath, entry.profile, 0o444)");
     expect(rendered).toContain("--bounding-set=-all,+chown,+setuid,+setgid -- '/opt/daimon/bin/daimon-engine-broker' &");
-    expect(rendered).toContain("--bounding-set=-all,+chown,+setuid,+setgid,+setpcap -- '/opt/daimon/bin/daimon-engine-broker' --relay &");
+    expect(rendered).toContain("--bounding-set=-all,+chown,+setuid,+setgid,+setpcap -- env TMPDIR='/run/daimon-engine-broker/tmp' '/opt/daimon/bin/daimon-engine-broker' --relay &");
+    // Shared /tmp is root:2000 1774 in a Grok organization: every non-root process outside group 2000 needs its own TMPDIR.
+    expect(rendered).toContain("--bounding-set=-all -- env TMPDIR='/run/daimon-engine-broker/tmp' '/opt/daimon/bin/daimon-runtime' engine-broker serve &");
+    expect(rendered).toContain("install -d -o 2100 -g 2100 -m 0700 /run/daimon-engine-broker/tmp");
+    expect(rendered.match(/--reuid 2100 --regid 2100 [^\n]*daimon-runtime' engine-broker serve/gu)?.every((line) => line.includes("env TMPDIR="))).toBe(true);
     expect(rendered).toContain('"$relay_pid:2100:0000000000000000"');
     expect(rendered).toContain('expected_caps=${rest##*:}');
     expect(rendered).toContain("--reuid 2100 --regid 2100");
