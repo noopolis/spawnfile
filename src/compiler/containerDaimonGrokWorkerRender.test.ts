@@ -103,3 +103,22 @@ describe("Daimon Grok worker registrations", () => {
     }]);
   });
 });
+
+describe("Grok base-profile grant guard", () => {
+  const plan = (extra: Partial<RuntimeTargetPlan>): RuntimeTargetPlan => ({ ...grokWorkerPlan({ "agent:a": "grok", "agent:b": "grok" }), ...extra }) as RuntimeTargetPlan;
+  const mount = (mount_path: string) => ({ id: mount_path, mount_path, reason: "test", volume_name: "v" });
+
+  it("refuses a deny entry equal to or above a base-profile grant, and keeps entries below grants", () => {
+    for (const grant of ["/run", "/var", "/tmp", "/var/tmp", "/etc"]) {
+      expect(() => resolveDaimonGrokRegistrations([plan({ persistentMounts: [mount(grant)] })]), grant).toThrow(/base profile grant/u);
+    }
+    expect(() => resolveDaimonGrokRegistrations([plan({ persistentMounts: [mount("/var/lib/daimon-workers/2200/.grok/sessions")] })])).toThrow(/own workspace, home|base profile grant/u);
+    const [a] = resolveDaimonGrokRegistrations([plan({})]);
+    const grants = ["/bin", "/dev", "/etc", "/lib", "/proc", "/run", "/sbin", "/sys", "/tmp", "/usr", "/var", "/var/tmp", a!.workspace, a!.grokHome, `${a!.grokHome}/sessions`, `${a!.home}/tmp`];
+    for (const entry of a!.denyPaths) {
+      for (const grant of grants) expect(grant === entry || grant.startsWith(`${entry}/`), `${entry} vs ${grant}`).toBe(false);
+    }
+    expect(a!.denyPaths).toEqual(expect.arrayContaining(["/run/secrets", "/run/daimon-engine-broker"]));
+  });
+
+});
