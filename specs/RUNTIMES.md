@@ -272,10 +272,18 @@ unprivileged user namespaces: set `kernel.apparmor_restrict_unprivileged_userns=
 (Ubuntu 24.04+ and Colima default to `1`). The entrypoint refuses to start a
 Grok organization, naming the sysctl, when it is not.
 
-Not yet provided: a private per-worker `/tmp` (the strict profile grants
-read-write shared `/tmp` and `/var/tmp`, and the broker launcher's fixed
-environment sets no `TMPDIR`), and worker-readable tool-result spill files
-(Daimon writes them `0600` as the organization uid).
+Grok refuses a profile whose deny list contains a path equal to or above a
+base-profile grant (`/tmp`, `/var/tmp`, `/run`, `/etc`, `/var`, the workspace,
+`GROK_HOME`, `sessions`, the worker's `TMPDIR`); Spawnfile refuses such an entry
+at compile time. Shared temp is therefore closed by modes: `/tmp` and
+`/var/tmp` are `root:2000 1774` (a worker can list names, not read or create),
+each worker writes only its launcher-compiled `TMPDIR` `<worker home>/tmp`
+(`<worker>:<worker> 0700`), and the broker and relay, the only non-root
+processes outside group 2000, run with `TMPDIR=/run/daimon-engine-broker/tmp`.
+Tool-result spills go to `<runtime home>/tool-output` `2000:<worker> 2750`
+under a runtime home `2000:<worker> 0710`, so only the agent's own worker can
+read them. Registered workspace and home paths are canonical and at most 255
+bytes.
 
 For AGY it declares one host-realm durable mount plus one independent opaque
 unlock source slot. Spawnfile emits the stable RW volume, metadata-authorizes
