@@ -33,7 +33,7 @@ it("rejects unmapped paths, output under readonly mounts, malformed resources an
 it("rejects symlink aliases, whole auth directories and overlapping writable mounts", async () => {
   const f = await setup(); const alias = path.join(f.root, "alias"); await symlink(f.project, alias);
   for (const config of [{ ...f.config, inputs: [{ source: alias, destination: "/run/training/inputs/project" }] },
-    { ...f.config, auth: [{ provider: "grok", source: f.project }] },
+    { ...f.config, auth: [{ provider: "codex", source: f.project }] },
     { ...f.config, output: { source: f.project, destination: "/run/training/output" } },
     { ...f.config, output: { source: path.join(f.root, "auth-leaf"), destination: "/run/training/output" } },
     { ...f.config, inputs: [{ source: f.root, destination: "/run/training/inputs/project" }] }]) await expect(prepareTrainingContainer(config, f.context, f.args)).rejects.toThrow();
@@ -44,7 +44,7 @@ it("rejects symlink aliases, whole auth directories and overlapping writable mou
 
 it("rejects noncanonical raw spellings and overlapping host input roots before remapping",async()=>{
  const f=await setup();const inner=path.join(f.project,"inner");await mkdir(inner);const other=path.join(f.root,"other");await mkdir(other);const leaf=path.join(f.project,"credential");await writeFile(leaf,"fixture");
- await expect(prepareTrainingContainer({...f.config,auth:[{provider:"grok",source:other+"/../project/credential"}]},f.context,f.args)).rejects.toThrow("canonical");
+ await expect(prepareTrainingContainer({...f.config,auth:[{provider:"codex",source:other+"/../project/credential"}]},f.context,f.args)).rejects.toThrow("canonical");
  await expect(prepareTrainingContainer({...f.config,inputs:[...f.config.inputs,{source:inner,destination:"/run/training/inputs/inner"}]},f.context,f.args)).rejects.toThrow("source roots must not overlap");
  await expect(prepareTrainingContainer({...f.config,output:{source:f.output+"/../output",destination:"/run/training/output"}},f.context,f.args)).rejects.toThrow("canonical");
 });

@@ -18,7 +18,7 @@ export async function readTrainingWitness(file: string) {
   if (hashJson(sorted(fileIdentity(files))) !== hashJson(sorted(witness.image.files))) throw Error("Training witness image bytes changed");
   const { recipe, nativeImage, pythonImage, platform } = witness.image.build;
   if (hashJson({ recipe, nativeImage, pythonImage, platform, files: witness.image.files,
-    dockerfile: witness.image.dockerfile, entry: witness.image.entry }) !== witness.imagePlanDigest) throw Error("Training witness recipe identity mismatch");
+    dockerfile: witness.image.dockerfile, entry: witness.image.entry, brokerEntry: witness.image.brokerEntry }) !== witness.imagePlanDigest) throw Error("Training witness recipe identity mismatch");
   const expected = hashJson({ config: raw.manifest && (raw.manifest as TrainingWitness).config,
     sources: witness.inputs.map(input => ({ id: input.id, digest: input.digest })),
     image: witness.imagePlanDigest, canonical: witness.context.project.sourceDigest, ...(witness.repair ? { repair: witness.repair } : {}) });
@@ -39,6 +39,7 @@ export async function writeTrainingWitness(options: { directory: string; digest:
     context: options.context, command: { args: [...options.args] },
     inputs: options.inputs.map((input, index) => ({ id: input.id, source: input.source, destination: input.destination,
       digest: input.digest, staged: options.staged[index]!, snapshotDigest: options.snapshots[index]! })),
-    image: { build: options.plan.build, files: fileIdentity(options.plan.files), dockerfile: options.plan.dockerfile, entry: options.plan.entry } };
+    image: { build: options.plan.build, files: fileIdentity(options.plan.files), dockerfile: options.plan.dockerfile,
+      entry: options.plan.entry, brokerEntry: options.plan.brokerEntry } };
   await writeFile(path.join(directory, "manifest.json"), JSON.stringify({ manifest, digest: hashJson(manifest) }), { flag: "wx", mode: 0o400 });
 }

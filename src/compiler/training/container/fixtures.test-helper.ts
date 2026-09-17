@@ -21,7 +21,7 @@ export const fixture = async () => {
     sources: [source], documents: [{ ...source, role: "system" }], skills: [{ ...source, name: "skill", ref: "skill", requiresMcp: [] }], resources: [],
     requirements: { nativeCompilation: true, isolatedPreparation: true } };
   const config = { version: "spawnfile.training-container.v1", dockerContext: "desktop-linux", inputs: [{ source: project, destination: "/run/training/inputs/project" }],
-    output: { source: output, destination: "/run/training/output" }, auth: [{ source: path.join(root, "auth-leaf"), provider: "grok" }] };
+    output: { source: output, destination: "/run/training/output" }, auth: [{ source: path.join(root, "auth-leaf"), provider: "codex" }] };
   const configPath = path.join(root, "launch.json"); await writeFile(configPath, JSON.stringify(config));
   const args = ["--train", path.join(project, "train.yaml"), "--out", output];
   return { root, project, output, context, config, configPath, args };

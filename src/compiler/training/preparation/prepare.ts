@@ -8,6 +8,7 @@ import { assertInputRoot, exactPath, fileIdentity, hashJson, sealTree, within } 
 import { planInputs, readBoundedJson, stageInput, verifyCanonicalPins } from "./inputs.js";
 import { planTrainingImage, buildTrainingImage } from "./image.js";
 import { planMeasurementRepair, stageMeasurementRepair, writeTrainingWitness } from "../repair/index.js";
+import { prepareTrainingBroker } from "./broker.js";
 
 function mappedReceipt(digest: string, image: string, config: ReturnType<typeof trainingPreparationSchema.parse>): TrainingMappedPreparation {
   return parseTrainingMappedPreparation({ version: "spawnfile.training-preparation.v1", preparationDigest: digest, imageId: image,
@@ -32,6 +33,8 @@ export interface PreparedTraining {
 /** Reads only until the explicit dry-run boundary; preparation never executes project code. */
 export async function prepareTraining(options: PrepareTrainingOptions): Promise<PreparedTraining | { digest: string; dryRun: true }> {
   const config = trainingPreparationSchema.parse(await readBoundedJson(options.configPath));
+  // A v2 declaration still lowers to the unchanged v1 launch config; only v3 carries a broker slot into Docker.
+  const launchVersion = config.version === "spawnfile.training-container.v3" ? config.version : "spawnfile.training-container.v1";
   const root = path.dirname(path.resolve(options.configPath));
   const auth = config.auth.map(entry => ({ ...entry, source: path.resolve(root, entry.source) }));
   const output = path.resolve(root, config.output.source), parent = path.dirname(output);
@@ -59,6 +62,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   if (repair && hashJson(config.integration) !== hashJson(repair.witness.manifest.config.integration)) throw Error("Repair integration settings binding changed");
   const digest = hashJson({ config, sources: inputs.map(input => ({ id: input.id, digest: input.digest })), image: imagePlan?.digest ?? config.image,
     canonical: options.context.project.sourceDigest, ...(repair ? { repair: { witness: repair.witness.digest, parent: repair.manifestDigest } } : {}) });
+  if (config.broker) await prepareTrainingBroker(config.broker, root, path.dirname(path.resolve(options.configPath)), false);
   if (options.dryRun) return { digest, dryRun: true };
   options.signal?.throwIfAborted();
   for (const entry of auth) if (await exactPath(entry.source) !== entry.source || !(await lstat(entry.source)).isFile()) throw Error("Training auth must be a canonical regular leaf");
@@ -100,8 +104,10 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
         if (inspected.code !== 0) throw Error("Training image is unavailable"); image = inspected.stdout.trim();
       }
       const mapped = mappedReceipt(digest, image, config);
-      const launch = trainingContainerConfigSchema.parse({ version: "spawnfile.training-container.v1", dockerContext: config.dockerContext,
-        inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth });
+      const preparedBroker = config.broker ? await prepareTrainingBroker(config.broker, root, staging, true) : undefined;
+      const launch = trainingContainerConfigSchema.parse({ version: launchVersion, dockerContext: config.dockerContext,
+        inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth,
+        ...(preparedBroker ? { broker: preparedBroker.launch } : {}) });
       await writeFile(configPath, JSON.stringify(launch), { flag: "wx", mode: 0o600 });
       await writeFile(preparationPath, JSON.stringify(parseTrainingMappedPreparation(mapped)), { flag: "wx", mode: 0o400 });
       const snapshots = await Promise.all(inputs.map(async (input, index) => input.git || input.files ? hashJson(fileIdentity(await sealTree(staged[index]!, "input", { ignoreGit: true, internalSymlinks: true }))) : null));
@@ -111,8 +117,10 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
         ...(repair ? { repair: { witness: repair.witness.digest, parent: repair.manifestDigest } } : {}) });
     } catch (error) { if (owned) await rm(staging, { recursive: true, force: true }); throw error; }
   }
-  const expectedLaunch = trainingContainerConfigSchema.parse({ version: "spawnfile.training-container.v1", dockerContext: config.dockerContext,
-    inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth });
+  const expectedBroker = config.broker ? await prepareTrainingBroker(config.broker, root, staging, false) : undefined;
+  const expectedLaunch = trainingContainerConfigSchema.parse({ version: launchVersion, dockerContext: config.dockerContext,
+    inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth,
+    ...(expectedBroker ? { broker: expectedBroker.launch } : {}) });
   if (hashJson(await readBoundedJson(configPath)) !== hashJson(expectedLaunch) ||
     hashJson(await readBoundedJson(preparationPath)) !== hashJson(mappedReceipt(digest, image, config))) throw Error("Saved training launch or mapped receipt changed");
   const inspected = await execute(["--context", config.dockerContext, "image", "inspect", image, "--format", "{{.Id}}"]);

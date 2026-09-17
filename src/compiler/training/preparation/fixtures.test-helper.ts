@@ -25,7 +25,7 @@ export async function preparationFixture() {
   const config: TrainingPreparationConfig = {
     version: "spawnfile.training-container.v2", dockerContext: "local",
     image: { build: { recipe: "daimon-dspy.v1", nativeImage: image, pythonImage: image, platform: "linux/arm64",
-      paideia: "paideia", bridge: "bridge", claude: "claude", grok: { source: "grok", sha256: sha("native-binary") },
+      paideia: "paideia", bridge: "bridge", claude: "claude",
       integration: { source: "integration", entry: "entry.ts" }, bootstrap: "bootstrap" } },
     integration: { settings: { input: "settings", path: "settings.json" } },
     inputs: [{ id: "project", source: "project", destination: "/run/training/inputs/project" }, { id: "settings", source: "settings", destination: "/run/training/inputs/settings" }],

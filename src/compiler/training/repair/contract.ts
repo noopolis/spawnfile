@@ -16,7 +16,7 @@ export const witnessSchema = z.object({
   inputs: z.array(z.object({ id: z.string(), source: z.string(), destination: z.string(), digest: sha,
     staged: z.string(), snapshotDigest: sha.nullable() }).strict()),
   repair: z.object({ witness: sha, parent: sha }).strict().optional(),
-  image: z.object({ build: trainingBuildSchema, dockerfile: z.string(), entry: z.string(), files: z.array(fileSchema).min(1).max(10000) }).strict()
+  image: z.object({ build: trainingBuildSchema, dockerfile: z.string(), entry: z.string(), brokerEntry: z.string(), files: z.array(fileSchema).min(1).max(10000) }).strict()
 }).strict();
 export type TrainingWitness = z.infer<typeof witnessSchema>;
 export const witnessEnvelopeSchema = z.object({ manifest: witnessSchema, digest: sha }).strict();

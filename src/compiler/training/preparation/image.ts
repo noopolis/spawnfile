@@ -8,7 +8,7 @@ import { assertInputRoot, copySealed, fileIdentity, hashJson, sealFile, sealTree
 const packageRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 export const trainingAssets = path.extname(fileURLToPath(import.meta.url)) === ".ts"
   ? path.join(packageRoot, "runtime-images/training") : fileURLToPath(new URL("./assets/", import.meta.url));
-export interface TrainingImagePlan { digest: string; files: SealedFile[]; dockerfile: string; entry: string; build: TrainingImageBuild }
+export interface TrainingImagePlan { digest: string; files: SealedFile[]; dockerfile: string; entry: string; brokerEntry: string; build: TrainingImageBuild }
 
 async function packageFiles(root: string, target: string, withDist: boolean, lockSource = path.join(root, "package-lock.json")): Promise<SealedFile[]> {
   const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
@@ -26,7 +26,7 @@ async function packageFiles(root: string, target: string, withDist: boolean, loc
 
 export async function planTrainingImage(build: TrainingImageBuild, root: string, auth: readonly string[], ownRoot = packageRoot): Promise<TrainingImagePlan> {
   const resolve = (value: string) => path.resolve(root, value);
-  for (const source of [build.paideia, build.bridge, build.claude, build.grok.source, build.integration.source, ...build.compiler ? [build.compiler] : [], ...build.bootstrap ? [build.bootstrap] : []]) assertInputRoot(resolve(source), auth);
+  for (const source of [build.paideia, build.bridge, build.claude, build.integration.source, ...build.compiler ? [build.compiler] : [], ...build.bootstrap ? [build.bootstrap] : []]) assertInputRoot(resolve(source), auth);
   const assets = ownRoot === packageRoot ? trainingAssets : path.join(ownRoot, "runtime-images/training");
   const dockerfile = await readFile(path.join(assets, "Dockerfile"), "utf8");
   const ownLock = path.extname(fileURLToPath(import.meta.url)) === ".ts" || ownRoot !== packageRoot
@@ -40,20 +40,20 @@ export async function planTrainingImage(build: TrainingImageBuild, root: string,
     ...await sealTree(resolve(build.bridge), "bridge", { ignoreDevelopment: true }),
     ...await sealTree(resolve(build.integration.source), "integration", { ignoreDevelopment: true }),
     ...build.bootstrap ? await sealTree(resolve(build.bootstrap), "bootstrap", { ignoreDevelopment: true }) : [],
-    await sealFile(resolve(build.grok.source), "grok"),
     await sealFile(path.join(ownRoot, "runtimes.yaml"), "spawnfile/runtimes.yaml"),
     await sealFile(path.join(ownRoot, "moltnet-releases.json"), "spawnfile/moltnet-releases.json"),
     ...await Promise.all(["runtimes.yaml", "moltnet-releases.json"].map(name =>
       sealFile(path.join(build.compiler ? resolve(build.compiler) : ownRoot, name), `compiler/${name}`)))
   ];
-  if (files.find(file => file.destination === "grok")!.sha256 !== build.grok.sha256) throw Error("Grok executable digest mismatch");
   for (const required of [`integration/${build.integration.entry}`, "bridge/pyproject.toml", "bridge/requirements.lock", "bridge/paideia_dspy/__init__.py", "paideia/dist/src/cli/main.js", "spawnfile/dist/cli/index.js", "compiler/dist/cli/index.js"]) {
     if (!files.some(file => file.destination === required)) throw Error(`Training distribution is missing ${required}`);
   }
   const entry = `#!/bin/sh\nexec /usr/local/bin/node --experimental-strip-types ${JSON.stringify(`/opt/training/integration/${build.integration.entry}`)} "$@"\n`;
+  // The broker-capable entrypoint is the image's own Spawnfile distribution, never a host-written script.
+  const brokerEntry = `#!/bin/sh\nexec /usr/local/bin/node /opt/training/spawnfile/dist/compiler/training/broker/main.js "$@"\n`;
   const digest = hashJson({ recipe: build.recipe, nativeImage: build.nativeImage, pythonImage: build.pythonImage, platform: build.platform,
-    files: fileIdentity(files), dockerfile, entry });
-  return { digest, files, dockerfile, entry, build };
+    files: fileIdentity(files), dockerfile, entry, brokerEntry });
+  return { digest, files, dockerfile, entry, brokerEntry, build };
 }
 
 /** Cache is content-addressed and still requires a matching immutable image and label. */
@@ -79,6 +79,7 @@ export async function buildTrainingImage(plan: TrainingImagePlan, options: {
     await mkdir(path.join(staging, "bootstrap"), { recursive: true, mode: 0o700 });
     await writeFile(path.join(staging, "Dockerfile"), `${plan.dockerfile}\nLABEL com.spawnfile.training.recipe=${JSON.stringify(plan.digest)}\n`, { mode: 0o600 });
     await writeFile(path.join(staging, "train"), plan.entry, { mode: 0o755 });
+    await writeFile(path.join(staging, "train-broker"), plan.brokerEntry, { mode: 0o755 });
     const result = await call(["build", "--platform", plan.build.platform, "--build-arg", `NATIVE_IMAGE=${plan.build.nativeImage}`,
       "--build-arg", `PYTHON_IMAGE=${plan.build.pythonImage}`, "--tag", tag, staging], true);
     if (result.code !== 0) throw Error("Training image build failed; inspect the streamed build diagnostic");

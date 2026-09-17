@@ -7,7 +7,7 @@ const config = () => ({ version: "spawnfile.training-container.v2", dockerContex
 it("keeps authoring strict and rejects ambiguous input and settings references", () => {
   const base = config(); expect(trainingPreparationSchema.parse(base)).toEqual(base);
   expect(() => trainingPreparationSchema.parse({ ...base, inputs: [...base.inputs, ...base.inputs] })).toThrow("unique");
-  expect(() => trainingPreparationSchema.parse({ ...base, auth: [{ source: "one", provider: "grok" }, { source: "two", provider: "grok" }] })).toThrow("unique");
+  expect(() => trainingPreparationSchema.parse({ ...base, auth: [{ source: "one", provider: "codex" }, { source: "two", provider: "codex" }] })).toThrow("unique");
   expect(() => trainingPreparationSchema.parse({ ...base, integration: { settings: { input: "missing", path: "settings.json" } } })).toThrow("declared");
   expect(() => trainingPreparationSchema.parse({ ...base, inputs: [{ ...base.inputs[0], include: ["x"], git: { revision: "a".repeat(40) } }] })).toThrow("separate");
   for (const bad of ["../escape", "/absolute", "a\\b", "a//b"]) expect(() => trainingPreparationSchema.parse({ ...base, inputs: [{ ...base.inputs[0], include: [bad] }] })).toThrow();
