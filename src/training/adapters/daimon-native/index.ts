@@ -1,7 +1,17 @@
 export { createDaimonNativeAdapter } from './adapter.js';
 export type { NativeAdapterOptions } from './adapter.js';
 export { parseNativeLaunch, nativeLaunchSchema } from './receipt/index.js';
-export type { NativeLaunch, NativeMount } from './receipt/index.js';
+export type { NativeLaunch, NativeMount, VerifiedNativeLaunch } from './receipt/index.js';
+
+/**
+ * Launch preflight for callers that prepare a trial: `loadNativeLaunch` verifies
+ * the receipt and its path policy without starting anything, and
+ * `nativeTrialArtifactsRoot` is where that trial's private control artifacts
+ * land (the control root for Codex, a per-trial directory inside it for Grok).
+ * Both are derivations callers must not reimplement.
+ */
+export { loadNativeLaunch } from './container/index.js';
+export { nativeTrialArtifactsRoot } from './receipt/index.js';
 
 export type { NativeExternalInputs, NativeExternalInput, NativeChildExternalInputs } from './external.js';
 
