@@ -20,3 +20,10 @@ root supervisor's slot preflight receipt before any process starts and supplies
 the equivalent authority — the digest it certifies must be this launch's, and its
 worker-uid denial canaries decide what may be a control path and what may not be
 writable. Codex rules stay byte-equal; the Grok branch never runs for Codex.
+
+`loadNativeLaunch` derives the receipt path from `realpath(runtimeHomePath)`. The
+value still comes from the evaluator, never from the launch, and every check
+below pins that resolved root — for Grok, to the digest-bound slot runtime home —
+so resolving cannot redirect the receipt. It exists because a fixed container
+slot is reached through the runner's allocated trial path, and the worker refuses
+a control file whose own path traverses a symlink.

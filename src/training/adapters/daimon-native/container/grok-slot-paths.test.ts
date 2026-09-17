@@ -85,6 +85,29 @@ test('the training container fixed slot paths load as a Grok child launch', asyn
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
+test('a trial runtime home reached through a symlink hands the child the real receipt path', async () => {
+  const f = await slotFixture();
+  try {
+    // What the trial runner allocates: `<storage>/trial-XXXX/runtime` pointing at the container's fixed slot home.
+    const allocated = join(f.root, 'storage/trial-0001');
+    await mkdir(allocated, { recursive: true, mode: 0o700 });
+    const link = join(allocated, 'runtime');
+    await symlink(f.paths.runtimeHome, link);
+    const loaded = await loadNativeLaunch({ ...f.input, runtimeHomePath: link }, true);
+    // `verifyWorkerPaths` refuses a `--launch` path that traverses a symlink, so the resolved one is handed over.
+    expect(loaded.receiptFile).toBe(join(f.paths.runtimeHome, 'native-launch.json'));
+    expect(await realpath(loaded.receiptFile)).toBe(loaded.receiptFile);
+    expect(loaded.projections).toEqual([{ role: 'home', source: f.paths.runtimeHome, target: f.paths.runtimeHome }]);
+    // Resolving cannot redirect: the resolved root must still be the digest-bound slot home.
+    const elsewhere = join(f.root, 'other-runtime');
+    await mkdir(elsewhere, { recursive: true, mode: 0o700 });
+    await writeFile(join(elsewhere, 'native-launch.json'), JSON.stringify(f.launch), { mode: 0o600 });
+    const wrong = join(allocated, 'runtime-2');
+    await symlink(elsewhere, wrong);
+    await expect(loadNativeLaunch({ ...f.input, runtimeHomePath: wrong }, true)).rejects.toThrow('exactly the slot runtime home');
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
 test('a caller-protected path inside a Grok subject root is still refused', async () => {
   const f = await slotFixture();
   try {

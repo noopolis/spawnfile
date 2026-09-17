@@ -26,11 +26,15 @@ export function nativeMounts(launch: NativeLaunch): NativeMount[] {
  * attested, worker-denied slot root, and no writable root touches one.
  */
 export async function loadNativeLaunch(input: SubjectStart, child = false): Promise<VerifiedNativeLaunch> {
-  const receiptFile = join(input.runtimeHomePath, 'native-launch.json');
+  const runtime = await realpath(input.runtimeHomePath);
+  // The resolved trial runtime home, not the caller's spelling of it: preparation may reach a fixed slot
+  // root through a symlink, and the worker refuses any control file whose own path traverses one. This
+  // cannot redirect the receipt — the value comes from the evaluator's `runtimeHomePath`, never from the
+  // launch, and every check below still pins that resolved root (for Grok, to the digest-bound slot home).
+  const receiptFile = join(runtime, 'native-launch.json');
   const launch = parseNativeLaunch(JSON.parse(await readPrivateFile(receiptFile, 65536)));
   if (launch.agent.engine === 'grok' && !child) throw new Error(grokContainerUnsupported);
   const workspace = await realpath(input.workspacePath);
-  const runtime = await realpath(input.runtimeHomePath);
   if (input.model !== launch.agent.model) throw new Error('Subject model differs from the prepared native model');
   if (input.tools?.length) throw new Error('Fixture functions cannot replace native runtime tools');
   if (await realpath(launch.workspace.source) !== workspace) throw new Error('Native workspace must be the materialized trial workspace');
