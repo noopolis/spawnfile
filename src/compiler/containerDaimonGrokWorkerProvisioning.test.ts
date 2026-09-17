@@ -69,7 +69,7 @@ const seedFor = (registrations: readonly DaimonGrokRegistration[], omit: string[
   ...registrations.map((entry) => [entry.workspace, { kind: "dir" as const }] as const),
   ["/etc/daimon-engine-broker", { kind: "dir" as const, mode: 0o700 }] as const,
   ...registrations.flatMap((entry) => entry.denyPaths)
-    .filter((denied) => !denied.startsWith("/var/lib/daimon-workers/") && !(["/run/secrets", "/run/spawnfile", "/run/spawnfile-secrets"] as string[]).includes(denied))
+    .filter((denied) => !denied.startsWith("/var/lib/daimon-workers/") && !(["/run/secrets", "/run/spawnfile", "/run/spawnfile-secrets", "/run/world"] as string[]).includes(denied))
     .map((denied) => [denied, { kind: denied.endsWith("grok-bootstrap-auth") ? "file" as const : "dir" as const, mode: 0o700 }] as const)
 ].filter(([target]) => !omit.includes(target)));
 
@@ -107,6 +107,19 @@ describe("Grok worker home provisioning", () => {
     expect(service.version).toBe("noopolis.daimon.engine-broker-service.v2");
     expect(nodes.get("/etc/daimon-engine-broker/service.json")).toMatchObject({ gid: BROKER, mode: 0o440, uid: 0 });
     for (const optional of ["/run/secrets", "/run/spawnfile", "/run/spawnfile-secrets"]) expect(nodes.get(optional)).toMatchObject({ kind: "dir", mode: 0o700, uid: 0 });
+  });
+
+  it("allows a peer resource backing to be absent at provisioning (the entrypoint prepares it later) but never a symlink", () => {
+    const withResource = resolveDaimonGrokRegistrations([{
+      ...plan({ "agent:a": "grok", "agent:b": "grok" }),
+      resources: [{ backingPath: "/var/lib/spawnfile/resources/instances/daimon-organization/b-repo", id: "b-repo", kind: "git", linkPath: `${INSTANCE}/workspace/agents/b/b-repo`, mode: "readonly", mount: "./b-repo", sharing: "agent" }]
+    } as unknown as RuntimeTargetPlan]);
+    const backing = "/var/lib/spawnfile/resources/instances/daimon-organization/b-repo";
+    expect(withResource[0]!.deferredDenyPaths).toEqual([backing]);
+    expect(() => run(withResource, seedFor(withResource, [backing]))).not.toThrow();
+    expect(() => run(withResource, { ...seedFor(withResource, [backing]), [backing]: { kind: "link", target: "/tmp/elsewhere" }, "/tmp/elsewhere": { kind: "dir" } }))
+      .toThrow(/canonical non-symlink/u);
+    expect(() => run(withResource, seedFor(withResource, ["/var/lib/spawnfile/daimon/usage"]))).toThrow(/deny path is missing/u);
   });
 
   it("is restart-idempotent over an already provisioned home", () => {

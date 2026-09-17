@@ -21,7 +21,7 @@ const grokPlan = (agentIds: string[], extra: Record<string, string> = {}, model 
   runtimeName: "daimon",
   engineByNodeId: { ...Object.fromEntries(agentIds.map((agentId) => [agentId, "grok"])), ...extra },
   grokModelByNodeId: Object.fromEntries(agentIds.map((agentId) => [agentId, model])),
-  instancePaths: { instanceRoot: "/var/lib/spawnfile/instances/daimon/daimon-organization", workspacePath: "/var/lib/spawnfile/instances/daimon/daimon-organization/workspace" }
+  instancePaths: { configPath: "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon/config.json", instanceRoot: "/var/lib/spawnfile/instances/daimon/daimon-organization", workspacePath: "/var/lib/spawnfile/instances/daimon/daimon-organization/workspace" }
 }) as unknown as Plan;
 const uid = process.getuid?.() ?? 501;
 const gid = process.getgid?.() ?? 20;
