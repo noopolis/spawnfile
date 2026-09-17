@@ -4,6 +4,7 @@ import {
   computeUsageCoverage,
   dedupeUsageRecordsByTurn,
   DEFAULT_USAGE_SINCE,
+  findConflictingUsageTurns,
   filterUsageRecordsSince,
   groupUsageByAgent,
   groupUsageByEngine,
@@ -47,12 +48,24 @@ describe("broker usage rows", () => {
   it("dedupes a replayed turn in parsing and in every aggregate, keeping unkeyed rows", () => {
     const text = [line({ total: 10, turn }), line({ total: 10, turn }), line({ total: 5 }), line({ total: 5 })].join("\n");
     const parsed = parseUsageLedger(text);
-    expect(parsed.map((entry) => entry.total)).toEqual([10, 5, 5]);
+    expect(dedupeUsageRecordsByTurn(parsed).map((entry) => entry.total)).toEqual([10, 5, 5]);
+    expect(groupUsageByEngine(parsed)[0]).toMatchObject({ tokens: 20, turns: 3 });
+    expect(computeUsageCoverage(parsed, 1)).toMatchObject({ conflictingTurnCount: 0, partial: false });
     const duplicated = [record({ total: 10, turn }), record({ total: 10, turn })];
     expect(dedupeUsageRecordsByTurn(duplicated)).toHaveLength(1);
     expect(groupUsageByAgent(duplicated)[0]).toMatchObject({ tokens: 10, turns: 1 });
     expect(groupUsageByEngine(duplicated)[0]).toMatchObject({ tokens: 10, turns: 1 });
     expect(computeUsageCoverage([record({ complete: false, turn }), record({ complete: false, turn })], 1).incompleteRecordCount).toBe(1);
+  });
+});
+
+describe("conflicting rows under one turn key", () => {
+  it("counts the first row, names the conflict, and marks coverage partial", () => {
+    const turn = "f".repeat(64);
+    const records = [record({ total: 10, turn }), record({ total: 99, turn }), record({ total: 10, turn: "0".repeat(64) }), record({ total: 10, turn: "0".repeat(64) })];
+    expect(findConflictingUsageTurns(records)).toEqual([turn]);
+    expect(groupUsageByAgent(records)[0]).toMatchObject({ tokens: 20, turns: 2 });
+    expect(computeUsageCoverage(records, 1)).toMatchObject({ agentsReporting: 1, conflictingTurnCount: 1, partial: true });
   });
 });
 
@@ -265,6 +278,7 @@ describe("computeUsageCoverage", () => {
     expect(coverage).toEqual({
       agentsReporting: 2,
       agentsTotal: 16,
+      conflictingTurnCount: 0,
       estimatedTurnCount: 0,
       incompleteRecordCount: 0,
       partial: true,

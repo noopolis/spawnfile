@@ -188,6 +188,15 @@ describe("spawnfile usage", () => {
     expect(table.output).toContain("~ 1 turn(s) include ESTIMATED usage: 2 request(s) returned no provider-reported usage");
   });
 
+  it("warns and reports PARTIAL when differing rows share one turn key", async () => {
+    const turn = "c".repeat(64);
+    const table = await executeUsageCommand("/tmp/project", {}, handlersFor({
+      [DAIMON_GROK_TURN_USAGE_LEDGER.filePath]: `${line({ turn, total: 10 })}\n${line({ turn, total: 99 })}\n`
+    }));
+    expect(table.output).toContain("WARNING 1 turn(s) carry differing ledger rows under one turn key");
+    expect(table.output).toContain("coverage PARTIAL");
+  });
+
   it("counts an all-zero turn as unknown rather than free", async () => {
     const result = await executeUsageCommand("/tmp/project", {}, handlersFor({
       [DAIMON_GROK_TURN_USAGE_LEDGER.filePath]: `${line({ complete: false, input: 0, output: 0, cache_read: 0, cache_write: 0, total: 0 })}\n`

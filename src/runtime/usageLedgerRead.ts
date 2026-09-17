@@ -12,7 +12,7 @@
  * real exports from this folder, and so must not be imported back.
  */
 
-import { dedupeUsageRecordsByTurn, parseUsageLedger, type UsageRecord } from "./usageLedger.js";
+import { parseUsageLedger, type UsageRecord } from "./usageLedger.js";
 
 /** The exec shape this module needs to read a ledger — structurally the same
  * as `RuntimeProbeGateway.exec` (`./types.ts`), duck-typed here rather than
@@ -131,9 +131,10 @@ export const readUsageLedgerViaExec = async (
     readLedgerGeneration(exec, paths.filePath)
   ]);
   return {
-    // A replayed broker turn can re-append its sealed row after a rotation, so
-    // dedupe across both generations, not only within each.
-    records: dedupeUsageRecordsByTurn([...parseUsageLedger(rotated.text), ...parseUsageLedger(primary.text)]),
+    // Every row is kept, across both generations: aggregates dedupe by `turn`
+    // (a replay can re-append after a rotation) and coverage reports rows that
+    // share a key but differ.
+    records: [...parseUsageLedger(rotated.text), ...parseUsageLedger(primary.text)],
     unreadable: [rotated.failure, primary.failure].filter(
       (failure): failure is UsageLedgerReadFailure => failure !== undefined
     )

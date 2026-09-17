@@ -278,7 +278,9 @@ The broker remains the single sealed writer. What changed for readers:
   when it cannot find the row, so two replays can append identical bytes.
   `spawnfile usage` keeps the first row per `turn` — within each generation,
   across `usage.jsonl.1` and `usage.jsonl`, and inside every aggregate. Rows
-  without a key are kept.
+  without a key are kept. Rows sharing a key but differing are a conflict: the
+  first is counted, the keys are named in a warning, and coverage is PARTIAL
+  (`coverage.conflictingTurnCount`).
 - **Additive fields.** `limit_reason` (`tokens`/`requests`/`timeout`/`none`),
   `model` (the declared model the broker verified), `outcome`, and
   `estimated_requests` stay inside the unchanged `turn-usage.v1` record. A
