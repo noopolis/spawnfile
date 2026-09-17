@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
+import { createConnection } from 'node:net';
 import path from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { GrokGrantRefusal } from '../../../contracts/inference-grants.js';
@@ -63,3 +64,22 @@ it('fails closed without a socket, without Daimon, or when the installed contrac
     await expect(loadDaimonGrokGrantAuthority(socket, async () => fakeDaimon(patch, grants).module)).rejects.toThrow('differs from the Paideia pin');
   }
 });
+
+it('scripted broker socket answers length-prefixed frames and closes on an unscripted request', async () => {
+  broker = await scriptedBrokerSocket(request => request['kind'] === 'answer' ? { kind: 'ok' } : undefined);
+  const exchange = (kind: string) => new Promise<string>((resolve, reject) => {
+    const socket = createConnection({ path: broker!.socketPath });
+    let data = Buffer.alloc(0);
+    socket.on('connect', () => {
+      const body = Buffer.from(JSON.stringify({ version: 'v', requestId: 'r', kind }));
+      const frame = Buffer.alloc(4 + body.length); frame.writeUInt32BE(body.length); body.copy(frame, 4);
+      socket.write(frame.subarray(0, 3)); setTimeout(() => socket.write(frame.subarray(3)), 5);
+    });
+    socket.on('data', chunk => { data = Buffer.concat([data, chunk]); socket.destroy(); resolve(data.subarray(4).toString('utf8')); });
+    socket.on('close', () => resolve('closed')); socket.on('error', reject);
+  });
+  expect(JSON.parse(await exchange('answer'))).toEqual({ version: 'v', requestId: 'r', kind: 'ok' });
+  expect(await exchange('other')).toBe('closed');
+  expect(broker.received.map(frame => frame['kind'])).toEqual(['answer', 'other']);
+});
+
