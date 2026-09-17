@@ -99,6 +99,9 @@ it('runs YAML grok-broker judges and optimizer through grants with the purpose r
   expect(env['GROK_HOME']!.startsWith(path.join(root, 'homes'))).toBe(true);
   expect(env['DAIMON_INFERENCE_GRANT']).toMatch(/^inference_/u);
   expect(Object.values(process.env).some(value => value?.startsWith('inference_'))).toBe(false);
+  expect(fake.releases).toEqual([]);
+  await configured.close();
+  expect(fake.releases.sort()).toEqual(['1'.padStart(32, '0'), '2'.padStart(32, '0')]);
 });
 
 it('fails a stale realm fast to the authored Claude fallback and fails closed without socket, home or Daimon', async () => {

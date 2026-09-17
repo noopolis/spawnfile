@@ -53,6 +53,9 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     ...configuredCostRoutes(args, inputs.judges, inputs.citationRepairs),
     maxTrials: inputs.maxTrials, maxProposals, ...costConfig });
   const native = await prepareNative(args, io, dependencies, timeoutMs, inputs);
+  // Completion, failure and SIGINT/SIGTERM (launch aborts `signal`) all release inference grants here.
+  try { return await executePrepared(native); } finally { await native.closeInference(); }
+  async function executePrepared(native: Awaited<ReturnType<typeof prepareNative>>): Promise<number> {
   signal.throwIfAborted();
   const repair = args.flags['repair-measurements'] ? await readMeasurementRepair(resolve(io.cwd, one(args, 'repair-context')), {
     parentRoot: resolve(io.cwd, one(args, 'repair-measurements')), out: native.out,
@@ -170,6 +173,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
       else await live?.close();
     }
   }, Boolean(args.flags.resume));
+  }
 }
 
 /** Injectable argv/IO and native boundaries; all command orchestration uses public owners. */

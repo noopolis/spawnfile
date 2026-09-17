@@ -57,7 +57,9 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
     : dependencies.adapter?.(runtime as 'codex' | 'daimon', { model, timeoutMs })
       ?? (runtime === 'codex' ? createCodexAdapter({ model, timeoutMs }) : createDaimonAdapter({ model, timeoutMs }));
   const configured = createTrainingInference(args, dependencies, timeoutMs, judges, inputs.citationRepairs);
-  const cacheRoots = await prepareJudgeCaches(args, configured.judges, inputs.out, dependencies.spawnfile?.judgeCacheRoot);
+  let cacheRoots: Awaited<ReturnType<typeof prepareJudgeCaches>>;
+  try { cacheRoots = await prepareJudgeCaches(args, configured.judges, inputs.out, dependencies.spawnfile?.judgeCacheRoot); }
+  catch (error) { await configured.close(); throw error; }
   const inference = args.training?.comparison ? undefined : configured.inference;
   let prepareEnvironment: StoredTrialOptions['prepareEnvironment'];
   if ('context' in inputs) {
@@ -65,7 +67,7 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
     prepareEnvironment = (paths, signal, trial) => dependencies.spawnfile!.prepareEnvironment(paths, signal, trial, context);
   }
   const subjectRoot = 'context' in inputs ? dependencies.spawnfile!.subjectRoot : undefined;
-  return { ...inputs, adapter, inference, prepareEnvironment, cacheRoots, subjectRoot,
+  return { ...inputs, adapter, inference, prepareEnvironment, cacheRoots, subjectRoot, closeInference: configured.close,
     registry: createEvaluationRegistry(),
     evaluation: { judges: configured.judges,
       embeddings: {}, readText: (path: string) => datasets.readCriterion(path) },

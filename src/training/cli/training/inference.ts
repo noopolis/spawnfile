@@ -62,7 +62,9 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
   return { get inference() {
     if (inference === undefined) throw new Error('Authored comparison has no optimizer inference');
     return inference;
-  }, judges: evaluationJudges };
+  }, judges: evaluationJudges,
+  /** Release every broker grant; bounded inside the pool. Commands await it on every exit path. */
+  close: async (): Promise<void> => { await grants?.close(); } };
 }
 
 /**
