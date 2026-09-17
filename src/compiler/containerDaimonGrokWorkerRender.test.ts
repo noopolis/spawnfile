@@ -6,6 +6,7 @@ import { DAIMON_GROK_ENGINE_BROKER, DAIMON_GROK_TURN_USAGE_LEDGER } from "../run
 import { DAIMON_GROK_WORKER_CONFIG_BYTES } from "../runtime/daimon/grokWorkerConfigBytes.js";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import {
+  assertCanonicalRegisteredPath,
   DAIMON_GROK_OPTIONAL_DENY_PATHS,
   renderDaimonGrokServiceConfig,
   resolveDaimonGrokRegistrations
@@ -124,5 +125,26 @@ describe("Grok base-profile grant guard and nested-mask refusal", () => {
   it("refuses an added ancestor that would cover a Daimon deny entry, since masks cannot nest", () => {
     expect(() => resolveDaimonGrokRegistrations([plan({ persistentMounts: [mount("/var/lib/spawnfile/instances/daimon/daimon-organization/state")] })]))
       .toThrow(/would cover .*state\/wake-acceptance; masks cannot nest/u);
+  });
+});
+
+describe("canonical registered paths", () => {
+  it("accepts only absolute canonical paths of at most 255 bytes", () => {
+    expect(assertCanonicalRegisteredPath("home", "/var/lib/daimon-workers/2200")).toBe("/var/lib/daimon-workers/2200");
+    for (const bad of ["relative/home", "/", "/var/lib/", "/var//lib", "/var/./lib", "/var/../lib", "/var/lib/.", `/${"a".repeat(255)}`]) {
+      expect(() => assertCanonicalRegisteredPath("home", bad), bad).toThrow(/canonical registered path/u);
+    }
+    expect(assertCanonicalRegisteredPath("home", `/${"a".repeat(254)}`)).toHaveLength(255);
+  });
+
+  it("writes only canonical workspace, home, and runtime paths, and refuses one that cannot fit the registration record", () => {
+    const messy = { ...grokWorkerPlan({ "agent:a": "grok" }), instancePaths: { configPath: `${INSTANCE}/daimon/config.json`, instanceRoot: `${INSTANCE}/`, workspacePath: `${INSTANCE}//workspace/` } } as RuntimeTargetPlan;
+    const [entry] = resolveDaimonGrokRegistrations([messy]);
+    for (const value of [entry!.workspace, entry!.home, entry!.grokHome, entry!.profilePath, entry!.eventsPath, entry!.privateTmp, entry!.runtimeHome, entry!.spillDirectory]) {
+      expect(() => assertCanonicalRegisteredPath("path", value), value).not.toThrow();
+    }
+    const longId = `agent:${"x".repeat(240)}`;
+    expect(() => resolveDaimonGrokRegistrations([grokWorkerPlan({ [longId]: "grok" })])).toThrow(/canonical registered path/u);
+    expect(() => resolveDaimonGrokRegistrations([grokWorkerPlan({ "agent:!!!": "grok" })])).toThrow(/no path-safe slug/u);
   });
 });

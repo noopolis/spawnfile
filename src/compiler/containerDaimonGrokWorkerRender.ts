@@ -51,6 +51,22 @@ export const DAIMON_ORGANIZATION_STATE_DIRECTORY = path.posix.join(
  * deny entry must always sit strictly below every grant it touches.
  */
 export const DAIMON_GROK_BASE_PROFILE_GRANTS = ["/bin", "/dev", "/etc", "/lib", "/proc", "/run", "/sbin", "/sys", "/tmp", "/usr", "/var", "/var/tmp"] as const;
+export const DAIMON_GROK_MAX_REGISTERED_PATH_BYTES = 255;
+
+/**
+ * The canonical path rule Daimon's service parser and native launcher enforce:
+ * absolute, no empty, `.` or `..` component, no trailing slash, and at most 255
+ * bytes (the registration record's NUL-terminated 256-byte fields).
+ */
+export const assertCanonicalRegisteredPath = (label: string, value: string): string => {
+  const components = value.split("/").slice(1);
+  if (!value.startsWith("/") || value.length < 2 || value.endsWith("/") || components.some((part) => part === "" || part === "." || part === "..")
+    || path.posix.normalize(value) !== value || value.includes("\0") || Buffer.byteLength(value) > DAIMON_GROK_MAX_REGISTERED_PATH_BYTES) {
+    fail(`Grok worker ${label} is not a canonical registered path: ${JSON.stringify(value)}`);
+  }
+  return value;
+};
+
 export interface DaimonGrokRegistration {
   agentId: string;
   config: string;
@@ -209,14 +225,18 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]): Daim
     .sort((left, right) => left.agentId.localeCompare(right.agentId));
   const homes = entries.map((_, slot) => path.posix.join(DAIMON_WORKER_ROOT, String(DAIMON_FIRST_WORKER_UID + slot)));
   return entries.map(({ agentId, plan }, slot) => {
-    const home = homes[slot]!;
+    if (nodeSlug(agentId) === "") fail(`Daimon Grok agent ${agentId} has no path-safe slug`);
+    const home = assertCanonicalRegisteredPath("home", homes[slot]!);
     const grokHome = path.posix.join(home, DAIMON_GROK_WORKER_HOME_DIRECTORY);
     const instanceRoot = plan.instancePaths.instanceRoot ?? fail("Daimon Grok registrations require an instance root");
-    const runtimeHome = path.posix.join(instanceRoot, DAIMON_RUNTIME_HOMES_DIRECTORY, nodeSlug(agentId));
+    const runtimeHome = assertCanonicalRegisteredPath("runtime home", path.posix.join(instanceRoot, DAIMON_RUNTIME_HOMES_DIRECTORY, nodeSlug(agentId)));
     const { model, reasoningEffort } = declaredModel(plan, agentId);
     const config = resolveDaimonGrokWorkerConfig(model, reasoningEffort);
     const denyPaths = resolveDaimonGrokWorkerDenyPaths(plans, plan, agentId, homes, home);
     const profile = renderDaimonGrokWorkerSandboxProfile(denyPaths);
+    for (const [label, value] of [["GROK_HOME", grokHome], ["profile", path.posix.join(grokHome, "sandbox.toml")], ["events", path.posix.join(grokHome, DAIMON_GROK_ENGINE_BROKER.worker.home.sandboxEvents.relativePath)], ["private temp", path.posix.join(home, DAIMON_GROK_ENGINE_BROKER.worker.home.privateTmp.relativeToWorkerHome)]] as const) assertCanonicalRegisteredPath(label, value);
+    // The launcher derives HOME, GROK_HOME=<home>/.grok and TMPDIR=<home>/tmp from the registered home, and the broker reads the profile from GROK_HOME.
+    if (path.posix.dirname(path.posix.dirname(path.posix.join(grokHome, "sandbox.toml"))) !== home) fail(`Grok worker ${agentId} profile is not under its registered home`);
     const backings = new Set(plans.flatMap((candidate) => candidate.resources ?? []).map((resource) => resource.backingPath));
     return {
       deferredDenyPaths: denyPaths.filter((entry) => backings.has(entry)),
@@ -240,7 +260,7 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]): Daim
       // Production keeps one container ledger: `spawnfile usage` and Daimon's
       // wake fuse both read it, so a per-slot file would hide Grok spend from both.
       usageLedgerPath: DAIMON_GROK_TURN_USAGE_LEDGER.filePath,
-      workspace: path.posix.join(plan.instancePaths.workspacePath, "agents", nodeSlug(agentId))
+      workspace: assertCanonicalRegisteredPath("workspace", path.posix.join(plan.instancePaths.workspacePath, "agents", nodeSlug(agentId)))
     };
   });
 };
