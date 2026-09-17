@@ -22,6 +22,30 @@ describe('native trial lifecycle', () => {
     expect(first.paths.workspace).not.toBe(second.paths.workspace);
     expect(task.journal.filter(row => row.type === 'trial.completed')).toHaveLength(2);
   });
+  it('persists an adapter-published startup diagnostic durably and names its reason in the report', async () => {
+    const task = await setup();
+    const diagnostic = { schema: 'paideia.daimon-native.startup-diagnostic.v1', trialId: 'trial',
+      reason: 'unit missing native library', exitCode: 1, exitSignal: null, redaction: 'applied' as const,
+      streams: { stdout: '', stderr: 'boom', truncated: { stdout: false, stderr: false } },
+      protectedArtifact: '/run/training/slot/state/paideia-trials/trial-x/child-diagnostics.json' };
+    task.options.adapter = { ...task.options.adapter,
+      start: async () => { throw Object.assign(new Error('Native worker failed before readiness: unit missing native library'), { diagnostic }); } };
+    const report = await runTrial(task.options);
+    expect(report.execution).toBe('failed');
+    expect(report.error).toContain('unit missing native library');
+    expect(report.diagnostic).toEqual(diagnostic);
+    // The record reaches the durable sink, not only the returned report.
+    expect(task.journal.filter(row => row.type === 'subject.startup-diagnostic')).toEqual([{ type: 'subject.startup-diagnostic', payload: diagnostic }]);
+  });
+  it('ignores a startup failure that publishes no documented diagnostic', async () => {
+    const task = await setup();
+    task.options.adapter = { ...task.options.adapter, start: async () => { throw new Error('opaque startup failure'); } };
+    const report = await runTrial(task.options);
+    expect(report.execution).toBe('failed');
+    expect(report.error).toBe('opaque startup failure');
+    expect(report.diagnostic).toBeUndefined();
+    expect(task.journal.some(row => row.type === 'subject.startup-diagnostic')).toBe(false);
+  });
   it('stops on a decisive mechanical violation, retaining cancellation-tail evidence', async () => {
     const task = await setup(async (input, turn) => {
       await input.onObservation({ id: 'forbidden', source: 'native', seq: 1, type: 'tool.dispatch', tool: 'forbidden', callId: 'call', args: {},

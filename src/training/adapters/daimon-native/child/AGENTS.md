@@ -20,6 +20,16 @@ Persist at most 64 KiB of each child output stream into an exclusive 0600 diagno
 receipt under the protected canonical control root when stopping the child. Keep
 raw output out of observations, viewer messages and model inputs; it can contain
 sensitive runtime details. Abrupt outer-container termination may prevent saving.
+
+That receipt lives on storage that can die with its runtime (a training slot's
+control root is tmpfs), so a pre-readiness failure also throws a carrier holding
+the redacted `SubjectStartupDiagnostic` the caller persists durably. The thrown
+message states the worker's own reason, never the capture path. Substitution
+removes the control token, every declared environment value and the credential
+file paths; an environment assignment publishes its name only; and text still
+carrying credential-shaped material nobody declared is withheld rather than
+published, leaving the failure class stated.
+
 The child HOME is always its verified fresh home projection, even when the numeric
 container user has no passwd entry. Explicit env files cannot override HOME; never
 inherit the coordinator or host home to repair native startup.

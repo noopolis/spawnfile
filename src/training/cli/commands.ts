@@ -84,7 +84,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     };
     const id = checkpoint?.id ?? attemptId;
     const journal = await createProgressJournal({ id: attemptId, datasetId: dataset.id, planDigest: dataset.sharedPlanDigest,
-      candidateId: native.candidate.id, model: native.model, prices: costConfig.prices, store, io, costPlan });
+      candidateId: native.candidate.id, model: native.model, prices: costConfig.prices, store, storeRoot: native.out, io, costPlan });
     let live: Awaited<ReturnType<typeof startLiveViewer>> | undefined;
     let failed = false;
     try {

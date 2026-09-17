@@ -1,6 +1,6 @@
 import type { ResolvedRecord, TaskInput } from '../../contracts/dataset.js';
 import type { EvaluationContext, EvaluationRegistry, EvaluationResult, EvaluationSnapshot, PlanEvaluation, Verdict } from '../../contracts/evaluation.js';
-import type { FixtureTool, Observation, StopReceipt, SubjectAdapter, SubjectTurnResult } from '../../contracts/execution.js';
+import type { FixtureTool, Observation, StopReceipt, SubjectAdapter, SubjectStartupDiagnostic, SubjectTurnResult } from '../../contracts/execution.js';
 
 export interface TrialPaths { root: string; workspace: string; control: string; runtimeHome: string }
 export interface PreparedTrial {
@@ -53,6 +53,8 @@ export interface TrialReport {
   live: { checkId: string; boundary: string; result: EvaluationResult }[];
   /** Only the monitor's stop-selected final mechanical witness, never advisory findings. */
   decisiveFailure?: EvaluationResult;
+  /** Adapter-published, redacted account of a subject that never became ready; it outlives the runtime it happened in. */
+  diagnostic?: SubjectStartupDiagnostic;
   stop?: StopReceipt;
   error?: string;
 }

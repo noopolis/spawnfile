@@ -30,10 +30,22 @@ export async function startOwnedChild(execution: NativeChildExecution, launch: V
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
 }
 
+/**
+ * Every value a captured stream must never publish: the control token and every
+ * declared environment value (locale and path variables excepted, which are not
+ * secret and are useful in a diagnostic), plus the credential file paths.
+ */
+function childSecrets(launch: VerifiedNativeLaunch, env: NodeJS.ProcessEnv, token: string): string[] {
+  const safe = new Set(['HOME', 'PATH', 'LANG', 'LC_ALL', 'TZ']);
+  return [token, launch.tokenFile, launch.envFile,
+    ...Object.entries(env).filter(([key]) => !safe.has(key)).map(([, value]) => value ?? '')].filter(Boolean);
+}
+
 async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeoutMs: number, env: NodeJS.ProcessEnv,
   token: string, startup: AbortSignal, protectedPaths: readonly string[], grokSlots?: GrokSlotFreshnessStore): Promise<NativeExecutionHandle> {
   const http = createNativeHttpClient(`http://${launch.host.bindHost}:${launch.host.port}`, token);
-  const diagnostics = await childDiagnostics(nativeTrialArtifactsRoot(launch, trialId), trialId, launch.configSha256);
+  const diagnostics = await childDiagnostics(nativeTrialArtifactsRoot(launch, trialId), trialId, launch.configSha256,
+    childSecrets(launch, env, token));
   const child = spawn(process.execPath, nativeChildArguments(launch, trialId, timeoutMs), {
     cwd: dirname(launch.workerRoot), env, stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -80,7 +92,7 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
   try {
     while (!ready) {
       startup.throwIfAborted();
-      if (failure || exited) throw new Error(`Native worker exited or failed before readiness; protected diagnostics: ${diagnostics.file}`);
+      if (failure || exited) throw new Error('Native worker exited or failed before readiness');
       await pause(20);
     }
     const health = await http<{ version: string; state: string; agents: { agentId: string }[] }>('/trial/health', undefined, 1000, startup);
@@ -103,7 +115,12 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
       return result;
     };
     return { name: `child:${child.pid}`, request, stop };
-  } catch (error) { await stop('Native child startup failed'); throw error; }
+  } catch (error) {
+    // The protected capture lives on the control root, which a training slot puts on tmpfs; the thrown
+    // carrier holds the redacted record so the caller can persist the failure class durably.
+    await stop('Native child startup failed');
+    throw diagnostics.startupFailure(error);
+  }
 }
 
 async function bounded<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {

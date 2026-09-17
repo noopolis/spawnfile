@@ -19,3 +19,8 @@ observations or judge/optimizer accounting. Attest completeness only after all
 expected native work closes successfully, host work settles and usage coverage is
 complete. Per-turn checks receive that turn's own totals; an open handle is still
 incomplete. Preserve nulls and reject invalid counters/overflow before arithmetic.
+
+An adapter may publish a redacted `SubjectStartupDiagnostic` on a subject that
+never became ready. The runner accepts it structurally — it never imports an
+adapter — refuses any other shape, persists it through its own durable sink and
+carries it on the report, so a failure explains itself without a second run.

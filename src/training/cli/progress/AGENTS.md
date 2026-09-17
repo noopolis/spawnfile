@@ -15,3 +15,8 @@ persisted projections. Displaying progress never triggers inference.
 Observed tool counts deduplicate native call IDs across dispatch and completion;
 receipt-only traces count without inventing dispatches or complete coverage.
 Reset identities per trial and expose only the count, never tool payloads.
+
+`experiment.failed` publishes only an adapter-redacted startup reason when one
+exists, plus the durable path of the redacted startup-diagnostics blob. The raw
+error string stays a protected evaluator blob; the progress stream never carries
+it.

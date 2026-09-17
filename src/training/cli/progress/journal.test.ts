@@ -1,6 +1,6 @@
 import type { RescoreReport } from '../../experiments/replay/index.js';
 import { afterEach, expect, it } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openExperimentStore } from '../../storage/index.js';
@@ -13,7 +13,7 @@ async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'paideia-progress-')); roots.push(root);
   const store = await openExperimentStore(root), stdout: string[] = [];
   const journal = await createProgressJournal({ id: 'experiment', datasetId: 'development', planDigest: 'plan',
-    candidateId: 'baseline', model: 'gpt-5.5', prices: standardPrices, store,
+    candidateId: 'baseline', model: 'gpt-5.5', prices: standardPrices, store, storeRoot: root,
     io: { cwd: root, stdout: text => { stdout.push(text); }, stderr: () => undefined } });
   return { root, store, stdout, journal };
 }
@@ -127,4 +127,36 @@ it('restores native, rescore and optimizer receipts once and retains their cumul
   expect(f.journal.costs().knownSubtotalUsd.low).toBeGreaterThan(0);
   const replay = await f.store.readReplay(f.journal.runId, { audience: 'viewer', phase: 'training' });
   expect(JSON.stringify(replay.events)).not.toMatch(/SEALED CASE|SECRET OUTPUT|PRIVATE EVIDENCE/);
+});
+
+it('publishes the adapter-stated startup reason and a durable path for the redacted record', async () => {
+  const f = await fixture();
+  const diagnostic = { schema: 'paideia.daimon-native.startup-diagnostic.v1', trialId: 'trial',
+    reason: 'installed Daimon lacks the Grok broker projection capability', exitCode: 1, exitSignal: null,
+    redaction: 'applied' as const, streams: { stdout: '', stderr: 'boom', truncated: { stdout: false, stderr: false } },
+    protectedArtifact: '/run/training/slot/state/paideia-trials/trial-x/child-diagnostics.json' };
+  await f.journal.observe({ type: 'trial.finished', payload: { ...trial(), execution: 'failed', diagnostic } });
+  await f.journal.failed(new Error('Experiment failed while evaluating SEALED CASE'));
+  const replay = await f.store.readReplay(f.journal.runId, { audience: 'viewer', phase: 'training' });
+  const failure = replay.events.at(-1)!.payload as { type: string; error: string; startupDiagnostics?: string };
+  expect(failure.type).toBe('experiment.failed');
+  // The operator sees what broke instead of a second run, and the raw error string stays protected.
+  expect(failure.error).toBe('Experiment failed: installed Daimon lacks the Grok broker projection capability');
+  expect(failure.error).not.toContain('SEALED CASE');
+  // The named artifact outlives the container the trial ran in, unlike the protected capture path.
+  expect(failure.startupDiagnostics).toBeDefined();
+  expect(failure.startupDiagnostics!.startsWith(join(f.root, 'blobs'))).toBe(true);
+  expect(JSON.parse(await readFile(failure.startupDiagnostics!, 'utf8'))).toMatchObject({
+    schema: 'paideia.startup-diagnostics.v1', diagnostics: [diagnostic] });
+  expect(f.stdout.join('')).not.toContain('SEALED CASE');
+});
+
+it('keeps the protected wording when no adapter published a diagnostic', async () => {
+  const f = await fixture();
+  await f.journal.failed(new Error('Quota exhausted while evaluating SEALED CASE'));
+  const replay = await f.store.readReplay(f.journal.runId, { audience: 'viewer', phase: 'training' });
+  const failure = replay.events.at(-1)!.payload as { error: string; startupDiagnostics?: string };
+  expect(failure.error).toBe('Experiment failed; protected diagnostic is available to the operator.');
+  expect(failure.startupDiagnostics).toBeUndefined();
+  expect(JSON.stringify(replay)).not.toContain('SEALED CASE');
 });

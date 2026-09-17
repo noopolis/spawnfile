@@ -41,3 +41,7 @@ coverage, TypeScript and ESLint gates. Full project checks belong to the final b
 the same run, audience, phase and frozen-candidate policy as `readBlob`. It does not
 provide a way to enumerate sealed test evidence during optimization. Measurement
 repair copies verified development captures through these public store methods.
+
+`blobContentPath` names where `putBlob` stored content, so an operator can be
+given a path that outlives the run. Naming is all it does; reads still go
+through `readBlob` and its visibility gate.

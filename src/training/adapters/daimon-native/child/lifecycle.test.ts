@@ -7,6 +7,7 @@ import { childFixture } from './fixture.js';
 import { startOwnedChild } from './lifecycle.js';
 import { verifyChildSandbox } from './sandbox.js';
 import { grokLaunchFrom } from '../grok-fixtures.js';
+import { subjectStartupDiagnostic } from '../../../experiments/index.js';
 vi.mock('./sandbox.js', () => ({ verifyChildSandbox: vi.fn(async () => undefined) }));
 const roots: string[] = [];
 afterEach(async () => { vi.clearAllMocks(); vi.unstubAllEnvs(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -108,12 +109,36 @@ it('retains cancellation and metering when operator stops while observing a veri
   expect(next).not.toHaveBeenCalled();
 });
 
-it('persists the actual pre-readiness stderr failure before rejecting without leaking it into the public error', async () => {
+it('persists the actual pre-readiness stderr failure and publishes a redacted account of it', async () => {
   const f = await fixture('exit');
-  await expect(startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000)).rejects.toThrow('protected diagnostics:');
+  const caught = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000).then(() => new Error('startup unexpectedly succeeded'), (error: unknown) => error as Error);
+  // The operator-facing error names the worker's own reason, never the runtime-local capture path.
+  expect(caught.message).toBe('Native worker failed before readiness: unit missing native library');
+  expect(caught.message).not.toContain(f.launch.controlRoot);
+  const diagnostic = subjectStartupDiagnostic(caught)!;
+  expect(diagnostic).toMatchObject({ schema: 'paideia.daimon-native.startup-diagnostic.v1', trialId: f.input.trialId,
+    reason: 'unit missing native library', exitCode: 1, exitSignal: null, redaction: 'applied',
+    protectedArtifact: join(f.launch.controlRoot, 'child-diagnostics.json') });
   const saved = JSON.parse(await readFile(join(f.launch.controlRoot, 'child-diagnostics.json'), 'utf8'));
   expect(saved).toMatchObject({ trialId: f.input.trialId, configSha256: f.launch.configSha256, exitCode: 1 });
   expect(JSON.parse(saved.stderr)).toMatchObject({ schema: 'paideia.daimon-native.start-failed.v1', error: 'unit missing native library' });
+  // The protected capture keeps the declared transport secret; the published streams never do.
+  expect(saved.stdout + saved.stderr).not.toContain('unit-transport-value');
+  expect(JSON.stringify(diagnostic)).not.toContain('unit-transport-value');
+});
+
+it('withholds published streams that carry a credential nobody declared, keeping the failure class', async () => {
+  const f = await fixture('leak');
+  const caught = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000)
+    .then(() => new Error('startup unexpectedly succeeded'), (error: unknown) => error as Error);
+  const diagnostic = subjectStartupDiagnostic(caught)!;
+  expect(diagnostic.redaction).toBe('withheld');
+  expect(diagnostic.streams).toBeUndefined();
+  // The class survives even though the bytes cannot.
+  expect(diagnostic.reason).toBe('unit missing native library');
+  expect(JSON.stringify(diagnostic)).not.toContain('sk-unit-');
+  const saved = JSON.parse(await readFile(join(f.launch.controlRoot, 'child-diagnostics.json'), 'utf8'));
+  expect(saved.stderr).toContain('sk-unit-');
 });
 
 it.each(['bad-model', 'bad-effort'])('requires the Grok ready line to match the launch model and effort: %s', async mode => {

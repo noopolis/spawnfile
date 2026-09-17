@@ -11,6 +11,7 @@ import { requireMechanicalTurn } from './preflight.js';
 import { drainObservations } from './closure.js';
 import { subjectUsageSnapshot } from './subject-usage.js';
 import { createTrialPaths, releaseTrialScratch } from './paths.js';
+import { subjectStartupDiagnostic } from './diagnostics.js';
 import type { PreparedTrial, TrialOptions, TrialReport, TurnReport } from './types.js';
 
 export async function runTrial(options: TrialOptions): Promise<TrialReport> {
@@ -43,6 +44,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   let closed = false;
   let observationTail = Promise.resolve();
   let observationFailure: string | undefined;
+  let diagnostic: TrialReport['diagnostic'];
   const inputFiles: Record<string, string> = {};
   const bindings: Record<string, unknown> = {};
   const persist = async (type: string, payload: unknown) => {
@@ -124,7 +126,13 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     error = caught instanceof Error ? caught.message : String(caught);
     const abortedByPolicy = control.cause === 'decisive' && caught instanceof Error && caught.name === 'AbortError';
     execution = control.cause === 'operator' || control.cause === 'deadline' || abortedByPolicy ? 'interrupted' : 'failed';
+    diagnostic = subjectStartupDiagnostic(caught);
     control.stop(error);
+  }
+  if (diagnostic) {
+    // The adapter's full capture can live on storage that dies with its runtime; this is the durable copy.
+    // A sink failure is already recorded, and the report below refuses to claim durable success.
+    try { await persist('subject.startup-diagnostic', diagnostic); } catch { /* sinkFailed carries it to the report */ }
   }
   if (control.signal.aborted && execution === 'completed') execution = 'interrupted';
   control.closeNative('Native trial work ended');
@@ -167,7 +175,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
       candidateId: options.candidateId, datasetDigest: options.datasetDigest, planDigest: options.planDigest,
       recordId: record.id, paths, status: combine('all', gates).status, execution, hostWork: control.hostWork, snapshot: finalSnapshot,
       expectedTurns: inputs.length, turns, evaluation, live: structuredClone(live.history), decisiveFailure: structuredClone(live.decisive),
-      stop: structuredClone(finalStop), ...(error ? { error } : {}) };
+      stop: structuredClone(finalStop), ...(diagnostic ? { diagnostic: structuredClone(diagnostic) } : {}), ...(error ? { error } : {}) };
     if (sinkFailed) throw new Error('Trial evidence persistence failed; no durable success report');
     await persist('trial.completed', report);
     return report;

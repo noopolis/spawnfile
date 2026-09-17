@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { summarizeCosts, type ModelPrice, type OptimizerGeneration, type TrainingCostPlan, type TrialReport } from '../../experiments/index.js';
-import type { ExperimentStore } from '../../storage/index.js';
+import { subjectStartupDiagnostic, summarizeCosts, type ModelPrice, type OptimizerGeneration, type TrainingCostPlan, type TrialReport } from '../../experiments/index.js';
+import { blobContentPath, type ExperimentStore } from '../../storage/index.js';
 import type { RescoreReport } from '../../experiments/replay/index.js';
 import type { CliIO } from '../types.js';
 import { createGenerationTracker } from './generations.js';
@@ -13,6 +13,8 @@ export interface ProgressOptions {
   model: string;
   prices: readonly ModelPrice[];
   store: ExperimentStore;
+  /** The run output root the store was opened on; only used to name a durable artifact. */
+  storeRoot?: string;
   io: CliIO;
   costPlan?: TrainingCostPlan;
 }
@@ -86,7 +88,18 @@ export async function createProgressJournal(options: ProgressOptions) {
       const diagnosticId = randomUUID();
       await options.store.appendEvent(runId, { id: diagnosticId,
         payload: { type: 'experiment.diagnostic', diagnostic } }, 'evaluator');
-      await write('experiment.failed', { status: 'failed', error: 'Experiment failed; protected diagnostic is available to the operator.', diagnosticId });
+      // Adapter-published, already-redacted accounts of subjects that never became ready. The raw error string
+      // above stays protected; only these reach the progress stream, and only their stated reason.
+      const startup = [subjectStartupDiagnostic(error), ...[...trials.values()].map(report => report.diagnostic)]
+        .filter((row): row is NonNullable<TrialReport['diagnostic']> => row !== undefined);
+      const reason = startup.at(0)?.reason ?? startup.at(-1)?.reason;
+      const published = startup.length
+        ? await options.store.putBlob(runId, JSON.stringify({ schema: 'paideia.startup-diagnostics.v1', runId, diagnostics: startup }), 'evaluator')
+        : undefined;
+      await write('experiment.failed', { status: 'failed',
+        error: reason ? `Experiment failed: ${reason}` : 'Experiment failed; protected diagnostic is available to the operator.',
+        diagnosticId,
+        ...(published && options.storeRoot ? { startupDiagnostics: blobContentPath(options.storeRoot, published) } : {}) });
       return { diagnosticId };
     },
   };

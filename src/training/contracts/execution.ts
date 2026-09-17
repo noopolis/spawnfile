@@ -60,6 +60,28 @@ export interface StopReceipt {
   detail: string;
 }
 
+/**
+ * What an adapter publishes about a subject that never became ready.
+ *
+ * The failure class has to survive the runtime it happened in: an adapter may
+ * keep its full capture on storage that dies with the container, so this is the
+ * redacted record that reaches the durable run output. `reason` is the runtime's
+ * own stated failure and is safe to show an operator. `streams` are redacted
+ * captures; an adapter that cannot prove a secret was removed omits them and
+ * reports `redaction: 'withheld'`, so the defect class still lands even when the
+ * bytes cannot. `protectedArtifact` names the adapter-private full copy.
+ */
+export interface SubjectStartupDiagnostic {
+  schema: string;
+  trialId: string;
+  reason: string;
+  exitCode: number | null;
+  exitSignal: string | null;
+  redaction: 'applied' | 'withheld';
+  streams?: { stdout: string; stderr: string; truncated: { stdout: boolean; stderr: boolean } };
+  protectedArtifact?: string;
+}
+
 export interface FixtureTool {
   name: string;
   description: string;
