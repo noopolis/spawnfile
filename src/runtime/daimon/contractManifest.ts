@@ -7,7 +7,7 @@ import { SpawnfileError } from "../../shared/index.js";
 export const DAIMON_CONTRACT_MANIFEST_VERSION =
   "noopolis.daimon.runtime-contract-manifest.v3" as const;
 export const DAIMON_CONTRACT_MANIFEST_SHA256 =
-  "sha256:401da56de1182a4c1834bc872ab3121d0b45d63486d729a02ff98d5627f30829" as const;
+  "sha256:8729807df65ecbbaa905d1e116305745501c01532faae78ec18d46b9f119f8a0" as const;
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";
@@ -82,6 +82,7 @@ export const DAIMON_GROK_ENGINE_BROKER = {
       sandboxEvents: { relativePath: "sessions/sandbox-events.jsonl", owner: "worker", group: "broker", mode: 0o640 },
       privateTmp: { relativeToWorkerHome: "tmp", owner: "worker", mode: 0o700 },
       sharedTmp: { paths: ["/tmp", "/var/tmp"], uid: 0, maxGroupExclusive: 2_200, otherMode: 0o4, mode: 0o1774 },
+      organizationRuntimeHome: { owner: "organization", group: "worker", mode: 0o710 },
       spillDirectory: { relativeToRuntimeHome: "tool-output", owner: "organization", group: "worker", mode: 0o2750, fileMode: 0o640 }
     }
   },

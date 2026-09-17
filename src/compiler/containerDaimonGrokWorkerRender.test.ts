@@ -7,6 +7,7 @@ import { DAIMON_GROK_WORKER_CONFIG_BYTES } from "../runtime/daimon/grokWorkerCon
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import {
   assertCanonicalRegisteredPath,
+  daimonGrokAcceptanceStoreDenyPath,
   DAIMON_GROK_OPTIONAL_DENY_PATHS,
   renderDaimonGrokServiceConfig,
   resolveDaimonGrokRegistrations
@@ -68,7 +69,9 @@ describe("Daimon Grok worker registrations", () => {
       "/run/daimon-engine-broker",
       DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
       "/var/lib/spawnfile/daimon/wake-fuse",
-      `${INSTANCE}/state/wake-acceptance`,
+      // The wake-acceptance store is masked through its private `state` parent: bubblewrap cannot
+      // materialize a deny target under a directory the worker uid cannot search.
+      `${INSTANCE}/state`,
       `${INSTANCE}/runtime-homes/b`, `${INSTANCE}/workspace/agents/b`,
       `${INSTANCE}/runtime-homes/c`, `${INSTANCE}/workspace/agents/c`,
       `${INSTANCE}/runtime-homes/d`, `${INSTANCE}/workspace/agents/d`,
@@ -123,8 +126,19 @@ describe("Grok base-profile grant guard and nested-mask refusal", () => {
   });
 
   it("refuses an added ancestor that would cover a Daimon deny entry, since masks cannot nest", () => {
-    expect(() => resolveDaimonGrokRegistrations([plan({ persistentMounts: [mount("/var/lib/spawnfile/instances/daimon/daimon-organization/state")] })]))
-      .toThrow(/would cover .*state\/wake-acceptance; masks cannot nest/u);
+    expect(() => resolveDaimonGrokRegistrations([plan({ persistentMounts: [mount("/var/lib/spawnfile/daimon")] })]))
+      .toThrow(/would cover .*grok-bootstrap-auth; masks cannot nest/u);
+  });
+
+  it("masks the wake-acceptance store through its private parent, never the store itself", () => {
+    // The `0700 2000:2000` state directory is unplaceable as an ancestor of a deny entry, so the mask
+    // moves onto it. Declaring it again as a mount is the same path, not a nested one.
+    const [a] = resolveDaimonGrokRegistrations([plan({})]);
+    expect(a!.denyPaths).toContain(`${INSTANCE}/state`);
+    expect(a!.denyPaths).not.toContain(`${INSTANCE}/state/wake-acceptance`);
+    expect(daimonGrokAcceptanceStoreDenyPath(INSTANCE)).toBe(`${INSTANCE}/state`);
+    const again = resolveDaimonGrokRegistrations([plan({ persistentMounts: [mount(`${INSTANCE}/state`)] })]);
+    expect(again[0]!.denyPaths.filter((entry) => entry === `${INSTANCE}/state`)).toHaveLength(1);
   });
 });
 
