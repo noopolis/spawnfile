@@ -47,8 +47,15 @@ RUN /opt/python/bin/python3 -m venv /opt/training/paideia/bridges/dspy/.venv \
 
 # Exactly `chmod -R a+rX /opt/training`, but only entries that need a change are
 # touched, so unchanged lower-layer files are never copied up into a new layer.
+# This layer also puts the native parent's own pinned Grok and engine broker at the two fixed paths
+# `GROK_ENGINE_BROKER` names, exactly as a generated organization image does (`src/runtime/container.ts`).
+# No second build is introduced: both are installed from the parent's runtime install, and the slot
+# provisioning and the slot supervisor both refuse an executable that is not a manifest-pinned one.
 RUN find /opt/training \( \( -type d ! -perm -0555 \) -o \( ! -type d ! -type l \( ! -perm -0444 -o \( \( -perm -0100 -o -perm -0010 -o -perm -0001 \) ! -perm -0111 \) \) \) \) -exec chmod a+rX {} + \
  && mkdir -m 0755 /opt/training/bin /opt/training/integration \
+ && mkdir -p /opt/daimon/bin \
+ && install -o root -g root -m 0555 /opt/spawnfile/runtime-installs/daimon/bin/grok /usr/local/bin/grok \
+ && install -o root -g root -m 0555 /opt/spawnfile/runtime-installs/daimon/bin/daimon-engine-broker /opt/daimon/bin/daimon-engine-broker \
  && ln -s /opt/training/claude/node_modules/.bin/claude /opt/training/bin/claude \
  && ln -s /opt/training/paideia/dist/src/cli/main.js /opt/training/bin/paideia \
  && ln -s /opt/training/spawnfile/dist/cli/index.js /opt/training/bin/spawnfile \
