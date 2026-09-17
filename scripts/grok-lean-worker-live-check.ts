@@ -56,6 +56,9 @@ const main = (): void => {
     ]) if (!layout.includes(expected)) throw new Error(`worker home layout is missing: ${expected.trim()}`);
     const profile = exec(container, `cat ${workerHome}/.grok/sandbox.toml`);
     if (!/deny = \["\//u.test(profile)) throw new Error("worker sandbox profile has an empty deny list");
+    for (const required of ["/var/lib/spawnfile/moltnet", "/var/lib/spawnfile/memory", "/run/daimon-engine-broker"]) if (!profile.includes(JSON.stringify(required))) throw new Error(`worker sandbox profile does not deny ${required}`);
+    // /run denies rely on /var/run being the /run symlink (a bind mask covers both spellings); report what the image has.
+    process.stdout.write(`/var/run -> ${exec(container, "readlink /var/run || echo not-a-symlink").trim()}\n`);
     const service = JSON.parse(exec(container, "cat /etc/daimon-engine-broker/service.json")) as { version: string; registrations: Array<{ model: { id: string } }> };
     if (service.version !== "noopolis.daimon.engine-broker-service.v2" || service.registrations[0]?.model.id !== "grok-4.6") throw new Error("service.json is not the declared v2 registration");
     exec(container, `setpriv --reuid 2200 --regid 2200 --clear-groups bash -c '! printf x >> ${workerHome}/.grok/trusted_folders.toml' && setpriv --reuid 2200 --regid 2200 --clear-groups bash -c '! test -r /var/lib/spawnfile/daimon/grok-subscription-realm'`);
