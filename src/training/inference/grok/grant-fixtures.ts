@@ -22,7 +22,8 @@ export function fakeGrantAuthority(patch: Partial<GrokInferenceGrantAuthority> &
     },
     async release(grantId) { releases.push(grantId); return true; },
     renderClientConfig: render,
-    pinnedClientConfigSha256: (model, reasoningEffort) => createHash('sha256').update(render({ baseUrl: 'http://127.0.0.1:43123/v1', model, reasoningEffort, envKey: 'DAIMON_INFERENCE_GRANT' })).digest('hex'),
+    // Pinned over this authority's own declared env key, so an unexpected key fails the key rule, not the pin.
+    pinnedClientConfigSha256: (model, reasoningEffort) => createHash('sha256').update(render({ baseUrl: 'http://127.0.0.1:43123/v1', model, reasoningEffort, envKey: (patch.envKey as string | undefined) ?? 'DAIMON_INFERENCE_GRANT' })).digest('hex'),
     ...patch,
   };
   return { authority, requests, releases };
