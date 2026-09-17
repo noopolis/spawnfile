@@ -3,6 +3,8 @@ import { test } from 'vitest';
 import { dockerCommand, inspectOwned, workerRequest, ownerLabel, type DockerCommand } from './docker.js';
 import { createContainerArguments } from './docker.js';
 import { launchFixture } from '../test-fixtures.js';
+import { grokLaunchFrom } from '../grok-fixtures.js';
+import { containerSecurityOptions } from './preflight.js';
 import { rm } from 'node:fs/promises';
 
 test('process driver records actual exit/output and bounds cancellation and diagnostics', async () => {
@@ -44,5 +46,16 @@ test('container startup selects the declared bootstrap or the packaged worker an
     await assert.rejects(dockerCommand(process.execPath)(['-e', 'process.on("SIGTERM",()=>{});setInterval(()=>{},1000)'], { timeoutMs: 200 }), /deadline/);
     await assert.rejects(dockerCommand(process.execPath)(['-e', 'process.stdin.destroy();setInterval(()=>{},1000)'],
       { timeoutMs: 200, stdin: 'x'.repeat(4_000_000) }), /deadline/);
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('Codex-only outer security options never reach a Grok launch, which cannot use a separate container', async () => {
+  const f = await launchFixture();
+  try {
+    assert.deepEqual(containerSecurityOptions(f.launch), ['--security-opt', 'seccomp=unconfined', '--security-opt', 'apparmor=unconfined']);
+    assert.ok(createContainerArguments(f.launch, 'n', 'o', 't', 1000).includes('seccomp=unconfined'));
+    const grok = await grokLaunchFrom(f.launch, f.root);
+    assert.throws(() => containerSecurityOptions(grok), /Separate-container Grok/);
+    assert.throws(() => createContainerArguments(grok, 'n', 'o', 't', 1000), /child-process execution/);
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });

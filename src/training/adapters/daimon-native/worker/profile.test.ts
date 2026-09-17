@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import { chmod, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { configFixture, launchFixture } from '../test-fixtures.js';
+import { grokConfigFor, grokLaunchFrom } from '../grok-fixtures.js';
 import { sha256 } from '../receipt/index.js';
 import { assertNativeProfile, parseWorkerArguments, verifyWorkerPaths } from './profile.js';
 import type { NativeConfig } from './types.js';
@@ -73,5 +74,23 @@ test('worker arguments and physical files require bounded private exact candidat
     await chmod(f.launch.tokenFile, 0o644); await expect(verifyWorkerPaths(config, options, f.launch)).rejects.toThrow('token file'); await chmod(f.launch.tokenFile, 0o600);
     config.agents[0]!.instructions = 'different envelope'; await expect(verifyWorkerPaths(config, options, f.launch)).rejects.toThrow('absent');
     await writeFile(join(f.input.workspacePath, 'AGENTS.md'), ''); await expect(verifyWorkerPaths(config, options, f.launch)).rejects.toThrow('absent');
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('Grok profile requires the declared broker model and effort without a Codex sandbox', async () => {
+  const f = await launchFixture();
+  try {
+    const launch = await grokLaunchFrom(f.launch, f.root);
+    const config = grokConfigFor(JSON.parse(await readFile(f.launch.config, 'utf8')) as NativeConfig);
+    assertNativeProfile(config, launch);
+    const cases: [(value: NativeConfig) => void, string][] = [
+      [value => { value.agents[0]!.engine.kind = 'codex'; }, 'Grok model'],
+      [value => { value.agents[0]!.engine.model = 'grok-4.5'; }, 'Grok model'],
+      [value => { value.agents[0]!.engine.reasoningEffort = 'high'; }, 'Grok model'],
+      [value => { value.agents[0]!.engine.codexSandbox = { mode: 'workspace-write', networkAccess: false, webSearch: 'disabled' }; }, 'Codex sandbox'],
+    ];
+    for (const [change, message] of cases) { const modified = structuredClone(config); change(modified); expect(() => assertNativeProfile(modified, launch)).toThrow(message); }
+    expect(() => assertNativeProfile(config, { ...launch, broker: { ...launch.broker, limits: { ...launch.broker.limits, maxTokens: 2_000_000 } } })).toThrow('wake ceiling');
+    expect(() => assertNativeProfile(grokConfigFor(configFixture()), f.launch.schema === 'paideia.daimon-native.launch.v2' ? { ...launch, agent: { id: launch.agent.id, engine: 'codex', model: 'grok-4.6' } } as never : launch)).toThrow('Codex');
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });

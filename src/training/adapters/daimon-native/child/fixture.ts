@@ -44,6 +44,7 @@ if(mode==='blocked-active')terminal.activity.executions=[{agent_id:launch.agent.
 if(mode==='blocked-wrong-execution')terminal.executionId='foreign';}
 if(mode==='bad-terminal')terminal.trialId='foreign';res.end(JSON.stringify(terminal));return;}
 res.end('{}');});
-server.listen(launch.host.port,'127.0.0.1',()=>console.log(JSON.stringify({schema:'paideia.daimon-native.ready.v1',trialId:mode==='bad-ready'?'foreign':trial,configSha256:launch.configSha256,agentId:launch.agent.id,model:launch.agent.model,port:launch.host.port})));
+const engine=launch.agent.engine==='grok'?{engine:'grok',reasoningEffort:mode==='bad-effort'?'high':launch.agent.reasoningEffort}:{};
+server.listen(launch.host.port,'127.0.0.1',()=>console.log(JSON.stringify({schema:'paideia.daimon-native.ready.v1',trialId:mode==='bad-ready'?'foreign':trial,configSha256:launch.configSha256,agentId:launch.agent.id,model:mode==='bad-model'?'grok-4.5':launch.agent.model,port:launch.host.port,...engine})));
 process.on('SIGTERM',()=>{if(mode==='ignore-term')return;server.closeAllConnections();server.close(()=>process.exit(0));});
 `;

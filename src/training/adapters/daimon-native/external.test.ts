@@ -26,6 +26,10 @@ test('sums independent wake usage once and preserves unknowns', () => {
   expect(sumNativeUsage([])).toBeNull(); expect(sumNativeUsage([null])).toBeNull();
   expect(sumNativeUsage([{ ...row, inputTokens: null }])?.inputTokens).toBeNull();
   expect(() => sumNativeUsage([{ ...row, inputTokens: -1 }])).toThrow('Invalid');
+  expect(sumNativeUsage([row, row])).toEqual({ inputTokens: 20, outputTokens: 4, cachedInputTokens: 6, reasoningTokens: null, source: 'noopolis.daimon.turn-usage.v1' });
+  const grok = { ...row, cacheWriteInputTokens: 1, notionalUsd: 0.25 };
+  expect(sumNativeUsage([grok, grok])).toMatchObject({ inputTokens: 20, cacheWriteInputTokens: 2, notionalUsd: 0.5 });
+  expect(sumNativeUsage([grok, { ...grok, cacheWriteInputTokens: null, notionalUsd: undefined }])).toMatchObject({ cacheWriteInputTokens: null, notionalUsd: null });
 });
 
 

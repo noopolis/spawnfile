@@ -136,3 +136,12 @@ it('failure during terminal grading does not overwrite the already closed subjec
   await expect(runTrial(task.options)).rejects.toThrow('persistence failed');
   expect(captured).toEqual({ status: 'complete', usage });
 });
+
+it('carries runtime-reported notional USD once and refuses invalid values', () => {
+  const priced = native({ usage: { ...usage, notionalUsd: 0.25 } });
+  expect(capture([priced]).usage?.notionalUsd).toBe(0.25);
+  expect(capture([priced, priced]).usage?.notionalUsd).toBe(0.5);
+  expect(capture([priced, native()]).usage?.notionalUsd).toBeNull();
+  expect(capture([native(), native()]).usage).not.toHaveProperty('notionalUsd');
+  for (const notionalUsd of [-1, Number.NaN]) expect(capture([native({ usage: { ...usage, notionalUsd } })])).toEqual({ status: 'incomplete', usage: null });
+});

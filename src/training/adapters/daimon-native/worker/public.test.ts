@@ -13,5 +13,13 @@ test('optional native package is loaded only through its public runtime contract
   await expect(loadDaimonRuntime()).rejects.toThrow('sandbox projection capability');
   vi.doMock('@noopolis/daimon/runtime', () => ({ parseOrganizationRuntimeConfig, createOrganizationRuntimeControlHost, resolveOrganizationCodexSandboxProjection: vi.fn() }));
   expect((await loadDaimonRuntime()).createOrganizationRuntimeControlHost).toBe(createOrganizationRuntimeControlHost);
+  const grok = { resolveOrganizationGrokBrokerProjection: vi.fn(), grokBrokerProjectionSha256: vi.fn(), verifyGrokSlotPreflightReceipt: vi.fn() };
+  for (const missing of Object.keys(grok)) {
+    vi.doMock('@noopolis/daimon/runtime', () => ({ parseOrganizationRuntimeConfig, createOrganizationRuntimeControlHost, ...grok, [missing]: undefined }));
+    await expect(loadDaimonRuntime('grok')).rejects.toThrow('Grok broker projection');
+  }
+  vi.doMock('@noopolis/daimon/runtime', () => ({ parseOrganizationRuntimeConfig, createOrganizationRuntimeControlHost, ...grok, resolveOrganizationCodexSandboxProjection: undefined }));
+  expect((await loadDaimonRuntime('grok')).verifyGrokSlotPreflightReceipt).toBe(grok.verifyGrokSlotPreflightReceipt);
+  await expect(loadDaimonRuntime()).rejects.toThrow('sandbox projection capability');
   vi.doUnmock('@noopolis/daimon/runtime');
 });

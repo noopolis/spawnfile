@@ -9,6 +9,15 @@ const charge = (patch: Partial<UsageCharge> = {}): UsageCharge => ({ role: 'subj
 const fable = (patch: Partial<NonNullable<UsageCharge['usage']>> = {}) => charge({ model: 'claude-fable-5-1', usage: { ...usage, ...patch } });
 
 describe('API-equivalent valuation', () => {
+  it('prefers runtime-reported notional USD, labelled by its source, even without a catalog price', () => {
+    const grok = charge({ model: 'grok-4.6', usage: { ...usage, cachedInputTokens: 800, cacheWriteInputTokens: 10, notionalUsd: 0.00248676, source: 'noopolis.daimon.turn-usage.v1' } });
+    expect(valueUsage(grok)).toEqual({ status: 'priced', apiEquivalentUsd: { low: 0.00248676, high: 0.00248676 }, price: null,
+      assumptions: ['Runtime-reported notional USD from noopolis.daimon.turn-usage.v1; catalog token rates were not applied.'] });
+    expect(valueUsage(charge({ usage: { ...usage, notionalUsd: 1 } }))).toMatchObject({ apiEquivalentUsd: { low: 1, high: 1 }, price: { model: 'gpt-5.5' } });
+    expect(valueUsage(charge({ usage: { ...usage, notionalUsd: null } })).apiEquivalentUsd).toEqual({ low: 0.0044, high: 0.0044 });
+    expect(valueUsage(charge({ model: 'grok-4.6', usage: { ...usage, notionalUsd: null } })).status).toBe('unpriced');
+    for (const notionalUsd of [-1, Number.POSITIVE_INFINITY]) expect(() => valueUsage(charge({ usage: { ...usage, notionalUsd } }))).toThrow('notional');
+  });
   it('prices cached input separately, never adds reasoning or assigns subscription cash charges', () => {
     const result = valueUsage(charge());
     expect(result.status).toBe('priced');

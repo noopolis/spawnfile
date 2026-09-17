@@ -6,6 +6,8 @@ import { persistNativeSandboxProjection } from './sandbox.js';
 import { configFixture, launchFixture, sandboxProjectionFixture } from '../test-fixtures.js';
 import type { NativeRuntimeModule } from './public.js';
 import type { WorkerOptions } from './types.js';
+import { grokConfigFor, grokLaunchFrom, grokProjectionFor, slotPreflightFor, writeGrokSlotReceipt } from '../grok-fixtures.js';
+import { grokProjectionSha256 } from '../receipt/index.js';
 
 test('worker resolves exact control-host inputs and refuses another native agent projection', async () => {
   const f = await launchFixture();
@@ -26,5 +28,56 @@ test('worker resolves exact control-host inputs and refuses another native agent
     assert.equal(receipt.trialId, f.input.trialId); assert.equal(receipt.configSha256, f.launch.configSha256);
     assert.equal(receipt.projection.agentId, agent.id);
     await assert.rejects(persistNativeSandboxProjection(runtime, config, options), /EEXIST/);
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('Grok slot projection is resolved by Daimon, digest-bound to the launch and requires a verified supervisor receipt', async () => {
+  const f = await launchFixture();
+  try {
+    const launch = await grokLaunchFrom(f.launch, f.root);
+    const config = grokConfigFor(configFixture());
+    config.agents[0]!.workspacePath = launch.workspace.target; config.agents[0]!.runtimeHomePath = '/native/home';
+    const options = { trialId: 'grok-trial', configSha256: launch.configSha256, controlRoot: launch.controlRoot, timeoutMs: 900_000 } as WorkerOptions;
+    let projection = grokProjectionFor(launch);
+    let daimonDigest: ((value: unknown) => string) | undefined;
+    let verifyFailure: string | undefined;
+    const calls: unknown[] = [];
+    const runtime = {
+      resolveOrganizationGrokBrokerProjection: (value, agentId, context) => { calls.push([value, agentId, context]); return projection; },
+      grokBrokerProjectionSha256: value => daimonDigest ? daimonDigest(value) : grokProjectionSha256(value as typeof projection),
+      verifyGrokSlotPreflightReceipt: (value, bound) => {
+        if (verifyFailure) throw new Error(verifyFailure);
+        assert.deepEqual(bound, projection); return value;
+      },
+    } as NativeRuntimeModule;
+    const persist = () => persistNativeSandboxProjection(runtime, config, options, launch);
+    await assert.rejects(persistNativeSandboxProjection({} as NativeRuntimeModule, config, options, launch), /lacks the Grok broker/);
+    await assert.rejects(persist(), /root slot supervisor preflight receipt/);
+    const [, agentId, context] = calls[0] as [unknown, string, { denyPaths: string[]; acceptanceStorePath: string; slot: number; limits: unknown }];
+    assert.equal(agentId, 'agent:writer'); assert.equal(context.acceptanceStorePath, launch.controlRoot); assert.equal(context.slot, 0);
+    assert.deepEqual(context.denyPaths, launch.broker.evaluatorPaths.map(row => row.path).sort()); assert.deepEqual(context.limits, launch.broker.limits);
+    await writeGrokSlotReceipt(launch);
+    verifyFailure = 'Grok slot preflight receipt does not match the projection: canaries';
+    await assert.rejects(persist(), /canaries/);
+    verifyFailure = undefined;
+    daimonDigest = () => 'f'.repeat(64);
+    await assert.rejects(persist(), /disagree/);
+    daimonDigest = undefined;
+    projection = { ...grokProjectionFor(launch), profileSha256: 'e'.repeat(64) };
+    await assert.rejects(persist(), /differs from the launch receipt/);
+    const judge = launch.broker.evaluatorPaths.find(row => row.role === 'judge-home')!.path;
+    projection = { ...grokProjectionFor(launch), denyPaths: grokProjectionFor(launch).denyPaths.filter(path => path !== judge) };
+    launch.broker.projectionSha256 = grokProjectionSha256(projection);
+    await writeGrokSlotReceipt(launch, slotPreflightFor(projection));
+    await assert.rejects(persist(), /omits a denied canary for evaluator path/);
+    projection = grokProjectionFor(launch); launch.broker.projectionSha256 = grokProjectionSha256(projection);
+    await writeGrokSlotReceipt(launch);
+    await assert.rejects(persistNativeSandboxProjection(runtime, config, { ...options, timeoutMs: 1000 }, launch), /timeout exceeds/);
+    await assert.rejects(readFile(join(launch.controlRoot, 'sandbox-projection.json')), /ENOENT/);
+    await persist();
+    const receipt = JSON.parse(await readFile(join(launch.controlRoot, 'sandbox-projection.json'), 'utf8'));
+    assert.equal(receipt.schema, 'paideia.daimon-native.grok-broker-projection.v1');
+    assert.equal(receipt.projectionSha256, launch.broker.projectionSha256);
+    assert.equal(receipt.slotPreflight.projection_sha256, launch.broker.projectionSha256);
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });

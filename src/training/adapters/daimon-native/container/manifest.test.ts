@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import { chmod, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { launchFixture } from '../test-fixtures.js';
+import { grokLaunchFrom } from '../grok-fixtures.js';
 import { loadNativeLaunch } from './manifest.js';
 
 test('fresh explicit projections preserve candidate bytes and reject unsafe launch sources', async () => {
@@ -53,5 +54,20 @@ test('only one explicitly selected private portable credential ingress is mounte
     f.launch.credentials[0]!.source = auth; await f.save();
     await chmod(auth, 0o644); await expect(loadNativeLaunch(f.input)).rejects.toThrow('private read-only'); await chmod(auth, 0o600);
     f.launch.credentials[0]!.target = '/native/workspace/auth'; await f.save(); await expect(loadNativeLaunch(f.input)).rejects.toThrow('ingress');
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('Grok launches load only for child execution and carry no engine credential mount', async () => {
+  const f = await launchFixture();
+  try {
+    await grokLaunchFrom(f.launch, f.root); await f.save();
+    await expect(loadNativeLaunch({ ...f.input, model: 'grok-4.6' })).rejects.toThrow('Separate-container Grok');
+    await expect(loadNativeLaunch(f.input, true)).rejects.toThrow('model');
+    const loaded = await loadNativeLaunch({ ...f.input, model: 'grok-4.6' }, true);
+    expect(loaded.agent).toEqual({ id: 'agent:writer', engine: 'grok', model: 'grok-4.6', reasoningEffort: 'low' });
+    expect(loaded.credentials).toEqual([]);
+    const auth = join(f.root, 'non-login-fixture'); await writeFile(auth, 'Unit fixture, never native authentication.', { mode: 0o600 });
+    f.launch.credentials = [{ source: auth, target: '/native/home/.daimon-inbound/codex-auth' }]; await f.save();
+    await expect(loadNativeLaunch({ ...f.input, model: 'grok-4.6' }, true)).rejects.toThrow();
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });

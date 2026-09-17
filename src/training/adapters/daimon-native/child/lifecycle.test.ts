@@ -6,6 +6,7 @@ import { createDaimonNativeAdapter } from '../index.js';
 import { childFixture } from './fixture.js';
 import { startOwnedChild } from './lifecycle.js';
 import { verifyChildSandbox } from './sandbox.js';
+import { grokLaunchFrom } from '../grok-fixtures.js';
 vi.mock('./sandbox.js', () => ({ verifyChildSandbox: vi.fn(async () => undefined) }));
 const roots: string[] = [];
 afterEach(async () => { vi.clearAllMocks(); vi.unstubAllEnvs(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -113,4 +114,16 @@ it('persists the actual pre-readiness stderr failure before rejecting without le
   const saved = JSON.parse(await readFile(join(f.launch.controlRoot, 'child-diagnostics.json'), 'utf8'));
   expect(saved).toMatchObject({ trialId: f.input.trialId, configSha256: f.launch.configSha256, exitCode: 1 });
   expect(JSON.parse(saved.stderr)).toMatchObject({ schema: 'paideia.daimon-native.start-failed.v1', error: 'unit missing native library' });
+});
+
+it.each(['bad-model', 'bad-effort'])('requires the Grok ready line to match the launch model and effort: %s', async mode => {
+  const good = await fixture(); await grokLaunchFrom(good.launch, good.root); await good.save();
+  const handle = await startOwnedChild({ kind: 'child-process' }, good.launch, good.input.trialId, 1000);
+  await handle.stop('Ready identity accepted');
+  const f = await fixture(mode); await grokLaunchFrom(f.launch, f.root); await f.save();
+  await expect(startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000, undefined, 300)).rejects.toThrow();
+  if (mode === 'bad-model') {
+    const codex = await fixture(mode);
+    await expect(startOwnedChild({ kind: 'child-process' }, codex.launch, codex.input.trialId, 1000, undefined, 300)).rejects.toThrow();
+  }
 });
