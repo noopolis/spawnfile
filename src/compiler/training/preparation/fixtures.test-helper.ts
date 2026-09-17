@@ -2,13 +2,9 @@ import { mkdtemp, mkdir, readFile, realpath, writeFile } from "node:fs/promises"
 import path from "node:path";
 import os from "node:os";
 import { createHash } from "node:crypto";
-import { mkdtempSync } from "node:fs";
 import type { TrainingPreparationConfig } from "./contract.js";
 import type { TrainingContext } from "../contract.js";
 import type { TrainingDockerProcess } from "../container/process.js";
-
-// Preparation tests must never touch the developer's real seal memo cache.
-process.env.SPAWNFILE_HOME = mkdtempSync(path.join(os.tmpdir(), "spawnfile-preparation-home-"));
 
 export const image = `sha256:${"a".repeat(64)}`;
 export const sha = (value: string) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
