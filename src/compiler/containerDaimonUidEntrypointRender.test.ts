@@ -26,6 +26,7 @@ const authorizedUid = 2000;
 
 const daimonPlan: RuntimeTargetPlan = {
   engineByNodeId: { "agent:AGY": "agy", "agent:Codex One": "codex", "agent:Grok Two": "grok" },
+  grokModelByNodeId: { "agent:Grok Two": { model: "grok-4.6", reasoningEffort: "low" } },
   envFiles: [], id: "daimon-organization",
   instancePaths: {
     configPath: "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon/config.json",
@@ -210,7 +211,7 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).toContain("/var/lib/daimon-workers/");
     // Grok refuses a profile that is a symlink or carries a hard-link alias, so it is an
     // unaliased file in the worker's own read-only .grok directory.
-    expect(rendered).toContain("ensureExactFile(profilePath, profileFor(), 0, 0, 0o444)");
+    expect(rendered).toContain("ensureExactFile(entry.profilePath, entry.profile, 0o444)");
     expect(rendered).not.toContain("ensureExactLink");
     expect(rendered).toContain("sandbox-events.jsonl");
     expect(rendered).toContain("restrict_network = true");
@@ -228,8 +229,11 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).toContain("validateResourceLink(target, info); return;");
     expect(rendered).toContain("worker runtime file identity mismatch");
     expect(rendered).toContain("worker runtime file identity mismatch");
-    expect(rendered).toContain("ensureEventsFile(eventsPath, entry.uid)");
-    expect(rendered).toContain("noopolis.daimon.engine-broker-service.v1");
+    expect(rendered).toContain("ensureEventsFile(entry.eventsPath, entry.uid)");
+    expect(rendered).toContain("noopolis.daimon.engine-broker-service.v2");
+    expect(rendered).not.toContain("noopolis.daimon.engine-broker-service.v1");
+    expect(rendered).toContain("/var/lib/daimon-workers/2200/.grok/sessions/sandbox-events.jsonl");
+    expect(rendered).not.toContain("[auth_provider.daimon]");
     expect(rendered).toContain("/etc/daimon-engine-broker/service.json");
     expect(rendered).toContain("readSecure(bootstrap, undefined, 'bootstrap')");
     expect(rendered).toContain("noopolis.daimon.broker-credential-journal.v1");
@@ -238,7 +242,7 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).toContain("generation: journal.generation + 1");
     expect(rendered).toContain("state: 'promoted'");
     expect(rendered).toContain("bootstrapBytes.fill(0)");
-    expect(rendered).toContain("ensureExactFile(profilePath, profileFor(), 0, 0, 0o444)");
+    expect(rendered).toContain("ensureExactFile(entry.profilePath, entry.profile, 0o444)");
     expect(rendered).toContain("--bounding-set=-all,+chown,+setuid,+setgid -- '/opt/daimon/bin/daimon-engine-broker' &");
     expect(rendered).toContain("--bounding-set=-all,+chown,+setuid,+setgid,+setpcap -- '/opt/daimon/bin/daimon-engine-broker' --relay &");
     expect(rendered).toContain('"$relay_pid:2100:0000000000000000"');
@@ -394,7 +398,8 @@ describe("renderDaimonUidEntrypoint", () => {
         ...daimonPlan.instancePaths,
         instanceRoot: undefined,
         workspacePath: "relative-workspace"
-      }
+      },
+      engineByNodeId: { "agent:Codex One": "codex" }
     }], ["relative-state", "/persisted-state", "/persisted-state"]);
 
     expect(rendered).toContain("state_roots=('/persisted-state')");

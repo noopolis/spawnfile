@@ -6,6 +6,7 @@ import { createStateOwnershipCommand } from "./containerStateOwnershipRender.js"
 
 const daimonPlan = {
   engineByNodeId: { "agent:grok": "grok" },
+  grokModelByNodeId: { "agent:grok": { model: "grok-4.6", reasoningEffort: "low" } },
   instancePaths: {
     configPath: "/var/lib/spawnfile/instances/daimon/organization/daimon/config.json",
     instanceRoot: "/var/lib/spawnfile/instances/daimon/organization",

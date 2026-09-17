@@ -30,6 +30,7 @@ const privateStateAncestors = (target: string): string[] =>
 
 const daimonPlan: RuntimeTargetPlan = {
   engineByNodeId: { "agent:AGY": "agy", "agent:Codex One": "codex", "agent:Grok Two": "grok" },
+  grokModelByNodeId: { "agent:Grok Two": { model: "grok-4.6", reasoningEffort: "low" } },
   envFiles: [], id: "daimon-organization",
   instancePaths: {
     configPath: "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon/config.json",

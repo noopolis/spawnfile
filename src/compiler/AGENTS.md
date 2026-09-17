@@ -33,7 +33,9 @@ src/compiler/
 ├── containerPersistentMounts.ts # Durable-mount merge across sources + volume-name uniqueness
 ├── deploymentLineage.ts        # Dev/production lineage namespacing + declared-volume refusal
 ├── containerEntrypointShell.ts # Shell quoting, recipe env, and CLI credential materialization helpers
-├── containerDaimonBrokerRender.ts # Fixed Daimon broker identities, registrations, worker config, and root-launch provisioning
+├── containerDaimonBrokerRender.ts # Fixed Daimon broker identities, registrations binary, credential realm, and root-launch provisioning
+├── containerDaimonGrokWorkerRender.ts # Brokered Grok registrations: pinned worker config, sandbox deny list, service.json v2
+├── containerDaimonGrokWorkerProvisioning.ts # Root program lines for the attested worker GROK_HOME layout and canonical-path checks
 ├── containerArtifactsPlans.ts # Environment inventory and runtime target-plan orchestration
 ├── containerTargetPlanResolution.ts # Per-target paths, packages, auth, secrets, and exposure resolution
 ├── teamRoster.ts               # Context-scoped team roster generation and diagnostics
@@ -160,6 +162,21 @@ src/compiler/
   existing uid, capability-drop, and `no-new-privileges` posture; Codex owns the
   per-turn filesystem/network/tool boundary, while trusted MCP servers and
   Daimon code outside that native boundary remain trusted container processes.
+- Brokered Grok workers (`containerDaimonGrokWorkerRender.ts`) take their
+  `config.toml` bytes only from Daimon's renderer output vendored in
+  `src/runtime/daimon/grokWorkerConfigBytes.ts`, refused unless they hash to the
+  manifest pin for the agent's declared model x effort. The sandbox profile's
+  `deny` list is never empty: Daimon's protected set (realms, bootstrap, peers,
+  acceptance store) plus the broker's `/etc` and `/run` directories, the usage
+  ledger and wake fuse, every other worker's home, and the container secret
+  roots. Entries never nest. Provisioning
+  (`containerDaimonGrokWorkerProvisioning.ts`) writes Daimon's attested
+  `GROK_HOME` layout — `root:<worker> 1771` home and `sessions/`, `root:root
+  0444` config/sandbox/trust/managed/requirements files, events under
+  `sessions/` — and refuses any registration or deny path that is missing, a
+  symlink, or not its own realpath. Production registrations all point
+  `usageLedgerPath` at the one container ledger, because `spawnfile usage` and
+  Daimon's wake fuse read only that file.
 - Declared names are checked for uniqueness across EVERY mount source
   (`containerPersistentMounts.ts`), not just within one source. A
   resource `name: X` and a store `persistence.name: X` used to compile to two
