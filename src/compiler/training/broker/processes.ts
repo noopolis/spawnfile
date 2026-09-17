@@ -4,8 +4,7 @@ import { setTimeout as pause } from "node:timers/promises";
 
 import { SpawnfileError } from "../../../shared/index.js";
 import { DAIMON_GROK_ENGINE_BROKER } from "../../../runtime/daimon/contractManifest.js";
-import { DAIMON_BROKER_TMPDIR } from "../../containerDaimonBrokerRender.js";
-import { DAIMON_BROKER_UID } from "./paths.js";
+import { DAIMON_BROKER_UID, TRAINING_BROKER_TMPDIR } from "./paths.js";
 
 export const DAIMON_RUNTIME_ROOT = "/opt/spawnfile/runtime-installs/daimon";
 /** `00000000000000c1` = CHOWN|SETGID|SETUID, the launcher's bounding set after `setpriv`. */
@@ -32,11 +31,11 @@ export const brokerProcessPlan = (): { name: string; argv: string[]; socket: str
   {
     name: "engine broker backend", socket: DAIMON_GROK_ENGINE_BROKER.backendSocketPath, uid: DAIMON_BROKER_UID, capBnd: DROPPED_CAPABILITY_BOUND,
     argv: setpriv(["--clear-groups", `--reuid=${DAIMON_BROKER_UID}`, `--regid=${DAIMON_BROKER_UID}`, "--inh-caps=-all", "--ambient-caps=-all", "--bounding-set=-all",
-      "--", "env", `TMPDIR=${DAIMON_BROKER_TMPDIR}`, `${DAIMON_RUNTIME_ROOT}/bin/daimon-runtime`, "engine-broker", "serve"])
+      "--", "env", `TMPDIR=${TRAINING_BROKER_TMPDIR}`, `${DAIMON_RUNTIME_ROOT}/bin/daimon-runtime`, "engine-broker", "serve"])
   },
   {
     name: "engine broker control relay", socket: DAIMON_GROK_ENGINE_BROKER.controlSocketPath, uid: DAIMON_BROKER_UID, capBnd: DROPPED_CAPABILITY_BOUND,
-    argv: setpriv(["--inh-caps=-all", "--ambient-caps=-all", "--bounding-set=-all,+chown,+setuid,+setgid,+setpcap", "--", "env", `TMPDIR=${DAIMON_BROKER_TMPDIR}`,
+    argv: setpriv(["--inh-caps=-all", "--ambient-caps=-all", "--bounding-set=-all,+chown,+setuid,+setgid,+setpcap", "--", "env", `TMPDIR=${TRAINING_BROKER_TMPDIR}`,
       DAIMON_GROK_ENGINE_BROKER.nativeExecutablePath, "--relay"])
   }
 ];

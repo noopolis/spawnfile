@@ -10,6 +10,7 @@ import { SpawnfileError } from "../../../shared/index.js";
 import { DAIMON_GROK_ENGINE_BROKER } from "../../../runtime/daimon/contractManifest.js";
 import type { DaimonGrokRegistration } from "../../containerDaimonGrokWorkerRender.js";
 import type { TrainingBrokerDeclaration } from "./declaration.js";
+import { MOUNT_AWARE_CLEAR_HELPER } from "../../containerDaimonBrokerRender.js";
 import { renderTrainingBrokerProvisioning, renderTrainingIdentities } from "./provisioning.js";
 import { startBrokerProcesses, stopBrokerProcesses, type BrokerChild } from "./processes.js";
 import { buildTrainingSlotReceipt, readGrokExecutableSha256, resolveTrainingCanaries } from "./receipt.js";
@@ -118,17 +119,18 @@ export const createTrainingSlotRuntime = (options: TrainingSlotRuntimeOptions): 
       const targets = [options.registration.home, TRAINING_SLOT_RUNTIME_HOME, TRAINING_SLOT_TURN_STORE, TRAINING_SLOT_ACCEPTANCE_STORE, DAIMON_GROK_ENGINE_BROKER.serviceConfigPath, DAIMON_GROK_ENGINE_BROKER.registrationPath];
       const contents = [TRAINING_SLOT_WORKSPACE, TRAINING_SLOT_USAGE_DIRECTORY];
       const script = [
+        ...MOUNT_AWARE_CLEAR_HELPER,
         // The parent has to be reclaimed too: unlinking is a write to the *directory*, and the slot hands
         // several of these parents to uid 2000 or the broker. Provisioning restores every mode right after.
         'reclaim() { parent=$(dirname "$1"); chown 0:0 "$parent"; chmod u+rwx "$parent"; if [ -e "$1" ]; then chown -R 0:0 "$1"; chmod -R u+rwX "$1"; fi; }',
-        ...targets.map((target) => `reclaim ${quote(target)}; rm -rf ${quote(target)}`),
+        ...targets.map((target) => `reclaim ${quote(target)}; spawnfile_remove_tree ${quote(target)}`),
         // The workspace and the per-slot ledger directory keep their own root: the registered paths must
         // stay canonical across a recycle, so only what a trial put inside them goes.
-        ...contents.map((target) => `reclaim ${quote(target)}; if [ -d ${quote(target)} ]; then find ${quote(target)} -mindepth 1 -delete; fi`)
+        ...contents.map((target) => `reclaim ${quote(target)}; spawnfile_clear_tree ${quote(target)}`)
       ].join("\n");
       await run(shell, ["--noprofile", "--norc", "-ceu", script], { maxBuffer: 1024 * 1024 }).catch((error: unknown) => {
         const detail = error as { stderr?: string };
-        throw new SpawnfileError("runtime_error", `Training slot wipe failed: ${(detail.stderr ?? "").slice(-1024).trim()}`);
+        throw new SpawnfileError("runtime_error", `Training slot wipe failed: ${(detail.stderr ?? "").slice(-1024).trim() || "no diagnostic"}`);
       });
     },
     provision: async () => {

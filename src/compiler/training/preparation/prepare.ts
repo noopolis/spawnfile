@@ -9,6 +9,7 @@ import { planInputs, readBoundedJson, stageInput, verifyCanonicalPins } from "./
 import { planTrainingImage, buildTrainingImage } from "./image.js";
 import { planMeasurementRepair, stageMeasurementRepair, writeTrainingWitness } from "../repair/index.js";
 import { prepareTrainingBroker } from "./broker.js";
+import { claimTrainingPreparationScratch } from "./scratch.js";
 
 function mappedReceipt(digest: string, image: string, config: ReturnType<typeof trainingPreparationSchema.parse>): TrainingMappedPreparation {
   return parseTrainingMappedPreparation({ version: "spawnfile.training-preparation.v1", preparationDigest: digest, imageId: image,
@@ -92,7 +93,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   } else {
     let owned = false;
     try {
-      await mkdir(staging, { mode: 0o700 }); owned = true;
+      await claimTrainingPreparationScratch(staging, digest, options.streams.stderr); owned = true;
       try { await mkdir(output, { mode: 0o700 }); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST" || !(await lstat(output)).isDirectory() || await realpath(output) !== output) throw error; }
       staged = await Promise.all(inputs.map(input => stageInput(input, path.join(staging, input.id))));

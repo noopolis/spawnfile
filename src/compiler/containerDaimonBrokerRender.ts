@@ -85,6 +85,44 @@ export const renderDaimonUsageLedgerProvisioning = (): string[] => {
   ];
 };
 
+/**
+ * Empties a directory without touching a mount point inside it.
+ *
+ * `rm -rf` and `find -delete` both fail `EBUSY` on a mount point — it is
+ * another filesystem's root, and its entry cannot be unlinked while it is
+ * mounted. A deployment that mounts a tmpfs below a directory it later clears
+ * would otherwise abort provisioning on a bare `find` failure, which is exactly
+ * how a live training launch died. Mount points are left in place and descended
+ * into; anything else that cannot be removed is reported by name.
+ *
+ * Mount points come from `/proc/self/mountinfo` field 5. The kernel
+ * octal-escapes space, tab, newline and backslash there; every path this
+ * compiler provisions is free of all four, and a path that is not would simply
+ * fail to match and be treated as an ordinary directory.
+ */
+export const MOUNT_AWARE_CLEAR_HELPER = [
+  "spawnfile_mount_points=$(awk '{print $5}' /proc/self/mountinfo)",
+  "spawnfile_is_mount() { printf '%s\\n' \"$spawnfile_mount_points\" | grep -qxF \"$1\"; }",
+  "spawnfile_holds_mount() { printf '%s\\n' \"$spawnfile_mount_points\" | grep -qE \"^$(printf '%s' \"$1\" | sed 's/[][\\.*^$/]/\\\\&/g')(/|$)\"; }",
+  "spawnfile_clear_tree() {",
+  "  spawnfile_root=$1",
+  "  [ -d \"$spawnfile_root\" ] || return 0",
+  "  for spawnfile_entry in \"$spawnfile_root\"/* \"$spawnfile_root\"/.[!.]* \"$spawnfile_root\"/..?*; do",
+  "    if [ ! -e \"$spawnfile_entry\" ] && [ ! -L \"$spawnfile_entry\" ]; then continue; fi",
+  "    if spawnfile_is_mount \"$spawnfile_entry\"; then continue; fi",
+  "    if spawnfile_holds_mount \"$spawnfile_entry\"; then spawnfile_clear_tree \"$spawnfile_entry\"; continue; fi",
+  "    rm -rf \"$spawnfile_entry\" || { echo \"cannot clear $spawnfile_entry: it is in use; a mount below a provisioned root must be declared outside it\" >&2; return 1; }",
+  "  done",
+  "}",
+  // Removes the target outright, unless it is or contains a mount point: then its contents go and the
+  // mount points and the directories holding them stay, because neither can be unlinked while mounted.
+  "spawnfile_remove_tree() {",
+  "  if [ ! -e \"$1\" ] && [ ! -L \"$1\" ]; then return 0; fi",
+  "  if spawnfile_holds_mount \"$1\"; then spawnfile_clear_tree \"$1\"; return $?; fi",
+  "  rm -rf \"$1\" || { echo \"cannot remove $1: it is in use\" >&2; return 1; }",
+  "}"
+];
+
 export const renderDaimonBrokerProvisioning = (plans: RuntimeTargetPlan[]): string[] => {
   const registrations = resolveDaimonGrokRegistrations(plans);
   if (registrations.length === 0) return [];
@@ -132,7 +170,15 @@ export const renderDaimonBrokerProvisioningProgram = (
    */
   rootReset: "remove" | "clear" = "remove",
   /** Deny targets the worker provisioning creates when absent; see `renderDaimonGrokWorkerProvisioning`. */
-  optionalDenyPaths?: readonly string[]
+  optionalDenyPaths?: readonly string[],
+  /**
+   * Where the broker and relay get their private `TMPDIR`. Production keeps it
+   * inside the control root, which it removes and recreates exactly once. A
+   * deployment that re-provisions that root — the training slot recycle — must
+   * pass a path outside it: a `tmp/` inside a cleared root is a mount point in
+   * the training launch, and clearing a mount point fails `EBUSY`.
+   */
+  brokerTmpdir: string = DAIMON_BROKER_TMPDIR
 ): string[] => {
   const program = [
     "const crypto = require('node:crypto'); const fs = require('node:fs');",
@@ -168,9 +214,9 @@ export const renderDaimonBrokerProvisioningProgram = (
     "if [ -d /run/daimon-engine-broker ]; then chmod u+rwx /run/daimon-engine-broker; fi",
     ...(rootReset === "remove"
       ? ["rm -rf /etc/daimon-engine-broker /run/daimon-engine-broker"]
-      : ["for broker_root in /etc/daimon-engine-broker /run/daimon-engine-broker; do if [ -d \"$broker_root\" ]; then find \"$broker_root\" -mindepth 1 -delete; fi; done"]),
+      : [...MOUNT_AWARE_CLEAR_HELPER, "for broker_root in /etc/daimon-engine-broker /run/daimon-engine-broker; do spawnfile_clear_tree \"$broker_root\"; done"]),
     `install -d -o root -g ${DAIMON_BROKER_UID} -m 0731 /run/daimon-engine-broker`,
-    `install -d -o ${DAIMON_BROKER_UID} -g ${DAIMON_BROKER_UID} -m 0700 ${DAIMON_BROKER_TMPDIR}`,
+    `install -d -o ${DAIMON_BROKER_UID} -g ${DAIMON_BROKER_UID} -m 0700 ${brokerTmpdir}`,
     "node <<'SPAWNFILE_DAIMON_BROKER_PROVISION'",
     program,
     "SPAWNFILE_DAIMON_BROKER_PROVISION"
