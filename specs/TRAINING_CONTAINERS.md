@@ -307,6 +307,14 @@ worker-uid denial canaries, and only then publishes
 caller's `nonce`. Recycles are serialized; the caller never names a path or a
 command. Measured: three recycles at 611–620 ms each.
 
+Nothing the launch mounts may sit inside a directory a recycle removes or
+empties: a mount point cannot be unlinked while it is mounted. The broker and
+relay therefore take their private `TMPDIR` from `/run/training/broker-tmp`
+(`2100:2100 0700`, denied to every worker uid) rather than the production
+`<control root>/tmp`, which training clears on every recycle. Provisioning and
+recycle skip mount points regardless and name any path they genuinely cannot
+clear.
+
 The socket node is `root:2000 0660` inside a root-owned `0711` directory on
 tmpfs, which is the uid gate: the kernel enforces it on `connect()` and uid 2200
 gets `EACCES`. Node exposes no `SO_PEERCRED`, and a `0600` root-owned socket
