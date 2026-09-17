@@ -3,6 +3,13 @@
 /** One `find -printf` record per entry: path, octal mode, owner, group, type, link target. */
 export const MODE_LISTING_FORMAT = "%p\\t%m\\t%u\\t%g\\t%y\\t%l\\n";
 export const MODE_ROOTS = ["/opt/training", "/opt/training/paideia/bridges/dspy/.venv"] as const;
+/**
+ * `find` arguments. Only non-nested roots: `find a a/b` walks `a/b` twice and every
+ * entry beneath it would arrive duplicated, which `parse` rejects. The venv stays a
+ * required entry above, so its absence is still a failure.
+ */
+export const LISTING_ROOTS = MODE_ROOTS.filter((root, _index, all) =>
+  !all.some(other => other !== root && root.startsWith(other + "/")));
 /** The former recipe's whole-tree closure; a control recipe without it is not a control. */
 export const CONTROL_CLOSURE = "chmod -R a+rX /opt/training";
 
