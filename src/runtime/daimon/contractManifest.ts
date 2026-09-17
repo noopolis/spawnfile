@@ -7,7 +7,7 @@ import { SpawnfileError } from "../../shared/index.js";
 export const DAIMON_CONTRACT_MANIFEST_VERSION =
   "noopolis.daimon.runtime-contract-manifest.v3" as const;
 export const DAIMON_CONTRACT_MANIFEST_SHA256 =
-  "sha256:79bc6cd06aad3038ea26937f5b3e02d51abc001cf3629d80f49e377e45047b62" as const;
+  "sha256:c9ea30c600c4844621c64a015e3d42e97f410c9942eb41dd675b5c04add34270" as const;
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";
@@ -31,6 +31,15 @@ export const DAIMON_GROK_SUBSCRIPTION_REALM = {
   fileMode: 0o600,
   maxCredentialBytes: 64 * 1024
 } as const;
+export const DAIMON_GROK_BROKER_MODELS = ["grok-4.6", "grok-4.5", "grok-build"] as const;
+export const DAIMON_GROK_BROKER_REASONING_EFFORTS = ["low", "medium", "high"] as const;
+export type DaimonGrokBrokerModel = typeof DAIMON_GROK_BROKER_MODELS[number];
+export type DaimonGrokBrokerReasoningEffort = typeof DAIMON_GROK_BROKER_REASONING_EFFORTS[number];
+/**
+ * Byte mirror of Daimon's `GROK_ENGINE_BROKER` (daimon
+ * `src/contracts/runtimeContractManifest.ts`), attested key-for-key against the
+ * vendored `contract-manifest.json` by `parseDaimonContractManifest`.
+ */
 export const DAIMON_GROK_ENGINE_BROKER = {
   nativeAbiVersion: 2,
   nativeExecutablePath: "/opt/daimon/bin/daimon-engine-broker",
@@ -45,11 +54,56 @@ export const DAIMON_GROK_ENGINE_BROKER = {
   providerProxy: { host: "127.0.0.1", port: 43_123 },
   mcpFacade: { host: "127.0.0.1", port: 43_124, path: "/mcp" },
   identities: { organizationUid: 2_000, brokerUid: 2_100, firstWorkerUid: 2_200 },
+  grokCliVersion: "1.0.34",
+  grokCliBuild: "3736acbc8658",
+  grokCliArtifacts: {
+    arm64: { url: "https://storage.googleapis.com/grok-build-public-artifacts/cli/grok-1.0.34-linux-aarch64", sha256: "39ab87666877d64ef3a40aa60fbe0c3b6a6acd7001b78fe60e2c76bb6cfc4a94", bytes: 136_090_504 },
+    x64: { url: "https://storage.googleapis.com/grok-build-public-artifacts/cli/grok-1.0.34-linux-x86_64", sha256: "be5905e107d2b8b5f3c142d21ecfe4c8fd32a913d2fd551b788707930c4dc80d", bytes: 163_035_648 }
+  },
+  worker: {
+    modelId: "daimon-broker-grok",
+    models: DAIMON_GROK_BROKER_MODELS,
+    reasoningEfforts: DAIMON_GROK_BROKER_REASONING_EFFORTS,
+    defaultModel: "grok-4.6",
+    defaultReasoningEffort: "low",
+    toolIds: ["run_terminal_cmd", "read_file", "grep", "list_dir", "search_tool", "use_tool"],
+    visibleTools: ["grep", "list_dir", "read_file", "run_terminal_command", "search_tool", "use_tool"],
+    maxTurns: 48,
+    systemPromptSha256: "2c31c0085a54a4efbf9c0cf0b8124c56e47f38691b7f0c7fa233a74abaa8ddf8",
+    configSha256: {
+      "grok-4.6": { low: "eed6a451150a72b2cb528b30c23b3d51c7d3bc38c67a8985d4dcdf956ff214d3", medium: "8850502dbebf8918c5161c63efcc4ccf18719488300f4cec1deceb2c112b451f", high: "3ce44ace503362326b47149b528b942ce638fe146313d62502f248acf9c7333d" },
+      "grok-4.5": { low: "7aa13e90b9bc08d1a018f48b7a84de1dab41db586627ee2d5a25f69011ba7e25", medium: "218ba37e57a6f02fa36b265b4e154e68e30bd2d4794feb130cc226fdda7732a9", high: "0bb4ad8bfa5062169b28422d1d534b45420d4e46b1e546bda1c578eb34303646" },
+      "grok-build": { low: "83ac7202442286a65c359cc596b0b8db7bc4529ee70e98224f6cd6f66deb6878", medium: "0146313f28739888eb4e861f1bfb285f7ee4e0a9164669256ebdf6492a2790ce", high: "bbe72aaf70c417dc7007823a7e9e1a7d1fa8d57e50bde6f24036083b32bcc859" }
+    },
+    home: {
+      directory: { uid: 0, group: "worker", mode: 0o1771 },
+      sessionsDirectory: { relativePath: "sessions", uid: 0, group: "worker", mode: 0o1771 },
+      readOnlyFiles: { names: ["config.toml", "managed_config.toml", "requirements.toml", "sandbox.toml", "trusted_folders.toml"], uid: 0, gid: 0, mode: 0o444 },
+      sandboxEvents: { relativePath: "sessions/sandbox-events.jsonl", owner: "worker", group: "broker", mode: 0o640 }
+    }
+  },
   bounds: { promptBytes: 65_536, capabilityBytes: 4_096, capabilityBundleBytes: 8_196, outputBytes: 65_536 },
+  controlProtocolVersion: "noopolis.daimon.engine-broker.v2",
+  turnRecordVersions: ["noopolis.daimon.engine-broker-turn.v1", "noopolis.daimon.engine-broker-turn.v2"],
+  serviceConfigVersions: ["noopolis.daimon.engine-broker-service.v1", "noopolis.daimon.engine-broker-service.v2"],
+  turnLimits: {
+    keys: ["maxRequests", "maxTokens", "timeoutMs"],
+    v1Defaults: { maxRequests: 32, maxTokens: 300_000, timeoutMs: 240_000 },
+    bounds: { maxRequests: [1, 48], maxTokens: [1, 10_000_000], timeoutMs: [1_000, 3_600_000] },
+    limitReasons: ["tokens", "requests", "timeout", "none"],
+    wakeMayOnlyLower: true,
+    tokenCeilingOvershoot: "at-most-one-request",
+    maxInFlightRequests: 1,
+    requestUsageMaxTokens: 500_000,
+    missingUsageEstimate: { inputBytesPerToken: 2, outputTokens: 4_096 }
+  },
+  wakeLimitEnvironment: { timeoutMs: "DAIMON_ENGINE_WAKE_TIMEOUT_MS", maxTokens: "DAIMON_ENGINE_WAKE_TOKEN_CEILING" },
+  projectionVersion: "noopolis.daimon.grok-broker-projection.v1",
+  slotPreflightVersion: "noopolis.daimon.grok-slot-preflight.v1",
   artifacts: {
-    sourceSha256: "bdcab1e12dcc531ed8e56f890263ca23a9ee7bac468191dd598e143df4ff8c58",
-    x64Sha256: "e3fe2738fc8a979861085b4003bf2d5d7c284874897cb6ec2e2e2383211768bd",
-    arm64Sha256: "ad44e02c38e6a3207ac4a3d5fd98b6d2e55341ce42dfd2f07204bbe54a7a653d"
+    sourceSha256: "36f60689f0a8af0e3108f5f53d78ed52b7d4b6f934c75b6184606dfa82bc741e",
+    x64Sha256: "36dc76b134eb59cf5a6720b6f94228eb279108e20ea3343fa6efd9ffcb60a4d3",
+    arm64Sha256: "c93216cc6fa4ca50dc404fe41e68da9150a869b14f46eb42484ae77c3aa400a9"
   }
 } as const;
 /**

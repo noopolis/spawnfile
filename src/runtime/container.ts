@@ -12,7 +12,7 @@ import {
   DAIMON_LOCAL_RUNTIME_IDENTITY_ENV,
   loadLocalDaimonRuntimeIdentity
 } from "./localDaimonAuthority.js";
-import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./daimon/contractManifest.js";
+import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_GROK_ENGINE_BROKER } from "./daimon/contractManifest.js";
 import {
   DAIMON_WAKE_FUSE_DIRECTORY,
   DAIMON_WAKE_FUSE_DIRECTORY_ENV
@@ -244,9 +244,9 @@ export const createRuntimeInstallRecipe = async (
           `test -f ${installRoot}/contract-manifest.json && test -f ${installRoot}/contract-manifest.sha256 && manifest="$(cat ${installRoot}/contract-manifest.sha256)" && test "$manifest" = ${JSON.stringify(DAIMON_CONTRACT_MANIFEST_SHA256)} && test "$(sha256sum ${installRoot}/contract-manifest.json | awk '{print "sha256:" $1}')" = "$manifest" && node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(r.manifest_sha256!==process.argv[2])process.exit(1)' ${installRoot}/${DAIMON_CAPABILITY_RECEIPT_FILE} "$manifest"`,
           `ln -sf ${installRoot}/bin/daimon-runtime /usr/local/bin/daimon-runtime`,
           `ln -sf ${installRoot}/bin/codex /usr/local/bin/codex`,
-          `install -o root -g root -m 0555 ${installRoot}/bin/grok /usr/local/bin/grok`,
+          `install -o root -g root -m 0555 ${installRoot}/bin/grok /usr/local/bin/grok && arch="$(dpkg --print-architecture)" && case "$arch" in amd64) expected=${DAIMON_GROK_ENGINE_BROKER.grokCliArtifacts.x64.sha256} ;; arm64) expected=${DAIMON_GROK_ENGINE_BROKER.grokCliArtifacts.arm64.sha256} ;; *) exit 1 ;; esac && test "$(sha256sum /usr/local/bin/grok | awk '{print $1}')" = "$expected"`,
           `ln -sf ${installRoot}/bin/agy /usr/local/bin/agy`,
-          `mkdir -p /opt/daimon/bin && install -o root -g root -m 0555 ${installRoot}/bin/daimon-engine-broker /opt/daimon/bin/daimon-engine-broker && arch="$(dpkg --print-architecture)" && case "$arch" in amd64) expected=e3fe2738fc8a979861085b4003bf2d5d7c284874897cb6ec2e2e2383211768bd ;; arm64) expected=ad44e02c38e6a3207ac4a3d5fd98b6d2e55341ce42dfd2f07204bbe54a7a653d ;; *) exit 1 ;; esac && test "$(sha256sum /opt/daimon/bin/daimon-engine-broker | awk '{print $1}')" = "$expected"`
+          `mkdir -p /opt/daimon/bin && install -o root -g root -m 0555 ${installRoot}/bin/daimon-engine-broker /opt/daimon/bin/daimon-engine-broker && arch="$(dpkg --print-architecture)" && case "$arch" in amd64) expected=${DAIMON_GROK_ENGINE_BROKER.artifacts.x64Sha256} ;; arm64) expected=${DAIMON_GROK_ENGINE_BROKER.artifacts.arm64Sha256} ;; *) exit 1 ;; esac && test "$(sha256sum /opt/daimon/bin/daimon-engine-broker | awk '{print $1}')" = "$expected"`
         ],
         copyCommands: [createRuntimeImageCopyCommand(daimonRuntime.image, installRoot)],
         env: {
