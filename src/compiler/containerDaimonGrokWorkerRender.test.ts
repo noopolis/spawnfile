@@ -104,7 +104,7 @@ describe("Daimon Grok worker registrations", () => {
   });
 });
 
-describe("Grok base-profile grant guard", () => {
+describe("Grok base-profile grant guard and nested-mask refusal", () => {
   const plan = (extra: Partial<RuntimeTargetPlan>): RuntimeTargetPlan => ({ ...grokWorkerPlan({ "agent:a": "grok", "agent:b": "grok" }), ...extra }) as RuntimeTargetPlan;
   const mount = (mount_path: string) => ({ id: mount_path, mount_path, reason: "test", volume_name: "v" });
 
@@ -121,4 +121,8 @@ describe("Grok base-profile grant guard", () => {
     expect(a!.denyPaths).toEqual(expect.arrayContaining(["/run/secrets", "/run/daimon-engine-broker"]));
   });
 
+  it("refuses an added ancestor that would cover a Daimon deny entry, since masks cannot nest", () => {
+    expect(() => resolveDaimonGrokRegistrations([plan({ persistentMounts: [mount("/var/lib/spawnfile/instances/daimon/daimon-organization/state")] })]))
+      .toThrow(/would cover .*state\/wake-acceptance; masks cannot nest/u);
+  });
 });
