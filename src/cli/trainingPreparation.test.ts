@@ -35,7 +35,9 @@ it("runs cold, warm and exact-resume through the actual public command and exist
   f.config.output.source = "warm"; await f.save(); expect(await run()).toBe(0);
   expect(calls.filter(args => args[2] === "build")).toHaveLength(1);
   expect(calls.filter(args => args[2] === "create")).toHaveLength(3);
-});
+// Three whole cold/warm/resume preparations, each sealing and hashing the complete installed distribution:
+// it sits just under the default 30s bound on an idle machine and just over it under full-suite load.
+}, 180_000);
 
 it("keeps v2 public dry-run free of Docker, auth and preparation writes", async () => {
   const f = await preparationFixture(); roots.push(f.root); f.config.image = { ref: image }; f.config.auth[0]!.source = "missing"; await f.save();
