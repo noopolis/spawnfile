@@ -166,6 +166,13 @@ datasets never enter the image context. Cache identity includes actual source,
 lock, executable and recipe bytes, parent images, architecture and entrypoint;
 reuse also verifies the image ID and recipe label in the selected Docker context.
 
+Staged build contexts normalize modes and times before `docker build`: directories
+0755, files `a+rX`-closed, `grok` and the entrypoint 0555, mtimes fixed. Together
+with the recipe's change-only `a+rX` closure this reproduces the former recursive
+chmod's in-image modes without a whole-tree RUN after every distribution copy
+(`runtime-images/training/AGENTS.md`). The recipe text is part of the image digest,
+so this change rebuilds existing training images once.
+
 The installed integration reads `/run/paideia/preparation.json` using
 `parseTrainingMappedPreparation` from `spawnfile/training`. This protected
 `spawnfile.training-preparation.v1` receipt contains the preparation digest,
