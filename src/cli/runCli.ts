@@ -5,6 +5,7 @@ import { Command } from "commander";
 import {
   importClaudeCodeAuth,
   importCodexAuth,
+  importGrokAuth,
   importEnvFile,
   initializeTargetSecretSourceLifecycle,
   provisionCredentials,
@@ -107,6 +108,7 @@ export interface CliHandlers {
   addProjectSurface: typeof addProjectSurface; addSubagentProject: typeof addSubagentProject;
   addTeamProject: typeof addTeamProject; clearProjectModelFallbacks: typeof clearProjectModelFallbacks;
   importClaudeCodeAuth: typeof importClaudeCodeAuth; importCodexAuth: typeof importCodexAuth;
+  importGrokAuth: typeof importGrokAuth;
   importEnvFile: typeof importEnvFile; initProject: typeof initProject;
   listInitTemplates: typeof listInitTemplates;
   initializeTargetSecretSourceLifecycle: typeof initializeTargetSecretSourceLifecycle;
@@ -136,7 +138,7 @@ const createDefaultHandlers = (): CliHandlers => ({
   buildCompilePlan, buildOrganizationView, buildProject, compileProject, publishProject,
   addAgentProject, addProjectModelFallback, addProjectSurface,
   addSubagentProject, addTeamProject, clearProjectModelFallbacks,
-  importClaudeCodeAuth, importCodexAuth, importEnvFile, initializeTargetSecretSourceLifecycle,
+  importClaudeCodeAuth, importCodexAuth, importGrokAuth, importEnvFile, initializeTargetSecretSourceLifecycle,
   provisionCredentials,
   createDockerProbeGateway, exportRunArtifacts, downDeployment, inspectDockerDeployment,
   listDeploymentRecords, listHomeDeploymentRecords,

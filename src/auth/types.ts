@@ -1,4 +1,4 @@
-export type ImportedAuthKind = "claude-code" | "codex";
+export type ImportedAuthKind = "claude-code" | "codex" | "grok";
 
 export interface ImportedAuthEntry {
   kind: ImportedAuthKind;
