@@ -14,6 +14,9 @@ export type GrokGrantReasoningEffort = (typeof grokGrantReasoningEfforts)[number
 export type GrokGrantPurpose = (typeof grokGrantPurposes)[number];
 export type GrokGrantRefusalCode = (typeof grokGrantRefusalCodes)[number];
 
+/** The only environment variable a grant client reads its token from (Daimon's declared `env_key`). */
+export const grokGrantEnvKey = 'DAIMON_INFERENCE_GRANT';
+
 export interface GrokInferenceGrant {
   grantId: string;
   /** Bearer for the broker proxy. Child-process environment only; never logged, persisted or put in argv. */

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { GrokInferenceGrant, GrokInferenceGrantAuthority } from '../../contracts/inference-grants.js';
+import { grokGrantEnvKey, type GrokInferenceGrant, type GrokInferenceGrantAuthority } from '../../contracts/inference-grants.js';
 import { InferenceFailure } from '../failure.js';
 
 export interface GrokGrantCall {
@@ -12,8 +12,6 @@ export interface GrokGrantCall {
   env: NodeJS.ProcessEnv;
   cleanup(): Promise<void>;
 }
-
-const RESERVED = new Set(['PATH', 'HOME', 'GROK_HOME', 'TMPDIR']);
 
 /**
  * A private per-call GROK_HOME (0700, owned by this uid) under a caller-provisioned
@@ -27,7 +25,8 @@ export async function prepareGrokGrantCall(root: string, authority: GrokInferenc
   if (typeof pin !== 'string' || !/^[a-f0-9]{64}$/u.test(pin) || createHash('sha256').update(config).digest('hex') !== pin) {
     throw new InferenceFailure('unsupported', 'Grok broker client configuration does not match its pinned digest');
   }
-  if (!/^[A-Z][A-Z0-9_]{2,63}$/u.test(authority.envKey) || RESERVED.has(authority.envKey)) throw new InferenceFailure('unsupported', 'Invalid Grok grant environment key');
+  // Exactly the key Daimon's renderer declares; any other name means the client config and the child environment disagree.
+  if (authority.envKey !== grokGrantEnvKey) throw new InferenceFailure('unsupported', `Grok grant environment key must be ${grokGrantEnvKey}`);
   await privateDirectory(root, 0o022, 'Grok grant home root');
   const dir = await mkdtemp(path.join(root, 'grok-grant-'));
   try {

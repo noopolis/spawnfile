@@ -1,4 +1,4 @@
-import type { GrokGrantModel, GrokGrantReasoningEffort } from '../../../contracts/inference-grants.js';
+import { grokGrantEnvKey, type GrokGrantModel, type GrokGrantReasoningEffort } from '../../../contracts/inference-grants.js';
 
 /**
  * Paideia's pin of Daimon's evaluator inference client contract
@@ -7,7 +7,7 @@ import type { GrokGrantModel, GrokGrantReasoningEffort } from '../../../contract
  */
 export const daimonGrokInferenceClientPin = Object.freeze({
   modelId: 'daimon-inference-grok',
-  envKey: 'DAIMON_INFERENCE_GRANT',
+  envKey: grokGrantEnvKey,
   proxyBaseUrl: 'http://127.0.0.1:43123/v1',
   maxLiveGrants: 8,
   failureCodes: ['auth_stale', 'grant_limit', 'invalid_request', 'unavailable'],

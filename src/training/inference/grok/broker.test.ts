@@ -137,7 +137,7 @@ it('fails closed without a broker, pin or private home and never launches a desk
   await expect(linked.provider.generate({ prompt: 'p', model: 'grok-4.6' })).rejects.toMatchObject({ kind: 'unsupported' });
   const missing = setup(success, fake, { homeRoot: path.join(root, 'absent') });
   await expect(missing.provider.generate({ prompt: 'p', model: 'grok-4.6' })).rejects.toMatchObject({ kind: 'unsupported' });
-  for (const envKey of ['HOME', 'bad-key']) {
+  for (const envKey of ['HOME', 'bad-key', 'DAIMON_INFERENCE_GRANT_V2', 'XAI_API_KEY', 'daimon_inference_grant']) {
     const reserved = fakeGrantAuthority({ envKey });
     await expect(setup(success, reserved).provider.generate({ prompt: 'p', model: 'grok-4.6' })).rejects.toMatchObject({ kind: 'unsupported' });
   }
