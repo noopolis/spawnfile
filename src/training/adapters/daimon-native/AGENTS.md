@@ -2,7 +2,8 @@
 
 Owns one isolated Codex or brokered Grok attention trial through the public Daimon
 runtime and a caller-owned local container (Grok: child-process execution only).
-Never compile organizations, reconstruct identity, replace memory/tools, copy credentials, wake production agents or invent evidence.
+Never compile organizations, reconstruct identity, replace memory/tools, copy
+credentials, wake production agents or invent evidence.
 Project profiles and transport bootstrap remain caller-owned. Require exact launch
 receipts, authenticated native activity, closed telemetry and verified containment.
 Use public module indexes across child boundaries; no sibling implementation imports.

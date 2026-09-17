@@ -158,6 +158,9 @@ Startup, in order, with no model call and no `codex sandbox` process:
    and generation floor it writes into the launch and sends with the recycle request;
    the parent's `accept` requires the pending nonce and a strictly higher generation
    and persists it, so a receipt can never be replayed into a later trial.
+   Every store operation re-reads the file under an O_EXCL lockfile shared across
+   store instances and processes (a lock whose owner PID is gone is reclaimed), never
+   lowers a generation floor on disk, and refuses a symlinked or hard-linked state file.
 
 Separate-container Grok is refused before any Docker call. The worker sets the
 engine-neutral `DAIMON_ENGINE_WAKE_TIMEOUT_MS`/`_TOKEN_CEILING` (Codex aliases equal)
