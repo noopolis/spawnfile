@@ -63,7 +63,14 @@ export const TRAINING_SLOT_INDEX = 0;
 export const TRAINING_WORKER_UID = DAIMON_FIRST_WORKER_UID + TRAINING_SLOT_INDEX;
 export const TRAINING_WORKER_HOME = path.posix.join(TRAINING_WORKER_ROOT, String(TRAINING_WORKER_UID));
 
-/** Paideia's own fixed container paths (`containerPaths` in its native launch schema); all protected from the worker. */
+/**
+ * Paideia's own fixed container paths (`containerPaths` in its native launch
+ * schema). They are *not* individual deny entries: Grok 1.0.34 materializes
+ * every `deny` target inside bubblewrap as the worker uid, and it cannot
+ * create a file inside `/run/paideia`, which belongs to uid 2000 alone. The
+ * single `/run/paideia` mask below covers all of them, which is also stronger
+ * — a file Paideia adds later is covered without re-provisioning the slot.
+ */
 export const TRAINING_CALLER_PROTECTED_PATHS = [
   `${TRAINING_PAIDEIA_ROOT}/config.json`,
   `${TRAINING_PAIDEIA_ROOT}/control`,
@@ -77,7 +84,7 @@ export const TRAINING_CALLER_PROTECTED_PATHS = [
 /** `paideia.daimon-native.launch.v2`'s five `broker.evaluatorPaths` roles, at this container's real paths. */
 export const TRAINING_EVALUATOR_ROOTS = [
   { role: "run-root", path: TRAINING_RUN_ROOT },
-  { role: "context", path: TRAINING_CONTEXT_FILE },
+  { role: "context", path: TRAINING_PAIDEIA_ROOT },
   { role: "sealed-inputs", path: TRAINING_SEALED_INPUTS_ROOT },
   { role: "judge-home", path: TRAINING_GRANT_HOME_ROOT },
   { role: "slot-ledger", path: TRAINING_SLOT_USAGE_DIRECTORY }
@@ -95,14 +102,12 @@ export const TRAINING_ADDED_DENY_PATHS: readonly string[] = [
   path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.registrationPath),
   DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
   DAIMON_WAKE_FUSE_DIRECTORY,
-  TRAINING_BROKER_DECLARATION_FILE,
   TRAINING_INFERENCE_DIRECTORY,
   // `TRAINING_SLOT_STATE_ROOT` is deliberately absent: Daimon's own protected set
   // already denies the wake-acceptance store beneath it, and masks cannot nest,
   // so denying the parent as well would make Grok refuse the whole profile.
   TRAINING_SLOT_TURN_STORE,
   TRAINING_SUPERVISOR_DIRECTORY,
-  ...TRAINING_CALLER_PROTECTED_PATHS,
   ...TRAINING_EVALUATOR_ROOTS.map((entry) => entry.path)
 ];
 
@@ -112,18 +117,37 @@ export const TRAINING_OPTIONAL_DENY_DIRECTORIES: readonly string[] = [
   TRAINING_SLOT_STATE_ROOT,
   TRAINING_SLOT_TURN_STORE,
   TRAINING_SUPERVISOR_DIRECTORY,
-  TRAINING_RUN_ROOT,
-  TRAINING_SEALED_INPUTS_ROOT,
-  TRAINING_GRANT_HOME_ROOT
+  TRAINING_GRANT_HOME_ROOT,
+  // Denied and unused here — training meters per slot — but the mask still needs an inode. The launch
+  // mounts each as tmpfs, so this only creates them when a caller ran the entrypoint without them.
+  DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
+  DAIMON_WAKE_FUSE_DIRECTORY
 ];
 
 /**
- * Deny entries Paideia materializes per trial inside its own `/run/paideia`
- * tmpfs. Absent is allowed at provisioning time (the profile still masks the
- * path once it exists, because Grok applies the profile at every worker spawn);
- * a symlink never is.
+ * Deny entries a launch may legitimately not have mounted. Everything else must
+ * exist before a worker turn: Grok 1.0.34 creates an absent `deny` target as
+ * the worker uid inside bubblewrap and refuses the whole profile when it
+ * cannot, so provisioning materializes every other entry itself.
  */
-export const TRAINING_DEFERRED_DENY_PATHS: readonly string[] = [...TRAINING_CALLER_PROTECTED_PATHS];
+export const TRAINING_DEFERRED_DENY_PATHS: readonly string[] = [
+  // Docker materializes both host binds before the entrypoint runs. They sit on the read-only image
+  // root, which root cannot create into, so provisioning must tolerate a launch that declared neither.
+  TRAINING_RUN_ROOT,
+  TRAINING_SEALED_INPUTS_ROOT
+];
+
+/**
+ * Deny entries that are host bind mounts.
+ *
+ * A worker-uid read probe over one of these proves nothing: the host owns the
+ * inode, its mode is whatever the operator's project directory happens to be,
+ * and Docker Desktop and Colima ignore `chown` outright (P0 §5). Their boundary
+ * is the bubblewrap-enforced `deny` list, which P0 verified blocks both shell
+ * `cat` and `read_file` on 1.0.34. The declaration's `unenforcedBindPolicy`
+ * decides whether the slot supervisor accepts that or refuses the slot.
+ */
+export const TRAINING_HOST_BIND_DENY_PATHS: readonly string[] = [TRAINING_RUN_ROOT, TRAINING_SEALED_INPUTS_ROOT];
 
 export const TRAINING_REALM_MOUNT = DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath;
 export const TRAINING_BOOTSTRAP_MOUNT = DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath;

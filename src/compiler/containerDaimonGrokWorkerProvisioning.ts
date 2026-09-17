@@ -54,10 +54,18 @@ const programRegistration = (entry: DaimonGrokRegistration) => ({
  */
 export const renderDaimonGrokWorkerProvisioning = (
   registrations: readonly DaimonGrokRegistration[],
-  serviceOptions: DaimonGrokServiceConfigOptions = {}
+  serviceOptions: DaimonGrokServiceConfigOptions = {},
+  /**
+   * Deny targets this program creates root-owned `0700` when they are absent,
+   * so every mask always has an inode. The default is the production
+   * container's set; the training container passes its own, because its roots
+   * are tmpfs mounts and `/run/secrets` and the shared state roots do not
+   * exist there at all.
+   */
+  optionalDenyPaths: readonly string[] = [...DAIMON_GROK_OPTIONAL_DENY_PATHS, ...DAIMON_GROK_DENIED_STATE_ROOTS]
 ): string[] => [
   `const grokWorkers = ${JSON.stringify(registrations.map(programRegistration))};`,
-  `const optionalDenyPaths = new Set(${JSON.stringify([...DAIMON_GROK_OPTIONAL_DENY_PATHS, ...DAIMON_GROK_DENIED_STATE_ROOTS])});`,
+  `const optionalDenyPaths = new Set(${JSON.stringify([...optionalDenyPaths])});`,
   `const pinnedConfigSha256 = ${JSON.stringify(DAIMON_GROK_ENGINE_BROKER.worker.configSha256)};`,
   "const sha256Hex = (value) => crypto.createHash('sha256').update(value).digest('hex');",
   "for (const entry of grokWorkers) { if (sha256Hex(entry.config) !== entry.configSha256 || !Object.hasOwn(pinnedConfigSha256, entry.model) || !Object.hasOwn(pinnedConfigSha256[entry.model], entry.reasoningEffort) || pinnedConfigSha256[entry.model][entry.reasoningEffort] !== entry.configSha256 || sha256Hex(entry.profile) !== entry.profileSha256 || entry.denyPaths.length === 0) throw new Error(`Grok worker contract bytes for ${entry.agentId} do not match their pins`); }",
@@ -74,11 +82,15 @@ export const renderDaimonGrokWorkerProvisioning = (
   "for (const denied of optionalDenyPaths) { try { fs.lstatSync(denied); } catch (error) { if (error.code !== 'ENOENT') throw error; fs.mkdirSync(denied, { mode: 0o700 }); fs.chownSync(denied, 0, 0); fs.chmodSync(denied, 0o700); } }",
   "for (const entry of grokWorkers) for (const denied of entry.denyPaths) { try { assertCanonical(denied, 'deny path'); } catch (error) { if (error.code === 'ENOENT' && entry.deferredDenyPaths.includes(denied)) continue; if (error.code === 'ENOENT') throw new Error(`Grok worker deny path is missing: ${denied}`); throw error; } }",
   // Pass 2: exact root-owned read-only files, the events file, then the final sticky modes.
-  `for (const entry of grokWorkers) { ensureExactFile(\`\${entry.grokHome}/config.toml\`, entry.config, 0o444); ensureExactFile(entry.profilePath, entry.profile, 0o444); for (const name of ${JSON.stringify(DAIMON_GROK_WORKER_READ_ONLY_FILES.filter((name) => name !== "config.toml" && name !== "sandbox.toml"))}) ensureExactFile(\`\${entry.grokHome}/\${name}\`, '', 0o444); ensureEventsFile(entry.eventsPath, entry.uid); ensureDirectory(\`\${entry.grokHome}/sessions\`, 0, entry.uid, 0o1771); ensureDirectory(entry.grokHome, 0, entry.uid, 0o1771); ensureDirectory(entry.home, entry.uid, ${DAIMON_BROKER_UID}, 0o710); for (const target of [entry.profilePath, entry.eventsPath, \`\${entry.grokHome}/config.toml\`]) assertCanonical(target, 'home file'); }`,
-  // Worker-private temp: the launcher compiles TMPDIR=<home>/tmp, the only temp the worker may write.
+  `for (const entry of grokWorkers) { ensureExactFile(\`\${entry.grokHome}/config.toml\`, entry.config, 0o444); ensureExactFile(entry.profilePath, entry.profile, 0o444); for (const name of ${JSON.stringify(DAIMON_GROK_WORKER_READ_ONLY_FILES.filter((name) => name !== "config.toml" && name !== "sandbox.toml"))}) ensureExactFile(\`\${entry.grokHome}/\${name}\`, '', 0o444); ensureEventsFile(entry.eventsPath, entry.uid); ensureDirectory(\`\${entry.grokHome}/sessions\`, 0, entry.uid, 0o1771); ensureDirectory(entry.grokHome, 0, entry.uid, 0o1771); ensureDirectory(entry.privateTmp, entry.uid, entry.uid, 0o700); ensureDirectory(entry.home, entry.uid, ${DAIMON_BROKER_UID}, 0o710); for (const target of [entry.profilePath, entry.eventsPath, \`\${entry.grokHome}/config.toml\`]) assertCanonical(target, 'home file'); }`,
+  // Worker-private temp: the launcher compiles TMPDIR=<home>/tmp, the only temp the worker may write. It is
+  // created in the pass above, while the home is still root-owned: root here holds no CAP_DAC_OVERRIDE, so
+  // once the home is `<worker>:<broker> 0710` root can no longer create anything inside it.
   "for (const entry of grokWorkers) { ensureDirectory(entry.privateTmp, entry.uid, entry.uid, 0o700); assertCanonical(entry.privateTmp, 'private temp'); }",
-  // Spills: <runtimeHome>/tool-output 2000:<worker> 2750 (setgid) under a runtime home the worker's group can traverse.
-  `for (const entry of grokWorkers) { traversable(entry.runtimeHome); fs.mkdirSync(entry.runtimeHome, { recursive: true, mode: 0o700 }); assertCanonical(entry.runtimeHome, 'runtime home'); withMode(entry.runtimeHome, 0o710, ${DAIMON_ORGANIZATION_UID}, entry.uid); try { fs.mkdirSync(entry.spillDirectory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; } assertCanonical(entry.spillDirectory, 'spill directory'); withMode(entry.spillDirectory, 0o2750, ${DAIMON_ORGANIZATION_UID}, entry.uid); }`,
+  // Spills: <runtimeHome>/tool-output 2000:<worker> 2750 (setgid) under a runtime home the worker's group can
+  // traverse. The spill directory is created before the runtime home is narrowed to 0710: without
+  // CAP_DAC_OVERRIDE root cannot create inside a directory it does not own once the mode excludes it.
+  `for (const entry of grokWorkers) { traversable(entry.runtimeHome); fs.mkdirSync(entry.runtimeHome, { recursive: true, mode: 0o700 }); assertCanonical(entry.runtimeHome, 'runtime home'); try { fs.mkdirSync(entry.spillDirectory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; } assertCanonical(entry.spillDirectory, 'spill directory'); withMode(entry.spillDirectory, 0o2750, ${DAIMON_ORGANIZATION_UID}, entry.uid); withMode(entry.runtimeHome, 0o710, ${DAIMON_ORGANIZATION_UID}, entry.uid); }`,
   // Shared temp: Grok refuses a profile denying /tmp or /var/tmp, so modes close them: root:<org group> 1774 lets workers list names only.
   `for (const shared of ${JSON.stringify(DAIMON_GROK_ENGINE_BROKER.worker.home.sharedTmp.paths)}) { fs.mkdirSync(shared, { recursive: true, mode: 0o1777 }); assertCanonical(shared, 'shared temp'); withMode(shared, 0o${DAIMON_GROK_ENGINE_BROKER.worker.home.sharedTmp.mode.toString(8)}, 0, ${DAIMON_ORGANIZATION_UID}); }`,
   `const service = ${JSON.stringify(renderDaimonGrokServiceConfig(registrations, serviceOptions))};`,

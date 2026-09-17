@@ -122,7 +122,17 @@ export const renderDaimonBrokerProvisioning = (plans: RuntimeTargetPlan[]): stri
 export const renderDaimonBrokerProvisioningProgram = (
   registrations: readonly DaimonGrokRegistration[],
   workspaceResources: WorkspaceSecurityResource[],
-  serviceOptions: DaimonGrokServiceConfigOptions = {}
+  serviceOptions: DaimonGrokServiceConfigOptions = {},
+  /**
+   * How the broker's `/etc` and `/run` roots are reset before provisioning.
+   * A production organization owns both as ordinary image directories and
+   * removes them outright. The training container mounts each as its own
+   * tmpfs, which cannot be unlinked, so it empties them instead — the same
+   * end state, reached the only way a mount point allows.
+   */
+  rootReset: "remove" | "clear" = "remove",
+  /** Deny targets the worker provisioning creates when absent; see `renderDaimonGrokWorkerProvisioning`. */
+  optionalDenyPaths?: readonly string[]
 ): string[] => {
   const program = [
     "const crypto = require('node:crypto'); const fs = require('node:fs');",
@@ -149,14 +159,16 @@ export const renderDaimonBrokerProvisioningProgram = (
     `try { const journalPath = '${DAIMON_BROKER_REALM}/.daimon-broker/credential-journal.json'; let journal; try { const raw = readSecure(journalPath, 2100, 'recovery journal'); journal = JSON.parse(raw.toString('utf8')); raw.fill(0); } catch (error) { if (error.code !== 'ENOENT') throw error; } const stale = journal?.version === 'noopolis.daimon.broker-credential-journal.v1' && journal.state === 'stale'; const recover = () => { if (!stale || !Number.isSafeInteger(journal.generation) || journal.generation < 0 || !/^[a-f0-9]{64}$/.test(journal.sourceDigest) || journal.sourceDigest !== journal.promotedDigest || bootstrapDigest === journal.sourceDigest) throw new Error('unsafe broker credential recovery'); atomicOwned(authority, bootstrapBytes); const recovered = Buffer.from(\`${"${JSON.stringify({ version: 'noopolis.daimon.broker-credential-journal.v1', state: 'promoted', generation: journal.generation + 1, sourceDigest: journal.sourceDigest, promotedDigest: bootstrapDigest })}"}\\n\`); try { atomicOwned(journalPath, recovered); } finally { recovered.fill(0); } }; if (!existing) { if (stale) recover(); else atomicOwned(authority, bootstrapBytes); } else { const authorityBytes = readSecure(authority, 2100, 'authority'); try { const authorityDigest = crypto.createHash('sha256').update(authorityBytes).digest('hex'); if (stale) { if (authorityDigest !== journal.sourceDigest && authorityDigest !== bootstrapDigest) throw new Error('unsafe broker credential recovery'); if (authorityDigest === bootstrapDigest) { const recovered = Buffer.from(\`${"${JSON.stringify({ version: 'noopolis.daimon.broker-credential-journal.v1', state: 'promoted', generation: journal.generation + 1, sourceDigest: journal.sourceDigest, promotedDigest: bootstrapDigest })}"}\\n\`); try { atomicOwned(journalPath, recovered); } finally { recovered.fill(0); } } else recover(); } } finally { authorityBytes.fill(0); } } } finally { bootstrapBytes.fill(0); }`,
     "if (journalRootExists) { fs.chownSync(journalRoot, 0, 0); fs.chmodSync(journalRoot, 0o700); fs.chownSync(journalRoot, 2100, 2100); }",
     ...renderDaimonWorkspaceResourceSecurity(workspaceResources),
-    ...renderDaimonGrokWorkerProvisioning(registrations, serviceOptions),
+    ...renderDaimonGrokWorkerProvisioning(registrations, serviceOptions, ...(optionalDenyPaths ? [optionalDenyPaths] : [])),
     `fs.chownSync('${DAIMON_BROKER_REALM}', 0, 0); fs.chmodSync('${DAIMON_BROKER_REALM}', 0o700); fs.chownSync('${DAIMON_BROKER_REALM}', 2100, 2100);`,
     "fs.chmodSync('/etc/daimon-engine-broker', 0o555);"
   ].join("\n");
   return [
     "if [ -d /etc/daimon-engine-broker ]; then chmod u+rwx /etc/daimon-engine-broker; fi",
     "if [ -d /run/daimon-engine-broker ]; then chmod u+rwx /run/daimon-engine-broker; fi",
-    "rm -rf /etc/daimon-engine-broker /run/daimon-engine-broker",
+    ...(rootReset === "remove"
+      ? ["rm -rf /etc/daimon-engine-broker /run/daimon-engine-broker"]
+      : ["for broker_root in /etc/daimon-engine-broker /run/daimon-engine-broker; do if [ -d \"$broker_root\" ]; then find \"$broker_root\" -mindepth 1 -delete; fi; done"]),
     `install -d -o root -g ${DAIMON_BROKER_UID} -m 0731 /run/daimon-engine-broker`,
     `install -d -o ${DAIMON_BROKER_UID} -g ${DAIMON_BROKER_UID} -m 0700 ${DAIMON_BROKER_TMPDIR}`,
     "node <<'SPAWNFILE_DAIMON_BROKER_PROVISION'",

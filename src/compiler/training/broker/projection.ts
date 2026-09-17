@@ -41,21 +41,25 @@ export const loadDaimonProjectionModule = async (load: () => Promise<unknown> = 
 
 /**
  * The one-agent organization runtime config the training slot's projection is
- * resolved from. It is a projection *input*, never a runtime config Daimon
- * hosts: the trial's real config is Paideia's, and both describe the same
- * single agent at the same fixed container paths, so both compute the same
- * projection digest. A peer agent would change Daimon's protected set and the
- * digest with it, which is exactly why training runs one slot.
+ * resolved from.
+ *
+ * It is a projection *input*, never a runtime config Daimon hosts: the trial's
+ * real config is Paideia's. Only `agents[].id`, `workspacePath`,
+ * `runtimeHomePath`, the engine's declared model and effort, and the *absence*
+ * of peers reach `resolveOrganizationGrokBrokerProjection`, so this minimal
+ * config and Paideia's fuller one compute the same projection digest. A peer
+ * agent would change Daimon's protected set and the digest with it, which is
+ * exactly why training runs one slot.
  */
 export const trainingOrganizationRuntimeConfig = (declaration: {
   agentId: string; model: DaimonGrokBrokerModel; reasoningEffort: DaimonGrokBrokerReasoningEffort;
 }): Record<string, unknown> => ({
-  version: "noopolis.daimon.organization-runtime.v2",
-  id: "daimon-organization",
+  version: "noopolis.daimon.organization-runtime.v1",
+  host: { bindHost: "127.0.0.1", port: 19_700, controlTokenEnv: "SPAWNFILE_DAIMON_CONTROL_TOKEN" },
   agents: [{
     id: declaration.agentId,
     name: declaration.agentId,
-    instructions: "",
+    instructions: "training subject",
     workspacePath: TRAINING_SLOT_WORKSPACE,
     runtimeHomePath: TRAINING_SLOT_RUNTIME_HOME,
     engine: { kind: "grok", model: declaration.model, reasoningEffort: declaration.reasoningEffort }

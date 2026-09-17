@@ -10,6 +10,14 @@ COPY --from=python /usr/lib/*-linux-gnu/libsqlite3.so.0* /opt/python/lib/
 # libraries in the image so Python extensions also load in that clean process.
 RUN echo /opt/python/lib > /etc/ld.so.conf.d/training-python.conf && ldconfig
 
+# The broker-capable container runs on a read-only root, so the fixed Daimon identities are baked here
+# instead of being created by the entrypoint the way the production organization image creates them.
+RUN for fixed_uid in 2000 2100 2200; do \
+      groupadd -K GID_MIN=1 --gid "$fixed_uid" "daimon-$fixed_uid" \
+   && useradd -K UID_MIN=1 --no-create-home --no-log-init --uid "$fixed_uid" --gid "$fixed_uid" \
+        --home-dir /nonexistent --shell /usr/sbin/nologin "daimon-$fixed_uid"; \
+    done
+
 WORKDIR /opt/training/paideia
 COPY paideia/package.json paideia/package-lock.json ./
 RUN npm ci --omit=dev --omit=peer --ignore-scripts \
