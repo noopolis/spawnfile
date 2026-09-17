@@ -6,7 +6,8 @@ import {
   DAIMON_GROK_WORKER_READ_ONLY_FILES,
   DAIMON_WORKER_ROOT,
   renderDaimonGrokServiceConfig,
-  type DaimonGrokRegistration
+  type DaimonGrokRegistration,
+  type DaimonGrokServiceConfigOptions
 } from "./containerDaimonGrokWorkerRender.js";
 
 /** Only the bytes the program writes; everything else it needs is recomputed or checked in place. */
@@ -51,7 +52,10 @@ const programRegistration = (entry: DaimonGrokRegistration) => ({
  * the wrong inode. Root chmods only paths it owns at that moment (no
  * `CAP_FOWNER`): reclaim, mode, then hand over.
  */
-export const renderDaimonGrokWorkerProvisioning = (registrations: readonly DaimonGrokRegistration[]): string[] => [
+export const renderDaimonGrokWorkerProvisioning = (
+  registrations: readonly DaimonGrokRegistration[],
+  serviceOptions: DaimonGrokServiceConfigOptions = {}
+): string[] => [
   `const grokWorkers = ${JSON.stringify(registrations.map(programRegistration))};`,
   `const optionalDenyPaths = new Set(${JSON.stringify([...DAIMON_GROK_OPTIONAL_DENY_PATHS, ...DAIMON_GROK_DENIED_STATE_ROOTS])});`,
   `const pinnedConfigSha256 = ${JSON.stringify(DAIMON_GROK_ENGINE_BROKER.worker.configSha256)};`,
@@ -77,7 +81,7 @@ export const renderDaimonGrokWorkerProvisioning = (registrations: readonly Daimo
   `for (const entry of grokWorkers) { traversable(entry.runtimeHome); fs.mkdirSync(entry.runtimeHome, { recursive: true, mode: 0o700 }); assertCanonical(entry.runtimeHome, 'runtime home'); withMode(entry.runtimeHome, 0o710, ${DAIMON_ORGANIZATION_UID}, entry.uid); try { fs.mkdirSync(entry.spillDirectory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; } assertCanonical(entry.spillDirectory, 'spill directory'); withMode(entry.spillDirectory, 0o2750, ${DAIMON_ORGANIZATION_UID}, entry.uid); }`,
   // Shared temp: Grok refuses a profile denying /tmp or /var/tmp, so modes close them: root:<org group> 1774 lets workers list names only.
   `for (const shared of ${JSON.stringify(DAIMON_GROK_ENGINE_BROKER.worker.home.sharedTmp.paths)}) { fs.mkdirSync(shared, { recursive: true, mode: 0o1777 }); assertCanonical(shared, 'shared temp'); withMode(shared, 0o${DAIMON_GROK_ENGINE_BROKER.worker.home.sharedTmp.mode.toString(8)}, 0, ${DAIMON_ORGANIZATION_UID}); }`,
-  `const service = ${JSON.stringify(renderDaimonGrokServiceConfig(registrations))};`,
+  `const service = ${JSON.stringify(renderDaimonGrokServiceConfig(registrations, serviceOptions))};`,
   "for (const registration of service.registrations) { const entry = grokWorkers.find((worker) => worker.agentId === registration.agentId); if (!entry || registration.profileSha256 !== sha256Hex(fs.readFileSync(entry.profilePath, 'utf8'))) throw new Error('Grok broker service registration does not match its provisioned profile'); }",
   `fs.writeFileSync('${DAIMON_GROK_ENGINE_BROKER.serviceConfigPath}', \`\${JSON.stringify(service)}\\n\`, { mode: 0o440, flag: 'wx' }); fs.chownSync('${DAIMON_GROK_ENGINE_BROKER.serviceConfigPath}', 0, ${DAIMON_BROKER_UID}); fs.chmodSync('${DAIMON_GROK_ENGINE_BROKER.serviceConfigPath}', 0o440);`
 ];

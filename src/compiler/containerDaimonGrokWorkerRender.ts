@@ -265,11 +265,45 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]): Daim
   });
 };
 
+export interface DaimonGrokServiceConfigOptions {
+  /**
+   * Where the broker keeps its durable turn registry. Production keeps it on
+   * the realm volume beside the credential; training overrides it to per-slot
+   * tmpfs so a recycled slot can never replay trial N's sealed turn in trial
+   * N+1 (R2), and refuses any path on the realm volume for that reason.
+   */
+  turnStore?: string;
+  /** `service.json` v2's optional evaluator inference ledger. Without it the broker refuses every grant. */
+  inferenceLedgerPath?: string;
+}
+
+const resolveDaimonGrokTurnStore = (turnStore?: string): string => {
+  if (turnStore === undefined) return DAIMON_GROK_ENGINE_BROKER.turnStorePath;
+  assertCanonicalRegisteredPath("turn store", turnStore);
+  if (turnStore === DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath || turnStore.startsWith(`${DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath}/`)) {
+    fail(`Grok broker turn store ${turnStore} is on the durable credential realm; a recycled slot would replay the previous trial's sealed turns`);
+  }
+  return turnStore;
+};
+
+const resolveDaimonGrokInferenceLedger = (inferenceLedgerPath: string, registrations: readonly DaimonGrokRegistration[]): string => {
+  assertCanonicalRegisteredPath("inference ledger", inferenceLedgerPath);
+  if (!inferenceLedgerPath.endsWith(".jsonl")) fail(`Grok inference ledger must be a .jsonl path: ${inferenceLedgerPath}`);
+  const subject = new Set([DAIMON_GROK_TURN_USAGE_LEDGER.filePath, path.posix.join(DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath, "requests.jsonl"),
+    ...registrations.flatMap((entry) => [entry.usageLedgerPath, path.posix.join(path.posix.dirname(entry.usageLedgerPath), "requests.jsonl")])]);
+  if (subject.has(inferenceLedgerPath)) fail(`Grok inference ledger ${inferenceLedgerPath} is a subject usage ledger; judge spend must never reach the wake fuse`);
+  return inferenceLedgerPath;
+};
+
 /** `service.json` v2, exactly the shape Daimon's strict `parseEngineBrokerServiceConfig` accepts. */
-export const renderDaimonGrokServiceConfig = (registrations: readonly DaimonGrokRegistration[]) => ({
+export const renderDaimonGrokServiceConfig = (
+  registrations: readonly DaimonGrokRegistration[],
+  options: DaimonGrokServiceConfigOptions = {}
+) => ({
   version: DAIMON_GROK_ENGINE_BROKER.serviceConfigVersions[1],
   credentialHome: DAIMON_GROK_ENGINE_BROKER.credentialHomePath,
-  turnStore: DAIMON_GROK_ENGINE_BROKER.turnStorePath,
+  turnStore: resolveDaimonGrokTurnStore(options.turnStore),
+  ...(options.inferenceLedgerPath === undefined ? {} : { inferenceLedgerPath: resolveDaimonGrokInferenceLedger(options.inferenceLedgerPath, registrations) }),
   registrations: registrations.map((entry) => ({
     agentId: entry.agentId,
     slot: entry.slot,
