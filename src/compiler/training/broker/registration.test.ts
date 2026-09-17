@@ -11,6 +11,8 @@ import {
   TRAINING_INFERENCE_DIRECTORY,
   TRAINING_INFERENCE_LEDGER,
   TRAINING_REALM_MOUNT,
+  TRAINING_SLOT_ACCEPTANCE_STORE,
+  TRAINING_SLOT_STATE_ROOT,
   TRAINING_SLOT_TURN_STORE,
   TRAINING_SLOT_USAGE_DIRECTORY,
   TRAINING_SLOT_USAGE_LEDGER
@@ -28,11 +30,23 @@ describe("training Grok slot registration", () => {
     }
     for (const entry of [...TRAINING_EVALUATOR_ROOTS.map((role) => role.path),
       "/run/daimon-engine-broker", "/etc/daimon-engine-broker", TRAINING_GRANT_HOME_ROOT, TRAINING_INFERENCE_DIRECTORY,
-      TRAINING_SLOT_TURN_STORE, TRAINING_REALM_MOUNT]) {
+      TRAINING_SLOT_STATE_ROOT, TRAINING_SLOT_TURN_STORE, TRAINING_REALM_MOUNT]) {
       expect(denied, entry).toContain(entry);
     }
     expect(denied).toEqual([...denied].sort());
     expect(new Set(denied).size).toBe(denied.length);
+  });
+
+  it("masks the wake-acceptance store through the slot state root, never the store itself", () => {
+    // The store's parent is `2000:2000 0700`, and Grok 1.0.34 materializes every deny target inside
+    // bubblewrap as the worker uid, so the store itself is unplaceable and would make Grok refuse the
+    // whole profile — the defect P5 hit live (`.runtime/grok-deny-placement/EVIDENCE.md`).
+    const denied = slot().denyPaths;
+    expect(denied).toContain(TRAINING_SLOT_STATE_ROOT);
+    expect(denied).not.toContain(TRAINING_SLOT_ACCEPTANCE_STORE);
+    expect(TRAINING_SLOT_ACCEPTANCE_STORE.startsWith(`${TRAINING_SLOT_STATE_ROOT}/`)).toBe(true);
+    // And the store can never come back as an added entry: the state root already covers it.
+    expect(() => resolveTrainingGrokDenyPaths([...TRAINING_ADDED_DENY_PATHS, TRAINING_SLOT_ACCEPTANCE_STORE])).toThrow(/masks cannot nest/u);
   });
 
   it("keeps the subject's own workspace, worker home and runtime home reachable", () => {

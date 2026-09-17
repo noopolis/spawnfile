@@ -24,9 +24,9 @@ import {
   TRAINING_BOOTSTRAP_MOUNT,
   TRAINING_DEFERRED_DENY_PATHS,
   TRAINING_REALM_MOUNT,
-  TRAINING_SLOT_ACCEPTANCE_STORE,
   TRAINING_SLOT_INDEX,
   TRAINING_SLOT_RUNTIME_HOME,
+  TRAINING_SLOT_STATE_ROOT,
   TRAINING_SLOT_USAGE_LEDGER,
   TRAINING_SLOT_WORKSPACE,
   TRAINING_WORKER_HOME,
@@ -41,8 +41,8 @@ const within = (candidate: string, root: string): boolean => candidate === root 
 
 /**
  * The one training slot's deny list: Daimon's own protected set for a
- * single-agent organization (Grok bootstrap, realm, wake-acceptance store)
- * plus everything this container provisions that the subject must not read —
+ * single-agent organization (Grok bootstrap, realm, and the slot state root that
+ * holds the wake-acceptance store) plus everything this container provisions that the subject must not read —
  * the evaluator roots, the caller's protected `/run/paideia` paths, the broker
  * control and registration roots, the grant home root, the inference ledger,
  * the per-slot ledger, turn store and supervisor socket directory.
@@ -53,7 +53,11 @@ const within = (candidate: string, root: string): boolean => candidate === root 
  * entry is a provisioning bug rather than something to silently drop.
  */
 export const resolveTrainingGrokDenyPaths = (added: readonly string[] = TRAINING_ADDED_DENY_PATHS): string[] => {
-  const daimonOwn = [TRAINING_BOOTSTRAP_MOUNT, TRAINING_REALM_MOUNT, TRAINING_SLOT_ACCEPTANCE_STORE];
+  // The wake-acceptance store is masked through `TRAINING_SLOT_STATE_ROOT`, never directly: Grok 1.0.34
+  // materializes every deny target inside bubblewrap AS THE WORKER UID, and the store's parent is
+  // `2000:2000 0700`, so the store itself is unplaceable and would make Grok refuse the whole profile
+  // (`.runtime/grok-deny-placement/EVIDENCE.md`). The state root covers it and nothing else lives there.
+  const daimonOwn = [TRAINING_BOOTSTRAP_MOUNT, TRAINING_REALM_MOUNT, TRAINING_SLOT_STATE_ROOT];
   const grokHome = path.posix.join(TRAINING_WORKER_HOME, DAIMON_GROK_WORKER_HOME_DIRECTORY);
   const grants = [
     ...DAIMON_GROK_BASE_PROFILE_GRANTS, TRAINING_SLOT_WORKSPACE, grokHome,
