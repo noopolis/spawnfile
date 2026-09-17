@@ -1,5 +1,6 @@
 import type { NativeExternalInput } from './external.js';
 import type { Observation, SubjectStart, Usage } from '../../contracts/execution.js';
+import { readNativeTranscript } from './transcript.js';
 import { plausibleNotionalUsd, readToolReceipts } from './worker/index.js';
 import type { NativeGrokUsage, NativeUsage, TerminalEvidence } from './worker/index.js';
 
@@ -31,6 +32,24 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
       const usage = aggregateUsage(result.native.usage);
       if (usage) await emit(wakeId, { type: 'usage', usage, native: result.native.usage }, result.completedAt);
       await emit(wakeId, { type: 'diagnostic', text: `Native execution ${result.status}`, native: result }, result.completedAt);
+      // Operator-only, and a diagnostic on purpose: the wake text and the reply
+      // must never become this trial's output, a captured call or a judge input.
+      // A transcript the engine never wrote, or a runtime home already recycled,
+      // is silence rather than an empty capture that reads like evidence.
+      if (engine === 'grok') {
+        // Observed usage is the metered record of real spend; a diagnostic read
+        // of the engine's own transcript must never be able to fail the turn
+        // that produced it. Its failure is itself published.
+        let transcript: Awaited<ReturnType<typeof readNativeTranscript>>;
+        let failure: string | undefined;
+        try { transcript = await readNativeTranscript(runtimeHome, result.native.traces[0]); }
+        catch (error) { failure = error instanceof Error ? error.message : String(error); }
+        if (transcript) {
+          await emit(wakeId, { type: 'diagnostic', text: 'Native engine transcript captured', native: transcript }, result.completedAt);
+        } else if (failure) {
+          await emit(wakeId, { type: 'diagnostic', text: `Native engine transcript capture failed: ${failure}` }, result.completedAt);
+        }
+      }
       return usage;
     },
   };

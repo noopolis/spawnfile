@@ -27,6 +27,18 @@ touch one. Paideia owns exactly one subtree of that shared control root,
 `paideia-trials/trial-<digest>`, created fresh per trial; nothing else there is
 Paideia's to clear, and no recycle wipes on its behalf.
 
+Turn transcripts are operator-only diagnostics. Daimon publishes a prompt digest
+and character counts, which can detect a changed wake and never explain one, so
+`transcript.ts` reads the engine's own session record inside the Daimon-owned
+engine home — the same runtime home as tool receipts and closed traces — and
+reports the wake text and final reply with Daimon's trace digest as the only
+confirmation that they belong to that turn. It publishes as a `diagnostic`
+observation at `raw` visibility: never `snapshot.output`, a captured call, a
+judge input or a viewer projection, so nothing it captures can move a score.
+Credential-shaped text is withheld with its detector named; digests and counts
+always publish. A read that fails publishes its failure and never fails the
+metered turn.
+
 `grants/` binds evaluator inference grants (judges and DSPy optimizer) to Daimon's
 public control client and client-config renderer behind a Paideia-owned pin.
 

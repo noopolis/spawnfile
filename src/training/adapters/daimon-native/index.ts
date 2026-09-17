@@ -22,3 +22,12 @@ export { createGrokSlotFreshnessStore, nativeChildArguments } from './child/inde
 export type { GrokSlotFreshness, GrokSlotFreshnessStore, NativeChildExecution } from './child/index.js';
 
 export { grokBrokerControlSocketEnv, grokGrantHomeRootEnv, loadDaimonGrokGrantAuthority } from './grants/index.js';
+
+/**
+ * Operator-only turn transcript: the wake text the engine received and the reply
+ * it gave, read from the engine's own session record inside the Daimon-owned
+ * engine home and confirmed against Daimon's closed trace digest. Published as a
+ * `raw`-visibility diagnostic observation; never an evaluated output.
+ */
+export { readNativeTranscript, NATIVE_TRANSCRIPT_SCHEMA } from './transcript.js';
+export type { NativeTranscriptCapture, NativeTranscriptSession, NativeTranscriptText } from './transcript.js';
