@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GrokGrantRefusal } from '../../contracts/inference-grants.js';
 import { fakeGrantAuthority } from './grant-fixtures.js';
+import { GrokGrantReleases } from './grant-releases.js';
 import { GrokGrantPool, type GrokGrantKey } from './grant-pool.js';
 
 const judge: GrokGrantKey = { model: 'grok-4.6', reasoningEffort: 'low', purpose: 'judge' };
@@ -100,3 +101,37 @@ describe('call deadline', () => {
     expect(silent.releases).toHaveLength(1);
   });
 });
+
+describe('release bookkeeping', () => {
+  const tracker = (now: () => number, authority = fakeGrantAuthority()) => {
+    const changes: number[] = [];
+    return { authority, changes, releases: new GrokGrantReleases({ now, attempts: 1, backoffMs: [1, 1], attemptTimeoutMs: 5, onChange: () => changes.push(now()) }) };
+  };
+
+  it('stops counting a grant once its TTL passes, even when no release was confirmed', async () => {
+    let now = 1_000;
+    const silent = fakeGrantAuthority();
+    silent.authority.release = () => new Promise(() => undefined);
+    const { releases, changes } = tracker(() => now, silent);
+    await releases.release(silent.authority, { grantId: 'a', expiresAt: new Date(now + 50).toISOString() });
+    expect(releases.count()).toBe(1);
+    now += 60;
+    expect(releases.count()).toBe(0);
+    expect(changes).toEqual([1_060]);
+    await releases.settled();
+    expect(releases.count()).toBe(0);
+  });
+
+  it('ignores a duplicate, already expired or unparsable grant instead of counting it twice', async () => {
+    const now = 1_000;
+    const { releases, authority } = tracker(() => now);
+    const live = { grantId: 'b', expiresAt: new Date(now + 5_000).toISOString() };
+    authority.authority.release = () => new Promise(() => undefined);
+    await releases.release(authority.authority, live);
+    await releases.release(authority.authority, live);
+    await releases.release(authority.authority, { grantId: 'c', expiresAt: new Date(now - 1).toISOString() });
+    await releases.release(authority.authority, { grantId: 'd', expiresAt: 'not-a-date' });
+    expect(releases.count()).toBe(1);
+  });
+});
+
