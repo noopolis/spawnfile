@@ -42,7 +42,7 @@ export const resolveProfilePath = (profileName: string): string =>
 
 export const resolveImportedAuthDirectory = (
   profileName: string,
-  kind: "claude-code" | "codex"
+  kind: "claude-code" | "codex" | "grok"
 ): string => path.join(resolveProfileDirectory(profileName), "imports", kind);
 
 export const resolveTargetSecretsRoot = (): string =>
