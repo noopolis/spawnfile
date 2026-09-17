@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { chmod, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SubjectStart } from '../../../contracts/execution.js';
@@ -137,6 +137,11 @@ test('Grok control inputs and the launch receipt stay private inside a denied sl
     await chmod(join(f.paths.runtimeHome, 'native-launch.json'), 0o600);
     await chmod(f.launch.broker.slotPreflightReceipt, 0o666);
     await expect(loadNativeLaunch(f.input, true)).rejects.toThrow('written by the container root');
+    await chmod(f.launch.broker.slotPreflightReceipt, 0o640);
+    const real = `${f.launch.broker.slotPreflightReceipt}.real`;
+    await rename(f.launch.broker.slotPreflightReceipt, real);
+    await symlink(real, f.launch.broker.slotPreflightReceipt);
+    await expect(loadNativeLaunch(f.input, true)).rejects.toThrow('canonical file');
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
