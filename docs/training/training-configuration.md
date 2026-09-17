@@ -80,7 +80,7 @@ grants instead of a desktop login; training containers select it. Its `model` is
 of `grok-4.6`, `grok-4.5` or `grok-build`, and `reasoning_effort` (`low`, `medium` or
 `high`) is required. The container supplies `PAIDEIA_GROK_BROKER_CONTROL_SOCKET` (the
 broker control socket) and `PAIDEIA_GROK_GRANT_HOME_ROOT` (a private evaluator
-directory for per-call Grok homes); without them, without an installed Daimon, or when
+directory for per-call Grok homes, owned by the training user with mode 0700); without them, without an installed Daimon, or when
 Daimon's client config no longer matches Paideia's pin, every call fails closed. A
 route may not mix `grok-broker` with `grok-subscription`. A stale broker realm fails
 `auth-stale` immediately: later routes on the same broker are skipped, while an

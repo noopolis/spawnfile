@@ -18,5 +18,8 @@ non-executable projections.
 `grok-broker` models build one provider per purpose (judge or optimizer) over a single
 grant pool. The training container supplies `PAIDEIA_GROK_BROKER_CONTROL_SOCKET` and a
 private `PAIDEIA_GROK_GRANT_HOME_ROOT`; missing values, a missing Daimon or a pin drift
-fail every call closed. Routes may not mix `grok-broker` with `grok-subscription`.
+fail every call closed. The home root must be owned by the training uid with mode
+0700. Routes may not mix `grok-broker` with `grok-subscription`. The command awaits
+`close()` on the grant pool on every exit path (completion, failure, SIGINT/SIGTERM),
+so grants are handed back instead of waiting out their ten-minute TTL.
 

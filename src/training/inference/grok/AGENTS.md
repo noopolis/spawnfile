@@ -39,14 +39,23 @@ retroactively reclassified from usage counts or an empty saved response.
 `broker.ts` never touches a desktop login. `grant-pool.ts` holds one grant per
 concurrent lane (default two per model/effort/purpose), reuses it sequentially and
 renews it before the TTL margin would cut the next call short or before its request
-or token ceiling. It never holds more than the broker's live-grant cap and queues
-with backoff on `grant_limit` until the caller's signal ends the wait. Any failed
-call, idle lane or pool close releases the grant; a broker that never answers is
-bounded by the caller's signal and a late grant is released.
+or token ceiling. It never holds more than the broker's live-grant cap: a released grant
+stays counted until the broker confirms the release (retried with bounded backoff)
+or the grant expires, so an unconfirmed release cannot overshoot the cap. Waiting
+for a lane, a grant or the `grant_limit` queue is bounded by the call's own budget
+(`timeout`) as well as the caller's signal (`cancelled`), never only by the CLI
+timeout. Any failed call, idle lane or `close()` releases the grant; `close()`
+waits (bounded) for in-flight lanes and release confirmations, and the training
+command awaits it on completion, failure and interruption. A broker that never
+answers is bounded the same way and a late grant is released.
 
 `grant-home.ts` renders the client config through the authority, refuses bytes whose
 sha256 differs from the independent pin, and writes them into a fresh per-call
-GROK_HOME (0700) under the container-provisioned root. The child environment is
+GROK_HOME (0700) under the container-provisioned root, which must itself be an
+absolute, non-symlink directory owned by this uid with mode exactly 0700 and must
+still be the same directory (dev/ino) after the call directory is created.
+The grant token is read from exactly `DAIMON_INFERENCE_GRANT`, the key Daimon's
+renderer declares; any other key is refused. The child environment is
 exactly PATH, HOME, TMPDIR, GROK_HOME and the grant env key; the token never enters
 argv, config, logs, failures or the parent environment. The CLI runs `--model
 daimon-inference-grok` with the same isolation flags. Init must report
