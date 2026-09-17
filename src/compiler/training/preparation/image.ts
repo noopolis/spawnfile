@@ -5,6 +5,7 @@ import type { TrainingDockerProcess } from "../container/process.js";
 import type { TrainingImageBuild } from "./contract.js";
 import { assertInputRoot, copySealed, fileIdentity, hashJson, sealFile, sealTree, type SealedFile } from "./files.js";
 import type { SealMemo } from "./sealMemo.js";
+import { normalizeTrainingContext } from "./contextModes.js";
 
 const packageRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 export const trainingAssets = path.extname(fileURLToPath(import.meta.url)) === ".ts"
@@ -81,6 +82,7 @@ export async function buildTrainingImage(plan: TrainingImagePlan, options: {
     await mkdir(path.join(staging, "bootstrap"), { recursive: true, mode: 0o700 });
     await writeFile(path.join(staging, "Dockerfile"), `${plan.dockerfile}\nLABEL com.spawnfile.training.recipe=${JSON.stringify(plan.digest)}\n`, { mode: 0o600 });
     await writeFile(path.join(staging, "train"), plan.entry, { mode: 0o755 });
+    await normalizeTrainingContext(staging);
     const result = await call(["build", "--platform", plan.build.platform, "--build-arg", `NATIVE_IMAGE=${plan.build.nativeImage}`,
       "--build-arg", `PYTHON_IMAGE=${plan.build.pythonImage}`, "--tag", tag, staging], true);
     if (result.code !== 0) throw Error("Training image build failed; inspect the streamed build diagnostic");
