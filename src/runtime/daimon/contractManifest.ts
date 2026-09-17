@@ -7,7 +7,7 @@ import { SpawnfileError } from "../../shared/index.js";
 export const DAIMON_CONTRACT_MANIFEST_VERSION =
   "noopolis.daimon.runtime-contract-manifest.v3" as const;
 export const DAIMON_CONTRACT_MANIFEST_SHA256 =
-  "sha256:c9ea30c600c4844621c64a015e3d42e97f410c9942eb41dd675b5c04add34270" as const;
+  "sha256:401da56de1182a4c1834bc872ab3121d0b45d63486d729a02ff98d5627f30829" as const;
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";
@@ -79,7 +79,10 @@ export const DAIMON_GROK_ENGINE_BROKER = {
       directory: { uid: 0, group: "worker", mode: 0o1771 },
       sessionsDirectory: { relativePath: "sessions", uid: 0, group: "worker", mode: 0o1771 },
       readOnlyFiles: { names: ["config.toml", "managed_config.toml", "requirements.toml", "sandbox.toml", "trusted_folders.toml"], uid: 0, gid: 0, mode: 0o444 },
-      sandboxEvents: { relativePath: "sessions/sandbox-events.jsonl", owner: "worker", group: "broker", mode: 0o640 }
+      sandboxEvents: { relativePath: "sessions/sandbox-events.jsonl", owner: "worker", group: "broker", mode: 0o640 },
+      privateTmp: { relativeToWorkerHome: "tmp", owner: "worker", mode: 0o700 },
+      sharedTmp: { paths: ["/tmp", "/var/tmp"], uid: 0, maxGroupExclusive: 2_200, otherMode: 0o4, mode: 0o1774 },
+      spillDirectory: { relativeToRuntimeHome: "tool-output", owner: "organization", group: "worker", mode: 0o2750, fileMode: 0o640 }
     }
   },
   bounds: { promptBytes: 65_536, capabilityBytes: 4_096, capabilityBundleBytes: 8_196, outputBytes: 65_536 },
@@ -99,11 +102,34 @@ export const DAIMON_GROK_ENGINE_BROKER = {
   },
   wakeLimitEnvironment: { timeoutMs: "DAIMON_ENGINE_WAKE_TIMEOUT_MS", maxTokens: "DAIMON_ENGINE_WAKE_TOKEN_CEILING" },
   projectionVersion: "noopolis.daimon.grok-broker-projection.v1",
-  slotPreflightVersion: "noopolis.daimon.grok-slot-preflight.v1",
+  slotPreflightVersion: "noopolis.daimon.grok-slot-preflight.v2",
+  inferenceGrants: {
+    requestKinds: ["request_inference_grant", "release_inference_grant"],
+    purposes: ["judge", "optimizer"],
+    tokenPrefix: "inference_",
+    ttlMs: 600_000,
+    limits: { maxRequests: 64, maxTokens: 2_000_000 },
+    maxLiveGrants: 8,
+    maxInFlightRequestsPerGrant: 1,
+    bodyMembers: ["messages", "model", "reasoning_effort", "response_format", "stream", "stream_options"],
+    messageRoles: ["system", "user", "assistant"],
+    failureCodes: ["auth_stale", "grant_limit", "invalid_request", "unavailable"],
+    ledgerVersion: "noopolis.daimon.inference-usage.v1",
+    ledgerDedupeKey: ["grant", "request"],
+    client: {
+      modelId: "daimon-inference-grok",
+      envKey: "DAIMON_INFERENCE_GRANT",
+      configSha256: {
+        "grok-4.6": { low: "79314d039f787e4ebfec7dacf57adc969086b948f564dec008f0ed6367e6062f", medium: "6f538de0547c0c4e6a3f04ae08595ceadadabb06b75f6b6ee4c428744bb95cd8", high: "5652656effa82f0c4f09cf8226b16e6140332a5a358b571194bb5563312367ac" },
+        "grok-4.5": { low: "a07f7436f1268bb399ec233c65d3b3d8fb99a11a1f175f8da1ca133c9367bc74", medium: "1f4c0d4dad1f3b09419b5739db6423a09e0049abc091594c64123a75dd53dfb9", high: "ffbc33728b821e9854fbc7c93601e599225da421ecfd6ebf10d314afcc28d6f2" },
+        "grok-build": { low: "ca15c6a562a008227d39c51d3a3a83715663089b3784e8b46debb1fb67b3c4a1", medium: "01783fb6beadcf6f8486fff0836820ad43fab5662b812a907fe9cfdb83e9804d", high: "98d16f2b7d12f4eb540d625c853e51d227933e204923e43e8b9b4176f10aca2c" }
+      }
+    }
+  },
   artifacts: {
-    sourceSha256: "36f60689f0a8af0e3108f5f53d78ed52b7d4b6f934c75b6184606dfa82bc741e",
-    x64Sha256: "36dc76b134eb59cf5a6720b6f94228eb279108e20ea3343fa6efd9ffcb60a4d3",
-    arm64Sha256: "c93216cc6fa4ca50dc404fe41e68da9150a869b14f46eb42484ae77c3aa400a9"
+    sourceSha256: "c0082d4b366ffdb860d8154ee7f402b8f8be1f09d4eda277eda6965198ab6a75",
+    x64Sha256: "69e2865c722606a71501bc38d8b9c4c2c397e748327a8077e51e040319d1280d",
+    arm64Sha256: "16a3f89d84b7139d556b070a626c75ece224d5e05c52d48e045b38086c0a0382"
   }
 } as const;
 /**
