@@ -48,15 +48,16 @@ describe('unconfirmed releases stay counted against the live-grant cap', () => {
 describe('shutdown', () => {
   it('close releases every live grant, including lanes that settle while closing, and confirms retried releases', async () => {
     const fake = fakeGrantAuthority();
-    flakyRelease(fake, 1);
+    const attempts = flakyRelease(fake, 1);
     const pool = new GrokGrantPool({ id: 's', authority: async () => fake.authority, releaseBackoffMs: [5, 5] });
     const [idle, busy] = await Promise.all([pool.acquire(judge, 5_000), pool.acquire(judge, 5_000)]);
     await idle.settle({ ok: true, tokens: 1 });
     const closing = pool.close();
-    await sleep(10);
-    await busy.settle({ ok: true, tokens: 1 });
+    // Settles while close is waiting; when close resolves every release must already be confirmed.
+    void busy.settle({ ok: true, tokens: 1 });
     await closing;
     expect(fake.releases.sort()).toEqual([idle.grant.grantId, busy.grant.grantId].sort());
+    expect(attempts()).toBe(3);
   });
 
   it('bounds close when a lane never settles or the broker never answers', async () => {
