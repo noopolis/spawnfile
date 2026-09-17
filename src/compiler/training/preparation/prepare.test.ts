@@ -149,3 +149,21 @@ it("rejects mismatched output before Docker or staging for cold, dry-run and exa
   expect(f.docker.calls).toHaveLength(calls);
   expect(await readFile(prepared.preparationPath)).toEqual(saved);
 });
+
+it("reclaims the preparation scratch an aborted launch left behind, and refuses a foreign one by name", async () => {
+  const f = await fixture();
+  const first = await prepareTraining(f.options); if ("dryRun" in first) throw Error("actual preparation expected");
+  const staging = path.dirname(first.configPath);
+  // A launch that reached the container and aborted there leaves exactly this behind.
+  expect((await lstat(path.join(staging, "state.json"))).isFile()).toBe(true);
+  const notices: string[] = [];
+  const again = await prepareTraining({ ...f.options, streams: { stdout() {}, stderr: line => notices.push(line) } });
+  if ("dryRun" in again) throw Error("actual preparation expected");
+  expect(again.digest).toBe(first.digest);
+  expect(notices.join("\n")).toContain("Reusing the preparation scratch");
+
+  await writeFile(path.join(staging, "state.json"), JSON.stringify({ digest: `sha256:${"f".repeat(64)}` }));
+  await expect(prepareTraining(f.options)).rejects.toThrow(/belongs to a different preparation .*; remove it to retry: rm -rf/u);
+  await rm(path.join(staging, "state.json"));
+  await expect(prepareTraining(f.options)).rejects.toThrow(/never recorded its identity; remove it to retry: rm -rf/u);
+});
