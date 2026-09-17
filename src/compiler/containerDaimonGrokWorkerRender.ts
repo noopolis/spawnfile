@@ -45,6 +45,27 @@ export const DAIMON_ORGANIZATION_STATE_DIRECTORY = path.posix.join(
 );
 
 /**
+ * The deny entry that protects the durable wake-acceptance store: the
+ * organization state directory the store lives in, not the store itself.
+ *
+ * Grok 1.0.34 materializes every `deny` target inside bubblewrap **as the
+ * worker uid** (it bind-mounts `$GROK_HOME/sandbox-blocked-{file,dir}` over
+ * the target), so an entry is placeable only when the worker can search every
+ * ancestor directory and the target already exists. The ownership guard secures
+ * this state directory to `0700 2000:2000`, so the store beneath it can never
+ * be a deny entry — and a single unplaceable entry makes Grok refuse the whole
+ * profile, failing *every* turn with `bwrap: Can't create file at …:
+ * Permission denied`, not just that path (matrix:
+ * `.runtime/grok-deny-placement/EVIDENCE.md`).
+ *
+ * Lifting the mask to the directory is strictly stronger than masking the store
+ * — nothing else lives there — and it adds no traversal right to the worker,
+ * which opening the directory with `o+x` would have done.
+ */
+export const daimonGrokAcceptanceStoreDenyPath = (instanceRoot: string): string =>
+  path.posix.dirname(path.posix.join(instanceRoot, DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY));
+
+/**
  * Paths Grok 1.0.34's strict base profile grants (read or read-write). Grok
  * refuses to start when a deny entry equals or contains one of them (verified
  * for `/tmp`, `/var/tmp`, `/run`, `/etc` and `sessions`; `/tmp/sub` works), so a
@@ -86,6 +107,8 @@ export interface DaimonGrokRegistration {
   reasoningEffort: DaimonGrokBrokerReasoningEffort;
   /** The organization runtime home whose `tool-output/` this worker reads. */
   runtimeHome: string;
+  /** Persistent mounts inside this agent's runtime home; Spawnfile keeps each `0700` under the traversable home. */
+  runtimeHomeMounts: string[];
   /** `<runtimeHome>/tool-output`: setgid spill directory in the worker's group. */
   spillDirectory: string;
   slot: number;
@@ -127,8 +150,8 @@ const within = (candidate: string, root: string): boolean => candidate === root 
  *
  * Daimon's own protected set for the agent (`grokSandboxProtectedPaths`: the
  * Grok bootstrap and realm, the AGY realm and unlock secret when any agent is
- * AGY, the wake-acceptance store, and every peer's runtime home and workspace)
- * is always kept verbatim, so a Daimon projection over the same inputs renders
+ * AGY, the organization state directory that holds the wake-acceptance store,
+ * and every peer's runtime home and workspace) is always kept verbatim, so a Daimon projection over the same inputs renders
  * the same profile. This deployment adds everything else the container
  * provisions that the worker does not need: the organization config directory
  * (all agents' instructions and any env files), every persistent mount of
@@ -149,6 +172,14 @@ const within = (candidate: string, root: string): boolean => candidate === root 
  * macOS bind mounts ignore unix modes, so this list — not file modes — is the
  * boundary. Masks cannot nest: an added entry already covered by another entry
  * is dropped, and an added entry that would cover a Daimon entry is refused.
+ *
+ * Every entry must also be *placeable*: Grok materializes each deny target
+ * inside bubblewrap as the worker uid, so the target must exist and the worker
+ * must be able to search every ancestor. That depends on modes, not paths, so
+ * the root provisioning program asserts it once every mode is final and refuses
+ * to start the container otherwise (`containerDaimonGrokWorkerProvisioning.ts`);
+ * here a protected path whose parent is private is lifted to that parent
+ * instead (`daimonGrokAcceptanceStoreDenyPath`).
  */
 export const resolveDaimonGrokWorkerDenyPaths = (
   plans: readonly RuntimeTargetPlan[],
@@ -166,7 +197,7 @@ export const resolveDaimonGrokWorkerDenyPaths = (
     DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath,
     DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath,
     ...(agents.some(([, engine]) => engine === "agy") ? [DAIMON_AGY_SUBSCRIPTION_REALM.unlockMountPath, DAIMON_AGY_SUBSCRIPTION_REALM.durableMountPath] : []),
-    path.posix.join(instanceRoot, DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY),
+    daimonGrokAcceptanceStoreDenyPath(instanceRoot),
     ...peers.flatMap((slug) => [
       path.posix.join(instanceRoot, DAIMON_RUNTIME_HOMES_DIRECTORY, slug),
       path.posix.join(plan.instancePaths.workspacePath, "agents", slug)
@@ -254,6 +285,8 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]): Daim
       privateTmp: path.posix.join(home, DAIMON_GROK_ENGINE_BROKER.worker.home.privateTmp.relativeToWorkerHome),
       reasoningEffort,
       runtimeHome,
+      runtimeHomeMounts: [...new Set(plans.flatMap((candidate) => (candidate.persistentMounts ?? []).map((mount) => mount.mount_path))
+        .filter((mountPath) => mountPath.startsWith(`${runtimeHome}/`)))].sort(),
       spillDirectory: path.posix.join(runtimeHome, DAIMON_GROK_ENGINE_BROKER.worker.home.spillDirectory.relativeToRuntimeHome),
       slot,
       uid: DAIMON_FIRST_WORKER_UID + slot,

@@ -124,6 +124,10 @@ export const resolveTrainingGrokRegistration = (input: TrainingGrokSlotInput): D
     privateTmp: path.posix.join(home, DAIMON_GROK_ENGINE_BROKER.worker.home.privateTmp.relativeToWorkerHome),
     reasoningEffort: input.reasoningEffort,
     runtimeHome: TRAINING_SLOT_RUNTIME_HOME,
+    // Empty on purpose: training has no persistent mounts at all. Everything a trial writes under the slot
+    // runtime home is per-slot tmpfs the recycle wipes, and the only thing provisioned inside it is the
+    // setgid `tool-output/` spill directory, so the traversable `0710` home exposes nothing else.
+    runtimeHomeMounts: [],
     slot: TRAINING_SLOT_INDEX,
     spillDirectory: path.posix.join(TRAINING_SLOT_RUNTIME_HOME, DAIMON_GROK_ENGINE_BROKER.worker.home.spillDirectory.relativeToRuntimeHome),
     uid: TRAINING_WORKER_UID,
