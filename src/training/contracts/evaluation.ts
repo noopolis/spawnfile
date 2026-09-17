@@ -107,6 +107,8 @@ export interface EvaluationContext {
   /** Trusted persisted measurement sink; never receives prompt text or judge reasons. */
   observeMeasurement?: (measurement: EvaluationMeasurement) => void | Promise<void>;
   signal?: AbortSignal;
+  /** Maximum slotted (inference-capable) stage checks in flight; built-in mechanical checks take no slot. Defaults to 2. */
+  checkConcurrency?: number;
 }
 export interface EvaluationMeasurement {
   stageId: string;
@@ -120,6 +122,12 @@ export interface EvaluationMeasurement {
 export interface RegisteredEvaluator {
   definition: EvaluatorDefinition;
   evaluate(check: CheckNode, context: EvaluationContext): Promise<EvaluationResult>;
+  /**
+   * Opt-in stage concurrency. Declare only when the result never reads context.results or
+   * context.scores; return the stateful resources it uses (for example a judge cache).
+   * Checks sharing a resource never overlap. Results and measurements still commit in order.
+   */
+  concurrency?(check: CheckNode, context: EvaluationContext): readonly object[] | undefined;
 }
 export type EvaluationRegistry = Readonly<Record<string, RegisteredEvaluator>>;
 export interface WeightedScore {

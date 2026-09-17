@@ -2,6 +2,8 @@ import { measurementRepair, type CheckReuse, type PlanMeasurementRepair } from '
 import type { CheckNode, LiveCheck, Stage } from '../contracts/dataset.js';
 import type { EvaluationContext, EvaluationRegistry, EvaluationResult, PlanEvaluation } from '../contracts/evaluation.js';
 import { checkThreshold, collectJudgeCalls, combine, negate, result, weightedScore } from './logic/index.js';
+import { checkConcurrency, runStageChecks } from './schedule.js';
+import { isBuiltinMechanical } from './registry.js';
 
 function requireOneOperation(node: CheckNode): void {
   const operators = ['all', 'any', 'not', 'passed', 'score', 'eval'];
@@ -74,8 +76,36 @@ async function evaluate(check: CheckNode, context: EvaluationContext, registry: 
   }
 }
 
+/** Exclusive resources when every leaf opted in and no node reads sibling results; otherwise undefined. */
+function independentResources(node: CheckNode, context: EvaluationContext, registry: EvaluationRegistry): object[] | undefined {
+  try {
+    requireOneOperation(node);
+    if (node.eval) {
+      const declared = registry[node.eval]?.concurrency?.(node, context);
+      return declared === undefined ? undefined : [...declared];
+    }
+    const children = node.all ?? node.any ?? (node.not ? [node.not] : undefined);
+    if (!children) return undefined;
+    const resources: object[] = [];
+    for (const child of children) {
+      const nested = independentResources(child, context, registry);
+      if (nested === undefined) return undefined;
+      resources.push(...nested);
+    }
+    return resources;
+  } catch { return undefined; }
+}
+
+/** Built-in mechanical-only trees spend no inference, so they never occupy a bounded slot. */
+function mechanicalOnly(node: CheckNode, registry: EvaluationRegistry): boolean {
+  if (node.eval) return isBuiltinMechanical(registry[node.eval]);
+  const children = node.all ?? node.any ?? (node.not ? [node.not] : []);
+  return children.length > 0 && children.every(child => mechanicalOnly(child, registry));
+}
+
 export async function evaluatePlan(stages: readonly Stage[], initial: EvaluationContext,
   registry: EvaluationRegistry, repair?: PlanMeasurementRepair): Promise<PlanEvaluation> {
+  const limit = checkConcurrency(initial.checkConcurrency);
   const reuse = repair === undefined ? undefined : measurementRepair(stages, repair, registry);
   const checks = { ...initial.results };
   const scores = { ...initial.scores };
@@ -86,9 +116,13 @@ export async function evaluatePlan(stages: readonly Stage[], initial: Evaluation
     const eligibility = stage.when ? await evaluateNode(stage.when, context, registry) : result('pass', 'No dependency');
     observed.push(eligibility);
     const children: EvaluationResult[] = [];
-    for (const [checkIndex, check] of stage.checks.entries()) {
-      const evaluated = eligibility.status === 'pass' ? await evaluate(check, context, registry, reuse, `/stages/${stageIndex}/checks/${checkIndex}`)
-        : { ...result('skipped', `Stage dependency ${eligibility.status}`, eligibility.finality === 'final'), id: check.id, children: [eligibility] };
+    const tasks = stage.checks.map((check, checkIndex) => eligibility.status === 'pass'
+      ? { resources: independentResources(check, context, registry), slot: !mechanicalOnly(check, registry),
+        run: () => evaluate(check, context, registry, reuse, `/stages/${stageIndex}/checks/${checkIndex}`) }
+      : { resources: [], run: async () => ({ ...result('skipped', `Stage dependency ${eligibility.status}`, eligibility.finality === 'final'),
+        id: check.id, children: [eligibility] }) });
+    await runStageChecks(tasks, limit, async (evaluated, checkIndex) => {
+      const check = stage.checks[checkIndex]!;
       children.push(evaluated);
       observed.push(evaluated);
       checks[check.id!] = evaluated;
@@ -99,7 +133,7 @@ export async function evaluatePlan(stages: readonly Stage[], initial: Evaluation
         status: evaluated.status, score: raw,
         ...(weight === undefined ? {} : { weight, weightedContribution: raw === null ? null :
           raw * weight / Object.values(stage.score!.linear).reduce((sum, value) => sum + value, 0) }) });
-    }
+    });
     const score = stage.score ? weightedScore(stage.score.linear, checks) : undefined;
     if (score) scores[stage.id] = score;
     const gate = eligibility.status !== 'pass' ? result(eligibility.status, 'Stage dependency not satisfied', eligibility.finality === 'final')
