@@ -22,6 +22,32 @@ export function assertControlRecipe(dockerfile: string): void {
   if (!instructions(dockerfile).includes(CONTROL_CLOSURE)) throw Error(`Control recipe must run "${CONTROL_CLOSURE}"`);
 }
 
+/**
+ * The control recipe: this exact recipe with the old whole-tree closure back.
+ *
+ * A git-ref control only works while some commit carries the same layout with
+ * the recursive chmod, which stops being true the moment the recipe gains a
+ * layer. Deriving it keeps the comparison about the one thing under test — the
+ * mode mechanism — instead of about everything else that changed since.
+ * Each change-only `find` closure becomes a no-op, and the former final
+ * `chmod 0555 <entrypoints> && chmod -R a+rX /opt/training` runs after the last
+ * COPY, exactly where the old recipe ran it.
+ */
+export function deriveControlRecipe(dockerfile: string): string {
+  const closures = dockerfile.match(/find \S+ \\\( .*? -exec chmod a\+rX \{\} \+/gu) ?? [];
+  if (closures.length === 0) throw Error("Recipe has no change-only a+rX closure to replace");
+  let control = closures.reduce((text, closure) => text.replace(closure, "true"), dockerfile);
+  const anchor = control.indexOf("\nENV PATH=");
+  if (anchor === -1) throw Error("Recipe has no trailing ENV PATH to anchor the control closure");
+  const restore = `\nRUN chmod 0555 ${ENTRYPOINT_PATHS.join(" ")} \\\n && ${CONTROL_CLOSURE}\n`;
+  control = control.slice(0, anchor) + restore + control.slice(anchor + 1);
+  assertControlRecipe(control);
+  return control;
+}
+
+/** The entrypoints the former recipe forced to 0555 before its whole-tree closure. */
+export const ENTRYPOINT_PATHS = ["/opt/training/bin/train", "/opt/training/bin/train-broker"] as const;
+
 export function assertNewRecipe(dockerfile: string): void {
   if (instructions(dockerfile).includes(CONTROL_CLOSURE)) throw Error("New recipe still runs the recursive chmod; nothing would be compared");
 }

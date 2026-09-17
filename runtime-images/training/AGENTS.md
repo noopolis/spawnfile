@@ -40,4 +40,17 @@ chmod -R a+rX /opt/training`, and owners stay COPY/RUN defaults (root):
   integration `node_modules` layout is created after the closure, as before.
 - `contextModes.test.ts` runs the rendered closure against real `chmod -R a+rX`
   and asserts staged modes, recipe order and symlinks. Build-cache and timing
-  effects require a Docker-enabled measurement.
+  effects require a Docker-enabled measurement
+  (`npm run verify:training-image-modes`, evidence in `.runtime/grok-p5/build/`).
+
+## Broker contract paths
+
+The layout RUN also installs the native parent's own pinned Grok and engine
+broker at `/usr/local/bin/grok` and `/opt/daimon/bin/daimon-engine-broker`, the
+two paths `GROK_ENGINE_BROKER` fixes, exactly as a generated organization image
+does (`src/runtime/container.ts`). It introduces no second build — both come
+from `/opt/spawnfile/runtime-installs/daimon/bin` — and a parent whose Grok is
+not a manifest-pinned 1.0.34 build is refused at slot provisioning and again by
+the slot supervisor, by digest. `spawnfile/node_modules/@noopolis/daimon` links
+to the same install so the root entrypoint can import Daimon's public
+`/runtime` export for the broker projection.

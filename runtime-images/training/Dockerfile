@@ -62,7 +62,9 @@ RUN find /opt/training \( \( -type d ! -perm -0555 \) -o \( ! -type d ! -type l 
  && mkdir -p /opt/training/integration/node_modules/@noopolis \
  && ln -s /opt/training/paideia /opt/training/integration/node_modules/@noopolis/paideia \
  && ln -s /opt/training/spawnfile /opt/training/integration/node_modules/spawnfile \
- && ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon /opt/training/integration/node_modules/@noopolis/daimon
+ && ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon /opt/training/integration/node_modules/@noopolis/daimon \
+ && mkdir -p /opt/training/spawnfile/node_modules/@noopolis \
+ && ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon /opt/training/spawnfile/node_modules/@noopolis/daimon
 
 COPY bridge /opt/training/paideia/bridges/dspy
 RUN /opt/training/paideia/bridges/dspy/.venv/bin/pip install --no-deps --no-build-isolation -e /opt/training/paideia/bridges/dspy \

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { assertControlRecipe, assertNewRecipe, diffModeListings, identicalModes, LISTING_ROOTS, MODE_ROOTS } from "./training-image-modes.ts";
+import { assertControlRecipe, assertNewRecipe, CONTROL_CLOSURE, deriveControlRecipe, diffModeListings, identicalModes, LISTING_ROOTS, MODE_ROOTS } from "./training-image-modes.ts";
 
 const row = (entry: string, mode = "755", type = "d", target = "") => `${entry}\t${mode}\troot\troot\t${type}\t${target}`;
 const base = [row("/opt/training"), row("/opt/training/paideia/bridges/dspy/.venv"), row("/opt/training/bin/grok", "555", "f"),
@@ -47,4 +48,18 @@ test("the listing roots never nest, so find cannot emit a duplicate entry", () =
     assert.equal(LISTING_ROOTS.some(other => other !== root && root.startsWith(other + "/")), false, root);
   }
   for (const required of MODE_ROOTS) assert.equal(LISTING_ROOTS.some(root => required === root || required.startsWith(root + "/")), true, required);
+});
+
+test("derives a control recipe that reapplies the whole-tree closure this recipe replaced", async () => {
+  const recipe = await readFile(new URL("../runtime-images/training/Dockerfile", import.meta.url), "utf8");
+  assertNewRecipe(recipe);
+  const control = deriveControlRecipe(recipe);
+  assertControlRecipe(control);
+  assert.equal(/-exec chmod a\+rX \{\} \+/u.test(control), false, "no change-only closure may survive in the control");
+  assert.ok(control.includes("RUN chmod 0555 /opt/training/bin/train /opt/training/bin/train-broker"));
+  // The closure must RUN after the last COPY, where the former recipe ran it. `indexOf` would find the
+  // recipe's own comment about the closure, which sits near the top.
+  assert.ok(control.indexOf("\nRUN chmod 0555 ") > control.lastIndexOf("\nCOPY "));
+  assert.ok(control.lastIndexOf(CONTROL_CLOSURE) > control.lastIndexOf("\nCOPY "));
+  assert.throws(() => deriveControlRecipe(control), /no change-only a\+rX closure/u);
 });
