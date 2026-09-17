@@ -60,7 +60,8 @@ test('Grok slot projection is resolved by Daimon, digest-bound to the launch and
     await assert.rejects(persist(), /root slot supervisor preflight receipt/);
     const [, agentId, context] = calls[0] as [unknown, string, { denyPaths: string[]; acceptanceStorePath: string; slot: number; limits: unknown }];
     assert.equal(agentId, 'agent:writer'); assert.equal(context.acceptanceStorePath, launch.controlRoot); assert.equal(context.slot, 0);
-    assert.deepEqual(context.denyPaths, launch.broker.evaluatorPaths.map(row => row.path).sort()); assert.deepEqual(context.limits, launch.broker.limits);
+    // The provisioner's verbatim deny list reaches Daimon, not the evaluator-root subset.
+    assert.deepEqual(context.denyPaths, [...launch.broker.denyPaths]); assert.deepEqual(context.limits, launch.broker.limits);
     await writeGrokSlotReceipt(launch);
     verifyFailure = 'Grok slot preflight receipt does not match the projection: canaries';
     await assert.rejects(persist(), /canaries/);

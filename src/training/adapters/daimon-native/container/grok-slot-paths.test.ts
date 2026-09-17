@@ -49,7 +49,9 @@ async function slotFixture() {
       selection: { before: ['agent:writer', 'agent:editor'], after: ['agent:writer'], reason: 'Selected subject only' } },
     broker: { projectionVersion: 'noopolis.daimon.grok-broker-projection.v1', projectionSha256: '0'.repeat(64), slot: 0, workerUid: 2200,
       workerHomePath: join(root, 'var/lib/daimon-workers/2200'), architecture: 'arm64', usageLedgerPath: join(paths.usage, 'usage.jsonl'),
-      seccompProfileSha256: '7'.repeat(64), limits: { maxRequests: 24, maxTokens: 400_000, timeoutMs: 480_000 },
+      profileSha256: 'c'.repeat(64),
+      // The provisioner's verbatim deny list: a superset of the evaluator roots (the canary subset).
+      denyPaths: [paths.state, paths.runRoot, paths.controls, paths.sealed, paths.grants, paths.usage], seccompProfileSha256: '7'.repeat(64), limits: { maxRequests: 24, maxTokens: 400_000, timeoutMs: 480_000 },
       evaluatorPaths: [{ role: 'run-root', path: paths.runRoot }, { role: 'context', path: paths.controls },
         { role: 'sealed-inputs', path: paths.sealed }, { role: 'judge-home', path: paths.grants }, { role: 'slot-ledger', path: paths.usage }],
       slotPreflightReceipt: join(slot, 'preflight.json'), expectedNonce: fixtureNonce, minGeneration: 3 },

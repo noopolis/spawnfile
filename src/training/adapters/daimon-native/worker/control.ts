@@ -144,7 +144,12 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
         native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id, executionId, agent.engine.model!, previous, source);
         const trace = native.traces[0];
         const failure = availability.agents.find(row => row.agent_id === agent.id)?.error;
-        if (!native.usage.length) throw new Error('Closed native execution omitted token usage evidence');
+        if (!native.usage.length) {
+          // Name what WAS observed: a bare "no usage" cannot distinguish a turn that never ran from
+          // one that ran without metering, and the runtime home is wiped with the slot.
+          const observed = `traces=${native.traces.length} contexts=${native.modelContexts.length} requests=${native.requests?.length ?? 0}`;
+          throw new Error(`Closed native execution omitted token usage evidence (${observed} receipt=${receipt.state} execution=${executionId ?? 'none'}${failure ? ` availability=${failure}` : ''})`);
+        }
         if (!native.modelContexts.length) throw new Error('Closed native execution omitted model identity evidence');
         if (!failure && deferredAfterCompletion(receipt, trace)) blocked = 'awaiting-external-input';
         if (receipt.state !== 'completed' || trace?.status !== 'completed' || failure) {

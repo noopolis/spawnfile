@@ -60,6 +60,10 @@ export async function grokLaunchFrom<T extends NativeLaunch>(launch: T, root: st
     broker: { projectionVersion: 'noopolis.daimon.grok-broker-projection.v1', projectionSha256: '0'.repeat(64), slot: 0, workerUid: 2200,
       workerHomePath: join(slot, 'worker-home'), architecture: 'arm64', usageLedgerPath: join(roots['slot-ledger'], 'usage.jsonl'),
       seccompProfileSha256: '7'.repeat(64), limits: { maxRequests: 24, maxTokens: 400000, timeoutMs: 480000 },
+      // The provisioner's verbatim values the projection digest binds: the realm entries, the control
+      // root and every evaluator root. Evaluator roots alone are the canary subset, not the deny list.
+      profileSha256: daimonProjectionGolden.profileSha256,
+      denyPaths: [...new Set([...realm, state, ...Object.values(roots)])].sort(),
       evaluatorPaths: Object.entries(roots).map(([role, path]) => ({ role, path })), slotPreflightReceipt: join(slot, 'slot-preflight.json'), expectedNonce: fixtureNonce, minGeneration: 3 } });
   next.broker.projectionSha256 = grokProjectionSha256(grokProjectionFor(next));
   return next;
@@ -79,7 +83,7 @@ export function grokProjectionFor(launch: GrokNativeLaunch, extraDeny: readonly 
   const home = launch.projections.find(row => row.role === 'home')!.target;
   return { ...daimonProjectionGolden, agentId: launch.agent.id, workspacePath: launch.workspace.target, runtimeHomePath: home,
     workerUid: broker.workerUid, slot: broker.slot, profilePath: `${broker.workerHomePath}/.grok/sandbox.toml`,
-    denyPaths: [...new Set([...realm, launch.controlRoot, ...broker.evaluatorPaths.map(row => row.path), ...extraDeny])].sort(),
+    denyPaths: [...new Set([...broker.denyPaths, ...extraDeny])].sort(),
     model: launch.agent.model, reasoningEffort: launch.agent.reasoningEffort, limits: { ...broker.limits }, usageLedgerPath: broker.usageLedgerPath,
     seccompProfileSha256: broker.seccompProfileSha256, attestation: { ...daimonProjectionGolden.attestation, eventsPath: `${broker.workerHomePath}/.grok/sessions/sandbox-events.jsonl` } };
 }

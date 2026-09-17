@@ -31,8 +31,10 @@ async function persistGrokBrokerProjection(runtime: NativeRuntimeModule, config:
   const projection = grokBrokerProjectionSchema.parse(resolve(config, agent.id, { slot: broker.slot, workerUid: broker.workerUid,
     workerHomePath: broker.workerHomePath, architecture: broker.architecture, usageLedgerPath: broker.usageLedgerPath, limits: broker.limits,
     // The deny mask Daimon lifts, and the value `projection_sha256` binds: never the per-trial artifact directory inside it.
-    acceptanceStorePath: options.controlRoot, denyPaths: [...new Set(broker.evaluatorPaths.map(row => row.path))].sort(),
-    seccompProfileSha256: broker.seccompProfileSha256 }));
+    // `denyPaths` and `profileSha256` are the provisioner's verbatim values (see grokBrokerLaunchSchema): deriving the deny
+    // list from `evaluatorPaths` recomputes a different set and forks the digest.
+    acceptanceStorePath: options.controlRoot, denyPaths: [...broker.denyPaths],
+    seccompProfileSha256: broker.seccompProfileSha256, profileSha256: broker.profileSha256 }));
   const sha = grokProjectionSha256(projection);
   if (digest(projection) !== sha) throw new Error('Paideia and Daimon disagree on the Grok broker projection digest');
   if (projection.version !== broker.projectionVersion || sha !== broker.projectionSha256) throw new Error('Grok broker projection digest differs from the launch receipt');

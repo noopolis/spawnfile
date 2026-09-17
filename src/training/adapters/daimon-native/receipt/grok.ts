@@ -135,7 +135,10 @@ export function parseGrokBrokerReceipt(value: unknown, launch: GrokNativeLaunch,
   const denied = slot.canaries.map(canary => canary.path).sort();
   if (canonicalJson(denied) !== canonicalJson([...projection.denyPaths].sort())) mismatch('canaries');
   for (const path of [...requiredGrokEvaluatorPaths(launch), ...extraRequired]) {
-    if (!denied.includes(path)) throw new Error(`Grok slot preflight omits a denied canary for evaluator path ${path}`);
+    // A mask on an ancestor denies everything beneath it (the lifted-mask policy the supervisor
+    // applies), so an exact canary or any denied ancestor satisfies the requirement.
+    const covered = denied.some(root => path === root || path.startsWith(root === '/' ? '/' : `${root}/`));
+    if (!covered) throw new Error(`Grok slot preflight omits a denied canary for evaluator path ${path}`);
   }
   for (const file of [launch.config, launch.tokenFile, launch.envFile]) {
     if (!denied.some(root => within(root, file))) throw new Error(`Grok slot preflight does not deny launch control file ${file}`);

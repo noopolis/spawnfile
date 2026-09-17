@@ -45,8 +45,14 @@ const grokAgent = z.strictObject({ id: identity, engine: nativeEngines.extract([
 
 /**
  * The inputs Daimon's `resolveOrganizationGrokBrokerProjection` needs, plus the
- * digest the slot supervisor bound and the supervisor's receipt location. The
- * evaluator paths are passed as the projection's `denyPaths` option verbatim.
+ * digest the slot supervisor bound and the supervisor's receipt location.
+ *
+ * `denyPaths` and `profileSha256` are the provisioner's own values, carried
+ * verbatim: the projection digest binds the sandbox profile bytes the root
+ * supervisor actually wrote, so a party that recomputed the deny list from
+ * anything else (for instance from `evaluatorPaths`, which is a subset used for
+ * the canary requirement) would fork the digest and fail closed here. Every
+ * party that recomputes this projection passes these same values.
  */
 export const grokBrokerLaunchSchema = z.strictObject({
   projectionVersion: z.literal('noopolis.daimon.grok-broker-projection.v1'),
@@ -57,6 +63,8 @@ export const grokBrokerLaunchSchema = z.strictObject({
   architecture: z.enum(['arm64', 'x64']),
   usageLedgerPath: nativePath,
   seccompProfileSha256: digest,
+  profileSha256: digest,
+  denyPaths: z.array(nativePath).min(1).max(64),
   limits: z.strictObject({ maxRequests: positive, maxTokens: positive, timeoutMs: positive }),
   evaluatorPaths: z.array(z.strictObject({ role: z.enum(grokEvaluatorRoles), path: nativePath })).min(grokEvaluatorRoles.length).max(64),
   /** Root slot supervisor output (`noopolis.daimon.grok-slot-preflight.v2`), written after provisioning or recycle. */
@@ -107,6 +115,13 @@ function assertGrokBroker(launch: GrokNativeLaunch): void {
   if (launch.projections.length !== 1) throw new Error('A Grok launch projects exactly the slot workspace and its runtime home');
   const paths = broker.evaluatorPaths.map(row => row.path);
   if (new Set(paths).size !== paths.length) throw new Error('Grok evaluator paths must be unique');
+  if (new Set(broker.denyPaths).size !== broker.denyPaths.length) throw new Error('Grok deny paths must be unique');
+  // The deny list is the provisioner's verbatim set the digest binds; the evaluator roots are the
+  // subset the slot receipt must show as denied canaries. A root outside the deny list would be
+  // certified as denied while the sandbox never masked it.
+  const denied = new Set(broker.denyPaths);
+  const uncovered = paths.filter(path => !denied.has(path));
+  if (uncovered.length) throw new Error(`Grok evaluator roots missing from the deny list: ${uncovered.join(', ')}`);
   const missing = grokEvaluatorRoles.filter(role => !broker.evaluatorPaths.some(row => row.role === role));
   if (missing.length) throw new Error(`Grok launch omits required evaluator roots: ${missing.join(', ')}`);
   if (broker.evaluatorPaths.some(row => row.role === 'slot-ledger' && row.path !== posix.dirname(broker.usageLedgerPath))) {
