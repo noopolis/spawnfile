@@ -98,6 +98,12 @@ export interface DaimonGrokRegistration {
   eventsPath: string;
   grokHome: string;
   home: string;
+  /**
+   * The per-turn limits this registration declares. A wake may only lower them
+   * (Daimon refuses a raise as `invalid_request`), so a deployment that admits
+   * wakes above the manifest defaults must declare them here.
+   */
+  limits?: { maxRequests: number; maxTokens: number; timeoutMs: number };
   model: DaimonGrokBrokerModel;
   profile: string;
   profilePath: string;
@@ -346,7 +352,7 @@ export const renderDaimonGrokServiceConfig = (
     eventsPath: entry.eventsPath,
     profileSha256: entry.profileSha256,
     usageLedgerPath: entry.usageLedgerPath,
-    limits: { ...DAIMON_GROK_ENGINE_BROKER.turnLimits.v1Defaults },
+    limits: { ...(entry.limits ?? DAIMON_GROK_ENGINE_BROKER.turnLimits.v1Defaults) },
     model: { id: entry.model, reasoningEffort: entry.reasoningEffort }
   }))
 });

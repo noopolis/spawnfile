@@ -83,6 +83,12 @@ export interface TrainingGrokSlotInput {
   reasoningEffort: DaimonGrokBrokerReasoningEffort;
   /** Deny entries this container adds beyond Daimon's own protected set; defaults to the fixed training set. */
   denyPaths?: readonly string[];
+  /**
+   * The declaration's per-turn limits. The broker registration must declare
+   * them, because a wake may only LOWER a declared limit: a trial whose wake
+   * ceiling exceeds the manifest defaults is refused as `invalid_request`.
+   */
+  limits?: { maxRequests: number; maxTokens: number; timeoutMs: number };
 }
 
 /**
@@ -111,6 +117,7 @@ export const resolveTrainingGrokRegistration = (input: TrainingGrokSlotInput): D
   return {
     agentId: input.agentId,
     config: config.bytes,
+    ...(input.limits === undefined ? {} : { limits: { ...input.limits } }),
     configSha256: config.sha256,
     deferredDenyPaths: denyPaths.filter((entry) => TRAINING_DEFERRED_DENY_PATHS.includes(entry)),
     denyPaths,
