@@ -1,6 +1,5 @@
-import { chmod, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 import { afterEach, expect, it } from "vitest";
 import { planTrainingImage, buildTrainingImage } from "./image.js";
 import { preparationFixture, imageDocker, image } from "./fixtures.test-helper.js";
@@ -46,24 +45,6 @@ it("does not trust a cached tag, empty successful build or changed staged bytes"
   expect(await readdir(f.root)).toEqual(before);
   await f.put("integration/entry.ts", "changed after plan");
   await expect(buildTrainingImage(plan, { ...options, process: async () => ({ code: 1, stdout: "", stderr: "" }) })).rejects.toThrow("changed during staging");
-});
-
-it("makes privately staged runtime directories traversable for the configured nonroot user", async () => {
-  const f = await fixture();
-  const packageDirs = ["spawnfile/dist/compiler/training", "paideia/dist/src/cli", "paideia/bridges/dspy", "integration", "bootstrap"];
-  for (const directory of packageDirs) {
-    const target = path.join(f.root, "runtime", directory);
-    await mkdir(target, { recursive: true, mode: 0o700 });
-    await chmod(target, 0o700);
-    await writeFile(path.join(target, "index.js"), "export const fixture = true;", { mode: 0o600 });
-  }
-  const dockerfile = await readFile(new URL("../../../../runtime-images/training/Dockerfile", import.meta.url), "utf8");
-  const command = dockerfile.match(/chmod -R a\+rX ([^\\\n]+)/u)![1]!.trim().split(/\s+/u);
-  execFileSync("chmod", ["-R", "a+rX", ...command.map(target => target.replace("/opt/training", path.join(f.root, "runtime")))]);
-  for (const directory of packageDirs) {
-    expect((await stat(path.join(f.root, "runtime", directory))).mode & 0o005).toBe(0o005);
-    expect((await stat(path.join(f.root, "runtime", directory, "index.js"))).mode & 0o004).toBe(0o004);
-  }
 });
 
 it("supports integration-owned bootstrap generation without a host snapshot", async () => {

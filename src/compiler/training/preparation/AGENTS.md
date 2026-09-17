@@ -8,7 +8,7 @@ inputs. Dry-run performs reads only; resume validates the preserved preparation.
 
 `contract.ts` declares authoring and runtime receipts; `files.ts` safely seals
 declared bytes; `image.ts` prepares/builds the recipe; `inputs.ts` snapshots Git;
-`sealMemo.ts` is the private plan-side digest memo; `prepare.ts` combines those operations. Keep tests adjacent and files below 400
+`sealMemo.ts` is the private plan-side digest memo; `contextModes.ts` normalizes staged build-context modes/times; `prepare.ts` combines those operations. Keep tests adjacent and files below 400
 lines. Source/lock/recipe mutation must invalidate cache and exact resume.
 
 - Built preparations seal original image bytes in a protected witness for explicit
