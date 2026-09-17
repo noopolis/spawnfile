@@ -16,7 +16,8 @@ Layers run from least to most frequently changing: Python parent copies, locked
 Claude/Paideia/Spawnfile/compiler dependencies, the lock-keyed DSPy venv, one
 layout RUN, bridge source plus its editable install, then pinned executables and
 distributions. Nothing RUNs after the late COPY layers, so a changed distribution
-rebuilds only its own COPY layers and the label.
+rebuilds its own COPY layer, every later COPY layer and the label, but no RUN
+layer (no npm, pip or recursive chmod work).
 
 In-image modes are unchanged from the former `chmod 0555 grok train && chmod -R
 a+rX /opt/training`, and owners stay COPY/RUN defaults (root):
