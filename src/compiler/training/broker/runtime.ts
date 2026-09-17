@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { appendFileSync } from "node:fs";
-import { chmod, chown, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, chown, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -16,9 +16,11 @@ import { buildTrainingSlotReceipt, readGrokExecutableSha256, resolveTrainingCana
 import type { TrainingSlotRuntime } from "./supervisor.js";
 import {
   DAIMON_ORGANIZATION_UID,
+  TRAINING_HOST_BIND_DENY_PATHS,
   TRAINING_SLOT_ACCEPTANCE_STORE,
   TRAINING_SLOT_GENERATION_FILE,
   TRAINING_SLOT_PREFLIGHT_RECEIPT,
+  TRAINING_SLOT_RUNTIME_HOME,
   TRAINING_SLOT_TURN_STORE,
   TRAINING_SLOT_USAGE_DIRECTORY,
   TRAINING_SLOT_WORKSPACE,
@@ -26,6 +28,7 @@ import {
 } from "./paths.js";
 
 const run = promisify(execFile);
+const quote = (value: string): string => `'${value.replace(/'/gu, `'"'"'`)}'`;
 
 export interface TrainingSlotRuntimeOptions {
   declaration: TrainingBrokerDeclaration;
@@ -110,20 +113,26 @@ export const createTrainingSlotRuntime = (options: TrainingSlotRuntimeOptions): 
     },
     stop: async () => { await stopBrokerProcesses(children, log); children = []; },
     wipe: async () => {
-      for (const target of [options.registration.home, TRAINING_SLOT_TURN_STORE, TRAINING_SLOT_ACCEPTANCE_STORE,
-        options.registration.spillDirectory, DAIMON_GROK_ENGINE_BROKER.serviceConfigPath, DAIMON_GROK_ENGINE_BROKER.registrationPath]) {
-        await rm(target, { recursive: true, force: true });
-      }
-      // The workspace keeps its root; only the trial's content goes, so the registered path stays canonical.
-      for (const name of await readdir(TRAINING_SLOT_WORKSPACE).catch(() => [] as string[])) {
-        await rm(path.join(TRAINING_SLOT_WORKSPACE, name), { recursive: true, force: true });
-      }
-      for (const name of await readdir(TRAINING_SLOT_USAGE_DIRECTORY).catch(() => [] as string[])) {
-        await rm(path.join(TRAINING_SLOT_USAGE_DIRECTORY, name), { recursive: true, force: true });
-      }
+      // Root holds `CAP_CHOWN` and `CAP_DAC_READ_SEARCH` but not `CAP_DAC_OVERRIDE`, so it cannot delete
+      // inside a directory it handed to the worker or the broker. Reclaim each tree first, then remove it.
+      const targets = [options.registration.home, TRAINING_SLOT_RUNTIME_HOME, TRAINING_SLOT_TURN_STORE, TRAINING_SLOT_ACCEPTANCE_STORE, DAIMON_GROK_ENGINE_BROKER.serviceConfigPath, DAIMON_GROK_ENGINE_BROKER.registrationPath];
+      const contents = [TRAINING_SLOT_WORKSPACE, TRAINING_SLOT_USAGE_DIRECTORY];
+      const script = [
+        // The parent has to be reclaimed too: unlinking is a write to the *directory*, and the slot hands
+        // several of these parents to uid 2000 or the broker. Provisioning restores every mode right after.
+        'reclaim() { parent=$(dirname "$1"); chown 0:0 "$parent"; chmod u+rwx "$parent"; if [ -e "$1" ]; then chown -R 0:0 "$1"; chmod -R u+rwX "$1"; fi; }',
+        ...targets.map((target) => `reclaim ${quote(target)}; rm -rf ${quote(target)}`),
+        // The workspace and the per-slot ledger directory keep their own root: the registered paths must
+        // stay canonical across a recycle, so only what a trial put inside them goes.
+        ...contents.map((target) => `reclaim ${quote(target)}; if [ -d ${quote(target)} ]; then find ${quote(target)} -mindepth 1 -delete; fi`)
+      ].join("\n");
+      await run(shell, ["--noprofile", "--norc", "-ceu", script], { maxBuffer: 1024 * 1024 }).catch((error: unknown) => {
+        const detail = error as { stderr?: string };
+        throw new SpawnfileError("runtime_error", `Training slot wipe failed: ${(detail.stderr ?? "").slice(-1024).trim()}`);
+      });
     },
     provision: async () => {
-      const result = await run(shell, ["-ceu", script], { maxBuffer: 8 * 1024 * 1024 }).catch((error: unknown) => {
+      const result = await run(shell, ["--noprofile", "--norc", "-ceu", script], { maxBuffer: 8 * 1024 * 1024 }).catch((error: unknown) => {
         const detail = error as { stderr?: string; stdout?: string };
         throw new SpawnfileError("runtime_error", `Training slot provisioning failed: ${(detail.stderr ?? detail.stdout ?? "").slice(-2048).trim()}`);
       });
@@ -131,7 +140,7 @@ export const createTrainingSlotRuntime = (options: TrainingSlotRuntimeOptions): 
     },
     start: async () => { children = await startBrokerProcesses({ log, procRoot: options.procRoot }); },
     canaries: async () => resolveTrainingCanaries({
-      denyPaths: options.registration.denyPaths, probe, log,
+      denyPaths: options.registration.denyPaths, probe, log, hostBindPaths: TRAINING_HOST_BIND_DENY_PATHS,
       mountinfo: await readFile(`${options.procRoot ?? "/proc"}/self/mountinfo`, "utf8"),
       unenforcedBindPolicy: options.declaration.unenforcedBindPolicy
     }),

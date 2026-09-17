@@ -1,6 +1,7 @@
 import path from "node:path";
 
-import { DAIMON_GROK_ENGINE_BROKER } from "../../../runtime/daimon/contractManifest.js";
+import { DAIMON_GROK_ENGINE_BROKER, DAIMON_GROK_TURN_USAGE_LEDGER } from "../../../runtime/daimon/contractManifest.js";
+import { DAIMON_WAKE_FUSE_DIRECTORY } from "../../../runtime/daimon/config.js";
 import type { DaimonGrokRegistration } from "../../containerDaimonGrokWorkerRender.js";
 import { renderDaimonBrokerProvisioningProgram } from "../../containerDaimonBrokerRender.js";
 import { renderDaimonGrokHostPreflight } from "../../containerDaimonGrokWorkerProvisioning.js";
@@ -14,11 +15,11 @@ import {
   TRAINING_PAIDEIA_ROOT,
   TRAINING_SLOT_ACCEPTANCE_STORE,
   TRAINING_SLOT_ROOT,
-  TRAINING_SLOT_RUNTIME_HOME,
   TRAINING_SLOT_STATE_ROOT,
   TRAINING_SLOT_TURN_STORE,
   TRAINING_SLOT_USAGE_DIRECTORY,
   TRAINING_SLOT_USAGE_LEDGER,
+  TRAINING_SUPERVISOR_DIRECTORY,
   TRAINING_SLOT_WORKSPACE,
   TRAINING_WORKER_ROOT,
   TRAINING_WORKER_UID
@@ -35,7 +36,6 @@ const quote = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
 const PROVISION_DIRECTORY_HELPER = [
   "provision_dir() {",
   "  target=$1; mode=$2; owner=$3; group=$4",
-  "  mkdir -p \"$target\"",
   "  test -d \"$target\" && test ! -L \"$target\"",
   "  chown 0:0 \"$target\"; chmod \"$mode\" \"$target\"; chown \"$owner:$group\" \"$target\"",
   "}"
@@ -50,27 +50,44 @@ const PROVISION_DIRECTORY_HELPER = [
  * single subject usage row or inference row it paid for.
  */
 export const trainingSlotDirectories = (): readonly { path: string; mode: string; uid: number; gid: number }[] => [
-  { path: "/run/training", mode: "0755", uid: 0, gid: 0 },
+  // `/run/training` itself is deliberately absent: it is a mount-point parent on the read-only
+  // image root, and every writable child below it is its own tmpfs or bind.
   { path: TRAINING_SLOT_ROOT, mode: "0755", uid: 0, gid: 0 },
   { path: TRAINING_PAIDEIA_ROOT, mode: "0750", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: "/home/training", mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: "/work", mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: TRAINING_SLOT_WORKSPACE, mode: "0750", uid: DAIMON_ORGANIZATION_UID, gid: TRAINING_WORKER_UID },
-  { path: TRAINING_SLOT_RUNTIME_HOME, mode: "0710", uid: DAIMON_ORGANIZATION_UID, gid: TRAINING_WORKER_UID },
+  // The agent runtime home is deliberately absent: the shared broker provisioning creates it root-owned,
+  // fills its setgid `tool-output/`, and only then narrows it to `2000:<worker> 0710`. Handing it over here
+  // would leave root — which holds no `CAP_DAC_OVERRIDE` — unable to create the spill directory inside it.
   { path: TRAINING_SLOT_STATE_ROOT, mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: TRAINING_SLOT_ACCEPTANCE_STORE, mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: TRAINING_SLOT_TURN_STORE, mode: "0700", uid: DAIMON_BROKER_UID, gid: DAIMON_BROKER_UID },
   { path: TRAINING_SLOT_USAGE_DIRECTORY, mode: "2750", uid: DAIMON_BROKER_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: TRAINING_INFERENCE_DIRECTORY, mode: "2750", uid: DAIMON_BROKER_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: TRAINING_GRANT_HOME_ROOT, mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
-  { path: TRAINING_WORKER_ROOT, mode: "0711", uid: 0, gid: 0 }
+  // Traverse only: the supervisor socket inside it is the uid gate, and a directory nobody but root may
+  // write is what keeps that socket from being replaced by a laxer one.
+  { path: TRAINING_SUPERVISOR_DIRECTORY, mode: "0711", uid: 0, gid: 0 },
+  { path: TRAINING_WORKER_ROOT, mode: "0711", uid: 0, gid: 0 },
+  // Denied and unused by training, which meters per slot — but a world-readable directory would make its
+  // worker-uid canary meaningless, so both get the modes the production organization gives them.
+  { path: DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath, mode: "0750", uid: DAIMON_BROKER_UID, gid: DAIMON_ORGANIZATION_UID },
+  { path: DAIMON_WAKE_FUSE_DIRECTORY, mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID }
 ];
 
-/** Fixed uid/gid identities the slot needs before anything is provisioned. */
+/**
+ * The fixed identities the slot needs, checked rather than created.
+ *
+ * The broker-capable training container runs on a read-only root, so
+ * `/etc/passwd` and `/etc/group` cannot be written at start-up the way the
+ * production Daimon entrypoint writes them. The image bakes uid/gid 2000, 2100
+ * and the worker uid instead, and this refuses to provision a slot in an image
+ * that did not.
+ */
 export const renderTrainingIdentities = (): string[] => [
   `for fixed_uid in ${DAIMON_ORGANIZATION_UID} ${DAIMON_BROKER_UID} ${TRAINING_WORKER_UID}; do`,
-  '  if ! getent group "$fixed_uid" >/dev/null; then groupadd -K GID_MIN=1 --gid "$fixed_uid" "daimon-$fixed_uid"; fi',
-  '  if ! getent passwd "$fixed_uid" >/dev/null; then useradd -K UID_MIN=1 --no-create-home --no-log-init --uid "$fixed_uid" --gid "$fixed_uid" --home-dir /nonexistent --shell /usr/sbin/nologin "daimon-$fixed_uid"; fi',
+  '  getent passwd "$fixed_uid" >/dev/null && getent group "$fixed_uid" >/dev/null || { echo "the training image must bake uid/gid $fixed_uid; the container root is read-only" >&2; exit 1; }',
   "done"
 ];
 
@@ -88,17 +105,26 @@ export const renderTrainingIdentities = (): string[] => [
  */
 export const renderTrainingBrokerProvisioning = (registration: DaimonGrokRegistration): string[] => [
   ...PROVISION_DIRECTORY_HELPER,
-  ...trainingSlotDirectories().map((entry) => `provision_dir ${quote(entry.path)} ${entry.mode} ${entry.uid} ${entry.gid}`),
+  // Two passes, because root here holds neither `CAP_DAC_OVERRIDE` nor `CAP_FOWNER`: create every
+  // directory while they are all still root-owned and traversable, then set ownership and mode from the
+  // deepest path up, so tightening a parent to `0700` never strands a child that still has to be created.
+  ...trainingSlotDirectories().map((entry) => `mkdir -p ${quote(entry.path)}`),
   // Every deny entry needs an inode to mask; a bind the host did not supply is created root-owned and unreadable.
-  ...TRAINING_OPTIONAL_DENY_DIRECTORIES.map((target) => `if [ ! -e ${quote(target)} ]; then provision_dir ${quote(target)} 0700 0 0; fi`),
+  ...TRAINING_OPTIONAL_DENY_DIRECTORIES.map((target) => `if [ ! -e ${quote(target)} ]; then mkdir -p ${quote(target)}; provision_dir ${quote(target)} 0700 0 0; fi`),
+  // Both ledgers exist before their directories are handed to the broker: the broker appends rows `0640` in
+  // its own group, and the setgid directory below is what lets uid 2000 read a row it paid for.
+  ...[TRAINING_SLOT_USAGE_LEDGER, TRAINING_INFERENCE_LEDGER].map((ledger) =>
+    `if [ ! -e ${quote(ledger)} ]; then : > ${quote(ledger)}; fi; chown 0:0 ${quote(ledger)}; chmod 0640 ${quote(ledger)}; chown ${DAIMON_BROKER_UID}:${DAIMON_ORGANIZATION_UID} ${quote(ledger)}`),
+  ...[...trainingSlotDirectories()].sort((left, right) => right.path.split("/").length - left.path.split("/").length)
+    .map((entry) => `provision_dir ${quote(entry.path)} ${entry.mode} ${entry.uid} ${entry.gid}`),
   ...renderDaimonGrokHostPreflight(),
   ...renderDaimonBrokerProvisioningProgram([registration], [], {
     turnStore: TRAINING_SLOT_TURN_STORE,
     inferenceLedgerPath: TRAINING_INFERENCE_LEDGER
-  }),
-  // The broker creates both ledgers 0640 in its own group; the setgid directories above give the group to uid 2000.
-  ...[TRAINING_SLOT_USAGE_LEDGER, TRAINING_INFERENCE_LEDGER].map((ledger) =>
-    `if [ ! -e ${quote(ledger)} ]; then : > ${quote(ledger)}; chown 0:0 ${quote(ledger)}; chmod 0640 ${quote(ledger)}; chown ${DAIMON_BROKER_UID}:${DAIMON_ORGANIZATION_UID} ${quote(ledger)}; fi`),
+  }, "clear", TRAINING_OPTIONAL_DENY_DIRECTORIES),
+  // The shared program leaves the broker's `/etc` root `0555 root:root`, which every uid can list. Training
+  // denies that directory to its worker, and a canary can only observe a denial the kernel actually enforces.
+  `chmod 0550 /etc/daimon-engine-broker; chown 0:${DAIMON_BROKER_UID} /etc/daimon-engine-broker`,
   `test "$(stat -c '%u:%g %a' ${quote(TRAINING_SLOT_USAGE_DIRECTORY)})" = "${DAIMON_BROKER_UID}:${DAIMON_ORGANIZATION_UID} 2750"`,
   `test "$(stat -c '%u:%g %a' ${quote(TRAINING_INFERENCE_DIRECTORY)})" = "${DAIMON_BROKER_UID}:${DAIMON_ORGANIZATION_UID} 2750"`,
   `test "$(stat -c '%u:%g %a' ${quote(TRAINING_GRANT_HOME_ROOT)})" = "${DAIMON_ORGANIZATION_UID}:${DAIMON_ORGANIZATION_UID} 700"`,

@@ -43,7 +43,7 @@ describe("training slot canaries", () => {
   it("requires a worker-uid denial for every deny path on a filesystem that enforces ownership", async () => {
     const probed: string[] = [];
     const canaries = await resolveTrainingCanaries({
-      denyPaths: ["/run/training/slot/turns", "/run/training/slot/usage"], mountinfo, unenforcedBindPolicy: "refuse",
+      denyPaths: ["/run/training/slot/turns", "/run/training/slot/usage"], mountinfo, hostBindPaths: [], unenforcedBindPolicy: "refuse",
       probe: async (target) => { probed.push(target); return true; }, log: () => undefined
     });
     expect(probed).toEqual(["/run/training/slot/turns", "/run/training/slot/usage"]);
@@ -52,14 +52,21 @@ describe("training slot canaries", () => {
 
   it("refuses to certify a path the worker uid can still read", async () => {
     await expect(resolveTrainingCanaries({
-      denyPaths: ["/run/training/slot/turns"], mountinfo, unenforcedBindPolicy: "refuse",
+      denyPaths: ["/run/training/slot/turns"], mountinfo, hostBindPaths: [], unenforcedBindPolicy: "refuse",
       probe: async () => false, log: () => undefined
     })).rejects.toThrow(/still readable by the worker uid/u);
   });
 
-  it("refuses a host bind by default, because chown there is silently ignored", async () => {
+  it("refuses a declared host bind by default, because its mode is the operator's and not the container's", async () => {
     await expect(resolveTrainingCanaries({
-      denyPaths: ["/run/training/output"], mountinfo, unenforcedBindPolicy: "refuse",
+      denyPaths: ["/run/training/inputs"], mountinfo, hostBindPaths: ["/run/training/inputs"], unenforcedBindPolicy: "refuse",
+      probe: async () => { throw Error("the probe must never run on a host bind"); }, log: () => undefined
+    })).rejects.toThrow(/is a host bind mount/u);
+  });
+
+  it("refuses a filesystem that ignores unix ownership by default, even when the launch did not declare it", async () => {
+    await expect(resolveTrainingCanaries({
+      denyPaths: ["/run/training/output"], mountinfo, hostBindPaths: [], unenforcedBindPolicy: "refuse",
       probe: async () => { throw Error("the probe must never run on an unenforced filesystem"); }, log: () => undefined
     })).rejects.toThrow(/virtiofs, which ignores unix ownership/u);
   });
@@ -67,7 +74,7 @@ describe("training slot canaries", () => {
   it("accepts a host bind on the profile's deny entry alone only when the operator declared that, and says so", async () => {
     const lines: string[] = [];
     const canaries = await resolveTrainingCanaries({
-      denyPaths: ["/run/training/output"], mountinfo, unenforcedBindPolicy: "profile-only",
+      denyPaths: ["/run/training/output"], mountinfo, hostBindPaths: [], unenforcedBindPolicy: "profile-only",
       probe: async () => false, log: (line) => lines.push(line)
     });
     expect(canaries).toEqual([canary("/run/training/output")]);

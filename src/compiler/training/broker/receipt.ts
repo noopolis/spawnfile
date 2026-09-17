@@ -39,6 +39,8 @@ export interface TrainingCanaryOptions {
   denyPaths: readonly string[];
   probe: TrainingCanaryProbe;
   mountinfo: string;
+  /** Deny entries the launch bound from the host; a worker-uid probe over one of them proves nothing. */
+  hostBindPaths: readonly string[];
   unenforcedBindPolicy: "refuse" | "profile-only";
   log(line: string): void;
 }
@@ -57,12 +59,13 @@ export const resolveTrainingCanaries = async (options: TrainingCanaryOptions): P
   const canaries: { path: string; method: "sandboxed-read"; result: "denied" }[] = [];
   for (const target of options.denyPaths) {
     const fstype = resolveBackingFilesystem(target, options.mountinfo);
-    if (isUnenforced(fstype)) {
+    const hostBind = options.hostBindPaths.includes(target);
+    if (hostBind || isUnenforced(fstype)) {
       if (options.unenforcedBindPolicy === "refuse") {
         throw new SpawnfileError("runtime_error",
-          `Grok slot canary ${target} is backed by ${fstype || "an unknown filesystem"}, which ignores unix ownership; declare unenforcedBindPolicy "profile-only" to accept the bubblewrap deny list as its only boundary`);
+          `Grok slot canary ${target} is ${hostBind ? "a host bind mount" : `backed by ${fstype || "an unknown filesystem"}, which ignores unix ownership`}; declare unenforcedBindPolicy "profile-only" to accept the bubblewrap deny list as its only boundary`);
       }
-      options.log(`canary ${target} certified by the enforced sandbox profile only (${fstype} ignores unix ownership)`);
+      options.log(`canary ${target} certified by the enforced sandbox profile only (${hostBind ? "host bind mount" : `${fstype} ignores unix ownership`})`);
     } else if (!await options.probe(target)) {
       throw new SpawnfileError("runtime_error", `Grok slot canary ${target} is still readable by the worker uid`);
     }
