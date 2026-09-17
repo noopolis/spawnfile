@@ -1,7 +1,8 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { bindGrokBrokerProjection, bindNativeSandboxProjection, grokBrokerProjectionSchema, grokProjectionSha256, isGrokLaunch, parseGrokBrokerReceipt,
-  parseNativeSandboxReceipt, readPrivateFile, type GrokNativeLaunch, type NativeLaunch } from '../receipt/index.js';
+import { bindGrokBrokerProjection, bindNativeSandboxProjection, grokBrokerProjectionSchema, grokProjectionSha256, isGrokLaunch,
+  nativeTrialArtifactsRoot, parseGrokBrokerReceipt, parseNativeSandboxReceipt, readPrivateFile,
+  type GrokNativeLaunch, type NativeLaunch } from '../receipt/index.js';
 import type { NativeRuntimeModule } from './public.js';
 import type { NativeConfig, WorkerOptions } from './types.js';
 
@@ -12,7 +13,8 @@ export async function persistNativeSandboxProjection(runtime: NativeRuntimeModul
   const receipt = bindNativeSandboxProjection(value, options.trialId, options.configSha256);
   parseNativeSandboxReceipt(receipt, { trialId: options.trialId, configSha256: options.configSha256,
     agentId: agent.id, workspacePath: agent.workspacePath, runtimeHomePath: agent.runtimeHomePath });
-  await writeFile(join(options.controlRoot, 'sandbox-projection.json'), `${JSON.stringify(receipt)}\n`, { flag: 'wx', mode: 0o600 });
+  const artifacts = launch ? nativeTrialArtifactsRoot(launch, options.trialId) : options.controlRoot;
+  await writeFile(join(artifacts, 'sandbox-projection.json'), `${JSON.stringify(receipt)}\n`, { flag: 'wx', mode: 0o600 });
 }
 
 /**
@@ -28,6 +30,7 @@ async function persistGrokBrokerProjection(runtime: NativeRuntimeModule, config:
   const { broker } = launch;
   const projection = grokBrokerProjectionSchema.parse(resolve(config, agent.id, { slot: broker.slot, workerUid: broker.workerUid,
     workerHomePath: broker.workerHomePath, architecture: broker.architecture, usageLedgerPath: broker.usageLedgerPath, limits: broker.limits,
+    // The deny mask Daimon lifts, and the value `projection_sha256` binds: never the per-trial artifact directory inside it.
     acceptanceStorePath: options.controlRoot, denyPaths: [...new Set(broker.evaluatorPaths.map(row => row.path))].sort(),
     seccompProfileSha256: broker.seccompProfileSha256 }));
   const sha = grokProjectionSha256(projection);
@@ -39,5 +42,5 @@ async function persistGrokBrokerProjection(runtime: NativeRuntimeModule, config:
   catch (error) { throw new Error('Grok subject turns require the root slot supervisor preflight receipt', { cause: error }); }
   const verified = verify(slot, projection, { expectedNonce: broker.expectedNonce, minGeneration: broker.minGeneration });
   const receipt = parseGrokBrokerReceipt(bindGrokBrokerProjection(projection, verified, options.trialId, options.configSha256), launch, options.trialId);
-  await writeFile(join(options.controlRoot, 'sandbox-projection.json'), `${JSON.stringify(receipt)}\n`, { flag: 'wx', mode: 0o600 });
+  await writeFile(join(nativeTrialArtifactsRoot(launch, options.trialId), 'sandbox-projection.json'), `${JSON.stringify(receipt)}\n`, { flag: 'wx', mode: 0o600 });
 }

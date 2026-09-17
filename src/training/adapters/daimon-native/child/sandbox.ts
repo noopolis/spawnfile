@@ -4,7 +4,7 @@ import { lstat, mkdir, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/pr
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { nativeChildProbe } from './probe.js';
-import { isGrokLaunch, parseNativeSandboxReceipt, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
+import { isGrokLaunch, nativeTrialArtifactsRoot, parseNativeSandboxReceipt, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
 import { verifyChildGrokSlot } from './grok.js';
 import type { GrokSlotFreshnessStore } from './slot-freshness.js';
 
@@ -13,7 +13,8 @@ export async function verifyChildSandbox(launch: VerifiedNativeLaunch, trialId: 
   grokSlots?: GrokSlotFreshnessStore): Promise<void> {
   if (isGrokLaunch(launch)) return verifyChildGrokSlot(launch, trialId, protectedPaths, grokSlots);
   const home = launch.projections.find(row => row.role === 'home')!.target;
-  const receipt = parseNativeSandboxReceipt(JSON.parse(await readPrivateFile(join(launch.controlRoot, 'sandbox-projection.json'), 262144)), {
+  const artifacts = nativeTrialArtifactsRoot(launch, trialId);
+  const receipt = parseNativeSandboxReceipt(JSON.parse(await readPrivateFile(join(artifacts, 'sandbox-projection.json'), 262144)), {
     trialId, configSha256: launch.configSha256, agentId: launch.agent.id, workspacePath: launch.workspace.target, runtimeHomePath: home,
   });
   const scratch = await mkdtemp(join(launch.workspace.target, '.paideia-native-policy-'));
@@ -41,7 +42,7 @@ export async function verifyChildSandbox(launch: VerifiedNativeLaunch, trialId: 
       cwd: launch.workspace.target, env: { PATH: process.env.PATH, HOME: home, CODEX_HOME: join(home, '.codex'), TMPDIR: '/tmp', LANG: 'C.UTF-8' }, signal, timeout: 15000, maxBuffer: 65536,
     });
     if (await readFile(complete, 'utf8') !== 'NATIVE_POLICY_COMPLETE') throw new Error('Native sandbox did not finish enforcement checks');
-    await writeFile(join(launch.controlRoot, 'child-sandbox-preflight.json'), JSON.stringify({ schema: 'paideia.daimon-native.child-sandbox-preflight.v1',
+    await writeFile(join(artifacts, 'child-sandbox-preflight.json'), JSON.stringify({ schema: 'paideia.daimon-native.child-sandbox-preflight.v1',
       trialId, configSha256: launch.configSha256, projectionSha256: receipt.projectionSha256, modelCallsMade: 0, workspaceReadWrite: true, protectedPathsDenied: true, networkDenied: true }), { flag: 'wx', mode: 0o600 });
   } catch (error) { throw new Error('Exact native child sandbox failed before cognition', { cause: error }); }
   finally { server.close(); await Promise.all([...owned, scratch].map(path => rm(path, { recursive: true, force: true }))); }

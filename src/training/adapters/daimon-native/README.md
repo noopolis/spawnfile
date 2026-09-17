@@ -137,6 +137,60 @@ records the declared `model` (`grok-4.6`, `grok-4.5`, `grok-build`) and
 | `slotPreflightReceipt` | Input path contract: the root slot supervisor writes `noopolis.daimon.grok-slot-preflight.v2` here after provisioning or recycling the slot |
 | `expectedNonce`, `minGeneration` | This trial's recycle freshness: the nonce Paideia sent with the recycle request and one above the last generation it accepted for the slot |
 
+### Slot path contract (what preparation must produce)
+
+A Grok launch runs inside the broker-capable training container, whose slot paths
+are fixed and bound by `projection_sha256`; it cannot satisfy the Codex rule that
+the control root and every writable root live inside the trial runtime home. The
+adapter therefore takes the same guarantee from the container contract, and
+preparation must produce exactly this shape:
+
+| Member | Requirement |
+|---|---|
+| `workspace.source` | the trial workspace the evaluator passed as `workspacePath` (`/run/training/slot/workspace`) |
+| `projections` | exactly one entry, role `home`, whose source is the trial runtime home the evaluator passed as `runtimeHomePath` (`/run/training/slot/runtime-home`) |
+| `controlRoot` | a slot directory the supervisor's receipt denies to the worker uid, private (no group/other bits), outside the workspace (`/run/training/slot/state`) |
+| `config`, `tokenFile`, `envFile` | canonical private files inside some denied slot root (`/run/paideia/...`), never inside the workspace |
+| `native-launch.json` | written `0600` in the trial runtime home; for Grok that directory is the subject's own home |
+| `slotPreflightReceipt` | a canonical `0640`-or-tighter file owned by the container root, whose `projection_sha256` equals `broker.projectionSha256` |
+
+Before any process starts the adapter reads that receipt and refuses a launch
+whose control root or control inputs are not inside a denied canary root, whose
+writable roots are anything but those two evaluator-named directories, or whose
+writable roots touch a denied root. Both writable roots are then bound by digest:
+Daimon's resolved projection must carry them as `workspacePath` and
+`runtimeHomePath`, `source` must equal `target` for child execution, and the
+projection's canonical digest must equal `broker.projectionSha256` and the slot
+receipt. Nothing the launch chose on its own is writable, which is the property
+the Codex runtime-home anchor provides.
+
+### Per-trial control artifacts
+
+The slot control root is fixed, shared between trials and already holds Daimon's
+wake-acceptance store, so it is never empty and the supervisor's recycle — which
+wipes that store, the worker home, the slot workspace, the turn store and the
+per-slot ledger — deliberately does not clear it. Paideia owns exactly one
+subtree of it and separates trials there itself:
+
+```
+/run/training/slot/state/
+├── wake-acceptance/                     Daimon's, wiped by every recycle
+└── paideia-trials/trial-<sha256(trialId)[0:32]>/
+    ├── sandbox-projection.json          Daimon's runtime acceptance store,
+    ├── child-sandbox-preflight.json     the wake fuse directory and the
+    ├── child-diagnostics.json           `--evidence` file also live here
+    └── evidence.json
+```
+
+The directory is created once per trial with a non-recursive `mkdir`, so a
+repeated trial identity fails with `EEXIST` instead of colliding with, or
+silently overwriting, the previous trial's exclusive (`wx`) artifacts, and a
+stale artifact can never be read as this trial's. The leaf name is a digest of
+the trial identity, so a caller-supplied identity cannot escape the control root.
+Only the deny mask Daimon lifts stays the control root itself — that is the value
+`projection_sha256` binds, and it must not become the per-trial directory. Codex
+control roots are already per trial and are used unchanged.
+
 Startup, in order, with no model call and no `codex sandbox` process:
 
 1. The worker loads Daimon's Grok exports (`resolveOrganizationGrokBrokerProjection`,

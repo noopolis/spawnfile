@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { grokProjectionSha256, type GrokBrokerProjection, type GrokSlotPreflight } from './receipt/grok.js';
 import type { GrokNativeLaunch, NativeLaunch } from './receipt/index.js';
@@ -24,15 +24,39 @@ export const daimonProjectionGoldenSha256 = '9e8bbd4e9337df40b90d5a382ece6c3745c
 export const fixtureNonce = '5f0e2a1c9b8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f';
 const realm = ['/var/lib/spawnfile/daimon/grok-bootstrap-auth', '/var/lib/spawnfile/daimon/grok-subscription-realm'];
 
-/** Turns a Codex launch fixture into a Grok v2 child launch whose evaluator roots are real directories under `root`. */
-export async function grokLaunchFrom<T extends NativeLaunch>(launch: T, root: string): Promise<T & GrokNativeLaunch> {
+/**
+ * The caller-protected paths a Grok trial declares.
+ *
+ * Always evaluator roots the slot receipt denies to the worker uid — never the
+ * subject's own workspace or runtime home, which are the two writable roots.
+ */
+export const grokProtectedPaths = (root: string): string[] => [join(root, 'run-paideia'), join(root, 'paideia')];
+
+/**
+ * Turns a Codex launch fixture into a Grok v2 child launch shaped like the
+ * broker-capable training container.
+ *
+ * The container fixes `<slot>/workspace`, `<slot>/runtime-home` and
+ * `<slot>/state` as siblings and keeps every Paideia control input in the
+ * denied `/run/paideia` root, so the fixture root stands in for the slot root:
+ * the trial runtime home is the single writable projection, the control root is
+ * its sibling `state/`, and config/token/env move into the denied `paideia/`
+ * evaluator root. Every evaluator root is a real directory under `root`.
+ */
+export async function grokLaunchFrom<T extends NativeLaunch>(launch: T, root: string, runtimeHome = join(root, 'runtime')): Promise<T & GrokNativeLaunch> {
   const slot = join(root, 'slots', '0');
-  const roots = { 'run-root': join(root, 'run-paideia'), context: dirname(launch.config), 'sealed-inputs': join(root, 'sealed'),
+  const state = join(root, 'state');
+  const controls = join(root, 'paideia');
+  const roots = { 'run-root': join(root, 'run-paideia'), context: controls, 'sealed-inputs': join(root, 'sealed'),
     'judge-home': join(root, 'judge-grok-home'), 'slot-ledger': join(slot, 'usage') } as const;
-  for (const path of Object.values(roots)) await mkdir(path, { recursive: true, mode: 0o700 });
+  for (const path of [...Object.values(roots), state]) await mkdir(path, { recursive: true, mode: 0o700 });
+  const moved = { config: join(controls, 'config.json'), tokenFile: join(controls, 'token'), envFile: join(controls, 'environment') } as const;
+  for (const key of ['config', 'tokenFile', 'envFile'] as const) { await copyFile(launch[key], moved[key]); await chmod(moved[key], 0o600); }
+  const home = launch.projections.find(row => row.role === 'home')!;
   const next = launch as unknown as T & GrokNativeLaunch;
   Object.assign(next, { schema: 'paideia.daimon-native.launch.v2', agent: { id: launch.agent.id, engine: 'grok', model: 'grok-4.6', reasoningEffort: 'low' },
-    credentials: [], limits: { maxTokens: 8000000, wakeTokenCeiling: 1000000 },
+    credentials: [], limits: { maxTokens: 8000000, wakeTokenCeiling: 1000000 }, ...moved, controlRoot: state,
+    projections: [{ role: 'home', source: runtimeHome, target: home.source === home.target ? runtimeHome : home.target }],
     broker: { projectionVersion: 'noopolis.daimon.grok-broker-projection.v1', projectionSha256: '0'.repeat(64), slot: 0, workerUid: 2200,
       workerHomePath: join(slot, 'worker-home'), architecture: 'arm64', usageLedgerPath: join(roots['slot-ledger'], 'usage.jsonl'),
       seccompProfileSha256: '7'.repeat(64), limits: { maxRequests: 24, maxTokens: 400000, timeoutMs: 480000 },
@@ -41,9 +65,11 @@ export async function grokLaunchFrom<T extends NativeLaunch>(launch: T, root: st
   return next;
 }
 
+/** The training container resolves the slot projection from a one-agent config with no peers and no Mneme projection. */
 export function grokConfigFor(config: NativeConfig): NativeConfig {
   const agent = config.agents[0]!;
   agent.engine = { kind: 'grok', model: 'grok-4.6', reasoningEffort: 'low' };
+  delete agent.memory;
   return config;
 }
 

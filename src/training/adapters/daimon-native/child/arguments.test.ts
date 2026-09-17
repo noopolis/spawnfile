@@ -2,7 +2,9 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { chmod, link, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { childFixture } from './fixture.js';
-import { nativeChildArguments, nativeChildEnvironment, validateChildPaths } from './arguments.js';
+import { grokLaunchFrom } from '../grok-fixtures.js';
+import { nativeTrialArtifactsRoot } from '../receipt/index.js';
+import { ensureNativeTrialArtifacts, nativeChildArguments, nativeChildEnvironment, validateChildPaths } from './arguments.js';
 import { loadNativeLaunch } from '../container/index.js';
 const roots: string[] = [];
 afterEach(async () => { vi.unstubAllEnvs(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -14,6 +16,24 @@ it('uses actual immutable worker/bootstrap and declared launch argument paths', 
   expect(args.slice(-4)).toEqual(['--timeout-ms', '1234', '--schedule-override', 'disabled']);
   delete f.launch.bootstrap; expect(nativeChildArguments(f.launch, f.input.trialId, 1234)).toContain(join(f.launch.workerRoot, 'worker/cli.js'));
 });
+it('separates each Grok trial inside the shared slot control root and leaves Codex control roots untouched', async () => {
+  const f = await fixture();
+  // Codex preparation already creates one control root per trial, so nothing moves and nothing is created.
+  expect(await ensureNativeTrialArtifacts(f.launch, f.input.trialId)).toBe(f.launch.controlRoot);
+  expect(nativeChildArguments(f.launch, f.input.trialId, 1234)).toContain(join(f.launch.controlRoot, 'evidence.json'));
+  const grok = await grokLaunchFrom(f.launch, f.root); await f.save();
+  const trial = await ensureNativeTrialArtifacts(f.launch, f.input.trialId);
+  expect(trial).toBe(nativeTrialArtifactsRoot(grok, f.input.trialId));
+  expect(trial.startsWith(`${grok.controlRoot}/`)).toBe(true);
+  expect(nativeChildArguments(f.launch, f.input.trialId, 1234)).toContain(join(trial, 'evidence.json'));
+  await writeFile(join(trial, 'evidence.json'), '{}', { flag: 'wx', mode: 0o600 });
+  // The slot supervisor's recycle only wipes Daimon's store, so a repeated trial identity must fail rather than collide.
+  await expect(ensureNativeTrialArtifacts(f.launch, f.input.trialId)).rejects.toThrow('EEXIST');
+  const next = await ensureNativeTrialArtifacts(f.launch, 'another-trial');
+  expect(next).not.toBe(trial);
+  await writeFile(join(next, 'evidence.json'), '{}', { flag: 'wx', mode: 0o600 });
+});
+
 it('loads literal declared environment without provider settings or shell interpolation', async () => {
   const f = await fixture(); vi.stubEnv('OPENAI_API_KEY', 'never-inherit'); vi.stubEnv('LC_ALL', undefined);
   await writeFile(f.launch.envFile, '# comment\n\nTOKEN=literal $() and "quotes"\n');

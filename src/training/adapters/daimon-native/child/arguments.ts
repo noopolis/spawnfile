@@ -1,12 +1,34 @@
 import { dirname, join } from 'node:path';
-import { lstat, realpath } from 'node:fs/promises';
-import { readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
+import { chmod, lstat, mkdir, realpath } from 'node:fs/promises';
+import { nativeTrialArtifactsRoot, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
 
 export function nativeChildArguments(launch: VerifiedNativeLaunch, trialId: string, timeoutMs: number): string[] {
   return ['--experimental-strip-types', launch.bootstrap ? join(launch.bootstrap.root, launch.bootstrap.entrypoint) : join(launch.workerRoot, 'worker/cli.js'),
     '--launch', launch.receiptFile, '--config', launch.config, '--config-sha256', launch.configSha256,
-    '--control-root', launch.controlRoot, '--token-file', launch.tokenFile, '--evidence', join(launch.controlRoot, 'evidence.json'),
+    '--control-root', launch.controlRoot, '--token-file', launch.tokenFile,
+    '--evidence', join(nativeTrialArtifactsRoot(launch, trialId), 'evidence.json'),
     '--trial-id', trialId, '--timeout-ms', String(timeoutMs), '--schedule-override', 'disabled'];
+}
+
+/**
+ * Creates this trial's private artifact directory before the worker starts.
+ *
+ * A Codex control root is already per-trial, so it is returned untouched. A Grok
+ * slot control root is fixed by the container and shared across trials: the
+ * non-recursive `mkdir` below is what separates them, and it fails with EEXIST
+ * rather than colliding with, or silently overwriting, the previous trial's
+ * exclusive artifacts. Nothing outside this directory is Paideia's to clear, so
+ * the slot supervisor's recycle never has to wipe on Paideia's behalf.
+ */
+export async function ensureNativeTrialArtifacts(launch: VerifiedNativeLaunch, trialId: string): Promise<string> {
+  const root = nativeTrialArtifactsRoot(launch, trialId);
+  if (root === launch.controlRoot) return root;
+  const shared = dirname(root);
+  await mkdir(shared, { recursive: true, mode: 0o700 });
+  await chmod(shared, 0o700);
+  await mkdir(root, { mode: 0o700 });
+  await chmod(root, 0o700);
+  return root;
 }
 export async function validateChildPaths(launch: VerifiedNativeLaunch): Promise<void> {
   for (const projection of [launch.workspace, ...launch.projections]) {

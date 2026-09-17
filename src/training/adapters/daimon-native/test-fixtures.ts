@@ -1,5 +1,5 @@
 import type { NativeActivity, NativeConfig, NativeReceipt, NativeTrace } from './worker/index.js';
-import { mkdtemp, mkdir, realpath, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SubjectStart } from '../../contracts/execution.js';
@@ -80,7 +80,7 @@ export async function launchFixture(): Promise<{ root: string; input: SubjectSta
   };
   const input: SubjectStart = { trialId: 'unit-trial', workspacePath: workspace, runtimeHomePath: runtime,
     protectedPaths: [runtime, join(root, 'control')], instructions, model: 'test-model-v1', onObservation: () => undefined };
-  const save = async (): Promise<void> => { const { receiptFile, ...receipt } = launch; await writeFile(receiptFile, JSON.stringify(receipt)); };
+  const save = async (): Promise<void> => { const { receiptFile, ...receipt } = launch; await writeFile(receiptFile, JSON.stringify(receipt), { mode: 0o600 }); await chmod(receiptFile, 0o600); };
   await save();
   return { root, input, launch, save };
 }

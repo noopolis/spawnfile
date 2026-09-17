@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { chmod, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { launchFixture } from '../test-fixtures.js';
-import { grokLaunchFrom } from '../grok-fixtures.js';
+import { grokLaunchFrom, grokProtectedPaths, writeGrokSlotReceipt } from '../grok-fixtures.js';
 import { loadNativeLaunch } from './manifest.js';
 
 test('fresh explicit projections preserve candidate bytes and reject unsafe launch sources', async () => {
@@ -60,7 +60,8 @@ test('only one explicitly selected private portable credential ingress is mounte
 test('Grok launches load only for child execution and carry no engine credential mount', async () => {
   const f = await launchFixture();
   try {
-    await grokLaunchFrom(f.launch, f.root); await f.save();
+    const grok = await grokLaunchFrom(f.launch, f.root); await f.save(); await writeGrokSlotReceipt(grok);
+    f.input.protectedPaths = grokProtectedPaths(f.root);
     await expect(loadNativeLaunch({ ...f.input, model: 'grok-4.6' })).rejects.toThrow('Separate-container Grok');
     await expect(loadNativeLaunch(f.input, true)).rejects.toThrow('model');
     const loaded = await loadNativeLaunch({ ...f.input, model: 'grok-4.6' }, true);

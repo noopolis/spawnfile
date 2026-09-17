@@ -1,8 +1,8 @@
 import { expect, test, vi } from 'vitest';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { configFixture, launchFixture, sandboxProjectionFixture } from '../test-fixtures.js';
-import { grokProjectionSha256, sha256, type GrokBrokerProjection } from '../receipt/index.js';
+import { grokProjectionSha256, nativeTrialArtifactsRoot, sha256, type GrokBrokerProjection } from '../receipt/index.js';
 import { grokConfigFor, grokLaunchFrom, grokProjectionFor, writeGrokSlotReceipt } from '../grok-fixtures.js';
 import * as runtime from './public.js';
 import { runDaimonNativeWorker } from './worker.js';
@@ -75,15 +75,17 @@ test('Grok worker loads the Grok runtime capability, sets engine-neutral limits 
   try {
     Object.defineProperty(process, 'platform', { value: 'linux' });
     const config = grokConfigFor(configFixture(f.root));
-    config.agents[0]!.runtimeHomePath = launch.projections[0]!.source; config.agents[0]!.memory!.runtimeHomePath = launch.projections[1]!.source;
+    config.agents[0]!.runtimeHomePath = launch.projections[0]!.source;
     config.host.port = 19784; launch.host.port = 19784; launch.workspace.target = config.agents[0]!.workspacePath;
-    launch.projections[0]!.target = config.agents[0]!.runtimeHomePath; launch.projections[1]!.target = config.agents[0]!.memory!.runtimeHomePath;
+    launch.projections[0]!.target = config.agents[0]!.runtimeHomePath;
     const bytes = JSON.stringify(config); launch.configSha256 = sha256(bytes);
     launch.broker.projectionSha256 = grokProjectionSha256(grokProjectionFor(launch));
     await writeFile(launch.config, bytes); await f.save(); await writeGrokSlotReceipt(launch);
+    const artifacts = nativeTrialArtifactsRoot(launch, 'unit-grok');
+    await mkdir(artifacts, { recursive: true, mode: 0o700 });
     const token = await readFile(launch.tokenFile, 'utf8');
     const args = ['--launch', launch.receiptFile, '--config', launch.config, '--config-sha256', launch.configSha256,
-      '--control-root', launch.controlRoot, '--token-file', launch.tokenFile, '--evidence', join(launch.controlRoot, 'evidence'),
+      '--control-root', launch.controlRoot, '--token-file', launch.tokenFile, '--evidence', join(artifacts, 'evidence'),
       '--trial-id', 'unit-grok', '--timeout-ms', '900000', '--schedule-override', 'disabled'];
     await writeFile(launch.broker.usageLedgerPath, 'not json\n');
     await expect(runDaimonNativeWorker(args)).rejects.toThrow(/valid JSON/);
@@ -97,7 +99,8 @@ test('Grok worker loads the Grok runtime capability, sets engine-neutral limits 
     expect(process.env['DAIMON_TURN_REQUESTS_LEDGER_PATH']).toBe(join(dirname(launch.broker.usageLedgerPath), 'requests.jsonl'));
     const ready = stdout.mock.calls.map(([value]) => String(value)).find(value => value.includes('paideia.daimon-native.ready.v1'))!;
     expect(JSON.parse(ready)).toMatchObject({ model: 'grok-4.6', engine: 'grok', reasoningEffort: 'low', trialId: 'unit-grok' });
-    expect(JSON.parse(await readFile(join(launch.controlRoot, 'sandbox-projection.json'), 'utf8')).schema).toBe('paideia.daimon-native.grok-broker-projection.v1');
+    expect(JSON.parse(await readFile(join(artifacts, 'sandbox-projection.json'), 'utf8')).schema).toBe('paideia.daimon-native.grok-broker-projection.v1');
+    expect(process.env['DAIMON_RUNTIME_ACCEPTANCE_STORE']).toBe(artifacts);
     expect((await fetch('http://127.0.0.1:19784/trial/health', { headers: { authorization: `Bearer ${token}` } })).status).toBe(200);
     handlers[0]!();
     await vi.waitFor(async () => { await expect(fetch('http://127.0.0.1:19784/trial/health')).rejects.toThrow(); });

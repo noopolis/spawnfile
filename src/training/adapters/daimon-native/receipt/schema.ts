@@ -101,6 +101,10 @@ export function parseNativeLaunch(value: unknown): NativeLaunch {
 
 function assertGrokBroker(launch: GrokNativeLaunch): void {
   const { broker } = launch;
+  // A Grok slot has exactly two writable subject roots, and the projection digest binds both:
+  // `workspacePath` and `runtimeHomePath`. Any further projection would be a writable root no
+  // digest covers, so the union is closed here rather than filtered later.
+  if (launch.projections.length !== 1) throw new Error('A Grok launch projects exactly the slot workspace and its runtime home');
   const paths = broker.evaluatorPaths.map(row => row.path);
   if (new Set(paths).size !== paths.length) throw new Error('Grok evaluator paths must be unique');
   const missing = grokEvaluatorRoles.filter(role => !broker.evaluatorPaths.some(row => row.role === role));

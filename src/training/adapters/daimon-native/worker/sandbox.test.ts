@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'vitest';
 import { persistNativeSandboxProjection } from './sandbox.js';
@@ -7,7 +7,7 @@ import { configFixture, launchFixture, sandboxProjectionFixture } from '../test-
 import type { NativeRuntimeModule } from './public.js';
 import type { WorkerOptions } from './types.js';
 import { grokConfigFor, grokLaunchFrom, grokProjectionFor, slotPreflightFor, writeGrokSlotReceipt } from '../grok-fixtures.js';
-import { grokProjectionSha256 } from '../receipt/index.js';
+import { grokProjectionSha256, nativeTrialArtifactsRoot } from '../receipt/index.js';
 
 test('worker resolves exact control-host inputs and refuses another native agent projection', async () => {
   const f = await launchFixture();
@@ -38,6 +38,10 @@ test('Grok slot projection is resolved by Daimon, digest-bound to the launch and
     const config = grokConfigFor(configFixture());
     config.agents[0]!.workspacePath = launch.workspace.target; config.agents[0]!.runtimeHomePath = '/native/home';
     const options = { trialId: 'grok-trial', configSha256: launch.configSha256, controlRoot: launch.controlRoot, timeoutMs: 900_000 } as WorkerOptions;
+    // The slot control root is shared between trials, so Paideia's artifacts live in this trial's own directory inside it.
+    const artifacts = nativeTrialArtifactsRoot(launch, options.trialId);
+    assert.equal(artifacts.startsWith(`${launch.controlRoot}/`), true);
+    await mkdir(artifacts, { recursive: true, mode: 0o700 });
     let projection = grokProjectionFor(launch);
     let daimonDigest: ((value: unknown) => string) | undefined;
     let verifyFailure: string | undefined;
@@ -80,10 +84,10 @@ test('Grok slot projection is resolved by Daimon, digest-bound to the launch and
     await assert.rejects(persist(), /stale: generation/);
     await writeGrokSlotReceipt(launch);
     await assert.rejects(persistNativeSandboxProjection(runtime, config, { ...options, timeoutMs: 1000 }, launch), /timeout exceeds/);
-    await assert.rejects(readFile(join(launch.controlRoot, 'sandbox-projection.json')), /ENOENT/);
+    await assert.rejects(readFile(join(artifacts, 'sandbox-projection.json')), /ENOENT/);
     await persist();
     assert.deepEqual(calls.at(-1), { expectedNonce: launch.broker.expectedNonce, minGeneration: launch.broker.minGeneration });
-    const receipt = JSON.parse(await readFile(join(launch.controlRoot, 'sandbox-projection.json'), 'utf8'));
+    const receipt = JSON.parse(await readFile(join(artifacts, 'sandbox-projection.json'), 'utf8'));
     assert.equal(receipt.schema, 'paideia.daimon-native.grok-broker-projection.v1');
     assert.equal(receipt.projectionSha256, launch.broker.projectionSha256);
     assert.equal(receipt.slotPreflight.projection_sha256, launch.broker.projectionSha256);

@@ -2,10 +2,10 @@ import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
 import type { StopReceipt } from '../../../contracts/execution.js';
-import { isGrokLaunch, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
+import { isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
 import { executionClosed, type NativeActivity, type NativeStopEvidence, type TerminalEvidence } from '../worker/index.js';
 import { createNativeHttpClient, type NativeExecutionHandle } from '../transport/index.js';
-import { nativeChildArguments, nativeChildEnvironment, validateChildPaths } from './arguments.js';
+import { ensureNativeTrialArtifacts, nativeChildArguments, nativeChildEnvironment, validateChildPaths } from './arguments.js';
 import { verifyChildSandbox } from './sandbox.js';
 import type { NativeChildExecution } from './types.js';
 import type { GrokSlotFreshnessStore } from './slot-freshness.js';
@@ -23,6 +23,7 @@ export async function startOwnedChild(execution: NativeChildExecution, launch: V
     if (execution.prepare) await bounded(execution.prepare({ launch: structuredClone(launch), trialId, signal: startup.signal }), startup.signal);
     startup.signal.throwIfAborted();
     await validateChildPaths(launch);
+    await ensureNativeTrialArtifacts(launch, trialId);
     const env = await nativeChildEnvironment(launch);
     const token = (await readPrivateFile(launch.tokenFile, 4096)).trim();
     return await launchChild(launch, trialId, timeoutMs, env, token, startup.signal, protectedPaths, execution.grokSlots);
@@ -32,7 +33,7 @@ export async function startOwnedChild(execution: NativeChildExecution, launch: V
 async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeoutMs: number, env: NodeJS.ProcessEnv,
   token: string, startup: AbortSignal, protectedPaths: readonly string[], grokSlots?: GrokSlotFreshnessStore): Promise<NativeExecutionHandle> {
   const http = createNativeHttpClient(`http://${launch.host.bindHost}:${launch.host.port}`, token);
-  const diagnostics = await childDiagnostics(launch.controlRoot, trialId, launch.configSha256);
+  const diagnostics = await childDiagnostics(nativeTrialArtifactsRoot(launch, trialId), trialId, launch.configSha256);
   const child = spawn(process.execPath, nativeChildArguments(launch, trialId, timeoutMs), {
     cwd: dirname(launch.workerRoot), env, stdio: ['ignore', 'pipe', 'pipe'],
   });

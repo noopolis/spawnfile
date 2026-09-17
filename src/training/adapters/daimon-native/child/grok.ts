@@ -1,7 +1,7 @@
 import { lstat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { GrokSlotFreshnessStore } from './slot-freshness.js';
-import { parseGrokBrokerReceipt, readPrivateFile, requiredGrokEvaluatorPaths, type GrokNativeLaunch, type VerifiedNativeLaunch } from '../receipt/index.js';
+import { nativeTrialArtifactsRoot, parseGrokBrokerReceipt, readPrivateFile, requiredGrokEvaluatorPaths, type GrokNativeLaunch, type VerifiedNativeLaunch } from '../receipt/index.js';
 
 /**
  * Grok slot isolation is proven by the root slot supervisor's receipt, which
@@ -20,10 +20,11 @@ export async function verifyChildGrokSlot(launch: VerifiedNativeLaunch & GrokNat
       const entry = await lstat(path);
       if (!entry.isDirectory() && !entry.isFile()) throw new Error('Unsupported protected native path');
     }
-    const receipt = parseGrokBrokerReceipt(JSON.parse(await readPrivateFile(join(launch.controlRoot, 'sandbox-projection.json'), 1_048_576)),
+    const artifacts = nativeTrialArtifactsRoot(launch, trialId);
+    const receipt = parseGrokBrokerReceipt(JSON.parse(await readPrivateFile(join(artifacts, 'sandbox-projection.json'), 1_048_576)),
       launch, trialId, protectedPaths);
     await slots.accept(receipt.projection.slot, receipt.slotPreflight);
-    await writeFile(join(launch.controlRoot, 'child-sandbox-preflight.json'), JSON.stringify({ schema: 'paideia.daimon-native.child-grok-slot-preflight.v1',
+    await writeFile(join(artifacts, 'child-sandbox-preflight.json'), JSON.stringify({ schema: 'paideia.daimon-native.child-grok-slot-preflight.v1',
       trialId, configSha256: launch.configSha256, projectionSha256: receipt.projectionSha256, slot: receipt.projection.slot,
       workerUid: receipt.projection.workerUid, slotPreflightCreatedAt: receipt.slotPreflight.created_at, slotGeneration: receipt.slotPreflight.generation, modelCallsMade: 0, localSandboxProbe: false,
       evaluatorPathsDenied: [...new Set([...requiredGrokEvaluatorPaths(launch), ...protectedPaths])].sort() }), { flag: 'wx', mode: 0o600 });

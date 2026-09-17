@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { createWorkerController } from './control.js';
 import { assertFreshNativeEvidence } from './evidence.js';
 import { assertNativeProfile, parseWorkerArguments, verifyWorkerPaths } from './profile.js';
-import { isGrokLaunch, parseNativeLaunch, readPrivateFile, sha256 } from '../receipt/index.js';
+import { isGrokLaunch, nativeTrialArtifactsRoot, parseNativeLaunch, readPrivateFile, sha256 } from '../receipt/index.js';
 import { loadDaimonRuntime } from './public.js';
 import { createWorkerServer, listenWorker } from './server.js';
 import { persistNativeSandboxProjection } from './sandbox.js';
@@ -20,20 +20,23 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
   const config = parseOrganizationRuntimeConfig(JSON.parse(bytes));
   assertNativeProfile(config, launch);
   await verifyWorkerPaths(config, options, launch);
-  if ((await readdir(options.controlRoot)).length) throw new Error('Native control root must be empty before startup');
+  // Codex: the control root itself. Grok: this trial's own directory inside the container's fixed slot control root,
+  // which also holds Daimon's store and the previous trials' artifacts and can therefore never be empty.
+  const artifacts = nativeTrialArtifactsRoot(launch, options.trialId);
+  if ((await readdir(artifacts)).length) throw new Error('Native control root must be empty before startup');
   const token = (await readPrivateFile(options.tokenFile, 4096)).trim();
   if (token.length < 24 || /\s/u.test(token)) throw new Error('Invalid isolated control token');
   // Codex meters in this process; the Grok broker is the single sealed writer of its per-slot ledger.
-  const usageFile = grok ? grok.broker.usageLedgerPath : join(options.controlRoot, 'usage.jsonl');
-  const requestsFile = grok ? join(dirname(usageFile), 'requests.jsonl') : join(options.controlRoot, 'requests.jsonl');
+  const usageFile = grok ? grok.broker.usageLedgerPath : join(artifacts, 'usage.jsonl');
+  const requestsFile = grok ? join(dirname(usageFile), 'requests.jsonl') : join(artifacts, 'requests.jsonl');
   await assertFreshNativeEvidence(config.agents[0]!.runtimeHomePath, usageFile, config.agents[0]!.id, launch.agent.model,
     grok ? { engine: 'grok', requestsFile } : { engine: 'codex' });
   process.env[config.host.controlTokenEnv] = token;
   process.env.NOOPOLIS_RUN_ID = options.trialId;
-  process.env.DAIMON_RUNTIME_ACCEPTANCE_STORE = options.controlRoot;
+  process.env.DAIMON_RUNTIME_ACCEPTANCE_STORE = artifacts;
   process.env.DAIMON_TURN_USAGE_LEDGER_PATH = usageFile;
   process.env.DAIMON_TURN_REQUESTS_LEDGER_PATH = requestsFile;
-  process.env.DAIMON_WAKE_FUSE_DIRECTORY = options.controlRoot;
+  process.env.DAIMON_WAKE_FUSE_DIRECTORY = artifacts;
   process.env.DAIMON_WAKE_FUSE_EPOCH = options.trialId;
   process.env.DAIMON_WAKE_FUSE_MAX_WAKES = '1';
   process.env.DAIMON_WAKE_FUSE_MAX_TOKENS = String(launch.limits.maxTokens);
@@ -43,7 +46,7 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
   process.env.DAIMON_ENGINE_WAKE_TOKEN_CEILING = String(launch.limits.wakeTokenCeiling);
   process.env.DAIMON_CODEX_WAKE_TIMEOUT_MS = process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS;
   process.env.DAIMON_CODEX_WAKE_TOKEN_CEILING = process.env.DAIMON_ENGINE_WAKE_TOKEN_CEILING;
-  const host = createOrganizationRuntimeControlHost(config, { acceptanceStorePath: options.controlRoot, controlToken: token });
+  const host = createOrganizationRuntimeControlHost(config, { acceptanceStorePath: artifacts, controlToken: token });
   const controller = createWorkerController(host, config, options, token, launch);
   const server = createWorkerServer(controller, token);
   try {
