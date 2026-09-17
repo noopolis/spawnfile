@@ -14,3 +14,9 @@ read before runtime construction and hashed into command identity. It has no bri
 or optimizer route. Reject incompatible optimizer/repair flags rather than ignoring
 them. Dry-run and execution share candidate preflight, but cost datasets remain
 non-executable projections.
+
+`grok-broker` models build one provider per purpose (judge or optimizer) over a single
+grant pool. The training container supplies `PAIDEIA_GROK_BROKER_CONTROL_SOCKET` and a
+private `PAIDEIA_GROK_GRANT_HOME_ROOT`; missing values, a missing Daimon or a pin drift
+fail every call closed. Routes may not mix `grok-broker` with `grok-subscription`.
+

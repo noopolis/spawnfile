@@ -17,3 +17,7 @@ Grok is engine-parameterized, not a Codex fork: launch.v2 records model/effort a
 broker slot, never a credential. Daimon resolves the slot projection and verifies
 the root supervisor's slot receipt; Paideia binds both by canonical digest and
 requires a denied canary for every evaluator root. Codex behavior stays byte-equal.
+
+`grants/` binds evaluator inference grants (judges and DSPy optimizer) to Daimon's
+public control client and client-config renderer behind a Paideia-owned pin.
+

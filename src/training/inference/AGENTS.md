@@ -35,3 +35,8 @@ Framing, unfinished envelopes, OAuth and tool-isolation failures stay terminal.
 Protected failure diagnostics have finite codes and bounded final-answer text;
 never retain thinking/native stderr. Route observers are awaited under the audit
 deadline before fallback. Diagnostics must not enter serialized public results.
+
+`auth-stale` means a shared credential authority (`capabilities.credentialAuthority`,
+e.g. one Daimon broker realm) is stale. Routing records the attempt, never retries a
+route on that authority and may continue to an authored route on another authority.
+
