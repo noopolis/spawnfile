@@ -3,7 +3,7 @@ import {
   DAIMON_GROK_TURN_USAGE_LEDGER
 } from "../runtime/daimon/contractManifest.js";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
-import { resolveDaimonGrokRegistrations } from "./containerDaimonGrokWorkerRender.js";
+import { resolveDaimonGrokRegistrations, type DaimonGrokRegistration, type DaimonGrokServiceConfigOptions } from "./containerDaimonGrokWorkerRender.js";
 import { renderDaimonGrokWorkerProvisioning } from "./containerDaimonGrokWorkerProvisioning.js";
 import {
   DAIMON_BROKER_UID,
@@ -101,6 +101,29 @@ export const renderDaimonBrokerProvisioning = (plans: RuntimeTargetPlan[]): stri
         : null
     }))
     .sort((left, right) => left.linkPath.localeCompare(right.linkPath));
+  return renderDaimonBrokerProvisioningProgram(registrations, workspaceResources);
+};
+
+/**
+ * The root broker provisioning program itself, over already-resolved
+ * registrations and workspace resources.
+ *
+ * Production reaches it through {@link renderDaimonBrokerProvisioning}; the
+ * broker-capable training container reaches it directly for its single fixed
+ * slot, with `serviceOptions` pointing the turn store at per-slot tmpfs and
+ * declaring the evaluator inference ledger. Both callers get byte-identical
+ * credential, registration, worker-home, temp and spill provisioning — the
+ * whole point of sharing it rather than writing a second root program.
+ *
+ * It is re-runnable: the shell wrapper removes `/etc/daimon-engine-broker` and
+ * `/run/daimon-engine-broker` first, so a slot recycle replays exactly the
+ * audited start-up path, credential-journal recovery included.
+ */
+export const renderDaimonBrokerProvisioningProgram = (
+  registrations: readonly DaimonGrokRegistration[],
+  workspaceResources: WorkspaceSecurityResource[],
+  serviceOptions: DaimonGrokServiceConfigOptions = {}
+): string[] => {
   const program = [
     "const crypto = require('node:crypto'); const fs = require('node:fs');",
     `const registrations = ${JSON.stringify(registrations.map(({ agentId, home, slot, uid, workspace }) => ({ agentId, home, slot, uid, workspace })))};`,
@@ -126,7 +149,7 @@ export const renderDaimonBrokerProvisioning = (plans: RuntimeTargetPlan[]): stri
     `try { const journalPath = '${DAIMON_BROKER_REALM}/.daimon-broker/credential-journal.json'; let journal; try { const raw = readSecure(journalPath, 2100, 'recovery journal'); journal = JSON.parse(raw.toString('utf8')); raw.fill(0); } catch (error) { if (error.code !== 'ENOENT') throw error; } const stale = journal?.version === 'noopolis.daimon.broker-credential-journal.v1' && journal.state === 'stale'; const recover = () => { if (!stale || !Number.isSafeInteger(journal.generation) || journal.generation < 0 || !/^[a-f0-9]{64}$/.test(journal.sourceDigest) || journal.sourceDigest !== journal.promotedDigest || bootstrapDigest === journal.sourceDigest) throw new Error('unsafe broker credential recovery'); atomicOwned(authority, bootstrapBytes); const recovered = Buffer.from(\`${"${JSON.stringify({ version: 'noopolis.daimon.broker-credential-journal.v1', state: 'promoted', generation: journal.generation + 1, sourceDigest: journal.sourceDigest, promotedDigest: bootstrapDigest })}"}\\n\`); try { atomicOwned(journalPath, recovered); } finally { recovered.fill(0); } }; if (!existing) { if (stale) recover(); else atomicOwned(authority, bootstrapBytes); } else { const authorityBytes = readSecure(authority, 2100, 'authority'); try { const authorityDigest = crypto.createHash('sha256').update(authorityBytes).digest('hex'); if (stale) { if (authorityDigest !== journal.sourceDigest && authorityDigest !== bootstrapDigest) throw new Error('unsafe broker credential recovery'); if (authorityDigest === bootstrapDigest) { const recovered = Buffer.from(\`${"${JSON.stringify({ version: 'noopolis.daimon.broker-credential-journal.v1', state: 'promoted', generation: journal.generation + 1, sourceDigest: journal.sourceDigest, promotedDigest: bootstrapDigest })}"}\\n\`); try { atomicOwned(journalPath, recovered); } finally { recovered.fill(0); } } else recover(); } } finally { authorityBytes.fill(0); } } } finally { bootstrapBytes.fill(0); }`,
     "if (journalRootExists) { fs.chownSync(journalRoot, 0, 0); fs.chmodSync(journalRoot, 0o700); fs.chownSync(journalRoot, 2100, 2100); }",
     ...renderDaimonWorkspaceResourceSecurity(workspaceResources),
-    ...renderDaimonGrokWorkerProvisioning(registrations),
+    ...renderDaimonGrokWorkerProvisioning(registrations, serviceOptions),
     `fs.chownSync('${DAIMON_BROKER_REALM}', 0, 0); fs.chmodSync('${DAIMON_BROKER_REALM}', 0o700); fs.chownSync('${DAIMON_BROKER_REALM}', 2100, 2100);`,
     "fs.chmodSync('/etc/daimon-engine-broker', 0o555);"
   ].join("\n");
