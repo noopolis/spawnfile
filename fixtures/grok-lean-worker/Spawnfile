@@ -1,0 +1,22 @@
+spawnfile_version: "0.1"
+kind: agent
+name: grok-lean-worker
+description: "One brokered Daimon Grok agent for the Grok 1.0.34 lean-worker live check"
+
+runtime:
+  name: daimon
+  options:
+    engine: grok
+
+execution:
+  model:
+    primary:
+      provider: xai
+      name: grok-4.6
+      auth:
+        method: grok
+      reasoning_effort: low
+
+workspace:
+  docs:
+    system: AGENTS.md
