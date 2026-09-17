@@ -1,6 +1,6 @@
 export type JsonPrimitive = boolean | null | number | string;
 export type JsonValue = JsonObject | JsonPrimitive | JsonValue[];
-export type ModelAuthMethod = "api_key" | "claude-code" | "codex" | "none";
+export type ModelAuthMethod = "api_key" | "claude-code" | "codex" | "grok" | "none";
 export type ModelEndpointCompatibility = "anthropic" | "openai";
 export type RuntimeLifecycleStatus = "active" | "deprecated" | "exploratory";
 

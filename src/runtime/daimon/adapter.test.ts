@@ -25,6 +25,9 @@ const createDaimonNode = (id: string, name = id, engine = "codex") => {
     source: `/tmp/agent/${id}/Spawnfile`
   });
   if (engine === "codex") return node;
+  if (engine === "grok") {
+    return { ...node, execution: { ...node.execution!, model: { primary: { auth: { method: "grok" as const }, name: "grok-4.6", provider: "xai", reasoning_effort: "low" as const } } } };
+  }
   const { model: _model, ...execution } = node.execution!;
   return { ...node, execution };
 };
@@ -192,7 +195,7 @@ describe("daimonAdapter", () => {
     expect(JSON.parse(target.files.find((file) => file.path === DAIMON_CONFIG_FILE)!.content).agents)
       .toEqual(expect.arrayContaining([
         expect.objectContaining({ engine: { kind: "codex", model: "gpt-5.4-mini" } }),
-        expect.objectContaining({ engine: { kind: "grok" } }),
+        expect.objectContaining({ engine: { kind: "grok", model: "grok-4.6", reasoningEffort: "low" } }),
         expect.objectContaining({ engine: { kind: "agy" } })
       ]));
     expect(target.opaqueMountTargets).toEqual([
@@ -383,9 +386,42 @@ describe("daimonAdapter", () => {
     ]) });
     await expect(daimonAdapter.compileAgent(createPiTestNode({
       runtime: { name: "daimon", options: { engine: "grok" } }
+    }))).rejects.toThrow("must use provider xai with auth.method grok");
+    await expect(daimonAdapter.compileAgent(createPiTestNode({
+      runtime: { name: "daimon", options: { engine: "agy" } }
     }))).rejects.toThrow("must omit Spawnfile execution.model");
     expect(() => daimonAdapter.assertSupportedSurfaces?.({ moltnet: [{ network: "test" }] } as any)).not.toThrow();
     expect(() => daimonAdapter.assertSupportedSurfaces?.({ discord: [{}] } as any)).toThrow("only lowers Moltnet");
+  });
+
+  it("requires a brokered Grok agent to declare one listed xAI model and its reasoning effort, never inherited", async () => {
+    const grok = createDaimonNode("grok", "Grok", "grok");
+    const withPrimary = (primary: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+      ({ ...grok, execution: { ...grok.execution!, model: { primary, ...extra } } }) as typeof grok;
+    const declared = { auth: { method: "grok" }, name: "grok-4.6", provider: "xai", reasoning_effort: "low" };
+    await expect(daimonAdapter.compileAgent(grok)).resolves.toBeDefined();
+    for (const name of ["grok-4.5", "grok-build"]) {
+      for (const reasoning_effort of ["medium", "high"]) {
+        await expect(daimonAdapter.compileAgent(withPrimary({ ...declared, name, reasoning_effort }))).resolves.toBeDefined();
+      }
+    }
+    await expect(daimonAdapter.compileAgent({ ...grok, execution: { sandbox: { mode: "workspace" } } } as typeof grok))
+      .rejects.toThrow("must declare its brokered model and reasoning effort");
+    await expect(daimonAdapter.compileAgent(withPrimary({ ...declared, name: "grok-4" }))).rejects.toThrow("unsupported model grok-4");
+    await expect(daimonAdapter.compileAgent(withPrimary({ ...declared, name: "grok-code-fast-1" }))).rejects.toThrow("unsupported model");
+    const { reasoning_effort: _effort, ...withoutEffort } = declared;
+    await expect(daimonAdapter.compileAgent(withPrimary(withoutEffort))).rejects.toThrow("must declare reasoning_effort");
+    await expect(daimonAdapter.compileAgent(withPrimary({ ...declared, reasoning_effort: "xhigh" }))).rejects.toThrow("must declare reasoning_effort");
+    await expect(daimonAdapter.compileAgent(withPrimary({ ...declared, provider: "openai" }))).rejects.toThrow("must use provider xai");
+    await expect(daimonAdapter.compileAgent(withPrimary({ ...declared, auth: undefined }, { auth: { method: "grok" } })))
+      .rejects.toThrow("exactly one model with target-level auth");
+    await expect(daimonAdapter.compileAgent(withPrimary(declared, { fallback: [declared] }))).rejects.toThrow("exactly one model");
+    const codex = createDaimonNode("codex", "Codex", "codex");
+    await expect(daimonAdapter.compileAgent({ ...codex, execution: { ...codex.execution!, model: { primary: declared } } } as typeof codex))
+      .rejects.toThrow("cannot declare Grok model auth");
+    expect(() => daimonAdapter.assertSupportedModelTarget?.({ auth: { method: "grok" }, name: "grok-4.6", provider: "xai", reasoningEffort: "low" })).not.toThrow();
+    expect(() => daimonAdapter.assertSupportedModelTarget?.({ auth: { method: "codex" }, name: "gpt", provider: "openai", reasoningEffort: "low" })).toThrow(/brokered xAI Grok/u);
+    expect(() => daimonAdapter.assertSupportedModelTarget?.({ auth: { method: "grok" }, name: "grok-4.6", provider: "openai" })).toThrow(/brokered xAI Grok/u);
   });
 
   it("validates the complete public model, option, MCP, and empty-target boundaries", async () => {

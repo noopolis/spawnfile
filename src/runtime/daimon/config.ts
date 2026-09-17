@@ -20,6 +20,7 @@ import {
 } from "./memory.js";
 import { assertDaimonScheduleAuthority } from "./scheduleAuthority.js";
 import { assertDaimonAttentionAuthority, resolveDaimonAttention } from "./attention.js";
+import { resolveDaimonGrokModel } from "./grokModel.js";
 
 export const DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY = { mode: "workspace-write", networkAccess: false, webSearch: "disabled" } as const;
 
@@ -100,8 +101,12 @@ export const resolveDaimonEngine = (node: ResolvedAgentNode): DaimonEngine => {
 
 const resolveDaimonEngineConfig = (
   node: ResolvedAgentNode
-): { kind: DaimonEngine; model?: string; codexSandbox?: typeof DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY } => {
+): { kind: DaimonEngine; model?: string; reasoningEffort?: string; codexSandbox?: typeof DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY } => {
   const kind = resolveDaimonEngine(node);
+  if (kind === "grok") {
+    const declared = resolveDaimonGrokModel(node);
+    return { kind, model: declared.model, reasoningEffort: declared.reasoningEffort };
+  }
   const model = kind === "codex" ? node.execution?.model?.primary?.name : undefined;
   const codexSandbox = kind === "codex" && node.runtime.options.codex_policy === "workspace-no-network"
     ? DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY
