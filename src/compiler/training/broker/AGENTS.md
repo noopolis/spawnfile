@@ -35,7 +35,19 @@ Local constraints:
 - The supervisor socket's uid gate is the socket node (`root:2000 0660` in a
   root-owned `0711` directory on tmpfs), because Node exposes no `SO_PEERCRED`.
   A `0600` root-owned socket would deny the one caller it exists for.
-- A worker-uid canary over a host bind proves nothing (Docker Desktop and
-  Colima ignore `chown`), so `unenforcedBindPolicy` decides between refusing
-  the slot and accepting the bubblewrap deny list as that path's only boundary.
+- A worker-uid canary over a host bind proves nothing — the host owns the inode,
+  and Docker Desktop and Colima ignore `chown` outright — so
+  `unenforcedBindPolicy` decides between refusing the slot and accepting the
+  bubblewrap deny list as that path's only boundary.
+- Grok 1.0.34 materializes every `deny` target inside bubblewrap as the worker
+  uid, so a deny entry it cannot create makes the whole profile fail. That is
+  why `/run/paideia` is masked as a directory rather than file by file, and why
+  provisioning creates every non-bind deny target itself. One entry still fails
+  this way (`.runtime/grok-p5/EVIDENCE.md`): the wake-acceptance store, which is
+  Daimon's own protected path under a `2000:2000 0700` parent.
+- Root here holds `CAP_CHOWN`, `CAP_SETUID`, `CAP_SETGID`, `CAP_SETPCAP`,
+  `CAP_KILL` and `CAP_DAC_READ_SEARCH` — never `CAP_FOWNER` or
+  `CAP_DAC_OVERRIDE`. Create the whole tree while it is still root-owned, set
+  ownership from the deepest path up, and reclaim an inode (and its parent)
+  before chmod-ing or unlinking it.
 - Keep files under 400 lines and tests adjacent.
