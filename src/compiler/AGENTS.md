@@ -207,7 +207,14 @@ src/compiler/
   spill contract: `<worker home>/tmp` `<worker>:<worker> 0700` (the launcher's
   `TMPDIR`); `/tmp` and `/var/tmp` `root:2000 1774` (Grok refuses to start if
   they are denied, so modes close them); `<runtime home>/tool-output`
-  `2000:<worker> 2750` under a runtime home `2000:<worker> 0710` whose
+  `2000:<worker> 2750` under a runtime home `2000:<worker> 0710` — the exact
+  shape Daimon's engine-aware `physicalReadiness.ts` demands for a brokered
+  Grok agent (owner = runtime uid, mode `0710` with no setgid or sticky, group a
+  worker group; a `0700` home is refused because the worker could not read its
+  own spills, and every other engine keeps `0700`). Every persistent mount
+  inside that traversable home (tool state, the credential home) is re-secured
+  to `0700 2000:2000`, so `tool-output` is the only thing in there the worker
+  can reach whose
   `/var/lib/spawnfile` ancestors are made traversable by reclaim-mode-restore.
   Root here holds no `CAP_DAC_OVERRIDE`, so the private temp is created while the
   worker home is still root-owned and the spill directory before the runtime home

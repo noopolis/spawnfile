@@ -26,6 +26,7 @@ const programRegistration = (entry: DaimonGrokRegistration) => ({
   profileSha256: entry.profileSha256,
   reasoningEffort: entry.reasoningEffort,
   runtimeHome: entry.runtimeHome,
+  runtimeHomeMounts: entry.runtimeHomeMounts,
   spillDirectory: entry.spillDirectory,
   slot: entry.slot,
   uid: entry.uid,
@@ -78,7 +79,7 @@ export const renderDaimonGrokWorkerProvisioning = (registrations: readonly Daimo
   // Spills: <runtimeHome>/tool-output 2000:<worker> 2750 (setgid) under a runtime home the worker's group can
   // traverse. The spill directory is created before the runtime home is narrowed to 0710: without
   // CAP_DAC_OVERRIDE root cannot create inside a directory it does not own once the mode excludes it.
-  `for (const entry of grokWorkers) { traversable(entry.runtimeHome); fs.mkdirSync(entry.runtimeHome, { recursive: true, mode: 0o700 }); assertCanonical(entry.runtimeHome, 'runtime home'); try { fs.mkdirSync(entry.spillDirectory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; } assertCanonical(entry.spillDirectory, 'spill directory'); withMode(entry.spillDirectory, 0o2750, ${DAIMON_ORGANIZATION_UID}, entry.uid); withMode(entry.runtimeHome, 0o710, ${DAIMON_ORGANIZATION_UID}, entry.uid); }`,
+  `for (const entry of grokWorkers) { traversable(entry.runtimeHome); fs.mkdirSync(entry.runtimeHome, { recursive: true, mode: 0o700 }); assertCanonical(entry.runtimeHome, 'runtime home'); try { fs.mkdirSync(entry.spillDirectory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; } assertCanonical(entry.spillDirectory, 'spill directory'); withMode(entry.spillDirectory, 0o2750, ${DAIMON_ORGANIZATION_UID}, entry.uid); for (const mounted of entry.runtimeHomeMounts) { assertCanonical(mounted, 'runtime home mount'); withMode(mounted, 0o700, ${DAIMON_ORGANIZATION_UID}, ${DAIMON_ORGANIZATION_UID}); } withMode(entry.runtimeHome, 0o710, ${DAIMON_ORGANIZATION_UID}, entry.uid); }`,
   // Shared temp: Grok refuses a profile denying /tmp or /var/tmp, so modes close them: root:<org group> 1774 lets workers list names only.
   `for (const shared of ${JSON.stringify(DAIMON_GROK_ENGINE_BROKER.worker.home.sharedTmp.paths)}) { fs.mkdirSync(shared, { recursive: true, mode: 0o1777 }); assertCanonical(shared, 'shared temp'); withMode(shared, 0o${DAIMON_GROK_ENGINE_BROKER.worker.home.sharedTmp.mode.toString(8)}, 0, ${DAIMON_ORGANIZATION_UID}); }`,
   // Deny-path placement, asserted once every mode above is final. Grok 1.0.34 materializes each deny
