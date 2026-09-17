@@ -6,7 +6,7 @@ import {
 } from "../../../runtime/daimon/contractManifest.js";
 import type { DaimonGrokRegistration } from "../../containerDaimonGrokWorkerRender.js";
 import type { TrainingBrokerDeclaration } from "./declaration.js";
-import { TRAINING_SLOT_ACCEPTANCE_STORE, TRAINING_SLOT_RUNTIME_HOME, TRAINING_SLOT_STATE_ROOT, TRAINING_SLOT_WORKSPACE, TRAINING_WORKER_HOME } from "./paths.js";
+import { TRAINING_SLOT_RUNTIME_HOME, TRAINING_SLOT_STATE_ROOT, TRAINING_SLOT_WORKSPACE, TRAINING_WORKER_HOME } from "./paths.js";
 
 /**
  * The slice of Daimon's public `@noopolis/daimon/runtime` export the slot
@@ -87,10 +87,10 @@ export const resolveTrainingGrokProjection = async (
       architecture: declaration.architecture,
       usageLedgerPath: registration.usageLedgerPath,
       limits: declaration.limits,
-      acceptanceStorePath: TRAINING_SLOT_ACCEPTANCE_STORE,
-      // Daimon masks the store through the slot state root it lives in; the store's own parent is
-      // `2000:2000 0700`, so bubblewrap could not materialize a deny target inside it as the worker uid.
-      acceptanceStoreDenyPath: TRAINING_SLOT_STATE_ROOT,
+      // The mask that protects the wake-acceptance store is the slot state root it lives in: the store's
+      // own parent is `2000:2000 0700`, so bubblewrap could not materialize a deny target inside it as
+      // the worker uid. Every party that recomputes this projection must pass the same value.
+      acceptanceStorePath: TRAINING_SLOT_STATE_ROOT,
       denyPaths: registration.denyPaths,
       seccompProfileSha256: declaration.seccompProfileSha256,
       profileSha256: registration.profileSha256
