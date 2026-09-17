@@ -10,6 +10,7 @@ import { readUsageLedgerViaExec, type UsageLedgerExec } from "../runtime/usageLe
 import { DEFAULT_OUTPUT_DIRECTORY, errorExitCode } from "../shared/index.js";
 import {
   computeUsageCoverage,
+  dedupeUsageRecordsByTurn,
   DEFAULT_USAGE_SINCE,
   filterUsageRecordsSince,
   groupUsageByAgent,
@@ -109,7 +110,7 @@ const renderTable = (
 ): string => {
   const groupBy = options.by ?? "agent";
   const coverage = computeUsageCoverage(windowed, usage.roster.length, usage.unreadableUnits.length);
-  const totalTokens = windowed.reduce((sum, record) => sum + record.total, 0);
+  const totalTokens = dedupeUsageRecordsByTurn(windowed).reduce((sum, record) => sum + record.total, 0);
   const lines: string[] = [];
 
   const coverageLabel = coverage.partial
@@ -128,7 +129,7 @@ const renderTable = (
     const width = Math.max(8, ...rows.map((row) => row.agent.length));
     lines.push(`${pad("agent", width)}  ${pad("engine", 8)}${padStart("turns", 7)}${padStart("tokens", 9)}${padStart("notional", 11)}${padStart("share", 7)}`);
     for (const row of rows) {
-      lines.push(`${pad(row.agent, width)}  ${pad(row.engine ?? "—", 8)}${padStart(row.turns === 0 ? "—" : String(row.turns), 7)}${padStart(formatTokens(row.tokens), 9)}${padStart(formatUsd(row.notionalUsd, row.turns), 11)}${padStart(formatShare(row.tokens, totalTokens), 7)}`);
+      lines.push(`${pad(row.agent, width)}  ${pad(row.engine ?? "—", 8)}${padStart(row.turns === 0 ? "—" : String(row.turns), 7)}${padStart(`${row.estimatedTurns > 0 ? "~" : ""}${formatTokens(row.tokens)}`, 9)}${padStart(formatUsd(row.notionalUsd, row.turns), 11)}${padStart(formatShare(row.tokens, totalTokens), 7)}`);
     }
     lines.push("─".repeat(width + 44));
   }
@@ -143,6 +144,10 @@ const renderTable = (
 
   lines.push("");
   lines.push("Counts are a lower bound: the engine stream carries no completeness marker.");
+  if (coverage.estimatedTurnCount > 0) {
+    const estimatedRequests = engineRows.reduce((sum, row) => sum + row.estimatedRequests, 0);
+    lines.push(`~ ${coverage.estimatedTurnCount} turn(s) include ESTIMATED usage: ${estimatedRequests} request(s) returned no provider-reported usage and were charged a conservative estimate, not a measurement.`);
+  }
   if (coverage.incompleteRecordCount > 0) {
     lines.push(`${coverage.incompleteRecordCount} turn(s) reported all-zero usage and are counted as unknown, not free.`);
   }

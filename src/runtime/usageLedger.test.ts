@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   computeUsageCoverage,
+  dedupeUsageRecordsByTurn,
   DEFAULT_USAGE_SINCE,
   filterUsageRecordsSince,
   groupUsageByAgent,
@@ -31,6 +32,29 @@ const record = (overrides: Partial<UsageRecord> = {}): UsageRecord => ({
 });
 
 const line = (overrides: Partial<UsageRecord> = {}): string => JSON.stringify(record(overrides));
+
+describe("broker usage rows", () => {
+  const turn = "c".repeat(64);
+
+  it("accepts turn, limit_reason, model, estimated_requests, and outcome from Daimon's closed vocabularies", () => {
+    expect(parseUsageLedgerLine(line({ estimated_requests: 3, limit_reason: "tokens", model: "grok-4.6", outcome: "failed", turn })))
+      .toEqual(record({ estimated_requests: 3, limit_reason: "tokens", model: "grok-4.6", outcome: "failed", turn }));
+    const malformed = JSON.stringify({ ...record(), estimated_requests: 0, limit_reason: "budget", model: "gpt-5", outcome: "maybe", turn: "not-hex" });
+    // A malformed optional field is dropped, never the row's spend.
+    expect(parseUsageLedgerLine(malformed)).toEqual(record());
+  });
+
+  it("dedupes a replayed turn in parsing and in every aggregate, keeping unkeyed rows", () => {
+    const text = [line({ total: 10, turn }), line({ total: 10, turn }), line({ total: 5 }), line({ total: 5 })].join("\n");
+    const parsed = parseUsageLedger(text);
+    expect(parsed.map((entry) => entry.total)).toEqual([10, 5, 5]);
+    const duplicated = [record({ total: 10, turn }), record({ total: 10, turn })];
+    expect(dedupeUsageRecordsByTurn(duplicated)).toHaveLength(1);
+    expect(groupUsageByAgent(duplicated)[0]).toMatchObject({ tokens: 10, turns: 1 });
+    expect(groupUsageByEngine(duplicated)[0]).toMatchObject({ tokens: 10, turns: 1 });
+    expect(computeUsageCoverage([record({ complete: false, turn }), record({ complete: false, turn })], 1).incompleteRecordCount).toBe(1);
+  });
+});
 
 describe("parseUsageLedgerLine", () => {
   it("parses a well-formed line", () => {
@@ -164,6 +188,8 @@ describe("groupUsageByAgent", () => {
     expect(cogsworth).toEqual({
       agent: "cogsworth",
       engine: "grok",
+      estimatedRequests: 0,
+      estimatedTurns: 0,
       incompleteTurns: 1,
       notionalUsd: 3,
       tokens: 300,
@@ -172,6 +198,8 @@ describe("groupUsageByAgent", () => {
     expect(groups.find((g) => g.agent === "foreman")).toEqual({
       agent: "foreman",
       engine: "grok",
+      estimatedRequests: 0,
+      estimatedTurns: 0,
       incompleteTurns: 0,
       notionalUsd: 3,
       tokens: 300,
@@ -189,6 +217,8 @@ describe("groupUsageByAgent", () => {
     expect(groups.find((g) => g.agent === "brass")).toEqual({
       agent: "brass",
       engine: "codex",
+      estimatedRequests: 0,
+      estimatedTurns: 0,
       incompleteTurns: 0,
       notionalUsd: 0,
       tokens: 0,
@@ -208,6 +238,8 @@ describe("groupUsageByEngine", () => {
 
     expect(groups.find((g) => g.engine === "grok")).toEqual({
       engine: "grok",
+      estimatedRequests: 0,
+      estimatedTurns: 0,
       incompleteTurns: 0,
       notionalUsd: 11.1,
       tokens: 3_500_000,
@@ -215,6 +247,8 @@ describe("groupUsageByEngine", () => {
     });
     expect(groups.find((g) => g.engine === "codex")).toEqual({
       engine: "codex",
+      estimatedRequests: 0,
+      estimatedTurns: 0,
       incompleteTurns: 0,
       notionalUsd: 0,
       tokens: 0,
@@ -231,6 +265,7 @@ describe("computeUsageCoverage", () => {
     expect(coverage).toEqual({
       agentsReporting: 2,
       agentsTotal: 16,
+      estimatedTurnCount: 0,
       incompleteRecordCount: 0,
       partial: true,
       unreadableUnitCount: 0
