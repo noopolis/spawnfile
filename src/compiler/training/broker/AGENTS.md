@@ -45,6 +45,17 @@ Local constraints:
   provisioning creates every non-bind deny target itself. One entry still fails
   this way (`.runtime/grok-p5/EVIDENCE.md`): the wake-acceptance store, which is
   Daimon's own protected path under a `2000:2000 0700` parent.
+- **Nothing the launch mounts may sit inside a wipe target.** A mount point
+  cannot be unlinked while it is mounted, so a recycle that must remove or
+  empty a directory holding one aborts. The broker/relay `TMPDIR` lived at the
+  production `<control root>/tmp`, which training clears on every recycle and
+  the launch mounts as its own tmpfs — a live P8 launch died on
+  `find: cannot delete …: Device or resource busy` before any model call. It is
+  `/run/training/broker-tmp` now. `paths.test.ts` checks the invariant against
+  the launch's own mount list, and the rendered shell
+  (`MOUNT_AWARE_CLEAR_HELPER`) skips mount points regardless, so an undeclared
+  one degrades to "left in place" and anything genuinely busy is reported by
+  name instead of as a bare `find` failure.
 - Root here holds `CAP_CHOWN`, `CAP_SETUID`, `CAP_SETGID`, `CAP_SETPCAP`,
   `CAP_KILL` and `CAP_DAC_READ_SEARCH` — never `CAP_FOWNER` or
   `CAP_DAC_OVERRIDE`. Create the whole tree while it is still root-owned, set

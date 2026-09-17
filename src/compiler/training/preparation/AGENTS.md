@@ -15,5 +15,10 @@ lines. Source/lock/recipe mutation must invalidate cache and exact resume.
   captured-work repair. Optional compiler selects a separate full pinned native
   compiler distribution; the current package still owns launch/auth operations.
 - Exclude explicit generated Python coverage/cache files, not arbitrary dotfiles.
+- `scratch.ts` claims the private preparation directory. A launch that aborts
+  past staging leaves it behind; a leftover from the *same* preparation digest
+  is reclaimed and re-staged, anything else is left untouched and reported by
+  name with the command that clears it. It must never delete a directory it
+  cannot prove is a leftover of this exact preparation.
 - Repair transport/compatibility lives in sibling `repair/`; it never changes
   candidate, criteria or checkpoint semantics owned by Paideia.
