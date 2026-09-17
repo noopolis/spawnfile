@@ -44,6 +44,13 @@ export const DAIMON_ORGANIZATION_STATE_DIRECTORY = path.posix.join(
   "state"
 );
 
+/**
+ * Paths Grok 1.0.34's strict base profile grants (read or read-write). Grok
+ * refuses to start when a deny entry equals or contains one of them (verified
+ * for `/tmp`, `/var/tmp`, `/run`, `/etc` and `sessions`; `/tmp/sub` works), so a
+ * deny entry must always sit strictly below every grant it touches.
+ */
+export const DAIMON_GROK_BASE_PROFILE_GRANTS = ["/bin", "/dev", "/etc", "/lib", "/proc", "/run", "/sbin", "/sys", "/tmp", "/usr", "/var", "/var/tmp"] as const;
 export interface DaimonGrokRegistration {
   agentId: string;
   config: string;
@@ -170,6 +177,12 @@ export const resolveDaimonGrokWorkerDenyPaths = (
     ...workerHomes.filter((home) => home !== ownHome),
     ...DAIMON_GROK_OPTIONAL_DENY_PATHS
   ].filter((entry) => entry.startsWith("/"));
+  const grokHome = path.posix.join(ownHome, DAIMON_GROK_WORKER_HOME_DIRECTORY);
+  const grants = [...DAIMON_GROK_BASE_PROFILE_GRANTS, ownWorkspace, grokHome, path.posix.join(grokHome, "sessions"), path.posix.join(ownHome, "tmp")];
+  for (const entry of [...daimonOwn, ...added]) {
+    const grant = grants.find((candidate) => within(candidate, entry));
+    if (grant) fail(`Grok worker deny path ${entry} equals or contains the base profile grant ${grant}; Grok refuses such a profile`);
+  }
   for (const entry of added) {
     if (within(ownWorkspace, entry) || within(ownHome, entry) || entry === ownRuntimeHome || within(ownRuntimeHome, entry)
       || [...ownResourceBackings].some((backing) => within(backing, entry))) {
