@@ -3,7 +3,8 @@ import type { JudgeRoute } from '../../contracts/evaluation.js';
 import { createHash } from 'node:crypto';
 import type { InferenceProvider } from '../../contracts/index.js';
 import type { TrainingModel, TrainingRoute } from '../../contracts/training-config.js';
-import { createClaudeInference, createGrokInference, createOllamaInference, createRoutedInference } from '../../inference/index.js';
+import { createClaudeInference, createGrokBrokerInference, createGrokInference, createOllamaInference, createRoutedInference, GrokGrantPool } from '../../inference/index.js';
+import { grokBrokerControlSocketEnv, grokGrantHomeRootEnv, loadDaimonGrokGrantAuthority } from '../../adapters/daimon-native/index.js';
 import { createJudgeCache } from '../../evaluation/index.js';
 import { judgeVersions } from './configuration.js';
 import type { CliArguments } from '../arguments.js';
@@ -17,18 +18,24 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
   trainingInferencePolicies(config, executionIdentity);
   const legacy = () => dependencies.inference?.(timeoutMs) ?? createClaudeInference({ timeoutMs });
   const providers = new Map<string, InferenceProvider>();
-  function provider(name: string): InferenceProvider {
-    if (providers.has(name)) return providers.get(name)!;
+  let grants: GrokGrantPool | undefined;
+  function provider(name: string, purpose: 'judge' | 'optimizer'): InferenceProvider {
     const model = config!.models[name]!;
+    // Broker grants record their purpose, so a broker model gets one provider per purpose.
+    const key = model.provider === 'grok-broker' ? `${name}\0${purpose}` : name;
+    if (providers.has(key)) return providers.get(key)!;
     const selected = dependencies.modelInference?.(model, timeoutMs) ?? (model.provider === 'claude-subscription'
       ? createClaudeInference({ timeoutMs }) : model.provider === 'grok-subscription'
-        ? createGrokInference({ timeoutMs, reasoningEffort: model.reasoning_effort }) : createOllamaInference({ baseUrl: model.endpoint ?? 'http://127.0.0.1:11434', timeoutMs, think: model.think, keepAliveSeconds: model.keep_alive_seconds, maxOutputTokens: model.max_output_tokens, contextWindowTokens: model.context_window }));
-    providers.set(name, selected);
+        ? createGrokInference({ timeoutMs, reasoningEffort: model.reasoning_effort })
+        : model.provider === 'grok-broker' ? createGrokBrokerInference({ pool: grants ??= grokGrantPool(dependencies), homeRoot: brokerHomeRoot(), purpose, timeoutMs,
+          reasoningEffort: model.reasoning_effort as 'low' | 'medium' | 'high' })
+          : createOllamaInference({ baseUrl: model.endpoint ?? 'http://127.0.0.1:11434', timeoutMs, think: model.think, keepAliveSeconds: model.keep_alive_seconds, maxOutputTokens: model.max_output_tokens, contextWindowTokens: model.context_window }));
+    providers.set(key, selected);
     return selected;
   }
-  function route(policy: TrainingRoute, id: string): InferenceProvider {
+  function route(policy: TrainingRoute, id: string, purpose: 'judge' | 'optimizer'): InferenceProvider {
     const names = [policy.model, ...(policy.fallbacks ?? [])];
-    return createRoutedInference({ id, routes: names.map(name => ({ provider: provider(name), model: config!.models[name]!.model })),
+    return createRoutedInference({ id, routes: names.map(name => ({ provider: provider(name, purpose), model: config!.models[name]!.model })),
       maxAttempts: policy.attempts ?? names.length, timeoutMs: Math.min(timeoutMs, policy.timeout_ms ?? timeoutMs) });
   }
   const versions = judgeVersions(config, executionIdentity, Object.keys(judges));
@@ -45,18 +52,30 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
     const policy = config?.judges?.[name];
     if (!policy) return [name, { provider: getLegacy(), model, identity: versions[name]!.version, citationRepairs: repairs[name]! }];
     const identity = versions[name]!.version;
-    return [name, { provider: route(policy, identity), model, identity, citationRepairs: repairs[name]!,
+    return [name, { provider: route(policy, identity, 'judge'), model, identity, citationRepairs: repairs[name]!,
       template: policy.template, protocol: policy.protocol,
       cache: config!.cache?.mode === 'exact' ? createJudgeCache({ maxEntries: config!.cache.max_entries ?? 1000 }) : undefined }];
   }));
   const optimizer = config?.optimizer;
   const identity = optimizer === undefined ? undefined : createHash('sha256').update(JSON.stringify({ optimizer, models: config!.models, providerPolicies: trainingRoutePolicies(config!, optimizer, executionIdentity) })).digest('hex');
-  const inference = config?.comparison ? undefined : optimizer === undefined ? getLegacy() : route(optimizer, `paideia.optimizer:${identity}`);
+  const inference = config?.comparison ? undefined : optimizer === undefined ? getLegacy() : route(optimizer, `paideia.optimizer:${identity}`, 'optimizer');
   return { get inference() {
     if (inference === undefined) throw new Error('Authored comparison has no optimizer inference');
     return inference;
   }, judges: evaluationJudges };
 }
+
+/**
+ * The training container supplies the broker control socket and a private evaluator
+ * home root through the environment; neither is guessed. Missing values fail every
+ * broker-grant call closed instead of reaching a desktop Grok login.
+ */
+function grokGrantPool(dependencies: CliDependencies): GrokGrantPool {
+  const socket = process.env[grokBrokerControlSocketEnv];
+  return new GrokGrantPool({ id: socket ?? 'unconfigured',
+    authority: dependencies.grokGrantAuthority ?? (() => loadDaimonGrokGrantAuthority(socket)) });
+}
+const brokerHomeRoot = (): string | undefined => process.env[grokGrantHomeRootEnv] || undefined;
 
 /** Plain data only: dry-run must never construct a provider. */
 export function configuredCostRoutes(args: CliArguments, judges: Record<string, string>, repairs: Record<string, 0 | 1>) {

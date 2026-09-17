@@ -1,8 +1,10 @@
 /** Authored controls live in the dataset, never in the subject workspace. */
 export interface TrainingModel {
-  provider: 'claude-subscription' | 'grok-subscription' | 'ollama';
+  /** `grok-broker`: short Daimon broker inference grants (training containers); never a desktop login. */
+  provider: 'claude-subscription' | 'grok-subscription' | 'grok-broker' | 'ollama';
   model: string;
   endpoint?: string;
+  /** Grok only. `grok-broker` requires it and accepts low, medium or high. */
   reasoning_effort?: 'low' | 'medium' | 'high' | 'xhigh';
   /** Native Ollama controls; other providers must reject these fields. */
   think?: boolean;

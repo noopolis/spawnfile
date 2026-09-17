@@ -10,3 +10,5 @@ export type { NativeExecutionHandle, NativeWorkerPath, NativeWorkerRequest } fro
 
 export { createGrokSlotFreshnessStore, nativeChildArguments } from './child/index.js';
 export type { GrokSlotFreshness, GrokSlotFreshnessStore, NativeChildExecution } from './child/index.js';
+
+export { grokBrokerControlSocketEnv, grokGrantHomeRootEnv, loadDaimonGrokGrantAuthority } from './grants/index.js';

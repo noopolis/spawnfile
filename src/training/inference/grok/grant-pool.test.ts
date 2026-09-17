@@ -171,6 +171,20 @@ describe('broker refusals', () => {
     expect(() => new GrokGrantPool({ id: 'x', authority: async () => fake.authority, lanesPerRoute: 9 })).toThrow('Invalid');
   });
 
+  it('stops waiting on a broker that never answers and releases a grant issued after the caller left', async () => {
+    const fake = fakeGrantAuthority();
+    let answer!: () => void;
+    const slow = { ...fake.authority, request: (input: GrokGrantKey) => new Promise<Awaited<ReturnType<typeof fake.authority.request>>>(resolve => { answer = () => { void fake.authority.request(input).then(resolve); }; }) };
+    const controller = new AbortController();
+    const waiting = new GrokGrantPool({ id: 'sock', authority: async () => slow }).acquire(judge, 1000, controller.signal);
+    await tick(); controller.abort();
+    await expect(waiting).rejects.toMatchObject({ kind: 'cancelled' });
+    answer(); await tick();
+    expect(fake.releases).toEqual(['1'.padStart(32, '0')]);
+    const refusing = { ...fake.authority, request: async () => { throw new GrokGrantRefusal('auth_stale'); } };
+    await expect(new GrokGrantPool({ id: 'sock', authority: async () => refusing }).acquire(judge, 1000, new AbortController().signal)).rejects.toMatchObject({ kind: 'auth-stale' });
+  });
+
   it('cancels a caller waiting for a busy lane', async () => {
     const fake = fakeGrantAuthority();
     const grants = pool(fake, { lanesPerRoute: 1 });

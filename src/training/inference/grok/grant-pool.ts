@@ -114,7 +114,7 @@ export class GrokGrantPool {
     while (lane.grant === undefined) {
       if (signal?.aborted) throw new InferenceFailure('cancelled', 'Grok grant wait cancelled');
       try {
-        const grant = await authority.request(lane.spec);
+        const grant = await untilAborted(authority.request(lane.spec), signal, late => { void this.release(authority, late.grantId); });
         const expires = Date.parse(grant.expiresAt);
         if (grant.model !== lane.spec.model || grant.reasoningEffort !== lane.spec.reasoningEffort || grant.purpose !== lane.spec.purpose ||
           !Number.isFinite(expires) || typeof grant.token !== 'string' || !grant.token) {
@@ -193,6 +193,17 @@ function classify(error: unknown): InferenceFailure {
     if (error.code === 'invalid_request') return new InferenceFailure('unsupported', 'Grok broker refused the grant request as invalid');
   }
   return new InferenceFailure('unavailable', 'Grok broker is unavailable');
+}
+
+/** A broker that never answers must not outlive the caller; a grant issued after the caller left is released. */
+function untilAborted(pending: Promise<GrokInferenceGrant>, signal: AbortSignal | undefined, orphan: (grant: GrokInferenceGrant) => void): Promise<GrokInferenceGrant> {
+  if (signal === undefined) return pending;
+  return new Promise((resolve, reject) => {
+    const abort = () => { reject(new InferenceFailure('cancelled', 'Grok grant wait cancelled')); pending.then(orphan, () => undefined); };
+    signal.addEventListener('abort', abort, { once: true });
+    pending.then(grant => { signal.removeEventListener('abort', abort); if (signal.aborted) return; resolve(grant); },
+      (error: unknown) => { signal.removeEventListener('abort', abort); reject(error); });
+  });
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {

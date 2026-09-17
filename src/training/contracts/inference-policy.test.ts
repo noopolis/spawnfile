@@ -38,3 +38,10 @@ it('binds explicit execution to every primary, fallback and legacy policy withou
     expect(() => trainingInferencePolicies(config, invalid as string)).toThrow('Inference execution identity');
   }
 });
+
+it('versions broker-grant Grok separately from the desktop subscription policy', () => {
+  const broker: TrainingConfiguration = { models: { grant: { provider: 'grok-broker', model: 'grok-4.6', reasoning_effort: 'low' }, desktop: { provider: 'grok-subscription', model: 'grok-4.6' } },
+    judges: { j: { model: 'grant' } } };
+  expect(trainingRoutePolicies(broker, broker.judges!.j!)).toEqual([{ provider: 'grok-broker', policy: 'paideia.grok-broker-grant-response.v1' }]);
+  expect(trainingRoutePolicies(broker, { model: 'desktop' })[0]!.policy).not.toBe('paideia.grok-broker-grant-response.v1');
+});

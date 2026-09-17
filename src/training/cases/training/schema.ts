@@ -1,3 +1,4 @@
+import { grokGrantModels, grokGrantReasoningEfforts } from '../../contracts/inference-grants.js';
 import type { TrainingConfiguration } from '../../contracts/training-config.js';
 import { fail, fields, number, object, oneOf, safePath, string, uniqueStrings } from '../validation.js';
 
@@ -16,10 +17,15 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
     string(name, location);
     const model = object(value, location);
     fields(model, ['provider', 'model', 'endpoint', 'reasoning_effort', 'think', 'keep_alive_seconds', 'max_output_tokens', 'context_window'], location);
-    oneOf(model.provider, ['claude-subscription', 'grok-subscription', 'ollama'], `${location}.provider`);
+    oneOf(model.provider, ['claude-subscription', 'grok-subscription', 'grok-broker', 'ollama'], `${location}.provider`);
     string(model.model, `${location}.model`);
-    if (model.reasoning_effort !== undefined) {
-      if (model.provider !== 'grok-subscription') fail(`${location}.reasoning_effort`, 'only supported for grok-subscription');
+    if (model.provider === 'grok-broker') {
+      // Broker grants carry the declared model and effort to the broker; nothing is defaulted or inherited.
+      oneOf(model.model, [...grokGrantModels], `${location}.model`);
+      if (model.reasoning_effort === undefined) fail(`${location}.reasoning_effort`, 'required for grok-broker');
+      oneOf(model.reasoning_effort, [...grokGrantReasoningEfforts], `${location}.reasoning_effort`);
+    } else if (model.reasoning_effort !== undefined) {
+      if (model.provider !== 'grok-subscription') fail(`${location}.reasoning_effort`, 'only supported for grok-subscription or grok-broker');
       oneOf(model.reasoning_effort, ['low', 'medium', 'high', 'xhigh'], `${location}.reasoning_effort`);
     }
     for (const field of ['think', 'keep_alive_seconds', 'max_output_tokens', 'context_window']) {
@@ -46,6 +52,8 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
     const fallbacks = policy.fallbacks === undefined ? [] : uniqueStrings(policy.fallbacks, `${location}.fallbacks`);
     if (fallbacks.includes(primary)) fail(`${location}.fallbacks`, 'primary model cannot be its own fallback');
     for (const name of [primary, ...fallbacks]) if (!Object.hasOwn(models, name)) fail(location, `unknown model ${name}`);
+    const providers = new Set([primary, ...fallbacks].map(name => (models[name] as { provider?: unknown }).provider));
+    if (providers.has('grok-broker') && providers.has('grok-subscription')) fail(location, 'grok-broker routes cannot fall back to a desktop grok-subscription login');
     if (policy.attempts !== undefined) integer(policy.attempts, `${location}.attempts`, 1, Math.min(10, 1 + fallbacks.length));
     if (policy.timeout_ms !== undefined) integer(policy.timeout_ms, `${location}.timeout_ms`, 1, 3_600_000);
     if (policy.citation_repairs !== undefined) oneOf(policy.citation_repairs, [0, 1], `${location}.citation_repairs`);

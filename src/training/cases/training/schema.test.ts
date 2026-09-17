@@ -68,6 +68,29 @@ describe('dataset-authored training configuration', () => {
     expect(fixedResolve(initial).sharedPlanDigest).not.toBe(fixedResolve(config).sharedPlanDigest);
     expect(fixedRegistry.judges.prose.version).toBe('runtime-v1');
   });
+  it('accepts broker-grant Grok models with a declared closed model and effort and non-desktop fallbacks', () => {
+    const training = { models: { broker: { provider: 'grok-broker', model: 'grok-4.6', reasoning_effort: 'low' },
+      reflect: { provider: 'grok-broker', model: 'grok-build', reasoning_effort: 'high' }, backup: { provider: 'claude-subscription', model: 'claude' } },
+      judges: { prose: { model: 'broker', fallbacks: ['reflect', 'backup'] } }, optimizer: { model: 'reflect', fallbacks: ['backup'] } };
+    expect(validateTrainingConfiguration(training)).toEqual(training);
+    const versions = trainingJudgeVersions(validateTrainingConfiguration(training));
+    const changed = structuredClone(training); changed.models.broker.reasoning_effort = 'medium';
+    expect(trainingJudgeVersions(validateTrainingConfiguration(changed))).not.toEqual(versions);
+  });
+  it.each([
+    [{ broker: { provider: 'grok-broker', model: 'grok-4.6' } }, 'required for grok-broker'],
+    [{ broker: { provider: 'grok-broker', model: 'grok-4.6', reasoning_effort: 'xhigh' } }, 'reasoning_effort'],
+    [{ broker: { provider: 'grok-broker', model: 'grok-fast', reasoning_effort: 'low' } }, 'models.broker.model'],
+    [{ broker: { provider: 'claude-subscription', model: 'claude', reasoning_effort: 'low' } }, 'only supported for grok-subscription or grok-broker'],
+  ])('rejects broker-grant model %j for its own reason', (models, reason) => {
+    expect(() => validateTrainingConfiguration({ models })).toThrow(reason);
+  });
+  it('rejects routes that mix broker grants with a desktop Grok subscription in either order', () => {
+    const models = { broker: { provider: 'grok-broker', model: 'grok-4.6', reasoning_effort: 'low' }, desktop: { provider: 'grok-subscription', model: 'grok-4.6' } };
+    for (const training of [{ models, judges: { j: { model: 'broker', fallbacks: ['desktop'] } } }, { models, optimizer: { model: 'desktop', fallbacks: ['broker'] } }]) {
+      expect(() => validateTrainingConfiguration(training)).toThrow('cannot fall back to a desktop grok-subscription login');
+    }
+  });
   it.each([
     { unexpected: true }, { models: {} }, { models: { x: { provider: 'api', model: 'x' } } },
     { models: { x: { provider: 'ollama', model: '' } } },
@@ -77,6 +100,12 @@ describe('dataset-authored training configuration', () => {
     ...['ftp://host', 'http://user:password@host', 'http://host?secret=x', 'http://host#x', 'bad'].map(endpoint =>
       ({ models: { x: { provider: 'ollama', model: 'x', endpoint } } })),
     { models: { x: { provider: 'grok-subscription', model: 'x', endpoint: 'http://host' } } },
+    { models: { x: { provider: 'grok-broker', model: 'grok-4.6' } } },
+    { models: { x: { provider: 'grok-broker', model: 'grok-4.6', reasoning_effort: 'xhigh' } } },
+    { models: { x: { provider: 'grok-broker', model: 'grok-fast', reasoning_effort: 'low' } } },
+    { models: { x: { provider: 'grok-broker', model: 'grok-4.6', reasoning_effort: 'low', endpoint: 'http://host' } } },
+    { models: { ...config.models, broker: { provider: 'grok-broker', model: 'grok-4.6', reasoning_effort: 'low' } }, judges: { x: { model: 'broker', fallbacks: ['cheap'] } } },
+    { models: { ...config.models, broker: { provider: 'grok-broker', model: 'grok-4.6', reasoning_effort: 'low' } }, optimizer: { model: 'cheap', fallbacks: ['broker'] } },
     { judges: { x: { model: 'missing' } } }, { judges: { x: { model: 'cheap', fallbacks: ['cheap'] } } },
     { judges: { x: { model: 'cheap', fallbacks: ['local', 'local'] } } },
     { judges: { x: { model: 'cheap', attempts: 0 } } }, { judges: { x: { model: 'cheap', attempts: 1.5 } } },

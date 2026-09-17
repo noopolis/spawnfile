@@ -1,5 +1,5 @@
 import type { TrainingModel } from '../contracts/training-config.js';
-import type { InferenceProvider, SubjectAdapter } from '../contracts/index.js';
+import type { GrokInferenceGrantAuthority, InferenceProvider, SubjectAdapter } from '../contracts/index.js';
 import type { BlobReference } from '../storage/index.js';
 import type { DatasetRegistry, EditPolicy, NativePreparationContext, StoredTrialOptions } from '../index.js';
 import type { SpawnfileTrainingContext } from './spawnfile/index.js';
@@ -18,6 +18,8 @@ export interface CliDependencies {
   adapter?: (runtime: 'codex' | 'daimon', options: { model: string; timeoutMs: number }) => SubjectAdapter;
   inference?: (timeoutMs: number) => InferenceProvider;
   modelInference?: (model: TrainingModel, timeoutMs: number) => InferenceProvider;
+  /** Broker-grant authority seam; defaults to Daimon over the container-supplied control socket. */
+  grokGrantAuthority?: () => Promise<GrokInferenceGrantAuthority>;
   /** Trusted project composition. Registration is static; native factory runs only after preflight. */
   spawnfile?: SpawnfileCliIntegration;
 }
