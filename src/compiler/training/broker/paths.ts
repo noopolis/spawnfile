@@ -103,9 +103,9 @@ export const TRAINING_ADDED_DENY_PATHS: readonly string[] = [
   DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
   DAIMON_WAKE_FUSE_DIRECTORY,
   TRAINING_INFERENCE_DIRECTORY,
-  // `TRAINING_SLOT_STATE_ROOT` is deliberately absent: Daimon's own protected set
-  // already denies the wake-acceptance store beneath it, and masks cannot nest,
-  // so denying the parent as well would make Grok refuse the whole profile.
+  // `TRAINING_SLOT_STATE_ROOT` is Daimon's own protected entry here (it covers the
+  // wake-acceptance store, which is itself unplaceable under a `2000:2000 0700`
+  // parent), so it is not repeated in this set.
   TRAINING_SLOT_TURN_STORE,
   TRAINING_SUPERVISOR_DIRECTORY,
   ...TRAINING_EVALUATOR_ROOTS.map((entry) => entry.path)

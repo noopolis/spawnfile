@@ -350,11 +350,25 @@ The rest of the deny list is `/etc/daimon-engine-broker`,
 `/run/daimon-engine-broker`, `/run/training/inference`,
 `/run/training/slot/turns`, `/run/training/supervisor`,
 `/var/lib/spawnfile/daimon/{usage,wake-fuse}`, and Daimon's own protected set
-(the Grok bootstrap, the realm and the wake-acceptance store). The caller's
+(the Grok bootstrap, the realm and `/run/training/slot/state`, the slot state
+root that holds the wake-acceptance store). The caller's
 `config.json`, `launch.json`, `token`, `env`, `control`, `preparation.json` and
 `repair.json` are covered by the single `/run/paideia` mask rather than listed
 individually — Grok materializes each deny target inside bubblewrap as the
 worker uid and cannot create one inside a directory only uid 2000 may write.
+
+The same rule governs deny *placement* everywhere. A deny entry is placeable
+only when it already exists, is not a symlink, and the worker uid can search
+every ancestor directory; one unplaceable entry makes Grok refuse the whole
+profile, so every turn of that slot fails with `bwrap: Can't create file at …:
+Permission denied`, not just that path (matrix:
+`.runtime/grok-deny-placement/EVIDENCE.md`). The wake-acceptance store is that
+case: its parent `/run/training/slot/state` is `2000:2000 0700`, so the mask
+moves onto the state root, which covers it and nothing else. Lifting a mask to a
+private ancestor is strictly stronger than masking the leaf and, unlike opening
+the ancestor with `o+x`, gives the worker no additional reach. Root provisioning
+asserts placement for every entry once all modes are final — at container start
+and on every recycle — and refuses the slot otherwise.
 
 A canary is a worker-uid `open()` that must fail. For a deny entry that is a
 host bind mount, or sits on a filesystem that ignores unix ownership (Docker
