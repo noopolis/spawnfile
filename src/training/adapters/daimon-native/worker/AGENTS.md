@@ -24,3 +24,8 @@ Grok usage comes from the broker's per-slot ledger, never this process: rows nee
 `-build` alias) and a `turn` key. Byte-identical replays of one turn count once;
 differing rows under one turn fail. Estimated requests keep coverage partial.
 Load the Grok runtime exports only for Grok launches and fail closed if absent.
+
+`verifyNativeWorkerStartup` is the public, side-effect-free composition of the
+startup checks, for callers that must validate a prepared launch before starting
+anything. It leaves out Daimon's own config parse, which needs the runtime peer,
+and the worker runs it as its first step so the two cannot drift.

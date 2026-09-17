@@ -2,21 +2,21 @@ import { readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createWorkerController } from './control.js';
 import { assertFreshNativeEvidence } from './evidence.js';
-import { assertNativeProfile, parseWorkerArguments, verifyWorkerPaths } from './profile.js';
-import { isGrokLaunch, nativeTrialArtifactsRoot, parseNativeLaunch, readPrivateFile, sha256 } from '../receipt/index.js';
+import { assertNativeProfile, verifyNativeWorkerStartup, verifyWorkerPaths } from './profile.js';
+import { isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile } from '../receipt/index.js';
 import { loadDaimonRuntime } from './public.js';
 import { createWorkerServer, listenWorker } from './server.js';
 import { persistNativeSandboxProjection } from './sandbox.js';
 
 export async function runDaimonNativeWorker(args: readonly string[]): Promise<void> {
   if (process.platform !== 'linux') throw new Error('Canonical attention acceptance requires a Linux container');
-  const options = parseWorkerArguments(args);
-  const launch = parseNativeLaunch(JSON.parse(await readPrivateFile(options.launch, 65536)));
+  // The same validation preparation can run through the public `verifyNativeWorkerStartup`.
+  const { options, launch } = await verifyNativeWorkerStartup(args);
   const bytes = await readPrivateFile(options.config);
-  if (sha256(bytes) !== options.configSha256 || launch.configSha256 !== options.configSha256) throw new Error('Compiled native config digest mismatch');
   const runtime = await loadDaimonRuntime(launch.agent.engine);
   const grok = isGrokLaunch(launch) ? launch : undefined;
   const { createOrganizationRuntimeControlHost, parseOrganizationRuntimeConfig } = runtime;
+  // Re-checked against Daimon's own parsed config, which may normalize what the raw bytes declared.
   const config = parseOrganizationRuntimeConfig(JSON.parse(bytes));
   assertNativeProfile(config, launch);
   await verifyWorkerPaths(config, options, launch);

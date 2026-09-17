@@ -1,10 +1,12 @@
 import { expect, test } from 'vitest';
-import { chmod, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { configFixture, launchFixture } from '../test-fixtures.js';
 import { grokConfigFor, grokLaunchFrom } from '../grok-fixtures.js';
 import { sha256 } from '../receipt/index.js';
-import { assertNativeProfile, parseWorkerArguments, verifyWorkerPaths } from './profile.js';
+import { assertNativeProfile, parseWorkerArguments, verifyNativeWorkerStartup, verifyWorkerPaths } from './profile.js';
+import { nativeChildArguments } from '../child/index.js';
+import { loadNativeLaunch } from '../container/index.js';
 import type { NativeConfig } from './types.js';
 
 test('native profile preserves the selected compiler identity, tools and memory without project constants', async () => {
@@ -124,5 +126,103 @@ test('a Codex launch still requires its own fresh memory projection for the decl
     expect(() => assertNativeProfile(config, f.launch)).toThrow('declared fresh memory projection');
     config.agents[0]!.memory = { runtimeHomePath: '/elsewhere/memory' };
     expect(() => assertNativeProfile(config, f.launch)).toThrow('declared fresh memory projection');
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+/** Aligns the fixture's compiled config with the child-execution paths the worker validates. */
+async function prepared() {
+  const f = await launchFixture();
+  const config = configFixture('/native');
+  f.launch.workspace.target = f.launch.workspace.source;
+  for (const row of f.launch.projections) row.target = row.source;
+  config.agents[0]!.workspacePath = f.launch.workspace.target;
+  config.agents[0]!.runtimeHomePath = f.launch.projections[0]!.target;
+  config.agents[0]!.memory!.runtimeHomePath = f.launch.projections[1]!.target;
+  config.agents[0]!.instructions = f.input.instructions;
+  config.host.port = f.launch.host.port;
+  const bytes = JSON.stringify(config);
+  f.launch.configSha256 = sha256(bytes);
+  await writeFile(f.launch.config, bytes);
+  await f.save();
+  return { ...f, config };
+}
+
+test('runs the worker startup validation a caller can run before starting anything', async () => {
+  const f = await prepared();
+  try {
+    const args = nativeChildArguments(f.launch, f.input.trialId, 900_000);
+    const { options, launch, config } = await verifyNativeWorkerStartup(args.slice(2));
+    expect(options.launch).toBe(f.launch.receiptFile);
+    expect(launch.agent.id).toBe('agent:writer');
+    expect((config as NativeConfig).agents[0]!.workspacePath).toBe(f.launch.workspace.target);
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('accepts a launch whose trial runtime home is reached through a symlink, via the resolved receipt path', async () => {
+  const f = await prepared();
+  try {
+    // The trial runner allocates `<storage>/trial-XXXX/runtime`; a fixed container slot makes that a symlink.
+    const real = join(f.root, 'slot-runtime');
+    await rename(f.input.runtimeHomePath, real);
+    await symlink(real, f.input.runtimeHomePath);
+    // Preparation declares canonical control inputs, as the container does; only the runner's own path is a link.
+    const relocate = (value: string): string => value.split(f.input.runtimeHomePath).join(real);
+    for (const key of ['config', 'tokenFile', 'envFile', 'controlRoot'] as const) f.launch[key] = relocate(f.launch[key]);
+    f.launch.projections = f.launch.projections.map(row => ({ ...row, source: relocate(row.source), target: relocate(row.target) }));
+    const config = JSON.parse(await readFile(f.launch.config, 'utf8')) as NativeConfig;
+    config.agents[0]!.runtimeHomePath = f.launch.projections[0]!.target;
+    config.agents[0]!.memory!.runtimeHomePath = f.launch.projections[1]!.target;
+    const bytes = JSON.stringify(config);
+    f.launch.configSha256 = sha256(bytes);
+    await writeFile(f.launch.config, bytes);
+    await f.save();
+    const loaded = await loadNativeLaunch({ ...f.input, model: 'test-model-v1' }, true);
+    expect(loaded.receiptFile).toBe(join(real, 'native-launch.json'));
+    await expect(verifyNativeWorkerStartup(nativeChildArguments(loaded, f.input.trialId, 900_000).slice(2))).resolves.toBeDefined();
+    // The unresolved spelling is exactly what the worker refuses, which is the contradiction this closes.
+    await expect(verifyNativeWorkerStartup(nativeChildArguments({ ...loaded, receiptFile: join(f.input.runtimeHomePath, 'native-launch.json') },
+      f.input.trialId, 900_000).slice(2))).rejects.toThrow('must not traverse symlinks');
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('still refuses every other control path that traverses a symlink', async () => {
+  for (const key of ['config', 'tokenFile'] as const) {
+    const f = await prepared();
+    try {
+      const real = `${f.launch[key]}.real`;
+      await rename(f.launch[key], real);
+      await symlink(real, f.launch[key]);
+      await f.save();
+      await expect(verifyNativeWorkerStartup(nativeChildArguments(f.launch, f.input.trialId, 900_000).slice(2)))
+        .rejects.toThrow(/symlinks|Unsafe/u);
+    } finally { await rm(f.root, { recursive: true, force: true }); }
+  }
+  const f = await prepared();
+  try {
+    const real = join(f.root, 'real-control');
+    await mkdir(real, { mode: 0o700 });
+    await rm(f.launch.controlRoot, { recursive: true });
+    await symlink(real, f.launch.controlRoot);
+    await f.save();
+    await expect(verifyNativeWorkerStartup(nativeChildArguments(f.launch, f.input.trialId, 900_000).slice(2)))
+      .rejects.toThrow('private real directory');
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('refuses a mismatched compiled config digest and an off-profile agent before any path work', async () => {
+  const f = await prepared();
+  try {
+    const args = nativeChildArguments(f.launch, f.input.trialId, 900_000).slice(2);
+    const digest = args.map(value => value === f.launch.configSha256 ? 'f'.repeat(64) : value);
+    await expect(verifyNativeWorkerStartup(digest)).rejects.toThrow('digest mismatch');
+    const bytes = await readFile(f.launch.config, 'utf8');
+    const changed = JSON.parse(bytes) as NativeConfig;
+    changed.agents[0]!.schedule = { kind: 'every' };
+    const next = JSON.stringify(changed);
+    await writeFile(f.launch.config, next);
+    f.launch.configSha256 = sha256(next);
+    await f.save();
+    await expect(verifyNativeWorkerStartup(nativeChildArguments(f.launch, f.input.trialId, 900_000).slice(2)))
+      .rejects.toThrow('schedule override');
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });

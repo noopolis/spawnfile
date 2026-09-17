@@ -12,11 +12,22 @@ Mneme. Caller preparation supplies canonical native config and immutable code.
   plus `loadNativeLaunch` (receipt and path preflight, starts nothing) and
   `nativeTrialArtifactsRoot` (where a trial's private control artifacts land).
   Callers prepare against these rather than re-deriving either.
-- `@noopolis/paideia/adapters/daimon-native/worker`: `runDaimonNativeWorker(args)`.
+- `@noopolis/paideia/adapters/daimon-native/worker`: `runDaimonNativeWorker(args)`,
+  plus `verifyNativeWorkerStartup(args)` and the three checks it composes
+  (`parseWorkerArguments`, `assertNativeProfile`, `verifyWorkerPaths`).
   Importing this subpath never starts a worker. The separate built `worker/cli.js`
   file is the container CLI entrypoint when no project bootstrap is declared.
+  `verifyNativeWorkerStartup` runs the worker's own startup validation in
+  preparation — argument shape, compiled-config digest, launch receipt, profile
+  agreement and the control path rules — leaving out only Daimon's
+  `parseOrganizationRuntimeConfig`, which needs the installed runtime peer. The
+  worker calls it too, so a rule cannot hold in preparation and fail at startup.
 
-Preparation writes `native-launch.json` in the trial runtime home. The strict
+Preparation writes `native-launch.json` in the trial runtime home. The adapter
+resolves that directory before deriving the receipt path, so a runner that reaches
+a fixed container slot through a symlinked trial path still hands the worker a real
+`--launch` path. Every other control path must be canonical in its own right: the
+worker refuses a config, token file or control root whose path traverses a link. The strict
 `paideia.daimon-native.launch.v1` schema requires:
 
 - Exact compiled-config and source-config SHA-256, immutable container image,

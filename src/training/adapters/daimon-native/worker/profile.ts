@@ -1,6 +1,6 @@
 import { lstat, realpath } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import { isGrokLaunch, readPrivateFile, sha256, within, type NativeLaunch } from '../receipt/index.js';
+import { isGrokLaunch, parseNativeLaunch, readPrivateFile, sha256, within, type NativeLaunch } from '../receipt/index.js';
 import type { NativeConfig, WorkerOptions } from './types.js';
 
 export function parseWorkerArguments(args: readonly string[]): WorkerOptions {
@@ -107,4 +107,28 @@ export async function verifyWorkerPaths(config: NativeConfig, options: WorkerOpt
       sha256(agent.instructions) !== rendering.nativeSha256) {
     throw new Error('Declared candidate bytes are absent from the compiled native instructions');
   }
+}
+
+/**
+ * The worker's own startup validation, run without starting anything.
+ *
+ * Preparation can check exactly what the worker checks — argument shape, the
+ * compiled-config digest, the launch receipt, the profile agreement and the
+ * control path rules — instead of reaching past the package export for the
+ * pieces. Daimon's own `parseOrganizationRuntimeConfig` is the single step left
+ * out: it needs the installed runtime peer, so this validates Paideia's side of
+ * startup and never claims to have validated Daimon's.
+ *
+ * It composes the same exported functions the worker calls, in the worker's
+ * order, so a rule cannot hold here and fail there.
+ */
+export async function verifyNativeWorkerStartup(args: readonly string[]): Promise<{ options: WorkerOptions; launch: NativeLaunch; config: NativeConfig }> {
+  const options = parseWorkerArguments(args);
+  const launch = parseNativeLaunch(JSON.parse(await readPrivateFile(options.launch, 65_536)));
+  const bytes = await readPrivateFile(options.config);
+  if (sha256(bytes) !== options.configSha256 || launch.configSha256 !== options.configSha256) throw new Error('Compiled native config digest mismatch');
+  const config = JSON.parse(bytes) as NativeConfig;
+  assertNativeProfile(config, launch);
+  await verifyWorkerPaths(config, options, launch);
+  return { options, launch, config };
 }
