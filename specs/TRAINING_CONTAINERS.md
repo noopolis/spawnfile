@@ -164,17 +164,6 @@ datasets never enter the image context. Cache identity includes actual source,
 lock, executable and recipe bytes, parent images, architecture and entrypoint;
 reuse also verifies the image ID and recipe label in the selected Docker context.
 
-Recipe planning may reuse a private same-user digest memo at
-`$SPAWNFILE_HOME/cache/training-seal.v1.json` (default `~/.spawnfile`; mode 0600,
-atomic replace, at most 20,000 entries). An entry is keyed by the canonical absolute
-path, device, inode, size, and nanosecond mtime and ctime; any difference rehashes.
-Digests are recorded only when the file was unchanged on the open handle while
-hashing and its newest timestamp predates hashing by at least two seconds. A corrupt,
-foreign-owned, group/world-accessible or unwritable memo is ignored and never fails
-preparation. Dry-run reads but never writes it. The memo only shortens plan-side
-hashing: staged build-context copies and preparation/resume/repair verification are
-always rehashed in full, and image reuse still requires the recipe label.
-
 Staged build contexts normalize modes and times before `docker build`: directories
 0755, files `a+rX`-closed, `grok` and the entrypoint 0555, mtimes fixed. Together
 with the recipe's change-only `a+rX` closure this reproduces the former recursive
