@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assertFreshNativeEvidence, collectNativeEvidence, nativeUsageCoverage, readToolReceipts } from './evidence.js';
+import { assertFreshNativeEvidence, collectNativeEvidence, GROK_TURN_NOTIONAL_USD_MAX, nativeUsageCoverage, readToolReceipts } from './evidence.js';
 import { aggregateUsage } from '../observations.js';
 import { executionId, traceFixture } from '../test-fixtures.js';
 import type { NativeGrokUsage } from './types.js';
@@ -40,7 +40,10 @@ test('Grok usage keeps disjoint buckets, per-request clocks and normalizes cache
     expect(aggregateUsage(evidence.usage)).toEqual({ inputTokens: 5503, cachedInputTokens: 2816, cacheWriteInputTokens: 10, outputTokens: 92,
       reasoningTokens: null, notionalUsd: 0.00248676, source: 'noopolis.daimon.turn-usage.v1' });
     expect(() => aggregateUsage([row as NativeGrokUsage, { ...row, engine: 'codex' } as never])).toThrow('mixes engines');
-    expect(() => aggregateUsage([{ ...row, notional_usd: Number.NaN } as NativeGrokUsage])).toThrow('notional');
+    for (const notional_usd of [Number.NaN, -1, 1e15, Number.MAX_VALUE, GROK_TURN_NOTIONAL_USD_MAX + 0.01]) {
+      expect(() => aggregateUsage([{ ...row, notional_usd } as NativeGrokUsage])).toThrow('plausibility');
+    }
+    expect(aggregateUsage([{ ...row, notional_usd: GROK_TURN_NOTIONAL_USD_MAX } as NativeGrokUsage])?.notionalUsd).toBe(GROK_TURN_NOTIONAL_USD_MAX);
     const estimated = { ...row, estimated_requests: 1 };
     await writeFile(f.usage, lines(estimated));
     expect(nativeUsageCoverage(await f.read(), executionId)).toBe('partial');
@@ -76,7 +79,7 @@ test('Grok rows accept only the declared model or its build alias and reject mal
       await writeFile(f.usage, lines({ ...row, model }));
       await expect(f.read()).rejects.toThrow('model differs');
     }
-    for (const invalid of [{ engine: 'codex' }, { turn: 'short' }, { notional_usd: -1 }, { notional_usd: 'free' }, { cache_write: undefined },
+    for (const invalid of [{ engine: 'codex' }, { turn: 'short' }, { notional_usd: -1 }, { notional_usd: 'free' }, { notional_usd: 1e15 }, { notional_usd: Number.MAX_VALUE }, { cache_write: undefined },
       { limit_reason: 'budget' }, { estimated_requests: 0 }, { wake: 'foreign' }, { at: 'never' }]) {
       await writeFile(f.usage, lines({ ...row, ...invalid }));
       await expect(f.read()).rejects.toThrow('Grok usage schema');

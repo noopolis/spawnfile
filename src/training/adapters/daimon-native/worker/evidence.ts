@@ -146,6 +146,10 @@ const grokModel = (value: unknown, declared: string): string => {
 };
 const tokens = (row: Record<string, unknown>, keys: readonly string[]): boolean => keys.every(key => Number.isSafeInteger(row[key]) && Number(row[key]) >= 0);
 const turnKey = /^[a-f0-9]{64}$/u;
+/** Plausibility bound for one broker turn's notional USD (Daimon caps a turn at 10M tokens); larger values are malformed, not spend. */
+export const GROK_TURN_NOTIONAL_USD_MAX = 100;
+export const plausibleNotionalUsd = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= GROK_TURN_NOTIONAL_USD_MAX;
 
 /** Collapse byte-identical re-appends of one sealed key (Daimon replays); differing rows under one key are refused. */
 function dedupe<T>(rows: readonly { key: string; row: T }[]): T[] {
@@ -168,8 +172,7 @@ async function readGrokUsage(file: string, agentId: string, executionId: string 
     const row = object(value);
     if (row.v !== 'noopolis.daimon.turn-usage.v1' || row.agent !== agentId || row.engine !== 'grok' || !belongs(row.wake, executionId, previous) ||
         !timestamp(row.at) || typeof row.complete !== 'boolean' || typeof row.turn !== 'string' || !turnKey.test(row.turn) ||
-        !tokens(row, ['input', 'output', 'cache_read', 'cache_write', 'total']) || typeof row.notional_usd !== 'number' ||
-        !Number.isFinite(row.notional_usd) || row.notional_usd < 0 ||
+        !tokens(row, ['input', 'output', 'cache_read', 'cache_write', 'total']) || !plausibleNotionalUsd(row.notional_usd) ||
         row.limit_reason !== undefined && !['tokens', 'requests', 'timeout', 'none'].includes(String(row.limit_reason)) ||
         row.estimated_requests !== undefined && (!Number.isSafeInteger(row.estimated_requests) || Number(row.estimated_requests) < 1)) {
       throw new Error('Native Grok usage schema or execution identity mismatch');

@@ -1,6 +1,6 @@
 import type { NativeExternalInput } from './external.js';
 import type { Observation, SubjectStart, Usage } from '../../contracts/execution.js';
-import { readToolReceipts } from './worker/index.js';
+import { plausibleNotionalUsd, readToolReceipts } from './worker/index.js';
 import type { NativeGrokUsage, NativeUsage, TerminalEvidence } from './worker/index.js';
 
 export function createNativeObserver(input: SubjectStart, runtimeHome: string, agentId: string, engine: 'codex' | 'grok' = 'codex') {
@@ -50,8 +50,8 @@ export function aggregateUsage(rows: NativeUsage[]): Usage | null {
   }
   if (grok.length !== rows.length) throw new Error('Native usage mixes engines');
   // Grok buckets are disjoint; Paideia's inputTokens counts every prompt-side token, with reads and writes as subsets.
+  if (!grok.every(row => plausibleNotionalUsd(row.notional_usd))) throw new Error('Native notional USD is outside its per-turn plausibility bound');
   const notionalUsd = grok.reduce((total, row) => total + row.notional_usd, 0);
-  if (!Number.isFinite(notionalUsd) || notionalUsd < 0) throw new Error('Native notional USD aggregate is invalid');
   return { inputTokens: sum(grok.flatMap(row => [row.input, row.cache_read, row.cache_write])), cachedInputTokens: sum(grok.map(row => row.cache_read)),
     cacheWriteInputTokens: sum(grok.map(row => row.cache_write)), outputTokens: sum(grok.map(row => row.output)), reasoningTokens: null,
     notionalUsd, source: 'noopolis.daimon.turn-usage.v1' };

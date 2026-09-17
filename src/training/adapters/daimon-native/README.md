@@ -170,7 +170,8 @@ rows per `turn` count once and conflicting ones fail. Per-request rows keep
 `usage_source`, `started_at` and `ended_at` in `native.requests`; `estimated_requests`
 stays on the usage row and makes usage coverage partial. Normalized usage has
 `inputTokens = input + cache_read + cache_write`, `cachedInputTokens = cache_read`,
-`cacheWriteInputTokens = cache_write` and `notionalUsd`. Cost reports prefer a
+`cacheWriteInputTokens = cache_write` and `notionalUsd`. A row whose `notional_usd` exceeds
+$100 for one turn is malformed and rejected. Cost reports prefer a
 runtime-reported `notionalUsd` (labelled with its source) over catalog rates; there
 is no built-in Grok rate card, but `paideia.cost-config.v1` `prices` can add one.
 A broker limit failure is reported only as its closed `limit_reason`.
