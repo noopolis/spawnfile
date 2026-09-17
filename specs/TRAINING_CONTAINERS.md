@@ -76,10 +76,13 @@ an existing or refreshed credential, and returns a non-secret versioned receipt.
 | Provider | Destination relative to runtime home |
 | --- | --- |
 | codex | `.daimon-inbound/codex-auth` |
-| grok | `.grok/auth.json` |
 | claude | `.claude/.credentials.json` |
 
-The image startup can stage Grok/Claude into its clean shared home. A native trial
+Grok is not stageable and `grok` is not an `auth` provider: the one training
+Grok login lives in the broker-owned realm volume of a v3 container and is spent
+through inference grants, never copied into a runtime home.
+
+The image startup can stage Claude into its clean shared home. A native trial
 preparation callback stages Codex into that trial's fresh home before Daimon
 starts. Credentials remain writable only inside the runtime home; renewed state
 is not silently copied back to the host bootstrap file.
@@ -121,7 +124,6 @@ context. The command does not configure or start a machine-global VM.
       "paideia": "./packages/paideia",
       "bridge": "./packages/dspy",
       "claude": "./packages/claude",
-      "grok": { "source": "./bin/grok", "sha256": "sha256:<64 hex characters>" },
       "integration": { "source": "./integration", "entry": "container/entry.ts" },
       "bootstrap": "./bootstrap"
     }
