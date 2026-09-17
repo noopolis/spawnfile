@@ -112,3 +112,19 @@ test('fresh Grok slots and tool receipts are engine-bound', async () => {
     await expect(readToolReceipts(f.root, 'agent:writer')).rejects.toThrow('identity');
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
+
+test('estimated request rows make coverage partial and must agree with the usage row', async () => {
+  const f = await workspace();
+  try {
+    await writeFile(f.usage, lines(row));
+    await writeFile(f.requests, lines({ ...request, usage_source: 'estimated' }));
+    await expect(f.read()).rejects.toThrow('disagree');
+    await writeFile(f.usage, lines({ ...row, estimated_requests: 1 }));
+    const agreed = await f.read();
+    expect(nativeUsageCoverage(agreed, executionId)).toBe('partial');
+    expect(nativeUsageCoverage({ ...agreed, usage: [row as NativeGrokUsage] }, executionId)).toBe('partial');
+    await writeFile(f.requests, lines({ ...request, turn: 'd'.repeat(64), usage_source: 'estimated' }));
+    await writeFile(f.usage, lines(row));
+    expect(nativeUsageCoverage(await f.read(), executionId)).toBe('partial');
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});

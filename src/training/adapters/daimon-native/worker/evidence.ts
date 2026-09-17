@@ -55,8 +55,8 @@ export function nativeUsageCoverage(native: NativeEvidence, executionId?: string
   if (!native.usage.length) return 'absent';
   const usage = native.usage[0]!;
   const trace = native.traces[0];
-  // A Grok request charged an estimate is bounded spend, not observed usage.
-  const estimated = usage.engine === 'grok' && (usage.estimated_requests ?? 0) > 0;
+  // A Grok request charged an estimate is bounded spend, not observed usage: either ledger saying so is enough.
+  const estimated = usage.engine === 'grok' && ((usage.estimated_requests ?? 0) > 0 || (native.requests ?? []).some(row => row.usage_source === 'estimated'));
   return executionId !== undefined && native.usage.length === 1 && native.traces.length === 1 && !estimated
     && usage.wake === executionId && usage.complete && trace?.turn_id === executionId && trace.status === 'completed'
     ? 'complete' : 'partial';
@@ -130,6 +130,10 @@ async function collectGrokEvidence(runtimeHome: string, usageFile: string, reque
     readGrokRequests(requestsFile, agentId, executionId, expectedModel, previous), readToolReceipts(runtimeHome, agentId, 'grok'),
   ]);
   if (traces.some(row => executionId !== undefined && row.turn_id !== executionId && !previous.includes(row.turn_id))) throw new Error('Foreign native execution trace');
+  for (const row of usage) {
+    const estimated = requests.filter(request => request.turn === row.turn && request.usage_source === 'estimated').length;
+    if (estimated > (row.estimated_requests ?? 0)) throw new Error('Native Grok estimated request rows disagree with the usage row estimated_requests');
+  }
   // Grok has no Codex session rollout: the broker-sealed usage row is its model identity.
   const modelContexts = usage.map(() => ({ model: expectedModel, approvalPolicy: null, sandboxPolicy: null }));
   return { traces: traces.filter(row => !previous.includes(row.turn_id)), usage, toolReceipts, modelContexts, requests };
