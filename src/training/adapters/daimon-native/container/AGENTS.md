@@ -7,3 +7,6 @@ Project profiles and transport bootstrap remain caller-owned. Require exact laun
 receipts, authenticated native activity, closed telemetry and verified containment.
 Use public module indexes across child boundaries; no sibling implementation imports.
 Keep adjacent tests, files below 400 lines and per-file coverage above 90 percent.
+
+Separate-container Grok is unsupported and refused before any Docker call. The
+unconfined seccomp/AppArmor options and the codex-auth ingress mount are Codex-only.

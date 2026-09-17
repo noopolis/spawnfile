@@ -23,3 +23,7 @@ sensitive runtime details. Abrupt outer-container termination may prevent saving
 The child HOME is always its verified fresh home projection, even when the numeric
 container user has no passwd entry. Explicit env files cannot override HOME; never
 inherit the coordinator or host home to repair native startup.
+
+Grok children never run a local `codex sandbox` probe. The parent re-binds the
+worker's persisted Grok projection receipt and requires every caller-protected
+path, evaluator root and the control root to be an exact denied slot canary.

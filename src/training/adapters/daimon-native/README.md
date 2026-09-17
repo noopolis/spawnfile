@@ -68,8 +68,8 @@ Evaluator files are excluded from projections, and native Codex protection denie
 runtime controls and engine credentials. Prepared memory must be fresh local state;
 this adapter does not create or copy historical memory.
 
-Only one logical Codex task with the workspace-no-network policy is supported.
-Other engines, plain Pi equivalence, unrestricted multi-turn conversations, complete built-in
+Only one logical Codex task with the workspace-no-network policy, or one brokered
+Grok task in child-process execution (below), is supported. Other engines, plain Pi equivalence, unrestricted multi-turn conversations, complete built-in
 tool traces and final-output capture are unsupported. Unit host/command doubles
 test wiring and rejection paths; they are not authenticated native acceptance.
 
@@ -114,3 +114,56 @@ continuation after uncertain cancellation or remote-model cancellation is claime
 Real loopback child fixtures verify lifecycle and capture wiring. A separate
 zero-model native-image probe verified the actual protected-path policy; neither
 is an authenticated model optimization run.
+
+
+## Brokered Grok trials (`paideia.daimon-native.launch.v2`)
+
+Status: implemented and unit-tested against Daimon's public contract; not yet
+exercised in a live broker-capable training container (the slot supervisor that
+writes the preflight receipt is Spawnfile P5).
+
+`launch.v2` adds an engine choice. `agent.engine: "codex"` behaves exactly like
+v1 (at most one read-only ingress credential); v1 receipts still parse as Codex,
+so restored runs and measurement repairs keep working. `agent.engine: "grok"`
+records the declared `model` (`grok-4.6`, `grok-4.5`, `grok-build`) and
+`reasoningEffort` (`low`, `medium`, `high`), carries `credentials: []` and a
+`broker` section:
+
+| Member | Meaning |
+|---|---|
+| `projectionVersion`, `projectionSha256` | `noopolis.daimon.grok-broker-projection.v1` and the canonical digest the slot supervisor bound |
+| `slot`, `workerUid`, `workerHomePath`, `architecture`, `usageLedgerPath`, `seccompProfileSha256`, `limits` | Passed verbatim to Daimon's `resolveOrganizationGrokBrokerProjection` |
+| `evaluatorPaths[]` | `{role, path}` for `run-root`, `context`, `sealed-inputs`, `judge-home`, `slot-ledger` (the usage ledger directory); passed as the projection's `denyPaths` |
+| `slotPreflightReceipt` | Input path contract: the root slot supervisor writes `noopolis.daimon.grok-slot-preflight.v1` here after provisioning or recycling the slot |
+
+Startup, in order, with no model call and no `codex sandbox` process:
+
+1. The worker loads Daimon's Grok exports (`resolveOrganizationGrokBrokerProjection`,
+   `grokBrokerProjectionSha256`, `verifyGrokSlotPreflightReceipt`) and fails closed
+   if any is missing. The config must declare the same model and effort and no
+   Codex sandbox; broker token limit must not exceed the launch wake ceiling.
+2. The resolved projection's canonical digest must equal Daimon's digest and the
+   launch receipt; its turn timeout must fit the trial deadline.
+3. The slot receipt must exist and pass Daimon's verifier (exact deny-path canaries,
+   profile, seccomp, executable). Paideia then requires the control root and every
+   evaluator root to be an exact denied canary and the config/token/env files to
+   sit inside a denied root, and persists `sandbox-projection.json`.
+4. The ready line adds `engine` and `reasoningEffort`; the parent requires them to
+   match the launch. The parent re-binds the persisted receipt without Daimon and
+   additionally requires every caller `protectedPaths` entry as a denied canary.
+
+Separate-container Grok is refused before any Docker call. The worker sets the
+engine-neutral `DAIMON_ENGINE_WAKE_TIMEOUT_MS`/`_TOKEN_CEILING` (Codex aliases equal)
+and points `DAIMON_TURN_USAGE_LEDGER_PATH`/`DAIMON_TURN_REQUESTS_LEDGER_PATH` at the
+slot ledger, which the broker writes and which must be empty at trial start.
+
+Evidence reads Grok usage rows with `total = input + cache_read + cache_write +
+output`, the declared model or its `-build` alias and a `turn` key; byte-identical
+rows per `turn` count once and conflicting ones fail. Per-request rows keep
+`usage_source`, `started_at` and `ended_at` in `native.requests`; `estimated_requests`
+stays on the usage row and makes usage coverage partial. Normalized usage has
+`inputTokens = input + cache_read + cache_write`, `cachedInputTokens = cache_read`,
+`cacheWriteInputTokens = cache_write` and `notionalUsd`. Cost reports prefer a
+runtime-reported `notionalUsd` (labelled with its source) over catalog rates; there
+is no built-in Grok rate card, but `paideia.cost-config.v1` `prices` can add one.
+A broker limit failure is reported only as its closed `limit_reason`.
