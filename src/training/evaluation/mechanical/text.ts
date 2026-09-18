@@ -3,11 +3,21 @@ import { compileJsonSchema } from '../../cases/index.js';
 import type { CheckNode } from '../../contracts/dataset.js';
 import type { EvaluationContext, EvaluationResult } from '../../contracts/evaluation.js';
 import { result } from '../logic/index.js';
-import { selectEvidence, textReference } from '../selectors.js';
+import { observedAbsence, selectEvidence, textReference } from '../selectors.js';
 
 export async function evaluateText(check: CheckNode, context: EvaluationContext): Promise<EvaluationResult> {
   const selected = selectEvidence(check.input as string, context.snapshot);
-  if (!selected.found) return result('unknown', `Missing ${String(check.input)}`, context.snapshot.closed);
+  if (!selected.found) {
+    // An absence the run observed is a behavioural failure, not missing evidence: the
+    // subject closed its own execution, every channel it declared is accounted for, and
+    // the artifact it had to produce is simply not there. It fails as a measured zero and
+    // keeps its weight, so nothing is scored better by omission. An absence the run could
+    // not observe stays unknown and keeps the trial unscorable, exactly as before.
+    if (observedAbsence(check.input as string, context.snapshot)) {
+      return { ...result('fail', `Missing ${String(check.input)} in a completed, fully accounted subject execution`), score: 0 };
+    }
+    return result('unknown', `Missing ${String(check.input)}`, context.snapshot.closed);
+  }
   let passed: boolean;
   if (check.eval === 'equals') passed = isDeepStrictEqual(selected.value, check.value);
   else if (check.eval === 'contains-any') {

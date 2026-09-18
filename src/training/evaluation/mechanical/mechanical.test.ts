@@ -61,6 +61,25 @@ describe('mechanical evidence', () => {
     expect((await evaluateNode({ eval: 'equals', input: 'output.text', value: '4' },
       evaluationContext({ snapshot: snapshot({ closed: false }) }), registry)).finality).toBe('provisional');
   });
+  it('separates an absence the run observed from one it could not make', async () => {
+    const complete = { status: 'complete' as const, usage: null };
+    const check = { eval: 'contains-any', input: 'artifact:none#/body', values: ['Filed'] };
+    const accounted = evaluationContext({ snapshot: snapshot({ subjectUsage: complete }) });
+    const failed = await evaluateNode(check, accounted, registry);
+    // The subject's run is fully accounted for and the artifact is not there: a measured zero
+    // that keeps its weight, never an exclusion from the denominator.
+    expect(failed.status).toBe('fail');
+    expect(failed.finality).toBe('final');
+    expect(failed.score).toBe(0);
+    // Each conjunct is load-bearing on its own: drop any one and the verdict is unknown again.
+    for (const overrides of [{}, { subjectUsage: { status: 'incomplete' as const, usage: null } },
+      { subjectUsage: complete, closed: false }]) {
+      expect((await evaluateNode(check, evaluationContext({ snapshot: snapshot(overrides) }), registry)).status).toBe('unknown');
+    }
+    // An absent output is incomplete coverage by definition, so it can never certify absence.
+    expect((await evaluateNode({ eval: 'equals', input: 'output.text', value: '4' },
+      evaluationContext({ snapshot: snapshot({ coverage: [], subjectUsage: complete }) }), registry)).status).toBe('unknown');
+  });
   it('makes presence decisive but cannot certify absence from partial capture', async () => {
     const first = observation();
     const end = observation({ id: 'end', seq: 2, type: 'tool.complete', success: false });

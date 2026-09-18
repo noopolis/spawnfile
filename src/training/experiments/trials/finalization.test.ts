@@ -6,7 +6,7 @@ import { result, createEvaluationRegistry } from '../../evaluation/index.js';
 import { trialScore } from '../training/index.js';
 import { runTrial } from './trial.js';
 import { complete, setup } from './fixture.js';
-import type { ObservationCoverage, SubjectStart, SubjectTurnResult } from '../../contracts/execution.js';
+import type { ObservationCoverage, SubjectStart, SubjectTurnResult, Usage } from '../../contracts/execution.js';
 
 afterEach(() => { vi.useRealTimers(); });
 
@@ -45,6 +45,30 @@ async function called(input: SubjectStart, turn: { id: string }, tool: string): 
 const delegated = (input: SubjectStart, turn: { id: string }) => called(input, turn, 'moltnet_send');
 function deferredTurn(coverage: ObservationCoverage[]): SubjectTurnResult {
   return { status: 'failed', blocked: 'awaiting-external-input', text: '', usage: null, error: blockedError, coverage };
+}
+
+/** The metered shape of the observed run: the turn closed and every token it spent is attributed. */
+const metered: Usage = { inputTokens: 171_984, cachedInputTokens: 0, outputTokens: 2_048, reasoningTokens: 0, source: 'fixture' };
+function closedTurn(coverage: ObservationCoverage[], status: SubjectTurnResult['status'] = 'completed'): SubjectTurnResult {
+  return { status, text: '', usage: metered, coverage, ...(status === 'completed' ? {} : { error: 'native turn ended early' }) };
+}
+/** One required artifact and nothing else, so the trial's verdict is exactly its verdict. */
+function filing() {
+  return resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+id: filing
+stages:
+  - id: accepted-filing
+    checks:
+      - {id: body, eval: contains-any, input: 'artifact:accepted-article#/body', values: [Filed]}
+    score:
+      linear: {body: 1}
+    gate: {passed: body}
+records:
+  - id: record
+    group: unique
+    input: {prompt: file the assigned story}
+    outputs: {accepted-article: article.json}
+`)).records[0]!;
 }
 
 
@@ -231,5 +255,81 @@ it('does not regress the disposed execution that really filed', async () => {
   expect(report.execution).toBe('completed');
   expect(report.status).toBe('pass');
   expect(report.turns[0]!.native.blocked).toBeUndefined();
+  expect(trialScore(report)).toBe(1);
+});
+
+it('fails the required artifact the completed execution was observed never to produce', async () => {
+  // The observed foreman: it delegated, closed its own turn, spent real tokens and filed nothing.
+  const task = await setup(async (input, turn) => { await delegated(input, turn); return closedTurn(observed); });
+  task.options.record = filing();
+  const report = await runTrial(task.options);
+  expect(report.execution).toBe('completed');
+  expect(report.snapshot.subjectUsage!.status).toBe('complete');
+  const stage = report.evaluation.stages.find(row => row.id === 'accepted-filing')!;
+  const body = stage.checks.find(check => check.id === 'body')!;
+  // The absence was observable, so it is a verdict, not missing evidence.
+  expect(body.status).toBe('fail');
+  expect(body.finality).toBe('final');
+  expect(body.reason).toContain('Missing artifact:accepted-article#/body');
+  // A failing check keeps its weight: measured at zero, never excluded from the denominator.
+  expect(stage.score).toMatchObject({ assessedWeight: 1, missingWeight: 0, lower: 0, upper: 0 });
+  expect(report.status).toBe('fail');
+  expect(trialScore(report)).toBe(0);
+
+  // Mutation, on the exact boundary the rule stands on: the same completed run whose usage
+  // channel is only partial can no longer attest complete coverage, so the absence is an
+  // observation nobody made and the trial goes back to unscorable.
+  const unattributed = await setup(async (input, turn) => { await delegated(input, turn);
+    return closedTurn([...observed.slice(0, 2), { channel: 'usage', completeness: 'partial', ordering: 'source' }]); });
+  unattributed.options.record = filing();
+  const unproven = await runTrial(unattributed.options);
+  expect(unproven.execution).toBe('completed');
+  expect(unproven.snapshot.subjectUsage!.status).toBe('incomplete');
+  expect(unproven.evaluation.stages[0]!.checks[0]!.status).toBe('unknown');
+  expect(unproven.status).toBe('unknown');
+  expect(() => trialScore(unproven)).toThrow('unscorable');
+});
+
+it('keeps an execution that never closed an unmade observation rather than an observed absence', async () => {
+  // Same missing artifact, same complete coverage, but the execution itself did not close.
+  const cancelled = await setup(async (input, turn) => { await delegated(input, turn); return closedTurn(observed, 'cancelled'); });
+  cancelled.options.record = filing();
+  const interrupted = await runTrial(cancelled.options);
+  expect(interrupted.execution).toBe('interrupted');
+  expect(interrupted.evaluation.stages[0]!.checks[0]!.status).toBe('unknown');
+  // The incomplete execution is its own error witness, so the trial never reports a verdict.
+  expect(interrupted.status).toBe('error');
+  expect(() => trialScore(interrupted)).toThrow('incomplete');
+
+  const crashed = await setup(async (input, turn) => { await delegated(input, turn); return closedTurn(observed, 'failed'); });
+  crashed.options.record = filing();
+  const broken = await runTrial(crashed.options);
+  expect(broken.execution).toBe('failed');
+  expect(broken.evaluation.stages[0]!.checks[0]!.status).toBe('unknown');
+  expect(() => trialScore(broken)).toThrow('infrastructure');
+
+  // And the deferred path from the previous change is untouched: the artifact stays missing,
+  // the unanswered delivery is what fails the trial, and the weight stays in the denominator.
+  const deferred = await setup(async (input, turn) => { await delegated(input, turn); return deferredTurn(observed); });
+  deferred.options.record = filing();
+  const report = await runTrial(deferred.options);
+  expect(report.execution).toBe('deferred');
+  expect(report.evaluation.stages[0]!.checks[0]!.status).toBe('unknown');
+  expect(report.evaluation.stages[0]!.score).toMatchObject({ assessedWeight: 0, missingWeight: 1 });
+  expect(report.status).toBe('fail');
+  expect(trialScore(report)).toBe(0);
+});
+
+it('leaves a produced artifact untouched by the observed-absence rule', async () => {
+  const task = await setup(async (input, turn) => {
+    await called(input, turn, 'mcp_newsroom_file_article');
+    await writeFile(join(input.workspacePath, 'article.json'), '{"body":"Filed"}');
+    return closedTurn(observed);
+  });
+  task.options.record = filing();
+  const report = await runTrial(task.options);
+  expect(report.snapshot.subjectUsage!.status).toBe('complete');
+  expect(report.evaluation.stages[0]!.checks[0]!.status).toBe('pass');
+  expect(report.status).toBe('pass');
   expect(trialScore(report)).toBe(1);
 });

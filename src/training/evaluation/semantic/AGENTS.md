@@ -12,6 +12,11 @@ Owns fixed rubric prompts, typed judgments, evidence and judge calibration.
   provider identity and version belong in evaluation provenance.
 - Missing authentication, quota failures and malformed responses are errors, not
   low-quality subject verdicts or reasons for a paid API fallback.
+- An absent judge input stays `unknown` even when the trial observed that absence.
+  A judge that never ran has no verdict to report, and a fabricated `fail` would
+  claim the text was assessed and found wanting. Its weight stays in the score's
+  denominator either way, and the mechanical gate that required the artifact is
+  what fails the trial.
 - Retain each judge attempt's named route, requested and returned identities,
   and observed usage even when its judgment is invalid. Unknown usage stays null.
   A requested-assumption inference model yields a null responseModel, retaining
