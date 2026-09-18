@@ -5,6 +5,7 @@ function checkTree(checks: ViewerCheck[]): string {
   if (checks.length === 0) return '<p class="muted">No checks supplied.</p>';
   return `<ul>${checks.map((check) => `<li><strong>${escapeHtml(check.label)}</strong> — ${escapeHtml(check.status)};
 score ${shown(check.score)}${check.weight === undefined ? '' : ` · weight ${shown(check.weight)} · contribution ${shown(check.weightedContribution ?? null)}`} <span class="muted">(${escapeHtml(check.id)})</span>
+${check.judgeFailure === undefined ? '' : `<p class="muted">Judge failure: ${escapeHtml(check.judgeFailure.cause)}${check.judgeFailure.status === undefined ? '' : ` ${check.judgeFailure.status}`}${check.judgeFailure.kind === undefined ? '' : ` (${escapeHtml(check.judgeFailure.kind)})`} · judge ${escapeHtml(check.judgeFailure.judge)} · requested ${escapeHtml(check.judgeFailure.requestedModel ?? 'unknown')} · answered ${escapeHtml(check.judgeFailure.responseModel ?? 'unknown')} via ${escapeHtml(check.judgeFailure.responseRoute ?? 'unknown')}</p>`}
 <p>Evidence: ${escapeHtml(check.evidenceIds.join(', ') || 'None supplied')}</p>
 ${check.children.length === 0 ? '' : checkTree(check.children)}</li>`).join('')}</ul>`;
 }

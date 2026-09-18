@@ -104,7 +104,10 @@ it('shows the latest rescore and weighted criteria on the original native captur
       sidecarDigests: {}, inferenceRoutes: { judges: {}, embeddings: {} } },
     execution: trial.execution, hostWork: trial.hostWork, stop: trial.stop, coverage: [], status: 'pass',
     evaluation: { status: 'pass', checks: {}, scores: {}, stages: [{ id: 'quality', gate, weights: { prose: 3, facts: 1, pending: 1 },
-      checks: [{ ...gate, id: 'prose', score: 0.5 }, { ...gate, id: 'facts' }, { ...gate, id: 'pending', status: 'unknown' }],
+      checks: [{ ...gate, id: 'prose', score: 0.5 }, { ...gate, id: 'facts' }, { ...gate, id: 'pending', status: 'unknown' },
+        { ...gate, id: 'grounding', status: 'error', reason: 'SECRET prompt and article text',
+          judgeFailure: { cause: 'grant-refused' as const, judge: 'grounding', providerId: 'grok-broker-grant',
+            requestedModel: 'grok-4.6', responseModel: null, responseRoute: null, kind: 'unavailable' as const } }],
       score: { finality: 'final', lower: 0.8, upper: 0.8, assessedWeight: 5, missingWeight: 0 } }] } };
   const original = structuredClone(trial);
   const data = projectTrials({ id: 'view', title: 'Rescore', phase: 'train', status: 'running', updatedAt: 'now',
@@ -114,10 +117,15 @@ it('shows the latest rescore and weighted criteria on the original native captur
   expect(data.trials[0]).toMatchObject({ id: trial.id, score: 0.8, status: 'pass (rescored; original error; completed; host work settled)' });
   expect(data.trials[0]!.checks[0]!.children).toMatchObject([
     { id: 'prose', weight: 3, weightedContribution: 0.3 }, { id: 'facts', weight: 1, weightedContribution: 0.2 },
-    { id: 'pending', weight: 1, weightedContribution: null }, { status: 'pass' },
+    { id: 'pending', weight: 1, weightedContribution: null },
+    { id: 'grounding', status: 'error', judgeFailure: { cause: 'grant-refused', judge: 'grounding' } }, { status: 'pass' },
   ]);
+  // The cause reaches the published page; the reason it came with still does not.
+  expect(data.trials[0]!.checks[0]!.children[3]).not.toHaveProperty('reason');
   expect(data.trials[0]!.events).toHaveLength(trial.snapshot.events.length);
   const html = trialDetails(data);
   expect(html).toContain('weight 3'); expect(html).toContain('contribution 0.3'); expect(html).not.toMatch(/SECRET|NaN/);
+  expect(html).toContain('Judge failure: grant-refused');
+  expect(html).toContain('judge grounding'); expect(html).toContain('requested grok-4.6'); expect(html).toContain('answered unknown');
   expect(trial).toEqual(original);
 });

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { subjectUsageMatchesNative } from './subject-usage.js';
-import type { EvaluationResult } from '../../contracts/evaluation.js';
+import { judgeFailureCauses, type EvaluationResult } from '../../contracts/evaluation.js';
 
 const identity = z.string().min(1).max(512).refine(value => !value.includes('\0'));
 const verdict = z.enum(['pass', 'fail', 'unknown', 'error', 'skipped']);
@@ -32,8 +32,17 @@ const stop = z.object({ state: z.enum(['requested', 'acknowledged', 'unknown']),
   unconfirmed: z.enum(['worker-unavailable', 'terminal-absent', 'terminal-unbound', 'delivery-undisposed',
     'activity-unreadable', 'activity-busy', 'execution-unbound', 'native-stop-unacknowledged',
     'child-running', 'child-exit']).optional() });
+// A replayed report has to keep WHY a judge errored for the same reason it keeps
+// which closure proof failed: the object schema strips what it does not declare.
+const judgeFailure = z.object({ cause: z.enum(judgeFailureCauses), judge: identity,
+  providerId: z.string().nullable(), requestedModel: z.string().nullable(),
+  responseModel: z.string().nullable(), responseRoute: z.string().nullable(),
+  kind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'auth-stale', 'protocol',
+    'invalid-response', 'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),
+  status: z.number().int().positive().max(599).optional() });
 const result: z.ZodType<EvaluationResult> = z.lazy(() => z.object({ id: z.string().optional(), status: verdict,
-  finality: z.enum(['provisional', 'final']), reason: z.string(), score: z.number().min(0).max(1).optional(),
+  finality: z.enum(['provisional', 'final']), reason: z.string(), judgeFailure: judgeFailure.optional(),
+  score: z.number().min(0).max(1).optional(),
   evidence: z.array(z.object({ kind: z.enum(['event', 'artifact', 'input', 'output', 'sidecar']), id: z.string(), digest: z.string().optional() })),
   cache: z.object({ key: z.string(), sourceCallId: z.string(), sourceCalls: z.array(judgeCall).optional() }).optional(),
   children: z.array(result).optional(), usage: z.array(usage).optional(), judgeCalls: z.array(judgeCall).optional() }));

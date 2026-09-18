@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { judgeFailureCauses } from '../src/contracts/index.js';
 import type { ViewerCheck, ViewerData } from './types.js';
 
 const text = z.string().max(16384);
@@ -27,8 +28,17 @@ const costs = z.object({
       provider: text.nullable(), route: text.nullable(), outcome: id, usage: costTokens, valuationStatus: id,
       amount: range.nullable(), price })).max(1000) }).optional(),
 });
+// Closed vocabulary and identities only. The object schema strips what it does not
+// declare, so a prompt, an article, a response body or a grant token has no field
+// to travel in even if a future caller hands one to the projection.
+const judgeFailure = z.object({ cause: z.enum(judgeFailureCauses), judge: id,
+  providerId: id.nullable(), requestedModel: id.nullable(), responseModel: id.nullable(), responseRoute: id.nullable(),
+  kind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'auth-stale', 'protocol',
+    'invalid-response', 'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),
+  status: z.number().int().positive().max(599).optional() }).strict();
 const check: z.ZodType<ViewerCheck> = z.lazy(() => z.object({
   weight: z.number().finite().nonnegative().optional(), weightedContribution: z.number().min(0).max(1).nullable().optional(),
+  judgeFailure: judgeFailure.optional(),
   id, label: text, status: z.enum(['pass', 'fail', 'unknown', 'error', 'skipped']), score,
   evidenceIds: strings, children: z.array(check).max(1000),
 }));
@@ -59,7 +69,8 @@ const schema = z.object({
   activity: z.object({ trialId: id, caseId: id, phase: z.enum(['train', 'validation', 'test']), status: id,
     toolCalls: count, judgeCalls: count, measurements: z.array(z.object({stageId:id,criterionId:id,
       kind:z.enum(['criterion','gate','score']),status:id,score,
-      weight:z.number().finite().nonnegative().optional(),weightedContribution:score.optional()})).max(1000),
+      weight:z.number().finite().nonnegative().optional(),weightedContribution:score.optional(),
+      judgeFailure:judgeFailure.optional()})).max(1000),
   }).optional(),
 });
 

@@ -16,6 +16,24 @@ describe('bounded public viewer projection', () => {
     expect(projected).not.toBe(data);
   });
 
+  it('keeps the judge failure to its closed vocabulary and declared identities', () => {
+    const data = viewerFixture();
+    const errored = data.trials[0]!.checks[0]!.children[1]!;
+    expect(projectViewerData(data).trials[0]!.checks[0]!.children[1]!.judgeFailure)
+      .toEqual({ cause: 'provider-error', judge: 'grounding', providerId: 'grok-broker-grant',
+        requestedModel: 'grok-4.6', responseModel: 'grok-4.6', responseRoute: 'grok-broker-grant', kind: 'quota', status: 429 });
+    // A strict object: an undeclared field is a rejection, not something stripped and shipped.
+    const smuggled = viewerFixture();
+    Object.assign(smuggled.trials[0]!.checks[0]!.children[1]!.judgeFailure!, { prompt: 'PRIVATE' });
+    expect(() => projectViewerData(smuggled)).toThrow();
+    for (const patch of [{ cause: 'grant-melted' }, { status: 0 }, { status: 6000 }, { kind: 'vibes' }, { judge: '' }]) {
+      const invalid = viewerFixture();
+      Object.assign(invalid.trials[0]!.checks[0]!.children[1]!.judgeFailure!, patch);
+      expect(() => projectViewerData(invalid), JSON.stringify(patch)).toThrow();
+    }
+    expect(errored.judgeFailure!.cause).toBe('provider-error');
+  });
+
   it.each([
     (data: ViewerData) => { data.trials[0]!.score = Number.NaN; },
     (data: ViewerData) => { data.trials[0]!.score = 1.1; },

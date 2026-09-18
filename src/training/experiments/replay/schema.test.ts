@@ -57,3 +57,22 @@ test('a replayed report keeps which closure proof failed', async () => {
   // Only the closed vocabulary parses; an invented cause is refused, not carried.
   expect(() => trialReportSchema.parse(JSON.parse(JSON.stringify({ ...report, stop: { ...report.stop, unconfirmed: 'made-up' } })))).toThrow();
 });
+
+/**
+ * The same argument for the judge: a replayed report that says `error` and not
+ * which judge refused, expired or answered unreadably is the anonymous failure
+ * coming straight back through the schema that was meant to preserve it.
+ */
+test('a replayed report keeps why a judge errored', async () => {
+  const { report } = await fixture();
+  const failure = { cause: 'grant-refused' as const, judge: 'grounding', providerId: 'grok-broker-grant',
+    requestedModel: 'grok-4.6', responseModel: null, responseRoute: null, kind: 'unavailable' as const };
+  const stage = report.evaluation.stages[0]!;
+  stage.checks.push({ id: 'grounding', status: 'error', finality: 'final', reason: 'Routed inference stopped (unavailable)',
+    evidence: [], judgeFailure: failure });
+  const parsed = trialReportSchema.parse(JSON.parse(JSON.stringify(report)));
+  expect(parsed.evaluation.stages[0]!.checks.at(-1)!.judgeFailure).toEqual(failure);
+  // Only the closed vocabulary parses; an invented cause is refused, not carried.
+  stage.checks.at(-1)!.judgeFailure = { ...failure, cause: 'grant-vaporised' as never };
+  expect(() => trialReportSchema.parse(JSON.parse(JSON.stringify(report)))).toThrow();
+});

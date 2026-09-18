@@ -21,9 +21,17 @@ it('projects persisted activity without tool payloads or judge text and resets p
   emit('evaluation.measurement', { ...measurement, stageId: 'review', weight: undefined, weightedContribution: undefined });
   expect(tracker.snapshot()?.measurements).toHaveLength(2);
   expect(tracker.snapshot()?.measurements[0]?.score).toBe(0.9);
+  expect(tracker.snapshot()?.measurements[0]?.judgeFailure).toBeUndefined();
+  // The live view has to show the named cause, not a bare `error` with no score.
+  emit('evaluation.measurement', { ...measurement, criterionId: 'grounding', status: 'error', score: null,
+    reason: 'PRIVATE', judgeFailure: { cause: 'grant-refused', judge: 'grounding', providerId: 'grok-broker-grant',
+      requestedModel: 'grok-4.6', responseModel: null, responseRoute: null, kind: 'unavailable' } });
+  const errored = tracker.snapshot()!.measurements.find(row => row.criterionId === 'grounding')!;
+  expect(errored.judgeFailure).toMatchObject({ cause: 'grant-refused', judge: 'grounding' });
+  expect(errored.weight).toBe(2);
   const copy = tracker.snapshot()!;
   copy.measurements.length = 0;
-  expect(tracker.snapshot()?.measurements).toHaveLength(2);
+  expect(tracker.snapshot()?.measurements).toHaveLength(3);
   expect(JSON.stringify(tracker.snapshot())).not.toContain('PRIVATE');
   emit('turn.native-result', {});
   expect(tracker.snapshot()?.status).toBe('Agent turn complete');

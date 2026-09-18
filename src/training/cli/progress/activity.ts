@@ -31,7 +31,8 @@ export function createActivityTracker() {
         const value = event.payload as EvaluationMeasurement;
         const measurement = {stageId:value.stageId,criterionId:value.criterionId,kind:value.kind,status:value.status,score:value.score,
           ...(value.weight === undefined ? {} : {weight:value.weight}),
-          ...(value.weightedContribution === undefined ? {} : {weightedContribution:value.weightedContribution})};
+          ...(value.weightedContribution === undefined ? {} : {weightedContribution:value.weightedContribution}),
+          ...(value.judgeFailure === undefined ? {} : {judgeFailure:structuredClone(value.judgeFailure)})};
         const measurements = activity!.measurements.filter(row => row.stageId !== value.stageId
           || row.criterionId !== value.criterionId || row.kind !== value.kind);
         activity!.measurements = [...measurements,measurement].slice(-1000);
