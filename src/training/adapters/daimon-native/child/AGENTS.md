@@ -29,54 +29,65 @@ module still requires the receipt, and `child/fixture.ts` models both hosts —
 the sealed answer and one that refuses it — because a fixture that always
 answered post-stop is exactly what hid the defect through every green run.
 
-Closure is a conjunction of independent proofs, and each one now **names
-itself**. They shared a bare `catch` and a single fixed sentence, so every
-unscorable trial published the same "unconfirmed" whichever proof was missing,
-and the evidence that would have identified it was in the control root a
-training slot puts on tmpfs. `StopUnconfirmed` is that closed vocabulary —
-`worker-unavailable`, `terminal-absent`, `terminal-unbound`,
-`activity-unreadable`, `activity-busy`, `execution-unbound`,
-`native-stop-unacknowledged`, `child-running`, `child-exit`
-— carried on the receipt the turn publishes durably, and `runTrial` repeats it
-when it demotes a deferred trial, because for as long as it did not, an
-unprovable closure published the subject's own "delivery blocked awaiting
-external input" as the reason the machine could not score. The verdict is
-unchanged: every proof is still required, absence of a name means the stop was
-confirmed, and no name ever carries a path, a token, a body or an upstream
-error string. `activity-busy` is reachable and must stay refusing — a host that
-stopped with an execution still admitted seals that honestly.
+**Two questions, two vocabularies, and a failure says which one it is.**
 
-The frame's two states are two causes, because they call for fixes in two places.
-`terminal-absent` is no frame at all for the last delivery; `terminal-unbound` is
-a frame whose identity, closed trace or `executionClosed` disagreed. Collapsing
-them sends the next investigation to the wrong layer, which is exactly what one
-over-broad name already cost.
+*Closure* asks whether anything is still running or still spending. It is three
+live proofs and nothing else: the runtime admits no execution of this agent's
+(`/v2/activity`, counted by `admittedExecutions`), it sealed and acknowledged its
+own stop, and the owned child process exited cleanly. `StopUnconfirmed` names the
+first that did not hold — `worker-unavailable`, `activity-unreadable`,
+`activity-busy`, `execution-unbound`, `native-stop-unacknowledged`,
+`child-running`, `child-exit` — on the receipt the turn publishes durably, and
+`runTrial` repeats it when it demotes a deferred trial. Absence of a name means
+closure was proven, and no name ever carries a path, a token, a body or an
+upstream error string. `activity-busy` is reachable and must stay refusing: a
+host that stopped with an execution still admitted seals that honestly, and a
+worker still inside its wake is exactly what that conjunct is for.
 
-There was a third, `delivery-undisposed`, for a delivery that came back neither
-completed nor deferred, and it was the wrong kind of fact in the wrong place. What
-this predicate claims is that **no worker is still spending**, and a bound frame, a
-resolved execution, an empty `executions` list and an exited child prove exactly
-that; the delivery's disposition proves nothing about it. Reading it here demoted a
-scorable turn to an infrastructure failure — the same mistake as publishing the
-subject's deferral as the machine's reason, one layer up. It is retired rather than
-renamed: nothing produces it, the vocabulary keeps the member only so a sealed
-report that carries it still replays, and no name replaced it. A delivery reclaimed
-undisposed still refuses to score, loudly, on the worker's own evidence
-(`worker/control.ts`), and after Daimon stopped keying that reclaim on its own
-`stopping` latch the shape should not occur at all — a recurrence is an upstream
-regression, which is precisely why it must not be absorbed here as one more
-unconfirmed closure.
+*Evidence* asks whether this trial can be scored at all. `TerminalEvidenceMissing`
+is its own vocabulary on its own receipt field, `unevidenced`: `terminal-absent`
+is no frame at all for the last delivery, `terminal-unbound` is a frame whose
+identity, closed trace or resolved execution disagreed — including one belonging
+to a different trial, which is never accepted as this trial's evidence. A trial
+carrying one is **unscorable for want of evidence on a runtime that is provably
+quiet**, which is a different sentence from "the runtime might still be spending"
+and must never be published as one. Deferred is still never success: the demotion
+happens either way, under whichever name earned it.
 
-The fixture models production or it is a defect. Two shapes it lacked, both of
+**Why the frame is not a closure proof.** It used to be one, and the predicate
+failed a different way on a healthy run in each of seven investigation rounds —
+`delivery-undisposed`, then `terminal-absent`, then `terminal-unbound` — while the
+turn's own trace read `completed`. A terminal frame is the last delivery's
+paperwork: the worker's account, published in the past, of a turn that had already
+ended. Requiring it to bind was interrogating another service's inbox bookkeeping
+over HTTP, and every fact it could offer comes from the same runtime that answers
+`/v2/activity` live — one step later and one step staler. Child exit plus the
+runtime's own seal already carry the money claim: the child is the process this
+adapter owns, its exit is observed here rather than reported, and an acknowledged
+stop is the runtime sealing its turn record. Nothing the frame could say adds
+authority over those two, so it added none, while it did subtract scorable runs.
+
+`delivery-undisposed` was the first retired member, for a delivery that came back
+neither completed nor deferred, and `terminal-absent`/`terminal-unbound` are the
+rest. They are retired rather than renamed: nothing produces them as closure
+causes, the `StopUnconfirmed` vocabulary keeps the members only so a sealed report
+that carries one still replays. A delivery reclaimed undisposed still refuses to
+score, loudly, on the worker's own evidence (`worker/control.ts`), and after Daimon
+stopped keying that reclaim on its own `stopping` latch the shape should not occur
+at all — a recurrence is an upstream regression, which is precisely why it must not
+be absorbed here as one more unconfirmed closure.
+
+The fixture models production or it is a defect. Three shapes it lacked, each of
 which made green tests coexist with an inert live path: `/trial/stop` is settled
 **once** by whoever stops first — including the worker's own internal stop on the
 final deferred delivery, which races `host.stop()` against a 5 s deadline — and
-every later call replays that same value, non-acknowledgement included; and the
+every later call replays that same value, non-acknowledgement included; the
 activity projection carries one accepted-delivery record per wake, never the
-single-item shape one wake produces. Neither is read by `executionClosed`, which
-resolves the execution from the closed trace and requires only that `executions`
-be empty — but a fixture kinder than production on the stop receipt is what let
-`native-stop-unacknowledged` pass as confirmed.
+single-item shape one wake produces; and an execution is **admitted for as long as
+its wake runs** and gone once it closes. That third one is load-bearing now that
+closure rests on the projection: a fixture whose stalled worker reported an empty
+`executions` list would let a worker still inside its wake read as quiet, and the
+test that a genuinely running turn is refused would prove nothing at all.
 
 Persist at most 64 KiB of each child output stream into an exclusive 0600 diagnostic
 receipt under the protected canonical control root when stopping the child. Keep
