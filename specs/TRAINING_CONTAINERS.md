@@ -415,9 +415,22 @@ Desktop and Colima both land every host bind there. Only on those does
 `unenforcedBindPolicy` apply: `refuse` (the default) fails the slot and writes
 no receipt; `profile-only` accepts the bubblewrap-enforced `deny` list as that
 path's only boundary and names every such path in the supervisor log. The
-default is therefore reachable — on a Linux daemon over a native filesystem
-every deny entry is kernel-probed — and on Docker Desktop the one entry that
-forces `profile-only` is `/run/training/output`.
+default is therefore reachable: on a Linux daemon over a native filesystem every
+deny entry is kernel-probed, and preparation creates the output root `0700`
+owned by the invoking user, so uid 2200 is genuinely denied there. On Docker
+Desktop and Colima the one entry that forces `profile-only` is
+`/run/training/output`, whose inode is the operator's and whose filesystem
+ignores `chown`; the sealed datasets never depend on that choice.
+
+Two limits of that are worth stating rather than discovering. A `0700`
+host-owned output root also denies uid 2000, so a v3 run on a native
+filesystem needs an output directory the in-container organization uid can
+write — group `2000` mode `0750`, or an equivalent id mapping — before it can
+complete; and under `profile-only` the run root's only boundary is the
+bubblewrap `deny` list, which the same namespace route that motivated the
+sealed-inputs seal can lift. Sealing the run root the same way means moving the
+bind below a baked `0750` ancestor, which changes a container path
+`paideia.daimon-native.launch.v2` names, so it is deliberately not done here.
 
 ### The sealed datasets
 
