@@ -16,6 +16,19 @@ deferred awaiting external input. Require that explicit blocked receipt and all
 identity/idle/stop/exit proofs. Confirming closure never changes the task outcome
 or makes an unanswered delivery eligible as completed training evidence.
 
+Those proofs are read from a runtime that has usually already stopped, and that
+ordering is the whole of it. The worker stops its own Daimon host the moment a
+delivery closes its execution and stays deferred with no continuation left — so
+`stop()`'s `/v2/activity` query, the only authority that can settle whether the
+execution closed, lands on a stopped host. Daimon answered `undefined` there
+(HTTP 503 `native_host_unavailable`) until it sealed that projection at shutdown,
+which is why a subject that really ran every wake its budget allowed, spent the
+money and simply never did the work reported as an unscorable infrastructure
+failure instead of a scored zero. Nothing here infers closure in its place: this
+module still requires the receipt, and `child/fixture.ts` models both hosts —
+the sealed answer and one that refuses it — because a fixture that always
+answered post-stop is exactly what hid the defect through every green run.
+
 Persist at most 64 KiB of each child output stream into an exclusive 0600 diagnostic
 receipt under the protected canonical control root when stopping the child. Keep
 raw output out of observations, viewer messages and model inputs; it can contain
