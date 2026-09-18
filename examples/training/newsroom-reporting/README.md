@@ -10,8 +10,10 @@ process fit together.
 **Everything here is synthetic.** The agent, its colleagues, the network, the story
 identifiers, the Git repositories, the pinned revisions and every SHA-256 selector are
 invented for this example. It exists to exercise the authoring surface for a realistic
-multi-step reporting task, not to describe a deployment. Native Spawnfile validation
-and Paideia dataset resolution pass. The generic evaluators and the real DSPy optimizer
+multi-step reporting task, not to describe a deployment. Paideia dataset resolution
+passes here (`src/cases/examples.test.ts` reads both files unchanged); the Spawnfile is
+a declaration in the native format and has not been re-validated by the Spawnfile
+compiler since these names became synthetic. The generic evaluators and the real DSPy optimizer
 are implemented and tested on the separate
 [native formatting example](../native-formatting/README.md); this environment, its named
 `newsroom/*` evaluators and its source preparation are declared, not implemented.
@@ -247,7 +249,7 @@ satisfy these ordered tool checks. A trusted MCP journal or native engine event 
 to actual host wake and acceptance identities, is a prerequisite. Missing call evidence remains
 unknown, even if the final text looks right.
 
-Native declaration validation passes for this file. Nothing here has been compiled, deployed or
-run: a matching runtime artifact, prepared tool closures, isolation, historical-clock handling,
-authenticated state setup and trace coverage would all have to be demonstrated before any
-environment-parity or training claim.
+Nothing here has been compiled, deployed or run. A matching runtime artifact, prepared tool
+closures, isolation, emulated-clock handling, authenticated state setup and trace coverage would
+all have to be demonstrated before any environment-parity or training claim, and the Spawnfile
+itself needs a fresh compiler validation run.
