@@ -18,8 +18,9 @@ container that runs a brokered Grok subject beside the evaluator.
 - `processes.ts` starts the launcher (root), broker and relay (2100) and proves
   each one's socket and post-drop uid/`CapBnd` before the next starts.
 - `runtime.ts` implements drain, wipe, provision, start, canaries and receipt.
-- `supervisor.ts` is the one-verb root socket server. One verb, one argument,
-  no caller-supplied path or command.
+- `supervisor.ts` is the one-verb root socket server (one verb, one argument,
+  no caller-supplied path or command) and owns `startTrainingSlot`, the only
+  way a slot comes up: `provision → start → canaries → generation → receipt`.
 - `receipt.ts` writes `noopolis.daimon.grok-slot-preflight.v2`.
 - `entrypoint.ts`/`main.ts` are the image's root entrypoint.
 
@@ -35,10 +36,27 @@ Local constraints:
 - The supervisor socket's uid gate is the socket node (`root:2000 0660` in a
   root-owned `0711` directory on tmpfs), because Node exposes no `SO_PEERCRED`.
   A `0600` root-owned socket would deny the one caller it exists for.
-- A worker-uid canary over a host bind proves nothing — the host owns the inode,
-  and Docker Desktop and Colima ignore `chown` outright — so
-  `unenforcedBindPolicy` decides between refusing the slot and accepting the
-  bubblewrap deny list as that path's only boundary.
+- What decides whether a worker-uid canary means anything is the **backing
+  filesystem**, not the fact of being a host bind: virtiofs, grpcfuse, 9p, nfs,
+  cifs and fuse ignore `chown` outright (Docker Desktop and Colima), while the
+  same bind over ext4 or overlay is probed for real. Only on the former does
+  `unenforcedBindPolicy` choose between refusing the slot and accepting the
+  bubblewrap deny list as that path's only boundary — which is why the
+  documented `refuse` default is reachable at all.
+- **`/run/training/inputs` is never that.** It holds the sealed train and test
+  datasets, every input is bound strictly below it, and the image bakes the
+  directory itself `0:2000 0750` on the read-only root. The worker uid loses
+  *search* permission on the datasets' one common ancestor; the inode is owned
+  by real uid 0, which `unshare --map-root-user` does not map, so
+  `CAP_DAC_OVERRIDE` in the worker's own namespace cannot override it and a
+  fresh `mount --bind` of the parent re-exposes this same directory. A
+  bubblewrap `deny` mask alone would not survive that route — the seccomp
+  profile must allow `unshare`/`mount`/`umount2` for bubblewrap itself — so
+  provisioning asserts the mode, attacks it as the worker uid over every route —
+  direct, namespace unmount, namespace rebind of the parent, and a namespace
+  rebind of each dataset's own mount, which is the one a mask cannot answer —
+  and no `unenforcedBindPolicy` waives it
+  (`.runtime/sealed-inputs-dac/EVIDENCE.md`).
 - Grok 1.0.34 materializes every `deny` target inside bubblewrap as the worker
   uid, so a deny entry it cannot create makes the whole profile fail. That is
   why `/run/paideia` is masked as a directory rather than file by file, and why
