@@ -179,14 +179,16 @@ export async function readSealedBrokerRequests(launch: NativeLaunch, options: Se
   const file = join(dirname(launch.broker.usageLedgerPath), 'requests.jsonl');
   for (let attempt = 0; attempt < bound.attempts; attempt++) {
     if (attempt > 0) await pause(bound.intervalMs);
-    let rows: NativeRequestUsage[];
-    try { rows = await readSealedGrokRequests(file, launch.agent.id, launch.agent.model); }
-    catch (error) { return { schema: BROKER_REQUESTS_SCHEMA, outcome: 'unreadable', failure: classify(error) }; }
-    if (!rows.length) continue;
-    const timings = rows.map(timing);
-    const published = bounded(timings);
-    return { schema: BROKER_REQUESTS_SCHEMA, outcome: 'read', read: timings.length, published: published.length,
-      open: timings.filter(isOpen).length, truncated: published.length < timings.length, rows: published };
+    // The projection stays inside the same guard as the read: no fault of this
+    // record's own may escape onto a path that has already failed.
+    try {
+      const rows = await readSealedGrokRequests(file, launch.agent.id, launch.agent.model);
+      if (!rows.length) continue;
+      const timings = rows.map(timing);
+      const published = bounded(timings);
+      return { schema: BROKER_REQUESTS_SCHEMA, outcome: 'read', read: timings.length, published: published.length,
+        open: timings.filter(isOpen).length, truncated: published.length < timings.length, rows: published };
+    } catch (error) { return { schema: BROKER_REQUESTS_SCHEMA, outcome: 'unreadable', failure: classify(error) }; }
   }
   return undefined;
 }
