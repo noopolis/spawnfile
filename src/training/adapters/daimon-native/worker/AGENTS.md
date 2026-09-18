@@ -34,9 +34,18 @@ agent declining it, including the unmarked finished wake Daimon records as
 deferred. `accepted` WITHOUT that marker, with the execution id retained, is
 written only where a stopping runtime — or a wake that came back stopped — returns
 the delivery to the inbox for restart, so it evidences nothing about the subject
-and must never borrow the deferral's scored outcome. It reports as its own failure
-("delivery reclaimed undisposed by a stopping runtime"); a live trial spent a wake
-on the bare "ended accepted", which named a state nobody could act on.
+and must never borrow the deferral's scored outcome. It reports as its own failure, naming *which* runtime
+reclaimed it from the availability this process already holds: "while the runtime
+kept running" or "by a stopping runtime". That distinction is the whole diagnostic
+value. A live trial produced the first and was investigated as the second for a
+full round — as Paideia stopping the host too eagerly and racing the dispatcher —
+which it cannot be: `closeNative` runs strictly after `/trial/run` returns, and the
+runtime read `running` at the moment the execution closed. Reproduced in process
+against the real control host: an unmarked finished wake settles `deferred: true`
+and scores, and only a wake RESULT of `stopped` reproduces the live
+`accepted`/undisposed record while availability still reads `running`. Do not
+reorder Paideia's stop to chase it; the remaining unknown is why the wake came back
+stopped, and only Daimon holds that code.
 
 Grok usage comes from the broker's per-slot ledger, never this process: rows need
 `total = input + cache_read + cache_write + output`, the declared model (or its

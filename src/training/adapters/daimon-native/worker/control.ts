@@ -23,15 +23,21 @@ function deferredAfterCompletion(receipt: NativeReceipt, trace: NativeTrace | un
   return receipt.state === 'accepted' && receipt.deferred === true && trace?.status === 'completed';
 }
 
-export function describeNativeFailure(receipt: NativeReceipt, trace: NativeTrace | undefined, usage: readonly NativeUsage[] = []): string {
+export function describeNativeFailure(receipt: NativeReceipt, trace: NativeTrace | undefined, usage: readonly NativeUsage[] = [],
+  runtimeState?: string): string {
   if (deferredAfterCompletion(receipt, trace)) return 'Native execution completed; delivery blocked awaiting external input';
   // Daimon records an unmarked finished wake as DEFERRED, so an accepted delivery
   // without that marker is not an agent outcome at all: it is written only where a
-  // stopping runtime, or a wake that came back stopped, returns the delivery to the
-  // inbox for restart. "ended accepted" said nothing about that, and a live trial
-  // spent a wake reporting it as an unexplained delivery state.
+  // stopping runtime, OR a wake that came back stopped, returns the delivery to the
+  // inbox for restart. Which of those two it was decides where the fix lives, and
+  // this process already holds the fact that separates them — the runtime's own
+  // state at the moment the execution closed. A live trial was read as a shutdown
+  // race for a whole investigation because the message named only the first case
+  // while the runtime was demonstrably still running.
   if (receipt.state === 'accepted' && !receipt.deferred && trace?.status === 'completed') {
-    return 'Native execution completed; delivery reclaimed undisposed by a stopping runtime';
+    return runtimeState === 'running'
+      ? 'Native execution completed; delivery reclaimed undisposed while the runtime kept running'
+      : 'Native execution completed; delivery reclaimed undisposed by a stopping runtime';
   }
   const delivery = `${receipt.state}${receipt.deferred ? ' deferred' : ''}`;
   if (trace?.status !== 'failed') return `Native delivery ended ${delivery}`;
@@ -161,7 +167,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
         if (!native.modelContexts.length) throw new Error('Closed native execution omitted model identity evidence');
         if (!failure && deferredAfterCompletion(receipt, trace)) blocked = 'awaiting-external-input';
         if (receipt.state !== 'completed' || trace?.status !== 'completed' || failure) {
-          throw new Error(failure ?? describeNativeFailure(receipt, trace, native.usage));
+          throw new Error(failure ?? describeNativeFailure(receipt, trace, native.usage, availability.state));
         }
         status = 'completed';
       } catch (failure) {

@@ -72,7 +72,8 @@ for (const nativeError of [undefined, 'Native engine unavailable']) test(`deferr
  * no evidence about the subject at all — it is the machine ending the trial, and it
  * must say so rather than reporting an unexplained delivery state.
  */
-test('a delivery reclaimed undisposed is named as the machine outcome it is, never a deferral', async () => {
+for (const runtimeState of ['running', 'stopped'] as const)
+  test(`a delivery reclaimed undisposed names the runtime that reclaimed it: ${runtimeState}`, async () => {
   const root = await mkdtemp(join(tmpdir(), 'native-undisposed-unit-'));
   try {
     const receipt = { ...receiptFixture(), state: 'accepted' as const };
@@ -90,7 +91,7 @@ test('a delivery reclaimed undisposed is named as the machine outcome it is, nev
     const host = { accept: async () => ({ state: 'accepted', acceptance_id: receipt.acceptance_id }),
       wakeReceipt: async () => receipt,
       activityV2: async () => ({ version: 'noopolis.daimon.organization-runtime-activity.v2', items: [{ ...receipt, active: false }], executions: [] }),
-      availability: async () => ({ state: 'running', agents: [{ agent_id: receipt.agent_id, pending: 1, deferred: 0, running: false,
+      availability: async () => ({ state: runtimeState, agents: [{ agent_id: receipt.agent_id, pending: 1, deferred: 0, running: false,
         budget: { state: 'available', executions_remaining: 3 } }] }),
       stop: async () => ({ state: 'stopped' }) } as unknown as NativeHost;
     const options: WorkerOptions = { launch: '/launch', config: '/config', configSha256: 'a'.repeat(64),
@@ -104,6 +105,10 @@ test('a delivery reclaimed undisposed is named as the machine outcome it is, nev
     // It never becomes a deferral, so no continuation is ever asked for on its behalf.
     assert.equal(result.blocked, undefined);
     assert.equal(result.status, 'failed');
-    assert.equal(result.error, 'Native execution completed; delivery reclaimed undisposed by a stopping runtime');
+    // Which runtime reclaimed it decides where the fix lives: a runtime that was
+    // still running points at the wake result, not at a shutdown race.
+    assert.equal(result.error, runtimeState === 'running'
+      ? 'Native execution completed; delivery reclaimed undisposed while the runtime kept running'
+      : 'Native execution completed; delivery reclaimed undisposed by a stopping runtime');
   } finally { await rm(root, { recursive: true, force: true }); }
 });

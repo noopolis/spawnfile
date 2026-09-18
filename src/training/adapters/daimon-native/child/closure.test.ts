@@ -210,13 +210,15 @@ it('names a delivery the runtime reclaimed undisposed, after a single wake with 
   expect(deliveries).toBe(0);
   expect(turn.status).toBe('failed');
   expect(turn.blocked).toBeUndefined();
-  expect(turn.error).toContain('reclaimed undisposed');
+  // The live discriminator: the runtime was still RUNNING when it reclaimed the
+  // delivery, so this was never a shutdown race Paideia could reorder away.
+  expect(turn.error).toContain('reclaimed undisposed while the runtime kept running');
   // Named as itself, and still refusing to score: nothing here evidences the subject.
   expect(report.stop).toMatchObject({ quiescence: 'unknown', unconfirmed: 'delivery-undisposed' });
   // The turn's own sentence already explains the trial, so it is not prefixed with a
   // closure cause that would read as the primary fault; the machine-readable name on
   // the receipt is what an operator correlates, and the two must agree.
-  expect(report.error).toContain('reclaimed undisposed');
+  expect(report.error).toContain('reclaimed undisposed while the runtime kept running');
   expect(report.execution).toBe('failed');
   expect(() => trialScore(report)).toThrow('failed in infrastructure');
 });
