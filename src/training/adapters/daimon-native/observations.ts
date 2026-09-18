@@ -1,5 +1,6 @@
 import type { NativeExternalInput } from './external.js';
 import type { Observation, SubjectStart, SubjectStartupDiagnostic, Usage } from '../../contracts/execution.js';
+import type { BrokerRequestLedger } from './sealed-usage.js';
 import { readNativeTranscript } from './transcript.js';
 import { plausibleNotionalUsd, readToolReceipts } from './worker/index.js';
 import type { NativeGrokUsage, NativeUsage, TerminalEvidence } from './worker/index.js';
@@ -48,6 +49,22 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
      */
     async sealedUsage(wakeId: string, usage: Usage, rows: readonly NativeGrokUsage[]): Promise<void> {
       try { await emit(wakeId, { type: 'usage', usage, native: rows }); } catch { /* never fails an already-failed turn */ }
+    },
+    /**
+     * The broker's per-request timings for a turn that never reported one.
+     *
+     * Operator-only, like the records beside it: a `diagnostic` so it can never
+     * become output, a captured call, a judge input or a viewer projection. It
+     * says whether the last request was issued and left unanswered or never
+     * issued at all, which the published event stream otherwise cannot tell
+     * apart, and it is timings and counts only. A publish fault is swallowed:
+     * this already runs on a failed turn.
+     */
+    async brokerRequests(wakeId: string, ledger: BrokerRequestLedger): Promise<void> {
+      const text = ledger.outcome === 'read'
+        ? `Broker request ledger: ${ledger.read} requests, ${ledger.open} unanswered`
+        : `Broker request ledger unreadable: ${ledger.failure}`;
+      try { await emit(wakeId, { type: 'diagnostic', text, native: ledger }); } catch { /* never fails an already-failed turn */ }
     },
     async terminal(wakeId: string, result: TerminalEvidence): Promise<Usage | null> {
       const usage = aggregateUsage(result.native.usage);

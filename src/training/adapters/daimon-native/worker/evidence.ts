@@ -244,3 +244,19 @@ export async function writeEvidence(file: string, value: unknown): Promise<void>
   const written = JSON.parse(await readFile(file, 'utf8')) as unknown;
   if (JSON.stringify(written) !== JSON.stringify(value)) throw new Error('Native evidence readback differs');
 }
+
+/**
+ * The per-request rows the broker's proxy metered, read with no terminal frame
+ * to bind them to.
+ *
+ * The sibling of `readSealedGrokUsage` over the second stream the broker writes
+ * beside the usage ledger: one row per provider request, with the proxy's own
+ * `started_at`/`ended_at`. It is the only record that can tell a request that
+ * was issued and never answered (a row with a start and no end) from one that
+ * was never issued at all (no row) — the distinction a turn killed by its
+ * deadline cannot otherwise be diagnosed by. Same strict schema, same
+ * dedupe-by-`turn:request`, and no execution to filter on.
+ */
+export async function readSealedGrokRequests(requestsFile: string, agentId: string, expectedModel: string): Promise<NativeRequestUsage[]> {
+  return readGrokRequests(requestsFile, agentId, undefined, expectedModel, []);
+}

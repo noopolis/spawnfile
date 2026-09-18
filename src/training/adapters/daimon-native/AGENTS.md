@@ -43,6 +43,23 @@ of it. The short bounded poll is not politeness — sealing is the broker's
 reaction to losing its client, so reading once would race the append and call it
 absence.
 
+The broker's second stream survives the slot too. Beside `usage.jsonl` the
+broker's proxy writes `requests.jsonl`, one row per provider request with its
+own `started_at`/`ended_at`, and that file is the only thing that separates a
+request issued and never answered (a row with a start and no end) from one the
+worker never issued (no row) — the two shapes a turn killed by its deadline
+otherwise presents identically in the published event stream. `sealed-usage.ts`
+reads it on the failure path beside the sealed usage, on the same bounded wait
+and for the same reason, and publishes it as an operator-only `diagnostic`. It
+is a timing instrument, not a transcript: an allow-list projection of timings,
+counts, the model and `usage_source`, never a body, a prompt, a reply or a
+credential, and a fault publishes a closed-vocabulary classification rather than
+an error string that could quote the bad line. A missing or empty ledger
+publishes nothing — a fabricated empty list would read as "no requests were
+made", which is one of the two answers this record exists to tell apart — and an
+unanswered row is never filled, normalised or dropped by the published-row
+bound.
+
 And the worker's own last words now survive it. `child/diagnostics.ts` builds
 the same redacted `SubjectStartupDiagnostic` for a death *after* readiness that
 it always built for one before it, and the adapter publishes it as a

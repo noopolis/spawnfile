@@ -4,6 +4,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Observation } from '../../contracts/execution.js';
 import { aggregateUsage, createNativeObserver } from './observations.js';
+import { BROKER_REQUESTS_SCHEMA } from './sealed-usage.js';
 import { launchFixture } from './test-fixtures.js';
 import type { NativeUsage, TerminalEvidence } from './worker/index.js';
 
@@ -32,5 +33,23 @@ test('receipt observations preserve errors/results and deduplicate actual action
     assert.equal(events.at(-1)?.type, 'diagnostic');
     assert.throws(() => aggregateUsage([{ input: Number.MAX_SAFE_INTEGER, output: 0, cache_read: 0 },
       { input: 1, output: 0, cache_read: 0 }] as NativeUsage[]), /aggregate/);
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
+test('an unreadable broker request ledger publishes its classification as an operator diagnostic', async () => {
+  const fixture = await launchFixture();
+  try {
+    const events: Observation[] = []; fixture.input.onObservation = event => { events.push(event); };
+    const observer = createNativeObserver(fixture.input, fixture.input.runtimeHomePath, fixture.launch.agent.id, 'grok');
+    // A ledger that was present and could not be read is neither "the request
+    // hung" nor "no request was made", and it says so without any rows.
+    await observer.brokerRequests('wake', { schema: BROKER_REQUESTS_SCHEMA, outcome: 'unreadable', failure: 'malformed' });
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'diagnostic');
+    assert.equal(events[0]?.text, 'Broker request ledger unreadable: malformed');
+    assert.equal(JSON.stringify(events[0]).includes('"rows"'), false);
+    // And a publish fault never fails a turn that has already failed.
+    fixture.input.onObservation = () => { throw new Error('observation sink refused'); };
+    await observer.brokerRequests('wake', { schema: BROKER_REQUESTS_SCHEMA, outcome: 'read', read: 1, published: 1, open: 1, truncated: false, rows: [] });
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
 });

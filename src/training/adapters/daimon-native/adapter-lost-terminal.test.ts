@@ -1,5 +1,5 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Observation } from '../../contracts/execution.js';
 import { childFixture } from './child/fixture.js';
@@ -26,6 +26,24 @@ const sealedRow = (agent: string): string => JSON.stringify({
   complete: false, outcome: 'failed', reason: 'unknown', turn: 'a'.repeat(64), limit_reason: 'none', model: 'grok-4.6',
 }) + '\n';
 
+/**
+ * The broker's second stream: one row per provider request, with the proxy's own
+ * clocks. A turn killed by its deadline is otherwise unreadable — a request
+ * issued and never answered looks exactly like a request never issued — and the
+ * file dies with the slot's tmpfs unless the failure path publishes it.
+ */
+const requestRows = (agent: string): string => [
+  { request: 0, output: 158, total: 5550, ended_at: '2026-09-18T00:28:21.000Z' },
+  { request: 1, output: 0, total: 5392 },
+].map(row => JSON.stringify({
+  v: 'noopolis.daimon.turn-requests.v1', agent, wake: 'wake-1', engine: 'grok', at: '2026-09-18T00:28:21.000Z',
+  turn: 'a'.repeat(64), model: 'grok-4.6', requests: 2, input: 5392, cached_input: 256, fresh_input: 5136,
+  cache_write: 0, usage_source: 'stream', started_at: '2026-09-18T00:28:19.000Z', ...row,
+}) + '\n').join('');
+
+const brokerRequests = (rows: readonly Observation[]): Observation | undefined => rows.find(row => row.type === 'diagnostic' &&
+  (row as { native?: { schema?: string } }).native?.schema === 'paideia.daimon-native.broker-requests.v1');
+
 it('records the spend the broker sealed when a brokered worker dies with its terminal frame unsent', async () => {
   const f = await childFixture('die-mid-turn');
   roots.push(f.root);
@@ -37,6 +55,7 @@ it('records the spend the broker sealed when a brokered worker dies with its ter
   const ledger = launch.broker.usageLedgerPath;
   await mkdir(dirname(ledger), { recursive: true, mode: 0o700 });
   await writeFile(ledger, sealedRow(launch.agent.id), { mode: 0o600 });
+  await writeFile(join(dirname(ledger), 'requests.jsonl'), requestRows(launch.agent.id), { mode: 0o600 });
 
   const observations: Observation[] = [];
   const input = { ...f.input, onObservation: (value: Observation) => { observations.push(value); } };
@@ -65,6 +84,15 @@ it('records the spend the broker sealed when a brokered worker dies with its ter
     (row as { native?: { schema?: string } }).native?.schema === 'paideia.daimon-native.startup-diagnostic.v1');
   expect(diagnostic).toBeDefined();
   expect(JSON.stringify(diagnostic)).toContain('stream bound crossed');
+
+  // And the per-request timings, which are the only evidence that separates a
+  // request issued and never answered from one the worker never issued.
+  const requests = brokerRequests(observations);
+  expect(requests).toMatchObject({ wakeId: 'wake-1', text: 'Broker request ledger: 2 requests, 1 unanswered' });
+  const ledgerRecord = (requests as { native: { rows: Record<string, unknown>[]; open: number } }).native;
+  expect(ledgerRecord.open).toBe(1);
+  expect(ledgerRecord.rows[1]).toMatchObject({ request: 1, startedAt: '2026-09-18T00:28:19.000Z' });
+  expect('endedAt' in ledgerRecord.rows[1]!).toBe(false);
 });
 
 it('reports absence rather than a zero when the broker sealed nothing', async () => {
@@ -75,10 +103,14 @@ it('reports absence rather than a zero when the broker sealed nothing', async ()
   f.input.protectedPaths = [...grokProtectedPaths(f.root), f.launch.workspace.source, launch.projections[0]!.source];
   await writeGrokSlotReceipt(launch);
   await f.save();
-  const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process' }, sealedUsage: { attempts: 1, intervalMs: 0 } }).start(f.input);
+  const observations: Observation[] = [];
+  const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process' }, sealedUsage: { attempts: 1, intervalMs: 0 } })
+    .start({ ...f.input, onObservation: (value: Observation) => { observations.push(value); } });
   const result = await session.run({ id: 'wake-1', text: 'Carry out this delivery.' });
   expect(result.status).toBe('failed');
   // A row of zeroes here would be byte-identical to a measured zero.
   expect(result.usage).toBeNull();
   expect(result.coverage).toContainEqual({ channel: 'usage', completeness: 'absent', ordering: 'none' });
+  // No request ledger either: an empty one would read as "no requests were made".
+  expect(brokerRequests(observations)).toBeUndefined();
 });

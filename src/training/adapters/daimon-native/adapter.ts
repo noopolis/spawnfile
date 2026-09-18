@@ -7,7 +7,7 @@ import { dockerCommand, workerRequest, type DockerCommand } from './container/in
 import { startOwnedContainer } from './container/index.js';
 import { loadNativeLaunch } from './container/index.js';
 import { createNativeObserver } from './observations.js';
-import { readSealedBrokerUsage, type SealedBrokerUsageOptions } from './sealed-usage.js';
+import { readSealedBrokerRequests, readSealedBrokerUsage, type SealedBrokerUsageOptions } from './sealed-usage.js';
 
 export interface NativeAdapterOptions { timeoutMs?: number; startupMs?: number; docker?: DockerCommand; execution?: NativeChildExecution; externalInputs?: NativeExternalInputs; 
   /** How long a failed turn waits for the broker to seal its spend before reporting absence. */
@@ -80,8 +80,15 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             // and it never came — but a wake that fails spends the same money
             // as one that publishes, and the broker sealed what its own proxy
             // measured. Read that rather than reporting a zero nobody measured.
-            const sealed = await readSealedBrokerUsage(launch, sealedUsage);
+            // The broker's own two ledgers, read on one bounded wait: what the
+            // turn spent, and — the only record that can tell a provider
+            // request issued and never answered from one never issued at all —
+            // when each request started and whether it ended.
+            const [sealed, requests] = await Promise.all([
+              readSealedBrokerUsage(launch, sealedUsage), readSealedBrokerRequests(launch, sealedUsage),
+            ]);
             if (sealed.usage) await observer.sealedUsage(observedWakeId, sealed.usage, sealed.rows);
+            if (requests) await observer.brokerRequests(observedWakeId, requests);
             // Whatever the worker said before it stopped answering, redacted.
             const record = container.diagnostic?.();
             if (record) await observer.childDiagnostic(observedWakeId, record);
