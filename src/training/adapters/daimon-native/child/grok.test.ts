@@ -68,6 +68,20 @@ it('fails closed without the slot receipt or freshness store, for another trial,
   await expect(access(preflight(await f.artifacts()))).rejects.toThrow();
 });
 
+it('keeps an unresolvable subject root exempt and still fails closed on an absent protected path', async () => {
+  // A subject root the slot has not materialized cannot be resolved, so exemption falls back to the
+  // declared path. The receipt still binds, and nothing silently drops out of the required set.
+  const exempt = await fixture(); await exempt.write();
+  await rm(exempt.launch.projections[0]!.source, { recursive: true, force: true });
+  await exempt.verify();
+  expect(JSON.parse(await readFile(preflight(await exempt.artifacts()), 'utf8')).evaluatorPathsDenied)
+    .not.toContain(exempt.launch.projections[0]!.source);
+  const missing = await fixture(); await missing.write();
+  const absent = join(missing.root, 'absent-evaluator');
+  expect(cause(await missing.verify([...missing.input.protectedPaths!, absent]).catch(error => error))).toContain(absent);
+  await expect(access(preflight(await missing.artifacts()))).rejects.toThrow();
+});
+
 it('refuses a stale nonce or a replayed generation at the launch and at the persisted experiment state', async () => {
   const stale = await fixture(undefined, 'b'.repeat(64)); await stale.write();
   expect(cause(await stale.verify().catch(error => error))).toContain('stale: nonce');

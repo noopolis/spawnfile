@@ -40,6 +40,9 @@ test('launch v2 selects Codex or Grok and v1 receipts still parse as Codex', asy
     expect(isGrokLaunch(parsed)).toBe(true);
     const credential = { source: join(f.root, 'auth'), target: '/native/home/.daimon-inbound/codex-auth' };
     const broker = valid.broker;
+    /** Re-homes one evaluator root and keeps the deny list consistent with it. */
+    const moved = (role: string, path: string) => ({ ...valid, broker: { ...broker, denyPaths: [...broker.denyPaths, path],
+      evaluatorPaths: broker.evaluatorPaths.map(row => row.role === role ? { ...row, path } : row) } });
     for (const mutation of [
       { ...valid, schema: 'paideia.daimon-native.launch.v1' },
       { ...valid, credentials: [credential] },
@@ -52,9 +55,12 @@ test('launch v2 selects Codex or Grok and v1 receipts still parse as Codex', asy
       { ...valid, broker: { ...broker, projectionVersion: 'noopolis.daimon.grok-broker-projection.v0' } },
       { ...valid, broker: { ...broker, evaluatorPaths: broker.evaluatorPaths.filter(row => row.role !== 'judge-home') } },
       { ...valid, broker: { ...broker, evaluatorPaths: [...broker.evaluatorPaths.slice(1), { ...broker.evaluatorPaths[1]!, role: 'run-root' }] } },
-      { ...valid, broker: { ...broker, evaluatorPaths: broker.evaluatorPaths.map(row => row.role === 'slot-ledger' ? { ...row, path: f.root } : row) } },
-      { ...valid, broker: { ...broker, evaluatorPaths: broker.evaluatorPaths.map(row => row.role === 'context' ? { ...row, path: '/native/workspace/context' } : row) } },
-      { ...valid, broker: { ...broker, evaluatorPaths: broker.evaluatorPaths.map(row => row.role === 'context' ? { ...row, path: '/native' } : row) } },
+      // Moving a root without listing it stops at the deny-list guard; the three below list it too, so
+      // each reaches the guard it is meant to exercise instead of short-circuiting on the earlier one.
+      { ...valid, broker: { ...broker, evaluatorPaths: broker.evaluatorPaths.map(row => row.role === 'context' ? { ...row, path: '/native/elsewhere' } : row) } },
+      moved('slot-ledger', f.root),
+      moved('context', '/native/workspace/context'),
+      moved('context', '/native'),
       { ...valid, broker: { ...broker, limits: { ...broker.limits, maxTokens: valid.limits.wakeTokenCeiling + 1 } } },
       { ...valid, broker: { ...broker, extra: true } },
       { ...valid, broker: { ...broker, expectedNonce: undefined } },
