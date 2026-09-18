@@ -150,3 +150,30 @@ for (const enabled of [false, true]) test(`contradictory blocked completion is r
     expect(result.stop?.quiescence).toBe('confirmed'); expect(next).not.toHaveBeenCalled();
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
 });
+
+test('a raised wake budget buys no extra wall clock: the shared deadline ends a deferring subject mid-budget', async () => {
+  const fixture = await launchFixture();
+  try {
+    const docker = dockerFixture(fixture.launch, fixture.input.trialId);
+    const terminal = { schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
+      agentId: 'agent:writer', model: 'test-model-v1', configSha256: fixture.launch.configSha256,
+      status: 'failed', blocked: 'awaiting-external-input', completedAt: new Date().toISOString(),
+      native: { traces: [], toolReceipts: [], modelContexts: [], usage: [] }, coverage: [] };
+    docker.setTerminal(terminal);
+    let deliveries = 0;
+    const session = await createDaimonNativeAdapter({ docker: docker.run, timeoutMs: 400, externalInputs: { maxDeliveries: 3,
+      async next() { const id = `answer-${++deliveries}`; const text = 'Sourced response';
+        await new Promise(resolve => setTimeout(resolve, 250));
+        docker.setTerminal({ ...terminal, wakeId: id });
+        return { id, text, source: { id, kind: 'transport', sha256: `sha256:${createHash('sha256').update(text).digest('hex')}` } };
+      } } }).start(fixture.input);
+    const started = Date.now();
+    const result = await session.run({ id: 'task', text: 'Task' });
+    // The budget still had deliveries left; the one trial deadline ended it anyway.
+    expect(result.status).toBe('failed');
+    expect(result.error).toContain('deadline');
+    expect(deliveries).toBeLessThan(3);
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(result.stop?.quiescence).toBe('confirmed');
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});

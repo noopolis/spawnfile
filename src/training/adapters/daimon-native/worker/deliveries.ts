@@ -3,6 +3,19 @@ import { createHash } from 'node:crypto';
 export interface ExternalInputSource { kind: string; id: string; sha256: string }
 export interface DeliveryControls { maxExternalDeliveries?: number; source?: ExternalInputSource }
 
+/**
+ * The most external continuations one trial may declare, and the wakes they cost.
+ *
+ * `MAX_TRIAL_WAKES` is the task delivery plus those continuations, and the worker's
+ * runtime wake ceiling is derived from it rather than declared beside it. That
+ * ceiling is published before any delivery arrives, so a separate number there
+ * drifts from what this gate admits — and it drifted to one, which is how a trial
+ * accepted a continuation the runtime would then never execute: the delivery stayed
+ * admitted, nothing ran, and the wake burned to the shared trial deadline.
+ */
+export const MAX_EXTERNAL_DELIVERIES = 3;
+export const MAX_TRIAL_WAKES = MAX_EXTERNAL_DELIVERIES + 1;
+
 export function verifyExternalSource(source: ExternalInputSource, text: string): void {
   if (!source || Object.keys(source).sort().join(',') !== 'id,kind,sha256' ||
       !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u.test(source.id) ||
@@ -12,8 +25,14 @@ export function verifyExternalSource(source: ExternalInputSource, text: string):
   }
 }
 
-/** One task, explicitly bounded sequential external deliveries, never autonomous nudges. */
-export function createDeliveryGate(timeoutMs: number) {
+/**
+ * One task, explicitly bounded sequential external deliveries, never autonomous nudges.
+ *
+ * `maxExecutions` is the runtime's own per-agent execution policy. A budget this
+ * gate would admit above it is one whose later continuations could never execute,
+ * so it is refused here rather than deadlocking on the wake that cannot run.
+ */
+export function createDeliveryGate(timeoutMs: number, maxExecutions: number = MAX_TRIAL_WAKES) {
   const wakes = new Set<string>();
   const executions: string[] = [];
   let active = false;
@@ -28,7 +47,8 @@ export function createDeliveryGate(timeoutMs: number) {
       if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(wakeId) || !text.trim() || Buffer.byteLength(text) > 16384) throw new Error('Invalid bounded trial delivery');
       if (!wakes.size) {
         maximum = controls.maxExternalDeliveries ?? 0;
-        if (!Number.isSafeInteger(maximum) || maximum < 0 || maximum > 3 || controls.source) throw new Error('Invalid external delivery bound');
+        if (!Number.isSafeInteger(maximum) || maximum < 0 || maximum > MAX_EXTERNAL_DELIVERIES || controls.source) throw new Error('Invalid external delivery bound');
+        if (maximum + 1 > maxExecutions) throw new Error('Native execution policy admits fewer executions than the declared delivery budget');
       } else {
         if (controls.maxExternalDeliveries !== undefined || !controls.source) throw new Error('Continuation requires a source and cannot change its delivery budget');
         verifyExternalSource(controls.source, text);

@@ -2,7 +2,7 @@ import type { NativeExecutionHandle } from './transport/index.js';
 import { startOwnedChild, type NativeChildExecution } from './child/index.js';
 import { nextExternalInput, sumNativeUsage, weakestNativeCoverage, type NativeExternalInputs } from './external.js';
 import type { SubjectAdapter, Usage, SubjectTurnResult } from '../../contracts/execution.js';
-import type { TerminalEvidence, DeliveryControls } from './worker/index.js';
+import { MAX_EXTERNAL_DELIVERIES, type TerminalEvidence, type DeliveryControls } from './worker/index.js';
 import { dockerCommand, workerRequest, type DockerCommand } from './container/index.js';
 import { startOwnedContainer } from './container/index.js';
 import { loadNativeLaunch } from './container/index.js';
@@ -23,7 +23,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
   const childExternal = execution?.externalInputs ? { ...execution.externalInputs } : undefined;
   const dockerExternal = options.externalInputs ? { ...options.externalInputs } : undefined;
   const external = childExternal ?? dockerExternal;
-  if (external && (!Number.isSafeInteger(external.maxDeliveries) || external.maxDeliveries < 1 || external.maxDeliveries > 3 || typeof external.next !== 'function')) throw new Error('Invalid external input policy');
+  if (external && (!Number.isSafeInteger(external.maxDeliveries) || external.maxDeliveries < 1 || external.maxDeliveries > MAX_EXTERNAL_DELIVERIES || typeof external.next !== 'function')) throw new Error('Invalid external input policy');
   if (options.execution && options.docker) throw new Error('Select one native execution transport');
   const docker = options.docker ?? dockerCommand();
   return {

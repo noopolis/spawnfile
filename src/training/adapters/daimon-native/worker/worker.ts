@@ -1,6 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createWorkerController } from './control.js';
+import { MAX_TRIAL_WAKES } from './deliveries.js';
 import { assertFreshNativeEvidence } from './evidence.js';
 import { assertNativeProfile, verifyNativeWorkerStartup, verifyWorkerPaths } from './profile.js';
 import { isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile } from '../receipt/index.js';
@@ -38,7 +39,10 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
   process.env.DAIMON_TURN_REQUESTS_LEDGER_PATH = requestsFile;
   process.env.DAIMON_WAKE_FUSE_DIRECTORY = artifacts;
   process.env.DAIMON_WAKE_FUSE_EPOCH = options.trialId;
-  process.env.DAIMON_WAKE_FUSE_MAX_WAKES = '1';
+  // Derived, never a second number: a trial must be able to execute every
+  // continuation its own delivery gate will admit. One hard-coded wake here
+  // accepted a continuation the runtime then refused to run at all.
+  process.env.DAIMON_WAKE_FUSE_MAX_WAKES = String(MAX_TRIAL_WAKES);
   process.env.DAIMON_WAKE_FUSE_MAX_TOKENS = String(launch.limits.maxTokens);
   delete process.env.DAIMON_WAKE_FUSE;
   // Engine-neutral names; the Codex aliases stay equal so older Codex runtimes keep their bound and Daimon never sees a conflict.

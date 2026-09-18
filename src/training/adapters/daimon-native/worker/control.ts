@@ -66,7 +66,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
   const usageFile = grok ? grok.broker.usageLedgerPath : join(options.controlRoot, 'usage.jsonl');
   const source: NativeEvidenceSource = grok ? { engine: 'grok', requestsFile: join(dirname(usageFile), 'requests.jsonl') } : { engine: 'codex' };
   const cancellation = new AbortController();
-  const gate = createDeliveryGate(options.timeoutMs);
+  const gate = createDeliveryGate(options.timeoutMs, agent.attention?.maxExecutions);
   let stopping: Promise<NativeStopEvidence> | undefined;
   const owned = <T>(operation: Promise<T>): Promise<T> => {
     if (cancellation.signal.aborted) return Promise.reject(new Error('Native trial cancelled'));

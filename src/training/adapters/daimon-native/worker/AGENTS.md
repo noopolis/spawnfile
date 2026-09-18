@@ -12,6 +12,15 @@ External continuations are opt-in, sourced, bounded to three deliveries and shar
 one trial deadline. Deferred work is never success. Preserve per-wake evidence and
 aggregate usage once; cancellation must stop the owned runtime.
 
+The runtime wake ceiling this worker publishes is derived from that same bound
+(`MAX_TRIAL_WAKES` — the task delivery plus its continuations), never declared
+beside it. It is set before any delivery arrives, so a second number there drifts
+from what the gate admits; hard-coded at one it admitted continuations the runtime
+then never executed, and each such wake burned to the shared deadline instead. The
+gate stays the exact per-trial bound and also refuses a budget above the runtime's
+own per-agent execution policy. More wakes buy no wall clock and no token budget:
+the one trial deadline and the epoch-wide `maxTokens` ceiling are unchanged.
+
 Usage coverage can be complete only for one matching completed execution trace
 and its single provider-complete Codex terminal total. Reject duplicate totals and
 invalid cache subsets; never infer completeness from a nonempty ledger. This is
