@@ -41,17 +41,23 @@ export const trainingBrokerDeclarationSchema = z.strictObject({
   seccompProfileSha256: z.string().regex(/^[a-f0-9]{64}$/u),
   /**
    * What the slot supervisor does with a deny path whose backing filesystem
-   * does not enforce unix ownership — every host bind under Docker Desktop and
-   * Colima, where `chown` is silently ignored and uid 2200 reads a root `0600`
-   * file (P0 §5).
+   * does not enforce unix ownership — virtiofs and grpcfuse under Docker
+   * Desktop and Colima, where `chown` is silently ignored and uid 2200 reads a
+   * root `0600` file (P0 §5). The backing filesystem decides, not the fact of
+   * being a host bind: the same bind over ext4 or overlay on a Linux daemon is
+   * probed for real, which is what makes `refuse` a default a run can meet.
    *
-   * `refuse` (the default) fails the recycle and writes no receipt: a
-   * worker-uid probe over such a path carries no information, so the
-   * supervisor will not certify it. `profile-only` is the operator's explicit
-   * acceptance that for those paths the boundary is the bubblewrap-enforced
-   * `deny` list alone — verified to block both shell `cat` and `read_file` on
-   * 1.0.34 (P0 §4) — and the supervisor records every path that used that
-   * weaker evidence in its log.
+   * `refuse` (the default) fails the slot and writes no receipt: a worker-uid
+   * probe over such a path carries no information, so the supervisor will not
+   * certify it. `profile-only` is the operator's explicit acceptance that for
+   * those paths the boundary is the bubblewrap-enforced `deny` list alone —
+   * verified to block both shell `cat` and `read_file` on 1.0.34 (P0 §4), but
+   * *not* a boundary a worker-uid namespace cannot lift — and the supervisor
+   * records every path that used that weaker evidence in its log.
+   *
+   * It does not reach `TRAINING_SEALED_DENY_PATHS`. The sealed train and test
+   * datasets are held by DAC on their ancestor under both values, and a slot
+   * that cannot prove that denial is refused whatever this says.
    */
   unenforcedBindPolicy: z.enum(["refuse", "profile-only"]).default("refuse")
 }).strict();

@@ -14,6 +14,8 @@ import {
   TRAINING_OPTIONAL_DENY_DIRECTORIES,
   TRAINING_PAIDEIA_ROOT,
   TRAINING_SLOT_ACCEPTANCE_STORE,
+  TRAINING_SEALED_INPUTS_IDENTITY,
+  TRAINING_SEALED_INPUTS_ROOT,
   TRAINING_SLOT_ROOT,
   TRAINING_SLOT_STATE_ROOT,
   TRAINING_SLOT_TURN_STORE,
@@ -134,7 +136,67 @@ export const renderTrainingBrokerProvisioning = (registration: DaimonGrokRegistr
   `test "$(stat -c '%u:%g %a' ${quote(TRAINING_GRANT_HOME_ROOT)})" = "${DAIMON_ORGANIZATION_UID}:${DAIMON_ORGANIZATION_UID} 700"`,
   // The judge grant home root is the evaluator's alone: no worker uid may even traverse it.
   `setpriv --clear-groups --reuid ${TRAINING_WORKER_UID} --regid ${TRAINING_WORKER_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu '! test -r ${quote(TRAINING_GRANT_HOME_ROOT)}'`,
-  `setpriv --clear-groups --reuid ${DAIMON_ORGANIZATION_UID} --regid ${DAIMON_ORGANIZATION_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'test -r ${quote(TRAINING_SLOT_USAGE_LEDGER)} && test -r ${quote(TRAINING_INFERENCE_LEDGER)}'`
+  `setpriv --clear-groups --reuid ${DAIMON_ORGANIZATION_UID} --regid ${DAIMON_ORGANIZATION_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'test -r ${quote(TRAINING_SLOT_USAGE_LEDGER)} && test -r ${quote(TRAINING_INFERENCE_LEDGER)}'`,
+  // The sealed train and test datasets: the one boundary here that must hold against the subject's own
+  // namespace, not only against an honest tool. Last, so it runs with every mode already final.
+  ...renderTrainingSealedInputsAssertions(registration.uid)
+];
+
+/**
+ * The sealed-inputs seal, asserted and then attacked before any slot is used.
+ *
+ * The declared datasets are bind-mounted at `/run/training/inputs/<id>`, so
+ * `/run/training/inputs` is their common ancestor and the only inode in the
+ * chain the container controls: it lives on the read-only image root, the image
+ * bakes it `0:<organization gid> 0750`, and nothing in the container can widen
+ * it afterwards. The worker uid is in neither its owner nor its group class, so
+ * it loses *search* permission on the directory every dataset read must
+ * traverse.
+ *
+ * The three probes below are the attacker's route, not a cooperating tool's:
+ *
+ *  1. a direct read/search/list as the worker uid;
+ *  2. a user + mount namespace of the worker's own, detaching the bubblewrap
+ *     `deny` mask and the parent mount, then listing again — the route that
+ *     makes `profile-only` an unsound boundary for this path;
+ *  3. the same namespace, binding `/run/training` somewhere fresh so the bind
+ *     carries no `deny` mask, then listing through it.
+ *
+ * (2) and (3) are the ones the mask cannot answer and DAC can: `--map-root-user`
+ * maps only the worker uid, so `CAP_DAC_OVERRIDE` in that namespace is
+ * ineffective against a root-owned inode, and a fresh bind re-exposes the same
+ * root-owned directory rather than the bytes under it. A probe that reaches no
+ * verdict refuses the slot; a worker that cannot create the namespace at all
+ * cannot take the route, and says so.
+ */
+export const renderTrainingSealedInputsAssertions = (workerUid = TRAINING_WORKER_UID): string[] => [
+  "sealed_denied() {",
+  `  sealed_out=$(setpriv --clear-groups --reuid ${workerUid} --regid ${workerUid} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- /bin/sh -c "$1" 2>&1) || true`,
+  '  case "$sealed_out" in',
+  `    *SEALED-REACHABLE*) echo "the sealed inputs root ${TRAINING_SEALED_INPUTS_ROOT} is reachable by uid ${workerUid} via $2" >&2; exit 1 ;;`,
+  '    *SEALED-DENIED*) echo "sealed inputs denial observed for $2" ;;',
+  '    *SEALED-NO-NAMESPACE*) echo "sealed inputs probe $2 could not open a user namespace as the worker uid, so that route does not exist here" ;;',
+  '    *) echo "sealed inputs probe $2 reached no verdict, so the denial is unproven: $sealed_out" >&2; exit 1 ;;',
+  "  esac",
+  "}",
+  // Asserted, never set: the root filesystem is read-only, so an image that did not bake this mode
+  // cannot be corrected here — and that is the point. Refuse instead.
+  `test ! -L ${quote(TRAINING_SEALED_INPUTS_ROOT)} && test -d ${quote(TRAINING_SEALED_INPUTS_ROOT)}`,
+  `if [ "$(stat -c '%u:%g %a' ${quote(TRAINING_SEALED_INPUTS_ROOT)})" != "${TRAINING_SEALED_INPUTS_IDENTITY.uid}:${TRAINING_SEALED_INPUTS_IDENTITY.gid} ${TRAINING_SEALED_INPUTS_IDENTITY.mode}" ]; then`,
+  `  echo "the training image must bake ${TRAINING_SEALED_INPUTS_ROOT} as ${TRAINING_SEALED_INPUTS_IDENTITY.uid}:${TRAINING_SEALED_INPUTS_IDENTITY.gid} ${TRAINING_SEALED_INPUTS_IDENTITY.mode} on its read-only root; the sealed datasets are unprotected otherwise" >&2; exit 1`,
+  "fi",
+  `sealed_denied "if ls -1 ${TRAINING_SEALED_INPUTS_ROOT} >/dev/null 2>&1 || test -r ${TRAINING_SEALED_INPUTS_ROOT} || test -x ${TRAINING_SEALED_INPUTS_ROOT}; then echo SEALED-REACHABLE; else echo SEALED-DENIED; fi" direct-read`,
+  `sealed_denied "unshare --user --map-root-user --mount -- /bin/sh -c 'umount -l ${TRAINING_SEALED_INPUTS_ROOT} >/dev/null 2>&1; umount -l /run/training >/dev/null 2>&1; if ls -1 ${TRAINING_SEALED_INPUTS_ROOT} >/dev/null 2>&1; then echo SEALED-REACHABLE; else echo SEALED-DENIED; fi; exit 0' || echo SEALED-NO-NAMESPACE" namespace-unmount`,
+  `sealed_denied "unshare --user --map-root-user --mount -- /bin/sh -c 'mkdir -p /tmp/.sealed-probe >/dev/null 2>&1 || exit 0; mount --bind /run/training /tmp/.sealed-probe >/dev/null 2>&1 || { echo SEALED-DENIED; exit 0; }; if ls -1 /tmp/.sealed-probe/inputs >/dev/null 2>&1; then echo SEALED-REACHABLE; else echo SEALED-DENIED; fi; exit 0' || echo SEALED-NO-NAMESPACE" namespace-rebind`,
+  // Per dataset, because the strongest route is specific: binding the *dataset's own mount* somewhere
+  // fresh carries no `deny` mask and is not refused for locked children the way binding their parent is.
+  // A live control container with this directory left at Docker's own `0755 root:root` handed the held-out
+  // answer key to uid 2200 through exactly this route. Root enumerates the children; the worker may not.
+  `for sealed_child in ${TRAINING_SEALED_INPUTS_ROOT}/*; do`,
+  '  test -e "$sealed_child" || continue',
+  `  sealed_denied "if ls -1 \\"$sealed_child\\" >/dev/null 2>&1 || cat \\"$sealed_child\\"/* >/dev/null 2>&1; then echo SEALED-REACHABLE; else echo SEALED-DENIED; fi" "direct-read $sealed_child"`,
+  `  sealed_denied "unshare --user --map-root-user --mount -- /bin/sh -c \\"mkdir -p /tmp/.sealed-probe-child >/dev/null 2>&1 || exit 0; mount --bind '$sealed_child' /tmp/.sealed-probe-child >/dev/null 2>&1 || { echo SEALED-DENIED; exit 0; }; if ls -1 /tmp/.sealed-probe-child >/dev/null 2>&1; then echo SEALED-REACHABLE; else echo SEALED-DENIED; fi; exit 0\\" || echo SEALED-NO-NAMESPACE" "namespace-rebind $sealed_child"`,
+  "done"
 ];
 
 /** Where the broker's own `service.json` lands, so the supervisor can prove the slot it restarted is the slot it provisioned. */

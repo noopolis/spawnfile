@@ -20,6 +20,17 @@ RUN for fixed_uid in 2000 2100 2200; do \
         --home-dir /nonexistent --shell /usr/sbin/nologin "daimon-$fixed_uid"; \
     done
 
+# The sealed train and test datasets are bind-mounted UNDER /run/training/inputs, so this directory is
+# the ancestor every read of them must traverse, and it is the only inode in that chain the image owns.
+# Root-owned with no world bits, on the read-only root: uid 2200 is in neither the owner nor the group
+# class, so it loses search permission; a `unshare --map-root-user` namespace maps only uid 2200, so
+# CAP_DAC_OVERRIDE there cannot override an inode owned by real uid 0; and a fresh bind of the parent
+# re-exposes this same directory rather than the bytes under it. Nothing at runtime can widen it,
+# because the container root is read-only — the slot provisioning asserts the mode and refuses otherwise.
+RUN mkdir -p /run/training/inputs /run/training/output \
+ && chown 0:0 /run/training /run/training/output && chmod 0755 /run/training /run/training/output \
+ && chown 0:2000 /run/training/inputs && chmod 0750 /run/training/inputs
+
 # Layers run from least to most frequently changing: locked dependencies, the
 # DSPy venv, bridge source, pinned executables, then distributions. Staged context
 # modes are already `a+rX`-closed (train/train-broker 0555), so late COPY layers need no RUN.
