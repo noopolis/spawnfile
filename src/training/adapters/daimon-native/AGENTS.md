@@ -89,6 +89,19 @@ different statements: no `mcp` member means the facade never observed the turn,
 means nothing sealed. Collapsing any two of those is the mistake that kept this
 instrument unreadable.
 
+The row's `mcp` member now also carries the session's standalone GET SSE
+tunnels — `tunnels: {opened, closed, delivered, open: [{openMs, delivered}]}` —
+and `sealed-usage.ts` projects them under the same allow-list rule, with
+`openTunnels` summed beside `outstanding`. A worker parked reading that stream
+is idle in exactly the way every other artifact renders as "doing nothing", so
+a turn sealed with one still open, and how long it had been open, is what tells
+the two apart; `delivered` separates a tunnel carrying frames from one held
+open having received nothing. Its absence is a fourth statement of the same
+kind: a row sealed before Daimon observed that channel carries no `tunnels`
+member, which is never read as `opened: 0`. The diagnostic sentence names it
+(`GET tunnel open 428004ms/silent`, or `GET tunnels 1/1 closed`) and says
+nothing at all for a row that never measured it.
+
 And the worker's own last words now survive it. `child/diagnostics.ts` builds
 the same redacted `SubjectStartupDiagnostic` for a death *after* readiness that
 it always built for one before it, and the adapter publishes it as a
