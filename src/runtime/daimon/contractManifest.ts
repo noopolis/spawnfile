@@ -7,7 +7,7 @@ import { SpawnfileError } from "../../shared/index.js";
 export const DAIMON_CONTRACT_MANIFEST_VERSION =
   "noopolis.daimon.runtime-contract-manifest.v3" as const;
 export const DAIMON_CONTRACT_MANIFEST_SHA256 =
-  "sha256:5f3953aeab7ea53a3b50ebadf813d0c39ad6c9bc70416031555a2e2b499cc86e" as const;
+  "sha256:5fd04e453e0bce01f28bad64fb690ed477fcf50f4c23b3f59c1705b012d1aee9" as const;
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";
@@ -71,9 +71,9 @@ export const DAIMON_GROK_ENGINE_BROKER = {
     maxTurns: 48,
     systemPromptSha256: "2c31c0085a54a4efbf9c0cf0b8124c56e47f38691b7f0c7fa233a74abaa8ddf8",
     configSha256: {
-      "grok-4.6": { low: "eed6a451150a72b2cb528b30c23b3d51c7d3bc38c67a8985d4dcdf956ff214d3", medium: "8850502dbebf8918c5161c63efcc4ccf18719488300f4cec1deceb2c112b451f", high: "3ce44ace503362326b47149b528b942ce638fe146313d62502f248acf9c7333d" },
-      "grok-4.5": { low: "7aa13e90b9bc08d1a018f48b7a84de1dab41db586627ee2d5a25f69011ba7e25", medium: "218ba37e57a6f02fa36b265b4e154e68e30bd2d4794feb130cc226fdda7732a9", high: "0bb4ad8bfa5062169b28422d1d534b45420d4e46b1e546bda1c578eb34303646" },
-      "grok-build": { low: "83ac7202442286a65c359cc596b0b8db7bc4529ee70e98224f6cd6f66deb6878", medium: "0146313f28739888eb4e861f1bfb285f7ee4e0a9164669256ebdf6492a2790ce", high: "bbe72aaf70c417dc7007823a7e9e1a7d1fa8d57e50bde6f24036083b32bcc859" }
+      "grok-4.6": { low: "ab58499ac32678097c146479896f2b8a8e2b0e39aea22dc0a60b6227e370538e", medium: "df1a5cc84346e7f6bf6090492fbd19faaefb42953e3bb2e8c6cbc0572242403f", high: "65b0212564fb74042b1503d293fb8d3620276033264c0efade2a539ca09218e3" },
+      "grok-4.5": { low: "8247127c3625ff7c5d8d527a53596b89ec6557a821ac46cfd00bd122b90daff6", medium: "59288cee61297bb8c002097061a48f77b09d310754187a253ee089f7172a9155", high: "c63c3387ce92d94ec3f690abfe98942afcd7c9e17ff84816bbe751f340ab251f" },
+      "grok-build": { low: "fb343f2809903f26d21681470943235031f946e99085542fd89555eb7782cbb5", medium: "8a587ef75c90eab70d19b24583e60051d6fba9d90c558839fdbb15588b4cc656", high: "a23724e00d670caee185ba7690d2daa868173e53905cf446f5329666f01ab4e3" }
     },
     home: {
       directory: { uid: 0, group: "worker", mode: 0o1771 },
@@ -128,9 +128,9 @@ export const DAIMON_GROK_ENGINE_BROKER = {
     }
   },
   artifacts: {
-    sourceSha256: "2d36898f02793a89a4a58601fa77c0d8716cc028588daad6daf76ca44d28446f",
-    x64Sha256: "5f92d83fe8159d1ac371f62d5382c0b52ce7fd167e3855460de66187a4c505a8",
-    arm64Sha256: "8bb4f6b1053abe27001219ab640601289b39c8ff8c86831cd7d8782f0d9dab8c"
+    sourceSha256: "d8c9640a2d0084f584721d0d4afdc524af7434e9461c1fc2f8adcdff6454ba6d",
+    x64Sha256: "4059ec576065130e857cc937b03b97a0c45fffab7d790fb153fcb170bfd0f310",
+    arm64Sha256: "eb0e2975cf3204bb80d25edc1fec00dbd623a95466176f3f36e7e83178deb8d2"
   }
 } as const;
 /**
