@@ -21,7 +21,7 @@ concurrency:
 jobs:
   publish:
     name: publish spawnfile to npm
-    timeout-minutes: 20
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
