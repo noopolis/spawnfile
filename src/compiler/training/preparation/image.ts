@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { TrainingDockerProcess } from "../container/process.js";
 import type { TrainingImageBuild } from "./contract.js";
 import { assertInputRoot, copySealed, fileIdentity, hashJson, sealFile, sealTree, type SealedFile } from "./files.js";
+import { bindDaimonParentVerification, resolveTrainingDaimonParent } from "./daimonParent.js";
 import { normalizeTrainingContext } from "./contextModes.js";
 
 const packageRoot = fileURLToPath(new URL("../../../../", import.meta.url));
@@ -25,11 +26,16 @@ async function packageFiles(root: string, target: string, withDist: boolean, loc
     ...withDist ? await sealTree(path.join(root, "dist"), `${target}/dist`, { ignoreDevelopment: true }) : []];
 }
 
-export async function planTrainingImage(build: TrainingImageBuild, root: string, auth: readonly string[], ownRoot = packageRoot): Promise<TrainingImagePlan> {
+export async function planTrainingImage(build: TrainingImageBuild, root: string, auth: readonly string[], ownRoot = packageRoot,
+  declarationPath = root): Promise<TrainingImagePlan> {
   const resolve = (value: string) => path.resolve(root, value);
+  // Before any Docker call, including --dry-run: the attested Daimon runtime identity
+  // and the declared native parent must name one rebuild (see daimonParent.ts).
+  const daimonParent = await resolveTrainingDaimonParent(build, declarationPath);
   for (const source of [build.paideia, build.bridge, build.claude, build.integration.source, ...build.compiler ? [build.compiler] : [], ...build.bootstrap ? [build.bootstrap] : []]) assertInputRoot(resolve(source), auth);
   const assets = ownRoot === packageRoot ? trainingAssets : path.join(ownRoot, "runtime-images/training");
-  const dockerfile = await readFile(path.join(assets, "Dockerfile"), "utf8");
+  const recipe = await readFile(path.join(assets, "Dockerfile"), "utf8");
+  const dockerfile = daimonParent ? bindDaimonParentVerification(recipe, daimonParent) : recipe;
   const ownLock = path.extname(fileURLToPath(import.meta.url)) === ".ts" || ownRoot !== packageRoot
     ? path.join(ownRoot, "package-lock.json") : path.join(assets, "package-lock.json");
   const files = [
