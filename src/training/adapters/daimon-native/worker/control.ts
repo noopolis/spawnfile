@@ -1,6 +1,6 @@
 import { createDeliveryGate, type DeliveryControls } from './deliveries.js';
 import { dirname, join } from 'node:path';
-import { collectNativeEvidence, nativeUsageCoverage, readClosedTraces, writeEvidence } from './evidence.js';
+import { collectNativeEvidence, nativeUsageCoverage, readClosedTraces, wakeEvidenceFile, writeEvidence } from './evidence.js';
 import { isGrokLaunch, type NativeLaunch } from '../receipt/index.js';
 import type { NativeActivity, NativeAvailability, NativeConfig, NativeEvidence, NativeEvidenceSource, NativeHost,
   NativeReceipt, NativeTrace, NativeUsage, TerminalEvidence, WorkerOptions } from './types.js';
@@ -125,6 +125,8 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
   const source: NativeEvidenceSource = grok ? { engine: 'grok', requestsFile: join(dirname(usageFile), 'requests.jsonl') } : { engine: 'codex' };
   const cancellation = new AbortController();
   const gate = createDeliveryGate(options.timeoutMs, agent.attention?.maxExecutions);
+  /** This trial's delivery ordinal, so each wake's frame is filed under a name no later wake reuses. */
+  let delivered = 0;
   let stopping: Promise<NativeStopEvidence> | undefined;
   const owned = <T>(operation: Promise<T>): Promise<T> => {
     if (cancellation.signal.aborted) return Promise.reject(new Error('Native trial cancelled'));
@@ -156,6 +158,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
     async run(wakeId, text, controls) {
       if (cancellation.signal.aborted) throw new Error('Worker accepts exactly one native trial delivery');
       const remaining = gate.begin(wakeId, text, controls);
+      const ordinal = ++delivered;
       const previous = [...gate.executions];
       const startedAt = new Date().toISOString();
       const deliveryId = `${options.trialId}:${wakeId}`;
@@ -233,6 +236,12 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
           { channel: 'output', completeness: 'absent', ordering: 'none' },
           { channel: 'usage', completeness: nativeUsageCoverage(native, executionId), ordering: 'source' }],
         ...(error ? { error } : {}) };
+      // This wake's own frame first, under a name no other delivery of this trial
+      // writes, then the trial's latest frame. A trial that defers runs several
+      // wakes and each one's account is evidence about that wake: renaming over one
+      // file had the continuation's frame replace an assignment that really bound,
+      // and the earlier account no longer existed by the time anything read it.
+      await writeEvidence(wakeEvidenceFile(options.evidence, ordinal), result);
       await writeEvidence(options.evidence, result);
       return result;
     },

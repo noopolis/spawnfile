@@ -46,7 +46,7 @@ worker still inside its wake is exactly what that conjunct is for.
 
 *Evidence* asks whether this trial can be scored at all. `TerminalEvidenceMissing`
 is its own vocabulary on its own receipt field, `unevidenced`: `terminal-absent`
-is no frame at all for the last delivery, `terminal-unbound` is a frame whose
+is no frame at all for that delivery, `terminal-unbound` is a frame whose
 identity, closed trace or resolved execution disagreed — including one belonging
 to a different trial, which is never accepted as this trial's evidence, and
 `terminal-ambiguous` is a frame whose named execution has more than one closed
@@ -55,6 +55,30 @@ on a runtime that is provably quiet**, which is a different sentence from "the
 runtime might still be spending" and must never be published as one. Deferred is
 still never success: the demotion happens either way, under whichever name earned
 it.
+
+**And that question is asked of the trial, not of its last delivery.** Every wake
+publishes its own frame, so the handle keeps a ledger — one entry per delivery, in
+order, each with its own cause — and the receipt carries all of it: `evidenced`
+names the wake the verdict rests on, `wakes` keeps every wake's own verdict beside
+it, and `unevidenced` appears only when NO wake produced an admissible frame. One
+mutable verdict per handle meant the newest delivery's answer was the trial's
+answer, so a continuation that named no closed execution of its own erased the
+assignment's frame — which had bound, over a closed trace, on a runtime the same
+stop proved quiet — and the trial published "no terminal evidence at all", which
+was false, and was demoted to an infrastructure failure for it. Selection is not
+suppression: the continuation's own `terminal-unbound` is still on the receipt,
+and `runTrial` names the failing wake beside the cause.
+
+The wake that carried it is the LAST one that bound, because that is the most
+recent account of this trial, and a trial-wide fault outranks every frame in it.
+Those are the isolation faults, and they are exactly the ones that say what this
+runtime published cannot be attributed: a frame from another trial, agent, model,
+config or delivery, a foreign execution among the traces, or one execution with
+two closed traces. Selecting past one of those would be attributing evidence on a
+runtime that just proved it cannot be, so nothing in such a trial is scored — an
+earlier admissible wake included. A wake that simply named no closed execution of
+its own is the other kind: that wake is unscorable and the trial's other frames
+are untouched.
 
 **A trial legitimately has as many executions as it had wakes.** A subject that
 defers gets a continuation, so a deferred case runs several wakes and closes one

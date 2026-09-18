@@ -12,6 +12,15 @@ External continuations are opt-in, sourced, bounded to three deliveries and shar
 one trial deadline. Deferred work is never success. Preserve per-wake evidence and
 aggregate usage once; cancellation must stop the owned runtime.
 
+Preserving it is a file per wake, not a file per trial. `--evidence` is renamed
+over on every delivery, so a continued trial kept only its last frame: the
+assignment's frame — the one that had bound over a closed trace — no longer
+existed by the time anything read it. Each delivery now also files its own frame
+under its delivery ordinal (`evidence.1.json`, `evidence.2.json`, …), which no
+later wake of the same trial reuses. Nothing is merged and nothing is summarised:
+each file is exactly one wake's own frame, naming its own wake, and the latest is
+still at `--evidence` for a reader that wants the trial's last account.
+
 The runtime wake ceiling this worker publishes is derived from that same bound
 (`MAX_TRIAL_WAKES` — the task delivery plus its continuations), never declared
 beside it. It is set before any delivery arrives, so a second number there drifts

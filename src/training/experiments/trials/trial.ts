@@ -157,7 +157,11 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   // a run can be provably quiet and still have no frame to score, which is not a
   // containment doubt and must never be published as one.
   const unproven = !nativeClosureConfirmed ? `Native closure unproven${nativeStop?.unconfirmed ? ` (${nativeStop.unconfirmed})` : ''}` : undefined;
-  const unevidenced = nativeStop?.unevidenced ? `Native trial unscorable for want of terminal evidence (${nativeStop.unevidenced})` : undefined;
+  // A multi-wake trial names the delivery the refusal was read from: with several
+  // wakes, "no terminal evidence" alone cannot say which one to go and look at.
+  const failedWake = nativeStop?.wakes?.filter(wake => wake.unevidenced).at(-1)?.wakeId;
+  const unevidenced = nativeStop?.unevidenced
+    ? `Native trial unscorable for want of terminal evidence (${nativeStop.unevidenced})${failedWake ? ` on wake ${failedWake}` : ''}` : undefined;
   if (execution === 'deferred' && (unproven || unevidenced || control.signal.aborted)) {
     execution = 'failed';
     // The deferral is the subject's outcome; this demotion is the machine's. While
