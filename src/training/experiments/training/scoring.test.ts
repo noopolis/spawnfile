@@ -18,6 +18,14 @@ it('separates quality, incomplete observation and infrastructure outcomes', () =
   expect(() => trialScore(failed)).toThrow('incomplete');
   expect(trialScore({ ...failed, decisiveFailure: result('fail', 'forbidden') })).toBe(0);
   expect(() => trialScore({ ...failed, execution: 'failed', decisiveFailure: result('fail', 'forbidden') })).toThrow('infrastructure');
+  // A closed execution whose delivery stayed deferred: scored, never passed, never infrastructure.
+  const deferred = { ...report, status: 'fail' as const, execution: 'deferred' as const,
+    stop: { state: 'acknowledged', quiescence: 'confirmed' } as TrialReport['stop'] };
+  expect(trialScore(deferred)).toBe(0);
+  expect(() => trialScore({ ...deferred, status: 'pass' })).toThrow('cannot pass on a deferred delivery');
+  expect(() => trialScore({ ...deferred, status: 'unknown' })).toThrow('unscorable');
+  // Without the quiescence proof it is an unproven execution again, exactly as before.
+  expect(() => trialScore({ ...deferred, stop: { state: 'acknowledged' } as TrialReport['stop'] })).toThrow('incomplete');
   const graded = { ...report, evaluation: { ...report.evaluation, stages: [{ id: 'quality', checks: [], gate: result('pass', 'ok'),
     score: { finality: 'final' as const, lower: 0.8, upper: 0.8, assessedWeight: 1, missingWeight: 0 } }] } };
   expect(trialScore(graded)).toBe(0.8);

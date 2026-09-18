@@ -56,3 +56,8 @@ resume never fabricates a missing journal. Parent imports remain development-onl
 The comparison owner reuses `TrainingCheckpoint.openComparison` and capture/recovery
 APIs with an explicit comparison identity. It neither opens nor imports optimizer
 state. Ordinary training identity and measurement-repair behavior stay unchanged.
+
+`trialScore` scores a `deferred` trial, which carries its own quiescence proof and
+can only be a `fail`, so a subject that ended its turn without doing the work
+becomes a zero the optimizer can learn from instead of an infrastructure error.
+`failed` still means the machine broke and still refuses to produce a number.
