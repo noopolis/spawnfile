@@ -65,6 +65,15 @@ export type StopUnconfirmed =
   | 'worker-unavailable'
   | 'terminal-absent'
   | 'terminal-unbound'
+  /**
+   * Retired as a closure cause and kept only so a sealed report that carries it
+   * still replays. The delivery's disposition is a SCORING fact: reading it here
+   * demoted a scorable turn to an infrastructure failure, and the proofs beside it
+   * — a bound terminal frame, a resolved execution, an empty `executions` list, an
+   * exited child — already establish that no worker is still spending. Nothing
+   * produces it now; a recurrence is an upstream regression and fails on the
+   * worker's own evidence instead.
+   */
   | 'delivery-undisposed'
   | 'activity-unreadable'
   | 'activity-busy'

@@ -146,19 +146,17 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
       const result = await http<T>(path, body, ms, signal);
       if (path === '/trial/run') {
         const value = result as TerminalEvidence;
-        const completed = value.status === 'completed' && value.receipt?.state === 'completed';
-        const deferred = value.status === 'failed' && value.blocked === 'awaiting-external-input' &&
-          value.receipt?.state === 'accepted' && value.receipt.deferred === true;
         const bound = value.schema === 'paideia.daimon-native.trial.v1' && value.trialId === trialId && value.agentId === launch.agent.id &&
           value.model === launch.agent.model && value.configSha256 === launch.configSha256 &&
           value.wakeId === (body as { wakeId?: string })?.wakeId && !!value.receipt && !!value.activity;
-        // A delivery that ended neither completed nor deferred is its own fault and
-        // not a broken frame: Daimon records an unmarked finished wake as deferred,
-        // so `accepted` without that marker is written only where a stopping runtime
-        // reclaims the delivery for restart. Nothing about the subject is provable
-        // from it, and it must never borrow the deferral's scored outcome.
-        binding = !bound ? 'terminal-unbound' : !completed && !deferred ? 'delivery-undisposed'
-          : value.native.traces[0]?.status !== 'completed' ? 'terminal-unbound' : undefined;
+        // Closure is "no worker is still spending", and the delivery's DISPOSITION is
+        // not one of its proofs. Requiring `completed` or `deferred` here put a
+        // scoring fact inside the closure predicate and demoted a scorable turn to an
+        // infrastructure failure; the frame being bound, the execution resolving and
+        // `executions` being empty already prove the thing this predicate claims. The
+        // worker's own path refuses to score an undisposed delivery, loudly and on
+        // its own evidence, which is where that judgement belongs.
+        binding = !bound || value.native.traces[0]?.status !== 'completed' ? 'terminal-unbound' : undefined;
         if (binding === undefined) {
           // An identity conflict still throws, because it must fail the turn rather
           // than pass as verified work; it only records what it was first.

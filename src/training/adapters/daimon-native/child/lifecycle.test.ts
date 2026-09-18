@@ -56,7 +56,7 @@ it('confirms a closed deferred execution without claiming the unanswered task co
   expect(next).toHaveBeenCalledOnce();
   expect(await session.stop('Finished')).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed' });
 });
-it.each(['blocked-no-deferred', 'blocked-failed-trace', 'blocked-active', 'blocked-wrong-execution'])(
+it.each(['blocked-failed-trace', 'blocked-active', 'blocked-wrong-execution'])(
   'does not infer closed deferred execution from %s', async mode => {
     const f = await fixture(mode); const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000);
     await handle.request('/trial/run', { wakeId: 'task', text: 'Work' });

@@ -173,7 +173,11 @@ it.each([
   ['blocked-always-unanswerable', 'activity-unreadable'],
   ['blocked-always-stop-unknown', 'native-stop-unacknowledged'],
   ['blocked-always-busy-seal', 'activity-busy'],
-  ['blocked-no-deferred', 'delivery-undisposed'],
+  // A delivery the runtime reclaimed undisposed is a SCORING fact, not a closure
+  // one: the child exited, the terminal frame was published and bound, and
+  // `executions` is empty, so nothing is still spending. Closure holds and the
+  // scoring path refuses it on its own — see the trial below.
+  ['blocked-no-deferred', undefined],
   ['bad-terminal', 'terminal-unbound'],
 ])('binds %s to the closure cause %s', async (mode, cause) => {
   const f = await childFixture(mode); roots.push(f.root);
@@ -214,8 +218,16 @@ it('names a delivery the runtime reclaimed undisposed, after a single wake with 
   // delivery, so this was never a shutdown race Paideia could reorder away.
   // The wake outcome Daimon recorded travels all the way to the published turn.
   expect(turn.error).toContain('reclaimed undisposed while the runtime kept running (active_wake_aborted)');
-  // Named as itself, and still refusing to score: nothing here evidences the subject.
-  expect(report.stop).toMatchObject({ quiescence: 'unknown', unconfirmed: 'delivery-undisposed' });
+  // Closure is PROVEN: the child exited, the terminal frame bound and `executions`
+  // is empty, which is the whole of "no worker is still spending". An undisposed
+  // delivery is a scoring fact and was demoting a scorable trial to an
+  // infrastructure failure from inside the closure predicate; it is not a cause here
+  // any more, and no name replaced it.
+  expect(report.stop).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed' });
+  expect(report.stop?.unconfirmed).toBeUndefined();
+  // Still refusing to score, and loudly — on the turn's own evidence, not on a
+  // closure proof it never failed.
+  expect(report.error).not.toContain('Native closure unproven');
   // The turn's own sentence already explains the trial, so it is not prefixed with a
   // closure cause that would read as the primary fault; the machine-readable name on
   // the receipt is what an operator correlates, and the two must agree.

@@ -34,7 +34,7 @@ itself**. They shared a bare `catch` and a single fixed sentence, so every
 unscorable trial published the same "unconfirmed" whichever proof was missing,
 and the evidence that would have identified it was in the control root a
 training slot puts on tmpfs. `StopUnconfirmed` is that closed vocabulary —
-`worker-unavailable`, `terminal-absent`, `terminal-unbound`, `delivery-undisposed`,
+`worker-unavailable`, `terminal-absent`, `terminal-unbound`,
 `activity-unreadable`, `activity-busy`, `execution-unbound`,
 `native-stop-unacknowledged`, `child-running`, `child-exit`
 — carried on the receipt the turn publishes durably, and `runTrial` repeats it
@@ -46,16 +46,26 @@ confirmed, and no name ever carries a path, a token, a body or an upstream
 error string. `activity-busy` is reachable and must stay refusing — a host that
 stopped with an execution still admitted seals that honestly.
 
-The frame's three states are three causes, because they call for fixes in three
-places. `terminal-absent` is no frame at all for the last delivery;
-`terminal-unbound` is a frame whose identity or `executionClosed` disagreed; and
-`delivery-undisposed` is the one a live trial actually met — every binding held,
-the frame was published, its identity matched and `executionClosed` agreed, and
-the delivery came back neither completed nor deferred. That last one is never
-Paideia's to repair: Daimon writes it only where a stopping runtime reclaims the
-delivery for restart, so the fix is upstream and the trial stays unscorable.
-Collapsing them sends the next investigation to the wrong layer, which is exactly
-what one over-broad name already cost.
+The frame's two states are two causes, because they call for fixes in two places.
+`terminal-absent` is no frame at all for the last delivery; `terminal-unbound` is
+a frame whose identity, closed trace or `executionClosed` disagreed. Collapsing
+them sends the next investigation to the wrong layer, which is exactly what one
+over-broad name already cost.
+
+There was a third, `delivery-undisposed`, for a delivery that came back neither
+completed nor deferred, and it was the wrong kind of fact in the wrong place. What
+this predicate claims is that **no worker is still spending**, and a bound frame, a
+resolved execution, an empty `executions` list and an exited child prove exactly
+that; the delivery's disposition proves nothing about it. Reading it here demoted a
+scorable turn to an infrastructure failure — the same mistake as publishing the
+subject's deferral as the machine's reason, one layer up. It is retired rather than
+renamed: nothing produces it, the vocabulary keeps the member only so a sealed
+report that carries it still replays, and no name replaced it. A delivery reclaimed
+undisposed still refuses to score, loudly, on the worker's own evidence
+(`worker/control.ts`), and after Daimon stopped keying that reclaim on its own
+`stopping` latch the shape should not occur at all — a recurrence is an upstream
+regression, which is precisely why it must not be absorbed here as one more
+unconfirmed closure.
 
 The fixture models production or it is a defect. Two shapes it lacked, both of
 which made green tests coexist with an inert live path: `/trial/stop` is settled
