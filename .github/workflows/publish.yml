@@ -80,14 +80,41 @@ jobs:
           repository: noopolis/daimon
           path: daimon-fixture
 
+      # The shipped runtime refuses any Grok executable but the manifest-pinned
+      # build, so the source build needs the real linux-x86_64 binary. Its URL,
+      # size, and digest come from the vendored Daimon contract manifest, so a
+      # re-vendored Daimon bump moves this download with no CI edit.
+      - name: Fetch the pinned linux-x86_64 Grok CLI
+        id: grok-cli
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          manifest=src/runtime/daimon/contract-manifest.json
+          read -r url bytes sha256 < <(node -e '
+            const artifact = require("./" + process.argv[1]).grokEngineBroker?.grokCliArtifacts?.x64;
+            if (typeof artifact?.url !== "string" || !Number.isInteger(artifact.bytes) || !/^[a-f0-9]{64}$/.test(artifact.sha256 ?? "")) {
+              throw new Error("vendored Daimon contract manifest has no pinned linux-x86_64 Grok CLI artifact");
+            }
+            process.stdout.write(`${artifact.url} ${artifact.bytes} ${artifact.sha256}\n`);
+          ' "${manifest}")
+
+          file="${RUNNER_TEMP}/grok"
+          curl --fail --location --silent --show-error --output "${file}" -- "${url}"
+          test "$(stat -c %s -- "${file}")" -eq "${bytes}"
+          echo "${sha256}  ${file}" | sha256sum --check --strict -
+          chmod 0755 -- "${file}"
+          echo "file=${file}" >> "${GITHUB_OUTPUT}"
+
       - name: Verify Git-free offline linux/amd64 source build
         env:
+          SPAWNFILE_GROK_CLI_FILE: ${{ steps.grok-cli.outputs.file }}
           SPAWNFILE_TEST_DAIMON_SOURCE: ${{ github.workspace }}/daimon-fixture
         run: npm run test:source-provenance-docker
 
-      - name: Remove Daimon provenance fixture
+      - name: Remove Daimon provenance fixture and Grok CLI
         if: always()
-        run: rm -rf -- daimon-fixture
+        run: rm -rf -- daimon-fixture "${RUNNER_TEMP}/grok"
 
       - name: Check out Moltnet provenance fixture
         uses: actions/checkout@v4
