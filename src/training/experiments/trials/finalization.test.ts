@@ -1,10 +1,52 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { parseDatasetYaml, resolveDataset } from '../../cases/index.js';
 import { result, createEvaluationRegistry } from '../../evaluation/index.js';
 import { trialScore } from '../training/index.js';
 import { runTrial } from './trial.js';
 import { complete, setup } from './fixture.js';
+import type { ObservationCoverage, SubjectStart, SubjectTurnResult } from '../../contracts/execution.js';
 
 afterEach(() => { vi.useRealTimers(); });
+
+const blockedError = 'Native execution completed; delivery blocked awaiting external input';
+const partial: ObservationCoverage[] = [{ channel: 'tools', completeness: 'partial', ordering: 'none' },
+  { channel: 'output', completeness: 'absent', ordering: 'none' },
+  { channel: 'usage', completeness: 'complete', ordering: 'source' }];
+const observed: ObservationCoverage[] = [{ channel: 'tools', completeness: 'complete', ordering: 'source' },
+  ...partial.slice(1)];
+
+/** The newsroom shape: one artifact the filing produces and the sequence that must produce it. */
+function newsroom() {
+  return resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+id: newsroom
+stages:
+  - id: accepted-article
+    checks:
+      - {id: filed, eval: tool-called, tool: mcp_newsroom_file_article}
+      - {id: body, eval: contains-any, input: 'artifact:accepted-article#/body', values: [Filed]}
+    score:
+      linear: {filed: 0.5, body: 0.5}
+    gate: {all: [{passed: filed}, {passed: body}]}
+records:
+  - id: record
+    group: unique
+    input: {prompt: file the assigned story}
+    outputs: {accepted-article: article.json}
+`)).records[0]!;
+}
+
+async function called(input: SubjectStart, turn: { id: string }, tool: string): Promise<void> {
+  await input.onObservation({ id: tool, source: 'native', seq: 1, type: 'tool.complete', callId: `call-${tool}`,
+    tool, trialId: input.trialId, wakeId: turn.id, success: true, timestamp: new Date().toISOString() });
+}
+/** Exactly what the observed foreman did: one delegating message, then the turn closed. */
+const delegated = (input: SubjectStart, turn: { id: string }) => called(input, turn, 'moltnet_send');
+function deferredTurn(coverage: ObservationCoverage[]): SubjectTurnResult {
+  return { status: 'failed', blocked: 'awaiting-external-input', text: '', usage: null, error: blockedError, coverage };
+}
+
 
 it('closes every acquired native session on success, returned failure and failed turn gate', async () => {
   for (const status of ['completed', 'failed', 'cancelled'] as const) {
@@ -86,4 +128,108 @@ it('freezes the capture when an observation persistence callback outlives the dr
   release(); await expect(callback).rejects.toThrow(); await new Promise(resolve => setTimeout(resolve, 10));
   expect(JSON.stringify(report)).toBe(frozen); expect(report.snapshot.events).toHaveLength(0);
   expect(task.journal.some(event => event.type === 'live.evaluation' && (event.payload as { boundary: string }).boundary === 'late')).toBe(false);
+});
+
+it('scores the trial, fails the accepted-article gate and never reports infrastructure failure', async () => {
+  const task = await setup(async (input, turn) => { await delegated(input, turn); return deferredTurn(observed); });
+  task.options.record = newsroom();
+  const report = await runTrial(task.options);
+  // The machine worked; the agent did not do the work.
+  expect(report.execution).toBe('deferred');
+  expect(report.hostWork).toBe('settled');
+  expect(report.stop).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed' });
+  // The gate fails on the work that never happened, and it is a verdict, not an error.
+  expect(report.evaluation.status).toBe('fail');
+  const stage = report.evaluation.stages.find(row => row.id === 'accepted-article')!;
+  expect(stage.gate.status).toBe('fail');
+  expect(stage.checks.find(check => check.id === 'filed')!.status).toBe('fail');
+  // The absent artifact stays missing: it neither passes nor becomes a measured zero,
+  // and its weight remains in the denominator rather than being excluded from it.
+  expect(stage.checks.find(check => check.id === 'body')!.status).toBe('unknown');
+  expect(stage.score).toMatchObject({ missingWeight: 0.5, assessedWeight: 0.5, lower: 0 });
+  // Deferred is never success, and the deferral is on the published report.
+  expect(report.status).toBe('fail');
+  expect(report.error).toBe(blockedError);
+  expect(report.turns[0]!.native.blocked).toBe('awaiting-external-input');
+  expect(trialScore(report)).toBe(0);
+});
+
+it('still scores when the native adapter can only claim partial tool coverage', async () => {
+  const task = await setup(async (input, turn) => { await delegated(input, turn); return deferredTurn(partial); });
+  task.options.record = newsroom();
+  const report = await runTrial(task.options);
+  // Every measured check is honestly unknown; the unanswered delivery is the failing witness.
+  const stage = report.evaluation.stages.find(row => row.id === 'accepted-article')!;
+  expect(stage.checks.map(check => check.status)).toEqual(['unknown', 'unknown']);
+  expect(report.evaluation.status).toBe('unknown');
+  expect(report.execution).toBe('deferred');
+  expect(report.status).toBe('fail');
+  expect(trialScore(report)).toBe(0);
+});
+
+it('never turns an unmeasurable evaluation into a behavioural zero', async () => {
+  const task = await setup(async (input, turn) => {
+    await delegated(input, turn);
+    await writeFile(join(input.workspacePath, 'article.json'), '{"body":"Filed"}');
+    return deferredTurn(observed);
+  });
+  task.options.record = resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+id: newsroom-broken
+checks:
+- {id: body, eval: contains-any, input: 'artifact:accepted-article#not-a-pointer', values: [Filed]}
+records:
+- id: record
+  group: unique
+  input: {prompt: file the assigned story}
+  outputs: {accepted-article: article.json}
+`)).records[0]!;
+  const report = await runTrial(task.options);
+  expect(report.evaluation.status).toBe('error');
+  expect(report.execution).toBe('deferred');
+  expect(report.status).toBe('error');
+  expect(() => trialScore(report)).toThrow('unscorable');
+});
+
+it('keeps an unproven, cancelled or plainly failed execution an infrastructure failure', async () => {
+  // Same blocked marker, but the adapter cannot confirm closure: fail closed, as today.
+  const unconfirmed = await setup(async (input, turn) => { await delegated(input, turn); return deferredTurn(observed); });
+  unconfirmed.options.record = newsroom();
+  const base = unconfirmed.options.adapter;
+  unconfirmed.options.adapter = { ...base, async start(input) {
+    const session = await base.start(input);
+    return { ...session, stop: async reason => ({ ...await session.stop(reason), quiescence: 'unknown' as const }) };
+  } };
+  const unproven = await runTrial(unconfirmed.options);
+  expect(unproven.execution).toBe('failed');
+  expect(() => trialScore(unproven)).toThrow('infrastructure');
+
+  // A hung or crashed turn carries no blocked marker at all.
+  const crashed = await setup(async () => ({ status: 'failed', text: '', usage: null, coverage: partial,
+    error: 'Native trial deadline exceeded' }));
+  crashed.options.record = newsroom();
+  const broken = await runTrial(crashed.options);
+  expect(broken.execution).toBe('failed');
+  expect(broken.status).toBe('error');
+  expect(() => trialScore(broken)).toThrow('infrastructure');
+
+  // An aborted turn is the machine's outcome even if the marker rides along.
+  const aborted = await setup(async () => ({ ...deferredTurn(observed), status: 'cancelled' }));
+  aborted.options.record = newsroom();
+  const interrupted = await runTrial(aborted.options);
+  expect(interrupted.execution).toBe('interrupted');
+  expect(() => trialScore(interrupted)).toThrow('incomplete');
+});
+
+it('does not regress the disposed execution that really filed', async () => {
+  const task = await setup(async (input, turn) => {
+    await called(input, turn, 'mcp_newsroom_file_article');
+    await writeFile(join(input.workspacePath, 'article.json'), '{"body":"Filed"}');
+    return { status: 'completed', text: '', usage: null, coverage: observed };
+  });
+  task.options.record = newsroom();
+  const report = await runTrial(task.options);
+  expect(report.execution).toBe('completed');
+  expect(report.status).toBe('pass');
+  expect(report.turns[0]!.native.blocked).toBeUndefined();
+  expect(trialScore(report)).toBe(1);
 });

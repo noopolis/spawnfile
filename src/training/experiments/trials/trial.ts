@@ -117,7 +117,14 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
               native.stop?.state === 'acknowledged' && native.stop.quiescence === 'confirmed' }) }), registry)).stages[0]!.checks : [];
       turnReport.checks = checks;
       await persist('turn.completed', turnReport);
-      if (native.status !== 'completed') { execution = native.status === 'cancelled' ? 'interrupted' : 'failed'; error = native.error; break; }
+      if (native.status !== 'completed') {
+        // A turn that closed its own execution and left the delivery deferred is the
+        // subject's outcome, not the machine's. The stop proofs below can still
+        // demote it; an uncertain, hung, crashed or cancelled turn never reaches it.
+        execution = native.status === 'cancelled' ? 'interrupted'
+          : native.blocked === 'awaiting-external-input' ? 'deferred' : 'failed';
+        error = native.error; break;
+      }
       if (checks.some(check => check.status !== 'pass' || check.finality !== 'final')) { execution = 'interrupted'; error = 'Turn gate is not satisfied'; break; }
       Object.assign(bindings, captureBindings(('bind' in turn ? turn.bind : undefined) ?? {},
         { events: state.events.filter(event => event.wakeId === turn.id), context: state.context }));
@@ -142,6 +149,10 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   control.closeNative('Native trial work ended');
   const nativeStop = await control.receipt();
   nativeClosureConfirmed = nativeStop?.state === 'acknowledged' && nativeStop.quiescence === 'confirmed';
+  // Closure is claimable only with the adapter's own proofs: matching closed native
+  // work, idle runtime, acknowledged stop and observed exit. Without them the run is
+  // an unproven execution and stays an infrastructure failure, exactly as before.
+  if (execution === 'deferred' && (!nativeClosureConfirmed || control.signal.aborted)) execution = 'failed';
   try {
     await control.owned(drainObservations(() => observationTail));
     if (observationFailure) throw new Error(observationFailure);
@@ -174,7 +185,16 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     if (observationFailure && finalSnapshot.subjectUsage) finalSnapshot.subjectUsage.status = 'incomplete';
     const gates = [result(evaluation.status, 'Terminal plan'), ...liveGates,
       ...(live.decisive ? [live.decisive] : []), ...turns.flatMap(turn => turn.checks)];
-    if (execution !== 'completed' && !live.decisive) gates.push(result('error', error ?? control.reason ?? 'Incomplete native execution'));
+    if (execution === 'deferred') {
+      // The subject closed its own execution and left the delivery unanswered: a final
+      // failing witness in its own right, so the trial is scored and never passes. The
+      // measured checks keep their own verdicts and weights — a missing artifact stays
+      // missing rather than becoming a zero — and an errored plan still outranks it, so
+      // an evaluation that could not measure is never reported as a behavioural zero.
+      if (combine('all', gates).status !== 'error') {
+        gates.push(result('fail', error ?? 'Native delivery remains deferred awaiting external input'));
+      }
+    } else if (execution !== 'completed' && !live.decisive) gates.push(result('error', error ?? control.reason ?? 'Incomplete native execution'));
     const report: TrialReport = { schema: 'paideia.trial.v1', id: options.id, phase: options.phase,
       candidateId: options.candidateId, datasetDigest: options.datasetDigest, planDigest: options.planDigest,
       recordId: record.id, paths, status: combine('all', gates).status, execution, hostWork: control.hostWork, snapshot: finalSnapshot,

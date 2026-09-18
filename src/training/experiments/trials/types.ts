@@ -43,7 +43,12 @@ export interface TrialReport {
   recordId: string;
   paths: TrialPaths;
   status: Verdict;
-  execution: 'completed' | 'interrupted' | 'failed';
+  /**
+   * `deferred` is the subject's own closed execution whose delivery is still
+   * waiting on external input: the machine worked and the task did not finish.
+   * It is scored and never passed; `failed` stays reserved for infrastructure.
+   */
+  execution: 'completed' | 'deferred' | 'interrupted' | 'failed';
   hostWork: 'settled' | 'incomplete';
   snapshot: EvaluationSnapshot;
   /** Authored turn count, retained independently of returned native results. */

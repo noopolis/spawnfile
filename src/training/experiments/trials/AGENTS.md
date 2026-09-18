@@ -32,3 +32,18 @@ directory is the operator's own run output beside the trial scratch, never insid
 the content store, so no replay, viewer projection or report can reach it: the
 boundary this repository enforces is the audience of a shipped artifact, not the
 existence of bytes on the operator's disk.
+
+A subject can close its own execution and still leave the delivery accepted and
+deferred awaiting external input. That is the agent failing the task, not the
+machine failing the trial, so the report's `execution` is `deferred` rather than
+`failed` and the trial is scored. It is claimable only with the adapter's own
+blocked receipt plus the proofs behind a confirmed stop — matching closed native
+work, idle runtime, acknowledged stop and observed exit — and an uncertain, hung,
+crashed, aborted or deadline-killed execution stays `failed` exactly as before.
+
+Deferred is never success. The unanswered delivery is itself a final failing
+witness, so a deferred trial can never report `pass`; the measured checks keep
+their own verdicts and weights, so a missing artifact stays a missing artifact in
+the score's denominator rather than becoming a measured zero. An errored terminal
+plan still outranks the deferral: an evaluation that could not measure remains
+unscorable instead of being published as a behavioural zero.

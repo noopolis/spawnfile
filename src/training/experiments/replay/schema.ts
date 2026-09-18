@@ -51,10 +51,11 @@ export const trialReportSchema = z.object({
   schema: z.literal('paideia.trial.v1'), id: identity, phase: z.enum(['train', 'validation', 'test']), candidateId: identity,
   datasetDigest: identity, planDigest: identity, recordId: identity,
   paths: z.object({ root: z.string(), workspace: z.string(), control: z.string(), runtimeHome: z.string() }),
-  status: verdict, execution: z.enum(['completed', 'interrupted', 'failed']), hostWork: z.enum(['settled', 'incomplete']), snapshot,
+  status: verdict, execution: z.enum(['completed', 'deferred', 'interrupted', 'failed']), hostWork: z.enum(['settled', 'incomplete']), snapshot,
   expectedTurns: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
   turns: z.array(z.object({ id: identity, checks: z.array(result), native: z.object({
-    status: z.enum(['completed', 'failed', 'cancelled']), text: z.string(), coverage: z.array(coverage), usage: usage.nullable(),
+    status: z.enum(['completed', 'failed', 'cancelled']), blocked: z.literal('awaiting-external-input').optional(),
+    text: z.string(), coverage: z.array(coverage), usage: usage.nullable(),
     error: z.string().optional(), stop: stop.optional() }) })),
   evaluation: plan, live: z.array(z.object({ checkId: z.string(), boundary: z.string(), result })),
   decisiveFailure: result.optional(), stop: stop.optional(), error: z.string().optional(),
