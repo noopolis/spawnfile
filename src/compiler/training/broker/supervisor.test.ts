@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createTrainingSlotSupervisor, type TrainingSlotRuntime } from "./supervisor.js";
+import { createTrainingSlotSupervisor, startTrainingSlot, type TrainingSlotRuntime } from "./supervisor.js";
 
 const nonce = "a".repeat(64);
 
@@ -73,5 +73,27 @@ describe("training slot recycle", () => {
     const supervisor = createTrainingSlotSupervisor({ runtime });
     await expect(supervisor.recycle(nonce, 2000)).rejects.toThrow(/provisioning failed/u);
     await expect(supervisor.recycle("c".repeat(64), 2000)).resolves.toMatchObject({ ok: true });
+  });
+});
+
+describe("training slot start-up", () => {
+  /**
+   * The first trial is the one whose sealed datasets have never been probed, so
+   * it is the one that most needs the evidence. Start-up used to be
+   * `provision → start` and nothing else: `canaries` and `publishReceipt` were
+   * reachable only through `recycle`, so trial 1 ran with no worker-uid denial
+   * evidence at all and a refusal surfaced only after that trial's spend.
+   */
+  it("canaries the slot and publishes the preflight receipt before it hands the slot over", async () => {
+    const { runtime, order } = stubRuntime();
+    const result = await startTrainingSlot(runtime, nonce);
+    expect(order).toEqual(["provision", "start", "canaries", "generation", "receipt"]);
+    expect(result).toEqual({ generation: 1, receipt: "/run/training/slot/preflight.json", canaries: 1 });
+  });
+
+  it("never reaches a receipt when a start-up canary is still reachable", async () => {
+    const { runtime, order } = stubRuntime({ canaries: async () => { throw Error("sealed canary is still reachable"); } });
+    await expect(startTrainingSlot(runtime, nonce)).rejects.toThrow(/sealed canary is still reachable/u);
+    expect(order).not.toContain("receipt");
   });
 });

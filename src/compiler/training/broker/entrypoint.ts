@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -9,7 +10,7 @@ import { parseTrainingBrokerDeclaration, type TrainingBrokerDeclaration } from "
 import { loadDaimonProjectionModule, resolveTrainingGrokProjection, type DaimonProjectionModule } from "./projection.js";
 import { resolveTrainingGrokRegistration } from "./registration.js";
 import { createTrainingSlotRuntime } from "./runtime.js";
-import { createTrainingSlotSupervisor, serveTrainingSlotSupervisor } from "./supervisor.js";
+import { createTrainingSlotSupervisor, serveTrainingSlotSupervisor, startTrainingSlot } from "./supervisor.js";
 import {
   DAIMON_ORGANIZATION_UID,
   TRAINING_BOOTSTRAP_MOUNT,
@@ -81,11 +82,14 @@ export const runTrainingBrokerEntrypoint = async (options: TrainingEntrypointOpt
   // Daimon's projection is I/O-free, so the digest the receipt will bind is known before anything is provisioned.
   const { projectionSha256 } = await resolveTrainingGrokProjection(declaration, registration, daimon);
   const runtime = createTrainingSlotRuntime({ declaration, registration, projectionSha256 });
-  await runtime.provision();
-  await runtime.start();
+  // Provision, start, canary and publish the slot preflight receipt before `train` exists at all: the
+  // first trial must not be the one trial that runs on no worker-uid denial evidence, and a refusal
+  // here costs nothing while the same refusal after the first wake costs that trial's spend.
+  const preflight = await startTrainingSlot(runtime, randomBytes(32).toString("hex"));
   const supervisor = createTrainingSlotSupervisor({ runtime, organizationUid: declaration.organizationUid });
   const server = serveTrainingSlotSupervisor(supervisor, TRAINING_SUPERVISOR_SOCKET, log, declaration.organizationUid);
-  log(`slot ${registration.slot} provisioned for ${registration.agentId} (${registration.model}/${registration.reasoningEffort}), projection ${projectionSha256}`);
+  log(`slot ${registration.slot} provisioned for ${registration.agentId} (${registration.model}/${registration.reasoningEffort}), projection ${projectionSha256}, `
+    + `generation ${preflight.generation} with ${preflight.canaries} denied canaries at ${preflight.receipt}`);
   const status = await runTrainingChild(options.argv, declaration, log);
   server.close();
   await runtime.stop();
