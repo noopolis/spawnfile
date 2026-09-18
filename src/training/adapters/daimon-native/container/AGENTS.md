@@ -27,3 +27,10 @@ below pins that resolved root — for Grok, to the digest-bound slot runtime hom
 so resolving cannot redirect the receipt. It exists because a fixed container
 slot is reached through the runner's allocated trial path, and the worker refuses
 a control file whose own path traverses a symlink.
+
+The request the exec runs inside the container uses `node:http`, not `fetch`, for
+the reason the transport guide gives: undici's ambient 300-second header timeout
+is shorter than a legitimate turn, and a worker that is still working must not be
+cut off. The caller's deadline, on the request and on the surrounding exec, is the
+only bound. The token path travels with the request instead of being fixed in the
+script, which is what lets a test run the emitted script against a real server.

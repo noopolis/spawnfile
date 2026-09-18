@@ -79,16 +79,30 @@ export async function inspectOwned(run: DockerCommand, name: string, owner: stri
   return value;
 }
 
+/**
+ * `node:http` rather than `fetch`: a working worker holds the socket open for as
+ * long as its turn takes, and undici's ambient 300-second header timeout would
+ * kill a healthy one well inside a legitimate deadline. Here the caller's own
+ * deadline is the only bound, as it already was for the surrounding exec.
+ */
 const httpScript = `import {readFile} from 'node:fs/promises';
+import {request} from 'node:http';
 const input=JSON.parse(await new Promise(resolve=>{let s='';process.stdin.setEncoding('utf8');process.stdin.on('data',v=>s+=v);process.stdin.on('end',()=>resolve(s));}));
-const token=(await readFile('/run/paideia/token','utf8')).trim();
-const response=await fetch('http://127.0.0.1:'+input.port+input.path,{method:input.body===undefined?'GET':'POST',headers:{authorization:'Bearer '+token,...(input.body===undefined?{}:{'content-type':'application/json'})},body:input.body===undefined?undefined:JSON.stringify(input.body),signal:AbortSignal.timeout(input.timeoutMs)});
-const value=await response.json();if(!response.ok)throw Error('Native HTTP '+response.status+': '+JSON.stringify(value));process.stdout.write(JSON.stringify(value));`;
+const token=(await readFile(input.tokenFile,'utf8')).trim();
+const payload=input.body===undefined?undefined:JSON.stringify(input.body);
+const value=await new Promise((resolve,reject)=>{
+const call=request({host:'127.0.0.1',port:input.port,path:input.path,method:payload===undefined?'GET':'POST',signal:AbortSignal.timeout(input.timeoutMs),headers:{authorization:'Bearer '+token,...(payload===undefined?{}:{'content-type':'application/json'})}},response=>{
+let text='';response.setEncoding('utf8');response.on('data',chunk=>{text+=chunk});
+response.on('end',()=>{let parsed;try{parsed=JSON.parse(text)}catch(error){reject(error);return}
+if(response.statusCode<200||response.statusCode>299){reject(Error('Native HTTP '+response.statusCode+': '+JSON.stringify(parsed)));return}
+resolve(parsed)})});
+call.on('error',reject);if(payload!==undefined)call.write(payload);call.end()});
+process.stdout.write(JSON.stringify(value));`;
 
 export async function workerRequest<T>(run: DockerCommand, name: string, path: string, body?: unknown,
-  timeoutMs = 5000, signal?: AbortSignal, port = 19700): Promise<T> {
+  timeoutMs = 5000, signal?: AbortSignal, port = 19700, tokenFile: string = containerPaths.token): Promise<T> {
   const result = await run(['exec', '-i', name, '/usr/local/bin/node', '--input-type=module', '-e', httpScript],
-    { signal, timeoutMs: timeoutMs + 2000, stdin: JSON.stringify({ path, body, timeoutMs, port }) });
+    { signal, timeoutMs: timeoutMs + 2000, stdin: JSON.stringify({ path, body, timeoutMs, port, tokenFile }) });
   if (result.code !== 0) throw new Error(`Native worker request failed: ${result.stderr.slice(-2000)}`);
   return JSON.parse(result.stdout) as T;
 }

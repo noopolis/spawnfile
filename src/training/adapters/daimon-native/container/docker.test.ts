@@ -5,7 +5,10 @@ import { createContainerArguments } from './docker.js';
 import { launchFixture } from '../test-fixtures.js';
 import { grokLaunchFrom } from '../grok-fixtures.js';
 import { containerSecurityOptions } from './preflight.js';
-import { rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 test('process driver records actual exit/output and bounds cancellation and diagnostics', async () => {
   const run = dockerCommand(process.execPath);
@@ -58,4 +61,33 @@ test('Codex-only outer security options never reach a Grok launch, which cannot 
     assert.throws(() => containerSecurityOptions(grok), /Separate-container Grok/);
     assert.throws(() => createContainerArguments(grok, 'n', 'o', 't', 1000), /child-process execution/);
   } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('the in-container worker request reaches the worker, bounds itself by the caller deadline and reports its status', async () => {
+  const token = 'unit-control-token-not-an-auth-login';
+  const directory = await mkdtemp(join(tmpdir(), 'paideia-native-'));
+  const tokenFile = join(directory, 'token');
+  await writeFile(tokenFile, `${token}\n`);
+  const calls: { url?: string; method?: string; auth?: string; body: string }[] = [];
+  const server = createServer(async (req, res) => {
+    let body = ''; for await (const chunk of req) body += String(chunk);
+    calls.push({ url: req.url, method: req.method, auth: req.headers.authorization, body });
+    if (req.url === '/trial/stop') { res.writeHead(500, { 'content-type': 'application/json' }); res.end('{"denied":true}'); return; }
+    if (req.url === '/trial/run') return; // a worker that never answers
+    setTimeout(() => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"state":"ready"}'); }, 300).unref();
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as { port: number }).port;
+  // Strips the `exec -i <name> <node>` prefix so the emitted script itself runs, exactly as the container would run it.
+  const run: DockerCommand = (args, options) => dockerCommand(process.execPath)(args.slice(4), options);
+  try {
+    assert.deepEqual(await workerRequest(run, 'unit', '/trial/health', undefined, 20_000, undefined, port, tokenFile), { state: 'ready' });
+    assert.deepEqual(calls, [{ url: '/trial/health', method: 'GET', auth: `Bearer ${token}`, body: '' }]);
+    await assert.rejects(workerRequest(run, 'unit', '/trial/stop', {}, 20_000, undefined, port, tokenFile), /Native HTTP 500/);
+    assert.deepEqual(calls[1], { url: '/trial/stop', method: 'POST', auth: `Bearer ${token}`, body: '{}' });
+    await assert.rejects(workerRequest(run, 'unit', '/trial/run', { wakeId: 'hangs' }, 400, undefined, port, tokenFile), /request failed/);
+  } finally {
+    server.closeAllConnections(); await new Promise<void>(resolve => { server.close(() => resolve()); });
+    await rm(directory, { recursive: true, force: true });
+  }
 });
