@@ -72,11 +72,12 @@ for (const nativeError of [undefined, 'Native engine unavailable']) test(`deferr
  * no evidence about the subject at all — it is the machine ending the trial, and it
  * must say so rather than reporting an unexplained delivery state.
  */
-for (const runtimeState of ['running', 'stopped'] as const)
-  test(`a delivery reclaimed undisposed names the runtime that reclaimed it: ${runtimeState}`, async () => {
+for (const [runtimeState, code, named] of [['running', 'active_wake_aborted', 'active_wake_aborted'],
+  ['running', undefined, 'unrecorded'], ['running', 'invented', 'unrecorded'], ['stopped', 'host_stopping', 'host_stopping']] as const)
+  test(`a delivery reclaimed undisposed names the runtime and outcome: ${runtimeState}/${String(code)}`, async () => {
   const root = await mkdtemp(join(tmpdir(), 'native-undisposed-unit-'));
   try {
-    const receipt = { ...receiptFixture(), state: 'accepted' as const };
+    const receipt = { ...receiptFixture(), state: 'accepted' as const, ...(code ? { code } : {}) };
     delete receipt.deferred;
     const trace = traceFixture();
     const usage = { v: 'noopolis.daimon.turn-usage.v1', agent: receipt.agent_id, wake: executionId,
@@ -108,7 +109,7 @@ for (const runtimeState of ['running', 'stopped'] as const)
     // Which runtime reclaimed it decides where the fix lives: a runtime that was
     // still running points at the wake result, not at a shutdown race.
     assert.equal(result.error, runtimeState === 'running'
-      ? 'Native execution completed; delivery reclaimed undisposed while the runtime kept running'
-      : 'Native execution completed; delivery reclaimed undisposed by a stopping runtime');
+      ? `Native execution completed; delivery reclaimed undisposed while the runtime kept running (${named})`
+      : `Native execution completed; delivery reclaimed undisposed by a stopping runtime (${named})`);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

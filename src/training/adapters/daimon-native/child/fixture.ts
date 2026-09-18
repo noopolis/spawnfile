@@ -66,8 +66,8 @@ terminal.error='Native execution completed; delivery blocked awaiting external i
 // Production derives \`blocked\` from the deferred marker, so a delivery without one
 // never carries it; control.ts reports the disposition it actually found and stops
 // the host on its own failure path. A fixture pairing the two is a shape nothing emits.
-if(mode==='blocked-no-deferred'||mode==='undisposed'){delete receipt.deferred;delete terminal.blocked;
-terminal.error='Native execution completed; delivery reclaimed undisposed while the runtime kept running';settleStop();}
+if(mode==='blocked-no-deferred'||mode==='undisposed'){delete receipt.deferred;delete terminal.blocked;receipt.code='active_wake_aborted';
+terminal.error='Native execution completed; delivery reclaimed undisposed while the runtime kept running (active_wake_aborted)';settleStop();}
 if(mode==='blocked-failed-trace')terminal.native.traces[0].status='failed';
 if(mode==='blocked-active')terminal.activity.executions=[{agent_id:launch.agent.id,turn_id:id}];
 if(mode==='blocked-wrong-execution')terminal.executionId='foreign';}

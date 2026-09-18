@@ -19,6 +19,9 @@ export interface WorkerController {
   stop(): Promise<NativeStopEvidence>;
 }
 
+/** The closed set Daimon may record on a delivery it returned to the inbox for restart. */
+const RECLAIM_CODES: readonly string[] = ['host_stopping', 'host_stopped', 'queued_wake_stopped', 'active_wake_aborted', 'engine_failed'];
+
 function deferredAfterCompletion(receipt: NativeReceipt, trace: NativeTrace | undefined): boolean {
   return receipt.state === 'accepted' && receipt.deferred === true && trace?.status === 'completed';
 }
@@ -35,9 +38,14 @@ export function describeNativeFailure(receipt: NativeReceipt, trace: NativeTrace
   // race for a whole investigation because the message named only the first case
   // while the runtime was demonstrably still running.
   if (receipt.state === 'accepted' && !receipt.deferred && trace?.status === 'completed') {
+    // Daimon records the wake outcome that reclaimed the delivery when it has one, and
+    // nothing when it does not. Pass its closed vocabulary through exactly, or say so:
+    // "unrecorded" is a different statement from any of the named outcomes and the one
+    // that says to look at a halted dispatcher rather than at a refused wake.
+    const outcome = RECLAIM_CODES.includes(receipt.code ?? '') ? receipt.code : 'unrecorded';
     return runtimeState === 'running'
-      ? 'Native execution completed; delivery reclaimed undisposed while the runtime kept running'
-      : 'Native execution completed; delivery reclaimed undisposed by a stopping runtime';
+      ? `Native execution completed; delivery reclaimed undisposed while the runtime kept running (${outcome})`
+      : `Native execution completed; delivery reclaimed undisposed by a stopping runtime (${outcome})`;
   }
   const delivery = `${receipt.state}${receipt.deferred ? ' deferred' : ''}`;
   if (trace?.status !== 'failed') return `Native delivery ended ${delivery}`;
