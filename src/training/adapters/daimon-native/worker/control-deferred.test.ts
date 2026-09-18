@@ -61,3 +61,49 @@ for (const nativeError of [undefined, 'Native engine unavailable']) test(`deferr
     assert.equal(accepts, 1); assert.equal(stops, 1);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+/**
+ * The third disposition, and the one a live trial met after a single wake.
+ *
+ * Daimon's dispatcher records an unmarked finished wake as `accepted` **deferred**;
+ * `accepted` WITHOUT that marker, with the execution id retained, is written only
+ * where a stopping runtime (or a wake that came back stopped) returns the delivery
+ * to the inbox for restart. So it is not the agent declining the work and carries
+ * no evidence about the subject at all — it is the machine ending the trial, and it
+ * must say so rather than reporting an unexplained delivery state.
+ */
+test('a delivery reclaimed undisposed is named as the machine outcome it is, never a deferral', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'native-undisposed-unit-'));
+  try {
+    const receipt = { ...receiptFixture(), state: 'accepted' as const };
+    delete receipt.deferred;
+    const trace = traceFixture();
+    const usage = { v: 'noopolis.daimon.turn-usage.v1', agent: receipt.agent_id, wake: executionId,
+      engine: 'codex', at: trace.completed_at, input: 100, output: 20, cache_read: 40, total: 120, complete: true };
+    for (const directory of ['control', 'runtime/telemetry', 'runtime/tool-state', 'runtime/.codex/sessions']) {
+      await mkdir(join(root, directory), { recursive: true });
+    }
+    await writeFile(join(root, 'runtime/telemetry/turns.ndjson'), `${JSON.stringify(trace)}\n`);
+    await writeFile(join(root, 'control/usage.jsonl'), `${JSON.stringify(usage)}\n`);
+    await writeFile(join(root, 'runtime/.codex/sessions/unit.jsonl'),
+      `${JSON.stringify({ type: 'turn_context', payload: { model: 'test-model-v1' } })}\n`);
+    const host = { accept: async () => ({ state: 'accepted', acceptance_id: receipt.acceptance_id }),
+      wakeReceipt: async () => receipt,
+      activityV2: async () => ({ version: 'noopolis.daimon.organization-runtime-activity.v2', items: [{ ...receipt, active: false }], executions: [] }),
+      availability: async () => ({ state: 'running', agents: [{ agent_id: receipt.agent_id, pending: 1, deferred: 0, running: false,
+        budget: { state: 'available', executions_remaining: 3 } }] }),
+      stop: async () => ({ state: 'stopped' }) } as unknown as NativeHost;
+    const options: WorkerOptions = { launch: '/launch', config: '/config', configSha256: 'a'.repeat(64),
+      controlRoot: join(root, 'control'), tokenFile: '/token', evidence: join(root, 'control/evidence.json'),
+      trialId: 'trial', timeoutMs: 2000, scheduleOverride: 'disabled' };
+    const result = await createWorkerController(host, configFixture(root), options, 'unit-token')
+      .run('wake', 'Unit delivery', { maxExternalDeliveries: 3 });
+    // The execution closed and bound; only the delivery's disposition is missing.
+    assert.equal(result.executionId, executionId);
+    assert.equal(result.native.traces[0]?.status, 'completed');
+    // It never becomes a deferral, so no continuation is ever asked for on its behalf.
+    assert.equal(result.blocked, undefined);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.error, 'Native execution completed; delivery reclaimed undisposed by a stopping runtime');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

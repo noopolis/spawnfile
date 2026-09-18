@@ -37,11 +37,14 @@ records:
  * workspace the launch receipt pins. Every continuation the budget admits defers,
  * so the last one exhausts it — and by then the worker has stopped its own host.
  */
-async function nativeDeferredTrial(mode: string, maxDeliveries = 1): Promise<{ report: TrialReport; turn: SubjectTurnResult; deliveries: number }> {
+async function nativeDeferredTrial(mode: string, maxDeliveries = 1,
+  supplied?: () => Promise<null>): Promise<{ report: TrialReport; turn: SubjectTurnResult; deliveries: number }> {
   const fixture = await childFixture(mode); roots.push(fixture.root);
   const text = 'Sourced research reply';
-  const next = vi.fn(async () => ({ id: `answer-${next.mock.calls.length}`, text,
-    source: { kind: 'transport', id: `answer-${next.mock.calls.length}`, sha256: `sha256:${createHash('sha256').update(text).digest('hex')}` } }));
+  let asked = 0;
+  const sourced = async () => { const id = `answer-${asked++}`;
+    return { id, text, source: { kind: 'transport', id, sha256: `sha256:${createHash('sha256').update(text).digest('hex')}` } }; };
+  const next = supplied ? async () => { asked++; return supplied(); } : sourced;
   const native = createDaimonNativeAdapter({ timeoutMs: 20_000, execution: { kind: 'child-process', externalInputs: { maxDeliveries, next } } });
   const session = await native.start(fixture.input);
   let turn: SubjectTurnResult | undefined;
@@ -56,7 +59,7 @@ async function nativeDeferredTrial(mode: string, maxDeliveries = 1): Promise<{ r
     evaluation: { judges: {}, embeddings: {}, readText: async () => { throw new Error('unregistered sidecar'); } },
     persist: async () => undefined };
   const report = await runTrial(options);
-  return { report, turn: turn!, deliveries: next.mock.calls.length };
+  return { report, turn: turn!, deliveries: asked };
 }
 
 /**
@@ -170,7 +173,8 @@ it.each([
   ['blocked-always-unanswerable', 'activity-unreadable'],
   ['blocked-always-stop-unknown', 'native-stop-unacknowledged'],
   ['blocked-always-busy-seal', 'activity-busy'],
-  ['blocked-no-deferred', 'terminal-unbound'],
+  ['blocked-no-deferred', 'delivery-undisposed'],
+  ['bad-terminal', 'terminal-unbound'],
 ])('binds %s to the closure cause %s', async (mode, cause) => {
   const f = await childFixture(mode); roots.push(f.root);
   const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 2_000);
@@ -190,4 +194,36 @@ it('names the worker exit rather than blaming its closure evidence', async () =>
   const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 2_000);
   await handle.request('/trial/run', { wakeId: 'task', text: 'Work', controls: { maxExternalDeliveries: 0 } });
   expect(await handle.stop('Finish')).toMatchObject({ quiescence: 'unknown', unconfirmed: 'child-exit' });
+});
+
+/**
+ * The shape the live run actually produced, which the exhausted-budget test above
+ * does not reach: ONE wake, continuation budget untouched, and a delivery the
+ * runtime reclaimed without disposing of it. Every binding the closure proof
+ * checks held — the frame was published, its identity matched and
+ * `executionClosed` agreed — so `terminal-unbound` was the wrong name for it, and
+ * the right one has to be its own, because the fix it calls for is not in Paideia.
+ */
+it('names a delivery the runtime reclaimed undisposed, after a single wake with budget left', async () => {
+  const { report, turn, deliveries } = await nativeDeferredTrial('undisposed', 3, async () => null);
+  // One wake, and no continuation was asked for: an undisposed delivery is not a deferral.
+  expect(deliveries).toBe(0);
+  expect(turn.status).toBe('failed');
+  expect(turn.blocked).toBeUndefined();
+  expect(turn.error).toContain('reclaimed undisposed');
+  // Named as itself, and still refusing to score: nothing here evidences the subject.
+  expect(report.stop).toMatchObject({ quiescence: 'unknown', unconfirmed: 'delivery-undisposed' });
+  // The turn's own sentence already explains the trial, so it is not prefixed with a
+  // closure cause that would read as the primary fault; the machine-readable name on
+  // the receipt is what an operator correlates, and the two must agree.
+  expect(report.error).toContain('reclaimed undisposed');
+  expect(report.execution).toBe('failed');
+  expect(() => trialScore(report)).toThrow('failed in infrastructure');
+});
+
+/** A delivery that never produced a terminal frame at all is a fourth, separate state. */
+it('names an absent terminal frame rather than an unbound one', async () => {
+  const f = await childFixture('stall'); roots.push(f.root);
+  const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1_000);
+  expect(await handle.stop('Nothing was ever delivered')).toMatchObject({ quiescence: 'unknown', unconfirmed: 'terminal-absent' });
 });

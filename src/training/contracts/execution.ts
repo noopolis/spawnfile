@@ -63,7 +63,9 @@ export interface SubjectCapabilities {
  */
 export type StopUnconfirmed =
   | 'worker-unavailable'
+  | 'terminal-absent'
   | 'terminal-unbound'
+  | 'delivery-undisposed'
   | 'activity-unreadable'
   | 'activity-busy'
   | 'execution-unbound'

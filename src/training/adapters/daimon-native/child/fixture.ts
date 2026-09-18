@@ -60,10 +60,14 @@ if(!wakes++)budget=input.controls?.maxExternalDeliveries??0;
 const receipt={version:'noopolis.daimon.wake-receipt-status.v2',acceptance_id:crypto.randomUUID(),agent_id:launch.agent.id,delivery_id:trial+':'+input.wakeId,request_digest:'a'.repeat(64),state:'completed',accepted_at:at,updated_at:at,execution_id:id};
 items=[...items,{...receipt,active:false,queue_position:wakes}];
 terminal={schema:'paideia.daimon-native.trial.v1',trialId:trial,wakeId:input.wakeId,agentId:launch.agent.id,model:launch.agent.model,configSha256:launch.configSha256,status:'completed',startedAt:at,completedAt:at,executionId:id,receipt,activity:{version:'noopolis.daimon.organization-runtime-activity.v2',items:[{...receipt,active:false}],executions:[]},native:{traces:[{schema:'daimon.turn_trace.v1',agent_id:launch.agent.id,turn_id:id,started_at:at,completed_at:at,status:'completed',tools:[]}],usage:[{v:'noopolis.daimon.turn-usage.v1',agent:launch.agent.id,wake:id,engine:'codex',input:100,output:20,cache_read:40,total:120,complete:true}],toolReceipts:[],modelContexts:[{model:launch.agent.model}]},coverage:[{channel:'usage',completeness:'complete',ordering:'source'}]};
-if(mode.startsWith('blocked')&&(input.wakeId==='task'||mode.startsWith('blocked-always'))){terminal.status='failed';terminal.blocked='awaiting-external-input';receipt.state='accepted';receipt.deferred=true;
+if((mode.startsWith('blocked')||mode==='undisposed')&&(input.wakeId==='task'||mode.startsWith('blocked-always'))){terminal.status='failed';terminal.blocked='awaiting-external-input';receipt.state='accepted';receipt.deferred=true;
 if(wakes>budget)settleStop();
 terminal.error='Native execution completed; delivery blocked awaiting external input';
-if(mode==='blocked-no-deferred')delete receipt.deferred;
+// Production derives \`blocked\` from the deferred marker, so a delivery without one
+// never carries it; control.ts reports the disposition it actually found and stops
+// the host on its own failure path. A fixture pairing the two is a shape nothing emits.
+if(mode==='blocked-no-deferred'||mode==='undisposed'){delete receipt.deferred;delete terminal.blocked;
+terminal.error='Native execution completed; delivery reclaimed undisposed by a stopping runtime';settleStop();}
 if(mode==='blocked-failed-trace')terminal.native.traces[0].status='failed';
 if(mode==='blocked-active')terminal.activity.executions=[{agent_id:launch.agent.id,turn_id:id}];
 if(mode==='blocked-wrong-execution')terminal.executionId='foreign';}

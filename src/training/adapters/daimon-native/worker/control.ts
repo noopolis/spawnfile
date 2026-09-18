@@ -25,6 +25,14 @@ function deferredAfterCompletion(receipt: NativeReceipt, trace: NativeTrace | un
 
 export function describeNativeFailure(receipt: NativeReceipt, trace: NativeTrace | undefined, usage: readonly NativeUsage[] = []): string {
   if (deferredAfterCompletion(receipt, trace)) return 'Native execution completed; delivery blocked awaiting external input';
+  // Daimon records an unmarked finished wake as DEFERRED, so an accepted delivery
+  // without that marker is not an agent outcome at all: it is written only where a
+  // stopping runtime, or a wake that came back stopped, returns the delivery to the
+  // inbox for restart. "ended accepted" said nothing about that, and a live trial
+  // spent a wake reporting it as an unexplained delivery state.
+  if (receipt.state === 'accepted' && !receipt.deferred && trace?.status === 'completed') {
+    return 'Native execution completed; delivery reclaimed undisposed by a stopping runtime';
+  }
   const delivery = `${receipt.state}${receipt.deferred ? ' deferred' : ''}`;
   if (trace?.status !== 'failed') return `Native delivery ended ${delivery}`;
   const error = trace.error;

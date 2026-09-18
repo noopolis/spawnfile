@@ -34,8 +34,9 @@ itself**. They shared a bare `catch` and a single fixed sentence, so every
 unscorable trial published the same "unconfirmed" whichever proof was missing,
 and the evidence that would have identified it was in the control root a
 training slot puts on tmpfs. `StopUnconfirmed` is that closed vocabulary —
-`worker-unavailable`, `terminal-unbound`, `activity-unreadable`, `activity-busy`,
-`execution-unbound`, `native-stop-unacknowledged`, `child-running`, `child-exit`
+`worker-unavailable`, `terminal-absent`, `terminal-unbound`, `delivery-undisposed`,
+`activity-unreadable`, `activity-busy`, `execution-unbound`,
+`native-stop-unacknowledged`, `child-running`, `child-exit`
 — carried on the receipt the turn publishes durably, and `runTrial` repeats it
 when it demotes a deferred trial, because for as long as it did not, an
 unprovable closure published the subject's own "delivery blocked awaiting
@@ -44,6 +45,17 @@ unchanged: every proof is still required, absence of a name means the stop was
 confirmed, and no name ever carries a path, a token, a body or an upstream
 error string. `activity-busy` is reachable and must stay refusing — a host that
 stopped with an execution still admitted seals that honestly.
+
+The frame's three states are three causes, because they call for fixes in three
+places. `terminal-absent` is no frame at all for the last delivery;
+`terminal-unbound` is a frame whose identity or `executionClosed` disagreed; and
+`delivery-undisposed` is the one a live trial actually met — every binding held,
+the frame was published, its identity matched and `executionClosed` agreed, and
+the delivery came back neither completed nor deferred. That last one is never
+Paideia's to repair: Daimon writes it only where a stopping runtime reclaims the
+delivery for restart, so the fix is upstream and the trial stays unscorable.
+Collapsing them sends the next investigation to the wrong layer, which is exactly
+what one over-broad name already cost.
 
 The fixture models production or it is a defect. Two shapes it lacked, both of
 which made green tests coexist with an inert live path: `/trial/stop` is settled

@@ -28,6 +28,16 @@ observed token coverage, not a billing or subscription-quota guarantee. A deferr
 delivery may have complete usage for its closed execution; its overall subject
 trial remains incomplete until the continuation succeeds and containment closes.
 
+A closed execution leaves its delivery in one of three dispositions, and the third
+is not the agent's. `completed` is the work done; `accepted` **deferred** is the
+agent declining it, including the unmarked finished wake Daimon records as
+deferred. `accepted` WITHOUT that marker, with the execution id retained, is
+written only where a stopping runtime — or a wake that came back stopped — returns
+the delivery to the inbox for restart, so it evidences nothing about the subject
+and must never borrow the deferral's scored outcome. It reports as its own failure
+("delivery reclaimed undisposed by a stopping runtime"); a live trial spent a wake
+on the bare "ended accepted", which named a state nobody could act on.
+
 Grok usage comes from the broker's per-slot ledger, never this process: rows need
 `total = input + cache_read + cache_write + output`, the declared model (or its
 `-build` alias) and a `turn` key. Byte-identical replays of one turn count once;

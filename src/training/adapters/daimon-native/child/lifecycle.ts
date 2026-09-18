@@ -71,6 +71,11 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
   };
   child.stdout.on('data', (chunk: Buffer) => consume(chunk, true)); child.stderr.on('data', (chunk: Buffer) => consume(chunk, false));
   let closed: TerminalEvidence | undefined; let stopping: Promise<StopReceipt> | undefined;
+  // Why the last delivery's frame did not bind, kept rather than collapsed into its
+  // absence: "no closed evidence" is three different faults calling for three
+  // different fixes, and the live run's was the one nobody predicted — a frame that
+  // bound perfectly for a delivery the runtime had reclaimed without disposing of it.
+  let binding: StopUnconfirmed | undefined = 'terminal-absent';
   let unconfirmed: SubjectStartupDiagnostic | undefined;
   /**
    * Closure is a conjunction of independent proofs, and every one of them can
@@ -93,7 +98,7 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
     let native: NativeStopEvidence;
     try { native = await http<NativeStopEvidence>('/trial/stop', {}, 6000); }
     catch { return 'native-stop-unacknowledged'; }
-    if (!closed?.receipt || !closed.executionId) return 'terminal-unbound';
+    if (!closed?.receipt || !closed.executionId) return binding ?? 'terminal-unbound';
     // An identity conflict throws rather than answering, and an unfinished
     // runtime answers with the execution it is still running; they are different
     // faults and must not share a name.
@@ -137,16 +142,31 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
     startup.throwIfAborted();
     const request: NativeExecutionHandle['request'] = async <T>(path: Parameters<NativeExecutionHandle['request']>[0], body?: unknown, ms?: number, signal?: AbortSignal) => {
       if (failure || exited) throw new Error('Owned native worker is no longer alive');
-      if (path === '/trial/run') closed = undefined;
+      if (path === '/trial/run') { closed = undefined; binding = 'terminal-absent'; }
       const result = await http<T>(path, body, ms, signal);
       if (path === '/trial/run') {
         const value = result as TerminalEvidence;
         const completed = value.status === 'completed' && value.receipt?.state === 'completed';
         const deferred = value.status === 'failed' && value.blocked === 'awaiting-external-input' &&
           value.receipt?.state === 'accepted' && value.receipt.deferred === true;
-        if ((completed || deferred) && value.native.traces[0]?.status === 'completed' && value.schema === 'paideia.daimon-native.trial.v1' && value.trialId === trialId && value.agentId === launch.agent.id && value.model === launch.agent.model &&
-            value.configSha256 === launch.configSha256 && value.wakeId === (body as { wakeId?: string })?.wakeId && value.receipt && value.activity &&
-            executionClosed(value.activity, value.receipt, value.native.traces, launch.agent.id) === value.executionId) closed = value;
+        const bound = value.schema === 'paideia.daimon-native.trial.v1' && value.trialId === trialId && value.agentId === launch.agent.id &&
+          value.model === launch.agent.model && value.configSha256 === launch.configSha256 &&
+          value.wakeId === (body as { wakeId?: string })?.wakeId && !!value.receipt && !!value.activity;
+        // A delivery that ended neither completed nor deferred is its own fault and
+        // not a broken frame: Daimon records an unmarked finished wake as deferred,
+        // so `accepted` without that marker is written only where a stopping runtime
+        // reclaims the delivery for restart. Nothing about the subject is provable
+        // from it, and it must never borrow the deferral's scored outcome.
+        binding = !bound ? 'terminal-unbound' : !completed && !deferred ? 'delivery-undisposed'
+          : value.native.traces[0]?.status !== 'completed' ? 'terminal-unbound' : undefined;
+        if (binding === undefined) {
+          // An identity conflict still throws, because it must fail the turn rather
+          // than pass as verified work; it only records what it was first.
+          binding = 'terminal-unbound';
+          if (executionClosed(value.activity!, value.receipt!, value.native.traces, launch.agent.id) === value.executionId) {
+            closed = value; binding = undefined;
+          }
+        }
       }
       return result;
     };

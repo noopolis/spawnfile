@@ -29,8 +29,9 @@ const stop = z.object({ state: z.enum(['requested', 'acknowledged', 'unknown']),
   // A replayed report has to keep WHICH closure proof failed: the object schema
   // strips what it does not declare, and silently dropping the cause here would
   // put the diagnosis back where it was before the vocabulary existed.
-  unconfirmed: z.enum(['worker-unavailable', 'terminal-unbound', 'activity-unreadable', 'activity-busy',
-    'execution-unbound', 'native-stop-unacknowledged', 'child-running', 'child-exit']).optional() });
+  unconfirmed: z.enum(['worker-unavailable', 'terminal-absent', 'terminal-unbound', 'delivery-undisposed',
+    'activity-unreadable', 'activity-busy', 'execution-unbound', 'native-stop-unacknowledged',
+    'child-running', 'child-exit']).optional() });
 const result: z.ZodType<EvaluationResult> = z.lazy(() => z.object({ id: z.string().optional(), status: verdict,
   finality: z.enum(['provisional', 'final']), reason: z.string(), score: z.number().min(0).max(1).optional(),
   evidence: z.array(z.object({ kind: z.enum(['event', 'artifact', 'input', 'output', 'sidecar']), id: z.string(), digest: z.string().optional() })),
