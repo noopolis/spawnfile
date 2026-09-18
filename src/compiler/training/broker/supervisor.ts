@@ -34,6 +34,31 @@ export interface TrainingSlotRuntime {
   log(line: string): void;
 }
 
+/**
+ * Bringing a slot up, receipt included — the only way this container starts one.
+ *
+ * `provision → start` alone was the whole start-up path, and `canaries` and
+ * `publishReceipt` were reachable only from `recycle`. The first trial of every
+ * run therefore executed with no worker-uid denial evidence at all, and a
+ * refusal that should have cost nothing surfaced only after that trial's spend.
+ * Trial 1 is exactly the trial whose sealed datasets have never been probed, so
+ * it is the one that most needs the evidence.
+ *
+ * The receipt this publishes carries generation 1..N and a nonce of the
+ * container's own, so an evaluator that reads `preflight.json` before its first
+ * wake sees the same `noopolis.daimon.grok-slot-preflight.v2` shape a recycle
+ * publishes, from the same canaries.
+ */
+export const startTrainingSlot = async (runtime: TrainingSlotRuntime, nonce: string): Promise<{ generation: number; receipt: string; canaries: number }> => {
+  await runtime.provision();
+  await runtime.start();
+  const canaries = await runtime.canaries();
+  const generation = await runtime.nextGeneration();
+  const receipt = await runtime.publishReceipt({ generation, nonce, canaries });
+  runtime.log(`slot start generation=${generation} canaries=${canaries.length} receipt=${receipt}`);
+  return { generation, receipt, canaries: canaries.length };
+};
+
 export interface TrainingSlotSupervisorOptions {
   runtime: TrainingSlotRuntime;
   /** Only this uid may recycle. Paideia, DSPy and the judges all run as it; every worker uid is refused. */
