@@ -193,6 +193,19 @@ export type InferenceModelBasis = 'provider-reported' | 'requested-assumption';
 export type InferenceFailureKind = 'quota' | 'transport' | 'unavailable' | 'authentication' | 'auth-stale' |
   'protocol' | 'invalid-response' | 'cancelled' | 'timeout' | 'unsupported' | 'unknown';
 
+/**
+ * What `kind` alone cannot express, as a closed vocabulary rather than prose.
+ *
+ * A borrowed inference grant has three different ways to stop working and `kind`
+ * collapsed all of them onto `unavailable`: the broker refusing to lend one, the
+ * lent grant outliving its own expiry, and the broker simply being down. A judge
+ * that reports only `unavailable` cannot tell an operator which of those to fix,
+ * so the adapter that knows names it here. Absent means the adapter had nothing
+ * more specific than `kind`; it never carries a token, a URL, a body or prose.
+ */
+export const inferenceFailureDetails = ['grant-refused', 'grant-expired', 'provider-status'] as const;
+export type InferenceFailureDetail = (typeof inferenceFailureDetails)[number];
+
 export const inferenceDiagnosticCodes = ['initialization', 'tool-isolation', 'subscription', 'transport-framing', 'native-process',
     'terminal-error', 'unfinished-response', 'empty-response', 'response-mismatch', 'session-mismatch',
     'stop-mismatch', 'model-missing', 'content-shape', 'response-envelope', 'response-schema'] as const;

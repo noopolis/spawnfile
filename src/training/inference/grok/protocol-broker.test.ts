@@ -42,7 +42,7 @@ it('requires the pinned client model id so a grant run cannot silently use a cat
 });
 
 it('classifies the captured plain-string 401 auth_stale as a distinct fail-fast failure only for grants', () => {
-  expect(() => decodeGrok(stale(), 1, grant)).toThrow(expect.objectContaining({ kind: 'auth-stale', responseRoute: 'grok-broker-grant', usage: null }));
+  expect(() => decodeGrok(stale(), 1, grant)).toThrow(expect.objectContaining({ kind: 'auth-stale', detail: 'grant-expired', responseRoute: 'grok-broker-grant', usage: null }));
   expect(() => decodeGrok(stale(), 1)).toThrow(expect.objectContaining({ kind: 'authentication' }));
   const unauthorized = stale(); unauthorized.result!['errors'] = ['Internal error: "Unauthorized (401) from http://127.0.0.1:43123/v1/chat/completions: invalid grant"'];
   expect(() => decodeGrok(unauthorized, 1, grant)).toThrow(expect.objectContaining({ kind: 'authentication' }));
@@ -59,6 +59,6 @@ it('classifies the captured plain-string 401 auth_stale as a distinct fail-fast 
 
 it('keeps the gate-refusal JSON wrapper classification in grant mode', () => {
   const refused = stale(); refused.result!['errors'] = ['Internal error: {\n  "message": "API error (status 503 Service Unavailable): broker unavailable",\n  "http_status": 503\n}'];
-  expect(() => decodeGrok(refused, 1, grant)).toThrow(expect.objectContaining({ kind: 'unavailable' }));
+  expect(() => decodeGrok(refused, 1, grant)).toThrow(expect.objectContaining({ kind: 'unavailable', detail: 'provider-status', status: 503 }));
   expect(grokFailureEvidence({}, grant)).toEqual({ usage: null, responseModel: null, responseRoute: 'grok-broker-grant' });
 });

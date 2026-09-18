@@ -55,7 +55,8 @@ it('stops native failures and rejects unsupported requests before execution', as
   await expect(createGrokInference({ process: runner([...Object.values(frames()), {}]) }).generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'protocol' });
 });
 it.each([[429, 'quota'], [503, 'unavailable'], [401, 'authentication'], [403, 'authentication']])('classifies explicit refusal %s', (status, kind) => {
-  expect(() => decodeGrok({ result: { status } }, 1)).toThrow(expect.objectContaining({ kind }));
+  // The number is retained so nobody has to read a status back out of prose later.
+  expect(() => decodeGrok({ result: { status } }, 1)).toThrow(expect.objectContaining({ kind, detail: 'provider-status', status }));
 });
 it('rejects missing auth, isolation, terminal mismatch and arbitrary tool content', () => {
   expect(() => decodeGrok({}, 0)).toThrow(expect.objectContaining({ kind: 'protocol' }));

@@ -117,7 +117,8 @@ describe('renewal', () => {
 
   it('refuses a grant that expires before a call could run and releases it', async () => {
     const fake = fakeGrantAuthority({ ttlMs: 500 });
-    await expect(pool(fake, { renewMarginMs: 1_000 }).acquire(judge, 1000)).rejects.toMatchObject({ kind: 'unavailable' });
+    // `unavailable` alone reads the same as a dead broker; the expiry is named too.
+    await expect(pool(fake, { renewMarginMs: 1_000 }).acquire(judge, 1000)).rejects.toMatchObject({ kind: 'unavailable', detail: 'grant-expired' });
     expect(fake.releases).toHaveLength(1);
   });
 });
@@ -138,11 +139,15 @@ describe('broker refusals', () => {
 
   it('fails auth_stale fast without retrying and classifies other refusals', async () => {
     const stale = fakeGrantAuthority({ refusals: [new GrokGrantRefusal('auth_stale')] });
-    await expect(pool(stale).acquire(judge, 1000)).rejects.toMatchObject({ kind: 'auth-stale' });
+    await expect(pool(stale).acquire(judge, 1000)).rejects.toMatchObject({ kind: 'auth-stale', detail: 'grant-expired' });
     expect(stale.requests).toHaveLength(1);
-    for (const [error, kind] of [[new GrokGrantRefusal('invalid_request'), 'unsupported'], [new GrokGrantRefusal('unavailable'), 'unavailable'], [new Error('socket'), 'unavailable']] as const) {
+    // A broker that refused and a broker that is simply down both used to be a bare
+    // `unavailable`; only the refusal carries the closed refinement a judge publishes.
+    for (const [error, kind, detail] of [[new GrokGrantRefusal('invalid_request'), 'unsupported', 'grant-refused'],
+      [new GrokGrantRefusal('unavailable'), 'unavailable', 'grant-refused'],
+      [new Error('socket'), 'unavailable', null]] as const) {
       const fake = fakeGrantAuthority({ request: async () => { throw error; } });
-      await expect(pool(fake).acquire(judge, 1000)).rejects.toMatchObject({ kind });
+      await expect(pool(fake).acquire(judge, 1000)).rejects.toMatchObject({ kind, detail });
     }
   });
 

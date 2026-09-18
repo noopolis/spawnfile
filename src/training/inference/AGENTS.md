@@ -36,6 +36,13 @@ Protected failure diagnostics have finite codes and bounded final-answer text;
 never retain thinking/native stderr. Route observers are awaited under the audit
 deadline before fallback. Diagnostics must not enter serialized public results.
 
+`InferenceFailureDetail` is the closed refinement `kind` cannot express: a broker
+refusing a grant, a grant or realm that expired, and a broker that is simply down
+all collapsed onto `unavailable`. Adapters set it where they observed the
+distinction, `status` retains a provider-reported response status as a number, and
+the routed wrapper carries both through so a judge classifies from typed evidence
+rather than reconstructing one from `kind` or from prose.
+
 `auth-stale` means a shared credential authority (`capabilities.credentialAuthority`,
 e.g. one Daimon broker realm) is stale. Routing records the attempt, never retries a
 route on that authority and may continue to an authored route on another authority.

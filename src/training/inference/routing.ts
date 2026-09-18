@@ -75,7 +75,12 @@ export function createRoutedInference(options: RoutedInferenceOptions): Inferenc
         while (index < routes.length && stale.has(authority(routes[index]!))) index++;
         if (!['quota', 'transport', 'unavailable', 'timeout', 'invalid-response', 'auth-stale'].includes(failure!.kind) ||
           ordinal + 1 === maxAttempts || index === routes.length) {
-          throw new InferenceFailure(failure!.kind, `Routed inference stopped (${failure!.kind})`, { attempts });
+          // The routed wrapper is what a judge classifies from, so the last route's
+          // closed refinement has to survive it; rebuilding from `kind` alone put
+          // a refused grant, an expired one and a dead broker back in one bucket.
+          throw new InferenceFailure(failure!.kind, `Routed inference stopped (${failure!.kind})`, { attempts,
+            ...(failure!.detail === null ? {} : { detail: failure!.detail }),
+            ...(failure!.status === null ? {} : { status: failure!.status }) });
         }
       }
       throw new Error('Unreachable inference route state');

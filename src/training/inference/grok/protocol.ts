@@ -70,10 +70,12 @@ export function decodeGrok(frames: GrokFrames, exitCode: number | null, mode: Gr
   const model = reportedModel(init, mode);
   const status = result?.['status'] ?? result?.['status_code'] ?? refusalStatus(result);
   // The broker's stale shared realm: fail fast, never retry the same authority.
-  if (status === AUTH_STALE) throw new InferenceFailure(mode.auth === 'broker-grant' ? 'auth-stale' : 'authentication', 'Grok credential authority is stale', evidence);
+  if (status === AUTH_STALE) throw new InferenceFailure(mode.auth === 'broker-grant' ? 'auth-stale' : 'authentication', 'Grok credential authority is stale', { ...evidence, detail: 'grant-expired' });
   if (status === 402 || status === 429 || status === 503 || status === 401 || status === 403) {
+    // The number is the only part of a refusal an operator can act on, so it is
+    // retained as a number rather than left for someone to read back out of prose.
     throw new InferenceFailure(status === 402 || status === 429 ? 'quota' : status === 503 ? 'unavailable' : 'authentication',
-      'Grok refused inference', evidence);
+      'Grok refused inference', { ...evidence, detail: 'provider-status', status });
   }
   validateGrokInitialization(frames, mode);
   const message = assistant?.['message'] as Record<string, unknown> | undefined;

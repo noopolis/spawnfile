@@ -150,7 +150,7 @@ export class GrokGrantPool {
     const now = this.now();
     const callTimeoutMs = Math.min(deadline - now, Date.parse(grant.expiresAt) - now - this.renewMarginMs);
     if (deadline - now < 1) throw expired();
-    if (callTimeoutMs < 1) throw new InferenceFailure('unavailable', 'Grok grant expires before the call could run');
+    if (callTimeoutMs < 1) throw new InferenceFailure('unavailable', 'Grok grant expires before the call could run', { detail: 'grant-expired' });
     let settled = false;
     return { authority, grant, callTimeoutMs, settle: async outcome => {
       if (settled) return;
@@ -212,11 +212,17 @@ const cancelled = () => new InferenceFailure('cancelled', 'Grok grant wait cance
 /** Routing treats `timeout` like other capacity failures: the next authored route may run inside the route budget. */
 const expired = () => new InferenceFailure('timeout', 'Grok grant capacity wait exceeded the call deadline');
 
+/**
+ * A refused grant, an expired credential realm and a broker that is simply down
+ * all used to leave the same `unavailable` and the same sentence. The refusal is
+ * a closed broker code, so the distinction is carried, not reconstructed later.
+ */
 function classify(error: unknown): InferenceFailure {
   if (error instanceof InferenceFailure) return error;
   if (error instanceof GrokGrantRefusal) {
-    if (error.code === 'auth_stale') return new InferenceFailure('auth-stale', 'Grok broker credential realm is stale');
-    if (error.code === 'invalid_request') return new InferenceFailure('unsupported', 'Grok broker refused the grant request as invalid');
+    if (error.code === 'auth_stale') return new InferenceFailure('auth-stale', 'Grok broker credential realm is stale', { detail: 'grant-expired' });
+    if (error.code === 'invalid_request') return new InferenceFailure('unsupported', 'Grok broker refused the grant request as invalid', { detail: 'grant-refused' });
+    return new InferenceFailure('unavailable', 'Grok broker refused the grant request', { detail: 'grant-refused' });
   }
   return new InferenceFailure('unavailable', 'Grok broker is unavailable');
 }

@@ -1,6 +1,10 @@
-import type { InferenceAttempt, InferenceFailureKind, InferenceDiagnostic, Usage } from '../contracts/execution.js';
+import type { InferenceAttempt, InferenceFailureDetail, InferenceFailureKind, InferenceDiagnostic, Usage } from '../contracts/execution.js';
 
 export interface InferenceFailureEvidence {
+  /** A closed refinement of `kind`, set only by the adapter that observed the distinction. */
+  detail?: InferenceFailureDetail | null;
+  /** A provider-reported response status, retained as a number so no prose has to be parsed back. */
+  status?: number | null;
   usage?: Usage | null;
   responseModel?: string | null;
   responseRoute?: string | null;
@@ -11,6 +15,8 @@ export interface InferenceFailureEvidence {
 /** Adapters classify native evidence; routing never guesses from arbitrary error text. */
 export class InferenceFailure extends Error {
   readonly kind: InferenceFailureKind;
+  readonly detail: InferenceFailureDetail | null;
+  readonly status: number | null;
   readonly usage: Usage | null;
   readonly responseModel: string | null;
   readonly responseRoute: string | null;
@@ -23,6 +29,8 @@ export class InferenceFailure extends Error {
     super(message);
     this.name = 'InferenceFailure';
     this.kind = kind;
+    this.detail = evidence.detail ?? null;
+    this.status = Number.isSafeInteger(evidence.status) ? evidence.status! : null;
     if (evidence.diagnostic) {
       const diagnostic = structuredClone(evidence.diagnostic);
       if (diagnostic.response) Object.freeze(diagnostic.response);
