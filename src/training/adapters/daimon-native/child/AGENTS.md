@@ -80,13 +80,17 @@ earlier admissible wake included. A wake that simply named no closed execution o
 its own is the other kind: that wake is unscorable and the trial's other frames
 are untouched.
 
-**A trial legitimately has as many executions as it had wakes.** A subject that
-defers gets a continuation, so a deferred case runs several wakes and closes one
-execution per wake, and a frame that carries the trial's whole closed history is
-not a trial that ran twice. The reader resolves the trace the frame NAMES; the
-rest are this same trial's earlier, already-closed wakes. Refusing on the count
-instead reported `unevidenced` — nothing to score — for a healthy, quiet,
-three-wake run, which is how counting stood in for a property it never was.
+**A trial legitimately closes MORE executions than it made deliveries.** A
+subject that defers gets a continuation, so a deferred case runs several wakes —
+and each new delivery also makes Daimon revisit the deliveries this trial has
+already deferred, which it re-executes first, closing a further execution and
+filing a further trace for a delivery this wake never made. A frame that carries
+that whole closed history is not a trial that ran twice. The reader resolves the
+trace the frame NAMES; the rest are this same trial's other wakes. Refusing on
+the count instead reported `unevidenced` — nothing to score — for a healthy,
+quiet, three-wake run, which is how counting stood in for a property it never
+was. Nothing anywhere in this adapter may now infer a wake, a trial or a fault
+from how many executions, traces or frames it can see.
 
 The property is isolation, and it is stated rather than inferred from an arity:
 every trace in the set must be this agent's and the receipt must be this agent's,
@@ -136,7 +140,19 @@ followed from continuations: a frame that carries only the wake it belongs to ca
 never exercise a continued trial's own closed history, so the `-history` modes
 publish every trace the trial closed and the `-foreign`/`-ambiguous` pair inject
 their fault only once there IS history — a fault on the first wake would be
-indistinguishable from the arity it replaced.
+indistinguishable from the arity it replaced. A fifth is the receipt itself:
+Daimon CLEARS a receipt's `execution_id` when the subject defers the delivery,
+so every reader test here used to bind through a field production never supplies
+on the deferred path, and an admitted execution names the delivery ids it covers
+because that projection is the only authority left once the receipt has dropped
+its own.
+
+And a sixth shape is not a shape at all but a seam: this fixture IS the worker,
+so no test through it can exercise the worker's own discovery poll. Every fix to
+one side of that seam passed its own suite and failed the next live run.
+`childFixture(mode, frames)` therefore replays frames a REAL controller produced
+against a runtime that revisits its deferred deliveries, which is the only way the
+poll and the reader are exercised on one trial (`multi-wake-trial.test.ts`).
 
 Persist at most 64 KiB of each child output stream into an exclusive 0600 diagnostic
 receipt under the protected canonical control root when stopping the child. Keep
