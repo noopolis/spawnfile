@@ -166,6 +166,27 @@ datasets never enter the image context. Cache identity includes actual source,
 lock, executable and recipe bytes, parent images, architecture and entrypoint;
 reuse also verifies the image ID and recipe label in the selected Docker context.
 
+### Native parent and Daimon runtime identity
+
+`image.build.nativeImage` and `SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY` are two
+independent pointers at one run, and they never carry the same digest: the local
+Daimon runtime image ends in `FROM scratch`, so the identity always attests a
+scratch image that a runnable native parent copies
+`/opt/spawnfile/runtime-installs/daimon` out of. Preparation therefore binds them
+by content, not by digest equality.
+
+Before any Docker call, and before `--dry-run` returns, preparation loads the
+identity when that variable is set and refuses when its `manifest_sha256` is not
+the compiler's contract pin, when `image_architecture` disagrees with
+`image.build.platform`, or when a `127.0.0.1:<port>` native parent is declared
+with no identity at all. It then makes the first instruction of the native stage
+verify that the parent's own `capability-receipt.json` and
+`contract-manifest.sha256` are exactly the ones the identity attests, refusing
+with both file paths and both digests named. The recipe text is part of the image
+plan digest, so a rotated identity can never be satisfied by a cached image. A
+published (non-loopback) native parent with no identity keeps its previous
+behaviour.
+
 Staged build contexts normalize modes and times before `docker build`: directories
 0755, files `a+rX`-closed, both entrypoints (`train`, `train-broker`) 0555, mtimes
 fixed. Together
