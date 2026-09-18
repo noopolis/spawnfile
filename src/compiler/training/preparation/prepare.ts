@@ -54,7 +54,9 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
     for (const other of inputs.slice(index + 1)) if (within(input.source, other.source) || within(other.source, input.source) ||
       within(input.destination, other.destination) || within(other.destination, input.destination)) throw Error("Training inputs overlap");
   }
-  const imagePlan = "build" in config.image ? await planTrainingImage(config.image.build, root, auth.map(entry => entry.source), options.packageRoot) : undefined;
+  const imagePlan = "build" in config.image
+    ? await planTrainingImage(config.image.build, root, auth.map(entry => entry.source), options.packageRoot, path.resolve(options.configPath))
+    : undefined;
   if (options.repairWitness && !options.repairMeasurements) throw Error("A repair witness requires --repair-measurements");
   if (options.repairMeasurements && !imagePlan) throw Error("Measurement repair requires a verifiable image build recipe");
   const repair = options.repairMeasurements ? await planMeasurementRepair({ parent: options.repairMeasurements,

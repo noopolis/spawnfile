@@ -48,7 +48,7 @@ async function main(): Promise<void> {
   const raw = JSON.parse(await readFile(configPath, "utf8")) as { image?: { build?: unknown } };
   const build = trainingBuildSchema.parse(raw.image?.build ?? raw);
   const root = path.resolve(option("--root") ?? path.dirname(configPath));
-  const plan = await planTrainingImage(build, root, [], repository);
+  const plan = await planTrainingImage(build, root, [], repository, path.resolve(configPath));
   assertNewRecipe(plan.dockerfile);
   const controlRecipe = controlRef
     ? execFileSync("git", ["-C", repository, "show", `${controlRef}:runtime-images/training/Dockerfile`], { encoding: "utf8" })
