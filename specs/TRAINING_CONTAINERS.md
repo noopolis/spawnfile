@@ -407,9 +407,68 @@ the ancestor with `o+x`, gives the worker no additional reach. Root provisioning
 asserts placement for every entry once all modes are final — at container start
 and on every recycle — and refuses the slot otherwise.
 
-A canary is a worker-uid `open()` that must fail. For a deny entry that is a
-host bind mount, or sits on a filesystem that ignores unix ownership (Docker
-Desktop and Colima both do), that probe proves nothing, so
-`unenforcedBindPolicy` decides: `refuse` (the default) fails the recycle and
-writes no receipt; `profile-only` accepts the bubblewrap-enforced `deny` list as
-that path's only boundary and names every such path in the supervisor log.
+A canary is a worker-uid attempt that must fail. What decides whether it means
+anything is the **backing filesystem**, not the declaration: a bind on
+ext4/xfs/btrfs/overlay enforces unix ownership and is probed for real, while
+virtiofs, grpcfuse, 9p, nfs, cifs and fuse ignore `chown` outright — Docker
+Desktop and Colima both land every host bind there. Only on those does
+`unenforcedBindPolicy` apply: `refuse` (the default) fails the slot and writes
+no receipt; `profile-only` accepts the bubblewrap-enforced `deny` list as that
+path's only boundary and names every such path in the supervisor log. The
+default is therefore reachable — on a Linux daemon over a native filesystem
+every deny entry is kernel-probed — and on Docker Desktop the one entry that
+forces `profile-only` is `/run/training/output`.
+
+### The sealed datasets
+
+`/run/training/inputs` is not covered by that policy at all, and no declaration
+can waive it. It holds the sealed train and test datasets, and the bubblewrap
+`deny` list is not a boundary the subject cannot lift: the pinned seccomp
+profile has to allow `clone/clone3/unshare/mount/umount2/pivot_root/setns` for
+bubblewrap itself, and the container runs `apparmor=unconfined`, so a worker-uid
+process can open a user and mount namespace of its own and either detach the
+mask or bind the mask's parent somewhere fresh. Evidence gathered with `cat` and
+`read_file` says nothing about that route.
+
+What holds against it is DAC on the datasets' ancestor. Every declared input is
+bound at `/run/training/inputs/<id>` — the launch schema admits no other
+destination — so `/run/training/inputs` itself is their parent, a directory on
+the read-only image root. The image bakes it `0:2000 0750`:
+
+- uid 2200 is in neither the owner nor the group class, so it loses *search*
+  permission on the one directory every dataset read must traverse;
+- the inode is owned by real uid 0, which `unshare --map-root-user` does not
+  map, so `CAP_DAC_OVERRIDE` inside the worker's own namespace cannot override
+  it, and a fresh `mount --bind` of the parent re-exposes this same directory
+  rather than the bytes beneath it;
+- the root filesystem is read-only, so nothing in the container — root included
+  — can widen the mode after the image is built.
+
+Root provisioning therefore asserts that identity instead of setting it, and
+refuses the slot when an image did not bake it. It then attacks the seal as the
+worker uid, at container start and on every recycle: a direct read/search/list,
+the same list after `unshare --user --map-root-user --mount` plus a lazy unmount
+of the mask and its parent, and the same list through a fresh `mount --bind` of
+`/run/training` made inside that namespace — and, per dataset, a read and a
+bind of the dataset's own mount, the route that carries no mask and is not
+refused for locked children the way binding their parent is. A control
+container left at Docker's own `0755 root:root` hands the held-out answer key
+to uid 2200 through exactly that route, and the sealed one refuses all four
+(`.runtime/sealed-inputs-dac/EVIDENCE.md`). A probe that reaches no verdict
+refuses the slot; a worker that cannot open a namespace at all cannot take the
+route, and the supervisor log says so. The slot canary for this path
+additionally requires the worker uid to be unable to *enter* the directory, not
+merely to read it: a searchable directory hands over every dataset the subject
+can name.
+
+### Evidence before the first trial
+
+`provision → start → canaries → generation → receipt` is the whole start-up
+path, in that order, and it is the only way this container brings a slot up.
+Start-up used to stop after `start()`, with the canaries and the
+`noopolis.daimon.grok-slot-preflight.v2` receipt reachable only through
+`recycle`, so the first trial of every run — the one trial whose sealed
+datasets had never been probed — executed on no worker-uid denial evidence at
+all, and a refusal surfaced only after that trial's spend. The start-up receipt
+carries the container's own nonce and generation 1..N, in the same shape a
+recycle publishes and from the same canaries.
