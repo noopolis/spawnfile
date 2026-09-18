@@ -6,6 +6,7 @@ import {
   listEffectiveExecutionModelTargets,
   listExecutionModelProviders,
   listExecutionModelSecretNames,
+  modelAuthMethodNeedsCliCredential,
   resolveEffectiveModelTarget,
   resolveExecutionModelAuthMethods,
   resolveModelProviderEnvName
@@ -202,5 +203,14 @@ describe("modelEnv", () => {
 
   it("formats provider env names for unknown providers", () => {
     expect(resolveModelProviderEnvName("my-proxy")).toBe("MY_PROXY_API_KEY");
+  });
+
+  it("never turns Daimon-owned grok auth into a host CLI credential or api key secret", () => {
+    const execution = { model: { primary: { auth: { method: "grok" as const }, name: "grok-4.6", provider: "xai", reasoning_effort: "low" as const } } };
+    expect(listExecutionModelSecretNames(execution)).toEqual([]);
+    expect(modelAuthMethodNeedsCliCredential("grok")).toBe(false);
+    expect(modelAuthMethodNeedsCliCredential("codex")).toBe(true);
+    expect(modelAuthMethodNeedsCliCredential("claude-code")).toBe(true);
+    expect(resolveEffectiveModelTarget(execution.model.primary, execution)).toEqual({ auth: { method: "grok" }, name: "grok-4.6", provider: "xai", reasoningEffort: "low" });
   });
 });

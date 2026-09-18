@@ -16,6 +16,8 @@ These are the source of truth. Implementation in `src/` must stay aligned with t
 | [SURFACES.md](SURFACES.md) | evolving | Communication surfaces — platform messaging, HTTP, webhook, runtime support matrix, and lowering notes |
 | [RUNTIMES.md](RUNTIMES.md) | evolving | Runtime registry model — version pinning, status tracking, adapter lifecycle |
 | [STATUS.md](STATUS.md) | evolving | Operational status — static and live status, deployment records, Docker targets, runtime probes, and Moltnet metadata-only diagnostics |
+| [TRAINING.md](TRAINING.md) | implemented handoff; native preparation integration required | Canonical agent selection and versioned Paideia delegation, dry-run and source provenance |
+| [TRAINING_CONTAINERS.md](TRAINING_CONTAINERS.md) | single-container launcher; end-to-end validation pending | Whole-experiment image, declared mounts, native auth staging and verified lifecycle |
 | [DISTRIBUTION.md](DISTRIBUTION.md) | evolving | Image distribution — self-describing images, sourceless run/status, deployment record v2, publish, registry drift, and the network binding contract |
 | [CAUSAL.md](CAUSAL.md) | evolving | Causal event envelope — producer wire rules plus the shared Stele read/verify and reconciliation contract |
 | [TARGETS.md](TARGETS.md) | evolving | Project-neutral target-resource public contracts and staged target-adapter boundary |

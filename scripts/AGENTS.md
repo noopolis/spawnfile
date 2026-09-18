@@ -24,6 +24,14 @@ tools live in `../archive/legacy-worktree-tools/` and are not active helpers.
 - Daimon builds accept only explicit versions, credential-free HTTPS URLs, and
   executable/archive digest pins. Reject URLs with credentials, queries, or
   fragments before Docker runs.
+- Daimon builds also accept only the Grok CLI build the vendored Daimon
+  contract manifest pins for the target architecture (`readPinnedGrokCli`).
+- `vendor-daimon-grok-contract.ts` (run with `node --import tsx`) is the only
+  way Daimon's contract enters Spawnfile: it reads a Daimon checkout as data and
+  writes `src/runtime/daimon/contract-manifest.{json,sha256}` plus
+  `grokWorkerConfigBytes.ts` (Daimon's own worker `config.toml` renderer bytes
+  and sandbox-profile samples). `--check` fails on drift. It never builds or
+  writes inside Daimon.
 - The local builder pushes only to the fixed loopback development repository.
   Its generated immutable manifest/receipt identity is ignored and never
   edits `runtimes.yaml`. Clean-source builds select the native Docker

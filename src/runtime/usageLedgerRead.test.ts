@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { USAGE_TURN_RECORD_VERSION, type UsageRecord } from "./usageLedger.js";
+import { computeUsageCoverage, groupUsageByEngine, USAGE_TURN_RECORD_VERSION, type UsageRecord } from "./usageLedger.js";
 import { readUsageLedgerViaExec } from "./usageLedgerRead.js";
 
 const record = (overrides: Partial<UsageRecord> = {}): UsageRecord => ({
@@ -27,6 +27,16 @@ describe("readUsageLedgerViaExec", () => {
     filePath: "/var/lib/spawnfile/daimon/usage/usage.jsonl",
     rotatedFilePath: "/var/lib/spawnfile/daimon/usage/usage.jsonl.1"
   };
+
+  it("counts a broker turn re-appended across a rotation exactly once", async () => {
+    const sealed = line({ turn: "d".repeat(64) });
+    const exec = async (command: string[]) => ({ stderr: "", stdout: `${sealed}\n` });
+    const read = await readUsageLedgerViaExec(exec, paths);
+    expect(read.records).toHaveLength(2);
+    expect(groupUsageByEngine(read.records)[0]).toMatchObject({ tokens: 14_535, turns: 1 });
+    expect(computeUsageCoverage(read.records, 1)).toMatchObject({ conflictingTurnCount: 0, partial: false });
+    expect(read.unreadable).toEqual([]);
+  });
 
   it("merges both generations, rotated (older) first", async () => {
     const exec = async (command: string[]) => {

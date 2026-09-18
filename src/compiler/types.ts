@@ -236,6 +236,7 @@ export interface EffectiveModelTarget {
   endpoint?: ModelEndpoint;
   name: string;
   provider: string;
+  reasoningEffort?: "high" | "low" | "medium";
 }
 
 export interface ResolvedSubagentRef {

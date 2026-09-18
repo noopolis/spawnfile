@@ -1,12 +1,10 @@
-import path from "node:path";
-
-import { DAIMON_ORGANIZATION_TARGET_ID } from "../runtime/daimon/config.js";
 import {
   DAIMON_GROK_ENGINE_BROKER,
-  DAIMON_GROK_TURN_USAGE_LEDGER,
-  DAIMON_RUNTIME_HOME_ROOT
+  DAIMON_GROK_TURN_USAGE_LEDGER
 } from "../runtime/daimon/contractManifest.js";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
+import { resolveDaimonGrokRegistrations, type DaimonGrokRegistration, type DaimonGrokServiceConfigOptions } from "./containerDaimonGrokWorkerRender.js";
+import { renderDaimonGrokWorkerProvisioning } from "./containerDaimonGrokWorkerProvisioning.js";
 import {
   DAIMON_BROKER_UID,
   DAIMON_FIRST_WORKER_UID,
@@ -21,75 +19,18 @@ export const DAIMON_BROKER_BACKEND_SOCKET = "/run/daimon-engine-broker/backend.s
 export const DAIMON_BROKER_LAUNCHER_SOCKET = "/run/daimon-engine-broker/launcher.sock";
 export const DAIMON_BROKER_SERVICE_CONFIG = "/etc/daimon-engine-broker/service.json";
 export const DAIMON_BROKER_REALM = "/var/lib/spawnfile/daimon/grok-subscription-realm";
-export const DAIMON_WORKER_ROOT = "/var/lib/daimon-workers";
 /**
- * The organization runtime state directory — the parent of the durable wake
- * acceptance store (`state/wake-acceptance`) and the runtime readiness
- * receipt inside it.
- *
- * It used to be left at mode 0755 because Docker creates it root-owned and
- * world-readable when it materializes the acceptance-store volume mount, and
- * nothing tightened it afterwards: the Daimon ownership guard only *chowned*
- * ancestor `privateDirectories` and never chmoded them. That made it the one
- * path under `/var/lib/spawnfile` a Grok worker uid could actually open, and
- * the whole reason a `deny` entry existed at all.
- *
- * `resolveDaimonUidEntrypointOwnershipPlan` now lists it as a
- * `privateModeDirectory`, so the ownership guard secures it to `0700`
- * `2000:2000` — the same treatment the acceptance store beneath it already
- * had. That is what actually denies the worker, and it does so for every
- * Daimon organization, with or without Grok. No non-root, non-organization
- * reader loses anything: the only content under it is the acceptance store,
- * which was already `0700 2000:2000`, so every reader that works today is
- * either the organization uid or a `docker exec` root holding
- * `CAP_DAC_READ_SEARCH` (`runProject.ts`), and neither is affected by the
- * parent's mode.
+ * Private temp for the broker and its relay (uid 2100, outside the organization
+ * group): shared `/tmp` and `/var/tmp` are `root:2000 1774` in a Grok
+ * organization, so any non-root process outside group 2000 needs its own
+ * `TMPDIR`. It lives in the broker's `/run` directory, which every worker denies.
  */
-export const DAIMON_ORGANIZATION_STATE_DIRECTORY = path.posix.join(
-  DAIMON_RUNTIME_HOME_ROOT,
-  DAIMON_ORGANIZATION_TARGET_ID,
-  "state"
-);
-/**
- * The Grok worker sandbox profile's `deny` list — see `profileFor` below.
- * Deliberately empty, which leaves the worker on builtin-`strict` Landlock
- * confinement plus `restrict_network`.
- *
- * A non-empty `deny` list is not a usable mechanism on Grok 1.0.13. Whenever
- * one is present, Grok re-execs itself inside bubblewrap and then `open()`s
- * every deny-path placeholder to prove its own bind-over is genuine — but it
- * creates that placeholder at mode `000` and the re-exec'd process is
- * capability-stripped (`--cap-drop ALL`), so the open returns `EACCES` and
- * Grok refuses to start:
- *
- *   error: sandbox reports bwrap but required read-deny mounts are not in
- *   effect (read-deny path <path> could not be opened: Permission denied
- *   (os error 13)); refusing to start (possible __GROK_INSIDE_BWRAP spoof)
- *
- * It never reaches `ProfileApplied`, so `sandbox-events.jsonl` stays empty and
- * Daimon's attestation never runs either. Reproduced locally against the real
- * Linux `grok 1.0.13` binary, with controls confirming the deny *target* is
- * irrelevant: a plain directory, a directory with a child mount, and a vanilla
- * root-owned home denying an unrelated file all fail identically, while an
- * empty deny list exits 0 and emits
- * `ProfileApplied {platform: "linux/landlock", enforced: true,
- * restrict_network: true}` with no bwrap at all.
- *
- * Nothing is lost by emptying it. Every path this list ever carried — peer
- * worker homes/workspaces, the subscription realm, the bootstrap-auth file,
- * the broker's `/run` socket directory, the usage-ledger directory, and now
- * `DAIMON_ORGANIZATION_STATE_DIRECTORY` — is unix-denied to a worker uid
- * unconditionally, by construction: each is force-chowned/chmoded (never
- * merely checked) to a mode whose "other" class carries no read bit, and a
- * worker uid never matches the owning uid or gid of any of them (workers run
- * under `setresuid`/`setresgid` to a dedicated uid==gid with every
- * supplementary group cleared — see `engineBrokerLauncherCore.inc`).
- *
- * Daimon's `grokWorkerAttestation.ts` still pins the profile by SHA-256 to
- * exactly these bytes, so an empty list is not an unconstrained one: the
- * worker's profile cannot differ from what is rendered here.
- */
-export const GROK_SANDBOX_DENY_PATHS: readonly string[] = [];
+export const DAIMON_BROKER_TMPDIR = "/run/daimon-engine-broker/tmp";
+export {
+  DAIMON_ORGANIZATION_STATE_DIRECTORY,
+  DAIMON_WORKER_ROOT,
+  resolveDaimonGrokRegistrations
+} from "./containerDaimonGrokWorkerRender.js";
 
 interface WorkspaceSecurityResource {
   backingPath: string;
@@ -109,25 +50,6 @@ export const renderDaimonWorkspaceResourceSecurity = (
   `const validateResourceLink = (target, info) => { const resource = resourceByLink.get(target); if (!resource || info.uid !== ${owners.linkUid} || info.gid !== ${owners.linkGid} || info.nlink !== 1) throw new Error('unsafe worker workspace link'); const raw = fs.readlinkSync(target), normalized = require('node:path').posix.normalize(raw); if (!raw.startsWith('/') || normalized !== raw || raw !== resource.backingPath || !raw.startsWith(${JSON.stringify(resourceRoot)})) throw new Error('unsafe worker workspace link target'); const backing = fs.lstatSync(raw); if (!backing.isDirectory() || backing.isSymbolicLink()) throw new Error('unsafe worker workspace resource'); const mode = backing.mode & 0o777; if (resource.kind === 'volume') { const lifecycleOwner = (backing.uid === ${owners.privilegedUid} && backing.gid === ${owners.privilegedGid}) || (backing.uid === ${owners.linkUid} && backing.gid === ${owners.linkGid}); if (!lifecycleOwner || mode !== 0o755 || typeof resource.resolvedIdentity !== 'string') throw new Error('unsafe worker workspace volume'); const expected = Buffer.from(\`${"${resource.resolvedIdentity}"}\\n\`); if (expected.length !== 72) throw new Error('unsafe worker workspace volume identity'); const sentinel = \`${"${raw}"}/.spawnfile-resource-identity\`; let fd; try { fd = fs.openSync(sentinel, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK); const before = fs.fstatSync(fd); if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || before.uid !== ${owners.privilegedUid} || before.gid !== ${owners.privilegedGid} || (before.mode & 0o777) !== 0o644 || before.size !== expected.length) throw new Error('unsafe worker workspace volume identity'); const bytes = fs.readFileSync(fd), after = fs.fstatSync(fd); if (!bytes.equals(expected) || after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs) throw new Error('unsafe worker workspace volume identity'); } finally { expected.fill(0); if (fd !== undefined) fs.closeSync(fd); } } else if (resource.mode === 'readonly') { if (backing.uid !== ${owners.readonlyUid} || backing.gid !== ${owners.readonlyGid} || mode !== 0o555) throw new Error('unsafe readonly worker workspace resource'); } else if (backing.uid !== ${owners.privilegedUid} || backing.gid !== ${owners.privilegedGid} || mode !== 0o755) throw new Error('unsafe mutable worker workspace resource'); };`,
   "const secureWorkspace = (root, uid) => { const visit = (target) => { const info = fs.lstatSync(target); if (info.isSymbolicLink()) { validateResourceLink(target, info); return; } if (info.isDirectory()) { fs.chownSync(target, 0, 0); fs.chmodSync(target, 0o750); for (const name of fs.readdirSync(target)) visit(`${target}/${name}`); fs.chownSync(target, 2000, uid); } else if (info.isFile()) { fs.chownSync(target, 0, 0); fs.chmodSync(target, 0o640); fs.chownSync(target, 2000, uid); } else throw new Error('unsafe worker workspace node'); }; visit(root); };"
 ];
-
-const nodeSlug = (nodeId: string): string => nodeId.replace(/^agent:/u, "")
-  .toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/^-+|-+$/gu, "");
-
-export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]) => plans
-  .filter((plan) => plan.runtimeName === "daimon")
-  .flatMap((plan) => Object.entries(plan.engineByNodeId ?? {})
-    .filter(([, engine]) => engine === "grok")
-    .map(([agentId]) => ({
-      agentId,
-      workspace: path.posix.join(plan.instancePaths.workspacePath, "agents", nodeSlug(agentId))
-    })))
-  .sort((left, right) => left.agentId.localeCompare(right.agentId))
-  .map((entry, slot) => ({
-    ...entry,
-    home: path.posix.join(DAIMON_WORKER_ROOT, String(DAIMON_FIRST_WORKER_UID + slot)),
-    slot,
-    uid: DAIMON_FIRST_WORKER_UID + slot
-  }));
 
 /**
  * Fixes ownership and mode of the per-turn usage ledger directory for every
@@ -163,6 +85,44 @@ export const renderDaimonUsageLedgerProvisioning = (): string[] => {
   ];
 };
 
+/**
+ * Empties a directory without touching a mount point inside it.
+ *
+ * `rm -rf` and `find -delete` both fail `EBUSY` on a mount point — it is
+ * another filesystem's root, and its entry cannot be unlinked while it is
+ * mounted. A deployment that mounts a tmpfs below a directory it later clears
+ * would otherwise abort provisioning on a bare `find` failure, which is exactly
+ * how a live training launch died. Mount points are left in place and descended
+ * into; anything else that cannot be removed is reported by name.
+ *
+ * Mount points come from `/proc/self/mountinfo` field 5. The kernel
+ * octal-escapes space, tab, newline and backslash there; every path this
+ * compiler provisions is free of all four, and a path that is not would simply
+ * fail to match and be treated as an ordinary directory.
+ */
+export const MOUNT_AWARE_CLEAR_HELPER = [
+  "spawnfile_mount_points=$(awk '{print $5}' /proc/self/mountinfo)",
+  "spawnfile_is_mount() { printf '%s\\n' \"$spawnfile_mount_points\" | grep -qxF \"$1\"; }",
+  "spawnfile_holds_mount() { printf '%s\\n' \"$spawnfile_mount_points\" | grep -qE \"^$(printf '%s' \"$1\" | sed 's/[][\\.*^$/]/\\\\&/g')(/|$)\"; }",
+  "spawnfile_clear_tree() {",
+  "  spawnfile_root=$1",
+  "  [ -d \"$spawnfile_root\" ] || return 0",
+  "  for spawnfile_entry in \"$spawnfile_root\"/* \"$spawnfile_root\"/.[!.]* \"$spawnfile_root\"/..?*; do",
+  "    if [ ! -e \"$spawnfile_entry\" ] && [ ! -L \"$spawnfile_entry\" ]; then continue; fi",
+  "    if spawnfile_is_mount \"$spawnfile_entry\"; then continue; fi",
+  "    if spawnfile_holds_mount \"$spawnfile_entry\"; then spawnfile_clear_tree \"$spawnfile_entry\"; continue; fi",
+  "    rm -rf \"$spawnfile_entry\" || { echo \"cannot clear $spawnfile_entry: it is in use; a mount below a provisioned root must be declared outside it\" >&2; return 1; }",
+  "  done",
+  "}",
+  // Removes the target outright, unless it is or contains a mount point: then its contents go and the
+  // mount points and the directories holding them stay, because neither can be unlinked while mounted.
+  "spawnfile_remove_tree() {",
+  "  if [ ! -e \"$1\" ] && [ ! -L \"$1\" ]; then return 0; fi",
+  "  if spawnfile_holds_mount \"$1\"; then spawnfile_clear_tree \"$1\"; return $?; fi",
+  "  rm -rf \"$1\" || { echo \"cannot remove $1: it is in use\" >&2; return 1; }",
+  "}"
+];
+
 export const renderDaimonBrokerProvisioning = (plans: RuntimeTargetPlan[]): string[] => {
   const registrations = resolveDaimonGrokRegistrations(plans);
   if (registrations.length === 0) return [];
@@ -179,11 +139,53 @@ export const renderDaimonBrokerProvisioning = (plans: RuntimeTargetPlan[]): stri
         : null
     }))
     .sort((left, right) => left.linkPath.localeCompare(right.linkPath));
+  return renderDaimonBrokerProvisioningProgram(registrations, workspaceResources);
+};
+
+/**
+ * The root broker provisioning program itself, over already-resolved
+ * registrations and workspace resources.
+ *
+ * Production reaches it through {@link renderDaimonBrokerProvisioning}; the
+ * broker-capable training container reaches it directly for its single fixed
+ * slot, with `serviceOptions` pointing the turn store at per-slot tmpfs and
+ * declaring the evaluator inference ledger. Both callers get byte-identical
+ * credential, registration, worker-home, temp and spill provisioning — the
+ * whole point of sharing it rather than writing a second root program.
+ *
+ * It is re-runnable: the shell wrapper removes `/etc/daimon-engine-broker` and
+ * `/run/daimon-engine-broker` first, so a slot recycle replays exactly the
+ * audited start-up path, credential-journal recovery included.
+ */
+export const renderDaimonBrokerProvisioningProgram = (
+  registrations: readonly DaimonGrokRegistration[],
+  workspaceResources: WorkspaceSecurityResource[],
+  serviceOptions: DaimonGrokServiceConfigOptions = {},
+  /**
+   * How the broker's `/etc` and `/run` roots are reset before provisioning.
+   * A production organization owns both as ordinary image directories and
+   * removes them outright. The training container mounts each as its own
+   * tmpfs, which cannot be unlinked, so it empties them instead — the same
+   * end state, reached the only way a mount point allows.
+   */
+  rootReset: "remove" | "clear" = "remove",
+  /** Deny targets the worker provisioning creates when absent; see `renderDaimonGrokWorkerProvisioning`. */
+  optionalDenyPaths?: readonly string[],
+  /**
+   * Where the broker and relay get their private `TMPDIR`. Production keeps it
+   * inside the control root, which it removes and recreates exactly once. A
+   * deployment that re-provisions that root — the training slot recycle — must
+   * pass a path outside it: a `tmp/` inside a cleared root is a mount point in
+   * the training launch, and clearing a mount point fails `EBUSY`.
+   */
+  brokerTmpdir: string = DAIMON_BROKER_TMPDIR
+): string[] => {
   const program = [
     "const crypto = require('node:crypto'); const fs = require('node:fs');",
-    `const registrations = ${JSON.stringify(registrations)};`,
-    "const executable = '/usr/local/bin/grok';",
+    `const registrations = ${JSON.stringify(registrations.map(({ agentId, home, slot, uid, workspace }) => ({ agentId, home, slot, uid, workspace })))};`,
+    `const executable = '${DAIMON_GROK_ENGINE_BROKER.grokExecutablePath}';`,
     "const digest = crypto.createHash('sha256').update(fs.readFileSync(executable)).digest();",
+    `if (!${JSON.stringify([DAIMON_GROK_ENGINE_BROKER.grokCliArtifacts.arm64.sha256, DAIMON_GROK_ENGINE_BROKER.grokCliArtifacts.x64.sha256])}.includes(digest.toString('hex'))) throw new Error('Grok executable is not the manifest-pinned ${DAIMON_GROK_ENGINE_BROKER.grokCliVersion} build');`,
     "const cString = (buffer, offset, length, value) => { const bytes = Buffer.from(value); if (bytes.length < 1 || bytes.length >= length || bytes.includes(0)) throw new Error('invalid broker registration'); bytes.copy(buffer, offset); };",
     `const records = registrations.map((entry) => { const record = Buffer.alloc(692); record.writeUInt32LE(${DAIMON_GROK_ENGINE_BROKER.nativeAbiVersion}, 0); record.writeUInt32LE(entry.slot, 4); record.writeUInt32LE(entry.uid, 8); record.writeUInt32LE(entry.uid, 12); cString(record, 16, 129, entry.agentId); cString(record, 145, 256, entry.workspace); cString(record, 401, 256, entry.home); digest.copy(record, 657); return record; });`,
     "fs.mkdirSync('/etc/daimon-engine-broker', { recursive: true, mode: 0o700 }); fs.chownSync('/etc/daimon-engine-broker', 0, 0); fs.chmodSync('/etc/daimon-engine-broker', 0o700);",
@@ -202,32 +204,19 @@ export const renderDaimonBrokerProvisioning = (plans: RuntimeTargetPlan[]): stri
     `const journalRoot = '${DAIMON_BROKER_REALM}/.daimon-broker'; let journalRootExists = false; try { const info = fs.lstatSync(journalRoot); if (!info.isDirectory() || info.isSymbolicLink() || info.uid !== 2100 || info.gid !== 2100 || (info.mode & 0o777) !== 0o700) throw new Error('unsafe broker credential journal directory'); fs.chownSync(journalRoot, 0, 0); fs.chmodSync(journalRoot, 0o700); journalRootExists = true; } catch (error) { if (error.code !== 'ENOENT') throw error; }`,
     `try { const journalPath = '${DAIMON_BROKER_REALM}/.daimon-broker/credential-journal.json'; let journal; try { const raw = readSecure(journalPath, 2100, 'recovery journal'); journal = JSON.parse(raw.toString('utf8')); raw.fill(0); } catch (error) { if (error.code !== 'ENOENT') throw error; } const stale = journal?.version === 'noopolis.daimon.broker-credential-journal.v1' && journal.state === 'stale'; const recover = () => { if (!stale || !Number.isSafeInteger(journal.generation) || journal.generation < 0 || !/^[a-f0-9]{64}$/.test(journal.sourceDigest) || journal.sourceDigest !== journal.promotedDigest || bootstrapDigest === journal.sourceDigest) throw new Error('unsafe broker credential recovery'); atomicOwned(authority, bootstrapBytes); const recovered = Buffer.from(\`${"${JSON.stringify({ version: 'noopolis.daimon.broker-credential-journal.v1', state: 'promoted', generation: journal.generation + 1, sourceDigest: journal.sourceDigest, promotedDigest: bootstrapDigest })}"}\\n\`); try { atomicOwned(journalPath, recovered); } finally { recovered.fill(0); } }; if (!existing) { if (stale) recover(); else atomicOwned(authority, bootstrapBytes); } else { const authorityBytes = readSecure(authority, 2100, 'authority'); try { const authorityDigest = crypto.createHash('sha256').update(authorityBytes).digest('hex'); if (stale) { if (authorityDigest !== journal.sourceDigest && authorityDigest !== bootstrapDigest) throw new Error('unsafe broker credential recovery'); if (authorityDigest === bootstrapDigest) { const recovered = Buffer.from(\`${"${JSON.stringify({ version: 'noopolis.daimon.broker-credential-journal.v1', state: 'promoted', generation: journal.generation + 1, sourceDigest: journal.sourceDigest, promotedDigest: bootstrapDigest })}"}\\n\`); try { atomicOwned(journalPath, recovered); } finally { recovered.fill(0); } } else recover(); } } finally { authorityBytes.fill(0); } } } finally { bootstrapBytes.fill(0); }`,
     "if (journalRootExists) { fs.chownSync(journalRoot, 0, 0); fs.chmodSync(journalRoot, 0o700); fs.chownSync(journalRoot, 2100, 2100); }",
-    "const config = '[auth_provider.daimon]\\ntype = \"custom\"\\ncommand = \"/opt/daimon/bin/daimon-engine-broker\"\\nargs = [\"--auth-provider\"]\\n\\n[model.daimon-broker-grok]\\nmodel = \"grok-build\"\\nbase_url = \"http://127.0.0.1:43123/v1\"\\nauth_provider = \"daimon\"\\ncontext_window = 131072\\nsupports_backend_search = false\\n\\n[mcp_servers.daimon]\\nurl = \"http://127.0.0.1:43124/mcp\"\\nheaders = { Authorization = \"Bearer ${DAIMON_MCP_CAPABILITY}\" }\\n';",
-    `for (const root of ['${DAIMON_WORKER_ROOT}']) { fs.mkdirSync(root, { recursive: true, mode: 0o711 }); fs.chownSync(root, 0, 0); fs.chmodSync(root, 0o711); }`,
     ...renderDaimonWorkspaceResourceSecurity(workspaceResources),
-    // Empty on purpose: a non-empty `deny` list makes Grok 1.0.13 refuse to
-    // start before it ever applies a profile, and every path it used to carry
-    // is unix-denied to a worker uid unconditionally anyway. See
-    // `GROK_SANDBOX_DENY_PATHS`'s doc comment.
-    `const deniedPaths = ${JSON.stringify(GROK_SANDBOX_DENY_PATHS)};`,
-    "const profileFor = () => `[profiles.daimon-strict]\\nextends = \"strict\"\\nrestrict_network = true\\ndeny = [${deniedPaths.map(JSON.stringify).join(', ')}]\\n`;",
-    "const ensureDirectory = (target, uid, gid, mode) => { fs.mkdirSync(target, { recursive: true, mode }); const info = fs.lstatSync(target); if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('unsafe worker runtime directory'); fs.chownSync(target, 0, 0); fs.chmodSync(target, mode); fs.chownSync(target, uid, gid); };",
-    "const ensureExactFile = (target, content, uid, gid, mode) => { let info; try { info = fs.lstatSync(target); } catch (error) { if (error.code !== 'ENOENT') throw error; fs.writeFileSync(target, content, { mode, flag: 'wx' }); info = fs.lstatSync(target); } if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) throw new Error('unsafe worker runtime file'); const existing = fs.readFileSync(target, 'utf8'); if (existing !== content) throw new Error('worker runtime file identity mismatch'); fs.chownSync(target, 0, 0); fs.chmodSync(target, mode); fs.chownSync(target, uid, gid); };",
-    "const ensureEventsFile = (target, uid) => { let info; try { info = fs.lstatSync(target); } catch (error) { if (error.code !== 'ENOENT') throw error; fs.writeFileSync(target, '', { mode: 0o640, flag: 'wx' }); info = fs.lstatSync(target); } if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || (info.uid !== uid && info.uid !== 0) || (info.gid !== 2100 && info.gid !== 0) || ![0o600,0o640].includes(info.mode & 0o777)) throw new Error('unsafe worker attestation events'); fs.chownSync(target, 0, 0); fs.chmodSync(target, 0o640); fs.chownSync(target, uid, 2100); };",
-    "// Grok refuses a sandbox profile reached through a symlink ('retargetable'), and",
-    "// Daimon's attestation requires nlink === 1, so the profile is one plain root-owned",
-    "// 0444 file written in place: no symlink, and no hard link either.",
-        `for (const entry of registrations) { for (let ancestor = require('node:path').dirname(entry.workspace); ancestor.startsWith('/var/lib/spawnfile/') && ancestor.length > '/var/lib/spawnfile'.length; ancestor = require('node:path').dirname(ancestor)) fs.chmodSync(ancestor, fs.statSync(ancestor).mode & 0o7777 | 0o011); secureWorkspace(entry.workspace, entry.uid); ensureDirectory(entry.home, 0, 0, 0o700); const configRoot = \`${"${entry.home}"}/.grok\`; ensureDirectory(configRoot, 0, 0, 0o700); const configPath = \`${"${configRoot}"}/config.toml\`; ensureExactFile(configPath, config, 0, 0, 0o444); const profilePath = \`${"${configRoot}"}/sandbox.toml\`, eventsPath = \`${"${configRoot}"}/sandbox-events.jsonl\`; ensureExactFile(profilePath, profileFor(), 0, 0, 0o444); ensureEventsFile(eventsPath, entry.uid); ensureDirectory(configRoot, 0, entry.uid, 0o1771); ensureDirectory(entry.home, entry.uid, ${DAIMON_BROKER_UID}, 0o710); }`,
-    `const service = { version: 'noopolis.daimon.engine-broker-service.v1', credentialHome: '/var/lib/spawnfile/daimon/grok-subscription-realm', turnStore: '/var/lib/spawnfile/daimon/grok-subscription-realm/turns', registrations: registrations.map((entry) => { const configRoot = \`${"${entry.home}"}/.grok\`, profilePath = \`${"${configRoot}"}/sandbox.toml\`, eventsPath = \`${"${configRoot}"}/sandbox-events.jsonl\`; return { agentId: entry.agentId, slot: entry.slot, workerUid: entry.uid, workspace: entry.workspace, profilePath, eventsPath, profileSha256: crypto.createHash('sha256').update(profileFor()).digest('hex') }; }) };`,
-    "fs.writeFileSync('/etc/daimon-engine-broker/service.json', `${JSON.stringify(service)}\n`, { mode: 0o440, flag: 'wx' }); fs.chownSync('/etc/daimon-engine-broker/service.json', 0, 2100); fs.chmodSync('/etc/daimon-engine-broker/service.json', 0o440);",
+    ...renderDaimonGrokWorkerProvisioning(registrations, serviceOptions, ...(optionalDenyPaths ? [optionalDenyPaths] : [])),
     `fs.chownSync('${DAIMON_BROKER_REALM}', 0, 0); fs.chmodSync('${DAIMON_BROKER_REALM}', 0o700); fs.chownSync('${DAIMON_BROKER_REALM}', 2100, 2100);`,
     "fs.chmodSync('/etc/daimon-engine-broker', 0o555);"
   ].join("\n");
   return [
     "if [ -d /etc/daimon-engine-broker ]; then chmod u+rwx /etc/daimon-engine-broker; fi",
     "if [ -d /run/daimon-engine-broker ]; then chmod u+rwx /run/daimon-engine-broker; fi",
-    "rm -rf /etc/daimon-engine-broker /run/daimon-engine-broker",
+    ...(rootReset === "remove"
+      ? ["rm -rf /etc/daimon-engine-broker /run/daimon-engine-broker"]
+      : [...MOUNT_AWARE_CLEAR_HELPER, "for broker_root in /etc/daimon-engine-broker /run/daimon-engine-broker; do spawnfile_clear_tree \"$broker_root\"; done"]),
     `install -d -o root -g ${DAIMON_BROKER_UID} -m 0731 /run/daimon-engine-broker`,
+    `install -d -o ${DAIMON_BROKER_UID} -g ${DAIMON_BROKER_UID} -m 0700 ${brokerTmpdir}`,
     "node <<'SPAWNFILE_DAIMON_BROKER_PROVISION'",
     program,
     "SPAWNFILE_DAIMON_BROKER_PROVISION"

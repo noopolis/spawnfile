@@ -118,4 +118,14 @@ describe("runImagePreflight", () => {
       })
     ).not.toThrow();
   });
+
+  it("treats Daimon-owned grok auth as satisfied by the runtime's own credential slot", () => {
+    const base = importReport();
+    const report = {
+      ...base,
+      model_auth_methods: { xai: "grok" as const },
+      runtime_instances: base.runtime_instances.map((instance) => ({ ...instance, model_auth_methods: { xai: "grok" as const }, runtime: "daimon" }))
+    };
+    expect(() => runImagePreflight({ authValues: { DIST_REQUIRED_TOKEN: "y" }, report })).not.toThrow();
+  });
 });

@@ -111,6 +111,42 @@ export const importCodexAuth = async (
   return profile;
 };
 
+/**
+ * Imports a **dedicated** Grok login into a profile.
+ *
+ * Unlike Codex, the source is always explicit: training rotates the credential
+ * it is given, so defaulting to `~/.grok` would let a routine training run
+ * invalidate the developer's own desktop session, and the refreshed token
+ * would land on container tmpfs rather than back in `~/.grok` (D2). The
+ * desktop home is refused outright, by resolved path and through `GROK_HOME`.
+ */
+export const importGrokAuth = async (
+  profileName: string,
+  sourceDirectory: string | undefined
+) => {
+  if (!sourceDirectory) {
+    throw new SpawnfileError(
+      "validation_error",
+      "Grok import requires --from <directory> holding a dedicated training login; training never uses the desktop ~/.grok"
+    );
+  }
+  const resolvedSource = path.resolve(sourceDirectory);
+  const desktop = path.resolve(process.env.GROK_HOME ?? path.join(os.homedir(), ".grok"));
+  if (resolvedSource === desktop || resolvedSource === path.join(os.homedir(), ".grok")) {
+    throw new SpawnfileError(
+      "validation_error",
+      `Refusing the desktop Grok home ${resolvedSource}; a training run rotates the credential it imports`
+    );
+  }
+  const authFilePath = path.join(resolvedSource, "auth.json");
+  if (!(await fileExists(authFilePath))) {
+    throw new SpawnfileError("validation_error", `Grok auth file does not exist: ${authFilePath}`);
+  }
+  const { directory, profile } = await registerImportedAuth(profileName, "grok");
+  await writePrivateUtf8File(path.join(directory, "auth.json"), await readUtf8File(authFilePath));
+  return profile;
+};
+
 export const importClaudeCodeAuth = async (
   profileName: string,
   sourceDirectory?: string,

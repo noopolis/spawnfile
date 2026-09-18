@@ -139,10 +139,14 @@ RUN test -n "${GROK_CLI_VERSION}" \
   && test -x ${RUNTIME_ROOT}/node_modules/@openai/codex/bin/codex.js \
   && test -f ${RUNTIME_ROOT}/node_modules/@noopolis/daimon/dist/runtime/cli.js \
   && case "${TARGETARCH}" in \
-       amd64) broker_arch=x64; broker_sha=e3fe2738fc8a979861085b4003bf2d5d7c284874897cb6ec2e2e2383211768bd ;; \
-       arm64) broker_arch=arm64; broker_sha=ad44e02c38e6a3207ac4a3d5fd98b6d2e55341ce42dfd2f07204bbe54a7a653d ;; \
+       amd64) broker_arch=x64 ;; \
+       arm64) broker_arch=arm64 ;; \
        *) echo "Unsupported Daimon engine-broker architecture: ${TARGETARCH}" >&2; exit 1 ;; \
      esac \
+  && package_manifest=${RUNTIME_ROOT}/node_modules/@noopolis/daimon/dist/runtime/contract-manifest.json \
+  && test "$(sha256sum "${package_manifest}" | awk '{print "sha256:" $1}')" = "${DAIMON_MANIFEST_SHA256}" \
+  && broker_sha="$(node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).grokEngineBroker; const v=m?.artifacts?.[process.argv[2]+"Sha256"]; if(typeof v!=="string"||!/^[a-f0-9]{64}$/.test(v))process.exit(1); process.stdout.write(v)' "${package_manifest}" "${broker_arch}")" \
+  && node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).grokEngineBroker, a=m?.grokCliArtifacts?.[process.argv[2]]; if(!a||m.grokCliVersion!==process.argv[3]||a.url!==process.argv[4]||a.sha256!==process.argv[5].replace(/^sha256:/,"")){console.error("Grok CLI pin does not match the Daimon contract manifest ("+(m?.grokCliVersion)+")");process.exit(1)}' "${package_manifest}" "${broker_arch}" "${GROK_CLI_VERSION}" "${GROK_CLI_URL}" "${GROK_CLI_SHA256}" \
   && broker_source=${RUNTIME_ROOT}/node_modules/@noopolis/daimon/dist/runtime/native/daimon-engine-broker \
   && test -x "${broker_source}" \
   && test "$(sha256sum "${broker_source}" | awk '{print $1}')" = "${broker_sha}" \

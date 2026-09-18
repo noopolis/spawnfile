@@ -1,0 +1,98 @@
+ARG NATIVE_IMAGE
+ARG PYTHON_IMAGE
+FROM ${PYTHON_IMAGE} AS python
+FROM ${NATIVE_IMAGE} AS training
+
+# Both parents must use the same architecture and Debian release.
+COPY --from=python /usr/local /opt/python
+COPY --from=python /usr/lib/*-linux-gnu/libsqlite3.so.0* /opt/python/lib/
+# The bridge intentionally clears ambient environment variables. Register native
+# libraries in the image so Python extensions also load in that clean process.
+RUN echo /opt/python/lib > /etc/ld.so.conf.d/training-python.conf && ldconfig
+
+# The broker-capable container runs on a read-only root, so the fixed Daimon
+# identities are baked here instead of being created by the entrypoint the way
+# the production organization image creates them. It depends on nothing from the
+# build context, so it sits first: it is the least frequently changing layer.
+RUN for fixed_uid in 2000 2100 2200; do \
+      groupadd -K GID_MIN=1 --gid "$fixed_uid" "daimon-$fixed_uid" \
+   && useradd -K UID_MIN=1 --no-create-home --no-log-init --uid "$fixed_uid" --gid "$fixed_uid" \
+        --home-dir /nonexistent --shell /usr/sbin/nologin "daimon-$fixed_uid"; \
+    done
+
+# The sealed train and test datasets are bind-mounted UNDER /run/training/inputs, so this directory is
+# the ancestor every read of them must traverse, and it is the only inode in that chain the image owns.
+# Root-owned with no world bits, on the read-only root: uid 2200 is in neither the owner nor the group
+# class, so it loses search permission; a `unshare --map-root-user` namespace maps only uid 2200, so
+# CAP_DAC_OVERRIDE there cannot override an inode owned by real uid 0; and a fresh bind of the parent
+# re-exposes this same directory rather than the bytes under it. Nothing at runtime can widen it,
+# because the container root is read-only — the slot provisioning asserts the mode and refuses otherwise.
+RUN mkdir -p /run/training/inputs /run/training/output \
+ && chown 0:0 /run/training /run/training/output && chmod 0755 /run/training /run/training/output \
+ && chown 0:2000 /run/training/inputs && chmod 0750 /run/training/inputs
+
+# Layers run from least to most frequently changing: locked dependencies, the
+# DSPy venv, bridge source, pinned executables, then distributions. Staged context
+# modes are already `a+rX`-closed (train/train-broker 0555), so late COPY layers need no RUN.
+COPY claude/package.json claude/package-lock.json /opt/training/claude/
+RUN cd /opt/training/claude && npm ci --omit=dev
+
+WORKDIR /opt/training/paideia
+COPY paideia/package.json paideia/package-lock.json ./
+RUN npm ci --omit=dev --omit=peer --ignore-scripts \
+ && mkdir -p node_modules/@noopolis \
+ && ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon node_modules/@noopolis/daimon
+
+WORKDIR /opt/training/spawnfile
+COPY spawnfile/package.json spawnfile/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
+
+WORKDIR /opt/training/compiler
+COPY compiler/package.json compiler/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
+
+COPY bridge/requirements.lock /opt/training/paideia/bridges/dspy/requirements.lock
+RUN /opt/python/bin/python3 -m venv /opt/training/paideia/bridges/dspy/.venv \
+ && /opt/training/paideia/bridges/dspy/.venv/bin/pip install --no-cache-dir -r /opt/training/paideia/bridges/dspy/requirements.lock \
+ && /opt/training/paideia/bridges/dspy/.venv/bin/pip install --no-cache-dir setuptools==80.9.0
+
+# Exactly `chmod -R a+rX /opt/training`, but only entries that need a change are
+# touched, so unchanged lower-layer files are never copied up into a new layer.
+# This layer also puts the native parent's own pinned Grok and engine broker at the two fixed paths
+# `GROK_ENGINE_BROKER` names, exactly as a generated organization image does (`src/runtime/container.ts`).
+# No second build is introduced: both are installed from the parent's runtime install, and the slot
+# provisioning and the slot supervisor both refuse an executable that is not a manifest-pinned one.
+RUN find /opt/training \( \( -type d ! -perm -0555 \) -o \( ! -type d ! -type l \( ! -perm -0444 -o \( \( -perm -0100 -o -perm -0010 -o -perm -0001 \) ! -perm -0111 \) \) \) \) -exec chmod a+rX {} + \
+ && mkdir -m 0755 /opt/training/bin /opt/training/integration \
+ && mkdir -p /opt/daimon/bin \
+ && install -o root -g root -m 0555 /opt/spawnfile/runtime-installs/daimon/bin/grok /usr/local/bin/grok \
+ && install -o root -g root -m 0555 /opt/spawnfile/runtime-installs/daimon/bin/daimon-engine-broker /opt/daimon/bin/daimon-engine-broker \
+ && ln -s /opt/training/claude/node_modules/.bin/claude /opt/training/bin/claude \
+ && ln -s /opt/training/paideia/dist/src/cli/main.js /opt/training/bin/paideia \
+ && ln -s /opt/training/spawnfile/dist/cli/index.js /opt/training/bin/spawnfile \
+ && mkdir -p /opt/training/integration/node_modules/@noopolis \
+ && ln -s /opt/training/paideia /opt/training/integration/node_modules/@noopolis/paideia \
+ && ln -s /opt/training/spawnfile /opt/training/integration/node_modules/spawnfile \
+ && ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon /opt/training/integration/node_modules/@noopolis/daimon \
+ && mkdir -p /opt/training/spawnfile/node_modules/@noopolis \
+ && ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon /opt/training/spawnfile/node_modules/@noopolis/daimon
+
+COPY bridge /opt/training/paideia/bridges/dspy
+RUN /opt/training/paideia/bridges/dspy/.venv/bin/pip install --no-deps --no-build-isolation -e /opt/training/paideia/bridges/dspy \
+ && find /opt/training/paideia/bridges/dspy \( \( -type d ! -perm -0555 \) -o \( ! -type d ! -type l \( ! -perm -0444 -o \( \( -perm -0100 -o -perm -0010 -o -perm -0001 \) ! -perm -0111 \) \) \) \) -exec chmod a+rX {} +
+
+# No Grok binary: `spawnfile.training-container.v3` runs the native parent's pinned
+# /usr/local/bin/grok through the broker, so a second copy could only be an unattested build.
+COPY train /opt/training/bin/train
+COPY train-broker /opt/training/bin/train-broker
+COPY compiler/runtimes.yaml compiler/moltnet-releases.json /opt/training/compiler/
+COPY spawnfile/runtimes.yaml spawnfile/moltnet-releases.json /opt/training/spawnfile/
+COPY compiler/dist /opt/training/compiler/dist
+COPY integration /opt/training/integration
+COPY bootstrap /opt/training/bootstrap
+COPY paideia/dist /opt/training/paideia/dist
+COPY spawnfile/dist /opt/training/spawnfile/dist
+ENV PATH=/opt/training/bin:/opt/training/paideia/bridges/dspy/.venv/bin:/opt/spawnfile/runtime-installs/daimon/bin:/usr/local/bin:/usr/bin:/bin
+ENV HOME=/home/training
+WORKDIR /work
+ENTRYPOINT ["/opt/training/bin/train"]
