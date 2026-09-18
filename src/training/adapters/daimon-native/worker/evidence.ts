@@ -287,7 +287,7 @@ function sealDiagnostic(value: unknown): NativeTurnSeal['diagnostic'] {
 /** Names, counts and elapsed milliseconds, internally consistent: never more answered than started. */
 function sealMcp(value: unknown): NonNullable<NativeTurnSeal['mcp']> {
   const row = object(value);
-  if (Object.keys(row).length !== 4 || !tokens(row, ['started', 'answered', 'undecoded']) || !Array.isArray(row.outstanding) ||
+  if (Object.keys(row).length !== 4 + (row.tunnels === undefined ? 0 : 1) || !tokens(row, ['started', 'answered', 'undecoded']) || !Array.isArray(row.outstanding) ||
       row.outstanding.length > 16 || Number(row.answered) > Number(row.started)) throw new Error('Native Grok seal MCP observation schema mismatch');
   const outstanding = row.outstanding.map(entry => {
     const call = object(entry);
@@ -296,7 +296,33 @@ function sealMcp(value: unknown): NonNullable<NativeTurnSeal['mcp']> {
     return { name: call.name, outstanding_ms: Number(call.outstanding_ms) };
   });
   if (outstanding.length > Number(row.started) - Number(row.answered)) throw new Error('Native Grok seal MCP observation schema mismatch');
-  return { started: Number(row.started), answered: Number(row.answered), undecoded: Number(row.undecoded), outstanding };
+  const tunnels = row.tunnels === undefined ? undefined : sealTunnels(row.tunnels);
+  return { started: Number(row.started), answered: Number(row.answered), undecoded: Number(row.undecoded), outstanding, ...(tunnels === undefined ? {} : { tunnels }) };
+}
+
+/**
+ * The session's GET SSE tunnels, at this side's strictness.
+ *
+ * A worker parked reading that stream wrote nothing anywhere until the broker
+ * observed it, so this is the one member that tells "idle on an open tunnel"
+ * from "idle having closed it" — and `delivered` tells a tunnel actively
+ * carrying frames from one held open having received nothing. Counts and
+ * elapsed milliseconds only, and internally consistent: nothing closes before
+ * it opens, nothing delivers without opening, and no more is reported open
+ * than `opened - closed`.
+ */
+function sealTunnels(value: unknown): NonNullable<NonNullable<NativeTurnSeal['mcp']>['tunnels']> {
+  const row = object(value);
+  if (Object.keys(row).length !== 4 || !tokens(row, ['opened', 'closed', 'delivered']) || !Array.isArray(row.open) ||
+      row.open.length > 8 || Number(row.closed) > Number(row.opened) || Number(row.delivered) > Number(row.opened) ||
+      row.open.length > Number(row.opened) - Number(row.closed)) throw new Error('Native Grok seal MCP tunnel schema mismatch');
+  const open = row.open.map(entry => {
+    const tunnel = object(entry);
+    if (Object.keys(tunnel).length !== 2 || typeof tunnel.delivered !== 'boolean' ||
+        !tokens(tunnel, ['open_ms'])) throw new Error('Native Grok seal MCP tunnel schema mismatch');
+    return { open_ms: Number(tunnel.open_ms), delivered: tunnel.delivered };
+  });
+  return { opened: Number(row.opened), closed: Number(row.closed), delivered: Number(row.delivered), open };
 }
 
 /**

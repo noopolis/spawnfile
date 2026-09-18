@@ -69,7 +69,8 @@ test('a broker turn seal names the tool call a hung turn was blocked on, and nev
     const events: Observation[] = []; fixture.input.onObservation = event => { events.push(event); };
     const observer = createNativeObserver(fixture.input, fixture.input.runtimeHomePath, fixture.launch.agent.id, 'grok');
     const read = (rows: BrokerSealRecord[]): BrokerSealLedger => ({ schema: BROKER_SEAL_SCHEMA, outcome: 'read', read: rows.length,
-      outstanding: rows.reduce((total, row) => total + (row.mcp?.outstanding.length ?? 0), 0), rows });
+      outstanding: rows.reduce((total, row) => total + (row.mcp?.outstanding.length ?? 0), 0),
+      openTunnels: rows.reduce((total, row) => total + (row.mcp?.tunnels?.open.length ?? 0), 0), rows });
 
     await observer.brokerSeal('wake', read([seal({ mcp: { started: 1, answered: 0, undecoded: 0, outstanding: [{ name: 'use_tool', outstandingMs: 430112 }] } })]));
     assert.equal(events[0]?.type, 'diagnostic');
@@ -88,6 +89,25 @@ test('a broker turn seal names the tool call a hung turn was blocked on, and nev
 
     await observer.brokerSeal('wake', read([]));
     assert.equal(events[4]?.text, 'Broker turn seal: unknown, no MCP observation');
+
+    /*
+     * The GET tunnel, named in the same sentence. A turn idle with its tunnel
+     * still open reads differently from one that closed it, and a row that
+     * never observed tunnels reports nothing rather than a zero nobody
+     * measured.
+     *
+     * Mutation: drop the `get` clause and the first two go red; render it for
+     * a row with no `tunnels` member and the third does.
+     */
+    const quiet = { started: 1, answered: 1, undecoded: 0, outstanding: [] };
+    await observer.brokerSeal('wake', read([seal({ mcp: { ...quiet, tunnels: { opened: 1, closed: 0, delivered: 0, open: [{ openMs: 428004, delivered: false }] } } })]));
+    assert.equal(events[5]?.text, 'Broker turn seal: failed/cancelled, no outstanding MCP call, GET tunnel open 428004ms/silent');
+
+    await observer.brokerSeal('wake', read([seal({ mcp: { ...quiet, tunnels: { opened: 1, closed: 1, delivered: 1, open: [] } } })]));
+    assert.equal(events[6]?.text, 'Broker turn seal: failed/cancelled, no outstanding MCP call, GET tunnels 1/1 closed');
+
+    await observer.brokerSeal('wake', read([seal({ mcp: quiet })]));
+    assert.equal(events[7]?.text, 'Broker turn seal: failed/cancelled, no outstanding MCP call');
 
     // It is a diagnostic throughout: never output, a captured call or a judge input.
     assert.ok(events.every(event => event.type === 'diagnostic'));

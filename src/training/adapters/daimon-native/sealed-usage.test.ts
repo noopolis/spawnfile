@@ -272,6 +272,45 @@ describe('readSealedBrokerSeal', () => {
     expect(await readSealedBrokerSeal(launch, once)).toBeUndefined();
   });
 
+  /**
+   * The other channel a worker can be idle on.
+   *
+   * A brokered turn closed every provider request, answered every tool call,
+   * and still sat until its deadline. The session's standalone GET SSE tunnel
+   * is the one thing the facade relays for the whole session, so a turn sealed
+   * with one still open — and how long it had been open, and whether the mount
+   * had ever pushed a byte through it — is what separates a worker parked on
+   * that stream from a worker doing nothing.
+   *
+   * Mutation: drop the `tunnels` branch from `sealRecord` and the first
+   * expectation goes red; emit it unconditionally (zeros for a row that never
+   * carried one) and the third does.
+   */
+  it('publishes a GET tunnel left open with its age, a closed one, and never invents either', async () => {
+    const { launch, ledger } = await grok();
+    const mcp = (tunnels: unknown): Record<string, unknown> => ({ mcp: { started: 1, answered: 1, undecoded: 0, outstanding: [], tunnels } });
+
+    await write(sealFile(ledger), sealRow(mcp({ opened: 1, closed: 0, delivered: 0, open: [{ open_ms: 428004, delivered: false }] })));
+    const parked = await readSealedBrokerSeal(launch, once);
+    if (parked?.outcome !== 'read') throw new Error('unreachable');
+    expect(parked.rows[0]!.mcp?.tunnels).toEqual({ opened: 1, closed: 0, delivered: 0, open: [{ openMs: 428004, delivered: false }] });
+    expect(parked.openTunnels).toBe(1);
+
+    // Closed before the seal, having carried frames: measured, and not open.
+    await write(sealFile(ledger), sealRow(mcp({ opened: 1, closed: 1, delivered: 1, open: [] })));
+    const ended = await readSealedBrokerSeal(launch, once);
+    if (ended?.outcome !== 'read') throw new Error('unreachable');
+    expect(ended.rows[0]!.mcp?.tunnels).toEqual({ opened: 1, closed: 1, delivered: 1, open: [] });
+    expect(ended.openTunnels).toBe(0);
+
+    // And the absence: a row sealed before the broker observed that channel.
+    await write(sealFile(ledger), sealRow());
+    const unobserved = await readSealedBrokerSeal(launch, once);
+    if (unobserved?.outcome !== 'read') throw new Error('unreachable');
+    expect('tunnels' in unobserved.rows[0]!.mcp!).toBe(false);
+    expect(unobserved.openTunnels).toBe(0);
+  });
+
   it('publishes nothing for an absent or empty stream, a classification for one it cannot read, and nothing for a launch with no broker', async () => {
     const { launch, ledger, codex } = await grok();
     const file = sealFile(ledger);
@@ -292,7 +331,18 @@ describe('readSealedBrokerSeal', () => {
       { mcp: { started: 0, answered: 1, undecoded: 0, outstanding: [] } },
       { mcp: { started: 1, answered: 0, undecoded: 0, outstanding: [{ name: 'use tool', outstanding_ms: 1 }] } },
       { mcp: { started: 1, answered: 1, undecoded: 0, outstanding: [{ name: 'use_tool', outstanding_ms: 1 }] } },
-      { mcp: { started: 1, answered: 0, undecoded: 0, outstanding: [{ name: 'use_tool' }] } }]) {
+      { mcp: { started: 1, answered: 0, undecoded: 0, outstanding: [{ name: 'use_tool' }] } },
+      // The tunnel member, at the same strictness: nothing closes before it
+      // opens, nothing delivers without opening, no more is open than
+      // `opened - closed`, and `delivered` is a boolean, not a count.
+      { mcp: { started: 0, answered: 0, undecoded: 0, outstanding: [], tunnels: { opened: 1, closed: 2, delivered: 0, open: [] } } },
+      { mcp: { started: 0, answered: 0, undecoded: 0, outstanding: [], tunnels: { opened: 1, closed: 0, delivered: 2, open: [] } } },
+      { mcp: { started: 0, answered: 0, undecoded: 0, outstanding: [], tunnels: { opened: 1, closed: 1, delivered: 0, open: [{ open_ms: 1, delivered: false }] } } },
+      { mcp: { started: 0, answered: 0, undecoded: 0, outstanding: [], tunnels: { opened: 1, closed: 0, delivered: 0, open: [{ open_ms: -1, delivered: false }] } } },
+      { mcp: { started: 0, answered: 0, undecoded: 0, outstanding: [], tunnels: { opened: 1, closed: 0, delivered: 0, open: [{ open_ms: 1, delivered: 1 }] } } },
+      { mcp: { started: 0, answered: 0, undecoded: 0, outstanding: [], tunnels: { opened: 1, closed: 0, delivered: 0, open: [{ open_ms: 1, delivered: false, session_id: 'mcp-0' }] } } },
+      { mcp: { started: 0, answered: 0, undecoded: 0, outstanding: [], tunnels: { opened: 9, closed: 0, delivered: 0, open: Array.from({ length: 9 }, () => ({ open_ms: 1, delivered: false })) } } },
+      { mcp: { started: 0, answered: 0, undecoded: 0, outstanding: [], tunnels: { opened: 1, closed: 0, open: [] } } }]) {
       await write(file, sealRow(bad));
       expect(await readSealedBrokerSeal(launch, once), JSON.stringify(bad)).toEqual({ schema: BROKER_SEAL_SCHEMA, outcome: 'unreadable', failure: 'schema' });
     }

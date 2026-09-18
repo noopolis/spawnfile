@@ -85,7 +85,16 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
           const blocked = ledger.rows.flatMap(row => row.mcp?.outstanding ?? []).map(call => `${call.name}@${call.outstandingMs}ms`);
           const observed = ledger.rows.some(row => row.mcp !== undefined);
           const mcp = blocked.length ? `blocked on ${blocked.join(', ')}` : observed ? 'no outstanding MCP call' : 'no MCP observation';
-          return `Broker turn seal: ${last?.outcome ?? 'unknown'}${last?.code ? `/${last.code}` : ''}, ${mcp}`;
+          // The other channel the worker can be idle on: a GET SSE tunnel still
+          // open when the turn died, with its age and whether the mount ever
+          // pushed through it. A row that never observed tunnels says nothing
+          // here rather than reporting a zero nobody measured.
+          const tunnels = ledger.rows.flatMap(row => row.mcp?.tunnels === undefined ? [] : [row.mcp.tunnels]);
+          const open = tunnels.flatMap(tunnel => tunnel.open).map(tunnel => `${tunnel.openMs}ms/${tunnel.delivered ? 'delivered' : 'silent'}`);
+          const get = !tunnels.length ? '' : open.length
+            ? `, GET tunnel open ${open.join(', ')}`
+            : `, GET tunnels ${tunnels.reduce((total, tunnel) => total + tunnel.closed, 0)}/${tunnels.reduce((total, tunnel) => total + tunnel.opened, 0)} closed`;
+          return `Broker turn seal: ${last?.outcome ?? 'unknown'}${last?.code ? `/${last.code}` : ''}, ${mcp}${get}`;
         })();
       try { await emit(wakeId, { type: 'diagnostic', text, native: ledger }); } catch { /* never fails an already-failed turn */ }
     },

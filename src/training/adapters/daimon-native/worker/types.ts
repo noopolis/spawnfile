@@ -130,7 +130,15 @@ export interface NativeTurnSeal extends Record<string, unknown> {
    * absence is a different statement from `started: 0`, and neither may be
    * read as the other.
    */
-  mcp?: { started: number; answered: number; undecoded: number; outstanding: { name: string; outstanding_ms: number }[] };
+  mcp?: {
+    started: number; answered: number; undecoded: number; outstanding: { name: string; outstanding_ms: number }[];
+    /**
+     * The session's standalone GET SSE tunnels. Present only when the broker
+     * observed that channel at all: a row sealed before the instrument existed
+     * carries no `tunnels` member, which is not `opened: 0`.
+     */
+    tunnels?: { opened: number; closed: number; delivered: number; open: { open_ms: number; delivered: boolean }[] };
+  };
 }
 export interface NativeEvidence {
   traces: NativeTrace[];

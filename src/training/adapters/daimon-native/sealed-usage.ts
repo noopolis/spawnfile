@@ -198,6 +198,17 @@ export const BROKER_SEAL_SCHEMA = 'paideia.daimon-native.broker-seal.v1';
 /** One outstanding MCP tool call: a name and how long it had been unanswered when the turn died. */
 export interface BrokerSealOutstandingCall { name: string; outstandingMs: number }
 
+/** One GET SSE tunnel still open when the turn died: its age, and whether the mount ever pushed through it. */
+export interface BrokerSealOpenTunnel { openMs: number; delivered: boolean }
+/**
+ * The session's standalone GET tunnels. A worker parked reading one is idle in
+ * exactly the way every other artifact renders as "doing nothing", so this is
+ * what separates a turn that died with its tunnel open from one that closed it
+ * first — and `delivered` separates a tunnel carrying frames from one held open
+ * in silence.
+ */
+export interface BrokerSealTunnels { opened: number; closed: number; delivered: number; open: BrokerSealOpenTunnel[] }
+
 /**
  * One sealed terminal turn, as an allow-list projection.
  *
@@ -227,11 +238,11 @@ export interface BrokerSealRecord {
    * "never observed"; `started: 0` is "observed, and it called nothing". The
    * two are different answers and this record never collapses them.
    */
-  mcp?: { started: number; answered: number; undecoded: number; outstanding: BrokerSealOutstandingCall[] };
+  mcp?: { started: number; answered: number; undecoded: number; outstanding: BrokerSealOutstandingCall[]; tunnels?: BrokerSealTunnels };
 }
 
 export type BrokerSealLedger =
-  | { schema: typeof BROKER_SEAL_SCHEMA; outcome: 'read'; read: number; outstanding: number; rows: BrokerSealRecord[] }
+  | { schema: typeof BROKER_SEAL_SCHEMA; outcome: 'read'; read: number; outstanding: number; openTunnels: number; rows: BrokerSealRecord[] }
   | { schema: typeof BROKER_SEAL_SCHEMA; outcome: 'unreadable'; failure: BrokerRequestFailure };
 
 /** Published seal rows per failed turn; a slot ledger is wiped per recycle, so this is a ceiling, not a window. */
@@ -250,6 +261,13 @@ const sealRecord = (row: NativeTurnSeal): BrokerSealRecord => ({
     mcp: {
       started: row.mcp.started, answered: row.mcp.answered, undecoded: row.mcp.undecoded,
       outstanding: row.mcp.outstanding.map(call => ({ name: call.name, outstandingMs: call.outstanding_ms })),
+      // Absent when the row predates the tunnel observation: not `opened: 0`.
+      ...(row.mcp.tunnels === undefined ? {} : {
+        tunnels: {
+          opened: row.mcp.tunnels.opened, closed: row.mcp.tunnels.closed, delivered: row.mcp.tunnels.delivered,
+          open: row.mcp.tunnels.open.map(tunnel => ({ openMs: tunnel.open_ms, delivered: tunnel.delivered })),
+        },
+      }),
     },
   }),
 });
@@ -292,7 +310,8 @@ export async function readSealedBrokerSeal(launch: NativeLaunch, options: Sealed
       if (!rows.length) continue;
       const records = rows.slice(-publishedSeals).map(sealRecord);
       return { schema: BROKER_SEAL_SCHEMA, outcome: 'read', read: rows.length,
-        outstanding: records.reduce((total, row) => total + (row.mcp?.outstanding.length ?? 0), 0), rows: records };
+        outstanding: records.reduce((total, row) => total + (row.mcp?.outstanding.length ?? 0), 0),
+        openTunnels: records.reduce((total, row) => total + (row.mcp?.tunnels?.open.length ?? 0), 0), rows: records };
     } catch (error) { return { schema: BROKER_SEAL_SCHEMA, outcome: 'unreadable', failure: classify(error) }; }
   }
   return undefined;
