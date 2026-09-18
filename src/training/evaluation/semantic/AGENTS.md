@@ -43,6 +43,18 @@ Owns fixed rubric prompts, typed judgments, evidence and judge calibration.
 - Protocol/evidence/control changes invalidate exact cache identities. Current
   llm-rubric descriptor is version 3; judgment cache format is v3.
 
+Every `error` a judge produces names its own cause. `failure.ts` owns the closed
+`JudgeFailureCause` vocabulary and is the only classifier; `rubric.ts` reaches
+`error` through one helper that requires a cause, so no branch can publish a bare
+`error` again. The cause is decided by typed discriminators only — the provider's
+`kind`, its closed `detail` refinement, a reported numeric `status`, or the
+judge's own `JudgeEvaluationError` — never by reading an error message. A
+published `JudgeFailure` carries the cause, the judge, the requested model and the
+provider/model/route that actually answered, so an unrequested judge route is
+visible rather than silent. It never carries a prompt, subject text, a response
+body, a reason string, a bearer or a grant token. An absent input stays `unknown`
+with no failure at all, and a named failure keeps its weight in the denominator.
+
 Provider schema rejections retain attested response text and diagnostic codes in
 protected judge.attempt events only. Await and deduplicate routed failure audits
 before fallback; observer failure stops further model calls. Public JudgeCall,
