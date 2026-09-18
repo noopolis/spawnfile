@@ -32,25 +32,27 @@ A closed execution leaves its delivery in one of three dispositions, and the thi
 is not the agent's. `completed` is the work done; `accepted` **deferred** is the
 agent declining it, including the unmarked finished wake Daimon records as
 deferred. `accepted` WITHOUT that marker, with the execution id retained, is
-written only where a stopping runtime — or a wake that came back stopped — returns
-the delivery to the inbox for restart, so it evidences nothing about the subject
-and must never borrow the deferral's scored outcome. It reports as its own failure, naming *which* runtime
-reclaimed it from the availability this process already holds: "while the runtime
-kept running" or "by a stopping runtime". That distinction is the whole diagnostic
-value. A live trial produced the first and was investigated as the second for a
-full round — as Paideia stopping the host too eagerly and racing the dispatcher —
-which it cannot be: `closeNative` runs strictly after `/trial/run` returns, and the
-runtime read `running` at the moment the execution closed. Reproduced in process
-against the real control host: an unmarked finished wake settles `deferred: true`
-and scores, and only a wake RESULT of `stopped` reproduces the live
-`accepted`/undisposed record while availability still reads `running`. Do not
-reorder Paideia's stop to chase it. Daimon now records that wake's own code on the
-reclaimed receipt — `active_wake_aborted`, `queued_wake_stopped`, `host_stopping`,
-`host_stopped` or `engine_failed` — and this message passes it through from a closed
-set, reporting `unrecorded` for an absent or unrecognised one. That is a different
-statement, not a missing one: a dispatcher merely halted has no wake outcome to
-name, so `unrecorded` says to look at the halt rather than at a refused wake, and a
-value outside the set is never forwarded as though Daimon had stated it.
+written only where a wake came back `stopped` and the runtime reclaimed the
+delivery for restart, so it evidences nothing about the subject and must never
+borrow the deferral's scored outcome. It reports as its own failure, naming the
+wake outcome Daimon recorded on the reclaimed receipt — `active_wake_aborted`,
+`queued_wake_stopped`, `host_stopping`, `host_stopped` or `engine_failed` — passed
+through from a closed set, with `unrecorded` for an absent or unrecognised one.
+That is a different statement, not a missing one, and a value outside the set is
+never forwarded as though Daimon had stated it.
+
+It names nothing else, and that is the correction. The message used to say *which*
+runtime reclaimed it — "while the runtime kept running" or "by a stopping runtime"
+— read off `availability.state`. That state is the wake fuse's verdict
+(running/paused/operator-stopped); it is read after the execution closed, on a
+different clock from the dispatcher's write, and it never reflected the
+dispatcher's own halting latch at all. So the distinction was not evidence, it was
+an inference dressed as one, and it sent a whole round of investigation at
+Paideia's stop ordering. The claim is dropped rather than re-derived: the wake's
+own code is what this process witnessed, and it is the whole of what the sentence
+may assert. Daimon no longer keys the reclaim on its dispatcher's `stopping` latch
+either, so a completed wake under a halting host is a scorable deferral and never
+reaches this path.
 
 Grok usage comes from the broker's per-slot ledger, never this process: rows need
 `total = input + cache_read + cache_write + output`, the declared model (or its

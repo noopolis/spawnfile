@@ -214,10 +214,11 @@ it('names a delivery the runtime reclaimed undisposed, after a single wake with 
   expect(deliveries).toBe(0);
   expect(turn.status).toBe('failed');
   expect(turn.blocked).toBeUndefined();
-  // The live discriminator: the runtime was still RUNNING when it reclaimed the
-  // delivery, so this was never a shutdown race Paideia could reorder away.
-  // The wake outcome Daimon recorded travels all the way to the published turn.
-  expect(turn.error).toContain('reclaimed undisposed while the runtime kept running (active_wake_aborted)');
+  // The wake outcome Daimon recorded is the evidence, and it travels all the way to
+  // the published turn. Nothing claims which runtime did the reclaiming: that read
+  // was never witnessed by this process.
+  expect(turn.error).toContain('reclaimed undisposed (active_wake_aborted)');
+  expect(turn.error).not.toContain('runtime kept running');
   // Closure is PROVEN: the child exited, the terminal frame bound and `executions`
   // is empty, which is the whole of "no worker is still spending". An undisposed
   // delivery is a scoring fact and was demoting a scorable trial to an
@@ -231,7 +232,7 @@ it('names a delivery the runtime reclaimed undisposed, after a single wake with 
   // The turn's own sentence already explains the trial, so it is not prefixed with a
   // closure cause that would read as the primary fault; the machine-readable name on
   // the receipt is what an operator correlates, and the two must agree.
-  expect(report.error).toContain('reclaimed undisposed while the runtime kept running (active_wake_aborted)');
+  expect(report.error).toContain('reclaimed undisposed (active_wake_aborted)');
   expect(report.execution).toBe('failed');
   expect(() => trialScore(report)).toThrow('failed in infrastructure');
 });

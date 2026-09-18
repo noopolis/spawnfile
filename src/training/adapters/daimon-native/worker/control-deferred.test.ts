@@ -67,14 +67,22 @@ for (const nativeError of [undefined, 'Native engine unavailable']) test(`deferr
  *
  * Daimon's dispatcher records an unmarked finished wake as `accepted` **deferred**;
  * `accepted` WITHOUT that marker, with the execution id retained, is written only
- * where a stopping runtime (or a wake that came back stopped) returns the delivery
- * to the inbox for restart. So it is not the agent declining the work and carries
- * no evidence about the subject at all — it is the machine ending the trial, and it
- * must say so rather than reporting an unexplained delivery state.
+ * where a wake came back `stopped` and the runtime reclaimed the delivery for
+ * restart. So it is not the agent declining the work and carries no evidence about
+ * the subject at all — it is the machine ending the trial, and it must say so
+ * rather than reporting an unexplained delivery state.
+ *
+ * What it must NOT say is which runtime did it. The message used to read "while the
+ * runtime kept running" or "by a stopping runtime" off `availability.state`, and
+ * that state is the fuse's (running/paused/operator-stopped), read after the fact
+ * and on a different clock from the dispatcher's write: it cannot witness the
+ * dispatcher's own lifecycle at the moment the record was written. The sentence is
+ * the same whatever availability happened to say, and this loop is the guard —
+ * the two runtime states must produce byte-identical text.
  */
 for (const [runtimeState, code, named] of [['running', 'active_wake_aborted', 'active_wake_aborted'],
   ['running', undefined, 'unrecorded'], ['running', 'invented', 'unrecorded'], ['stopped', 'host_stopping', 'host_stopping']] as const)
-  test(`a delivery reclaimed undisposed names the runtime and outcome: ${runtimeState}/${String(code)}`, async () => {
+  test(`a delivery reclaimed undisposed names its wake outcome and nothing else: ${runtimeState}/${String(code)}`, async () => {
   const root = await mkdtemp(join(tmpdir(), 'native-undisposed-unit-'));
   try {
     const receipt = { ...receiptFixture(), state: 'accepted' as const, ...(code ? { code } : {}) };
@@ -106,10 +114,8 @@ for (const [runtimeState, code, named] of [['running', 'active_wake_aborted', 'a
     // It never becomes a deferral, so no continuation is ever asked for on its behalf.
     assert.equal(result.blocked, undefined);
     assert.equal(result.status, 'failed');
-    // Which runtime reclaimed it decides where the fix lives: a runtime that was
-    // still running points at the wake result, not at a shutdown race.
-    assert.equal(result.error, runtimeState === 'running'
-      ? `Native execution completed; delivery reclaimed undisposed while the runtime kept running (${named})`
-      : `Native execution completed; delivery reclaimed undisposed by a stopping runtime (${named})`);
+    // The wake outcome is the evidence this process actually holds, and it is the
+    // whole of what the message may claim. Availability never enters it.
+    assert.equal(result.error, `Native execution completed; delivery reclaimed undisposed (${named})`);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

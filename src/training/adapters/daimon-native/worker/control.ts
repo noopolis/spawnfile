@@ -26,26 +26,21 @@ function deferredAfterCompletion(receipt: NativeReceipt, trace: NativeTrace | un
   return receipt.state === 'accepted' && receipt.deferred === true && trace?.status === 'completed';
 }
 
-export function describeNativeFailure(receipt: NativeReceipt, trace: NativeTrace | undefined, usage: readonly NativeUsage[] = [],
-  runtimeState?: string): string {
+export function describeNativeFailure(receipt: NativeReceipt, trace: NativeTrace | undefined, usage: readonly NativeUsage[] = []): string {
   if (deferredAfterCompletion(receipt, trace)) return 'Native execution completed; delivery blocked awaiting external input';
   // Daimon records an unmarked finished wake as DEFERRED, so an accepted delivery
   // without that marker is not an agent outcome at all: it is written only where a
-  // stopping runtime, OR a wake that came back stopped, returns the delivery to the
-  // inbox for restart. Which of those two it was decides where the fix lives, and
-  // this process already holds the fact that separates them — the runtime's own
-  // state at the moment the execution closed. A live trial was read as a shutdown
-  // race for a whole investigation because the message named only the first case
-  // while the runtime was demonstrably still running.
+  // wake came back stopped and the runtime reclaimed the delivery for restart.
   if (receipt.state === 'accepted' && !receipt.deferred && trace?.status === 'completed') {
     // Daimon records the wake outcome that reclaimed the delivery when it has one, and
     // nothing when it does not. Pass its closed vocabulary through exactly, or say so:
-    // "unrecorded" is a different statement from any of the named outcomes and the one
-    // that says to look at a halted dispatcher rather than at a refused wake.
+    // "unrecorded" is a different statement from any of the named outcomes. That code
+    // is the only thing this process witnessed about the reclaim, so it is the only
+    // thing the message claims: `availability.state` is the fuse's verdict, read after
+    // the fact and on a different clock from the dispatcher's write, and it cannot say
+    // whether the runtime was halting when the record was written.
     const outcome = RECLAIM_CODES.includes(receipt.code ?? '') ? receipt.code : 'unrecorded';
-    return runtimeState === 'running'
-      ? `Native execution completed; delivery reclaimed undisposed while the runtime kept running (${outcome})`
-      : `Native execution completed; delivery reclaimed undisposed by a stopping runtime (${outcome})`;
+    return `Native execution completed; delivery reclaimed undisposed (${outcome})`;
   }
   const delivery = `${receipt.state}${receipt.deferred ? ' deferred' : ''}`;
   if (trace?.status !== 'failed') return `Native delivery ended ${delivery}`;
@@ -175,7 +170,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
         if (!native.modelContexts.length) throw new Error('Closed native execution omitted model identity evidence');
         if (!failure && deferredAfterCompletion(receipt, trace)) blocked = 'awaiting-external-input';
         if (receipt.state !== 'completed' || trace?.status !== 'completed' || failure) {
-          throw new Error(failure ?? describeNativeFailure(receipt, trace, native.usage, availability.state));
+          throw new Error(failure ?? describeNativeFailure(receipt, trace, native.usage));
         }
         status = 'completed';
       } catch (failure) {
