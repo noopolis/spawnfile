@@ -232,6 +232,9 @@ export const TRAINING_HOST_BIND_DENY_PATHS: readonly string[] = [TRAINING_RUN_RO
  */
 export const TRAINING_SEALED_DENY_PATHS: readonly string[] = [TRAINING_SEALED_INPUTS_ROOT];
 
+/** Spawnfile-owned per-route seal attestation, written by provisioning beside the slot preflight receipt. */
+export const TRAINING_SEALED_INPUTS_ATTESTATION = `${TRAINING_SLOT_ROOT}/sealed-inputs.json`;
+
 /** The image-baked identity of the sealed inputs root, asserted before every slot and never writable at runtime. */
 export const TRAINING_SEALED_INPUTS_IDENTITY = { uid: 0, gid: DAIMON_ORGANIZATION_UID, mode: "750" } as const;
 
