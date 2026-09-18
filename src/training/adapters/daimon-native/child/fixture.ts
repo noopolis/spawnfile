@@ -90,7 +90,13 @@ if(mode==='blocked-no-deferred'||mode==='undisposed'){delete receipt.deferred;de
 terminal.error='Native execution completed; delivery reclaimed undisposed (active_wake_aborted)';settleStop();}
 if(mode==='blocked-failed-trace')terminal.native.traces[0].status='failed';
 if(mode==='blocked-active')terminal.activity.executions=[{agent_id:launch.agent.id,turn_id:id}];
-if(mode==='blocked-wrong-execution')terminal.executionId='foreign';}
+if(mode==='blocked-wrong-execution')terminal.executionId='foreign';
+// The same observed shape — a deferred delivery over a closed trace, on a frame that
+// names an execution nothing answers to — placed on the wakes a continued trial adds.
+// '-unbound-continuation' binds the assignment and loses only its continuations, which
+// is the trial that had an admissible frame and published none; '-unbound' loses every
+// wake, so nothing in it may be selected however many frames it published.
+if(mode==='blocked-always-unbound'||mode==='blocked-always-unbound-continuation'&&input.wakeId!=='task')terminal.executionId='foreign';}
 if(mode==='bad-terminal')terminal.trialId='foreign';
 // A frame whose receipt answers for another trial's delivery, with every other
 // identity on the frame itself matching: the delivery is the only thing that says so.

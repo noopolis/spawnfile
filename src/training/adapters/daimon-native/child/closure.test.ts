@@ -1,66 +1,22 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { createHash } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import { createDaimonNativeAdapter } from '../index.js';
 import { childFixture } from './fixture.js';
+import { filing, nativeDeferredTrial } from './deferred-trial.js';
 import { startOwnedChild } from './lifecycle.js';
-import { parseDatasetYaml, resolveDataset } from '../../../cases/index.js';
 import { createEvaluationRegistry } from '../../../evaluation/index.js';
-import { runTrial, trialScore, type TrialOptions, type TrialReport } from '../../../experiments/index.js';
-import type { SubjectAdapter, SubjectSession, SubjectTurnResult } from '../../../contracts/execution.js';
+import { runTrial, trialScore } from '../../../experiments/index.js';
+import type { SubjectAdapter, SubjectSession } from '../../../contracts/execution.js';
 
 vi.mock('./sandbox.js', () => ({ verifyChildSandbox: vi.fn(async () => undefined) }));
 const roots: string[] = [];
 afterEach(async () => { vi.clearAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
-
-/** One required artifact the filing would produce, so the verdict is exactly the subject's. */
-const filing = () => resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
-id: newsroom
-stages:
-  - id: accepted-article
-    checks:
-      - {id: filed, eval: tool-called, tool: mcp_newsroom_file_article}
-      - {id: body, eval: contains-any, input: 'artifact:accepted-article#/body', values: [Filed]}
-    score:
-      linear: {filed: 0.5, body: 0.5}
-    gate: {all: [{passed: filed}, {passed: body}]}
-records:
-  - id: record
-    group: unique
-    input: {prompt: file the assigned story}
-    outputs: {accepted-article: article.json}
-`)).records[0]!;
-
-/**
- * The real child, the real loopback protocol and the real closure query: the only
- * thing borrowed is the trial's own stimulus, because the worker owns the fresh
- * workspace the launch receipt pins. Every continuation the budget admits defers,
- * so the last one exhausts it — and by then the worker has stopped its own host.
- */
-async function nativeDeferredTrial(mode: string, maxDeliveries = 1,
-  supplied?: () => Promise<null>): Promise<{ report: TrialReport; turn: SubjectTurnResult; deliveries: number }> {
-  const fixture = await childFixture(mode); roots.push(fixture.root);
-  const text = 'Sourced research reply';
-  let asked = 0;
-  const sourced = async () => { const id = `answer-${asked++}`;
-    return { id, text, source: { kind: 'transport', id, sha256: `sha256:${createHash('sha256').update(text).digest('hex')}` } }; };
-  const next = supplied ? async () => { asked++; return supplied(); } : sourced;
-  const native = createDaimonNativeAdapter({ timeoutMs: 20_000, execution: { kind: 'child-process', externalInputs: { maxDeliveries, next } } });
-  const session = await native.start(fixture.input);
-  let turn: SubjectTurnResult | undefined;
-  const adapter: SubjectAdapter = { id: 'daimon-native-child', capabilities: native.capabilities,
-    async start(): Promise<SubjectSession> {
-      return { run: async (value, signal) => { turn = await session.run({ id: value.id, text: value.text }, signal); return turn; },
-        stop: reason => session.stop(reason) };
-    } };
-  const options: TrialOptions = { id: fixture.input.trialId, phase: 'train', record: filing(), candidateId: 'candidate',
-    datasetDigest: 'dataset', planDigest: 'plan', adapter, model: fixture.input.model!, root: fixture.root, timeoutMs: 20_000,
-    prepare: async () => ({ instructions: fixture.input.instructions }), registry: createEvaluationRegistry(),
-    evaluation: { judges: {}, embeddings: {}, readText: async () => { throw new Error('unregistered sidecar'); } },
-    persist: async () => undefined };
-  const report = await runTrial(options);
-  return { report, turn: turn!, deliveries: asked };
-}
+/** Every deferred trial below writes a real workspace and control root; the caller owns them. */
+const deferredTrial = async (...args: Parameters<typeof nativeDeferredTrial>) => {
+  const outcome = await nativeDeferredTrial(...args);
+  roots.push(outcome.root);
+  return outcome;
+};
 
 /**
  * The gap this closes. A subject that ran every wake its budget allowed, spent the
@@ -71,7 +27,7 @@ async function nativeDeferredTrial(mode: string, maxDeliveries = 1,
  * infrastructure failure. The receipt below is obtained, never assumed.
  */
 it('scores a zero for a subject that exhausted its continuation budget still deferred', async () => {
-  const { report, turn, deliveries } = await nativeDeferredTrial('blocked-always');
+  const { report, turn, deliveries } = await deferredTrial('blocked-always');
   // The turn really deferred and the continuation budget really ran out.
   expect(turn).toMatchObject({ status: 'failed', blocked: 'awaiting-external-input' });
   expect(turn.error).toBe('Native execution completed; delivery blocked awaiting external input');
@@ -106,7 +62,7 @@ it('scores a zero for a subject that exhausted its continuation budget still def
  * assume the worker stripped its own history out of the trace set before sending.
  */
 it('resolves the execution a three-wake trial\'s frame names and scores the run', async () => {
-  const { report, turn, deliveries } = await nativeDeferredTrial('blocked-always-history', 2);
+  const { report, turn, deliveries } = await deferredTrial('blocked-always-history', 2);
   // Three wakes really ran: the task plus both continuations the budget admitted.
   expect(deliveries).toBe(2);
   expect(turn).toMatchObject({ status: 'failed', blocked: 'awaiting-external-input' });
@@ -136,7 +92,7 @@ it.each([
   ['blocked-always-unanswerable', 'failed'],
   ['die-mid-turn', 'failed'],
 ])('refuses to score an execution whose closure is unproven: %s', async (mode, execution) => {
-  const { report, turn } = await nativeDeferredTrial(mode);
+  const { report, turn } = await deferredTrial(mode);
   expect(report.execution).toBe(execution);
   expect(turn.stop?.quiescence ?? 'unknown').toBe('unknown');
   expect(report.stop).toMatchObject({ quiescence: 'unknown' });
@@ -179,7 +135,7 @@ it('refuses to score a cancelled execution even when the subject had really defe
  * same non-acknowledgement however well the activity seal answers.
  */
 it('names the closure proof that failed instead of publishing one unconfirmed sentence', async () => {
-  const { report, turn } = await nativeDeferredTrial('blocked-always-stop-unknown');
+  const { report, turn } = await deferredTrial('blocked-always-stop-unknown');
   // The subject's own outcome is unchanged: it deferred and spent its budget.
   expect(turn).toMatchObject({ status: 'failed', blocked: 'awaiting-external-input' });
   // The machine could not prove closure, and says which proof was missing.
@@ -244,7 +200,7 @@ it('names the worker exit rather than blaming its closure evidence', async () =>
  * the right one has to be its own, because the fix it calls for is not in Paideia.
  */
 it('names a delivery the runtime reclaimed undisposed, after a single wake with budget left', async () => {
-  const { report, turn, deliveries } = await nativeDeferredTrial('undisposed', 3, async () => null);
+  const { report, turn, deliveries } = await deferredTrial('undisposed', 3, async () => null);
   // One wake, and no continuation was asked for: an undisposed delivery is not a deferral.
   expect(deliveries).toBe(0);
   expect(turn.status).toBe('failed');
@@ -328,7 +284,7 @@ it('refuses closure for a worker that is still inside its wake', async () => {
  * just proven quiet. It still refuses to score, under its own name.
  */
 it('reports an unbound terminal frame as unscorable evidence, not as unproven closure', async () => {
-  const { report, turn } = await nativeDeferredTrial('blocked-wrong-execution', 3, async () => null);
+  const { report, turn } = await deferredTrial('blocked-wrong-execution', 3, async () => null);
   // The subject's own run was healthy: it deferred its delivery after a closed trace.
   expect(turn).toMatchObject({ status: 'failed', blocked: 'awaiting-external-input' });
   // Closure is PROVEN: no admitted execution, an acknowledged stop and a clean exit.

@@ -137,6 +137,24 @@ export interface StopReceipt {
    * unscorable, and that pair is the whole point of keeping two names.
    */
   unevidenced?: TerminalEvidenceMissing;
+  /**
+   * The wake whose terminal frame this trial is scored from, when one bound.
+   *
+   * A trial that defers runs several wakes and each publishes its own frame, so
+   * "this trial has evidence" is a selection and not the newest answer: a
+   * continuation that did not bind must not erase a wake that did, and a scored
+   * report has to be able to say which wake it read. Absent exactly when
+   * `unevidenced` is present.
+   */
+  evidenced?: string;
+  /**
+   * Every delivery this trial made, in order, with why each one's own frame
+   * cannot be scored from. Selection is not suppression: the wake that carried
+   * the trial and the wake that failed are both real accounts, and an adapter
+   * whose own per-wake artifacts live on storage that dies with the runtime
+   * publishes them here, where the report keeps them.
+   */
+  wakes?: readonly { wakeId: string; unevidenced?: TerminalEvidenceMissing }[];
 }
 
 /**
