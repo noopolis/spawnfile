@@ -25,7 +25,10 @@ const pinnedGrokCli = (): string => {
 };
 const sha512 = (file: string): string => `sha512:${createHash("sha512").update(readFileSync(file)).digest("hex")}`;
 
-test("actual Daimon lock produces a real offline linux/amd64 shipped artifact and rejects tampering", { timeout: 360_000 }, () => {
+// A full pass — offline closure, shipped artifact, wrapper image, literal org
+// container, and four tamper rejections — measured 328 s on a GitHub-hosted
+// runner, so the budget leaves room for a slower one rather than 32 s.
+test("actual Daimon lock produces a real offline linux/amd64 shipped artifact and rejects tampering", { timeout: 900_000 }, () => {
   execFileSync("docker", ["version"], { stdio: "ignore" });
   const temporary = mkdtempSync(path.join(repository, ".spawnfile-source-docker-"));
   let registry: string | undefined;
