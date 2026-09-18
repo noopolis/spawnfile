@@ -22,6 +22,9 @@ container that runs a brokered Grok subject beside the evaluator.
   no caller-supplied path or command) and owns `startTrainingSlot`, the only
   way a slot comes up: `provision → start → canaries → generation → receipt`.
 - `receipt.ts` writes `noopolis.daimon.grok-slot-preflight.v2`.
+- `seccompRoutes.ts` answers, from the pinned profile bytes alone, whether the
+  worker uid may even attempt a namespace escape — the only honest way to say
+  `seccomp` rather than `kernel` when a route is unavailable.
 - `entrypoint.ts`/`main.ts` are the image's root entrypoint.
 
 Local constraints:
@@ -57,6 +60,20 @@ Local constraints:
   rebind of each dataset's own mount, which is the one a mask cannot answer —
   and no `unenforcedBindPolicy` waives it
   (`.runtime/sealed-inputs-dac/EVIDENCE.md`).
+- **Probe from the worker's private tmp, never `/tmp`.** The broker
+  provisioning closes the shared temps to `root:2000 1774` ("workers list names
+  only"), so a `mkdir /tmp/...` as the worker uid fails — which is how the first
+  live run with the seal refused every trial on `namespace-rebind reached no
+  verdict`. The cause was the probe's workspace, not the seal and not seccomp:
+  the pinned profile allows `unshare`/`mount`/`umount2`/`setns` outright.
+- **Four verdicts, never merged** (`reachable` / `denied at-read` /
+  `denied at-mount` / `unavailable seccomp|kernel`), plus no-verdict, which
+  refuses and prints the probe's stderr. A route the kernel will not let the
+  worker attempt is a stronger denial than DAC and is recorded as such, with the
+  layer named — derived from the pinned profile in `seccompRoutes.ts`, because
+  errno cannot tell a seccomp `EPERM` from a kernel one. Per-route verdicts land
+  in `/run/training/slot/sealed-inputs.json`; the cross-repo
+  `grok-slot-preflight.v2` canary shape is deliberately untouched.
 - Grok 1.0.34 materializes every `deny` target inside bubblewrap as the worker
   uid, so a deny entry it cannot create makes the whole profile fail. That is
   why `/run/paideia` is masked as a directory rather than file by file, and why

@@ -459,20 +459,51 @@ the read-only image root. The image bakes it `0:2000 0750`:
 
 Root provisioning therefore asserts that identity instead of setting it, and
 refuses the slot when an image did not bake it. It then attacks the seal as the
-worker uid, at container start and on every recycle: a direct read/search/list,
-the same list after `unshare --user --map-root-user --mount` plus a lazy unmount
-of the mask and its parent, and the same list through a fresh `mount --bind` of
-`/run/training` made inside that namespace — and, per dataset, a read and a
-bind of the dataset's own mount, the route that carries no mask and is not
-refused for locked children the way binding their parent is. A control
-container left at Docker's own `0755 root:root` hands the held-out answer key
-to uid 2200 through exactly that route, and the sealed one refuses all four
-(`.runtime/sealed-inputs-dac/EVIDENCE.md`). A probe that reaches no verdict
-refuses the slot; a worker that cannot open a namespace at all cannot take the
-route, and the supervisor log says so. The slot canary for this path
-additionally requires the worker uid to be unable to *enter* the directory, not
-merely to read it: a searchable directory hands over every dataset the subject
-can name.
+worker uid, at container start and on every recycle, from the worker's **own
+private tmp** — never `/tmp`, which the broker provisioning closes to
+`root:2000 1774` so a worker lists names only, and probing from there refused
+the first live run on a `mkdir` rather than on the seal. The routes are a direct
+read/search/list; the same list after `unshare --user --map-root-user --mount`
+plus a lazy unmount of the mask and its parent; the same list through a fresh
+`mount --bind` of `/run/training` inside that namespace; and, per dataset, a
+read and a `mount --bind` of the dataset's *own* mount, the route that carries
+no mask and is not refused for locked children the way binding its parent is. A
+control container left at Docker's own `0755 root:root` hands the held-out
+answer key to uid 2200 through three of those; the sealed one refuses all of
+them (`.runtime/sealed-inputs-dac/EVIDENCE.md`).
+
+Each route yields exactly one verdict, and they are deliberately not
+interchangeable:
+
+| verdict | meaning |
+| --- | --- |
+| `reachable` | the bytes were read — refuse the slot |
+| `denied at-read` | the route ran and the kernel's permission check refused the open or list; the DAC seal did the work |
+| `denied at-mount` | the mount the route needs was refused although the syscall is available |
+| `unavailable seccomp` / `unavailable kernel` | the worker uid cannot open the namespace the route needs, so the route provably cannot happen — a *stronger* denial than DAC, with the layer that refused it named |
+| anything else | no verdict — refuse the slot, and print the probe's stderr |
+
+"Provably cannot happen" and "could not tell" never collapse into one pass. The
+mechanism behind an unavailable namespace is derived, not guessed: a seccomp
+`EPERM` and a kernel or LSM `EPERM` are indistinguishable by errno, so
+Spawnfile answers it from the pinned profile it ships and the declaration's
+digest binds — `seccomp` when that profile does not allow `unshare`, `mount`,
+`umount2` and `setns` unconditionally, `kernel` when it does and the syscall was
+still refused. The pinned `seccomp-default-plus-userns` profile allows all four
+outright, because bubblewrap needs them, so in production an unavailable
+namespace is reported as `kernel`.
+
+Provisioning records every route and its verdict in
+`/run/training/slot/sealed-inputs.json`, a Spawnfile-owned
+`spawnfile.training-sealed-inputs.v1` attestation, `root:2000 0640` beside the
+slot preflight receipt. It is separate on purpose: the canary members of
+`noopolis.daimon.grok-slot-preflight.v2` are a cross-repo contract whose schema
+lives in Daimon, and a bare `result: "denied"` there must not be read as "DAC
+held" when a filtered syscall is what refused the route.
+
+The slot canary for this path additionally requires the worker uid to be unable
+to *enter* the directory, not merely to read it: a searchable directory hands
+over every dataset the subject can name.
 
 ### Evidence before the first trial
 
