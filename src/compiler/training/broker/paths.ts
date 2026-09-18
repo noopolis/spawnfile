@@ -189,16 +189,51 @@ export const TRAINING_DEFERRED_DENY_PATHS: readonly string[] = [
 ];
 
 /**
- * Deny entries that are host bind mounts.
+ * Deny entries the launch binds from the host, named so a refusal can say why.
  *
- * A worker-uid read probe over one of these proves nothing: the host owns the
- * inode, its mode is whatever the operator's project directory happens to be,
- * and Docker Desktop and Colima ignore `chown` outright (P0 §5). Their boundary
- * is the bubblewrap-enforced `deny` list, which P0 verified blocks both shell
- * `cat` and `read_file` on 1.0.34. The declaration's `unenforcedBindPolicy`
- * decides whether the slot supervisor accepts that or refuses the slot.
+ * Only the run root is one. The sealed inputs root is **not**: the launch binds
+ * each declared input at `/run/training/inputs/<id>`, so `/run/training/inputs`
+ * itself is the binds' *parent*, a directory on the read-only image root — and
+ * that is exactly what makes it sealable (see `TRAINING_SEALED_DENY_PATHS`).
+ *
+ * Being a host bind is no longer a waiver on its own. On Docker Desktop and
+ * Colima a bind lands on virtiofs/grpcfuse, which ignores `chown`, and there a
+ * worker-uid probe carries no information; on a Linux daemon over ext4, xfs,
+ * btrfs or overlay the same bind enforces ownership and the probe is real. The
+ * canary resolver asks the backing filesystem rather than this list, which is
+ * why the documented `refuse` default is reachable at all.
  */
-export const TRAINING_HOST_BIND_DENY_PATHS: readonly string[] = [TRAINING_RUN_ROOT, TRAINING_SEALED_INPUTS_ROOT];
+export const TRAINING_HOST_BIND_DENY_PATHS: readonly string[] = [TRAINING_RUN_ROOT, DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath];
+
+/**
+ * Deny entries whose denial must be proven by the kernel under **every**
+ * policy, because the experiment's central claim depends on them.
+ *
+ * `/run/training/inputs` holds the sealed train and test datasets. A bubblewrap
+ * `deny` mask is not a boundary the subject cannot lift: the pinned seccomp
+ * profile must allow `clone/unshare/mount/umount2/pivot_root/setns` for
+ * bubblewrap itself, and the container runs `apparmor=unconfined`, so a
+ * worker-uid process can open a user + mount namespace of its own and either
+ * detach the mask or bind the mask's parent somewhere fresh.
+ *
+ * What survives that is DAC on the datasets' ancestor. The image bakes this
+ * directory `0:<organization gid> 0750` on the read-only root, so:
+ *
+ *   - the worker uid is in neither the owner nor the group class and loses
+ *     search permission on the one directory every dataset read must traverse;
+ *   - the inode is owned by real uid 0, which a `unshare --map-root-user`
+ *     namespace does not map, so `CAP_DAC_OVERRIDE` there cannot override it;
+ *   - the root filesystem is read-only, so nothing in the container — root
+ *     included — can loosen the mode after the image is built.
+ *
+ * Provisioning asserts the mode and then attacks it as the worker uid, and the
+ * canary resolver refuses the slot rather than certifying one of these on the
+ * sandbox profile alone.
+ */
+export const TRAINING_SEALED_DENY_PATHS: readonly string[] = [TRAINING_SEALED_INPUTS_ROOT];
+
+/** The image-baked identity of the sealed inputs root, asserted before every slot and never writable at runtime. */
+export const TRAINING_SEALED_INPUTS_IDENTITY = { uid: 0, gid: DAIMON_ORGANIZATION_UID, mode: "750" } as const;
 
 /**
  * What a recycle removes outright, and what it only empties.

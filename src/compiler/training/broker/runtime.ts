@@ -18,6 +18,7 @@ import type { TrainingSlotRuntime } from "./supervisor.js";
 import {
   DAIMON_ORGANIZATION_UID,
   TRAINING_HOST_BIND_DENY_PATHS,
+  TRAINING_SEALED_DENY_PATHS,
   TRAINING_SLOT_ACCEPTANCE_STORE,
   TRAINING_WIPE_TARGETS,
   TRAINING_SLOT_GENERATION_FILE,
@@ -90,10 +91,22 @@ export const createTrainingSlotRuntime = (options: TrainingSlotRuntimeOptions): 
     process.stderr.write(`[slot-supervisor] ${entry}`);
     try { appendFileSync(logPath, entry, { mode: 0o640 }); } catch { /* the log is diagnostics, never the gate */ }
   };
-  const probe = async (target: string): Promise<boolean> => {
+  /**
+   * One worker-uid reachability attempt. The command below *succeeds* when the
+   * worker can still reach the target, so a non-zero exit is the denial.
+   *
+   * `enter` is the stronger question a sealed root needs answered: a directory
+   * can be unreadable (`test -r` fails) and still searchable, and a subject
+   * that knows `test.paideia.yaml` by name needs only search permission.
+   */
+  const probe = async (target: string, depth: "read" | "enter"): Promise<boolean> => {
+    const quoted = JSON.stringify(target);
+    const reachable = depth === "enter"
+      ? `test -r ${quoted} || test -x ${quoted} || ls -1 ${quoted} >/dev/null 2>&1`
+      : `test -r ${quoted}`;
     try {
       await run("setpriv", ["--clear-groups", `--reuid=${options.registration.uid}`, `--regid=${options.registration.uid}`,
-        "--inh-caps=-all", "--ambient-caps=-all", "--bounding-set=-all", "--", "/bin/sh", "-c", `exec test -r ${JSON.stringify(target)}`], { timeout: 10_000 });
+        "--inh-caps=-all", "--ambient-caps=-all", "--bounding-set=-all", "--", "/bin/sh", "-c", reachable], { timeout: 10_000 });
       return false;
     } catch { return true; }
   };
@@ -144,6 +157,7 @@ export const createTrainingSlotRuntime = (options: TrainingSlotRuntimeOptions): 
     start: async () => { children = await startBrokerProcesses({ log, procRoot: options.procRoot }); },
     canaries: async () => resolveTrainingCanaries({
       denyPaths: options.registration.denyPaths, probe, log, hostBindPaths: TRAINING_HOST_BIND_DENY_PATHS,
+      sealedPaths: TRAINING_SEALED_DENY_PATHS,
       mountinfo: await readFile(`${options.procRoot ?? "/proc"}/self/mountinfo`, "utf8"),
       unenforcedBindPolicy: options.declaration.unenforcedBindPolicy
     }),

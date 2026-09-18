@@ -31,42 +31,70 @@ export const resolveBackingFilesystem = (target: string, mountinfo: string): str
 };
 
 export interface TrainingCanaryProbe {
-  /** Runs one worker-uid `open()` attempt; resolves true when the read was denied. */
-  (target: string): Promise<boolean>;
+  /**
+   * Runs one worker-uid attempt and resolves true when it was denied.
+   *
+   * `read` is an `open()` for reading. `enter` additionally requires that the
+   * worker uid cannot *search* the directory, which is the property a sealed
+   * root actually needs: its protection is that every dataset read has to
+   * traverse it, not that the directory listing itself is unreadable.
+   */
+  (target: string, depth: "read" | "enter"): Promise<boolean>;
 }
 
 export interface TrainingCanaryOptions {
   denyPaths: readonly string[];
   probe: TrainingCanaryProbe;
   mountinfo: string;
-  /** Deny entries the launch bound from the host; a worker-uid probe over one of them proves nothing. */
+  /** Deny entries the launch bound from the host. Diagnostics only: the backing filesystem decides, not this list. */
   hostBindPaths: readonly string[];
+  /** Deny entries no policy may waive; each one must be observed unenterable by the worker uid. */
+  sealedPaths: readonly string[];
   unenforcedBindPolicy: "refuse" | "profile-only";
   log(line: string): void;
 }
 
 /**
- * One denied canary per deny path, or a refusal naming the first path that is
- * still reachable.
+ * One denied canary per deny path, or a refusal naming the first path whose
+ * denial this container cannot prove.
  *
- * A path on a filesystem that enforces unix ownership must be observed denied
- * to the worker uid. A path on a host bind that ignores ownership cannot be:
- * the declaration's `unenforcedBindPolicy` decides whether that refuses the
- * recycle or is accepted on the attested profile's deny entry alone, and every
- * path taking the weaker route is named in the supervisor log.
+ * Three cases, in decreasing strength:
+ *
+ *  - A **sealed** path (the datasets' root) must sit on a filesystem that
+ *    enforces unix ownership and must be observed *unenterable* by the worker
+ *    uid. `unenforcedBindPolicy` does not reach it: the sandbox profile alone
+ *    is a boundary the worker can lift from inside a namespace of its own, and
+ *    the held-out test set is the one thing that cannot rest on it.
+ *  - Any other path on an ownership-enforcing filesystem — a host bind over
+ *    ext4/xfs/btrfs/overlay included — gets a real worker-uid read probe. This
+ *    is what makes the documented `refuse` default reachable: a host bind is
+ *    only unprovable where the filesystem says so.
+ *  - A path on a filesystem that ignores ownership (virtiofs and grpcfuse under
+ *    Docker Desktop and Colima, 9p, nfs, cifs, fuse) cannot be probed at all.
+ *    `refuse` — the default — fails the recycle and writes no receipt;
+ *    `profile-only` accepts the attested deny entry as that path's only
+ *    boundary and names every such path in the supervisor log.
  */
 export const resolveTrainingCanaries = async (options: TrainingCanaryOptions): Promise<{ path: string; method: "sandboxed-read"; result: "denied" }[]> => {
   const canaries: { path: string; method: "sandboxed-read"; result: "denied" }[] = [];
   for (const target of options.denyPaths) {
     const fstype = resolveBackingFilesystem(target, options.mountinfo);
-    const hostBind = options.hostBindPaths.includes(target);
-    if (hostBind || isUnenforced(fstype)) {
+    const origin = `${options.hostBindPaths.includes(target) ? "a host bind mount on " : ""}${fstype || "an unknown filesystem"}`;
+    if (options.sealedPaths.includes(target)) {
+      if (isUnenforced(fstype)) {
+        throw new SpawnfileError("runtime_error",
+          `Grok slot sealed canary ${target} is backed by ${origin}, which ignores unix ownership, so the worker uid's denial cannot be proven; the sealed datasets must sit under a directory on an ownership-enforcing filesystem and no unenforcedBindPolicy waives this`);
+      }
+      if (!await options.probe(target, "enter")) {
+        throw new SpawnfileError("runtime_error", `Grok slot sealed canary ${target} is still reachable by the worker uid`);
+      }
+    } else if (isUnenforced(fstype)) {
       if (options.unenforcedBindPolicy === "refuse") {
         throw new SpawnfileError("runtime_error",
-          `Grok slot canary ${target} is ${hostBind ? "a host bind mount" : `backed by ${fstype || "an unknown filesystem"}, which ignores unix ownership`}; declare unenforcedBindPolicy "profile-only" to accept the bubblewrap deny list as its only boundary`);
+          `Grok slot canary ${target} is backed by ${origin}, which ignores unix ownership; declare unenforcedBindPolicy "profile-only" to accept the bubblewrap deny list as its only boundary`);
       }
-      options.log(`canary ${target} certified by the enforced sandbox profile only (${hostBind ? "host bind mount" : `${fstype} ignores unix ownership`})`);
-    } else if (!await options.probe(target)) {
+      options.log(`canary ${target} certified by the enforced sandbox profile only (${origin} ignores unix ownership)`);
+    } else if (!await options.probe(target, "read")) {
       throw new SpawnfileError("runtime_error", `Grok slot canary ${target} is still readable by the worker uid`);
     }
     canaries.push({ path: target, method: "sandboxed-read", result: "denied" });

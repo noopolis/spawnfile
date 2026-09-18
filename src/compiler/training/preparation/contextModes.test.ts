@@ -83,7 +83,13 @@ it("hands Docker a normalized context and never runs a layer after the distribut
 
   const dockerfile = await recipe();
   const instructions = dockerfile.split(/\n(?! )/u).map(line => line.trim()).filter(line => line && !line.startsWith("#"));
-  expect(instructions.join("\n")).not.toMatch(/chmod (-R|0)/u);
+  // The staged context already carries its modes, so no layer may re-chmod what it copies. A numeric
+  // chmod is allowed only on a runtime mount point under /run/training — the sealed-inputs seal, which
+  // is baked before any COPY and is the one mode the read-only root can never repair at runtime.
+  expect(instructions.join("\n")).not.toMatch(/chmod -R/u);
+  for (const numeric of instructions.join("\n").match(/chmod 0[0-7]{3}[^\\\n]*/gu) ?? []) {
+    expect(numeric, "a numeric chmod may only touch a runtime mount point").toMatch(/^chmod 0[0-7]{3}(\s+\/run\/training\S*)+\s*$/u);
+  }
   const firstLate = instructions.indexOf("COPY train /opt/training/bin/train");
   expect(instructions.slice(firstLate).map(line => line.split(" ")[0])).toEqual(["COPY", "COPY", "COPY", "COPY", "COPY", "COPY", "COPY", "COPY", "COPY", "ENV", "ENV", "WORKDIR", "ENTRYPOINT"]);
   const copies = instructions.filter(line => line.startsWith("COPY ") && !line.startsWith("COPY --from"));
