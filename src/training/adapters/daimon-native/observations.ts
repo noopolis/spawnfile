@@ -1,6 +1,6 @@
 import type { NativeExternalInput } from './external.js';
 import type { Observation, SubjectStart, SubjectStartupDiagnostic, Usage } from '../../contracts/execution.js';
-import type { BrokerRequestLedger } from './sealed-usage.js';
+import type { BrokerRequestLedger, BrokerSealLedger } from './sealed-usage.js';
 import { readNativeTranscript } from './transcript.js';
 import { plausibleNotionalUsd, readToolReceipts } from './worker/index.js';
 import type { NativeGrokUsage, NativeUsage, TerminalEvidence } from './worker/index.js';
@@ -64,6 +64,29 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
       const text = ledger.outcome === 'read'
         ? `Broker request ledger: ${ledger.read} requests, ${ledger.open} unanswered`
         : `Broker request ledger unreadable: ${ledger.failure}`;
+      try { await emit(wakeId, { type: 'diagnostic', text, native: ledger }); } catch { /* never fails an already-failed turn */ }
+    },
+    /**
+     * The broker's own sealed account of a turn that never answered.
+     *
+     * Operator-only, like every record beside it: a `diagnostic`, so it can
+     * never become output, a captured call, a judge input or a viewer
+     * projection. Its headline is the one fact six live hangs could not
+     * produce — the tool call the worker was still blocked on, and for how
+     * long. A turn the facade never observed says so by having no `mcp` member
+     * at all, and is never rendered as "no outstanding calls". A publish fault
+     * is swallowed: this already runs on a failed turn.
+     */
+    async brokerSeal(wakeId: string, ledger: BrokerSealLedger): Promise<void> {
+      const text = ledger.outcome !== 'read'
+        ? `Broker turn seal unreadable: ${ledger.failure}`
+        : ((): string => {
+          const last = ledger.rows[ledger.rows.length - 1];
+          const blocked = ledger.rows.flatMap(row => row.mcp?.outstanding ?? []).map(call => `${call.name}@${call.outstandingMs}ms`);
+          const observed = ledger.rows.some(row => row.mcp !== undefined);
+          const mcp = blocked.length ? `blocked on ${blocked.join(', ')}` : observed ? 'no outstanding MCP call' : 'no MCP observation';
+          return `Broker turn seal: ${last?.outcome ?? 'unknown'}${last?.code ? `/${last.code}` : ''}, ${mcp}`;
+        })();
       try { await emit(wakeId, { type: 'diagnostic', text, native: ledger }); } catch { /* never fails an already-failed turn */ }
     },
     async terminal(wakeId: string, result: TerminalEvidence): Promise<Usage | null> {

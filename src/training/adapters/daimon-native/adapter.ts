@@ -7,7 +7,7 @@ import { dockerCommand, workerRequest, type DockerCommand } from './container/in
 import { startOwnedContainer } from './container/index.js';
 import { loadNativeLaunch } from './container/index.js';
 import { createNativeObserver } from './observations.js';
-import { readSealedBrokerRequests, readSealedBrokerUsage, type SealedBrokerUsageOptions } from './sealed-usage.js';
+import { readSealedBrokerRequests, readSealedBrokerSeal, readSealedBrokerUsage, type SealedBrokerUsageOptions } from './sealed-usage.js';
 
 export interface NativeAdapterOptions { timeoutMs?: number; startupMs?: number; docker?: DockerCommand; execution?: NativeChildExecution; externalInputs?: NativeExternalInputs; 
   /** How long a failed turn waits for the broker to seal its spend before reporting absence. */
@@ -84,11 +84,16 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             // turn spent, and — the only record that can tell a provider
             // request issued and never answered from one never issued at all —
             // when each request started and whether it ended.
-            const [sealed, requests] = await Promise.all([
+            // And the sealed terminal record itself, which a hung turn's HTTP
+            // reply can never carry: the failure code, the worker's redacted
+            // last words, and the MCP tool call it was still blocked on.
+            const [sealed, requests, seal] = await Promise.all([
               readSealedBrokerUsage(launch, sealedUsage), readSealedBrokerRequests(launch, sealedUsage),
+              readSealedBrokerSeal(launch, sealedUsage),
             ]);
             if (sealed.usage) await observer.sealedUsage(observedWakeId, sealed.usage, sealed.rows);
             if (requests) await observer.brokerRequests(observedWakeId, requests);
+            if (seal) await observer.brokerSeal(observedWakeId, seal);
             // Whatever the worker said before it stopped answering, redacted.
             const record = container.diagnostic?.();
             if (record) await observer.childDiagnostic(observedWakeId, record);

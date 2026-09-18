@@ -2,7 +2,7 @@ import { lstat, readdir, readFile, rename, open } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readPrivateFile } from '../receipt/index.js';
-import type { NativeCodexUsage, NativeEvidence, NativeEvidenceSource, NativeGrokUsage, NativeRequestUsage, NativeTrace } from './types.js';
+import type { NativeCodexUsage, NativeEvidence, NativeEvidenceSource, NativeGrokUsage, NativeRequestUsage, NativeTrace, NativeTurnSeal } from './types.js';
 
 const MAX_STREAM = 64 * 1024 * 1024;
 function object(value: unknown): Record<string, unknown> {
@@ -259,4 +259,72 @@ export async function writeEvidence(file: string, value: unknown): Promise<void>
  */
 export async function readSealedGrokRequests(requestsFile: string, agentId: string, expectedModel: string): Promise<NativeRequestUsage[]> {
   return readGrokRequests(requestsFile, agentId, undefined, expectedModel, []);
+}
+
+const failureCodes = ['auth_stale', 'cancelled', 'engine_failed', 'invalid_request', 'limit_exceeded', 'turn_conflict', 'unavailable'];
+const callName = /^(?:<invalid>|<truncated>|[A-Za-z0-9_.-]{1,64})$/u;
+/** A bounded, non-empty, control-character-free string: the shape Daimon's protocol already admits. */
+const controlFree = (value: unknown, maximum: number): boolean => {
+  if (typeof value !== 'string' || value.length === 0 || Buffer.byteLength(value, 'utf8') > maximum) return false;
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (code < 0x20 || code === 0x7f) return false;
+  }
+  return true;
+};
+
+/** Daimon's closed diagnostic, re-typed at this side's strictness; `reason` is already redacted and bounded there. */
+function sealDiagnostic(value: unknown): NativeTurnSeal['diagnostic'] {
+  const row = object(value);
+  const fields = ['status', 'stage', 'failure_class', 'exit_code', 'term_signal'];
+  const keys = Object.keys(row);
+  if (keys.length !== fields.length + (row.reason === undefined ? 0 : 1) || fields.some(field => !Object.hasOwn(row, field))) throw new Error('Native Grok seal diagnostic schema mismatch');
+  if (!fields.slice(0, 3).every(field => controlFree(row[field], 64)) || !tokens(row, ['exit_code', 'term_signal'])) throw new Error('Native Grok seal diagnostic schema mismatch');
+  if (row.reason !== undefined && !controlFree(row.reason, 768)) throw new Error('Native Grok seal diagnostic schema mismatch');
+  return row as NativeTurnSeal['diagnostic'];
+}
+
+/** Names, counts and elapsed milliseconds, internally consistent: never more answered than started. */
+function sealMcp(value: unknown): NonNullable<NativeTurnSeal['mcp']> {
+  const row = object(value);
+  if (Object.keys(row).length !== 4 || !tokens(row, ['started', 'answered', 'undecoded']) || !Array.isArray(row.outstanding) ||
+      row.outstanding.length > 16 || Number(row.answered) > Number(row.started)) throw new Error('Native Grok seal MCP observation schema mismatch');
+  const outstanding = row.outstanding.map(entry => {
+    const call = object(entry);
+    if (Object.keys(call).length !== 2 || typeof call.name !== 'string' || !callName.test(call.name) ||
+        !tokens(call, ['outstanding_ms'])) throw new Error('Native Grok seal MCP observation schema mismatch');
+    return { name: call.name, outstanding_ms: Number(call.outstanding_ms) };
+  });
+  if (outstanding.length > Number(row.started) - Number(row.answered)) throw new Error('Native Grok seal MCP observation schema mismatch');
+  return { started: Number(row.started), answered: Number(row.answered), undecoded: Number(row.undecoded), outstanding };
+}
+
+/**
+ * The sealed terminal record of a turn whose terminal response never travelled.
+ *
+ * The third stream the broker writes beside `usage.jsonl` and `requests.jsonl`.
+ * It is the only route by which a *cancelled* turn's failure code, its worker's
+ * redacted last words and the MCP tool call it was still blocked on reach this
+ * side: the response those ride on is answered to a client that is already
+ * gone, and the broker's own turn record sits in a `0700` store this uid cannot
+ * read. Same strict schema, same dedupe-by-`turn`, no execution to filter on.
+ *
+ * Optional members are validated only when present and never defaulted: `mcp`
+ * absent means the facade never observed the turn, which is not `started: 0`.
+ */
+export async function readSealedGrokTurnSeals(sealFile: string, agentId: string, expectedModel: string): Promise<NativeTurnSeal[]> {
+  const rows = (await jsonLines(sealFile, 4 * 1024 * 1024)).map(value => {
+    const row = object(value);
+    if (row.v !== 'noopolis.daimon.turn-seal.v1' || row.agent !== agentId || row.engine !== 'grok' || typeof row.wake !== 'string' ||
+        !timestamp(row.at) || typeof row.turn !== 'string' || !turnKey.test(row.turn) || !tokens(row, ['requests']) ||
+        !['completed', 'failed'].includes(String(row.outcome)) ||
+        !['tokens', 'requests', 'timeout', 'none'].includes(String(row.limit_reason)) ||
+        (row.outcome === 'failed') !== (row.code !== undefined) ||
+        row.code !== undefined && !failureCodes.includes(String(row.code))) throw new Error('Native Grok seal schema or execution identity mismatch');
+    grokModel(row.model, expectedModel);
+    if (row.diagnostic !== undefined) sealDiagnostic(row.diagnostic);
+    if (row.mcp !== undefined) sealMcp(row.mcp);
+    return { key: row.turn, row: row as NativeTurnSeal };
+  });
+  return dedupe(rows);
 }

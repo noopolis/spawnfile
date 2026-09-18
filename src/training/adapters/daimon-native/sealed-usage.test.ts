@@ -2,7 +2,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { grokLaunchFrom } from './grok-fixtures.js';
-import { BROKER_REQUESTS_SCHEMA, readSealedBrokerRequests, readSealedBrokerUsage } from './sealed-usage.js';
+import { BROKER_REQUESTS_SCHEMA, BROKER_SEAL_SCHEMA, readSealedBrokerRequests, readSealedBrokerSeal, readSealedBrokerUsage } from './sealed-usage.js';
 import { launchFixture } from './test-fixtures.js';
 import type { GrokNativeLaunch, VerifiedNativeLaunch } from './receipt/index.js';
 
@@ -195,5 +195,141 @@ describe('readSealedBrokerRequests', () => {
     setTimeout(() => { void write(requestsFile(ledger), requestRow({ ended_at: undefined, output: 0, total: 5392 })); }, 30);
     const published = await readSealedBrokerRequests(launch, { attempts: 40, intervalMs: 10 });
     expect(published?.outcome === 'read' && published.open).toBe(1);
+  });
+});
+
+/**
+ * One `noopolis.daimon.turn-seal.v1` row, byte-identical to what Daimon's
+ * `renderBrokerTurnSealLine` emits for the live hang: ten provider requests,
+ * all closed, then 430 s blocked on one `use_tool` call and an abort. Member
+ * order and spelling are the renderer's, not this test's.
+ */
+const sealRow = (overrides: Record<string, unknown> = {}): string => JSON.stringify({
+  v: 'noopolis.daimon.turn-seal.v1', agent: 'agent:writer', wake: 'wake-1', engine: 'grok', at: '2026-09-18T00:28:21.000Z',
+  turn: 'a'.repeat(64), outcome: 'failed', requests: 10, model: 'grok-4.6', limit_reason: 'none', code: 'cancelled',
+  diagnostic: { status: 'cancelled', stage: 'wait', failure_class: 'cancelled', exit_code: 0, term_signal: 9, reason: 'worker cancelled mid-turn' },
+  mcp: { started: 1, answered: 0, undecoded: 0, outstanding: [{ name: 'use_tool', outstanding_ms: 430112 }] }, ...overrides,
+}) + '\n';
+const sealFile = (ledger: string): string => join(dirname(ledger), 'turns.jsonl');
+
+describe('readSealedBrokerSeal', () => {
+  /**
+   * The finding six live runs could not deliver. The turn was cancelled, so its
+   * sealed terminal response was answered to a client that had already gone;
+   * this row is the same seal on a file that outlives the slot.
+   *
+   * Mutation: drop the `mcp` branch from `sealRecord`, or the `mcp` member from
+   * Daimon's renderer, and the outstanding call disappears here.
+   */
+  it('publishes the tool call a cancelled turn was still blocked on, and the worker\'s redacted last words', async () => {
+    const { launch, ledger } = await grok();
+    await write(sealFile(ledger), sealRow());
+    const published = await readSealedBrokerSeal(launch, once);
+    expect(published?.outcome).toBe('read');
+    if (published?.outcome !== 'read') throw new Error('unreachable');
+    expect(published.read).toBe(1);
+    expect(published.outstanding).toBe(1);
+    expect(published.rows[0]).toEqual({
+      turn: 'a'.repeat(64), wake: 'wake-1', at: '2026-09-18T00:28:21.000Z', model: 'grok-4.6',
+      outcome: 'failed', requests: 10, limitReason: 'none', code: 'cancelled',
+      status: 'cancelled', stage: 'wait', failureClass: 'cancelled', exitCode: 0, termSignal: 9,
+      reason: 'worker cancelled mid-turn',
+      mcp: { started: 1, answered: 0, undecoded: 0, outstanding: [{ name: 'use_tool', outstandingMs: 430112 }] },
+    });
+  });
+
+  /**
+   * Three states that have been read as one another all session: observed and
+   * quiet, never observed, and never sealed.
+   *
+   * Mutation: emit `mcp` unconditionally in `sealRecord` (zeros for an absent
+   * observation) and the second expectation goes red; publish an empty ledger
+   * as `read` with no rows and the third does.
+   */
+  it('tells "called nothing" from "never observed" from "no seal at all"', async () => {
+    const { launch, ledger } = await grok();
+    await write(sealFile(ledger), sealRow({ mcp: { started: 0, answered: 0, undecoded: 0, outstanding: [] } }));
+    const quiet = await readSealedBrokerSeal(launch, once);
+    if (quiet?.outcome !== 'read') throw new Error('unreachable');
+    expect(quiet.rows[0]!.mcp).toEqual({ started: 0, answered: 0, undecoded: 0, outstanding: [] });
+    expect(quiet.outstanding).toBe(0);
+
+    const { mcp: _dropped, ...withoutMcp } = JSON.parse(sealRow()) as Record<string, unknown>;
+    await write(sealFile(ledger), JSON.stringify(withoutMcp) + '\n');
+    const unobserved = await readSealedBrokerSeal(launch, once);
+    if (unobserved?.outcome !== 'read') throw new Error('unreachable');
+    expect('mcp' in unobserved.rows[0]!).toBe(false);
+
+    // A completed turn seals too, and carries no failure code, no diagnostic
+    // and no observation — only what was measured.
+    await write(sealFile(ledger), JSON.stringify({ ...JSON.parse(sealRow()) as Record<string, unknown>, outcome: 'completed', code: undefined, diagnostic: undefined, mcp: undefined }) + '\n');
+    const completed = await readSealedBrokerSeal(launch, once);
+    if (completed?.outcome !== 'read') throw new Error('unreachable');
+    expect(completed.rows[0]).toEqual({ turn: 'a'.repeat(64), wake: 'wake-1', at: '2026-09-18T00:28:21.000Z',
+      model: 'grok-4.6', outcome: 'completed', requests: 10, limitReason: 'none' });
+
+    await rm(sealFile(ledger), { force: true });
+    expect(await readSealedBrokerSeal(launch, once)).toBeUndefined();
+  });
+
+  it('publishes nothing for an absent or empty stream, a classification for one it cannot read, and nothing for a launch with no broker', async () => {
+    const { launch, ledger, codex } = await grok();
+    const file = sealFile(ledger);
+    expect(await readSealedBrokerSeal(launch, once)).toBeUndefined();
+    await write(file, '');
+    expect(await readSealedBrokerSeal(launch, once)).toBeUndefined();
+    await write(file, sealRow());
+    expect(await readSealedBrokerSeal(codex, once)).toBeUndefined();
+    expect(await readSealedBrokerSeal(launch, { attempts: 0 })).toBeUndefined();
+    await write(file, '{ not json\n');
+    expect(await readSealedBrokerSeal(launch, once)).toEqual({ schema: BROKER_SEAL_SCHEMA, outcome: 'unreadable', failure: 'malformed' });
+    // Each refusal of the strict reader, one per member it types.
+    for (const bad of [{ v: 'noopolis.daimon.turn-seal.v2' }, { agent: 'agent:other' }, { engine: 'codex' }, { at: 'never' },
+      { turn: 'short' }, { requests: -1 }, { outcome: 'cancelled' }, { limit_reason: 'deadline' }, { code: undefined },
+      { outcome: 'completed' }, { code: 'invented' }, { model: 'grok-9' },
+      { diagnostic: { status: 'cancelled', stage: 'wait', failure_class: 'cancelled', exit_code: 0 } },
+      { diagnostic: { status: 'cancelled', stage: 'wait', failure_class: 'cancelled', exit_code: 0, term_signal: 9, reason: 'a\u0000b' } },
+      { mcp: { started: 0, answered: 1, undecoded: 0, outstanding: [] } },
+      { mcp: { started: 1, answered: 0, undecoded: 0, outstanding: [{ name: 'use tool', outstanding_ms: 1 }] } },
+      { mcp: { started: 1, answered: 1, undecoded: 0, outstanding: [{ name: 'use_tool', outstanding_ms: 1 }] } },
+      { mcp: { started: 1, answered: 0, undecoded: 0, outstanding: [{ name: 'use_tool' }] } }]) {
+      await write(file, sealRow(bad));
+      expect(await readSealedBrokerSeal(launch, once), JSON.stringify(bad)).toEqual({ schema: BROKER_SEAL_SCHEMA, outcome: 'unreadable', failure: 'schema' });
+    }
+    await rm(file, { force: true });
+    await mkdir(file, { recursive: true });
+    expect(await readSealedBrokerSeal(launch, once)).toEqual({ schema: BROKER_SEAL_SCHEMA, outcome: 'unreadable', failure: 'unreadable' });
+  });
+
+  it('publishes names, timings and closed vocabularies only, collapses a replayed seal, and waits the same bounded moment', async () => {
+    const { launch, ledger } = await grok();
+    const file = sealFile(ledger);
+    // The broker's row tolerates unknown members; none of them may reach an operator.
+    await write(file, sealRow({ prompt: 'the article assignment', authorization: 'Bearer sk-live-4f2c9a', text: 'the filed article' }));
+    const published = JSON.stringify(await readSealedBrokerSeal(launch, once));
+    for (const forbidden of ['prompt', 'the article assignment', 'authorization', 'Bearer', 'sk-live', 'the filed article']) expect(published).not.toContain(forbidden);
+    expect(published).toContain('"outstandingMs":430112');
+
+    // A replay appends the same bytes twice; a reader counts that turn once.
+    await write(file, sealRow() + sealRow() + sealRow({ turn: 'b'.repeat(64) }));
+    const deduped = await readSealedBrokerSeal(launch, once);
+    if (deduped?.outcome !== 'read') throw new Error('unreachable');
+    expect(deduped.read).toBe(2);
+
+    await rm(file, { force: true });
+    setTimeout(() => { void write(file, sealRow()); }, 30);
+    const waited = await readSealedBrokerSeal(launch, { attempts: 40, intervalMs: 10 });
+    expect(waited?.outcome === 'read' && waited.outstanding).toBe(1);
+  });
+
+  it('bounds the published seals to the most recent turns', async () => {
+    const { launch, ledger } = await grok();
+    const many = Array.from({ length: 80 }, (_, index) => sealRow({ turn: index.toString(16).padStart(64, '0') })).join('');
+    await write(sealFile(ledger), many);
+    const published = await readSealedBrokerSeal(launch, once);
+    if (published?.outcome !== 'read') throw new Error('unreachable');
+    expect(published.read).toBe(80);
+    expect(published.rows).toHaveLength(64);
+    expect(published.rows.at(-1)!.turn).toBe((79).toString(16).padStart(64, '0'));
   });
 });

@@ -105,6 +105,33 @@ export interface NativeRequestUsage extends Record<string, unknown> {
   started_at?: string;
   ended_at?: string;
 }
+/**
+ * One `noopolis.daimon.turn-seal.v1` row: the operator-visible projection of a
+ * brokered turn's sealed terminal response, written by the broker beside the
+ * two usage streams because a cancelled turn's response never reaches a client.
+ */
+export interface NativeTurnSeal extends Record<string, unknown> {
+  v: 'noopolis.daimon.turn-seal.v1';
+  agent: string;
+  wake: string;
+  engine: 'grok';
+  at: string;
+  turn: string;
+  outcome: 'completed' | 'failed';
+  requests: number;
+  model: string;
+  limit_reason: 'tokens' | 'requests' | 'timeout' | 'none';
+  /** Present exactly for a failed turn: the broker's closed failure vocabulary. */
+  code?: string;
+  /** Present when the sealed response carried one; `reason` is the worker's own words, redacted by Daimon. */
+  diagnostic?: { status: string; stage: string; failure_class: string; exit_code: number; term_signal: number; reason?: string };
+  /**
+   * Present exactly when the broker's MCP facade observed this turn. Its
+   * absence is a different statement from `started: 0`, and neither may be
+   * read as the other.
+   */
+  mcp?: { started: number; answered: number; undecoded: number; outstanding: { name: string; outstanding_ms: number }[] };
+}
 export interface NativeEvidence {
   traces: NativeTrace[];
   usage: NativeUsage[];

@@ -41,8 +41,25 @@ const requestRows = (agent: string): string => [
   cache_write: 0, usage_source: 'stream', started_at: '2026-09-18T00:28:19.000Z', ...row,
 }) + '\n').join('');
 
+/**
+ * The broker's third stream: one row per *sealed terminal turn*.
+ *
+ * The sealed response carries the failure code, the worker's redacted last
+ * words and the MCP tool call the worker was still blocked on — and it travels
+ * only in a reply a hung turn never sends. This row is that same seal on a file
+ * in the slot ledger directory, which outlives the container's tmpfs.
+ */
+const sealRow = (agent: string): string => JSON.stringify({
+  v: 'noopolis.daimon.turn-seal.v1', agent, wake: 'wake-1', engine: 'grok', at: '2026-09-18T00:28:21.000Z',
+  turn: 'a'.repeat(64), outcome: 'failed', requests: 10, model: 'grok-4.6', limit_reason: 'none', code: 'cancelled',
+  diagnostic: { status: 'cancelled', stage: 'wait', failure_class: 'cancelled', exit_code: 0, term_signal: 9 },
+  mcp: { started: 1, answered: 0, undecoded: 0, outstanding: [{ name: 'use_tool', outstanding_ms: 430112 }] },
+}) + '\n';
+
 const brokerRequests = (rows: readonly Observation[]): Observation | undefined => rows.find(row => row.type === 'diagnostic' &&
   (row as { native?: { schema?: string } }).native?.schema === 'paideia.daimon-native.broker-requests.v1');
+const brokerSeal = (rows: readonly Observation[]): Observation | undefined => rows.find(row => row.type === 'diagnostic' &&
+  (row as { native?: { schema?: string } }).native?.schema === 'paideia.daimon-native.broker-seal.v1');
 
 it('records the spend the broker sealed when a brokered worker dies with its terminal frame unsent', async () => {
   const f = await childFixture('die-mid-turn');
@@ -56,6 +73,7 @@ it('records the spend the broker sealed when a brokered worker dies with its ter
   await mkdir(dirname(ledger), { recursive: true, mode: 0o700 });
   await writeFile(ledger, sealedRow(launch.agent.id), { mode: 0o600 });
   await writeFile(join(dirname(ledger), 'requests.jsonl'), requestRows(launch.agent.id), { mode: 0o600 });
+  await writeFile(join(dirname(ledger), 'turns.jsonl'), sealRow(launch.agent.id), { mode: 0o600 });
 
   const observations: Observation[] = [];
   const input = { ...f.input, onObservation: (value: Observation) => { observations.push(value); } };
@@ -93,6 +111,14 @@ it('records the spend the broker sealed when a brokered worker dies with its ter
   expect(ledgerRecord.open).toBe(1);
   expect(ledgerRecord.rows[1]).toMatchObject({ request: 1, startedAt: '2026-09-18T00:28:19.000Z' });
   expect('endedAt' in ledgerRecord.rows[1]!).toBe(false);
+
+  // And the sealed terminal record itself — the outstanding tool call that only
+  // ever existed inside a response this turn never got to send.
+  const seal = brokerSeal(observations);
+  expect(seal).toMatchObject({ wakeId: 'wake-1', text: 'Broker turn seal: failed/cancelled, blocked on use_tool@430112ms' });
+  expect((seal as { native: { rows: Record<string, unknown>[] } }).native.rows[0])
+    .toMatchObject({ code: 'cancelled', limitReason: 'none', failureClass: 'cancelled',
+      mcp: { started: 1, answered: 0, outstanding: [{ name: 'use_tool', outstandingMs: 430112 }] } });
 });
 
 it('reports absence rather than a zero when the broker sealed nothing', async () => {
@@ -113,4 +139,7 @@ it('reports absence rather than a zero when the broker sealed nothing', async ()
   expect(result.coverage).toContainEqual({ channel: 'usage', completeness: 'absent', ordering: 'none' });
   // No request ledger either: an empty one would read as "no requests were made".
   expect(brokerRequests(observations)).toBeUndefined();
+  // And no seal: an empty record would read as "the turn sealed nothing", which
+  // is exactly the reading this stream exists to make impossible.
+  expect(brokerSeal(observations)).toBeUndefined();
 });

@@ -60,6 +60,35 @@ made", which is one of the two answers this record exists to tell apart — and 
 unanswered row is never filled, normalised or dropped by the published-row
 bound.
 
+And the sealed terminal record survives it too, for the turn that never sends
+one. A worker that *crashes* still produces the HTTP reply, so its failure code
+and last words arrive that way. A worker that HANGS is killed by the trial
+deadline: there is no reply, and the sealed terminal response — with Daimon's
+observation of the MCP tool call the worker was still blocked on riding on it —
+exists only inside the broker's own turn record, in a `0700` store this uid
+cannot read, on a control root a training slot puts on tmpfs. Six live runs
+ended exactly there: usage recovered, `output: absent`, and no account of what
+the turn was waiting for. Daimon now projects that sealed response into a third
+stream beside the two ledgers above, `turns.jsonl`, and `sealed-usage.ts` reads
+it on the same failure path, on the same bounded poll and for the same reason
+— sealing is the broker's reaction to losing its client. That path, rather than
+deriving the turn record's own location, because the launch receipt names only
+`usageLedgerPath`: the turn store is a `service.json` field Paideia never sees,
+the record's name is a digest of a turn id Paideia does not compute, and the
+store's mode denies this uid anyway. Inventing a path convention would be
+claiming knowledge of broker internals that Paideia is specifically not allowed
+to hold.
+
+It publishes as an operator-only `diagnostic`, like every record beside it:
+the accounting, the failure code, the diagnostic's closed
+`status`/`stage`/`failure_class`, the worker's already-redacted `reason`, and
+the facade's tool-call names, counts and elapsed milliseconds — an allow-list
+projection, never a spread. Absence stays absence three ways and they are three
+different statements: no `mcp` member means the facade never observed the turn,
+`started: 0` means it observed a turn that called nothing, and no record at all
+means nothing sealed. Collapsing any two of those is the mistake that kept this
+instrument unreadable.
+
 And the worker's own last words now survive it. `child/diagnostics.ts` builds
 the same redacted `SubjectStartupDiagnostic` for a death *after* readiness that
 it always built for one before it, and the adapter publishes it as a

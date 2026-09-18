@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path';
 import type { Usage } from '../../contracts/execution.js';
 import { aggregateUsage } from './observations.js';
 import { isGrokLaunch, type NativeLaunch } from './receipt/index.js';
-import { readSealedGrokUsage, readSealedGrokRequests, type NativeGrokUsage, type NativeRequestUsage } from './worker/index.js';
+import { readSealedGrokUsage, readSealedGrokRequests, readSealedGrokTurnSeals, type NativeGrokUsage, type NativeRequestUsage, type NativeTurnSeal } from './worker/index.js';
 
 export interface SealedBrokerUsage { usage: Usage | null; rows: NativeGrokUsage[] }
 export interface SealedBrokerUsageOptions { attempts?: number; intervalMs?: number }
@@ -189,6 +189,111 @@ export async function readSealedBrokerRequests(launch: NativeLaunch, options: Se
       return { schema: BROKER_REQUESTS_SCHEMA, outcome: 'read', read: timings.length, published: published.length,
         open: timings.filter(isOpen).length, truncated: published.length < timings.length, rows: published };
     } catch (error) { return { schema: BROKER_REQUESTS_SCHEMA, outcome: 'unreadable', failure: classify(error) }; }
+  }
+  return undefined;
+}
+
+export const BROKER_SEAL_SCHEMA = 'paideia.daimon-native.broker-seal.v1';
+
+/** One outstanding MCP tool call: a name and how long it had been unanswered when the turn died. */
+export interface BrokerSealOutstandingCall { name: string; outstandingMs: number }
+
+/**
+ * One sealed terminal turn, as an allow-list projection.
+ *
+ * Every member is a number, a name, a timing or a value from a closed set. The
+ * one free-form string is `reason`, the worker's own last words, which Daimon
+ * redacted with that turn's own capabilities as exact secrets and bounded
+ * before it ever reached the ledger — the same discipline, and the same bytes,
+ * as the startup diagnostic published beside it.
+ */
+export interface BrokerSealRecord {
+  turn: string;
+  wake: string;
+  at: string;
+  model: string;
+  outcome: 'completed' | 'failed';
+  requests: number;
+  limitReason: 'tokens' | 'requests' | 'timeout' | 'none';
+  code?: string;
+  status?: string;
+  stage?: string;
+  failureClass?: string;
+  exitCode?: number;
+  termSignal?: number;
+  reason?: string;
+  /**
+   * Present exactly when the broker's MCP facade observed this turn. Absent is
+   * "never observed"; `started: 0` is "observed, and it called nothing". The
+   * two are different answers and this record never collapses them.
+   */
+  mcp?: { started: number; answered: number; undecoded: number; outstanding: BrokerSealOutstandingCall[] };
+}
+
+export type BrokerSealLedger =
+  | { schema: typeof BROKER_SEAL_SCHEMA; outcome: 'read'; read: number; outstanding: number; rows: BrokerSealRecord[] }
+  | { schema: typeof BROKER_SEAL_SCHEMA; outcome: 'unreadable'; failure: BrokerRequestFailure };
+
+/** Published seal rows per failed turn; a slot ledger is wiped per recycle, so this is a ceiling, not a window. */
+const publishedSeals = 64;
+
+const sealRecord = (row: NativeTurnSeal): BrokerSealRecord => ({
+  turn: row.turn, wake: row.wake, at: String(row.at), model: row.model,
+  outcome: row.outcome, requests: row.requests, limitReason: row.limit_reason,
+  ...(row.code === undefined ? {} : { code: row.code }),
+  ...(row.diagnostic === undefined ? {} : {
+    status: row.diagnostic.status, stage: row.diagnostic.stage, failureClass: row.diagnostic.failure_class,
+    exitCode: row.diagnostic.exit_code, termSignal: row.diagnostic.term_signal,
+    ...(row.diagnostic.reason === undefined ? {} : { reason: row.diagnostic.reason }),
+  }),
+  ...(row.mcp === undefined ? {} : {
+    mcp: {
+      started: row.mcp.started, answered: row.mcp.answered, undecoded: row.mcp.undecoded,
+      outstanding: row.mcp.outstanding.map(call => ({ name: call.name, outstandingMs: call.outstanding_ms })),
+    },
+  }),
+});
+
+/**
+ * What the broker sealed about a turn that never answered.
+ *
+ * A worker that CRASHES still produces a terminal HTTP reply, and its failure
+ * code and last words ride that reply here. A worker that HANGS is killed by
+ * the trial deadline, so there is no reply at all — and the sealed terminal
+ * response, with the MCP call the worker was still blocked on riding on it,
+ * is written only into the broker's own turn record, in a `0700` store this
+ * uid cannot read, on a control root a training slot puts on tmpfs. Six live
+ * runs ended exactly that way: usage recovered, `output: absent`, and no
+ * account of what the turn was waiting for.
+ *
+ * The broker now projects that sealed response into a third stream beside the
+ * two ledgers this module already recovers, and this reads it there, on the
+ * same bounded poll and for the same reason: the seal is the broker's reaction
+ * to losing its client, so reading once would race the append.
+ *
+ * Same rules as the requests ledger beside it. Absence stays absence — a
+ * missing or empty stream publishes nothing, because a fabricated empty record
+ * would read as "the turn sealed nothing", which is one of the answers this
+ * exists to tell apart, and an `mcp` member is never invented for a turn the
+ * facade did not observe. Numbers, names, timings, closed vocabularies and one
+ * already-redacted reason. A fault publishes a classification, never a message
+ * that could quote the bad line. And it cannot fail the trial: every fault
+ * becomes a classification or absence.
+ */
+export async function readSealedBrokerSeal(launch: NativeLaunch, options: SealedBrokerUsageOptions = {}): Promise<BrokerSealLedger | undefined> {
+  if (!isGrokLaunch(launch)) return undefined;
+  const bound = schedule(options);
+  if (!bound) return undefined;
+  const file = join(dirname(launch.broker.usageLedgerPath), 'turns.jsonl');
+  for (let attempt = 0; attempt < bound.attempts; attempt++) {
+    if (attempt > 0) await pause(bound.intervalMs);
+    try {
+      const rows = await readSealedGrokTurnSeals(file, launch.agent.id, launch.agent.model);
+      if (!rows.length) continue;
+      const records = rows.slice(-publishedSeals).map(sealRecord);
+      return { schema: BROKER_SEAL_SCHEMA, outcome: 'read', read: rows.length,
+        outstanding: records.reduce((total, row) => total + (row.mcp?.outstanding.length ?? 0), 0), rows: records };
+    } catch (error) { return { schema: BROKER_SEAL_SCHEMA, outcome: 'unreadable', failure: classify(error) }; }
   }
   return undefined;
 }
