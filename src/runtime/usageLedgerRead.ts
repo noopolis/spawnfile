@@ -131,6 +131,9 @@ export const readUsageLedgerViaExec = async (
     readLedgerGeneration(exec, paths.filePath)
   ]);
   return {
+    // Every row is kept, across both generations: aggregates dedupe by `turn`
+    // (a replay can re-append after a rotation) and coverage reports rows that
+    // share a key but differ.
     records: [...parseUsageLedger(rotated.text), ...parseUsageLedger(primary.text)],
     unreadable: [rotated.failure, primary.failure].filter(
       (failure): failure is UsageLedgerReadFailure => failure !== undefined

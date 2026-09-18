@@ -1749,6 +1749,7 @@ spawnfile model clear-fallbacks [path]
 spawnfile validate [path]
 spawnfile view [path]
 spawnfile compile [path] [--out <dir>]
+spawnfile train [path] [--agent <node-id>] --train <dataset> --test <dataset> --out <dir> [--dry-run]
 spawnfile status [path | <image-ref>] [--out <dir>] [--live] [--deployment <name>] [--image] [--pull] [--pull-check]
 spawnfile up [path | <image-ref>] [--out <dir>] [--auth-profile <name>] [--env-file <file>] [--detach] [--deployment <name>] [--context <name>] [--image] [--pull]
 spawnfile dev up [path] [--out <dir>] [--auth-profile <name>] [--env-file <file>] [--deployment <name>] [--context <name>]
@@ -1762,6 +1763,7 @@ spawnfile publish [path] --tag <image-ref> [--out <dir>]
 ```
 
 See `DISTRIBUTION.md` for `publish`, image-reference `up`/`status`, and the `--image`/`--pull`/`--pull-check` flags.
+See `TRAINING.md` for canonical source handoff, Paideia requirements and delegated training outcomes.
 
 ### Exit Codes
 
@@ -1772,6 +1774,7 @@ All commands share one convention:
 - `1` — runtime failure: a compile, build, Docker, or other operation that failed after input validation passed.
 
 Per-command notes below reference this convention rather than restating exit numbers.
+`train` preserves Paideia's completed failed-check exit 1 and cancellation exits 130/143; empty success receipts fail.
 
 #### `spawnfile init`
 

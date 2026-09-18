@@ -6,6 +6,7 @@ This folder owns graph resolution, effective configuration, compile planning, an
 
 ```text
 src/compiler/
+├── training/                 # Versioned canonical source context for Paideia; no evaluation or launch
 ├── index.ts                    # Barrel for compiler-facing exports
 ├── types.ts                    # Internal compiler plan and resolved-node types
 ├── helpers.ts                  # Deterministic helper utilities
@@ -33,7 +34,9 @@ src/compiler/
 ├── containerPersistentMounts.ts # Durable-mount merge across sources + volume-name uniqueness
 ├── deploymentLineage.ts        # Dev/production lineage namespacing + declared-volume refusal
 ├── containerEntrypointShell.ts # Shell quoting, recipe env, and CLI credential materialization helpers
-├── containerDaimonBrokerRender.ts # Fixed Daimon broker identities, registrations, worker config, and root-launch provisioning
+├── containerDaimonBrokerRender.ts # Fixed Daimon broker identities, registrations binary, credential realm, and root-launch provisioning
+├── containerDaimonGrokWorkerRender.ts # Brokered Grok registrations: pinned worker config, sandbox deny list, service.json v2
+├── containerDaimonGrokWorkerProvisioning.ts # Root program lines for the attested worker GROK_HOME layout and canonical-path checks
 ├── containerArtifactsPlans.ts # Environment inventory and runtime target-plan orchestration
 ├── containerTargetPlanResolution.ts # Per-target paths, packages, auth, secrets, and exposure resolution
 ├── teamRoster.ts               # Context-scoped team roster generation and diagnostics
@@ -160,6 +163,69 @@ src/compiler/
   existing uid, capability-drop, and `no-new-privileges` posture; Codex owns the
   per-turn filesystem/network/tool boundary, while trusted MCP servers and
   Daimon code outside that native boundary remain trusted container processes.
+- Without a strict Codex agent, a Daimon organization with a Grok agent gets
+  `--security-opt=seccomp=<pinned profile>` plus `apparmor=unconfined` instead:
+  Docker's default seccomp profile with bubblewrap's seven namespace syscalls
+  (`src/shared/daimonGrokSeccompProfile.ts`, sha-pinned, materialized under
+  `<output>/container/security/` or the image-up work directory), the narrowest
+  combination under which Grok 1.0.34's always-on bubblewrap starts. Codex's
+  fully unconfined options are a superset and win when both engines are
+  present. The Docker host must allow unprivileged user namespaces
+  (`kernel.apparmor_restrict_unprivileged_userns=0`); the Daimon entrypoint
+  refuses to start a Grok organization, naming that sysctl, when it is not.
+- Brokered Grok workers (`containerDaimonGrokWorkerRender.ts`) take their
+  `config.toml` bytes only from Daimon's renderer output vendored in
+  `src/runtime/daimon/grokWorkerConfigBytes.ts`, refused unless they hash to the
+  manifest pin for the agent's declared model x effort. The sandbox profile's
+  `deny` list is never empty: Daimon's protected set (realms, bootstrap, peers,
+  and the organization `state` directory holding the acceptance store, kept
+  verbatim) plus the organization config directory,
+  every persistent mount of every runtime plan (the worker's own tool state,
+  credential home, and memory banks included), other runtime instance roots,
+  `/var/lib/spawnfile/{moltnet,agents,memory}`, every workspace resource backing
+  path not linked from the agent's own workspace, the broker's `/etc` and `/run`
+  directories, the usage ledger and wake fuse, every other worker's home, and
+  `/run/{secrets,spawnfile,spawnfile-secrets,world}`. Allowed on purpose: own
+  workspace, own worker home, own runtime home directory, own resource
+  backings. Masks never nest; `containerDaimonGrokWorkerDenyCoverage.test.ts`
+  enumerates everything the container provisions and fails on any uncovered,
+  unjustified path. Provisioning
+  (`containerDaimonGrokWorkerProvisioning.ts`) writes Daimon's attested
+  `GROK_HOME` layout — `root:<worker> 1771` home and `sessions/`, `root:root
+  0444` config/sandbox/trust/managed/requirements files, events under
+  `sessions/` — and refuses any registration or deny path that is missing, a
+  symlink, or not its own realpath, and — once every mode below is final — any
+  deny entry bubblewrap could not *place*. Grok 1.0.34 materializes each deny
+  target inside bubblewrap as the worker uid, so the target must exist and the
+  worker must be able to search every ancestor directory; one unplaceable entry
+  makes Grok refuse the whole profile and every turn of that worker fails with a
+  bare `bwrap: Can't create file at …: Permission denied` (matrix:
+  `.runtime/grok-deny-placement/EVIDENCE.md`). That is why the wake-acceptance
+  store is masked through its `0700 2000:2000` parent
+  (`daimonGrokAcceptanceStoreDenyPath`) rather than directly: lifting a mask to a
+  private ancestor is strictly stronger and, unlike opening that ancestor with
+  `o+x`, adds the worker no reach at all. It also provisions Daimon's temp and
+  spill contract: `<worker home>/tmp` `<worker>:<worker> 0700` (the launcher's
+  `TMPDIR`); `/tmp` and `/var/tmp` `root:2000 1774` (Grok refuses to start if
+  they are denied, so modes close them); `<runtime home>/tool-output`
+  `2000:<worker> 2750` under a runtime home `2000:<worker> 0710` — the exact
+  shape Daimon's engine-aware `physicalReadiness.ts` demands for a brokered
+  Grok agent (owner = runtime uid, mode `0710` with no setgid or sticky, group a
+  worker group; a `0700` home is refused because the worker could not read its
+  own spills, and every other engine keeps `0700`). Every persistent mount
+  inside that traversable home (tool state, the credential home) is re-secured
+  to `0700 2000:2000`, so `tool-output` is the only thing in there the worker
+  can reach whose
+  `/var/lib/spawnfile` ancestors are made traversable by reclaim-mode-restore.
+  Root here holds no `CAP_DAC_OVERRIDE`, so the private temp is created while the
+  worker home is still root-owned and the spill directory before the runtime home
+  is narrowed to `0710`; either done the other way round fails outright.
+  The broker and relay (uid 2100, outside group 2000) run with
+  `TMPDIR=/run/daimon-engine-broker/tmp`; every other entrypoint process runs as
+  root or uid 2000, and workers get their `TMPDIR` from the launcher. The start
+  script never restates a Grok agent's runtime home mode. Production registrations all point
+  `usageLedgerPath` at the one container ledger, because `spawnfile usage` and
+  Daimon's wake fuse read only that file.
 - Declared names are checked for uniqueness across EVERY mount source
   (`containerPersistentMounts.ts`), not just within one source. A
   resource `name: X` and a store `persistence.name: X` used to compile to two

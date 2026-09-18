@@ -7,6 +7,7 @@ This folder owns Spawnfile-managed auth profiles and auth import flows.
 ```text
 src/auth/
 ├── index.ts            # Barrel exports
+├── trainingAuth.ts     # Public opaque training ingress staging to fixed native leaves
 ├── types.ts            # Auth profile types
 ├── paths.ts            # Spawnfile auth home and profile path helpers
 ├── profileStore.ts     # Read/write auth profiles and imported auth material

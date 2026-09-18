@@ -7,11 +7,14 @@ in the npm package. Scripts run as native TypeScript on Node 22.19+.
 | Entrypoint | Caller | Purpose / prerequisites |
 | --- | --- | --- |
 | `build-local-daimon-runtime.ts` | `npm run build:local-daimon` | Build a locally sourced runtime; explicit artifact pins, Docker, and loopback registry required |
+| `vendor-daimon-grok-contract.ts` | `npm run vendor:daimon-contract [-- --check]` | Vendor Daimon's contract manifest and Grok worker renderer bytes from a Daimon checkout (`SPAWNFILE_DAIMON_SOURCE_DIR`) |
+| `grok-lean-worker-live-check.ts` | `SPAWNFILE_GROK_LIVE_CHECK=1 npm run test:live:grok-lean-worker` | Opt-in live check: one brokered Grok 1.0.34 agent, worker-home/deny/service attestation dump, one cheap wake, one deduped broker usage row; Docker, a local Daimon identity, and a dedicated Grok login required |
 | `build-local-moltnet.ts` | `npm run build:local-moltnet` | Build and stamp release binaries from an explicit source checkout |
 | `create-source-provenance-bundle.ts` | `npm run bundle:source-provenance` | Create deterministic archives with manifests and credential exclusions |
 | `create-linux-amd64-dependency-closure.ts` | `npm run prepare:linux-amd64-closure` | Prepare reviewed npm dependencies/cache in the pinned build container |
 | `create-linux-amd64-go-closure.ts` | `npm run prepare:linux-amd64-go-closure` | Prepare the pinned Go module-cache closure |
 | `compile-explicit-test-mcp.ts` | `npm run compile:explicit-test-mcp` | Lower bounded test MCP declarations against a compiled report; build the CLI first |
+| `verify-training-image-modes.ts` | `npm run verify:training-image-modes -- --build-config <training.json>` | Build the staged-mode training image and a control with the old `chmod -R a+rX`, then fail on any mode/owner/type/link difference under `/opt/training` (incl. the bridge venv); Docker required, not run in CI |
 | `verify-package-closure.ts` | `npm run verify:package-closure` | Verify the packed CLI and runtime closure |
 | `product-state-volume-integration.test.ts` | `npm run test:product-state-volume`, CI | Test real volume preseed; Docker and host volume access required |
 | `source-provenance-bundle.integration.test.ts` | `npm run test:source-provenance-docker` | Test the real offline Daimon archive build |

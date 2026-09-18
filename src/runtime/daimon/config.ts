@@ -20,6 +20,7 @@ import {
 } from "./memory.js";
 import { assertDaimonScheduleAuthority } from "./scheduleAuthority.js";
 import { assertDaimonAttentionAuthority, resolveDaimonAttention } from "./attention.js";
+import { resolveDaimonGrokModel } from "./grokModel.js";
 
 export const DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY = { mode: "workspace-write", networkAccess: false, webSearch: "disabled" } as const;
 
@@ -100,8 +101,12 @@ export const resolveDaimonEngine = (node: ResolvedAgentNode): DaimonEngine => {
 
 const resolveDaimonEngineConfig = (
   node: ResolvedAgentNode
-): { kind: DaimonEngine; model?: string; codexSandbox?: typeof DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY } => {
+): { kind: DaimonEngine; model?: string; reasoningEffort?: string; codexSandbox?: typeof DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY } => {
   const kind = resolveDaimonEngine(node);
+  if (kind === "grok") {
+    const declared = resolveDaimonGrokModel(node);
+    return { kind, model: declared.model, reasoningEffort: declared.reasoningEffort };
+  }
   const model = kind === "codex" ? node.execution?.model?.primary?.name : undefined;
   const codexSandbox = kind === "codex" && node.runtime.options.codex_policy === "workspace-no-network"
     ? DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY
@@ -135,10 +140,15 @@ const renderStartScript = (agents: Array<{
       // group access. Forcing 0700 here would lock that worker out of its own workspace,
       // so create it only when absent and never restate the mode of an existing directory.
       `[ -d ${JSON.stringify(agent.workspacePath)} ] || install -d -m 700 ${JSON.stringify(agent.workspacePath)}`,
-      `install -d -m 700 ${[
-        agent.runtimeHomePath,
-        ...(credential === undefined ? [] : [inbound])
-      ].map((entry) => JSON.stringify(entry)).join(" ")}`,
+      // A Grok agent's runtime home is traversable by its worker's group (the
+      // broker provisioning grants `0710` so the worker can read its setgid
+      // `tool-output/` spills); restating 0700 here would revoke that.
+      agent.engine.kind === "grok"
+        ? `[ -d ${JSON.stringify(agent.runtimeHomePath)} ] || install -d -m 700 ${JSON.stringify(agent.runtimeHomePath)}`
+        : `install -d -m 700 ${[
+          agent.runtimeHomePath,
+          ...(credential === undefined ? [] : [inbound])
+        ].map((entry) => JSON.stringify(entry)).join(" ")}`,
       ...(credential === undefined ? [] : [
         `if [ -e ${JSON.stringify(path.posix.join(agent.runtimeHomePath, credential.sourceRelativePath))} ]; then test "$(stat -c %a ${JSON.stringify(path.posix.join(agent.runtimeHomePath, credential.sourceRelativePath))})" = 600; fi`
       ])
@@ -204,6 +214,9 @@ export const createDaimonContainerTargets = async (
     })
     .sort((left, right) => left.id.localeCompare(right.id));
   const engineByNodeId = Object.fromEntries(configAgents.map((agent) => [agent.id, agent.engine.kind]));
+  const grokModelByNodeId = Object.fromEntries(configAgents
+    .filter((agent) => agent.engine.kind === "grok" && agent.engine.model !== undefined && agent.engine.reasoningEffort !== undefined)
+    .map((agent) => [agent.id, { model: agent.engine.model!, reasoningEffort: agent.engine.reasoningEffort! }]));
   const hasAgy = configAgents.some((agent) => agent.engine.kind === "agy");
   const hasGrok = configAgents.some((agent) => agent.engine.kind === "grok");
   const agyRuntimeHomeMounts = configAgents
@@ -248,6 +261,7 @@ export const createDaimonContainerTargets = async (
 
   return [{
     engineByNodeId,
+    ...(hasGrok ? { grokModelByNodeId } : {}),
     files: [
       ...agents.flatMap((input) => input.emittedFiles.map((file) => moveWorkspaceFile(file, input.slug))),
       { content: serializedConfig, path: DAIMON_CONFIG_FILE },

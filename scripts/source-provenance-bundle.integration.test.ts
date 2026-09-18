@@ -15,6 +15,14 @@ const { renderRuntimeLinkMaterializer } = await import(
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const digest = (file: string): string => `sha256:${execFileSync("shasum", ["-a", "256", file], { encoding: "utf8" }).split(" ")[0] ?? ""}`;
+const pinnedManifest = JSON.parse(readFileSync(path.join(repository, "src", "runtime", "daimon", "contract-manifest.json"), "utf8")) as { grokEngineBroker: { artifacts: { x64Sha256: string }; grokCliArtifacts: { x64: { url: string } }; grokCliVersion: string } };
+// The runtime image refuses any Grok executable but the manifest-pinned build,
+// so this test needs the real linux-x86_64 binary (136+ MB) rather than a stub.
+const pinnedGrokCli = (): string => {
+  const file = process.env.SPAWNFILE_GROK_CLI_FILE;
+  if (!file || !path.isAbsolute(file)) throw new Error("SPAWNFILE_GROK_CLI_FILE must name the pinned linux-x86_64 Grok CLI executable");
+  return file;
+};
 const sha512 = (file: string): string => `sha512:${createHash("sha512").update(readFileSync(file)).digest("hex")}`;
 
 test("actual Daimon lock produces a real offline linux/amd64 shipped artifact and rejects tampering", { timeout: 360_000 }, () => {
@@ -47,7 +55,7 @@ test("actual Daimon lock produces a real offline linux/amd64 shipped artifact an
     assert.match(execFileSync("tar", ["-tzf", path.join(output, "daimon.tgz")], { encoding: "utf8" }), /package\/dist\/runtime\/contract-manifest\.json/u);
     assert.match(execFileSync("tar", ["-tvzf", path.join(output, "daimon.tgz")], { encoding: "utf8" }), /-rwxr-xr-x[^\n]*package\/dist\/runtime\/native\/daimon-engine-broker/u);
     const packedBroker = execFileSync("tar", ["-xOf", path.join(output, "daimon.tgz"), "package/dist/runtime/native/daimon-engine-broker"]);
-    assert.equal(`sha256:${createHash("sha256").update(packedBroker).digest("hex")}`, "sha256:e3fe2738fc8a979861085b4003bf2d5d7c284874897cb6ec2e2e2383211768bd");
+    assert.equal(`sha256:${createHash("sha256").update(packedBroker).digest("hex")}`, `sha256:${pinnedManifest.grokEngineBroker.artifacts.x64Sha256}`);
     const packageContext = path.join(temporary, "package-context"), probe = path.join(temporary, "probe"); mkdirSync(packageContext); mkdirSync(probe);
     cpSync(path.join(output, "daimon.tgz"), path.join(packageContext, "daimon.tgz")); cpSync(path.join(output, "runtime-dependencies.tar"), path.join(packageContext, "dependencies.tar")); cpSync(path.join(output, "source-inputs.json"), path.join(packageContext, "source-inputs.json"));
     execFileSync("docker", ["build", "--network=none", "--platform", "linux/amd64", "--target", "offline_dependency_probe", "--build-context", `daimon_package=${packageContext}`,
@@ -55,7 +63,7 @@ test("actual Daimon lock produces a real offline linux/amd64 shipped artifact an
       "--build-arg", `DAIMON_DEPENDENCY_ARCHIVE_SHA256=${digest(path.join(output, "runtime-dependencies.tar"))}`, "-f", path.join(repository, "runtime-images", "daimon", "Dockerfile"), repository], { stdio: "inherit" });
     assert.deepEqual(JSON.parse(readFileSync(path.join(probe, "probe", "source-inputs.json"), "utf8")), identity);
     const grok = path.join(packageContext, "grok"), agyTree = path.join(temporary, "agy-tree"), agy = path.join(agyTree, "antigravity"), agyTar = path.join(packageContext, "agy.tar.gz");
-    writeFileSync(grok, "#!/bin/sh\nexit 0\n", { mode: 0o755 }); mkdirSync(agyTree); writeFileSync(agy, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    cpSync(pinnedGrokCli(), grok); mkdirSync(agyTree); writeFileSync(agy, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     execFileSync("tar", ["-czf", agyTar, "-C", agyTree, "antigravity"]);
     const runtimeArchive = digest(path.join(output, "runtime-dependencies.tar"));
     const dependencyLock = dependencyReceipt.manifest.dependency_lock;
@@ -71,17 +79,17 @@ test("actual Daimon lock produces a real offline linux/amd64 shipped artifact an
     const port = mapped.slice(mapped.lastIndexOf(":") + 1);
     const identityPath = path.join(repository, ".local-daimon-runtime-identity.json"), priorIdentity = existsSync(identityPath) ? readFileSync(identityPath) : null;
     try {
-      execFileSync("npm", ["run", "--silent", "build:local-daimon"], { cwd: repository, env: { ...process.env, AGY_CLI_SHA256: agySha, AGY_CLI_SHA512: sha512(agyTar), AGY_CLI_URL: "https://invalid.example/agy", AGY_CLI_VERSION: "fixture", CODEX_CLI_SHA256: codexSha, GROK_CLI_SHA256: grokSha, GROK_CLI_URL: "https://invalid.example/grok", GROK_CLI_VERSION: "fixture", SPAWNFILE_AGY_CLI_ARCHIVE: agyTar, SPAWNFILE_DAIMON_DEPENDENCY_BUNDLE: dependencyTar, SPAWNFILE_DAIMON_LOCAL_IMAGE_TAG: `127.0.0.1:${port}/noopolis/spawnfile-runtime-daimon:archive-wrapper`, SPAWNFILE_DAIMON_SOURCE_BUNDLE: sourceTar, SPAWNFILE_GROK_CLI_FILE: grok }, stdio: "ignore" });
+      execFileSync("npm", ["run", "--silent", "build:local-daimon"], { cwd: repository, env: { ...process.env, AGY_CLI_SHA256: agySha, AGY_CLI_SHA512: sha512(agyTar), AGY_CLI_URL: "https://invalid.example/agy", AGY_CLI_VERSION: "fixture", CODEX_CLI_SHA256: codexSha, GROK_CLI_SHA256: grokSha, GROK_CLI_URL: pinnedManifest.grokEngineBroker.grokCliArtifacts.x64.url, GROK_CLI_VERSION: pinnedManifest.grokEngineBroker.grokCliVersion, SPAWNFILE_AGY_CLI_ARCHIVE: agyTar, SPAWNFILE_DAIMON_DEPENDENCY_BUNDLE: dependencyTar, SPAWNFILE_DAIMON_LOCAL_IMAGE_TAG: `127.0.0.1:${port}/noopolis/spawnfile-runtime-daimon:archive-wrapper`, SPAWNFILE_DAIMON_SOURCE_BUNDLE: sourceTar, SPAWNFILE_GROK_CLI_FILE: grok }, stdio: "ignore" });
       const wrapperIdentity = JSON.parse(readFileSync(identityPath, "utf8")); assert.equal(wrapperIdentity.image_architecture, "amd64"); assert.match(wrapperIdentity.image_reference, new RegExp(`^127\\.0\\.0\\.1:${port}/noopolis/spawnfile-runtime-daimon@sha256:[a-f0-9]{64}$`, "u"));
     } finally { if (priorIdentity) writeFileSync(identityPath, priorIdentity); else rmSync(identityPath, { force: true }); }
-    const receipt = { architecture: "amd64", daimon: { package_sha256: packageSha, source_inputs: sourceInputs, source_sha256: digest(path.join(packageContext, "source-inputs.json")) }, engines: { agy: { executable_sha256: agySha }, codex: { executable_sha256: codexSha }, grok: { executable_sha256: grokSha } }, manifest_sha256: manifestSha, provenance: { agy: { archive: { format: "tar.gz", sha512: sha512(agyTar), url: "https://invalid.example/agy", version: "fixture" } }, grok: { executable: { sha256: grokSha, url: "https://invalid.example/grok", version: "fixture" } } }, version: "spawnfile.daimon-runtime-capability-receipt.v1" };
+    const receipt = { architecture: "amd64", daimon: { package_sha256: packageSha, source_inputs: sourceInputs, source_sha256: digest(path.join(packageContext, "source-inputs.json")) }, engines: { agy: { executable_sha256: agySha }, codex: { executable_sha256: codexSha }, grok: { executable_sha256: grokSha } }, manifest_sha256: manifestSha, provenance: { agy: { archive: { format: "tar.gz", sha512: sha512(agyTar), url: "https://invalid.example/agy", version: "fixture" } }, grok: { executable: { sha256: grokSha, url: pinnedManifest.grokEngineBroker.grokCliArtifacts.x64.url, version: pinnedManifest.grokEngineBroker.grokCliVersion } } }, version: "spawnfile.daimon-runtime-capability-receipt.v1" };
     const shipped = path.join(temporary, "shipped"), shippedTar = path.join(temporary, "shipped.tar"); mkdirSync(shipped);
     execFileSync("docker", ["build", "--network=none", "--platform", "linux/amd64", "--build-context", `daimon_package=${packageContext}`, "--output", `type=tar,dest=${shippedTar}`,
-      "--build-arg", `DAIMON_CAPABILITY_RECEIPT_BASE64=${Buffer.from(`${JSON.stringify(receipt)}\n`).toString("base64")}`, "--build-arg", `DAIMON_MANIFEST_SHA256=${manifestSha}`, "--build-arg", `DAIMON_PACKAGE_SHA256=${packageSha}`, "--build-arg", `DAIMON_SOURCE_SHA256=${receipt.daimon.source_sha256}`, "--build-arg", "DAIMON_DEPENDENCY_MODE=offline-bundle", "--build-arg", `DAIMON_DEPENDENCY_ARCHIVE_SHA256=${runtimeArchive}`, "--build-arg", `CODEX_CLI_SHA256=${codexSha}`, "--build-arg", "GROK_CLI_VERSION=fixture", "--build-arg", "GROK_CLI_URL=https://invalid.example/grok", "--build-arg", `GROK_CLI_SHA256=${grokSha.slice(7)}`, "--build-arg", "AGY_CLI_VERSION=fixture", "--build-arg", "AGY_CLI_URL=https://invalid.example/agy", "--build-arg", `AGY_CLI_SHA512=${sha512(agyTar).slice(7)}`, "--build-arg", `AGY_CLI_SHA256=${agySha.slice(7)}`, "-f", path.join(repository, "runtime-images", "daimon", "Dockerfile"), repository], { stdio: "inherit" });
+      "--build-arg", `DAIMON_CAPABILITY_RECEIPT_BASE64=${Buffer.from(`${JSON.stringify(receipt)}\n`).toString("base64")}`, "--build-arg", `DAIMON_MANIFEST_SHA256=${manifestSha}`, "--build-arg", `DAIMON_PACKAGE_SHA256=${packageSha}`, "--build-arg", `DAIMON_SOURCE_SHA256=${receipt.daimon.source_sha256}`, "--build-arg", "DAIMON_DEPENDENCY_MODE=offline-bundle", "--build-arg", `DAIMON_DEPENDENCY_ARCHIVE_SHA256=${runtimeArchive}`, "--build-arg", `CODEX_CLI_SHA256=${codexSha}`, "--build-arg", `GROK_CLI_VERSION=${pinnedManifest.grokEngineBroker.grokCliVersion}`, "--build-arg", `GROK_CLI_URL=${pinnedManifest.grokEngineBroker.grokCliArtifacts.x64.url}`, "--build-arg", `GROK_CLI_SHA256=${grokSha.slice(7)}`, "--build-arg", "AGY_CLI_VERSION=fixture", "--build-arg", "AGY_CLI_URL=https://invalid.example/agy", "--build-arg", `AGY_CLI_SHA512=${sha512(agyTar).slice(7)}`, "--build-arg", `AGY_CLI_SHA256=${agySha.slice(7)}`, "-f", path.join(repository, "runtime-images", "daimon", "Dockerfile"), repository], { stdio: "inherit" });
     execFileSync("tar", ["-xf", shippedTar, "-C", shipped], { stdio: "inherit" });
     assert.deepEqual(JSON.parse(readFileSync(path.join(shipped, "opt", "spawnfile", "runtime-installs", "daimon", "source-inputs.json"), "utf8")), receipt.daimon.source_inputs);
     const shippedRoot=path.join(shipped,"opt","spawnfile","runtime-installs","daimon");
-    assert.equal(digest(path.join(shippedRoot,"bin","daimon-engine-broker")),"sha256:e3fe2738fc8a979861085b4003bf2d5d7c284874897cb6ec2e2e2383211768bd");
+    assert.equal(digest(path.join(shippedRoot,"bin","daimon-engine-broker")),`sha256:${pinnedManifest.grokEngineBroker.artifacts.x64Sha256}`);
     assert.equal(readFileSync(path.join(shippedRoot,"contract-manifest.sha256"),"utf8"),`${manifestSha}\n`);
     const orgContext = path.join(temporary, "literal-org-context"), orgTag = `spawnfile-literal-org-${Date.now().toString(36)}`;
     mkdirSync(orgContext);

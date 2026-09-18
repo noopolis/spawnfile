@@ -3,7 +3,8 @@ import path from "node:path";
 import { readUtf8File } from "../filesystem/index.js";
 import type { ContainerRuntimeInstanceReport } from "../report/index.js";
 import {
-  codexNativeSandboxDockerSecurityArgsForConfigs,
+  daimonEngineDockerSecurityArgsForConfigs,
+  materializeDaimonGrokSeccompProfile,
   SpawnfileError
 } from "../shared/index.js";
 
@@ -55,5 +56,8 @@ export const resolveDaimonCodexNativeSandboxDockerSecurityOptions = async (
       );
     }
   }
-  return codexNativeSandboxDockerSecurityArgsForConfigs(sources);
+  return daimonEngineDockerSecurityArgsForConfigs(
+    sources,
+    () => materializeDaimonGrokSeccompProfile(path.join(compileResult.outputDirectory, "container", "security"))
+  );
 };

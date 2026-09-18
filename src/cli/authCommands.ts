@@ -31,6 +31,7 @@ type AuthCommandHandlers = Pick<
   CliHandlers,
   | "importClaudeCodeAuth"
   | "importCodexAuth"
+  | "importGrokAuth"
   | "importEnvFile"
   | "initializeTargetSecretSourceLifecycle"
   | "provisionCredentials"
@@ -119,6 +120,16 @@ export const registerAuthCommands = (
     .option("--from <directory>", "Source Claude Code config directory")
     .action(async (options: { from?: string; profile: string }) => {
       const profile = await handlers.importClaudeCodeAuth(options.profile, options.from);
+      emitLines(streams, formatAuthProfileSummary(profile));
+    });
+
+  authImportCommand
+    .command("grok")
+    .description("Import a dedicated training Grok login into a profile")
+    .option("-p, --profile <name>", "Auth profile name", "default")
+    .requiredOption("--from <directory>", "Source Grok config directory holding the dedicated login")
+    .action(async (options: { from: string; profile: string }) => {
+      const profile = await handlers.importGrokAuth(options.profile, options.from);
       emitLines(streams, formatAuthProfileSummary(profile));
     });
 

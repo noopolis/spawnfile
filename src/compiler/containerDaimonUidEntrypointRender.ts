@@ -17,12 +17,13 @@ import {
   resolveDaimonVolumeIdentityFiles
 } from "./containerDaimonOwnershipGuardRender.js";
 export { resolveDaimonVolumeIdentityFiles } from "./containerDaimonOwnershipGuardRender.js";
+import { renderDaimonGrokHostPreflight } from "./containerDaimonGrokWorkerProvisioning.js";
 import {
   DAIMON_BROKER_EXECUTABLE,
   DAIMON_BROKER_BACKEND_SOCKET,
   DAIMON_BROKER_LAUNCHER_SOCKET,
   DAIMON_BROKER_REALM,
-  DAIMON_BROKER_SOCKET,
+  DAIMON_BROKER_SOCKET, DAIMON_BROKER_TMPDIR,
   DAIMON_BROKER_UID,
   DAIMON_ORGANIZATION_UID,
   renderDaimonBrokerProvisioning,
@@ -168,9 +169,9 @@ const privateModeDirectories = (runtimePlans: RuntimeTargetPlan[], moltnet?: Ent
     // creates that parent root-owned and world-readable when it materializes
     // this mount, and the ancestor pass below only *chowns* it, so it stayed
     // 0755 and was the one path under `/var/lib/spawnfile` a Grok worker uid
-    // could open. Securing it to 0700 2000:2000 is what replaces the sandbox
-    // `deny` entry that Grok 1.0.13 can no longer honour (see
-    // `GROK_SANDBOX_DENY_PATHS`). Nothing loses access: the only thing
+    // could open. Securing it to 0700 2000:2000 backs the acceptance store's
+    // sandbox `deny` entry with unix modes as defense in depth (see
+    // `containerDaimonGrokWorkerRender.ts`). Nothing loses access: the only thing
     // beneath it is this store, already 0700 2000:2000, so every reader that
     // works today is the organization uid or a `docker exec` root holding
     // CAP_DAC_READ_SEARCH.
@@ -331,6 +332,7 @@ export const renderDaimonUidEntrypoint = (
     '  if ! getent group "$fixed_uid" >/dev/null; then groupadd -K GID_MIN=1 --gid "$fixed_uid" "daimon-$fixed_uid"; fi',
     '  if ! getent passwd "$fixed_uid" >/dev/null; then useradd -K UID_MIN=1 --no-create-home --no-log-init --uid "$fixed_uid" --gid "$fixed_uid" --home-dir /nonexistent --shell /usr/sbin/nologin "daimon-$fixed_uid"; fi',
     "done",
+    ...(resolveDaimonGrokRegistrations(runtimePlans).length === 0 ? [] : renderDaimonGrokHostPreflight()),
     ...renderDaimonBrokerProvisioning(runtimePlans),
     'if ! getent passwd "$uid" >/dev/null; then',
     '  runtime_identity="daimon-$uid"',
@@ -362,12 +364,12 @@ export const renderDaimonUidEntrypoint = (
       "startup_children+=(\"$launcher_pid\")",
       `wait_for_broker_socket ${quote(DAIMON_BROKER_LAUNCHER_SOCKET)} "$launcher_pid" "engine broker launcher"`,
       `wait_for_broker_identity "$launcher_pid" 0 00000000000000c1 "engine broker launcher"`,
-      `setpriv --clear-groups --reuid ${DAIMON_BROKER_UID} --regid ${DAIMON_BROKER_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- ${quote(path.posix.join(daimonPlan?.runtimeRoot ?? "", "bin/daimon-runtime"))} engine-broker serve &`,
+      `setpriv --clear-groups --reuid ${DAIMON_BROKER_UID} --regid ${DAIMON_BROKER_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- env TMPDIR=${quote(DAIMON_BROKER_TMPDIR)} ${quote(path.posix.join(daimonPlan?.runtimeRoot ?? "", "bin/daimon-runtime"))} engine-broker serve &`,
       "broker_pid=$!",
       "startup_children+=(\"$broker_pid\")",
       `wait_for_broker_socket ${quote(DAIMON_BROKER_BACKEND_SOCKET)} "$broker_pid" "engine broker backend"`,
       `wait_for_broker_identity "$broker_pid" ${DAIMON_BROKER_UID} 0000000000000000 "engine broker backend"`,
-      `setpriv --inh-caps=-all --ambient-caps=-all --bounding-set=-all,+chown,+setuid,+setgid,+setpcap -- ${quote(DAIMON_BROKER_EXECUTABLE)} --relay &`,
+      `setpriv --inh-caps=-all --ambient-caps=-all --bounding-set=-all,+chown,+setuid,+setgid,+setpcap -- env TMPDIR=${quote(DAIMON_BROKER_TMPDIR)} ${quote(DAIMON_BROKER_EXECUTABLE)} --relay &`,
       "relay_pid=$!",
       "startup_children+=(\"$relay_pid\")",
       `wait_for_broker_socket ${quote(DAIMON_BROKER_SOCKET)} "$relay_pid" "engine broker control relay"`,

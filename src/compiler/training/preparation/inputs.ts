@@ -1,0 +1,86 @@
+import { execFile } from "node:child_process";
+import { mkdir, readFile } from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
+import { pathToFileURL } from "node:url";
+import type { TrainingPreparationConfig } from "./contract.js";
+import { assertInputRoot, copySealed, exactPath, fileIdentity, hashJson, sealFile, sealTree, type SealedFile } from "./files.js";
+
+const execute = promisify(execFile);
+const git = async (cwd: string, args: string[]) => {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
+  return (await execute("git", ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", ...args], {
+    cwd, env: { ...env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_ATTR_NOSYSTEM: "1", GIT_TERMINAL_PROMPT: "0" },
+    timeout: 120000, maxBuffer: 8 * 1024 * 1024
+  })).stdout;
+};
+export interface PlannedInput {
+  id: string; source: string; destination: string; digest: string;
+  files?: SealedFile[];
+  git?: { revision: string; tree: string; common: string; overlays: SealedFile[] };
+}
+
+export async function planInputs(config: TrainingPreparationConfig, root: string, auth: string[]): Promise<PlannedInput[]> {
+  return Promise.all(config.inputs.map(async input => {
+    const source = await exactPath(path.resolve(root, input.source));
+    assertInputRoot(source, auth);
+    if (input.include) {
+      const files: SealedFile[] = [];
+      for (const selected of input.include) files.push(...await sealTree(path.join(source, selected), selected, { internalSymlinks: true }));
+      if (new Set(files.map(file => file.destination)).size !== files.length) throw Error("Selected training input paths overlap");
+      return { id: input.id, source, destination: input.destination, files, digest: hashJson(fileIdentity(files)) };
+    }
+    if (!input.git) return { id: input.id, source, destination: input.destination, digest: hashJson(fileIdentity(await sealTree(source, "input", { ignoreGit: true, internalSymlinks: true }))) };
+    if ((await git(source, ["rev-parse", "--show-prefix"])).trim()) throw Error("Pinned Git input source must be a repository root");
+    const common = await exactPath((await git(source, ["rev-parse", "--path-format=absolute", "--git-common-dir"])).trim());
+    const tree = (await git(source, ["rev-parse", `${input.git.revision}^{tree}`])).trim();
+    const entries = (await git(source, ["ls-tree", "-rz", "--full-tree", input.git.revision])).split("\0").filter(Boolean);
+    if (!/^[a-f0-9]{40}$/u.test(tree) || entries.some(entry => !/^(100644|100755|120000) blob [a-f0-9]{40}\t/u.test(entry))) throw Error("Pinned Git inputs require regular files or confined links; submodules are unsupported");
+    for (const entry of entries.filter(entry => entry.startsWith("120000"))) {
+      const split = entry.indexOf("\t"), file = entry.slice(split + 1), object = entry.slice(0, split).split(" ")[2]!;
+      const link = (await git(source, ["cat-file", "blob", object])).trim();
+      const target = path.posix.normalize(path.posix.join(path.posix.dirname(file), link));
+      if (!link || path.posix.isAbsolute(link) || link.includes("\\") || target === ".." || target.startsWith("../") || target.split("/").includes(".git")) throw Error("Git symlink escapes the pinned input tree");
+    }
+    const overlays: SealedFile[] = [];
+    for (const overlay of input.git.overlays) {
+      const overlaySource = path.resolve(root, overlay.source); assertInputRoot(overlaySource, auth);
+      const file = await sealFile(overlaySource, overlay.path);
+      if (file.sha256 !== overlay.sha256 || overlays.some(previous => previous.destination === file.destination)) throw Error("Git overlay digest mismatch or duplicate destination");
+      overlays.push(file);
+    }
+    return { id: input.id, source, destination: input.destination, git: { revision: input.git.revision, tree, common, overlays },
+      digest: hashJson({ revision: input.git.revision, tree, overlays: fileIdentity(overlays) }) };
+  }));
+}
+
+/** A real self-contained Git object store, never a copied worktree pointer. */
+export async function stageInput(input: PlannedInput, target: string): Promise<string> {
+  if (input.files) { await mkdir(target, { mode: 0o700 }); await copySealed(input.files, target); return target; }
+  if (!input.git) return input.source;
+  await mkdir(target, { mode: 0o700 });
+  await git(target, ["init", "--quiet", "--template="]);
+  await git(target, ["-c", "protocol.file.allow=always", "fetch", "--quiet", "--depth=1", pathToFileURL(input.git.common).href, input.git.revision]);
+  await git(target, ["-c", "advice.detachedHead=false", "checkout", "--quiet", "--detach", input.git.revision]);
+  if ((await git(target, ["rev-parse", "HEAD^{tree}"])).trim() !== input.git.tree ||
+    (await git(target, ["rev-parse", "--path-format=absolute", "--git-common-dir"])).trim() !== path.join(target, ".git")) throw Error("Git training snapshot identity mismatch");
+  await git(target, ["fsck", "--full", "--no-dangling"]);
+  await copySealed(input.git.overlays, target);
+  return target;
+}
+
+export async function verifyCanonicalPins(inputs: PlannedInput[], sources: readonly { sourcePath: string; sha256: string }[], staged: readonly string[]): Promise<void> {
+  for (const source of sources) {
+    const index = inputs.findIndex(input => source.sourcePath === input.source || source.sourcePath.startsWith(input.source + path.sep));
+    if (index < 0) throw Error("Canonical training source is outside declared inputs");
+    if (!inputs[index]!.git && !inputs[index]!.files) continue;
+    const file = path.join(staged[index]!, path.relative(inputs[index]!.source, source.sourcePath));
+    if ((await sealFile(file, "pin")).sha256 !== source.sha256) throw Error("Pinned Git snapshot differs from the selected canonical agent");
+  }
+}
+
+export async function readBoundedJson(file: string): Promise<unknown> {
+  const source = await readFile(file, "utf8");
+  if (Buffer.byteLength(source) > 1024 * 1024) throw Error("Training preparation JSON exceeds 1 MiB");
+  return JSON.parse(source);
+}

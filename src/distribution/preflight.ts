@@ -6,6 +6,10 @@ import type {
 } from "./types.js";
 
 const ENV_BASED_AUTH_METHODS = new Set(["api_key", "none"]);
+// Satisfied by the runtime's own credential slot (the Daimon Grok broker's
+// bootstrap realm, checked by `imageRuntimeAuth.ts`), never by an env value
+// or a host CLI import.
+const RUNTIME_OWNED_AUTH_METHODS = new Set(["grok"]);
 
 // Import-based auth methods are satisfiable sourceless when the consumer has the
 // matching local credential import (their logged-in Claude Code / Codex session).
@@ -32,7 +36,7 @@ const collectUnsupportedAuth = (
   const unsupported: Array<{ instance: string; method: string; provider: string; runtime: string }> = [];
   for (const instance of report.runtime_instances) {
     for (const [provider, method] of Object.entries(instance.model_auth_methods)) {
-      if (ENV_BASED_AUTH_METHODS.has(method)) {
+      if (ENV_BASED_AUTH_METHODS.has(method) || RUNTIME_OWNED_AUTH_METHODS.has(method)) {
         continue;
       }
       const importKind = IMPORT_AUTH_METHOD_KINDS[method];
