@@ -72,6 +72,9 @@ it('resolves the execution a three-wake trial\'s frame names and scores the run'
   expect(report.stop?.unevidenced).toBeUndefined();
   expect(report.stop?.unconfirmed).toBeUndefined();
   expect(report.error).not.toContain('want of terminal evidence');
+  // A scored trial says which wake it was scored from, and keeps every wake beside it.
+  expect(report.stop?.evidenced).toBe('answer-1');
+  expect(report.stop?.wakes?.map(wake => wake.wakeId)).toEqual(['task', 'answer-0', 'answer-1']);
   // Deferred is still never success; it is a measured zero rather than an unscorable run.
   expect(report.execution).toBe('deferred');
   expect(report.status).toBe('fail');

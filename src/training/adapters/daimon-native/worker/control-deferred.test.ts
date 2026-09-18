@@ -30,13 +30,18 @@ for (const nativeError of [undefined, 'Native engine unavailable']) test(`deferr
     for (const directory of ['control', 'runtime/telemetry', 'runtime/tool-state', 'runtime/.codex/sessions']) {
       await mkdir(join(root, directory), { recursive: true });
     }
-    await writeFile(join(root, 'runtime/telemetry/turns.ndjson'), `${JSON.stringify(trace)}\n`);
     await writeFile(join(root, 'control/usage.jsonl'), `${JSON.stringify(usage)}\n`);
     await writeFile(join(root, `runtime/tool-state/${'a'.repeat(64)}.json`), JSON.stringify(tool));
     await writeFile(join(root, 'runtime/.codex/sessions/unit.jsonl'),
       `${JSON.stringify({ type: 'turn_context', payload: { model: 'test-model-v1' } })}\n`);
     let accepts = 0, stops = 0;
-    const host = { accept: async () => { accepts++; return { state: 'accepted', acceptance_id: receipt.acceptance_id }; },
+    // The execution exists because the delivery does: its trace is filed after the
+    // delivery is accepted, never before it. A trace that predates the delivery is
+    // an ordering production cannot produce, and reading one as this wake's own is
+    // how another wake's execution gets attributed to this delivery.
+    const host = { accept: async () => { accepts++;
+        await writeFile(join(root, 'runtime/telemetry/turns.ndjson'), `${JSON.stringify(trace)}\n`);
+        return { state: 'accepted', acceptance_id: receipt.acceptance_id }; },
       wakeReceipt: async () => receipt,
       activityV2: async () => ({ version: 'noopolis.daimon.organization-runtime-activity.v2', items: [{ ...receipt, active: false }], executions: [] }),
       availability: async () => ({ state: 'paused', agents: [{ agent_id: receipt.agent_id, pending: 1, deferred: 1,

@@ -4,8 +4,17 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { launchFixture } from '../test-fixtures.js';
 import { sha256 } from '../receipt/index.js';
 
-/** Real child/loopback protocol fixture only; it does not execute a model or prove sandboxing. */
-export async function childFixture(mode = 'complete') {
+/**
+ * Real child/loopback protocol fixture only; it does not execute a model or prove
+ * sandboxing.
+ *
+ * `frames` names a file of terminal frames a REAL worker controller produced, one
+ * per wake. In that mode this fixture stops inventing evidence and replays them by
+ * wake id, which is the only way a test can put the worker's own poll and the
+ * parent's evidence reader on the same trial: the two halves live in different
+ * processes, and every fix that passed on one side alone went on to fail live.
+ */
+export async function childFixture(mode = 'complete', frames?: string) {
   const f = await launchFixture();
   const reservation = createServer(); await new Promise<void>(resolve => reservation.listen(0, '127.0.0.1', resolve));
   f.launch.host.port = (reservation.address() as { port: number }).port;
@@ -17,7 +26,7 @@ export async function childFixture(mode = 'complete') {
   config.agents[0].runtimeHomePath = f.launch.projections[0]!.target; config.agents[0].instructions = f.input.instructions;
   const bytes = JSON.stringify(config); f.launch.configSha256 = sha256(bytes);
   await writeFile(f.launch.config, bytes); await f.save();
-  await writeFile(f.launch.envFile, `UNIT_CHILD_MODE=${mode}\nNATIVE_TRANSPORT_TOKEN=unit-transport-value\n`);
+  await writeFile(f.launch.envFile, `UNIT_CHILD_MODE=${mode}\nNATIVE_TRANSPORT_TOKEN=unit-transport-value\n${frames ? `UNIT_CHILD_FRAMES=${frames}\n` : ''}`);
   await writeFile(join(f.launch.bootstrap!.root, f.launch.bootstrap!.entrypoint), worker);
   return f;
 }
@@ -29,7 +38,7 @@ fs.writeFileSync(path.join(launch.controlRoot,'child-env.json'),JSON.stringify({
 if(mode==='noisy'){console.log('Bootstrap progress');process.stderr.write('Unit diagnostic');}
 if(mode==='leak'){process.stderr.write('upstream refused: Bearer sk-unit-'+'A1b2C3d4'.repeat(6)+'\\n');process.stderr.write(JSON.stringify({schema:'paideia.daimon-native.start-failed.v1',error:'unit missing native library'})+'\\n');process.exit(1);}
 if(mode==='exit'){process.stderr.write(JSON.stringify({schema:'paideia.daimon-native.start-failed.v1',error:'unit missing native library'})+'\\n');process.exit(1);}if(mode==='overflow'){process.stdout.write('X'.repeat(1100000));setInterval(()=>{},1000);return;}
-let terminal;const health={version:'noopolis.daimon.organization-runtime-health.v1',state:'running',agents:[{agentId:mode==='bad-health'?'foreign':launch.agent.id}]};
+let terminal;const replay=process.env.UNIT_CHILD_FRAMES?JSON.parse(fs.readFileSync(process.env.UNIT_CHILD_FRAMES,'utf8')):undefined;const health={version:'noopolis.daimon.organization-runtime-health.v1',state:'running',agents:[{agentId:mode==='bad-health'?'foreign':launch.agent.id}]};
 // The real worker stops its own Daimon host as soon as a delivery closes its execution and
 // stays deferred with no continuation left, so the caller's closure query lands on a stopped
 // runtime. Daimon seals the v2 activity projection at that stop and keeps answering it;
@@ -61,9 +70,18 @@ res.writeHead(200,{'content-type':'application/json'});
 if(req.url==='/trial/health'){res.end(JSON.stringify(health));return;}
 if(req.url==='/v2/activity'){res.end(JSON.stringify(activity()));return;}
 if(req.url==='/trial/stop'){res.end(JSON.stringify(settleStop()));return;}
+// An admitted execution names the deliveries it covers, because that projection is
+// the runtime's own binding of a delivery to an execution and the only thing that
+// answers for a wake whose receipt has already dropped its execution id.
 if(req.url==='/trial/run'){const running={agent_id:launch.agent.id,execution_id:crypto.randomUUID(),state:'running',delivery_ids:[]};admitted=[...admitted,running];
 if(mode==='stall')return;if(mode==='die-mid-turn'){process.stderr.write('worker: stream bound crossed, terminating\\n');server.closeAllConnections();process.exit(1);}let text='';for await(const chunk of req)text+=chunk;const input=JSON.parse(text),id=crypto.randomUUID(),at=new Date().toISOString();
+// The runtime's own binding of this delivery to the execution running it: the
+// projection names the delivery ids an admitted execution covers.
+running.delivery_ids=[trial+':'+input.wakeId];
 admitted=admitted.filter(row=>row!==running);
+// A real worker's own frames, replayed verbatim: this fixture authors nothing in
+// this mode, so what the reader parses is exactly what the worker published.
+if(replay){terminal=replay.find(row=>row.wakeId===input.wakeId);if(!terminal){res.end('{}');return;}items=[...items,{...terminal.receipt,active:false}];res.end(JSON.stringify(terminal));return;}
 if(!wakes++)budget=input.controls?.maxExternalDeliveries??0;
 const receipt={version:'noopolis.daimon.wake-receipt-status.v2',acceptance_id:crypto.randomUUID(),agent_id:launch.agent.id,delivery_id:trial+':'+input.wakeId,request_digest:'a'.repeat(64),state:'completed',accepted_at:at,updated_at:at,execution_id:id};
 items=[...items,{...receipt,active:false,queue_position:wakes}];
@@ -80,13 +98,18 @@ const history=mode.includes('-history')?closed.map(row=>({...row})):[closedTrace
 if(history.length>1&&mode.endsWith('-foreign'))history[0]={...history[0],agent_id:'another-agent'};
 if(history.length>1&&mode.endsWith('-ambiguous'))history.push({...closedTrace});
 terminal={schema:'paideia.daimon-native.trial.v1',trialId:trial,wakeId:input.wakeId,agentId:launch.agent.id,model:launch.agent.model,configSha256:launch.configSha256,status:'completed',startedAt:at,completedAt:at,executionId:id,receipt,activity:{version:'noopolis.daimon.organization-runtime-activity.v2',items:[{...receipt,active:false}],executions:[]},native:{traces:history,usage:[{v:'noopolis.daimon.turn-usage.v1',agent:launch.agent.id,wake:id,engine:'codex',input:100,output:20,cache_read:40,total:120,complete:true}],toolReceipts:[],modelContexts:[{model:launch.agent.model}]},coverage:[{channel:'usage',completeness:'complete',ordering:'source'}]};
-if((mode.startsWith('blocked')||mode==='undisposed')&&(input.wakeId==='task'||mode.startsWith('blocked-always'))){terminal.status='failed';terminal.blocked='awaiting-external-input';receipt.state='accepted';receipt.deferred=true;
+// Daimon CLEARS the receipt's execution id when the subject defers the delivery,
+// so a deferred wake's frame names an execution its own receipt no longer does.
+// A fixture that kept it made every reader test bind through a field production
+// never supplies on this path.
+if((mode.startsWith('blocked')||mode==='undisposed')&&(input.wakeId==='task'||mode.startsWith('blocked-always'))){terminal.status='failed';terminal.blocked='awaiting-external-input';receipt.state='accepted';receipt.deferred=true;delete receipt.execution_id;
 if(wakes>budget)settleStop();
 terminal.error='Native execution completed; delivery blocked awaiting external input';
 // Production derives \`blocked\` from the deferred marker, so a delivery without one
 // never carries it; control.ts reports the disposition it actually found and stops
 // the host on its own failure path. A fixture pairing the two is a shape nothing emits.
-if(mode==='blocked-no-deferred'||mode==='undisposed'){delete receipt.deferred;delete terminal.blocked;receipt.code='active_wake_aborted';
+// A reclaimed-undisposed delivery keeps its execution id; only a deferral clears it.
+if(mode==='blocked-no-deferred'||mode==='undisposed'){delete receipt.deferred;delete terminal.blocked;receipt.execution_id=id;receipt.code='active_wake_aborted';
 terminal.error='Native execution completed; delivery reclaimed undisposed (active_wake_aborted)';settleStop();}
 if(mode==='blocked-failed-trace')terminal.native.traces[0].status='failed';
 if(mode==='blocked-active')terminal.activity.executions=[{agent_id:launch.agent.id,turn_id:id}];
