@@ -122,6 +122,15 @@ export interface SubjectStart {
 
 export interface SubjectTurnResult {
   status: 'completed' | 'failed' | 'cancelled';
+  /**
+   * The subject's own execution closed while its delivery stayed accepted and
+   * deferred awaiting external input. The turn is never `completed`: confirming
+   * closure changes no task outcome and makes no unanswered delivery eligible as
+   * completed training evidence. An adapter sets it only with that explicit
+   * blocked receipt and the identity, idle, stop and exit proofs behind it, so a
+   * hang, crash, abort or deadline never carries it.
+   */
+  blocked?: 'awaiting-external-input';
   text: string;
   coverage: ObservationCoverage[];
   usage: Usage | null;

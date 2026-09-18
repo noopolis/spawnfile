@@ -71,7 +71,11 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             if (terminal.blocked && terminal.status !== 'failed') throw new Error('Blocked native terminal cannot claim completion');
             await observer.checkpoint(observedWakeId);
             const usage = await observer.terminal(observedWakeId, terminal);
-            return { result: { status: terminal.status, text: '', usage, error: terminal.error, coverage: terminal.coverage } as SubjectTurnResult, terminal, verified: true };
+            // The blocked receipt travels with the verified terminal evidence: the trace
+            // closed, the delivery stayed accepted and deferred, and the identity checks
+            // above matched. The caller needs that apart from the bare `failed` status.
+            return { result: { status: terminal.status, text: '', usage, error: terminal.error, coverage: terminal.coverage,
+              ...(terminal.blocked ? { blocked: terminal.blocked } : {}) } as SubjectTurnResult, terminal, verified: true };
           } catch (error) {
             const wasCancelled = stopped || signals.some(source => source.aborted);
             cancelled.abort();
@@ -120,7 +124,8 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             const { result, terminal, verified } = await deliver(current, combined, controls, turn.id);
             usages.push(result.usage);
             coverages.push(result.coverage);
-            if (verified && stopped) return { ...result, status: 'cancelled', usage: sumNativeUsage(usages),
+            // A cancelled wake never carries the deferral: cancellation is the machine's outcome.
+            if (verified && stopped) return { ...result, status: 'cancelled', blocked: undefined, usage: sumNativeUsage(usages),
               coverage: weakestNativeCoverage(coverages), stop: await stop('Native subject stopped after verified wake') };
             if (!verified || !external || terminal?.blocked !== 'awaiting-external-input') return { ...result, usage: sumNativeUsage(usages), coverage: weakestNativeCoverage(coverages) };
             if (ordinal >= external.maxDeliveries) return { ...result, status: 'failed', usage: sumNativeUsage(usages), coverage: weakestNativeCoverage(coverages), stop: await stop('External input delivery budget exhausted') };

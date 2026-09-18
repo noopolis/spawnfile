@@ -48,7 +48,10 @@ it('confirms a closed deferred execution without claiming the unanswered task co
   const f = await fixture('blocked'); const next = vi.fn(async () => null);
   const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process', externalInputs: { maxDeliveries: 1, next } } }).start(f.input);
   const result = await session.run({ id: 'task', text: 'Work' });
-  expect(result).toMatchObject({ status: 'failed', error: 'Native execution completed; delivery blocked awaiting external input',
+  // The blocked receipt travels on the turn result: the caller must be able to tell this
+  // closed-but-unanswered delivery from a machine failure without parsing the message.
+  expect(result).toMatchObject({ status: 'failed', blocked: 'awaiting-external-input',
+    error: 'Native execution completed; delivery blocked awaiting external input',
     usage: { inputTokens: 100, outputTokens: 20 }, stop: { state: 'acknowledged', quiescence: 'confirmed', reason: 'No matching external input' } });
   expect(next).toHaveBeenCalledOnce();
   expect(await session.stop('Finished')).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed' });

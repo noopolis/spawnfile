@@ -36,6 +36,26 @@ test('adapter resumes only sourced deferred work and captures all usage once wit
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
 });
 
+test('a stop that races a verified deferred wake reports cancellation without the blocked receipt', async () => {
+  const fixture = await launchFixture();
+  try {
+    const docker = dockerFixture(fixture.launch, fixture.input.trialId);
+    docker.setTerminal({ schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
+      agentId: 'agent:writer', model: 'test-model-v1', configSha256: fixture.launch.configSha256, status: 'failed',
+      blocked: 'awaiting-external-input', completedAt: new Date().toISOString(),
+      native: { traces: [], toolReceipts: [], modelContexts: [], usage: [{ input: 100, output: 20, cache_read: 40 }] },
+      coverage: [{ channel: 'usage', completeness: 'partial', ordering: 'source' }] });
+    const opened: { session?: Awaited<ReturnType<ReturnType<typeof createDaimonNativeAdapter>['start']>> } = {};
+    // Stopping while the verified terminal evidence is being published makes the turn
+    // the machine's outcome; the deferral it carried must not survive that.
+    fixture.input.onObservation = event => { if (event.type === 'usage') void opened.session!.stop('Operator stopped'); };
+    opened.session = await createDaimonNativeAdapter({ docker: docker.run, timeoutMs: 2000 }).start(fixture.input);
+    const result = await opened.session.run({ id: 'task', text: 'Assigned article' });
+    expect(result.status).toBe('cancelled');
+    expect(result.blocked).toBeUndefined();
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
 test('invalid external policies fail before container creation', () => {
   for (const maximum of [0, 4, 0.1]) expect(() => createDaimonNativeAdapter({ externalInputs: { maxDeliveries: maximum, next: async () => null } })).toThrow('Invalid external');
 });
@@ -60,6 +80,9 @@ for (const mode of ['absent', 'duplicate', 'failure', 'cancelled'] as const) tes
       } } }).start(fixture.input);
     const result = await session.run({ id: 'task', text: 'Task' }, controller.signal);
     expect(result.status).toBe(mode === 'cancelled' ? 'cancelled' : 'failed');
+    // Only an unanswered delivery over a verified closed execution keeps the blocked
+    // receipt; a broken continuation or a cancellation is the machine's own outcome.
+    expect(result.blocked).toBe(mode === 'absent' ? 'awaiting-external-input' : undefined);
     expect(result.usage?.inputTokens).toBe(100);
     expect(result.coverage).toEqual([
       { channel: 'usage', completeness: 'partial', ordering: 'source' },
