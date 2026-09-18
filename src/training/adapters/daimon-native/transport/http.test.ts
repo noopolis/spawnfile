@@ -1,5 +1,6 @@
 import { afterEach, expect, it } from 'vitest';
 import { createServer, type RequestListener, type Server } from 'node:http';
+import { Agent, getGlobalDispatcher, setGlobalDispatcher } from 'undici';
 import { createNativeHttpClient } from './http.js';
 
 const servers: Server[] = [];
@@ -69,4 +70,24 @@ it('enforces deadlines and cancellation while waiting for headers or response bo
   controller.abort(); await expect(pending).rejects.toThrow(/cancelled|abort/i);
   const stalled = await endpoint(() => undefined);
   await expect(createNativeHttpClient(stalled, token)('/trial/health', undefined, 20)).rejects.toThrow('expired');
+});
+it('lets a slow worker answer past the ambient header timeout instead of failing the transport', async () => {
+  const previous = getGlobalDispatcher();
+  const ambient = new Agent({ headersTimeout: 200, bodyTimeout: 200 });
+  setGlobalDispatcher(ambient);
+  try {
+    const url = await endpoint((_req, res) => setTimeout(() => {
+      res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"late":true}');
+    }, 1600).unref());
+    expect(await createNativeHttpClient(url, token)('/trial/run', { wakeId: 'slow' }, 20_000)).toEqual({ late: true });
+  } finally { setGlobalDispatcher(previous); await ambient.close(); }
+});
+it('still reports a transport failure when the worker dies mid-request', async () => {
+  const url = await endpoint((req, res) => { void req; res.socket?.destroy(); });
+  await expect(createNativeHttpClient(url, token)('/trial/run', { wakeId: 'dies' }, 20_000)).rejects.toThrow('transport failed');
+});
+it('reports an over-deadline worker as expired rather than as a transport failure', async () => {
+  const url = await endpoint(() => undefined);
+  const failure = await createNativeHttpClient(url, token)('/trial/run', { wakeId: 'hangs' }, 2000).catch((error: Error) => error.message);
+  expect(failure).toBe('Native worker request cancelled or expired');
 });

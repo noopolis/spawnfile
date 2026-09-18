@@ -1,6 +1,19 @@
+import { fetch, getGlobalDispatcher } from 'undici';
 import type { NativeWorkerRequest } from './types.js';
 
 const responseLimit = 16_777_216;
+/**
+ * A worker holding a socket open is working, not broken: the request's own
+ * deadline is the only authority on how long that may last. undici's ambient
+ * header and body timeouts (300 seconds by default) are shorter than a
+ * legitimate trial turn and would tear down a healthy worker as a transport
+ * failure, so every request carries its own, derived from that deadline and
+ * deliberately later than it. An over-deadline worker then expires through the
+ * abort signal and is reported as cancelled or expired, while a dead socket
+ * still surfaces as a transport failure. undici's timers are accurate to within
+ * 500ms, well inside this grace.
+ */
+const dispatcherGraceMs = 30_000;
 /** Fixed caller-authorized endpoint. No ambient credentials, URL credentials or redirects. */
 export function createNativeHttpClient(endpoint: string, token: string): NativeWorkerRequest {
   const url = new URL(endpoint);
@@ -17,11 +30,15 @@ export function createNativeHttpClient(endpoint: string, token: string): NativeW
     const deadline = AbortSignal.timeout(timeoutMs);
     const combined = signal ? AbortSignal.any([signal, deadline]) : deadline;
     combined.throwIfAborted();
-    let response: Response;
+    // Composing the process dispatcher binds both timeouts per request without owning a connection pool to close or leak.
+    const bound = timeoutMs + dispatcherGraceMs;
+    const dispatcher = getGlobalDispatcher().compose(dispatch => (options, handler) =>
+      dispatch({ ...options, headersTimeout: bound, bodyTimeout: bound }, handler));
+    let response: Awaited<ReturnType<typeof fetch>>;
     try {
       response = await fetch(new URL(path, url), { method: payload === undefined ? 'GET' : 'POST', redirect: 'error',
         headers: { authorization: `Bearer ${token}`, ...(payload === undefined ? {} : { 'content-type': 'application/json' }) },
-        body: payload, signal: combined });
+        body: payload, signal: combined, dispatcher });
     } catch { throw new Error(combined.aborted ? 'Native worker request cancelled or expired' : 'Native worker transport failed'); }
     if (!response.ok) { await response.body?.cancel(); throw new Error(`Native worker HTTP status ${response.status}`); }
     if (response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json' || !response.body) {
