@@ -1,5 +1,5 @@
 import type { NativeExternalInput } from './external.js';
-import type { Observation, SubjectStart, Usage } from '../../contracts/execution.js';
+import type { Observation, SubjectStart, SubjectStartupDiagnostic, Usage } from '../../contracts/execution.js';
 import { readNativeTranscript } from './transcript.js';
 import { plausibleNotionalUsd, readToolReceipts } from './worker/index.js';
 import type { NativeGrokUsage, NativeUsage, TerminalEvidence } from './worker/index.js';
@@ -27,6 +27,27 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
           result: row.kind === 'moltnet' ? { message_id: row.message_id } : row.result ?? row.error,
           success: row.kind === 'moltnet' || row.is_error === false, native: row }, String(row.at));
       }
+    },
+    /**
+     * Why an owned worker stopped answering, redacted by the same rules the
+     * startup path uses and published as a `diagnostic` — never output, a
+     * captured call or a judge input. It is the only account of a mid-turn
+     * death that outlives the container: the full capture stays in the control
+     * root, which a training slot puts on tmpfs.
+     */
+    async childDiagnostic(wakeId: string, record: SubjectStartupDiagnostic): Promise<void> {
+      try { await emit(wakeId, { type: 'diagnostic', text: record.reason, native: record }); } catch { /* never fails an already-failed turn */ }
+    },
+    /**
+     * Spend recovered from the broker's sealed ledger when no terminal evidence
+     * arrived. It publishes as an ordinary `usage` observation so a failed
+     * trial's cost is visible where a completed one's is, and carries the rows
+     * it was read from rather than only their sum. A publish fault here is
+     * swallowed: this already runs on a failed turn, and instrumentation must
+     * never replace a diagnosable failure with a confusing one.
+     */
+    async sealedUsage(wakeId: string, usage: Usage, rows: readonly NativeGrokUsage[]): Promise<void> {
+      try { await emit(wakeId, { type: 'usage', usage, native: rows }); } catch { /* never fails an already-failed turn */ }
     },
     async terminal(wakeId: string, result: TerminalEvidence): Promise<Usage | null> {
       const usage = aggregateUsage(result.native.usage);

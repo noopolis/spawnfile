@@ -211,6 +211,22 @@ async function readGrokRequests(file: string, agentId: string, executionId: stri
   return dedupe(rows).filter(row => !previous.includes(row.wake));
 }
 
+/**
+ * The spend the broker sealed, read without a terminal frame to bind it to.
+ *
+ * The ordinary path binds every usage row to the closed execution the worker
+ * reported. When the worker never answers, that binding does not exist and the
+ * rows are still the only record of money already spent — the broker's proxy
+ * metered every request and seals a failed turn's partial usage exactly as it
+ * seals a completed one. So this reads the same ledger with the same strict
+ * schema and the same dedupe-by-`turn`, and simply has no execution to filter
+ * on; the per-slot ledger is wiped by every recycle, so its rows are this
+ * trial's. It is never the path a scored trial takes.
+ */
+export async function readSealedGrokUsage(usageFile: string, agentId: string, expectedModel: string): Promise<NativeGrokUsage[]> {
+  return readGrokUsage(usageFile, agentId, undefined, expectedModel, []);
+}
+
 export async function assertFreshNativeEvidence(runtimeHome: string, usageFile: string, agentId: string, expectedModel: string,
   source: NativeEvidenceSource = { engine: 'codex' }): Promise<void> {
   const evidence = await collectNativeEvidence(runtimeHome, usageFile, agentId, undefined, expectedModel, [], source);

@@ -27,6 +27,32 @@ touch one. Paideia owns exactly one subtree of that shared control root,
 `paideia-trials/trial-<digest>`, created fresh per trial; nothing else there is
 Paideia's to clear, and no recycle wipes on its behalf.
 
+A failed turn still reports what it spent. The worker's HTTP reply is the only
+route usage normally takes here, so a worker that dies mid-turn used to report
+`usage: null` for a turn whose tool calls had already succeeded — a fabricated
+zero, byte-identical to a measured one, for money really spent. The broker is a
+separate process and the single sealed usage writer: it seals a failed turn's
+partial usage from what its own proxy metered, and in child-process execution
+this adapter shares that filesystem while `launch.broker.usageLedgerPath` names
+the file. `sealed-usage.ts` reads it on the failure path only, under the
+ledger's own rules — dedupe by `turn`, absence stays absence (a missing,
+unreadable, malformed or empty ledger is `null`, never `0`), and no fault of its
+own can fail the trial. Coverage is `partial`, never `complete`: the execution
+the rows belong to never closed, so nothing here can prove the ledger holds all
+of it. The short bounded poll is not politeness — sealing is the broker's
+reaction to losing its client, so reading once would race the append and call it
+absence.
+
+And the worker's own last words now survive it. `child/diagnostics.ts` builds
+the same redacted `SubjectStartupDiagnostic` for a death *after* readiness that
+it always built for one before it, and the adapter publishes it as a
+`diagnostic` observation. The protected full capture stays in the control root,
+which a training slot puts on tmpfs that dies with the container; the redacted
+record travels in the durable event stream instead, which is the only place an
+operator can still read it afterwards. It never becomes output, a captured call
+or a judge input, and a publish fault is swallowed rather than replacing a
+diagnosable failure with a confusing one.
+
 Turn transcripts are operator-only diagnostics. Daimon publishes a prompt digest
 and character counts, which can detect a changed wake and never explain one, so
 `transcript.ts` reads the engine's own session record inside the Daimon-owned

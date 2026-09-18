@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
-import type { StopReceipt } from '../../../contracts/execution.js';
+import type { StopReceipt, SubjectStartupDiagnostic } from '../../../contracts/execution.js';
 import { isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
 import { executionClosed, type NativeActivity, type NativeStopEvidence, type TerminalEvidence } from '../worker/index.js';
 import { createNativeHttpClient, type NativeExecutionHandle } from '../transport/index.js';
@@ -71,6 +71,7 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
   };
   child.stdout.on('data', (chunk: Buffer) => consume(chunk, true)); child.stderr.on('data', (chunk: Buffer) => consume(chunk, false));
   let closed: TerminalEvidence | undefined; let stopping: Promise<StopReceipt> | undefined;
+  let unconfirmed: SubjectStartupDiagnostic | undefined;
   const stop = (reason: string): Promise<StopReceipt> => stopping ??= (async () => {
     let nativeClosed = false;
     try {
@@ -86,6 +87,11 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
     if (!exited) { child.kill('SIGKILL'); const forced = Date.now() + 1000; while (!exited && Date.now() < forced) await pause(20); }
     await diagnostics.save(exitCode, exitSignal);
     const confirmed = nativeClosed && exited && exitCode === 0;
+    // A worker that died mid-turn published nothing: startup owns the only
+    // other route this record takes, and the protected file it is built from
+    // lives on a slot tmpfs that dies with the container. Build it here so the
+    // durable event stream carries why the worker stopped answering.
+    if (!confirmed) { try { unconfirmed = diagnostics.record(new Error(reason)); } catch { /* never fails a stop */ } }
     return { state: confirmed ? 'acknowledged' : 'unknown', scope: 'native-handle', quiescence: confirmed ? 'confirmed' : 'unknown', remoteWork: 'unknown', reason,
       detail: confirmed ? 'Closed native execution, idle runtime, acknowledged native stop and worker exit' : 'Native child closure unconfirmed; caller must stop the shared container' };
   })();
@@ -114,7 +120,7 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
       }
       return result;
     };
-    return { name: `child:${child.pid}`, request, stop };
+    return { name: `child:${child.pid}`, request, stop, diagnostic: () => unconfirmed };
   } catch (error) {
     // The protected capture lives on the control root, which a training slot puts on tmpfs; the thrown
     // carrier holds the redacted record so the caller can persist the failure class durably.

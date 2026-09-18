@@ -148,7 +148,30 @@ export async function childDiagnostics(root: string, trialId: string, configSha2
      * operator can still read afterwards, and it always names the failure class
      * even when the bytes themselves have to be withheld.
      */
+    /**
+     * The publishable record on its own, for a worker that died *after*
+     * readiness. Startup already published one; a mid-turn death published
+     * nothing at all, so the one account of why the worker stopped answering
+     * lived only in the protected file on the slot's tmpfs and died with the
+     * container. Same redaction, same withholding rules, no capture: this
+     * travels in the durable event stream, which outlives the container, and an
+     * unredacted capture has no business there.
+     */
+    record(caught: unknown): SubjectStartupDiagnostic {
+      return build(caught);
+    },
     startupFailure(caught: unknown): NativeStartupFailure {
+      const diagnostic = build(caught);
+      const raw = { stdout: streams.stdout.bytes.toString('utf8'), stderr: streams.stderr.bytes.toString('utf8') };
+      const capture: SubjectStartupCapture = { basename: 'OPERATOR-ONLY.native-startup-capture.json',
+        content: `${JSON.stringify({ schema: 'paideia.daimon-native.operator-capture.v1', trialId, configSha256,
+          exitCode: status.exitCode, exitSignal: status.exitSignal, protectedArtifact: file,
+          limitBytesPerStream: limit, stdout: raw.stdout, stderr: raw.stderr,
+          truncated: { stdout: streams.stdout.truncated, stderr: streams.stderr.truncated } }, null, 2)}\n` };
+      return new NativeStartupFailure(`Native worker failed before readiness: ${diagnostic.reason}`, diagnostic, capture);
+    },
+  };
+  function build(caught: unknown): SubjectStartupDiagnostic {
       const fallback = caught instanceof Error ? caught.message : String(caught);
       const raw = { stdout: streams.stdout.bytes.toString('utf8'), stderr: streams.stderr.bytes.toString('utf8') };
       const out = redactNativeDiagnostic(raw.stdout, secrets);
@@ -173,12 +196,6 @@ export async function childDiagnostics(root: string, trialId: string, configSha2
         ...(withheld.length ? { withheld } : {}),
         protectedArtifact: file,
       };
-      const capture: SubjectStartupCapture = { basename: 'OPERATOR-ONLY.native-startup-capture.json',
-        content: `${JSON.stringify({ schema: 'paideia.daimon-native.operator-capture.v1', trialId, configSha256,
-          exitCode: status.exitCode, exitSignal: status.exitSignal, protectedArtifact: file,
-          limitBytesPerStream: limit, stdout: raw.stdout, stderr: raw.stderr,
-          truncated: { stdout: streams.stdout.truncated, stderr: streams.stderr.truncated } }, null, 2)}\n` };
-      return new NativeStartupFailure(`Native worker failed before readiness: ${diagnostic.reason}`, diagnostic, capture);
-    },
-  };
+      return diagnostic;
+  }
 }
