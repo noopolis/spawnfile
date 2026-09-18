@@ -31,7 +31,10 @@ const stop = z.object({ state: z.enum(['requested', 'acknowledged', 'unknown']),
   // put the diagnosis back where it was before the vocabulary existed.
   unconfirmed: z.enum(['worker-unavailable', 'terminal-absent', 'terminal-unbound', 'delivery-undisposed',
     'activity-unreadable', 'activity-busy', 'execution-unbound', 'native-stop-unacknowledged',
-    'child-running', 'child-exit']).optional() });
+    'child-running', 'child-exit']).optional(),
+  // And WHY a provably closed run could not be scored, which is a different
+  // statement from an unproven closure and is dropped just as silently.
+  unevidenced: z.enum(['terminal-absent', 'terminal-unbound']).optional() });
 // A replayed report has to keep WHY a judge errored for the same reason it keeps
 // which closure proof failed: the object schema strips what it does not declare.
 const judgeFailure = z.object({ cause: z.enum(judgeFailureCauses), judge: identity,

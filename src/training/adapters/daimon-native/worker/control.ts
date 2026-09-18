@@ -62,11 +62,26 @@ export function describeNativeFailure(receipt: NativeReceipt, trace: NativeTrace
   return `Native execution failed (delivery ${delivery})`;
 }
 
-export function executionClosed(activity: NativeActivity, receipt: NativeReceipt, traces: NativeEvidence['traces'],
-  agentId: string): string | undefined {
+/**
+ * How many executions the runtime still admits for this agent, from its own
+ * projection and nothing else.
+ *
+ * This is the live half of quiescence: an execution is admitted while its wake
+ * runs and is gone once it closes, so an empty list is the runtime saying that
+ * nothing of this agent's is running. It throws rather than answering when the
+ * projection cannot carry that claim at all — no execution authority, or a row
+ * belonging to another agent — because a count derived from an unaccountable
+ * list would be a guess wearing a number.
+ */
+export function admittedExecutions(activity: NativeActivity, agentId: string): number {
   if (!Array.isArray(activity.executions)) throw new Error('Native activity omitted execution authority');
   if (activity.executions.some(row => row.agent_id !== agentId)) throw new Error('Unexpected native agent execution');
-  if (activity.executions.length > 0) return undefined;
+  return activity.executions.length;
+}
+
+export function executionClosed(activity: NativeActivity, receipt: NativeReceipt, traces: NativeEvidence['traces'],
+  agentId: string): string | undefined {
+  if (admittedExecutions(activity, agentId) > 0) return undefined;
   if (traces.length > 1) throw new Error('An isolated trial produced multiple native executions');
   const trace = traces[0];
   if (!trace) return undefined;

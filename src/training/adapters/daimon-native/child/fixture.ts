@@ -34,15 +34,21 @@ let terminal;const health={version:'noopolis.daimon.organization-runtime-health.
 // stays deferred with no continuation left, so the caller's closure query lands on a stopped
 // runtime. Daimon seals the v2 activity projection at that stop and keeps answering it;
 // an 'unanswerable' mode reproduces the host that answers HTTP 503 native_host_unavailable there.
-let hostStopped=false,wakes=0,budget=0,stopOutcome,items=[];
+let hostStopped=false,wakes=0,budget=0,stopOutcome,items=[],admitted=[];
 // Daimon's real seal keeps one accepted-delivery record per wake of the trial, so a
 // continued trial's projection is never the single-item shape one wake produces.
 const activity=()=>({version:'noopolis.daimon.organization-runtime-activity.v2',
 state:hostStopped?'stopped':'running',items,
 // A host that stopped with work still admitted seals that honestly, and the caller
 // must refuse the closure rather than read the empty-list case into it.
+// Production admits an execution for as long as its wake runs and drops it when the
+// wake closes, which is the whole of the live quiescence answer: a worker still in a
+// turn reports it here, and a caller reading anything else is reading its own notes.
 executions:hostStopped&&mode.endsWith('-busy-seal')?[{agent_id:launch.agent.id,execution_id:'x'.repeat(64),state:'running',delivery_ids:[]}]
-:terminal?.activity?.executions??[]});
+// A projection carrying an execution that is not this agent's cannot be counted at
+// all, and a count nobody can account for is the one answer closure must refuse.
+:mode==='foreign-execution'?[{agent_id:'another-agent',execution_id:'y'.repeat(64),state:'running',delivery_ids:[]}]
+:admitted.length?admitted:terminal?.activity?.executions??[]});
 // The worker settles its stop exactly once and every later /trial/stop replays that
 // same value, including an internal stop that did not acknowledge: control.ts races
 // host.stop() against a 5s deadline and memoizes whatever it got.
@@ -55,7 +61,9 @@ res.writeHead(200,{'content-type':'application/json'});
 if(req.url==='/trial/health'){res.end(JSON.stringify(health));return;}
 if(req.url==='/v2/activity'){res.end(JSON.stringify(activity()));return;}
 if(req.url==='/trial/stop'){res.end(JSON.stringify(settleStop()));return;}
-if(req.url==='/trial/run'){if(mode==='stall')return;if(mode==='die-mid-turn'){process.stderr.write('worker: stream bound crossed, terminating\\n');server.closeAllConnections();process.exit(1);}let text='';for await(const chunk of req)text+=chunk;const input=JSON.parse(text),id=crypto.randomUUID(),at=new Date().toISOString();
+if(req.url==='/trial/run'){const running={agent_id:launch.agent.id,execution_id:crypto.randomUUID(),state:'running',delivery_ids:[]};admitted=[...admitted,running];
+if(mode==='stall')return;if(mode==='die-mid-turn'){process.stderr.write('worker: stream bound crossed, terminating\\n');server.closeAllConnections();process.exit(1);}let text='';for await(const chunk of req)text+=chunk;const input=JSON.parse(text),id=crypto.randomUUID(),at=new Date().toISOString();
+admitted=admitted.filter(row=>row!==running);
 if(!wakes++)budget=input.controls?.maxExternalDeliveries??0;
 const receipt={version:'noopolis.daimon.wake-receipt-status.v2',acceptance_id:crypto.randomUUID(),agent_id:launch.agent.id,delivery_id:trial+':'+input.wakeId,request_digest:'a'.repeat(64),state:'completed',accepted_at:at,updated_at:at,execution_id:id};
 items=[...items,{...receipt,active:false,queue_position:wakes}];

@@ -52,35 +52,68 @@ export interface SubjectCapabilities {
 }
 
 /**
- * Why a closure proof did not settle, as a closed vocabulary rather than prose.
+ * Why a CLOSURE proof did not settle, as a closed vocabulary rather than prose.
  *
- * An unconfirmed stop is a conjunction of independent proofs, and for as long as
- * the failing one was swallowed, every unscorable run looked identical: two
- * sessions in a row had to guess which proof was missing from a control root
- * that dies with its container. Absent means the stop was confirmed; the value
- * names the FIRST proof that did not hold, and never carries a path, a token, a
- * body or an error string.
+ * Closure answers one question — is anything still running or still spending? —
+ * and it is the conjunction of three independent proofs: the owned child process
+ * exited, the runtime sealed its own stop and acknowledged it, and the runtime's
+ * own activity projection admits no execution. For as long as the failing proof
+ * was swallowed, every unscorable run looked identical: two sessions in a row had
+ * to guess which one was missing from a control root that dies with its
+ * container. Absent means closure was proven; the value names the FIRST proof
+ * that did not hold, and never carries a path, a token, a body or an error
+ * string.
+ *
+ * What a trial can be SCORED from is a separate question with its own vocabulary
+ * (`TerminalEvidenceMissing`). Four members below are retired: they were scoring
+ * facts that had been placed inside this predicate, where each one demoted a
+ * healthy run to an infrastructure failure. They are kept so a sealed report that
+ * carries one still replays; nothing produces them.
  */
 export type StopUnconfirmed =
   | 'worker-unavailable'
+  /**
+   * Retired as closure causes, and reported as `unevidenced` instead. A terminal
+   * frame that never arrived, or that did not bind to this trial, says nothing
+   * about whether a worker is still spending: it is a fact about the last
+   * delivery's paperwork, read out of another service's inbox bookkeeping over
+   * HTTP. The live proofs beside it — no admitted execution, a sealed
+   * acknowledged stop, an exited child — are what that claim rests on.
+   */
   | 'terminal-absent'
   | 'terminal-unbound'
   /**
-   * Retired as a closure cause and kept only so a sealed report that carries it
-   * still replays. The delivery's disposition is a SCORING fact: reading it here
-   * demoted a scorable turn to an infrastructure failure, and the proofs beside it
-   * — a bound terminal frame, a resolved execution, an empty `executions` list, an
-   * exited child — already establish that no worker is still spending. Nothing
-   * produces it now; a recurrence is an upstream regression and fails on the
-   * worker's own evidence instead.
+   * Retired as a closure cause. The delivery's disposition is a SCORING fact:
+   * reading it here demoted a scorable turn to an infrastructure failure, and the
+   * live proofs beside it already establish that no worker is still spending. A
+   * recurrence is an upstream regression and fails on the worker's own evidence
+   * instead.
    */
   | 'delivery-undisposed'
   | 'activity-unreadable'
   | 'activity-busy'
+  /** The activity projection omitted its execution authority or listed another agent's execution. */
   | 'execution-unbound'
   | 'native-stop-unacknowledged'
   | 'child-running'
   | 'child-exit';
+
+/**
+ * Why a trial has no terminal evidence to be scored from — which is NOT a closure
+ * fault and must never read as one.
+ *
+ * "The runtime might still be spending" and "this turn cannot be scored" call for
+ * fixes in different places, and collapsing them sent seven investigations after
+ * the wrong layer: a healthy, closed, idle, exited run kept publishing as unproven
+ * containment because its frame did not bind. A trial carrying one of these is
+ * unscorable for want of evidence, on a runtime that is provably quiet.
+ *
+ * `terminal-absent` is no frame at all for the last delivery; `terminal-unbound`
+ * is a frame whose identity, closed trace or resolved execution disagreed —
+ * including a frame belonging to a different trial, which is never accepted as
+ * this one's evidence.
+ */
+export type TerminalEvidenceMissing = 'terminal-absent' | 'terminal-unbound';
 
 export interface StopReceipt {
   state: 'requested' | 'acknowledged' | 'unknown';
@@ -91,6 +124,12 @@ export interface StopReceipt {
   detail: string;
   /** Set only on an unconfirmed stop, and only by an adapter that knows which proof failed. */
   unconfirmed?: StopUnconfirmed;
+  /**
+   * Set when this trial has no terminal evidence to be scored from. It is
+   * independent of `quiescence`: a run can be provably closed and still
+   * unscorable, and that pair is the whole point of keeping two names.
+   */
+  unevidenced?: TerminalEvidenceMissing;
 }
 
 /**

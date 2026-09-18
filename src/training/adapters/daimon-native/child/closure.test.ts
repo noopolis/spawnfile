@@ -169,23 +169,28 @@ it('names the closure proof that failed instead of publishing one unconfirmed se
  * confirmed path carries no name at all, because absence means the proof held.
  */
 it.each([
-  ['blocked-always', undefined],
-  ['blocked-always-unanswerable', 'activity-unreadable'],
-  ['blocked-always-stop-unknown', 'native-stop-unacknowledged'],
-  ['blocked-always-busy-seal', 'activity-busy'],
+  ['blocked-always', undefined, undefined],
+  ['blocked-always-unanswerable', 'activity-unreadable', undefined],
+  ['blocked-always-stop-unknown', 'native-stop-unacknowledged', undefined],
+  ['blocked-always-busy-seal', 'activity-busy', undefined],
   // A delivery the runtime reclaimed undisposed is a SCORING fact, not a closure
   // one: the child exited, the terminal frame was published and bound, and
   // `executions` is empty, so nothing is still spending. Closure holds and the
   // scoring path refuses it on its own — see the trial below.
-  ['blocked-no-deferred', undefined],
-  ['bad-terminal', 'terminal-unbound'],
-])('binds %s to the closure cause %s', async (mode, cause) => {
+  ['blocked-no-deferred', undefined, undefined],
+  // And a frame carrying another trial's identity is the other half of the split:
+  // the runtime is provably quiet and this trial still has nothing to be scored
+  // from. Closure and evidence, named apart.
+  ['bad-terminal', undefined, 'terminal-unbound'],
+])('binds %s to the closure cause %s and the evidence cause %s', async (mode, cause, missing) => {
   const f = await childFixture(mode); roots.push(f.root);
   const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 2_000);
   await handle.request('/trial/run', { wakeId: 'task', text: 'Work', ...(mode === 'blocked-no-deferred' ? {} : { controls: { maxExternalDeliveries: 0 } }) });
   const receipt = await handle.stop('Closure cause');
   expect(receipt.unconfirmed).toBe(cause);
+  expect(receipt.unevidenced).toBe(missing);
   expect(receipt.quiescence).toBe(cause ? 'unknown' : 'confirmed');
+  expect(receipt.detail).toContain(cause ?? missing ?? 'Closed native execution');
 });
 
 /**
@@ -237,9 +242,73 @@ it('names a delivery the runtime reclaimed undisposed, after a single wake with 
   expect(() => trialScore(report)).toThrow('failed in infrastructure');
 });
 
-/** A delivery that never produced a terminal frame at all is a fourth, separate state. */
-it('names an absent terminal frame rather than an unbound one', async () => {
+/**
+ * A worker that was never given a delivery is quiet and has nothing to be scored
+ * from, and those are two statements, not one. It used to publish as unproven
+ * containment — "the runtime might still be spending" — about a runtime that had
+ * admitted no execution, acknowledged its stop and exited.
+ */
+it('names an absent terminal frame as missing evidence, not as doubtful containment', async () => {
   const f = await childFixture('stall'); roots.push(f.root);
   const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1_000);
-  expect(await handle.stop('Nothing was ever delivered')).toMatchObject({ quiescence: 'unknown', unconfirmed: 'terminal-absent' });
+  const receipt = await handle.stop('Nothing was ever delivered');
+  expect(receipt).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed', unevidenced: 'terminal-absent' });
+  expect(receipt.unconfirmed).toBeUndefined();
+  expect(receipt.detail).toContain('no terminal evidence to score this trial (terminal-absent)');
+});
+
+/**
+ * And an activity projection nobody can account for is never read as quiet. A row
+ * belonging to another agent means this runtime is not the one this trial thinks it
+ * is talking to, or its projection cannot be trusted to list this agent's work
+ * either; both fail closed rather than resolving to a count.
+ */
+it('refuses closure for an activity projection carrying another agent\'s execution', async () => {
+  const f = await childFixture('foreign-execution'); roots.push(f.root);
+  const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 2_000);
+  expect(await handle.stop('Unaccountable projection')).toMatchObject({ state: 'unknown', quiescence: 'unknown',
+    unconfirmed: 'execution-unbound' });
+});
+
+/**
+ * The money guarantee, on the only authority that can answer it. The same worker
+ * given a wake it never finishes is still inside that wake: its runtime admits the
+ * execution, and closure is refused for as long as it does — no frame, receipt or
+ * inbox disposition is consulted, and none would have added anything, because every
+ * one of them is the same runtime's account of the same turn read one step later.
+ */
+it('refuses closure for a worker that is still inside its wake', async () => {
+  const f = await childFixture('stall'); roots.push(f.root);
+  const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 2_000);
+  const pending = handle.request('/trial/run', { wakeId: 'task', text: 'Work' }).catch(() => undefined);
+  await vi.waitFor(async () => expect((await handle.request<{ executions: unknown[] }>('/v2/activity')).executions).toHaveLength(1));
+  const receipt = await handle.stop('Worker never answered');
+  expect(receipt).toMatchObject({ state: 'unknown', quiescence: 'unknown', unconfirmed: 'activity-busy' });
+  expect(receipt.detail).toContain('caller must stop the shared container');
+  await pending;
+});
+
+/**
+ * The shape seven investigations ended on. A subject that really ran, really
+ * deferred, left an idle runtime, acknowledged its stop and exited cleanly — and
+ * whose terminal frame did not resolve to the execution it named. That is a
+ * scoring fault and nothing else, and for as long as it was read inside the
+ * closure predicate the trial published `unconfirmed (terminal-unbound)`: the
+ * machine claiming a worker might still be spending money, about a runtime it had
+ * just proven quiet. It still refuses to score, under its own name.
+ */
+it('reports an unbound terminal frame as unscorable evidence, not as unproven closure', async () => {
+  const { report, turn } = await nativeDeferredTrial('blocked-wrong-execution', 3, async () => null);
+  // The subject's own run was healthy: it deferred its delivery after a closed trace.
+  expect(turn).toMatchObject({ status: 'failed', blocked: 'awaiting-external-input' });
+  // Closure is PROVEN: no admitted execution, an acknowledged stop and a clean exit.
+  expect(report.stop).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed', unevidenced: 'terminal-unbound' });
+  expect(report.stop?.unconfirmed).toBeUndefined();
+  // And the trial says which of the two it was, in words an operator can act on.
+  expect(report.error).toContain('Native trial unscorable for want of terminal evidence (terminal-unbound)');
+  expect(report.error).not.toContain('Native closure unproven');
+  expect(report.error).toContain('delivery blocked awaiting external input');
+  // Unscorable is still never a pass: deferred work is not training evidence.
+  expect(report.execution).toBe('failed');
+  expect(() => trialScore(report)).toThrow('failed in infrastructure');
 });

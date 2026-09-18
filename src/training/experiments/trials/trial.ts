@@ -149,17 +149,23 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   control.closeNative('Native trial work ended');
   const nativeStop = await control.receipt();
   nativeClosureConfirmed = nativeStop?.state === 'acknowledged' && nativeStop.quiescence === 'confirmed';
-  // Closure is claimable only with the adapter's own proofs: matching closed native
-  // work, idle runtime, acknowledged stop and observed exit. Without them the run is
-  // an unproven execution and stays an infrastructure failure, exactly as before.
-  if (execution === 'deferred' && (!nativeClosureConfirmed || control.signal.aborted)) {
+  // Two separate refusals, and a report that cannot tell them apart sends the next
+  // investigation to the wrong layer. Closure is claimable only with the adapter's
+  // own proofs — idle runtime, acknowledged stop, observed exit — and without them
+  // the run is an unproven execution and stays an infrastructure failure. Terminal
+  // evidence is the separate question of whether this trial can be scored at all:
+  // a run can be provably quiet and still have no frame to score, which is not a
+  // containment doubt and must never be published as one.
+  const unproven = !nativeClosureConfirmed ? `Native closure unproven${nativeStop?.unconfirmed ? ` (${nativeStop.unconfirmed})` : ''}` : undefined;
+  const unevidenced = nativeStop?.unevidenced ? `Native trial unscorable for want of terminal evidence (${nativeStop.unevidenced})` : undefined;
+  if (execution === 'deferred' && (unproven || unevidenced || control.signal.aborted)) {
     execution = 'failed';
     // The deferral is the subject's outcome; this demotion is the machine's. While
     // they shared one message, an unprovable closure published the subject's own
     // "delivery blocked awaiting external input" as the reason a trial was
     // unscorable — the exact sentence that sent two investigations after the
-    // subject instead of the missing proof. Name the proof, keep what the turn said.
-    error = [`Native closure unproven${nativeStop?.unconfirmed ? ` (${nativeStop.unconfirmed})` : ''}`,
+    // subject instead of the missing proof. Name the fault, keep what the turn said.
+    error = [...(unproven ? [unproven] : []), ...(unevidenced ? [unevidenced] : []),
       ...(control.signal.aborted ? ['trial cancelled'] : []), ...(error ? [error] : [])].join('; ');
   }
   try {
