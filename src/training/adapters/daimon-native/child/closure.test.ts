@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import { createDaimonNativeAdapter } from '../index.js';
 import { childFixture } from './fixture.js';
+import { startOwnedChild } from './lifecycle.js';
 import { parseDatasetYaml, resolveDataset } from '../../../cases/index.js';
 import { createEvaluationRegistry } from '../../../evaluation/index.js';
 import { runTrial, trialScore, type TrialOptions, type TrialReport } from '../../../experiments/index.js';
@@ -128,4 +129,65 @@ it('refuses to score a cancelled execution even when the subject had really defe
   expect(report.execution).toBe('interrupted');
   expect(report.stop).toMatchObject({ quiescence: 'unknown' });
   expect(() => trialScore(report)).toThrow(/incomplete/u);
+});
+
+/**
+ * Why this exists at all. Closure is a conjunction of independent proofs, and a
+ * live run that fails it published one sentence — "unconfirmed" — for every one
+ * of them. The evidence that would have named the missing proof was in the
+ * worker's control root, which a training slot puts on tmpfs that dies with the
+ * container, so two sessions in a row had to guess which proof was absent while
+ * a verified-correct Daimon seal sat behind an unscorable trial. Each proof now
+ * names itself, in a closed vocabulary, on the receipt the turn publishes.
+ *
+ * `-stop-unknown` is the production shape a kinder fixture could not express:
+ * the worker settles its own stop once, races `host.stop()` against a 5s
+ * deadline and memoizes the result, so every later `/trial/stop` replays that
+ * same non-acknowledgement however well the activity seal answers.
+ */
+it('names the closure proof that failed instead of publishing one unconfirmed sentence', async () => {
+  const { report, turn } = await nativeDeferredTrial('blocked-always-stop-unknown');
+  // The subject's own outcome is unchanged: it deferred and spent its budget.
+  expect(turn).toMatchObject({ status: 'failed', blocked: 'awaiting-external-input' });
+  // The machine could not prove closure, and says which proof was missing.
+  expect(report.stop).toMatchObject({ state: 'unknown', quiescence: 'unknown', unconfirmed: 'native-stop-unacknowledged' });
+  expect(report.stop?.detail).toContain('native-stop-unacknowledged');
+  // The trial's own error names the missing proof rather than republishing the
+  // subject's deferral as the reason the machine could not score it.
+  expect(report.error).toContain('Native closure unproven (native-stop-unacknowledged)');
+  expect(report.error).toContain('delivery blocked awaiting external input');
+  // Unproven closure still refuses to score: naming the cause never grants the proof.
+  expect(report.execution).toBe('failed');
+  expect(() => trialScore(report)).toThrow('failed in infrastructure');
+});
+
+/**
+ * Every named cause is the one that actually held, and none of them scores. The
+ * confirmed path carries no name at all, because absence means the proof held.
+ */
+it.each([
+  ['blocked-always', undefined],
+  ['blocked-always-unanswerable', 'activity-unreadable'],
+  ['blocked-always-stop-unknown', 'native-stop-unacknowledged'],
+  ['blocked-always-busy-seal', 'activity-busy'],
+  ['blocked-no-deferred', 'terminal-unbound'],
+])('binds %s to the closure cause %s', async (mode, cause) => {
+  const f = await childFixture(mode); roots.push(f.root);
+  const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 2_000);
+  await handle.request('/trial/run', { wakeId: 'task', text: 'Work', ...(mode === 'blocked-no-deferred' ? {} : { controls: { maxExternalDeliveries: 0 } }) });
+  const receipt = await handle.stop('Closure cause');
+  expect(receipt.unconfirmed).toBe(cause);
+  expect(receipt.quiescence).toBe(cause ? 'unknown' : 'confirmed');
+});
+
+/**
+ * The child's own exit is its own cause, decided after the kill escalation rather
+ * than blamed on the closure evidence: this worker ignores SIGTERM, so it leaves
+ * only under SIGKILL and never reports a clean exit, whatever its runtime proved.
+ */
+it('names the worker exit rather than blaming its closure evidence', async () => {
+  const f = await childFixture('ignore-term'); roots.push(f.root);
+  const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 2_000);
+  await handle.request('/trial/run', { wakeId: 'task', text: 'Work', controls: { maxExternalDeliveries: 0 } });
+  expect(await handle.stop('Finish')).toMatchObject({ quiescence: 'unknown', unconfirmed: 'child-exit' });
 });

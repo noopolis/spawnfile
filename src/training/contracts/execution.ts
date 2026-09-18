@@ -51,6 +51,26 @@ export interface SubjectCapabilities {
   protectedPaths: boolean;
 }
 
+/**
+ * Why a closure proof did not settle, as a closed vocabulary rather than prose.
+ *
+ * An unconfirmed stop is a conjunction of independent proofs, and for as long as
+ * the failing one was swallowed, every unscorable run looked identical: two
+ * sessions in a row had to guess which proof was missing from a control root
+ * that dies with its container. Absent means the stop was confirmed; the value
+ * names the FIRST proof that did not hold, and never carries a path, a token, a
+ * body or an error string.
+ */
+export type StopUnconfirmed =
+  | 'worker-unavailable'
+  | 'terminal-unbound'
+  | 'activity-unreadable'
+  | 'activity-busy'
+  | 'execution-unbound'
+  | 'native-stop-unacknowledged'
+  | 'child-running'
+  | 'child-exit';
+
 export interface StopReceipt {
   state: 'requested' | 'acknowledged' | 'unknown';
   scope: 'process' | 'process-group' | 'native-handle';
@@ -58,6 +78,8 @@ export interface StopReceipt {
   remoteWork: 'unknown';
   reason: string;
   detail: string;
+  /** Set only on an unconfirmed stop, and only by an adapter that knows which proof failed. */
+  unconfirmed?: StopUnconfirmed;
 }
 
 /**

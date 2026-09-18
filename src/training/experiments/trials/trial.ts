@@ -152,7 +152,16 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   // Closure is claimable only with the adapter's own proofs: matching closed native
   // work, idle runtime, acknowledged stop and observed exit. Without them the run is
   // an unproven execution and stays an infrastructure failure, exactly as before.
-  if (execution === 'deferred' && (!nativeClosureConfirmed || control.signal.aborted)) execution = 'failed';
+  if (execution === 'deferred' && (!nativeClosureConfirmed || control.signal.aborted)) {
+    execution = 'failed';
+    // The deferral is the subject's outcome; this demotion is the machine's. While
+    // they shared one message, an unprovable closure published the subject's own
+    // "delivery blocked awaiting external input" as the reason a trial was
+    // unscorable — the exact sentence that sent two investigations after the
+    // subject instead of the missing proof. Name the proof, keep what the turn said.
+    error = [`Native closure unproven${nativeStop?.unconfirmed ? ` (${nativeStop.unconfirmed})` : ''}`,
+      ...(control.signal.aborted ? ['trial cancelled'] : []), ...(error ? [error] : [])].join('; ');
+  }
   try {
     await control.owned(drainObservations(() => observationTail));
     if (observationFailure) throw new Error(observationFailure);

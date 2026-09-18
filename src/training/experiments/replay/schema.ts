@@ -25,7 +25,12 @@ const judgeCall = z.object({ id: identity, judge: identity, providerId: identity
   responseModel: z.string().nullable(), responseRoute: z.string().nullable(),
   outcome: z.enum(['completed', 'invalid-response', 'generation-error']), usage: usage.nullable() });
 const stop = z.object({ state: z.enum(['requested', 'acknowledged', 'unknown']), scope: z.enum(['process', 'process-group', 'native-handle']),
-  quiescence: z.enum(['confirmed', 'unknown']), remoteWork: z.literal('unknown'), reason: z.string(), detail: z.string() });
+  quiescence: z.enum(['confirmed', 'unknown']), remoteWork: z.literal('unknown'), reason: z.string(), detail: z.string(),
+  // A replayed report has to keep WHICH closure proof failed: the object schema
+  // strips what it does not declare, and silently dropping the cause here would
+  // put the diagnosis back where it was before the vocabulary existed.
+  unconfirmed: z.enum(['worker-unavailable', 'terminal-unbound', 'activity-unreadable', 'activity-busy',
+    'execution-unbound', 'native-stop-unacknowledged', 'child-running', 'child-exit']).optional() });
 const result: z.ZodType<EvaluationResult> = z.lazy(() => z.object({ id: z.string().optional(), status: verdict,
   finality: z.enum(['provisional', 'final']), reason: z.string(), score: z.number().min(0).max(1).optional(),
   evidence: z.array(z.object({ kind: z.enum(['event', 'artifact', 'input', 'output', 'sidecar']), id: z.string(), digest: z.string().optional() })),

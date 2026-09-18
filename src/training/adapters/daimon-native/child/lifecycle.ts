@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
-import type { StopReceipt, SubjectStartupDiagnostic } from '../../../contracts/execution.js';
+import type { StopReceipt, StopUnconfirmed, SubjectStartupDiagnostic } from '../../../contracts/execution.js';
 import { isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
 import { executionClosed, type NativeActivity, type NativeStopEvidence, type TerminalEvidence } from '../worker/index.js';
 import { createNativeHttpClient, type NativeExecutionHandle } from '../transport/index.js';
@@ -72,28 +72,58 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
   child.stdout.on('data', (chunk: Buffer) => consume(chunk, true)); child.stderr.on('data', (chunk: Buffer) => consume(chunk, false));
   let closed: TerminalEvidence | undefined; let stopping: Promise<StopReceipt> | undefined;
   let unconfirmed: SubjectStartupDiagnostic | undefined;
+  /**
+   * Closure is a conjunction of independent proofs, and every one of them can
+   * fail on a live run for a different reason that calls for a different fix.
+   * They used to share one bare `catch` and one fixed sentence, so an unscorable
+   * trial said only "unconfirmed": the evidence that would name the missing
+   * proof lived in the worker's control root, which a training slot puts on
+   * tmpfs that dies with the container. Each proof now names itself in the
+   * receipt, which is published durably with the turn. The verdict is unchanged
+   * — every proof is still required — and the vocabulary is closed, so nothing
+   * here can leak a path, a token, a body or an upstream error string.
+   */
+  const proveClosure = async (): Promise<StopUnconfirmed | undefined> => {
+    if (!ready || exited) return 'worker-unavailable';
+    // Read before the stop, so the query is answered by the runtime that owns the
+    // execution; a host the worker already stopped seals this projection instead.
+    let activity: NativeActivity;
+    try { activity = await http<NativeActivity>('/v2/activity', undefined, 1500); }
+    catch { return 'activity-unreadable'; }
+    let native: NativeStopEvidence;
+    try { native = await http<NativeStopEvidence>('/trial/stop', {}, 6000); }
+    catch { return 'native-stop-unacknowledged'; }
+    if (!closed?.receipt || !closed.executionId) return 'terminal-unbound';
+    // An identity conflict throws rather than answering, and an unfinished
+    // runtime answers with the execution it is still running; they are different
+    // faults and must not share a name.
+    let resolved: string | undefined;
+    try { resolved = executionClosed(activity, closed.receipt, closed.native.traces, launch.agent.id); }
+    catch { return 'execution-unbound'; }
+    if (resolved === undefined) return 'activity-busy';
+    if (resolved !== closed.executionId) return 'execution-unbound';
+    if (native.state !== 'acknowledged') return 'native-stop-unacknowledged';
+    return undefined;
+  };
   const stop = (reason: string): Promise<StopReceipt> => stopping ??= (async () => {
-    let nativeClosed = false;
-    try {
-      if (!ready || exited) throw new Error('Worker is not available for native stop');
-      const activity = await http<NativeActivity>('/v2/activity', undefined, 1500);
-      const native = await http<NativeStopEvidence>('/trial/stop', {}, 6000);
-      nativeClosed = !!closed?.receipt && !!closed.executionId && native.state === 'acknowledged' &&
-        executionClosed(activity, closed.receipt, closed.native.traces, launch.agent.id) === closed.executionId;
-    } catch { /* Uncertain native work requires outer-container termination. */ }
+    let cause: StopUnconfirmed | undefined;
+    try { cause = await proveClosure(); }
+    catch { cause = 'activity-unreadable'; /* Uncertain native work requires outer-container termination. */ }
     if (!exited) child.kill('SIGTERM');
     const until = Date.now() + 2000;
     while (!exited && Date.now() < until) await pause(20);
     if (!exited) { child.kill('SIGKILL'); const forced = Date.now() + 1000; while (!exited && Date.now() < forced) await pause(20); }
     await diagnostics.save(exitCode, exitSignal);
-    const confirmed = nativeClosed && exited && exitCode === 0;
+    cause ??= !exited ? 'child-running' : exitCode === 0 ? undefined : 'child-exit';
+    const confirmed = cause === undefined;
     // A worker that died mid-turn published nothing: startup owns the only
     // other route this record takes, and the protected file it is built from
     // lives on a slot tmpfs that dies with the container. Build it here so the
     // durable event stream carries why the worker stopped answering.
     if (!confirmed) { try { unconfirmed = diagnostics.record(new Error(reason)); } catch { /* never fails a stop */ } }
     return { state: confirmed ? 'acknowledged' : 'unknown', scope: 'native-handle', quiescence: confirmed ? 'confirmed' : 'unknown', remoteWork: 'unknown', reason,
-      detail: confirmed ? 'Closed native execution, idle runtime, acknowledged native stop and worker exit' : 'Native child closure unconfirmed; caller must stop the shared container' };
+      ...(cause ? { unconfirmed: cause } : {}),
+      detail: confirmed ? 'Closed native execution, idle runtime, acknowledged native stop and worker exit' : `Native child closure unconfirmed (${cause}); caller must stop the shared container` };
   })();
   try {
     while (!ready) {

@@ -41,3 +41,19 @@ test('replay preserves explicit unknown judge evidence and rejects invalid measu
       evaluation: { ...report.evaluation, judgeCalls: [malformed] } })).toThrow();
   }
 });
+
+/**
+ * The closure cause has to survive being read back. This schema strips what it
+ * does not declare, so an undeclared `stop.unconfirmed` would put an operator
+ * back where they were before the vocabulary existed: a replayed report that
+ * says a trial was unscorable and not which proof was missing.
+ */
+test('a replayed report keeps which closure proof failed', async () => {
+  const { report } = await fixture();
+  report.stop = { state: 'unknown', scope: 'native-handle', quiescence: 'unknown', remoteWork: 'unknown',
+    reason: 'External input delivery budget exhausted', unconfirmed: 'native-stop-unacknowledged',
+    detail: 'Native child closure unconfirmed (native-stop-unacknowledged); caller must stop the shared container' };
+  expect(trialReportSchema.parse(JSON.parse(JSON.stringify(report))).stop).toMatchObject({ unconfirmed: 'native-stop-unacknowledged' });
+  // Only the closed vocabulary parses; an invented cause is refused, not carried.
+  expect(() => trialReportSchema.parse(JSON.parse(JSON.stringify({ ...report, stop: { ...report.stop, unconfirmed: 'made-up' } })))).toThrow();
+});

@@ -29,6 +29,33 @@ module still requires the receipt, and `child/fixture.ts` models both hosts —
 the sealed answer and one that refuses it — because a fixture that always
 answered post-stop is exactly what hid the defect through every green run.
 
+Closure is a conjunction of independent proofs, and each one now **names
+itself**. They shared a bare `catch` and a single fixed sentence, so every
+unscorable trial published the same "unconfirmed" whichever proof was missing,
+and the evidence that would have identified it was in the control root a
+training slot puts on tmpfs. `StopUnconfirmed` is that closed vocabulary —
+`worker-unavailable`, `terminal-unbound`, `activity-unreadable`, `activity-busy`,
+`execution-unbound`, `native-stop-unacknowledged`, `child-running`, `child-exit`
+— carried on the receipt the turn publishes durably, and `runTrial` repeats it
+when it demotes a deferred trial, because for as long as it did not, an
+unprovable closure published the subject's own "delivery blocked awaiting
+external input" as the reason the machine could not score. The verdict is
+unchanged: every proof is still required, absence of a name means the stop was
+confirmed, and no name ever carries a path, a token, a body or an upstream
+error string. `activity-busy` is reachable and must stay refusing — a host that
+stopped with an execution still admitted seals that honestly.
+
+The fixture models production or it is a defect. Two shapes it lacked, both of
+which made green tests coexist with an inert live path: `/trial/stop` is settled
+**once** by whoever stops first — including the worker's own internal stop on the
+final deferred delivery, which races `host.stop()` against a 5 s deadline — and
+every later call replays that same value, non-acknowledgement included; and the
+activity projection carries one accepted-delivery record per wake, never the
+single-item shape one wake produces. Neither is read by `executionClosed`, which
+resolves the execution from the closed trace and requires only that `executions`
+be empty — but a fixture kinder than production on the stop receipt is what let
+`native-stop-unacknowledged` pass as confirmed.
+
 Persist at most 64 KiB of each child output stream into an exclusive 0600 diagnostic
 receipt under the protected canonical control root when stopping the child. Keep
 raw output out of observations, viewer messages and model inputs; it can contain
