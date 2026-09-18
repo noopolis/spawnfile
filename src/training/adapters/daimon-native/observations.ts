@@ -112,7 +112,10 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
         // that produced it. Its failure is itself published.
         let transcript: Awaited<ReturnType<typeof readNativeTranscript>>;
         let failure: string | undefined;
-        try { transcript = await readNativeTranscript(runtimeHome, result.native.traces[0]); }
+        // The trace this frame NAMES, never whichever one leads the list: a trial
+        // that defers publishes a frame per wake, and reading another wake's trace
+        // here would caption this wake's transcript with that wake's digest.
+        try { transcript = await readNativeTranscript(runtimeHome, result.native.traces.find(row => row.turn_id === result.executionId)); }
         catch (error) { failure = error instanceof Error ? error.message : String(error); }
         if (transcript) {
           await emit(wakeId, { type: 'diagnostic', text: 'Native engine transcript captured', native: transcript }, result.completedAt);

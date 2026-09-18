@@ -18,7 +18,13 @@ test('artifact reader retains real fields, never invents absent usage or tool ca
     assert.deepEqual(evidence.usage, []);
     assert.deepEqual(evidence.toolReceipts, []);
     await assert.rejects(assertFreshNativeEvidence(root, join(root, 'usage.jsonl'), 'agent:writer', 'test-model-v1'), /fresh execution/);
-    await assert.rejects(collectNativeEvidence(root, join(root, 'usage.jsonl'), 'agent:writer', 'another-execution', 'test-model-v1'), /Foreign/);
+    // A trace of this trial's that another wake closed is not this wake's evidence
+    // and is not a fault either: it is simply not attributed here. Refusing it was
+    // the arity rule wearing an isolation word, and it refused continued trials.
+    assert.deepEqual((await collectNativeEvidence(root, join(root, 'usage.jsonl'), 'agent:writer', 'another-execution', 'test-model-v1')).traces, []);
+    // Isolation is where it always was: a trace that is not this agent's refuses.
+    await writeFile(join(root, 'telemetry/turns.ndjson'), `${JSON.stringify({ ...traceFixture(), agent_id: 'another-agent' })}\n`);
+    await assert.rejects(collectNativeEvidence(root, join(root, 'usage.jsonl'), 'agent:writer', executionId, 'test-model-v1'), /agent or terminal identity/);
     await writeFile(join(root, 'telemetry/turns.ndjson'), JSON.stringify(traceFixture()));
     await assert.rejects(readClosedTraces(root, 'agent:writer'), /torn/);
   } finally { await rm(root, { recursive: true, force: true }); }
@@ -64,7 +70,12 @@ test('artifact reader rejects usage and model identities from another execution'
       at: '2026-09-13T00:00:01.000Z', input: 100, output: 10, cache_read: 20, total: 110, complete: true };
     await writeFile(join(root, 'usage.jsonl'), `${JSON.stringify(usage)}\n`);
     assert.equal((await collectNativeEvidence(root, join(root, 'usage.jsonl'), 'agent:writer', executionId, 'test-model-v1')).usage[0]?.input, 100);
-    await assert.rejects(collectNativeEvidence(root, join(root, 'usage.jsonl'), 'agent:writer', 'foreign', 'test-model-v1'), /identity mismatch/);
+    // Another execution's metered row belongs to another wake, not to this one, and
+    // never to a sum this wake reports; a row of another AGENT's still refuses.
+    assert.deepEqual((await collectNativeEvidence(root, join(root, 'usage.jsonl'), 'agent:writer', 'foreign', 'test-model-v1')).usage, []);
+    await writeFile(join(root, 'usage.jsonl'), `${JSON.stringify({ ...usage, agent: 'another-agent' })}\n`);
+    await assert.rejects(collectNativeEvidence(root, join(root, 'usage.jsonl'), 'agent:writer', executionId, 'test-model-v1'), /identity mismatch/);
+    await writeFile(join(root, 'usage.jsonl'), `${JSON.stringify(usage)}\n`);
     await mkdir(join(root, '.codex/sessions/2026/09/13'), { recursive: true });
     await writeFile(join(root, '.codex/sessions/2026/09/13/rollout-unit.jsonl'), `${JSON.stringify({ type: 'turn_context', payload: { model: 'different-model' } })}\n`);
     await assert.rejects(collectNativeEvidence(root, join(root, 'usage.jsonl'), 'agent:writer', executionId, 'test-model-v1'), /differs/);

@@ -268,7 +268,7 @@ function bindTerminalEvidence(wake: WakeEvidence, value: TerminalEvidence, launc
   const trace = typeof value.executionId === 'string' ? value.native.traces.find(row => row.turn_id === value.executionId) : undefined;
   if (!trace || trace.status !== 'completed') return;
   try {
-    if (executionClosed(value.activity!, value.receipt!, value.native.traces, launch.agent.id, value.executionId) === value.executionId) wake.unevidenced = undefined;
+    if (executionClosed(value.activity!, value.receipt!, value.native.traces, launch.agent.id, trace.turn_id) === value.executionId) wake.unevidenced = undefined;
   } catch (conflict) {
     const fault = (conflict as Error).message === AMBIGUOUS_NATIVE_EXECUTION ? 'terminal-ambiguous' : 'terminal-unbound';
     wake.unevidenced = fault;
