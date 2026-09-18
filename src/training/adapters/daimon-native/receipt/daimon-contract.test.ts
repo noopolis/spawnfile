@@ -13,7 +13,10 @@ interface DaimonGrokContract {
 const required = ['resolveOrganizationGrokBrokerProjection', 'grokBrokerProjectionSha256', 'parseGrokSlotPreflightReceipt', 'verifyGrokSlotPreflightReceipt'] as const;
 let daimon: DaimonGrokContract | undefined;
 try {
-  const loaded = await import('@noopolis/daimon/runtime') as Record<string, unknown>;
+  // Same indirect specifier as the product loader: the optional peer is absent in a plain
+  // `npm ci`, and a literal here would make `tsc --noEmit` fail on an uninstalled module.
+  const packageName = '@noopolis/daimon/runtime';
+  const loaded = await import(packageName) as Record<string, unknown>;
   if (required.every(name => typeof loaded[name] === 'function')) daimon = loaded as unknown as DaimonGrokContract;
 } catch { /* reported by the visible skip reason below */ }
 const contract = (): DaimonGrokContract => daimon!;

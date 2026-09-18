@@ -13,7 +13,10 @@ import { scriptedBrokerSocket } from './test-socket.js';
 /** Pins Paideia's broker-grant binding to the installed Daimon (optional peer, absent in plain CI installs). */
 let daimon: Record<string, unknown> | undefined;
 try {
-  const loaded = await import('@noopolis/daimon/runtime') as Record<string, unknown>;
+  // Same indirect specifier as the product loader: the optional peer is absent in a plain
+  // `npm ci`, and a literal here would make `tsc --noEmit` fail on an uninstalled module.
+  const packageName = '@noopolis/daimon/runtime';
+  const loaded = await import(packageName) as Record<string, unknown>;
   if (typeof loaded['EngineBrokerControlClient'] === 'function' && typeof loaded['renderGrokInferenceClientConfig'] === 'function') daimon = loaded;
 } catch { /* reported by the visible skip reason below */ }
 
