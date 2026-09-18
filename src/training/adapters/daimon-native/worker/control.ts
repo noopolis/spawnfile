@@ -79,14 +79,40 @@ export function admittedExecutions(activity: NativeActivity, agentId: string): n
   return activity.executions.length;
 }
 
+/**
+ * Two closed traces answering to one execution id. Its own word, and exported so
+ * a reader can name it on a receipt without matching on prose.
+ */
+export const AMBIGUOUS_NATIVE_EXECUTION = 'One native execution closed more than once; its terminal evidence is ambiguous';
+
+/**
+ * The closed execution this evidence binds to, or `undefined` when none does.
+ *
+ * `named` is the execution a terminal frame claims. With it, a trial that ran
+ * several wakes resolves the trace belonging to THAT wake; the others are the
+ * same trial's earlier, already-closed wakes and are not competing answers. The
+ * worker's own polling loop passes nothing, because it is still discovering the
+ * id and its trace set is this one wake's alone — there, more than one member is
+ * a wake that closed twice and stays refused.
+ *
+ * Isolation is the property; the arity was only ever standing in for it. Every
+ * trace must be this agent's and the receipt must be this agent's, whether or not
+ * the trace is the one selected, so a foreign execution is rejected from a set of
+ * three exactly as it was from a set of one. The receipt's own `execution_id`,
+ * when it carries one, must name the resolved trace. Two traces sharing the named
+ * id resolve to neither and throw `AMBIGUOUS_NATIVE_EXECUTION`.
+ */
 export function executionClosed(activity: NativeActivity, receipt: NativeReceipt, traces: NativeEvidence['traces'],
-  agentId: string): string | undefined {
+  agentId: string, named?: string): string | undefined {
   if (admittedExecutions(activity, agentId) > 0) return undefined;
-  if (traces.length > 1) throw new Error('An isolated trial produced multiple native executions');
-  const trace = traces[0];
+  if (receipt.agent_id !== agentId || traces.some(row => row.agent_id !== agentId)) throw new Error('Native execution evidence identity mismatch');
+  const matching = named === undefined ? traces : traces.filter(row => row.turn_id === named);
+  if (matching.length > 1) {
+    throw new Error(named === undefined ? 'An isolated trial produced multiple native executions' : AMBIGUOUS_NATIVE_EXECUTION);
+  }
+  const trace = matching[0];
   if (!trace) return undefined;
-  if (trace.agent_id !== agentId || receipt.agent_id !== agentId ||
-      receipt.execution_id !== undefined && receipt.execution_id !== trace.turn_id) throw new Error('Native execution evidence identity mismatch');
+  if (receipt.execution_id !== undefined && receipt.execution_id !== trace.turn_id) throw new Error('Native execution evidence identity mismatch');
   return trace.turn_id;
 }
 

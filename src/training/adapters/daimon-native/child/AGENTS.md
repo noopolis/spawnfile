@@ -48,11 +48,31 @@ worker still inside its wake is exactly what that conjunct is for.
 is its own vocabulary on its own receipt field, `unevidenced`: `terminal-absent`
 is no frame at all for the last delivery, `terminal-unbound` is a frame whose
 identity, closed trace or resolved execution disagreed — including one belonging
-to a different trial, which is never accepted as this trial's evidence. A trial
-carrying one is **unscorable for want of evidence on a runtime that is provably
-quiet**, which is a different sentence from "the runtime might still be spending"
-and must never be published as one. Deferred is still never success: the demotion
-happens either way, under whichever name earned it.
+to a different trial, which is never accepted as this trial's evidence, and
+`terminal-ambiguous` is a frame whose named execution has more than one closed
+trace answering to it. A trial carrying one is **unscorable for want of evidence
+on a runtime that is provably quiet**, which is a different sentence from "the
+runtime might still be spending" and must never be published as one. Deferred is
+still never success: the demotion happens either way, under whichever name earned
+it.
+
+**A trial legitimately has as many executions as it had wakes.** A subject that
+defers gets a continuation, so a deferred case runs several wakes and closes one
+execution per wake, and a frame that carries the trial's whole closed history is
+not a trial that ran twice. The reader resolves the trace the frame NAMES; the
+rest are this same trial's earlier, already-closed wakes. Refusing on the count
+instead reported `unevidenced` — nothing to score — for a healthy, quiet,
+three-wake run, which is how counting stood in for a property it never was.
+
+The property is isolation, and it is stated rather than inferred from an arity:
+every trace in the set must be this agent's and the receipt must be this agent's,
+so a foreign execution is refused out of a set of three exactly as out of a set of
+one; the receipt's own `execution_id` must name the resolved trace; the receipt's
+`delivery_id` must be this trial's own wake's; and a frame that names no execution
+resolves to nothing rather than to whichever trace came first. Two traces
+answering to the named execution resolve to neither, throw, and publish
+`terminal-ambiguous` — its own word, because nothing here can tell which one the
+frame accounts for and the fix that calls for is upstream.
 
 **Why the frame is not a closure proof.** It used to be one, and the predicate
 failed a different way on a healthy run in each of seven investigation rounds —
@@ -87,7 +107,12 @@ single-item shape one wake produces; and an execution is **admitted for as long 
 its wake runs** and gone once it closes. That third one is load-bearing now that
 closure rests on the projection: a fixture whose stalled worker reported an empty
 `executions` list would let a worker still inside its wake read as quiet, and the
-test that a genuinely running turn is refused would prove nothing at all.
+test that a genuinely running turn is refused would prove nothing at all. A fourth
+followed from continuations: a frame that carries only the wake it belongs to can
+never exercise a continued trial's own closed history, so the `-history` modes
+publish every trace the trial closed and the `-foreign`/`-ambiguous` pair inject
+their fault only once there IS history — a fault on the first wake would be
+indistinguishable from the arity it replaced.
 
 Persist at most 64 KiB of each child output stream into an exclusive 0600 diagnostic
 receipt under the protected canonical control root when stopping the child. Keep

@@ -103,6 +103,42 @@ it('refuses a foreign trial frame as evidence without doubting the runtime it ca
   expect(receipt).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed', unevidenced: 'terminal-unbound' });
   expect(receipt.unconfirmed).toBeUndefined();
 });
+/**
+ * The two guards the single-trace rule was standing in for, on the shape that
+ * retired it. Both trials below run two wakes exactly like the scored one; the
+ * only difference is what the second frame's trace set carries beside this
+ * trial's own earlier wake. Isolation was the property — never the arity — so
+ * neither of these may resolve, however many traces there are.
+ */
+it('refuses a foreign execution sitting among a continued trial\'s own closed wakes', async () => {
+  const f = await fixture('blocked-always-history-foreign');
+  const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 2_000);
+  await handle.request('/trial/run', { wakeId: 'task', text: 'Work', controls: { maxExternalDeliveries: 2 } });
+  await expect(handle.request('/trial/run', { wakeId: 'answer-0', text: 'More' })).rejects.toThrow('identity mismatch');
+  // The runtime it came from is still, separately, proven quiet.
+  expect(await handle.stop('Foreign execution')).toMatchObject({ quiescence: 'confirmed', unevidenced: 'terminal-unbound' });
+});
+it('fails closed under its own name when two closed traces answer to one named execution', async () => {
+  const f = await fixture('blocked-always-history-ambiguous');
+  const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 2_000);
+  await handle.request('/trial/run', { wakeId: 'task', text: 'Work', controls: { maxExternalDeliveries: 2 } });
+  await expect(handle.request('/trial/run', { wakeId: 'answer-0', text: 'More' })).rejects.toThrow('closed more than once');
+  const receipt = await handle.stop('Ambiguous evidence');
+  // Not merely unbound: the frame named an execution and the trial cannot say which
+  // trace accounts for it, which is an upstream defect and says so in its own word.
+  expect(receipt).toMatchObject({ quiescence: 'confirmed', unevidenced: 'terminal-ambiguous' });
+  expect(receipt.detail).toContain('terminal-ambiguous');
+});
+/**
+ * Another wake of another trial, with every identity on the frame itself matching:
+ * the receipt's delivery is the only thing that says so, so it is checked here too.
+ */
+it('refuses a frame whose receipt answers for another trial\'s delivery', async () => {
+  const f = await fixture('foreign-delivery');
+  const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process' } }).start(f.input);
+  expect((await session.run({ id: 'task', text: 'Work' })).status).toBe('completed');
+  expect(await session.stop('Finished')).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed', unevidenced: 'terminal-unbound' });
+});
 it('rejects unsupported modes, Docker callback mixing, invalid deadlines and cancelled preparation', async () => {
   const f = await fixture();
   expect(() => createDaimonNativeAdapter({ execution: { kind: 'child-process' }, externalInputs: { maxDeliveries: 1, next: async () => null } })).toThrow('execution.externalInputs');

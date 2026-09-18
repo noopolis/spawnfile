@@ -93,6 +93,36 @@ it('scores a zero for a subject that exhausted its continuation budget still def
 });
 
 /**
+ * The last named blocker on a training loop, and it follows straight from
+ * continuations working. A subject that defers gets one, so a trial that really
+ * runs three wakes really closes three executions and every frame carries the
+ * whole history. The evidence reader counted them and refused — `unevidenced`,
+ * nothing to score — about a trial whose runtime was provably quiet and whose own
+ * frame named exactly which execution it was accounting for. It resolves that one
+ * now; the others are this trial's own earlier wakes, not foreign work.
+ *
+ * The boundary this straddles is the terminal frame itself: the worker process
+ * builds it and the evaluator parent reads it over HTTP, and the parent may not
+ * assume the worker stripped its own history out of the trace set before sending.
+ */
+it('resolves the execution a three-wake trial\'s frame names and scores the run', async () => {
+  const { report, turn, deliveries } = await nativeDeferredTrial('blocked-always-history', 2);
+  // Three wakes really ran: the task plus both continuations the budget admitted.
+  expect(deliveries).toBe(2);
+  expect(turn).toMatchObject({ status: 'failed', blocked: 'awaiting-external-input' });
+  expect(turn.usage?.inputTokens).toBe(300);
+  // Quiet AND scorable: neither name is on the receipt, and no arity was consulted.
+  expect(report.stop).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed' });
+  expect(report.stop?.unevidenced).toBeUndefined();
+  expect(report.stop?.unconfirmed).toBeUndefined();
+  expect(report.error).not.toContain('want of terminal evidence');
+  // Deferred is still never success; it is a measured zero rather than an unscorable run.
+  expect(report.execution).toBe('deferred');
+  expect(report.status).toBe('fail');
+  expect(trialScore(report)).toBe(0);
+});
+
+/**
  * The guard that keeps this from becoming "score everything". Each of these really
  * ran and none of them can prove its execution closed, so each stays an
  * infrastructure failure and refuses to produce a number.

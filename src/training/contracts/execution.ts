@@ -112,8 +112,15 @@ export type StopUnconfirmed =
  * is a frame whose identity, closed trace or resolved execution disagreed —
  * including a frame belonging to a different trial, which is never accepted as
  * this one's evidence.
+ *
+ * `terminal-ambiguous` is the third, and it is not a weaker `terminal-unbound`:
+ * the frame named an execution and the trial carries MORE THAN ONE closed trace
+ * for that same id, so nothing here can say which one the frame accounts for. A
+ * trial that legitimately ran several wakes resolves the one its frame names and
+ * is scored; two traces answering to one name is a runtime defect and fails
+ * closed under its own word, because the fix it calls for is not in Paideia.
  */
-export type TerminalEvidenceMissing = 'terminal-absent' | 'terminal-unbound';
+export type TerminalEvidenceMissing = 'terminal-absent' | 'terminal-unbound' | 'terminal-ambiguous';
 
 export interface StopReceipt {
   state: 'requested' | 'acknowledged' | 'unknown';

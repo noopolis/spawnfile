@@ -3,7 +3,8 @@ import { dirname } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
 import type { StopReceipt, StopUnconfirmed, SubjectStartupDiagnostic, TerminalEvidenceMissing } from '../../../contracts/execution.js';
 import { isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
-import { admittedExecutions, executionClosed, type NativeActivity, type NativeStopEvidence, type TerminalEvidence } from '../worker/index.js';
+import { admittedExecutions, executionClosed, AMBIGUOUS_NATIVE_EXECUTION, type NativeActivity, type NativeStopEvidence,
+  type TerminalEvidence } from '../worker/index.js';
 import { createNativeHttpClient, type NativeExecutionHandle } from '../transport/index.js';
 import { ensureNativeTrialArtifacts, nativeChildArguments, nativeChildEnvironment, validateChildPaths } from './arguments.js';
 import { verifyChildSandbox } from './sandbox.js';
@@ -75,8 +76,10 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
    * Why this trial has no terminal evidence to be scored from — never a closure
    * cause. `terminal-absent` is no frame at all for the last delivery;
    * `terminal-unbound` is a frame whose identity, closed trace or resolved
-   * execution disagreed, including one belonging to another trial. Kept apart
-   * rather than collapsed, because they call for fixes in different places.
+   * execution disagreed, including one belonging to another trial;
+   * `terminal-ambiguous` is a frame whose named execution has more than one
+   * closed trace answering to it. Kept apart rather than collapsed, because they
+   * call for fixes in different places.
    */
   let evidence: TerminalEvidenceMissing | undefined = 'terminal-absent';
   let diagnosed: SubjectStartupDiagnostic | undefined;
@@ -172,15 +175,35 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
         // Whether this trial can be SCORED — never whether something is still
         // spending. A frame from another trial, agent, wake or config is not this
         // trial's evidence, and that check moved here rather than disappearing.
+        // The receipt has to name this trial's own delivery too: the frame's
+        // identity and the delivery the runtime answered for are one delivery or
+        // the frame is accounting for somebody else's wake.
         const bound = value.schema === 'paideia.daimon-native.trial.v1' && value.trialId === trialId && value.agentId === launch.agent.id &&
           value.model === launch.agent.model && value.configSha256 === launch.configSha256 &&
-          value.wakeId === (body as { wakeId?: string })?.wakeId && !!value.receipt && !!value.activity;
-        evidence = !bound || value.native.traces[0]?.status !== 'completed' ? 'terminal-unbound' : undefined;
+          value.wakeId === (body as { wakeId?: string })?.wakeId && !!value.receipt && !!value.activity &&
+          value.receipt.agent_id === launch.agent.id && value.receipt.delivery_id === `${trialId}:${value.wakeId}` &&
+          typeof value.executionId === 'string';
+        // A trial whose subject deferred runs its continuations as further wakes,
+        // and each one closes an execution of its own. The trace that answers for
+        // THIS frame is the one the frame names; the rest are this same trial's
+        // earlier, already-closed wakes, and counting them was refusing a healthy
+        // run for the arity of its own history. Nothing is admitted by position:
+        // an unnamed execution resolves to no trace at all.
+        const named = bound ? value.native.traces.find(trace => trace.turn_id === value.executionId) : undefined;
+        evidence = !named || named.status !== 'completed' ? 'terminal-unbound' : undefined;
         if (evidence === undefined) {
           // An identity conflict still throws, because it must fail the turn rather
-          // than pass as verified work; it only records what it was first.
+          // than pass as verified work; it only records what it was first. Two
+          // traces answering to the named execution is its own word: the frame is
+          // not unbound, it is unreadable, and that distinction is what sends the
+          // next look at it upstream instead of here.
           evidence = 'terminal-unbound';
-          if (executionClosed(value.activity!, value.receipt!, value.native.traces, launch.agent.id) === value.executionId) evidence = undefined;
+          try {
+            if (executionClosed(value.activity!, value.receipt!, value.native.traces, launch.agent.id, value.executionId) === value.executionId) evidence = undefined;
+          } catch (conflict) {
+            if ((conflict as Error).message === AMBIGUOUS_NATIVE_EXECUTION) evidence = 'terminal-ambiguous';
+            throw conflict;
+          }
         }
       }
       return result;

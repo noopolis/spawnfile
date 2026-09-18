@@ -3,7 +3,7 @@ import { test } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createWorkerController, executionClosed } from './control.js';
+import { AMBIGUOUS_NATIVE_EXECUTION, createWorkerController, executionClosed } from './control.js';
 import { activityFixture, configFixture, executionId, receiptFixture, traceFixture } from '../test-fixtures.js';
 import type { NativeHost, WorkerOptions } from './types.js';
 
@@ -13,6 +13,29 @@ test('completed inbox receipt cannot close a running execution or substitute for
   assert.equal(executionClosed(activityFixture(), receiptFixture(), [traceFixture()], 'agent:writer'), executionId);
   assert.throws(() => executionClosed({ ...activityFixture(), executions: undefined }, receiptFixture(), [traceFixture()], 'agent:writer'), /authority/);
   assert.throws(() => executionClosed(activityFixture(), { ...receiptFixture(), execution_id: 'foreign' }, [traceFixture()], 'agent:writer'), /identity/);
+  assert.throws(() => executionClosed(activityFixture(), { ...receiptFixture(), agent_id: 'other' }, [traceFixture()], 'agent:writer'), /identity/);
+});
+
+/**
+ * The property the single-trace rule was standing in for. A trial whose subject
+ * deferred runs its continuations as further wakes, so three closed traces is its
+ * own history and not three competing answers: the frame names one and that one
+ * resolves. What may never resolve is anything foreign, or a name two traces
+ * answer to — and neither is decided by how many traces there are.
+ */
+test('a named execution resolves out of a continued trial\'s own closed wakes', () => {
+  const earlier = { ...traceFixture(), turn_id: 'earlier-execution' };
+  const middle = { ...traceFixture(), turn_id: 'middle-execution' };
+  assert.equal(executionClosed(activityFixture(), receiptFixture(), [earlier, middle, traceFixture()], 'agent:writer', executionId), executionId);
+  // A name nothing answers to resolves to nothing, never to a neighbour by position.
+  assert.equal(executionClosed(activityFixture(), receiptFixture(), [earlier, middle], 'agent:writer', executionId), undefined);
+  // Another agent's execution among this trial's own is refused whatever the arity.
+  assert.throws(() => executionClosed(activityFixture(), receiptFixture(), [{ ...earlier, agent_id: 'other' }, traceFixture()], 'agent:writer', executionId), /identity/);
+  // And two traces answering to the named execution resolve to neither of them.
+  assert.throws(() => executionClosed(activityFixture(), receiptFixture(), [earlier, traceFixture(), traceFixture()], 'agent:writer', executionId),
+    new RegExp(AMBIGUOUS_NATIVE_EXECUTION, 'u'));
+  // A still-running runtime outranks any of it: nothing resolves while it spends.
+  assert.equal(executionClosed(activityFixture(true), receiptFixture(), [earlier, traceFixture()], 'agent:writer', executionId), undefined);
 });
 
 test('controller uses the public v2 acceptance request and persists refusal without fabricating success', async () => {

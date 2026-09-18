@@ -34,7 +34,7 @@ let terminal;const health={version:'noopolis.daimon.organization-runtime-health.
 // stays deferred with no continuation left, so the caller's closure query lands on a stopped
 // runtime. Daimon seals the v2 activity projection at that stop and keeps answering it;
 // an 'unanswerable' mode reproduces the host that answers HTTP 503 native_host_unavailable there.
-let hostStopped=false,wakes=0,budget=0,stopOutcome,items=[],admitted=[];
+let hostStopped=false,wakes=0,budget=0,stopOutcome,items=[],admitted=[],closed=[];
 // Daimon's real seal keeps one accepted-delivery record per wake of the trial, so a
 // continued trial's projection is never the single-item shape one wake produces.
 const activity=()=>({version:'noopolis.daimon.organization-runtime-activity.v2',
@@ -67,7 +67,19 @@ admitted=admitted.filter(row=>row!==running);
 if(!wakes++)budget=input.controls?.maxExternalDeliveries??0;
 const receipt={version:'noopolis.daimon.wake-receipt-status.v2',acceptance_id:crypto.randomUUID(),agent_id:launch.agent.id,delivery_id:trial+':'+input.wakeId,request_digest:'a'.repeat(64),state:'completed',accepted_at:at,updated_at:at,execution_id:id};
 items=[...items,{...receipt,active:false,queue_position:wakes}];
-terminal={schema:'paideia.daimon-native.trial.v1',trialId:trial,wakeId:input.wakeId,agentId:launch.agent.id,model:launch.agent.model,configSha256:launch.configSha256,status:'completed',startedAt:at,completedAt:at,executionId:id,receipt,activity:{version:'noopolis.daimon.organization-runtime-activity.v2',items:[{...receipt,active:false}],executions:[]},native:{traces:[{schema:'daimon.turn_trace.v1',agent_id:launch.agent.id,turn_id:id,started_at:at,completed_at:at,status:'completed',tools:[]}],usage:[{v:'noopolis.daimon.turn-usage.v1',agent:launch.agent.id,wake:id,engine:'codex',input:100,output:20,cache_read:40,total:120,complete:true}],toolReceipts:[],modelContexts:[{model:launch.agent.model}]},coverage:[{channel:'usage',completeness:'complete',ordering:'source'}]};
+const closedTrace={schema:'daimon.turn_trace.v1',agent_id:launch.agent.id,turn_id:id,started_at:at,completed_at:at,status:'completed',tools:[]};
+closed=[...closed,closedTrace];
+// Every wake of a continued trial closes an execution of its own, and a worker that
+// does not strip its own history publishes all of them on the frame. The frame still
+// names the one THIS wake closed; the '-history' modes are that shape, with the two
+// ways it can go wrong beside it: an earlier trace that is not this agent's work at
+// all, and two traces answering to the one execution the frame names.
+const history=mode.includes('-history')?closed.map(row=>({...row})):[closedTrace];
+// Both faults are injected only once the trial HAS history, so neither can be
+// mistaken for the arity: the first wake of each mode publishes a clean single trace.
+if(history.length>1&&mode.endsWith('-foreign'))history[0]={...history[0],agent_id:'another-agent'};
+if(history.length>1&&mode.endsWith('-ambiguous'))history.push({...closedTrace});
+terminal={schema:'paideia.daimon-native.trial.v1',trialId:trial,wakeId:input.wakeId,agentId:launch.agent.id,model:launch.agent.model,configSha256:launch.configSha256,status:'completed',startedAt:at,completedAt:at,executionId:id,receipt,activity:{version:'noopolis.daimon.organization-runtime-activity.v2',items:[{...receipt,active:false}],executions:[]},native:{traces:history,usage:[{v:'noopolis.daimon.turn-usage.v1',agent:launch.agent.id,wake:id,engine:'codex',input:100,output:20,cache_read:40,total:120,complete:true}],toolReceipts:[],modelContexts:[{model:launch.agent.model}]},coverage:[{channel:'usage',completeness:'complete',ordering:'source'}]};
 if((mode.startsWith('blocked')||mode==='undisposed')&&(input.wakeId==='task'||mode.startsWith('blocked-always'))){terminal.status='failed';terminal.blocked='awaiting-external-input';receipt.state='accepted';receipt.deferred=true;
 if(wakes>budget)settleStop();
 terminal.error='Native execution completed; delivery blocked awaiting external input';
@@ -79,7 +91,11 @@ terminal.error='Native execution completed; delivery reclaimed undisposed (activ
 if(mode==='blocked-failed-trace')terminal.native.traces[0].status='failed';
 if(mode==='blocked-active')terminal.activity.executions=[{agent_id:launch.agent.id,turn_id:id}];
 if(mode==='blocked-wrong-execution')terminal.executionId='foreign';}
-if(mode==='bad-terminal')terminal.trialId='foreign';res.end(JSON.stringify(terminal));return;}
+if(mode==='bad-terminal')terminal.trialId='foreign';
+// A frame whose receipt answers for another trial's delivery, with every other
+// identity on the frame itself matching: the delivery is the only thing that says so.
+if(mode==='foreign-delivery')receipt.delivery_id='other-trial:'+input.wakeId;
+res.end(JSON.stringify(terminal));return;}
 res.end('{}');});
 const engine=launch.agent.engine==='grok'?{engine:'grok',reasoningEffort:mode==='bad-effort'?'high':launch.agent.reasoningEffort}:{};
 server.listen(launch.host.port,'127.0.0.1',()=>console.log(JSON.stringify({schema:'paideia.daimon-native.ready.v1',trialId:mode==='bad-ready'?'foreign':trial,configSha256:launch.configSha256,agentId:launch.agent.id,model:mode==='bad-model'?'grok-4.5':launch.agent.model,port:launch.host.port,...engine})));
