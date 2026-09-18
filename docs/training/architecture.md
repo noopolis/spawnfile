@@ -73,8 +73,8 @@ isolated subject run; a score over an old capture is a rescore.
 Every attempt receives fresh frozen evidence, initial files and memory fixtures.
 Rubrics, hidden labels, tool journals and authoritative receipts stay outside the
 subject's writable workspace. Illustrative project integrations belong in examples/;
-the [Example Newsroom proposal](../examples/newsroom-reporting/README.md) exercises the language
-without importing private evidence. Private corpora and production state remain in
+the [newsroom reporting proposal](../examples/newsroom-reporting/README.md) exercises the
+language on invented data, without importing private evidence. Private corpora and production state remain in
 their owning repositories; executable generic sample suites belong in evals/.
 
 ## Evaluation and optimization

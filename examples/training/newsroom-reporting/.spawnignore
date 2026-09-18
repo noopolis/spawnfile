@@ -1,0 +1,4 @@
+# Agreed packaging policy; Spawnfile support is not implemented yet.
+# Keep evaluator definitions and generated experiment artifacts out of agent payloads.
+**/evals/
+**/.paideia/

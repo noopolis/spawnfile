@@ -39,8 +39,8 @@ function newsroom(name: string): ResolvedDataset {
   return resolveDataset(parseDatasetYaml(readFileSync(sourceName, 'utf8'), { sourceName: sourceName.pathname }),
     { registry, subject: 'scribe', requireGroups: true, unlockedSetupPaths: ['clock', 'delivery'] });
 }
-describe('unchanged real newsroom authoring', () => {
-  it('resolves both original datasets with identical criteria and unaltered evidence selectors', () => {
+describe('unchanged newsroom example authoring', () => {
+  it('resolves both example datasets with identical criteria and unaltered evidence selectors', () => {
     const train = newsroom('train');
     const test = newsroom('test');
     expect(train.records).toHaveLength(2);

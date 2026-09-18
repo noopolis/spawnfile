@@ -1,0 +1,248 @@
+# Illustrative Spawnfile. Names, repositories, revisions and hashes are synthetic.
+# Tool volumes would have to be populated by real build recipes before running.
+# Dataset views must hide evaluation/future material; a bare spawnfile run is not a trial.
+spawnfile_version: "0.1"
+kind: team
+name: paideia-scribe
+description: Illustrative newsroom reporting environment for isolated evaluation authoring;
+  preparation still required
+mode: hierarchical
+lead: scribe
+shared:
+  environment:
+    packages:
+      - id: newsroom-git
+        manager: apt
+        name: git
+members:
+  - id: scribe
+    runtime:
+      name: daimon
+      options:
+        engine: codex
+        attention:
+          max_batch_messages: 8
+          max_batch_bytes: 12000
+          max_executions: 30
+          max_tokens: 4000000
+        codex_policy: workspace-no-network
+    execution:
+      model:
+        primary:
+          provider: openai
+          name: gpt-5.5
+          auth:
+            method: codex
+      sandbox:
+        mode: workspace
+    surfaces:
+      moltnet:
+        - network: example-newsroom
+          auth:
+            token_id: scribe
+          rooms:
+            conference:
+              wake: mentions
+            assignment:
+              wake: mentions
+            filing:
+              wake: mentions
+            sensor:
+              wake: mentions
+            research:
+              wake: mentions
+          dms:
+            enabled: true
+            wake: never
+    environment:
+      mcp_servers:
+        - name: newsroom
+          transport: stdio
+          command: /usr/local/bin/node
+          args:
+            - /var/lib/spawnfile/instances/daimon/daimon-organization/workspace/agents/scribe/repos/newsroom/example-org/scripts/newsroom-mcp.mjs
+          env:
+            NEWSROOM_NEWSROOM_AGENT: scribe
+            NEWSROOM_EDITION_STATE_ROOT: /var/lib/spawnfile/instances/daimon/daimon-organization/workspace/agents/scribe/state/edition
+            NEWSROOM_NEWSROOM_STATE_ADAPTER: /var/lib/spawnfile/instances/daimon/daimon-organization/workspace/agents/scribe/tools/newsroom/state/transaction.mjs
+            NEWSROOM_DAIMON_CONTROL_URL: http://127.0.0.1:19700
+            NEWSROOM_DAIMON_CONTROL_TOKEN_FILE: /run/example-newsroom-control/token
+            NEWSROOM_DAIMON_AGENT_ID: agent:scribe
+          tools:
+            - file_article
+            - record_dissent
+        - name: validation
+          transport: stdio
+          command: /usr/local/bin/node
+          args:
+            - /var/lib/spawnfile/instances/daimon/daimon-organization/workspace/agents/scribe/tools/article-validation/server.mjs
+          env:
+            NEWSROOM_NEWSROOM_AGENT: scribe
+            NEWSROOM_PUBLIC_SOURCE_ROOT: /var/lib/spawnfile/instances/daimon/daimon-organization/workspace/agents/scribe/repos/newsroom
+          tools:
+            - validate_article
+    memory:
+      - id: self
+        store:
+          kind: sqlite
+          path: /var/lib/spawnfile/memory/example-scribe/self.sqlite
+          persistence:
+            mode: durable
+        index:
+          lexical:
+            enabled: true
+            engine: sqlite_fts
+          vector:
+            enabled: false
+    schedule:
+      kind: disabled
+    workspace:
+      docs:
+        system: environment/scribe/AGENTS.md
+        soul: environment/scribe/SOUL.md
+      resources:
+        - id: public-content
+          kind: git
+          url: https://example.invalid/example-org/newsroom-content.git
+          ref: 1111111111111111111111111111111111111111
+          mount: ./repos/newsroom
+          mode: readonly
+        - id: private-archive
+          kind: git
+          url: https://example.invalid/example-org/newsroom-archive.git
+          ref: 2222222222222222222222222222222222222222
+          mount: ./repos/newsroom-archive
+          mode: readonly
+        - id: newsroom-tools
+          kind: volume
+          mount: ./tools/newsroom
+          mode: readonly
+        - id: article-validation
+          kind: volume
+          mount: ./tools/article-validation
+          mode: readonly
+        - id: edition-state
+          kind: volume
+          mount: ./state/edition
+          mode: mutable
+external_participants:
+  - id: chief
+    kind: service
+    surfaces:
+      moltnet:
+        - network: example-newsroom
+          auth:
+            token_id: chief
+          dms:
+            enabled: true
+  - id: reviewer
+    kind: service
+    surfaces:
+      moltnet:
+        - network: example-newsroom
+          auth:
+            token_id: reviewer
+          dms:
+            enabled: true
+  - id: wire-sensor
+    kind: service
+    surfaces:
+      moltnet:
+        - network: example-newsroom
+          auth:
+            token_id: wire-sensor
+          dms:
+            enabled: true
+networks:
+  - id: example-newsroom
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 127.0.0.1
+        port: 19879
+      store:
+        kind: memory
+      human_ingress: false
+      direct_messages: true
+      auth:
+        mode: bearer
+        public_read: false
+        agent_registration: disabled
+        client:
+          token_id: operator
+        tokens:
+          - id: operator
+            secret: PAIDEIA_EXAMPLE_OPERATOR_TOKEN
+            scopes:
+              - admin
+              - observe
+              - write
+          - id: scribe
+            secret: PAIDEIA_EXAMPLE_SCRIBE_TOKEN
+            scopes:
+              - attach
+              - observe
+              - write
+            agents:
+              - scribe
+          - id: chief
+            secret: PAIDEIA_EXAMPLE_CHIEF_TOKEN
+            scopes:
+              - attach
+              - observe
+              - write
+            agents:
+              - chief
+          - id: reviewer
+            secret: PAIDEIA_EXAMPLE_REVIEWER_TOKEN
+            scopes:
+              - attach
+              - observe
+              - write
+            agents:
+              - reviewer
+          - id: wire-sensor
+            secret: PAIDEIA_EXAMPLE_WIRE_SENSOR_TOKEN
+            scopes:
+              - attach
+              - observe
+              - write
+            agents:
+              - wire-sensor
+    rooms:
+      - id: conference
+        members:
+          - scribe
+          - chief
+          - reviewer
+        visibility: private
+        write_policy: members
+      - id: assignment
+        members:
+          - scribe
+          - chief
+          - reviewer
+        visibility: private
+        write_policy: members
+      - id: filing
+        members:
+          - scribe
+          - chief
+          - reviewer
+        visibility: private
+        write_policy: members
+      - id: sensor
+        members:
+          - scribe
+          - chief
+          - reviewer
+        visibility: private
+        write_policy: members
+      - id: research
+        members:
+          - scribe
+          - chief
+          - wire-sensor
+        visibility: private
+        write_policy: members

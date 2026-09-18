@@ -31,9 +31,10 @@ tooling. Content declares `schema: paideia.dataset.v1`; the filename never repla
 Spawnfile projects use the agreed `.spawnignore` shape to declare packaging exclusions;
 enforcement is not implemented. See [native packaging](harnessing.md#colocated-evaluation-and-packaging).
 
-The [Example Newsroom example](../examples/newsroom-reporting/README.md) uses real Spawnfile
-resources and archived packets to exercise the schema. Its newsroom preparation,
-filtered repositories, memory parity and direct-research audit are not implemented.
+The [newsroom reporting example](../examples/newsroom-reporting/README.md) exercises the
+schema over a realistic multi-step task with synthetic sources and selectors. Its
+preparation profiles, filtered repositories, memory parity and direct-research audit
+are not implemented.
 
 ## Smallest dataset
 
@@ -92,10 +93,10 @@ resolution; do not drop them and continue.
 them explicitly. Dataset `setup` remains the shared recipe and defaults. Fixtures can
 supply context, setup parameters, inputs, references and outputs, while record identity,
 group and checks remain outside them. See [fixture resolution](fixtures.md) for the
-canonical merge, conflict, policy and isolation rules. The real datasets use an
+canonical merge, conflict, policy and isolation rules. The example datasets use an
 `afternoon-assignment` fixture and a named evidence packet for each record.
 
-## Select the actual inputs
+## Select the inputs
 
 ```yaml
 schema: paideia.dataset.v1
@@ -120,10 +121,11 @@ records:
         outcome: succeeded
 ```
 
-The hash above and the [actual datasets](../examples/newsroom-reporting/evals/train.paideia.yaml) were
-checked against the pinned repository bytes. A missing or wrong hash must fail.
-Calling validation is just one observable behavior, not proof that validation passed
-or the final output is correct. The real example uses stronger chained checks.
+Selectors like the one above, and the [example datasets](../examples/newsroom-reporting/evals/train.paideia.yaml),
+are resolved against pinned repository bytes; a missing or wrong hash must fail. The
+hash here is synthetic. Calling validation is just one observable behavior, not proof
+that validation passed or the final output is correct. The example dataset uses
+stronger chained checks.
 
 `resource` resolves through the prepared native environment's resource map. In the
 newsroom example, Spawnfile declares `private-archive`, its immutable Git revision and

@@ -6,7 +6,7 @@ have passed the [native formatting acceptance](../examples/native-formatting/REA
 See [adapter support](../src/adapters/README.md) for exact capabilities. The broader
 project-native integrations below remain design contracts where marked.
 
-See the [Example Newsroom source mapping](../examples/newsroom-reporting/README.md#prompt-candidates) for a concrete
+See the [newsroom example source mapping](../examples/newsroom-reporting/README.md#prompt-candidates) for a concrete
 proposal with native declarations, editable prompt resources and isolated state.
 
 ```text

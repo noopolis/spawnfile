@@ -52,7 +52,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <p class="eyebrow">Paideia · architecture and implementation · 13 September 2026</p>
 <h1>The architecture, from YAML to a tested agent.</h1>
 <p>A native project and its environment, one YAML per dataset, and a bounded loop that evaluates and improves selected instructions.</p>
-<div class="status"><p><strong>Working evaluation and training core.</strong> Real DSPy optimization improved a held-out formatting task through native Codex and Daimon. The YAML resolver, evaluators, capture store and local viewer are implemented. The newsroom example still needs native project preparation, skills and memory parity before it can reproduce the organization.</p></div>
+<div class="status"><p><strong>Working evaluation and training core.</strong> Real DSPy optimization improved a held-out formatting task through native Codex and Daimon. The YAML resolver, evaluators, capture store and local viewer are implemented. The newsroom example is a synthetic authoring fixture; native project preparation, skills and memory parity are still missing.</p></div>
 <nav aria-label="Architecture sections"><a href="#architecture">01 Architecture</a><a href="#yaml">02 YAML</a><a href="#distillation">03 Real runs</a><a href="#trial">04 One trial</a><a href="#training">05 Training</a><a href="#readiness">06 Readiness</a></nav>
 </header>
 <section id="architecture">
@@ -181,14 +181,14 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <tr><td><code>stages, checks, gate, score</code></td><td>A shared evaluation plan, applied to every record. Records can add criteria without weakening the shared gates.</td></tr>
 </tbody></table></div>
 <p>The invocation selects project, subject, dataset roles, editable prompt sections, inference routes and budgets. Resolution creates a locked run manifest. There is no mandatory extra experiment YAML; invocation syntax is still to design.</p>
-<details><summary>Read one actual training record</summary>
-<p>From <a href="../examples/newsroom-reporting/evals/train.paideia.yaml"><code>train.paideia.yaml</code></a>. <code>afternoon-assignment</code> supplies clock/delivery; <code>kestrel-evidence</code> supplies context and the four pinned file selectors, including the evaluator-only reference. The private archive stays external. Shared setup and stages remain in the same YAML.</p>
+<details><summary>Read one training record</summary>
+<p>From <a href="../examples/newsroom-reporting/evals/train.paideia.yaml"><code>train.paideia.yaml</code></a>. <code>afternoon-assignment</code> supplies clock/delivery; <code>kestrel-evidence</code> supplies context and the four pinned file selectors, including the evaluator-only reference. Names, revisions and hashes are synthetic, and the declared private archive stays external. Shared setup and stages remain in the same YAML.</p>
 <pre><code>  - id: kestrel-reporting
     group: kestrel-2026-09-12
     use: [afternoon-assignment, kestrel-evidence]
     input:
       prompt: |
-        Report the Kestrel salvo and what the reported hardware mix establishes.
+        Report the Kestrel Harbour drill and what the observed hardware mix establishes.
         Read the assignment and selected story packet at their usual workspace paths.
         Produce the complete publication JSON, validate it, file it under this wake,
         and notify Reviewer. Preserve source qualifications and write for readers.</code></pre>
@@ -287,7 +287,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 </svg>
 </div></figure>
 <aside class="aside">
-<p><strong>Matched source:</strong> Scribe’s AGENTS, SOUL and RUNBOOK bytes; model, MCP declarations and memory interface match the pinned source. This does not establish equivalent effective context or a deployed-runtime match.</p>
+<p><strong>Declared source:</strong> Scribe’s AGENTS, SOUL and RUNBOOK files, with model, MCP and memory declarations, come from this example’s own synthetic environment. A project applying the shape would instead pin its own source and prove byte parity; declaration parity alone establishes neither equivalent effective context nor a deployed-runtime match.</p>
 <p><strong>Known differences:</strong> generated TEAM.md is empty, Scribe replaces Chief as lead, the lead roster is missing and DMs are enabled. Memory is empty; assignment/history and the 12 September 13:30 Berlin clock are reconstructed.</p>
 <p><strong>Delivery:</strong> setup creates state without waking the agent. A fixture service uses the declared Chief participant identity to send one authenticated mention, supplying the task and triggering the native wake. Message text is <code>@scribe</code>, one LF, then the YAML-parsed prompt.</p>
 <p><strong>Evidence:</strong> native calls and terminal outcome, accepted JSON, authentic filing/history receipts and the stored handoff to Reviewer.</p>
@@ -299,14 +299,14 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <tbody>
 <tr><td>Source selection</td><td>Verify revisions and file hashes. Preserve tools, schemas and catalogues; remove target/future output and all held-out content, including sibling reference outputs, every story derivative, aggregate byline rows, Git history, caches and memory paths.</td></tr>
 <tr><td>Isolation</td><td>Fresh container, trial-owned volumes and native control credentials. Fixed native paths remain inside that container; they never mount production state.</td></tr>
-<tr><td>Effective prompt parity</td><td>Restore the real generated TEAM.md, Chief lead/roster and communication scope. Compare native lowered instructions, generated workspace instructions, runtime wake envelope, tool schemas and pre-wake context against a pinned baseline; record every permitted trial difference.</td></tr>
+<tr><td>Effective prompt parity</td><td>Restore the generated TEAM.md, the intended lead/roster and communication scope. Compare native lowered instructions, generated workspace instructions, runtime wake envelope, tool schemas and pre-wake context against a pinned baseline; record every permitted trial difference.</td></tr>
 <tr><td>Native preparation</td><td>Matching attested runtime and original tool dependency closures. Candidate resource overlays must be supported through the native public contract.</td></tr>
 <tr><td>Clock and wake</td><td>Agent, tools and runtime share the declared emulated wall clock. Capture the real active wake ID; do not substitute a record/message ID or submit a duplicate direct wake.</td></tr>
 <tr><td>Accepted artifact</td><td>A read-only collector joins current admitted filing, authentic receipt and committed bytes for this owner/edition/story. Validation JSON, admitted JSON, file hash and Git commit keep their separate identities.</td></tr>
 </tbody></table></div>
 <p>A failed preflight prevents the paid run, but static validation or a generic preflight does not prove this exact compiled environment can complete the task. Verify the selected image, mounts, authentication, shell and task tools together. A failed task and its observed usage are recorded; Paideia does not file an article on the agent’s behalf to repair its score.</p>
 <details><summary>Where sensors and multiple turns fit</summary>
-<p>These records use archived sensor packets; no live research is sent. A future research-loop record can use ordered <code>turns</code>: observe a real research request, then deliver a recorded or explicitly emulated response through Moltnet, and observe the resumed native agent. Paideia supplies external stimuli; the agent still decides whether to request research. No historical sensor-answer trace has been supplied for these records.</p>
+<p>These records use supplied sensor packets; no live research is sent. A future research-loop record can use ordered <code>turns</code>: observe an actual research request, then deliver a recorded or explicitly emulated response through Moltnet, and observe the resumed native agent. Paideia supplies external stimuli; the agent still decides whether to request research. No sensor-answer trace has been supplied for these records.</p>
 </details>
 </section>
 <section id="training">
@@ -368,7 +368,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <li><strong>Fair comparison:</strong> the normalized shared plan digest must match across train/test, including rubric/judge versions, thresholds and weights. Missing trials retain their denominator.</li>
 <li><strong>Local result:</strong> prompt diff, source/candidate identities, trace, quality, coverage, latency and separate subject/optimizer/judge usage. The viewer reads this ledger; deployment requires a separate decision.</li>
 </ul>
-<p>The three retrospective newsroom records demonstrate authoring. They cannot establish statistical generalization or guarantee that a model has never encountered these public stories.</p>
+<p>The three synthetic newsroom records demonstrate authoring only. They establish nothing about statistical generalization.</p>
 </section>
 <section id="readiness">
 <p class="number">06 / What exists today</p>
@@ -376,8 +376,8 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <div class="table"><table>
 <thead><tr><th>Implemented and checked</th><th>Still outside the completed slice</th></tr></thead>
 <tbody>
-<tr><td>One native Spawnfile, evals/ with two dataset YAMLs, three real records, twelve pinned source-file hashes and a proposed .spawnignore file.</td><td>Strict dataset resolver, fixture merging and generic local invocation are implemented. Newsroom filtered views and Spawnfile packaging exclusions remain pending.</td></tr>
-<tr><td>Matching agent source files and model/MCP/memory declarations; native Spawnfile validation. Full prompt parity fails on generated team context, hierarchy and DM scope.</td><td>Repair team-context differences, then verify effective input with matching runtime attestation, original tool closures, isolation, emulated clock and truthful native capture. The inspected Daimon/Codex CLI surface omits the internal tool chain: a trusted MCP journal or native event export joined to actual wake/acceptance IDs is required.</td></tr>
+<tr><td>One native Spawnfile, evals/ with two dataset YAMLs, three example records, twelve pinned source-file hashes and a proposed .spawnignore file.</td><td>Strict dataset resolver, fixture merging and generic local invocation are implemented. Newsroom filtered views and Spawnfile packaging exclusions remain pending.</td></tr>
+<tr><td>Self-consistent agent source files and model/MCP/memory declarations; native Spawnfile validation. Full prompt parity fails on generated team context, hierarchy and DM scope.</td><td>Repair team-context differences, then verify effective input with matching runtime attestation, original tool closures, isolation, emulated clock and truthful native capture. The inspected Daimon/Codex CLI surface omits the internal tool chain: a trusted MCP journal or native event export joined to actual wake/acceptance IDs is required.</td></tr>
 <tr><td>Proposed capture-to-dataset flow; no records have been distilled from captured runs.</td><td>Native capture coverage, pre-wake snapshots, reviewed criteria, evidence grouping and a distiller into the existing YAML schema.</td></tr>
 <tr><td>Explicit artifact, delivery and candidate destination bindings; shared-plan equality and mutation checks.</td><td>Mechanical, semantic and embedding evaluators are implemented. Real subscription DSPy changed an editable prompt; native Codex and Daimon both passed the same unseen formatting task with that frozen candidate.</td></tr>
 <tr><td>Approved mechanical hard-stop policy and proposed live checks in both datasets; semantic checkpoints remain advisory during execution.</td><td>Generic incremental finality, immutable checkpoints, bounded cancellation and Codex multi-wake bindings are implemented and tested. The newsroom research audit, native skills and memory-backed Daimon multi-wake parity remain pending.</td></tr>

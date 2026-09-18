@@ -1,7 +1,7 @@
 # Named dataset fixtures
 
 **Implemented dataset fixtures.** The strict resolver implements the merging and
-conflict rules below. The production-derived [training](../examples/newsroom-reporting/evals/train.paideia.yaml)
+conflict rules below. The example [training](../examples/newsroom-reporting/evals/train.paideia.yaml)
 and [test](../examples/newsroom-reporting/evals/test.paideia.yaml) datasets demonstrate this surface.
 
 ## Declaration and selection
@@ -17,7 +17,7 @@ Every selected name must exist and occur only once in that record. Names are loc
 the YAML file: a training record cannot resolve a fixture from the test dataset.
 Defining a fixture does not select it or make its data visible to a subject.
 
-This is the actual Kestrel record after its parameters and files move into fixtures:
+This is the example's Kestrel record after its parameters and files move into fixtures:
 
 ```yaml
 - id: kestrel-reporting
@@ -25,15 +25,15 @@ This is the actual Kestrel record after its parameters and files move into fixtu
   use: [afternoon-assignment, kestrel-evidence]
   input:
     prompt: |
-      Report the Kestrel salvo and what the reported hardware mix establishes.
+      Report the Kestrel Harbour drill and what the observed hardware mix establishes.
       Read the assignment and selected story packet at their usual workspace paths.
       Produce the complete publication JSON, validate it, file it under this wake,
       and notify Reviewer. Preserve source qualifications and write for readers.
 ```
 
-`afternoon-assignment` supplies the existing 13:30 Berlin clock and authenticated
-Chief delivery. `kestrel-evidence` supplies edition/story context, the three exact input
-selectors and the evaluator-only historical article selector. The selectors and hashes
+`afternoon-assignment` supplies the 13:30 Berlin clock and authenticated Chief
+delivery. `kestrel-evidence` supplies edition/story context, the three exact input
+selectors and the evaluator-only reference article selector. The selectors and hashes
 remain readable in the same YAML. Voltrail and Marovia each have their own evidence
 fixture; the test file declares its own `afternoon-assignment`.
 

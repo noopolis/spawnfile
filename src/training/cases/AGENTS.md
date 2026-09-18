@@ -35,8 +35,9 @@ and validates the complete effective records before any native work starts.
   Reusing a check ID in another turn or in terminal checks does not alias its result.
 - Split checks require groups and prevent shared source paths/content hashes across
   train, validation and test. Filesystem derivative filtering remains with preparation.
-- Tests live beside implementation. Real newsroom examples are read unchanged using
-  schema-only test registrations; this is not a claim of a working newsroom adapter.
+- Tests live beside implementation. The newsroom example datasets are read unchanged
+  using schema-only test registrations; this is not a claim of a working newsroom
+  adapter, and those datasets carry synthetic names, selectors and hashes.
 
 Run targeted tests and coverage for `src/cases` during edits, plus TypeScript and ESLint.
 Keep every executable file above the inherited 90% coverage thresholds. Every claimed
