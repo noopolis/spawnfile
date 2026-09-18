@@ -34,21 +34,34 @@ let terminal;const health={version:'noopolis.daimon.organization-runtime-health.
 // stays deferred with no continuation left, so the caller's closure query lands on a stopped
 // runtime. Daimon seals the v2 activity projection at that stop and keeps answering it;
 // an 'unanswerable' mode reproduces the host that answers HTTP 503 native_host_unavailable there.
-let hostStopped=false,wakes=0,budget=0;
-const activity=()=>{const base=terminal?.activity??{version:'noopolis.daimon.organization-runtime-activity.v2',items:[],executions:[]};
-return hostStopped?{...base,state:'stopped'}:{...base,state:'running'};};
+let hostStopped=false,wakes=0,budget=0,stopOutcome,items=[];
+// Daimon's real seal keeps one accepted-delivery record per wake of the trial, so a
+// continued trial's projection is never the single-item shape one wake produces.
+const activity=()=>({version:'noopolis.daimon.organization-runtime-activity.v2',
+state:hostStopped?'stopped':'running',items,
+// A host that stopped with work still admitted seals that honestly, and the caller
+// must refuse the closure rather than read the empty-list case into it.
+executions:hostStopped&&mode.endsWith('-busy-seal')?[{agent_id:launch.agent.id,execution_id:'x'.repeat(64),state:'running',delivery_ids:[]}]
+:terminal?.activity?.executions??[]});
+// The worker settles its stop exactly once and every later /trial/stop replays that
+// same value, including an internal stop that did not acknowledge: control.ts races
+// host.stop() against a 5s deadline and memoizes whatever it got.
+const settleStop=()=>{hostStopped=true;stopOutcome=stopOutcome??(mode==='bad-stop'||mode.endsWith('-stop-unknown')
+?{schema:'paideia.daimon-native.stop.v1',state:'unknown',quiescence:'unknown',error:'unit native shutdown deadline exceeded'}
+:{schema:'paideia.daimon-native.stop.v1',state:'acknowledged',quiescence:'unknown'});return stopOutcome;};
 const server=http.createServer(async(req,res)=>{if(req.headers.authorization!=='Bearer '+token){res.writeHead(401);res.end();return;}
 if(req.url==='/v2/activity'&&hostStopped&&mode.endsWith('-unanswerable')){res.writeHead(503,{'content-type':'application/json'});res.end(JSON.stringify({error:'native_host_unavailable'}));return;}
 res.writeHead(200,{'content-type':'application/json'});
 if(req.url==='/trial/health'){res.end(JSON.stringify(health));return;}
 if(req.url==='/v2/activity'){res.end(JSON.stringify(activity()));return;}
-if(req.url==='/trial/stop'){hostStopped=true;res.end(JSON.stringify({schema:'paideia.daimon-native.stop.v1',state:mode==='bad-stop'?'unknown':'acknowledged',quiescence:'unknown'}));return;}
+if(req.url==='/trial/stop'){res.end(JSON.stringify(settleStop()));return;}
 if(req.url==='/trial/run'){if(mode==='stall')return;if(mode==='die-mid-turn'){process.stderr.write('worker: stream bound crossed, terminating\\n');server.closeAllConnections();process.exit(1);}let text='';for await(const chunk of req)text+=chunk;const input=JSON.parse(text),id=crypto.randomUUID(),at=new Date().toISOString();
 if(!wakes++)budget=input.controls?.maxExternalDeliveries??0;
 const receipt={version:'noopolis.daimon.wake-receipt-status.v2',acceptance_id:crypto.randomUUID(),agent_id:launch.agent.id,delivery_id:trial+':'+input.wakeId,request_digest:'a'.repeat(64),state:'completed',accepted_at:at,updated_at:at,execution_id:id};
+items=[...items,{...receipt,active:false,queue_position:wakes}];
 terminal={schema:'paideia.daimon-native.trial.v1',trialId:trial,wakeId:input.wakeId,agentId:launch.agent.id,model:launch.agent.model,configSha256:launch.configSha256,status:'completed',startedAt:at,completedAt:at,executionId:id,receipt,activity:{version:'noopolis.daimon.organization-runtime-activity.v2',items:[{...receipt,active:false}],executions:[]},native:{traces:[{schema:'daimon.turn_trace.v1',agent_id:launch.agent.id,turn_id:id,started_at:at,completed_at:at,status:'completed',tools:[]}],usage:[{v:'noopolis.daimon.turn-usage.v1',agent:launch.agent.id,wake:id,engine:'codex',input:100,output:20,cache_read:40,total:120,complete:true}],toolReceipts:[],modelContexts:[{model:launch.agent.model}]},coverage:[{channel:'usage',completeness:'complete',ordering:'source'}]};
 if(mode.startsWith('blocked')&&(input.wakeId==='task'||mode.startsWith('blocked-always'))){terminal.status='failed';terminal.blocked='awaiting-external-input';receipt.state='accepted';receipt.deferred=true;
-if(wakes>budget)hostStopped=true;
+if(wakes>budget)settleStop();
 terminal.error='Native execution completed; delivery blocked awaiting external input';
 if(mode==='blocked-no-deferred')delete receipt.deferred;
 if(mode==='blocked-failed-trace')terminal.native.traces[0].status='failed';
