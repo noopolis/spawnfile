@@ -112,7 +112,9 @@ it('forks actual CLI/GEPA pending measurement without repeating prior native wor
     f.stderr.length = 0;
     expect(await main([...f.args, '--out', 'parent'], f.io, f.dependencies)).toBe(2);
     expect(f.stderr.join()).toContain('unscorable');
-    expect(f.native).toHaveLength(3); expect(f.calls).toEqual({ grounding: 3, prose: 3, reflection: 1 });
+    // Grounding is 4, not 3: its aborted generation returned no judgement at all and is
+    // re-run once on the same route, which aborts too and leaves the measurement unscorable.
+    expect(f.native).toHaveLength(3); expect(f.calls).toEqual({ grounding: 4, prose: 3, reflection: 1 });
     const p = await projection(f), before = JSON.stringify(p.training);
     const { capturedTrial } = await import('../experiments/replay/index.js');
     const checkStore = await openExperimentStore(p.parent);
@@ -136,7 +138,8 @@ it('forks actual CLI/GEPA pending measurement without repeating prior native wor
     expect(await main(args, f.io, f.dependencies), f.stderr.join()).toBe(0);
     expect(f.stderr).toEqual([]);
     expect(f.native).toHaveLength(6);
-    expect(f.calls).toEqual({ grounding: 7, prose: 6, reflection: 1 });
+    // Still carrying the one re-run of the aborted grounding generation above.
+    expect(f.calls).toEqual({ grounding: 8, prose: 6, reflection: 1 });
     const index = JSON.parse(await readFile(join(f.root, 'child/invocation.json'), 'utf8'));
     const store = await openExperimentStore(join(f.root, 'child'));
     const report = JSON.parse((await store.readBlob(index.report, { audience: 'operator', phase: 'test', frozenCandidateIds: [index.candidateId] })).toString());
