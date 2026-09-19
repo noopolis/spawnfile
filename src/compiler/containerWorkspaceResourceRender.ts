@@ -110,7 +110,10 @@ export const createWorkspaceResourceShellFunctions = (): string[] => [
   '  local id="$1" link_path="$2" backing_path="$3" archive="$4" identity="$5"',
   '  [ -f "$archive" ] || { echo "Workspace bundle $id archive missing" >&2; exit 1; }',
   '  local sentinel="$backing_path/.spawnfile-bundle-identity"',
-  '  if [ -e "$backing_path" ]; then',
+  // An empty directory is not a materialized bundle: the Grok broker preflight starts before this runs and
+  // needs every worker deny target to exist, so the Daimon entrypoint pre-creates missing resource backings
+  // empty. Anything with content still has to attest its identity, exactly as a git backing does above.
+  '  if [ -e "$backing_path" ] && { [ ! -d "$backing_path" ] || [ -L "$backing_path" ] || ! directory_is_empty "$backing_path"; }; then',
   '    [ -f "$sentinel" ] && [ "$(cat "$sentinel")" = "$identity" ] || { echo "Workspace bundle $id identity mismatch" >&2; exit 1; }',
   "  else",
   '    mkdir -p "$backing_path"',
