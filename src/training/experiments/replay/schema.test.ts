@@ -28,11 +28,16 @@ test('replay retains judge attribution and cache-write usage across stored repor
 test('replay preserves explicit unknown judge evidence and rejects invalid measured metadata', async () => {
   const { report } = await fixture(report => {
     report.evaluation.judgeCalls = [{ ...call, responseModel: null, responseRoute: null,
-      outcome: 'generation-error', usage: null }];
+      outcome: 'generation-error', usage: null, failureKind: 'protocol' },
+    // A recovered judgement stays recoverable-looking after replay: strip `retryOf` here
+    // and a score from a second attempt reads exactly like one that answered first time.
+    { ...call, outcome: 'completed', retryOf: 'actual-generation', retryCause: 'provider-error' }];
   });
   expect(trialReportSchema.parse(report).evaluation.judgeCalls).toEqual(report.evaluation.judgeCalls);
   for (const malformed of [
     { ...call, id: '' },
+    { ...call, retryOf: '' },
+    { ...call, retryCause: 'grant-vaporised' },
     { ...call, outcome: 'invented' },
     { ...call, usage: { ...usage, cacheWriteInputTokens: -1 } },
     { ...call, responseModel: 42 },
