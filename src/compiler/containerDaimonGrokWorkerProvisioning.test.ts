@@ -15,10 +15,19 @@ const BROKER = 2100;
 
 type Node = { content: string; gid: number; kind: "dir" | "file" | "link"; mode: number; target?: string; uid: number };
 
-/** Just enough of `node:fs` to run the rendered root program without root. */
+/**
+ * Just enough of `node:fs` to run the rendered root program without root — including the one
+ * capability the container does NOT grant. `spawnfile up` runs the organization container with
+ * `--cap-drop ALL` and adds only CHOWN, DAC_READ_SEARCH, KILL, SETGID, SETPCAP and SETUID, so the
+ * rendered program runs as uid 0 WITHOUT CAP_DAC_OVERRIDE and WITHOUT CAP_FOWNER: it may chown
+ * anything and traverse anything, but it may only create inside a directory the ordinary mode bits
+ * let uid 0 write, and only chmod what it owns. Modelling that here is what makes this harness able
+ * to fail on a provisioning step that would exit the real container 1 at start.
+ */
 const memoryFs = (seed: Record<string, Partial<Node>>) => {
   const nodes = new Map<string, Node>([["/", { content: "", gid: 0, kind: "dir", mode: 0o755, uid: 0 }]]);
   const enoent = (target: string) => Object.assign(new Error(`ENOENT: ${target}`), { code: "ENOENT" });
+  const eacces = (target: string) => Object.assign(new Error(`EACCES: ${target}`), { code: "EACCES" });
   const put = (target: string, node: Partial<Node>) => {
     for (let parent = path.posix.dirname(target); !nodes.has(parent); parent = path.posix.dirname(parent)) {
       nodes.set(parent, { content: "", gid: 0, kind: "dir", mode: 0o755, uid: 0 });
@@ -32,13 +41,29 @@ const memoryFs = (seed: Record<string, Partial<Node>>) => {
     const type = node.kind === "dir" ? 0o040000 : node.kind === "file" ? 0o100000 : 0o120000;
     return { gid: node.gid, isDirectory: () => node.kind === "dir", isFile: () => node.kind === "file", isSymbolicLink: () => node.kind === "link", mode: type | node.mode, nlink: 1, uid: node.uid };
   };
+  // uid 0 without CAP_DAC_OVERRIDE: only the owner/group/other write bits that actually apply to it.
+  const rootMayWrite = (node: Node) => (node.uid === 0 && (node.mode & 0o200) !== 0)
+    || (node.gid === 0 && (node.mode & 0o020) !== 0) || (node.mode & 0o002) !== 0;
+  const assertCreatableIn = (target: string) => {
+    let parent = path.posix.dirname(target);
+    while (!nodes.has(parent) && parent !== "/") parent = path.posix.dirname(parent);
+    const node = nodes.get(parent);
+    if (node && !rootMayWrite(node)) throw eacces(target);
+  };
   const fs = {
-    chmodSync: (target: string, mode: number) => { get(target).mode = mode & 0o7777; },
+    // No CAP_FOWNER: chmod is only permitted on what uid 0 owns, which is why the rendered program
+    // chowns a target to root before every chmod and then hands it back.
+    chmodSync: (target: string, mode: number) => {
+      const node = get(target);
+      if (node.uid !== 0) throw Object.assign(new Error(`EPERM: ${target}`), { code: "EPERM" });
+      node.mode = mode & 0o7777;
+    },
     chownSync: (target: string, uid: number, gid: number) => { const node = get(target); node.uid = uid; node.gid = gid; },
     lstatSync: stat,
     mkdirSync: (target: string, options: { mode?: number; recursive?: boolean } = {}) => {
       if (nodes.has(target)) { if (options.recursive) return; throw Object.assign(new Error("EEXIST"), { code: "EEXIST" }); }
       if (!options.recursive) get(path.posix.dirname(target));
+      assertCreatableIn(target);
       put(target, { kind: "dir", mode: options.mode ?? 0o755 });
     },
     readFileSync: (target: string) => get(target).content,
@@ -54,6 +79,7 @@ const memoryFs = (seed: Record<string, Partial<Node>>) => {
     statSync: stat,
     writeFileSync: (target: string, content: string, options: { flag?: string; mode?: number } = {}) => {
       if (options.flag === "wx" && nodes.has(target)) throw Object.assign(new Error("EEXIST"), { code: "EEXIST" });
+      if (!nodes.has(target)) assertCreatableIn(target);
       put(target, { content: String(content), kind: "file", mode: options.mode ?? 0o644 });
     }
   };
@@ -124,6 +150,27 @@ describe("Grok worker home provisioning", () => {
       expect(entry.spillDirectory).toBe(`${entry.runtimeHome}/tool-output`);
       expect(nodes.get(entry.spillDirectory)).toMatchObject({ gid: entry.uid, kind: "dir", mode: 0o2750, uid: 2000 });
       expect(entry.profilePath).toBe(`${entry.home}/.grok/sandbox.toml`);
+    }
+  });
+
+  /**
+   * The container's ownership pass runs before this program and chowns every compiler-authored
+   * private directory — each organization runtime home among them — to the organization uid, while
+   * the mode stays whatever the image baked. Root is then outside the owner class there, and with no
+   * CAP_DAC_OVERRIDE a bare `mkdir` of the spill directory fails EACCES, which exits the container 1
+   * at start. Seeded exactly as that pass leaves it, provisioning must still reach the attested
+   * layout, so root has to reclaim the home before it creates anything inside.
+   */
+  it("creates the spill directory in a runtime home the ownership pass already gave to the organization uid", () => {
+    const nodes = run(registrations, {
+      ...seedFor(registrations),
+      [`${INSTANCE}/runtime-homes`]: { gid: 2000, kind: "dir", mode: 0o700, uid: 2000 },
+      ...Object.fromEntries(registrations.map((entry) => [entry.runtimeHome, { gid: 2000, kind: "dir" as const, mode: 0o755, uid: 2000 }])),
+      "/tmp": { kind: "dir", mode: 0o1777 }
+    });
+    for (const entry of registrations) {
+      expect(nodes.get(entry.spillDirectory), entry.spillDirectory).toMatchObject({ gid: entry.uid, kind: "dir", mode: 0o2750, uid: 2000 });
+      expect(nodes.get(entry.runtimeHome), entry.runtimeHome).toMatchObject({ gid: entry.uid, kind: "dir", mode: 0o710, uid: 2000 });
     }
   });
 
