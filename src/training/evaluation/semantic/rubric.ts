@@ -6,7 +6,7 @@ import { selectEvidence, textReference } from '../selectors.js';
 import { parseJudgment, violationReason, type Judgment } from './judgment.js';
 import { judgmentCacheKey } from './cache.js';
 import { directFailureDiagnostic, directFailureEvidence, failedInferenceAttempts, routedJudgeCalls } from './attempts.js';
-import { JudgeEvaluationError, judgeFailure, thrownJudgeCause, violationJudgeCause } from './failure.js';
+import { JudgeEvaluationError, judgeFailure, retriableJudgeAbort, thrownJudgeCause, violationJudgeCause } from './failure.js';
 import { citationSchema, citationRepairSchema, evidenceProtocol } from './protocol.js';
 import { renderJudgeTemplate } from './templates.js';
 
@@ -70,11 +70,13 @@ export async function evaluateRubric(check: CheckNode, context: EvaluationContex
   const cacheKey = judgmentCacheKey(route.identity ?? route.provider.id, judgeSystem, prompt, check.minimum as number, route.cacheScope);
   const observed = (value: EvaluationResult): EvaluationResult => ({ ...value, evidence: references,
     judgeCalls: calls, ...(calls.some(call => call.usage) ? { usage: calls.flatMap(call => call.usage ? [call.usage] : []) } : {}) });
-  const attempt = async (request: { system: string; prompt: string }, original?: Judgment) => {
+  const attempt = async (request: { system: string; prompt: string }, original?: Judgment,
+    retried?: { of: string; cause: JudgeFailureCause }) => {
     const call: JudgeCall = { id: randomUUID(), judge,
       providerId: route.provider.id, requestedModel: route.model, citationRepairs: route.citationRepairs,
       responseModel: null, responseRoute: null, outcome: 'generation-error', usage: null,
-      ...(original ? { repairOf: calls.at(-1)!.id } : {}) };
+      ...(original ? { repairOf: calls.at(-1)!.id } : {}),
+      ...(retried ? { retryOf: retried.of, retryCause: retried.cause } : {}) };
     calls.push(call);
     const audited = new Set<string>();
     let response;
@@ -124,7 +126,19 @@ export async function evaluateRubric(check: CheckNode, context: EvaluationContex
         value.reasons.join('; '), context.snapshot.closed), score: value.score }), cache: { key: cacheKey, sourceCallId: cached.sourceCallId,
         ...(cached.sourceCalls ? { sourceCalls: structuredClone(cached.sourceCalls) } : {}) } };
     }
-    let parsed = await attempt({ system: judgeSystem, prompt });
+    const request = { system: judgeSystem, prompt };
+    let parsed = await attempt(request).catch(async error => {
+      /*
+       * The provider aborted this generation part-way, so there is no judgement to
+       * accept, repair or disagree with: one same-judge, same-model, same-route re-run
+       * recovers a lost call. An attempt that answered never reaches here, so no
+       * judgement can be asked for twice until it reads better, and the retry publishes
+       * itself on the second call rather than hiding inside a score.
+       */
+      const cause = retriableJudgeAbort(error);
+      if (cause === undefined || context.signal?.aborted) throw error;
+      return attempt(request, undefined, { of: calls.at(-1)!.id, cause });
+    });
     if (context.signal?.aborted) throw new JudgeEvaluationError('cancelled', 'Judge evaluation cancelled');
     if (parsed.violation?.code === 'invalid-citations' && parsed.judgment && 'citations' in parsed.judgment && route.citationRepairs === 1) {
       parsed = await attempt({ system: citationRules + ' This is a citation-only protocol repair. Return only citations '

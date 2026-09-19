@@ -78,3 +78,33 @@ export function judgeFailure(cause: JudgeFailureCause, identity: JudgeIdentity, 
 export function thrownJudgeCause(error: unknown): JudgeFailureCause {
   return error instanceof JudgeEvaluationError ? error.judgeCause : inferenceJudgeCause(error);
 }
+
+/**
+ * The one failure a judge call may be re-run for, and its cause when it may.
+ *
+ * A generation the provider aborted part-way (`provider-error` refined by the typed
+ * `protocol` kind) produced no judgement at all: there is nothing to accept, repair
+ * or disagree with, so re-running it recovers a lost call rather than sampling until
+ * an answer reads better. Everything else is deliberately excluded:
+ *
+ * - `response-unparseable`, `response-schema`, `response-citations` — the judge
+ *   answered. Asking again would be re-sampling, which no cause may enable.
+ * - `grant-refused`, `grant-expired`, `route-unusable`, `evidence-unusable`,
+ *   `cache-unusable` — a decision or a configuration, identical on a second ask.
+ *   `max_retries = 0` is pinned on the evaluator precisely so a refusal fails fast.
+ * - `timeout`, `cancelled` — a declared deadline and the caller's own stop. Spending
+ *   the budget again is a policy change, not a recovery.
+ * - `evidence-unpersisted` — the attempt could not be recorded, and an unrecordable
+ *   attempt must stop further model calls rather than make another one.
+ * - `unclassified` — no typed discriminator at all; transience would be a guess.
+ * - every other `provider-error` kind (`quota`, `transport`, `unavailable`,
+ *   `authentication`, `invalid-response`, `auth-stale`, `unsupported`) — the authored
+ *   route policy already declares its own attempt budget for the recoverable ones, and
+ *   a second budget layered on top would make one judge call's cost unpredictable.
+ *   `protocol` is the single no-verdict failure that policy never falls back on, so
+ *   it is the one judge call with no recovery at all today.
+ */
+export function retriableJudgeAbort(error: unknown): JudgeFailureCause | undefined {
+  const cause = thrownJudgeCause(error);
+  return cause === 'provider-error' && inferenceFailureKind(error) === 'protocol' ? cause : undefined;
+}
