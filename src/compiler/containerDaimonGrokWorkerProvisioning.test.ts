@@ -223,14 +223,18 @@ describe("Grok worker home provisioning", () => {
     expect(nodes.has(`${INSTANCE}/runtime-homes/c/tool-state`)).toBe(false);
   });
 
-  it("allows a peer resource backing to be absent at provisioning (the entrypoint prepares it later) but never a symlink", () => {
+  it("creates a peer resource backing the organization entrypoint only materializes later, but never follows a symlink", () => {
     const withResource = resolveDaimonGrokRegistrations([{
       ...plan({ "agent:a": "grok", "agent:b": "grok" }),
       resources: [{ backingPath: "/var/lib/spawnfile/resources/instances/daimon-organization/b-repo", id: "b-repo", kind: "git", linkPath: `${INSTANCE}/workspace/agents/b/b-repo`, mode: "readonly", mount: "./b-repo", sharing: "agent" }]
     } as unknown as RuntimeTargetPlan]);
     const backing = "/var/lib/spawnfile/resources/instances/daimon-organization/b-repo";
     expect(withResource[0]!.deferredDenyPaths).toEqual([backing]);
-    expect(() => run(withResource, seedFor(withResource, [backing]))).not.toThrow();
+    // The engine broker's own placement preflight runs before the organization entrypoint clones or
+    // unpacks anything, and refuses a deny target that does not exist — so provisioning has to leave an
+    // empty, root-owned one behind rather than skip it.
+    const prepared = run(withResource, seedFor(withResource, [backing]));
+    expect(prepared.get(backing)).toMatchObject({ kind: "dir", mode: 0o755, uid: 0 });
     expect(() => run(withResource, { ...seedFor(withResource, [backing]), [backing]: { kind: "link", target: "/tmp/elsewhere" }, "/tmp/elsewhere": { kind: "dir" } }))
       .toThrow(/canonical non-symlink/u);
     expect(() => run(withResource, seedFor(withResource, ["/var/lib/spawnfile/daimon/usage"]))).toThrow(/deny path is missing/u);
