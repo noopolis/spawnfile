@@ -234,13 +234,17 @@ describe("Grok worker home provisioning", () => {
     // unpacks anything, and refuses a deny target that does not exist — so provisioning has to leave an
     // empty, root-owned one behind rather than skip it.
     const prepared = run(withResource, seedFor(withResource, [backing]));
-    expect(prepared.get(backing)).toMatchObject({ kind: "dir", mode: 0o755, uid: 0 });
+    expect(prepared.get(backing)).toMatchObject({ kind: "dir", mode: 0o755 });
     // The instance directory it sits in belongs to the organization uid by then — root has to borrow it
     // to create inside, and give it back exactly as it was, or the resource lands unreadable later.
     const instances = "/var/lib/spawnfile/resources/instances/daimon-organization";
     const borrowed = run(withResource, { ...seedFor(withResource, [backing]), [instances]: { gid: 2000, kind: "dir", mode: 0o755, uid: 2000 } });
-    expect(borrowed.get(backing)).toMatchObject({ kind: "dir", mode: 0o755, uid: 0 });
+    expect(borrowed.get(backing)).toMatchObject({ gid: 2000, kind: "dir", mode: 0o755, uid: 2000 });
     expect(borrowed.get(instances)).toMatchObject({ gid: 2000, mode: 0o755, uid: 2000 });
+    // The organization entrypoint unpacks the resource as the organization uid, so the placeholder has to
+    // belong to it, exactly as the directory that entrypoint would otherwise have created itself.
+    expect(prepared.get(backing)).toMatchObject({ gid: 2000, uid: 2000 });
+    expect(renderDaimonGrokWorkerProvisioning(withResource).join("\n")).toContain("unsafe deferred deny parent: ${parent}");
     expect(() => run(withResource, { ...seedFor(withResource, [backing]), [backing]: { kind: "link", target: "/tmp/elsewhere" }, "/tmp/elsewhere": { kind: "dir" } }))
       .toThrow(/canonical non-symlink/u);
     expect(() => run(withResource, seedFor(withResource, ["/var/lib/spawnfile/daimon/usage"]))).toThrow(/deny path is missing/u);
