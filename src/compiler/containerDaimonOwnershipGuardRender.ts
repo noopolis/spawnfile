@@ -10,7 +10,20 @@ export const renderDaimonOwnershipProgram = (
   privateDirectories: string[],
   privateFiles: string[],
   privateModeDirectories: string[],
-  creatablePrivateDirectories: Array<{ anchor: string; target: string }>
+  creatablePrivateDirectories: Array<{ anchor: string; target: string }>,
+  /**
+   * A brokered Grok worker's sandbox cannot be applied when `/var` is traverse-only.
+   * Grok 1.0.34 builds every profile inside bubblewrap and then verifies it from the
+   * worker uid; with `/var` at 0711 that verification fails and the worker refuses to
+   * start ("could not apply the 'daimon-strict' sandbox profile"), which is every turn
+   * of every Grok agent. Bisected on the production host: with `/var` at 0755 the
+   * sandbox applies and the turn runs, at 0711 it never does, and the deeper ancestors
+   * (`/var/lib`, the worker root) make no difference either way — so only this one
+   * level is widened, only for an organization that actually runs a Grok worker, and
+   * only to the mode the proven-working training container has always had. Codex- and
+   * AGY-only organizations keep the traverse-only `/var` unchanged.
+   */
+  grokWorkersPresent = false
 ): string => [
   "const fs = require('node:fs');",
   "const constants = fs.constants;",
@@ -161,7 +174,7 @@ export const renderDaimonOwnershipProgram = (
   `const volumeBootstrapMarker = ${JSON.stringify(VOLUME_BOOTSTRAP_MARKER)}, volumeBootstrapContent = ${JSON.stringify(`${VOLUME_BOOTSTRAP_MARKER_CONTENT}\n`)};`,
   "const verifyVolumeIdentityFile = (fd, expected, mode, device) => { const before = fs.fstatSync(fd); if (!before.isFile() || before.nlink !== 1 || before.uid !== 0 || before.gid !== 0 || (before.mode & 0o777) !== mode || before.dev !== device || before.size !== Buffer.byteLength(expected)) fail('volume identity anchor is unsafe'); const bytes = Buffer.alloc(before.size); let offset=0; while(offset<bytes.length){const count=fs.readSync(fd,bytes,offset,bytes.length-offset,offset);if(count<1)fail('volume identity anchor read failed');offset+=count;} const after = fs.fstatSync(fd); if (!bytes.equals(Buffer.from(expected)) || after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs) fail('volume identity anchor changed'); };",
   "const secureVolumeIdentity = (entry) => { const parentPath = require('node:path').posix.dirname(entry.path); if (entry.path !== `${parentPath}/.spawnfile-resource-identity`) fail('volume identity anchor path is invalid'); const parent = openDirectoryPath(parentPath); let marker, sentinel; try { const parentInfo = fs.fstatSync(parent), parentMode = parentInfo.mode & 0o777, freshParent = parentInfo.uid === 0 && parentInfo.gid === 0 && parentMode === 0o755, establishedParent = parentInfo.uid === uid && parentInfo.gid === uid && parentMode === 0o755; if (!freshParent && !establishedParent) fail('volume identity parent is unsafe'); const names = fs.readdirSync(`/proc/self/fd/${parent}`).sort(), hasSentinel = names.includes('.spawnfile-resource-identity'), hasMarker = names.includes(volumeBootstrapMarker); if (hasSentinel) { sentinel = fs.openSync(`/proc/self/fd/${parent}/.spawnfile-resource-identity`, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); verifyVolumeIdentityFile(sentinel, `${entry.identity}\n`, 0o644, parentInfo.dev); if (hasMarker) { if (!freshParent || names.length !== 2) fail('volume bootstrap recovery preimage is unsafe'); marker = fs.openSync(`/proc/self/fd/${parent}/${volumeBootstrapMarker}`, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); verifyVolumeIdentityFile(marker, volumeBootstrapContent, 0o600, parentInfo.dev); fs.fsyncSync(sentinel); fs.fsyncSync(parent); verifyVolumeIdentityFile(sentinel, `${entry.identity}\n`, 0o644, parentInfo.dev); verifyVolumeIdentityFile(marker, volumeBootstrapContent, 0o600, parentInfo.dev); fs.unlinkSync(`/proc/self/fd/${parent}/${volumeBootstrapMarker}`); fs.fsyncSync(parent); } return; } if (!freshParent || names.length !== 1 || !hasMarker) fail('volume bootstrap preimage is unsafe'); marker = fs.openSync(`/proc/self/fd/${parent}/${volumeBootstrapMarker}`, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); verifyVolumeIdentityFile(marker, volumeBootstrapContent, 0o600, parentInfo.dev); const expected = Buffer.from(`${entry.identity}\n`); try { sentinel = fs.openSync(`/proc/self/fd/${parent}/.spawnfile-resource-identity`, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o644); let offset=0; while(offset<expected.length){const written=fs.writeSync(sentinel,expected,offset,expected.length-offset,offset);if(written<1)fail('volume identity anchor write failed');offset+=written;} fs.fchownSync(sentinel,0,0);fs.fchmodSync(sentinel,0o644);fs.fsyncSync(sentinel); } finally { expected.fill(0); } fs.closeSync(sentinel); sentinel=undefined; sentinel=fs.openSync(`/proc/self/fd/${parent}/.spawnfile-resource-identity`,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);verifyVolumeIdentityFile(sentinel,`${entry.identity}\n`,0o644,parentInfo.dev);fs.fsyncSync(parent);verifyVolumeIdentityFile(marker,volumeBootstrapContent,0o600,parentInfo.dev);fs.unlinkSync(`/proc/self/fd/${parent}/${volumeBootstrapMarker}`);fs.fsyncSync(parent); } finally { if(marker!==undefined)fs.closeSync(marker);if(sentinel!==undefined)fs.closeSync(sentinel);fs.closeSync(parent); } };",
-  "for (const target of ['/var', '/var/lib']) secureFixedTraversalAncestor(target);",
+  `for (const target of ${grokWorkersPresent ? "['/var/lib']" : "['/var', '/var/lib']"}) secureFixedTraversalAncestor(target);`,
   `secureSharedStateAncestor('${SPAWNFILE_PRIVATE_STATE_ROOT}');`,
   // `/var/lib/spawnfile/daimon` hosts several independently-owned children
   // (AGY/Grok subscription realms and the wake fuse at organization uid, the
