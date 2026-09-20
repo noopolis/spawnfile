@@ -20,6 +20,7 @@ import {
 } from "./memory.js";
 import { assertDaimonScheduleAuthority } from "./scheduleAuthority.js";
 import { assertDaimonAttentionAuthority, resolveDaimonAttention } from "./attention.js";
+import { resolveDaimonGrokTurnLimits } from "./grokTurnLimits.js";
 import { resolveDaimonGrokModel } from "./grokModel.js";
 
 export const DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY = { mode: "workspace-write", networkAccess: false, webSearch: "disabled" } as const;
@@ -184,6 +185,10 @@ export const createDaimonContainerTargets = async (
 
   const hasSchedules = agents.some((input) => input.value.schedule !== undefined);
   const attentionById = new Map(agents.map((input) => [input.id, resolveDaimonAttention(input.value.runtime.options.attention)]));
+  // Declared per agent and carried to the broker's service config, never into the Daimon
+  // organization config: `turn_limits` is a registration budget, and the contract's
+  // `consumedConfigFields` does not include it.
+  const turnLimitsById = new Map(agents.map((input) => [input.id, resolveDaimonGrokTurnLimits(input.value.runtime.options.turn_limits)]));
   const hasAttention = [...attentionById.values()].some((attention) => attention !== undefined);
   if (hasAttention) await assertDaimonAttentionAuthority();
   if (hasSchedules) await assertDaimonScheduleAuthority();
@@ -214,6 +219,14 @@ export const createDaimonContainerTargets = async (
     })
     .sort((left, right) => left.id.localeCompare(right.id));
   const engineByNodeId = Object.fromEntries(configAgents.map((agent) => [agent.id, agent.engine.kind]));
+  for (const agent of configAgents) {
+    if (agent.engine.kind !== "grok" && turnLimitsById.get(agent.id) !== undefined) {
+      throw new SpawnfileError("validation_error", `Daimon runtime option turn_limits is only supported on a brokered Grok agent: ${agent.id}`);
+    }
+  }
+  const grokTurnLimitsByNodeId = Object.fromEntries(configAgents
+    .filter((agent) => agent.engine.kind === "grok" && turnLimitsById.get(agent.id) !== undefined)
+    .map((agent) => [agent.id, turnLimitsById.get(agent.id)!]));
   const grokModelByNodeId = Object.fromEntries(configAgents
     .filter((agent) => agent.engine.kind === "grok" && agent.engine.model !== undefined && agent.engine.reasoningEffort !== undefined)
     .map((agent) => [agent.id, { model: agent.engine.model!, reasoningEffort: agent.engine.reasoningEffort! }]));
@@ -262,6 +275,7 @@ export const createDaimonContainerTargets = async (
   return [{
     engineByNodeId,
     ...(hasGrok ? { grokModelByNodeId } : {}),
+    ...(hasGrok && Object.keys(grokTurnLimitsByNodeId).length > 0 ? { grokTurnLimitsByNodeId } : {}),
     files: [
       ...agents.flatMap((input) => input.emittedFiles.map((file) => moveWorkspaceFile(file, input.slug))),
       { content: serializedConfig, path: DAIMON_CONFIG_FILE },
