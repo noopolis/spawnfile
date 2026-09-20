@@ -325,7 +325,8 @@ export const renderDaimonUidEntrypoint = (
       ownershipPlan.privateDirectories,
       ownershipPlan.privateFiles,
       ownershipPlan.privateModeDirectories,
-      ownershipPlan.creatablePrivateDirectories
+      ownershipPlan.creatablePrivateDirectories,
+      resolveDaimonGrokRegistrations(runtimePlans).length > 0
     ),
     "SPAWNFILE_DAIMON_OWNERSHIP",
     `for fixed_uid in ${DAIMON_ORGANIZATION_UID} ${DAIMON_BROKER_UID} ${resolveDaimonGrokRegistrations(runtimePlans).map((entry) => entry.uid).join(" ")}; do`,
