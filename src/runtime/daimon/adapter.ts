@@ -250,7 +250,7 @@ export const daimonAdapter: RuntimeAdapter = {
       (typeof options.engine !== "string" || !(DAIMON_ENGINES as readonly string[]).includes(options.engine))) {
       diagnostics.push(createDiagnostic("error", `Daimon runtime option engine must be one of ${DAIMON_ENGINES.join(", ")}`));
     }
-    for (const key of Object.keys(options).filter((key) => !["engine", "restrict_to_workspace", "codex_policy", "attention"].includes(key))) {
+    for (const key of Object.keys(options).filter((key) => !["engine", "restrict_to_workspace", "codex_policy", "attention", "turn_limits"].includes(key))) {
       diagnostics.push(createDiagnostic("error", `Daimon runtime option ${key} is not part of organization runtime v1`));
     }
     if (options.codex_policy !== undefined && options.codex_policy !== "workspace-no-network") {

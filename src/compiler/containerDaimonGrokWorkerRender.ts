@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { SpawnfileError } from "../shared/index.js";
+import { resolveDaimonGrokRegistrationLimits } from "../runtime/daimon/grokTurnLimits.js";
 import {
   DAIMON_ORGANIZATION_TARGET_ID,
   DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY,
@@ -270,6 +271,10 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]): Daim
     const { model, reasoningEffort } = declaredModel(plan, agentId);
     const config = resolveDaimonGrokWorkerConfig(model, reasoningEffort);
     const denyPaths = resolveDaimonGrokWorkerDenyPaths(plans, plan, agentId, homes, home);
+    // The registration's per-turn budget: the contract defaults unless the agent declared its own.
+    // A wake may only lower this, so an organization that needs more than four minutes a turn has
+    // to declare it here rather than at wake time, where the broker refuses any raise.
+    const limits = resolveDaimonGrokRegistrationLimits(plan.grokTurnLimitsByNodeId?.[agentId]);
     const profile = renderDaimonGrokWorkerSandboxProfile(denyPaths);
     for (const [label, value] of [["GROK_HOME", grokHome], ["profile", path.posix.join(grokHome, "sandbox.toml")], ["events", path.posix.join(grokHome, DAIMON_GROK_ENGINE_BROKER.worker.home.sandboxEvents.relativePath)], ["private temp", path.posix.join(home, DAIMON_GROK_ENGINE_BROKER.worker.home.privateTmp.relativeToWorkerHome)]] as const) assertCanonicalRegisteredPath(label, value);
     // The launcher derives HOME, GROK_HOME=<home>/.grok and TMPDIR=<home>/tmp from the registered home, and the broker reads the profile from GROK_HOME.
@@ -277,6 +282,7 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]): Daim
     const backings = new Set(plans.flatMap((candidate) => candidate.resources ?? []).map((resource) => resource.backingPath));
     return {
       deferredDenyPaths: denyPaths.filter((entry) => backings.has(entry)),
+      limits,
       agentId,
       config: config.bytes,
       configSha256: config.sha256,
