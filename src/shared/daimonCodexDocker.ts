@@ -22,9 +22,6 @@ export const DAIMON_DOCKER_RUNTIME_SECURITY_ARGS = [
   "--security-opt=no-new-privileges:true"
 ] as const;
 
-/** Grok-only: the worker's bubblewrap sandbox cannot mount its own procfs under Docker's masked /proc. */
-export const DAIMON_GROK_SYSTEM_PATHS_SECURITY_OPT = "--security-opt=systempaths=unconfined";
-
 export const DAIMON_CODEX_NATIVE_SANDBOX_DOCKER_SECURITY_OPTS = [
   "--security-opt=seccomp=unconfined",
   "--security-opt=apparmor=unconfined"
@@ -152,27 +149,6 @@ export const materializeDaimonGrokSeccompProfile = async (directory: string): Pr
  * additionally needs the Docker host to allow unprivileged user namespaces
  * (`kernel.apparmor_restrict_unprivileged_userns=0`); the container entrypoint
  * checks that before the broker starts.
- *
- * `systempaths=unconfined` is the third Grok-only option, and it is a deliberate
- * trade. Docker masks `/proc/kcore`, `/proc/keys`, `/proc/sched_debug` and mounts
- * `/proc/sys`, `/proc/bus`, `/proc/irq` and `/proc/sysrq-trigger` read-only, which
- * leaves the container's `/proc` not "fully visible" — and the kernel then refuses
- * to mount a fresh procfs inside the worker's user+mount namespace:
- * `bwrap: Can't mount proc on /newroot/proc: Operation not permitted`. Grok answers
- * that by refusing to run at all ("could not apply the 'daimon-strict' sandbox
- * profile … Refusing to start with its protections missing"), so without this flag
- * a brokered Grok agent has no inner sandbox and cannot take a single turn.
- * The choice is therefore not masked `/proc` versus unmasked `/proc`: it is
- * container `/proc` masking with NO confinement around model-directed code, or an
- * unmasked container `/proc` with per-agent bubblewrap, a dedicated worker uid, a
- * dropped capability set and the pinned seccomp profile. The second is stronger
- * where it matters. Docker's masking is all-or-nothing — re-masking any single
- * path restores the refusal — and the only alternative, granting the container
- * CAP_SYS_ADMIN, is a strictly larger grant.
- *
- * Known gap, deliberately not fixed here: a mixed Codex+Grok organization takes
- * the Codex branch above and so does not get this flag, which means its Grok
- * workers still cannot build their sandbox. Codex's options stay byte-equal.
  */
 export const daimonEngineDockerSecurityArgsForConfigs = (
   sources: string[],
@@ -183,7 +159,7 @@ export const daimonEngineDockerSecurityArgsForConfigs = (
   if (!interop.some((entry) => entry.grok)) return Promise.resolve([]);
   return grokSeccompProfilePath().then((profilePath) => {
     if (!path.isAbsolute(profilePath)) throw new SpawnfileError("runtime_error", "Grok seccomp profile path must be absolute");
-    return [`--security-opt=seccomp=${profilePath}`, "--security-opt=apparmor=unconfined", DAIMON_GROK_SYSTEM_PATHS_SECURITY_OPT];
+    return [`--security-opt=seccomp=${profilePath}`, "--security-opt=apparmor=unconfined"];
   });
 };
 
