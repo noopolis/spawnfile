@@ -9,6 +9,23 @@ const encodedProgram = (immutableRuntimeRoots: string[] = []) =>
   Buffer.from(renderDaimonOwnershipProgram([], [], immutableRuntimeRoots, [], [], [], [], []), "utf8").toString("base64");
 
 describe("renderDaimonOwnershipProgram", () => {
+  /**
+   * Grok 1.0.34 verifies its bubblewrap profile from the worker uid, and that verification
+   * fails when `/var` is traverse-only: the worker then refuses to start and every Grok turn
+   * dies before it begins. Bisected on the production host — 0755 applies the sandbox, 0711
+   * never does, and the deeper ancestors change nothing — so a Grok organization must leave
+   * exactly this one level readable, and only a Grok one.
+   */
+  it("leaves /var readable for a Grok organization and traverse-only for every other", () => {
+    const withGrok = renderDaimonOwnershipProgram([], [], [], [], [], [], [], [], true);
+    expect(withGrok).toContain("for (const target of ['/var/lib']) secureFixedTraversalAncestor(target)");
+    expect(withGrok).not.toContain("'/var',");
+    const withoutGrok = renderDaimonOwnershipProgram([], [], [], [], [], [], [], [], false);
+    expect(withoutGrok).toContain("for (const target of ['/var', '/var/lib']) secureFixedTraversalAncestor(target)");
+    expect(renderDaimonOwnershipProgram([], [], [], [], [], [], [], [])).toBe(withoutGrok);
+  });
+
+
   it("preserves mutable state symlink leaves without touching targets", async () => {
     const { stdout } = await execFileAsync("docker", [
       "run", "--rm", "--env", `PROGRAM=${encodedProgram()}`, "node:24-bookworm-slim", "bash", "-ceu",

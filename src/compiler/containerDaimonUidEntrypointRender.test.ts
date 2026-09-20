@@ -291,7 +291,11 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).toContain("for (const target of privateModeDirectories)");
     expect(rendered).toContain("for (const target of privateFiles)");
     expect(rendered).toContain("const securePrivateDirectory = (fd) => {");
-    expect(rendered).toContain("for (const target of ['/var', '/var/lib']) secureFixedTraversalAncestor(target)");
+    // This fixture runs a Grok worker, so `/var` stays readable: Grok 1.0.34 cannot apply its
+    // bubblewrap profile from the worker uid when `/var` is traverse-only, and every turn dies
+    // before it starts. `/var/lib` is still narrowed, and a non-Grok organization keeps both.
+    expect(rendered).toContain("for (const target of ['/var/lib']) secureFixedTraversalAncestor(target)");
+    expect(rendered).not.toContain("for (const target of ['/var', '/var/lib']) secureFixedTraversalAncestor(target)");
     expect(rendered).toContain("secureSharedStateAncestor('/var/lib/spawnfile')");
     expect(rendered).toContain("info.uid === 0 && info.gid === 0 && mode === 0o711");
     expect(rendered).toContain("info.uid === uid && info.gid === uid && mode === 0o700");
