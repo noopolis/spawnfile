@@ -28,6 +28,36 @@ const grokWorkerPlan = (
   runtimeName: "daimon"
 }) as unknown as RuntimeTargetPlan;
 
+/**
+ * The broker enforces the registration's limits and refuses a wake that tries to raise them, so an
+ * organization that needs a longer turn has to declare it here. Undeclared agents must keep the
+ * contract defaults exactly, or every existing organization's budget moves without a declaration.
+ */
+describe("Daimon Grok registration turn limits", () => {
+  const plan = (limits?: Record<string, { maxRequests?: number; maxTokens?: number; timeoutMs?: number }>): RuntimeTargetPlan => ({
+    ...grokWorkerPlan({ "agent:a": "grok", "agent:b": "grok" }),
+    ...(limits === undefined ? {} : { grokTurnLimitsByNodeId: limits })
+  }) as RuntimeTargetPlan;
+
+  it("carries a declared budget into the registration and the service config", () => {
+    const declared = { "agent:a": { maxTokens: 1_100_000, timeoutMs: 900_000 } };
+    const registrations = resolveDaimonGrokRegistrations([plan(declared)]);
+    const a = registrations.find((entry) => entry.agentId === "agent:a");
+    const b = registrations.find((entry) => entry.agentId === "agent:b");
+    expect(a?.limits).toEqual({ ...DAIMON_GROK_ENGINE_BROKER.turnLimits.v1Defaults, maxTokens: 1_100_000, timeoutMs: 900_000 });
+    expect(b?.limits).toEqual(DAIMON_GROK_ENGINE_BROKER.turnLimits.v1Defaults);
+    const service = renderDaimonGrokServiceConfig(registrations);
+    const rendered = service.registrations.find((entry) => entry.agentId === "agent:a");
+    expect(rendered?.limits).toEqual({ ...DAIMON_GROK_ENGINE_BROKER.turnLimits.v1Defaults, maxTokens: 1_100_000, timeoutMs: 900_000 });
+  });
+
+  it("keeps the contract defaults when nothing is declared", () => {
+    for (const entry of resolveDaimonGrokRegistrations([plan()])) {
+      expect(entry.limits).toEqual(DAIMON_GROK_ENGINE_BROKER.turnLimits.v1Defaults);
+    }
+  });
+});
+
 describe("Daimon Grok worker registrations", () => {
   it("uses Daimon's pinned worker config bytes for each agent's declared model and reasoning effort", () => {
     const registrations = resolveDaimonGrokRegistrations([grokWorkerPlan({ "agent:a": "grok", "agent:b": "grok" }, {
