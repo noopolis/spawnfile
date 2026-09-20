@@ -455,6 +455,10 @@ describe("daimonAdapter", () => {
     } as any)).rejects.toThrow(/explicit tools allowlist/u);
     await expect(daimonAdapter.createContainerTargets!([])).resolves.toEqual([]);
 
+    // `turn_limits` is a declared runtime option like `attention`; an unknown neighbour still is not.
+    expect(daimonAdapter.validateRuntimeOptions?.({ turn_limits: { max_tokens: 1_100_000 } } as any)).toEqual([]);
+    expect(daimonAdapter.validateRuntimeOptions?.({ turn_budget: { max_tokens: 1_100_000 } } as any))
+      .toEqual([expect.objectContaining({ level: "error", message: expect.stringContaining("turn_budget") })]);
     expect(daimonAdapter.validateRuntimeOptions?.({ engine: 7 } as any)).toEqual([
       expect.objectContaining({ level: "error" })
     ]);
