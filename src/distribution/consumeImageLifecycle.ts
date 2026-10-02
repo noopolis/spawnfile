@@ -195,7 +195,19 @@ const parseCandidateState = (raw: Buffer): { snapshot: ContainerSnapshot; state:
   }
 };
 
-const candidateReadinessTimeoutMs = 120_000;
+export const defaultCandidateReadinessTimeoutMs = 600_000;
+export const candidateReadinessTimeoutEnv = "SPAWNFILE_CANDIDATE_READINESS_TIMEOUT_MS";
+
+// Large orgs can take minutes to boot; the budget is overridable per host.
+// Anything other than a positive integer falls back to the default.
+export const resolveCandidateReadinessTimeoutMs = (
+  env: NodeJS.ProcessEnv = process.env
+): number => {
+  const raw = env[candidateReadinessTimeoutEnv]?.trim();
+  if (!raw || !/^[0-9]+$/u.test(raw)) return defaultCandidateReadinessTimeoutMs;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value > 0 ? value : defaultCandidateReadinessTimeoutMs;
+};
 const candidateReadinessPollMs = 1_000;
 
 export const assertCandidateContainerReady = async (
@@ -204,7 +216,7 @@ export const assertCandidateContainerReady = async (
   expectedName: string
 ): Promise<void> => {
   if (!dockerId.test(candidateId)) throw new SpawnfileError("runtime_error", "Candidate container returned invalid identity");
-  const deadline = Date.now() + candidateReadinessTimeoutMs;
+  const deadline = Date.now() + resolveCandidateReadinessTimeoutMs();
   for (;;) {
     const { snapshot, state } = parseCandidateState(await runDocker([
       "container", "inspect", "--format", "{{json .Id}}\n{{json .Name}}\n{{json .State}}", candidateId
