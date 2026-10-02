@@ -47,7 +47,7 @@ Image deployment records live under the Spawnfile home (`SPAWNFILE_HOME`, defaul
 
 `status <image-ref>` renders the static interface from the embedded report with no deployment. Home-store `--live` status projects an `OrganizationView` from the cached report and renders compiled, deployment, and runtime layers; the declared layer is absent.
 
-Redeploy with explicit `--deployment` replaces a deployment after validation, showing old and new ref/digest. Behind `--pull-check` (networked, never default), status compares the recorded digest against the registry tag: `warn` on a newer build, `ok` on a match, `unknown` on a null digest, and digest-pinned refs skip the lookup.
+Redeploy with explicit `--deployment` replaces a deployment after validation, showing old and new ref/digest; the candidate must become ready within `SPAWNFILE_CANDIDATE_READINESS_TIMEOUT_MS` (default 600000 ms) or it is rolled back. Behind `--pull-check` (networked, never default), status compares the recorded digest against the registry tag: `warn` on a newer build, `ok` on a match, `unknown` on a null digest, and digest-pinned refs skip the lookup.
 
 ## Creator Flow
 

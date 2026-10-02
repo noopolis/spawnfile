@@ -112,6 +112,8 @@ Image and project deployments share `spawnfile.deployment.v2`. A v1 read-compati
 
 Explicit `up <new-ref> --detach --deployment <name>` replaces an existing deployment after validating target, report, and auth, showing the previous and new ref/digest. Without `--deployment`, a derived name that already exists is an error rather than a silent redeploy.
 
+A replacement starts as a candidate container and must become running and healthy within the readiness budget before the previous deployment is retired; otherwise it is rolled back. The budget defaults to 600 seconds and is overridable with `SPAWNFILE_CANDIDATE_READINESS_TIMEOUT_MS` (a positive integer in milliseconds; invalid values fall back to the default).
+
 ## Registry Drift
 
 Behind `--pull-check` (networked, never default), status compares the recorded `source.digest` against the digest the tag currently resolves to: `warn` on a newer published build, `ok` on a match, `unknown` on a null recorded digest, and a digest-pinned ref skips the lookup as `ok`. A multi-arch tag (manifest list) also resolves to `unknown`: the recorded digest is the index digest, which cannot be derived from the per-platform manifests the lookup returns, so drift is reported as undeterminable rather than as a false positive.

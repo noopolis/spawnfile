@@ -99,6 +99,8 @@ spawnfile up you/research-cell:1.1.0 --deployment research --detach
 
 The new reference replaces the deployment after validation, and status shows the previous and new digest. Without `--deployment`, a derived name that already exists is an error rather than a silent redeploy.
 
+A replacement starts as a candidate container and must become running and healthy within the readiness budget before the previous deployment is retired; otherwise it is rolled back. The budget defaults to 600 seconds and is overridable with `SPAWNFILE_CANDIDATE_READINESS_TIMEOUT_MS` (a positive integer in milliseconds; invalid values fall back to the default).
+
 ## Connecting to an External Network
 
 When an organization declares a Moltnet network, its image honors the network binding contract. Suppose `research-cell` declares a network `research_floor` with a member `coordinator`. The env var names are derived from those declared ids by uppercasing and replacing non-alphanumeric characters with `_`. Point the declared network at an external server with environment variables:

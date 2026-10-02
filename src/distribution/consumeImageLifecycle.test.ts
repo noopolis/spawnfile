@@ -10,13 +10,14 @@ import {
   assertContainerStopped,
   assertExclusiveVolumesAvailable,
   inspectContainerSnapshot,
+  resolveCandidateReadinessTimeoutMs,
   restorePreviousContainer,
   rollbackCandidateContainer
 } from "./consumeImageLifecycle.js";
 import type { DockerCommandRunner } from "./dockerRunner.js";
 import type { DistributionReport } from "./types.js";
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 const candidateId = "c".repeat(64);
 const previousId = "d".repeat(64);
@@ -87,7 +88,7 @@ describe("image deployment lifecycle", () => {
     await expect(readiness).resolves.toBeUndefined();
   });
 
-  it("allows unhealthy startup at 65 seconds to recover inside the existing 120 second budget", async () => {
+  it("allows unhealthy startup at 65 seconds to recover inside the readiness budget", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
     let settled = false;
@@ -110,11 +111,44 @@ describe("image deployment lifecycle", () => {
       Running: true, Status: "running", Health: { Status: "unhealthy" }
     }), candidateId, "candidate");
     const rejected = expect(readiness.finally(() => { settled = true; })).rejects.toThrow(/did not become ready/u);
-    await vi.advanceTimersByTimeAsync(119_000);
+    await vi.advanceTimersByTimeAsync(599_000);
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1_000);
     await rejected;
-    expect(Date.now()).toBe(120_000);
+    expect(Date.now()).toBe(600_000);
+  });
+
+  it("defaults the readiness budget to 600 seconds and honors a positive integer env override", () => {
+    expect(resolveCandidateReadinessTimeoutMs({})).toBe(600_000);
+    expect(resolveCandidateReadinessTimeoutMs({ SPAWNFILE_CANDIDATE_READINESS_TIMEOUT_MS: "900000" })).toBe(900_000);
+    for (const invalid of ["", "0", "-5", "12.5", "abc", "1e6", "99999999999999999999"]) {
+      expect(resolveCandidateReadinessTimeoutMs({ SPAWNFILE_CANDIDATE_READINESS_TIMEOUT_MS: invalid })).toBe(600_000);
+    }
+  });
+
+  it("keeps waiting for a slow candidate past the former 120 second budget by default", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const readiness = assertCandidateContainerReady(async () => ready(candidateId, "candidate",
+      Date.now() < 300_000
+        ? { Health: { Status: "starting" }, Running: true, Status: "running" }
+        : { Health: { Status: "healthy" }, Running: true, Status: "running" }
+    ), candidateId, "candidate");
+    await vi.runAllTimersAsync();
+    await expect(readiness).resolves.toBeUndefined();
+  });
+
+  it("applies the env readiness budget to the candidate deadline", async () => {
+    vi.stubEnv("SPAWNFILE_CANDIDATE_READINESS_TIMEOUT_MS", "5000");
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const readiness = assertCandidateContainerReady(async () => ready(candidateId, "candidate", {
+      Running: true, Status: "running", Health: { Status: "starting" }
+    }), candidateId, "candidate");
+    const rejected = expect(readiness).rejects.toThrow(/did not become ready/u);
+    await vi.runAllTimersAsync();
+    await rejected;
+    expect(Date.now()).toBe(5_000);
   });
 
   it.each([
@@ -137,7 +171,7 @@ describe("image deployment lifecycle", () => {
     const rejected = expect(readiness).rejects.toThrow(/did not become ready/u);
     await vi.runAllTimersAsync();
     await rejected;
-    expect(attempts).toBe(121);
+    expect(attempts).toBe(601);
   });
 
   it("allows the selected container to occupy its realm and blocks a peer", async () => {
