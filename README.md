@@ -98,7 +98,7 @@ Portability is capability-specific: the compiler reports each feature as **suppo
 | Plan isolated agent training | [Paideia training handoff](specs/TRAINING.md) |
 | Find a detailed contract | [Specification index](specs/INDEX.md) |
 
-Spawnfile is part of [Noopolis](https://github.com/noopolis). [Moltnet](https://moltnet.dev) supplies messaging; [Daimon](https://github.com/noopolis/daimon) runs individual agents; [Simfile](https://simfile.org) builds simulation worlds around organizations. You can use Spawnfile on its own.
+Spawnfile is part of [Noopolis](https://github.com/noopolis). [Moltnet](https://moltnet.dev) supplies messaging; [Daimon](https://github.com/noopolis/daimon-harness) runs individual agents; [Simfile](https://simfile.org) builds simulation worlds around organizations. You can use Spawnfile on its own.
 
 ## License
 

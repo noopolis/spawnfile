@@ -77,7 +77,7 @@ jobs:
       - name: Check out Daimon provenance fixture
         uses: actions/checkout@v4
         with:
-          repository: noopolis/daimon
+          repository: noopolis/daimon-harness
           path: daimon-fixture
 
       # The shipped runtime refuses any Grok executable but the manifest-pinned

@@ -135,7 +135,7 @@ describe("runtime container install recipe fallbacks", () => {
         ecosystem: "node",
         installHint: "Checkout the pinned repo ref and install from the repository root.",
         kind: "source_repo",
-        remote: "https://github.com/noopolis/daimon.git",
+        remote: "https://github.com/noopolis/daimon-harness.git",
         runtimeName: "daimon",
         runtimeRef: "v0.1.2",
         selectionSource: "runtime_registry_ref"
@@ -196,7 +196,7 @@ describe("runtime container install recipe fallbacks", () => {
         ecosystem: "node",
         installHint: "Download a Daimon release archive.",
         kind: "github_release_archive",
-        repository: "noopolis/daimon",
+        repository: "noopolis/daimon-harness",
         runtimeName: "daimon",
         runtimeRef: "v0.1.2",
         selectionSource: "runtime_registry_install",
