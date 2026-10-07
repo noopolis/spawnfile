@@ -12,7 +12,7 @@
 #
 runtimes:
   daimon:
-    remote: git@github.com:noopolis/daimon.git
+    remote: git@github.com:noopolis/daimon-harness.git
     ref: v0.2.0
     default_branch: main
     install:
