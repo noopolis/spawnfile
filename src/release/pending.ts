@@ -54,6 +54,11 @@ export const recordDeferral = async (
     ? { ...previous }
     : { identity, notified_at: null, since: now.toISOString(), version: RELEASE_PENDING_VERSION };
   const since = Date.parse(pending.since);
+  const notifiedAt = pending.notified_at === null ? 0 : Date.parse(pending.notified_at);
+  if (!Number.isFinite(since) || !Number.isFinite(notifiedAt)) {
+    // A record that parses but holds no usable instant is as broken as one that does not parse.
+    trackingBroken = `the pending-release record ${file} holds an unreadable timestamp`;
+  }
   const ageMs = Number.isFinite(since) ? Math.max(0, now.getTime() - since) : 0;
   // `notified_at` is set only once a notification was actually delivered
   // (markDeferralNotified), so a failed or crashed delivery is retried next run.

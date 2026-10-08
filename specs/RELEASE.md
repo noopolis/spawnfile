@@ -39,7 +39,11 @@ lock → resume stale drain → compile → identity
    deploy itself. Images are tagged `<repository>:r-<first 12 hex of identity>`;
    `<repository>` defaults to `spawnfile-<project directory>`. An image that
    already exists for that identity is reused.
-4. **Drain.** When a container is running, the release calls Daimon's control
+4. **Drain.** The deployment's home lock (the lock `up` takes) is held from
+   here until the ledger is written. When a container is running, every
+   runtime in its image (read from the embedded distribution report) must have
+   a drain contract — today only `daimon` — or the release refuses (`blocked`)
+   unless `--no-drain`. The release then calls Daimon's control
    API (`POST /v2/drain`, contract `operatorDrain` in the vendored Daimon
    manifest): new wakes answer `work-blocked` (Moltnet retries them), queued
    wakes stay queued, running turns finish. It then polls
@@ -55,16 +59,21 @@ lock → resume stale drain → compile → identity
      exits `75`. Nothing in the release stops a turn.
    - `--no-drain` deploys without draining and kills in-flight turns. It
      exists for runtimes without a drain API and is never the default.
-5. **Drain marker.** `drain.json` is written before the drain request and
-   removed once admission is open again. Every run first resumes a container a
-   killed release left drained, even when it has nothing to release.
+5. **Drain marker.** `drain.json` is written before the drain request, names
+   the container and the resolved Docker target with its endpoint fingerprint,
+   and is removed once admission is open again. Every run first resumes a
+   container a killed release left drained, through that target, even when it
+   has nothing to release. A changed endpoint or an inspection error keeps the
+   marker and fails (`resume-failed`). Before deploying, the drained container
+   is inspected again: a replaced or restarted container (which admits again),
+   an inspection error or an interruption resumes it and aborts.
 6. **Deploy** reuses image-mode `up`: the previous container is moved aside,
    the candidate must become ready, and a failed candidate restores the
    previous container. Durable state lives on named volumes and survives. After
    a failed deploy the release resumes whatever container holds the name.
 7. **Settle.** Ready is not settled: the release polls until the container is
    running, healthy (or has no healthcheck) and its restart count is unchanged
-   for three consecutive polls.
+   for three consecutive polls, and it must run the image this release built.
 8. **Confirm admission** with `POST /v2/resume` against the new container. It
    proves the control token works for the next release.
 9. **Ledger** is written only now, because it claims "this identity is
@@ -85,7 +94,7 @@ Under `<SPAWNFILE_HOME>/releases/<deployment>/` (directory `0700`, files
 | `log.jsonl` | `spawnfile.release-log.v1` lines for releases, failures, deferrals and notification results. No-ops write nothing. |
 | `pending.json` | first instant the current identity was deferred, and whether that was notified |
 | `drain.json` | present only while a container may be drained by a release |
-| `.lock` | one release per deployment; reclaimed when its owner process is gone |
+| `.lock` | one release per deployment; published with its owner already inside, reclaimed when that process is gone |
 
 A ledger, pending record or marker that exists and cannot be read is a refusal
 or an immediate notification, never treated as absent.

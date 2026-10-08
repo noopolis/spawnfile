@@ -92,6 +92,8 @@ const harness = (options: {
       if (options.failAt?.drain) throw options.failAt.drain;
       return { drain: "draining", state: "paused" };
     },
+    async resolveTarget() { return { endpoint_fingerprint: "sha256:local", kind: "context", name: "default" }; },
+    async verifyTarget() { calls.push("verify-target"); },
     async requestResume(target) { calls.push(`resume ${target.containerRef.slice(0, 1)}`); return { drain: null, state: "running" }; },
     async settle() { calls.push("settle"); if (options.failAt?.settle) throw options.failAt.settle; return current!; },
     async waitForDrained() {
@@ -124,8 +126,8 @@ describe("runRelease", () => {
     expect(h.calls).toEqual([
       "compile", "inspect spawnfile-org", "prune spawnfile-org:r-aaaaaaaaaaaa,spawnfile-org:r-bbbbbbbbbbbb",
       "build spawnfile-org:r-aaaaaaaaaaaa", "lock", "inspect spawnfile-org", "runtimes", "drain c", "wait", "inspect spawnfile-org",
-      "deploy spawnfile-org:r-aaaaaaaaaaaa", "unlock", "settle", "resume d",
-      "prune spawnfile-org:r-aaaaaaaaaaaa,spawnfile-org:r-bbbbbbbbbbbb"
+      "deploy spawnfile-org:r-aaaaaaaaaaaa", "settle", "resume d",
+      "prune spawnfile-org:r-aaaaaaaaaaaa,spawnfile-org:r-bbbbbbbbbbbb", "unlock"
     ]);
     const ledger = JSON.parse(await readFile(resolveReleasePaths("org", root).ledger, "utf8")) as ReleaseLedger;
     expect(ledger).toMatchObject({ identity: IDENTITY, image_id: NEW_IMAGE, image_tag: "spawnfile-org:r-aaaaaaaaaaaa", previous_image_tag: "spawnfile-org:r-bbbbbbbbbbbb" });
@@ -242,12 +244,12 @@ describe("runRelease", () => {
   it("resumes an organization an interrupted release left drained, before anything else", async () => {
     const paths = resolveReleasePaths("org", root);
     await import("node:fs/promises").then((fs) => fs.mkdir(paths.directory, { recursive: true }));
-    await writeFile(paths.drainMarker, JSON.stringify({ container: "c".repeat(64), context: null, image: OLD_IMAGE, since: "x", version: "spawnfile.release-drain.v1" }));
+    await writeFile(paths.drainMarker, JSON.stringify({ container: "c".repeat(64), image: OLD_IMAGE, since: "x", target: { "endpoint_fingerprint": "sha256:local", "kind": "context", "name": "default" }, version: "spawnfile.release-drain.v1" }));
     await writeLedger({ identity: IDENTITY, image_id: OLD_IMAGE });
-    await writeFile(paths.drainMarker, JSON.stringify({ container: "c".repeat(64), context: null, image: OLD_IMAGE, since: "x", version: "spawnfile.release-drain.v1" }));
+    await writeFile(paths.drainMarker, JSON.stringify({ container: "c".repeat(64), image: OLD_IMAGE, since: "x", target: { "endpoint_fingerprint": "sha256:local", "kind": "context", "name": "default" }, version: "spawnfile.release-drain.v1" }));
     const h = harness();
     expect((await runRelease(request(), h.deps)).kind).toBe("unchanged");
-    expect(h.calls.slice(0, 3)).toEqual(["inspect cccccccccccccc", "resume c", "compile"]);
+    expect(h.calls.slice(0, 4)).toEqual(["verify-target", "inspect cccccccccccccc", "resume c", "compile"]);
     await expect(readFile(paths.drainMarker, "utf8")).rejects.toThrow();
   });
 
@@ -294,6 +296,31 @@ describe("runRelease", () => {
     const h = harness();
     h.deps.waitForDrained = async () => { h.calls.push("wait"); abort.abort(); return { drained: true, waitedMs: 1 }; };
     expect(await runRelease(request({ signal: abort.signal }), h.deps)).toMatchObject({ kind: "failed", reason: "interrupted" });
+    expect(h.calls).toContain("resume c");
+    expect(h.calls.some((call) => call.startsWith("deploy"))).toBe(false);
+  });
+
+  it("normalizes the deployment name before naming the container it drains", async () => {
+    const h = harness();
+    expect((await runRelease(request({ deployment: " org " }), h.deps)).kind).toBe("released");
+    expect(h.calls).toContain("drain c");
+    expect(h.calls.filter((call) => call.startsWith("inspect"))).toEqual(Array(3).fill("inspect spawnfile-org"));
+  });
+
+  it("does not record an image other than the one it built", async () => {
+    const h = harness();
+    h.deps.settle = async () => unit(`sha256:${"7".repeat(64)}`, "d".repeat(64));
+    expect(await runRelease(request(), h.deps)).toMatchObject({ kind: "failed", reason: "deploy-failed" });
+    await expect(readFile(resolveReleasePaths("org", root).ledger, "utf8")).rejects.toThrow();
+    expect(h.calls.at(-2)).toBe("unlock");
+  });
+
+  it("resumes the drained container when it cannot be confirmed before the deploy", async () => {
+    const h = harness();
+    let inspections = 0;
+    const inspect = h.deps.inspectUnit;
+    h.deps.inspectUnit = async (req, ref) => { inspections += 1; if (inspections === 3) throw new Error("docker hiccup"); return inspect(req, ref); };
+    expect(await runRelease(request(), h.deps)).toMatchObject({ kind: "failed", reason: "drain-failed" });
     expect(h.calls).toContain("resume c");
     expect(h.calls.some((call) => call.startsWith("deploy"))).toBe(false);
   });

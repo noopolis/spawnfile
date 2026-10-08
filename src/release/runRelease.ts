@@ -1,3 +1,5 @@
+import { normalizeDeploymentName } from "../deployment/index.js";
+
 import { controlTargetFor, recoverInterruptedDrain, resolveControlToken } from "./drainPhase.js";
 import {
   acquireReleaseLock,
@@ -28,6 +30,8 @@ interface Progress {
  * never came up, and the next run would see nothing to do.
  */
 export const runRelease = async (request: ReleaseRequest, deps: ReleaseDependencies): Promise<ReleaseOutcome> => {
+  // One spelling everywhere: storage, the container name, the lock and `up` all normalize it.
+  request.deployment = normalizeDeploymentName(request.deployment);
   const paths = resolveReleasePaths(request.deployment, request.releaseRoot);
   const progress: Progress = { identity: null, stage: "lock" };
   let unlock: (() => Promise<void>) | null = null;
@@ -87,12 +91,43 @@ const releaseLocked = async (
 
   progress.stage = "deploy";
   if (request.signal?.aborted) throw new ReleaseError("interrupted", "the release was interrupted before draining; nothing was paused or deployed");
+  // The same home lock `up` takes, held from before the drain until the ledger
+  // names what is running: no concurrent `up` can replace the drained
+  // container, or the candidate before it is recorded.
+  const unlockDeployment = await deps.lockDeployment(request.deployment).catch((error: unknown) => {
+    throw new ReleaseError("blocked", `cannot lock the deployment: ${(error as Error).message}`);
+  });
+  try {
+    return await swapAndRecord(request, deps, paths, progress, { built, compiled, imageTag, ledger, started });
+  } finally {
+    await unlockDeployment().catch(() => undefined);
+  }
+};
+
+interface Built {
+  built: Awaited<ReturnType<ReleaseDependencies["build"]>>;
+  compiled: Awaited<ReturnType<ReleaseDependencies["compile"]>>;
+  imageTag: string;
+  ledger: ReleaseLedger | null;
+  started: number;
+}
+
+const swapAndRecord = async (
+  request: ReleaseRequest,
+  deps: ReleaseDependencies,
+  paths: ReleasePaths,
+  progress: Progress,
+  { built, compiled, imageTag, ledger, started }: Built
+): Promise<ReleaseOutcome> => {
   const swap = await drainAndSwap(request, deps, paths, imageTag);
   if (swap.kind === "deferred") return defer(request, deps, paths, compiled.identity);
   const { deployed, drained } = swap;
 
   progress.stage = "settle";
   const settled = await deps.settle(request, deployed.containerName);
+  if (settled.imageId !== built.imageId) {
+    throw new ReleaseError("deploy-failed", `the settled container runs ${settled.imageId}, not the built ${built.imageId}`);
+  }
   if (request.drain) {
     progress.stage = "resume";
     try {

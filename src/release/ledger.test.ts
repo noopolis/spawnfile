@@ -113,6 +113,10 @@ describe("deferral tracking", () => {
     const file = path.join(root, "pending.json");
     await writeFile(file, "{broken");
     expect(await recordDeferral(file, "id-1", { notifyAfterMs: 3_600_000 })).toMatchObject({ notify: true, trackingBroken: expect.stringContaining("cannot be read") });
+    await writeFile(file, JSON.stringify({ identity: "id-1", notified_at: null, since: "not-a-date", version: "spawnfile.release-pending.v1" }));
+    expect(await recordDeferral(file, "id-1", { notifyAfterMs: 3_600_000 })).toMatchObject({ notify: true, trackingBroken: expect.stringContaining("timestamp") });
+    await writeFile(file, JSON.stringify({ identity: "id-1", notified_at: "garbage", since: "2026-10-08T00:00:00.000Z", version: "spawnfile.release-pending.v1" }));
+    expect(await recordDeferral(file, "id-1", { notifyAfterMs: 3_600_000 })).toMatchObject({ notify: true, trackingBroken: expect.stringContaining("timestamp") });
     const unwritable = path.join(root, "missing-dir", "pending.json");
     expect(await recordDeferral(unwritable, "id-1", { notifyAfterMs: 3_600_000 })).toMatchObject({ notify: true, trackingBroken: expect.stringContaining("could not be written") });
   });

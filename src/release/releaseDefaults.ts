@@ -11,7 +11,7 @@ import { createDockerBuildContextDigest } from "../compiler/dockerBuildContext.j
 import { inspectDockerImage } from "../compiler/dockerBuildSkip.js";
 import { requireAuthProfile } from "../auth/index.js";
 import { readRunEnvFile } from "../compiler/runProjectAuth.js";
-import { acquireHomeDeploymentLock } from "../deployment/index.js";
+import { acquireHomeDeploymentLock, resolveDockerDeploymentTarget, verifyDockerDeploymentTarget } from "../deployment/index.js";
 import { consumeImageUp, createConsumerDockerRunner, extractImageReport, resolveDockerBaseArgs } from "../distribution/index.js";
 import type { DockerCommandRunner } from "../distribution/dockerRunner.js";
 
@@ -21,7 +21,10 @@ import { inspectUnit, pruneReleaseImages, settleUnit } from "./releaseDocker.js"
 import type { ReleaseDependencies, ReleaseRequest } from "./releaseTypes.js";
 
 const dockerFor = (request: ReleaseRequest): DockerCommandRunner =>
-  createConsumerDockerRunner(request.dockerCommand, resolveDockerBaseArgs({ dockerContext: request.dockerContext }));
+  createConsumerDockerRunner(request.dockerCommand, resolveDockerBaseArgs({
+    ...(request.dockerContext ? { dockerContext: request.dockerContext } : {}),
+    ...(request.dockerHost ? { dockerHost: request.dockerHost } : {})
+  }));
 
 /**
  * The production effects. The identity is the Docker build-context digest the
@@ -94,6 +97,14 @@ export const createDefaultReleaseDependencies = (): ReleaseDependencies => ({
     return inspection.report.runtime_instances.map((instance) => instance.runtime);
   },
   requestDrain: (target) => requestDrain(target, helperControlCall),
+  resolveTarget: (request) => resolveDockerDeploymentTarget({
+    context: request.dockerContext ?? null,
+    dockerCommand: request.dockerCommand,
+    dockerHost: request.dockerHost ?? null
+  }),
+  async verifyTarget(request, target) {
+    await verifyDockerDeploymentTarget(target, { dockerCommand: request.dockerCommand });
+  },
   requestResume: (target) => requestResume(target, helperControlCall),
   settle: (request, containerRef) => settleUnit(dockerFor(request), containerRef, request.settle),
   waitForDrained: (target, options) => waitForDrained(target, { call: helperControlCall, ...options })

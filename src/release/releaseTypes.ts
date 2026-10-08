@@ -1,5 +1,6 @@
 import type { ResolvedAuthProfile } from "../auth/index.js";
 import type { CompileProjectResult } from "../compiler/compileProject.js";
+import type { DockerDeploymentTarget } from "../deployment/index.js";
 
 import type { Availability, DrainWait, RuntimeControlTarget, WaitForDrainedOptions } from "./drainControl.js";
 import type { NotifierConfig, NotifyResult, ReleaseNotification } from "./notify.js";
@@ -15,6 +16,8 @@ export interface ReleaseRequest {
   deployment: string;
   dockerCommand: string;
   dockerContext?: string;
+  /** Set only when recovering a drain that went out through a `DOCKER_HOST` target. */
+  dockerHost?: string;
   /** False only when the operator explicitly accepts killing in-flight turns. */
   drain: boolean;
   drainPollMs: number;
@@ -79,6 +82,10 @@ export interface ReleaseDependencies {
   /** Runtime kinds inside the running image, from its embedded distribution report. */
   runtimesOf(request: ReleaseRequest, imageId: string): Promise<string[]>;
   requestDrain(target: RuntimeControlTarget): Promise<Availability>;
+  /** The Docker daemon this request talks to, with its endpoint fingerprint. */
+  resolveTarget(request: ReleaseRequest): Promise<DockerDeploymentTarget>;
+  /** Throws when a recorded target's endpoint is no longer the one its name resolves to. */
+  verifyTarget(request: ReleaseRequest, target: DockerDeploymentTarget): Promise<void>;
   requestResume(target: RuntimeControlTarget): Promise<Availability>;
   settle(request: ReleaseRequest, containerRef: string): Promise<RunningUnit>;
   waitForDrained(target: RuntimeControlTarget, options: WaitForDrainedOptions): Promise<DrainWait>;
