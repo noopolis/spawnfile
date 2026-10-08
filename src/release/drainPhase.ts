@@ -48,16 +48,18 @@ export const controlTargetFor = (request: ReleaseRequest, containerRef: string, 
  * evidence that the organization may still be refusing work. Every later run
  * resumes it first, even when it has nothing to release.
  */
-const writeMarker = async (request: ReleaseRequest, deps: ReleaseDependencies, paths: ReleasePaths, unit: RunningUnit): Promise<void> => {
-  const target = await deps.resolveTarget(request);
+const writeMarker = async (request: ReleaseRequest, paths: ReleasePaths, unit: RunningUnit): Promise<void> => {
+  const target = request.target;
+  if (target === undefined) throw new ReleaseError("blocked", "the release has no pinned Docker target to record with its drain");
   const marker: DrainMarker = { container: unit.id, image: unit.imageId, since: new Date().toISOString(), target, version: RELEASE_DRAIN_MARKER_VERSION };
   await writeJsonAtomic(paths.drainMarker, marker);
 };
 
-const requestForTarget = (request: ReleaseRequest, target: DockerDeploymentTarget): ReleaseRequest => {
+/** The same request, addressed at exactly this Docker daemon. */
+export const requestForTarget = (request: ReleaseRequest, target: DockerDeploymentTarget): ReleaseRequest => {
   const { dockerContext: _context, dockerHost: _host, ...rest } = request;
-  if (target.kind === "host") return { ...rest, dockerHost: target.value };
-  return { ...rest, dockerContext: target.kind === "context" ? target.name : target.context };
+  if (target.kind === "host") return { ...rest, dockerHost: target.value, target };
+  return { ...rest, dockerContext: target.kind === "context" ? target.name : target.context, target };
 };
 
 export const clearDrainMarker = async (paths: ReleasePaths): Promise<void> => {
@@ -121,7 +123,7 @@ export const drainForRelease = async (
   }
   const target = controlTargetFor(request, unit.id, unit.imageId);
   const started = Date.now();
-  await writeMarker(request, deps, paths, unit);
+  await writeMarker(request, paths, unit);
   try {
     await deps.requestDrain(target);
     request.log(`release: admission paused; waiting up to ${Math.round(request.drainTimeoutMs / 1000)}s for running turns to finish`);

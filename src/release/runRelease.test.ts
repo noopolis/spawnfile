@@ -92,7 +92,7 @@ const harness = (options: {
       if (options.failAt?.drain) throw options.failAt.drain;
       return { drain: "draining", state: "paused" };
     },
-    async resolveTarget() { return { endpoint_fingerprint: "sha256:local", kind: "context", name: "default" }; },
+    async pinTarget() { return { endpoint_fingerprint: "sha256:local", kind: "context", name: "default" }; },
     async verifyTarget() { calls.push("verify-target"); },
     async requestResume(target) { calls.push(`resume ${target.containerRef.slice(0, 1)}`); return { drain: null, state: "running" }; },
     async settle() { calls.push("settle"); if (options.failAt?.settle) throw options.failAt.settle; return current!; },
@@ -323,6 +323,19 @@ describe("runRelease", () => {
     expect(await runRelease(request(), h.deps)).toMatchObject({ kind: "failed", reason: "drain-failed" });
     expect(h.calls).toContain("resume c");
     expect(h.calls.some((call) => call.startsWith("deploy"))).toBe(false);
+  });
+
+  it("records the pinned Docker target with the drain and addresses every step at it", async () => {
+    const h = harness({ wait: { drained: false, reason: "timeout", waitedMs: 1 } });
+    const contexts = new Set<string | undefined>();
+    const inspect = h.deps.inspectUnit;
+    h.deps.inspectUnit = async (req, ref) => { contexts.add(req.dockerContext); return inspect(req, ref); };
+    h.deps.pinTarget = async () => ({ endpoint_fingerprint: "sha256:colima", kind: "context", name: "colima" });
+    let marker = "";
+    h.deps.requestDrain = async () => { marker = await readFile(resolveReleasePaths("org", root).drainMarker, "utf8"); return { drain: "draining", state: "paused" }; };
+    await runRelease(request(), h.deps);
+    expect(JSON.parse(marker).target).toEqual({ endpoint_fingerprint: "sha256:colima", kind: "context", name: "colima" });
+    expect([...contexts]).toEqual(["colima"]);
   });
 
   it("refuses to run beside another live release of the same deployment", async () => {

@@ -19,6 +19,16 @@ vi.mock("../distribution/index.js", async (importOriginal) => ({
   extractImageReport: async (...args: unknown[]) => { record("extract")(...args); return { report: { runtime_instances: [{ runtime: "daimon" }, { runtime: "pi" }] } }; }
 }));
 
+const deploymentState = { exists: false, verified: [] as unknown[] };
+vi.mock("../deployment/index.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../deployment/index.js")>()),
+  homeDeploymentExists: async () => deploymentState.exists,
+  readHomeDeploymentRecord: async () => ({ target: { endpoint_fingerprint: "sha256:rec", kind: "context", name: "recorded" } }),
+  resolveDockerDeploymentTarget: async (input: { context?: string | null }) =>
+    process.env.DOCKER_HOST && !input.context ? { kind: "host", value: process.env.DOCKER_HOST } : { endpoint_fingerprint: `sha256:${input.context}`, kind: "context", name: input.context },
+  verifyDockerDeploymentTarget: async (target: unknown) => { deploymentState.verified.push(target); return null; }
+}));
+
 const { createDefaultReleaseDependencies } = await import("./releaseDefaults.js");
 
 const request = {
@@ -63,6 +73,24 @@ describe("createDefaultReleaseDependencies", () => {
     await writeFile(file, "SPAWNFILE_DAIMON_CONTROL_TOKEN=abc\n");
     expect(await createDefaultReleaseDependencies().prepare({ ...request, envFilePath: file })).toEqual({ authProfile: null, envFileEnv: { SPAWNFILE_DAIMON_CONTROL_TOKEN: "abc" } });
     await expect(createDefaultReleaseDependencies().prepare({ ...request, envFilePath: "/nonexistent/deploy.env" })).rejects.toThrow();
+  });
+
+  it("pins an explicit context, else what a bare docker command would use, never the recorded target", async () => {
+    const deps = createDefaultReleaseDependencies();
+    expect(await deps.pinTarget({ ...request, dockerContext: "prod" })).toMatchObject({ kind: "context", name: "prod" });
+    deploymentState.exists = true;
+    const { chmod, mkdtemp, writeFile } = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const docker = path.join(await mkdtemp(path.join(os.tmpdir(), "spawnfile-ctx-")), "docker");
+    await writeFile(docker, "#!/bin/sh\n[ \"$1 $2\" = \"context show\" ] && echo colima\n");
+    await chmod(docker, 0o755);
+    vi.stubEnv("DOCKER_HOST", "");
+    expect(await deps.pinTarget({ ...request, dockerCommand: docker })).toMatchObject({ kind: "context", name: "colima" });
+    deploymentState.exists = false;
+    vi.stubEnv("DOCKER_HOST", "ssh://ops@box");
+    expect(await deps.pinTarget({ ...request, dockerCommand: docker })).toEqual({ kind: "host", value: "ssh://ops@box" });
+    vi.unstubAllEnvs();
   });
 
   it("honours an explicit image repository", async () => {

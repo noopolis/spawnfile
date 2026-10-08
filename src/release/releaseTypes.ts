@@ -16,7 +16,7 @@ export interface ReleaseRequest {
   deployment: string;
   dockerCommand: string;
   dockerContext?: string;
-  /** Set only when recovering a drain that went out through a `DOCKER_HOST` target. */
+  /** Set from the pinned target when it is a `DOCKER_HOST` daemon. */
   dockerHost?: string;
   /** False only when the operator explicitly accepts killing in-flight turns. */
   drain: boolean;
@@ -36,6 +36,8 @@ export interface ReleaseRequest {
   releaseRoot?: string;
   settle: SettleOptions;
   signal?: AbortSignal;
+  /** The Docker daemon every step of this release talks to, pinned once at the start. */
+  target?: DockerDeploymentTarget;
 }
 
 export interface CompiledRelease {
@@ -82,8 +84,12 @@ export interface ReleaseDependencies {
   /** Runtime kinds inside the running image, from its embedded distribution report. */
   runtimesOf(request: ReleaseRequest, imageId: string): Promise<string[]>;
   requestDrain(target: RuntimeControlTarget): Promise<Availability>;
-  /** The Docker daemon this request talks to, with its endpoint fingerprint. */
-  resolveTarget(request: ReleaseRequest): Promise<DockerDeploymentTarget>;
+  /**
+   * The Docker daemon this release talks to, with its endpoint fingerprint:
+   * an explicit `--context`, else what the Docker CLI would use
+   * (`DOCKER_HOST`, `DOCKER_CONTEXT` or the selected context).
+   */
+  pinTarget(request: ReleaseRequest): Promise<DockerDeploymentTarget>;
   /** Throws when a recorded target's endpoint is no longer the one its name resolves to. */
   verifyTarget(request: ReleaseRequest, target: DockerDeploymentTarget): Promise<void>;
   requestResume(target: RuntimeControlTarget): Promise<Availability>;

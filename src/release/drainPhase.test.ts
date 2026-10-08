@@ -34,7 +34,7 @@ const deps = (unit: RunningUnit | null, resume: () => Promise<void> = async () =
   return {
     resumed,
     inspectUnit: async () => unit,
-    resolveTarget: async () => LOCAL,
+    pinTarget: async () => LOCAL,
     verifyTarget: async () => undefined,
     requestResume: async (target: RuntimeControlTarget) => { resumed.push(target.containerRef); await resume(); return { drain: null, state: "running" }; }
   } as unknown as ReleaseDependencies & { resumed: string[] };

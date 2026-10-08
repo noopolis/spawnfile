@@ -1,4 +1,6 @@
+import { execFile as execFileCallback } from "node:child_process";
 import { performance } from "node:perf_hooks";
+import { promisify } from "node:util";
 
 import {
   buildCompiledProject,
@@ -19,6 +21,8 @@ import { helperControlCall, requestDrain, requestResume, waitForDrained } from "
 import { sendNotification } from "./notify.js";
 import { inspectUnit, pruneReleaseImages, settleUnit } from "./releaseDocker.js";
 import type { ReleaseDependencies, ReleaseRequest } from "./releaseTypes.js";
+
+const execFile = promisify(execFileCallback);
 
 const dockerFor = (request: ReleaseRequest): DockerCommandRunner =>
   createConsumerDockerRunner(request.dockerCommand, resolveDockerBaseArgs({
@@ -74,6 +78,7 @@ export const createDefaultReleaseDependencies = (): ReleaseDependencies => ({
       deploymentName: request.deployment,
       dockerCommand: request.dockerCommand,
       ...(request.dockerContext ? { dockerContext: request.dockerContext } : {}),
+      ...(request.dockerHost ? { dockerHost: request.dockerHost } : {}),
       envFileEnv: request.envFileEnv,
       envFilePath: request.envFilePath ?? null
     });
@@ -92,16 +97,22 @@ export const createDefaultReleaseDependencies = (): ReleaseDependencies => ({
   async runtimesOf(request, imageId) {
     const inspection = await extractImageReport(imageId, {
       dockerCommand: request.dockerCommand,
-      ...(request.dockerContext ? { dockerContext: request.dockerContext } : {})
+      ...(request.dockerContext ? { dockerContext: request.dockerContext } : {}),
+      ...(request.dockerHost ? { dockerHost: request.dockerHost } : {})
     });
     return inspection.report.runtime_instances.map((instance) => instance.runtime);
   },
   requestDrain: (target) => requestDrain(target, helperControlCall),
-  resolveTarget: (request) => resolveDockerDeploymentTarget({
-    context: request.dockerContext ?? null,
-    dockerCommand: request.dockerCommand,
-    dockerHost: request.dockerHost ?? null
-  }),
+  async pinTarget(request) {
+    // Not the deployment record's target: image-mode `up` runs Docker against
+    // the explicit context or the CLI's own default and only records a target,
+    // so the record can name a daemon the deployment does not live on.
+    if (request.dockerContext) return resolveDockerDeploymentTarget({ context: request.dockerContext, dockerCommand: request.dockerCommand });
+    if (process.env.DOCKER_HOST?.trim()) return resolveDockerDeploymentTarget({ dockerCommand: request.dockerCommand });
+    // What a bare `docker` command would use: DOCKER_CONTEXT, else the selected context.
+    const { stdout } = await execFile(request.dockerCommand, ["context", "show"], { timeout: 10_000 });
+    return resolveDockerDeploymentTarget({ context: stdout.trim() || "default", dockerCommand: request.dockerCommand });
+  },
   async verifyTarget(request, target) {
     await verifyDockerDeploymentTarget(target, { dockerCommand: request.dockerCommand });
   },
