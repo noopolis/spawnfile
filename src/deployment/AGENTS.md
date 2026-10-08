@@ -27,6 +27,7 @@ declared name retry forever.
 src/deployment/
 ├── index.ts         # Barrel exports
 ├── names.ts         # Deployment name validation and record path helpers
+├── pidLock.ts       # Atomic owner-named lock file shared by `up` (home lock) and `release`
 ├── target.ts        # Docker target endpoint fingerprint helpers
 ├── dockerLabels.ts  # Docker label construction for managed units
 ├── dockerInspect.ts # Bounded Docker container inspection for status --live

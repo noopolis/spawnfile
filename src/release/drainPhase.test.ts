@@ -34,12 +34,15 @@ const deps = (unit: RunningUnit | null, resume: () => Promise<void> = async () =
   return {
     resumed,
     inspectUnit: async () => unit,
+    resolveTarget: async () => LOCAL,
+    verifyTarget: async () => undefined,
     requestResume: async (target: RuntimeControlTarget) => { resumed.push(target.containerRef); await resume(); return { drain: null, state: "running" }; }
   } as unknown as ReleaseDependencies & { resumed: string[] };
 };
 
 const running: RunningUnit = { health: "healthy", id: "c1", imageId: "sha256:img", restartCount: 0, running: true };
-const marker = JSON.stringify({ container: "c1", context: null, image: "sha256:img", since: "t", version: "spawnfile.release-drain.v1" });
+const LOCAL = { endpoint_fingerprint: "sha256:local", kind: "context", name: "default" } as const;
+const marker = JSON.stringify({ container: "c1", image: "sha256:img", since: "t", target: LOCAL, version: "spawnfile.release-drain.v1" });
 
 describe("control token", () => {
   it("prefers the process environment over the env file, like up does", () => {
@@ -84,8 +87,9 @@ describe("recoverInterruptedDrain", () => {
     expect(await readFile(paths.drainMarker, "utf8")).toBe(marker);
   });
 
-  it("recovers through the Docker context the drain went out through, not this run's", async () => {
-    await writeFile(paths.drainMarker, JSON.stringify({ container: "c1", context: "remote", image: "sha256:img", since: "t", version: "spawnfile.release-drain.v1" }));
+  it("recovers through the Docker daemon the drain went out through, not this run's", async () => {
+    const remote = { endpoint_fingerprint: "sha256:remote", kind: "context", name: "remote" } as const;
+    await writeFile(paths.drainMarker, JSON.stringify({ container: "c1", image: "sha256:img", since: "t", target: remote, version: "spawnfile.release-drain.v1" }));
     const contexts: (string | undefined)[] = [];
     const d = deps(running);
     d.inspectUnit = async (req) => { contexts.push(req.dockerContext); return running; };
@@ -94,6 +98,24 @@ describe("recoverInterruptedDrain", () => {
     await recoverInterruptedDrain(request(), d, paths);
     expect(contexts).toEqual(["remote"]);
     expect(resumedArgs).toEqual([["--context", "remote"]]);
+  });
+
+  it("reaches a DOCKER_HOST target with --host", async () => {
+    await writeFile(paths.drainMarker, JSON.stringify({ container: "c1", image: "sha256:img", since: "t", target: { kind: "host", value: "ssh://ops@box" }, version: "spawnfile.release-drain.v1" }));
+    const d = deps(running);
+    const resumedArgs: string[][] = [];
+    d.requestResume = async (target) => { resumedArgs.push([...target.dockerArgs]); return { drain: null, state: "running" }; };
+    await recoverInterruptedDrain(request(), d, paths);
+    expect(resumedArgs).toEqual([["--host", "ssh://ops@box"]]);
+  });
+
+  it("keeps the marker when the recorded daemon's endpoint changed", async () => {
+    await writeFile(paths.drainMarker, marker);
+    const d = deps(running);
+    d.verifyTarget = async () => { throw new Error("endpoint changed since deployment"); };
+    await expect(recoverInterruptedDrain(request(), d, paths)).rejects.toMatchObject({ reason: "resume-failed" });
+    expect(await readFile(paths.drainMarker, "utf8")).toBe(marker);
+    expect(d.resumed).toEqual([]);
   });
 
   it("keeps the marker when the marked container cannot be inspected", async () => {

@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { appendFile, chmod, link, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { z } from "zod";
 
 import { resolveSpawnfileHome } from "../auth/index.js";
-import { normalizeDeploymentName } from "../deployment/index.js";
+import { acquirePidLock, normalizeDeploymentName, PidLockBusyError, type PidLockHooks } from "../deployment/index.js";
 
 import { ReleaseError } from "./types.js";
 
@@ -120,60 +120,19 @@ export const appendReleaseLog = async (file: string, entry: Omit<ReleaseLogEntry
   await appendFile(file, `${JSON.stringify({ ...entry, version: RELEASE_LOG_VERSION })}\n`, { encoding: "utf8", mode: 0o600 });
 };
 
-const isProcessAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
-  }
-};
-
-/**
- * One release per deployment at a time. The lock file appears with its owner
- * already in it (written aside, then hard-linked into place, which fails if
- * the lock exists), so no reader can see an empty lock and call it stale. A
- * lock whose owner is gone is moved aside under a unique name first, so two
- * processes reclaiming the same stale lock cannot both win.
- */
+/** One release per deployment at a time; see `acquirePidLock` for the guarantees and the residual. */
 export const acquireReleaseLock = async (
   paths: ReleasePaths,
-  hooks: { afterStaleRead?: () => Promise<void> } = {}
+  hooks: PidLockHooks = {}
 ): Promise<() => Promise<void>> => {
-  const token = `${process.pid}.${randomUUID()}`;
-  const staged = `${paths.lock}.${token}`;
-  await writeFile(staged, JSON.stringify({ pid: process.pid, token }), { mode: 0o600 });
   try {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      try {
-        await link(staged, paths.lock);
-        return async () => {
-          const current = await readFile(paths.lock, "utf8").catch(() => "");
-          if (current.includes(token)) await rm(paths.lock, { force: true });
-        };
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      }
-      const seen = await readFile(paths.lock, "utf8").catch(() => "");
-      let owner: number | null = null;
-      try { owner = (JSON.parse(seen) as { pid?: number }).pid ?? null; } catch { owner = null; }
-      if (owner !== null && isProcessAlive(owner)) {
-        throw new ReleaseError("blocked", `another release of this deployment is running (pid ${owner})`);
-      }
-      await hooks.afterStaleRead?.();
-      const tombstone = `${paths.lock}.stale.${token}`;
-      await rename(paths.lock, tombstone).catch(() => undefined);
-      const moved = await readFile(tombstone, "utf8").catch(() => null);
-      if (moved !== null && moved !== seen) {
-        // Another process replaced the stale lock between our read and our move: put its live lock back.
-        await link(tombstone, paths.lock).catch(() => undefined);
-        await rm(tombstone, { force: true });
-        throw new ReleaseError("blocked", "another release of this deployment took the lock first");
-      }
-      await rm(tombstone, { force: true });
+    return await acquirePidLock(paths.lock, hooks);
+  } catch (error) {
+    if (error instanceof PidLockBusyError) {
+      throw new ReleaseError("blocked", error.ownerPid === null
+        ? "another release of this deployment took the lock first"
+        : `another release of this deployment is running (pid ${error.ownerPid})`);
     }
-    throw new ReleaseError("blocked", "another release of this deployment took the lock first");
-  } finally {
-    await rm(staged, { force: true });
+    throw error;
   }
 };

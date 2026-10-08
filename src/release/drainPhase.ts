@@ -1,5 +1,6 @@
 import { readFile, rm } from "node:fs/promises";
 
+import type { DockerDeploymentTarget } from "../deployment/index.js";
 import { resolveDockerBaseArgs } from "../distribution/index.js";
 
 import type { RuntimeControlTarget } from "./drainControl.js";
@@ -12,8 +13,8 @@ export const RELEASE_DRAIN_MARKER_VERSION = "spawnfile.release-drain.v1" as cons
 
 interface DrainMarker {
   container: string;
-  /** The Docker context the drain went out through; recovery must use the same target. */
-  context: string | null;
+  /** The Docker daemon the drain went out through; recovery must reach the same one. */
+  target: DockerDeploymentTarget;
   image: string;
   since: string;
   version: typeof RELEASE_DRAIN_MARKER_VERSION;
@@ -34,7 +35,7 @@ export const controlTargetFor = (request: ReleaseRequest, containerRef: string, 
   }
   return {
     containerRef,
-    dockerArgs: resolveDockerBaseArgs({ dockerContext: request.dockerContext }),
+    dockerArgs: resolveDockerBaseArgs({ ...(request.dockerContext ? { dockerContext: request.dockerContext } : {}), ...(request.dockerHost ? { dockerHost: request.dockerHost } : {}) }),
     dockerCommand: request.dockerCommand,
     imageRef,
     token
@@ -47,9 +48,16 @@ export const controlTargetFor = (request: ReleaseRequest, containerRef: string, 
  * evidence that the organization may still be refusing work. Every later run
  * resumes it first, even when it has nothing to release.
  */
-const writeMarker = async (request: ReleaseRequest, paths: ReleasePaths, unit: RunningUnit): Promise<void> => {
-  const marker: DrainMarker = { container: unit.id, context: request.dockerContext ?? null, image: unit.imageId, since: new Date().toISOString(), version: RELEASE_DRAIN_MARKER_VERSION };
+const writeMarker = async (request: ReleaseRequest, deps: ReleaseDependencies, paths: ReleasePaths, unit: RunningUnit): Promise<void> => {
+  const target = await deps.resolveTarget(request);
+  const marker: DrainMarker = { container: unit.id, image: unit.imageId, since: new Date().toISOString(), target, version: RELEASE_DRAIN_MARKER_VERSION };
   await writeJsonAtomic(paths.drainMarker, marker);
+};
+
+const requestForTarget = (request: ReleaseRequest, target: DockerDeploymentTarget): ReleaseRequest => {
+  const { dockerContext: _context, dockerHost: _host, ...rest } = request;
+  if (target.kind === "host") return { ...rest, dockerHost: target.value };
+  return { ...rest, dockerContext: target.kind === "context" ? target.name : target.context };
 };
 
 export const clearDrainMarker = async (paths: ReleasePaths): Promise<void> => {
@@ -60,15 +68,17 @@ export const recoverInterruptedDrain = async (request: ReleaseRequest, deps: Rel
   let marker: DrainMarker;
   try {
     marker = JSON.parse(await readFile(paths.drainMarker, "utf8")) as DrainMarker;
-    if (typeof marker.container !== "string" || (marker.context !== null && typeof marker.context !== "string")) throw new Error("shape");
+    if (typeof marker.container !== "string" || typeof marker.target?.kind !== "string") throw new Error("shape");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw new ReleaseError("resume-failed", `the drain marker ${paths.drainMarker} is unreadable; the organization may still be drained`);
   }
-  // Recovery talks to the Docker target the drain went out through, whatever this run was invoked with.
-  const target: ReleaseRequest = { ...request, ...(marker.context === null ? { dockerContext: undefined } : { dockerContext: marker.context }) };
+  // Recovery talks to the Docker daemon the drain went out through, whatever this run was invoked with,
+  // and refuses (keeping the marker) when that name now resolves to a different endpoint.
+  const target = requestForTarget(request, marker.target);
   let unit: RunningUnit | null;
   try {
+    await deps.verifyTarget(target, marker.target);
     unit = await deps.inspectUnit(target, marker.container);
   } catch (error) {
     throw new ReleaseError("resume-failed", `an earlier release may have left the organization drained and its container cannot be inspected: ${(error as Error).message}`);
@@ -111,7 +121,7 @@ export const drainForRelease = async (
   }
   const target = controlTargetFor(request, unit.id, unit.imageId);
   const started = Date.now();
-  await writeMarker(request, paths, unit);
+  await writeMarker(request, deps, paths, unit);
   try {
     await deps.requestDrain(target);
     request.log(`release: admission paused; waiting up to ${Math.round(request.drainTimeoutMs / 1000)}s for running turns to finish`);
@@ -133,6 +143,10 @@ export const drainForRelease = async (
     throw error instanceof ReleaseError ? error : new ReleaseError("drain-failed", (error as Error).message);
   }
 };
+
+/** Resumes a container this release drained, keeping the marker if that fails. */
+export const resumeDrained = async (request: ReleaseRequest, deps: ReleaseDependencies, paths: ReleasePaths, unit: RunningUnit): Promise<void> =>
+  resumeOrThrow(request, deps, paths, controlTargetFor(request, unit.id, unit.imageId));
 
 const resumeOrThrow = async (request: ReleaseRequest, deps: ReleaseDependencies, paths: ReleasePaths, target: RuntimeControlTarget): Promise<void> => {
   try {
