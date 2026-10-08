@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -91,11 +91,37 @@ describe("workspace bundle resolution", () => {
 
     await writeFile(path.join(repo, "org/Spawnfile"), agentSpawnfile([...prebuilt, `  sha256: ${digest}`]));
     const pinned = await compileProject(path.join(repo, "org"), { bundleCacheDirectory: cache, containerArchitecture: "amd64", outputDirectory: path.join(repo, "out-c") });
-    expect(pinned.report.workspace_bundles).toBeUndefined();
+    expect(pinned.report.workspace_bundles).toEqual([{ id: "tools", origin: "prebuilt", sha256: digest }]);
+  }, 60_000);
+
+  it("never lets a built archive stand in for a pinned prebuilt tar with the same digest", async () => {
+    const first = await compileProject(path.join(repo, "org"), { bundleCacheDirectory: cache, containerArchitecture: "amd64", outputDirectory: path.join(repo, "out-x") });
+    const digest = first.report.workspace_bundles![0]!.sha256;
+    const staged = path.join(repo, "out-x/container/workspace-bundles", `${digest.slice(7)}.tar`);
+    expect((await stat(staged)).mode & 0o222).toBe(0);
+    const pinnedMissing = ["- id: other", "  kind: bundle", "  source: ../missing.tar", `  sha256: ${digest}`, "  mount: ./repos/other", "  mode: readonly"];
+    await writeFile(path.join(repo, "org/Spawnfile"), agentSpawnfile([...builtResource, ...pinnedMissing]));
+    await expect(compileProject(path.join(repo, "org"), { bundleCacheDirectory: cache, containerArchitecture: "amd64", outputDirectory: path.join(repo, "out-y") })).rejects.toThrow(/ENOENT|regular tar/u);
+    await writeFile(path.join(repo, "copy.tar"), await readFile(staged));
+    await writeFile(path.join(repo, "org/Spawnfile"), agentSpawnfile([...builtResource, ...pinnedMissing.map((line) => line.replace("missing.tar", "copy.tar"))]));
+    const both = await compileProject(path.join(repo, "org"), { bundleCacheDirectory: cache, containerArchitecture: "amd64", outputDirectory: path.join(repo, "out-z") });
+    expect(both.report.workspace_bundles!.map((entry) => entry.id)).toEqual(["other", "tools"]);
+  }, 60_000);
+
+  it("ignores git replacement refs so the archive matches the keyed object ids", async () => {
+    const first = await compileProject(path.join(repo, "org"), { bundleCacheDirectory: cache, containerArchitecture: "amd64", outputDirectory: path.join(repo, "out-r1") });
+    const original = (await git(repo, "rev-parse", "HEAD:tools/server.mjs")).stdout.trim();
+    await writeFile(path.join(repo, "replacement.txt"), "replaced\n");
+    const replacement = (await run("git", ["hash-object", "-w", "replacement.txt"], { cwd: repo })).stdout.trim();
+    await rm(path.join(repo, "replacement.txt"));
+    await git(repo, "replace", original, replacement);
+    await rm(cache, { force: true, recursive: true });
+    const second = await compileProject(path.join(repo, "org"), { bundleCacheDirectory: cache, bundleIdentity: "dev", containerArchitecture: "amd64", outputDirectory: path.join(repo, "out-r2") });
+    expect(second.report.workspace_bundles![0]!.sha256).toBe(first.report.workspace_bundles![0]!.sha256);
   }, 60_000);
 
   it("leaves plans without unresolved bundles untouched", async () => {
     const plan = { nodes: [{ kind: "team", value: {} }, { kind: "agent", value: { workspaceResources: [{ kind: "volume" }] } }] } as unknown as CompilePlan;
-    await expect(resolveWorkspaceBundles(plan, { cacheDirectory: cache })).resolves.toMatchObject({ built: 0, report: [], reused: 0 });
+    await expect(resolveWorkspaceBundles(plan, { cacheDirectory: cache })).resolves.toMatchObject({ builtCount: 0, report: [], reusedCount: 0 });
   });
 });

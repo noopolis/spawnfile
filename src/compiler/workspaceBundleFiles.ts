@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { lstat, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 
@@ -7,12 +8,21 @@ import { SpawnfileError } from "../shared/index.js";
 import {
   listCommittedTree,
   listIndex,
+  readStableSnapshot,
   readStatus,
+  readStatusAgainstHead,
   resolveGitLocation,
   streamBlobs,
   type GitStatusEntry
 } from "./workspaceBundleGit.js";
-import { BundleTarWriter, normalizeBundleMode, type BundleFileMode, type BundleTarSummary } from "./workspaceBundleTar.js";
+import {
+  BundleTarWriter,
+  normalizeBundleMode,
+  WORKSPACE_BUNDLE_MAX_BYTES,
+  WORKSPACE_BUNDLE_MAX_ENTRIES,
+  type BundleFileMode,
+  type BundleTarSummary
+} from "./workspaceBundleTar.js";
 
 export type BundleIdentityMode = "dev" | "release";
 
@@ -101,11 +111,14 @@ export const resolveBundleRoot = async (directory: string): Promise<string> => {
  */
 export const resolveReleaseFiles = async (directory: string, exclude: readonly string[] = []): Promise<BundleFilesInput> => {
   const excluded = compileExcludePatterns(exclude);
-  const [{ prefix }, rawStatus, tree] = await Promise.all([resolveGitLocation(directory), readStatus(directory), listCommittedTree(directory)]);
-  const dirty = relativeTo(rawStatus, prefix).filter((entry) => !excluded(entry.path));
+  const [{ prefix }, status] = await Promise.all([resolveGitLocation(directory), readStatusAgainstHead(directory)]);
+  if (!status.head) fail(`Release workspace bundle requires a commit; the repository has none: ${directory}`);
+  const dirty = status.changed.map((changed) => changed.startsWith(prefix) ? changed.slice(prefix.length) : changed).filter((changed) => !excluded(changed));
   if (dirty.length > 0) {
-    fail(`Release workspace bundle requires a clean commit; ${dirty.length} uncommitted change(s) under ${directory}, first: ${dirty[0]!.path}`);
+    fail(`Release workspace bundle requires a clean commit; ${dirty.length} uncommitted change(s) under ${directory}, first: ${dirty[0]!}`);
   }
+  // The tree of exactly the commit status verified clean against; bytes come from its objects, so later edits cannot leak in.
+  const tree = await listCommittedTree(directory, status.head);
   const entries: BundleFileEntry[] = [];
   for (const entry of tree) {
     if (excluded(entry.path)) continue;
@@ -116,8 +129,13 @@ export const resolveReleaseFiles = async (directory: string, exclude: readonly s
   return { directory, entries: sortEntries(entries), mode: "release" };
 };
 
-const hashFile = async (filePath: string): Promise<string> =>
-  `sha256:${createHash("sha256").update(await readFile(filePath)).digest("hex")}`;
+const HASH_CONCURRENCY = 8;
+
+const hashFile = async (filePath: string): Promise<string> => {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(filePath)) hash.update(chunk as Buffer);
+  return `sha256:${hash.digest("hex")}`;
+};
 
 /**
  * Dev identity: the working tree as it is now. Files git reports as unchanged
@@ -125,8 +143,8 @@ const hashFile = async (filePath: string): Promise<string> =>
  * hashed from disk, so an uncommitted edit or a new file always moves the key.
  */
 export const resolveDevFiles = async (directory: string, exclude: readonly string[] = []): Promise<BundleFilesInput> => {
-  const excluded = compileExcludePatterns(exclude);
-  const [{ prefix }, index, rawStatus] = await Promise.all([resolveGitLocation(directory), listIndex(directory), readStatus(directory)]);
+  const excluded = compileExcludePatterns(exclude), location = await resolveGitLocation(directory), { prefix } = location;
+  const [index, rawStatus] = await readStableSnapshot(location, () => Promise.all([listIndex(directory), readStatus(directory)]));
   const status = relativeTo(rawStatus, prefix);
   const untracked = status.filter((entry) => entry.index === "?").map((entry) => entry.path);
   const changed = new Set(status.filter((entry) => entry.worktree !== " " && entry.worktree !== "?").map((entry) => entry.path));
@@ -143,14 +161,23 @@ export const resolveDevFiles = async (directory: string, exclude: readonly strin
     if (relativePath.endsWith("/")) fail(`Workspace bundle input contains a nested git repository; exclude it: ${relativePath}`);
     toHash.push(relativePath);
   }
-  await Promise.all([...new Set(toHash)].map(async (relativePath) => {
-    const filePath = path.join(directory, relativePath);
-    const info = await lstat(filePath).catch(() => undefined);
-    if (!info) return; // deleted in the work tree: not an input any more
-    if (info.isSymbolicLink()) refuseLinks(relativePath, SYMLINK);
-    if (!info.isFile()) fail(`Workspace bundle input is not a regular file: ${relativePath}`);
-    entries.set(relativePath, { identity: await hashFile(filePath), mode: normalizeBundleMode(info.mode), path: validEntryPath(relativePath) });
-  }));
+  const pending = [...new Set(toHash)];
+  if (entries.size + pending.length > WORKSPACE_BUNDLE_MAX_ENTRIES) fail("Workspace bundle exceeds the maximum entry count");
+  let hashedBytes = 0;
+  // Bounded: at most HASH_CONCURRENCY files open, and the byte budget is spent before a file is read.
+  const hashNext = async (): Promise<void> => {
+    for (let relativePath = pending.pop(); relativePath !== undefined; relativePath = pending.pop()) {
+      const filePath = path.join(directory, relativePath);
+      const info = await lstat(filePath).catch(() => undefined);
+      if (!info) continue; // deleted in the work tree: not an input any more
+      if (info.isSymbolicLink()) refuseLinks(relativePath, SYMLINK);
+      if (!info.isFile()) fail(`Workspace bundle input is not a regular file: ${relativePath}`);
+      hashedBytes += info.size;
+      if (hashedBytes > WORKSPACE_BUNDLE_MAX_BYTES) fail("Workspace bundle exceeds the maximum archive size");
+      entries.set(relativePath, { identity: await hashFile(filePath), mode: normalizeBundleMode(info.mode), path: validEntryPath(relativePath) });
+    }
+  };
+  await Promise.all(Array.from({ length: HASH_CONCURRENCY }, hashNext));
   return { directory, entries: sortEntries([...entries.values()]), mode: "dev" };
 };
 

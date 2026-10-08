@@ -1,4 +1,4 @@
-import { readdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { chmod, readdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -38,6 +38,9 @@ describe("workspace bundle cache", () => {
     expect(stored.tarPath).toBe(path.join(cache, `${key("a")}.tar`));
     expect((await readdir(cache)).sort()).toEqual([`${key("a")}.json`, `${key("a")}.tar`]);
     expect(await lookupCachedBundle(cache, key("a"))).toEqual(stored);
+    expect((await stat(stored.tarPath)).mode & 0o777).toBe(0o444);
+    await expect(writeFile(stored.tarPath, "tampered")).rejects.toThrow();
+    await chmod(stored.tarPath, 0o644);
     await writeFile(stored.tarPath, "tampered");
     expect(await lookupCachedBundle(cache, key("a"))).toBeUndefined();
     await writeFile(path.join(cache, `${key("b")}.json`), "{not json");
@@ -60,7 +63,9 @@ describe("workspace bundle cache", () => {
       const when = new Date(Date.UTC(2026, 0, 1 + index));
       await utimes(path.join(cache, `${key(character)}.json`), when, when);
     }
-    await pruneBundleCache(cache, new Set([key("a")]), 2);
+    await pruneBundleCache(cache, new Set([key("a")]), 2, Date.UTC(2026, 0, 1, 12));
+    expect((await readdir(cache)).filter((name) => name.endsWith(".tar"))).toHaveLength(4);
+    await pruneBundleCache(cache, new Set([key("a")]), 2, Date.UTC(2026, 1, 1));
     expect((await readdir(cache)).filter((name) => name.endsWith(".tar")).sort()).toEqual([key("a"), key("c"), key("d")].map((name) => `${name}.tar`));
     await pruneBundleCache(path.join(directory, "missing"), new Set());
   });

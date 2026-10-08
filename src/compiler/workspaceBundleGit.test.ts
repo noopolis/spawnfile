@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { listCommittedTree, listIndex, readStatus, resolveGitLocation, streamBlobs } from "./workspaceBundleGit.js";
+import { listCommittedTree, listIndex, readStableSnapshot, readStatus, readStatusAgainstHead, resolveGitLocation, streamBlobs } from "./workspaceBundleGit.js";
 
 const run = promisify(execFile);
 const git = (cwd: string, ...args: string[]) => run("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd });
@@ -48,6 +48,32 @@ describe("workspace bundle git queries", () => {
     });
     expect(seen).toEqual([{ bytes: 5, index: 0 }, { bytes: 280_000, index: 1 }, { bytes: 0, index: 2 }]);
     expect(ended).toBe(3);
+  });
+
+  it("reports status against the exact HEAD it compared, with repository-relative paths", async () => {
+    const tools = path.join(repo, "tools");
+    const head = (await git(repo, "rev-parse", "HEAD")).stdout.trim();
+    expect(await readStatusAgainstHead(tools)).toEqual({ changed: [], head });
+    await writeFile(path.join(tools, "a b.txt"), "spaced");
+    await writeFile(path.join(tools, "a.txt"), "changed");
+    expect(await readStatusAgainstHead(tools)).toEqual({ changed: ["tools/a.txt", "tools/a b.txt"], head });
+    const empty = await mkdtemp(path.join(os.tmpdir(), "spawnfile-bundle-unborn-"));
+    try { await git(empty, "init", "-q"); expect((await readStatusAgainstHead(empty)).head).toBe(""); } finally { await rm(empty, { force: true, recursive: true }); }
+  });
+
+  it("re-reads when the index changes during a snapshot, and gives up if it never settles", async () => {
+    const tools = path.join(repo, "tools"), location = await resolveGitLocation(tools);
+    let reads = 0;
+    const value = await readStableSnapshot(location, async () => {
+      reads += 1;
+      if (reads === 1) { await writeFile(path.join(tools, "a.txt"), "staged"); await git(repo, "add", "tools/a.txt"); }
+      return reads;
+    });
+    expect(value).toBe(2);
+    let churn = 0;
+    await expect(readStableSnapshot(location, async () => {
+      churn += 1; await writeFile(path.join(tools, "a.txt"), `churn ${churn}`); await git(repo, "add", "tools/a.txt");
+    })).rejects.toThrow(/kept changing/u);
   });
 
   it("fails closed on a missing object and on a failing consumer", async () => {

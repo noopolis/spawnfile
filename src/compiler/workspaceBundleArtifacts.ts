@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { copyFile, link, mkdir, readFile, rm, stat } from "node:fs/promises";
+import { copyFile, link, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { SpawnfileError } from "../shared/index.js";
 import type { CompilePlan } from "./types.js";
@@ -50,35 +50,41 @@ export const validateWorkspaceBundleTar = (bytes: Buffer): void => {
   if (!terminated) fail("Workspace bundle is truncated or lacks exact ustar termination"); if (entries === 0) fail("Workspace bundle is empty");
 };
 
-/** A verified archive is hard-linked into the context when it shares a filesystem, else cloned or copied. */
-const placeVerified = async (source: string, target: string): Promise<void> => {
+/** A cached archive is hard-linked into the context when it shares a filesystem, else cloned or copied. */
+const placeCached = async (source: string, target: string): Promise<void> => {
   try { await link(source, target); } catch { await copyFile(source, target, constants.COPYFILE_FICLONE); }
 };
 
 /**
- * Copies every bundle archive into the Docker context under its digest.
- * Digests in `verified` were built or hashed this compile and are cloned
- * without being read again; any other archive is a checksum-pinned prebuilt
- * tar and is hashed and validated here.
+ * Places every bundle archive in the Docker context under its digest.
+ * `built` maps digests to read-only cache archives that were built or
+ * stat-checked this compile; they are linked without being read again. Every
+ * `source` tar is hashed, validated and staged from the exact bytes that were
+ * verified, even when a built bundle shares its digest.
  */
-export const stageWorkspaceBundles = async (outputDirectory: string, plan: CompilePlan, verified: ReadonlyMap<string, string> = new Map()): Promise<boolean> => {
-  const bundles = new Map<string, string>();
+export const stageWorkspaceBundles = async (outputDirectory: string, plan: CompilePlan, built: ReadonlyMap<string, string> = new Map()): Promise<boolean> => {
+  const sources = new Map<string, string>(), cached = new Map<string, string>();
   for (const node of plan.nodes) if (node.kind === "agent") for (const resource of node.value.workspaceResources ?? []) {
     if (resource.kind !== "bundle") continue;
     if (resource.sha256 === undefined) throw new SpawnfileError("compile_error", `Workspace bundle ${resource.id} has not been built`);
-    const source = verified.get(resource.sha256) ?? path.resolve(path.dirname(resource.scope.key), resource.source ?? ""), prior = bundles.get(resource.sha256);
-    if (prior && prior !== source) throw new SpawnfileError("validation_error", "Workspace bundle digest maps to multiple sources"); bundles.set(resource.sha256, source);
+    if (resource.source === undefined) {
+      const archive = built.get(resource.sha256);
+      if (!archive) throw new SpawnfileError("compile_error", `Workspace bundle ${resource.id} has not been built`);
+      cached.set(resource.sha256, archive); continue;
+    }
+    const source = path.resolve(path.dirname(resource.scope.key), resource.source), prior = sources.get(resource.sha256);
+    if (prior && prior !== source) throw new SpawnfileError("validation_error", "Workspace bundle digest maps to multiple sources"); sources.set(resource.sha256, source);
   }
-  if (bundles.size === 0) return false;
+  if (sources.size === 0 && cached.size === 0) return false;
   const destination = path.join(outputDirectory, "container/workspace-bundles"); await mkdir(destination, { recursive: true });
-  for (const [identity, source] of bundles) {
-    // Never write through an existing name: with `clean: false` it may be a hard link into the bundle cache.
-    const target = path.join(destination, `${identity.slice(7)}.tar`); await rm(target, { force: true });
-    if (verified.get(identity) === source) { await placeVerified(source, target); continue; }
+  // Never write through an existing name: with `clean: false` it may be a hard link into the bundle cache.
+  const target = async (identity: string): Promise<string> => { const file = path.join(destination, `${identity.slice(7)}.tar`); await rm(file, { force: true }); return file; };
+  for (const [identity, source] of sources) {
     const info = await stat(source); if (!info.isFile() || info.size < 1 || info.size > CAP) throw new SpawnfileError("validation_error", "Workspace bundle must be a bounded regular tar file");
     const bytes = await readFile(source); const actual = `sha256:${createHash("sha256").update(bytes).digest("hex")}`; if (actual !== identity) throw new SpawnfileError("validation_error", "Workspace bundle checksum mismatch");
     validateWorkspaceBundleTar(bytes);
-    await copyFile(source, target);
+    await writeFile(await target(identity), bytes);
   }
+  for (const [identity, archive] of cached) if (!sources.has(identity)) await placeCached(archive, await target(identity));
   return true;
 };
