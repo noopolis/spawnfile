@@ -8,6 +8,7 @@ import {
   type LoadedManifest
 } from "../manifest/index.js";
 import { assignStableNodeIds } from "./helpers.js";
+import { resolvePlanMcpPlaceholders } from "./mcpPlaceholders.js";
 import { CompilePlan, CompilePlanEdge, CompilePlanNode, ResolvedTeamMembershipContext } from "./types.js";
 import { resolvePlanMoltnetAttachments } from "./moltnetResolution.js";
 import { resolvePlanMemoryAccess } from "./memoryResolution.js";
@@ -67,6 +68,8 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
         value: node.value
       }))
   );
+
+  resolvePlanMcpPlaceholders(nodes);
 
   const idBySource = new Map(nodes.map((node) => [node.value.source, node.id]));
 

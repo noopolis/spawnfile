@@ -16,6 +16,9 @@ src/compiler/
 ├── surfaceDefinitions.ts       # Shared surface-edit command types and manifest-shape helpers
 ├── surfaceSupport.ts           # Runtime surface compatibility checks during graph resolution
 ├── surfaces.ts                 # Resolved docs, skills, and shared-surface merging
+├── mcpServerInheritance.ts     # Shared MCP server inheritance: complete local entries replace, transport-less entries narrow tools/env
+├── mcpPlaceholders.ts          # Per-agent `${workspace}` / `${agent.id}` / `${agent.name}` resolution in MCP command/args/env
+├── preflightCompilePlan.ts     # `spawnfile validate` preflight: per-agent runtime-option errors and adapter refusals
 ├── buildCompilePlan.ts         # Manifest graph walk and plan construction
 ├── buildCompilePlanAgent.ts    # Shared referenced/inline agent-node resolution
 ├── buildCompilePlanTraversal.ts # Graph traversal + recursion by manifest kind
@@ -71,6 +74,14 @@ src/compiler/
 ```
 
 `buildCompilePlan.ts` resolves the graph. `compileProject.ts` consumes that resolved plan. Do not collapse those concerns.
+
+MCP placeholders resolve inside `buildCompilePlan.ts`, right after stable node
+ids exist, so compile, validate, and every other plan consumer see the same
+resolved servers. `${workspace}` expands through the runtime's
+`sourceWorkspacePathTemplate` (`expandSourceWorkspacePathTemplate` in
+`containerTargetResources.ts`) — the same source as workspace resource mount
+link paths — and stays in target placeholder vocabulary (`<instance-root>`,
+`<workspace-path>`) until container rendering substitutes it.
 
 ## Rules
 

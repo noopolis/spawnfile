@@ -43,6 +43,7 @@ export const resolveAgentNode = async ({
   assertRuntimeSupportsExecutionModelAuth(runtime.name, execution, manifest.name);
 
   const environment = resolveEffectiveEnvironment(
+    manifest.name,
     context.inheritedShared?.surface?.environment,
     manifest.environment
   );

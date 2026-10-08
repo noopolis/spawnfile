@@ -12,6 +12,8 @@ import { parseEveryScheduleMs } from "../scheduleUtils.js";
 import type { AdapterCompileResult, RuntimeAdapter } from "../types.js";
 
 import {
+  assertDaimonAgentOptions,
+  assertDaimonInstructionBounds,
   createDaimonContainerTargets,
   daimonMemoryCapabilityFor,
   daimonMemorySelectionWarning,
@@ -126,10 +128,15 @@ const daimonCodexPolicyError = (node: ResolvedAgentNode): string | undefined => 
  * organization, and the declaration this compiler lowers is one the runtime
  * actually honours. The remaining validations are engine-independent and stay.
  */
+// `${workspace}` in an MCP command resolves to the agent workspace under
+// `<instance-root>`, which container rendering makes absolute.
+const isTargetAbsolutePath = (value: string | undefined): boolean =>
+  value !== undefined && (value.startsWith("/") || value.startsWith("<instance-root>/"));
+
 const unsupportedAgentFeatures = (node: ResolvedAgentNode): void => {
   for (const server of node.mcpServers) {
     if (!server.tools?.length) throw new SpawnfileError("validation_error", `Daimon MCP server ${server.name} requires an explicit tools allowlist`);
-    if (server.transport === "stdio" && !server.command?.startsWith("/")) throw new SpawnfileError("validation_error", `Daimon stdio MCP server ${server.name} requires an absolute command`);
+    if (server.transport === "stdio" && !isTargetAbsolutePath(server.command)) throw new SpawnfileError("validation_error", `Daimon stdio MCP server ${server.name} requires an absolute command`);
   }
   const engine = resolveDaimonEngine(node);
   if (engine === "agy" && node.execution?.model) {
@@ -237,6 +244,13 @@ export const daimonAdapter: RuntimeAdapter = {
   },
   createContainerTargets: createDaimonContainerTargets,
   name: "daimon",
+  preflightAgent(node, nodeId) {
+    unsupportedAgentFeatures(node);
+    const codexPolicyError = daimonCodexPolicyError(node);
+    if (codexPolicyError) throw new SpawnfileError("validation_error", codexPolicyError);
+    assertDaimonAgentOptions(nodeId, node);
+    assertDaimonInstructionBounds(nodeId, node);
+  },
   prepareRuntimeAuth: prepareDaimonRuntimeAuth,
   systemInstructionSurface: {
     placement: "append_pointer",

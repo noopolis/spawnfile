@@ -487,6 +487,9 @@ describe("daimonAdapter", () => {
     const base = createDaimonNode("unsafe");
     await expect(daimonAdapter.compileAgent({ ...base, mcpServers: [{ name: "missing", transport: "stdio", command: "/bin/tool" }] } as any)).rejects.toThrow(/tools allowlist/u);
     await expect(daimonAdapter.compileAgent({ ...base, mcpServers: [{ name: "relative", transport: "stdio", command: "tool", tools: ["act"] }] } as any)).rejects.toThrow(/absolute command/u);
+    // A resolved `${workspace}` command is rooted at the target instance root, which rendering makes absolute.
+    await expect(daimonAdapter.compileAgent({ ...base, mcpServers: [{ name: "local", transport: "stdio", command: "<instance-root>/workspace/agents/unsafe/bin/tool", tools: ["act"] }] } as any)).resolves.toBeDefined();
+    await expect(daimonAdapter.compileAgent({ ...base, mcpServers: [{ name: "unresolved", transport: "stdio", command: "${workspace}/bin/tool", tools: ["act"] }] } as any)).rejects.toThrow(/absolute command/u);
     const agy = createDaimonNode("agy-tools", "agy-tools", "agy");
     // The same two MCP validations apply to AGY as to every other engine.
     await expect(daimonAdapter.compileAgent({ ...agy, mcpServers: [{ name: "missing", transport: "stdio", command: "/bin/tool" }] } as any)).rejects.toThrow(/tools allowlist/u);

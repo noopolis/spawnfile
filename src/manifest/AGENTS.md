@@ -8,7 +8,8 @@ This folder owns Spawnfile parsing and validation of user-authored schema.
 src/manifest/
 ├── index.ts                  # Barrel for manifest APIs
 ├── schemas.ts                # Zod schema and manifest type exports
-├── mcpSchemas.ts             # MCP auth and server schema fragments
+├── mcpSchemas.ts             # MCP auth, complete server, and agent override entry schema fragments
+├── parseManifest.ts          # YAML + schema parsing; errors name the file, kind, and name
 ├── inlineAgentMember.ts      # Inline-member to agent-manifest normalization
 ├── scaffold.ts               # Typed manifest scaffold builders
 ├── renderSpawnfile.ts        # YAML rendering for authored Spawnfiles
@@ -18,7 +19,7 @@ src/manifest/
 ├── teamNetworkAuthSchemas.ts # Team-network authentication and token schema fragments
 ├── teamNetworkServerSchemas.ts # Managed/external server and persistence schema fragments
 ├── skillFrontmatter.ts       # `SKILL.md` frontmatter parsing
-├── loadManifest.ts           # YAML loading and local manifest validation
+├── loadManifest.ts           # Manifest loading and local manifest validation
 ├── scaffold.test.ts          # Scaffold builder tests
 ├── renderSpawnfile.test.ts   # Manifest render tests
 ├── schemas.test.ts           # Schema validation tests

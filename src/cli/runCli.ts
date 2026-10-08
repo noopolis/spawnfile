@@ -26,6 +26,7 @@ import {
   createTrainingContext,
   initProject,
   listInitTemplates,
+  preflightCompilePlan,
   publishProject,
   upProject,
   removeProjectSurface,
@@ -356,6 +357,7 @@ export const runCli: RunCli = async (
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .action(async (inputPath: string) => {
       const plan = await handlers.buildCompilePlan(inputPath);
+      preflightCompilePlan(plan);
       streams.stdout("validation succeeded");
       streams.stdout(formatPlanSummary(plan));
     });
