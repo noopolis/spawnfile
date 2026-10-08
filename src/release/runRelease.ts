@@ -1,6 +1,6 @@
 import { normalizeDeploymentName } from "../deployment/index.js";
 
-import { controlTargetFor, recoverInterruptedDrain, resolveControlToken } from "./drainPhase.js";
+import { controlTargetFor, recoverInterruptedDrain, requestForTarget, resolveControlToken } from "./drainPhase.js";
 import {
   acquireReleaseLock,
   appendReleaseLog,
@@ -42,7 +42,9 @@ export const runRelease = async (request: ReleaseRequest, deps: ReleaseDependenc
     Object.assign(request, await deps.prepare(request));
     progress.stage = "recover";
     await recoverInterruptedDrain(request, deps, paths);
-    return await releaseLocked(request, deps, paths, progress);
+    progress.stage = "target";
+    const pinned = requestForTarget(request, await deps.pinTarget(request));
+    return await releaseLocked(pinned, deps, paths, progress);
   } catch (error) {
     return fail(request, deps, paths, progress, error);
   } finally {

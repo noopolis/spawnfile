@@ -40,6 +40,7 @@ const run = async (argv: string[], outcome: Partial<ReleaseOutcome> | Error) => 
   const deps = {
     compile: async (request: ReleaseRequest) => { seen = request; return failing(); },
     notify: async () => ({ channel: "command", delivered: true }),
+    pinTarget: async (request: ReleaseRequest) => ({ endpoint_fingerprint: "sha256:x", kind: "context", name: request.dockerContext ?? "default" }),
     prepare: async (request: ReleaseRequest) => ({ authProfile: null, envFileEnv: request.envFileEnv })
   } as unknown as ReleaseDependencies;
   registerReleaseCommand(program, { stderr: (line) => lines.push(line), stdout: (line) => lines.push(line) }, (code) => { exitCode = code; }, () => deps);
