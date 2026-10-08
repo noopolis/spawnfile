@@ -262,6 +262,58 @@ Rules:
 - In a concrete agent context, effective resource mounts MUST not overlap.
 - Team resources declared under `shared.workspace.resources` are inherited by direct concrete members and selected representatives through nested teams.
 
+### 2.1.2 Host-fed Volumes
+
+A `volume` resource MAY declare `feed`. Its content then comes from a host directory or a git ref and reaches running agents by atomic swap, never through the image: a content change never triggers a rebuild.
+
+```yaml
+workspace:
+  resources:
+    - id: shared-data
+      kind: volume
+      name: org-shared-data         # REQUIRED with feed: the host job addresses this exact volume
+      mount: ./repos/shared-data
+      mode: mutable                 # REQUIRED with feed: the host freezes each landed tree
+      sharing: team
+      feed:
+        git:                        # exactly one of git or directory
+          repo: ../data-repo        # host checkout; relative to this manifest
+          ref: origin/main          # default HEAD
+          paths: [published]        # optional subset; default the whole tree
+          fetch: true               # git fetch --prune origin before resolving; default false
+        # directory: ../published   # alternative source
+        validate: [node, scripts/check-shared-data.mjs]   # optional hook, run with cwd = this manifest's directory
+        keep: 1                     # retired trees kept beside the serving one; default 1, minimum 1
+        owner: "2000:2000"          # optional uid:gid applied to each staged tree before it lands
+```
+
+Rules:
+
+- `feed` MUST declare exactly one of `git` or `directory`. A fed volume MUST declare `name` and `mode: mutable`.
+- `git.paths` entries MUST be plain repository-relative paths and MUST name directories at the resolved commit.
+- The compiled artifacts of a fed volume MUST be identical to the same volume without `feed`; `feed` is consumed only by the host-side commands below.
+- A revision is content-addressed: a git revision is the digest of the selected tree ids, so a commit that does not change them lands nothing; a directory revision is the digest of the staged bytes.
+- Agents read content through `<mount>/current/`, a relative symlink to `trees/<revision>` (or `trees/<revision>.<generation>` after a re-land: a tree is never replaced under its own name). `<mount>/.spawnfile-feed.json` is the identity record (`spawnfile.volume-feed.v1`): resource, volume, revision, tree, file count, landing instant and source provenance (git commit, ref and paths). Until the first land neither exists, and readers MUST fail closed.
+- `spawnfile volume refresh <id> [path]` resolves the source; when the revision moved it copies the content into private staging outside the volume, runs `validate` (environment `SPAWNFILE_FEED_TREE`, `SPAWNFILE_FEED_REVISION`, `SPAWNFILE_FEED_RESOURCE`, `SPAWNFILE_FEED_PROVENANCE`; a non-zero exit lands nothing), freezes the tree read-only, moves it into `trees/` with one rename, replaces `current` with one rename, publishes the identity record, and retires older trees by renaming them out of the volume before deleting them. A retained tree is served again only if its manifest still matches and it passes `validate` as declared now; the hook may not modify the tree it validates. Retired trees beyond `keep` are chosen by the host's serving order. When the revision did not move it verifies the volume (every file hashed against the land-time manifest) and heals it: a drifted or missing tree is re-landed from the source as a new generation beside it (at most `--heal-limit` times per revision, default 3; the count resets only when a new revision lands), a moved link is restored, a forged identity record is republished. A name the host did not write is reported with the command that clears it and is never deleted.
+- `spawnfile volume verify <id> [path]` reports the same findings without changing anything.
+- Both commands locate the volume with `docker volume inspect` (or `--volume-path`) and keep host state (`landed.json`, manifests, staging, trash, lock) in `<volume host dir>/../spawnfile-feed` (or `--state-dir`), which MUST be outside the volume and on its filesystem. They refuse a volume whose root is not mode 0755 or that no container has initialized (no `.spawnfile-resource-identity`), and they never touch that sentinel.
+- One writer at a time: both commands take an exclusive lock in the state directory; a second writer exits 0 having done nothing. Exit 0 means clean (current, freshly landed, or busy); exit 1 means a finding (tampering, repaired or not) or a refusal, so a timer's failure hook notifies a human.
+
+A systemd timer that keeps a fed volume current:
+
+```ini
+# /etc/systemd/system/spawnfile-feed-shared-data.service
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/spawnfile volume refresh shared-data /srv/org
+# /etc/systemd/system/spawnfile-feed-shared-data.timer
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+[Install]
+WantedBy=timers.target
+```
+
 ### 2.2 Skills
 
 Each entry in `workspace.skills` or `shared.workspace.skills` MUST have a `ref` pointing to a skill directory. A skill directory MUST contain a `SKILL.md` file.

@@ -48,7 +48,8 @@ const orderWorkspaceResource = (resource: WorkspaceResource): unknown => {
     ["mount", resource.mount],
     ["mode", resource.mode],
     ["name", resource.name],
-    ["sharing", resource.sharing]
+    ["sharing", resource.sharing],
+    ["feed", resource.feed]
   ]);
 };
 

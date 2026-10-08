@@ -68,6 +68,7 @@ import { registerStatusCommand } from "./statusCommand.js";
 import { registerUsageCommand } from "./usageCommand.js";
 import { registerProductionTargetCommands } from "./targetProductionCommands.js";
 import { registerViewCommand } from "./viewCommand.js";
+import { registerVolumeCommands } from "./volumeCommands.js";
 import { registerTrainCommand } from "./trainCommand.js";
 import { delegatePaideiaTraining } from "./paideiaDelegation.js";
 
@@ -348,6 +349,9 @@ export const runCli: RunCli = async (
     commandExitCode = code;
   }, cliOptions.signal);
   registerProductionTargetCommands(program, streams, cliOptions.stdin, (exitCode) => {
+    commandExitCode = exitCode;
+  });
+  registerVolumeCommands(program, streams, (exitCode) => {
     commandExitCode = exitCode;
   });
 
