@@ -1,0 +1,30 @@
+{
+  "agy": {
+    "platforms": {
+      "amd64": {
+        "archive_sha512": "sha512:40225d4b1f009412e905f0a234ba3d51487038d1ad1b8fa19331c84be55610a01f5b0ad9916fb871151cc45456c6bc30cc0b1ea5dab6c0616bc8fb262bcdd7a9",
+        "executable_sha256": "sha256:2822292f90deea4556938a8728fe4ed02a1d66d1525cf75fa07a171e36a38c25",
+        "url": "https://github.com/google-antigravity/antigravity-cli/releases/download/1.1.22/agy_cli_linux_x64.tar.gz"
+      },
+      "arm64": {
+        "archive_sha512": "sha512:b37a718330eb5e270e1ca70135bf964a407ba626fbff7537ac58e094ea31bc623e6d216ef197188fe8b5c46e6f57aee64a3b7c9e23fc855cefee43fe434179d3",
+        "executable_sha256": "sha256:05b149ad7266acf96c5dfad10535a11ed9a6ceb9910149f4d6c66ce461daf9d1",
+        "url": "https://github.com/google-antigravity/antigravity-cli/releases/download/1.1.22/agy_cli_linux_arm64.tar.gz"
+      }
+    },
+    "version": "1.1.22"
+  },
+  "codex": {
+    "executable_sha256": "sha256:d3be844c45c4fd89392536e56e1010963f94785592596b50cd0c45bb8a341406",
+    "version": "0.142.3"
+  },
+  "daimon": {
+    "commit": "5b0309c75ff91f25f09ce90102fb28580e131138",
+    "package_version": "0.2.0",
+    "source": "https://github.com/noopolis/daimon-harness.git"
+  },
+  "image": "noopolis/spawnfile-runtime-daimon",
+  "platforms": ["amd64", "arm64"],
+  "registry": "docker.io",
+  "version": "spawnfile.daimon-runtime-publish-inputs.v1"
+}
