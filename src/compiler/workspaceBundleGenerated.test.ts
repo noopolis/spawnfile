@@ -91,6 +91,31 @@ describe("generated bundles", () => {
     expect(step.some((value) => value.endsWith(":/spawnfile/output"))).toBe(true);
   }, 60_000);
 
+  it("never caches output whose inputs or tools changed while the command ran, and keys exact tool bytes", async () => {
+    await writeFile(path.join(root, "org/Spawnfile"), agentSpawnfile([
+      "command: [sh, -c, \"echo late > source/b.txt; mkdir -p $SPAWNFILE_BUNDLE_OUTPUT/x; echo ok > $SPAWNFILE_BUNDLE_OUTPUT/x/ok\"]", "cwd: ../site", "inputs:", "  - root: ../site"
+    ]));
+    await expect(compile("out-race")).rejects.toThrow(/changed while it ran/u);
+    await rm(path.join(root, "site/source/b.txt"));
+    await writeFile(path.join(root, "org/Spawnfile"), agentSpawnfile(hostRecipe));
+    await compile("out-ws1");
+    await writeFile(path.join(root, "toolchain.txt"), "baker 1.0 \n");
+    await compile("out-ws2");
+    expect(await runs()).toBe(2);
+  }, 60_000);
+
+  it("pins a generated bundle by recipe without running its tools", async () => {
+    const { pinWorkspaceBundle } = await import("./workspaceBundleResolve.js");
+    const resource = {
+      build: { generated: { command: ["node", "tools/bake.js", "${output}"], cwd: "../site", inputs: [{ root: "../site" }], tools: [["sh", "-c", "touch tool-ran"]] } },
+      id: "assets", kind: "bundle" as const, mode: "readonly" as const, mount: "./assets", sharing: "per_agent" as const,
+      scope: { kind: "agent" as const, key: path.join(root, "org/Spawnfile"), name: "analyst" }
+    };
+    expect(await pinWorkspaceBundle(resource, { architecture: "amd64", cacheDirectory: path.join(root, "cache") })).toMatch(/^bundle-recipe:[a-f0-9]{64}$/u);
+    await expect(readFile(path.join(root, "site/tool-ran"))).rejects.toThrow();
+    expect(await runs()).toBe(0);
+  });
+
   it("refuses pinned refs, symlinks, empty output, failing commands and timeouts", async () => {
     const write = (lines: string[]) => writeFile(path.join(root, "org/Spawnfile"), agentSpawnfile(lines));
     await write([...hostRecipe.slice(0, 4), "    ref: HEAD"]);
@@ -101,7 +126,16 @@ describe("generated bundles", () => {
     await expect(compile("out-empty")).rejects.toThrow(/output is empty/u);
     await write(["command: [sh, -c, \"echo broken >&2; exit 4\"]", "inputs:", "  - root: ../site"]);
     await expect(compile("out-fail")).rejects.toThrow(/exited 4: broken/u);
-    await write(["command: [sleep, \"5\"]", "timeout_seconds: 1", "inputs:", "  - root: ../site"]);
+    await write(["command: [sh, -c, \"sleep 30 & wait\"]", "timeout_seconds: 1", "inputs:", "  - root: ../site"]);
+    const started = Date.now();
     await expect(compile("out-slow")).rejects.toThrow(/timed out/u);
+    expect(Date.now() - started).toBeLessThan(15_000);
+    await write(["command: [sh, -c, \"rmdir $SPAWNFILE_BUNDLE_OUTPUT && ln -s /etc $SPAWNFILE_BUNDLE_OUTPUT\"]", "inputs:", "  - root: ../site"]);
+    await expect(compile("out-root-link")).rejects.toThrow(/replaced by something other than a directory/u);
+    await write(["command: [node, tools/bake.js, \"${output}\"]", "cwd: ../site", `image: "${IMAGE}"`, "inputs:", "  - root: ../org"]);
+    await expect(compile("out-outside")).rejects.toThrow(/must live inside cwd/u);
+    await write(["command: [sh, -c, \"exit 5\"]", "cwd: ../site", `image: "${IMAGE}"`, "inputs:", "  - root: ../site"]);
+    await expect(compile("out-image-fail")).rejects.toThrow(/exited 5/u);
+    expect((await docker.invocations()).some((args) => args[0] === "rm" && args[1] === "--force")).toBe(true);
   }, 60_000);
 });

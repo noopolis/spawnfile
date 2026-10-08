@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import path from "node:path";
 
@@ -19,7 +20,7 @@ import {
   type BundleBuildContext,
   type BundleBuildPlan
 } from "./workspaceBundleKey.js";
-import { containerArgv, runBundleCommand } from "./workspaceBundleRun.js";
+import { bundleContainerName, runBundleCommand, runContainerStep } from "./workspaceBundleRun.js";
 import { walkBuiltTree } from "./workspaceBundleTree.js";
 
 type FilesSpec = NonNullable<WorkspaceBundleBuild["files"]>;
@@ -48,36 +49,53 @@ export const planFilesBundle = async (spec: FilesSpec, context: BundleBuildConte
   return { input: "files", key: computeWorkspaceBundleKey(input, context.platform), write: (temporaryTar) => writeBundleFiles(input, temporaryTar) };
 };
 
+const inside = (root: string, candidate: string): boolean => {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+};
+
 /**
- * `generated`: a declared command writes an output directory from declared
- * inputs. The key is every input's git identity, the command and working
- * directory, the pinned image (when the command runs in one, on the target
- * platform) and the captured stdout of each declared tool-version command;
- * the command runs only on a cache miss. Undeclared inputs and host
- * environment are not part of the key, so declare everything the command
- * reads. Inputs come from the work tree the command reads, so `ref` is
- * refused here.
+ * The recipe a generated bundle is keyed by: every input's git identity, the
+ * command, `cwd`, the image, and each tool command with its exact captured
+ * stdout (or, without capture, just its argv). Captured output is hashed as
+ * bytes, so whitespace changes count.
  */
-export const planGeneratedBundle = async (spec: GeneratedSpec, context: BundleBuildContext): Promise<BundleBuildPlan> => {
-  if (spec.inputs.some((input) => input.ref !== undefined)) {
-    throw new SpawnfileError("validation_error", "Generated bundle inputs cannot pin a ref: the command reads the work tree");
-  }
-  const cwd = await resolveBundleRoot(spec.cwd!);
+const generatedRecipe = async (spec: GeneratedSpec, cwd: string, context: BundleBuildContext, captureTools: boolean) => {
   const inputs = await Promise.all(spec.inputs.map((input) => resolveFilesInput(input, context)));
-  const container = (argv: readonly string[], mounts: ReadonlyArray<readonly [string, string]>) => containerArgv({
-    argv, dockerCommand: context.dockerCommand, image: spec.image!, mounts, platform: context.platform, workdir: CONTAINER_WORKDIR
-  });
   const tools = await Promise.all((spec.tools ?? []).map(async (tool) => ({
     argv: tool,
-    output: (await runBundleCommand({
-      argv: spec.image ? container(tool, [[cwd, CONTAINER_WORKDIR]]) : tool, cwd, timeoutMs: TOOL_TIMEOUT_MS
-    }, `Generated bundle tool ${tool.join(" ")}`)).trim()
+    output: captureTools ? createHash("sha256").update(spec.image
+      ? await runContainerStep({ argv: tool, dockerCommand: context.dockerCommand, image: spec.image, mounts: [[cwd, CONTAINER_WORKDIR]], name: bundleContainerName(), platform: context.platform, workdir: CONTAINER_WORKDIR }, TOOL_TIMEOUT_MS, `Generated bundle tool ${tool.join(" ")}`, cwd)
+      : await runBundleCommand({ argv: tool, cwd, timeoutMs: TOOL_TIMEOUT_MS }, `Generated bundle tool ${tool.join(" ")}`)).digest("hex") : null
   })));
-  const recipe = {
+  return {
     command: spec.command, cwd, image: spec.image ?? null,
     inputs: inputs.map((input) => ({ entries: filesIdentity(input), root: input.directory })),
     tools
   };
+};
+
+/**
+ * `generated`: a declared command writes an output directory from declared
+ * inputs. The key is the recipe above plus the target platform; the command
+ * runs only on a cache miss. After it runs the recipe is computed again and
+ * the build fails if any input or tool changed meanwhile, so output is never
+ * cached under a key that does not describe what it was built from.
+ * Undeclared inputs and host environment are not part of the key, so declare
+ * everything the command reads. Inputs come from the work tree the command
+ * reads, so `ref` is refused; with `image`, only `cwd` is mounted, so every
+ * input must live inside it. `captureTools: false` keys tools by argv only and
+ * runs nothing (used for pins).
+ */
+export const planGeneratedBundle = async (spec: GeneratedSpec, context: BundleBuildContext, options: { captureTools?: boolean } = {}): Promise<BundleBuildPlan> => {
+  if (spec.inputs.some((input) => input.ref !== undefined)) {
+    throw new SpawnfileError("validation_error", "Generated bundle inputs cannot pin a ref: the command reads the work tree");
+  }
+  const cwd = await resolveBundleRoot(spec.cwd!), captureTools = options.captureTools ?? true;
+  if (spec.image && (await Promise.all(spec.inputs.map((input) => resolveBundleRoot(input.root)))).some((root) => !inside(cwd, root))) {
+    throw new SpawnfileError("validation_error", "Generated bundle inputs must live inside cwd when the command runs in an image: only cwd is mounted");
+  }
+  const recipe = await generatedRecipe(spec, cwd, context, captureTools);
   return {
     input: "generated",
     key: computeRecipeBundleKey("generated", recipe, context.platform),
@@ -87,14 +105,18 @@ export const planGeneratedBundle = async (spec: GeneratedSpec, context: BundleBu
       try {
         const target = spec.image ? CONTAINER_OUTPUT : output;
         const argv = spec.command.map((part) => part.split(GENERATED_OUTPUT_PLACEHOLDER).join(target));
-        await runBundleCommand({
-          argv: spec.image ? containerArgv({
+        const label = `Generated bundle command ${spec.command.join(" ")}`, timeoutMs = (spec.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1_000;
+        if (spec.image) {
+          await runContainerStep({
             argv, dockerCommand: context.dockerCommand, env: { SPAWNFILE_BUNDLE_OUTPUT: target }, image: spec.image,
-            mounts: [[cwd, CONTAINER_WORKDIR], [output, CONTAINER_OUTPUT]], platform: context.platform, workdir: CONTAINER_WORKDIR
-          }) : argv,
-          cwd, env: { ...process.env, SPAWNFILE_BUNDLE_OUTPUT: target },
-          timeoutMs: (spec.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1_000
-        }, `Generated bundle command ${spec.command.join(" ")}`);
+            mounts: [[cwd, CONTAINER_WORKDIR], [output, CONTAINER_OUTPUT]], name: bundleContainerName(), platform: context.platform, workdir: CONTAINER_WORKDIR
+          }, timeoutMs, label, cwd);
+        } else {
+          await runBundleCommand({ argv, cwd, env: { ...process.env, SPAWNFILE_BUNDLE_OUTPUT: target }, timeoutMs }, label);
+        }
+        if (JSON.stringify(await generatedRecipe(spec, cwd, context, captureTools)) !== JSON.stringify(recipe)) {
+          throw new SpawnfileError("validation_error", `${label}: inputs or tools changed while it ran; nothing was cached, retry`);
+        }
         return await writeBundleFiles(await walkBuiltTree(output), temporaryTar);
       } finally {
         await rm(output, { force: true, recursive: true });

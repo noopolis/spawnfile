@@ -13,13 +13,14 @@ const SCRIPT = String.raw`#!/usr/bin/env node
 const fs = require("node:fs"), path = require("node:path"), { spawnSync } = require("node:child_process");
 const args = process.argv.slice(2);
 fs.appendFileSync(process.env.FAKE_DOCKER_LOG, JSON.stringify(args) + "\n");
+if (args[0] === "rm") process.exit(0);
 if (args[0] !== "run") process.exit(64);
 const mounts = [], env = {}; let platform = "", workdir = "/", index = 1;
 for (; index < args.length; index += 1) {
   const flag = args[index];
   if (flag === "--rm") continue;
   if (flag === "--platform") platform = args[++index];
-  else if (flag === "--user" || flag === "--network") index += 1;
+  else if (flag === "--user" || flag === "--network" || flag === "--name") index += 1;
   else if (flag === "--volume") { const value = args[++index], at = value.lastIndexOf(":"); mounts.push([value.slice(at + 1), value.slice(0, at)]); }
   else if (flag === "--workdir") workdir = args[++index];
   else if (flag === "--env") { const value = args[++index], at = value.indexOf("="); env[value.slice(0, at)] = value.slice(at + 1); }

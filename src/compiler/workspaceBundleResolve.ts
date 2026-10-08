@@ -23,10 +23,10 @@ import { resolveBundleBuildPaths, type ResolvedWorkspaceResource } from "./works
 import type { WorkspaceBundleBuild } from "../manifest/index.js";
 
 /** One build plan per declaration; `build` paths are already absolute. */
-export const planBundleBuild = (build: WorkspaceBundleBuild, context: BundleBuildContext): Promise<BundleBuildPlan> =>
+export const planBundleBuild = (build: WorkspaceBundleBuild, context: BundleBuildContext, options: { captureTools?: boolean } = {}): Promise<BundleBuildPlan> =>
   build.files ? planFilesBundle(build.files, context)
     : build.dependencies ? planDependenciesBundle(build.dependencies, context)
-      : planGeneratedBundle(build.generated!, context);
+      : planGeneratedBundle(build.generated!, context, options);
 
 /** Explicit, else the same target-arch override the Moltnet binaries honour, else the host. */
 export const resolveBundleArchitecture = (architecture?: MoltnetTargetArchitecture): MoltnetTargetArchitecture => {
@@ -79,7 +79,9 @@ type BundleFacts = Omit<CompileReportWorkspaceBundle, "id">;
  * A stable pin for a bundle without building it: the declared or computed
  * archive digest for a prebuilt tar, else `bundle-key:<key>` — the cache key a
  * dev compile for the target architecture would build under, which moves with
- * every input, recipe and platform change. No install or generator runs.
+ * every input, recipe and platform change — or, for a generated bundle,
+ * `bundle-recipe:<key>`, the same key with tools identified by argv only.
+ * Nothing is installed, generated or executed.
  */
 export const pinWorkspaceBundle = async (resource: BundleResource, options: { architecture?: MoltnetTargetArchitecture; cacheDirectory?: string; dockerCommand?: string } = {}): Promise<string> => {
   const base = path.dirname(resource.scope.key);
@@ -87,8 +89,9 @@ export const pinWorkspaceBundle = async (resource: BundleResource, options: { ar
   const plan = await planBundleBuild(resolveBundleBuildPaths(resource.build!, base), {
     dockerCommand: options.dockerCommand ?? "docker", identity: "dev", outputReal: path.join(base, ".spawnfile-no-output"),
     platform: `linux/${resolveBundleArchitecture(options.architecture)}`, workRoot: path.join(resolveWorkspaceBundleCacheDirectory(options.cacheDirectory), "work")
-  });
-  return `bundle-key:${plan.key}`;
+  }, { captureTools: false });
+  // A generated bundle's build key includes captured tool output, which a pin never executes to obtain.
+  return `${plan.input === "generated" ? "bundle-recipe" : "bundle-key"}:${plan.key}`;
 };
 
 /**
