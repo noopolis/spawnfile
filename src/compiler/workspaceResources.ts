@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { TeamWorkspaceResource } from "../manifest/index.js";
+import type { TeamWorkspaceResource, WorkspaceBundleBuild } from "../manifest/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { createShortHash, slugify } from "./helpers.js";
@@ -49,11 +49,20 @@ const normalizeMount = (value: string): string => {
   return collapsed.length > 1 ? collapsed.replace(/\/+$/u, "") : "/";
 };
 
+/** A bundle build declaration with every relative path resolved against the declaring manifest's directory. */
+export const resolveBundleBuildPaths = (build: WorkspaceBundleBuild, base: string): WorkspaceBundleBuild => {
+  const files = (input: NonNullable<WorkspaceBundleBuild["files"]>) => ({ ...input, root: path.resolve(base, input.root) });
+  if (build.files) return { files: files(build.files) };
+  if (build.dependencies) return { dependencies: { ...build.dependencies, directory: path.resolve(base, build.dependencies.directory) } };
+  const generated = build.generated!;
+  return { generated: { ...generated, cwd: path.resolve(base, generated.cwd ?? "."), inputs: generated.inputs.map(files) } };
+};
+
 const normalizeResourceIdentity = (resource: ResolvedWorkspaceResource): string => {
   if (resource.kind === "bundle") {
     // Relative paths compare as resolved against their declaring manifest: the same text in two directories is two inputs.
     const base = path.dirname(resource.scope.key);
-    const build = resource.build && { files: { ...resource.build.files, root: path.resolve(base, resource.build.files.root) } };
+    const build = resource.build && resolveBundleBuildPaths(resource.build, base);
     return JSON.stringify({ build: build ?? null, kind: resource.kind, mode: resource.mode, mount: normalizeMount(resource.mount), sha256: resource.sha256 ?? null, source: resource.source === undefined ? null : path.resolve(base, resource.source), sharing: resource.sharing });
   }
   if (resource.kind === "git") {

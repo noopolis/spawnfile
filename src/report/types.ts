@@ -300,6 +300,8 @@ export interface CompileReportWorkspaceBundle {
   file_count?: number;
   id: string;
   identity?: "dev" | "release";
+  /** Input kind of a built bundle. */
+  input?: "dependencies" | "files" | "generated";
   origin: "built" | "prebuilt";
   platform?: string;
   sha256: string;

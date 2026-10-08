@@ -343,7 +343,8 @@ export type {
   TeamNetworkRoom,
   TeamNetworkServer,
   TeamWorkspace,
-  TeamWorkspaceResource
+  TeamWorkspaceResource,
+  WorkspaceBundleBuild
 } from "./teamNetworkSchemas.js";
 export { isDeclaredPairedRemoteRoomMember } from "./teamNetworkSchemas.js";
 

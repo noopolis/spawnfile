@@ -9,6 +9,7 @@ import { validateWorkspaceBundleTar } from "./workspaceBundleArtifacts.js";
 import {
   compileExcludePatterns,
   resolveBundleRoot,
+  resolveCommittedFiles,
   resolveDevFiles,
   resolveReleaseFiles,
   writeBundleFiles
@@ -99,6 +100,18 @@ describe("workspace bundle file inputs", () => {
     expect(await readFile(path.join(repo, "server.mjs"), "utf8")).toBe("export const ok = false;\n");
     await writeFile(path.join(tools, "server.mjs"), "changed again\n");
     await expect(writeBundleFiles(after, path.join(repo, "raced.tar"))).rejects.toThrow(/changed while the bundle was built/u);
+  });
+
+  it("archives a pinned ref from the object store regardless of the work tree", async () => {
+    const pinned = (await git(repo, "rev-parse", "HEAD")).stdout.trim();
+    await writeFile(path.join(tools, "server.mjs"), "dirty\n");
+    await writeFile(path.join(tools, "untracked.mjs"), "new\n");
+    const input = await resolveCommittedFiles(tools, pinned, exclude);
+    expect(input.entries.map((entry) => entry.path)).toEqual([".gitignore", "lib/util.mjs", "run.sh", "server.mjs"]);
+    await writeBundleFiles(input, path.join(repo, "pinned.tar"));
+    expect((await run("tar", ["-xOf", "pinned.tar", "server.mjs"], { cwd: repo })).stdout).toBe("export const ok = true;\n");
+    await expect(resolveCommittedFiles(tools, "no-such-ref", exclude)).rejects.toThrow(/does not name a commit/u);
+    await expect(resolveCommittedFiles(tools, "--output=/tmp/x", exclude)).rejects.toThrow(/does not name a commit/u);
   });
 
   it("refuses symlinks, submodules, nested repositories and non-directory roots unless excluded", async () => {

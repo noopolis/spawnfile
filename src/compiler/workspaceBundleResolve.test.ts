@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { compileProject } from "./compileProject.js";
 import { linkBuiltBundle } from "./workspaceBundleArtifacts.js";
-import { computeWorkspaceBundleKey, resolveBundleArchitecture, resolveWorkspaceBundles } from "./workspaceBundleResolve.js";
+import { computeWorkspaceBundleKey, pinWorkspaceBundle, resolveBundleArchitecture, resolveWorkspaceBundles } from "./workspaceBundleResolve.js";
 import type { CompilePlan } from "./types.js";
 
 const run = promisify(execFile);
@@ -146,6 +146,20 @@ describe("workspace bundle resolution", () => {
       if (previous === undefined) delete process.env.SPAWNFILE_MOLTNET_TARGET_ARCH; else process.env.SPAWNFILE_MOLTNET_TARGET_ARCH = previous;
     }
     expect(await linkBuiltBundle(path.join(repo, "gone.tar"), path.join(repo, "out-gone"), `sha256:${"1".repeat(64)}`)).toBeUndefined();
+  });
+
+  it("pins built bundles by cache key without building them", async () => {
+    const plan = { kind: "bundle" as const, build: { files: { root: "../tools" } }, id: "tools", mode: "readonly" as const, mount: "./tools", sharing: "per_agent" as const, scope: { kind: "agent" as const, key: path.join(repo, "org/Spawnfile"), name: "analyst" } };
+    const pin = await pinWorkspaceBundle(plan, { architecture: "amd64", cacheDirectory: cache });
+    expect(pin).toMatch(/^bundle-key:[a-f0-9]{64}$/u);
+    expect(await pinWorkspaceBundle(plan, { architecture: "arm64", cacheDirectory: cache })).not.toBe(pin);
+    await writeFile(path.join(repo, "tools/server.mjs"), "changed\n");
+    expect(await pinWorkspaceBundle(plan, { architecture: "amd64", cacheDirectory: cache })).not.toBe(pin);
+    await expect(readdir(cache)).rejects.toThrow();
+    await run("tar", ["--format=ustar", "-cf", "../prebuilt.tar", "server.mjs"], { cwd: path.join(repo, "tools") });
+    const prebuilt = { ...plan, build: undefined, source: "../prebuilt.tar" };
+    expect(await pinWorkspaceBundle(prebuilt)).toBe(`sha256:${createHash("sha256").update(await readFile(path.join(repo, "prebuilt.tar"))).digest("hex")}`);
+    expect(await pinWorkspaceBundle({ ...prebuilt, sha256: `sha256:${"e".repeat(64)}` })).toBe(`sha256:${"e".repeat(64)}`);
   });
 
   it("leaves plans without unresolved bundles untouched", async () => {

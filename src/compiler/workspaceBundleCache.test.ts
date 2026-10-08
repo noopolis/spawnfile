@@ -1,4 +1,5 @@
-import { chmod, readdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, readdir, readFile, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -35,8 +36,8 @@ describe("workspace bundle cache", () => {
     const cache = path.join(directory, "cache");
     expect(await lookupCachedBundle(cache, key("a"))).toBeUndefined();
     const stored = await storeBuiltBundle(cache, key("a"), build("one"));
-    expect(stored.tarPath).toBe(path.join(cache, `${key("a")}.tar`));
-    expect((await readdir(cache)).sort()).toEqual([`${key("a")}.json`, `${key("a")}.tar`]);
+    expect(stored.tarPath).toBe(path.join(cache, `${key("a")}.${stored.sha256.slice(7)}.tar`));
+    expect((await readdir(cache)).sort()).toEqual([`${key("a")}.${stored.sha256.slice(7)}.tar`, `${key("a")}.json`]);
     expect(await lookupCachedBundle(cache, key("a"))).toEqual(stored);
     expect((await stat(stored.tarPath)).mode & 0o777).toBe(0o444);
     await expect(writeFile(stored.tarPath, "tampered")).rejects.toThrow();
@@ -49,6 +50,16 @@ describe("workspace bundle cache", () => {
     expect(await lookupCachedBundle(cache, key("a"))).toBeUndefined();
     await writeFile(path.join(cache, `${key("b")}.json`), "{not json");
     expect(await lookupCachedBundle(cache, key("b"))).toBeUndefined();
+  });
+
+  it("never pairs one concurrent writer's digest with another writer's bytes", async () => {
+    const cache = path.join(directory, "cache");
+    const [left, right] = await Promise.all([storeBuiltBundle(cache, key("e"), build("left")), storeBuiltBundle(cache, key("e"), build("right"))]);
+    const digestOf = async (file: string) => `sha256:${createHash("sha256").update(await readFile(file)).digest("hex")}`;
+    expect(await digestOf(left.tarPath)).toBe(left.sha256);
+    expect(await digestOf(right.tarPath)).toBe(right.sha256);
+    const hit = (await lookupCachedBundle(cache, key("e")))!;
+    expect(await digestOf(hit.tarPath)).toBe(hit.sha256);
   });
 
   it("validates before publishing and leaves nothing behind on failure", async () => {
@@ -66,11 +77,12 @@ describe("workspace bundle cache", () => {
       await storeBuiltBundle(cache, key(character), build(character));
       const when = new Date(Date.UTC(2026, 0, 1 + index));
       await utimes(path.join(cache, `${key(character)}.json`), when, when);
+      if (character === "b") await storeBuiltBundle(cache, key("b"), build("b-variant")).then(() => utimes(path.join(cache, `${key("b")}.json`), when, when));
     }
     await pruneBundleCache(cache, new Set([key("a")]), 2, Date.UTC(2026, 0, 1, 12));
-    expect((await readdir(cache)).filter((name) => name.endsWith(".tar"))).toHaveLength(4);
+    expect((await readdir(cache)).filter((name) => name.endsWith(".tar"))).toHaveLength(5);
     await pruneBundleCache(cache, new Set([key("a")]), 2, Date.UTC(2026, 1, 1));
-    expect((await readdir(cache)).filter((name) => name.endsWith(".tar")).sort()).toEqual([key("a"), key("c"), key("d")].map((name) => `${name}.tar`));
+    expect((await readdir(cache)).filter((name) => name.endsWith(".tar")).map((name) => name.slice(0, 64)).sort()).toEqual([key("a"), key("c"), key("d")]);
     await pruneBundleCache(path.join(directory, "missing"), new Set());
   });
 });

@@ -8,6 +8,7 @@ import { buildCompilePlan } from "../buildCompilePlan.js";
 import { stableStringify } from "../helpers.js";
 import { resolveEffectiveModelTarget } from "../modelEnv.js";
 import type { CompilePlanNode, ResolvedAgentNode } from "../types.js";
+import { pinWorkspaceBundle } from "../workspaceBundleResolve.js";
 import { TRAINING_CONTEXT_VERSION, trainingContextSchema, type TrainingContext, type TrainingSource } from "./contract.js";
 
 const sha256 = (value: string | Buffer): string => `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -91,11 +92,11 @@ export const createTrainingContext = async (
       model: primary ? { provider: primary.provider, name: primary.name, authMethod: primary.auth.method } : null
     },
     sources, documents, skills,
-    resources: (agent.workspaceResources ?? []).map((resource) => ({
+    resources: await Promise.all((agent.workspaceResources ?? []).map(async (resource) => ({
       id: resource.id, kind: resource.kind, mount: resource.mount, mode: resource.mode, sharing: resource.sharing,
       definitionDigest: sha256(stableStringify(resource)),
-      pin: resource.kind === "bundle" ? resource.sha256 ?? null : resource.kind === "git" ? resource.ref ?? null : null
-    })),
+      pin: resource.kind === "bundle" ? await pinWorkspaceBundle(resource) : resource.kind === "git" ? resource.ref ?? null : null
+    }))),
     requirements: { nativeCompilation: true, isolatedPreparation: true }
   });
 };

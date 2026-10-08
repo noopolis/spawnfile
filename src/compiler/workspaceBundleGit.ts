@@ -102,9 +102,12 @@ export const readStatus = async (directory: string): Promise<GitStatusEntry[]> =
     { index: record[0]!, path: record.slice(3), worktree: record[1]! }
   ));
 
+/** The commit a revision names, or "" when it names none. */
+export const resolveCommit = async (directory: string, revision: string): Promise<string> =>
+  revision.startsWith("-") ? "" : git(directory, ["rev-parse", "-q", "--verify", "--end-of-options", `${revision}^{commit}`]).then((output) => output.toString("utf8").trim(), () => "");
+
 /** The HEAD commit id, or "" when the repository has none. */
-export const resolveHead = async (directory: string): Promise<string> =>
-  git(directory, ["rev-parse", "-q", "--verify", "HEAD^{commit}"]).then((output) => output.toString("utf8").trim(), () => "");
+export const resolveHead = async (directory: string): Promise<string> => resolveCommit(directory, "HEAD");
 
 /**
  * The commit `git status` compared against and every changed path under
