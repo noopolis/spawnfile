@@ -15,12 +15,12 @@ src/volume/
 ├── feedProject.ts     # Project + resource id -> FeedTarget; docker volume host path
 ├── feedSource.ts      # Directory and git sources: content-addressed revision, staging copy
 ├── feedLayout.ts      # Every rule about what may touch the volume: lstat guards, freeze, land, link swap
-├── feedManifest.ts    # Land-time manifest outside the volume; cheap stat pass, hash only touched files
+├── feedManifest.ts    # Land-time manifest outside the volume; every file hashed on every check
 ├── feedRecord.ts      # Host record (outside) and identity record (inside the volume)
 ├── feedLand.ts        # Stage -> validation hook -> freeze -> one rename in -> current swap -> record -> GC
 ├── feedRefresh.ts     # Refresh/verify orchestration, healing, heal limit, under the lock
 ├── feedVerify.ts      # Integrity sweep against the host record; never throws
-├── feedLock.ts        # O_EXCL single-writer lock with guarded stale reclaim
+├── feedLock.ts        # O_EXCL single-writer lock; stale reclaim only for provably dead holders
 └── feedTestKit.ts     # Temp-dir fixture shaped like a container-initialized volume
 ```
 
@@ -29,8 +29,9 @@ src/volume/
 ```text
 <volume>/.spawnfile-resource-identity   container's sentinel; never touched
 <volume>/.spawnfile-feed.json           identity record agents read (an output, never an input)
-<volume>/current -> trees/<revision>    the only path agents read content through
-<volume>/trees/<revision>/              frozen content, never rewritten in place
+<volume>/current -> trees/<name>        the only path agents read content through
+<volume>/trees/<revision>[.<gen>]/      frozen content, never rewritten or replaced in place;
+                                        a re-land lands as a new generation beside the drifted tree
 <state>/landed.json, manifests/, staging/, trash/, lock   host state, outside the volume
 ```
 
@@ -48,5 +49,11 @@ src/volume/
 - Host state stays outside the volume and on its filesystem (same-device check).
 - Domain rules about what content must contain stay with the organization, as the
   declared `validate` command. Keep this folder generic.
+- Retirement follows the host record's serving order, never filesystem mtimes.
+- Known limits, stated so nobody overclaims them: a reader that holds a descriptor
+  or working directory inside a tree that is later retired (beyond `keep`) can see
+  it deleted; and path checks are lstat-then-act, not descriptor-relative (Node has
+  no openat), so an agent racing a host operation on a tree it can still reach is
+  detected by the next verify rather than prevented.
 - `feedAtomicity.test.ts` and `feedLock.test.ts` are the guarantees. A change that
   weakens a rename, a link swap or the lock must turn one of them red.

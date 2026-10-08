@@ -14,7 +14,7 @@ const identity: FeedIdentity = {
   files: 1, landed_at: "2026-01-01T00:00:00Z", resource: "r", revision, source: { kind: "directory" },
   tree: `trees/${revision}`, version: "spawnfile.volume-feed.v1", volume: "v"
 };
-const record: FeedLandedRecord = { heals: {}, identity, identity_sha256: "b".repeat(64), revision, trees: [revision], version: "spawnfile.volume-feed-landed.v1" };
+const record: FeedLandedRecord = { heals: {}, identity, identity_sha256: "b".repeat(64), revision, tree: revision, trees: [revision], version: "spawnfile.volume-feed-landed.v1" };
 
 describe("feed records", () => {
   it("names every way an identity record is wrong", () => {
@@ -25,16 +25,17 @@ describe("feed records", () => {
       "version must be spawnfile.volume-feed.v1", "revision must be a 64-character hex digest", "resource must name the volume resource",
       "volume must name the host volume", "files must be a count", "landed_at must be an instant", "source must describe a git or directory source"
     ]);
-    expect(feedIdentityFindings({ ...identity, tree: "trees/other" })).toEqual([`tree must be trees/${revision}`]);
+    expect(feedIdentityFindings({ ...identity, tree: "trees/other" })).toEqual([`tree must be trees/${revision}[.<generation>]`]);
+    expect(feedIdentityFindings({ ...identity, tree: `trees/${revision}.2` })).toEqual([]);
     expect(feedIdentityFindings({ ...identity, source: { kind: "other" } })).toEqual(["source must describe a git or directory source"]);
   });
 
   it("names every way a host record is wrong", () => {
     expect(feedLandedFindings(record)).toEqual([]);
     expect(feedLandedFindings("x")).toEqual(["must be a JSON object"]);
-    expect(feedLandedFindings({ ...record, trees: ["c".repeat(64)] })).toEqual(["trees must include the serving revision"]);
-    expect(feedLandedFindings({ ...record, trees: "x" })).toContain("trees must list landed revisions");
-    expect(feedLandedFindings({ ...record, revision: "c".repeat(64), trees: ["c".repeat(64)] })).toEqual(["identity must describe the serving revision"]);
+    expect(feedLandedFindings({ ...record, trees: [revision, "c".repeat(64)] })).toEqual(["trees must end with the serving tree"]);
+    expect(feedLandedFindings({ ...record, trees: "x" })).toContain("trees must list landed tree names");
+    expect(feedLandedFindings({ ...record, tree: "c".repeat(64), trees: ["c".repeat(64)] })).toEqual(["tree must name a tree of the serving revision", "identity must describe the serving tree"]);
     expect(feedLandedFindings({ ...record, heals: [], identity_sha256: "x", version: "v" })).toEqual([
       "version must be spawnfile.volume-feed-landed.v1", "identity_sha256 must be a hex digest", "heals must be an object"
     ]);

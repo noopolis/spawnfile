@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import { FEED_IDENTITY_FILE, VOLUME_RESOURCE_SENTINEL } from "./feedLayout.js";
 import { acquireFeedLock } from "./feedLock.js";
 import { feedIdentityFindings, readFeedLanded } from "./feedRecord.js";
 import { feedResultClean, refreshVolumeFeed, verifyVolumeFeed } from "./feedRefresh.js";
+import { digestDirectory } from "./feedSource.js";
 import { createFeedFixture, writeSourceFiles, type FeedFixture } from "./feedTestKit.js";
 
 let fixture: FeedFixture;
@@ -48,7 +49,8 @@ describe("refreshVolumeFeed", () => {
     expect(trees(fixture.volume)).toEqual([second.revision, third].sort());
     expect(readFileSync(path.join(fixture.volume, "current", "nested", "b.txt"), "utf8")).toBe("b\n");
     expect(readdirSync(path.join(fixture.target.stateDir, "trash"))).toEqual([]);
-    expect(readFeedLanded(fixture.target.stateDir).record?.trees).toEqual([second.revision, third].sort());
+    // Serving order, not alphabetical: the serving tree is last.
+    expect(readFeedLanded(fixture.target.stateDir).record?.trees).toEqual([second.revision, third]);
     expect(existsSync(path.join(fixture.target.stateDir, "manifests", `${first}.json`))).toBe(false);
   });
 
@@ -85,6 +87,8 @@ describe("refreshVolumeFeed", () => {
     expect(() => refreshVolumeFeed(fixture.target)).toThrow(/must be 0755/u);
     chmodSync(fixture.volume, 0o755);
     expect(() => refreshVolumeFeed({ ...fixture.target, stateDir: path.join(fixture.volume, "state") })).toThrow(/outside the volume/u);
+    expect(() => verifyVolumeFeed({ ...fixture.target, stateDir: path.join(fixture.volume, "..state") })).toThrow(/outside the volume/u);
+    expect(readdirSync(fixture.volume)).toEqual([VOLUME_RESOURCE_SENTINEL]);
   });
 
   it("returns busy and changes nothing while another writer holds the lock", () => {
@@ -105,10 +109,11 @@ describe("tamper verification and healing", () => {
     writeFileSync(file, content);
   };
 
-  it("re-lands a same-size rewrite from the source, then suspends after the heal limit", () => {
+  it("re-lands a same-size rewrite beside the drifted tree, then suspends after the heal limit", () => {
     fixture = createFeedFixture({ healLimit: 2 });
     const landed = refreshVolumeFeed(fixture.target).revision as string;
-    const file = path.join(fixture.volume, "trees", landed, "a.txt");
+    const serving = (): string => path.join(fixture.volume, current(fixture.volume), "a.txt");
+    const file = serving();
     rewrite(file, "ALPHA\n");
     expect(verifyVolumeFeed(fixture.target)).toMatchObject({ status: "tampered" });
     expect(verifyVolumeFeed(fixture.target).findings.join("\n")).toMatch(/a\.txt changed/u);
@@ -116,21 +121,101 @@ describe("tamper verification and healing", () => {
     expect(healed.status).toBe("repaired");
     expect(feedResultClean(healed)).toBe(false);
     expect(readFileSync(path.join(fixture.volume, "current", "a.txt"), "utf8")).toBe("alpha\n");
-    expect(readFeedLanded(fixture.target.stateDir).record?.heals).toEqual({ [landed]: 1 });
-    rewrite(file, "ALPHA\n");
-    expect(refreshVolumeFeed(fixture.target).status).toBe("repaired");
-    rewrite(file, "ALPHA\n");
-    expect(refreshVolumeFeed(fixture.target).status).toBe("suspended");
+    expect(current(fixture.volume)).toBe(`trees/${landed}.1`);
+    // The drifted tree was never replaced under its own name; it stays until it is retired.
     expect(readFileSync(file, "utf8")).toBe("ALPHA\n");
+    expect(readFeedLanded(fixture.target.stateDir).record?.heals).toEqual({ [landed]: 1 });
+    rewrite(serving(), "ALPHA\n");
+    expect(refreshVolumeFeed(fixture.target).status).toBe("repaired");
+    expect(current(fixture.volume)).toBe(`trees/${landed}.2`);
+    expect(trees(fixture.volume)).toEqual([`${landed}.1`, `${landed}.2`]);
+    rewrite(serving(), "ALPHA\n");
+    expect(refreshVolumeFeed(fixture.target).status).toBe("suspended");
+    expect(readFileSync(serving(), "utf8")).toBe("ALPHA\n");
   });
 
-  it("clears the heal count once the volume verifies clean", () => {
+  it("keeps the heal count through clean refreshes and resets it when a new revision lands", () => {
     fixture = createFeedFixture();
     const landed = refreshVolumeFeed(fixture.target).revision as string;
     rewrite(path.join(fixture.volume, "trees", landed, "a.txt"), "ALPHA\n");
     refreshVolumeFeed(fixture.target);
     expect(refreshVolumeFeed(fixture.target).status).toBe("current");
+    expect(readFeedLanded(fixture.target.stateDir).record?.heals).toEqual({ [landed]: 1 });
+    writeSourceFiles(fixture.source, { "a.txt": "beta\n" });
+    expect(refreshVolumeFeed(fixture.target).status).toBe("landed");
     expect(readFeedLanded(fixture.target.stateDir).record?.heals).toEqual({});
+  });
+
+  it("catches an equal-length rewrite whose mtime and mode were put back", () => {
+    fixture = createFeedFixture();
+    const landed = refreshVolumeFeed(fixture.target).revision as string;
+    const file = path.join(fixture.volume, "trees", landed, "a.txt");
+    const before = lstatSync(file);
+    rewrite(file, "ALPHA\n");
+    utimesSync(file, before.atime, before.mtime);
+    chmodSync(file, before.mode & 0o777);
+    chmodSync(path.dirname(file), 0o555);
+    expect(verifyVolumeFeed(fixture.target).findings.join("\n")).toMatch(/a\.txt changed/u);
+  });
+
+  it("flags a tree root whose write bit was restored", () => {
+    fixture = createFeedFixture();
+    const landed = refreshVolumeFeed(fixture.target).revision as string;
+    chmodSync(path.join(fixture.volume, "trees", landed), 0o755);
+    expect(verifyVolumeFeed(fixture.target).findings.join("\n")).toMatch(/\. changed/u);
+  });
+
+  it("reports what is planted in the volume even when a new revision lands", () => {
+    fixture = createFeedFixture();
+    refreshVolumeFeed(fixture.target);
+    writeFileSync(path.join(fixture.volume, "planted"), "x");
+    writeSourceFiles(fixture.source, { "a.txt": "beta\n" });
+    const result = refreshVolumeFeed(fixture.target);
+    expect(result.status).toBe("landed");
+    expect(feedResultClean(result)).toBe(false);
+    expect(result.findings).toEqual(["planted is a name this host never writes at the volume root"]);
+  });
+
+  it("never moves an unrecorded directory that occupies a revision's name", () => {
+    fixture = createFeedFixture();
+    const revision = digestDirectory(fixture.source);
+    mkdirSync(path.join(fixture.volume, "trees", revision), { recursive: true });
+    writeFileSync(path.join(fixture.volume, "trees", revision, "keep.txt"), "mine\n");
+    const result = refreshVolumeFeed(fixture.target);
+    expect(current(fixture.volume)).toBe(`trees/${revision}.1`);
+    expect(readFileSync(path.join(fixture.volume, "trees", revision, "keep.txt"), "utf8")).toBe("mine\n");
+    expect(result.findings).toEqual([`trees/${revision} is not a tree this host landed`]);
+  });
+
+  it("re-runs the current validation policy before serving a retained tree again", () => {
+    fixture = createFeedFixture({ keep: 2 });
+    refreshVolumeFeed(fixture.target);
+    writeSourceFiles(fixture.source, { "a.txt": "beta\n" });
+    refreshVolumeFeed(fixture.target);
+    writeSourceFiles(fixture.source, { "a.txt": "alpha\n" });
+    fixture.target.validate = { command: ["sh", "-c", "! grep -q alpha \"$SPAWNFILE_FEED_TREE/a.txt\""], cwd: fixture.root, timeoutMs: 10_000 };
+    expect(() => refreshVolumeFeed(fixture.target)).toThrow(/rejected/u);
+    expect(readFileSync(path.join(fixture.volume, "current", "a.txt"), "utf8")).toBe("beta\n");
+  });
+
+  it("refuses a validation hook that edits the tree it validates", () => {
+    fixture = createFeedFixture();
+    fixture.target.validate = { command: ["sh", "-c", "echo extra > \"$SPAWNFILE_FEED_TREE/added.txt\""], cwd: fixture.root, timeoutMs: 10_000 };
+    expect(() => refreshVolumeFeed(fixture.target)).toThrow(/modified the tree/u);
+    expect(existsSync(path.join(fixture.volume, "current"))).toBe(false);
+  });
+
+  it("keeps the most recently served retired tree, not the newest by mtime", () => {
+    fixture = createFeedFixture({ keep: 1 });
+    const a = refreshVolumeFeed(fixture.target).revision as string;
+    writeSourceFiles(fixture.source, { "a.txt": "beta\n" });
+    const b = refreshVolumeFeed(fixture.target).revision as string;
+    writeSourceFiles(fixture.source, { "a.txt": "alpha\n" });
+    expect(refreshVolumeFeed(fixture.target).revision).toBe(a);
+    writeSourceFiles(fixture.source, { "a.txt": "gamma\n" });
+    const c = refreshVolumeFeed(fixture.target).revision as string;
+    expect(trees(fixture.volume)).toEqual([a, c].sort());
+    expect(trees(fixture.volume)).not.toContain(b);
   });
 
   it("re-lands a tree that vanished and restores a moved link and a forged identity", () => {
