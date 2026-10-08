@@ -14,10 +14,15 @@ export interface BundleCommand {
   container?: { dockerCommand: string; name: string };
 }
 
+const CLEANUP_TIMEOUT_MS = 30_000;
+
+/** Best-effort, bounded: a stalled Docker client is killed so cleanup never outlives its deadline. */
 const removeContainer = (container: NonNullable<BundleCommand["container"]>): Promise<void> => new Promise((resolve) => {
   const child = spawn(container.dockerCommand, ["rm", "--force", container.name], { stdio: "ignore" });
-  child.once("error", () => resolve());
-  child.once("close", () => resolve());
+  const timer = setTimeout(() => { child.kill("SIGKILL"); resolve(); }, CLEANUP_TIMEOUT_MS);
+  const done = (): void => { clearTimeout(timer); resolve(); };
+  child.once("error", done);
+  child.once("close", done);
 });
 
 /**
@@ -26,21 +31,22 @@ const removeContainer = (container: NonNullable<BundleCommand["container"]>): Pr
  * kills the whole group, and a named container is removed, so neither stray
  * descendants nor a detached container outlive the step.
  */
-export const runBundleCommand = (command: BundleCommand, label: string): Promise<string> =>
+export const runBundleCommand = (command: BundleCommand, label: string): Promise<Buffer> =>
   new Promise((resolve, reject) => {
     const [file, ...args] = command.argv;
     const child = spawn(file!, args, { cwd: command.cwd, detached: true, env: command.env ?? process.env, stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "", stderr = "", timedOut = false, settled = false;
+    const stdout: Buffer[] = [];
+    let stderr = "", timedOut = false, settled = false;
     const killGroup = (): void => { try { process.kill(-child.pid!, "SIGKILL"); } catch { child.kill("SIGKILL"); } };
     const finish = async (error?: SpawnfileError): Promise<void> => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       if (error && command.container) await removeContainer(command.container);
-      if (error) reject(error); else resolve(stdout);
+      if (error) reject(error); else resolve(Buffer.concat(stdout));
     };
     const timer = setTimeout(() => { timedOut = true; killGroup(); void finish(new SpawnfileError("compile_error", `${label} timed out after ${command.timeoutMs} ms${stderr.trim() ? `: ${stderr.trim()}` : ""}`)); }, command.timeoutMs);
-    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+    child.stdout.on("data", (chunk: Buffer) => { stdout.push(chunk); });
     child.stderr.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString("utf8")).slice(-OUTPUT_TAIL); });
     child.once("error", (error) => { void finish(new SpawnfileError("compile_error", `${label} could not start ${file}: ${error.message}`)); });
     child.once("close", (code, signal) => {
@@ -88,5 +94,5 @@ export const containerArgv = (step: ContainerStep): string[] => {
 export const bundleContainerName = (): string => `spawnfile-bundle-${randomBytes(8).toString("hex")}`;
 
 /** Runs a container step; the container is removed if the step fails or times out. */
-export const runContainerStep = (step: ContainerStep, timeoutMs: number, label: string, cwd: string): Promise<string> =>
+export const runContainerStep = (step: ContainerStep, timeoutMs: number, label: string, cwd: string): Promise<Buffer> =>
   runBundleCommand({ argv: containerArgv(step), container: { dockerCommand: step.dockerCommand, name: step.name }, cwd, timeoutMs }, label);

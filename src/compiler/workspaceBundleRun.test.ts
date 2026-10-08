@@ -19,7 +19,7 @@ describe("bundle build steps", () => {
   });
 
   it("returns stdout and reports exit codes, stderr tails, timeouts and missing programs", async () => {
-    await expect(runBundleCommand({ argv: ["sh", "-c", "printf ok"], cwd: process.cwd(), timeoutMs: 10_000 }, "step")).resolves.toBe("ok");
+    await expect(runBundleCommand({ argv: ["sh", "-c", "printf ok"], cwd: process.cwd(), timeoutMs: 10_000 }, "step")).resolves.toEqual(Buffer.from("ok"));
     await expect(runBundleCommand({ argv: ["sh", "-c", "echo bad >&2; exit 2"], cwd: process.cwd(), timeoutMs: 10_000 }, "step")).rejects.toThrow(/step exited 2: bad/u);
     await expect(runBundleCommand({ argv: ["sleep", "5"], cwd: process.cwd(), timeoutMs: 200 }, "step")).rejects.toThrow(/timed out after 200 ms/u);
     const pidFile = path.join(os.tmpdir(), `spawnfile-bundle-run-${process.pid}.pid`);

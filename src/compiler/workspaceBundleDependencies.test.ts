@@ -24,9 +24,9 @@ const lock = (alpha = "1.0.0") => ({
   lockfileVersion: 3, name: "site",
   packages: {
     "": { dependencies: { alpha: "^1.0.0" }, devDependencies: { tester: "^2.0.0" }, name: "site" },
-    "node_modules/alpha": { bin: { alpha: "cli.js" }, integrity: `sha512-${alpha}`, resolved: "https://registry.example/alpha.tgz", version: alpha },
+    "node_modules/alpha": { bin: { alpha: "cli.js" }, integrity: `sha512-${Buffer.alloc(64, alpha).toString("base64")}`, resolved: "https://registry.example/alpha.tgz", version: alpha },
     "node_modules/alpha/node_modules/nested": { inBundle: true, version: "0.1.0" },
-    "node_modules/tester": { dev: true, integrity: "sha512-tester", resolved: "https://registry.example/tester.tgz", version: "2.0.0" }
+    "node_modules/tester": { dev: true, integrity: `sha512-${Buffer.alloc(64, 7).toString("base64")}`, resolved: "https://registry.example/tester.tgz", version: "2.0.0" }
   }
 });
 
@@ -116,6 +116,10 @@ describe("dependency bundles", () => {
     const withEntry = (entry: Record<string, unknown>) => bytes({ ...lock(), packages: { ...lock().packages, "node_modules/extra": entry } });
     expect(() => assertNpmLockMatchesManifest(bytes(manifest), withEntry({ resolved: "https://example/x.tgz", version: "1.0.0" }), "site")).toThrow(/no content integrity/u);
     expect(() => assertNpmLockMatchesManifest(bytes(manifest), withEntry({ resolved: "git+ssh://git@example/x.git#main", version: "1.0.0" }), "site")).toThrow(/no content integrity/u);
+    expect(() => assertNpmLockMatchesManifest(bytes(manifest), withEntry({ integrity: "sha512-", version: "1.0.0" }), "site")).toThrow(/no content integrity/u);
+    expect(() => assertNpmLockMatchesManifest(bytes(manifest), withEntry({ integrity: "md5-AAAA", version: "1.0.0" }), "site")).toThrow(/no content integrity/u);
+    expect(() => assertNpmLockMatchesManifest(bytes(manifest), withEntry({ integrity: "sha512-AAAA", version: "1.0.0" }), "site")).toThrow(/no content integrity/u);
+    expect(() => assertNpmLockMatchesManifest(bytes(manifest), withEntry({ integrity: `sha1-${Buffer.alloc(20, 1).toString("base64")}`, version: "1.0.0" }), "site")).not.toThrow();
     expect(() => assertNpmLockMatchesManifest(bytes(manifest), withEntry({ resolved: `git+ssh://git@example/x.git#${"a".repeat(40)}`, version: "1.0.0" }), "site")).not.toThrow();
     await rm(path.join(root, "site/package-lock.json"));
     await writeFile(path.join(root, "org/Spawnfile"), agentSpawnfile(["directory: ../site", `image: "${IMAGE}"`]));
