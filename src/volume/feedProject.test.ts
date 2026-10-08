@@ -55,6 +55,31 @@ describe("fed volume project resolution", () => {
     expect(fetched).toMatchObject({ healLimit: 5, owner: "1:1", source: { fetch: false, paths: ["a"], ref: "main", repo: "/r" }, stateDir: "/vol/spawnfile-feed" });
   });
 
+  it("resolves prepare, include, a ref rule and a freeze against the declaring manifest", () => {
+    fixture = createFeedFixture();
+    const image = `node:22@sha256:${"c".repeat(64)}`;
+    const declared = {
+      base: "/org", id: "d", name: "n",
+      feed: {
+        freeze: { after: "12:00", timezone: "Europe/Berlin" },
+        git: { ref: { fallback: "origin/main", template: "origin/data/${date:Europe/Berlin}" }, repo: "../source" },
+        include: [{ from: "../fonts", to: "assets/fonts" }],
+        prepare: { command: ["npm", "ci"], image, platform: "linux/arm64" as const }
+      }
+    };
+    expect(toFeedTarget(declared, { dockerCommand: "/usr/bin/docker", volumePath: "/vol/_data" })).toMatchObject({
+      freeze: { after: "12:00", timezone: "Europe/Berlin" },
+      include: [{ from: "/fonts", to: "assets/fonts" }],
+      prepare: { command: ["npm", "ci"], dockerCommand: "/usr/bin/docker", image, kind: "image", network: true, platform: "linux/arm64", timeoutMs: 1_800_000 },
+      refRule: { fallback: "origin/main", template: "origin/data/${date:Europe/Berlin}" },
+      source: { kind: "git", ref: "HEAD", repo: "/source" }
+    });
+    const host = toFeedTarget({ ...declared, feed: { git: { ref: { command: ["node", "ref.mjs"] }, repo: "/r" }, prepare: { command: ["cp", "a", "b"], host: true as const, timeout_seconds: 5 } } }, { volumePath: "/vol/_data" });
+    expect(host).toMatchObject({ prepare: { command: ["cp", "a", "b"], kind: "host", timeoutMs: 5000 }, refRule: { command: { argv: ["node", "ref.mjs"], cwd: "/org" } } });
+    expect(host.freeze).toBeUndefined();
+    expect(toFeedTarget({ ...declared, feed: { git: { repo: "/r" }, prepare: { command: ["x"], image } } }, { volumePath: "/v/_data" }).prepare).toMatchObject({ dockerCommand: "docker", platform: expect.stringMatching(/^linux\/(amd64|arm64)$/u) });
+  });
+
   it("asks docker for a named volume's host path and explains when it cannot", () => {
     fixture = createFeedFixture();
     expect(resolveVolumeHostPath("vol", { exec: (command, args) => { expect([command, ...args]).toEqual(["docker", "volume", "inspect", "--format", "{{.Mountpoint}}", "vol"]); return Buffer.from("/var/lib/docker/volumes/vol/_data\n"); } }))

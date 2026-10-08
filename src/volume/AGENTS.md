@@ -14,6 +14,8 @@ src/volume/
 ├── feedTarget.ts      # FeedTarget (everything a refresh needs) and its defaults
 ├── feedProject.ts     # Project + resource id -> FeedTarget; docker volume host path
 ├── feedSource.ts      # Directory and git sources: content-addressed revision, staging copy
+├── feedPrepare.ts     # include + prepare in staging, composed revision, digest-verified prepare cache
+├── feedRef.ts         # Moving refs (template, command, fallback), waiting, and the period freeze
 ├── feedLayout.ts      # Every rule about what may touch the volume: lstat guards, freeze, land, link swap
 ├── feedManifest.ts    # Land-time manifest outside the volume; every file hashed on every check
 ├── feedRecord.ts      # Host record (outside) and identity record (inside the volume)
@@ -32,7 +34,7 @@ src/volume/
 <volume>/current -> trees/<name>        the only path agents read content through
 <volume>/trees/<revision>[.<gen>]/      frozen content, never rewritten or replaced in place;
                                         a re-land lands as a new generation beside the drifted tree
-<state>/landed.json, manifests/, staging/, trash/, lock   host state, outside the volume
+<state>/landed.json, manifests/, staging/, trash/, lock, prepared/   host state, outside the volume
 ```
 
 ## Rules
@@ -50,6 +52,11 @@ src/volume/
 - Domain rules about what content must contain stay with the organization, as the
   declared `validate` command. Keep this folder generic.
 - Retirement follows the host record's serving order, never filesystem mtimes.
+- A revision is decided before anything runs: with `include`/`prepare` it is composed from the
+  source revision, include digests and the prepare recipe. Prepare output is verified by the
+  land-time manifest, not by the revision.
+- The freeze and the wait are decided from the host record's period and the host clock only.
+  A held volume (frozen or waiting) heals from the commit it serves and never advances.
 - Known limits, stated so nobody overclaims them: a reader that holds a descriptor
   or working directory inside a tree that is later retired (beyond `keep`) can see
   it deleted; and path checks are lstat-then-act, not descriptor-relative (Node has

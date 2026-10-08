@@ -11,12 +11,20 @@ import { feedError } from "./feedLayout.js";
 import { sha256Hex } from "./feedManifest.js";
 
 export type FeedSourceSpec =
-  | { fetch: boolean; kind: "git"; paths?: string[]; ref: string; repo: string }
+  /** `label` names the ref in provenance when `ref` is a pinned commit (a held volume re-landing what it serves). */
+  | { fetch: boolean; kind: "git"; label?: string; paths?: string[]; ref: string; repo: string }
   | { directory: string; kind: "directory" };
 
+/** What `include` and `prepare` added on top of the source; its digest, not the source's, is the revision. */
+export interface FeedPreparedProvenance {
+  include: Array<{ digest: string; to: string }>;
+  prepare: { command: string[]; image: string | null; network: boolean | null; platform: string | null } | null;
+  source_revision: string;
+}
+
 export type FeedProvenance =
-  | { commit: string; kind: "git"; paths: string[] | null; ref: string }
-  | { kind: "directory" };
+  | { commit: string; kind: "git"; paths: string[] | null; prepared?: FeedPreparedProvenance; ref: string }
+  | { kind: "directory"; prepared?: FeedPreparedProvenance };
 
 export interface ResolvedFeedSource {
   provenance: FeedProvenance;
@@ -81,7 +89,7 @@ export const resolveFeedSource = (spec: FeedSourceSpec, { exec = hostExec }: { e
     throw feedError(`cannot resolve ${spec.ref}${spec.paths ? ` (${spec.paths.join(", ")})` : ""} in ${spec.repo}: ${String((error as Error).message).trim().slice(0, 300)}`);
   }
   return {
-    provenance: { commit, kind: "git", paths: spec.paths ?? null, ref: spec.ref },
+    provenance: { commit, kind: "git", paths: spec.paths ?? null, ref: spec.label ?? spec.ref },
     revision: sha256Hex(`git\n${trees.join("\n")}\n`)
   };
 };

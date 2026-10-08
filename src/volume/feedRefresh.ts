@@ -13,12 +13,15 @@ import { assertFeedVolumeRoot, assertOutsideVolume, assertSameDevice, auditFeedR
 import { buildFeedManifest, writeFeedManifest } from "./feedManifest.js";
 import { landFeed, type FeedRuntime } from "./feedLand.js";
 import { acquireFeedLock } from "./feedLock.js";
+import { resolveFeedContent } from "./feedPrepare.js";
 import { readFeedLanded, writeFeedIdentity, writeFeedLanded, type FeedLandedRecord } from "./feedRecord.js";
-import { fetchFeedSource, hostExec, resolveFeedSource } from "./feedSource.js";
+import { chooseFeedRef, feedFrozen, feedPeriod } from "./feedRef.js";
+import { fetchFeedSource, hostExec, type ResolvedFeedSource } from "./feedSource.js";
 import { feedStagingDir, feedTrashDir, type FeedTarget } from "./feedTarget.js";
 import { sweepFeed, type FeedSweep } from "./feedVerify.js";
 
-export type FeedRefreshStatus = "busy" | "current" | "landed" | "repaired" | "suspended" | "tampered";
+/** `frozen` and `waiting` are clean holds: the volume keeps serving what it has (see feedRef.ts). */
+export type FeedRefreshStatus = "busy" | "current" | "frozen" | "landed" | "repaired" | "suspended" | "tampered" | "waiting";
 
 export interface FeedRefreshResult {
   findings: string[];
@@ -29,7 +32,8 @@ export interface FeedRefreshResult {
 
 /** Clean means nothing needs a human: exit 0. */
 export const feedResultClean = (result: FeedRefreshResult): boolean =>
-  result.status === "busy" || result.status === "current" || (result.status === "landed" && result.findings.length === 0);
+  result.status === "busy" || result.status === "current" || result.status === "frozen" || result.status === "waiting" ||
+  (result.status === "landed" && result.findings.length === 0);
 
 /** Every check that decides where host state may be written runs before anything -- the lock included -- is written. */
 const confine = (target: FeedTarget): void => {
@@ -56,7 +60,7 @@ const withLock = (target: FeedTarget, log: (line: string) => void, run: () => Fe
 
 const repairable = (sweep: FeedSweep): boolean => sweep.drift || sweep.relink || sweep.identity !== null;
 
-const heal = (target: FeedTarget, record: FeedLandedRecord, sweep: FeedSweep, runtime: FeedRuntime): FeedRefreshResult => {
+const heal = (target: FeedTarget, record: FeedLandedRecord, sweep: FeedSweep, runtime: FeedRuntime, { held = false }: { held?: boolean } = {}): FeedRefreshResult => {
   const log = runtime.log ?? (() => undefined);
   const base = { findings: sweep.findings, previous: record.revision, revision: record.revision };
   for (const finding of sweep.findings) log(`TAMPER: ${finding}`);
@@ -67,13 +71,15 @@ const heal = (target: FeedTarget, record: FeedLandedRecord, sweep: FeedSweep, ru
       log(`auto-repair suspended: ${record.revision.slice(0, 12)} was re-landed ${cycles} times and drifted again; it resumes when a new revision lands`);
       return { ...base, status: "suspended" };
     }
-    const resolved = resolveFeedSource(target.source, { exec: runtime.exec ?? hostExec });
+    const resolved = resolveFeedContent(target, { exec: runtime.exec ?? hostExec });
     if (resolved.revision !== record.revision) {
-      landFeed(target, resolved, record, { runtime });
+      // A held volume never advances, not even to repair itself.
+      if (held) return { ...base, findings: [...sweep.findings, `the volume is held at ${record.revision.slice(0, 12)} and its source no longer reproduces it (now ${resolved.revision.slice(0, 12)}); not re-landing while held`], status: "tampered" };
+      landFeed(target, resolved, record, { period: feedPeriod(target, (runtime.now ?? (() => new Date()))()), runtime });
       return { ...base, revision: resolved.revision, status: "repaired" };
     }
     log(`re-landing ${record.revision.slice(0, 12)} from the source beside the drifted tree`);
-    landFeed(target, resolved, record, { force: true, heals: { ...record.heals, [record.revision]: cycles + 1 }, runtime });
+    landFeed(target, resolved, record, { exact: held, force: true, heals: { ...record.heals, [record.revision]: cycles + 1 }, ...(record.period ? { period: record.period } : {}), runtime });
     return { ...base, status: "repaired" };
   }
   if (sweep.relink) pointCurrent(target.volume, feedTreeLink(record.tree), { ops: runtime.ops ?? LINK_OPS, tmpDir: feedStagingDir(target) });
@@ -85,30 +91,72 @@ const heal = (target: FeedTarget, record: FeedLandedRecord, sweep: FeedSweep, ru
   return { ...base, status: repairable(sweep) && sweep.unknown.length === 0 ? "repaired" : "tampered" };
 };
 
+/**
+ * Same bytes under a new period or ref name: the serving revision is now this period's content, so its
+ * period and provenance are re-stamped (record, then the identity agents read). Without it a ref that
+ * moved to identical content would never count as landed this period, and the freeze would never hold.
+ */
+const adopt = (target: FeedTarget, record: FeedLandedRecord, resolved: ResolvedFeedSource, period: string | undefined): void => {
+  const source = resolved.provenance;
+  if (!period || (record.period === period && JSON.stringify(record.identity.source) === JSON.stringify(source))) return;
+  const identity = { ...record.identity, source };
+  const identitySha = writeFeedIdentity(target.volume, identity, { owner: target.owner, tmpDir: feedStagingDir(target) });
+  writeFeedLanded(target.stateDir, { ...record, identity, identity_sha256: identitySha, period });
+};
+
+/** A held volume (frozen, or waiting for a ref that does not exist yet) keeps serving what it has; it is still verified and healed. */
+const holdLocked = (target: FeedTarget, record: FeedLandedRecord, held: "frozen" | "waiting", runtime: FeedRuntime): FeedRefreshResult => {
+  const sweep = sweepFeed(target, record);
+  if (sweep.findings.length) return heal(target, record, sweep, runtime, { held: true });
+  (runtime.log ?? (() => undefined))(`${held}: serving ${record.revision.slice(0, 12)}`);
+  return { findings: [], previous: record.revision, revision: record.revision, status: held };
+};
+
 const refreshLocked = (target: FeedTarget, runtime: FeedRuntime): FeedRefreshResult => {
-  const log = runtime.log ?? (() => undefined), exec = runtime.exec ?? hostExec;
+  const log = runtime.log ?? (() => undefined), exec = runtime.exec ?? hostExec, now = (runtime.now ?? (() => new Date()))();
   prepare(target);
   fetchFeedSource(target.source, { exec });
-  const resolved = resolveFeedSource(target.source, { exec });
   const { reason, record } = readFeedLanded(target.stateDir);
   if (reason) log(`ignoring the host record: ${reason}; treating this volume as carrying nothing`);
+  const choice = chooseFeedRef(target, { exec, now });
+  let concrete = target;
+  if (choice.kind === "waiting") {
+    log(choice.reason);
+    if (!record) return { findings: [], previous: null, revision: null, status: "waiting" };
+  } else if (target.source.kind === "git") concrete = { ...target, source: { ...target.source, ref: choice.ref } };
+  const frozen = choice.kind === "ref" && feedFrozen(target, record, choice.ref, now);
+  if (record && (choice.kind === "waiting" || frozen)) {
+    if (frozen) log(`frozen: ${record.revision.slice(0, 12)} was landed this period and the ${target.freeze!.after} ${target.freeze!.timezone} cutoff has passed`);
+    const landed = record.identity.source;
+    // Held at its own commit, so a heal reproduces what is served and never what the ref moved to.
+    const held = landed.kind === "git" && target.source.kind === "git"
+      ? { ...target, source: { ...target.source, label: landed.ref, ref: landed.commit } } : target;
+    return holdLocked(held, record, frozen ? "frozen" : "waiting", runtime);
+  }
+  const resolved = resolveFeedContent(concrete, { exec });
+  const period = feedPeriod(target, now);
   if (!record || record.revision !== resolved.revision) {
     log(`refresh needed: ${record ? `${record.revision.slice(0, 12)} -> ${resolved.revision.slice(0, 12)}` : `nothing landed -> ${resolved.revision.slice(0, 12)}`}`);
     // A new revision does not excuse what else is in the volume: the root is audited on every landing.
     const findings = auditFeedRoot(target.volume);
-    const landed = landFeed(target, resolved, record, { runtime });
+    const landed = landFeed(concrete, resolved, record, { ...(period ? { period } : {}), runtime });
     findings.push(...landed.unknownTrees.map((name) => `trees/${name} is not a tree this host landed`));
     for (const finding of findings) log(`TAMPER: ${finding}`);
     return { findings, previous: record?.revision ?? null, revision: landed.revision, status: "landed" };
   }
-  const sweep = sweepFeed(target, record);
+  const sweep = sweepFeed(concrete, record);
   if (!sweep.findings.length) {
     // Same bytes, moved mtime: somebody touched the mount without changing content. Re-stamp the manifest.
     if (sweep.touched.length) writeFeedManifest(target.stateDir, buildFeedManifest(path.join(target.volume, feedTreeLink(record.tree)), record.tree));
+    adopt(concrete, record, resolved, period);
     log(`already current: ${record.revision.slice(0, 12)}`);
     return { findings: [], previous: record.revision, revision: record.revision, status: "current" };
   }
-  return heal(target, record, sweep, runtime);
+  const healed = heal(concrete, record, sweep, runtime);
+  // A repair of the content this period chose is this period's landing too.
+  const after = healed.status === "repaired" ? readFeedLanded(target.stateDir).record : null;
+  if (after && after.revision === resolved.revision) adopt(concrete, after, resolved, period);
+  return healed;
 };
 
 export const refreshVolumeFeed = (target: FeedTarget, runtime: FeedRuntime = {}): FeedRefreshResult =>
