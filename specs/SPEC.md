@@ -287,6 +287,38 @@ workspace:
         owner: "2000:2000"          # optional uid:gid applied to each staged tree before it lands
 ```
 
+A feed MAY also prepare the staged tree, add host files that are not in the source, choose its git ref on every refresh, and stop advancing at a daily cutoff:
+
+```yaml
+      feed:
+        git:
+          repo: ../data-repo
+          fetch: true
+          ref:                                   # a string, or a rule resolved on every refresh
+            template: origin/data/${date:Europe/Berlin}   # or command: [node, scripts/pick-ref.mjs]
+            fallback: origin/main                # optional: used while the rule's ref does not exist
+        include:                                 # optional host directories staged into the tree
+          - from: ../fonts                       # relative to this manifest
+            to: assets/fonts                     # tree-relative; must not exist in the fed content
+        prepare:                                 # optional, runs inside the staged tree
+          command: [npm, ci, --omit=dev]
+          image: node:22-bookworm-slim@sha256:<64 hex>   # or host: true
+          platform: linux/amd64                  # optional; default the refreshing host's architecture
+          network: true                          # optional; default true
+          timeout_seconds: 1800                  # optional; default 1800
+        freeze:
+          after: "12:00"                         # local HH:MM
+          timezone: Europe/Berlin
+```
+
+Rules:
+
+- `include` entries are copied into staging after the source and before `prepare`. A target MUST be a plain tree-relative path, MUST NOT exist in the fed content and MUST NOT pass through a staged symlink or file; targets MUST NOT overlap.
+- `prepare` MUST declare exactly one of `image` (a reference pinned by `@sha256` digest, run with `docker run --platform <platform>` as the invoking user, the staged tree mounted at `/spawnfile/feed`, `--network none` when `network: false`) or `host: true` (run on the host with the staged tree as cwd). Environment: `SPAWNFILE_FEED_TREE`, `SPAWNFILE_FEED_REVISION`, `SPAWNFILE_FEED_RESOURCE`. A non-zero exit, a timeout, or an empty tree aborts the refresh: nothing lands and `current` is untouched. `validate` then runs on the prepared tree.
+- With `include` or `prepare`, the revision is the digest of the source revision, each include's digest and the prepare recipe (command, image, platform, network), so it is decided without running anything and an unchanged refresh lands nothing. The identity record's `source.prepared` carries those components. A prepared tree is cached in the state directory by revision (the two newest are kept) and re-verified by digest before reuse, so a re-land does not reinstall.
+- A ref rule declares exactly one of `template` or `command`. A template knows only `${date}` (UTC) and `${date:<IANA zone>}`, each expanding to the local `YYYY-MM-DD` at refresh time. A command runs with cwd = this manifest's directory and `SPAWNFILE_FEED_REPO`, `SPAWNFILE_FEED_RESOURCE`; its first non-empty stdout line is the ref, and a non-zero exit is a refusal. When neither the ref nor `fallback` exists, the refresh is `waiting` (exit 0, nothing changes) before the freeze cutoff of the current local day, and a refusal after it or when no freeze is declared.
+- `freeze` stamps every landing with its period (the local date in `timezone`). Once local time is at or past `after`, a volume whose serving revision was landed in the current period from the ref chosen now is `frozen` (exit 0): it does not advance until the period changes or a different ref is chosen (the next period's ref appearing). A ref that moves to identical content re-stamps the period without landing. A frozen or waiting volume is still verified and healed, from the commit it serves; it is never re-landed from a source that no longer reproduces it.
+
 Rules:
 
 - `feed` MUST declare exactly one of `git` or `directory`. A fed volume MUST declare `name` and `mode: mutable`.
@@ -297,7 +329,7 @@ Rules:
 - `spawnfile volume refresh <id> [path]` resolves the source; when the revision moved it copies the content into private staging outside the volume, runs `validate` (environment `SPAWNFILE_FEED_TREE`, `SPAWNFILE_FEED_REVISION`, `SPAWNFILE_FEED_RESOURCE`, `SPAWNFILE_FEED_PROVENANCE`; a non-zero exit lands nothing), freezes the tree read-only, moves it into `trees/` with one rename, replaces `current` with one rename, publishes the identity record, and retires older trees by renaming them out of the volume before deleting them. A retained tree is served again only if its manifest still matches and it passes `validate` as declared now; the hook may not modify the tree it validates. Retired trees beyond `keep` are chosen by the host's serving order. When the revision did not move it verifies the volume (every file hashed against the land-time manifest) and heals it: a drifted or missing tree is re-landed from the source as a new generation beside it (at most `--heal-limit` times per revision, default 3; the count resets only when a new revision lands), a moved link is restored, a forged identity record is republished. A name the host did not write is reported with the command that clears it and is never deleted.
 - `spawnfile volume verify <id> [path]` reports the same findings without changing anything.
 - Both commands locate the volume with `docker volume inspect` (or `--volume-path`) and keep host state (`landed.json`, manifests, staging, trash, lock) in `<volume host dir>/../spawnfile-feed` (or `--state-dir`), which MUST be outside the volume and on its filesystem. They refuse a volume whose root is not mode 0755 or that no container has initialized (no `.spawnfile-resource-identity`), and they never touch that sentinel.
-- One writer at a time: both commands take an exclusive lock in the state directory; a second writer exits 0 having done nothing. Exit 0 means clean (current, freshly landed, or busy); exit 1 means a finding (tampering, repaired or not) or a refusal, so a timer's failure hook notifies a human.
+- One writer at a time: both commands take an exclusive lock in the state directory; a second writer exits 0 having done nothing. Exit 0 means clean (current, freshly landed, frozen, waiting, or busy); exit 1 means a finding (tampering, repaired or not) or a refusal, so a timer's failure hook notifies a human.
 
 A systemd timer that keeps a fed volume current:
 
