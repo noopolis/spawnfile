@@ -627,18 +627,24 @@ Identity comes from git, never from walking file contents:
 - `spawnfile compile --release` (and `build --release`) requires the inputs
   under `root` to match `HEAD` — no modified, staged or untracked non-ignored
   file outside `exclude` — and takes identity from `git ls-tree` blob ids
-  and modes. Archive bytes are read from the object store, so the archive is a
-  pure function of the commit.
+  and modes of exactly the commit that status compared against. Archive bytes
+  are read from the object store, so the archive is a pure function of the
+  commit.
 - Dev compiles (the default) take the index blob id for every file git
   reports unchanged and hash only modified and untracked files, so an
-  uncommitted edit or a new file always changes the archive.
+  uncommitted edit or a new file always changes the archive. The index listing
+  and status are re-read if the index changes while they are taken.
+- Git replacement refs are ignored: object ids always name their own bytes.
 
 The cache key is the sorted `(path, mode, identity)` list, the archive writer
 version, and the target platform (`linux/<arch>`). Archives are cached by key
-under `$SPAWNFILE_HOME/cache/workspace-bundles` (least recently used beyond 24
-are pruned); a warm compile resolves the key with a few git queries and
-hard-links the cached archive into the build context without reading it. A
-cached archive whose size, inode or mtime changed is rebuilt. Only the `files`
+as read-only files under `$SPAWNFILE_HOME/cache/workspace-bundles` (least
+recently used beyond 24 are pruned, never one used in the last hour); a warm
+compile resolves the key with a few git queries and hard-links the cached
+archive into the build context without reading it. A cached archive whose
+size, inode or mtime changed is rebuilt. Prebuilt `source` tars are always
+hashed and staged from the exact bytes verified, even when a built bundle has
+the same digest. Only the `files`
 input kind exists today; dependency installs and generated outputs still ship
 as prebuilt `source` tars.
 
