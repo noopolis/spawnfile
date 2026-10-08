@@ -28,6 +28,7 @@ import {
 import { stageWorkspaceBundles } from "./workspaceBundleArtifacts.js";
 import type { BundleIdentityMode } from "./workspaceBundleFiles.js";
 import { resolveWorkspaceBundles } from "./workspaceBundleResolve.js";
+import { resolveWorkspaceGitPins } from "./workspaceGitPins.js";
 import { augmentNodeReports } from "./compileProjectReports.js";
 import {
   enforcePolicy,
@@ -291,6 +292,12 @@ export const compileProject = async (
     identity: options.bundleIdentity,
     outputDirectory
   });
+  const workspaceGitPins = await resolveWorkspaceGitPins(plan, {
+    architecture: options.containerArchitecture,
+    bundleCacheDirectory: options.bundleCacheDirectory,
+    identity: options.bundleIdentity,
+    outputDirectory
+  });
 
   const teamCompileSupport = await prepareTeamCompileSupport(plan);
 
@@ -336,7 +343,7 @@ export const compileProject = async (
     outputDirectory,
     options.runtimePackageOverrides
   );
-  const hasWorkspaceBundles = await stageWorkspaceBundles(outputDirectory, plan, workspaceBundles.built);
+  const hasWorkspaceBundles = await stageWorkspaceBundles(outputDirectory, plan, new Map([...workspaceBundles.built, ...workspaceGitPins.built]));
   const generatedAt = new Date().toISOString();
   const containerArtifacts = await createContainerArtifacts(plan, compiledNodes, {
     deploymentLineage: options.deploymentLineage,
@@ -362,6 +369,7 @@ export const compileProject = async (
     projectName: containerArtifacts.distribution.report.organization.project
   });
   if (workspaceBundles.report.length > 0) report.workspace_bundles = workspaceBundles.report;
+  if (workspaceGitPins.report.length > 0) report.workspace_git_resources = workspaceGitPins.report;
   const reportPath = await writeCompileReport(outputDirectory, report);
   const organizationReadinessEvidence = createOrganizationReadinessEvidence({
     compileVersion: report.spawnfile_version,
