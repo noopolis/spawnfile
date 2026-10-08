@@ -7,6 +7,7 @@ in the npm package. Scripts run as native TypeScript on Node 22.19+.
 | Entrypoint | Caller | Purpose / prerequisites |
 | --- | --- | --- |
 | `build-local-daimon-runtime.ts` | `npm run build:local-daimon` | Build a locally sourced runtime; explicit artifact pins, Docker, and loopback registry required |
+| `publish-daimon-runtime.ts` | `runtime-images.yml` (`daimon` job) | Build the published multi-arch Daimon image from the pinned commit and CLI digests in `runtime-images/daimon/publish-inputs.json`; dry-run without `--push`, otherwise push by digest, tag `<version>-<short commit>` (never moved), and print the identity and `runtimes.yaml` pin. Docker Buildx (docker-container driver) required |
 | `vendor-daimon-grok-contract.ts` | `npm run vendor:daimon-contract [-- --check]` | Vendor Daimon's contract manifest and Grok worker renderer bytes from a Daimon checkout (`SPAWNFILE_DAIMON_SOURCE_DIR`) |
 | `grok-lean-worker-live-check.ts` | `SPAWNFILE_GROK_LIVE_CHECK=1 npm run test:live:grok-lean-worker` | Opt-in live check: one brokered Grok 1.0.34 agent, worker-home/deny/service attestation dump, one cheap wake, one deduped broker usage row; Docker, a local Daimon identity, and a dedicated Grok login required |
 | `build-local-moltnet.ts` | `npm run build:local-moltnet` | Build and stamp release binaries from an explicit source checkout |
@@ -20,7 +21,9 @@ in the npm package. Scripts run as native TypeScript on Node 22.19+.
 | `source-provenance-bundle.integration.test.ts` | `npm run test:source-provenance-docker` | Test the real offline Daimon archive build |
 | `moltnet-source-provenance.integration.test.ts` | `npm run test:moltnet-source-provenance-docker` | Test the real offline Moltnet archive build |
 
-`source-provenance-bundle.ts` and `native-helper-artifacts.ts` are shared
+`source-provenance-bundle.ts`, `native-helper-artifacts.ts`, and
+`daimon-publish-inputs.ts` (publish-input validation and published identity
+shaping) are shared
 modules imported by these entrypoints and the native artifact copy step.
 Adjacent unit tests run through `npm run test:scripts`; native artifact and
 syscall integration tests also run explicitly in CI.

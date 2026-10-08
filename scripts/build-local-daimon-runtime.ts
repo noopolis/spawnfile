@@ -209,7 +209,7 @@ export const resolvePushedImageReference = (imageTag: string, repoDigests: strin
   return match;
 };
 
-const trackedEntries = (root: string): TrackedSourceEntry[] => execFileSync("git", ["-C", root, "ls-files", "-s", "-z"], { encoding: "utf8" })
+export const trackedEntries = (root: string): TrackedSourceEntry[] => execFileSync("git", ["-C", root, "ls-files", "-s", "-z"], { encoding: "utf8" })
   .split("\0").filter(Boolean).map((entry) => {
     const tab = entry.indexOf("\t");
     const [mode] = entry.slice(0, tab).split(" ");
@@ -217,7 +217,7 @@ const trackedEntries = (root: string): TrackedSourceEntry[] => execFileSync("git
     return { mode, path: entry.slice(tab + 1) };
   });
 
-const assertClean = (root: string): void => {
+export const assertClean = (root: string): void => {
   const status = execFileSync("git", ["-C", root, "status", "--porcelain=v1", "--untracked-files=all"], { encoding: "utf8" });
   if (status.trim()) throw new Error("Local Daimon image build requires a clean source tree");
 };
