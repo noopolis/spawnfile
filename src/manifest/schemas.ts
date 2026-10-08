@@ -347,6 +347,7 @@ export type {
   WorkspaceBundleBuild
 } from "./teamNetworkSchemas.js";
 export { isDeclaredPairedRemoteRoomMember } from "./teamNetworkSchemas.js";
+export { FEED_CLOCK_PATTERN, FEED_REF_PLACEHOLDER, isFeedTimeZone, type VolumeFeedRefRule } from "./volumeFeedSchemas.js";
 
 export type {
   DiscordSurface,

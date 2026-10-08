@@ -35,6 +35,8 @@ export interface FeedLandedRecord {
   heals: Record<string, number>;
   identity: FeedIdentity;
   identity_sha256: string;
+  /** Local date (freeze time zone) the serving revision was landed in; only feeds that declare a freeze stamp it. */
+  period?: string;
   revision: string;
   /** Physical name of the serving tree under trees/. */
   tree: string;
@@ -71,6 +73,7 @@ export const feedLandedFindings = (record: unknown): string[] => {
   if (typeof value.identity_sha256 !== "string" || !/^[0-9a-f]{64}$/u.test(value.identity_sha256)) findings.push("identity_sha256 must be a hex digest");
   findings.push(...feedIdentityFindings(value.identity).map((finding) => `identity ${finding}`));
   if (value.identity && (value.identity.revision !== value.revision || value.identity.tree !== `trees/${value.tree}`)) findings.push("identity must describe the serving tree");
+  if (value.period !== undefined && (typeof value.period !== "string" || !/^\d{4}-\d{2}-\d{2}$/u.test(value.period))) findings.push("period must be a YYYY-MM-DD date");
   if (!value.heals || typeof value.heals !== "object" || Array.isArray(value.heals)) findings.push("heals must be an object");
   return findings;
 };

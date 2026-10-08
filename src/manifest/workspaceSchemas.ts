@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { argvSchema, pinnedImageSchema } from "./commandSchemas.js";
+import { volumeFeedSchema } from "./volumeFeedSchemas.js";
+
 const workspaceResourceModeSchema = z.enum(["mutable", "readonly"]);
 const workspaceResourceSharingSchema = z.enum(["per_agent", "team"]);
 
@@ -134,32 +137,6 @@ const teamWorkspaceResourceGitSchema = z
     }
   });
 
-/**
- * Host-fed content for a volume: a host directory or a git ref Spawnfile copies into the volume by atomic
- * swap (`spawnfile volume refresh`), never through the image. Exactly one source per feed.
- */
-const volumeFeedSchema = z.object({
-  directory: z.string().trim().min(1).optional(),
-  git: z.object({
-    fetch: z.boolean().optional(),
-    paths: z.array(z.string().trim().min(1)).min(1).optional(),
-    ref: z.string().trim().min(1).optional(),
-    repo: z.string().trim().min(1)
-  }).strict().optional(),
-  keep: z.number().int().min(1).optional(),
-  owner: z.string().regex(/^\d+:\d+$/u, "owner must be <uid>:<gid>").optional(),
-  validate: z.array(z.string().min(1)).min(1).optional()
-}).strict().superRefine((value, context) => {
-  if ((value.directory === undefined) === (value.git === undefined)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "volume feeds must declare exactly one of directory or git" });
-  }
-  for (const entry of value.git?.paths ?? []) {
-    if (entry.startsWith("/") || entry.split("/").some((segment) => segment === ".." || segment === "." || segment === "")) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: `volume feed git path ${entry} must be a plain repository-relative path` });
-    }
-  }
-});
-
 const teamWorkspaceResourceVolumeSchema = z
   .object({
     feed: volumeFeedSchema.optional(),
@@ -181,9 +158,6 @@ const teamWorkspaceResourceVolumeSchema = z
   });
 
 /** Declared inputs Spawnfile builds into the bundle archive. Exactly one input kind per bundle. */
-// A plain image reference (registry/repo[:tag]) pinned by digest; never anything Docker could read as an option.
-const pinnedImageSchema = z.string().trim().regex(/^[a-zA-Z0-9][a-zA-Z0-9._/:-]*@sha256:[a-f0-9]{64}$/u, "image must be a reference pinned by @sha256 digest");
-const argvSchema = z.array(z.string().min(1)).min(1);
 const workspaceBundleFilesSchema = z.object({
   exclude: z.array(z.string().trim().min(1)).optional(),
   /** Archive the tree of this commit (any git revision) instead of the work tree; needs no clean checkout. */
