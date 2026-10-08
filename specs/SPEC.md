@@ -251,6 +251,12 @@ Rules:
 - `git` resources MAY declare optional one-of selectors: `branch`, `tag`, or `ref`.
 - At most one of `branch`, `tag`, or `ref` MAY be set on a single `git` resource.
 - `git` resources MUST NOT declare `sharing: team`.
+- `git` resources MAY declare `fetch`: `start` (default) clones at container start; `build` pins at compile time.
+- With `fetch: build` the compiler resolves the selector (or the remote default branch when none is set) to one commit on the host, archives that commit's tree as a read-only bundle, and records the commit and archive digest in the compile report. A selector that cannot be resolved MUST fail the compile. Declaring `ref: <commit>` with a recorded commit MUST reproduce the identical archive.
+- `fetch: build` resources MUST be `mode: readonly` and their `url` MUST NOT embed a password or token.
+- `fetch: build` resources MAY declare `auth` with exactly one of `ssh_key` (a key file path; `~/` and paths relative to the manifest are expanded) or `ssh_key_env` (an environment variable holding the key). The key is used only by the host fetch and MUST NOT be written into the compile output or image.
+- `fetch: build` resources MAY declare `exclude` path globs with the same matching rules as bundle `build.files.exclude`. Symlinks and submodules in the archived tree are refused unless excluded.
+- `auth` and `exclude` are valid only with `fetch: build`.
 - `volume` resources MUST NOT declare `url`.
 - In a concrete agent context, effective resources MUST either be unique by identity or normalize to identical declarations where IDs collide.
 - In a concrete agent context, effective resource mounts MUST not overlap.

@@ -58,7 +58,10 @@ const normalizeResourceIdentity = (resource: ResolvedWorkspaceResource): string 
   }
   if (resource.kind === "git") {
     return JSON.stringify({
+      auth: resource.auth ?? null,
       branch: resource.branch?.trim() ?? "",
+      exclude: resource.exclude ?? null,
+      fetch: resource.fetch ?? "start",
       kind: "git",
       mode: resource.mode,
       mount: normalizeMount(resource.mount),

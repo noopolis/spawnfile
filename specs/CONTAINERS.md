@@ -250,14 +250,15 @@ For each effective `workspace.resource` attached to a concrete agent lifecycle, 
 - Prepare the resource under Spawnfile-managed backing storage.
 - Expose the backing path at the agent-visible link path with a symlink before the runtime starts.
 - `volume` resources: create backing directories and verify ownership/permissions before first launch.
-- `git` resources:
+- `git` resources with `fetch: build` were already lowered by the compiler to a pinned read-only bundle and are prepared exactly like bundles; no clone, network access or credential is involved at startup.
+- `git` resources (`fetch: start`, the default):
   - clone into empty backing paths using declared selector (`branch`, `tag`, or `ref`)
   - reuse compatible existing checkouts when present
   - fail fast when the backing path contains an incompatible checkout
 
 Compatibility uses exact remote URL match (after trim) and exact selector match.
 
-The compiler does not perform git mutation at build time.
+For `fetch: start` resources the compiler does not perform git operations at build time. For `fetch: build` resources it fetches only into its own host cache (`$SPAWNFILE_HOME/cache/git-resources/`), never into the project.
 
 `sharing: per_agent` resources use backing storage scoped to the concrete runtime target. `sharing: team` volume resources use backing storage scoped to the team where the resource was declared, so all inheriting concrete members see the same files at their own workspace-relative link paths.
 

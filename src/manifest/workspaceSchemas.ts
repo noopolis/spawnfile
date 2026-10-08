@@ -60,9 +60,26 @@ const resourceMountSchema = z
     }
   });
 
+/** Host-side credentials for a `fetch: build` git resource: a key file path, or an env var holding the key. */
+const gitResourceAuthSchema = z
+  .object({
+    ssh_key: z.string().trim().min(1).optional(),
+    ssh_key_env: z.string().trim().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u, "ssh_key_env must be an environment variable name").optional()
+  })
+  .strict()
+  .refine((value) => (value.ssh_key === undefined) !== (value.ssh_key_env === undefined), {
+    message: "git resource auth must declare exactly one of ssh_key or ssh_key_env"
+  });
+
+/** True when a URL carries a password or token in its userinfo (`https://user:secret@host/...`). */
+const urlEmbedsCredential = (url: string): boolean => /^[a-z][a-z0-9+.-]*:\/\/[^/@]*:[^/@]*@/iu.test(url);
+
 const teamWorkspaceResourceGitSchema = z
   .object({
+    auth: gitResourceAuthSchema.optional(),
     branch: z.string().trim().optional(),
+    exclude: z.array(z.string().trim().min(1)).optional(),
+    fetch: z.enum(["start", "build"]).optional(),
     id: z.string().trim().min(1),
     kind: z.literal("git"),
     mount: resourceMountSchema,
@@ -80,6 +97,21 @@ const teamWorkspaceResourceGitSchema = z
         code: z.ZodIssueCode.custom,
         message: "git resources may declare at most one of branch, tag, or ref"
       });
+    }
+    if (value.fetch === "build") {
+      if (value.mode !== "readonly") {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "git resources with fetch: build are pinned image content and must be mode: readonly" });
+      }
+      if (urlEmbedsCredential(value.url)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "git resource url must not embed a credential; declare auth instead" });
+      }
+    } else {
+      if (value.auth !== undefined) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "git resource auth requires fetch: build; a container-start clone never receives host credentials" });
+      }
+      if (value.exclude !== undefined) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "git resource exclude requires fetch: build" });
+      }
     }
     if (value.sharing === "team") {
       context.addIssue({
@@ -156,7 +188,10 @@ export const teamWorkspaceSchema = z
     ): string => {
       if (resource.kind === "git") {
         return JSON.stringify({
+          auth: resource.auth ?? null,
           branch: resource.branch?.trim() ?? "",
+          exclude: resource.exclude ?? null,
+          fetch: resource.fetch ?? "start",
           kind: "git",
           mode: resource.mode,
           mount: normalizeMount(resource.mount),
