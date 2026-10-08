@@ -53,6 +53,9 @@ export const runFeedValidation = (target: FeedTarget, stagingDir: string, resolv
     stdio: ["ignore", "pipe", "pipe"],
     timeout: target.validate.timeoutMs
   });
+  if ((result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT") {
+    throw feedError(`the feed validation command for ${target.resourceId} did not finish within ${Math.round(target.validate.timeoutMs / 1000)}s and was killed; nothing was landed`);
+  }
   if (result.error) throw feedError(`the feed validation command for ${target.resourceId} could not run: ${result.error.message}`);
   if (result.status !== 0) {
     const output = `${result.stderr ?? ""}${result.stdout ?? ""}`.trim().split("\n").slice(-20).join("\n");

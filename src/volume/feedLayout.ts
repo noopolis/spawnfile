@@ -53,7 +53,14 @@ const fail = (message: string): never => { throw feedError(message); };
 export const feedTreeLink = (revision: string): string => `${FEED_TREES_DIR}/${revision}`;
 
 const readlinkOrNull = (target: string): string | null => { try { return readlinkSync(target); } catch { return null; } };
-const canonical = (target: string): string => { try { return realpathSync(target); } catch { return path.resolve(target); } };
+/** Resolved through symlinks even when the leaf does not exist yet: the nearest existing ancestor is realpath'd. */
+const canonical = (target: string): string => {
+  const absolute = path.resolve(target);
+  try { return realpathSync(absolute); } catch {
+    const parent = path.dirname(absolute);
+    return parent === absolute ? absolute : path.join(canonical(parent), path.basename(absolute));
+  }
+};
 
 /** Read before any write, and a refusal rather than a repair: the start guard owns that contract. */
 export const assertFeedVolumeRoot = (volume: string): void => {
