@@ -128,7 +128,7 @@ describe("workspace bundle resolution", () => {
     await git(repo, "commit", "-qm", "two bundles");
     const options = { bundleCacheDirectory: cache, containerArchitecture: "amd64" as const, outputDirectory: path.join(repo, "build-output") };
     const release = await compileProject(path.join(repo, "org"), { ...options, bundleIdentity: "release" });
-    const dev = await compileProject(path.join(repo, "org"), options);
+    const dev = await compileProject(path.join(repo, "org"), { ...options, clean: false });
     const project = (report: typeof dev.report) => report.workspace_bundles!.find((entry) => entry.id === "project")!;
     expect(project(dev.report).sha256).toBe(project(release.report).sha256);
     const listing = (await run("tar", ["-tf", path.join(repo, "build-output/container/workspace-bundles", `${project(dev.report).sha256.slice(7)}.tar`)])).stdout;

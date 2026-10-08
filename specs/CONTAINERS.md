@@ -619,6 +619,8 @@ workspace:
 match root-relative paths (`*` and `?` within one segment, `**` across
 segments) and a match on a directory excludes everything beneath it.
 Symlinks, submodules and nested repositories are refused unless excluded.
+The compile output directory is always excluded when it lies under `root`, and
+every bundle's inputs are read before the compile stages any archive.
 Archives are deterministic: sorted paths, uid/gid 0, mtime 0, and modes
 collapsed to `0644`/`0755` from the executable bit git records.
 
