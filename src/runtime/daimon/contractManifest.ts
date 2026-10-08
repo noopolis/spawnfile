@@ -7,7 +7,7 @@ import { SpawnfileError } from "../../shared/index.js";
 export const DAIMON_CONTRACT_MANIFEST_VERSION =
   "noopolis.daimon.runtime-contract-manifest.v3" as const;
 export const DAIMON_CONTRACT_MANIFEST_SHA256 =
-  "sha256:751518d47c9d019c4c589e18e6ead6be44516ce35117325d2b961dab86a69886" as const;
+  "sha256:44724102e8af4ec78c06e6491a406efba114a3a9b94aaccb06cecb4a58a16c32" as const;
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";
@@ -128,9 +128,9 @@ export const DAIMON_GROK_ENGINE_BROKER = {
     }
   },
   artifacts: {
-    sourceSha256: "88dde84daf98cff28121dc42bc7e06469008f6fc0dfc57f79e3d22d0059f9650",
-    x64Sha256: "6a3739b4ad8b3996d9d0cedbcc98157797a15916110e31c1cb00a275ce5c82db",
-    arm64Sha256: "29403f0f2ea326613bc9bba0233244d0b05a200f3d7f69eeb92db7888d5bf7f4"
+    sourceSha256: "b8fd8dfa2c7cafb2e8a06975f77025c2a8d826dcfff5ba027274db0d81de5c8f",
+    x64Sha256: "c8c5130b3cf566b292a33c64279d651b5c684f8fde76b533f6e61f19f2fa3b75",
+    arm64Sha256: "8e4017ce7794f4006180459c78ba20f06e2c01a02b51f2b694548f1decdbd6bc"
   }
 } as const;
 /**
