@@ -75,3 +75,19 @@ describe("volume feed declarations", () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe("volume feed rendering", () => {
+  it("round-trips a feed through the authored-manifest renderer", async () => {
+    const { renderSpawnfile } = await import("./renderSpawnfile.js");
+    const { manifestSchema } = await import("./schemas.js");
+    const YAML = (await import("yaml")).default;
+    const feed = { git: { fetch: true, paths: ["content"], ref: "origin/main", repo: "../source" }, keep: 2, validate: ["node", "check.mjs"] };
+    const manifest = manifestSchema.parse({
+      execution: { model: { primary: { auth: { method: "claude-code" }, name: "claude-sonnet-4-5", provider: "anthropic" } } },
+      kind: "agent", name: "reader", runtime: "openclaw", spawnfile_version: "0.1",
+      workspace: { resources: [volume({ feed })] }
+    });
+    const reparsed = manifestSchema.parse(YAML.parse(renderSpawnfile(manifest as never)) as unknown) as { workspace: { resources: Array<{ feed?: unknown }> } };
+    expect(reparsed.workspace.resources[0]?.feed).toEqual(feed);
+  });
+});
