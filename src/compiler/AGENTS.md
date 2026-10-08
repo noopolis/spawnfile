@@ -16,7 +16,7 @@ src/compiler/
 ├── surfaceDefinitions.ts       # Shared surface-edit command types and manifest-shape helpers
 ├── surfaceSupport.ts           # Runtime surface compatibility checks during graph resolution
 ├── surfaces.ts                 # Resolved docs, skills, and shared-surface merging
-├── mcpServerInheritance.ts     # Shared MCP server inheritance: complete local entries replace, transport-less entries narrow tools/env
+├── mcpServerInheritance.ts     # Shared MCP server inheritance: complete local entries replace, transport-less entries narrow tools/env, opt_in shared servers go only to members listing them
 ├── mcpPlaceholders.ts          # Per-agent `${workspace}` / `${agent.id}` / `${agent.name}` resolution in MCP command/args/env
 ├── preflightCompilePlan.ts     # `spawnfile validate` preflight: per-agent runtime-option errors and adapter refusals
 ├── buildCompilePlan.ts         # Manifest graph walk and plan construction

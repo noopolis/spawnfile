@@ -11,8 +11,9 @@ import { buildCompilePlan } from "./buildCompilePlan.js";
 import { compileProject } from "./compileProject.js";
 
 /**
- * Proves S2 + S3 end to end: an organization whose members inherit one shared
- * MCP server, select their own tools and use `${workspace}` / `${agent.*}`
+ * Proves S2 + S2b + S3 end to end: an organization whose members inherit one shared
+ * MCP server, select their own tools, opt in to an `opt_in` shared server
+ * (only the writer lists `checker`; the editor never receives it) and use `${workspace}` / `${agent.*}`
  * placeholders compiles to the byte-identical Daimon config that the same
  * organization spelled out long-hand (absolute container paths, literal
  * per-agent identity) produces.
@@ -67,6 +68,13 @@ const SHORT_TEAM = [
   "          WORKBENCH_STATE_ROOT: \"${workspace}/state/shared\"",
   "          WORKBENCH_CONTROL_URL: http://127.0.0.1:19700",
   "        tools: [read_item]",
+  "      - name: checker",
+  "        opt_in: true",
+  "        transport: stdio",
+  "        command: /usr/local/bin/node",
+  "        args: [\"${workspace}/tools/checker/server.mjs\"]",
+  "        env: { CHECKER_AGENT: \"${agent.name}\" }",
+  "        tools: [check_item]",
   ...MEMBERS
 ];
 
@@ -80,12 +88,7 @@ const SHORT_AGENTS: Record<string, string[]> = {
   writer: [
     "  mcp_servers:",
     "    - { name: workbench, tools: [file_item, read_item] }",
-    "    - name: checker",
-    "      transport: stdio",
-    "      command: /usr/local/bin/node",
-    "      args: [\"${workspace}/tools/checker/server.mjs\"]",
-    "      env: { CHECKER_AGENT: \"${agent.name}\" }",
-    "      tools: [check_item]"
+    "    - name: checker"
   ]
 };
 

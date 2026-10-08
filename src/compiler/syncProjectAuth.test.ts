@@ -517,6 +517,41 @@ describe("syncProjectAuth", () => {
     });
   });
 
+  const syncOptInProject = async (memberMcpLines: string[], envFileContent: string) => {
+    const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
+    const envDirectory = await createTempDirectory("spawnfile-env-home-");
+    process.env.SPAWNFILE_HOME = spawnfileHome;
+    await writeUtf8File(path.join(envDirectory, ".env"), envFileContent);
+    return syncProjectAuth(
+      await createTeamProject(
+        [
+          'spawnfile_version: "0.1"', "kind: team", "name: research-cell",
+          "shared:", "  workspace:", "    docs:", "      system: TEAM.md",
+          "  environment:", "    mcp_servers:",
+          "      - { name: github, opt_in: true, transport: stdio, command: /bin/gh-mcp, auth: { secret: OPT_MCP_TOKEN } }",
+          "mode: hierarchical", "lead: leader", "members:", "  - id: leader", "    ref: ./agents/leader", ""
+        ],
+        [
+          'spawnfile_version: "0.1"', "kind: agent", "name: leader", "runtime: openclaw",
+          "workspace:", "  docs:", "    system: AGENTS.md", ...memberMcpLines
+        ]
+      ),
+      { envFilePath: path.join(envDirectory, ".env"), profileName: "dev" }
+    );
+  };
+
+  it("does not require the secret of an opt-in shared MCP server no member selects", async () => {
+    const profile = await syncOptInProject([], "UNRELATED=1\n");
+    expect(profile.env).toEqual({});
+  });
+
+  it("requires the secret of an opt-in shared MCP server once a member selects it", async () => {
+    await expect(syncOptInProject(["environment:", "  mcp_servers:", "    - name: github"], "UNRELATED=1\n"))
+      .rejects.toThrow("OPT_MCP_TOKEN");
+    const profile = await syncOptInProject(["environment:", "  mcp_servers:", "    - name: github"], "OPT_MCP_TOKEN=t\n");
+    expect(profile.env).toEqual({ OPT_MCP_TOKEN: "t" });
+  });
+
   it("collects managed Moltnet secrets, including bearer/open tokens, DSN, and pairings", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
     const envDirectory = await createTempDirectory("spawnfile-env-home-");
