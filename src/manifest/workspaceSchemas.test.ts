@@ -39,3 +39,39 @@ describe("fetch: build git resources", () => {
     expect(Object.keys((orderWorkspace(parsed.data)!.resources![0]) as object)).toEqual(["id", "kind", "url", "branch", "fetch", "auth", "exclude", "mount", "mode"]);
   });
 });
+
+const volume = (extra: Record<string, unknown> = {}) => ({ id: "shared-data", kind: "volume", mode: "mutable", mount: "./data", name: "shared-data-vol", ...extra });
+const issues = (resource: Record<string, unknown>): string[] => {
+  const result = teamWorkspaceSchema.safeParse({ resources: [resource] });
+  return result.success ? [] : result.error.issues.map((issue) => issue.message);
+};
+
+describe("volume feed declarations", () => {
+  it("keeps a volume without feed exactly as before", () => {
+    const parsed = teamWorkspaceSchema.parse({ resources: [{ id: "scratch", kind: "volume", mode: "readonly", mount: "./scratch" }] });
+    expect(parsed.resources).toEqual([{ id: "scratch", kind: "volume", mode: "readonly", mount: "./scratch" }]);
+  });
+
+  it("accepts a directory or git feed with validation, keep and owner", () => {
+    expect(issues(volume({ feed: { directory: "../published", keep: 2, owner: "2000:2000", validate: ["node", "check.mjs"] } }))).toEqual([]);
+    expect(issues(volume({ feed: { git: { fetch: true, paths: ["content/a", "content/b"], ref: "origin/main", repo: "../source" } } }))).toEqual([]);
+  });
+
+  it("requires exactly one source, a name, mode mutable, and plain git paths", () => {
+    expect(issues(volume({ feed: {} }))).toContain("volume feeds must declare exactly one of directory or git");
+    expect(issues(volume({ feed: { directory: "a", git: { repo: "b" } } }))).toContain("volume feeds must declare exactly one of directory or git");
+    expect(issues(volume({ feed: { directory: "a" }, name: undefined }))).toContain("fed volumes must declare name");
+    expect(issues(volume({ feed: { directory: "a" }, mode: "readonly" }))).toContain("fed volumes must declare mode: mutable; the host freezes every landed tree");
+    for (const entry of ["/abs", "a/../b", "./a", "a//b"]) {
+      expect(issues(volume({ feed: { git: { paths: [entry], repo: "r" } } }))).toContain(`volume feed git path ${entry} must be a plain repository-relative path`);
+    }
+    expect(issues(volume({ feed: { directory: "a", owner: "root" } }))).toContain("owner must be <uid>:<gid>");
+    expect(issues(volume({ feed: { directory: "a", keep: 0 } })).length).toBeGreaterThan(0);
+    expect(issues(volume({ feed: { directory: "a", extra: true } })).length).toBeGreaterThan(0);
+  });
+
+  it("treats two declarations of one id with different feeds as a conflict", () => {
+    const result = teamWorkspaceSchema.safeParse({ resources: [volume({ feed: { directory: "a" } }), volume({ feed: { directory: "b" } })] });
+    expect(result.success).toBe(false);
+  });
+});
