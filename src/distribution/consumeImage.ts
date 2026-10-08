@@ -50,6 +50,12 @@ export interface ConsumeImageUpOptions {
   daimonContainerCredentialUid?: number;
   authProfileName?: string | null;
   deploymentName?: string;
+  /**
+   * The caller already holds this deployment's home lock (a drained release
+   * holds it from the drain through the swap so no concurrent `up` can replace
+   * the drained container). Never set it without holding the lock.
+   */
+  deploymentLockHeld?: boolean;
   dockerCommand?: string;
   dockerContext?: string;
   dockerHost?: string;
@@ -145,7 +151,9 @@ export const consumeImageUp = async (
 
   // Hold an exclusive lock for the whole operation so a concurrent `up` for the
   // same deployment cannot race on the record or orphan a container.
-  const releaseLock = await acquireHomeDeploymentLock(deploymentName);
+  const releaseLock = options.deploymentLockHeld
+    ? async (): Promise<void> => undefined
+    : await acquireHomeDeploymentLock(deploymentName);
   try {
     return await consumeImageUpLocked(imageRef, parsedRef, deploymentName, isExplicitName, options);
   } finally {

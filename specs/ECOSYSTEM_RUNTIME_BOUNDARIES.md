@@ -90,6 +90,9 @@ Spawnfile MAY:
   records;
 - provision a managed provider service when declared;
 - start, inspect, update, export, and stop deployments;
+- pause and resume a runtime's admission of new work through that runtime's
+  published control contract for the duration of an update (drained release,
+  `RELEASE.md`), never selecting, waking or stopping an agent;
 - report readiness and metadata-only diagnostics; and
 - emit secret-free, versioned connection and topology plans for a composer.
 
