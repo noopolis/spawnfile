@@ -102,6 +102,10 @@ export const readStatus = async (directory: string): Promise<GitStatusEntry[]> =
     { index: record[0]!, path: record.slice(3), worktree: record[1]! }
   ));
 
+/** The HEAD commit id, or "" when the repository has none. */
+export const resolveHead = async (directory: string): Promise<string> =>
+  git(directory, ["rev-parse", "-q", "--verify", "HEAD^{commit}"]).then((output) => output.toString("utf8").trim(), () => "");
+
 /**
  * The commit `git status` compared against and every changed path under
  * `directory` (repository-relative), from one porcelain v2 run. Pairing the

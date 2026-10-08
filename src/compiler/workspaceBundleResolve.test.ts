@@ -7,7 +7,8 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { compileProject } from "./compileProject.js";
-import { computeWorkspaceBundleKey, resolveWorkspaceBundles } from "./workspaceBundleResolve.js";
+import { linkBuiltBundle } from "./workspaceBundleArtifacts.js";
+import { computeWorkspaceBundleKey, resolveBundleArchitecture, resolveWorkspaceBundles } from "./workspaceBundleResolve.js";
 import type { CompilePlan } from "./types.js";
 
 const run = promisify(execFile);
@@ -120,8 +121,21 @@ describe("workspace bundle resolution", () => {
     expect(second.report.workspace_bundles![0]!.sha256).toBe(first.report.workspace_bundles![0]!.sha256);
   }, 60_000);
 
+  it("resolves the target architecture and reports a vanished cache archive", async () => {
+    expect(resolveBundleArchitecture("arm64")).toBe("arm64");
+    const previous = process.env.SPAWNFILE_MOLTNET_TARGET_ARCH;
+    try {
+      process.env.SPAWNFILE_MOLTNET_TARGET_ARCH = "x86_64"; expect(resolveBundleArchitecture()).toBe("amd64");
+      process.env.SPAWNFILE_MOLTNET_TARGET_ARCH = "aarch64"; expect(resolveBundleArchitecture()).toBe("arm64");
+      process.env.SPAWNFILE_MOLTNET_TARGET_ARCH = "riscv64"; expect(() => resolveBundleArchitecture()).toThrow(/riscv64/u);
+    } finally {
+      if (previous === undefined) delete process.env.SPAWNFILE_MOLTNET_TARGET_ARCH; else process.env.SPAWNFILE_MOLTNET_TARGET_ARCH = previous;
+    }
+    expect(await linkBuiltBundle(path.join(repo, "gone.tar"), path.join(repo, "out-gone"), `sha256:${"1".repeat(64)}`)).toBeUndefined();
+  });
+
   it("leaves plans without unresolved bundles untouched", async () => {
     const plan = { nodes: [{ kind: "team", value: {} }, { kind: "agent", value: { workspaceResources: [{ kind: "volume" }] } }] } as unknown as CompilePlan;
-    await expect(resolveWorkspaceBundles(plan, { cacheDirectory: cache })).resolves.toMatchObject({ builtCount: 0, report: [], reusedCount: 0 });
+    await expect(resolveWorkspaceBundles(plan, { cacheDirectory: cache, outputDirectory: path.join(repo, "out-none") })).resolves.toMatchObject({ builtCount: 0, report: [], reusedCount: 0 });
   });
 });

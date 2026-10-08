@@ -5,7 +5,7 @@ import path from "node:path";
 import type { CompileReportWorkspaceBundle } from "../report/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
-import { validateWorkspaceBundleTar } from "./workspaceBundleArtifacts.js";
+import { linkBuiltBundle, validateWorkspaceBundleTar } from "./workspaceBundleArtifacts.js";
 import {
   lookupCachedBundle,
   pruneBundleCache,
@@ -21,14 +21,23 @@ import {
   type BundleIdentityMode
 } from "./workspaceBundleFiles.js";
 import { WORKSPACE_BUNDLE_MAX_BYTES, WORKSPACE_BUNDLE_TAR_WRITER } from "./workspaceBundleTar.js";
-import { resolveTargetArchitecture } from "./moltnetBinaries.js";
 import type { MoltnetTargetArchitecture } from "./moltnetReleaseAuthority.js";
 import type { CompilePlan } from "./types.js";
 import type { ResolvedWorkspaceResource } from "./workspaceResources.js";
 
 const KEY_VERSION = "spawnfile.workspace-bundle-key.v1";
 
+/** Explicit, else the same target-arch override the Moltnet binaries honour, else the host. */
+export const resolveBundleArchitecture = (architecture?: MoltnetTargetArchitecture): MoltnetTargetArchitecture => {
+  const value = architecture ?? (process.env.SPAWNFILE_MOLTNET_TARGET_ARCH?.trim() || process.arch);
+  if (value === "amd64" || value === "x64" || value === "x86_64") return "amd64";
+  if (value === "arm64" || value === "aarch64") return "arm64";
+  throw new SpawnfileError("compile_error", `Workspace bundles do not support target architecture ${value}`);
+};
+
 export interface ResolveWorkspaceBundlesOptions {
+  /** Compile output directory; built archives are linked into its Docker context as soon as they resolve. */
+  outputDirectory: string;
   /** Target container architecture; resolved like the Moltnet binaries when omitted. */
   architecture?: MoltnetTargetArchitecture;
   /** Defaults to `$SPAWNFILE_HOME/cache/workspace-bundles`. */
@@ -38,7 +47,7 @@ export interface ResolveWorkspaceBundlesOptions {
 }
 
 export interface ResolvedWorkspaceBundles {
-  /** Digest → read-only cache archive built or stat-checked this compile; staging links these without reading them. */
+  /** Digest → built archive already linked into the Docker context this compile. */
   built: Map<string, string>;
   report: CompileReportWorkspaceBundle[];
   builtCount: number;
@@ -85,7 +94,7 @@ type BundleFacts = Omit<CompileReportWorkspaceBundle, "id">;
 export const resolveWorkspaceBundles = async (plan: CompilePlan, options: ResolveWorkspaceBundlesOptions): Promise<ResolvedWorkspaceBundles> => {
   const result: ResolvedWorkspaceBundles = { built: new Map(), builtCount: 0, report: [], reusedCount: 0 };
   const memo = new Map<string, Promise<BundleFacts>>();
-  const cacheDirectory = resolveWorkspaceBundleCacheDirectory(options.cacheDirectory);
+  const cacheDirectory = resolveWorkspaceBundleCacheDirectory(options.cacheDirectory), { outputDirectory } = options;
   let platform = "";
   const identity = options.identity ?? "dev", usedKeys = new Set<string>();
 
@@ -94,18 +103,22 @@ export const resolveWorkspaceBundles = async (plan: CompilePlan, options: Resolv
     if (resource.source !== undefined) {
       return { origin: "prebuilt", sha256: resource.sha256 ?? await hashPrebuilt(path.resolve(base, resource.source)) };
     }
-    platform ||= `linux/${resolveTargetArchitecture(options.architecture)}`;
+    platform ||= `linux/${resolveBundleArchitecture(options.architecture)}`;
     const files = resource.build!.files, root = await resolveBundleRoot(path.resolve(base, files.root));
     const input = identity === "release" ? await resolveReleaseFiles(root, files.exclude) : await resolveDevFiles(root, files.exclude);
     const key = computeWorkspaceBundleKey(input, platform);
     usedKeys.add(key);
-    let cached = await lookupCachedBundle(cacheDirectory, key);
-    if (cached) result.reusedCount += 1;
+    // Link into this compile's context immediately: once linked, a concurrent compile's pruning cannot take it away.
+    // A hit pruned between lookup and link is rebuilt.
+    let cached = await lookupCachedBundle(cacheDirectory, key), staged = cached && await linkBuiltBundle(cached.tarPath, outputDirectory, cached.sha256);
+    if (cached && staged) result.reusedCount += 1;
     else {
       cached = await storeBuiltBundle(cacheDirectory, key, (temporaryPath) => writeBundleFiles(input, temporaryPath));
+      staged = await linkBuiltBundle(cached.tarPath, outputDirectory, cached.sha256);
+      if (!staged) throw new SpawnfileError("compile_error", `Workspace bundle archive vanished from the cache while it was staged: ${key}`);
       result.builtCount += 1;
     }
-    result.built.set(cached.sha256, cached.tarPath);
+    result.built.set(cached.sha256, staged);
     return { cache_key: key, content_bytes: cached.contentBytes, file_count: cached.fileCount, identity, origin: "built", platform, sha256: cached.sha256 };
   };
 
