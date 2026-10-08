@@ -39,7 +39,7 @@ const ensureUniqueNames = (names: string[], label: string): void => {
   }
 };
 
-const getMcpNames = (mcpServers?: McpServer[]): Set<string> =>
+const getMcpNames = (mcpServers?: Array<Pick<McpServer, "name">>): Set<string> =>
   new Set((mcpServers ?? []).map((server) => server.name));
 
 const validateSkillRequirements = (
