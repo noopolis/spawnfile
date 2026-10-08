@@ -100,11 +100,24 @@ const teamWorkspaceResourceVolumeSchema = z
   })
   .strict();
 
-const teamWorkspaceResourceBundleSchema = z.object({
-  id: z.string().trim().min(1), kind: z.literal("bundle"), mount: resourceMountSchema,
-  mode: z.literal("readonly"), sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
-  sharing: z.literal("per_agent").optional(), source: z.string().trim().min(1)
+/** Declared inputs Spawnfile builds into the bundle archive. Exactly one input kind per bundle. */
+const workspaceBundleBuildSchema = z.object({
+  files: z.object({
+    exclude: z.array(z.string().trim().min(1)).optional(),
+    root: z.string().trim().min(1)
+  }).strict()
 }).strict();
+
+const teamWorkspaceResourceBundleSchema = z.object({
+  build: workspaceBundleBuildSchema.optional(),
+  id: z.string().trim().min(1), kind: z.literal("bundle"), mount: resourceMountSchema,
+  mode: z.literal("readonly"), sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u).optional(),
+  sharing: z.literal("per_agent").optional(), source: z.string().trim().min(1).optional()
+}).strict().superRefine((value, context) => {
+  if ((value.source === undefined) === (value.build === undefined)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "bundle resources must declare exactly one of source or build" });
+  }
+});
 
 const teamWorkspaceResourceSchema = z.discriminatedUnion("kind", [
   teamWorkspaceResourceGitSchema,
@@ -154,8 +167,8 @@ export const teamWorkspaceSchema = z
         });
       }
       if (resource.kind === "bundle") return JSON.stringify({
-        kind: resource.kind, mode: resource.mode, mount: normalizeMount(resource.mount),
-        sha256: resource.sha256, sharing: resource.sharing ?? "per_agent", source: resource.source
+        build: resource.build ?? null, kind: resource.kind, mode: resource.mode, mount: normalizeMount(resource.mount),
+        sha256: resource.sha256 ?? null, sharing: resource.sharing ?? "per_agent", source: resource.source ?? null
       });
 
       return JSON.stringify({
@@ -203,4 +216,5 @@ export const teamWorkspaceSchema = z
 export type TeamWorkspace = z.infer<typeof teamWorkspaceSchema>;
 export type TeamWorkspaceDocs = z.infer<typeof teamWorkspaceDocsSchema>;
 export type TeamWorkspaceResource = z.infer<typeof teamWorkspaceResourceSchema>;
+export type WorkspaceBundleBuild = z.infer<typeof workspaceBundleBuildSchema>;
 export type TeamWorkspaceSkill = z.infer<typeof workspaceSkillReferenceSchema>;

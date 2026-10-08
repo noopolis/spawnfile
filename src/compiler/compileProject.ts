@@ -26,6 +26,8 @@ import {
   type RuntimePackageOverrideRequest
 } from "./containerPackageOverrides.js";
 import { stageWorkspaceBundles } from "./workspaceBundleArtifacts.js";
+import type { BundleIdentityMode } from "./workspaceBundleFiles.js";
+import { resolveWorkspaceBundles } from "./workspaceBundleResolve.js";
 import { augmentNodeReports } from "./compileProjectReports.js";
 import {
   enforcePolicy,
@@ -60,6 +62,10 @@ export type {
 } from "./organizationReadyEvidence.js";
 
 export interface CompileProjectOptions {
+  /** Cache for built workspace bundles; defaults to `$SPAWNFILE_HOME/cache/workspace-bundles`. */
+  bundleCacheDirectory?: string;
+  /** `release` builds bundles only from clean committed inputs; `dev` (default) includes uncommitted edits. */
+  bundleIdentity?: BundleIdentityMode;
   clean?: boolean;
   containerArchitecture?: MoltnetTargetArchitecture;
   /** Stable deployment identity for exclusive credential-realm reattachment. */
@@ -279,6 +285,12 @@ export const compileProject = async (
     await removeDirectory(outputDirectory);
   }
   await ensureDirectory(outputDirectory);
+  const workspaceBundles = await resolveWorkspaceBundles(plan, {
+    architecture: options.containerArchitecture,
+    cacheDirectory: options.bundleCacheDirectory,
+    identity: options.bundleIdentity,
+    outputDirectory
+  });
 
   const teamCompileSupport = await prepareTeamCompileSupport(plan);
 
@@ -324,7 +336,7 @@ export const compileProject = async (
     outputDirectory,
     options.runtimePackageOverrides
   );
-  const hasWorkspaceBundles = await stageWorkspaceBundles(outputDirectory, plan);
+  const hasWorkspaceBundles = await stageWorkspaceBundles(outputDirectory, plan, workspaceBundles.built);
   const generatedAt = new Date().toISOString();
   const containerArtifacts = await createContainerArtifacts(plan, compiledNodes, {
     deploymentLineage: options.deploymentLineage,
@@ -349,6 +361,7 @@ export const compileProject = async (
     outputDirectory,
     projectName: containerArtifacts.distribution.report.organization.project
   });
+  if (workspaceBundles.report.length > 0) report.workspace_bundles = workspaceBundles.report;
   const reportPath = await writeCompileReport(outputDirectory, report);
   const organizationReadinessEvidence = createOrganizationReadinessEvidence({
     compileVersion: report.spawnfile_version,

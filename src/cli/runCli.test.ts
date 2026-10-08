@@ -427,6 +427,22 @@ describe("runCli", () => {
     ]);
   });
 
+  it("passes --release to compile and build as the release bundle identity", async () => {
+    const result = {
+      imageTag: "spawnfile-single-agent",
+      organizationReadinessEvidence: genericOrganizationReadinessEvidence,
+      outputDirectory: "/tmp/spawnfile-release-out",
+      report: { diagnostics: [], nodes: [], root: path.join(fixturesRoot, "single-agent"), spawnfile_version: "0.1" as const },
+      reportPath: "/tmp/spawnfile-release-out/spawnfile-report.json",
+    };
+    const compileProject = vi.fn(async () => result), buildProject = vi.fn(async () => result);
+    const streams = { stderr: () => undefined, stdout: () => undefined };
+    expect(await runCli(["compile", path.join(fixturesRoot, "single-agent"), "--release"], streams, { compileProject })).toBe(0);
+    expect(compileProject).toHaveBeenCalledWith(path.join(fixturesRoot, "single-agent"), expect.objectContaining({ bundleIdentity: "release" }));
+    expect(await runCli(["build", path.join(fixturesRoot, "single-agent"), "--release"], streams, { buildProject })).toBe(0);
+    expect(buildProject).toHaveBeenCalledWith(path.join(fixturesRoot, "single-agent"), expect.objectContaining({ bundleIdentity: "release" }));
+  });
+
   it("runs up for a project in detached mode", async () => {
     const stdout: string[] = [];
     const upProject = vi.fn(async () => ({

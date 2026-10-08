@@ -26,11 +26,13 @@ export const registerCompileBuildCommands = (
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .option("-o, --out <directory>", "Output directory")
     .option("--world-bindings <file>", "Path to a versioned world-bindings artifact")
+    .option("--release", "Build workspace bundles only from clean committed inputs")
     .action(async (
       inputPath: string,
-      options: { out?: string; worldBindings?: string }
+      options: { out?: string; release?: boolean; worldBindings?: string }
     ) => {
       const result = await handlers.compileProject(inputPath, {
+        ...(options.release ? { bundleIdentity: "release" as const } : {}),
         outputDirectory: options.out,
         worldBindingsPath: options.worldBindings
       });
@@ -47,11 +49,13 @@ export const registerCompileBuildCommands = (
     .option("--docker-command <command>", "Docker command")
     .option("-o, --out <directory>", "Output directory")
     .option("-t, --tag <image>", "Docker image tag")
+    .option("--release", "Build workspace bundles only from clean committed inputs")
     .action(async (
       inputPath: string,
-      options: { context?: string; dockerCommand?: string; out?: string; tag?: string }
+      options: { context?: string; dockerCommand?: string; out?: string; release?: boolean; tag?: string }
     ) => {
       const result = await handlers.buildProject(inputPath, {
+        ...(options.release ? { bundleIdentity: "release" as const } : {}),
         dockerContext: options.context,
         dockerCommand: options.dockerCommand,
         imageTag: options.tag,

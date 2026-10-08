@@ -591,12 +591,64 @@ That harness SHOULD:
 This harness is intentionally separate from `npm test` because it requires Docker, network access, and real credentials.
 ### Offline workspace bundles
 
-`workspace.resources` may declare a read-only `bundle` with `source`, exact
-`sha256`, and `mount`. Compilation accepts only a bounded safe tar, copies its
-exact bytes into the Docker context, and binds its digest into the resource
-identity and generated entrypoint. The image therefore starts offline and the
-normal build-context digest covers every tracked or untracked byte present in
-the archive. Dependency artifacts needed at runtime belong inside that archive.
+`workspace.resources` may declare a read-only `bundle` with `mount` and exactly
+one of `source` (a prebuilt tar) or `build` (inputs Spawnfile archives itself).
+Compilation accepts only a bounded safe tar, copies its exact bytes into the
+Docker context, and binds its digest into the resource identity and generated
+entrypoint. The image therefore starts offline and the normal build-context
+digest covers every byte present in the archive. `sha256` is optional: a
+prebuilt tar without it is hashed at compile time, and a declared value is
+always verified against the prebuilt or built archive. Every digest the
+compile produced or verified is recorded in the compile report's
+`workspace_bundles` list.
+
+```yaml
+workspace:
+  resources:
+    - id: tools
+      kind: bundle
+      build:
+        files:
+          root: ../../tools            # relative to this Spawnfile
+          exclude: ["**/*.test.mjs", "fixtures"]
+      mount: ./repos/tools
+      mode: readonly
+```
+
+`build.files` archives the git-tracked files under `root`. `exclude` globs
+match root-relative paths (`*` and `?` within one segment, `**` across
+segments) and a match on a directory excludes everything beneath it.
+Symlinks, submodules and nested repositories are refused unless excluded.
+The compile output directory is always excluded when it lies under `root`, and
+every bundle's inputs are read before the compile stages any archive.
+Archives are deterministic: sorted paths, uid/gid 0, mtime 0, and modes
+collapsed to `0644`/`0755` from the executable bit git records.
+
+Identity comes from git, never from walking file contents:
+
+- `spawnfile compile --release` (and `build --release`) requires the inputs
+  under `root` to match `HEAD` — no modified, staged or untracked non-ignored
+  file outside `exclude` — and takes identity from `git ls-tree` blob ids
+  and modes of exactly the commit that status compared against. Archive bytes
+  are read from the object store, so the archive is a pure function of the
+  commit.
+- Dev compiles (the default) take the index blob id for every file git
+  reports unchanged and hash only modified and untracked files, so an
+  uncommitted edit or a new file always changes the archive. The index listing
+  and status are re-read if the index changes while they are taken.
+- Git replacement refs are ignored: object ids always name their own bytes.
+
+The cache key is the sorted `(path, mode, identity)` list, the archive writer
+version, and the target platform (`linux/<arch>`). Archives are cached by key
+as read-only files under `$SPAWNFILE_HOME/cache/workspace-bundles` (least
+recently used beyond 24 are pruned, never one used in the last hour); a warm
+compile resolves the key with a few git queries and hard-links the cached
+archive into the build context without reading it. A cached archive whose
+size, inode or mtime changed is rebuilt. Prebuilt `source` tars are always
+hashed and staged from the exact bytes verified, even when a built bundle has
+the same digest. Only the `files`
+input kind exists today; dependency installs and generated outputs still ship
+as prebuilt `source` tars.
 
 Local production-candidate Daimon builds retain the clean-Git provenance mode
 by default. A reviewed dirty integration tree instead uses two deterministic,

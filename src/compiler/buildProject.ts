@@ -171,6 +171,8 @@ export const buildProject = async (
   const targetArchitecture =
     options.containerArchitecture ?? await resolveDockerBuildArchitecture(options);
   const compileResult = await compileProject(inputPath, {
+    ...(options.bundleCacheDirectory !== undefined ? { bundleCacheDirectory: options.bundleCacheDirectory } : {}),
+    ...(options.bundleIdentity !== undefined ? { bundleIdentity: options.bundleIdentity } : {}),
     clean: options.clean,
     containerArchitecture: targetArchitecture,
     outputDirectory: options.outputDirectory,
