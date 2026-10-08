@@ -165,8 +165,6 @@ export const resolveDevFiles = async (directory: string, exclude: readonly strin
     toHash.push(relativePath);
   }
   const pending = [...new Set(toHash)];
-  // Deleted paths drop out below; this early bound only stops absurd input sets before any file is read.
-  if (entries.size + pending.length > WORKSPACE_BUNDLE_MAX_ENTRIES * 2) fail("Workspace bundle exceeds the maximum entry count");
   let hashedBytes = 0;
   // Bounded: at most HASH_CONCURRENCY files open, and the byte budget is spent before a file is read.
   const hashNext = async (): Promise<void> => {

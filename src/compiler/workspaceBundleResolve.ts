@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 import type { CompileReportWorkspaceBundle } from "../report/index.js";
@@ -93,23 +93,42 @@ type BundleFacts = Omit<CompileReportWorkspaceBundle, "id">;
  */
 export const resolveWorkspaceBundles = async (plan: CompilePlan, options: ResolveWorkspaceBundlesOptions): Promise<ResolvedWorkspaceBundles> => {
   const result: ResolvedWorkspaceBundles = { built: new Map(), builtCount: 0, report: [], reusedCount: 0 };
-  const memo = new Map<string, Promise<BundleFacts>>();
   const cacheDirectory = resolveWorkspaceBundleCacheDirectory(options.cacheDirectory), { outputDirectory } = options;
-  let platform = "";
   const identity = options.identity ?? "dev", usedKeys = new Set<string>();
+  const bundles = plan.nodes.flatMap((node) => node.kind === "agent" ? (node.value.workspaceResources ?? []).filter((resource): resource is BundleResource => resource.kind === "bundle") : []);
+  if (bundles.length === 0) return result;
+  const outputReal = await realpath(outputDirectory).catch(() => path.resolve(outputDirectory));
+  let platform = "";
 
-  const resolveOne = async (resource: BundleResource): Promise<BundleFacts> => {
+  // Phase 1: every input snapshot is taken before this compile writes anything, so no
+  // staged archive (or other output under a bundle root) can leak into a later bundle.
+  const planned = new Map<string, Promise<{ facts: BundleFacts } | { input: BundleFilesInput; key: string }>>();
+  for (const resource of bundles) {
+    const memoKey = declarationKey(resource);
+    if (planned.has(memoKey)) continue;
     const base = path.dirname(resource.scope.key);
-    if (resource.source !== undefined) {
-      return { origin: "prebuilt", sha256: resource.sha256 ?? await hashPrebuilt(path.resolve(base, resource.source)) };
-    }
-    platform ||= `linux/${resolveBundleArchitecture(options.architecture)}`;
-    const files = resource.build!.files, root = await resolveBundleRoot(path.resolve(base, files.root));
-    const input = identity === "release" ? await resolveReleaseFiles(root, files.exclude) : await resolveDevFiles(root, files.exclude);
-    const key = computeWorkspaceBundleKey(input, platform);
+    planned.set(memoKey, (async () => {
+      if (resource.source !== undefined) {
+        return { facts: { origin: "prebuilt" as const, sha256: resource.sha256 ?? await hashPrebuilt(path.resolve(base, resource.source)) } };
+      }
+      platform ||= `linux/${resolveBundleArchitecture(options.architecture)}`;
+      const files = resource.build!.files, root = await resolveBundleRoot(path.resolve(base, files.root));
+      const outputInside = path.relative(root, outputReal);
+      const exclude = outputInside && !outputInside.startsWith("..") && !path.isAbsolute(outputInside) ? [...(files.exclude ?? []), outputInside.split(path.sep).join("/")] : files.exclude;
+      const input = identity === "release" ? await resolveReleaseFiles(root, exclude) : await resolveDevFiles(root, exclude);
+      return { input, key: computeWorkspaceBundleKey(input, platform) };
+    })());
+    await planned.get(memoKey);
+  }
+
+  // Phase 2: build or reuse each archive and link it into this compile's context at once,
+  // so a concurrent compile's pruning cannot take it away. A hit pruned before linking is rebuilt.
+  const facts = new Map<string, BundleFacts>();
+  for (const [memoKey, pending] of planned) {
+    const step = await pending;
+    if ("facts" in step) { facts.set(memoKey, step.facts); continue; }
+    const { input, key } = step;
     usedKeys.add(key);
-    // Link into this compile's context immediately: once linked, a concurrent compile's pruning cannot take it away.
-    // A hit pruned between lookup and link is rebuilt.
     let cached = await lookupCachedBundle(cacheDirectory, key), staged = cached && await linkBuiltBundle(cached.tarPath, outputDirectory, cached.sha256);
     if (cached && staged) result.reusedCount += 1;
     else {
@@ -119,24 +138,20 @@ export const resolveWorkspaceBundles = async (plan: CompilePlan, options: Resolv
       result.builtCount += 1;
     }
     result.built.set(cached.sha256, staged);
-    return { cache_key: key, content_bytes: cached.contentBytes, file_count: cached.fileCount, identity, origin: "built", platform, sha256: cached.sha256 };
-  };
+    facts.set(memoKey, { cache_key: key, content_bytes: cached.contentBytes, file_count: cached.fileCount, identity, origin: "built", platform, sha256: cached.sha256 });
+  }
 
   for (const node of plan.nodes) {
     if (node.kind !== "agent" || !node.value.workspaceResources?.some((resource) => resource.kind === "bundle")) continue;
-    const resources: ResolvedWorkspaceResource[] = [];
-    for (const resource of node.value.workspaceResources) {
-      if (resource.kind !== "bundle") { resources.push(resource); continue; }
-      const memoKey = declarationKey(resource);
-      if (!memo.has(memoKey)) memo.set(memoKey, resolveOne(resource));
-      const facts = await memo.get(memoKey)!;
-      if (resource.sha256 !== undefined && resource.sha256 !== facts.sha256) {
-        throw new SpawnfileError("validation_error", `Workspace bundle ${resource.id} built to ${facts.sha256}, but it declares ${resource.sha256}`);
+    node.value.workspaceResources = node.value.workspaceResources.map((resource) => {
+      if (resource.kind !== "bundle") return resource;
+      const resolved = facts.get(declarationKey(resource))!;
+      if (resource.sha256 !== undefined && resource.sha256 !== resolved.sha256) {
+        throw new SpawnfileError("validation_error", `Workspace bundle ${resource.id} built to ${resolved.sha256}, but it declares ${resource.sha256}`);
       }
-      if (!result.report.some((existing) => existing.id === resource.id && existing.sha256 === facts.sha256)) result.report.push({ id: resource.id, ...facts });
-      resources.push({ ...resource, sha256: facts.sha256 });
-    }
-    node.value.workspaceResources = resources;
+      if (!result.report.some((existing) => existing.id === resource.id && existing.sha256 === resolved.sha256)) result.report.push({ id: resource.id, ...resolved });
+      return { ...resource, sha256: resolved.sha256 };
+    });
   }
   if (usedKeys.size > 0) await pruneBundleCache(cacheDirectory, usedKeys);
   result.report.sort((left, right) => left.id.localeCompare(right.id) || left.sha256.localeCompare(right.sha256));

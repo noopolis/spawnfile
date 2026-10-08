@@ -121,6 +121,20 @@ describe("workspace bundle resolution", () => {
     expect(second.report.workspace_bundles![0]!.sha256).toBe(first.report.workspace_bundles![0]!.sha256);
   }, 60_000);
 
+  it("never lets this compile's own output leak into a bundle whose root contains it", async () => {
+    const whole = ["- id: project", "  kind: bundle", "  build:", "    files:", "      root: ..", "      exclude: [\".cache\"]", "  mount: ./repos/project", "  mode: readonly"];
+    await writeFile(path.join(repo, "org/Spawnfile"), agentSpawnfile([...builtResource, ...whole]));
+    await git(repo, "add", ".");
+    await git(repo, "commit", "-qm", "two bundles");
+    const options = { bundleCacheDirectory: cache, containerArchitecture: "amd64" as const, outputDirectory: path.join(repo, "build-output") };
+    const release = await compileProject(path.join(repo, "org"), { ...options, bundleIdentity: "release" });
+    const dev = await compileProject(path.join(repo, "org"), options);
+    const project = (report: typeof dev.report) => report.workspace_bundles!.find((entry) => entry.id === "project")!;
+    expect(project(dev.report).sha256).toBe(project(release.report).sha256);
+    const listing = (await run("tar", ["-tf", path.join(repo, "build-output/container/workspace-bundles", `${project(dev.report).sha256.slice(7)}.tar`)])).stdout;
+    expect(listing).not.toContain("build-output");
+  }, 60_000);
+
   it("resolves the target architecture and reports a vanished cache archive", async () => {
     expect(resolveBundleArchitecture("arm64")).toBe("arm64");
     const previous = process.env.SPAWNFILE_MOLTNET_TARGET_ARCH;
