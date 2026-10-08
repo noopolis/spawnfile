@@ -134,8 +134,35 @@ const teamWorkspaceResourceGitSchema = z
     }
   });
 
+/**
+ * Host-fed content for a volume: a host directory or a git ref Spawnfile copies into the volume by atomic
+ * swap (`spawnfile volume refresh`), never through the image. Exactly one source per feed.
+ */
+const volumeFeedSchema = z.object({
+  directory: z.string().trim().min(1).optional(),
+  git: z.object({
+    fetch: z.boolean().optional(),
+    paths: z.array(z.string().trim().min(1)).min(1).optional(),
+    ref: z.string().trim().min(1).optional(),
+    repo: z.string().trim().min(1)
+  }).strict().optional(),
+  keep: z.number().int().min(1).optional(),
+  owner: z.string().regex(/^\d+:\d+$/u, "owner must be <uid>:<gid>").optional(),
+  validate: z.array(z.string().min(1)).min(1).optional()
+}).strict().superRefine((value, context) => {
+  if ((value.directory === undefined) === (value.git === undefined)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "volume feeds must declare exactly one of directory or git" });
+  }
+  for (const entry of value.git?.paths ?? []) {
+    if (entry.startsWith("/") || entry.split("/").some((segment) => segment === ".." || segment === "." || segment === "")) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: `volume feed git path ${entry} must be a plain repository-relative path` });
+    }
+  }
+});
+
 const teamWorkspaceResourceVolumeSchema = z
   .object({
+    feed: volumeFeedSchema.optional(),
     id: z.string().trim().min(1),
     kind: z.literal("volume"),
     mount: resourceMountSchema,
@@ -143,7 +170,15 @@ const teamWorkspaceResourceVolumeSchema = z
     name: z.string().trim().optional(),
     sharing: workspaceResourceSharingSchema.optional()
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (!value.feed) return;
+    // The host job addresses the volume by its exact host name, so a derived, unpublished name cannot be fed.
+    if (!value.name) context.addIssue({ code: z.ZodIssueCode.custom, message: "fed volumes must declare name" });
+    // A readonly volume is made read-only by the container rewriting the whole volume on every start;
+    // a fed volume is instead frozen tree by tree on the host, so it stays mutable at the mount.
+    if (value.mode !== "mutable") context.addIssue({ code: z.ZodIssueCode.custom, message: "fed volumes must declare mode: mutable; the host freezes every landed tree" });
+  });
 
 /** Declared inputs Spawnfile builds into the bundle archive. Exactly one input kind per bundle. */
 const workspaceBundleBuildSchema = z.object({
@@ -220,6 +255,7 @@ export const teamWorkspaceSchema = z
       });
 
       return JSON.stringify({
+        ...(resource.feed ? { feed: resource.feed } : {}),
         kind: "volume",
         mode: resource.mode,
         mount: normalizeMount(resource.mount),
@@ -265,4 +301,5 @@ export type TeamWorkspace = z.infer<typeof teamWorkspaceSchema>;
 export type TeamWorkspaceDocs = z.infer<typeof teamWorkspaceDocsSchema>;
 export type TeamWorkspaceResource = z.infer<typeof teamWorkspaceResourceSchema>;
 export type WorkspaceBundleBuild = z.infer<typeof workspaceBundleBuildSchema>;
+export type VolumeFeed = z.infer<typeof volumeFeedSchema>;
 export type TeamWorkspaceSkill = z.infer<typeof workspaceSkillReferenceSchema>;
