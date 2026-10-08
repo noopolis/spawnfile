@@ -83,6 +83,16 @@ describe("workspaceResources", () => {
     });
   });
 
+  it("compares bundle build roots and sources resolved against their declaring manifest", () => {
+    const teamScope = { kind: "team" as const, key: "/tmp/team/Spawnfile", name: "team" };
+    const bundle = { build: { files: { root: "./tools" } }, id: "tools", kind: "bundle" as const, mode: "readonly" as const, mount: "./tools" };
+    const inherited = mergeWorkspaceResources([], [bundle], "team", teamScope);
+    expect(() => mergeWorkspaceResources(inherited, [bundle], "worker", agentScope)).toThrow(/resolves differently/u);
+    expect(mergeWorkspaceResources(inherited, [{ ...bundle, build: { files: { root: "../../team/tools" } } }], "worker", agentScope)).toHaveLength(1);
+    const prebuilt = { id: "tools", kind: "bundle" as const, mode: "readonly" as const, mount: "./tools", source: "./tools.tar" };
+    expect(() => mergeWorkspaceResources(mergeWorkspaceResources([], [prebuilt], "team", teamScope), [prebuilt], "worker", agentScope)).toThrow(/resolves differently/u);
+  });
+
   it("dedupes identical resource IDs and rejects conflicting duplicates", () => {
     const identical = mergeWorkspaceResources(
       [],

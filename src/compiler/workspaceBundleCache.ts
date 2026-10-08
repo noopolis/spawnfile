@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { resolveSpawnfileHome } from "../auth/paths.js";
@@ -59,6 +59,8 @@ export const storeBuiltBundle = async (
   try {
     const summary = await build(temporaryTar);
     validateWorkspaceBundleTar(await readFile(temporaryTar));
+    // Read-only: staging hard-links this inode into build contexts, which must never write through to it.
+    await chmod(temporaryTar, 0o444);
     await rename(temporaryTar, location.tar);
     const info = await stat(location.tar);
     const record: CacheRecord = { ...summary, ino: info.ino, key, mtimeMs: info.mtimeMs, version: RECORD_VERSION };
@@ -71,13 +73,19 @@ export const storeBuiltBundle = async (
   }
 };
 
-/** Removes the least recently used archives beyond the limit, never one this compile uses. */
-export const pruneBundleCache = async (directory: string, keep: ReadonlySet<string>, limit = WORKSPACE_BUNDLE_CACHE_LIMIT): Promise<void> => {
+/** An archive used this recently may belong to a concurrent compile that has not staged it yet. */
+export const WORKSPACE_BUNDLE_CACHE_GRACE_MS = 3_600_000;
+
+/**
+ * Removes the least recently used archives beyond the limit. Never removes
+ * one this compile uses, nor one any compile used within the grace period.
+ */
+export const pruneBundleCache = async (directory: string, keep: ReadonlySet<string>, limit = WORKSPACE_BUNDLE_CACHE_LIMIT, now = Date.now()): Promise<void> => {
   const names = await readdir(directory).catch(() => [] as string[]);
   const records = await Promise.all(names.filter((name) => /^[a-f0-9]{64}\.json$/u.test(name)).map(async (name) => ({
     key: name.slice(0, 64), used: (await stat(path.join(directory, name)).catch(() => undefined))?.mtimeMs ?? 0
   })));
-  const stale = records.sort((left, right) => right.used - left.used).slice(limit).filter((record) => !keep.has(record.key));
+  const stale = records.sort((left, right) => right.used - left.used).slice(limit).filter((record) => !keep.has(record.key) && now - record.used > WORKSPACE_BUNDLE_CACHE_GRACE_MS);
   await Promise.all(stale.flatMap((record) => [
     rm(path.join(directory, `${record.key}.json`), { force: true }),
     rm(path.join(directory, `${record.key}.tar`), { force: true })

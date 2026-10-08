@@ -38,11 +38,11 @@ export interface ResolveWorkspaceBundlesOptions {
 }
 
 export interface ResolvedWorkspaceBundles {
-  /** Digest → archive already verified this compile; staging copies these without re-reading them. */
-  verified: Map<string, string>;
+  /** Digest → read-only cache archive built or stat-checked this compile; staging links these without reading them. */
+  built: Map<string, string>;
   report: CompileReportWorkspaceBundle[];
-  built: number;
-  reused: number;
+  builtCount: number;
+  reusedCount: number;
 }
 
 type BundleResource = Extract<ResolvedWorkspaceResource, { kind: "bundle" }>;
@@ -63,7 +63,7 @@ export const computeWorkspaceBundleKey = (input: Pick<BundleFilesInput, "entries
   })).digest("hex");
 
 const declarationKey = (resource: BundleResource): string => JSON.stringify({
-  build: resource.build ?? null, scope: path.dirname(resource.scope.key), sha256: resource.sha256 ?? null, source: resource.source ?? null
+  build: resource.build ?? null, scope: path.dirname(resource.scope.key), source: resource.source ?? null
 });
 
 const hashPrebuilt = async (source: string): Promise<string> => {
@@ -74,25 +74,25 @@ const hashPrebuilt = async (source: string): Promise<string> => {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 };
 
+type BundleFacts = Omit<CompileReportWorkspaceBundle, "id">;
+
 /**
  * Gives every bundle resource in the plan a concrete digest. Declared-input
  * bundles are built (or reused from the cache by key); prebuilt tars without a
- * declared digest are hashed. Prebuilt tars that declare `sha256` are left to
- * staging, which verifies them exactly as before.
+ * declared digest are hashed. Staging verifies every prebuilt tar again from
+ * the bytes it stages. Every bundle resource is reported with its digest.
  */
 export const resolveWorkspaceBundles = async (plan: CompilePlan, options: ResolveWorkspaceBundlesOptions): Promise<ResolvedWorkspaceBundles> => {
-  const result: ResolvedWorkspaceBundles = { built: 0, report: [], reused: 0, verified: new Map() };
-  const memo = new Map<string, Promise<{ digest: string; entry: CompileReportWorkspaceBundle }>>();
+  const result: ResolvedWorkspaceBundles = { built: new Map(), builtCount: 0, report: [], reusedCount: 0 };
+  const memo = new Map<string, Promise<BundleFacts>>();
   const cacheDirectory = resolveWorkspaceBundleCacheDirectory(options.cacheDirectory);
   let platform = "";
   const identity = options.identity ?? "dev", usedKeys = new Set<string>();
 
-  const resolveOne = async (resource: BundleResource): Promise<{ digest: string; entry: CompileReportWorkspaceBundle }> => {
+  const resolveOne = async (resource: BundleResource): Promise<BundleFacts> => {
     const base = path.dirname(resource.scope.key);
     if (resource.source !== undefined) {
-      const source = path.resolve(base, resource.source), digest = await hashPrebuilt(source);
-      result.verified.set(digest, source);
-      return { digest, entry: { id: resource.id, origin: "prebuilt", sha256: digest } };
+      return { origin: "prebuilt", sha256: resource.sha256 ?? await hashPrebuilt(path.resolve(base, resource.source)) };
     }
     platform ||= `linux/${resolveTargetArchitecture(options.architecture)}`;
     const files = resource.build!.files, root = await resolveBundleRoot(path.resolve(base, files.root));
@@ -100,31 +100,28 @@ export const resolveWorkspaceBundles = async (plan: CompilePlan, options: Resolv
     const key = computeWorkspaceBundleKey(input, platform);
     usedKeys.add(key);
     let cached = await lookupCachedBundle(cacheDirectory, key);
-    if (cached) result.reused += 1;
+    if (cached) result.reusedCount += 1;
     else {
       cached = await storeBuiltBundle(cacheDirectory, key, (temporaryPath) => writeBundleFiles(input, temporaryPath));
-      result.built += 1;
+      result.builtCount += 1;
     }
-    if (resource.sha256 !== undefined && resource.sha256 !== cached.sha256) {
-      throw new SpawnfileError("validation_error", `Workspace bundle ${resource.id} built to ${cached.sha256}, but it declares ${resource.sha256}`);
-    }
-    result.verified.set(cached.sha256, cached.tarPath);
-    return {
-      digest: cached.sha256,
-      entry: { cache_key: key, content_bytes: cached.contentBytes, file_count: cached.fileCount, id: resource.id, identity, origin: "built", platform, sha256: cached.sha256 }
-    };
+    result.built.set(cached.sha256, cached.tarPath);
+    return { cache_key: key, content_bytes: cached.contentBytes, file_count: cached.fileCount, identity, origin: "built", platform, sha256: cached.sha256 };
   };
 
   for (const node of plan.nodes) {
     if (node.kind !== "agent" || !node.value.workspaceResources?.some((resource) => resource.kind === "bundle")) continue;
     const resources: ResolvedWorkspaceResource[] = [];
     for (const resource of node.value.workspaceResources) {
-      if (resource.kind !== "bundle" || (resource.source !== undefined && resource.sha256 !== undefined)) { resources.push(resource); continue; }
+      if (resource.kind !== "bundle") { resources.push(resource); continue; }
       const memoKey = declarationKey(resource);
       if (!memo.has(memoKey)) memo.set(memoKey, resolveOne(resource));
-      const { digest, entry } = await memo.get(memoKey)!;
-      if (!result.report.some((existing) => existing.id === entry.id && existing.sha256 === entry.sha256)) result.report.push(entry);
-      resources.push({ ...resource, sha256: digest });
+      const facts = await memo.get(memoKey)!;
+      if (resource.sha256 !== undefined && resource.sha256 !== facts.sha256) {
+        throw new SpawnfileError("validation_error", `Workspace bundle ${resource.id} built to ${facts.sha256}, but it declares ${resource.sha256}`);
+      }
+      if (!result.report.some((existing) => existing.id === resource.id && existing.sha256 === facts.sha256)) result.report.push({ id: resource.id, ...facts });
+      resources.push({ ...resource, sha256: facts.sha256 });
     }
     node.value.workspaceResources = resources;
   }

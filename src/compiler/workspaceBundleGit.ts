@@ -1,4 +1,6 @@
 import { execFile, spawn } from "node:child_process";
+import { stat } from "node:fs/promises";
+import path from "node:path";
 import { promisify } from "node:util";
 
 import { SpawnfileError } from "../shared/index.js";
@@ -6,7 +8,8 @@ import { SpawnfileError } from "../shared/index.js";
 const run = promisify(execFile);
 const MAX_BUFFER = 268_435_456;
 // Never take git's optional index lock: a compile reads the repository, it does not maintain it.
-const gitEnv = (): NodeJS.ProcessEnv => ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" });
+// Never honour replacement refs: the cache key names object ids, so their bytes must be the objects'.
+const gitEnv = (): NodeJS.ProcessEnv => ({ ...process.env, GIT_NO_REPLACE_OBJECTS: "1", GIT_OPTIONAL_LOCKS: "0" });
 
 const git = async (cwd: string, args: string[]): Promise<Buffer> => {
   try {
@@ -34,16 +37,41 @@ export interface GitIndexEntry {
   stage: number;
 }
 
-/** The repository top level and this directory's path prefix inside it ("" at the top). */
-export const resolveGitLocation = async (directory: string): Promise<{ prefix: string; topLevel: string }> => {
-  const [topLevel, prefix = ""] = (await git(directory, ["rev-parse", "--show-toplevel", "--show-prefix"])).toString("utf8").split("\n");
-  if (!topLevel) throw new SpawnfileError("validation_error", `Workspace bundle root is not inside a git work tree: ${directory}`);
-  return { prefix, topLevel };
+export interface GitLocation {
+  indexPath: string;
+  prefix: string;
+  topLevel: string;
+}
+
+/** The repository top level, this directory's path prefix inside it ("" at the top), and the index file. */
+export const resolveGitLocation = async (directory: string): Promise<GitLocation> => {
+  const [topLevel, prefix = "", indexPath = ""] = (await git(directory, ["rev-parse", "--show-toplevel", "--show-prefix", "--git-path", "index"])).toString("utf8").split("\n");
+  if (!topLevel || !indexPath) throw new SpawnfileError("validation_error", `Workspace bundle root is not inside a git work tree: ${directory}`);
+  return { indexPath: path.resolve(directory, indexPath), prefix, topLevel };
+};
+
+const indexStamp = async (location: GitLocation): Promise<string> => {
+  const index = await stat(location.indexPath).catch(() => undefined);
+  return JSON.stringify([index?.ino, index?.size, index?.mtimeMs]);
+};
+
+/**
+ * Runs `read` against one consistent index: the index file must be identical
+ * before and after, else a concurrent `git add` could pair an old index
+ * listing with a new status. Retries a few times, then fails.
+ */
+export const readStableSnapshot = async <T>(location: GitLocation, read: () => Promise<T>): Promise<T> => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const before = await indexStamp(location);
+    const value = await read();
+    if (before === await indexStamp(location)) return value;
+  }
+  throw new SpawnfileError("validation_error", `Workspace bundle inputs kept changing while they were read: ${location.topLevel}`);
 };
 
 /** Committed tree under `directory`: blob ids and modes from the tree objects alone, no blob or file reads. */
-export const listCommittedTree = async (directory: string): Promise<GitTreeEntry[]> =>
-  records(await git(directory, ["ls-tree", "-r", "-z", "HEAD", "--", "."])).map((record) => {
+export const listCommittedTree = async (directory: string, commit = "HEAD"): Promise<GitTreeEntry[]> =>
+  records(await git(directory, ["ls-tree", "-r", "-z", commit, "--", "."])).map((record) => {
     const tab = record.indexOf("\t");
     const [mode, type, objectId] = record.slice(0, tab).split(" ");
     return { mode: Number.parseInt(mode!, 8), objectId: objectId!, path: record.slice(tab + 1), type: type! };
@@ -73,6 +101,23 @@ export const readStatus = async (directory: string): Promise<GitStatusEntry[]> =
   records(await git(directory, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--", "."])).map((record) => (
     { index: record[0]!, path: record.slice(3), worktree: record[1]! }
   ));
+
+/**
+ * The commit `git status` compared against and every changed path under
+ * `directory` (repository-relative), from one porcelain v2 run. Pairing the
+ * two in one process means a concurrent commit can never split them.
+ */
+export const readStatusAgainstHead = async (directory: string): Promise<{ changed: string[]; head: string }> => {
+  let head = "";
+  const changed: string[] = [];
+  for (const record of records(await git(directory, ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all", "--no-renames", "--", "."]))) {
+    if (record.startsWith("# branch.oid ")) { const oid = record.slice(13); head = /^[a-f0-9]{40,64}$/u.test(oid) ? oid : ""; continue; }
+    if (record.startsWith("#")) continue;
+    const fields = record.split(" "), skip = record[0] === "1" ? 8 : record[0] === "u" ? 10 : 1;
+    changed.push(fields.slice(skip).join(" "));
+  }
+  return { changed, head };
+};
 
 /**
  * Streams blob contents for `objectIds`, in order, through `onBlob`. One

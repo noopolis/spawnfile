@@ -50,7 +50,12 @@ const normalizeMount = (value: string): string => {
 };
 
 const normalizeResourceIdentity = (resource: ResolvedWorkspaceResource): string => {
-  if (resource.kind === "bundle") return JSON.stringify({ build: resource.build ?? null, kind: resource.kind, mode: resource.mode, mount: normalizeMount(resource.mount), sha256: resource.sha256 ?? null, source: resource.source ?? null, sharing: resource.sharing });
+  if (resource.kind === "bundle") {
+    // Relative paths compare as resolved against their declaring manifest: the same text in two directories is two inputs.
+    const base = path.dirname(resource.scope.key);
+    const build = resource.build && { files: { ...resource.build.files, root: path.resolve(base, resource.build.files.root) } };
+    return JSON.stringify({ build: build ?? null, kind: resource.kind, mode: resource.mode, mount: normalizeMount(resource.mount), sha256: resource.sha256 ?? null, source: resource.source === undefined ? null : path.resolve(base, resource.source), sharing: resource.sharing });
+  }
   if (resource.kind === "git") {
     return JSON.stringify({
       branch: resource.branch?.trim() ?? "",

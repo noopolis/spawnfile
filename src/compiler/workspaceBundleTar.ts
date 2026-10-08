@@ -91,7 +91,8 @@ export class BundleTarWriter {
     this.fileCount += 1;
     if (this.fileCount > WORKSPACE_BUNDLE_MAX_ENTRIES) fail("Workspace bundle exceeds the maximum entry count");
     this.contentBytes += size;
-    if (this.size + BLOCK + size > WORKSPACE_BUNDLE_MAX_BYTES) fail("Workspace bundle exceeds the maximum archive size");
+    // Header, padded content and the two-block terminator must all fit.
+    if (this.size + BLOCK + Math.ceil(size / BLOCK) * BLOCK + BLOCK * 2 > WORKSPACE_BUNDLE_MAX_BYTES) fail("Workspace bundle exceeds the maximum archive size");
     this.lastPath = name;
     this.remaining = size;
     this.currentSize = size;

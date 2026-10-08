@@ -335,7 +335,7 @@ export const compileProject = async (
     outputDirectory,
     options.runtimePackageOverrides
   );
-  const hasWorkspaceBundles = await stageWorkspaceBundles(outputDirectory, plan, workspaceBundles.verified);
+  const hasWorkspaceBundles = await stageWorkspaceBundles(outputDirectory, plan, workspaceBundles.built);
   const generatedAt = new Date().toISOString();
   const containerArtifacts = await createContainerArtifacts(plan, compiledNodes, {
     deploymentLineage: options.deploymentLineage,
