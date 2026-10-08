@@ -146,7 +146,11 @@ noopolis/spawnfile-runtime-picoclaw:0.3.1
 ```
 
 Standard Daimon compiles use the exact manifest and capability-receipt digests
-in `runtimes.yaml`. Local development requires an absolute generated identity
+in `runtimes.yaml`. CI publishes that image as a `linux/amd64` + `linux/arm64`
+index tagged `<daimon version>-<short commit>`; because each platform embeds its
+own receipt, `runtimes.yaml` pins the index `digest` with
+`capability_receipts: {amd64, arm64}` and generated images check the receipt for
+the architecture they build. Local development requires an absolute generated identity
 path in `SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY`. The identity is accepted only
 for `127.0.0.1:5000/noopolis/spawnfile-runtime-daimon@sha256:<manifest>` and must
 contain the matching receipt digest plus the exact non-production stamp. Raw,
