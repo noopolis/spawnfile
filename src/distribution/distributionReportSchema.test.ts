@@ -43,6 +43,26 @@ describe("parseDistributionReport", () => {
     expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/u);
   });
 
+  it("accepts the per-agent telemetry mounts every pi/Daimon image carries, and rejects hostile ids", () => {
+    const instance = {
+      config_path: "/var/lib/spawnfile/instances/daimon/org/daimon/config.json",
+      home_path: null,
+      id: "daimon-org",
+      internal_port: 19700,
+      model_auth_methods: {},
+      model_secrets_required: [],
+      node_ids: ["agent:writer"],
+      published_port: null,
+      runtime: "daimon",
+      telemetry_mount_ids: { "agent:writer": "agent-writer-daimon-telemetry" },
+      workspace_path: "/var/lib/spawnfile/instances/daimon/org/workspace"
+    };
+    const report = { ...validReport(), runtime_instances: [instance] };
+    expect(parseDistributionReport(report).runtime_instances[0]?.telemetry_mount_ids).toEqual(instance.telemetry_mount_ids);
+    const hostile = { ...report, runtime_instances: [{ ...instance, telemetry_mount_ids: { "agent:writer": "../escape" } }] };
+    expect(() => parseDistributionReport(hostile)).toThrow(/Invalid distribution report/u);
+  });
+
   it("rejects a wrong schema version", () => {
     const report = { ...validReport(), version: "spawnfile.distribution-report.v2" };
     expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/);

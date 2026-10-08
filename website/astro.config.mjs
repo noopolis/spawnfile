@@ -48,6 +48,7 @@ export default defineConfig({
             { label: 'Docker Packaging', slug: 'guides/docker' },
             { label: 'Release Images in CI', slug: 'guides/ci-release' },
             { label: 'Status', slug: 'guides/status' },
+            { label: 'Releasing', slug: 'guides/release' },
             { label: 'Distribution', slug: 'guides/distribution' },
           ],
         },

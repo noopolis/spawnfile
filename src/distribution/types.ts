@@ -65,6 +65,7 @@ export interface DistributionRuntimeInstance {
   node_ids: string[];
   published_port: number | null;
   runtime: string;
+  telemetry_mount_ids?: Record<string, string>;
   workspace_path: string;
 }
 

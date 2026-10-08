@@ -1,5 +1,5 @@
 import path from "node:path";
-import { open, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { readdir, rename, rm, writeFile } from "node:fs/promises";
 
 import { resolveSpawnfileHome } from "../auth/index.js";
 import type { DistributionReport } from "../distribution/index.js";
@@ -7,6 +7,7 @@ import { ensureDirectory, readUtf8File } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { normalizeDeploymentName } from "./names.js";
+import { acquirePidLock, PidLockBusyError } from "./pidLock.js";
 import { parseDeploymentRecord, type DeploymentRecord } from "./record.js";
 
 export const resolveHomeDeploymentsDirectory = (): string =>
@@ -23,64 +24,27 @@ export const resolveHomeReportPath = (deploymentName: string): string =>
 
 /**
  * Acquires an exclusive lock for a home deployment so concurrent `up`
- * invocations cannot race on the same record (and orphan each other's
- * containers). Returns a release function. Throws if the deployment is already
- * locked by another in-flight operation.
+ * invocations (and a drained release holding it across its swap) cannot race
+ * on the same record or orphan each other's containers. Returns a release
+ * function. Throws if a live operation holds the lock; a lock left by a
+ * process that is gone is reclaimed. See `pidLock.ts`.
  */
-const isProcessAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // ESRCH means no such process (stale); EPERM means it exists but is ours to
-    // not signal — treat as alive to stay safe.
-    return (error as NodeJS.ErrnoException).code === "EPERM";
-  }
-};
-
 export const acquireHomeDeploymentLock = async (
   deploymentName: string
 ): Promise<() => Promise<void>> => {
   const directory = resolveHomeDeploymentDirectory(deploymentName);
   await ensureDirectory(directory);
-  const lockPath = path.join(directory, ".lock");
-
-  const write = async (): Promise<void> => {
-    const handle = await open(lockPath, "wx");
-    try {
-      await handle.write(JSON.stringify({ pid: process.pid }));
-    } finally {
-      await handle.close();
-    }
-  };
-
   try {
-    await write();
+    return await acquirePidLock(path.join(directory, ".lock"));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
-      throw error;
-    }
-    // A lock exists. Reclaim it only if the owning process is gone (a crashed
-    // deploy must not lock the deployment forever); otherwise it is genuinely busy.
-    let ownerPid: number | null = null;
-    try {
-      ownerPid = (JSON.parse(await readUtf8File(lockPath)) as { pid?: number }).pid ?? null;
-    } catch {
-      ownerPid = null;
-    }
-    if (ownerPid !== null && isProcessAlive(ownerPid)) {
+    if (error instanceof PidLockBusyError) {
       throw new SpawnfileError(
         "runtime_error",
         `Deployment "${normalizeDeploymentName(deploymentName)}" is already being modified by another operation`
       );
     }
-    await rm(lockPath, { force: true });
-    await write();
+    throw error;
   }
-
-  return async () => {
-    await rm(lockPath, { force: true });
-  };
 };
 
 const writeAtomic = async (filePath: string, content: string): Promise<void> => {

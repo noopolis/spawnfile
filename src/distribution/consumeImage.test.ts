@@ -673,6 +673,22 @@ describe("consumeImageUp", () => {
     }
   });
 
+  it("deploys under a lock the caller already holds instead of refusing itself", async () => {
+    const { acquireHomeDeploymentLock } = await import("../deployment/index.js");
+    const release = await acquireHomeDeploymentLock("held");
+    try {
+      const result = await consumeImageUp("you/org:1.0.0", {
+        authValues: { ANTHROPIC_API_KEY: "sk", DIST_REQUIRED_TOKEN: "x" },
+        deploymentLockHeld: true,
+        deploymentName: "held",
+        runDocker: createFakeDocker({ calls: [] })
+      });
+      expect(result.deploymentName).toBe("held");
+    } finally {
+      await release();
+    }
+  });
+
   it("rejects an invalid image reference before touching docker", async () => {
     const state: FakeDockerState = { calls: [] };
     await expect(

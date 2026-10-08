@@ -23,6 +23,7 @@ export * from "./organizationHandoffTypes.js";
 export * from "./organizationHandoffAuthorityTypes.js";
 export * from "./organizationHandoffAuthorityStore.js";
 export * from "./organizationReady.js";
+export * from "./pidLock.js";
 export * from "./canaryCutover.js";
 export * from "./productStateClone.js";
 export * from "./record.js";
