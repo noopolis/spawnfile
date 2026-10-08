@@ -44,8 +44,30 @@ export const expandFeedRefTemplate = (template: string, now: Date): string =>
 export const feedPeriod = (target: FeedTarget, now: Date): string | undefined =>
   target.freeze ? feedLocalDate(now, target.freeze.timezone) : undefined;
 
-const pastCutoff = (target: FeedTarget, now: Date): boolean =>
-  target.freeze !== undefined && feedLocalClock(now, target.freeze.timezone) >= target.freeze.after;
+const offsetFormats = new Map<string, Intl.DateTimeFormat>();
+const offsetMinutes = (instant: Date, zone: string): number => {
+  const name = memo(offsetFormats, zone, () => new Intl.DateTimeFormat("en-US", { timeZone: zone, timeZoneName: "longOffset" }))
+    .formatToParts(instant).find((part) => part.type === "timeZoneName")?.value ?? "GMT";
+  const match = /GMT([+-])(\d{2}):(\d{2})/u.exec(name);
+  return match ? (match[1] === "-" ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3])) : 0;
+};
+
+/**
+ * The INSTANT `after` (HH:MM local) first arrives on `date` in `zone`. An instant, not a wall-clock
+ * compare: when clocks fall back the wall clock repeats an hour, and a wall-clock compare would thaw a
+ * volume that already froze. An ambiguous local time resolves to its first occurrence and a skipped one
+ * to the earlier candidate: both err toward freezing sooner.
+ */
+export const feedCutoffInstant = (date: string, after: string, zone: string): Date => {
+  const naive = Date.parse(`${date}T${after}:00Z`), span = 14 * 3_600_000;
+  const candidates = [...new Set([offsetMinutes(new Date(naive - span), zone), offsetMinutes(new Date(naive + span), zone)])]
+    .map((offset) => ({ instant: naive - offset * 60_000, offset }));
+  const valid = candidates.filter(({ instant, offset }) => offsetMinutes(new Date(instant), zone) === offset);
+  return new Date(Math.min(...(valid.length ? valid : candidates).map(({ instant }) => instant)));
+};
+
+const pastCutoff = (target: FeedTarget, now: Date): boolean => target.freeze !== undefined &&
+  now.getTime() >= feedCutoffInstant(feedLocalDate(now, target.freeze.timezone), target.freeze.after, target.freeze.timezone).getTime();
 
 const runRefCommand = (target: FeedTarget, command: NonNullable<NonNullable<FeedTarget["refRule"]>["command"]>, repo: string): string | null => {
   const [file, ...args] = command.argv;

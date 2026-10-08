@@ -94,13 +94,17 @@ const freshTreeName = (target: FeedTarget, revision: string): string => {
 };
 
 /** Copies, validates, owns and freezes OUTSIDE the volume, then moves the finished tree in with one rename. */
-const stageAndLand = (target: FeedTarget, resolved: ResolvedFeedSource, { exec, log }: { exec: FeedExec; log: (line: string) => void }): { name: string; resolved: ResolvedFeedSource } => {
+const stageAndLand = (
+  target: FeedTarget, resolved: ResolvedFeedSource, { exact, exec, log }: { exact: boolean; exec: FeedExec; log: (line: string) => void }
+): { name: string; resolved: ResolvedFeedSource } => {
   const stagingDir = path.join(feedStagingDir(target), `${resolved.revision}-${process.pid}`);
   removeTree(stagingDir, { volume: target.volume });
   mkdirSync(stagingDir);
   let staged: ResolvedFeedSource;
   try {
     staged = stageFeedContent(target, resolved, stagingDir, { exec, log });
+    // A held volume re-lands exactly what it serves: inputs that moved mid-copy are a refusal, not a new revision.
+    if (exact && staged.revision !== resolved.revision) throw feedError(`the source moved while ${resolved.revision.slice(0, 12)} was being re-landed (copied ${staged.revision.slice(0, 12)}); a held volume never advances, so nothing was landed`);
     if (staged.revision !== resolved.revision) log(`the source moved while it was copied; landing what was copied as ${staged.revision.slice(0, 12)}`);
     runFeedValidation(target, stagingDir, staged);
     ownAndFreeze(stagingDir, { owner: target.owner, volume: target.volume });
@@ -138,7 +142,7 @@ export const landFeed = (
   target: FeedTarget,
   resolved: ResolvedFeedSource,
   record: FeedLandedRecord | null,
-  { force = false, heals = {}, period, runtime = {} }: { force?: boolean; heals?: Record<string, number>; period?: string; runtime?: FeedRuntime } = {}
+  { exact = false, force = false, heals = {}, period, runtime = {} }: { exact?: boolean; force?: boolean; heals?: Record<string, number>; period?: string; runtime?: FeedRuntime } = {}
 ): FeedLandResult => {
   const now = (runtime.now ?? (() => new Date()))(), log = runtime.log ?? (() => undefined), exec = runtime.exec ?? hostExec;
   if (!assertRealDirectory(treesDirOf(target), "the fed volume's trees/ directory")) mkdirSync(treesDirOf(target), { mode: 0o755 });
@@ -149,7 +153,7 @@ export const landFeed = (
   if (retained) {
     runFeedValidation(target, path.join(treesDirOf(target), retained), resolved);
     name = retained;
-  } else ({ name, resolved: landedSource } = stageAndLand(target, resolved, { exec, log }));
+  } else ({ name, resolved: landedSource } = stageAndLand(target, resolved, { exact, exec, log }));
   const revision = landedSource.revision;
   if (pointCurrent(target.volume, feedTreeLink(name), { ops: runtime.ops ?? LINK_OPS, tmpDir: feedStagingDir(target) })) log(`current -> ${feedTreeLink(name.slice(0, 12))}`);
   const manifest = readFeedManifest(target.stateDir, name) ?? buildFeedManifest(path.join(treesDirOf(target), name), name);
