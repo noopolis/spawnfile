@@ -47,6 +47,7 @@ src/cli/
 ├── targetLookupCli.ts # minimal production lookup entry point
 ├── targetOperationLookup.test.ts # read-only target lookup command proof
 ├── viewCommand.ts  # `spawnfile view` command registration and render option mapping
+├── volumeCommands.ts # `spawnfile volume refresh|verify` registration and exit-code mapping
 ├── viewCommand.test.ts # `spawnfile view` behavior tests
 └── runCli.test.ts  # General CLI behavior tests
 ```
