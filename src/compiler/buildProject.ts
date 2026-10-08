@@ -182,6 +182,20 @@ export const buildProject = async (
       ? { worldBindingsPath: options.worldBindingsPath }
       : {})
   });
+  return buildCompiledProject(inputPath, compileResult, options);
+};
+
+/**
+ * The image half of `buildProject`, for callers that compiled first and need
+ * the build-context identity before deciding whether to build at all (a
+ * release no-ops on an unchanged identity without touching Docker).
+ * `contextDigest` may be passed when the caller already computed it.
+ */
+export const buildCompiledProject = async (
+  inputPath: string,
+  compileResult: CompileProjectResult,
+  options: Omit<BuildProjectOptions, keyof CompileProjectOptions> & { contextDigest?: string } = {}
+): Promise<BuildProjectResult> => {
   const imageTag = options.imageTag ?? createDefaultImageTag(resolveImageTagRoot(inputPath));
   const invocation = createDockerBuildInvocation(
     compileResult.outputDirectory,
@@ -196,7 +210,7 @@ export const buildProject = async (
   const contextDigestStartedAt = performance.now();
   const [contextFiles, contextDigest] = await Promise.all([
     listDockerBuildContextFiles(compileResult.outputDirectory),
-    createDockerBuildContextDigest(compileResult.outputDirectory)
+    options.contextDigest ?? createDockerBuildContextDigest(compileResult.outputDirectory)
   ]);
   const contextDigestMs = performance.now() - contextDigestStartedAt;
   let probeMs = 0;
