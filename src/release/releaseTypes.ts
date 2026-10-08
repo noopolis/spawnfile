@@ -1,6 +1,5 @@
 import type { ResolvedAuthProfile } from "../auth/index.js";
 import type { CompileProjectResult } from "../compiler/compileProject.js";
-import type { DeploymentRecord } from "../deployment/index.js";
 
 import type { Availability, DrainWait, RuntimeControlTarget, WaitForDrainedOptions } from "./drainControl.js";
 import type { NotifierConfig, NotifyResult, ReleaseNotification } from "./notify.js";
@@ -55,6 +54,11 @@ export interface DeployedRelease {
   deployMs: number;
 }
 
+export interface PreparedInputs {
+  authProfile: ResolvedAuthProfile | null;
+  envFileEnv: Record<string, string>;
+}
+
 /**
  * Every effect a release has, injectable so the ORDER (drain before deploy,
  * resume on abort, never deploy on a drain timeout) is asserted by tests
@@ -63,11 +67,17 @@ export interface DeployedRelease {
 export interface ReleaseDependencies {
   build(request: ReleaseRequest, compiled: CompiledRelease, imageTag: string): Promise<BuiltRelease>;
   compile(request: ReleaseRequest): Promise<CompiledRelease>;
+  /** Deploys while the caller holds the deployment lock (see `lockDeployment`). */
   deploy(request: ReleaseRequest, imageTag: string): Promise<DeployedRelease>;
   inspectUnit(request: ReleaseRequest, containerRef: string): Promise<RunningUnit | null>;
+  /** The same home lock `up` takes, held from the drain through the swap. */
+  lockDeployment(deployment: string): Promise<() => Promise<void>>;
   notify(config: NotifierConfig, notification: ReleaseNotification): Promise<NotifyResult>;
+  /** Reads the env file and auth profile inside the release, so their failures are reported like any other. */
+  prepare(request: ReleaseRequest): Promise<PreparedInputs>;
   prune(request: ReleaseRequest, repository: string, keep: readonly (string | null)[]): Promise<PruneResult>;
-  readDeployment(deployment: string): Promise<DeploymentRecord | null>;
+  /** Runtime kinds inside the running image, from its embedded distribution report. */
+  runtimesOf(request: ReleaseRequest, imageId: string): Promise<string[]>;
   requestDrain(target: RuntimeControlTarget): Promise<Availability>;
   requestResume(target: RuntimeControlTarget): Promise<Availability>;
   settle(request: ReleaseRequest, containerRef: string): Promise<RunningUnit>;

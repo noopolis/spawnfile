@@ -20,5 +20,5 @@ export const registerLifecycleCommands = (
   registerRunPublishCommands(program, handlers, streams);
   registerUpCommand(program, handlers, streams);
   registerDownCommand(program, handlers, streams);
-  registerReleaseCommand(program, handlers, streams, setExitCode);
+  registerReleaseCommand(program, streams, setExitCode);
 };

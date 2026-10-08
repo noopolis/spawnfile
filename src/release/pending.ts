@@ -55,14 +55,19 @@ export const recordDeferral = async (
     : { identity, notified_at: null, since: now.toISOString(), version: RELEASE_PENDING_VERSION };
   const since = Date.parse(pending.since);
   const ageMs = Number.isFinite(since) ? Math.max(0, now.getTime() - since) : 0;
+  // `notified_at` is set only once a notification was actually delivered
+  // (markDeferralNotified), so a failed or crashed delivery is retried next run.
   const escalate = ageMs >= options.notifyAfterMs && pending.notified_at === null;
-  if (escalate) pending.notified_at = now.toISOString();
   try {
     await writeJsonAtomic(file, pending);
   } catch {
     trackingBroken = `the pending-release record ${file} could not be written`;
   }
   return { ageMs, notify: escalate || trackingBroken !== null, pending, trackingBroken };
+};
+
+export const markDeferralNotified = async (file: string, pending: ReleasePending, now: Date = new Date()): Promise<void> => {
+  await writeJsonAtomic(file, { ...pending, notified_at: now.toISOString() });
 };
 
 export const clearDeferral = async (file: string): Promise<void> => {

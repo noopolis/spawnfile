@@ -1,6 +1,4 @@
-import type { DeploymentRecord } from "../deployment/index.js";
-
-import { clearDrainMarker, controlTargetFor, drainForRelease, recoverInterruptedDrain, resolveControlToken, resumeAfterFailedDeploy } from "./drainPhase.js";
+import { controlTargetFor, recoverInterruptedDrain, resolveControlToken } from "./drainPhase.js";
 import {
   acquireReleaseLock,
   appendReleaseLog,
@@ -12,16 +10,11 @@ import {
   type ReleasePaths
 } from "./ledger.js";
 import { createNotification } from "./notify.js";
-import { clearDeferral, recordDeferral } from "./pending.js";
+import { clearDeferral, markDeferralNotified, recordDeferral } from "./pending.js";
 import { releaseImageTag, type RunningUnit } from "./releaseDocker.js";
 import { DAIMON_CONTROL_TOKEN_ENV, type ReleaseDependencies, type ReleaseRequest } from "./releaseTypes.js";
+import { drainAndSwap, releaseContainerName } from "./swap.js";
 import { ReleaseError, isReleaseError, type ReleaseFailureReason, type ReleaseOutcome, type ReleaseTimings } from "./types.js";
-
-const containerUnit = (record: DeploymentRecord | null): DeploymentRecord["units"][number] | null =>
-  record?.units.find((unit) => unit.kind === "container") ?? null;
-
-const containerNameFor = (deployment: string, record: DeploymentRecord | null): string =>
-  containerUnit(record)?.container_name ?? `spawnfile-${deployment}`;
 
 interface Progress {
   identity: string | null;
@@ -41,6 +34,8 @@ export const runRelease = async (request: ReleaseRequest, deps: ReleaseDependenc
   try {
     await ensureReleaseDirectory(paths);
     unlock = await acquireReleaseLock(paths);
+    progress.stage = "prepare";
+    Object.assign(request, await deps.prepare(request));
     progress.stage = "recover";
     await recoverInterruptedDrain(request, deps, paths);
     return await releaseLocked(request, deps, paths, progress);
@@ -67,9 +62,7 @@ const releaseLocked = async (
 
   progress.stage = "inspect";
   const ledger = await readReleaseLedger(paths.ledger);
-  const record = await deps.readDeployment(request.deployment);
-  const containerName = containerNameFor(request.deployment, record);
-  const running = await deps.inspectUnit(request, containerUnit(record)?.container_id ?? containerName);
+  const running = await deps.inspectUnit(request, releaseContainerName(request.deployment));
 
   if (isUnchanged(request, ledger, compiled.identity, running)) {
     await clearDeferral(paths.pending);
@@ -92,21 +85,11 @@ const releaseLocked = async (
   });
   request.log(built.skipped ? `release: ${imageTag} already built; build skipped` : `release: built ${imageTag} in ${Math.round((built.buildMs ?? 0) / 1000)}s`);
 
-  progress.stage = "drain";
-  if (request.signal?.aborted) throw new ReleaseError("interrupted", "the release was interrupted before draining; nothing was paused or deployed");
-  const drained = await drainForRelease(request, deps, paths, running);
-  if (drained.kind === "timeout") return defer(request, deps, paths, compiled.identity);
-
   progress.stage = "deploy";
-  let deployed;
-  try {
-    deployed = await deps.deploy(request, imageTag);
-  } catch (error) {
-    await resumeAfterFailedDeploy(request, deps, paths, containerName);
-    throw new ReleaseError("deploy-failed", `deploy failed: ${(error as Error).message}`, { cause: error });
-  }
-  // The drained container was replaced; its drain ended with its process.
-  await clearDrainMarker(paths);
+  if (request.signal?.aborted) throw new ReleaseError("interrupted", "the release was interrupted before draining; nothing was paused or deployed");
+  const swap = await drainAndSwap(request, deps, paths, imageTag);
+  if (swap.kind === "deferred") return defer(request, deps, paths, compiled.identity);
+  const { deployed, drained } = swap;
 
   progress.stage = "settle";
   const settled = await deps.settle(request, deployed.containerName);
@@ -171,6 +154,7 @@ const defer = async (request: ReleaseRequest, deps: ReleaseDependencies, paths: 
   const at = (request.now?.() ?? new Date()).toISOString();
   await appendReleaseLog(paths.log, { at, deployment: request.deployment, identity, message, outcome: "deferred", reason: "release-deferred" }).catch(() => undefined);
   const notified = decision.notify ? await notifyAndLog(request, deps, paths, "release-deferred", message, identity) : false;
+  if (notified && !decision.trackingBroken) await markDeferralNotified(paths.pending, decision.pending).catch(() => undefined);
   return { identity, kind: "deferred", message, notified };
 };
 

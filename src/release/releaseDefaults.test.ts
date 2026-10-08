@@ -15,7 +15,8 @@ vi.mock("../compiler/buildProject.js", async (importOriginal) => ({
 }));
 vi.mock("../distribution/index.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../distribution/index.js")>()),
-  consumeImageUp: async (...args: unknown[]) => { record("deploy")(...args); return { containerName: "spawnfile-org" }; }
+  consumeImageUp: async (...args: unknown[]) => { record("deploy")(...args); return { containerName: "spawnfile-org" }; },
+  extractImageReport: async (...args: unknown[]) => { record("extract")(...args); return { report: { runtime_instances: [{ runtime: "daimon" }, { runtime: "pi" }] } }; }
 }));
 
 const { createDefaultReleaseDependencies } = await import("./releaseDefaults.js");
@@ -46,7 +47,22 @@ describe("createDefaultReleaseDependencies", () => {
   it("deploys the tag into the named deployment with the operator's env file", async () => {
     const deployed = await createDefaultReleaseDependencies().deploy({ ...request }, "spawnfile-acme:r-eeeeeeeeeeee");
     expect(deployed.containerName).toBe("spawnfile-org");
-    expect(calls.deploy).toEqual(["spawnfile-acme:r-eeeeeeeeeeee", expect.objectContaining({ deploymentName: "org", envFileEnv: { A: "1" }, envFilePath: "/etc/org.env" })]);
+    expect(calls.deploy).toEqual(["spawnfile-acme:r-eeeeeeeeeeee", expect.objectContaining({ deploymentLockHeld: true, deploymentName: "org", envFileEnv: { A: "1" }, envFilePath: "/etc/org.env" })]);
+  });
+
+  it("reads the running image's runtime kinds from its embedded report", async () => {
+    expect(await createDefaultReleaseDependencies().runtimesOf({ ...request, dockerContext: "prod" }, "sha256:img")).toEqual(["daimon", "pi"]);
+    expect(calls.extract).toEqual(["sha256:img", { dockerCommand: "docker", dockerContext: "prod" }]);
+  });
+
+  it("reads the env file inside the release", async () => {
+    const { mkdtemp, writeFile } = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const file = path.join(await mkdtemp(path.join(os.tmpdir(), "spawnfile-env-")), "deploy.env");
+    await writeFile(file, "SPAWNFILE_DAIMON_CONTROL_TOKEN=abc\n");
+    expect(await createDefaultReleaseDependencies().prepare({ ...request, envFilePath: file })).toEqual({ authProfile: null, envFileEnv: { SPAWNFILE_DAIMON_CONTROL_TOKEN: "abc" } });
+    await expect(createDefaultReleaseDependencies().prepare({ ...request, envFilePath: "/nonexistent/deploy.env" })).rejects.toThrow();
   });
 
   it("honours an explicit image repository", async () => {

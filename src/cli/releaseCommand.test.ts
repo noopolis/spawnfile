@@ -39,9 +39,10 @@ const run = async (argv: string[], outcome: Partial<ReleaseOutcome> | Error) => 
   const failing = (): never => { throw outcome instanceof Error ? outcome : new Error("compile exploded"); };
   const deps = {
     compile: async (request: ReleaseRequest) => { seen = request; return failing(); },
-    notify: async () => ({ channel: "command", delivered: true })
+    notify: async () => ({ channel: "command", delivered: true }),
+    prepare: async (request: ReleaseRequest) => ({ authProfile: null, envFileEnv: request.envFileEnv })
   } as unknown as ReleaseDependencies;
-  registerReleaseCommand(program, {}, { stderr: (line) => lines.push(line), stdout: (line) => lines.push(line) }, (code) => { exitCode = code; }, () => deps);
+  registerReleaseCommand(program, { stderr: (line) => lines.push(line), stdout: (line) => lines.push(line) }, (code) => { exitCode = code; }, () => deps);
   await program.parseAsync(["release", ...argv], { from: "user" });
   return { exitCode, lines, seen: seen as ReleaseRequest | null };
 };

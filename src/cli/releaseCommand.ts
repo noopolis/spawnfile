@@ -1,6 +1,5 @@
 import type { Command } from "commander";
 
-import { readRunEnvFile } from "../compiler/runProjectAuth.js";
 import {
   createDefaultReleaseDependencies,
   releaseExitCode,
@@ -11,7 +10,7 @@ import {
 } from "../release/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
-import type { CliHandlers, CliStreams } from "./runCli.js";
+import type { CliStreams } from "./runCli.js";
 
 const UNITS: Record<string, number> = { h: 3_600_000, m: 60_000, ms: 1, s: 1_000 };
 
@@ -43,7 +42,6 @@ interface ReleaseCommandOptions {
 
 export const registerReleaseCommand = (
   program: Command,
-  handlers: Partial<Pick<CliHandlers, "requireAuthProfile">>,
   streams: CliStreams,
   setExitCode: (code: number) => void,
   dependencies: () => ReleaseDependencies = createDefaultReleaseDependencies
@@ -75,16 +73,12 @@ export const registerReleaseCommand = (
       }
       const drainTimeoutMs = parseReleaseDuration(options.drainTimeout, "--drain-timeout");
       const notifyDeferredAfterMs = parseReleaseDuration(options.notifyDeferredAfter, "--notify-deferred-after");
-      const authProfile = options.authProfile && handlers.requireAuthProfile
-        ? await handlers.requireAuthProfile(options.authProfile)
-        : null;
       const abort = new AbortController();
       const onSignal = (): void => abort.abort();
       process.once("SIGTERM", onSignal);
       process.once("SIGINT", onSignal);
       try {
         const request: ReleaseRequest = {
-          authProfile,
           authProfileName: options.authProfile ?? null,
           bundleIdentity: options.devInputs ? "dev" : "release",
           deployment: options.deployment,
@@ -93,7 +87,7 @@ export const registerReleaseCommand = (
           drain: options.drain,
           drainPollMs: 5_000,
           drainTimeoutMs,
-          envFileEnv: await readRunEnvFile(options.envFile),
+          envFileEnv: {},
           ...(options.envFile ? { envFilePath: options.envFile } : {}),
           force: options.force === true,
           ...(options.imageRepository ? { imageRepository: options.imageRepository } : {}),
