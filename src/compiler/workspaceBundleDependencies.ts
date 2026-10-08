@@ -57,11 +57,19 @@ export const assertNpmLockMatchesManifest = (manifestBytes: Buffer, lockBytes: B
     if (entry.inBundle === true) continue;
     const resolved = typeof entry.resolved === "string" ? entry.resolved : "";
     const pinnedGit = /^git\+.+#[a-f0-9]{40}$/u.test(resolved);
-    if (!pinnedGit && (typeof entry.integrity !== "string" || !/^sha(256|384|512)-/u.test(entry.integrity))) {
+    if (!pinnedGit && !validIntegrity(entry.integrity)) {
       fail(`Dependency bundle lock entry ${location} has no content integrity; its download is not pinned by the lockfile`);
     }
   }
 };
+
+// Base64 lengths of each SRI algorithm npm verifies; a token npm would parse as empty is not integrity.
+const SRI_LENGTHS: Record<string, number> = { sha1: 28, sha256: 44, sha384: 64, sha512: 88 };
+const validIntegrity = (value: unknown): boolean => typeof value === "string" && value.trim() !== "" &&
+  value.trim().split(/\s+/u).every((token) => {
+    const match = /^(sha1|sha256|sha384|sha512)-([A-Za-z0-9+/]+={0,2})$/u.exec(token);
+    return match !== null && match[2]!.length === SRI_LENGTHS[match[1]!];
+  });
 
 const inNodeModules = (relativePath: string): boolean => relativePath === "node_modules" || relativePath.startsWith("node_modules/");
 
