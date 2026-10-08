@@ -252,7 +252,7 @@ export const runCli: RunCli = async (
     writeOut: (message) => writeCommanderOutput(streams.stdout, message)
   });
 
-  registerLifecycleCommands(program, handlers, streams, cliOptions.stdin);
+  registerLifecycleCommands(program, handlers, streams, cliOptions.stdin, (code) => { commandExitCode = code; });
   registerDevCommands(program, handlers, streams);
   registerArtifactsCommands(program, handlers, streams);
   registerCapabilitiesCommand(program, streams, readPackageVersion());
