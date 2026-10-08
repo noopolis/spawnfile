@@ -5,9 +5,9 @@ import path from "node:path";
 import type { WorkspaceBundleBuild } from "../manifest/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
-import { resolveBundleRoot, writeBundleFiles } from "./workspaceBundleFiles.js";
+import { assertCommittedInputs, resolveBundleRoot, writeBundleFiles } from "./workspaceBundleFiles.js";
 import { computeRecipeBundleKey, type BundleBuildContext, type BundleBuildPlan } from "./workspaceBundleKey.js";
-import { containerArgv, runBundleCommand } from "./workspaceBundleRun.js";
+import { bundleContainerName, runContainerStep } from "./workspaceBundleRun.js";
 import { walkBuiltTree } from "./workspaceBundleTree.js";
 
 type DependenciesSpec = NonNullable<WorkspaceBundleBuild["dependencies"]>;
@@ -48,8 +48,17 @@ export const assertNpmLockMatchesManifest = (manifestBytes: Buffer, lockBytes: B
     if (stable(manifest[field] ?? {}) !== stable(packages![""]![field] ?? {})) fail(`Dependency bundle package.json ${field} differs from package-lock.json in ${directory}; run npm install`);
   }
   for (const [location, entry] of Object.entries(packages!)) {
-    if (location && (entry.link === true || !location.startsWith("node_modules/") || location.split("/").includes(".."))) {
+    if (!location) continue;
+    if (entry.link === true || !location.startsWith("node_modules/") || location.split("/").includes("..")) {
       fail(`Dependency bundle lock entry ${location} is linked or outside node_modules; only registry installs are archived`);
+    }
+    // A cold install must fetch exactly what the key names: every fetched package needs content
+    // integrity, or a git source pinned to a full commit. Bundled packages ship inside their parent.
+    if (entry.inBundle === true) continue;
+    const resolved = typeof entry.resolved === "string" ? entry.resolved : "";
+    const pinnedGit = /^git\+.+#[a-f0-9]{40}$/u.test(resolved);
+    if (!pinnedGit && (typeof entry.integrity !== "string" || !/^sha(256|384|512)-/u.test(entry.integrity))) {
+      fail(`Dependency bundle lock entry ${location} has no content integrity; its download is not pinned by the lockfile`);
     }
   }
 };
@@ -67,6 +76,8 @@ const inNodeModules = (relativePath: string): boolean => relativePath === "node_
  */
 export const planDependenciesBundle = async (spec: DependenciesSpec, context: BundleBuildContext): Promise<BundleBuildPlan> => {
   const directory = await resolveBundleRoot(spec.directory);
+  // A release build installs exactly the committed manifests.
+  if (context.identity === "release") await assertCommittedInputs(directory, ["package.json", "package-lock.json"]);
   const [manifestBytes, lockBytes] = await Promise.all([readManifest(directory, "package.json"), readManifest(directory, "package-lock.json")]);
   assertNpmLockMatchesManifest(manifestBytes, lockBytes, directory);
   const dev = spec.dev ?? false, scripts = spec.scripts ?? true;
@@ -85,13 +96,13 @@ export const planDependenciesBundle = async (spec: DependenciesSpec, context: Bu
         if (sha256(await readFile(path.join(work, "package-lock.json"))) !== recipe.lock || sha256(await readFile(path.join(work, "package.json"))) !== recipe.manifest) {
           fail(`Dependency bundle manifests changed while the bundle was built: ${directory}`);
         }
-        const step = (argv: readonly string[]) => containerArgv({
+        const step = (argv: readonly string[], label: string) => runContainerStep({
           argv, dockerCommand: context.dockerCommand, env: { npm_config_cache: "/tmp/spawnfile-home/.npm", npm_config_update_notifier: "false" },
-          image: spec.image, mounts: [[work, "/spawnfile/install"]], platform: context.platform, workdir: "/spawnfile/install"
-        });
+          image: spec.image, mounts: [[work, "/spawnfile/install"]], name: bundleContainerName(), platform: context.platform, workdir: "/spawnfile/install"
+        }, INSTALL_TIMEOUT_MS, label, work);
         const install = ["npm", "ci", "--no-audit", "--no-fund", dev ? "--include=dev" : "--omit=dev", ...(scripts ? [] : ["--ignore-scripts"])];
-        await runBundleCommand({ argv: step(install), cwd: work, timeoutMs: INSTALL_TIMEOUT_MS }, `Dependency install for ${directory}`);
-        if (spec.check) await runBundleCommand({ argv: step(spec.check), cwd: work, timeoutMs: INSTALL_TIMEOUT_MS }, `Dependency check for ${directory}`);
+        await step(install, `Dependency install for ${directory}`);
+        if (spec.check) await step(spec.check, `Dependency check for ${directory}`);
         const input = await walkBuiltTree(work, {
           dropSymlink: (relativePath) => /(^|\/)\.bin\/[^/]+$/u.test(relativePath),
           skip: (relativePath) => !inNodeModules(relativePath) || relativePath === "node_modules/.package-lock.json"

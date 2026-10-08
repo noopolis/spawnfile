@@ -24,9 +24,9 @@ const lock = (alpha = "1.0.0") => ({
   lockfileVersion: 3, name: "site",
   packages: {
     "": { dependencies: { alpha: "^1.0.0" }, devDependencies: { tester: "^2.0.0" }, name: "site" },
-    "node_modules/alpha": { bin: { alpha: "cli.js" }, version: alpha },
-    "node_modules/alpha/node_modules/nested": { version: "0.1.0" },
-    "node_modules/tester": { dev: true, version: "2.0.0" }
+    "node_modules/alpha": { bin: { alpha: "cli.js" }, integrity: `sha512-${alpha}`, resolved: "https://registry.example/alpha.tgz", version: alpha },
+    "node_modules/alpha/node_modules/nested": { inBundle: true, version: "0.1.0" },
+    "node_modules/tester": { dev: true, integrity: "sha512-tester", resolved: "https://registry.example/tester.tgz", version: "2.0.0" }
   }
 });
 
@@ -89,6 +89,22 @@ describe("dependency bundles", () => {
     expect(await installs()).toHaveLength(4);
   }, 60_000);
 
+  it("requires committed, clean manifests for a release build", async () => {
+    const git = (...args: string[]) => run("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd: root });
+    await writeFile(path.join(root, ".gitignore"), "cache/\nout-*/\nfake-docker*\n");
+    await writeFile(path.join(root, "org/Spawnfile"), agentSpawnfile(["directory: ../site", `image: "${IMAGE}"`]));
+    await git("init", "-q");
+    await git("add", "org", ".gitignore", "site/package.json");
+    await git("commit", "-qm", "init");
+    await expect(compile("out-untracked", { bundleIdentity: "release" })).rejects.toThrow(/requires a clean commit|not committed/u);
+    await git("add", "site/package-lock.json");
+    await expect(compile("out-staged", { bundleIdentity: "release" })).rejects.toThrow(/requires a clean commit/u);
+    await git("commit", "-qm", "lock");
+    await expect(compile("out-clean", { bundleIdentity: "release" })).resolves.toBeDefined();
+    await writeFile(path.join(root, "site/package-lock.json"), JSON.stringify(lock("1.0.1")));
+    await expect(compile("out-dirty", { bundleIdentity: "release" })).rejects.toThrow(/package-lock\.json has uncommitted changes/u);
+  }, 60_000);
+
   it("refuses unpinned images, stale or old lockfiles, linked packages and failed installs", async () => {
     await writeFile(path.join(root, "org/Spawnfile"), agentSpawnfile(["directory: ../site", "image: node:22"]));
     await expect(compile("out-unpinned")).rejects.toThrow(/pinned by @sha256/u);
@@ -97,6 +113,10 @@ describe("dependency bundles", () => {
     expect(() => assertNpmLockMatchesManifest(bytes({ ...manifest, dependencies: { alpha: "^2.0.0" } }), bytes(lock()), "site")).toThrow(/differs/u);
     expect(() => assertNpmLockMatchesManifest(bytes(manifest), bytes({ ...lock(), packages: { ...lock().packages, "node_modules/local": { link: true } } }), "site")).toThrow(/linked/u);
     expect(() => assertNpmLockMatchesManifest(Buffer.from("{"), bytes(lock()), "site")).toThrow(/not valid JSON/u);
+    const withEntry = (entry: Record<string, unknown>) => bytes({ ...lock(), packages: { ...lock().packages, "node_modules/extra": entry } });
+    expect(() => assertNpmLockMatchesManifest(bytes(manifest), withEntry({ resolved: "https://example/x.tgz", version: "1.0.0" }), "site")).toThrow(/no content integrity/u);
+    expect(() => assertNpmLockMatchesManifest(bytes(manifest), withEntry({ resolved: "git+ssh://git@example/x.git#main", version: "1.0.0" }), "site")).toThrow(/no content integrity/u);
+    expect(() => assertNpmLockMatchesManifest(bytes(manifest), withEntry({ resolved: `git+ssh://git@example/x.git#${"a".repeat(40)}`, version: "1.0.0" }), "site")).not.toThrow();
     await rm(path.join(root, "site/package-lock.json"));
     await writeFile(path.join(root, "org/Spawnfile"), agentSpawnfile(["directory: ../site", `image: "${IMAGE}"`]));
     await expect(compile("out-nolock")).rejects.toThrow(/package-lock\.json/u);

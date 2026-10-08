@@ -27,6 +27,8 @@ export interface WalkOptions {
  * budgets are enforced while walking, before the archive is written.
  */
 export const walkBuiltTree = async (directory: string, options: WalkOptions = {}): Promise<BundleFilesInput> => {
+  const root = await lstat(directory);
+  if (!root.isDirectory()) fail(`Built workspace bundle output root was replaced by something other than a directory: ${directory}`);
   const entries: BundleFileEntry[] = [];
   let bytes = 0;
   const visit = async (relative: string): Promise<void> => {

@@ -146,7 +146,8 @@ const teamWorkspaceResourceVolumeSchema = z
   .strict();
 
 /** Declared inputs Spawnfile builds into the bundle archive. Exactly one input kind per bundle. */
-const pinnedImageSchema = z.string().trim().regex(/^[^\s@]+@sha256:[a-f0-9]{64}$/u, "image must be pinned by @sha256 digest");
+// A plain image reference (registry/repo[:tag]) pinned by digest; never anything Docker could read as an option.
+const pinnedImageSchema = z.string().trim().regex(/^[a-zA-Z0-9][a-zA-Z0-9._/:-]*@sha256:[a-f0-9]{64}$/u, "image must be a reference pinned by @sha256 digest");
 const argvSchema = z.array(z.string().min(1)).min(1);
 const workspaceBundleFilesSchema = z.object({
   exclude: z.array(z.string().trim().min(1)).optional(),

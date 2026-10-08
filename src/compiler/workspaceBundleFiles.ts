@@ -139,6 +139,22 @@ const treeEntries = (tree: GitTreeEntry[], excluded: (relativePath: string) => b
 };
 
 /**
+ * Release rule for recipe inputs that are named files rather than a tree:
+ * each must be tracked at HEAD with no staged, unstaged or untracked change.
+ */
+export const assertCommittedInputs = async (directory: string, names: readonly string[]): Promise<void> => {
+  const [{ prefix }, status] = await Promise.all([resolveGitLocation(directory), readStatusAgainstHead(directory)]);
+  if (!status.head) fail(`Release workspace bundle requires a commit; the repository has none: ${directory}`);
+  const wanted = new Set(names.map((name) => `${prefix}${name}`));
+  const dirty = status.changed.find((changed) => wanted.has(changed));
+  if (dirty) fail(`Release workspace bundle requires a clean commit; ${dirty} has uncommitted changes`);
+  const committed = new Set((await listCommittedTree(directory, status.head)).map((entry) => entry.path));
+  const missing = names.find((name) => !committed.has(name));
+  if (missing) fail(`Release workspace bundle input ${missing} is not committed in ${directory}`);
+  if (await resolveHead(directory) !== status.head) fail(`Release workspace bundle HEAD moved while it was checked; retry: ${directory}`);
+};
+
+/**
  * A pinned revision: identity and bytes come from the tree of `ref` (resolved
  * to a commit once), so the work tree's state is irrelevant and no clean
  * checkout is needed. The same in dev and release compiles.
