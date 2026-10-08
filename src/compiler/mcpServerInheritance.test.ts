@@ -13,6 +13,8 @@ const shared: McpServer = {
   transport: "stdio"
 };
 
+const checker: McpServer = { command: "/bin/check", name: "checker", tools: ["check"], transport: "stdio" };
+
 describe("resolveInheritedMcpServers", () => {
   it("inherits shared servers unchanged when the agent declares none", () => {
     expect(resolveInheritedMcpServers("writer", [shared], [])).toEqual([shared]);
@@ -44,4 +46,24 @@ describe("resolveInheritedMcpServers", () => {
     expect(() => resolveInheritedMcpServers("writer", [], [{ name: "workbench", tools: ["x"] }]))
       .toThrow("Agent writer overrides MCP server workbench");
   });
+
+  it("does not offer an opt_in shared server to members that do not list it", () => {
+    expect(resolveInheritedMcpServers("editor", [shared, { ...checker, opt_in: true }], []))
+      .toEqual([shared]);
+  });
+
+  it("gives an opt_in shared server, without the opt_in flag, to a member listing its bare name", () => {
+    expect(resolveInheritedMcpServers("writer", [shared, { ...checker, opt_in: true }], [{ name: "checker" }]))
+      .toEqual([shared, checker]);
+  });
+
+  it("opts in through a narrowing override too", () => {
+    expect(resolveInheritedMcpServers("writer", [{ ...checker, opt_in: true }], [{ name: "checker", tools: ["other"] }]))
+      .toEqual([{ ...checker, tools: ["other"] }]);
+  });
+
+  it("treats opt_in: false like the default and inherits the server", () => {
+    expect(resolveInheritedMcpServers("editor", [{ ...checker, opt_in: false }], [])).toEqual([checker]);
+  });
 });
+

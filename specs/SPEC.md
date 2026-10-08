@@ -1151,7 +1151,8 @@ Inheritance rules:
 - Members extend the shared surface.
 - Members MUST NOT remove inherited items.
 - On MCP name conflict, the member-local declaration MUST win. A member-local entry that declares `transport` is a complete server and replaces the inherited one.
-- A member-local MCP entry without `transport` narrows the inherited server of the same name: it MAY declare only `name`, `tools`, and `env`, and MUST declare `tools` or `env`. `tools` replaces the inherited allowlist; `env` merges key by key with member-local keys winning; every other field is inherited. Such an entry with no inherited server of that name MUST fail compilation naming the agent. `shared.environment.mcp_servers` entries MUST be complete servers.
+- A member-local MCP entry without `transport` narrows the inherited server of the same name: it MAY declare only `name`, `tools`, and `env`; a bare `name` takes the inherited server unchanged. `tools` replaces the inherited allowlist; `env` merges key by key with member-local keys winning; every other field is inherited. Such an entry with no inherited server of that name MUST fail compilation naming the agent. `shared.environment.mcp_servers` entries MUST be complete servers.
+- A `shared.environment.mcp_servers` entry MAY declare `opt_in: true`. Such a server is inherited only by members that list its name in their own `mcp_servers` (bare or narrowing); other members never receive it. Without `opt_in` (or with `false`) every direct member inherits it. This does not remove inherited items: an opt-in server is not offered by default. `opt_in` is not valid on member-local entries.
 
 ```yaml
 # member Spawnfile: inherit the team's workbench server, select its tools
@@ -1160,6 +1161,7 @@ environment:
     - name: workbench
       tools: [file_item, read_item]
       env: { WORKBENCH_EXTRA: "${workspace}/extra" }
+    - name: checker        # a shared server declared with opt_in: true
 ```
 - On env, secret, package, or resource name conflict, the member-local declaration MUST win.
 - The outer team's shared surface MUST NOT automatically propagate through a nested team boundary into that nested team's own members.
