@@ -71,8 +71,18 @@ const gitResourceAuthSchema = z
     message: "git resource auth must declare exactly one of ssh_key or ssh_key_env"
   });
 
-/** True when a URL carries a password or token in its userinfo (`https://user:secret@host/...`). */
-const urlEmbedsCredential = (url: string): boolean => /^[a-z][a-z0-9+.-]*:\/\/[^/@]*:[^/@]*@/iu.test(url);
+/**
+ * True when a URL may carry a credential: any password, any userinfo on a
+ * non-SSH URL (a token is often sent as the user name), or a query string.
+ * An SSH user name (`git@host:...`, `ssh://git@host/...`) is not a secret.
+ */
+const urlEmbedsCredential = (url: string): boolean => {
+  const scheme = /^([a-z][a-z0-9+.-]*):\/\/([^/]*)/iu.exec(url);
+  if (!scheme) return url.includes("?");
+  const authority = scheme[2]!, userinfo = authority.includes("@") ? authority.slice(0, authority.lastIndexOf("@")) : undefined;
+  if (url.includes("?") || userinfo?.includes(":")) return true;
+  return userinfo !== undefined && !/^(ssh|git\+ssh|ssh\+git)$/iu.test(scheme[1]!);
+};
 
 const teamWorkspaceResourceGitSchema = z
   .object({
@@ -99,6 +109,9 @@ const teamWorkspaceResourceGitSchema = z
       });
     }
     if (value.fetch === "build") {
+      if ([value.branch, value.tag, value.ref].some((selector) => selector !== undefined && selector === "")) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "git resource branch, tag, or ref must not be empty with fetch: build" });
+      }
       if (value.mode !== "readonly") {
         context.addIssue({ code: z.ZodIssueCode.custom, message: "git resources with fetch: build are pinned image content and must be mode: readonly" });
       }

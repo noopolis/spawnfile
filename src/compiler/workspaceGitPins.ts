@@ -128,12 +128,13 @@ export const resolveWorkspaceGitPins = async (plan: CompilePlan, options: Resolv
     node.value.workspaceResources = node.value.workspaceResources.map((resource): ResolvedWorkspaceResource => {
       if (!isBuildPinnedGitResource(resource)) return resource;
       const { facts } = resolved.get(declarationKey(resource))!;
-      if (!result.report.some((existing) => existing.id === resource.id && existing.sha256 === facts.sha256)) result.report.push({ ...facts, id: resource.id });
+      const same = (existing: CompileReportWorkspaceGitResource): boolean => existing.id === resource.id && existing.url === facts.url && existing.commit === facts.commit && existing.sha256 === facts.sha256 && JSON.stringify(existing.selector) === JSON.stringify(facts.selector);
+      if (!result.report.some(same)) result.report.push({ ...facts, id: resource.id });
       // From here on it is a bundle: same staging, same identity-checked read-only mount, no auth fields.
       return { id: resource.id, kind: "bundle", mode: "readonly", mount: resource.mount, scope: resource.scope, sha256: facts.sha256, sharing: "per_agent" };
     });
   }
   await pruneBundleCache(archives, usedKeys);
-  result.report.sort((left, right) => left.id.localeCompare(right.id) || left.sha256.localeCompare(right.sha256));
+  result.report.sort((left, right) => left.id.localeCompare(right.id) || left.url.localeCompare(right.url) || left.commit.localeCompare(right.commit) || left.sha256.localeCompare(right.sha256));
   return result;
 };
