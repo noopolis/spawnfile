@@ -2112,6 +2112,24 @@ describe("manifestSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts built and prebuilt bundles and requires exactly one of source or build", () => {
+    const agent = (resource: Record<string, unknown>) => manifestSchema.safeParse({
+      kind: "agent", name: "worker", runtime: "openclaw", spawnfile_version: "0.1",
+      workspace: { resources: [{ id: "tools", kind: "bundle", mode: "readonly", mount: "./tools", ...resource }] }
+    });
+    const digest = `sha256:${"a".repeat(64)}`;
+    expect(agent({ build: { files: { exclude: ["**/*.test.mjs"], root: "../tools" } } }).success).toBe(true);
+    expect(agent({ build: { files: { root: "../tools" } }, sha256: digest }).success).toBe(true);
+    expect(agent({ sha256: digest, source: "./tools.tar" }).success).toBe(true);
+    expect(agent({ source: "./tools.tar" }).success).toBe(true);
+    const neither = agent({});
+    expect(neither.success).toBe(false);
+    expect(neither.error?.issues[0]?.message).toContain("exactly one of source or build");
+    expect(agent({ build: { files: { root: "../tools" } }, source: "./tools.tar" }).success).toBe(false);
+    expect(agent({ build: { files: { root: "../tools" }, generated: {} } }).success).toBe(false);
+    expect(agent({ build: { files: { exclude: [""], root: "../tools" } } }).success).toBe(false);
+  });
+
   it("rejects team-shared git workspace resources", () => {
     const result = manifestSchema.safeParse({
       kind: "team",

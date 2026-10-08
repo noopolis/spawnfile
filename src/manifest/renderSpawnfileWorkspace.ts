@@ -35,7 +35,7 @@ const orderWorkspaceResource = (resource: WorkspaceResource): unknown => {
     ]);
   }
   if (resource.kind === "bundle") return withDefinedEntries([
-    ["id", resource.id], ["kind", resource.kind], ["source", resource.source],
+    ["id", resource.id], ["kind", resource.kind], ["source", resource.source], ["build", resource.build],
     ["sha256", resource.sha256], ["mount", resource.mount], ["mode", resource.mode], ["sharing", resource.sharing]
   ]);
 
