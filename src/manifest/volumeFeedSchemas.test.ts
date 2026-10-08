@@ -13,13 +13,13 @@ describe("volume feed prepare, include, moving refs and freeze", () => {
   it("accepts the full shape", () => {
     expect(issues({
       freeze: { after: "12:00", timezone: "Europe/Berlin" },
-      git: { fetch: true, ref: { fallback: "origin/main", template: "origin/edition/${date:Europe/Berlin}" }, repo: "../repo" },
+      git: { fetch: true, ref: { fallback: "origin/main", template: "origin/data/${date:Europe/Berlin}" }, repo: "../repo" },
       include: [{ from: "../fonts", to: "assets/fonts" }],
       prepare: { command: ["npm", "ci", "--omit=dev"], image: IMAGE, network: true, platform: "linux/arm64", timeout_seconds: 600 }
     })).toEqual([]);
     expect(issues({ ...git({ command: ["node", "pick-ref.mjs"] }), prepare: { command: ["cp", "-r", "x", "y"], host: true } })).toEqual([]);
     expect(issues(git("origin/main"))).toEqual([]);
-    expect(issues(git({ template: "edition/${date}" }))).toEqual([]);
+    expect(issues(git({ template: "data/${date}" }))).toEqual([]);
   });
 
   it("requires a pinned image or an explicit host prepare, never both", () => {
@@ -34,8 +34,8 @@ describe("volume feed prepare, include, moving refs and freeze", () => {
   it("refuses ref rules that are ambiguous or use unknown placeholders", () => {
     expect(issues(git({ fallback: "main" }))).toContain("a volume feed ref rule must declare exactly one of template or command");
     expect(issues(git({ command: ["x"], template: "a" }))).toContain("a volume feed ref rule must declare exactly one of template or command");
-    expect(issues(git({ template: "edition/${branch}" }))).toContain("volume feed ref templates know only ${date} and ${date:<time zone>}");
-    expect(issues(git({ template: "edition/${date:Mars/Olympus}" }))).toContain('volume feed ref template time zone "Mars/Olympus" is not an IANA time zone');
+    expect(issues(git({ template: "data/${branch}" }))).toContain("volume feed ref templates know only ${date} and ${date:<time zone>}");
+    expect(issues(git({ template: "data/${date:Mars/Olympus}" }))).toContain('volume feed ref template time zone "Mars/Olympus" is not an IANA time zone');
     expect(issues(git({ template: "a", extra: 1 })).length).toBeGreaterThan(0);
   });
 
