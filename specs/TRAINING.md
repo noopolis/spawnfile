@@ -56,7 +56,10 @@ do not affect this digest. The receiver must revalidate files and mappings befor
 
 Resources disclose declaration digests and pins, not mounted or verified archives.
 The resource definition digest uses the compiler's recursively key-sorted JSON.
-`pin` is the declared bundle SHA or Git `ref`; branch/tag-only Git and volumes use null.
+`pin` is the bundle SHA (declared, or hashed for an unpinned prebuilt tar), `bundle-key:<hex>`
+for a Spawnfile-built `files` or `dependencies` bundle (the dev cache key for the target
+architecture; nothing is built), `bundle-recipe:<hex>` for a `generated` bundle (that key with
+tools identified by argv; no command runs), or the Git `ref`; branch/tag-only Git and volumes use null.
 This receipt is not a complete packaged-resource closure. No environment values,
 transport configuration, resource URLs or credentials are serialized.
 

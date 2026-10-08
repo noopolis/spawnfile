@@ -75,6 +75,11 @@ src/compiler/
 ├── workspaceBundleTar.ts       # Deterministic ustar writer (sorted, root-owned, zero mtime, two modes)
 ├── workspaceGitPins.ts         # `fetch: build` git resources: pin selector to a commit, archive its tree, lower to a bundle
 ├── workspaceGitFetch.ts        # Host-side shallow fetch into a per-URL bare cache, SSH key auth via GIT_SSH_COMMAND
+├── workspaceBundleKey.ts       # Cache keys and the build-plan contract shared by every input kind
+├── workspaceBundleDependencies.ts # `build.dependencies`: npm lockfile installed in a pinned image for the target platform
+├── workspaceBundleGenerated.ts # `build.files` / `build.generated` planners: git-identity inputs, declared command, tool versions
+├── workspaceBundleTree.ts      # Content-addressed walk of built output (installs, generated files)
+├── workspaceBundleRun.ts       # Bounded command runner and `docker run` argv for target-platform build steps
 ├── containerPackageOverrides.ts # Local runtime install package npm-pack staging for the container build context
 ├── upReceipt.ts                # `spawnfile.up-receipt.v1` builder: compiled_schedule extraction + deployment-record readback
 ├── view/                       # Pure compiler view models/renderers for `spawnfile view`
@@ -98,7 +103,10 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
   unchanged files: release from `ls-tree` of a clean `HEAD`, dev from index
   blob ids plus hashes of only the files `git status` reports changed. The
   cache key must carry the target platform; a warm compile must stay cheaper
-  than hashing a prebuilt tar of the same size.
+  than hashing a prebuilt tar of the same size. Recipe kinds (`dependencies`,
+  `generated`) compute their key without running the recipe and run installs
+  or generators only on a miss; container steps always use a digest-pinned
+  image and `--platform linux/<arch>`.
 - `fetch: build` git resources are resolved on the HOST at compile time and
   lowered into ordinary read-only bundles before any container artifact is
   rendered: the container never sees the URL's credentials, a clone, or the

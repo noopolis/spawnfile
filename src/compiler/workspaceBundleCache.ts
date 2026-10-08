@@ -27,6 +27,12 @@ export const resolveWorkspaceBundleCacheDirectory = (override?: string): string 
   override ?? path.join(resolveSpawnfileHome(), "cache", "workspace-bundles");
 
 const paths = (directory: string, key: string) => ({ record: path.join(directory, `${key}.json`), tar: path.join(directory, `${key}.tar`) });
+/**
+ * Archives are named by key AND digest: two concurrent builds of one key that
+ * produce different bytes publish two files, and each record names the file
+ * its digest describes, so a record can never pair one digest with another's bytes.
+ */
+const archiveName = (key: string, sha256: string): string => `${key}.${sha256.slice(7)}.tar`;
 
 /**
  * A hit is a record whose archive still has the size, inode and mtime it had
@@ -37,11 +43,13 @@ export const lookupCachedBundle = async (directory: string, key: string): Promis
   const location = paths(directory, key);
   try {
     const record = JSON.parse(await readFile(location.record, "utf8")) as Partial<CacheRecord>;
-    const info = await stat(location.tar);
-    if (record.version !== RECORD_VERSION || record.key !== key || !info.isFile() || (info.mode & 0o222) !== 0 || info.size !== record.size || info.ino !== record.ino || info.mtimeMs !== record.mtimeMs || typeof record.sha256 !== "string" || !/^sha256:[a-f0-9]{64}$/u.test(record.sha256)) return undefined;
+    if (typeof record.sha256 !== "string" || !/^sha256:[a-f0-9]{64}$/u.test(record.sha256)) return undefined;
+    const tarPath = path.join(directory, archiveName(key, record.sha256));
+    const info = await stat(tarPath);
+    if (record.version !== RECORD_VERSION || record.key !== key || !info.isFile() || (info.mode & 0o222) !== 0 || info.size !== record.size || info.ino !== record.ino || info.mtimeMs !== record.mtimeMs) return undefined;
     const now = new Date();
     await utimes(location.record, now, now).catch(() => undefined);
-    return { contentBytes: record.contentBytes!, fileCount: record.fileCount!, key, sha256: record.sha256 as `sha256:${string}`, size: record.size!, tarPath: location.tar };
+    return { contentBytes: record.contentBytes!, fileCount: record.fileCount!, key, sha256: record.sha256 as `sha256:${string}`, size: record.size!, tarPath };
   } catch {
     return undefined;
   }
@@ -61,12 +69,13 @@ export const storeBuiltBundle = async (
     validateWorkspaceBundleTar(await readFile(temporaryTar));
     // Read-only: staging hard-links this inode into build contexts, which must never write through to it.
     await chmod(temporaryTar, 0o444);
-    await rename(temporaryTar, location.tar);
-    const info = await stat(location.tar);
+    const tarPath = path.join(directory, archiveName(key, summary.sha256));
+    await rename(temporaryTar, tarPath);
+    const info = await stat(tarPath);
     const record: CacheRecord = { ...summary, ino: info.ino, key, mtimeMs: info.mtimeMs, version: RECORD_VERSION };
     await writeFile(temporaryRecord, `${JSON.stringify(record)}\n`, { mode: 0o600 });
     await rename(temporaryRecord, location.record);
-    return { ...summary, key, tarPath: location.tar };
+    return { ...summary, key, tarPath };
   } finally {
     await rm(temporaryTar, { force: true });
     await rm(temporaryRecord, { force: true });
@@ -88,6 +97,6 @@ export const pruneBundleCache = async (directory: string, keep: ReadonlySet<stri
   const stale = records.sort((left, right) => right.used - left.used).slice(limit).filter((record) => !keep.has(record.key) && now - record.used > WORKSPACE_BUNDLE_CACHE_GRACE_MS);
   await Promise.all(stale.flatMap((record) => [
     rm(path.join(directory, `${record.key}.json`), { force: true }),
-    rm(path.join(directory, `${record.key}.tar`), { force: true })
+    ...names.filter((name) => name.startsWith(`${record.key}.`) && name.endsWith(".tar")).map((name) => rm(path.join(directory, name), { force: true }))
   ]));
 };

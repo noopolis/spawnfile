@@ -12,7 +12,8 @@ export type {
   TeamWorkspace,
   TeamWorkspaceDocs,
   TeamWorkspaceResource,
-  TeamWorkspaceResource as TeamNetworkResource
+  TeamWorkspaceResource as TeamNetworkResource,
+  WorkspaceBundleBuild
 } from "./workspaceSchemas.js";
 export type { TeamNetworkAuth } from "./teamNetworkAuthSchemas.js";
 export type { TeamNetworkServer, TeamNetworkStore } from "./teamNetworkServerSchemas.js";

@@ -173,6 +173,7 @@ export const buildProject = async (
   const compileResult = await compileProject(inputPath, {
     ...(options.bundleCacheDirectory !== undefined ? { bundleCacheDirectory: options.bundleCacheDirectory } : {}),
     ...(options.bundleIdentity !== undefined ? { bundleIdentity: options.bundleIdentity } : {}),
+    ...(options.bundleDockerCommand ?? options.dockerCommand ? { bundleDockerCommand: options.bundleDockerCommand ?? options.dockerCommand } : {}),
     clean: options.clean,
     containerArchitecture: targetArchitecture,
     outputDirectory: options.outputDirectory,
