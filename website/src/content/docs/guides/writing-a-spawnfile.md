@@ -231,6 +231,24 @@ Spawnfile prepares the real git clone or volume in managed backing storage, then
 
 By default resources are `sharing: per_agent`, so each concrete agent gets its own backing resource. Use `sharing: team` only for shared volumes where team members should write to the same files. Git resources cannot use `sharing: team`; declare the git resource once at team level under `shared.workspace.resources` and let each concrete agent receive its own checkout.
 
+#### Pinning a private repository at build time
+
+A git resource clones at container start by default, which needs network access and, for a private repository, a credential inside the container. Declare `fetch: build` instead to pin it when you compile:
+
+```yaml
+    - id: research
+      kind: git
+      url: git@github.com:example/private-research.git
+      branch: daily
+      fetch: build
+      auth:
+        ssh_key_env: RESEARCH_DEPLOY_KEY   # or ssh_key: ~/.ssh/research_deploy
+      mount: ./repos/research
+      mode: readonly
+```
+
+`spawnfile compile` (and `build`) resolves the branch to one commit on the host, archives that commit's tree into the image as a read-only bundle, and records the commit in `spawnfile-report.json` under `workspace_git_resources`. Every compile follows the branch to its current tip; a branch, tag or ref that does not resolve fails the compile, with or without `--release`. The key is used only by the host's `git fetch` and never enters the compile output or the image. To rebuild exactly what a report recorded, declare `ref: <commit>` in place of `branch`. `exclude` takes the same globs as a bundle's `build.files.exclude`; symlinks and submodules must be excluded.
+
 ### Sandbox
 
 - `mode: workspace` restricts the agent to its workspace directory.

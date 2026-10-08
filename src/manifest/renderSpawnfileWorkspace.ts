@@ -29,6 +29,9 @@ const orderWorkspaceResource = (resource: WorkspaceResource): unknown => {
       ["branch", resource.branch],
       ["ref", resource.ref],
       ["tag", resource.tag],
+      ["fetch", resource.fetch],
+      ["auth", resource.auth],
+      ["exclude", resource.exclude],
       ["mount", resource.mount],
       ["mode", resource.mode],
       ["sharing", resource.sharing]
