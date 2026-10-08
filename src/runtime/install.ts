@@ -2,13 +2,15 @@ import { SpawnfileError } from "../shared/index.js";
 
 import {
   assertRuntimeCanCompile,
-  loadRuntimeRegistry
+  loadRuntimeRegistry,
+  type DaimonCapabilityReceipts
 } from "./registry.js";
 
 export type RuntimeInstallSelection =
   | {
       ecosystem: "go" | "node";
       capabilityReceipt?: string;
+      capabilityReceipts?: DaimonCapabilityReceipts;
       contractManifestSha256?: string;
       digest?: string;
       image: string;
@@ -177,6 +179,7 @@ export const resolveRuntimeInstallSelection = async (
       return {
         ecosystem: installProfile.container_image.ecosystem,
         capabilityReceipt: runtime.install.capabilityReceipt,
+        ...(runtime.install.capabilityReceipts ? { capabilityReceipts: runtime.install.capabilityReceipts } : {}),
         contractManifestSha256: runtime.install.contractManifestSha256,
         digest: runtime.install.digest,
         image: runtime.install.image,

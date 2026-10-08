@@ -8,6 +8,7 @@ import {
   type RuntimeContainerPackageOverrides
 } from "./containerPackageOverrides.js";
 import { resolveRuntimeInstallSelection } from "./install.js";
+import type { DaimonCapabilityReceipts } from "./registry.js";
 import {
   DAIMON_LOCAL_RUNTIME_IDENTITY_ENV,
   loadLocalDaimonRuntimeIdentity
@@ -117,11 +118,11 @@ const resolveRuntimeImageRef = (
  */
 const resolveDaimonRuntimeImageRef = async (
   selection: Awaited<ReturnType<typeof resolveRuntimeInstallSelection>>
-): Promise<{ capabilityReceipt: string; image: string }> => {
+): Promise<{ capabilityReceipt: string | DaimonCapabilityReceipts; image: string }> => {
   if (
     selection.kind !== "container_image" ||
     !selection.digest ||
-    !selection.capabilityReceipt
+    !(selection.capabilityReceipt || selection.capabilityReceipts)
   ) {
     throw new SpawnfileError(
       "runtime_error",
@@ -151,7 +152,24 @@ const resolveDaimonRuntimeImageRef = async (
       "Selected Daimon runtime image does not attest the compiler's exact contract manifest; build and select a matching local artifact or pin a published compatible release"
     );
   }
-  return { capabilityReceipt: selection.capabilityReceipt, image: pinnedImage };
+  return {
+    capabilityReceipt: selection.capabilityReceipts ?? selection.capabilityReceipt as string,
+    image: pinnedImage
+  };
+};
+
+/**
+ * A published multi-architecture Daimon index embeds a different receipt per
+ * platform (the packaged broker and pinned CLIs are per-architecture), so the
+ * generated image checks the receipt pinned for the architecture it builds.
+ */
+const createDaimonReceiptCheck = (receiptPath: string, receipt: string | DaimonCapabilityReceipts): string => {
+  const actual = `test -f ${receiptPath} && actual="$(sha256sum ${receiptPath} | awk '{print "sha256:" $1}')"`;
+  if (typeof receipt === "string") return `${actual} && test "$actual" = ${JSON.stringify(receipt)}`;
+  const cases = Object.entries(receipt)
+    .map(([architecture, digest]) => `${architecture}) expected=${JSON.stringify(digest)} ;;`)
+    .join(" ");
+  return `${actual} && arch="$(dpkg --print-architecture)" && case "$arch" in ${cases} *) echo "No pinned Daimon capability receipt for $arch" >&2; exit 1 ;; esac && test "$actual" = "$expected"`;
 };
 
 export interface RuntimeInstallRecipeOptions {
@@ -240,7 +258,7 @@ export const createRuntimeInstallRecipe = async (
       const daimonRuntime = await resolveDaimonRuntimeImageRef(selection);
       return {
         commands: [
-          `test -f ${installRoot}/${DAIMON_CAPABILITY_RECEIPT_FILE} && actual="$(sha256sum ${installRoot}/${DAIMON_CAPABILITY_RECEIPT_FILE} | awk '{print "sha256:" $1}')" && test "$actual" = ${JSON.stringify(daimonRuntime.capabilityReceipt)}`,
+          createDaimonReceiptCheck(`${installRoot}/${DAIMON_CAPABILITY_RECEIPT_FILE}`, daimonRuntime.capabilityReceipt),
           `test -f ${installRoot}/contract-manifest.json && test -f ${installRoot}/contract-manifest.sha256 && manifest="$(cat ${installRoot}/contract-manifest.sha256)" && test "$manifest" = ${JSON.stringify(DAIMON_CONTRACT_MANIFEST_SHA256)} && test "$(sha256sum ${installRoot}/contract-manifest.json | awk '{print "sha256:" $1}')" = "$manifest" && node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(r.manifest_sha256!==process.argv[2])process.exit(1)' ${installRoot}/${DAIMON_CAPABILITY_RECEIPT_FILE} "$manifest"`,
           `ln -sf ${installRoot}/bin/daimon-runtime /usr/local/bin/daimon-runtime`,
           `ln -sf ${installRoot}/bin/codex /usr/local/bin/codex`,
