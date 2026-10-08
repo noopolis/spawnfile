@@ -94,7 +94,7 @@ export const createTrainingContext = async (
     resources: (agent.workspaceResources ?? []).map((resource) => ({
       id: resource.id, kind: resource.kind, mount: resource.mount, mode: resource.mode, sharing: resource.sharing,
       definitionDigest: sha256(stableStringify(resource)),
-      pin: resource.kind === "bundle" ? resource.sha256 : resource.kind === "git" ? resource.ref ?? null : null
+      pin: resource.kind === "bundle" ? resource.sha256 ?? null : resource.kind === "git" ? resource.ref ?? null : null
     })),
     requirements: { nativeCompilation: true, isolatedPreparation: true }
   });

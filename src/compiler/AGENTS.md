@@ -67,6 +67,12 @@ src/compiler/
 ├── moltnetReleaseDownload.ts   # Bounded exact-digest download for the pinned published release
 ├── moltnetReleaseAuthority.ts  # Parser for the checked-in version/revision/asset digest trust root
 ├── daimonTelemetryArtifacts.ts # Run-scoped durable volume for legacy generated-Pi telemetry
+├── workspaceBundleArtifacts.ts # Bundle tar validation and staging into the Docker context
+├── workspaceBundleResolve.ts   # Gives every bundle a digest: builds declared inputs by cache key, hashes unpinned tars
+├── workspaceBundleFiles.ts     # `build.files` inputs: exclude globs, release (git tree) and dev (work tree) identity, archive writing
+├── workspaceBundleGit.ts       # Read-only git queries (ls-tree, ls-files, status, cat-file --batch stream)
+├── workspaceBundleCache.ts     # Key-addressed archive cache with stat-checked hits, atomic publish and LRU pruning
+├── workspaceBundleTar.ts       # Deterministic ustar writer (sorted, root-owned, zero mtime, two modes)
 ├── containerPackageOverrides.ts # Local runtime install package npm-pack staging for the container build context
 ├── upReceipt.ts                # `spawnfile.up-receipt.v1` builder: compiled_schedule extraction + deployment-record readback
 ├── view/                       # Pure compiler view models/renderers for `spawnfile view`
@@ -86,6 +92,11 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
 ## Rules
 
 - Keep the compiler deterministic.
+- Built workspace bundles take identity from git, never from a content walk of
+  unchanged files: release from `ls-tree` of a clean `HEAD`, dev from index
+  blob ids plus hashes of only the files `git status` reports changed. The
+  cache key must carry the target platform; a warm compile must stay cheaper
+  than hashing a prebuilt tar of the same size.
 - Resolve and validate the graph before calling any runtime adapter.
 - The compile plan is internal state, not user-authored schema.
 - Emit stable output paths and reports.
