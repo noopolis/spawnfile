@@ -226,6 +226,8 @@ export interface RuntimeAdapter {
   compileTeam?(node: ResolvedTeamNode): Promise<AdapterCompileResult>;
   createContainerTargets?(inputs: ContainerTargetInput[]): Promise<ContainerTarget[]>;
   name: string;
+  /** Throws a SpawnfileError for what compile would refuse for this agent; run by `spawnfile validate`. */
+  preflightAgent?(node: ResolvedAgentNode, nodeId: string): void;
   prepareRuntimeAuth?(
     input: RuntimeAuthPreparationInput
   ): Promise<RuntimeAuthPreparationResult>;

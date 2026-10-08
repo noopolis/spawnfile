@@ -1679,6 +1679,24 @@ describe("runCli", () => {
     ]);
   });
 
+  it("fails validate for an agent compile would refuse, naming the agent", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-validate-preflight-"));
+    temporaryDirectories.push(directory);
+    await writeFile(path.join(directory, "AGENTS.md"), "x".repeat(16_400));
+    await writeFile(path.join(directory, "Spawnfile"), [
+      'spawnfile_version: "0.1"', "kind: agent", "name: writer", "runtime: daimon",
+      "workspace: { docs: { system: AGENTS.md } }", ""
+    ].join("\n"));
+    const stderr: string[] = [];
+    const exitCode = await runCli(["validate", directory], {
+      stderr: (message) => stderr.push(message),
+      stdout: () => undefined,
+    });
+
+    expect(exitCode).toBe(2);
+    expect(stderr[0]).toContain("- agent:writer (daimon): Daimon organization runtime v1 instructions for agent:writer exceed");
+  });
+
   it("exits 2 with friendly guidance when the Spawnfile path does not exist", async () => {
     const stderr: string[] = [];
     const exitCode = await runCli(
