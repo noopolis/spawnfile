@@ -49,7 +49,7 @@ describe("preflightCompilePlan", () => {
       zeta: { docs: oversized }
     }));
 
-    await expect(failure).rejects.toThrow("Compile would refuse 2 agent declaration(s):");
+    await expect(failure).rejects.toThrow("Compile would refuse 2 agent(s):");
     await expect(failure).rejects.toThrow(/- agent:editor \(daimon\): Daimon organization runtime v1 instructions for agent:editor exceed/u);
     await expect(failure).rejects.toThrow(/- agent:zeta \(daimon\): .*limit 16384 each/u);
   });
@@ -81,5 +81,17 @@ describe("preflightCompilePlan", () => {
       "workspace: { docs: { system: AGENTS.md } }", ""
     ].join("\n"));
     await expect(preflight(directory)).rejects.toThrow(/- agent:writer \(daimon\): /u);
+  });
+
+  it("reports Daimon option refusals compile applies across agents, once per agent", async () => {
+    const directory = await writeOrganization({ writer: { docs: "# writer\n" } });
+    await writeUtf8File(path.join(directory, "agents", "writer", "Spawnfile"), [
+      'spawnfile_version: "0.1"', "kind: agent", "name: writer",
+      "runtime: { name: daimon, options: { engine: codex, turn_limits: { max_requests: 2 } } }",
+      "workspace: { docs: { system: AGENTS.md } }", ""
+    ].join("\n"));
+    const failure = preflight(directory);
+    await expect(failure).rejects.toThrow("Compile would refuse 1 agent(s):");
+    await expect(failure).rejects.toThrow("turn_limits is only supported on a brokered Grok agent: agent:writer");
   });
 });

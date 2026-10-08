@@ -5,7 +5,9 @@ import { daimonAdapter } from "../runtime/daimon/adapter.js";
 import { openClawAdapter } from "../runtime/openclaw/adapter.js";
 
 import { expandSourceWorkspacePathTemplate } from "./containerTargetResources.js";
-import { resolveMcpServerPlaceholders, type McpPlaceholderContext } from "./mcpPlaceholders.js";
+import { resolveMcpServerPlaceholders, resolvePlanMcpPlaceholders, type McpPlaceholderContext } from "./mcpPlaceholders.js";
+import type { CompilePlanNode } from "./types.js";
+import { createPiTestNode } from "../runtime/pi/testHelpers.js";
 
 const context: McpPlaceholderContext = {
   agentId: "agent:writer",
@@ -66,3 +68,22 @@ describe("expandSourceWorkspacePathTemplate", () => {
       .toBe("<workspace-path>");
   });
 });
+
+describe("resolvePlanMcpPlaceholders", () => {
+  it("uses the node slug and id, not the manifest name, for duplicate-named agents", () => {
+    const value = createPiTestNode({
+      mcpServers: [server({ args: ["${workspace}/s.mjs"], env: { ID: "${agent.id}", NAME: "${agent.name}" } })],
+      name: "writer",
+      runtime: { name: "daimon", options: {} }
+    });
+    const node = { id: "agent:writer#a1b2c3", kind: "agent", runtimeName: "daimon", slug: "writer-a1b2c3", value } as CompilePlanNode;
+
+    resolvePlanMcpPlaceholders([node]);
+
+    expect(value.mcpServers[0]).toMatchObject({
+      args: ["<instance-root>/workspace/agents/writer-a1b2c3/s.mjs"],
+      env: { ID: "agent:writer#a1b2c3", NAME: "writer" }
+    });
+  });
+});
+

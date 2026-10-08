@@ -12,6 +12,7 @@ import { parseEveryScheduleMs } from "../scheduleUtils.js";
 import type { AdapterCompileResult, RuntimeAdapter } from "../types.js";
 
 import {
+  assertDaimonAgentOptions,
   assertDaimonInstructionBounds,
   createDaimonContainerTargets,
   daimonMemoryCapabilityFor,
@@ -247,6 +248,7 @@ export const daimonAdapter: RuntimeAdapter = {
     unsupportedAgentFeatures(node);
     const codexPolicyError = daimonCodexPolicyError(node);
     if (codexPolicyError) throw new SpawnfileError("validation_error", codexPolicyError);
+    assertDaimonAgentOptions(nodeId, node);
     assertDaimonInstructionBounds(nodeId, node);
   },
   prepareRuntimeAuth: prepareDaimonRuntimeAuth,
