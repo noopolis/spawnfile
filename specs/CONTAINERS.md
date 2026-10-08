@@ -142,7 +142,18 @@ noopolis/spawnfile-runtime-picoclaw:0.3.1
 ```
 
 Public Daimon hosts do not accept raw or tag-only image overrides. Standard
-compiles always use the `runtimes.yaml` digest and receipt. Local development is
+compiles always use the `runtimes.yaml` digest and receipt.
+
+The published Daimon image is built by CI (`runtime-images.yml`, `daimon` job,
+`scripts/publish-daimon-runtime.ts`) from the Daimon commit, AGY and Codex pins
+in `runtime-images/daimon/publish-inputs.json` and the Grok pin in the vendored
+contract manifest. It is a `linux/amd64` + `linux/arm64` index tagged
+`<daimon version>-<short commit>`; an existing tag is never moved. Each
+platform embeds its own capability receipt (the packaged engine broker and CLI
+binaries are per-architecture), so `runtimes.yaml` pins the index `digest` and
+`capability_receipts: {amd64, arm64}`; generated images verify the receipt for
+the architecture they build. A single `capability_receipt` remains valid for a
+single-architecture pin; the two fields are mutually exclusive. Local development is
 an explicit, fail-closed authority seam: `SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY`
 must name an absolute generated identity file containing the exact non-production
 stamp, an explicitly selected `127.0.0.1:<port>/noopolis/spawnfile-runtime-daimon@sha256:<manifest>`, and

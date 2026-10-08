@@ -36,6 +36,16 @@ tools live in `../archive/legacy-worktree-tools/` and are not active helpers.
   Its generated immutable manifest/receipt identity is ignored and never
   edits `runtimes.yaml`. Clean-source builds select the native Docker
   architecture unless an explicit supported architecture is supplied.
+- `publish-daimon-runtime.ts` is the CI publication path. It reads only the
+  checked-in `runtime-images/daimon/publish-inputs.json` (full Daimon commit,
+  per-architecture AGY pins, Codex pin; Grok comes from the vendored manifest),
+  refuses a packed manifest that differs from the vendored contract, and never
+  moves an existing tag. Its receipts carry `mode: "ci-published"` provenance.
+  Re-vendoring the contract manifest must bump `daimon.commit` to the vendored
+  Daimon commit in the same change; the `runtime-images` PR dry run fails
+  otherwise.
+  The published identity is pinned into `runtimes.yaml` by a reviewed PR, never
+  written by the script.
 - Clean Git remains the default source mode. Explicit Daimon archive mode
   requires `SPAWNFILE_DAIMON_SOURCE_BUNDLE` and
   `SPAWNFILE_DAIMON_DEPENDENCY_BUNDLE`. Strict deterministic USTAR archives bind

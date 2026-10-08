@@ -46,6 +46,7 @@ export default defineConfig({
             { label: 'Teams', slug: 'guides/teams' },
             { label: 'Compiling', slug: 'guides/compiling' },
             { label: 'Docker Packaging', slug: 'guides/docker' },
+            { label: 'Release Images in CI', slug: 'guides/ci-release' },
             { label: 'Status', slug: 'guides/status' },
             { label: 'Distribution', slug: 'guides/distribution' },
           ],
