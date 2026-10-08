@@ -1144,7 +1144,7 @@ A nested team member is a black box to the outer team:
 
 ### 4.4 Shared Workspace And Environment
 
-`shared.workspace.docs`, `shared.workspace.resources`, `shared.workspace.skills`, `shared.environment.env`, `shared.environment.secrets`, `shared.environment.packages`, and `shared.environment.mcp_servers` are OPTIONAL and are inherited by all direct members of the team.
+`shared.workspace.docs`, `shared.workspace.resources`, `shared.workspace.skills`, `shared.environment.env`, `shared.environment.secrets`, `shared.environment.packages`, and `shared.environment.mcp_servers` are OPTIONAL and are inherited by all direct members of the team, except that an `opt_in: true` MCP server is inherited only by members that select it (below).
 
 Inheritance rules:
 
@@ -1152,7 +1152,7 @@ Inheritance rules:
 - Members MUST NOT remove inherited items.
 - On MCP name conflict, the member-local declaration MUST win. A member-local entry that declares `transport` is a complete server and replaces the inherited one.
 - A member-local MCP entry without `transport` narrows the inherited server of the same name: it MAY declare only `name`, `tools`, and `env`; a bare `name` takes the inherited server unchanged. `tools` replaces the inherited allowlist; `env` merges key by key with member-local keys winning; every other field is inherited. Such an entry with no inherited server of that name MUST fail compilation naming the agent. `shared.environment.mcp_servers` entries MUST be complete servers.
-- A `shared.environment.mcp_servers` entry MAY declare `opt_in: true`. Such a server is inherited only by members that list its name in their own `mcp_servers` (bare or narrowing); other members never receive it. Without `opt_in` (or with `false`) every direct member inherits it. This does not remove inherited items: an opt-in server is not offered by default. `opt_in` is not valid on member-local entries.
+- A `shared.environment.mcp_servers` entry MAY declare `opt_in: true`. Such a server is inherited only by members that list its name in their own `mcp_servers` (bare or narrowing); other members never receive it. Without `opt_in` (or with `false`) every direct member inherits it. This does not remove inherited items: an opt-in server is not offered by default. `opt_in` is not valid on member-local entries. A shared skill's `requires.mcp` does not opt a member in: a member that inherits such a skill without selecting the opt-in server MUST fail compilation.
 
 ```yaml
 # member Spawnfile: inherit the team's workbench server, select its tools
