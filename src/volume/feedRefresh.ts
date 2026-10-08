@@ -79,7 +79,7 @@ const heal = (target: FeedTarget, record: FeedLandedRecord, sweep: FeedSweep, ru
       return { ...base, revision: resolved.revision, status: "repaired" };
     }
     log(`re-landing ${record.revision.slice(0, 12)} from the source beside the drifted tree`);
-    landFeed(target, resolved, record, { force: true, heals: { ...record.heals, [record.revision]: cycles + 1 }, ...(record.period ? { period: record.period } : {}), runtime });
+    landFeed(target, resolved, record, { exact: held, force: true, heals: { ...record.heals, [record.revision]: cycles + 1 }, ...(record.period ? { period: record.period } : {}), runtime });
     return { ...base, status: "repaired" };
   }
   if (sweep.relink) pointCurrent(target.volume, feedTreeLink(record.tree), { ops: runtime.ops ?? LINK_OPS, tmpDir: feedStagingDir(target) });
@@ -152,7 +152,11 @@ const refreshLocked = (target: FeedTarget, runtime: FeedRuntime): FeedRefreshRes
     log(`already current: ${record.revision.slice(0, 12)}`);
     return { findings: [], previous: record.revision, revision: record.revision, status: "current" };
   }
-  return heal(concrete, record, sweep, runtime);
+  const healed = heal(concrete, record, sweep, runtime);
+  // A repair of the content this period chose is this period's landing too.
+  const after = healed.status === "repaired" ? readFeedLanded(target.stateDir).record : null;
+  if (after && after.revision === resolved.revision) adopt(concrete, after, resolved, period);
+  return healed;
 };
 
 export const refreshVolumeFeed = (target: FeedTarget, runtime: FeedRuntime = {}): FeedRefreshResult =>

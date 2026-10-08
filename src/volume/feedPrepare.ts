@@ -88,12 +88,38 @@ const stageInclude = (stagingDir: string, from: string, to: string): string => {
   return digestDirectory(destination);
 };
 
+const TIMEOUT_MARK = "SPAWNFILE_PREPARE_TIMEOUT", SPAWN_MARK = "SPAWNFILE_PREPARE_SPAWN_ERROR";
+/**
+ * spawnSync cannot kill a process group, and a child that ignores SIGTERM (or a descendant holding the
+ * pipes) would outlive its timeout while the refresh holds the lock. So the step runs under a tiny
+ * supervisor that starts it in its own process group and SIGKILLs the whole group on timeout and on exit.
+ */
+const SUPERVISOR = [
+  'const { spawn } = require("node:child_process");',
+  "const [ms, file, ...args] = process.argv.slice(1);",
+  'const child = spawn(file, args, { detached: true, stdio: "inherit" });',
+  'const killGroup = () => { try { process.kill(-child.pid, "SIGKILL"); } catch {} };',
+  "let timedOut = false;",
+  "const timer = setTimeout(() => { timedOut = true; killGroup(); }, Number(ms));",
+  `child.on("error", (error) => { clearTimeout(timer); console.error("${SPAWN_MARK} " + error.message); process.exit(127); });`,
+  `child.on("exit", (code, signal) => { clearTimeout(timer); killGroup(); if (timedOut) { console.error("${TIMEOUT_MARK}"); process.exit(124); } if (signal) console.error("killed by " + signal); process.exit(code === null ? 128 : code); });`
+].join("\n");
+
+const superviseSync = (argv: string[], timeoutMs: number, options: { cwd?: string; env?: NodeJS.ProcessEnv }): ReturnType<typeof spawnSync> =>
+  spawnSync(process.execPath, ["-e", SUPERVISOR, String(timeoutMs), ...argv], {
+    ...options, encoding: "utf8", killSignal: "SIGKILL", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"],
+    // Backstop only: the supervisor enforces the real deadline on the whole group.
+    timeout: timeoutMs + 10_000
+  });
+
 const failure = (result: ReturnType<typeof spawnSync>, timeoutMs: number): string | null => {
-  if ((result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT") return `did not finish within ${Math.round(timeoutMs / 1000)}s and was killed`;
+  const stderr = String(result.stderr ?? "");
+  if (stderr.includes(TIMEOUT_MARK) || (result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT") return `did not finish within ${Math.round(timeoutMs / 1000)}s and was killed`;
   if (result.error) return `could not run: ${result.error.message}`;
+  if (stderr.includes(SPAWN_MARK)) return `could not run: ${stderr.slice(stderr.indexOf(SPAWN_MARK) + SPAWN_MARK.length).trim()}`;
   if (result.status === 0) return null;
-  const output = `${String(result.stderr ?? "")}${String(result.stdout ?? "")}`.trim().split("\n").slice(-20).join("\n");
-  return `${result.signal ? `was killed by ${result.signal}` : `exited ${result.status}`}${output ? `:\n${output}` : ""}`;
+  const output = `${stderr}${String(result.stdout ?? "")}`.trim().split("\n").slice(-20).join("\n");
+  return `exited ${result.status}${output ? `:\n${output}` : ""}`;
 };
 
 /** Runs the declared prepare step in the staged tree; any failure lands nothing. */
@@ -101,20 +127,17 @@ export const runFeedPrepare = (target: FeedTarget, tree: string, resolved: Resol
   const prepare = target.prepare;
   if (!prepare) return;
   const env = { SPAWNFILE_FEED_RESOURCE: target.resourceId, SPAWNFILE_FEED_REVISION: resolved.revision };
-  const spawnOptions = { encoding: "utf8" as const, maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] as ["ignore", "pipe", "pipe"], timeout: prepare.timeoutMs };
   let result;
   if (prepare.kind === "host") {
-    const [file, ...args] = prepare.command;
-    result = spawnSync(file as string, args, { ...spawnOptions, cwd: tree, env: { ...process.env, ...env, SPAWNFILE_FEED_TREE: tree } });
+    result = superviseSync(prepare.command, prepare.timeoutMs, { cwd: tree, env: { ...process.env, ...env, SPAWNFILE_FEED_TREE: tree } });
   } else {
     const name = `spawnfile-feed-${randomBytes(8).toString("hex")}`;
-    const [file, ...args] = containerArgv({
+    result = superviseSync(containerArgv({
       argv: prepare.command, dockerCommand: prepare.dockerCommand, env: { ...env, SPAWNFILE_FEED_TREE: CONTAINER_TREE }, image: prepare.image,
       mounts: [[tree, CONTAINER_TREE]], name, network: prepare.network, platform: prepare.platform, workdir: CONTAINER_TREE
-    });
-    result = spawnSync(file as string, args, spawnOptions);
-    // A killed client can leave its container running: remove it, bounded, before reporting.
-    if (result.status !== 0) spawnSync(prepare.dockerCommand, ["rm", "--force", name], { stdio: "ignore", timeout: 30_000 });
+    }), prepare.timeoutMs, {});
+    // Killing the client does not stop its container: remove it, bounded, before reporting.
+    if (result.status !== 0) superviseSync([prepare.dockerCommand, "rm", "--force", name], 30_000, {});
   }
   const why = failure(result, prepare.timeoutMs);
   if (why) throw feedError(`the feed prepare command for ${target.resourceId} ${why}; nothing was landed`);

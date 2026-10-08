@@ -79,6 +79,11 @@ describe("feed prepare", () => {
     expect(() => refreshVolumeFeed(fixture.target)).toThrow(/left an empty tree/u);
     fixture.target.prepare = { command: ["sleep", "5"], kind: "host", timeoutMs: 100 };
     expect(() => refreshVolumeFeed(fixture.target)).toThrow(/did not finish within 0s/u);
+    // A step that ignores SIGTERM, and a descendant holding the pipes, are killed at the deadline.
+    fixture.target.prepare = { command: ["sh", "-c", "trap '' TERM; sleep 30 & wait"], kind: "host", timeoutMs: 300 };
+    const started = Date.now();
+    expect(() => refreshVolumeFeed(fixture.target)).toThrow(/did not finish within 0s and was killed/u);
+    expect(Date.now() - started).toBeLessThan(5000);
     fixture.target.prepare = { command: [path.join(fixture.root, "absent")], kind: "host", timeoutMs: 1000 };
     expect(() => refreshVolumeFeed(fixture.target)).toThrow(/could not run/u);
     expect(current()).toBe(before);

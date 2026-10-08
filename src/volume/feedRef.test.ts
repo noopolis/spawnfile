@@ -5,7 +5,10 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { readFeedLanded } from "./feedRecord.js";
-import { expandFeedRefTemplate, feedLocalClock, feedLocalDate } from "./feedRef.js";
+import { expandFeedRefTemplate, feedCutoffInstant, feedFrozen, feedLocalClock, feedLocalDate } from "./feedRef.js";
+import type { FeedLandedRecord } from "./feedRecord.js";
+import type { FeedExec } from "./feedSource.js";
+import { hostExec } from "./feedSource.js";
 import { feedResultClean, refreshVolumeFeed } from "./feedRefresh.js";
 import { createFeedFixture, type FeedFixture } from "./feedTestKit.js";
 
@@ -59,6 +62,20 @@ describe("feed clock and templates", () => {
     expect(expandFeedRefTemplate("${date:America/Los_Angeles}/${date}", instant)).toBe("2026-10-09/2026-10-09");
     expect(feedLocalDate(instant, "Asia/Tokyo")).toBe("2026-10-10");
     expect(feedLocalClock(new Date("2026-10-09T00:05:00Z"), "UTC")).toBe("00:05");
+  });
+
+  it("resolves the cutoff to an instant, so the repeated hour when clocks fall back never thaws a freeze", () => {
+    expect(feedCutoffInstant("2026-10-09", "12:00", "Europe/Berlin").toISOString()).toBe("2026-10-09T10:00:00.000Z");
+    expect(feedCutoffInstant("2026-01-15", "12:00", "Europe/Berlin").toISOString()).toBe("2026-01-15T11:00:00.000Z");
+    // 2026-10-25: Berlin falls back at 03:00 CEST -> 02:00 CET, so 02:45 local happens before 02:15 local.
+    const target = { freeze: { after: "02:30", timezone: "Europe/Berlin" }, source: { kind: "git", ref: "main", repo: "/r", fetch: false } } as never;
+    const record = { identity: { source: { kind: "git", ref: "main" } }, period: "2026-10-25" } as unknown as FeedLandedRecord;
+    expect(feedCutoffInstant("2026-10-25", "02:30", "Europe/Berlin").toISOString()).toBe("2026-10-25T00:30:00.000Z");
+    // 2026-03-29: 02:30 does not exist in Berlin; the earlier candidate is chosen.
+    expect(feedCutoffInstant("2026-03-29", "02:30", "Europe/Berlin").toISOString()).toBe("2026-03-29T00:30:00.000Z");
+    expect(feedFrozen(target, record, "main", new Date("2026-10-25T00:45:00Z"))).toBe(true);
+    expect(feedFrozen(target, record, "main", new Date("2026-10-25T01:15:00Z"))).toBe(true);
+    expect(feedFrozen(target, record, "main", new Date("2026-10-24T23:59:00Z"))).toBe(false);
   });
 });
 
@@ -162,6 +179,41 @@ describe("moving refs and the daily freeze", () => {
     commitOn(repo, "data/2026-10-10", { "day.txt": "after cutoff\n" });
     expect(refreshVolumeFeed(fixture.target, at("2026-10-10T10:30:00Z")).status).toBe("frozen");
     expect(served("day.txt")).toBe("same\n");
+  });
+
+  it("a repair of this period's content stamps this period, so the freeze still holds after it", () => {
+    fixture = createFeedFixture({ freeze: FREEZE });
+    refreshVolumeFeed(fixture.target, at("2026-10-09T08:00:00Z"));
+    const file = path.join(fixture.volume, link(), "a.txt");
+    chmodSync(path.dirname(file), 0o755);
+    chmodSync(file, 0o644);
+    writeFileSync(file, "ALPHA\n");
+    expect(refreshVolumeFeed(fixture.target, at("2026-10-10T08:00:00Z")).status).toBe("repaired");
+    expect(readFeedLanded(fixture.target.stateDir).record?.period).toBe("2026-10-10");
+    writeFileSync(path.join(fixture.source, "a.txt"), "after cutoff\n");
+    expect(refreshVolumeFeed(fixture.target, at("2026-10-10T10:30:00Z")).status).toBe("frozen");
+    expect(served("a.txt")).toBe("alpha\n");
+  });
+
+  it("a held re-land refuses inputs that moved while it copied them", () => {
+    const repo = datedFixture();
+    const fonts = path.join(fixture.root, "fonts");
+    mkdirSync(fonts);
+    writeFileSync(path.join(fonts, "f.woff2"), "font\n");
+    fixture.target.include = [{ from: fonts, to: "fonts" }];
+    commitOn(repo, "data/2026-10-09", { "day.txt": "09\n" });
+    refreshVolumeFeed(fixture.target, at("2026-10-09T08:00:00Z"));
+    const servedLink = link(), file = path.join(fixture.volume, servedLink, "day.txt");
+    chmodSync(path.dirname(file), 0o755);
+    chmodSync(file, 0o644);
+    writeFileSync(file, "TAMPER\n");
+    // The include changes between the revision check and the copy.
+    const exec: FeedExec = (command, args, options) => {
+      if (args.includes("archive")) writeFileSync(path.join(fonts, "f.woff2"), "moved\n");
+      return hostExec(command, args, options);
+    };
+    expect(() => refreshVolumeFeed(fixture.target, { exec, ...at("2026-10-09T11:00:00Z") })).toThrow(/the source moved while [0-9a-f]{12} was being re-landed/u);
+    expect(link()).toBe(servedLink);
   });
 
   it("freezes a fixed ref and a directory source for the rest of the period they were landed in", () => {
