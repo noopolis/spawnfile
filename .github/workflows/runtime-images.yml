@@ -7,6 +7,11 @@ on:
       - "runtimes.yaml"
       - "src/runtime/container.ts"
       - "src/runtime/install.ts"
+      - "src/runtime/daimon/contract-manifest.json"
+      - "src/runtime/daimon/contract-manifest.sha256"
+      - "scripts/publish-daimon-runtime.ts"
+      - "scripts/daimon-publish-inputs.ts"
+      - "scripts/build-local-daimon-runtime.ts"
       - ".github/workflows/runtime-images.yml"
   push:
     branches: [main]
@@ -15,6 +20,11 @@ on:
       - "runtimes.yaml"
       - "src/runtime/container.ts"
       - "src/runtime/install.ts"
+      - "src/runtime/daimon/contract-manifest.json"
+      - "src/runtime/daimon/contract-manifest.sha256"
+      - "scripts/publish-daimon-runtime.ts"
+      - "scripts/daimon-publish-inputs.ts"
+      - "scripts/build-local-daimon-runtime.ts"
       - ".github/workflows/runtime-images.yml"
     tags:
       - "v*"
@@ -59,22 +69,9 @@ jobs:
             context: runtime-images/picoclaw
             build_args: |
               PICOCLAW_VERSION=v0.3.1
-          # The Daimon runtime image is deliberately absent from this matrix.
-          # It cannot be built by a plain `docker build` of a context: the
-          # Dockerfile opens with `FROM daimon_package` and needs a
-          # `--build-context` carrying a packed Daimon tarball, plus a
-          # capability receipt, three content digests, and eight pinned CLI
-          # artifact URLs and hashes. It also hard-pins linux/amd64, which
-          # contradicts this job's two-platform build. The entry that used to
-          # sit here passed DAIMON_VERSION/MNEME_VERSION/PI_VERSION — three
-          # args the Dockerfile does not declare — so it had never produced an
-          # image, only a red check.
-          #
-          # `npm run build:local-daimon` (scripts/build-local-daimon-runtime.ts)
-          # assembles all of that and is the supported path today. Publishing
-          # from CI means teaching this workflow to call that script with a
-          # non-loopback registry target, which `resolveLocalImageTag` currently
-          # refuses by design.
+          # Daimon is built by the `daimon` job below: its image needs a packed
+          # Daimon tarball per architecture plus a capability receipt, which a
+          # plain context build cannot provide.
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -150,3 +147,126 @@ jobs:
           push: ${{ steps.publish.outputs.push == 'true' }}
           tags: ${{ steps.publish.outputs.tags }}
           build-args: ${{ matrix.build_args }}
+
+  daimon:
+    name: daimon runtime image
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: amd64,arm64
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve publishing mode
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          should_push=false
+          push_latest=false
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            should_push=true
+            push_latest=true
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${{ inputs.push }}" == "true" ]]; then
+              should_push=true
+            fi
+            if [[ "${{ inputs.push_latest }}" == "true" ]]; then
+              push_latest=true
+            fi
+          fi
+
+          {
+            echo "push=${should_push}"
+            echo "latest=${push_latest}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Check Docker Hub credentials
+        if: steps.publish.outputs.push == 'true'
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${DOCKERHUB_USERNAME}" || -z "${DOCKERHUB_TOKEN}" ]]; then
+            echo "::error::DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets must be configured in noopolis/spawnfile to publish runtime images."
+            exit 1
+          fi
+
+      - name: Log in to Docker Hub
+        if: steps.publish.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Packs the pinned Daimon commit per architecture, builds both platforms,
+      # and (when publishing) pushes them by digest and joins them in one index
+      # tagged <daimon version>-<short commit>. An existing tag is never moved.
+      - name: Build Daimon runtime image
+        shell: bash
+        env:
+          PUSH: ${{ steps.publish.outputs.push }}
+          LATEST: ${{ steps.publish.outputs.latest }}
+        run: |
+          set -euo pipefail
+
+          args=(--identity-out "${RUNNER_TEMP}/daimon-runtime-identity.json")
+          if [[ "${PUSH}" == "true" ]]; then
+            args+=(--push)
+            if [[ "${LATEST}" == "true" ]]; then
+              args+=(--latest)
+            fi
+          fi
+          node --experimental-strip-types scripts/publish-daimon-runtime.ts "${args[@]}" | tee "${RUNNER_TEMP}/daimon-publish.log"
+
+      - name: Record published identity
+        if: steps.publish.outputs.push == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          identity="${RUNNER_TEMP}/daimon-runtime-identity.json"
+          if [[ -s "${identity}" ]]; then
+            {
+              echo "### Published Daimon runtime identity"
+              echo '```json'
+              cat "${identity}"
+              echo '```'
+              echo "Pin it in runtimes.yaml:"
+              echo '```yaml'
+              sed -n '/^runtimes.yaml pin:$/,$p' "${RUNNER_TEMP}/daimon-publish.log" | tail -n +2
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+          elif grep -q "already exists; refusing to move a published tag" "${RUNNER_TEMP}/daimon-publish.log"; then
+            echo "Daimon runtime tag already published; nothing new to record." >> "${GITHUB_STEP_SUMMARY}"
+          else
+            echo "::error::Publishing finished without a Daimon runtime identity."
+            exit 1
+          fi
+
+      - name: Upload published identity
+        if: steps.publish.outputs.push == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: daimon-runtime-identity
+          path: ${{ runner.temp }}/daimon-runtime-identity.json
+          if-no-files-found: ignore
