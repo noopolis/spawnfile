@@ -16,6 +16,8 @@ export const FEED_LANDED_VERSION = "spawnfile.volume-feed-landed.v1";
 export const FEED_IDENTITY_VERSION = "spawnfile.volume-feed.v1";
 
 const REVISION = /^[0-9a-f]{64}$/u;
+/** A physical tree name: the revision, or the revision plus a generation for a re-land beside a drifted copy. */
+const TREE_NAME = /^[0-9a-f]{64}(?:\.[1-9][0-9]*)?$/u;
 
 export interface FeedIdentity {
   files: number;
@@ -34,18 +36,22 @@ export interface FeedLandedRecord {
   identity: FeedIdentity;
   identity_sha256: string;
   revision: string;
+  /** Physical name of the serving tree under trees/. */
+  tree: string;
+  /** Recorded tree names in serving order, the serving tree last. */
   trees: string[];
   version: typeof FEED_LANDED_VERSION;
 }
 
 export const isFeedRevision = (value: unknown): value is string => typeof value === "string" && REVISION.test(value);
+export const isFeedTreeName = (value: unknown): value is string => typeof value === "string" && TREE_NAME.test(value);
 
 export const feedIdentityFindings = (record: unknown): string[] => {
   if (!record || typeof record !== "object" || Array.isArray(record)) return ["must be a JSON object"];
   const value = record as Partial<FeedIdentity>, findings: string[] = [];
   if (value.version !== FEED_IDENTITY_VERSION) findings.push(`version must be ${FEED_IDENTITY_VERSION}`);
   if (!isFeedRevision(value.revision)) findings.push("revision must be a 64-character hex digest");
-  else if (value.tree !== feedTreeLink(value.revision)) findings.push(`tree must be ${feedTreeLink(value.revision)}`);
+  else if (typeof value.tree !== "string" || !value.tree.startsWith(`${feedTreeLink(value.revision)}`) || !isFeedTreeName(value.tree.slice("trees/".length))) findings.push(`tree must be ${feedTreeLink(value.revision)}[.<generation>]`);
   if (typeof value.resource !== "string" || !value.resource) findings.push("resource must name the volume resource");
   if (typeof value.volume !== "string" || !value.volume) findings.push("volume must name the host volume");
   if (!Number.isInteger(value.files) || (value.files as number) < 0) findings.push("files must be a count");
@@ -59,11 +65,12 @@ export const feedLandedFindings = (record: unknown): string[] => {
   const value = record as Partial<FeedLandedRecord>, findings: string[] = [];
   if (value.version !== FEED_LANDED_VERSION) findings.push(`version must be ${FEED_LANDED_VERSION}`);
   if (!isFeedRevision(value.revision)) findings.push("revision must be a 64-character hex digest");
-  if (!Array.isArray(value.trees) || value.trees.some((tree) => !isFeedRevision(tree))) findings.push("trees must list landed revisions");
-  else if (!value.trees.includes(value.revision as string)) findings.push("trees must include the serving revision");
+  if (!isFeedTreeName(value.tree) || (isFeedRevision(value.revision) && value.tree.slice(0, 64) !== value.revision)) findings.push("tree must name a tree of the serving revision");
+  if (!Array.isArray(value.trees) || value.trees.some((tree) => !isFeedTreeName(tree))) findings.push("trees must list landed tree names");
+  else if (value.trees.at(-1) !== value.tree) findings.push("trees must end with the serving tree");
   if (typeof value.identity_sha256 !== "string" || !/^[0-9a-f]{64}$/u.test(value.identity_sha256)) findings.push("identity_sha256 must be a hex digest");
   findings.push(...feedIdentityFindings(value.identity).map((finding) => `identity ${finding}`));
-  if (value.identity && value.identity.revision !== value.revision) findings.push("identity must describe the serving revision");
+  if (value.identity && (value.identity.revision !== value.revision || value.identity.tree !== `trees/${value.tree}`)) findings.push("identity must describe the serving tree");
   if (!value.heals || typeof value.heals !== "object" || Array.isArray(value.heals)) findings.push("heals must be an object");
   return findings;
 };

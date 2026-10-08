@@ -1,13 +1,15 @@
 // `spawnfile volume refresh` and `spawnfile volume verify`, under the single-writer lock.
 //
 // A refresh lands a new revision when the source moved. When it did not, it sweeps the volume against
-// the host record and heals what it can: re-lands a drifted tree from the source, restores the `current`
-// link, republishes the identity record. A tree that keeps drifting is re-landed at most `healLimit` times
-// before auto-repair is suspended: something is rewriting it, and an endless re-land loop hides that.
+// the host record and heals what it can: re-lands a drifted tree from the source (beside it, as a new
+// generation), restores the `current` link, republishes the identity record. One revision is re-landed at
+// most `healLimit` times; the count survives clean refreshes and resets only when a new revision lands,
+// so tampering that alternates with quiet periods cannot buy unlimited repairs.
 
 import { mkdirSync } from "node:fs";
+import path from "node:path";
 
-import { assertFeedVolumeRoot, assertOutsideVolume, assertSameDevice, feedTreeLink, LINK_OPS, pointCurrent } from "./feedLayout.js";
+import { assertFeedVolumeRoot, assertOutsideVolume, assertSameDevice, auditFeedRoot, feedTreeLink, LINK_OPS, pointCurrent } from "./feedLayout.js";
 import { buildFeedManifest, writeFeedManifest } from "./feedManifest.js";
 import { landFeed, type FeedRuntime } from "./feedLand.js";
 import { acquireFeedLock } from "./feedLock.js";
@@ -15,7 +17,6 @@ import { readFeedLanded, writeFeedIdentity, writeFeedLanded, type FeedLandedReco
 import { fetchFeedSource, hostExec, resolveFeedSource } from "./feedSource.js";
 import { feedStagingDir, feedTrashDir, type FeedTarget } from "./feedTarget.js";
 import { sweepFeed, type FeedSweep } from "./feedVerify.js";
-import path from "node:path";
 
 export type FeedRefreshStatus = "busy" | "current" | "landed" | "repaired" | "suspended" | "tampered";
 
@@ -30,9 +31,13 @@ export interface FeedRefreshResult {
 export const feedResultClean = (result: FeedRefreshResult): boolean =>
   result.status === "busy" || result.status === "current" || (result.status === "landed" && result.findings.length === 0);
 
-const prepare = (target: FeedTarget): void => {
+/** Every check that decides where host state may be written runs before anything -- the lock included -- is written. */
+const confine = (target: FeedTarget): void => {
   assertFeedVolumeRoot(target.volume);
   assertOutsideVolume(target.volume, target.stateDir, "the feed state directory");
+};
+
+const prepare = (target: FeedTarget): void => {
   for (const [label, directory] of [["the feed staging directory", feedStagingDir(target)], ["the feed trash directory", feedTrashDir(target)]] as const) {
     mkdirSync(directory, { mode: 0o700, recursive: true });
     assertSameDevice(target.volume, directory, label);
@@ -40,6 +45,7 @@ const prepare = (target: FeedTarget): void => {
 };
 
 const withLock = (target: FeedTarget, log: (line: string) => void, run: () => FeedRefreshResult): FeedRefreshResult => {
+  confine(target);
   const lock = acquireFeedLock(target.stateDir);
   if (!lock) {
     log(`another writer holds ${path.join(target.stateDir, "lock")}; nothing to do`);
@@ -58,7 +64,7 @@ const heal = (target: FeedTarget, record: FeedLandedRecord, sweep: FeedSweep, ru
   if (sweep.drift) {
     const cycles = record.heals[record.revision] ?? 0;
     if (cycles >= target.healLimit) {
-      log(`auto-repair suspended: ${record.revision.slice(0, 12)} was re-landed ${cycles} times and drifted again; the last tree is left exactly where it is`);
+      log(`auto-repair suspended: ${record.revision.slice(0, 12)} was re-landed ${cycles} times and drifted again; it resumes when a new revision lands`);
       return { ...base, status: "suspended" };
     }
     const resolved = resolveFeedSource(target.source, { exec: runtime.exec ?? hostExec });
@@ -66,11 +72,11 @@ const heal = (target: FeedTarget, record: FeedLandedRecord, sweep: FeedSweep, ru
       landFeed(target, resolved, record, { runtime });
       return { ...base, revision: resolved.revision, status: "repaired" };
     }
-    log(`re-landing ${record.revision.slice(0, 12)} from the source`);
+    log(`re-landing ${record.revision.slice(0, 12)} from the source beside the drifted tree`);
     landFeed(target, resolved, record, { force: true, heals: { ...record.heals, [record.revision]: cycles + 1 }, runtime });
     return { ...base, status: "repaired" };
   }
-  if (sweep.relink) pointCurrent(target.volume, feedTreeLink(record.revision), { ops: runtime.ops ?? LINK_OPS, tmpDir: feedStagingDir(target) });
+  if (sweep.relink) pointCurrent(target.volume, feedTreeLink(record.tree), { ops: runtime.ops ?? LINK_OPS, tmpDir: feedStagingDir(target) });
   let next = record;
   if (sweep.identity) next = { ...record, identity_sha256: writeFeedIdentity(target.volume, record.identity, { owner: target.owner, tmpDir: feedStagingDir(target) }) };
   writeFeedLanded(target.stateDir, next);
@@ -88,15 +94,17 @@ const refreshLocked = (target: FeedTarget, runtime: FeedRuntime): FeedRefreshRes
   if (reason) log(`ignoring the host record: ${reason}; treating this volume as carrying nothing`);
   if (!record || record.revision !== resolved.revision) {
     log(`refresh needed: ${record ? `${record.revision.slice(0, 12)} -> ${resolved.revision.slice(0, 12)}` : `nothing landed -> ${resolved.revision.slice(0, 12)}`}`);
+    // A new revision does not excuse what else is in the volume: the root is audited on every landing.
+    const findings = auditFeedRoot(target.volume);
     const landed = landFeed(target, resolved, record, { runtime });
-    const findings = landed.unknownTrees.map((name) => `trees/${name} is not a tree this host landed`);
+    findings.push(...landed.unknownTrees.map((name) => `trees/${name} is not a tree this host landed`));
+    for (const finding of findings) log(`TAMPER: ${finding}`);
     return { findings, previous: record?.revision ?? null, revision: landed.revision, status: "landed" };
   }
   const sweep = sweepFeed(target, record);
   if (!sweep.findings.length) {
-    // Same bytes, moved mtime: somebody wrote to the mount without changing content. Re-stamp the manifest.
-    if (sweep.touched.length) writeFeedManifest(target.stateDir, buildFeedManifest(path.join(target.volume, feedTreeLink(record.revision)), record.revision));
-    if (Object.keys(record.heals).length) writeFeedLanded(target.stateDir, { ...record, heals: {} });
+    // Same bytes, moved mtime: somebody touched the mount without changing content. Re-stamp the manifest.
+    if (sweep.touched.length) writeFeedManifest(target.stateDir, buildFeedManifest(path.join(target.volume, feedTreeLink(record.tree)), record.tree));
     log(`already current: ${record.revision.slice(0, 12)}`);
     return { findings: [], previous: record.revision, revision: record.revision, status: "current" };
   }
@@ -109,7 +117,6 @@ export const refreshVolumeFeed = (target: FeedTarget, runtime: FeedRuntime = {})
 /** Read-only: reports what a refresh would heal, changes nothing. Taken under the lock so a swap in flight is never misread. */
 export const verifyVolumeFeed = (target: FeedTarget, runtime: Pick<FeedRuntime, "log"> = {}): FeedRefreshResult =>
   withLock(target, runtime.log ?? (() => undefined), () => {
-    assertFeedVolumeRoot(target.volume);
     const { reason, record } = readFeedLanded(target.stateDir);
     if (!record) return { findings: [reason ?? "nothing has been landed in this volume yet"], previous: null, revision: null, status: "tampered" };
     const sweep = sweepFeed(target, record);

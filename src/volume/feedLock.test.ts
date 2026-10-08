@@ -46,22 +46,27 @@ describe("acquireFeedLock", () => {
     lock?.release();
   });
 
-  it("never reclaims a lock it cannot prove dead", () => {
+  it("never reclaims a lock it cannot prove dead, and reports a lock with no holder", () => {
     const state = fresh();
-    writeFileSync(path.join(state, FEED_LOCK_FILE), "not json");
-    expect(acquireFeedLock(state)).toBeNull();
     writeFileSync(path.join(state, FEED_LOCK_FILE), ownerText(deadPid(), "another-host"));
     expect(acquireFeedLock(state)).toBeNull();
+    writeFileSync(path.join(state, FEED_LOCK_FILE), "");
+    expect(() => acquireFeedLock(state)).toThrow(/does not name a holder[\s\S]*rm -- /u);
   });
 
-  it("serializes reclaimers through the reclaim guard and recovers a guard left by a crash", () => {
+  it("never clears a live reclaimer's guard, however old, and clears a dead one", async () => {
     const state = fresh();
     const lockFile = path.join(state, FEED_LOCK_FILE), guard = `${lockFile}.reclaim`;
     writeFileSync(lockFile, ownerText(deadPid()));
-    writeFileSync(guard, "1");
-    expect(acquireFeedLock(state)).toBeNull();
-    const old = new Date(Date.now() - 60_000);
-    utimesSync(guard, old, old);
+    const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], { stdio: "ignore" });
+    try {
+      writeFileSync(guard, ownerText(child.pid as number));
+      const old = new Date(Date.now() - 3_600_000);
+      utimesSync(guard, old, old);
+      expect(acquireFeedLock(state)).toBeNull();
+      expect(readFileSync(guard, "utf8")).toBe(ownerText(child.pid as number));
+    } finally { child.kill("SIGKILL"); }
+    await new Promise((resolve) => child.on("close", resolve));
     const lock = acquireFeedLock(state);
     expect(lock).not.toBeNull();
     expect(existsSync(guard)).toBe(false);

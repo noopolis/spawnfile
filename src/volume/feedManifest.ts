@@ -4,9 +4,9 @@
 // owner can always restore its own write bit, so nothing on the host can make the landed tree
 // tamper-proof. The honest guarantee is "cannot be changed unnoticed for longer than one refresh".
 //
-// WHAT IS CHEAP ENOUGH TO RUN EVERY FEW MINUTES: one lstat per entry, compared with the (kind, size,
-// mtime, mode) recorded at land time. A same-size rewrite shows up only as a moved mtime, so exactly
-// those files -- and no others -- are hashed and compared with the digest recorded at land time.
+// EVERY FILE IS HASHED ON EVERY CHECK. A stat-only pass is cheaper, but an owner can rewrite a file with
+// equal-length bytes and put its mtime back, which no stat tuple notices. A fed tree is read in full by
+// agents anyway; reading it once per refresh is the price of a check that cannot be fooled that way.
 // Every walk here uses lstat and never descends a symlink: an agent can plant one.
 
 import { createHash } from "node:crypto";
@@ -23,7 +23,8 @@ export type FeedManifestEntry =
 export interface FeedManifest {
   entries: Record<string, FeedManifestEntry>;
   files: number;
-  revision: string;
+  /** Physical tree name the manifest describes. */
+  tree: string;
   version: typeof FEED_MANIFEST_VERSION;
 }
 
@@ -56,14 +57,14 @@ const walkShapes = (root: string): Map<string, Shape> => {
 };
 
 /** Built from the frozen staged tree, so it records exactly the modes and bytes that land. */
-export const buildFeedManifest = (root: string, revision: string): FeedManifest => {
+export const buildFeedManifest = (root: string, tree: string): FeedManifest => {
   const entries: Record<string, FeedManifestEntry> = {};
   let files = 0;
   for (const [key, shape] of walkShapes(root)) {
     if (shape[0] === "f") { entries[key] = [...shape, fileDigest(path.join(root, key))]; files += 1; }
     else entries[key] = shape;
   }
-  return { entries, files, revision, version: FEED_MANIFEST_VERSION };
+  return { entries, files, tree, version: FEED_MANIFEST_VERSION };
 };
 
 /**
@@ -81,11 +82,10 @@ export const compareFeedManifest = (root: string, manifest: FeedManifest): FeedM
     if (want[0] === "d") { if (got[1] !== want[1]) result.changed.push(key); continue; }
     const file = got as ["f", number, number, number];
     if (file[1] !== want[1] || file[3] !== want[3]) { result.changed.push(key); continue; }
-    if (file[2] !== want[2]) {
-      let digest: string | null = null;
-      try { digest = fileDigest(path.join(root, key)); } catch { /* unreadable is drift */ }
-      (digest === want[4] ? result.touched : result.changed).push(key);
-    }
+    let digest: string | null = null;
+    try { digest = fileDigest(path.join(root, key)); } catch { /* unreadable is drift */ }
+    if (digest !== want[4]) result.changed.push(key);
+    else if (file[2] !== want[2]) result.touched.push(key);
   }
   for (const key of actual.keys()) if (!(key in manifest.entries)) result.extra.push(key);
   return result;
@@ -97,10 +97,10 @@ export const manifestDrift = (comparison: FeedManifestComparison): string[] => [
   ...comparison.changed.map((key) => `${key} changed`)
 ];
 
-const manifestPath = (stateDir: string, revision: string): string => path.join(stateDir, "manifests", `${revision}.json`);
+const manifestPath = (stateDir: string, tree: string): string => path.join(stateDir, "manifests", `${tree}.json`);
 
 export const writeFeedManifest = (stateDir: string, manifest: FeedManifest): void => {
-  const file = manifestPath(stateDir, manifest.revision);
+  const file = manifestPath(stateDir, manifest.tree);
   mkdirSync(path.dirname(file), { mode: 0o700, recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   rmSync(tmp, { force: true });
@@ -108,13 +108,13 @@ export const writeFeedManifest = (stateDir: string, manifest: FeedManifest): voi
   renameSync(tmp, file);
 };
 
-export const readFeedManifest = (stateDir: string, revision: string): FeedManifest | null => {
+export const readFeedManifest = (stateDir: string, tree: string): FeedManifest | null => {
   try {
-    const value = JSON.parse(readFileSync(manifestPath(stateDir, revision), "utf8")) as FeedManifest;
-    return value?.version === FEED_MANIFEST_VERSION && value.revision === revision && value.entries ? value : null;
+    const value = JSON.parse(readFileSync(manifestPath(stateDir, tree), "utf8")) as FeedManifest;
+    return value?.version === FEED_MANIFEST_VERSION && value.tree === tree && value.entries ? value : null;
   } catch { return null; }
 };
 
-export const removeFeedManifest = (stateDir: string, revision: string): void => {
-  rmSync(manifestPath(stateDir, revision), { force: true });
+export const removeFeedManifest = (stateDir: string, tree: string): void => {
+  rmSync(manifestPath(stateDir, tree), { force: true });
 };

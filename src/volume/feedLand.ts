@@ -3,10 +3,15 @@
 //
 // WHAT THIS FILE DECIDES FROM, EXHAUSTIVELY: the host record and manifests outside the volume, the
 // source, and the host clock. The volume itself is read only to assert that what is about to be touched
-// is the real directory the host created.
+// is the real directory the host created, and to find a tree name nobody occupies.
+//
+// GENERATIONS, NOT REPLACEMENTS. A tree is never replaced under its own name: a re-land of revision R
+// lands as `trees/R.1` (then `.2`, ...) beside the drifted `trees/R`, `current` moves to it with one
+// rename, and the drifted tree is retired later like any other. So `current` never dangles, not even
+// between two adjacent renames, and nothing the host did not record is ever parked or deleted.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, renameSync, chmodSync, statSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -15,7 +20,7 @@ import {
 } from "./feedLayout.js";
 import { buildFeedManifest, compareFeedManifest, manifestDrift, readFeedManifest, removeFeedManifest, writeFeedManifest } from "./feedManifest.js";
 import { FEED_IDENTITY_VERSION, FEED_LANDED_VERSION, writeFeedIdentity, writeFeedLanded, type FeedLandedRecord } from "./feedRecord.js";
-import { hostExec, stageFeedSource, type FeedExec, type ResolvedFeedSource } from "./feedSource.js";
+import { digestDirectory, hostExec, stageFeedSource, type FeedExec, type ResolvedFeedSource } from "./feedSource.js";
 import { feedStagingDir, feedTrashDir, type FeedTarget } from "./feedTarget.js";
 
 export interface FeedRuntime {
@@ -28,6 +33,7 @@ export interface FeedRuntime {
 export interface FeedLandResult {
   revision: string;
   reused: boolean;
+  tree: string;
   treesRemoved: string[];
   unknownTrees: string[];
 }
@@ -35,9 +41,14 @@ export interface FeedLandResult {
 export const isoSeconds = (date: Date): string => `${date.toISOString().slice(0, 19)}Z`;
 const stampOf = (date: Date): string => `${isoSeconds(date).replace(/[:-]/gu, "")}.${process.pid}`;
 
-/** The declared validation hook: the gate between "staged" and "reachable". Non-zero exit lands nothing. */
-export const runFeedValidation = (target: FeedTarget, stagingDir: string, resolved: ResolvedFeedSource): void => {
+/**
+ * The declared validation hook: the gate between "staged" and "reachable". Non-zero exit lands nothing.
+ * It validates; it may not edit: the tree is digested before and after, and any change is a refusal,
+ * because changed bytes would be served under a revision that does not describe them.
+ */
+export const runFeedValidation = (target: FeedTarget, tree: string, resolved: ResolvedFeedSource): void => {
   if (!target.validate) return;
+  const before = digestDirectory(tree);
   const [command, ...args] = target.validate.command;
   const result = spawnSync(command, args, {
     cwd: target.validate.cwd,
@@ -47,7 +58,7 @@ export const runFeedValidation = (target: FeedTarget, stagingDir: string, resolv
       SPAWNFILE_FEED_PROVENANCE: JSON.stringify(resolved.provenance),
       SPAWNFILE_FEED_RESOURCE: target.resourceId,
       SPAWNFILE_FEED_REVISION: resolved.revision,
-      SPAWNFILE_FEED_TREE: stagingDir
+      SPAWNFILE_FEED_TREE: tree
     },
     maxBuffer: 16 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],
@@ -61,26 +72,28 @@ export const runFeedValidation = (target: FeedTarget, stagingDir: string, resolv
     const output = `${result.stderr ?? ""}${result.stdout ?? ""}`.trim().split("\n").slice(-20).join("\n");
     throw feedError(`the feed validation command rejected revision ${resolved.revision.slice(0, 12)} of ${target.resourceId} (${result.signal ? `killed by ${result.signal}` : `exit ${result.status}`}); nothing was landed${output ? `:\n${output}` : ""}`);
   }
+  if (digestDirectory(tree) !== before) throw feedError(`the feed validation command for ${target.resourceId} modified the tree it was validating; a validation hook may only read it, so nothing was landed`);
 };
 
-const manifestMatches = (target: FeedTarget, treePath: string, revision: string): boolean => {
-  const manifest = readFeedManifest(target.stateDir, revision);
+const treesDirOf = (target: FeedTarget): string => path.join(target.volume, FEED_TREES_DIR);
+
+const treeMatches = (target: FeedTarget, name: string): boolean => {
+  const treePath = path.join(treesDirOf(target), name);
+  if (!assertRealDirectory(treePath, `the fed tree ${FEED_TREES_DIR}/${name.slice(0, 12)}`)) return false;
+  const manifest = readFeedManifest(target.stateDir, name);
   return manifest !== null && manifestDrift(compareFeedManifest(treePath, manifest)).length === 0;
 };
 
-interface Staged { parked: string | null; resolved: ResolvedFeedSource; reused: boolean; treePath: string }
-
-/**
- * Copies, validates, owns and freezes OUTSIDE the volume, then moves the finished tree in with one rename.
- * A tree already under `trees/<revision>` is reused only when the host's manifest still describes it;
- * adopting an unverifiable tree would launder the tampering this design exists to notice.
- */
-const stage = (target: FeedTarget, resolved: ResolvedFeedSource, { force, now, exec, log }: { exec: FeedExec; force: boolean; log: (line: string) => void; now: Date }): Staged => {
-  const treeFor = (revision: string): string => path.join(target.volume, feedTreeLink(revision));
-  const existingTree = (revision: string) => assertRealDirectory(treeFor(revision), `the fed tree ${feedTreeLink(revision.slice(0, 12))}`);
-  if (!force && existingTree(resolved.revision) && manifestMatches(target, treeFor(resolved.revision), resolved.revision)) {
-    return { parked: null, resolved, reused: true, treePath: treeFor(resolved.revision) };
+/** The first name for `revision` that nothing occupies -- whatever occupies the others, the host never moves it. */
+const freshTreeName = (target: FeedTarget, revision: string): string => {
+  for (let generation = 0; ; generation += 1) {
+    const name = generation === 0 ? revision : `${revision}.${generation}`;
+    try { lstatSync(path.join(treesDirOf(target), name)); } catch { return name; }
   }
+};
+
+/** Copies, validates, owns and freezes OUTSIDE the volume, then moves the finished tree in with one rename. */
+const stageAndLand = (target: FeedTarget, resolved: ResolvedFeedSource, { exec, log }: { exec: FeedExec; log: (line: string) => void }): { name: string; resolved: ResolvedFeedSource } => {
   const stagingDir = path.join(feedStagingDir(target), `${resolved.revision}-${process.pid}`);
   removeTree(stagingDir, { volume: target.volume });
   mkdirSync(stagingDir);
@@ -94,40 +107,30 @@ const stage = (target: FeedTarget, resolved: ResolvedFeedSource, { force, now, e
     try { removeTree(stagingDir, { volume: target.volume }); } catch { /* the original error says more */ }
     throw error;
   }
-  const treePath = treeFor(staged.revision);
-  const existing = existingTree(staged.revision);
-  if (existing && !force && manifestMatches(target, treePath, staged.revision)) {
-    removeTree(stagingDir, { volume: target.volume });
-    return { parked: null, resolved: staged, reused: true, treePath };
-  }
-  writeFeedManifest(target.stateDir, buildFeedManifest(stagingDir, staged.revision));
-  // Park and land back to back: links into the old tree dangle only between these two renames, and the
-  // old tree is deleted only after `current` points at its replacement.
-  const parked = existing ? parkTree(treePath, feedTrashDir(target), `evicted-${stampOf(now)}`) : null;
-  try { landTree(stagingDir, treePath); } catch (error) {
-    if (parked && !existsSync(treePath)) { try { renameSync(parked, treePath); chmodSync(treePath, 0o555); } catch { /* reported by the throw */ } }
-    throw error;
-  }
-  log(`landed ${feedTreeLink(staged.revision.slice(0, 12))}`);
-  return { parked, resolved: staged, reused: false, treePath };
+  const name = freshTreeName(target, staged.revision);
+  writeFeedManifest(target.stateDir, buildFeedManifest(stagingDir, name));
+  landTree(stagingDir, path.join(treesDirOf(target), name));
+  log(`landed ${FEED_TREES_DIR}/${name.slice(0, 12)}${name.length > 64 ? name.slice(64) : ""}`);
+  return { name, resolved: staged };
 };
 
-/** Retires host-known trees beyond `keep`; names the host never landed are reported and left in place. */
-const collectGarbage = (target: FeedTarget, known: string[], serving: string, now: Date): { removed: string[]; unknown: string[] } => {
-  const treesDir = path.join(target.volume, FEED_TREES_DIR);
+/**
+ * Retires recorded trees beyond `keep`, oldest-served first by the host's own order (never by
+ * filesystem mtimes). Names the host never recorded are reported and left in place.
+ */
+const collectGarbage = (target: FeedTarget, order: string[], serving: string, now: Date): { removed: string[]; unknown: string[] } => {
+  const treesDir = treesDirOf(target);
   if (!assertRealDirectory(treesDir, "the fed volume's trees/ directory")) return { removed: [], unknown: [] };
   const present = readdirSync(treesDir, { withFileTypes: true });
   const real = new Set(present.filter((entry) => entry.isDirectory()).map((entry) => entry.name));
-  const unknown = present.map((entry) => entry.name).filter((name) => !known.includes(name)).sort();
-  const doomed = known.filter((name) => name !== serving && real.has(name))
-    .map((name) => ({ mtime: statSync(path.join(treesDir, name)).mtimeMs, name }))
-    .sort((left, right) => right.mtime - left.mtime)
-    .slice(target.keep);
-  for (const entry of doomed) {
-    const parked = parkTree(path.join(treesDir, entry.name), feedTrashDir(target), stampOf(now));
-    removeTree(parked, { volume: target.volume });
+  const unknown = present.map((entry) => entry.name).filter((name) => !order.includes(name)).sort();
+  const retired = order.filter((name) => name !== serving);
+  const doomed = retired.slice(0, Math.max(0, retired.length - target.keep));
+  for (const name of doomed) {
+    if (!real.has(name)) continue;
+    removeTree(parkTree(path.join(treesDir, name), feedTrashDir(target), stampOf(now)), { volume: target.volume });
   }
-  return { removed: doomed.map((entry) => entry.name), unknown };
+  return { removed: doomed, unknown };
 };
 
 export const landFeed = (
@@ -137,31 +140,33 @@ export const landFeed = (
   { force = false, heals = {}, runtime = {} }: { force?: boolean; heals?: Record<string, number>; runtime?: FeedRuntime } = {}
 ): FeedLandResult => {
   const now = (runtime.now ?? (() => new Date()))(), log = runtime.log ?? (() => undefined), exec = runtime.exec ?? hostExec;
-  const treesDir = path.join(target.volume, FEED_TREES_DIR);
-  if (!assertRealDirectory(treesDir, "the fed volume's trees/ directory")) mkdirSync(treesDir, { mode: 0o755 });
-  const staged = stage(target, resolved, { exec, force, log, now });
-  const revision = staged.resolved.revision;
-  try {
-    if (pointCurrent(target.volume, feedTreeLink(revision), { ops: runtime.ops ?? LINK_OPS, tmpDir: feedStagingDir(target) })) log(`current -> ${feedTreeLink(revision.slice(0, 12))}`);
-  } finally {
-    if (staged.parked) { try { removeTree(staged.parked, { volume: target.volume }); } catch (error) { log(`could not delete the replaced tree at ${staged.parked}: ${(error as Error).message}`); } }
-  }
-  const manifest = readFeedManifest(target.stateDir, revision) ?? buildFeedManifest(staged.treePath, revision);
+  if (!assertRealDirectory(treesDirOf(target), "the fed volume's trees/ directory")) mkdirSync(treesDirOf(target), { mode: 0o755 });
+  // A retained tree for this revision is reused only when the host recorded it and its manifest still
+  // describes it -- and it passes the validation policy as declared NOW, like any new tree.
+  const retained = force ? undefined : [...(record?.trees ?? [])].reverse().find((name) => name.slice(0, 64) === resolved.revision && treeMatches(target, name));
+  let name: string, landedSource = resolved;
+  if (retained) {
+    runFeedValidation(target, path.join(treesDirOf(target), retained), resolved);
+    name = retained;
+  } else ({ name, resolved: landedSource } = stageAndLand(target, resolved, { exec, log }));
+  const revision = landedSource.revision;
+  if (pointCurrent(target.volume, feedTreeLink(name), { ops: runtime.ops ?? LINK_OPS, tmpDir: feedStagingDir(target) })) log(`current -> ${feedTreeLink(name.slice(0, 12))}`);
+  const manifest = readFeedManifest(target.stateDir, name) ?? buildFeedManifest(path.join(treesDirOf(target), name), name);
   const identity = {
-    files: manifest.files, landed_at: isoSeconds(now), resource: target.resourceId, revision, source: staged.resolved.provenance,
-    tree: feedTreeLink(revision), version: FEED_IDENTITY_VERSION, volume: target.volumeName
+    files: manifest.files, landed_at: isoSeconds(now), resource: target.resourceId, revision, source: landedSource.provenance,
+    tree: feedTreeLink(name), version: FEED_IDENTITY_VERSION, volume: target.volumeName
   } as const;
   const identitySha = writeFeedIdentity(target.volume, identity, { owner: target.owner, tmpDir: feedStagingDir(target) });
-  if (!readFeedManifest(target.stateDir, revision)) writeFeedManifest(target.stateDir, manifest);
-  let trees = [...new Set([...(record?.trees ?? []), revision])].sort();
-  const write = (): FeedLandedRecord => writeFeedLanded(target.stateDir, { heals, identity, identity_sha256: identitySha, revision, trees, version: FEED_LANDED_VERSION });
+  // Order is serving history: the serving tree is always last.
+  let trees = [...(record?.trees ?? []).filter((entry) => entry !== name), name];
+  const write = (): FeedLandedRecord => writeFeedLanded(target.stateDir, { heals, identity, identity_sha256: identitySha, revision, tree: name, trees, version: FEED_LANDED_VERSION });
   write();
-  const gc = collectGarbage(target, trees, revision, now);
+  const gc = collectGarbage(target, trees, name, now);
   if (gc.removed.length) {
-    for (const name of gc.removed) removeFeedManifest(target.stateDir, name);
-    trees = trees.filter((name) => !gc.removed.includes(name));
+    for (const removed of gc.removed) removeFeedManifest(target.stateDir, removed);
+    trees = trees.filter((entry) => !gc.removed.includes(entry));
     write();
-    log(`retired ${gc.removed.length} tree(s): ${gc.removed.map((name) => name.slice(0, 12)).join(", ")}`);
+    log(`retired ${gc.removed.length} tree(s): ${gc.removed.map((entry) => entry.slice(0, 12)).join(", ")}`);
   }
-  return { revision, reused: staged.reused, treesRemoved: gc.removed, unknownTrees: gc.unknown };
+  return { revision, reused: retained !== undefined, tree: name, treesRemoved: gc.removed, unknownTrees: gc.unknown };
 };

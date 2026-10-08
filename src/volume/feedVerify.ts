@@ -5,7 +5,7 @@
 // repairable without deleting a name the host did not write, which it never does: those findings
 // carry the one command an operator runs to clear them.
 
-import { readdirSync, readlinkSync } from "node:fs";
+import { lstatSync, readdirSync, readlinkSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -48,30 +48,32 @@ const sweepVolume = (target: FeedTarget, record: FeedLandedRecord): FeedSweep =>
     }
   }
 
-  const treePath = path.join(volume, feedTreeLink(record.revision));
+  const treePath = path.join(volume, feedTreeLink(record.tree));
   const shape = treesPresent ? treeShape(treePath) : "missing";
   if (shape === "missing") {
     result.drift = true;
-    result.findings.push(`${feedTreeLink(record.revision)} is gone from the volume; it must be re-landed`);
+    result.findings.push(`${feedTreeLink(record.tree)} is gone from the volume; it must be re-landed`);
   } else if (shape !== "directory") {
     result.planted = true;
-    result.findings.push(`${feedTreeLink(record.revision)} is a ${shape} where the host's tree belongs; clear it with: ${moveAsideCommand(volume, treePath)}`);
+    result.findings.push(`${feedTreeLink(record.tree)} is a ${shape} where the host's tree belongs; clear it with: ${moveAsideCommand(volume, treePath)}`);
   } else {
-    const manifest = readFeedManifest(target.stateDir, record.revision);
+    const manifest = readFeedManifest(target.stateDir, record.tree);
     if (!manifest) { result.drift = true; result.findings.push(`no land-time manifest for ${record.revision.slice(0, 12)}, so its content cannot be verified`); }
     else {
       const compared = compareFeedManifest(treePath, manifest);
       const drift = manifestDrift(compared);
+      // The tree root itself is frozen at land; an owner restoring its write bit can add names to it.
+      if ((lstatSync(treePath).mode & 0o777) !== 0o555) drift.push(". changed");
       if (drift.length) {
         result.drift = true;
-        result.findings.push(`${feedTreeLink(record.revision).slice(0, 18)} no longer matches what the host landed: ${drift.slice(0, 8).join(", ")}${drift.length > 8 ? ` and ${drift.length - 8} more` : ""}`);
+        result.findings.push(`${feedTreeLink(record.tree).slice(0, 18)} no longer matches what the host landed: ${drift.slice(0, 8).join(", ")}${drift.length > 8 ? ` and ${drift.length - 8} more` : ""}`);
       }
       result.touched = compared.touched;
     }
   }
 
   const live = path.join(volume, FEED_CURRENT_LINK);
-  const link = readLink(live), want = feedTreeLink(record.revision);
+  const link = readLink(live), want = feedTreeLink(record.tree);
   if (link !== want) {
     if (link === "not a symlink") {
       result.blocked = true;

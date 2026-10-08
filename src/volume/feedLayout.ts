@@ -103,8 +103,9 @@ export const assertSameDevice = (volume: string, other: string, label: string): 
 /** Host state must never live where an agent can write it: it decides what a root-run job deletes. */
 export const assertOutsideVolume = (volume: string, target: string, label: string): void => {
   const root = canonical(volume), scope = canonical(target);
-  const fromRoot = path.relative(root, scope), toRoot = path.relative(scope, root);
-  if (fromRoot === "" || !fromRoot.startsWith("..") || !toRoot.startsWith("..")) {
+  // Whole path components: a sibling named `..state` is inside the volume, `../state` is not.
+  const escapes = (relative: string): boolean => relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+  if (!escapes(path.relative(root, scope)) || !escapes(path.relative(scope, root))) {
     fail(`${label} ${scope} overlaps the fed volume ${root}; host state and staging must live outside the volume`);
   }
 };
