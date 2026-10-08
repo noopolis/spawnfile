@@ -228,7 +228,7 @@ Rules:
 - `shared.workspace.resources` is OPTIONAL.
 - Each resource MUST have:
   - `id`
-  - `kind` (`git` or `volume`)
+  - `kind` (`git`, `volume`, or `bundle`; bundles are read-only archives described in `CONTAINERS.md`)
   - `mount`
   - `mode`
 - `mode` MUST be `mutable` or `readonly`.

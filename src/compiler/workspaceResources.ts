@@ -50,7 +50,7 @@ const normalizeMount = (value: string): string => {
 };
 
 const normalizeResourceIdentity = (resource: ResolvedWorkspaceResource): string => {
-  if (resource.kind === "bundle") return JSON.stringify({ kind: resource.kind, mode: resource.mode, mount: normalizeMount(resource.mount), sha256: resource.sha256, source: resource.source, sharing: resource.sharing });
+  if (resource.kind === "bundle") return JSON.stringify({ build: resource.build ?? null, kind: resource.kind, mode: resource.mode, mount: normalizeMount(resource.mount), sha256: resource.sha256 ?? null, source: resource.source ?? null, sharing: resource.sharing });
   if (resource.kind === "git") {
     return JSON.stringify({
       branch: resource.branch?.trim() ?? "",
@@ -172,6 +172,12 @@ export const mergeWorkspaceResources = (
   return merged.sort((left, right) => left.id.localeCompare(right.id));
 };
 
+/** A bundle's digest exists only after `resolveWorkspaceBundles` built or hashed it. */
+const resolvedBundleDigest = (resource: ResolvedWorkspaceResource & { kind: "bundle" }): string => {
+  if (resource.sha256 === undefined) throw new SpawnfileError("compile_error", `Workspace bundle ${resource.id} has not been built`);
+  return resource.sha256;
+};
+
 export const toWorkspaceResourcePlan = (
   resource: ResolvedWorkspaceResource,
   context: { targetId: string; workspacePath: string }
@@ -191,11 +197,11 @@ export const toWorkspaceResourcePlan = (
         url: resource.url
       }
     : resource.kind === "bundle" ? {
-        archivePath: `/opt/spawnfile/workspace-bundles/${resource.sha256.slice(7)}.tar`,
+        archivePath: `/opt/spawnfile/workspace-bundles/${resolvedBundleDigest(resource).slice(7)}.tar`,
         backingPath: resolveBackingPath(resource, context.targetId), id: resource.id, kind: "bundle",
         linkPath: resolveLinkPath(normalizeMount(resource.mount), context.workspacePath), mode: resource.mode,
-        mount: normalizeMount(resource.mount), sharing: resource.sharing, sha256: resource.sha256,
-        source: path.resolve(path.dirname(resource.scope.key), resource.source)
+        mount: normalizeMount(resource.mount), sharing: resource.sharing, sha256: resolvedBundleDigest(resource),
+        ...(resource.source !== undefined ? { source: path.resolve(path.dirname(resource.scope.key), resource.source) } : {})
       } : {
         backingPath: resolveBackingPath(resource, context.targetId),
         id: resource.id,

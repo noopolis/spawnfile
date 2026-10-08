@@ -205,6 +205,15 @@ describe("renderSpawnfile", () => {
     });
   });
 
+  it("renders a built bundle resource with its build inputs", () => {
+    const source = renderSpawnfile({
+      kind: "agent", name: "tools-agent", runtime: "openclaw", spawnfile_version: "0.1",
+      workspace: { resources: [{ build: { files: { exclude: ["fixtures"], root: "../tools" } }, id: "tools", kind: "bundle", mode: "readonly", mount: "./tools" }] }
+    });
+    expect(source).toContain(["      build:", "        files:", "          exclude:", "            - fixtures", "          root: ../tools"].join("\n"));
+    expect(manifestSchema.parse(YAML.parse(source) as unknown)).toMatchObject({ workspace: { resources: [{ build: { files: { root: "../tools" } }, id: "tools" }] } });
+  });
+
   it("renders agent workspace skills and environment in canonical order", () => {
     const source = renderSpawnfile({
       kind: "agent",

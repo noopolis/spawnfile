@@ -293,6 +293,18 @@ export interface ContainerReport {
   workspace_resources?: ContainerWorkspaceResourceReport[];
 }
 
+/** One workspace bundle archive the compile staged, with the digest Spawnfile built or verified. */
+export interface CompileReportWorkspaceBundle {
+  cache_key?: string;
+  content_bytes?: number;
+  file_count?: number;
+  id: string;
+  identity?: "dev" | "release";
+  origin: "built" | "prebuilt";
+  platform?: string;
+  sha256: string;
+}
+
 export interface CompileReport {
   compile_fingerprint?: string;
   container?: ContainerReport;
@@ -303,4 +315,5 @@ export interface CompileReport {
   project_name?: string;
   root: string;
   spawnfile_version: "0.1";
+  workspace_bundles?: CompileReportWorkspaceBundle[];
 }

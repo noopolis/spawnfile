@@ -107,7 +107,8 @@ const normalizeTargetArchitecture = (architecture: string): MoltnetTargetArchite
   }
 };
 
-const resolveTargetArchitecture = (
+/** The container target architecture: explicit, else the target-arch override, else the host. */
+export const resolveTargetArchitecture = (
   architecture?: MoltnetTargetArchitecture
 ): MoltnetTargetArchitecture => {
   if (architecture) {
