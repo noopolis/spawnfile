@@ -11,14 +11,15 @@ import type { CompilePlan } from "./types.js";
  * node id, so `spawnfile validate` can be an organization's structural check.
  */
 export const preflightCompilePlan = (plan: CompilePlan): void => {
-  const failures: string[] = [];
+  const failures = new Map<string, Set<string>>();
 
   for (const node of plan.nodes) {
     if (node.value.kind !== "agent") continue;
     const runtimeName = node.runtimeName ?? node.value.runtime.name;
     const adapter = getRuntimeAdapter(runtimeName);
+    const key = `${node.id} (${runtimeName})`;
     const report = (message: string): void => {
-      failures.push(`${node.id} (${runtimeName}): ${message}`);
+      failures.set(key, (failures.get(key) ?? new Set()).add(message));
     };
 
     for (const diagnostic of adapter.validateRuntimeOptions?.(node.value.runtime.options) ?? []) {
@@ -32,10 +33,11 @@ export const preflightCompilePlan = (plan: CompilePlan): void => {
     }
   }
 
-  if (failures.length > 0) {
+  if (failures.size > 0) {
+    const lines = [...failures].flatMap(([agent, messages]) => [...messages].map((message) => `- ${agent}: ${message}`));
     throw new SpawnfileError(
       "validation_error",
-      [`Compile would refuse ${failures.length} agent declaration(s):`, ...failures.map((failure) => `- ${failure}`)].join("\n")
+      [`Compile would refuse ${failures.size} agent(s):`, ...lines].join("\n")
     );
   }
 };

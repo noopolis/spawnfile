@@ -22,4 +22,21 @@ describe("parseManifest", () => {
   it("names the file for YAML syntax errors", () => {
     expect(() => parseManifest("kind: [agent", PATH)).toThrow(`Invalid Spawnfile manifest ${PATH}:`);
   });
+
+  it("surfaces an inline member's own defect and names the member", () => {
+    expect(() => parseManifest([
+      'spawnfile_version: "0.1"', "kind: team", "name: studio", "mode: swarm", "members:",
+      "  - id: writer",
+      "    workspace: { docs: { system: a.md } }",
+      "    environment: { mcp_servers: [{ name: tool, transport: stdio, tools: [a] }] }"
+    ].join("\n"), "/org/Spawnfile")).toThrow(
+      "Invalid Spawnfile manifest for team studio (/org/Spawnfile) member writer at members.0.environment.mcp_servers.0: stdio MCP servers must declare command"
+    );
+  });
+
+  it("keeps the union message when no member branch is clearly closer", () => {
+    expect(() => parseManifest([
+      'spawnfile_version: "0.1"', "kind: team", "name: studio", "mode: swarm", "members:", "  - id: writer"
+    ].join("\n"), "/org/Spawnfile")).toThrow("member writer at members.0: team member must be either");
+  });
 });

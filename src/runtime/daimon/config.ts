@@ -88,6 +88,18 @@ const assertPublicInstructionBounds = (agentId: string, instructions: string): v
   }
 };
 
+const assertTurnLimitsEngine = (agentId: string, engine: DaimonEngine, turnLimits: unknown): void => {
+  if (engine !== "grok" && turnLimits !== undefined) {
+    throw new SpawnfileError("validation_error", `Daimon runtime option turn_limits is only supported on a brokered Grok agent: ${agentId}`);
+  }
+};
+
+/** The per-agent option checks `createDaimonContainerTargets` applies, for preflight. */
+export const assertDaimonAgentOptions = (agentId: string, node: ResolvedAgentNode): void => {
+  resolveDaimonAttention(node.runtime.options.attention);
+  assertTurnLimitsEngine(agentId, resolveDaimonEngine(node), resolveDaimonGrokTurnLimits(node.runtime.options.turn_limits));
+};
+
 /** The instruction-size check compile applies in `createDaimonContainerTargets`, for preflight. */
 export const assertDaimonInstructionBounds = (agentId: string, node: ResolvedAgentNode): void =>
   assertPublicInstructionBounds(agentId, formatInstructions(node));
@@ -222,11 +234,7 @@ export const createDaimonContainerTargets = async (
     })
     .sort((left, right) => left.id.localeCompare(right.id));
   const engineByNodeId = Object.fromEntries(configAgents.map((agent) => [agent.id, agent.engine.kind]));
-  for (const agent of configAgents) {
-    if (agent.engine.kind !== "grok" && turnLimitsById.get(agent.id) !== undefined) {
-      throw new SpawnfileError("validation_error", `Daimon runtime option turn_limits is only supported on a brokered Grok agent: ${agent.id}`);
-    }
-  }
+  for (const agent of configAgents) assertTurnLimitsEngine(agent.id, agent.engine.kind, turnLimitsById.get(agent.id));
   const grokTurnLimitsByNodeId = Object.fromEntries(configAgents
     .filter((agent) => agent.engine.kind === "grok" && turnLimitsById.get(agent.id) !== undefined)
     .map((agent) => [agent.id, turnLimitsById.get(agent.id)!]));
