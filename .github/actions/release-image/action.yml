@@ -1,0 +1,143 @@
+name: Spawnfile release image
+description: Build a Spawnfile project with `spawnfile build --release` and push the image to a registry the project names; outputs the pushed digest.
+
+inputs:
+  project:
+    description: Project directory or Spawnfile path, relative to the workspace.
+    required: false
+    default: "."
+  image:
+    description: Image repository without tag or digest, e.g. docker.io/acme/my-org or ghcr.io/acme/my-org.
+    required: true
+  tag:
+    description: Tag to push. Defaults to the commit SHA being built.
+    required: false
+    default: ""
+  registry:
+    description: Registry host to log in to. Defaults to the host part of `image` (docker.io when it has none).
+    required: false
+    default: ""
+  username:
+    description: Registry username (pass from the project's secrets).
+    required: true
+  password:
+    description: Registry password or access token (pass from the project's secrets).
+    required: true
+  spawnfile-version:
+    description: Published `spawnfile` npm version to run. Empty builds the CLI from this action's own ref.
+    required: false
+    default: ""
+
+outputs:
+  digest:
+    description: Registry manifest digest of the pushed tag (sha256:...).
+    value: ${{ steps.push.outputs.digest }}
+  image-reference:
+    description: Immutable reference, <image>@<digest>.
+    value: ${{ steps.push.outputs.image_reference }}
+  tag:
+    description: The tag that was pushed.
+    value: ${{ steps.target.outputs.tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve target
+      id: target
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        TAG: ${{ inputs.tag }}
+        REGISTRY: ${{ inputs.registry }}
+      run: |
+        set -euo pipefail
+        if [[ ! "${IMAGE}" =~ ^[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9]+([._-][a-z0-9]+)*)+$ ]]; then
+          echo "::error::image must be a repository without tag or digest (got ${IMAGE})"
+          exit 1
+        fi
+        tag="${TAG:-${GITHUB_SHA}}"
+        if [[ ! "${tag}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+          echo "::error::tag is not a valid Docker tag (got ${tag})"
+          exit 1
+        fi
+        registry="${REGISTRY}"
+        if [[ -z "${registry}" ]]; then
+          first="${IMAGE%%/*}"
+          if [[ "${first}" == *.* || "${first}" == *:* || "${first}" == localhost ]]; then
+            registry="${first}"
+          else
+            registry="docker.io"
+          fi
+        fi
+        {
+          echo "tag=${tag}"
+          echo "registry=${registry}"
+          echo "reference=${IMAGE}:${tag}"
+        } >> "${GITHUB_OUTPUT}"
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Install Spawnfile
+      id: cli
+      shell: bash
+      env:
+        SPAWNFILE_VERSION: ${{ inputs.spawnfile-version }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        if [[ -n "${SPAWNFILE_VERSION}" ]]; then
+          npm install --global --no-fund --no-audit "spawnfile@${SPAWNFILE_VERSION}"
+          echo "command=spawnfile" >> "${GITHUB_OUTPUT}"
+        else
+          source_root="$(cd "${ACTION_PATH}/../../.." && pwd)"
+          (cd "${source_root}" && npm ci --no-fund --no-audit && npm run build)
+          echo "command=node ${source_root}/dist/cli/index.js" >> "${GITHUB_OUTPUT}"
+        fi
+
+    - name: Log in to registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ steps.target.outputs.registry }}
+        username: ${{ inputs.username }}
+        password: ${{ inputs.password }}
+
+    # --release refuses uncommitted inputs; the compile output goes outside the
+    # checkout so it cannot dirty the tree it is verifying.
+    - name: Build release image
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.project }}
+        REFERENCE: ${{ steps.target.outputs.reference }}
+        SPAWNFILE: ${{ steps.cli.outputs.command }}
+      run: |
+        set -euo pipefail
+        ${SPAWNFILE} build --release "${PROJECT}" --tag "${REFERENCE}" --out "${RUNNER_TEMP}/spawnfile-release-out"
+
+    - name: Push image
+      id: push
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        REFERENCE: ${{ steps.target.outputs.reference }}
+      run: |
+        set -euo pipefail
+        docker push "${REFERENCE}"
+        # Ask the registry what the tag now points at; that digest is the identity to deploy.
+        digest="$(docker buildx imagetools inspect "${REFERENCE}" --format '{{json .Manifest}}' | jq -r '.digest')"
+        if [[ ! "${digest}" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+          echo "::error::Registry did not return a manifest for ${REFERENCE}"
+          exit 1
+        fi
+        docker buildx imagetools inspect "${IMAGE}@${digest}" > /dev/null
+        {
+          echo "digest=${digest}"
+          echo "image_reference=${IMAGE}@${digest}"
+        } >> "${GITHUB_OUTPUT}"
+        {
+          echo "### Spawnfile release image"
+          echo "- tag: \`${REFERENCE}\`"
+          echo "- digest: \`${IMAGE}@${digest}\`"
+        } >> "${GITHUB_STEP_SUMMARY}"
