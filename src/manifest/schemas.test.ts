@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isAgentManifest, isTeamManifest, manifestSchema } from "./schemas.js";
+import { isAgentManifest, isTeamManifest, manifestSchema, type McpServer } from "./schemas.js";
 
 const issueHasPath = (
   result: ReturnType<typeof manifestSchema.safeParse>,
@@ -103,10 +103,11 @@ describe("manifestSchema", () => {
       throw new Error("Expected an agent manifest");
     }
 
-    expect(result.environment?.mcp_servers?.[0]?.auth).toEqual({
+    const servers = result.environment?.mcp_servers as McpServer[] | undefined;
+    expect(servers?.[0]?.auth).toEqual({
       secret: "LEGACY_MCP_TOKEN"
     });
-    expect(result.environment?.mcp_servers?.[1]?.auth).toEqual({
+    expect(servers?.[1]?.auth).toEqual({
       mode: "bearer",
       secret: "BEARER_MCP_TOKEN"
     });

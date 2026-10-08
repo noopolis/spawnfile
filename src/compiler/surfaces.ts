@@ -1,7 +1,6 @@
 import { readUtf8File, resolveProjectPath } from "../filesystem/index.js";
 import {
   DocsBlock,
-  McpServer,
   Secret,
   SkillReference
 } from "../manifest/index.js";
@@ -43,11 +42,6 @@ export const mergePackages = (
   localPackages: ResolvedPackage[] = []
 ): ResolvedPackage[] =>
   mergeByKey(sharedPackages, localPackages, (pkg) => `${pkg.manager}::${pkg.name}`);
-
-export const mergeMcpServers = (
-  sharedServers: McpServer[] = [],
-  localServers: McpServer[] = []
-): McpServer[] => mergeByKey(sharedServers, localServers, (server) => server.name);
 
 export const mergeSecrets = (
   sharedSecrets: Secret[] = [],
