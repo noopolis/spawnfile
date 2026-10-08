@@ -73,6 +73,8 @@ const normalizeResourceIdentity = (resource: ResolvedWorkspaceResource): string 
   }
 
   return JSON.stringify({
+    // Feed paths resolve against the declaring manifest, like bundle inputs.
+    ...(resource.feed ? { feed: { ...resource.feed, base: path.dirname(resource.scope.key) } } : {}),
     kind: "volume",
     mode: resource.mode,
     mount: normalizeMount(resource.mount),
