@@ -90,11 +90,11 @@ runs:
         set -euo pipefail
         if [[ -n "${SPAWNFILE_VERSION}" ]]; then
           npm install --global --no-fund --no-audit "spawnfile@${SPAWNFILE_VERSION}"
-          echo "command=spawnfile" >> "${GITHUB_OUTPUT}"
+          echo "entry=" >> "${GITHUB_OUTPUT}"
         else
           source_root="$(cd "${ACTION_PATH}/../../.." && pwd)"
           (cd "${source_root}" && npm ci --no-fund --no-audit && npm run build)
-          echo "command=node ${source_root}/dist/cli/index.js" >> "${GITHUB_OUTPUT}"
+          echo "entry=${source_root}/dist/cli/index.js" >> "${GITHUB_OUTPUT}"
         fi
 
     - name: Log in to registry
@@ -111,10 +111,14 @@ runs:
       env:
         PROJECT: ${{ inputs.project }}
         REFERENCE: ${{ steps.target.outputs.reference }}
-        SPAWNFILE: ${{ steps.cli.outputs.command }}
+        SPAWNFILE_ENTRY: ${{ steps.cli.outputs.entry }}
       run: |
         set -euo pipefail
-        ${SPAWNFILE} build --release "${PROJECT}" --tag "${REFERENCE}" --out "${RUNNER_TEMP}/spawnfile-release-out"
+        spawnfile=(spawnfile)
+        if [[ -n "${SPAWNFILE_ENTRY}" ]]; then
+          spawnfile=(node "${SPAWNFILE_ENTRY}")
+        fi
+        "${spawnfile[@]}" build --release "${PROJECT}" --tag "${REFERENCE}" --out "${RUNNER_TEMP}/spawnfile-release-out"
 
     - name: Push image
       id: push
@@ -124,14 +128,18 @@ runs:
         REFERENCE: ${{ steps.target.outputs.reference }}
       run: |
         set -euo pipefail
-        docker push "${REFERENCE}"
-        # Ask the registry what the tag now points at; that digest is the identity to deploy.
-        digest="$(docker buildx imagetools inspect "${REFERENCE}" --format '{{json .Manifest}}' | jq -r '.digest')"
+        # The digest this push wrote, from docker's own output, not a later tag lookup another job could have moved.
+        digest="$(docker push "${REFERENCE}" | tee /dev/stderr | sed -n 's/^.*digest: \(sha256:[a-f0-9]\{64\}\).*$/\1/p' | tail -n 1)"
         if [[ ! "${digest}" =~ ^sha256:[a-f0-9]{64}$ ]]; then
-          echo "::error::Registry did not return a manifest for ${REFERENCE}"
+          echo "::error::docker push did not report a manifest digest for ${REFERENCE}"
           exit 1
         fi
-        docker buildx imagetools inspect "${IMAGE}@${digest}" > /dev/null
+        # Prove the registry serves exactly that immutable reference.
+        served="$(docker buildx imagetools inspect "${IMAGE}@${digest}" --format '{{json .Manifest}}' | jq -r '.digest')"
+        if [[ "${served}" != "${digest}" ]]; then
+          echo "::error::Registry does not serve ${IMAGE}@${digest}"
+          exit 1
+        fi
         {
           echo "digest=${digest}"
           echo "image_reference=${IMAGE}@${digest}"

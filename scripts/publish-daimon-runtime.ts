@@ -138,12 +138,17 @@ const buildPlatform = (options: {
   };
 };
 
-const tagExists = (reference: string): boolean => {
+/** True only when the registry answers; a "not found" is absence, any other failure stops the publish. */
+export const tagExists = (reference: string, inspect: (reference: string) => void = (value) => {
+  execFileSync("docker", ["buildx", "imagetools", "inspect", value], { encoding: "utf8", stdio: ["ignore", "ignore", "pipe"] });
+}): boolean => {
   try {
-    execFileSync("docker", ["buildx", "imagetools", "inspect", reference], { stdio: "ignore" });
+    inspect(reference);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    const stderr = String((error as { stderr?: unknown }).stderr ?? (error as Error).message ?? "");
+    if (/: not found\s*$|manifest unknown/imu.test(stderr)) return false;
+    throw new Error(`Could not determine whether ${reference} already exists; refusing to publish: ${stderr.trim()}`);
   }
 };
 

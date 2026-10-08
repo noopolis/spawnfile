@@ -160,15 +160,17 @@ export const createPublishedIdentity = (
     matching(platform.image_manifest_digest, SHA256, `${architecture} manifest digest`);
     capabilityReceipts[architecture] = matching(platform.capability_receipt_sha256, SHA256, `${architecture} receipt digest`);
   }
+  // Every destination field comes from the repository actually pushed to, so an override cannot leave a stale pin.
+  const separator = options.repository.indexOf("/");
   return {
     capability_receipts: capabilityReceipts,
     contract_manifest_sha256: options.contractManifestSha256,
     daimon: inputs.daimon,
     digest: options.digest,
-    image: inputs.image,
+    image: options.repository.slice(separator + 1),
     image_reference: `${options.repository}@${options.digest}`,
     platforms: options.platforms,
-    registry: inputs.registry,
+    registry: options.repository.slice(0, separator),
     tag: options.tag,
     version: "spawnfile.published-daimon-runtime-identity.v1"
   };
@@ -178,7 +180,7 @@ export const createPublishedIdentity = (
 export const renderRuntimesYamlPin = (identity: PublishedDaimonRuntimeIdentity): string => [
   "    install:",
   "      kind: container_image",
-  `      image: ${identity.image}`,
+  `      image: ${identity.registry === "docker.io" ? identity.image : `${identity.registry}/${identity.image}`}`,
   `      tag: ${identity.tag}`,
   `      digest: ${identity.digest}`,
   "      capability_receipts:",

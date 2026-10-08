@@ -10,7 +10,7 @@ import {
   resolvePublishedRepository,
   resolvePublishedTag
 } from "./daimon-publish-inputs.ts";
-import { createDaimonImageBuildArgs } from "./publish-daimon-runtime.ts";
+import { createDaimonImageBuildArgs, tagExists } from "./publish-daimon-runtime.ts";
 
 const digest = (character: string, length = 64): string => character.repeat(length);
 const checkedIn = (): Record<string, unknown> =>
@@ -109,4 +109,29 @@ test("published identity binds every platform receipt and renders the runtimes.y
     contractManifestSha256: `sha256:${digest("7")}`, digest: `sha256:${digest("8")}`, platforms: { amd64: platforms.amd64 },
     repository: "docker.io/noopolis/spawnfile-runtime-daimon", tag: "0.2.0-abcdef0"
   }), /arm64/u);
+});
+
+test("published identity and pin follow a repository override instead of the default image", () => {
+  const inputs = parseDaimonPublishInputs(checkedIn());
+  const platform = { capability_receipt_sha256: `sha256:${digest("1")}`, image_manifest_digest: `sha256:${digest("2")}`, package_sha256: `sha256:${digest("3")}` };
+  const identity = createPublishedIdentity(inputs, {
+    contractManifestSha256: `sha256:${digest("7")}`, digest: `sha256:${digest("8")}`, platforms: { amd64: platform, arm64: platform },
+    repository: "127.0.0.1:5000/acme/daimon", tag: "0.2.0-abcdef0"
+  });
+  assert.equal(identity.registry, "127.0.0.1:5000");
+  assert.equal(identity.image, "acme/daimon");
+  assert.match(renderRuntimesYamlPin(identity), /image: 127\.0\.0\.1:5000\/acme\/daimon\n/u);
+  const hub = createPublishedIdentity(inputs, {
+    contractManifestSha256: `sha256:${digest("7")}`, digest: `sha256:${digest("8")}`, platforms: { amd64: platform, arm64: platform },
+    repository: "docker.io/noopolis/spawnfile-runtime-daimon", tag: "0.2.0-abcdef0"
+  });
+  assert.match(renderRuntimesYamlPin(hub), /image: noopolis\/spawnfile-runtime-daimon\n/u);
+});
+
+test("tag guard treats only a registry not-found as absence", () => {
+  const failing = (stderr: string) => () => { throw Object.assign(new Error("Command failed"), { stderr }); };
+  assert.equal(tagExists("r:t", () => undefined), true);
+  assert.equal(tagExists("r:t", failing("ERROR: docker.io/noopolis/x:t: not found\n")), false);
+  assert.throws(() => tagExists("r:t", failing("ERROR: failed to do request: dial tcp: i/o timeout\n")), /refusing to publish/u);
+  assert.throws(() => tagExists("r:t", failing("ERROR: unauthorized: authentication required\n")), /refusing to publish/u);
 });
