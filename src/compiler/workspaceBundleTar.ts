@@ -79,7 +79,11 @@ export class BundleTarWriter {
   private currentSize = 0;
   private lastPath: string | undefined;
 
-  private constructor(private readonly handle: FileHandle) {}
+  private readonly handle: FileHandle;
+
+  private constructor(handle: FileHandle) {
+    this.handle = handle;
+  }
 
   static async create(filePath: string): Promise<BundleTarWriter> {
     return new BundleTarWriter(await open(filePath, "wx", 0o600));
