@@ -51,6 +51,11 @@ describe("published Daimon runtime receipts", () => {
     expect(recipe.commands[0]).not.toContain("dpkg --print-architecture");
   });
 
+  it("refuses a published pin whose contract manifest is not the compiler's", async () => {
+    selection.current = { ...publishedSelection({ capabilityReceipts: { amd64: digest("b") } }), contractManifestSha256: digest("e") };
+    await expect(createRuntimeInstallRecipe("daimon")).rejects.toThrow(/exact contract manifest/u);
+  });
+
   it("refuses a published pin that carries no capability receipt", async () => {
     selection.current = publishedSelection({});
     await expect(createRuntimeInstallRecipe("daimon")).rejects.toThrow(/pinned generic Daimon runtime image/u);
