@@ -15,20 +15,22 @@ const describeManifest = (parsed: unknown, manifestPath: string): string => {
 
 type Issue = { code?: string; errors?: Issue[][]; message: string; path: PropertyKey[] };
 
-const deepestPath = (issues: Issue[]): number => Math.max(...issues.map((issue) => issue.path.length));
-
 /**
  * A union failure (a team member that is neither `{id, ref}` nor a valid inline
  * agent) reports the branch that matched furthest, when exactly one did, so an
  * inline agent's real defect surfaces instead of the generic union message.
+ * Nested unions resolve first, so depth compares the most specific issues.
  */
 const specificIssue = (issue: Issue): Issue => {
   if (issue.code !== "invalid_union" || !issue.errors?.length) return issue;
-  const depths = issue.errors.map((branch) => branch.length === 0 ? -1 : deepestPath(branch));
+  const candidates = issue.errors.map((branch) => branch
+    .map(specificIssue)
+    .reduce<Issue | undefined>((deepest, candidate) =>
+      deepest === undefined || candidate.path.length > deepest.path.length ? candidate : deepest, undefined));
+  const depths = candidates.map((candidate) => candidate?.path.length ?? -1);
   const best = Math.max(...depths);
   if (best <= 0 || depths.filter((depth) => depth === best).length !== 1) return issue;
-  const branch = issue.errors[depths.indexOf(best)]!;
-  const nested = specificIssue(branch.find((candidate) => candidate.path.length === best)!);
+  const nested = candidates[depths.indexOf(best)]!;
   return { ...nested, path: [...issue.path, ...nested.path] };
 };
 

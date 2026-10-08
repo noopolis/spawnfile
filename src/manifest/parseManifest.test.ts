@@ -39,4 +39,13 @@ describe("parseManifest", () => {
       'spawnfile_version: "0.1"', "kind: team", "name: studio", "mode: swarm", "members:", "  - id: writer"
     ].join("\n"), "/org/Spawnfile")).toThrow("member writer at members.0: team member must be either");
   });
+
+  it("resolves nested unions before choosing the closest member branch", () => {
+    expect(() => parseManifest([
+      'spawnfile_version: "0.1"', "kind: team", "name: studio", "mode: swarm", "members:",
+      "  - id: writer",
+      "    runtime: { name: 9 }",
+      "    workspace: { docs: { system: a.md } }"
+    ].join("\n"), "/org/Spawnfile")).toThrow("member writer at members.0.runtime.name:");
+  });
 });
