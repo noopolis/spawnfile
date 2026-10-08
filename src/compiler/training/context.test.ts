@@ -28,6 +28,9 @@ async function project(team = false): Promise<string> {
   await writeFile(path.join(root, "AGENTS.md"), "Root system\n");
   await writeFile(path.join(root, "SOUL.md"), "Inherited soul\n");
   await writeFile(path.join(root, "agents/author/AGENTS.md"), "Local author system\n");
+  await mkdir(path.join(root, "agents/author/site"), { recursive: true });
+  await writeFile(path.join(root, "agents/author/site/package.json"), JSON.stringify({ name: "site" }));
+  await writeFile(path.join(root, "agents/author/site/package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: { "": { name: "site" } } }));
   await writeFile(path.join(root, "skills/reporting/SKILL.md"), "---\nname: reporting\ndescription: Report evidence.\n---\nRead carefully.\n");
   const workspace = { docs: { system: "AGENTS.md", soul: "SOUL.md" }, skills: [{ ref: "./skills/reporting" }] };
   const declaration = team ? {
@@ -44,7 +47,8 @@ async function project(team = false): Promise<string> {
       { id: "source", kind: "git", url: "https://user:private-token@example.invalid/code.git", ref: "a".repeat(40), mount: "./source", mode: "readonly" },
       { id: "moving", kind: "git", url: "https://example.invalid/other.git", branch: "main", mount: "./moving", mode: "readonly" },
       { id: "tools", kind: "bundle", source: "missing-but-uncompiled.tar", sha256: hash("tools"), mount: "./tools", mode: "readonly" },
-      { id: "state", kind: "volume", name: "never-attach", mount: "./state", mode: "mutable", sharing: "team" }
+      { id: "state", kind: "volume", name: "never-attach", mount: "./state", mode: "mutable", sharing: "team" },
+      { id: "deps", kind: "bundle", build: { dependencies: { directory: "./site", image: `node@sha256:${"f".repeat(64)}` } }, mount: "./deps", mode: "readonly" }
     ] }
   }));
   return root;
@@ -65,7 +69,7 @@ describe("canonical training context", () => {
     ]);
     expect(context.project.sourceDigest).toBe(hash(JSON.stringify(context.sources.map(({ destinationPath, sha256 }) => ({ destinationPath, sha256 })))));
     expect(context.resources.map((resource) => [resource.id, resource.pin])).toEqual([
-      ["moving", null], ["source", "a".repeat(40)], ["state", null], ["tools", hash("tools")]
+      ["deps", expect.stringMatching(/^bundle-key:[a-f0-9]{64}$/u)], ["moving", null], ["source", "a".repeat(40)], ["state", null], ["tools", hash("tools")]
     ]);
     expect(JSON.stringify(context)).not.toMatch(/must-not-be-in-receipt|private-token|never-attach|example\.invalid/u);
     expect(context.requirements).toEqual({ nativeCompilation: true, isolatedPreparation: true });

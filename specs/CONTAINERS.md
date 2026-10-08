@@ -647,9 +647,58 @@ compile resolves the key with a few git queries and hard-links the cached
 archive into the build context without reading it. A cached archive whose
 size, inode or mtime changed is rebuilt. Prebuilt `source` tars are always
 hashed and staged from the exact bytes verified, even when a built bundle has
-the same digest. Only the `files`
-input kind exists today; dependency installs and generated outputs still ship
-as prebuilt `source` tars.
+the same digest.
+
+`build.files.ref` archives the tree of a pinned revision (any git revision,
+resolved to a commit once) straight from the object store, in dev and release
+compiles alike, without a clean or checked-out work tree.
+
+Two recipe kinds build output that git does not hold. Their archives contain
+every regular file of the output, content-addressed; symlinks and special
+files fail the build unless the kind drops them. Recipe steps run only on a
+cache miss, in a private work directory under the cache, which a Docker
+daemon used for container steps must be able to bind-mount.
+
+```yaml
+build:
+  dependencies:
+    directory: ../../site          # package.json + package-lock.json (v2+)
+    image: "node:22-bookworm-slim@sha256:<digest>"
+    dev: false                     # npm ci --omit=dev (true: --include=dev)
+    scripts: true                  # false: --ignore-scripts
+    check: [node, -e, "require('esbuild')"]
+```
+
+`dependencies` copies only the manifest and lockfile into the work directory
+and runs `npm ci` in the digest-pinned image with `--platform linux/<arch>`,
+so native and platform-optional packages are those of the target container,
+never the host. The lockfile must be v2 or later, agree with package.json, and
+contain no linked packages. `check` runs in the same image after the install.
+The archive is the `node_modules` tree; `.bin` symlinks and npm's hidden
+lockfile are dropped. Key: lockfile and manifest digests, manager, `dev`,
+`scripts`, `check`, the pinned image (the tool versions) and the platform.
+
+```yaml
+build:
+  generated:
+    command: [node, scripts/bake.mjs, --out, "${output}"]
+    cwd: ../../site                # default: the Spawnfile's directory
+    inputs: [{ root: ../../site, exclude: ["node_modules"] }]
+    tools: [[node, --version]]
+    image: "node:22-bookworm-slim@sha256:<digest>"   # optional
+    timeout_seconds: 600
+```
+
+`generated` runs `command` in `cwd` with `${output}` (and
+`SPAWNFILE_BUNDLE_OUTPUT`) naming an empty output directory, and archives
+what it writes. With `image` the command runs in that pinned image on the
+target platform with `cwd` mounted at `/spawnfile/work`; without it, on the
+host. Key: every input's git identity (release compiles require them clean),
+the command, `cwd`, the image, the captured stdout of each `tools` command
+(run on every compile, in the image when one is set) and the platform. The
+command's undeclared reads and its host environment are not in the key:
+declare every input it reads. Inputs cannot pin a `ref`, because the command
+reads the work tree.
 
 Local production-candidate Daimon builds retain the clean-Git provenance mode
 by default. A reviewed dirty integration tree instead uses two deterministic,

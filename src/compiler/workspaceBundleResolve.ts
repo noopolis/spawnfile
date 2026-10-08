@@ -12,20 +12,21 @@ import {
   resolveWorkspaceBundleCacheDirectory,
   storeBuiltBundle
 } from "./workspaceBundleCache.js";
-import {
-  resolveBundleRoot,
-  resolveDevFiles,
-  resolveReleaseFiles,
-  writeBundleFiles,
-  type BundleFilesInput,
-  type BundleIdentityMode
-} from "./workspaceBundleFiles.js";
-import { WORKSPACE_BUNDLE_MAX_BYTES, WORKSPACE_BUNDLE_TAR_WRITER } from "./workspaceBundleTar.js";
+import { planDependenciesBundle } from "./workspaceBundleDependencies.js";
+import type { BundleIdentityMode } from "./workspaceBundleFiles.js";
+import { planFilesBundle, planGeneratedBundle } from "./workspaceBundleGenerated.js";
+import type { BundleBuildContext, BundleBuildPlan } from "./workspaceBundleKey.js";
+import { WORKSPACE_BUNDLE_MAX_BYTES } from "./workspaceBundleTar.js";
 import type { MoltnetTargetArchitecture } from "./moltnetReleaseAuthority.js";
 import type { CompilePlan } from "./types.js";
-import type { ResolvedWorkspaceResource } from "./workspaceResources.js";
+import { resolveBundleBuildPaths, type ResolvedWorkspaceResource } from "./workspaceResources.js";
+import type { WorkspaceBundleBuild } from "../manifest/index.js";
 
-const KEY_VERSION = "spawnfile.workspace-bundle-key.v1";
+/** One build plan per declaration; `build` paths are already absolute. */
+export const planBundleBuild = (build: WorkspaceBundleBuild, context: BundleBuildContext): Promise<BundleBuildPlan> =>
+  build.files ? planFilesBundle(build.files, context)
+    : build.dependencies ? planDependenciesBundle(build.dependencies, context)
+      : planGeneratedBundle(build.generated!, context);
 
 /** Explicit, else the same target-arch override the Moltnet binaries honour, else the host. */
 export const resolveBundleArchitecture = (architecture?: MoltnetTargetArchitecture): MoltnetTargetArchitecture => {
@@ -44,6 +45,8 @@ export interface ResolveWorkspaceBundlesOptions {
   cacheDirectory?: string;
   /** `release` requires clean inputs and takes identity from the committed tree; `dev` (default) hashes the work tree. */
   identity?: BundleIdentityMode;
+  /** Docker CLI for dependency installs and image-run generated steps (cache misses only). */
+  dockerCommand?: string;
 }
 
 export interface ResolvedWorkspaceBundles {
@@ -56,20 +59,7 @@ export interface ResolvedWorkspaceBundles {
 
 type BundleResource = Extract<ResolvedWorkspaceResource, { kind: "bundle" }>;
 
-/**
- * The cache key: every input file's path, mode and content identity, the
- * archive writer that turns them into bytes, and the target platform. A file
- * bundle's bytes do not vary by platform today, but the key carries it so one
- * cache serves every input kind under the same rule.
- */
-export const computeWorkspaceBundleKey = (input: Pick<BundleFilesInput, "entries">, platform: string): string =>
-  createHash("sha256").update(JSON.stringify({
-    entries: input.entries.map((entry) => [entry.path, entry.mode, entry.identity]),
-    input: "files",
-    platform,
-    version: KEY_VERSION,
-    writer: WORKSPACE_BUNDLE_TAR_WRITER
-  })).digest("hex");
+export { computeWorkspaceBundleKey } from "./workspaceBundleKey.js";
 
 const declarationKey = (resource: BundleResource): string => JSON.stringify({
   build: resource.build ?? null, scope: path.dirname(resource.scope.key), source: resource.source ?? null
@@ -84,6 +74,22 @@ const hashPrebuilt = async (source: string): Promise<string> => {
 };
 
 type BundleFacts = Omit<CompileReportWorkspaceBundle, "id">;
+
+/**
+ * A stable pin for a bundle without building it: the declared or computed
+ * archive digest for a prebuilt tar, else `bundle-key:<key>` — the cache key a
+ * dev compile for the target architecture would build under, which moves with
+ * every input, recipe and platform change. No install or generator runs.
+ */
+export const pinWorkspaceBundle = async (resource: BundleResource, options: { architecture?: MoltnetTargetArchitecture; cacheDirectory?: string; dockerCommand?: string } = {}): Promise<string> => {
+  const base = path.dirname(resource.scope.key);
+  if (resource.source !== undefined) return resource.sha256 ?? hashPrebuilt(path.resolve(base, resource.source));
+  const plan = await planBundleBuild(resolveBundleBuildPaths(resource.build!, base), {
+    dockerCommand: options.dockerCommand ?? "docker", identity: "dev", outputReal: path.join(base, ".spawnfile-no-output"),
+    platform: `linux/${resolveBundleArchitecture(options.architecture)}`, workRoot: path.join(resolveWorkspaceBundleCacheDirectory(options.cacheDirectory), "work")
+  });
+  return `bundle-key:${plan.key}`;
+};
 
 /**
  * Gives every bundle resource in the plan a concrete digest. Declared-input
@@ -102,7 +108,7 @@ export const resolveWorkspaceBundles = async (plan: CompilePlan, options: Resolv
 
   // Phase 1: every input snapshot is taken before this compile writes anything, so no
   // staged archive (or other output under a bundle root) can leak into a later bundle.
-  const planned = new Map<string, Promise<{ facts: BundleFacts } | { input: BundleFilesInput; key: string }>>();
+  const planned = new Map<string, Promise<{ facts: BundleFacts } | BundleBuildPlan>>();
   for (const resource of bundles) {
     const memoKey = declarationKey(resource);
     if (planned.has(memoKey)) continue;
@@ -112,11 +118,9 @@ export const resolveWorkspaceBundles = async (plan: CompilePlan, options: Resolv
         return { facts: { origin: "prebuilt" as const, sha256: resource.sha256 ?? await hashPrebuilt(path.resolve(base, resource.source)) } };
       }
       platform ||= `linux/${resolveBundleArchitecture(options.architecture)}`;
-      const files = resource.build!.files, root = await resolveBundleRoot(path.resolve(base, files.root));
-      const outputInside = path.relative(root, outputReal);
-      const exclude = outputInside && !outputInside.startsWith("..") && !path.isAbsolute(outputInside) ? [...(files.exclude ?? []), outputInside.split(path.sep).join("/")] : files.exclude;
-      const input = identity === "release" ? await resolveReleaseFiles(root, exclude) : await resolveDevFiles(root, exclude);
-      return { input, key: computeWorkspaceBundleKey(input, platform) };
+      return planBundleBuild(resolveBundleBuildPaths(resource.build!, base), {
+        dockerCommand: options.dockerCommand ?? "docker", identity, outputReal, platform, workRoot: path.join(cacheDirectory, "work")
+      });
     })());
     await planned.get(memoKey);
   }
@@ -127,18 +131,18 @@ export const resolveWorkspaceBundles = async (plan: CompilePlan, options: Resolv
   for (const [memoKey, pending] of planned) {
     const step = await pending;
     if ("facts" in step) { facts.set(memoKey, step.facts); continue; }
-    const { input, key } = step;
+    const { input, key, write } = step;
     usedKeys.add(key);
     let cached = await lookupCachedBundle(cacheDirectory, key), staged = cached && await linkBuiltBundle(cached.tarPath, outputDirectory, cached.sha256);
     if (cached && staged) result.reusedCount += 1;
     else {
-      cached = await storeBuiltBundle(cacheDirectory, key, (temporaryPath) => writeBundleFiles(input, temporaryPath));
+      cached = await storeBuiltBundle(cacheDirectory, key, write);
       staged = await linkBuiltBundle(cached.tarPath, outputDirectory, cached.sha256);
       if (!staged) throw new SpawnfileError("compile_error", `Workspace bundle archive vanished from the cache while it was staged: ${key}`);
       result.builtCount += 1;
     }
     result.built.set(cached.sha256, staged);
-    facts.set(memoKey, { cache_key: key, content_bytes: cached.contentBytes, file_count: cached.fileCount, identity, origin: "built", platform, sha256: cached.sha256 });
+    facts.set(memoKey, { cache_key: key, content_bytes: cached.contentBytes, file_count: cached.fileCount, identity, input, origin: "built", platform, sha256: cached.sha256 });
   }
 
   for (const node of plan.nodes) {

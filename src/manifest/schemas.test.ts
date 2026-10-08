@@ -2129,6 +2129,16 @@ describe("manifestSchema", () => {
     expect(agent({ build: { files: { root: "../tools" } }, source: "./tools.tar" }).success).toBe(false);
     expect(agent({ build: { files: { root: "../tools" }, generated: {} } }).success).toBe(false);
     expect(agent({ build: { files: { exclude: [""], root: "../tools" } } }).success).toBe(false);
+    const image = `node@sha256:${"b".repeat(64)}`;
+    expect(agent({ build: { files: { ref: "v1.2.0", root: "../private" } } }).success).toBe(true);
+    expect(agent({ build: { dependencies: { check: ["node", "-e", "1"], dev: true, directory: "../site", image, scripts: false } } }).success).toBe(true);
+    expect(agent({ build: { dependencies: { directory: "../site", image: "node:22" } } }).error?.issues[0]?.message).toContain("pinned by @sha256");
+    expect(agent({ build: { generated: { command: ["node", "bake.mjs", "${output}"], inputs: [{ root: "." }], tools: [["node", "--version"]] } } }).success).toBe(true);
+    expect(agent({ build: { generated: { command: ["x"], inputs: [] } } }).success).toBe(false);
+    expect(agent({ build: { generated: { command: [], inputs: [{ root: "." }] } } }).success).toBe(false);
+    const both = agent({ build: { dependencies: { directory: "../site", image }, files: { root: "." } } });
+    expect(both.error?.issues[0]?.message).toContain("exactly one of files, dependencies or generated");
+    expect(agent({ build: {} }).success).toBe(false);
   });
 
   it("rejects team-shared git workspace resources", () => {
