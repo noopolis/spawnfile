@@ -59,6 +59,8 @@ const harness = (options: {
   running?: RunningUnit | null;
   wait?: DrainWait;
   failAt?: Partial<Record<"build" | "deploy" | "drain" | "settle", Error>>;
+  runtimes?: string[];
+  swapDuringDrain?: boolean;
 } = {}): Harness => {
   const calls: string[] = [];
   const notifications: string[] = [];
@@ -82,7 +84,9 @@ const harness = (options: {
     async inspectUnit(_request, ref) { calls.push(`inspect ${ref.slice(0, 14)}`); return current; },
     async notify(_config, notification) { notifications.push(notification.reason); calls.push(`notify ${notification.reason}`); return { channel: "command", delivered: true }; },
     async prune(_request, repository, keep) { calls.push(`prune ${keep.filter(Boolean).join(",")}`); return { kept: [], removed: [], skipped: [] }; },
-    async readDeployment() { return null; },
+    async lockDeployment() { calls.push("lock"); return async () => { calls.push("unlock"); }; },
+    async prepare(request) { return { authProfile: null, envFileEnv: request.envFileEnv }; },
+    async runtimesOf() { calls.push("runtimes"); return options.runtimes ?? ["daimon"]; },
     async requestDrain(target) {
       calls.push(`drain ${target.containerRef.slice(0, 1)}`);
       if (options.failAt?.drain) throw options.failAt.drain;
@@ -90,7 +94,11 @@ const harness = (options: {
     },
     async requestResume(target) { calls.push(`resume ${target.containerRef.slice(0, 1)}`); return { drain: null, state: "running" }; },
     async settle() { calls.push("settle"); if (options.failAt?.settle) throw options.failAt.settle; return current!; },
-    async waitForDrained() { calls.push("wait"); return options.wait ?? { drained: true, waitedMs: 3 }; }
+    async waitForDrained() {
+      calls.push("wait");
+      if (options.swapDuringDrain) current = { ...current!, restartCount: current!.restartCount + 1 };
+      return options.wait ?? { drained: true, waitedMs: 3 };
+    }
   };
   return { calls, deps, notifications };
 };
@@ -114,9 +122,9 @@ describe("runRelease", () => {
     const outcome = await runRelease(request(), h.deps);
     expect(outcome.kind).toBe("released");
     expect(h.calls).toEqual([
-      "compile", `inspect spawnfile-org`, "prune spawnfile-org:r-aaaaaaaaaaaa,spawnfile-org:r-bbbbbbbbbbbb",
-      "build spawnfile-org:r-aaaaaaaaaaaa", "drain c", "wait",
-      "deploy spawnfile-org:r-aaaaaaaaaaaa", "settle", "resume d",
+      "compile", "inspect spawnfile-org", "prune spawnfile-org:r-aaaaaaaaaaaa,spawnfile-org:r-bbbbbbbbbbbb",
+      "build spawnfile-org:r-aaaaaaaaaaaa", "lock", "inspect spawnfile-org", "runtimes", "drain c", "wait", "inspect spawnfile-org",
+      "deploy spawnfile-org:r-aaaaaaaaaaaa", "unlock", "settle", "resume d",
       "prune spawnfile-org:r-aaaaaaaaaaaa,spawnfile-org:r-bbbbbbbbbbbb"
     ]);
     const ledger = JSON.parse(await readFile(resolveReleasePaths("org", root).ledger, "utf8")) as ReleaseLedger;
@@ -151,7 +159,7 @@ describe("runRelease", () => {
     expect(outcome.kind).toBe("deferred");
     expect(releaseExitCode(outcome)).toBe(75);
     expect(h.calls.some((call) => call.startsWith("deploy"))).toBe(false);
-    expect(h.calls.slice(-2)).toEqual(["wait", "resume c"]);
+    expect(h.calls.slice(-3)).toEqual(["wait", "resume c", "unlock"]);
     expect(h.notifications).toEqual([]);
     await expect(readFile(resolveReleasePaths("org", root).ledger, "utf8")).rejects.toThrow();
   });
@@ -181,7 +189,7 @@ describe("runRelease", () => {
     const h = harness({ failAt: { deploy: new Error("candidate did not become ready") } });
     const outcome = await runRelease(request(), h.deps);
     expect(outcome).toMatchObject({ kind: "failed", reason: "deploy-failed" });
-    expect(h.calls.slice(-3)).toEqual(["inspect spawnfile-org", "resume c", "notify deploy-failed"]);
+    expect(h.calls.slice(-4)).toEqual(["inspect spawnfile-org", "resume c", "unlock", "notify deploy-failed"]);
     await expect(readFile(resolveReleasePaths("org", root).ledger, "utf8")).rejects.toThrow();
   });
 
@@ -234,13 +242,60 @@ describe("runRelease", () => {
   it("resumes an organization an interrupted release left drained, before anything else", async () => {
     const paths = resolveReleasePaths("org", root);
     await import("node:fs/promises").then((fs) => fs.mkdir(paths.directory, { recursive: true }));
-    await writeFile(paths.drainMarker, JSON.stringify({ container: "c".repeat(64), image: OLD_IMAGE, since: "x", version: "spawnfile.release-drain.v1" }));
+    await writeFile(paths.drainMarker, JSON.stringify({ container: "c".repeat(64), context: null, image: OLD_IMAGE, since: "x", version: "spawnfile.release-drain.v1" }));
     await writeLedger({ identity: IDENTITY, image_id: OLD_IMAGE });
-    await writeFile(paths.drainMarker, JSON.stringify({ container: "c".repeat(64), image: OLD_IMAGE, since: "x", version: "spawnfile.release-drain.v1" }));
+    await writeFile(paths.drainMarker, JSON.stringify({ container: "c".repeat(64), context: null, image: OLD_IMAGE, since: "x", version: "spawnfile.release-drain.v1" }));
     const h = harness();
     expect((await runRelease(request(), h.deps)).kind).toBe("unchanged");
     expect(h.calls.slice(0, 3)).toEqual(["inspect cccccccccccccc", "resume c", "compile"]);
     await expect(readFile(paths.drainMarker, "utf8")).rejects.toThrow();
+  });
+
+  it("refuses to drain a container that also runs runtimes without a drain contract", async () => {
+    const h = harness({ runtimes: ["daimon", "openclaw"] });
+    expect(await runRelease(request(), h.deps)).toMatchObject({ kind: "failed", reason: "blocked", message: expect.stringContaining("openclaw") });
+    expect(h.calls.some((call) => call.startsWith("drain") || call.startsWith("deploy"))).toBe(false);
+    expect(h.calls).toContain("unlock");
+  });
+
+  it("aborts and resumes when the drained container restarted before the deploy", async () => {
+    const h = harness({ swapDuringDrain: true });
+    expect(await runRelease(request(), h.deps)).toMatchObject({ kind: "failed", reason: "drain-failed" });
+    expect(h.calls.some((call) => call.startsWith("deploy"))).toBe(false);
+    expect(h.calls).toContain("resume c");
+  });
+
+  it("re-notifies a deferral whose notification was not delivered", async () => {
+    let now = new Date("2026-10-08T00:00:00.000Z");
+    const req = request({ now: () => now });
+    const h = harness({ wait: { drained: false, reason: "timeout", waitedMs: 1_000 } });
+    let deliver = false;
+    h.deps.notify = async (_config, notification) => { h.notifications.push(notification.reason); return { channel: "command", delivered: deliver }; };
+    await runRelease(req, h.deps);
+    now = new Date("2026-10-09T01:00:00.000Z");
+    expect(await runRelease(req, h.deps)).toMatchObject({ notified: false });
+    deliver = true;
+    now = new Date("2026-10-09T02:00:00.000Z");
+    expect(await runRelease(req, h.deps)).toMatchObject({ notified: true });
+    now = new Date("2026-10-09T03:00:00.000Z");
+    expect(await runRelease(req, h.deps)).toMatchObject({ notified: false });
+    expect(h.notifications).toEqual(["release-deferred", "release-deferred"]);
+  });
+
+  it("reports an unreadable env file through the notifier", async () => {
+    const h = harness();
+    h.deps.prepare = async () => { throw new Error("ENOENT: /etc/org.env"); };
+    expect(await runRelease(request(), h.deps)).toMatchObject({ kind: "failed", reason: "blocked", message: expect.stringContaining("prepare") });
+    expect(h.notifications).toEqual(["blocked"]);
+  });
+
+  it("does not deploy when interrupted while a drained answer was in flight", async () => {
+    const abort = new AbortController();
+    const h = harness();
+    h.deps.waitForDrained = async () => { h.calls.push("wait"); abort.abort(); return { drained: true, waitedMs: 1 }; };
+    expect(await runRelease(request({ signal: abort.signal }), h.deps)).toMatchObject({ kind: "failed", reason: "interrupted" });
+    expect(h.calls).toContain("resume c");
+    expect(h.calls.some((call) => call.startsWith("deploy"))).toBe(false);
   });
 
   it("refuses to run beside another live release of the same deployment", async () => {

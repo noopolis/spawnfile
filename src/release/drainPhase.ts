@@ -12,6 +12,8 @@ export const RELEASE_DRAIN_MARKER_VERSION = "spawnfile.release-drain.v1" as cons
 
 interface DrainMarker {
   container: string;
+  /** The Docker context the drain went out through; recovery must use the same target. */
+  context: string | null;
   image: string;
   since: string;
   version: typeof RELEASE_DRAIN_MARKER_VERSION;
@@ -45,8 +47,8 @@ export const controlTargetFor = (request: ReleaseRequest, containerRef: string, 
  * evidence that the organization may still be refusing work. Every later run
  * resumes it first, even when it has nothing to release.
  */
-const writeMarker = async (paths: ReleasePaths, unit: RunningUnit): Promise<void> => {
-  const marker: DrainMarker = { container: unit.id, image: unit.imageId, since: new Date().toISOString(), version: RELEASE_DRAIN_MARKER_VERSION };
+const writeMarker = async (request: ReleaseRequest, paths: ReleasePaths, unit: RunningUnit): Promise<void> => {
+  const marker: DrainMarker = { container: unit.id, context: request.dockerContext ?? null, image: unit.imageId, since: new Date().toISOString(), version: RELEASE_DRAIN_MARKER_VERSION };
   await writeJsonAtomic(paths.drainMarker, marker);
 };
 
@@ -58,18 +60,26 @@ export const recoverInterruptedDrain = async (request: ReleaseRequest, deps: Rel
   let marker: DrainMarker;
   try {
     marker = JSON.parse(await readFile(paths.drainMarker, "utf8")) as DrainMarker;
+    if (typeof marker.container !== "string" || (marker.context !== null && typeof marker.context !== "string")) throw new Error("shape");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw new ReleaseError("resume-failed", `the drain marker ${paths.drainMarker} is unreadable; the organization may still be drained`);
   }
-  const unit = await deps.inspectUnit(request, marker.container);
+  // Recovery talks to the Docker target the drain went out through, whatever this run was invoked with.
+  const target: ReleaseRequest = { ...request, ...(marker.context === null ? { dockerContext: undefined } : { dockerContext: marker.context }) };
+  let unit: RunningUnit | null;
+  try {
+    unit = await deps.inspectUnit(target, marker.container);
+  } catch (error) {
+    throw new ReleaseError("resume-failed", `an earlier release may have left the organization drained and its container cannot be inspected: ${(error as Error).message}`);
+  }
   if (unit === null || !unit.running) {
     // A drain lives in the runtime process: a container that is gone or stopped admits again when it next starts.
     await clearDrainMarker(paths);
     return true;
   }
   try {
-    await deps.requestResume(controlTargetFor(request, unit.id, unit.imageId));
+    await deps.requestResume(controlTargetFor(target, unit.id, unit.imageId));
   } catch (error) {
     throw new ReleaseError("resume-failed", `an earlier release left the organization drained and resuming it failed: ${(error as Error).message}`);
   }
@@ -101,7 +111,7 @@ export const drainForRelease = async (
   }
   const target = controlTargetFor(request, unit.id, unit.imageId);
   const started = Date.now();
-  await writeMarker(paths, unit);
+  await writeMarker(request, paths, unit);
   try {
     await deps.requestDrain(target);
     request.log(`release: admission paused; waiting up to ${Math.round(request.drainTimeoutMs / 1000)}s for running turns to finish`);
@@ -110,12 +120,12 @@ export const drainForRelease = async (
       ...(request.signal ? { signal: request.signal } : {}),
       timeoutMs: request.drainTimeoutMs
     });
-    if (waited.drained) {
+    if (waited.drained && !request.signal?.aborted) {
       request.log(`release: drained after ${Math.round(waited.waitedMs / 1000)}s`);
       return { drainMs: Date.now() - started, kind: "drained" };
     }
     await resumeOrThrow(request, deps, paths, target);
-    if (waited.reason === "interrupted") throw new ReleaseError("interrupted", "the release was interrupted while waiting for running turns; admission resumed, nothing deployed");
+    if (waited.drained || waited.reason === "interrupted") throw new ReleaseError("interrupted", "the release was interrupted while waiting for running turns; admission resumed, nothing deployed");
     return { drainMs: Date.now() - started, kind: "timeout" };
   } catch (error) {
     if (error instanceof ReleaseError && (error.reason === "interrupted" || error.reason === "resume-failed")) throw error;
@@ -145,7 +155,13 @@ export const resumeAfterFailedDeploy = async (
   paths: ReleasePaths,
   containerName: string
 ): Promise<void> => {
-  const unit = await deps.inspectUnit(request, containerName).catch(() => null);
+  let unit: RunningUnit | null;
+  try {
+    unit = await deps.inspectUnit(request, containerName);
+  } catch (error) {
+    // Not "absent": the marker stays, so the next run resumes it.
+    throw new ReleaseError("resume-failed", `the deploy failed and the container cannot be inspected to resume admission: ${(error as Error).message}`);
+  }
   if (unit === null || !unit.running) {
     await clearDrainMarker(paths);
     return;

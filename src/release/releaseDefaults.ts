@@ -9,8 +9,10 @@ import {
 import { compileProject } from "../compiler/compileProject.js";
 import { createDockerBuildContextDigest } from "../compiler/dockerBuildContext.js";
 import { inspectDockerImage } from "../compiler/dockerBuildSkip.js";
-import { homeDeploymentExists, readHomeDeploymentRecord } from "../deployment/index.js";
-import { consumeImageUp, createConsumerDockerRunner, resolveDockerBaseArgs } from "../distribution/index.js";
+import { requireAuthProfile } from "../auth/index.js";
+import { readRunEnvFile } from "../compiler/runProjectAuth.js";
+import { acquireHomeDeploymentLock } from "../deployment/index.js";
+import { consumeImageUp, createConsumerDockerRunner, extractImageReport, resolveDockerBaseArgs } from "../distribution/index.js";
 import type { DockerCommandRunner } from "../distribution/dockerRunner.js";
 
 import { helperControlCall, requestDrain, requestResume, waitForDrained } from "./drainControl.js";
@@ -65,6 +67,7 @@ export const createDefaultReleaseDependencies = (): ReleaseDependencies => ({
       authProfile: request.authProfile ?? null,
       authProfileName: request.authProfileName ?? null,
       authValues: request.authProfile?.env ?? {},
+      deploymentLockHeld: true,
       deploymentName: request.deployment,
       dockerCommand: request.dockerCommand,
       ...(request.dockerContext ? { dockerContext: request.dockerContext } : {}),
@@ -76,8 +79,19 @@ export const createDefaultReleaseDependencies = (): ReleaseDependencies => ({
   inspectUnit: (request, containerRef) => inspectUnit(dockerFor(request), containerRef),
   notify: (config, notification) => sendNotification(config, notification),
   prune: (request, repository, keep) => pruneReleaseImages(dockerFor(request), repository, keep),
-  async readDeployment(deployment) {
-    return await homeDeploymentExists(deployment) ? readHomeDeploymentRecord(deployment) : null;
+  lockDeployment: (deployment) => acquireHomeDeploymentLock(deployment),
+  async prepare(request) {
+    return {
+      authProfile: request.authProfileName ? await requireAuthProfile(request.authProfileName) : null,
+      envFileEnv: await readRunEnvFile(request.envFilePath)
+    };
+  },
+  async runtimesOf(request, imageId) {
+    const inspection = await extractImageReport(imageId, {
+      dockerCommand: request.dockerCommand,
+      ...(request.dockerContext ? { dockerContext: request.dockerContext } : {})
+    });
+    return inspection.report.runtime_instances.map((instance) => instance.runtime);
   },
   requestDrain: (target) => requestDrain(target, helperControlCall),
   requestResume: (target) => requestResume(target, helperControlCall),

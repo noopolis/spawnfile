@@ -13,7 +13,7 @@ import {
   writeReleaseLedger,
   type ReleaseLedger
 } from "./ledger.js";
-import { clearDeferral, recordDeferral } from "./pending.js";
+import { clearDeferral, markDeferralNotified, recordDeferral } from "./pending.js";
 
 let root: string;
 beforeEach(async () => { root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-release-ledger-")); });
@@ -63,6 +63,23 @@ describe("release ledger", () => {
     expect(JSON.parse(await readFile(paths.log, "utf8"))).toMatchObject({ outcome: "failed", version: "spawnfile.release-log.v1" });
   });
 
+  it("puts back a live lock another process took over between reading the stale one and reclaiming it", async () => {
+    const paths = resolveReleasePaths("org", root);
+    await ensureReleaseDirectory(paths);
+    await writeFile(paths.lock, JSON.stringify({ pid: 2 ** 22 + 7 }));
+    const fresh = JSON.stringify({ pid: process.pid, token: "other" });
+    await expect(acquireReleaseLock(paths, { afterStaleRead: async () => { await rm(paths.lock); await writeFile(paths.lock, fresh); } }))
+      .rejects.toMatchObject({ reason: "blocked" });
+    expect(await readFile(paths.lock, "utf8")).toBe(fresh);
+  });
+
+  it("never lets concurrent acquisitions both win", async () => {
+    const paths = resolveReleasePaths("org", root);
+    await ensureReleaseDirectory(paths);
+    const results = await Promise.allSettled(Array.from({ length: 8 }, () => acquireReleaseLock(paths)));
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+  });
+
   it("holds one release per deployment and reclaims a lock whose owner is gone", async () => {
     const paths = resolveReleasePaths("org", root);
     await ensureReleaseDirectory(paths);
@@ -80,7 +97,11 @@ describe("deferral tracking", () => {
     const file = path.join(root, "pending.json");
     const at = (iso: string) => ({ notifyAfterMs: 3_600_000, now: new Date(iso) });
     expect((await recordDeferral(file, "id-1", at("2026-10-08T00:00:00.000Z"))).notify).toBe(false);
-    expect((await recordDeferral(file, "id-1", at("2026-10-08T01:00:00.000Z"))).notify).toBe(true);
+    const due = await recordDeferral(file, "id-1", at("2026-10-08T01:00:00.000Z"));
+    expect(due.notify).toBe(true);
+    // Not delivered yet: still due.
+    expect((await recordDeferral(file, "id-1", at("2026-10-08T01:30:00.000Z"))).notify).toBe(true);
+    await markDeferralNotified(file, due.pending);
     expect((await recordDeferral(file, "id-1", at("2026-10-08T02:00:00.000Z"))).notify).toBe(false);
     const fresh = await recordDeferral(file, "id-2", at("2026-10-08T03:00:00.000Z"));
     expect(fresh).toMatchObject({ ageMs: 0, notify: false });

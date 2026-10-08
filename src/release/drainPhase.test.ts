@@ -39,7 +39,7 @@ const deps = (unit: RunningUnit | null, resume: () => Promise<void> = async () =
 };
 
 const running: RunningUnit = { health: "healthy", id: "c1", imageId: "sha256:img", restartCount: 0, running: true };
-const marker = JSON.stringify({ container: "c1", image: "sha256:img", since: "t", version: "spawnfile.release-drain.v1" });
+const marker = JSON.stringify({ container: "c1", context: null, image: "sha256:img", since: "t", version: "spawnfile.release-drain.v1" });
 
 describe("control token", () => {
   it("prefers the process environment over the env file, like up does", () => {
@@ -84,6 +84,26 @@ describe("recoverInterruptedDrain", () => {
     expect(await readFile(paths.drainMarker, "utf8")).toBe(marker);
   });
 
+  it("recovers through the Docker context the drain went out through, not this run's", async () => {
+    await writeFile(paths.drainMarker, JSON.stringify({ container: "c1", context: "remote", image: "sha256:img", since: "t", version: "spawnfile.release-drain.v1" }));
+    const contexts: (string | undefined)[] = [];
+    const d = deps(running);
+    d.inspectUnit = async (req) => { contexts.push(req.dockerContext); return running; };
+    const resumedArgs: string[][] = [];
+    d.requestResume = async (target) => { resumedArgs.push([...target.dockerArgs]); return { drain: null, state: "running" }; };
+    await recoverInterruptedDrain(request(), d, paths);
+    expect(contexts).toEqual(["remote"]);
+    expect(resumedArgs).toEqual([["--context", "remote"]]);
+  });
+
+  it("keeps the marker when the marked container cannot be inspected", async () => {
+    await writeFile(paths.drainMarker, marker);
+    const d = deps(running);
+    d.inspectUnit = async () => { throw new Error("docker unreachable"); };
+    await expect(recoverInterruptedDrain(request(), d, paths)).rejects.toMatchObject({ reason: "resume-failed" });
+    expect(await readFile(paths.drainMarker, "utf8")).toBe(marker);
+  });
+
   it("treats an unreadable marker as a possibly drained organization", async () => {
     await import("node:fs/promises").then((fs) => fs.mkdir(paths.drainMarker));
     await expect(recoverInterruptedDrain(request(), deps(running), paths)).rejects.toMatchObject({ reason: "resume-failed" });
@@ -97,6 +117,14 @@ describe("resumeAfterFailedDeploy", () => {
     await resumeAfterFailedDeploy(request(), d, paths, "spawnfile-org");
     expect(d.resumed).toEqual(["c1"]);
     await expect(readFile(paths.drainMarker)).rejects.toThrow();
+  });
+
+  it("keeps the marker when the container cannot be inspected after a failed deploy", async () => {
+    await writeFile(paths.drainMarker, marker);
+    const d = deps(running);
+    d.inspectUnit = async () => { throw new Error("docker unreachable"); };
+    await expect(resumeAfterFailedDeploy(request(), d, paths, "spawnfile-org")).rejects.toMatchObject({ reason: "resume-failed" });
+    expect(await readFile(paths.drainMarker, "utf8")).toBe(marker);
   });
 
   it("only clears the marker when nothing is running", async () => {
