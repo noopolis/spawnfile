@@ -20,7 +20,8 @@ import {
 } from "./feedLayout.js";
 import { buildFeedManifest, compareFeedManifest, manifestDrift, readFeedManifest, removeFeedManifest, writeFeedManifest } from "./feedManifest.js";
 import { FEED_IDENTITY_VERSION, FEED_LANDED_VERSION, writeFeedIdentity, writeFeedLanded, type FeedLandedRecord } from "./feedRecord.js";
-import { digestDirectory, hostExec, stageFeedSource, type FeedExec, type ResolvedFeedSource } from "./feedSource.js";
+import { stageFeedContent } from "./feedPrepare.js";
+import { digestDirectory, hostExec, type FeedExec, type ResolvedFeedSource } from "./feedSource.js";
 import { feedStagingDir, feedTrashDir, type FeedTarget } from "./feedTarget.js";
 
 export interface FeedRuntime {
@@ -99,7 +100,7 @@ const stageAndLand = (target: FeedTarget, resolved: ResolvedFeedSource, { exec, 
   mkdirSync(stagingDir);
   let staged: ResolvedFeedSource;
   try {
-    staged = stageFeedSource(target.source, resolved, stagingDir, { exec });
+    staged = stageFeedContent(target, resolved, stagingDir, { exec, log });
     if (staged.revision !== resolved.revision) log(`the source moved while it was copied; landing what was copied as ${staged.revision.slice(0, 12)}`);
     runFeedValidation(target, stagingDir, staged);
     ownAndFreeze(stagingDir, { owner: target.owner, volume: target.volume });
@@ -137,7 +138,7 @@ export const landFeed = (
   target: FeedTarget,
   resolved: ResolvedFeedSource,
   record: FeedLandedRecord | null,
-  { force = false, heals = {}, runtime = {} }: { force?: boolean; heals?: Record<string, number>; runtime?: FeedRuntime } = {}
+  { force = false, heals = {}, period, runtime = {} }: { force?: boolean; heals?: Record<string, number>; period?: string; runtime?: FeedRuntime } = {}
 ): FeedLandResult => {
   const now = (runtime.now ?? (() => new Date()))(), log = runtime.log ?? (() => undefined), exec = runtime.exec ?? hostExec;
   if (!assertRealDirectory(treesDirOf(target), "the fed volume's trees/ directory")) mkdirSync(treesDirOf(target), { mode: 0o755 });
@@ -159,7 +160,7 @@ export const landFeed = (
   const identitySha = writeFeedIdentity(target.volume, identity, { owner: target.owner, tmpDir: feedStagingDir(target) });
   // Order is serving history: the serving tree is always last.
   let trees = [...(record?.trees ?? []).filter((entry) => entry !== name), name];
-  const write = (): FeedLandedRecord => writeFeedLanded(target.stateDir, { heals, identity, identity_sha256: identitySha, revision, tree: name, trees, version: FEED_LANDED_VERSION });
+  const write = (): FeedLandedRecord => writeFeedLanded(target.stateDir, { heals, identity, identity_sha256: identitySha, ...(period ? { period } : {}), revision, tree: name, trees, version: FEED_LANDED_VERSION });
   write();
   const gc = collectGarbage(target, trees, name, now);
   if (gc.removed.length) {

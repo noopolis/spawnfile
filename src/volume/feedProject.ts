@@ -4,17 +4,23 @@
 import path from "node:path";
 
 import { buildCompilePlan } from "../compiler/index.js";
+import { resolveBundleArchitecture } from "../compiler/workspaceBundleResolve.js";
 import type { TeamWorkspaceResource } from "../manifest/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { feedError } from "./feedLayout.js";
 import { hostExec, type FeedExec } from "./feedSource.js";
-import { DEFAULT_FEED_HEAL_LIMIT, DEFAULT_FEED_KEEP, DEFAULT_FEED_VALIDATE_TIMEOUT_MS, type FeedTarget } from "./feedTarget.js";
+import {
+  DEFAULT_FEED_HEAL_LIMIT, DEFAULT_FEED_KEEP, DEFAULT_FEED_PREPARE_TIMEOUT_MS, DEFAULT_FEED_REF_COMMAND_TIMEOUT_MS, DEFAULT_FEED_VALIDATE_TIMEOUT_MS,
+  type FeedPrepare, type FeedRefRule, type FeedTarget
+} from "./feedTarget.js";
 
 type VolumeResource = Extract<TeamWorkspaceResource, { kind: "volume" }>;
 type DeclaredFeed = NonNullable<VolumeResource["feed"]>;
 
 export interface FeedTargetOptions {
+  /** Docker client a containerized `prepare` runs through; default `docker`. */
+  dockerCommand?: string;
   exec?: FeedExec;
   fetch?: boolean;
   healLimit?: number;
@@ -56,16 +62,36 @@ export const resolveVolumeHostPath = (name: string, { exec = hostExec, volumePat
   }
 };
 
+const toPrepare = (prepare: NonNullable<DeclaredFeed["prepare"]>, options: FeedTargetOptions): FeedPrepare => {
+  const timeoutMs = (prepare.timeout_seconds ?? DEFAULT_FEED_PREPARE_TIMEOUT_MS / 1000) * 1000;
+  if (prepare.host) return { command: prepare.command, kind: "host", timeoutMs };
+  return {
+    command: prepare.command, dockerCommand: options.dockerCommand ?? "docker", image: prepare.image as string, kind: "image",
+    // The refresh runs on the host that serves the volume, so the target platform defaults to its own.
+    network: prepare.network ?? true, platform: prepare.platform ?? `linux/${resolveBundleArchitecture()}`, timeoutMs
+  };
+};
+
+const toRefRule = (ref: Exclude<NonNullable<NonNullable<DeclaredFeed["git"]>["ref"]>, string>, base: string): FeedRefRule => ({
+  ...(ref.command ? { command: { argv: ref.command, cwd: base, timeoutMs: DEFAULT_FEED_REF_COMMAND_TIMEOUT_MS } } : {}),
+  ...(ref.fallback ? { fallback: ref.fallback } : {}),
+  ...(ref.template ? { template: ref.template } : {})
+});
+
 export const toFeedTarget = (declared: DeclaredVolumeFeed, options: FeedTargetOptions = {}): FeedTarget => {
   const volume = resolveVolumeHostPath(declared.name, options);
-  const feed = declared.feed;
+  const feed = declared.feed, ref = feed.git?.ref;
   const source: FeedTarget["source"] = feed.git
-    ? { fetch: options.fetch ?? feed.git.fetch ?? false, kind: "git", ...(feed.git.paths ? { paths: feed.git.paths } : {}), ref: feed.git.ref ?? "HEAD", repo: path.resolve(declared.base, feed.git.repo) }
+    ? { fetch: options.fetch ?? feed.git.fetch ?? false, kind: "git", ...(feed.git.paths ? { paths: feed.git.paths } : {}), ref: typeof ref === "string" ? ref : "HEAD", repo: path.resolve(declared.base, feed.git.repo) }
     : { directory: path.resolve(declared.base, feed.directory as string), kind: "directory" };
   return {
+    ...(feed.freeze ? { freeze: { after: feed.freeze.after, timezone: feed.freeze.timezone } } : {}),
     healLimit: options.healLimit ?? DEFAULT_FEED_HEAL_LIMIT,
+    ...(feed.include ? { include: feed.include.map((entry) => ({ from: path.resolve(declared.base, entry.from), to: entry.to })) } : {}),
     keep: feed.keep ?? DEFAULT_FEED_KEEP,
     ...(feed.owner ? { owner: feed.owner } : {}),
+    ...(feed.prepare ? { prepare: toPrepare(feed.prepare, options) } : {}),
+    ...(ref !== undefined && typeof ref !== "string" ? { refRule: toRefRule(ref, declared.base) } : {}),
     resourceId: declared.id,
     source,
     // Beside the volume's content root: the same filesystem (rename stays atomic), never inside it.
