@@ -91,7 +91,7 @@ jobs:
           should_push=false
           push_latest=false
 
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == refs/tags/v* ]]; then
             should_push=true
             push_latest=true
           fi
@@ -152,6 +152,11 @@ jobs:
     name: daimon runtime image
     timeout-minutes: 60
     runs-on: ubuntu-latest
+    # Every ref publishes the same pinned tag, so serialize across refs: the
+    # tag-exists guard is check-then-write and must not race another run.
+    concurrency:
+      group: runtime-images-daimon-publish
+      cancel-in-progress: false
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -178,7 +183,7 @@ jobs:
           should_push=false
           push_latest=false
 
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == refs/tags/v* ]]; then
             should_push=true
             push_latest=true
           fi
