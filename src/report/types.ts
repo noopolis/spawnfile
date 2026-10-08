@@ -305,6 +305,21 @@ export interface CompileReportWorkspaceBundle {
   sha256: string;
 }
 
+/** A `fetch: build` git resource: the commit its selector resolved to and the archive cut from that commit. */
+export interface CompileReportWorkspaceGitResource {
+  auth: "none" | "ssh_key" | "ssh_key_env";
+  cache_key: string;
+  commit: string;
+  content_bytes: number;
+  file_count: number;
+  id: string;
+  identity: "dev" | "release";
+  platform: string;
+  selector: { kind: "branch" | "ref" | "tag"; value: string } | { kind: "default_branch" };
+  sha256: string;
+  url: string;
+}
+
 export interface CompileReport {
   compile_fingerprint?: string;
   container?: ContainerReport;
@@ -316,4 +331,5 @@ export interface CompileReport {
   root: string;
   spawnfile_version: "0.1";
   workspace_bundles?: CompileReportWorkspaceBundle[];
+  workspace_git_resources?: CompileReportWorkspaceGitResource[];
 }
