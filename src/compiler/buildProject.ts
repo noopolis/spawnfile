@@ -65,7 +65,7 @@ export const createDefaultImageTag = (projectRoot: string): string => {
   return `spawnfile-${baseName || "project"}`;
 };
 
-const resolveImageTagRoot = (inputPath: string): string => {
+export const resolveImageTagRoot = (inputPath: string): string => {
   const resolvedPath = path.resolve(inputPath);
   return path.basename(resolvedPath).toLowerCase() === "spawnfile"
     ? path.dirname(resolvedPath)
