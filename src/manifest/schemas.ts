@@ -3,7 +3,7 @@ import { z } from "zod";
 import { agentScheduleSchema } from "./scheduleSchemas.js";
 import { executionSchema } from "./executionSchemas.js";
 import { memoryBanksSchema } from "./memorySchemas.js";
-import { mcpServerEntrySchema, mcpServerSchema } from "./mcpSchemas.js";
+import { mcpServerEntrySchema, mcpServerSchema, sharedMcpServerSchema } from "./mcpSchemas.js";
 import { surfacesSchema } from "./surfaceSchemas.js";
 import { externalParticipantServiceSchema } from "./externalParticipantSchemas.js";
 import {
@@ -97,7 +97,7 @@ const createEnvironmentSchema = <TServer extends z.ZodType>(serverSchema: TServe
 
 // Team `shared.environment` declares complete servers; agent scope may also
 // narrow an inherited server with a transport-less override entry.
-const sharedEnvironmentSchema = createEnvironmentSchema(mcpServerSchema);
+const sharedEnvironmentSchema = createEnvironmentSchema(sharedMcpServerSchema);
 const environmentSchema = createEnvironmentSchema(mcpServerEntrySchema);
 
 const commonManifestSchema = z
@@ -315,7 +315,7 @@ export type InlineAgentMember = z.infer<typeof inlineAgentMemberSchema>;
 export type ManifestMember = z.infer<typeof memberSchema>;
 export type ReferencedMember = z.infer<typeof referencedMemberSchema>;
 export type McpServer = z.infer<typeof mcpServerSchema>;
-export { isMcpServerDeclaration, type McpServerEntry, type McpServerOverride } from "./mcpSchemas.js";
+export { isMcpServerDeclaration, type McpServerEntry, type McpServerOverride, type SharedMcpServer } from "./mcpSchemas.js";
 export type RuntimeBinding = z.infer<typeof runtimeBindingSchema>;
 export type Package = z.infer<typeof packageSchema>;
 export type Secret = z.infer<typeof secretSchema>;

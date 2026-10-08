@@ -2,6 +2,7 @@ import {
   AgentSchedule,
   ExecutionBlock,
   McpServer,
+  SharedMcpServer,
   MemoryConsolidation,
   MemoryIndex,
   MemoryRetention,
@@ -293,7 +294,7 @@ export interface ResolvedTeamNode {
   workspaceResources?: ResolvedWorkspaceResource[];
   shared: {
     env: StringMap;
-    mcpServers: McpServer[];
+    mcpServers: SharedMcpServer[];
     secrets: Secret[];
     skills: ResolvedSkill[];
     packages?: ResolvedPackage[];
