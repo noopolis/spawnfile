@@ -18,7 +18,12 @@ describe("fetch: build git resources", () => {
   it("requires readonly, credential-free urls, and exactly one auth source", () => {
     expect(messages({ fetch: "build", mode: "mutable" })).toEqual([expect.stringContaining("must be mode: readonly")]);
     expect(messages({ fetch: "build", url: "https://user:token@example.com/private.git" })).toEqual([expect.stringContaining("must not embed a credential")]);
-    expect(gitResource({ fetch: "build", url: "https://user@example.com/private.git" }).success).toBe(true);
+    expect(messages({ fetch: "build", url: "https://TOKEN@example.com/private.git" })).toEqual([expect.stringContaining("must not embed a credential")]);
+    expect(messages({ fetch: "build", url: "https://example.com/private.git?access_token=TOKEN" })).toEqual([expect.stringContaining("must not embed a credential")]);
+    expect(messages({ fetch: "build", url: "ssh://git:secret@example.com/private.git" })).toEqual([expect.stringContaining("must not embed a credential")]);
+    expect(gitResource({ fetch: "build", url: "ssh://git@example.com/private.git" }).success).toBe(true);
+    expect(gitResource({ fetch: "build", url: "https://example.com/private.git" }).success).toBe(true);
+    expect(messages({ branch: undefined, fetch: "build", ref: "  " })).toEqual([expect.stringContaining("must not be empty")]);
     expect(messages({ auth: {}, fetch: "build" })).toEqual([expect.stringContaining("exactly one of ssh_key or ssh_key_env")]);
     expect(messages({ auth: { ssh_key: "k", ssh_key_env: "K" }, fetch: "build" })).toEqual([expect.stringContaining("exactly one of ssh_key or ssh_key_env")]);
     expect(gitResource({ auth: { ssh_key_env: "not a name" }, fetch: "build" }).success).toBe(false);

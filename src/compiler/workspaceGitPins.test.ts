@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -7,7 +7,9 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { compileProject } from "./compileProject.js";
-import { gitPinRefspec, withGitPinEnvironment } from "./workspaceGitFetch.js";
+import type { CompilePlan } from "./types.js";
+import { resolveWorkspaceGitPins } from "./workspaceGitPins.js";
+import { gitPinRefspec, withGitPinEnvironment, withGitPinLock } from "./workspaceGitFetch.js";
 
 const run = promisify(execFile);
 const git = (cwd: string, ...args: string[]) => run("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd });
@@ -102,7 +104,8 @@ describe("fetch: build git resources", () => {
     await writeFile(path.join(bin, "ssh"), [
       "#!/bin/sh", `log=${JSON.stringify(log)}`, 'printf "%s\\n" "$*" >> "$log"',
       'key=""; prev=""; for arg in "$@"; do [ "$prev" = "-i" ] && key="$arg"; prev="$arg"; done',
-      'echo "keyfile=$key" >> "$log"; cat "$key" >> "$log"',
+      'echo "keyfile=$key" >> "$log"; ls -l "$key" | cut -c1-10 >> "$log"; cat "$key" >> "$log"',
+      'echo "inherited=${SPAWNFILE_TEST_DEPLOY_KEY:-none}" >> "$log"',
       'for last in "$@"; do :; done', 'exec sh -c "$last"', ""
     ].join("\n"));
     await chmod(path.join(bin, "ssh"), 0o755);
@@ -115,6 +118,9 @@ describe("fetch: build git resources", () => {
       await writeFile(path.join(org, "Spawnfile"), agentSpawnfile(pinnedResource(`ssh://git@private.example.invalid${source}`, `branch: ${BRANCH}`, ["  auth:", "    ssh_key_env: SPAWNFILE_TEST_DEPLOY_KEY"])));
       const result = await compile("out-ssh", { bundleIdentity: "release" });
       expect(result.report.workspace_git_resources![0]).toMatchObject({ auth: "ssh_key_env", url: `ssh://git@private.example.invalid${source}` });
+      // A failed fetch cleans its key up too.
+      await writeFile(path.join(org, "Spawnfile"), agentSpawnfile(pinnedResource(`ssh://git@private.example.invalid${source}`, "branch: missing", ["  auth:", "    ssh_key_env: SPAWNFILE_TEST_DEPLOY_KEY"])));
+      await expect(compile("out-ssh-missing")).rejects.toThrow(/could not be resolved/u);
     } finally {
       for (const [name, value] of [["SPAWNFILE_TEST_DEPLOY_KEY", previous.key], ["PATH", previous.path], ["GIT_SSH_COMMAND", previous.ssh]] as const) {
         if (value === undefined) delete process.env[name]; else process.env[name] = value;
@@ -124,10 +130,14 @@ describe("fetch: build git resources", () => {
     expect(calls).toContain("-o IdentitiesOnly=yes -o BatchMode=yes");
     expect(calls).toContain("git@private.example.invalid");
     expect(calls).toContain("spawnfile-test-deploy-key-material");
-    const keyFile = /keyfile=(\S+)/u.exec(calls)![1]!;
-    expect(await stat(path.dirname(keyFile)).catch(() => undefined)).toBeUndefined();
-    const leaks = (await run("grep", ["-rl", "spawnfile-test-deploy-key-material", path.join(root, "out-ssh"), cache]).catch((error: { code?: number }) => ({ code: error.code, stdout: "" }))).stdout;
-    expect(leaks).toBe("");
+    expect(calls).toContain("-rw-------");
+    expect(calls).toContain("inherited=none");
+    const keyFiles = [...calls.matchAll(/keyfile=(\S+)/gu)].map((match) => match[1]!);
+    expect(new Set(keyFiles).size).toBe(2);
+    for (const keyFile of keyFiles) expect(await stat(path.dirname(keyFile)).catch(() => undefined)).toBeUndefined();
+    // grep exits 1 for "no match"; any other failure must not read as clean.
+    const scan = await run("grep", ["-rl", "spawnfile-test-deploy-key-material", path.join(root, "out-ssh"), cache]).then(() => "leaked", (error: { code?: number }) => error.code === 1 ? "clean" : `grep failed: ${error.code}`);
+    expect(scan).toBe("clean");
   }, 60_000);
 
   it("passes a declared key file to ssh and refuses a missing one or an unset env", async () => {
@@ -139,6 +149,40 @@ describe("fetch: build git resources", () => {
     await expect(withGitPinEnvironment({ sshKeyEnv: "UNSET_KEY" }, async () => "", {})).rejects.toThrow(/UNSET_KEY is not set/u);
     expect((await withGitPinEnvironment(undefined, async (env) => env, { GIT_SSH_COMMAND: "agent" })).GIT_TERMINAL_PROMPT).toBe("0");
   });
+
+  it("serializes concurrent compiles sharing one cache and takes over a dead owner's lock", async () => {
+    await commitDay("s1\n");
+    await writeFile(path.join(org, "Spawnfile"), agentSpawnfile(pinnedResource(`file://${source}`, `branch: ${BRANCH}`)));
+    const results = await Promise.all(["out-p1", "out-p2", "out-p3"].map((out) => compile(out)));
+    expect(new Set(results.map((result) => result.report.workspace_git_resources![0]!.sha256)).size).toBe(1);
+    const objects = path.join(cache, "git-resources/objects"), [repository] = (await readdir(objects)).filter((name) => name.endsWith(".git"));
+    let order: string[] = [];
+    await Promise.all([
+      withGitPinLock(path.join(objects, repository!), async () => { order.push("a+"); await new Promise((resolve) => setTimeout(resolve, 150)); order.push("a-"); }),
+      new Promise((resolve) => setTimeout(resolve, 20)).then(() => withGitPinLock(path.join(objects, repository!), async () => { order.push("b+"); order.push("b-"); }))
+    ]);
+    expect(order).toEqual(["a+", "a-", "b+", "b-"]);
+    const dead = spawn(process.execPath, ["-e", ""]);
+    await new Promise((resolve) => dead.once("close", resolve));
+    await mkdir(path.join(objects, `${repository!}.lock`));
+    await writeFile(path.join(objects, `${repository!}.lock/owner`), `${dead.pid}\n`);
+    order = [];
+    await withGitPinLock(path.join(objects, repository!), async () => { order.push("taken"); });
+    expect(order).toEqual(["taken"]);
+    expect((await compile("out-p4")).report.workspace_git_resources![0]!.sha256).toBe(results[0]!.report.workspace_git_resources![0]!.sha256);
+  }, 60_000);
+
+  it("reports every distinct resolution of one resource id, even when two commits archive identically", async () => {
+    const first = await commitDay("same\n");
+    await git(source, "commit", "-q", "--allow-empty", "-m", "empty");
+    await git(source, "branch", "other", first);
+    const resource = (branch: string, agent: string) => ({ branch, fetch: "build", id: "private-source", kind: "git", mode: "readonly", mount: "./repos/private-source", scope: { key: path.join(org, agent, "Spawnfile"), kind: "agent", name: agent }, sharing: "per_agent", url: `file://${source}` });
+    const plan = { nodes: [["a", BRANCH], ["b", "other"]].map(([agent, branch]) => ({ kind: "agent", value: { workspaceResources: [resource(branch!, agent!)] } })) } as unknown as CompilePlan;
+    const { report } = await resolveWorkspaceGitPins(plan, { architecture: "amd64", bundleCacheDirectory: path.join(cache, "workspace-bundles"), outputDirectory: path.join(root, "out-plan") });
+    expect(report).toHaveLength(2);
+    expect(new Set(report.map((entry) => entry.sha256)).size).toBe(1);
+    expect(new Set(report.map((entry) => entry.commit)).size).toBe(2);
+  }, 60_000);
 
   it("maps selectors to remote refs", () => {
     expect(gitPinRefspec({ kind: "branch", value: "main" })).toEqual({ source: "refs/heads/main" });
@@ -154,12 +198,12 @@ describe("fetch: build git resources", () => {
     const pin = (await compile("out-h")).report.workspace_git_resources![0]!;
     expect(pin).toMatchObject({ file_count: 2, selector: { kind: "default_branch" } });
     // Shallow: a long-lived private repo's history is never downloaded, only the pinned commit's tree.
-    const [objects] = await readdir(path.join(cache, "git-resources/objects"));
+    const [objects] = (await readdir(path.join(cache, "git-resources/objects"))).filter((name) => name.endsWith(".git"));
     expect((await stat(path.join(cache, "git-resources/objects", objects!, "shallow"))).isFile()).toBe(true);
     await run("ln", ["-s", "README.md", path.join(source, "link")]);
     await git(source, "add", ".");
     await git(source, "commit", "-qm", "link");
     await expect(compile("out-l")).rejects.toThrow(/contains a symlink; exclude it: link/u);
-    expect(await readdir(path.join(cache, "git-resources/objects"))).toHaveLength(1);
+    expect((await readdir(path.join(cache, "git-resources/objects"))).filter((name) => name.endsWith(".git"))).toHaveLength(1);
   }, 60_000);
 });
