@@ -15,6 +15,7 @@ src/
 ├── report/       # Diagnostics and compile report generation
 ├── runtime/      # Runtime adapter contract and bundled adapters
 ├── target/       # Project-neutral target-resource public contracts
+├── volume/       # Host-fed volumes: atomic-swap refresh, integrity verify, single-writer lock
 └── shared/       # Small cross-cutting constants, types, and errors
 ```
 
