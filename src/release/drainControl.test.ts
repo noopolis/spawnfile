@@ -127,3 +127,36 @@ describe("waitForDrained", () => {
     await expect(waitForDrained(target, { call: async () => availability(), pollMs: 1, timeoutMs: 1_000 })).rejects.toThrow("stopped reporting the drain");
   });
 });
+
+describe("helperControlCall", () => {
+  const fakeDocker = async (script: string): Promise<string> => {
+    const { chmod, mkdtemp, writeFile } = await import("node:fs/promises");
+    const os = await import("node:os");
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-fake-docker-"));
+    const file = path.join(directory, "docker");
+    await writeFile(file, `#!/bin/sh\n${script}\n`);
+    await chmod(file, 0o755);
+    return file;
+  };
+
+  it("hands curl the bearer header on stdin and parses the answer", async () => {
+    const { helperControlCall } = await import("./drainControl.js");
+    const { mkdtemp, readFile } = await import("node:fs/promises");
+    const os = await import("node:os");
+    const capture = path.join(await mkdtemp(path.join(os.tmpdir(), "spawnfile-capture-")), "stdin");
+    const docker = await fakeDocker(`cat > ${capture}; echo "$@" > ${capture}.args; printf '{"ok":true}\\n200'`);
+    const response = await helperControlCall({ ...target, dockerCommand: docker }, "POST", "/v2/drain");
+    expect(response).toEqual({ body: "{\"ok\":true}", status: 200 });
+    expect(await readFile(capture, "utf8")).toBe("Authorization: Bearer secret-token\n");
+    expect(await readFile(`${capture}.args`, "utf8")).not.toContain("secret-token");
+  });
+
+  it("reports a failing helper without echoing the token", async () => {
+    const { helperControlCall } = await import("./drainControl.js");
+    const docker = await fakeDocker(`cat >/dev/null; echo "curl: (7) refused secret-token" >&2; exit 7`);
+    const failure = helperControlCall({ ...target, dockerCommand: docker }, "GET", "/v2/availability");
+    await expect(failure).rejects.toMatchObject({ reason: "drain-failed" });
+    await expect(failure).rejects.toThrow(/exit 7.*\[redacted\]/u);
+    await expect(helperControlCall({ ...target, dockerCommand: "/nonexistent/docker" }, "GET", "/v2/availability")).rejects.toThrow("cannot start");
+  });
+});
