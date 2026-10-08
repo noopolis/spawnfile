@@ -12,7 +12,9 @@ import {
   readStatus,
   readStatusAgainstHead,
   resolveGitLocation,
+  resolveCommit,
   resolveHead,
+  type GitTreeEntry,
   streamBlobs,
   type GitStatusEntry
 } from "./workspaceBundleGit.js";
@@ -122,6 +124,10 @@ export const resolveReleaseFiles = async (directory: string, exclude: readonly s
   // Status reads HEAD twice internally; if HEAD has moved since, it may have compared against a different commit.
   const [tree, headNow] = await Promise.all([listCommittedTree(directory, status.head), resolveHead(directory)]);
   if (headNow !== status.head) fail(`Release workspace bundle HEAD moved while it was checked; retry: ${directory}`);
+  return { directory, entries: treeEntries(tree, excluded), mode: "release" };
+};
+
+const treeEntries = (tree: GitTreeEntry[], excluded: (relativePath: string) => boolean): BundleFileEntry[] => {
   const entries: BundleFileEntry[] = [];
   for (const entry of tree) {
     if (excluded(entry.path)) continue;
@@ -129,7 +135,18 @@ export const resolveReleaseFiles = async (directory: string, exclude: readonly s
     if (entry.type !== "blob") fail(`Workspace bundle input has unsupported git type ${entry.type}: ${entry.path}`);
     entries.push({ identity: `git:${entry.objectId}`, mode: normalizeBundleMode(entry.mode), objectId: entry.objectId, path: validEntryPath(entry.path) });
   }
-  return { directory, entries: sortEntries(entries), mode: "release" };
+  return sortEntries(entries);
+};
+
+/**
+ * A pinned revision: identity and bytes come from the tree of `ref` (resolved
+ * to a commit once), so the work tree's state is irrelevant and no clean
+ * checkout is needed. The same in dev and release compiles.
+ */
+export const resolveCommittedFiles = async (directory: string, ref: string, exclude: readonly string[] = []): Promise<BundleFilesInput> => {
+  const commit = await resolveCommit(directory, ref);
+  if (!commit) fail(`Workspace bundle ref ${ref} does not name a commit in ${directory}; fetch it first`);
+  return { directory, entries: treeEntries(await listCommittedTree(directory, commit), compileExcludePatterns(exclude)), mode: "release" };
 };
 
 const HASH_CONCURRENCY = 8;

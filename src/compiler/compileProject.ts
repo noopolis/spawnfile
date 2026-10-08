@@ -63,6 +63,8 @@ export type {
 } from "./organizationReadyEvidence.js";
 
 export interface CompileProjectOptions {
+  /** Docker CLI for dependency installs and image-run generated bundle steps; defaults to `docker`. */
+  bundleDockerCommand?: string;
   /** Cache for built workspace bundles; defaults to `$SPAWNFILE_HOME/cache/workspace-bundles`. */
   bundleCacheDirectory?: string;
   /** `release` builds bundles only from clean committed inputs; `dev` (default) includes uncommitted edits. */
@@ -289,6 +291,7 @@ export const compileProject = async (
   const workspaceBundles = await resolveWorkspaceBundles(plan, {
     architecture: options.containerArchitecture,
     cacheDirectory: options.bundleCacheDirectory,
+    ...(options.bundleDockerCommand !== undefined ? { dockerCommand: options.bundleDockerCommand } : {}),
     identity: options.bundleIdentity,
     outputDirectory
   });

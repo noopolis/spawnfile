@@ -146,12 +146,43 @@ const teamWorkspaceResourceVolumeSchema = z
   .strict();
 
 /** Declared inputs Spawnfile builds into the bundle archive. Exactly one input kind per bundle. */
-const workspaceBundleBuildSchema = z.object({
-  files: z.object({
-    exclude: z.array(z.string().trim().min(1)).optional(),
-    root: z.string().trim().min(1)
-  }).strict()
+const pinnedImageSchema = z.string().trim().regex(/^[^\s@]+@sha256:[a-f0-9]{64}$/u, "image must be pinned by @sha256 digest");
+const argvSchema = z.array(z.string().min(1)).min(1);
+const workspaceBundleFilesSchema = z.object({
+  exclude: z.array(z.string().trim().min(1)).optional(),
+  /** Archive the tree of this commit (any git revision) instead of the work tree; needs no clean checkout. */
+  ref: z.string().trim().min(1).optional(),
+  root: z.string().trim().min(1)
 }).strict();
+
+/**
+ * Declared inputs Spawnfile builds into the bundle archive. Exactly one input kind per bundle:
+ * `files` (git-tracked files), `dependencies` (lockfile installed for the target platform in a
+ * pinned image) or `generated` (a declared command writing an output directory from declared inputs).
+ */
+const workspaceBundleBuildSchema = z.object({
+  dependencies: z.object({
+    check: argvSchema.optional(),
+    dev: z.boolean().optional(),
+    directory: z.string().trim().min(1),
+    image: pinnedImageSchema,
+    manager: z.literal("npm").optional(),
+    scripts: z.boolean().optional()
+  }).strict().optional(),
+  files: workspaceBundleFilesSchema.optional(),
+  generated: z.object({
+    command: argvSchema,
+    cwd: z.string().trim().min(1).optional(),
+    image: pinnedImageSchema.optional(),
+    inputs: z.array(workspaceBundleFilesSchema).min(1),
+    timeout_seconds: z.number().int().positive().max(86_400).optional(),
+    tools: z.array(argvSchema).optional()
+  }).strict().optional()
+}).strict().superRefine((value, context) => {
+  if ([value.files, value.dependencies, value.generated].filter((kind) => kind !== undefined).length !== 1) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "bundle build must declare exactly one of files, dependencies or generated" });
+  }
+});
 
 const teamWorkspaceResourceBundleSchema = z.object({
   build: workspaceBundleBuildSchema.optional(),
