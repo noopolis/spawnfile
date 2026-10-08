@@ -26,8 +26,15 @@ describe("agent MCP server entries", () => {
     expect(manifestSchema.safeParse(agent([{ env: { A: "1" }, name: "workbench", tools: ["file_item"] }])).success).toBe(true);
   });
 
-  it("requires an override to declare tools or env", () => {
-    expect(firstIssue(agent([{ name: "workbench" }]))).toBe("MCP server override without transport must declare tools or env");
+  it("accepts a bare name, which takes (or opts in to) the inherited server unchanged", () => {
+    expect(manifestSchema.safeParse(agent([{ name: "workbench" }])).success).toBe(true);
+  });
+
+  it("accepts opt_in only on shared servers", () => {
+    const server = { command: "/bin/x", name: "workbench", opt_in: true, tools: ["a"], transport: "stdio" };
+    expect(manifestSchema.safeParse(team([server])).success).toBe(true);
+    expect(manifestSchema.safeParse(agent([server])).success).toBe(false);
+    expect(manifestSchema.safeParse(team([{ ...server, opt_in: "yes" }])).success).toBe(false);
   });
 
   it("rejects server fields on an override instead of guessing a replacement", () => {

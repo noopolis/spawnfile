@@ -1,7 +1,8 @@
 import {
   isMcpServerDeclaration,
   type McpServer,
-  type McpServerEntry
+  type McpServerEntry,
+  type SharedMcpServer
 } from "../manifest/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
@@ -14,16 +15,24 @@ import { SpawnfileError } from "../shared/index.js";
  * - A local entry without `transport` narrows the inherited server of the same
  *   name: `tools` replaces the inherited allowlist, `env` merges key by key
  *   with local keys winning. Every other field stays inherited.
- * - An override with no inherited server to narrow is a compile error naming
+ * - A bare `{ name }` takes the inherited server unchanged.
+ * - A shared server marked `opt_in: true` is inherited only by members that
+ *   list its name (bare or narrowing). Members never remove an inherited
+ *   server (SPEC §4.4); an opt-in server is simply not offered by default.
+ * - An override with no shared server to narrow is a compile error naming
  *   the agent, because there is nothing to complete it from.
  */
 export const resolveInheritedMcpServers = (
   agentName: string,
-  sharedServers: McpServer[] = [],
+  sharedServers: SharedMcpServer[] = [],
   localEntries: McpServerEntry[] = []
 ): McpServer[] => {
-  const inherited = new Map(sharedServers.map((server) => [server.name, server]));
-  const resolved = new Map(inherited);
+  const inherited = new Map<string, McpServer>();
+  const resolved = new Map<string, McpServer>();
+  for (const { opt_in: optIn, ...server } of sharedServers) {
+    inherited.set(server.name, server);
+    if (optIn !== true) resolved.set(server.name, server);
+  }
 
   for (const entry of localEntries) {
     if (isMcpServerDeclaration(entry)) {

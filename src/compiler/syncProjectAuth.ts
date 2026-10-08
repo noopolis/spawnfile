@@ -52,7 +52,8 @@ const resolveAuthRequirements = async (
         addProjectSecret(secret);
       }
       for (const server of node.value.shared.mcpServers) {
-        if (server.auth?.secret) {
+        // An opt-in server's secret is required only through the members that select it.
+        if (server.auth?.secret && server.opt_in !== true) {
           addProjectSecret({ name: server.auth.secret, required: true });
         }
       }
