@@ -43,7 +43,7 @@ interface ReleaseCommandOptions {
 
 export const registerReleaseCommand = (
   program: Command,
-  handlers: Pick<CliHandlers, "requireAuthProfile">,
+  handlers: Partial<Pick<CliHandlers, "requireAuthProfile">>,
   streams: CliStreams,
   setExitCode: (code: number) => void,
   dependencies: () => ReleaseDependencies = createDefaultReleaseDependencies
