@@ -24,13 +24,25 @@ const runtimeInstallSchema = z.discriminatedUnion("kind", [
   z
     .object({
       capability_receipt: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+      capability_receipts: z
+        .object({
+          amd64: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+          arm64: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional()
+        })
+        .strict()
+        .refine((receipts) => Object.keys(receipts).length > 0, "capability_receipts must pin at least one architecture")
+        .optional(),
       contract_manifest_sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
       digest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
       image: z.string().min(1),
       kind: z.literal("container_image"),
       tag: z.string().min(1)
     })
-    .strict(),
+    .strict()
+    .refine(
+      (install) => !(install.capability_receipt && install.capability_receipts),
+      "capability_receipt and capability_receipts are mutually exclusive"
+    ),
   z
     .object({
       kind: z.literal("npm"),
@@ -78,6 +90,8 @@ let runtimeRegistryPromise: Promise<RuntimeRegistryEntry[]> | undefined;
 export type RuntimeRegistryInstall =
   | {
       capabilityReceipt?: string;
+      /** Per-architecture receipts embedded in a multi-architecture image index. */
+      capabilityReceipts?: DaimonCapabilityReceipts;
       contractManifestSha256?: string;
       digest?: string;
       image: string;
@@ -100,6 +114,8 @@ export type RuntimeRegistryInstall =
       kind: "source_repo";
     };
 
+export type DaimonCapabilityReceipts = Partial<Record<"amd64" | "arm64", string>>;
+
 export interface RuntimeRegistryEntry {
   defaultBranch: string;
   install?: RuntimeRegistryInstall;
@@ -120,6 +136,9 @@ export const parseRuntimeRegistry = (source: string): RuntimeRegistryEntry[] => 
           ? {
               ...(entry.install.capability_receipt
                 ? { capabilityReceipt: entry.install.capability_receipt }
+                : {}),
+              ...(entry.install.capability_receipts
+                ? { capabilityReceipts: { ...entry.install.capability_receipts } }
                 : {}),
               ...(entry.install.contract_manifest_sha256
                 ? { contractManifestSha256: entry.install.contract_manifest_sha256 }
