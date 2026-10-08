@@ -2,6 +2,7 @@ import {
   type Environment,
   type McpServer,
   type Secret,
+  type SharedEnvironment,
   type TeamWorkspace
 } from "../manifest/index.js";
 import {
@@ -13,10 +14,10 @@ import {
 import {
   loadResolvedDocuments,
   mergeEnv,
-  mergeMcpServers,
   mergePackages,
   mergeSecrets
 } from "./surfaces.js";
+import { resolveInheritedMcpServers } from "./mcpServerInheritance.js";
 
 export const DEFAULT_POLICY_MODE = "warn";
 export const DEFAULT_POLICY_ON_DEGRADE = "warn";
@@ -51,7 +52,8 @@ export const mergeResolvedDocuments = async (
 };
 
 export const resolveEffectiveEnvironment = (
-  sharedEnvironment: Environment | undefined,
+  agentName: string,
+  sharedEnvironment: SharedEnvironment | undefined,
   localEnvironment: Environment | undefined
 ): {
   env: Record<string, string>;
@@ -60,7 +62,7 @@ export const resolveEffectiveEnvironment = (
   secrets: Secret[];
 } => ({
   env: mergeEnv(sharedEnvironment?.env, localEnvironment?.env),
-  mcpServers: mergeMcpServers(sharedEnvironment?.mcp_servers, localEnvironment?.mcp_servers),
+  mcpServers: resolveInheritedMcpServers(agentName, sharedEnvironment?.mcp_servers, localEnvironment?.mcp_servers),
   packages: mergePackages(sharedEnvironment?.packages, localEnvironment?.packages),
   secrets: mergeSecrets(sharedEnvironment?.secrets, localEnvironment?.secrets)
 });

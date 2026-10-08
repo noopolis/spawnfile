@@ -1,8 +1,5 @@
 import path from "node:path";
 
-import { parse as parseYaml } from "yaml";
-import { z } from "zod";
-
 import { fileExists, isSymlink, readUtf8File, resolveProjectPath } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import {
@@ -19,9 +16,9 @@ import {
   isAgentManifest,
   isInlineAgentMember,
   isReferencedMember,
-  isTeamManifest,
-  manifestSchema
+  isTeamManifest
 } from "./schemas.js";
+import { parseManifest } from "./parseManifest.js";
 import { parseSkillFrontmatter } from "./skillFrontmatter.js";
 
 export interface LoadedManifest<TManifest extends Manifest = Manifest> {
@@ -39,7 +36,7 @@ const ensureUniqueNames = (names: string[], label: string): void => {
   }
 };
 
-const getMcpNames = (mcpServers?: McpServer[]): Set<string> =>
+const getMcpNames = (mcpServers?: Array<Pick<McpServer, "name">>): Set<string> =>
   new Set((mcpServers ?? []).map((server) => server.name));
 
 const validateSkillRequirements = (
@@ -252,32 +249,6 @@ const validateLocalTeamManifest = async (
   }
 };
 
-const parseManifest = (source: string): Manifest => {
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(source);
-  } catch (error) {
-    // A YAML syntax error is a malformed manifest, not a runtime failure — wrap
-    // it so it exits as a usage error instead of leaking the parser's wording.
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new SpawnfileError("invalid_manifest", `Invalid Spawnfile manifest: ${reason}`);
-  }
-
-  try {
-    return manifestSchema.parse(parsed);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      const issue = error.issues[0];
-      throw new SpawnfileError(
-        "invalid_manifest",
-        `Invalid Spawnfile manifest: ${issue.message}`
-      );
-    }
-
-    throw error;
-  }
-};
-
 export const loadManifest = async (manifestPath: string): Promise<LoadedManifest> => {
   let source: string;
   try {
@@ -292,7 +263,7 @@ export const loadManifest = async (manifestPath: string): Promise<LoadedManifest
     }
     throw error;
   }
-  const manifest = parseManifest(source);
+  const manifest = parseManifest(source, manifestPath);
 
   if (isAgentManifest(manifest)) {
     await validateLocalAgentManifest(manifestPath, manifest);

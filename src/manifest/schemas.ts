@@ -3,7 +3,7 @@ import { z } from "zod";
 import { agentScheduleSchema } from "./scheduleSchemas.js";
 import { executionSchema } from "./executionSchemas.js";
 import { memoryBanksSchema } from "./memorySchemas.js";
-import { mcpServerSchema } from "./mcpSchemas.js";
+import { mcpServerEntrySchema, mcpServerSchema } from "./mcpSchemas.js";
 import { surfacesSchema } from "./surfaceSchemas.js";
 import { externalParticipantServiceSchema } from "./externalParticipantSchemas.js";
 import {
@@ -77,10 +77,10 @@ const packageSchema = z
     }
   });
 
-const environmentSchema = z
+const createEnvironmentSchema = <TServer extends z.ZodType>(serverSchema: TServer) => z
   .object({
     env: z.record(z.string(), z.string()).optional(),
-    mcp_servers: z.array(mcpServerSchema).optional(),
+    mcp_servers: z.array(serverSchema).optional(),
     packages: z.array(packageSchema).optional(),
     secrets: z.array(secretSchema).optional()
   })
@@ -94,6 +94,11 @@ const environmentSchema = z
       });
     }
   });
+
+// Team `shared.environment` declares complete servers; agent scope may also
+// narrow an inherited server with a transport-less override entry.
+const sharedEnvironmentSchema = createEnvironmentSchema(mcpServerSchema);
+const environmentSchema = createEnvironmentSchema(mcpServerEntrySchema);
 
 const commonManifestSchema = z
   .object({
@@ -120,7 +125,7 @@ const subagentSchema = z
 
 const sharedSurfaceSchema = z
   .object({
-    environment: environmentSchema.optional(),
+    environment: sharedEnvironmentSchema.optional(),
     workspace: teamWorkspaceSchema.optional()
   })
   .strict();
@@ -304,11 +309,13 @@ export type AgentManifest = z.infer<typeof agentManifestSchema>;
 export type { AgentSchedule } from "./scheduleSchemas.js";
 export type DocsBlock = z.infer<typeof teamWorkspaceDocsSchema>;
 export type Environment = z.infer<typeof environmentSchema>;
+export type SharedEnvironment = z.infer<typeof sharedEnvironmentSchema>;
 export type Manifest = z.infer<typeof manifestSchema>;
 export type InlineAgentMember = z.infer<typeof inlineAgentMemberSchema>;
 export type ManifestMember = z.infer<typeof memberSchema>;
 export type ReferencedMember = z.infer<typeof referencedMemberSchema>;
 export type McpServer = z.infer<typeof mcpServerSchema>;
+export { isMcpServerDeclaration, type McpServerEntry, type McpServerOverride } from "./mcpSchemas.js";
 export type RuntimeBinding = z.infer<typeof runtimeBindingSchema>;
 export type Package = z.infer<typeof packageSchema>;
 export type Secret = z.infer<typeof secretSchema>;

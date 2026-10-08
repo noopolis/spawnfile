@@ -19,6 +19,7 @@ const CONFIG_FILE_PLACEHOLDER = "<config-file>";
 const INSTANCE_ROOT_PLACEHOLDER = "<instance-root>";
 const SOURCE_AGENT_PLACEHOLDER = "<agent-name>";
 const SOURCE_SLUG_PLACEHOLDER = "<source-slug>";
+const WORKSPACE_PATH_PLACEHOLDER = "<workspace-path>";
 
 export interface ResolvedTargetResourcePlan extends WorkspaceResourcePlan {
   canonicalBackingPath: string;
@@ -78,35 +79,36 @@ export const resolveWorkspaceResourceVolumes = (
   })) };
 };
 
-const replaceSourceWorkspacePathTemplate = (
-  template: string,
-  input: ContainerTargetInput,
-  instancePaths: RuntimeTargetPlan["instancePaths"],
-  meta: RuntimeContainerMeta
-): string => {
-  const agentName = input.value.kind === "agent" ? input.value.name : input.slug;
-  const instanceRoot = instancePaths.instanceRoot ?? path.posix.dirname(instancePaths.workspacePath);
-
-  return template
-    .replaceAll(INSTANCE_ROOT_PLACEHOLDER, instanceRoot)
-    .replaceAll(CONFIG_FILE_PLACEHOLDER, meta.configFileName)
-    .replaceAll(SOURCE_AGENT_PLACEHOLDER, agentName)
-    .replaceAll(SOURCE_SLUG_PLACEHOLDER, input.slug);
-};
+/**
+ * One source agent's workspace path inside its runtime target, still in the
+ * target's placeholder vocabulary (`<instance-root>`, `<workspace-path>`),
+ * which container rendering substitutes once the target's instance paths are
+ * known. Mount link paths and MCP `${workspace}` both resolve through here.
+ */
+export const expandSourceWorkspacePathTemplate = (
+  meta: RuntimeContainerMeta,
+  source: { agentName: string; slug: string }
+): string =>
+  meta.instancePaths.sourceWorkspacePathTemplate
+    ? meta.instancePaths.sourceWorkspacePathTemplate
+      .replaceAll(CONFIG_FILE_PLACEHOLDER, meta.configFileName)
+      .replaceAll(SOURCE_AGENT_PLACEHOLDER, source.agentName)
+      .replaceAll(SOURCE_SLUG_PLACEHOLDER, source.slug)
+    : WORKSPACE_PATH_PLACEHOLDER;
 
 const resolveSourceWorkspacePath = (
   input: ContainerTargetInput,
   instancePaths: RuntimeTargetPlan["instancePaths"],
   meta: RuntimeContainerMeta
-): string =>
-  meta.instancePaths.sourceWorkspacePathTemplate
-    ? replaceSourceWorkspacePathTemplate(
-        meta.instancePaths.sourceWorkspacePathTemplate,
-        input,
-        instancePaths,
-        meta
-      )
-    : instancePaths.workspacePath;
+): string => {
+  const instanceRoot = instancePaths.instanceRoot ?? path.posix.dirname(instancePaths.workspacePath);
+  return expandSourceWorkspacePathTemplate(meta, {
+    agentName: input.value.kind === "agent" ? input.value.name : input.slug,
+    slug: input.slug
+  })
+    .replaceAll(INSTANCE_ROOT_PLACEHOLDER, instanceRoot)
+    .replaceAll(WORKSPACE_PATH_PLACEHOLDER, instancePaths.workspacePath);
+};
 
 const sourceTargetId = (
   target: ContainerTarget,

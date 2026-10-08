@@ -75,3 +75,11 @@ only from Daimon's closed vocabularies — `limit_reason`, `model`, `outcome`,
 row's spend. Rows with `estimated_requests` carry a conservative charge for
 requests whose provider response had no valid usage; `spawnfile usage` marks
 them `~` and says so, never presenting them as measured.
+
+`RuntimeAdapter.preflightAgent(node, nodeId)` (`types.ts`) is optional and
+side-effect free: it throws a `SpawnfileError` for whatever that adapter's
+compile would refuse for one agent, without emitting anything.
+`src/compiler/preflightCompilePlan.ts` runs it for every agent during
+`spawnfile validate` and reports every refusing agent by node id. Keep it in
+step with `compileAgent`/`createContainerTargets` by calling the same check
+functions, never a copy.
