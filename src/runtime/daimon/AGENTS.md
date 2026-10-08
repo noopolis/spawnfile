@@ -49,6 +49,13 @@ leave that shared parent owned by the organization uid as a side effect of
 securing its own realm mount, which then blocks *every other* differently-owned
 child (concretely, this ledger) from ever being created there at all.
 
+`preflightAgent` runs, for `spawnfile validate`, exactly the per-agent checks
+compile would refuse on: the MCP validations below, the Codex policy pairing,
+and the public instruction-size limit (`assertDaimonInstructionBounds`, the
+same function `createDaimonContainerTargets` applies). A stdio MCP command may
+be rooted at `<instance-root>/` because a resolved `${workspace}` command lives
+there until container rendering makes it absolute.
+
 All three engines lower declared MCP servers and Moltnet surfaces. AGY was
 excluded until Daimon learned to register its per-wake MCP endpoint through
 `agy mcp add`; the compiler-side MCP validations (explicit tools allowlist,

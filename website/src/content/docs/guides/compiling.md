@@ -56,7 +56,7 @@ You can run validation without compiling using `spawnfile validate`:
 spawnfile validate ./my-agent
 ```
 
-This performs static and graph validation without invoking adapters or emitting output.
+This performs static and graph validation, plus each runtime adapter's per-agent preflight (what compile would refuse, named by agent), without compiling or emitting output.
 
 Use `spawnfile view` after validation when you want to inspect the resolved graph before compiling:
 

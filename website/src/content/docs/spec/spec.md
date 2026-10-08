@@ -276,6 +276,34 @@ Rules:
 - Adapters MAY lower a logical MCP declaration into a runtime's native MCP config format.
 - Compiler-owned generated MCP services are not authored under `environment.mcp_servers`, are not visible to `workspace.skills[*].requires.mcp`, and MUST use reserved, collision-free names when exposed in runtime-native MCP config.
 
+#### Per-agent placeholders
+
+`command`, `args`, and `env` values MAY contain these compiler placeholders, resolved per agent at compile time:
+
+| Placeholder | Resolves to |
+|---|---|
+| `${workspace}` | The agent's workspace path inside its runtime target (the same path `./` and `${workspace}/` workspace resource mounts resolve under) |
+| `${agent.id}` | The agent's compile-plan node id, e.g. `agent:writer` |
+| `${agent.name}` | The agent manifest `name` |
+
+- Placeholders are resolved after team inheritance, so one `shared.environment.mcp_servers` entry resolves differently for each member.
+- `${workspace}` and every `${agent.…}` name are reserved. An unknown reserved name, or a reserved placeholder in `url` or `auth`, MUST fail compilation naming the agent and server. Other `${…}` text is not a compiler placeholder.
+- Runtime-owned values that are identical for every agent (for example a loopback control URL) are plain `env` values on the shared server; Spawnfile does not hand runtime credentials to authored MCP servers.
+
+```yaml
+shared:
+  environment:
+    mcp_servers:
+      - name: workbench
+        transport: stdio
+        command: /usr/local/bin/node
+        args: ["${workspace}/tools/workbench/server.mjs"]
+        env:
+          WORKBENCH_AGENT: "${agent.name}"
+          WORKBENCH_STATE: "${workspace}/state"
+        tools: [read_item]
+```
+
 ### 2.3.1 Memory Banks
 
 The top-level `memory` block declares Spawnfile-owned memory banks. A memory bank is portable state and a tool surface for remembering, searching, locating, summarizing, redacting, and forgetting memory events. It is not a natural-language `workspace.docs.memory` document, and it is not a Moltnet network.
@@ -1072,7 +1100,17 @@ Inheritance rules:
 
 - Members extend the shared surface.
 - Members MUST NOT remove inherited items.
-- On MCP name conflict, the member-local declaration MUST win.
+- On MCP name conflict, the member-local declaration MUST win. A member-local entry that declares `transport` is a complete server and replaces the inherited one.
+- A member-local MCP entry without `transport` narrows the inherited server of the same name: it MAY declare only `name`, `tools`, and `env`, and MUST declare `tools` or `env`. `tools` replaces the inherited allowlist; `env` merges key by key with member-local keys winning; every other field is inherited. Such an entry with no inherited server of that name MUST fail compilation naming the agent. `shared.environment.mcp_servers` entries MUST be complete servers.
+
+```yaml
+# member Spawnfile: inherit the team's workbench server, select its tools
+environment:
+  mcp_servers:
+    - name: workbench
+      tools: [file_item, read_item]
+      env: { WORKBENCH_EXTRA: "${workspace}/extra" }
+```
 - On env, secret, package, or resource name conflict, the member-local declaration MUST win.
 - The outer team's shared surface MUST NOT automatically propagate through a nested team boundary into that nested team's own members.
 
@@ -1577,6 +1615,7 @@ Rules:
 - Substitution applies only to string values, not to field names or structural elements.
 - The `environment.secrets[*].name` field, the `shared.environment.secrets[*].name` field, and surface secret-name fields such as `bot_token_secret`, `app_token_secret`, and `signing_secret` MUST NOT be substituted — they are references to environment variable names, not values.
 - Substitution MUST NOT be recursive. A resolved value containing `${...}` is treated as a literal string.
+- `${workspace}` and `${agent.…}` are compiler placeholders (§2.3, workspace resource mounts), not environment variable references, and MUST NOT be substituted at load time.
 
 This allows the same Spawnfile to be compiled with different configurations by changing environment variables or providing a `.env` file, without duplicating the manifest.
 
@@ -1739,7 +1778,9 @@ Validates a Spawnfile project without compiling.
 - `path` is the directory containing the Spawnfile (default: current directory)
 - MUST perform schema validation and file reference checks
 - MUST walk the manifest graph and detect cycles
-- MUST NOT invoke runtime adapters or emit output files
+- MUST name the manifest file (and its declared kind and name, when parseable) in a schema error
+- MUST run each runtime adapter's side-effect-free per-agent preflight (runtime-option errors and declarations the adapter's compile would refuse, such as Daimon's MCP allowlist, absolute stdio command, and public instruction-size limit) and report every refusing agent by node id
+- MUST NOT compile through runtime adapters or emit output files
 - Exit codes follow the shared convention (see Exit Codes above): invalid input or a missing path exits 2; runtime failures exit 1
 
 #### `spawnfile view`
