@@ -10,6 +10,7 @@ export * from "./dockerBuildContext.js";
 export * from "./dockerBuildSkip.js";
 export * from "./initProject.js";
 export * from "./moltnetRoomMemberships.js";
+export * from "./preflightCompilePlan.js";
 export * from "./runProject.js";
 export * from "./syncProjectAuth.js";
 export * from "./types.js";

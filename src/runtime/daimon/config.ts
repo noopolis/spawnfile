@@ -78,16 +78,19 @@ const formatInstructions = (node: ResolvedAgentNode): string =>
   `You are ${node.name}. Follow the workspace instructions.`;
 
 const assertPublicInstructionBounds = (agentId: string, instructions: string): void => {
-  if (
-    Buffer.byteLength(instructions, "utf8") > DAIMON_MAX_INSTRUCTION_BYTES ||
-    [...instructions].length > DAIMON_MAX_INSTRUCTION_CODEPOINTS
-  ) {
+  const bytes = Buffer.byteLength(instructions, "utf8");
+  const codepoints = [...instructions].length;
+  if (bytes > DAIMON_MAX_INSTRUCTION_BYTES || codepoints > DAIMON_MAX_INSTRUCTION_CODEPOINTS) {
     throw new SpawnfileError(
       "validation_error",
-      `Daimon organization runtime v1 instructions for ${agentId} exceed Daimon's public config limit`
+      `Daimon organization runtime v1 instructions for ${agentId} exceed Daimon's public config limit (${bytes} bytes, ${codepoints} code points; limit ${DAIMON_MAX_INSTRUCTION_BYTES} each)`
     );
   }
 };
+
+/** The instruction-size check compile applies in `createDaimonContainerTargets`, for preflight. */
+export const assertDaimonInstructionBounds = (agentId: string, node: ResolvedAgentNode): void =>
+  assertPublicInstructionBounds(agentId, formatInstructions(node));
 
 export const resolveDaimonEngine = (node: ResolvedAgentNode): DaimonEngine => {
   const engine = node.runtime.options.engine ?? "codex";
