@@ -38,7 +38,7 @@ export const lookupCachedBundle = async (directory: string, key: string): Promis
   try {
     const record = JSON.parse(await readFile(location.record, "utf8")) as Partial<CacheRecord>;
     const info = await stat(location.tar);
-    if (record.version !== RECORD_VERSION || record.key !== key || !info.isFile() || info.size !== record.size || info.ino !== record.ino || info.mtimeMs !== record.mtimeMs || typeof record.sha256 !== "string" || !/^sha256:[a-f0-9]{64}$/u.test(record.sha256)) return undefined;
+    if (record.version !== RECORD_VERSION || record.key !== key || !info.isFile() || (info.mode & 0o222) !== 0 || info.size !== record.size || info.ino !== record.ino || info.mtimeMs !== record.mtimeMs || typeof record.sha256 !== "string" || !/^sha256:[a-f0-9]{64}$/u.test(record.sha256)) return undefined;
     const now = new Date();
     await utimes(location.record, now, now).catch(() => undefined);
     return { contentBytes: record.contentBytes!, fileCount: record.fileCount!, key, sha256: record.sha256 as `sha256:${string}`, size: record.size!, tarPath: location.tar };

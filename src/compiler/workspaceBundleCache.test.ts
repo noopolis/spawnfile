@@ -41,6 +41,10 @@ describe("workspace bundle cache", () => {
     expect((await stat(stored.tarPath)).mode & 0o777).toBe(0o444);
     await expect(writeFile(stored.tarPath, "tampered")).rejects.toThrow();
     await chmod(stored.tarPath, 0o644);
+    expect(await lookupCachedBundle(cache, key("a"))).toBeUndefined();
+    await chmod(stored.tarPath, 0o444);
+    expect(await lookupCachedBundle(cache, key("a"))).toBeDefined();
+    await chmod(stored.tarPath, 0o644);
     await writeFile(stored.tarPath, "tampered");
     expect(await lookupCachedBundle(cache, key("a"))).toBeUndefined();
     await writeFile(path.join(cache, `${key("b")}.json`), "{not json");

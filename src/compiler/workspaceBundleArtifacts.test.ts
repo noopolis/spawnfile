@@ -29,7 +29,7 @@ describe("offline workspace bundles", () => {
       const resource = { id: "bad", kind: "bundle", mode: "readonly", mount: "./bad", sha256: `sha256:${createHash("sha256").update(Buffer.alloc(1024)).digest("hex")}`, source: "empty.tar", sharing: "per_agent", scope: { kind: "agent", key: path.join(root, "Agentfile"), name: "agent" } };
       await expect(stageWorkspaceBundles(path.join(root, "out"), { nodes: [{ kind: "agent", value: { workspaceResources: [resource] } }] } as never)).rejects.toThrow(/empty/u);
       await expect(stageWorkspaceBundles(path.join(root, "out2"), { nodes: [{ kind: "agent", value: { workspaceResources: [{ ...resource, source: "missing.tar" }] } }] } as never)).rejects.toThrow();
-      await expect(stageWorkspaceBundles(path.join(root, "out3"), { nodes: [{ kind: "agent", value: { workspaceResources: [resource, { ...resource, source: "other.tar" }] } }] } as never)).rejects.toThrow(/multiple sources/u);
+      await expect(stageWorkspaceBundles(path.join(root, "out3"), { nodes: [{ kind: "agent", value: { workspaceResources: [resource, { ...resource, source: "other.tar" }] } }] } as never)).rejects.toThrow();
       const unsafe = Buffer.alloc(1024); unsafe.write("../escape", 0, "ascii"); unsafe.write("00000000000", 124, "ascii"); unsafe[156] = "2".charCodeAt(0); await writeFile(path.join(root, "unsafe.tar"), unsafe);
       const unsafeResource = { ...resource, source: "unsafe.tar", sha256: `sha256:${createHash("sha256").update(unsafe).digest("hex")}` };
       await expect(stageWorkspaceBundles(path.join(root, "out4"), { nodes: [{ kind: "agent", value: { workspaceResources: [unsafeResource] } }] } as never)).rejects.toThrow(/unsafe tar entry/u);
@@ -75,6 +75,9 @@ describe("offline workspace bundles", () => {
       const output = path.join(root, "out");
       expect(await stageWorkspaceBundles(output, { nodes: [{ kind: "agent", value: { workspaceResources: [resource] } }] } as never)).toBe(true);
       expect(await stageWorkspaceBundles(path.join(root, "duplicate-source"), { nodes: [{ kind: "agent", value: { workspaceResources: [resource, resource] } }] } as never)).toBe(true);
+      await writeFile(path.join(root, "same-bytes.tar"), bytes);
+      expect(await stageWorkspaceBundles(path.join(root, "same-bytes"), { nodes: [{ kind: "agent", value: { workspaceResources: [resource, { ...resource, id: "copy", source: "same-bytes.tar" }] } }] } as never)).toBe(true);
+      await expect(stageWorkspaceBundles(path.join(root, "unbuilt"), { nodes: [{ kind: "agent", value: { workspaceResources: [{ ...resource, source: undefined }] } }] } as never)).rejects.toThrow(/not been built/u);
       expect(await readFile(path.join(output, "container/workspace-bundles", `${sha256.slice(7)}.tar`))).toEqual(bytes);
       await writeFile(path.join(root, "bundle.tar"), Buffer.concat([bytes, Buffer.from("drift")]));
       await expect(stageWorkspaceBundles(path.join(root, "bad"), { nodes: [{ kind: "agent", value: { workspaceResources: [resource] } }] } as never)).rejects.toThrow(/checksum mismatch/u);

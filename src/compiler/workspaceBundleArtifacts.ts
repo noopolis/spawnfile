@@ -50,41 +50,60 @@ export const validateWorkspaceBundleTar = (bytes: Buffer): void => {
   if (!terminated) fail("Workspace bundle is truncated or lacks exact ustar termination"); if (entries === 0) fail("Workspace bundle is empty");
 };
 
-/** A cached archive is hard-linked into the context when it shares a filesystem, else cloned or copied. */
-const placeCached = async (source: string, target: string): Promise<void> => {
-  try { await link(source, target); } catch { await copyFile(source, target, constants.COPYFILE_FICLONE); }
+export const workspaceBundleContextPath = (outputDirectory: string, identity: string): string =>
+  path.join(outputDirectory, "container/workspace-bundles", `${identity.slice(7)}.tar`);
+
+/**
+ * Hard-links a read-only cached archive into the Docker context (cloning or
+ * copying across filesystems). Never writes through an existing name: with
+ * `clean: false` it may already be a link into the cache. Returns the staged
+ * path, or undefined when the cached archive no longer exists.
+ */
+export const linkBuiltBundle = async (archive: string, outputDirectory: string, identity: string): Promise<string | undefined> => {
+  const target = workspaceBundleContextPath(outputDirectory, identity);
+  await mkdir(path.dirname(target), { recursive: true });
+  await rm(target, { force: true });
+  try { await link(archive, target); return target; } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+  }
+  try { await copyFile(archive, target, constants.COPYFILE_FICLONE); return target; } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
 };
 
 /**
- * Places every bundle archive in the Docker context under its digest.
- * `built` maps digests to read-only cache archives that were built or
- * stat-checked this compile; they are linked without being read again. Every
- * `source` tar is hashed, validated and staged from the exact bytes that were
- * verified, even when a built bundle shares its digest.
+ * Completes the bundle archives in the Docker context. Built bundles were
+ * already linked by `resolveWorkspaceBundles` (`built` maps their digests to
+ * the staged path). Every `source` tar is hashed, validated and staged from
+ * the exact bytes that were verified, even when a built bundle shares its
+ * digest; distinct source paths with identical bytes stage once.
  */
 export const stageWorkspaceBundles = async (outputDirectory: string, plan: CompilePlan, built: ReadonlyMap<string, string> = new Map()): Promise<boolean> => {
-  const sources = new Map<string, string>(), cached = new Map<string, string>();
+  const sources = new Map<string, Set<string>>();
+  let any = false;
   for (const node of plan.nodes) if (node.kind === "agent") for (const resource of node.value.workspaceResources ?? []) {
     if (resource.kind !== "bundle") continue;
-    if (resource.sha256 === undefined) throw new SpawnfileError("compile_error", `Workspace bundle ${resource.id} has not been built`);
-    if (resource.source === undefined) {
-      const archive = built.get(resource.sha256);
-      if (!archive) throw new SpawnfileError("compile_error", `Workspace bundle ${resource.id} has not been built`);
-      cached.set(resource.sha256, archive); continue;
+    any = true;
+    if (resource.sha256 === undefined || (resource.source === undefined && !built.has(resource.sha256))) {
+      throw new SpawnfileError("compile_error", `Workspace bundle ${resource.id} has not been built`);
     }
-    const source = path.resolve(path.dirname(resource.scope.key), resource.source), prior = sources.get(resource.sha256);
-    if (prior && prior !== source) throw new SpawnfileError("validation_error", "Workspace bundle digest maps to multiple sources"); sources.set(resource.sha256, source);
+    if (resource.source === undefined) continue;
+    const paths = sources.get(resource.sha256) ?? new Set<string>();
+    paths.add(path.resolve(path.dirname(resource.scope.key), resource.source)); sources.set(resource.sha256, paths);
   }
-  if (sources.size === 0 && cached.size === 0) return false;
-  const destination = path.join(outputDirectory, "container/workspace-bundles"); await mkdir(destination, { recursive: true });
-  // Never write through an existing name: with `clean: false` it may be a hard link into the bundle cache.
-  const target = async (identity: string): Promise<string> => { const file = path.join(destination, `${identity.slice(7)}.tar`); await rm(file, { force: true }); return file; };
-  for (const [identity, source] of sources) {
-    const info = await stat(source); if (!info.isFile() || info.size < 1 || info.size > CAP) throw new SpawnfileError("validation_error", "Workspace bundle must be a bounded regular tar file");
-    const bytes = await readFile(source); const actual = `sha256:${createHash("sha256").update(bytes).digest("hex")}`; if (actual !== identity) throw new SpawnfileError("validation_error", "Workspace bundle checksum mismatch");
-    validateWorkspaceBundleTar(bytes);
-    await writeFile(await target(identity), bytes);
+  if (!any) return false;
+  await mkdir(path.join(outputDirectory, "container/workspace-bundles"), { recursive: true });
+  for (const [identity, paths] of sources) {
+    let verified: Buffer | undefined;
+    for (const source of paths) {
+      const info = await stat(source); if (!info.isFile() || info.size < 1 || info.size > CAP) throw new SpawnfileError("validation_error", "Workspace bundle must be a bounded regular tar file");
+      const bytes = await readFile(source); const actual = `sha256:${createHash("sha256").update(bytes).digest("hex")}`; if (actual !== identity) throw new SpawnfileError("validation_error", "Workspace bundle checksum mismatch");
+      validateWorkspaceBundleTar(bytes); verified ??= bytes;
+    }
+    // Replace by unlinking first: the name may be a hard link into the bundle cache.
+    const target = workspaceBundleContextPath(outputDirectory, identity); await rm(target, { force: true });
+    await writeFile(target, verified!);
   }
-  for (const [identity, archive] of cached) if (!sources.has(identity)) await placeCached(archive, await target(identity));
   return true;
 };

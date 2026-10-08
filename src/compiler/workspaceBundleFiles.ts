@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { SpawnfileError } from "../shared/index.js";
@@ -12,6 +12,7 @@ import {
   readStatus,
   readStatusAgainstHead,
   resolveGitLocation,
+  resolveHead,
   streamBlobs,
   type GitStatusEntry
 } from "./workspaceBundleGit.js";
@@ -118,7 +119,9 @@ export const resolveReleaseFiles = async (directory: string, exclude: readonly s
     fail(`Release workspace bundle requires a clean commit; ${dirty.length} uncommitted change(s) under ${directory}, first: ${dirty[0]!}`);
   }
   // The tree of exactly the commit status verified clean against; bytes come from its objects, so later edits cannot leak in.
-  const tree = await listCommittedTree(directory, status.head);
+  // Status reads HEAD twice internally; if HEAD has moved since, it may have compared against a different commit.
+  const [tree, headNow] = await Promise.all([listCommittedTree(directory, status.head), resolveHead(directory)]);
+  if (headNow !== status.head) fail(`Release workspace bundle HEAD moved while it was checked; retry: ${directory}`);
   const entries: BundleFileEntry[] = [];
   for (const entry of tree) {
     if (excluded(entry.path)) continue;
@@ -131,9 +134,9 @@ export const resolveReleaseFiles = async (directory: string, exclude: readonly s
 
 const HASH_CONCURRENCY = 8;
 
-const hashFile = async (filePath: string): Promise<string> => {
+const hashFile = async (filePath: string, spend: (bytes: number) => void): Promise<string> => {
   const hash = createHash("sha256");
-  for await (const chunk of createReadStream(filePath)) hash.update(chunk as Buffer);
+  for await (const chunk of createReadStream(filePath)) { spend((chunk as Buffer).length); hash.update(chunk as Buffer); }
   return `sha256:${hash.digest("hex")}`;
 };
 
@@ -162,7 +165,8 @@ export const resolveDevFiles = async (directory: string, exclude: readonly strin
     toHash.push(relativePath);
   }
   const pending = [...new Set(toHash)];
-  if (entries.size + pending.length > WORKSPACE_BUNDLE_MAX_ENTRIES) fail("Workspace bundle exceeds the maximum entry count");
+  // Deleted paths drop out below; this early bound only stops absurd input sets before any file is read.
+  if (entries.size + pending.length > WORKSPACE_BUNDLE_MAX_ENTRIES * 2) fail("Workspace bundle exceeds the maximum entry count");
   let hashedBytes = 0;
   // Bounded: at most HASH_CONCURRENCY files open, and the byte budget is spent before a file is read.
   const hashNext = async (): Promise<void> => {
@@ -172,12 +176,13 @@ export const resolveDevFiles = async (directory: string, exclude: readonly strin
       if (!info) continue; // deleted in the work tree: not an input any more
       if (info.isSymbolicLink()) refuseLinks(relativePath, SYMLINK);
       if (!info.isFile()) fail(`Workspace bundle input is not a regular file: ${relativePath}`);
-      hashedBytes += info.size;
-      if (hashedBytes > WORKSPACE_BUNDLE_MAX_BYTES) fail("Workspace bundle exceeds the maximum archive size");
-      entries.set(relativePath, { identity: await hashFile(filePath), mode: normalizeBundleMode(info.mode), path: validEntryPath(relativePath) });
+      entries.set(relativePath, { identity: await hashFile(filePath, spend), mode: normalizeBundleMode(info.mode), path: validEntryPath(relativePath) });
     }
   };
+  // Budget the bytes actually streamed, so a file that grows after lstat cannot overrun it.
+  const spend = (bytes: number): void => { hashedBytes += bytes; if (hashedBytes > WORKSPACE_BUNDLE_MAX_BYTES) fail("Workspace bundle exceeds the maximum archive size"); };
   await Promise.all(Array.from({ length: HASH_CONCURRENCY }, hashNext));
+  if (entries.size > WORKSPACE_BUNDLE_MAX_ENTRIES) fail("Workspace bundle exceeds the maximum entry count");
   return { directory, entries: sortEntries([...entries.values()]), mode: "dev" };
 };
 
@@ -194,7 +199,9 @@ export const writeBundleFiles = async (input: BundleFilesInput, outputPath: stri
   let next = 0;
   const writeDiskBefore = async (limit?: string): Promise<void> => {
     for (; next < disk.length && (limit === undefined || disk[next]!.path < limit); next += 1) {
-      const entry = disk[next]!, bytes = await readFile(path.join(input.directory, entry.path));
+      const entry = disk[next]!, filePath = path.join(input.directory, entry.path);
+      if ((await stat(filePath)).size > WORKSPACE_BUNDLE_MAX_BYTES) fail("Workspace bundle exceeds the maximum archive size");
+      const bytes = await readFile(filePath);
       if (`sha256:${createHash("sha256").update(bytes).digest("hex")}` !== entry.identity) {
         fail(`Workspace bundle input changed while the bundle was built: ${entry.path}`);
       }

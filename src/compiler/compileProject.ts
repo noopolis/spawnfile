@@ -288,7 +288,8 @@ export const compileProject = async (
   const workspaceBundles = await resolveWorkspaceBundles(plan, {
     architecture: options.containerArchitecture,
     cacheDirectory: options.bundleCacheDirectory,
-    identity: options.bundleIdentity
+    identity: options.bundleIdentity,
+    outputDirectory
   });
 
   const teamCompileSupport = await prepareTeamCompileSupport(plan);
