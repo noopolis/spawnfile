@@ -3,6 +3,7 @@ export * from "./drainPhase.js";
 export * from "./ledger.js";
 export * from "./notify.js";
 export * from "./pending.js";
+export * from "./postDeploy.js";
 export * from "./releaseDefaults.js";
 export * from "./releaseDocker.js";
 export * from "./releaseTypes.js";

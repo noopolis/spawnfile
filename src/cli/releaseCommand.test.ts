@@ -81,6 +81,14 @@ describe("spawnfile release", () => {
     await expect(run(["/p", "--deployment", "org", "--env-file", "/a", "--runtime-env-file", "/b"], new Error("x"))).rejects.toThrow("different files");
   });
 
+  it("maps a post-deploy command with its arguments and refuses a relative path or stray arguments", async () => {
+    const result = await run(["/p", "--deployment", "org", "--post-deploy-command", "/bin/sh", "--post-deploy-arg", "/srv/hook.sh", "--post-deploy-arg", "c1", "--post-deploy-timeout", "2m"], new Error("x"));
+    expect(result.seen).toMatchObject({ postDeploy: { args: ["/srv/hook.sh", "c1"], command: "/bin/sh", timeoutMs: 120_000 } });
+    expect((await run(["/p", "--deployment", "org"], new Error("x"))).seen?.postDeploy).toBeNull();
+    await expect(run(["/p", "--deployment", "org", "--post-deploy-command", "hook.sh"], new Error("x"))).rejects.toThrow("absolute");
+    await expect(run(["/p", "--deployment", "org", "--post-deploy-arg", "x"], new Error("x"))).rejects.toThrow("needs --post-deploy-command");
+  });
+
   it("requires a deployment", async () => {
     await expect(run(["/p"], new Error("x"))).rejects.toThrow();
   });

@@ -4,6 +4,7 @@ import {
   createDefaultReleaseDependencies,
   releaseExitCode,
   resolveNotifierConfig,
+  resolvePostDeployHook,
   runRelease,
   type ReleaseDependencies,
   type ReleaseRequest
@@ -40,6 +41,9 @@ interface ReleaseCommandOptions {
   notifyDeferredAfter: string;
   notifyWebhookEnv?: string;
   out?: string;
+  postDeployArg?: string[];
+  postDeployCommand?: string;
+  postDeployTimeout: string;
 }
 
 export const registerReleaseCommand = (
@@ -67,6 +71,9 @@ export const registerReleaseCommand = (
     .option("--notify-command <path>", "Executable run on failure; receives the notification JSON on stdin")
     .option("--notify-webhook-env <name>", "Environment variable holding an https URL to POST the notification to")
     .option("--notify-deferred-after <duration>", "Notify once when a release has been deferred this long", "24h")
+    .option("--post-deploy-command <path>", "Executable run (no shell) on the new container's host after it settled; non-zero fails the release")
+    .option("--post-deploy-arg <arg>", "Argument for --post-deploy-command (repeatable)", (value: string, previous: string[] = []) => [...previous, value])
+    .option("--post-deploy-timeout <duration>", "How long --post-deploy-command may run", "10m")
     .action(async (inputPath: string, options: ReleaseCommandOptions) => {
       let notifier;
       try {
@@ -75,6 +82,12 @@ export const registerReleaseCommand = (
         throw new SpawnfileError("validation_error", (error as Error).message);
       }
       const envFile = resolveEnvFileOption(options);
+      let postDeploy;
+      try {
+        postDeploy = resolvePostDeployHook({ ...options, timeoutMs: parseReleaseDuration(options.postDeployTimeout, "--post-deploy-timeout") });
+      } catch (error) {
+        throw new SpawnfileError("validation_error", (error as Error).message);
+      }
       const drainTimeoutMs = parseReleaseDuration(options.drainTimeout, "--drain-timeout");
       const notifyDeferredAfterMs = parseReleaseDuration(options.notifyDeferredAfter, "--notify-deferred-after");
       const abort = new AbortController();
@@ -100,6 +113,7 @@ export const registerReleaseCommand = (
           notifier,
           notifyDeferredAfterMs,
           ...(options.out ? { outputDirectory: options.out } : {}),
+          postDeploy,
           settle: { pollMs: 5_000, polls: 36, stablePolls: 3 },
           signal: abort.signal
         };
