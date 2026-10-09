@@ -131,7 +131,7 @@ This reads the authored graph and the compile report without touching Docker, ru
 Once compiled, you can build a Docker image and run it with auth:
 
 ```bash
-spawnfile auth sync --profile dev --env-file .env
+spawnfile auth sync --profile dev --runtime-env-file .env
 spawnfile build --tag my-assistant
 spawnfile run --tag my-assistant --auth-profile dev --detach
 spawnfile status . --live

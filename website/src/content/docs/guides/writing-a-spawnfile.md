@@ -276,7 +276,7 @@ environment:
 
 Values in `environment.env` must be strings. The compiler warns when a required secret is not present in the execution environment used for compilation.
 
-Declared secrets are also used by the auth/run workflow. `spawnfile auth sync --env-file .env` copies required secret values into the selected auth profile and fails if a required value is missing. Optional secrets are copied only when present. `spawnfile run --env-file .env` can inject the same env file directly into the generated Docker run environment.
+Declared secrets are also used by the auth/run workflow. `spawnfile auth sync --runtime-env-file .env` copies required secret values into the selected auth profile and fails if a required value is missing. Optional secrets are copied only when present. `spawnfile run --runtime-env-file .env` can inject the same env file directly into the generated Docker run environment.
 
 Teams can declare inherited environment inputs under `shared.environment` with the same shape.
 
@@ -298,7 +298,7 @@ environment:
 ```
 
 ```bash
-spawnfile auth sync . --profile dev --env-file ./ops/secrets/agent.env
+spawnfile auth sync . --profile dev --runtime-env-file ./ops/secrets/agent.env
 spawnfile run . --auth-profile dev
 ```
 
