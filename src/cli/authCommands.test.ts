@@ -36,7 +36,7 @@ describe("auth command extraction", () => {
     expect(imports).toContain("codex");
 
     const provision = await helpFor(["auth", "provision", "--help"]);
-    expect(provision).toContain("--env-file");
+    expect(provision).toContain("--runtime-env-file");
     expect(provision).toContain("--world-bindings");
     expect(provision).toContain("--resolved-grants");
     expect(provision).not.toContain("--json");

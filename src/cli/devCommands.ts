@@ -1,6 +1,7 @@
 import { InvalidArgumentError, type Command } from "commander";
 
 import type { CliHandlers, CliStreams } from "./runCli.js";
+import { envFileAliasOption, resolveEnvFileOption, runtimeEnvFileOption } from "./envFileOption.js";
 
 const parsePositiveIntegerOption = (value: string): number => {
   if (!/^[1-9]\d*$/u.test(value)) {
@@ -28,7 +29,8 @@ export const registerDevCommands = (
     .option("--context <name>", "Docker context for the deployment target")
     .option("--deployment <name>", "Detached deployment record name")
     .option("--docker-command <command>", "Docker command")
-    .option("--env-file <file>", "Path to an env file for runtime secrets")
+    .addOption(runtimeEnvFileOption("Path to an env file for runtime secrets"))
+    .addOption(envFileAliasOption())
     .option("--name <container>", "Docker container name")
     .option("-o, --out <directory>", "Dev output directory")
     .option("-t, --tag <image>", "Docker image tag")
@@ -41,6 +43,7 @@ export const registerDevCommands = (
         deployment?: string;
         dockerCommand?: string;
         envFile?: string;
+        runtimeEnvFile?: string;
         name?: string;
         out?: string;
         tag?: string;
@@ -53,7 +56,7 @@ export const registerDevCommands = (
         deploymentName: options.deployment,
         dockerCommand: options.dockerCommand,
         dockerContext: options.context,
-        envFilePath: options.envFile,
+        envFilePath: resolveEnvFileOption(options),
         imageTag: options.tag,
         outputDirectory: options.out
       });

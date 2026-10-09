@@ -7,7 +7,7 @@ running agent turn.
 ## Command
 
 ```bash
-spawnfile release <project> --deployment <name> --env-file <file> \
+spawnfile release <project> --deployment <name> --runtime-env-file <file> \
   [--drain-timeout 30m] [--no-drain] [--force] [--dev-inputs] \
   [--notify-command <absolute path> | --notify-webhook-env <ENV_NAME>] \
   [--notify-deferred-after 24h] [--image-repository <name>] [--context <docker context>]
@@ -49,7 +49,7 @@ lock → resume stale drain → compile → identity
    wakes stay queued, running turns finish. It then polls
    `GET /v2/availability` until `drain.state` is `drained`.
    - The control token is `SPAWNFILE_DAIMON_CONTROL_TOKEN`, read from the
-     process environment or `--env-file` (same precedence as `up`). Without it
+     process environment or `--runtime-env-file` (same precedence as `up`). Without it
      a release that must drain refuses before building.
    - Calls run in an ephemeral helper from the running image inside the
      container's network namespace; the token reaches curl on stdin.
