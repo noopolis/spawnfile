@@ -279,7 +279,7 @@ workspace:
         git:                        # exactly one of git or directory
           repo: ../data-repo        # host checkout; relative to this manifest
           ref: origin/main          # default HEAD
-          paths: [published]        # optional subset; default the whole tree
+          paths: [published]        # optional subset of directories; default the whole tree; may use ${date} like a ref template
           fetch: true               # git fetch --prune origin before resolving; default false
         # directory: ../published   # alternative source
         validate: [node, scripts/check-shared-data.mjs]   # optional hook, run with cwd = this manifest's directory
@@ -322,7 +322,7 @@ Rules:
 Rules:
 
 - `feed` MUST declare exactly one of `git` or `directory`. A fed volume MUST declare `name` and `mode: mutable`.
-- `git.paths` entries MUST be plain repository-relative paths and MUST name directories at the resolved commit.
+- `git.paths` entries MUST be plain repository-relative paths and MUST name directories at the resolved commit. An entry MAY carry the ref template placeholders `${date}` and `${date:<IANA zone>}` (e.g. `paths: ["${date:Europe/Berlin}"]` feeds only the dated directory of the day); they expand at the same instant as the ref, including when `fallback` is chosen, and the identity record carries the expanded paths. A held (frozen or waiting) volume is verified and healed from the paths it landed, never from today's expansion, and different expanded paths count as a different ref for `freeze`.
 - The compiled artifacts of a fed volume MUST be identical to the same volume without `feed`; `feed` is consumed only by the host-side commands below.
 - A revision is content-addressed: a git revision is the digest of the selected tree ids, so a commit that does not change them lands nothing; a directory revision is the digest of the staged bytes.
 - Agents read content through `<mount>/current/`, a relative symlink to `trees/<revision>` (or `trees/<revision>.<generation>` after a re-land: a tree is never replaced under its own name). `<mount>/.spawnfile-feed.json` is the identity record (`spawnfile.volume-feed.v1`): resource, volume, revision, tree, file count, landing instant and source provenance (git commit, ref and paths). Until the first land neither exists, and readers MUST fail closed.

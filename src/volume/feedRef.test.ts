@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { readFeedLanded } from "./feedRecord.js";
-import { expandFeedRefTemplate, feedCutoffInstant, feedFrozen, feedLocalClock, feedLocalDate } from "./feedRef.js";
+import { expandFeedPaths, expandFeedRefTemplate, feedCutoffInstant, feedFrozen, feedLocalClock, feedLocalDate } from "./feedRef.js";
 import type { FeedLandedRecord } from "./feedRecord.js";
 import type { FeedExec } from "./feedSource.js";
 import { hostExec } from "./feedSource.js";
@@ -233,5 +233,72 @@ describe("moving refs and the daily freeze", () => {
     expect(link()).toBe(servedLink);
     expect(refreshVolumeFeed(fixture.target, at("2026-10-10T06:00:00Z")).status).toBe("landed");
     expect(served("a.txt")).toBe("after cutoff\n");
+  });
+});
+
+describe("dated feed paths", () => {
+  const tamper = (name: string): void => {
+    const file = path.join(fixture.volume, link(), name);
+    chmodSync(path.dirname(file), 0o755);
+    chmodSync(file, 0o644);
+    writeFileSync(file, "TAMPER\n");
+  };
+
+  it("expands path placeholders like the ref, and leaves literal paths and an absent list alone", () => {
+    const instant = new Date("2026-10-09T22:30:00Z");
+    expect(expandFeedPaths(["${date:Europe/Berlin}", "notes/${date}", "shared"], instant)).toEqual(["2026-10-10", "notes/2026-10-09", "shared"]);
+    expect(expandFeedPaths(undefined, instant)).toBeUndefined();
+  });
+
+  it("feeds only the dated directory of the day, holds the landed paths while frozen or waiting, and advances with the next day", () => {
+    const repo = datedFixture();
+    fixture.target.source = { ...fixture.target.source, paths: ["${date:Europe/Berlin}", "shared"] } as typeof fixture.target.source;
+    commitOn(repo, "data/2026-10-09", { "2026-10-08/old.txt": "08\n", "2026-10-09/day.txt": "09\n", "code/tool.txt": "code\n", "shared/s.txt": "s\n" });
+    expect(refreshVolumeFeed(fixture.target, at("2026-10-09T07:00:00Z")).status).toBe("landed");
+    expect(served("2026-10-09/day.txt")).toBe("09\n");
+    expect(served("shared/s.txt")).toBe("s\n");
+    for (const absent of ["2026-10-08", "code", "README.md"]) expect(existsSync(path.join(fixture.volume, "current", absent))).toBe(false);
+    expect(readFeedLanded(fixture.target.stateDir).record?.identity.source).toMatchObject({ paths: ["2026-10-09", "shared"], ref: "data/2026-10-09" });
+    // Frozen after the cutoff, then waiting into the next day: a heal re-lands the paths it landed, not
+    // today's expansion (2026-10-10 does not exist at the served commit).
+    expect(refreshVolumeFeed(fixture.target, at("2026-10-09T10:30:00Z")).status).toBe("frozen");
+    tamper("2026-10-09/day.txt");
+    expect(refreshVolumeFeed(fixture.target, at("2026-10-09T23:30:00Z")).status).toBe("repaired");
+    expect(served("2026-10-09/day.txt")).toBe("09\n");
+    commitOn(repo, "data/2026-10-10", { "2026-10-10/day.txt": "10\n", "shared/s.txt": "s\n" });
+    expect(refreshVolumeFeed(fixture.target, at("2026-10-10T05:00:00Z")).status).toBe("landed");
+    expect(served("2026-10-10/day.txt")).toBe("10\n");
+    expect(existsSync(path.join(fixture.volume, "current", "2026-10-09"))).toBe(false);
+  });
+
+  it("advances a frozen volume when only the expanded paths change, then freezes on them", () => {
+    const repo = datedFixture();
+    // Paths follow Tokyo while the ref and the freeze follow Berlin: Tokyo's date turns at 15:00Z.
+    fixture.target.source = { ...fixture.target.source, paths: ["${date:Asia/Tokyo}"] } as typeof fixture.target.source;
+    commitOn(repo, "data/2026-10-09", { "2026-10-09/day.txt": "09\n", "2026-10-10/day.txt": "10\n" });
+    expect(refreshVolumeFeed(fixture.target, at("2026-10-09T08:00:00Z")).status).toBe("landed");
+    expect(refreshVolumeFeed(fixture.target, at("2026-10-09T10:30:00Z")).status).toBe("frozen");
+    expect(refreshVolumeFeed(fixture.target, at("2026-10-09T15:30:00Z")).status).toBe("landed");
+    expect(served("2026-10-10/day.txt")).toBe("10\n");
+    expect(existsSync(path.join(fixture.volume, "current", "2026-10-09"))).toBe(false);
+    expect(readFeedLanded(fixture.target.stateDir).record?.identity.source).toMatchObject({ paths: ["2026-10-10"], ref: "data/2026-10-09" });
+    expect(refreshVolumeFeed(fixture.target, at("2026-10-09T15:40:00Z")).status).toBe("frozen");
+  });
+
+  it("refuses a dated path the chosen ref does not carry, landing nothing", () => {
+    const repo = datedFixture();
+    fixture.target.source = { ...fixture.target.source, paths: ["${date:Europe/Berlin}"] } as typeof fixture.target.source;
+    commitOn(repo, "data/2026-10-09", { "2026-10-08/old.txt": "08\n" });
+    expect(() => refreshVolumeFeed(fixture.target, at("2026-10-09T07:00:00Z"))).toThrow(/cannot resolve data\/2026-10-09 \(2026-10-09\)/u);
+    expect(existsSync(path.join(fixture.volume, "current"))).toBe(false);
+  });
+
+  it("does not count a volume frozen when the paths chosen now differ from the ones it landed", () => {
+    const target = { freeze: FREEZE, source: { fetch: false, kind: "git", ref: "main", repo: "/r" } } as never;
+    const record = { identity: { source: { kind: "git", paths: ["2026-10-09"], ref: "main" } }, period: "2026-10-09" } as unknown as FeedLandedRecord;
+    const now = new Date("2026-10-09T10:30:00Z");
+    expect(feedFrozen(target, record, "main", now, ["2026-10-09"])).toBe(true);
+    expect(feedFrozen(target, record, "main", now, ["2026-10-10"])).toBe(false);
+    expect(feedFrozen(target, record, "main", now)).toBe(false);
   });
 });
