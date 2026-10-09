@@ -50,8 +50,8 @@ describe("Daimon attention policy compilation", () => {
     await attest();
     expect((await compile({})).agents[0].attention).toEqual({ maxBatchMessages: 8, maxBatchBytes: 12000 });
   });
-  it("refuses attention when the selected runtime does not attest its contract", async () => {
-    await expect(compile({})).rejects.toThrow(/attention.*does not attest/iu);
+  it("accepts attention against the checked-in published pin without a local identity", async () => {
+    expect((await compile({ max_batch_messages: 2 })).agents[0].attention).toEqual({ maxBatchMessages: 2, maxBatchBytes: 12000 });
   });
   it.each([
     null, [], "auto", { typo: 1 }, { max_batch_messages: 0 }, { max_batch_messages: 33 },

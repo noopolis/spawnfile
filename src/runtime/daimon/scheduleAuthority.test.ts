@@ -33,17 +33,18 @@ const scheduledTarget = async (kind: "every" | "disabled" = "every") => {
 afterEach(async () => { delete process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY; await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
 describe("Daimon schedule image authority", () => {
-  it("fails closed for the pinned v1 image while v1 unscheduled compilation remains valid", async () => {
+  it("accepts the checked-in published pin, whose receipts attest the compiler's contract manifest", async () => {
     await expect(daimonAdapter.compileAgent(createPiTestNode({
       runtime: { name: "daimon", options: {} }, schedule: { every: "1m", kind: "every" }
     }))).resolves.toMatchObject({ capabilities: expect.arrayContaining([
-      expect.objectContaining({ key: "agent.schedule", outcome: "degraded" })
+      expect.objectContaining({ key: "agent.schedule", outcome: "supported" })
     ]) });
-    await expect(scheduledTarget()).rejects.toThrow(/does not attest organization runtime v2/u);
+    const targets = await scheduledTarget();
+    expect(JSON.parse(targets[0]!.files.find((file) => file.path === DAIMON_CONFIG_FILE)!.content).version).toBe("noopolis.daimon.organization-runtime.v2");
     const node = createPiTestNode({ runtime: { name: "daimon", options: {} } });
     const compiled = await daimonAdapter.compileAgent(node);
-    const targets = await daimonAdapter.createContainerTargets!([{ emittedFiles: compiled.files, id: "agent:v1", kind: "agent", slug: "v1", value: node }]);
-    expect(JSON.parse(targets[0]!.files.find((file) => file.path === DAIMON_CONFIG_FILE)!.content).version).toBe("noopolis.daimon.organization-runtime.v1");
+    const unscheduled = await daimonAdapter.createContainerTargets!([{ emittedFiles: compiled.files, id: "agent:v1", kind: "agent", slug: "v1", value: node }]);
+    expect(JSON.parse(unscheduled[0]!.files.find((file) => file.path === DAIMON_CONFIG_FILE)!.content).version).toBe("noopolis.daimon.organization-runtime.v1");
   });
 
   it("supports active and disabled v2 states only with the canonical local receipt authority", async () => {
