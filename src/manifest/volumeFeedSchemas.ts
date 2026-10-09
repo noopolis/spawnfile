@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { argvSchema, pinnedImageSchema } from "./commandSchemas.js";
 
-/** `${date}` (UTC) or `${date:<IANA zone>}`: the local date (YYYY-MM-DD) at refresh time. The only placeholder a ref template knows. */
+/** `${date}` (UTC) or `${date:<IANA zone>}`: the local date (YYYY-MM-DD) at refresh time. The only placeholder a ref or path template knows. */
 export const FEED_REF_PLACEHOLDER = /\$\{date(?::([^}]*))?\}/gu;
 export const FEED_CLOCK_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/u;
 
@@ -12,6 +12,16 @@ export const isFeedTimeZone = (zone: string): boolean => {
 
 const plainRelativePath = (entry: string): boolean =>
   !entry.startsWith("/") && !entry.split("/").some((segment) => segment === ".." || segment === "." || segment === "");
+
+/** Issues with the placeholders in a ref or path template: only `${date}` and `${date:<IANA zone>}` exist. */
+const templateIssues = (template: string, what: string): string[] => {
+  const issues: string[] = [];
+  for (const match of template.matchAll(FEED_REF_PLACEHOLDER)) {
+    if (match[1] !== undefined && !isFeedTimeZone(match[1])) issues.push(`${what} time zone ${JSON.stringify(match[1])} is not an IANA time zone`);
+  }
+  if (template.replace(FEED_REF_PLACEHOLDER, "").includes("${")) issues.push(`${what}s know only \${date} and \${date:<time zone>}`);
+  return issues;
+};
 
 /** A ref resolved per refresh: a template or a command printing a ref, with an optional fallback when it does not exist yet. */
 const volumeFeedRefRuleSchema = z.object({
@@ -23,14 +33,7 @@ const volumeFeedRefRuleSchema = z.object({
     context.addIssue({ code: z.ZodIssueCode.custom, message: "a volume feed ref rule must declare exactly one of template or command" });
   }
   if (value.template === undefined) return;
-  for (const match of value.template.matchAll(FEED_REF_PLACEHOLDER)) {
-    if (match[1] !== undefined && !isFeedTimeZone(match[1])) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: `volume feed ref template time zone ${JSON.stringify(match[1])} is not an IANA time zone` });
-    }
-  }
-  if (value.template.replace(FEED_REF_PLACEHOLDER, "").includes("${")) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "volume feed ref templates know only ${date} and ${date:<time zone>}" });
-  }
+  for (const message of templateIssues(value.template, "volume feed ref template")) context.addIssue({ code: z.ZodIssueCode.custom, message });
 });
 
 /**
@@ -46,6 +49,7 @@ export const volumeFeedSchema = z.object({
   }).strict().optional(),
   git: z.object({
     fetch: z.boolean().optional(),
+    /** Directories to feed instead of the whole tree; each MAY carry `${date}` placeholders, expanded with the ref. */
     paths: z.array(z.string().trim().min(1)).min(1).optional(),
     ref: z.union([z.string().trim().min(1), volumeFeedRefRuleSchema]).optional(),
     repo: z.string().trim().min(1)
@@ -79,7 +83,10 @@ export const volumeFeedSchema = z.object({
     context.addIssue({ code: z.ZodIssueCode.custom, message: "volume feeds must declare exactly one of directory or git" });
   }
   for (const entry of value.git?.paths ?? []) {
-    if (!plainRelativePath(entry)) {
+    const placeholders = templateIssues(entry, "volume feed git path template");
+    for (const message of placeholders) context.addIssue({ code: z.ZodIssueCode.custom, message });
+    // A placeholder expands to YYYY-MM-DD, so the path is judged with one in its place.
+    if (placeholders.length === 0 && !plainRelativePath(entry.replace(FEED_REF_PLACEHOLDER, "0000-00-00"))) {
       context.addIssue({ code: z.ZodIssueCode.custom, message: `volume feed git path ${entry} must be a plain repository-relative path` });
     }
   }

@@ -15,7 +15,7 @@ import { landFeed, type FeedRuntime } from "./feedLand.js";
 import { acquireFeedLock } from "./feedLock.js";
 import { resolveFeedContent } from "./feedPrepare.js";
 import { readFeedLanded, writeFeedIdentity, writeFeedLanded, type FeedLandedRecord } from "./feedRecord.js";
-import { chooseFeedRef, feedFrozen, feedPeriod } from "./feedRef.js";
+import { chooseFeedRef, expandFeedPaths, feedFrozen, feedPeriod } from "./feedRef.js";
 import { fetchFeedSource, hostExec, type ResolvedFeedSource } from "./feedSource.js";
 import { feedStagingDir, feedTrashDir, type FeedTarget } from "./feedTarget.js";
 import { sweepFeed, type FeedSweep } from "./feedVerify.js";
@@ -120,17 +120,20 @@ const refreshLocked = (target: FeedTarget, runtime: FeedRuntime): FeedRefreshRes
   if (reason) log(`ignoring the host record: ${reason}; treating this volume as carrying nothing`);
   const choice = chooseFeedRef(target, { exec, now });
   let concrete = target;
+  // Path templates expand at the same instant the ref was chosen from.
+  const paths = target.source.kind === "git" ? expandFeedPaths(target.source.paths, now) : undefined;
   if (choice.kind === "waiting") {
     log(choice.reason);
     if (!record) return { findings: [], previous: null, revision: null, status: "waiting" };
-  } else if (target.source.kind === "git") concrete = { ...target, source: { ...target.source, ref: choice.ref } };
-  const frozen = choice.kind === "ref" && feedFrozen(target, record, choice.ref, now);
+  } else if (target.source.kind === "git") concrete = { ...target, source: { ...target.source, ...(paths ? { paths } : {}), ref: choice.ref } };
+  const frozen = choice.kind === "ref" && feedFrozen(target, record, choice.ref, now, paths);
   if (record && (choice.kind === "waiting" || frozen)) {
     if (frozen) log(`frozen: ${record.revision.slice(0, 12)} was landed this period and the ${target.freeze!.after} ${target.freeze!.timezone} cutoff has passed`);
     const landed = record.identity.source;
-    // Held at its own commit, so a heal reproduces what is served and never what the ref moved to.
-    const held = landed.kind === "git" && target.source.kind === "git"
-      ? { ...target, source: { ...target.source, label: landed.ref, ref: landed.commit } } : target;
+    // Held at its own commit and the paths it landed, so a heal reproduces what is served and never what
+    // the ref moved to or what a path template expands to today.
+    const held: FeedTarget = landed.kind === "git" && target.source.kind === "git"
+      ? { ...target, source: { fetch: target.source.fetch, kind: "git", label: landed.ref, ...(landed.paths ? { paths: landed.paths } : {}), ref: landed.commit, repo: target.source.repo } } : target;
     return holdLocked(held, record, frozen ? "frozen" : "waiting", runtime);
   }
   const resolved = resolveFeedContent(concrete, { exec });
