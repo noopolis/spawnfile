@@ -15,7 +15,7 @@ src/volume/
 ├── feedProject.ts     # Project + resource id -> FeedTarget; docker volume host path
 ├── feedSource.ts      # Directory and git sources: content-addressed revision, staging copy
 ├── feedPrepare.ts     # include + prepare in staging, composed revision, digest-verified prepare cache
-├── feedRef.ts         # Moving refs (template, command, fallback), waiting, and the period freeze
+├── feedRef.ts         # Moving refs (template, command, fallback), dated paths, waiting, and the period freeze
 ├── feedLayout.ts      # Every rule about what may touch the volume: lstat guards, freeze, land, link swap
 ├── feedManifest.ts    # Land-time manifest outside the volume; every file hashed on every check
 ├── feedRecord.ts      # Host record (outside) and identity record (inside the volume)

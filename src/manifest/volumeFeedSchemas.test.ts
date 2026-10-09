@@ -50,4 +50,13 @@ describe("volume feed prepare, include, moving refs and freeze", () => {
     expect(isFeedTimeZone("Europe/Berlin")).toBe(true);
     expect(isFeedTimeZone(" ")).toBe(false);
   });
+
+  it("accepts date placeholders in git paths and refuses unknown ones or paths that escape", () => {
+    const paths = (entries: string[]): string[] => issues({ git: { paths: entries, repo: "../repo" } });
+    expect(paths(["${date:Europe/Berlin}", "notes/${date}", "shared"])).toEqual([]);
+    expect(paths(["${branch}"])).toContain("volume feed git path templates know only ${date} and ${date:<time zone>}");
+    expect(paths(["${date:Mars/Olympus}"])).toContain('volume feed git path template time zone "Mars/Olympus" is not an IANA time zone');
+    expect(paths(["../${date}"])).toContain("volume feed git path ../${date} must be a plain repository-relative path");
+    expect(paths(["${date}/"])).toContain("volume feed git path ${date}/ must be a plain repository-relative path");
+  });
 });
