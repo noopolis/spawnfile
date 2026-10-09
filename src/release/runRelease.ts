@@ -1,12 +1,16 @@
+import { rm } from "node:fs/promises";
+
 import { normalizeDeploymentName } from "../deployment/index.js";
 
 import { controlTargetFor, recoverInterruptedDrain, requestForTarget, resolveControlToken } from "./drainPhase.js";
 import {
   acquireReleaseLock,
   appendReleaseLog,
+  postDeployPending,
   ensureReleaseDirectory,
   readReleaseLedger,
   resolveReleasePaths,
+  writeJsonAtomic,
   writeReleaseLedger,
   type ReleaseLedger,
   type ReleasePaths
@@ -71,7 +75,10 @@ const releaseLocked = async (
   const ledger = await readReleaseLedger(paths.ledger);
   const running = await deps.inspectUnit(request, releaseContainerName(request.deployment));
 
-  if (isUnchanged(request, ledger, compiled.identity, running)) {
+  // A post-deploy command that failed (or never finished) leaves its marker: the
+  // running container may be the recorded image, but the release is not done.
+  const hookPending = await postDeployPending(paths.postDeploy);
+  if (!hookPending && isUnchanged(request, ledger, compiled.identity, running)) {
     await clearDeferral(paths.pending);
     request.log(`release: ${compiled.identity.slice(0, 19)} is already running as ${ledger!.image_tag}; nothing to do`);
     return { identity: compiled.identity, imageTag: ledger!.image_tag, kind: "unchanged" };
@@ -142,6 +149,9 @@ const swapAndRecord = async (
 
   if (request.postDeploy) {
     progress.stage = "post-deploy";
+    await writeJsonAtomic(paths.postDeploy, { at: (request.now?.() ?? new Date()).toISOString(), identity: compiled.identity }).catch((error: unknown) => {
+      throw new ReleaseError("post-deploy-failed", `cannot record that a post-deploy command is pending, so it was not run: ${(error as Error).message}`);
+    });
     await runPostDeployStep(request, deps, request.postDeploy, {
       containerName: deployed.containerName, deployment: request.deployment, identity: compiled.identity, imageId: settled.imageId, imageTag
     });
@@ -169,6 +179,9 @@ const swapAndRecord = async (
   await writeReleaseLedger(paths.ledger, next).catch((error: unknown) => {
     throw new ReleaseError("ledger-failed", `the deployment is running but the release ledger could not be written (every later run will redeploy until it can): ${(error as Error).message}`);
   });
+  await rm(paths.postDeploy, { force: true }).catch((error: unknown) => {
+    request.log(`release: cannot clear the post-deploy marker, so the next run releases again: ${(error as Error).message}`);
+  });
   await appendReleaseLog(paths.log, { at: next.released_at, deployment: request.deployment, identity: compiled.identity, image_tag: imageTag, outcome: "released", timings }).catch(() => undefined);
   await clearDeferral(paths.pending).catch(() => undefined);
   await pruneQuietly(request, deps, compiled.repository, [imageTag, next.previous_image_tag]);
@@ -178,6 +191,7 @@ const swapAndRecord = async (
 
 /** A failed hook leaves the release unrecorded: the next run deploys again and reruns it. */
 const runPostDeployStep = async (request: ReleaseRequest, deps: ReleaseDependencies, hook: PostDeployHook, context: PostDeployContext): Promise<void> => {
+  if (request.signal?.aborted) throw new ReleaseError("interrupted", "the release was interrupted after deploying; the post-deploy command did not run and nothing was recorded");
   let result;
   try {
     result = await deps.runPostDeploy(request, hook, context);
@@ -186,6 +200,7 @@ const runPostDeployStep = async (request: ReleaseRequest, deps: ReleaseDependenc
   }
   const output = result.output.trim();
   if (output) request.log(`release: post-deploy output:\n${output}`);
+  if (request.signal?.aborted) throw new ReleaseError("interrupted", "the release was interrupted while the post-deploy command ran; nothing was recorded");
   if (result.timedOut) throw new ReleaseError("post-deploy-failed", `the post-deploy command did not finish within ${Math.round(hook.timeoutMs / 1000)}s`);
   if (result.exitCode !== 0) throw new ReleaseError("post-deploy-failed", `the post-deploy command exited ${result.exitCode ?? "by signal"}${output ? `: ${output.slice(-300)}` : ""}`);
   request.log("release: post-deploy command succeeded");

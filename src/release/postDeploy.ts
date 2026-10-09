@@ -30,6 +30,7 @@ export interface PostDeployResult {
 }
 
 const MAX_OUTPUT_CHARS = 4_000;
+const MAX_TIMEOUT_MS = 24 * 3_600_000;
 
 export const resolvePostDeployHook = (options: {
   postDeployArg?: string[];
@@ -41,6 +42,7 @@ export const resolvePostDeployHook = (options: {
     return null;
   }
   if (!path.isAbsolute(options.postDeployCommand)) throw new Error("--post-deploy-command must be an absolute path to an executable");
+  if (options.timeoutMs > MAX_TIMEOUT_MS) throw new Error("--post-deploy-timeout must be at most 24h");
   return { args: options.postDeployArg ?? [], command: options.postDeployCommand, timeoutMs: options.timeoutMs };
 };
 
@@ -59,29 +61,38 @@ const appendBounded = (current: string, chunk: string): string => {
   return next.length > MAX_OUTPUT_CHARS ? next.slice(next.length - MAX_OUTPUT_CHARS) : next;
 };
 
+/** Kills the hook's whole process group: a descendant holding its pipes must not outlive it. */
+const killGroup = (pid: number | undefined): void => {
+  if (pid === undefined) return;
+  try { process.kill(-pid, "SIGKILL"); } catch { /* already gone */ }
+};
+
 export const runPostDeployCommand = (
   hook: PostDeployHook,
   context: PostDeployContext,
   signal?: AbortSignal
 ): Promise<PostDeployResult> =>
   new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error("aborted before the post-deploy command started"));
+      return;
+    }
     let output = "";
     let timedOut = false;
-    const child = spawn(hook.command, hook.args, { env: postDeployEnvironment(context), stdio: ["ignore", "pipe", "pipe"] });
-    const kill = (): void => { child.kill("SIGKILL"); };
+    // Its own process group, so a timeout or abort reaches every descendant.
+    const child = spawn(hook.command, hook.args, { detached: true, env: postDeployEnvironment(context), stdio: ["ignore", "pipe", "pipe"] });
+    const kill = (): void => { killGroup(child.pid); };
     const timer = setTimeout(() => { timedOut = true; kill(); }, hook.timeoutMs);
     signal?.addEventListener("abort", kill, { once: true });
+    const done = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", kill);
+    };
     const collect = (chunk: Buffer): void => { output = appendBounded(output, chunk.toString("utf8")); };
     child.stdout.on("data", collect);
     child.stderr.on("data", collect);
-    child.once("error", (error) => {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", kill);
-      reject(error);
-    });
-    child.once("close", (code) => {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", kill);
-      resolve({ exitCode: code, output, timedOut });
-    });
+    child.once("error", (error) => { done(); reject(error); });
+    // Leftover descendants would hold the pipes open and delay `close` forever.
+    child.once("exit", () => { killGroup(child.pid); });
+    child.once("close", (code) => { done(); resolve({ exitCode: code, output, timedOut }); });
   });
