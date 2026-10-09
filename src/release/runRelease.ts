@@ -12,6 +12,7 @@ import {
   type ReleasePaths
 } from "./ledger.js";
 import { createNotification } from "./notify.js";
+import type { PostDeployContext, PostDeployHook } from "./postDeploy.js";
 import { clearDeferral, markDeferralNotified, recordDeferral } from "./pending.js";
 import { releaseImageTag, type RunningUnit } from "./releaseDocker.js";
 import { DAIMON_CONTROL_TOKEN_ENV, type ReleaseDependencies, type ReleaseRequest } from "./releaseTypes.js";
@@ -25,7 +26,7 @@ interface Progress {
 
 /**
  * compile → identity → (unchanged? stop) → build → drain → deploy → settle →
- * resume → record → prune. The ledger is written last because it claims
+ * resume → post-deploy → record → prune. The ledger is written last because it claims
  * "this identity is RUNNING"; written earlier it would claim a container that
  * never came up, and the next run would see nothing to do.
  */
@@ -139,6 +140,13 @@ const swapAndRecord = async (
     }
   }
 
+  if (request.postDeploy) {
+    progress.stage = "post-deploy";
+    await runPostDeployStep(request, deps, request.postDeploy, {
+      containerName: deployed.containerName, deployment: request.deployment, identity: compiled.identity, imageId: settled.imageId, imageTag
+    });
+  }
+
   progress.stage = "record";
   const timings: ReleaseTimings = {
     build_ms: built.buildMs,
@@ -166,6 +174,21 @@ const swapAndRecord = async (
   await pruneQuietly(request, deps, compiled.repository, [imageTag, next.previous_image_tag]);
   request.log(`release: ${imageTag} deployed, settled and recorded (build ${timings.build_ms === null ? "skipped" : `${Math.round(timings.build_ms / 1000)}s`}, drain ${Math.round((timings.drain_ms ?? 0) / 1000)}s, total ${Math.round(timings.total_ms / 1000)}s)`);
   return { identity: compiled.identity, imageId: settled.imageId, imageTag, kind: "released", timings };
+};
+
+/** A failed hook leaves the release unrecorded: the next run deploys again and reruns it. */
+const runPostDeployStep = async (request: ReleaseRequest, deps: ReleaseDependencies, hook: PostDeployHook, context: PostDeployContext): Promise<void> => {
+  let result;
+  try {
+    result = await deps.runPostDeploy(request, hook, context);
+  } catch (error) {
+    throw new ReleaseError("post-deploy-failed", `the post-deploy command could not run: ${(error as Error).message}`);
+  }
+  const output = result.output.trim();
+  if (output) request.log(`release: post-deploy output:\n${output}`);
+  if (result.timedOut) throw new ReleaseError("post-deploy-failed", `the post-deploy command did not finish within ${Math.round(hook.timeoutMs / 1000)}s`);
+  if (result.exitCode !== 0) throw new ReleaseError("post-deploy-failed", `the post-deploy command exited ${result.exitCode ?? "by signal"}${output ? `: ${output.slice(-300)}` : ""}`);
+  request.log("release: post-deploy command succeeded");
 };
 
 /** Unchanged means the recorded identity is the one the container is actually running, not merely the one last built. */

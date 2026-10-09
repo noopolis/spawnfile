@@ -25,6 +25,7 @@ compile → identity unchanged? → exit 0, nothing touched
 - **Identity** is the Docker build-context digest. A commit that does not change what goes into the image (for example data served from a volume) is not a release.
 - **Drain** pauses admission: new wakes are answered `work-blocked` and retried by Moltnet, queued wakes stay queued, running turns finish. If they do not finish within `--drain-timeout`, admission resumes, nothing is deployed and the command exits `75`. Run it again later.
 - **Deploy** uses image-mode `up`, so a candidate that does not become ready is rolled back to the previous container.
+- **Post-deploy** (optional): `--post-deploy-command /abs/path --post-deploy-arg <arg>...` runs once the new container settled and admits, before the release is recorded. Non-zero fails the release with `post-deploy-failed` and the next run redeploys and reruns it, so make it idempotent.
 - **Prune** keeps the running image and one rollback (`spawnfile up <repository>:r-<id> --image --deployment prod` restores it) and removes older release images.
 
 ## Failure notification
