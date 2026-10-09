@@ -19,6 +19,7 @@ import type { DockerCommandRunner } from "../distribution/dockerRunner.js";
 
 import { helperControlCall, requestDrain, requestResume, waitForDrained } from "./drainControl.js";
 import { sendNotification } from "./notify.js";
+import { runPostDeployCommand } from "./postDeploy.js";
 import { inspectUnit, pruneReleaseImages, settleUnit } from "./releaseDocker.js";
 import type { ReleaseDependencies, ReleaseRequest } from "./releaseTypes.js";
 
@@ -117,6 +118,7 @@ export const createDefaultReleaseDependencies = (): ReleaseDependencies => ({
     await verifyDockerDeploymentTarget(target, { dockerCommand: request.dockerCommand });
   },
   requestResume: (target) => requestResume(target, helperControlCall),
+  runPostDeploy: (request, hook, context) => runPostDeployCommand(hook, context, request.signal),
   settle: (request, containerRef) => settleUnit(dockerFor(request), containerRef, request.settle),
   waitForDrained: (target, options) => waitForDrained(target, { call: helperControlCall, ...options })
 });

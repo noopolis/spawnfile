@@ -4,6 +4,7 @@ import type { DockerDeploymentTarget } from "../deployment/index.js";
 
 import type { Availability, DrainWait, RuntimeControlTarget, WaitForDrainedOptions } from "./drainControl.js";
 import type { NotifierConfig, NotifyResult, ReleaseNotification } from "./notify.js";
+import type { PostDeployContext, PostDeployHook, PostDeployResult } from "./postDeploy.js";
 import type { PruneResult, RunningUnit, SettleOptions } from "./releaseDocker.js";
 
 export const DAIMON_CONTROL_TOKEN_ENV = "SPAWNFILE_DAIMON_CONTROL_TOKEN";
@@ -32,6 +33,8 @@ export interface ReleaseRequest {
   notifyDeferredAfterMs: number;
   now?: () => Date;
   outputDirectory?: string;
+  /** Runs once the new container settled and admits; must exit 0 before the release is recorded. */
+  postDeploy?: PostDeployHook | null;
   /** Overrides `<SPAWNFILE_HOME>/releases`. */
   releaseRoot?: string;
   settle: SettleOptions;
@@ -93,6 +96,7 @@ export interface ReleaseDependencies {
   /** Throws when a recorded target's endpoint is no longer the one its name resolves to. */
   verifyTarget(request: ReleaseRequest, target: DockerDeploymentTarget): Promise<void>;
   requestResume(target: RuntimeControlTarget): Promise<Availability>;
+  runPostDeploy(request: ReleaseRequest, hook: PostDeployHook, context: PostDeployContext): Promise<PostDeployResult>;
   settle(request: ReleaseRequest, containerRef: string): Promise<RunningUnit>;
   waitForDrained(target: RuntimeControlTarget, options: WaitForDrainedOptions): Promise<DrainWait>;
 }

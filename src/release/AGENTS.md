@@ -19,6 +19,7 @@ src/release/
 ├── ledger.ts          # Release ledger, append-only log, per-deployment lock, atomic JSON writes
 ├── pending.ts         # Deferral record: notify once when a release has waited too long
 ├── notify.ts          # Failure notifier: command (JSON on stdin) or https webhook
+├── postDeploy.ts      # Optional caller command run after settle+resume, before the ledger (no shell, bounded)
 └── releaseDefaults.ts # Production dependencies (compile, build, consumeImageUp, Docker, control)
 ```
 

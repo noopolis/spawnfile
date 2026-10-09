@@ -10,6 +10,7 @@ export const RELEASE_FAILURE_REASONS = Object.freeze([
   "deploy-failed",
   "health-failed",
   "resume-failed",
+  "post-deploy-failed",
   "ledger-failed",
   "interrupted",
   "release-deferred"
