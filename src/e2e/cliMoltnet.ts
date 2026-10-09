@@ -2,6 +2,7 @@ import { Command } from "commander";
 
 import { runMoltnetMemeticsE2E } from "./moltnetMemetics.js";
 import { runMoltnetTeamChatE2E } from "./moltnetTeamChat.js";
+import { envFileAliasOption, resolveEnvFileOption, runtimeEnvFileOption } from "../cli/envFileOption.js";
 
 export const runMoltnetTeamChatCli = async (argv: string[]): Promise<void> => {
   const command = new Command();
@@ -14,7 +15,8 @@ export const runMoltnetTeamChatCli = async (argv: string[]): Promise<void> => {
     .option("--codex-from <directory>", "Codex config directory override")
     .option("--container-name <name>", "Docker container name")
     .option("--docker-command <command>", "Docker command", "docker")
-    .option("--env-file <path>", "Env file for api_key scenarios")
+    .addOption(runtimeEnvFileOption("Env file for api_key scenarios", "path"))
+    .addOption(envFileAliasOption("path"))
     .option("--fixture <path>", "Fixture directory override")
     .option("--image-tag <tag>", "Docker image tag")
     .option("--keep-artifacts", "Keep temporary compile output")
@@ -33,6 +35,7 @@ export const runMoltnetTeamChatCli = async (argv: string[]): Promise<void> => {
     containerName?: string;
     dockerCommand?: string;
     envFile?: string;
+    runtimeEnvFile?: string;
     fixture?: string;
     imageTag?: string;
     keepArtifacts?: boolean;
@@ -50,7 +53,7 @@ export const runMoltnetTeamChatCli = async (argv: string[]): Promise<void> => {
     codexDirectory: options.codexFrom,
     containerName: options.containerName,
     dockerCommand: options.dockerCommand,
-    envFilePath: options.envFile,
+    envFilePath: resolveEnvFileOption(options),
     fixtureDirectory: options.fixture,
     imageTag: options.imageTag,
     keepArtifacts: options.keepArtifacts,
@@ -75,7 +78,8 @@ export const runMoltnetMemeticsCli = async (argv: string[]): Promise<void> => {
     .option("--codex-from <directory>", "Codex config directory override")
     .option("--container-name <name>", "Docker container name")
     .option("--docker-command <command>", "Docker command", "docker")
-    .option("--env-file <path>", "Env file for api_key scenarios")
+    .addOption(runtimeEnvFileOption("Env file for api_key scenarios", "path"))
+    .addOption(envFileAliasOption("path"))
     .option("--fixture <path>", "Fixture directory override")
     .option("--image-tag <tag>", "Docker image tag")
     .option("--keep-artifacts", "Keep temporary compile output")
@@ -97,6 +101,7 @@ export const runMoltnetMemeticsCli = async (argv: string[]): Promise<void> => {
     containerName?: string;
     dockerCommand?: string;
     envFile?: string;
+    runtimeEnvFile?: string;
     fixture?: string;
     imageTag?: string;
     keepArtifacts?: boolean;
@@ -117,7 +122,7 @@ export const runMoltnetMemeticsCli = async (argv: string[]): Promise<void> => {
     codexDirectory: options.codexFrom,
     containerName: options.containerName,
     dockerCommand: options.dockerCommand,
-    envFilePath: options.envFile,
+    envFilePath: resolveEnvFileOption(options),
     fixtureDirectory: options.fixture,
     imageTag: options.imageTag,
     keepArtifacts: options.keepArtifacts,

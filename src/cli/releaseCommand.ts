@@ -11,6 +11,7 @@ import {
 import { SpawnfileError } from "../shared/index.js";
 
 import type { CliStreams } from "./runCli.js";
+import { envFileAliasOption, resolveEnvFileOption, runtimeEnvFileOption } from "./envFileOption.js";
 
 const UNITS: Record<string, number> = { h: 3_600_000, m: 60_000, ms: 1, s: 1_000 };
 
@@ -32,6 +33,7 @@ interface ReleaseCommandOptions {
   drain: boolean;
   drainTimeout: string;
   envFile?: string;
+  runtimeEnvFile?: string;
   force?: boolean;
   imageRepository?: string;
   notifyCommand?: string;
@@ -51,7 +53,8 @@ export const registerReleaseCommand = (
     .description("Build and deploy only when the image inputs changed, draining running turns first")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .requiredOption("--deployment <name>", "Detached deployment to release into")
-    .option("--env-file <file>", "Runtime secrets; must set SPAWNFILE_DAIMON_CONTROL_TOKEN to drain")
+    .addOption(runtimeEnvFileOption("Runtime secrets; must set SPAWNFILE_DAIMON_CONTROL_TOKEN to drain"))
+    .addOption(envFileAliasOption())
     .option("--auth-profile <name>", "Local Spawnfile auth profile")
     .option("--context <name>", "Docker context for the build and deployment target")
     .option("--docker-command <command>", "Docker command")
@@ -71,6 +74,7 @@ export const registerReleaseCommand = (
       } catch (error) {
         throw new SpawnfileError("validation_error", (error as Error).message);
       }
+      const envFile = resolveEnvFileOption(options);
       const drainTimeoutMs = parseReleaseDuration(options.drainTimeout, "--drain-timeout");
       const notifyDeferredAfterMs = parseReleaseDuration(options.notifyDeferredAfter, "--notify-deferred-after");
       const abort = new AbortController();
@@ -88,7 +92,7 @@ export const registerReleaseCommand = (
           drainPollMs: 5_000,
           drainTimeoutMs,
           envFileEnv: {},
-          ...(options.envFile ? { envFilePath: options.envFile } : {}),
+          ...(envFile ? { envFilePath: envFile } : {}),
           force: options.force === true,
           ...(options.imageRepository ? { imageRepository: options.imageRepository } : {}),
           inputPath,

@@ -1882,18 +1882,19 @@ spawnfile view [path]
 spawnfile compile [path] [--out <dir>]
 spawnfile train [path] [--agent <node-id>] --train <dataset> --test <dataset> --out <dir> [--dry-run]
 spawnfile status [path | <image-ref>] [--out <dir>] [--live] [--deployment <name>] [--image] [--pull] [--pull-check]
-spawnfile up [path | <image-ref>] [--out <dir>] [--auth-profile <name>] [--env-file <file>] [--detach] [--deployment <name>] [--context <name>] [--image] [--pull]
-spawnfile dev up [path] [--out <dir>] [--auth-profile <name>] [--env-file <file>] [--deployment <name>] [--context <name>]
+spawnfile up [path | <image-ref>] [--out <dir>] [--auth-profile <name>] [--runtime-env-file <file>] [--detach] [--deployment <name>] [--context <name>] [--image] [--pull]
+spawnfile dev up [path] [--out <dir>] [--auth-profile <name>] [--runtime-env-file <file>] [--deployment <name>] [--context <name>]
 spawnfile dev apply [path] --agent <id> [--out <dir>] [--deployment <name>]
 spawnfile dev restart [path] --agent <id> [--out <dir>] [--deployment <name>]
 spawnfile dev activity [path] [--agent <id>] [--tail <count>] [--out <dir>] [--deployment <name>]
 spawnfile dev stop [path] [--out <dir>] [--deployment <name>]
 spawnfile build [path] [--out <dir>] [--tag <image>] [--context <name>]
-spawnfile run [path] [--out <dir>] [--tag <image>] [--auth-profile <name>] [--env-file <file>] [--detach] [--deployment <name>] [--context <name>]
+spawnfile run [path] [--out <dir>] [--tag <image>] [--auth-profile <name>] [--runtime-env-file <file>] [--detach] [--deployment <name>] [--context <name>]
 spawnfile publish [path] --tag <image-ref> [--out <dir>]
 ```
 
 See `DISTRIBUTION.md` for `publish`, image-reference `up`/`status`, and the `--image`/`--pull`/`--pull-check` flags.
+`--runtime-env-file` is the env-file option on `up`, `dev up`, `run`, `release`, `auth sync` and `auth provision`. `--env-file` remains a hidden alias, but Node (22.23 and 24.21 verified) reads `--env-file` anywhere in its argv, after the script path too: a missing or unreadable file exits 9 before Spawnfile runs and a `NODE_OPTIONS=` line in it is applied to the CLI process. Callers SHOULD use `--runtime-env-file`.
 See `TRAINING.md` for canonical source handoff, Paideia requirements and delegated training outcomes.
 
 ### Exit Codes

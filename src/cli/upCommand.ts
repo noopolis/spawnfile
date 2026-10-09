@@ -21,6 +21,7 @@ import type { CliHandlers, CliStreams } from "./runCli.js";
 import { runImageUpCommand } from "./upImageCommand.js";
 import { createUpLifecycleInvocation, createUpProjectOptions } from "./upLifecycleInvocation.js";
 import { reconcileUpLifecycle } from "./upLifecycleRecovery.js";
+import { envFileAliasOption, resolveEnvFileOption, runtimeEnvFileOption } from "./envFileOption.js";
 
 const readSelectedTargetReceipt = async (file: string): Promise<unknown> => {
   if (typeof file !== "string" || file.length < 1 || Buffer.byteLength(file, "utf8") > 4096) {
@@ -47,6 +48,7 @@ interface UpCommandOptions {
   descriptorDigest?: string;
   dockerCommand?: string;
   envFile?: string;
+  runtimeEnvFile?: string;
   image?: boolean;
   json?: boolean;
   lifecycleInvocation?: string;
@@ -77,7 +79,8 @@ export const registerUpCommand = (
     .option("--deployment <name>", "Detached deployment record name")
     .option("--docker-command <command>", "Docker command")
     .option("--name <container>", "Docker container name")
-    .option("--env-file <file>", "Path to an env file for runtime secrets")
+    .addOption(runtimeEnvFileOption("Path to an env file for runtime secrets"))
+    .addOption(envFileAliasOption())
     .option("--world-bindings <file>", "Path to a versioned world-bindings artifact")
     .option("--selected-target-receipt-digest <digest>", "Selected target receipt digest for an organization handoff")
     .option("--selected-target-receipt <file>", "Selected target receipt for an organization handoff")
@@ -90,6 +93,8 @@ export const registerUpCommand = (
     .option("--json", "Render a spawnfile.up-receipt.v1 machine-readable receipt")
     .option("--lifecycle-invocation <id>", "Durably bind this exact JSON lifecycle invocation")
     .action(async (inputPath: string, options: UpCommandOptions) => {
+      options.envFile = resolveEnvFileOption(options);
+      delete options.runtimeEnvFile;
       requireMachineLifecycle(options.lifecycleInvocation, options.json);
       const upInput = resolveCommandInput(inputPath, { forceImage: options.image });
       if (upInput.kind === "invalid") {

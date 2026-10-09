@@ -4,6 +4,7 @@ import { SpawnfileError } from "../shared/index.js";
 
 import { resolveCommandInput } from "./resolveCommandInput.js";
 import type { CliHandlers, CliStreams } from "./runCli.js";
+import { envFileAliasOption, resolveEnvFileOption, runtimeEnvFileOption } from "./envFileOption.js";
 
 export const registerRunPublishCommands = (
   program: Command,
@@ -21,7 +22,8 @@ export const registerRunPublishCommands = (
     .option("--deployment <name>", "Detached deployment record name")
     .option("--docker-command <command>", "Docker command")
     .option("--name <container>", "Docker container name")
-    .option("--env-file <file>", "Path to an env file for runtime secrets")
+    .addOption(runtimeEnvFileOption("Path to an env file for runtime secrets"))
+    .addOption(envFileAliasOption())
     .option("--world-bindings <file>", "Path to a versioned world-bindings artifact")
     .option("--image", "Interpret the argument as an image reference")
     .option("-d, --detach", "Run the container in detached mode")
@@ -34,6 +36,7 @@ export const registerRunPublishCommands = (
         deployment?: string;
         dockerCommand?: string;
         envFile?: string;
+        runtimeEnvFile?: string;
         image?: boolean;
         name?: string;
         out?: string;
@@ -47,7 +50,7 @@ export const registerRunPublishCommands = (
           "validation_error",
           `Image-mode run is not supported. Deploy the image with: ` +
             `spawnfile up ${inputPath} --auth-profile <profile> ` +
-            "(add --env-file for any extra secrets; image deployments always detach)."
+            "(add --runtime-env-file for any extra secrets; image deployments always detach)."
         );
       }
       if (runInput.kind === "invalid") {
@@ -64,7 +67,7 @@ export const registerRunPublishCommands = (
         deploymentName: options.deployment,
         dockerCommand: options.dockerCommand,
         dockerContext: options.context,
-        envFilePath: options.envFile,
+        envFilePath: resolveEnvFileOption(options),
         imageTag: options.tag,
         outputDirectory: options.out,
         ...(options.worldBindings !== undefined

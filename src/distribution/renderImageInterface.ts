@@ -113,7 +113,7 @@ export const renderImageInterface = (
   lines.push("");
   lines.push(`next: spawnfile up ${summary.imageRef} --auth-profile <profile>`);
   if (summary.requiredSecrets.length > 0) {
-    lines.push("  supply the required secrets above via that profile or --env-file");
+    lines.push("  supply the required secrets above via that profile or --runtime-env-file");
   }
 
   return lines.join("\n");

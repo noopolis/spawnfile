@@ -22,6 +22,7 @@ src/cli/
 ├── upCommand.ts # Project/image `up` registration and machine-lifecycle receipt flow
 ├── upLifecycleRecovery.ts # Exact detached-container recovery for machine project `up`
 ├── releaseCommand.ts # `spawnfile release` flag parsing and exit codes; work lives in `../release/`
+├── envFileOption.ts # `--runtime-env-file` (+ hidden `--env-file` alias Node itself claims from argv)
 ├── statusCommand.ts # Status command orchestration and registration
 ├── statusCommandOptions.ts # Status option parsing, handler contracts, and output helpers
 ├── statusCommandLive.ts # Home-store and live-deployment status collection

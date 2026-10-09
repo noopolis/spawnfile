@@ -15,6 +15,7 @@ import { runDistributionRoundtripE2E } from "./distributionRoundtrip.js";
 import { runDockerAuthE2E } from "./dockerAuth.js";
 import { runPreflightCli } from "./preflightCli.js";
 import type { E2ERuntime } from "./types.js";
+import { envFileAliasOption, resolveEnvFileOption, runtimeEnvFileOption } from "../cli/envFileOption.js";
 
 const collect = (value: string, previous: string[]): string[] => [...previous, value];
 
@@ -58,7 +59,8 @@ const main = async (): Promise<void> => {
     .option("--scenario <id>", "Scenario id to run", collect, [])
     .option("--runtime <runtime>", "Runtime filter", collect, [])
     .option("--auth <method>", "Auth method filter", collect, [])
-    .option("--env-file <path>", "Env file for api_key scenarios")
+    .addOption(runtimeEnvFileOption("Env file for api_key scenarios", "path"))
+    .addOption(envFileAliasOption("path"))
     .option("--claude-from <directory>", "Claude Code config directory override")
     .option("--codex-from <directory>", "Codex config directory override")
     .option("--keep-artifacts", "Keep temporary projects and compile output")
@@ -70,6 +72,7 @@ const main = async (): Promise<void> => {
     claudeFrom?: string;
     codexFrom?: string;
     envFile?: string;
+    runtimeEnvFile?: string;
     keepArtifacts?: boolean;
     keepImages?: boolean;
     runtime: string[];
@@ -79,7 +82,7 @@ const main = async (): Promise<void> => {
     authMethods: options.auth as ModelAuthMethod[],
     claudeCodeDirectory: options.claudeFrom,
     codexDirectory: options.codexFrom,
-    envFilePath: options.envFile,
+    envFilePath: resolveEnvFileOption(options),
     keepArtifacts: options.keepArtifacts,
     keepImages: options.keepImages,
     runtimes: options.runtime as E2ERuntime[],

@@ -119,7 +119,7 @@ Team manifests do not declare surfaces. Surfaces belong to concrete agent manife
 Model and surface auth is managed through local auth profiles. The `spawnfile auth` commands import credentials into a named profile, and `spawnfile run` injects them at container startup:
 
 ```bash
-spawnfile auth sync --profile dev --env-file .env
+spawnfile auth sync --profile dev --runtime-env-file .env
 spawnfile run --tag my-agent --auth-profile dev
 ```
 

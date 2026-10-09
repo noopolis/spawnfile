@@ -494,7 +494,7 @@ describe("runCli", () => {
         path.join(fixturesRoot, "single-agent"),
         "--auth-profile",
         "dev",
-        "--env-file",
+        "--runtime-env-file",
         "/tmp/dev.env",
         "--deployment",
         "prod-eu",
@@ -1435,7 +1435,7 @@ describe("runCli", () => {
         path.join(fixturesRoot, "single-agent"),
         "--profile",
         "dev",
-        "--env-file",
+        "--runtime-env-file",
         "/tmp/dev.env",
       ],
       {
