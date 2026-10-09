@@ -161,7 +161,10 @@ the `runtime: daimon` public-host contract and must not be inferred from it.
 `runtime.options.attention` opts an agent into Daimon's durable inbox. An idle
 agent starts promptly; messages arriving during a turn accumulate for the next
 bounded turn. Spawnfile compiles the policy and requires an image capability
-receipt matching its pinned Daimon contract. It does not select or batch work.
+receipt matching its pinned Daimon contract: either the published registry pin
+(digest, per-architecture receipts and a `contract_manifest_sha256` equal to the
+compiler's vendored manifest) or an explicit local development identity. The
+same authority gates schedule lowering. It does not select or batch work.
 
 | Authored option | Runtime field | Default and bounds |
 |---|---|---|
