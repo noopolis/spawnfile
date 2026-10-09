@@ -271,6 +271,20 @@ describe("dated feed paths", () => {
     expect(existsSync(path.join(fixture.volume, "current", "2026-10-09"))).toBe(false);
   });
 
+  it("advances a frozen volume when only the expanded paths change, then freezes on them", () => {
+    const repo = datedFixture();
+    // Paths follow Tokyo while the ref and the freeze follow Berlin: Tokyo's date turns at 15:00Z.
+    fixture.target.source = { ...fixture.target.source, paths: ["${date:Asia/Tokyo}"] } as typeof fixture.target.source;
+    commitOn(repo, "data/2026-10-09", { "2026-10-09/day.txt": "09\n", "2026-10-10/day.txt": "10\n" });
+    expect(refreshVolumeFeed(fixture.target, at("2026-10-09T08:00:00Z")).status).toBe("landed");
+    expect(refreshVolumeFeed(fixture.target, at("2026-10-09T10:30:00Z")).status).toBe("frozen");
+    expect(refreshVolumeFeed(fixture.target, at("2026-10-09T15:30:00Z")).status).toBe("landed");
+    expect(served("2026-10-10/day.txt")).toBe("10\n");
+    expect(existsSync(path.join(fixture.volume, "current", "2026-10-09"))).toBe(false);
+    expect(readFeedLanded(fixture.target.stateDir).record?.identity.source).toMatchObject({ paths: ["2026-10-10"], ref: "data/2026-10-09" });
+    expect(refreshVolumeFeed(fixture.target, at("2026-10-09T15:40:00Z")).status).toBe("frozen");
+  });
+
   it("refuses a dated path the chosen ref does not carry, landing nothing", () => {
     const repo = datedFixture();
     fixture.target.source = { ...fixture.target.source, paths: ["${date:Europe/Berlin}"] } as typeof fixture.target.source;
