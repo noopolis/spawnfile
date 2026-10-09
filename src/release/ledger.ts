@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { appendFile, chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { z } from "zod";
@@ -56,6 +56,8 @@ export interface ReleasePaths {
   lock: string;
   log: string;
   pending: string;
+  /** Present from just before a post-deploy command runs until the ledger records its success. */
+  postDeploy: string;
 }
 
 export const resolveReleasePaths = (deployment: string, root?: string): ReleasePaths => {
@@ -66,7 +68,8 @@ export const resolveReleasePaths = (deployment: string, root?: string): ReleaseP
     ledger: path.join(directory, "ledger.json"),
     lock: path.join(directory, ".lock"),
     log: path.join(directory, "log.jsonl"),
-    pending: path.join(directory, "pending.json")
+    pending: path.join(directory, "pending.json"),
+    postDeploy: path.join(directory, "post-deploy.json")
   };
 };
 
@@ -97,6 +100,16 @@ export const readReleaseLedger = async (file: string): Promise<ReleaseLedger | n
       "blocked",
       `the release ledger ${file} is not a ${RELEASE_LEDGER_VERSION} record; refusing to release against a ledger this command cannot read`
     );
+  }
+};
+
+/** Anything but "definitely absent" counts as present: an unknown marker never reads as done. */
+export const postDeployPending = async (file: string): Promise<boolean> => {
+  try {
+    await stat(file);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ENOENT";
   }
 };
 

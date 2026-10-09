@@ -85,10 +85,16 @@ lock → resume stale drain → compile → identity
    `SPAWNFILE_RELEASE_IDENTITY`, `SPAWNFILE_RELEASE_IMAGE` (tag) and
    `SPAWNFILE_RELEASE_IMAGE_ID` in its environment. Its combined output (last
    4000 characters) goes to the release log output. A non-zero exit, a signal,
-   `--post-deploy-timeout` (default `10m`, then `SIGKILL`) or a command that
+   `--post-deploy-timeout` (default `10m`, at most `24h`) or a command that
    cannot be executed fails the release (`post-deploy-failed`): the new
    container keeps running, nothing is recorded, and the next run deploys
-   again and reruns the command. It must therefore be idempotent.
+   again and reruns the command. It must therefore be idempotent. The command
+   runs in its own process group; the timeout or an interruption kills the
+   whole group, and so does the command's own exit (it may not leave
+   background processes behind). `post-deploy.json` is written before it
+   starts and removed only once the ledger is written, so a failed, killed or
+   interrupted command makes the next run release again even when the running
+   image is the recorded one. An interrupted release never starts the command.
 10. **Ledger** is written only now, because it claims "this identity is
    running". A ledger that cannot be written fails the release
    (`ledger-failed`): until it is fixed every run redeploys.
@@ -107,6 +113,7 @@ Under `<SPAWNFILE_HOME>/releases/<deployment>/` (directory `0700`, files
 | `log.jsonl` | `spawnfile.release-log.v1` lines for releases, failures, deferrals and notification results. No-ops write nothing. |
 | `pending.json` | first instant the current identity was deferred, and whether that was notified |
 | `drain.json` | present only while a container may be drained by a release |
+| `post-deploy.json` | present from just before a post-deploy command runs until the ledger records the release |
 | `.lock` | one release per deployment; published with its owner already inside, reclaimed when that process is gone |
 
 A ledger, pending record or marker that exists and cannot be read is a refusal

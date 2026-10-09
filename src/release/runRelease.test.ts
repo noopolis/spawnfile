@@ -212,6 +212,30 @@ describe("runRelease", () => {
     }
   });
 
+  it("keeps a failed post-deploy pending, so even an unchanged forced image releases again until it succeeds", async () => {
+    const hook = { args: [], command: "/bin/hook", timeoutMs: 1_000 };
+    await writeLedger({ identity: IDENTITY, image_id: NEW_IMAGE, image_tag: "spawnfile-org:r-aaaaaaaaaaaa" });
+    const failing = harness({ postDeploy: { exitCode: 1 }, running: unit(NEW_IMAGE) });
+    expect(await runRelease(request({ force: true, postDeploy: hook }), failing.deps)).toMatchObject({ reason: "post-deploy-failed" });
+    const paths = resolveReleasePaths("org", root);
+    await expect(readFile(paths.postDeploy, "utf8")).resolves.toContain(IDENTITY);
+    const retry = harness({ running: unit(NEW_IMAGE, "d".repeat(64)) });
+    expect(await runRelease(request({ postDeploy: hook }), retry.deps)).toMatchObject({ kind: "released" });
+    expect(retry.calls.some((call) => call.startsWith("post-deploy"))).toBe(true);
+    await expect(readFile(paths.postDeploy, "utf8")).rejects.toThrow();
+    expect(await runRelease(request({ postDeploy: hook }), harness({ running: unit(NEW_IMAGE, "d".repeat(64)) }).deps)).toMatchObject({ kind: "unchanged" });
+  });
+
+  it("does not run the post-deploy command or record anything once interrupted", async () => {
+    const abort = new AbortController();
+    const h = harness();
+    h.deps.settle = async () => { abort.abort(); return unit(NEW_IMAGE, "d".repeat(64)); };
+    const outcome = await runRelease(request({ postDeploy: { args: [], command: "/bin/hook", timeoutMs: 1_000 }, signal: abort.signal }), h.deps);
+    expect(outcome).toMatchObject({ kind: "failed", reason: "interrupted" });
+    expect(h.calls.some((call) => call.startsWith("post-deploy"))).toBe(false);
+    await expect(readFile(resolveReleasePaths("org", root).ledger, "utf8")).rejects.toThrow();
+  });
+
   it("resumes whatever holds the name after a failed deploy and records nothing", async () => {
     const h = harness({ failAt: { deploy: new Error("candidate did not become ready") } });
     const outcome = await runRelease(request(), h.deps);
