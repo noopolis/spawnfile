@@ -393,13 +393,13 @@ describe("daimonAdapter", () => {
       runtime: { name: "daimon", options: {} },
       schedule: { every: "1m", kind: "every", prompt: "work" }
     }))).resolves.toMatchObject({ capabilities: expect.arrayContaining([
-      expect.objectContaining({ key: "agent.schedule", outcome: "degraded" })
+      expect.objectContaining({ key: "agent.schedule", outcome: "supported" })
     ]) });
     await expect(daimonAdapter.compileAgent(createPiTestNode({
       runtime: { name: "daimon", options: {} },
       schedule: { kind: "disabled" }
     }))).resolves.toMatchObject({ capabilities: expect.arrayContaining([
-      expect.objectContaining({ key: "agent.schedule", outcome: "degraded" })
+      expect.objectContaining({ key: "agent.schedule", outcome: "supported" })
     ]) });
     await expect(daimonAdapter.compileAgent(createPiTestNode({
       runtime: { name: "daimon", options: { engine: "grok" } }
