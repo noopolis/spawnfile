@@ -107,7 +107,7 @@ When an organization declares a Moltnet network, its image honors the network bi
 
 ```bash
 spawnfile up you/research-cell:1.0.0 --deployment research \
-  --env-file ./network.env
+  --runtime-env-file ./network.env
 ```
 
 ```text

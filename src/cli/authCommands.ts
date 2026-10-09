@@ -26,6 +26,7 @@ import {
   readTargetSecretSourceRequestFile,
   type TargetSecretSourceCommandKind
 } from "./targetSecretSourceInput.js";
+import { envFileAliasOption, resolveEnvFileOption, runtimeEnvFileOption } from "./envFileOption.js";
 
 type AuthCommandHandlers = Pick<
   CliHandlers,
@@ -148,7 +149,8 @@ export const registerAuthCommands = (
     .description("Provision auth material a project requires into a profile")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .option("-p, --profile <name>", "Auth profile name", "default")
-    .option("--env-file <file>", "Path to an env file with model keys and runtime secrets")
+    .addOption(runtimeEnvFileOption("Path to an env file with model keys and runtime secrets"))
+    .addOption(envFileAliasOption())
     .option("--claude-from <directory>", "Source Claude Code config directory")
     .option("--codex-from <directory>", "Source Codex config directory")
     .action(
@@ -158,13 +160,14 @@ export const registerAuthCommands = (
           claudeFrom?: string;
           codexFrom?: string;
           envFile?: string;
+          runtimeEnvFile?: string;
           profile: string;
         }
       ) => {
         const profile = await handlers.syncProjectAuth(inputPath, {
           claudeCodeDirectory: options.claudeFrom,
           codexDirectory: options.codexFrom,
-          envFilePath: options.envFile,
+          envFilePath: resolveEnvFileOption(options),
           profileName: options.profile
         });
         emitLines(streams, formatAuthProfileSummary(profile));
@@ -184,7 +187,8 @@ export const registerAuthCommands = (
     .command("provision")
     .description("Provision a declarative batch of target credentials")
     .argument("<request-file>", "Secret-free credential provisioning request JSON")
-    .option("--env-file <path>", "Create a 0600 environment file")
+    .addOption(runtimeEnvFileOption("Create a 0600 environment file", "path"))
+    .addOption(envFileAliasOption("path"))
     .option("--world-bindings <path>", "Create a resolved world-bindings artifact")
     .option("--resolved-grants <path>", "Resolved world grants used to derive world bindings")
     .action((
@@ -192,9 +196,11 @@ export const registerAuthCommands = (
       options: {
         envFile?: string;
         resolvedGrants?: string;
+        runtimeEnvFile?: string;
         worldBindings?: string;
       }
     ) => targetSecretAction(async () => {
+      const envFilePath = resolveEnvFileOption(options);
       let materials: ProvisionedCredentialMaterials | undefined;
       try {
         const request = await readCredentialProvisioningRequestFile(requestFile);
@@ -211,11 +217,11 @@ export const registerAuthCommands = (
           );
           modelEngineAuth = true;
         }
-        const envFile = options.envFile === undefined
+        const envFile = envFilePath === undefined
           ? undefined
           : await writeProvisionedEnvFile({
               materials,
-              path: options.envFile,
+              path: envFilePath,
               receipt: provisioned.receipt
             });
         let worldBindingsDigest: string | undefined;
