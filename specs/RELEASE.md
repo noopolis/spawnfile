@@ -10,7 +10,8 @@ running agent turn.
 spawnfile release <project> --deployment <name> --runtime-env-file <file> \
   [--drain-timeout 30m] [--no-drain] [--force] [--dev-inputs] \
   [--notify-command <absolute path> | --notify-webhook-env <ENV_NAME>] \
-  [--notify-deferred-after 24h] [--image-repository <name>] [--context <docker context>]
+  [--notify-deferred-after 24h] [--image-repository <name>] [--context <docker context>] \
+  [--post-deploy-command <absolute path> [--post-deploy-arg <arg>]... [--post-deploy-timeout 10m]]
 ```
 
 Exit codes: `0` released or unchanged, `75` deferred (try again later),
@@ -24,7 +25,7 @@ lock → resume stale drain → compile → identity
   → build → drain → wait for running turns (bounded)
       timeout: resume, record deferral, exit 75 (nothing deployed)
   → deploy (candidate + rollback, as `up --image`) → settle → confirm admission
-  → record ledger → prune images
+  → post-deploy command (when declared) → record ledger → prune images
 ```
 
 1. **Identity.** The release compiles the project (`--release` bundle identity
@@ -76,10 +77,28 @@ lock → resume stale drain → compile → identity
    for three consecutive polls, and it must run the image this release built.
 8. **Confirm admission** with `POST /v2/resume` against the new container. It
    proves the control token works for the next release.
-9. **Ledger** is written only now, because it claims "this identity is
+9. **Post-deploy command** (optional, `--post-deploy-command`): a caller step
+   that must succeed on the new deployment before the release counts, for
+   example installing a credential the image cannot carry. It runs on the
+   host without a shell, with the `--post-deploy-arg` values as its arguments
+   in order and `SPAWNFILE_RELEASE_DEPLOYMENT`, `SPAWNFILE_RELEASE_CONTAINER`,
+   `SPAWNFILE_RELEASE_IDENTITY`, `SPAWNFILE_RELEASE_IMAGE` (tag) and
+   `SPAWNFILE_RELEASE_IMAGE_ID` in its environment. Its combined output (last
+   4000 characters) goes to the release log output. A non-zero exit, a signal,
+   `--post-deploy-timeout` (default `10m`, at most `24h`) or a command that
+   cannot be executed fails the release (`post-deploy-failed`): the new
+   container keeps running, nothing is recorded, and the next run deploys
+   again and reruns the command. It must therefore be idempotent. The command
+   runs in its own process group; the timeout or an interruption kills the
+   whole group, and so does the command's own exit (it may not leave
+   background processes behind). `post-deploy.json` is written before it
+   starts and removed only once the ledger is written, so a failed, killed or
+   interrupted command makes the next run release again even when the running
+   image is the recorded one. An interrupted release never starts the command.
+10. **Ledger** is written only now, because it claims "this identity is
    running". A ledger that cannot be written fails the release
    (`ledger-failed`): until it is fixed every run redeploys.
-10. **Prune.** Keeps the running image, one rollback and the tag being built;
+11. **Prune.** Keeps the running image, one rollback and the tag being built;
     removes older `<repository>:r-*` tags not used by any container. Never
     touches other tags, volumes or build cache.
 
@@ -94,6 +113,7 @@ Under `<SPAWNFILE_HOME>/releases/<deployment>/` (directory `0700`, files
 | `log.jsonl` | `spawnfile.release-log.v1` lines for releases, failures, deferrals and notification results. No-ops write nothing. |
 | `pending.json` | first instant the current identity was deferred, and whether that was notified |
 | `drain.json` | present only while a container may be drained by a release |
+| `post-deploy.json` | present from just before a post-deploy command runs until the ledger records the release |
 | `.lock` | one release per deployment; published with its owner already inside, reclaimed when that process is gone |
 
 A ledger, pending record or marker that exists and cannot be read is a refusal
@@ -114,7 +134,8 @@ One notifier may be declared:
 The notification is `spawnfile.release-notification.v1`:
 `{reason, deployment, host, identity, message, at}`. `reason` is one of
 `blocked`, `build-failed`, `drain-failed`, `deploy-failed`, `health-failed`,
-`resume-failed`, `ledger-failed`, `interrupted`, `release-deferred`. `message`
+`resume-failed`, `post-deploy-failed`, `ledger-failed`, `interrupted`,
+`release-deferred`. `message`
 is at most 500 characters with filesystem paths replaced by `<path>`.
 
 Every failure notifies. A deferral notifies once per pending identity after it

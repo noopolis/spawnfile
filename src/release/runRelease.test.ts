@@ -59,6 +59,7 @@ const harness = (options: {
   running?: RunningUnit | null;
   wait?: DrainWait;
   failAt?: Partial<Record<"build" | "deploy" | "drain" | "settle", Error>>;
+  postDeploy?: { exitCode: number | null; output?: string; timedOut?: boolean };
   runtimes?: string[];
   swapDuringDrain?: boolean;
 } = {}): Harness => {
@@ -95,6 +96,10 @@ const harness = (options: {
     async pinTarget() { return { endpoint_fingerprint: "sha256:local", kind: "context", name: "default" }; },
     async verifyTarget() { calls.push("verify-target"); },
     async requestResume(target) { calls.push(`resume ${target.containerRef.slice(0, 1)}`); return { drain: null, state: "running" }; },
+    async runPostDeploy(_request, hook, context) {
+      calls.push(`post-deploy ${[hook.command, ...hook.args].join(" ")} ${context.containerName} ${context.imageTag}`);
+      return { output: "", timedOut: false, ...(options.postDeploy ?? { exitCode: 0 }) };
+    },
     async settle() { calls.push("settle"); if (options.failAt?.settle) throw options.failAt.settle; return current!; },
     async waitForDrained() {
       calls.push("wait");
@@ -185,6 +190,50 @@ describe("runRelease", () => {
     expect(h.calls).toContain("resume c");
     expect(h.calls.some((call) => call.startsWith("deploy"))).toBe(false);
     expect(h.notifications).toEqual(["drain-failed"]);
+  });
+
+  it("runs the post-deploy command after admission is confirmed and before recording", async () => {
+    const h = harness();
+    const hook = { args: ["/srv/bootstrap.sh", "x"], command: "/bin/sh", timeoutMs: 1_000 };
+    expect(await runRelease(request({ postDeploy: hook }), h.deps)).toMatchObject({ kind: "released" });
+    const at = h.calls.indexOf("post-deploy /bin/sh /srv/bootstrap.sh x spawnfile-org spawnfile-org:r-aaaaaaaaaaaa");
+    expect(at).toBe(h.calls.indexOf("resume d") + 1);
+    await expect(readFile(resolveReleasePaths("org", root).ledger, "utf8")).resolves.toContain(IDENTITY);
+  });
+
+  it("fails, notifies and records nothing when the post-deploy command fails or times out", async () => {
+    const hook = { args: [], command: "/bin/false", timeoutMs: 1_000 };
+    for (const postDeploy of [{ exitCode: 3, output: "token verify failed" }, { exitCode: null, timedOut: true }]) {
+      const h = harness({ postDeploy });
+      const outcome = await runRelease(request({ postDeploy: hook }), h.deps);
+      expect(outcome).toMatchObject({ kind: "failed", reason: "post-deploy-failed" });
+      expect(h.notifications).toEqual(["post-deploy-failed"]);
+      await expect(readFile(resolveReleasePaths("org", root).ledger, "utf8")).rejects.toThrow();
+    }
+  });
+
+  it("keeps a failed post-deploy pending, so even an unchanged forced image releases again until it succeeds", async () => {
+    const hook = { args: [], command: "/bin/hook", timeoutMs: 1_000 };
+    await writeLedger({ identity: IDENTITY, image_id: NEW_IMAGE, image_tag: "spawnfile-org:r-aaaaaaaaaaaa" });
+    const failing = harness({ postDeploy: { exitCode: 1 }, running: unit(NEW_IMAGE) });
+    expect(await runRelease(request({ force: true, postDeploy: hook }), failing.deps)).toMatchObject({ reason: "post-deploy-failed" });
+    const paths = resolveReleasePaths("org", root);
+    await expect(readFile(paths.postDeploy, "utf8")).resolves.toContain(IDENTITY);
+    const retry = harness({ running: unit(NEW_IMAGE, "d".repeat(64)) });
+    expect(await runRelease(request({ postDeploy: hook }), retry.deps)).toMatchObject({ kind: "released" });
+    expect(retry.calls.some((call) => call.startsWith("post-deploy"))).toBe(true);
+    await expect(readFile(paths.postDeploy, "utf8")).rejects.toThrow();
+    expect(await runRelease(request({ postDeploy: hook }), harness({ running: unit(NEW_IMAGE, "d".repeat(64)) }).deps)).toMatchObject({ kind: "unchanged" });
+  });
+
+  it("does not run the post-deploy command or record anything once interrupted", async () => {
+    const abort = new AbortController();
+    const h = harness();
+    h.deps.settle = async () => { abort.abort(); return unit(NEW_IMAGE, "d".repeat(64)); };
+    const outcome = await runRelease(request({ postDeploy: { args: [], command: "/bin/hook", timeoutMs: 1_000 }, signal: abort.signal }), h.deps);
+    expect(outcome).toMatchObject({ kind: "failed", reason: "interrupted" });
+    expect(h.calls.some((call) => call.startsWith("post-deploy"))).toBe(false);
+    await expect(readFile(resolveReleasePaths("org", root).ledger, "utf8")).rejects.toThrow();
   });
 
   it("resumes whatever holds the name after a failed deploy and records nothing", async () => {
