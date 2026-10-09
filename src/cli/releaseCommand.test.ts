@@ -73,6 +73,14 @@ describe("spawnfile release", () => {
     await expect(run(["/p", "--deployment", "org", "--notify-command", "page"], new Error("x"))).rejects.toThrow("absolute");
   });
 
+  it("reads the env file from --runtime-env-file or its --env-file alias", async () => {
+    const renamed = await run(["/p", "--deployment", "org", "--runtime-env-file", "/srv/org.env"], new Error("x"));
+    expect(renamed.seen).toMatchObject({ envFilePath: "/srv/org.env" });
+    const alias = await run(["/p", "--deployment", "org", "--env-file", "/srv/org.env"], new Error("x"));
+    expect(alias.seen).toMatchObject({ envFilePath: "/srv/org.env" });
+    await expect(run(["/p", "--deployment", "org", "--env-file", "/a", "--runtime-env-file", "/b"], new Error("x"))).rejects.toThrow("different files");
+  });
+
   it("requires a deployment", async () => {
     await expect(run(["/p"], new Error("x"))).rejects.toThrow();
   });

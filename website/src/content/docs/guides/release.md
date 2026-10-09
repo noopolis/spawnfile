@@ -8,7 +8,7 @@ description: Update a running organization only when its image changed, without 
 ```bash
 spawnfile release ./org \
   --deployment prod \
-  --env-file /etc/org/deploy.env \
+  --runtime-env-file /etc/org/deploy.env \
   --drain-timeout 30m \
   --notify-command /usr/local/bin/notify-operator
 ```
@@ -43,7 +43,7 @@ Every failure notifies with a fixed reason word (`build-failed`, `drain-failed`,
 [Service]
 Type=oneshot
 ExecStartPre=/usr/bin/git -C /srv/org pull --ff-only
-ExecStart=/usr/local/bin/spawnfile release /srv/org --deployment prod --env-file /etc/org/deploy.env --notify-command /usr/local/bin/notify-operator
+ExecStart=/usr/local/bin/spawnfile release /srv/org --deployment prod --runtime-env-file /etc/org/deploy.env --notify-command /usr/local/bin/notify-operator
 SuccessExitStatus=75
 TimeoutStartSec=2h
 ```
