@@ -40,6 +40,13 @@ export const feedLocalClock = (now: Date, zone: string): string =>
 export const expandFeedRefTemplate = (template: string, now: Date): string =>
   template.replace(FEED_REF_PLACEHOLDER, (_match, zone: string | undefined) => feedLocalDate(now, zone ?? "UTC"));
 
+/**
+ * The fed paths at `now`: each declared path with its date placeholders expanded at the same instant as the
+ * ref, so a dated ref and the dated directory inside it always name the same day. Undefined feeds the whole tree.
+ */
+export const expandFeedPaths = (paths: string[] | undefined, now: Date): string[] | undefined =>
+  paths?.map((entry) => expandFeedRefTemplate(entry, now));
+
 /** The period a landing at `now` belongs to; only a feed that declares a freeze has periods. */
 export const feedPeriod = (target: FeedTarget, now: Date): string | undefined =>
   target.freeze ? feedLocalDate(now, target.freeze.timezone) : undefined;
@@ -109,12 +116,13 @@ export const chooseFeedRef = (target: FeedTarget, { exec, now }: { exec: FeedExe
 
 /**
  * Frozen: the host landed the serving revision in THIS period, the period's cutoff has passed, and the ref
- * chosen now is the ref it was landed from. A new period, or a different ref name (the next period's ref
- * appearing), advances again.
+ * and paths chosen now are the ones it was landed from. A new period, a different ref name (the next
+ * period's ref appearing) or different expanded paths advance again.
  */
-export const feedFrozen = (target: FeedTarget, record: FeedLandedRecord | null, ref: string, now: Date): boolean => {
+export const feedFrozen = (target: FeedTarget, record: FeedLandedRecord | null, ref: string, now: Date, paths?: string[]): boolean => {
   if (!target.freeze || !record?.period || !pastCutoff(target, now)) return false;
   if (record.period !== feedLocalDate(now, target.freeze.timezone)) return false;
   const landed = record.identity.source;
-  return landed.kind !== "git" || target.source.kind !== "git" || landed.ref === ref;
+  return landed.kind !== "git" || target.source.kind !== "git"
+    || (landed.ref === ref && JSON.stringify(landed.paths ?? null) === JSON.stringify(paths ?? null));
 };
