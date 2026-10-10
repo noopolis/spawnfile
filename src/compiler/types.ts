@@ -13,6 +13,7 @@ import {
 } from "../manifest/index.js";
 import { ModelAuthMethod, StringMap } from "../shared/index.js";
 import type { ResolvedWorkspaceResource } from "./workspaceResources.js";
+import type { ResolvedTraining } from "./training/resolution.js";
 import type {
   ResolvedExternalParticipant,
   ResolvedOrganizationIdentity
@@ -274,6 +275,7 @@ export interface ResolvedAgentNode {
   subagents: ResolvedSubagentRef[];
   memory?: ResolvedMemoryBank[];
   memoryAccess?: ResolvedMemoryAccess[];
+  training?: ResolvedTraining;
   workspaceResources?: ResolvedWorkspaceResource[];
 }
 
@@ -300,6 +302,7 @@ export interface ResolvedTeamNode {
     packages?: ResolvedPackage[];
   };
   memory?: ResolvedMemoryBank[];
+  training?: ResolvedTraining;
   source: string;
 }
 
