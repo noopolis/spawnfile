@@ -1,6 +1,10 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { rm } from 'node:fs/promises';
 import { nativeDeferredTrial, unregisteredSidecar } from './deferred-trial.js';
+import { bindTerminalEvidence } from './lifecycle.js';
+import { launchFixture, traceFixture } from '../test-fixtures.js';
+import type { TerminalEvidence } from '../worker/index.js';
+import type { TerminalEvidenceMissing } from '../../../contracts/execution.js';
 import { trialScore } from '../../../experiments/index.js';
 
 vi.mock('./sandbox.js', () => ({ verifyChildSandbox: vi.fn(async () => undefined) }));
@@ -77,4 +81,38 @@ it('keeps the continuation\'s own unbound verdict after scoring an earlier wake'
   await expect(unregisteredSidecar()).rejects.toThrow('unregistered sidecar');
   // The worker's own per-wake frames are the other half of this, and they are a
   // worker-side artifact: `worker/control-continuation.test.ts` reads them back.
+});
+
+
+it.each(['blocked-always-unbound-continuation-foreign', 'blocked-always-failed-continuation-foreign'])(
+  'invalidates earlier evidence when %s carries a foreign-agent trace', async mode => {
+    const { report, root } = await nativeDeferredTrial(mode);
+    roots.push(root);
+    expect(report.stop).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed', unevidenced: 'terminal-unbound' });
+    expect(report.stop?.evidenced).toBeUndefined();
+    expect(report.stop?.wakes).toEqual([{ wakeId: 'task' }, { wakeId: 'answer-0', unevidenced: 'terminal-unbound' }]);
+    expect(report.execution).toBe('failed');
+    expect(() => trialScore(report)).toThrow('failed in infrastructure');
+  });
+
+
+it.each(['missing', 'failed'] as const)('seals the trial before returning for a %s named trace with foreign history', async kind => {
+  const fixture = await launchFixture();
+  roots.push(fixture.root);
+  let sealed: TerminalEvidenceMissing | undefined;
+  const seal = (fault: TerminalEvidenceMissing): void => { sealed ??= fault; };
+  const trace = traceFixture();
+  const frame = { schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId,
+    agentId: fixture.launch.agent.id, model: fixture.launch.agent.model, configSha256: fixture.launch.configSha256,
+    wakeId: 'task', executionId: trace.turn_id, native: { traces: [trace] },
+    receipt: { agent_id: fixture.launch.agent.id, delivery_id: `${fixture.input.trialId}:task`, execution_id: trace.turn_id },
+    activity: { executions: [] } } as unknown as TerminalEvidence;
+  const first = { wakeId: 'task', unevidenced: 'terminal-absent' as TerminalEvidenceMissing | undefined };
+  bindTerminalEvidence(first, frame, fixture.launch, fixture.input.trialId, seal);
+  expect(first.unevidenced).toBeUndefined();
+  const continuation = { ...frame, wakeId: 'answer', executionId: kind === 'missing' ? 'missing' : trace.turn_id,
+    receipt: { ...frame.receipt!, delivery_id: `${fixture.input.trialId}:answer` }, native: { ...frame.native,
+      traces: [{ ...trace, status: 'failed' as const }, { ...trace, turn_id: 'foreign', agent_id: 'foreign-agent' }] } };
+  expect(() => bindTerminalEvidence({ wakeId: 'answer' }, continuation, fixture.launch, fixture.input.trialId, seal)).toThrow('identity mismatch');
+  expect(sealed).toBe('terminal-unbound');
 });

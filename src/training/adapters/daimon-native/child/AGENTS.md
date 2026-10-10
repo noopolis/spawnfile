@@ -76,7 +76,8 @@ runtime published cannot be attributed: a frame from another trial, agent, model
 config or delivery, a foreign execution among the traces, or one execution with
 two closed traces. Selecting past one of those would be attributing evidence on a
 runtime that just proved it cannot be, so nothing in such a trial is scored — an
-earlier admissible wake included. A wake that simply named no closed execution of
+earlier admissible wake included. Validate every frame's traces before returning
+for a missing or failed named execution; neither can hide a foreign-agent trace. A wake that simply named no closed execution of
 its own is the other kind: that wake is unscorable and the trial's other frames
 are untouched.
 

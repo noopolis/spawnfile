@@ -257,7 +257,7 @@ function named(wakeId: unknown): WakeEvidence {
  * unreadable, and that distinction is what sends the next look at it upstream
  * instead of here.
  */
-function bindTerminalEvidence(wake: WakeEvidence, value: TerminalEvidence, launch: VerifiedNativeLaunch, trialId: string,
+export function bindTerminalEvidence(wake: WakeEvidence, value: TerminalEvidence, launch: VerifiedNativeLaunch, trialId: string,
   seal: (fault: TerminalEvidenceMissing) => void): void {
   const own = value.schema === 'paideia.daimon-native.trial.v1' && value.trialId === trialId && value.agentId === launch.agent.id &&
     value.model === launch.agent.model && value.configSha256 === launch.configSha256 &&
@@ -266,8 +266,9 @@ function bindTerminalEvidence(wake: WakeEvidence, value: TerminalEvidence, launc
   wake.unevidenced = 'terminal-unbound';
   if (!own) { seal('terminal-unbound'); return; }
   const trace = typeof value.executionId === 'string' ? value.native.traces.find(row => row.turn_id === value.executionId) : undefined;
-  if (!trace || trace.status !== 'completed') return;
   try {
+    if (value.native.traces.some(row => row.agent_id !== launch.agent.id)) throw new Error('Native execution evidence identity mismatch');
+    if (!trace || trace.status !== 'completed') return;
     if (executionClosed(value.activity!, value.receipt!, value.native.traces, launch.agent.id, trace.turn_id) === value.executionId) wake.unevidenced = undefined;
   } catch (conflict) {
     const fault = (conflict as Error).message === AMBIGUOUS_NATIVE_EXECUTION ? 'terminal-ambiguous' : 'terminal-unbound';
