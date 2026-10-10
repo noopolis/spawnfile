@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { subjectUsageMatchesNative } from './subject-usage.js';
-import type { EvaluationResult } from '../../contracts/evaluation.js';
+import { judgeFailureCauses, type EvaluationResult } from '../../contracts/evaluation.js';
 
 const identity = z.string().min(1).max(512).refine(value => !value.includes('\0'));
 const verdict = z.enum(['pass', 'fail', 'unknown', 'error', 'skipped']);
@@ -22,12 +22,38 @@ const judgeCall = z.object({ id: identity, judge: identity, providerId: identity
   failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'auth-stale', 'protocol', 'invalid-response', 'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),
   fallbackOf: identity.optional(),
   citationRepairs: z.union([z.literal(0), z.literal(1)]).optional(), repairOf: identity.optional(),
+  // Preserve historical retry provenance without attesting that earlier calls aborted.
+  retryOf: identity.optional(), retryCause: z.enum(judgeFailureCauses).optional(),
   responseModel: z.string().nullable(), responseRoute: z.string().nullable(),
   outcome: z.enum(['completed', 'invalid-response', 'generation-error']), usage: usage.nullable() });
 const stop = z.object({ state: z.enum(['requested', 'acknowledged', 'unknown']), scope: z.enum(['process', 'process-group', 'native-handle']),
-  quiescence: z.enum(['confirmed', 'unknown']), remoteWork: z.literal('unknown'), reason: z.string(), detail: z.string() });
+  quiescence: z.enum(['confirmed', 'unknown']), remoteWork: z.literal('unknown'), reason: z.string(), detail: z.string(),
+  // A replayed report has to keep WHICH closure proof failed: the object schema
+  // strips what it does not declare, and silently dropping the cause here would
+  // put the diagnosis back where it was before the vocabulary existed.
+  unconfirmed: z.enum(['worker-unavailable', 'terminal-absent', 'terminal-unbound', 'delivery-undisposed',
+    'activity-unreadable', 'activity-busy', 'execution-unbound', 'native-stop-unacknowledged',
+    'child-running', 'child-exit']).optional(),
+  // And WHY a provably closed run could not be scored, which is a different
+  // statement from an unproven closure and is dropped just as silently.
+  unevidenced: z.enum(['terminal-absent', 'terminal-unbound', 'terminal-ambiguous']).optional(),
+  // And WHICH wake a scored multi-wake trial was read from, with every wake's own
+  // verdict beside it: a replayed report that kept only the trial-level name could
+  // no longer say that the continuation failed after the assignment had bound.
+  evidenced: identity.optional(),
+  wakes: z.array(z.object({ wakeId: identity,
+    unevidenced: z.enum(['terminal-absent', 'terminal-unbound', 'terminal-ambiguous']).optional() })).optional() });
+// A replayed report has to keep WHY a judge errored for the same reason it keeps
+// which closure proof failed: the object schema strips what it does not declare.
+const judgeFailure = z.object({ cause: z.enum(judgeFailureCauses), judge: identity,
+  providerId: z.string().nullable(), requestedModel: z.string().nullable(),
+  responseModel: z.string().nullable(), responseRoute: z.string().nullable(),
+  kind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'auth-stale', 'protocol',
+    'invalid-response', 'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),
+  status: z.number().int().positive().max(599).optional() });
 const result: z.ZodType<EvaluationResult> = z.lazy(() => z.object({ id: z.string().optional(), status: verdict,
-  finality: z.enum(['provisional', 'final']), reason: z.string(), score: z.number().min(0).max(1).optional(),
+  finality: z.enum(['provisional', 'final']), reason: z.string(), judgeFailure: judgeFailure.optional(),
+  score: z.number().min(0).max(1).optional(),
   evidence: z.array(z.object({ kind: z.enum(['event', 'artifact', 'input', 'output', 'sidecar']), id: z.string(), digest: z.string().optional() })),
   cache: z.object({ key: z.string(), sourceCallId: z.string(), sourceCalls: z.array(judgeCall).optional() }).optional(),
   children: z.array(result).optional(), usage: z.array(usage).optional(), judgeCalls: z.array(judgeCall).optional() }));

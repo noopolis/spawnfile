@@ -108,8 +108,12 @@ it.each(['quota','transport','unavailable','authentication','protocol','invalid-
   const f=fixture(); f.generate.mockRejectedValue(new InferenceFailure(kind,'Provider failure'));
   const evaluated=await evaluateRubric(check,f.context);
   expect(evaluated.status).toBe('error');
+  // Protocol alone never attests that a judgment was absent. All failures retain
+  // their accounting without starting another provider route.
   expect(evaluated.judgeCalls).toHaveLength(1);
+  expect(f.generate).toHaveBeenCalledTimes(1);
   expect(evaluated.judgeCalls![0]).toMatchObject({outcome:'generation-error',failureKind:kind});
+  expect(evaluated.judgeCalls![0]!.retryOf).toBeUndefined();
 });
 it.each([new Error('quota unavailable'),Object.assign(new Error('unknown'),{kind:'invented'}),'quota'])('does not infer retry classification from arbitrary error prose %#',async error=>{
   const f=fixture(); f.generate.mockRejectedValue(error);

@@ -56,21 +56,88 @@ it('confirms a closed deferred execution without claiming the unanswered task co
   expect(next).toHaveBeenCalledOnce();
   expect(await session.stop('Finished')).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed' });
 });
-it.each(['blocked-no-deferred', 'blocked-failed-trace', 'blocked-active', 'blocked-wrong-execution'])(
-  'does not infer closed deferred execution from %s', async mode => {
-    const f = await fixture(mode); const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000);
-    await handle.request('/trial/run', { wakeId: 'task', text: 'Work' });
-    expect(await handle.stop('Unanswered task')).toMatchObject({ state: 'unknown', quiescence: 'unknown' });
-  });
+/**
+ * None of these may pass as a closed deferred execution, and the reason splits in
+ * two. A runtime that still admits an execution is not quiet, whatever its frame
+ * said; a frame whose trace failed or whose execution does not resolve leaves a
+ * quiet runtime with nothing this trial can be scored from. One refusal is about
+ * containment and the other about evidence, and they are published apart.
+ */
+it.each([
+  ['blocked-failed-trace', undefined, 'terminal-unbound'],
+  // Both at once, and that is not a contradiction: the runtime is still admitting an
+  // execution AND its frame cannot be scored from. Each name keeps its own meaning.
+  ['blocked-active', 'activity-busy', 'terminal-unbound'],
+  ['blocked-wrong-execution', undefined, 'terminal-unbound'],
+] as const)('does not infer closed deferred execution from %s', async (mode, cause, missing) => {
+  const f = await fixture(mode); const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000);
+  await handle.request('/trial/run', { wakeId: 'task', text: 'Work' });
+  const receipt = await handle.stop('Unanswered task');
+  // Never both, and never the wrong one: the name is what sends the next look at
+  // this to the runtime or to the evidence.
+  expect(receipt.unconfirmed).toBe(cause);
+  expect(receipt.unevidenced).toBe(missing);
+  expect(receipt.state).toBe(cause ? 'unknown' : 'acknowledged');
+  expect(receipt.quiescence).toBe(cause ? 'unknown' : 'confirmed');
+});
 it.each(['bad-ready', 'bad-health', 'exit', 'overflow'])('rejects %s before a native task', async mode => {
   const f = await fixture(mode);
   await expect(createDaimonNativeAdapter({ execution: { kind: 'child-process' }, startupMs: 150 }).start(f.input)).rejects.toThrow();
 });
-it.each(['bad-terminal', 'bad-stop'])('does not confirm native closure for %s', async mode => {
-  const f = await fixture(mode); const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process' } }).start(f.input);
+it('does not confirm native closure for bad-stop', async () => {
+  const f = await fixture('bad-stop'); const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process' } }).start(f.input);
+  expect((await session.run({ id: 'task', text: 'Work' })).status).toBe('completed');
+  expect(await session.stop('Finished')).toMatchObject({ quiescence: 'unknown', unconfirmed: 'native-stop-unacknowledged' });
+});
+/**
+ * A frame carrying another trial's identity is refused as this trial's evidence —
+ * the check moved out of the closure predicate, it did not go away — and the
+ * runtime it came from is still, separately, proven quiet.
+ */
+it('refuses a foreign trial frame as evidence without doubting the runtime it came from', async () => {
+  const f = await fixture('bad-terminal'); const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process' } }).start(f.input);
   const result = await session.run({ id: 'task', text: 'Work' });
-  expect(result.status).toBe(mode === 'bad-terminal' ? 'failed' : 'completed');
-  expect(await session.stop('Finished')).toMatchObject({ quiescence: 'unknown' });
+  expect(result.status).toBe('failed');
+  expect(result.error).toContain('Native terminal evidence identity mismatch');
+  const receipt = await session.stop('Finished');
+  expect(receipt).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed', unevidenced: 'terminal-unbound' });
+  expect(receipt.unconfirmed).toBeUndefined();
+});
+/**
+ * The two guards the single-trace rule was standing in for, on the shape that
+ * retired it. Both trials below run two wakes exactly like the scored one; the
+ * only difference is what the second frame's trace set carries beside this
+ * trial's own earlier wake. Isolation was the property — never the arity — so
+ * neither of these may resolve, however many traces there are.
+ */
+it('refuses a foreign execution sitting among a continued trial\'s own closed wakes', async () => {
+  const f = await fixture('blocked-always-history-foreign');
+  const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 2_000);
+  await handle.request('/trial/run', { wakeId: 'task', text: 'Work', controls: { maxExternalDeliveries: 2 } });
+  await expect(handle.request('/trial/run', { wakeId: 'answer-0', text: 'More' })).rejects.toThrow('identity mismatch');
+  // The runtime it came from is still, separately, proven quiet.
+  expect(await handle.stop('Foreign execution')).toMatchObject({ quiescence: 'confirmed', unevidenced: 'terminal-unbound' });
+});
+it('fails closed under its own name when two closed traces answer to one named execution', async () => {
+  const f = await fixture('blocked-always-history-ambiguous');
+  const handle = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 2_000);
+  await handle.request('/trial/run', { wakeId: 'task', text: 'Work', controls: { maxExternalDeliveries: 2 } });
+  await expect(handle.request('/trial/run', { wakeId: 'answer-0', text: 'More' })).rejects.toThrow('closed more than once');
+  const receipt = await handle.stop('Ambiguous evidence');
+  // Not merely unbound: the frame named an execution and the trial cannot say which
+  // trace accounts for it, which is an upstream defect and says so in its own word.
+  expect(receipt).toMatchObject({ quiescence: 'confirmed', unevidenced: 'terminal-ambiguous' });
+  expect(receipt.detail).toContain('terminal-ambiguous');
+});
+/**
+ * Another wake of another trial, with every identity on the frame itself matching:
+ * the receipt's delivery is the only thing that says so, so it is checked here too.
+ */
+it('refuses a frame whose receipt answers for another trial\'s delivery', async () => {
+  const f = await fixture('foreign-delivery');
+  const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process' } }).start(f.input);
+  expect((await session.run({ id: 'task', text: 'Work' })).status).toBe('completed');
+  expect(await session.stop('Finished')).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed', unevidenced: 'terminal-unbound' });
 });
 it('rejects unsupported modes, Docker callback mixing, invalid deadlines and cancelled preparation', async () => {
   const f = await fixture();

@@ -23,6 +23,18 @@ it.each(['authentication', 'protocol', 'unsupported', 'unknown', 'cancelled'] as
   await expect(createRoutedInference(options([provider(async () => { throw new InferenceFailure(kind, 'x'); }), provider(next)])).generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind });
   expect(next).not.toHaveBeenCalled();
 });
+it('carries the last route\'s closed refinement and status through the routed wrapper', async () => {
+  // Rebuilding the wrapper from `kind` alone put a refused grant, an expired one
+  // and a dead broker back in one bucket by the time a judge classified it.
+  const refused = createRoutedInference(options([provider(async () => {
+    throw new InferenceFailure('unavailable', 'broker refused', { detail: 'grant-refused' }); })]));
+  await expect(refused.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'unavailable', detail: 'grant-refused', status: null });
+  const limited = createRoutedInference(options([provider(async () => {
+    throw new InferenceFailure('quota', 'refused', { detail: 'provider-status', status: 429 }); })]));
+  await expect(limited.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ detail: 'provider-status', status: 429 });
+  const plain = createRoutedInference(options([provider(async () => { throw new InferenceFailure('unavailable', 'down'); })]));
+  await expect(plain.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'unavailable', detail: null, status: null });
+});
 it('stops on arbitrary errors, exhausted routes and failed audit persistence', async () => {
   for (const error of [new Error('secret'), new InferenceFailure('transport', 'x')]) {
     await expect(createRoutedInference(options([provider(async () => { throw error; })])).generate({ prompt: 'p', model: 'm' })).rejects.toBeInstanceOf(InferenceFailure);

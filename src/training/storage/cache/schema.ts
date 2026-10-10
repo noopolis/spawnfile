@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { parseDocument } from 'yaml';
-import type { CachedJudgment } from '../../contracts/evaluation.js';
+import { judgeFailureCauses, type CachedJudgment } from '../../contracts/evaluation.js';
 
 const token = z.number().int().nonnegative().nullable();
 const usage = z.object({
@@ -14,6 +14,7 @@ const call = z.object({
   outcome: z.enum(['completed', 'invalid-response', 'generation-error']), usage: usage.nullable(),
   citationRepairs: z.union([z.literal(0), z.literal(1)]).optional(),
   repairOf: z.string().optional(), fallbackOf: z.string().optional(),
+  retryOf: z.string().optional(), retryCause: z.enum(judgeFailureCauses).optional(),
   failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'auth-stale', 'protocol', 'invalid-response',
     'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),
 }).strict();
@@ -41,6 +42,7 @@ export function validateCachedJudgment(value: unknown): CachedJudgment {
   const ids = new Set<string>();
   for (const attempt of parsed.data.sourceCalls) {
     if (ids.has(attempt.id) || (attempt.repairOf && !ids.has(attempt.repairOf)) ||
+      (attempt.retryOf && !ids.has(attempt.retryOf)) ||
       (attempt.fallbackOf && !ids.has(attempt.fallbackOf))) throw new Error('Invalid cached attempt chain');
     ids.add(attempt.id);
   }

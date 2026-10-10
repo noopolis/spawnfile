@@ -182,3 +182,18 @@ it('reopens evidence-ID grades in another process and preserves first-write prov
     await expect(cache.get(key)).rejects.toThrow('response');
   } finally { db.close(); }
 });
+
+it('reopens historical protocol-retry provenance without creating or rewriting calls', async () => {
+  const options = await fixture();
+  const cache = await openJudgeCache(options);
+  const previous = value.sourceCalls[0]!;
+  const historical = { ...value, sourceCalls: [
+    { ...previous, id: 'aborted', outcome: 'generation-error' as const, failureKind: 'protocol' as const },
+    { ...previous, retryOf: 'aborted', retryCause: 'provider-error' as const },
+  ] };
+  await cache.put(key, historical);
+  const reopened = await child(process.execPath, ['--import', 'tsx', '--input-type=module', '-e',
+    `import {openJudgeCache} from ${JSON.stringify(modulePath)}; const cache=await openJudgeCache(${JSON.stringify(options)}); console.log(JSON.stringify(await cache.get(${JSON.stringify(key)})));`],
+  { cwd: fileURLToPath(new URL('../../..', import.meta.url)) });
+  expect(JSON.parse(reopened.stdout)).toEqual(historical);
+});

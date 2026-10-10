@@ -131,6 +131,8 @@ export async function evaluatePlan(stages: readonly Stage[], initial: Evaluation
         ? evaluated.score ?? (evaluated.status === 'pass' ? 1 : 0) : null;
       await context.observeMeasurement?.({ stageId: stage.id, criterionId: check.id!, kind: 'criterion',
         status: evaluated.status, score: raw,
+        // The weight still counts: a named failure never shrinks the denominator.
+        ...(evaluated.judgeFailure ? { judgeFailure: structuredClone(evaluated.judgeFailure) } : {}),
         ...(weight === undefined ? {} : { weight, weightedContribution: raw === null ? null :
           raw * weight / Object.values(stage.score!.linear).reduce((sum, value) => sum + value, 0) }) });
     });
@@ -142,7 +144,8 @@ export async function evaluatePlan(stages: readonly Stage[], initial: Evaluation
     observed.push(gate);
     results.push({ id: stage.id, checks: children, gate, ...(score ? { score, weights: { ...stage.score!.linear } } : {}) });
     await context.observeMeasurement?.({ stageId: stage.id, criterionId: stage.id, kind: 'gate', status: gate.status,
-      score: score?.missingWeight === 0 ? score.lower : null });
+      score: score?.missingWeight === 0 ? score.lower : null,
+      ...(gate.judgeFailure ? { judgeFailure: structuredClone(gate.judgeFailure) } : {}) });
   }
   const overall = combine('all', results.map(stage => stage.gate));
   const judgeCalls = collectJudgeCalls(observed);

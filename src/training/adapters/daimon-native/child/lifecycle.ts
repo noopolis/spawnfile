@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
-import type { StopReceipt, SubjectStartupDiagnostic } from '../../../contracts/execution.js';
+import type { StopReceipt, StopUnconfirmed, SubjectStartupDiagnostic, TerminalEvidenceMissing } from '../../../contracts/execution.js';
 import { isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
-import { executionClosed, type NativeActivity, type NativeStopEvidence, type TerminalEvidence } from '../worker/index.js';
+import { admittedExecutions, executionClosed, validateNativeFrame, AMBIGUOUS_NATIVE_EXECUTION, type NativeActivity, type NativeStopEvidence,
+  type TerminalEvidence } from '../worker/index.js';
 import { createNativeHttpClient, type NativeExecutionHandle } from '../transport/index.js';
 import { ensureNativeTrialArtifacts, nativeChildArguments, nativeChildEnvironment, validateChildPaths } from './arguments.js';
 import { verifyChildSandbox } from './sandbox.js';
@@ -70,30 +71,122 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
     }
   };
   child.stdout.on('data', (chunk: Buffer) => consume(chunk, true)); child.stderr.on('data', (chunk: Buffer) => consume(chunk, false));
-  let closed: TerminalEvidence | undefined; let stopping: Promise<StopReceipt> | undefined;
-  let unconfirmed: SubjectStartupDiagnostic | undefined;
+  let stopping: Promise<StopReceipt> | undefined;
+  /**
+   * One entry per delivery this trial made, in order: which wake it was, and why
+   * that wake's own frame cannot be scored from. `terminal-absent` is no frame at
+   * all for that delivery; `terminal-unbound` is a frame whose identity, closed
+   * trace or resolved execution disagreed, including one belonging to another
+   * trial; `terminal-ambiguous` is a frame whose named execution has more than
+   * one closed trace answering to it. Kept apart rather than collapsed, because
+   * they call for fixes in different places.
+   *
+   * A ledger rather than one verdict, because a trial whose subject defers runs
+   * several wakes and each one publishes its own frame. Holding only the newest
+   * meant a continuation that did not bind erased the account of a wake that HAD
+   * bound, over a closed trace, on a runtime the same stop proves quiet — and the
+   * trial then reported that it had no terminal evidence at all, which was false.
+   */
+  const wakes: WakeEvidence[] = [];
+  /**
+   * A fault that belongs to the TRIAL rather than to one of its wakes, and which
+   * therefore no other wake's frame may be scored past.
+   *
+   * Isolation is the property: a frame from another trial, agent, model, config
+   * or delivery, a foreign execution among the traces, or one execution answering
+   * to two closed traces all say that what this runtime published cannot be
+   * attributed, and attribution is exactly what selection would be doing. A wake
+   * that simply named no closed execution of its own is the other kind — that
+   * wake is unscorable and the trial's earlier frames are untouched.
+   */
+  let sealed: TerminalEvidenceMissing | undefined;
+  let diagnosed: SubjectStartupDiagnostic | undefined;
+  /**
+   * Closure is one question — is anything still running or still spending? — and
+   * it is the conjunction of three independent live proofs: the runtime admits no
+   * execution of this agent's, it sealed and acknowledged its own stop, and the
+   * owned child exited (decided below, after the kill escalation).
+   *
+   * It used to demand a fourth: that the last delivery's terminal frame bind to a
+   * resolved execution. That was interrogating another service's inbox
+   * bookkeeping over HTTP — a fact about the last delivery's paperwork, derived
+   * from a snapshot the runtime had already published, which cannot say whether
+   * anything is spending NOW. Everything it could claim comes from the same
+   * runtime that answers `/v2/activity` live, so it added no authority while it
+   * did subtract scorable runs: across seven investigations this predicate failed
+   * a different way each time on a run that was healthy. The binding still
+   * happens and still rejects a foreign trial's frame; it reports as missing
+   * EVIDENCE instead.
+   *
+   * Each proof names itself on the receipt, which publishes durably with the
+   * turn, because the evidence that would identify a missing one lives in the
+   * worker's control root and a training slot puts that on tmpfs. The vocabulary
+   * is closed, so nothing here can leak a path, a token, a body or an error
+   * string.
+   */
+  const proveClosure = async (): Promise<StopUnconfirmed | undefined> => {
+    if (!ready || exited) return 'worker-unavailable';
+    // Read before the stop, so the query is answered by the runtime that owns the
+    // execution; a host the worker already stopped seals this projection instead.
+    let activity: NativeActivity;
+    try { activity = await http<NativeActivity>('/v2/activity', undefined, 1500); }
+    catch { return 'activity-unreadable'; }
+    // Requested even when the projection already refuses closure: a runtime that
+    // can still be told to stop should be, and the cause below names the busier
+    // fault first rather than whichever one this request happens to return.
+    let native: NativeStopEvidence | undefined;
+    try { native = await http<NativeStopEvidence>('/trial/stop', {}, 6000); } catch { native = undefined; }
+    // A projection with no execution authority, or carrying another agent's
+    // execution, cannot be counted at all; an unfinished runtime answers with the
+    // execution it is still running. Different faults, different names.
+    let admitted: number;
+    try { admitted = admittedExecutions(activity, launch.agent.id); }
+    catch { return 'execution-unbound'; }
+    if (admitted > 0) return 'activity-busy';
+    if (native?.state !== 'acknowledged') return 'native-stop-unacknowledged';
+    return undefined;
+  };
   const stop = (reason: string): Promise<StopReceipt> => stopping ??= (async () => {
-    let nativeClosed = false;
-    try {
-      if (!ready || exited) throw new Error('Worker is not available for native stop');
-      const activity = await http<NativeActivity>('/v2/activity', undefined, 1500);
-      const native = await http<NativeStopEvidence>('/trial/stop', {}, 6000);
-      nativeClosed = !!closed?.receipt && !!closed.executionId && native.state === 'acknowledged' &&
-        executionClosed(activity, closed.receipt, closed.native.traces, launch.agent.id) === closed.executionId;
-    } catch { /* Uncertain native work requires outer-container termination. */ }
+    // The trial's own evidence, selected rather than taken from whichever delivery
+    // answered last: the most recent wake that bound is the most recent account of
+    // this trial, and it is named so a scored report can say which wake it read. A
+    // trial-wide fault outranks every frame, and with no admissible wake at all the
+    // refusal keeps the last delivery's own cause.
+    const scored = sealed ? undefined : [...wakes].reverse().find(entry => entry.unevidenced === undefined);
+    const last = wakes[wakes.length - 1];
+    const evidence = scored ? undefined : sealed ?? last?.unevidenced ?? 'terminal-absent';
+    let cause: StopUnconfirmed | undefined;
+    try { cause = await proveClosure(); }
+    catch { cause = 'activity-unreadable'; /* Uncertain native work requires outer-container termination. */ }
     if (!exited) child.kill('SIGTERM');
     const until = Date.now() + 2000;
     while (!exited && Date.now() < until) await pause(20);
     if (!exited) { child.kill('SIGKILL'); const forced = Date.now() + 1000; while (!exited && Date.now() < forced) await pause(20); }
     await diagnostics.save(exitCode, exitSignal);
-    const confirmed = nativeClosed && exited && exitCode === 0;
+    cause ??= !exited ? 'child-running' : exitCode === 0 ? undefined : 'child-exit';
+    const confirmed = cause === undefined;
     // A worker that died mid-turn published nothing: startup owns the only
     // other route this record takes, and the protected file it is built from
     // lives on a slot tmpfs that dies with the container. Build it here so the
-    // durable event stream carries why the worker stopped answering.
-    if (!confirmed) { try { unconfirmed = diagnostics.record(new Error(reason)); } catch { /* never fails a stop */ } }
+    // durable event stream carries why the worker stopped answering — for a
+    // frame that never arrived as much as for an unproven closure, since its
+    // last words are exactly what explains a missing one.
+    if (!confirmed || evidence) { try { diagnosed = diagnostics.record(new Error(reason)); } catch { /* never fails a stop */ } }
     return { state: confirmed ? 'acknowledged' : 'unknown', scope: 'native-handle', quiescence: confirmed ? 'confirmed' : 'unknown', remoteWork: 'unknown', reason,
-      detail: confirmed ? 'Closed native execution, idle runtime, acknowledged native stop and worker exit' : 'Native child closure unconfirmed; caller must stop the shared container' };
+      ...(cause ? { unconfirmed: cause } : {}),
+      // Two separate questions, two separate names: a run can be provably quiet
+      // AND unscorable, and a report that cannot say which one it is sends the
+      // next investigation to the wrong layer.
+      ...(evidence ? { unevidenced: evidence } : {}),
+      // Which wake the verdict rests on, and every wake's own verdict beside it.
+      // Selection must not become suppression: a continuation that did not bind is
+      // a real account of that wake, and it travels here because the worker's own
+      // per-wake files live on a control root a training slot puts on tmpfs.
+      ...(scored ? { evidenced: scored.wakeId } : {}),
+      ...(wakes.length ? { wakes: wakes.map(entry => ({ wakeId: entry.wakeId, ...(entry.unevidenced ? { unevidenced: entry.unevidenced } : {}) })) } : {}),
+      detail: !confirmed ? `Native child closure unconfirmed (${cause}); caller must stop the shared container`
+        : evidence ? `Idle native runtime, acknowledged native stop and worker exit; no terminal evidence to score this trial (${evidence})${last ? ` on wake ${last.wakeId}` : ''}`
+          : `Closed native execution, idle runtime, acknowledged native stop and worker exit${scored === last ? '' : `; scored from wake ${scored!.wakeId}, not wake ${last!.wakeId} (${last!.unevidenced})`}` };
   })();
   try {
     while (!ready) {
@@ -107,25 +200,81 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
     startup.throwIfAborted();
     const request: NativeExecutionHandle['request'] = async <T>(path: Parameters<NativeExecutionHandle['request']>[0], body?: unknown, ms?: number, signal?: AbortSignal) => {
       if (failure || exited) throw new Error('Owned native worker is no longer alive');
-      if (path === '/trial/run') closed = undefined;
+      // Recorded before the call, so a delivery whose frame never arrives is still
+      // this trial's own wake with its own cause rather than a gap in the ledger.
+      const wake = path !== '/trial/run' ? undefined : named((body as { wakeId?: unknown })?.wakeId);
+      if (wake) wakes.push(wake);
       const result = await http<T>(path, body, ms, signal);
-      if (path === '/trial/run') {
-        const value = result as TerminalEvidence;
-        const completed = value.status === 'completed' && value.receipt?.state === 'completed';
-        const deferred = value.status === 'failed' && value.blocked === 'awaiting-external-input' &&
-          value.receipt?.state === 'accepted' && value.receipt.deferred === true;
-        if ((completed || deferred) && value.native.traces[0]?.status === 'completed' && value.schema === 'paideia.daimon-native.trial.v1' && value.trialId === trialId && value.agentId === launch.agent.id && value.model === launch.agent.model &&
-            value.configSha256 === launch.configSha256 && value.wakeId === (body as { wakeId?: string })?.wakeId && value.receipt && value.activity &&
-            executionClosed(value.activity, value.receipt, value.native.traces, launch.agent.id) === value.executionId) closed = value;
-      }
+      if (wake) bindTerminalEvidence(wake, result as TerminalEvidence, launch, trialId, fault => { sealed ??= fault; });
       return result;
     };
-    return { name: `child:${child.pid}`, request, stop, diagnostic: () => unconfirmed };
+    return { name: `child:${child.pid}`, request, stop, diagnostic: () => diagnosed };
   } catch (error) {
     // The protected capture lives on the control root, which a training slot puts on tmpfs; the thrown
     // carrier holds the redacted record so the caller can persist the failure class durably.
     await stop('Native child startup failed');
     throw diagnostics.startupFailure(error);
+  }
+}
+
+/** One delivery's place in the ledger: which wake it was, and why its frame cannot be scored. */
+interface WakeEvidence { wakeId: string; unevidenced?: TerminalEvidenceMissing }
+
+/**
+ * The delivery's own wake name, at the bound the worker's gate admits.
+ *
+ * The receipt publishes durably and its vocabulary is closed, so the name a
+ * caller passed is either one of those bounded identifiers or it is not
+ * published at all: `unnamed` is a statement about the ledger entry, never a
+ * path, a token or a body smuggled onto the record by a caller's own string.
+ */
+const WAKE_NAME = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+function named(wakeId: unknown): WakeEvidence {
+  return { wakeId: typeof wakeId === 'string' && WAKE_NAME.test(wakeId) ? wakeId : 'unnamed', unevidenced: 'terminal-absent' };
+}
+
+/**
+ * Whether ONE wake's frame can be scored from — never whether something is still
+ * spending, and never a verdict about the trial around it.
+ *
+ * A frame from another trial, agent, wake or config is not this trial's evidence,
+ * and that check lives here rather than in the closure predicate. The receipt has
+ * to name this trial's own delivery too: the frame's identity and the delivery the
+ * runtime answered for are one delivery, or the frame is accounting for somebody
+ * else's wake. Those are attribution failures, so they `seal` the whole trial:
+ * nothing this runtime published can be scored past one.
+ *
+ * A trial whose subject deferred runs its continuations as further wakes, and each
+ * one closes an execution of its own. The trace that answers for THIS frame is the
+ * one the frame names; the rest are this same trial's earlier, already-closed
+ * wakes, and counting them was refusing a healthy run for the arity of its own
+ * history. Nothing is admitted by position: an unnamed execution resolves to no
+ * trace at all, and that is this wake's own fault rather than the trial's.
+ *
+ * An identity conflict still throws, because it must fail the turn rather than
+ * pass as verified work; it only records what it was first. Two traces answering
+ * to the named execution is its own word: the frame is not unbound, it is
+ * unreadable, and that distinction is what sends the next look at it upstream
+ * instead of here.
+ */
+export function bindTerminalEvidence(wake: WakeEvidence, value: TerminalEvidence, launch: VerifiedNativeLaunch, trialId: string,
+  seal: (fault: TerminalEvidenceMissing) => void): void {
+  const own = value.schema === 'paideia.daimon-native.trial.v1' && value.trialId === trialId && value.agentId === launch.agent.id &&
+    value.model === launch.agent.model && value.configSha256 === launch.configSha256 &&
+    value.wakeId === wake.wakeId && !!value.receipt && !!value.activity &&
+    value.receipt.agent_id === launch.agent.id && value.receipt.delivery_id === `${trialId}:${value.wakeId}`;
+  wake.unevidenced = 'terminal-unbound';
+  if (!own) { seal('terminal-unbound'); return; }
+  try {
+    validateNativeFrame(value.activity!, value.receipt!, value.native.traces, launch.agent.id, value.executionId);
+    const trace = typeof value.executionId === 'string' ? value.native.traces.find(row => row.turn_id === value.executionId) : undefined;
+    if (!trace || trace.status !== 'completed') return;
+    if (executionClosed(value.activity!, value.receipt!, value.native.traces, launch.agent.id, trace.turn_id) === value.executionId) wake.unevidenced = undefined;
+  } catch (conflict) {
+    const fault = (conflict as Error).message === AMBIGUOUS_NATIVE_EXECUTION ? 'terminal-ambiguous' : 'terminal-unbound';
+    wake.unevidenced = fault;
+    seal(fault);
+    throw conflict;
   }
 }
 

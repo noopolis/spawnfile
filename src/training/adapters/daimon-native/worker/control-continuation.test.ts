@@ -1,9 +1,10 @@
 import { test, expect } from 'vitest';
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createWorkerController } from './control.js';
+import { wakeEvidenceFile } from './evidence/index.js';
 import { configFixture, receiptFixture, traceFixture } from '../test-fixtures.js';
 import type { NativeHost, WorkerOptions } from './types.js';
 
@@ -48,6 +49,18 @@ test('worker admits a real second external delivery, isolates its evidence, and 
     expect(first.native.usage[0]!.input).toBe(10); expect(second.native.usage[0]!.input).toBe(20);
     expect(deliveries).toHaveLength(2);
     expect(JSON.parse(await readFile(options.evidence, 'utf8')).executionId).toBe(second.executionId);
+    // Each wake also files its own frame, because renaming over one file left a
+    // continued trial holding only its last delivery's account: the assignment's
+    // frame — the one that bound over a closed trace — no longer existed. Nothing
+    // is merged; each file is exactly one wake's own frame.
+    const filed = (await readdir(join(root, 'control'))).filter(name => name.startsWith('evidence')).sort();
+    expect(filed).toEqual(['evidence.1.json', 'evidence.2.json', 'evidence.json']);
+    const frames = await Promise.all(['evidence.1.json', 'evidence.2.json']
+      .map(async name => JSON.parse(await readFile(join(root, 'control', name), 'utf8')) as { wakeId: string; executionId: string }));
+    expect(frames.map(frame => frame.wakeId)).toEqual(['task', 'answer']);
+    expect(frames.map(frame => frame.executionId)).toEqual([first.executionId, second.executionId]);
+    expect(wakeEvidenceFile('/control/evidence', 3)).toBe('/control/evidence.3');
+    expect(() => wakeEvidenceFile(options.evidence, 0)).toThrow('delivery ordinal');
     await expect(controller.run('extra', answer)).rejects.toThrow('exactly one');
     await controller.stop(); expect(stops).toBe(1);
   } finally { await rm(root, { recursive: true, force: true }); }

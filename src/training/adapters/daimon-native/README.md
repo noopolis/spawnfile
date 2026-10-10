@@ -214,8 +214,15 @@ subtree of it and separates trials there itself:
     ├── sandbox-projection.json          Daimon's runtime acceptance store,
     ├── child-sandbox-preflight.json     the wake fuse directory and the
     ├── child-diagnostics.json           `--evidence` file also live here
-    └── evidence.json
+    ├── evidence.json                    the latest delivery's terminal frame,
+    ├── evidence.1.json                  and one file per wake by delivery
+    └── evidence.2.json                  ordinal, never renamed over
 ```
+
+A trial that defers runs several wakes and each publishes its own terminal frame.
+`evidence.json` is renamed over on every delivery, so the numbered files beside it
+are what keeps an earlier wake's account: nothing is merged and each file holds
+exactly one wake's frame, naming its own wake.
 
 The directory is created once per trial with a non-recursive `mkdir`, so a
 repeated trial identity fails with `EEXIST` instead of colliding with, or

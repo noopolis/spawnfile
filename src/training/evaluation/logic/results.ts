@@ -30,8 +30,12 @@ export function combine(operation: 'all' | 'any', children: EvaluationResult[]):
   const final = witnesses.length ? witnesses.some(child => child.finality === 'final')
     : children.every(child => child.finality === 'final');
   const judgeCalls = collectJudgeCalls(children);
+  // A named judge failure nested under all:/any: is the same finding as a top-level
+  // one; dropping it here would make composition the new place errors go anonymous.
+  const failure = status === 'error' ? children.find(child => child.judgeFailure)?.judgeFailure : undefined;
   return { ...result(status, `${operation}: ${children.map(child => child.status).join(', ')}`, final),
-    children, evidence: children.flatMap(child => child.evidence), ...(judgeCalls.length ? { judgeCalls } : {}) };
+    children, evidence: children.flatMap(child => child.evidence), ...(judgeCalls.length ? { judgeCalls } : {}),
+    ...(failure ? { judgeFailure: structuredClone(failure) } : {}) };
 }
 
 export function weightedScore(weights: Readonly<Record<string, number>>,

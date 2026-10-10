@@ -41,6 +41,22 @@ blocked receipt plus the proofs behind a confirmed stop — matching closed nati
 work, idle runtime, acknowledged stop and observed exit — and an uncertain, hung,
 crashed, aborted or deadline-killed execution stays `failed` exactly as before.
 
+When that demotion happens, the report says which fault caused it, and there are
+two of them. The deferral is the subject's outcome and the demotion is the
+machine's, and while they shared one `error` an unprovable closure published the
+subject's own "delivery blocked awaiting external input" as the reason a trial was
+unscorable — the sentence that sent two investigations after the agent instead of
+after the missing proof. `error` now leads with `Native closure unproven (<cause>)`
+from the receipt's closed `StopUnconfirmed` vocabulary when containment is in
+doubt, or with `Native trial unscorable for want of terminal evidence (<cause>)`
+from `unevidenced` when the runtime is provably quiet and this trial simply has no
+frame to be scored from — followed by `on wake <id>`, because a trial that ran
+several wakes has to say which delivery that refusal was read from — and keeps what
+the turn said after either. The two are never collapsed: one says a worker may
+still be spending and the other says it is not, and they call for fixes in
+different places. Naming a cause grants nothing: the verdict and every proof
+behind it are unchanged.
+
 Deferred is never success. The unanswered delivery is itself a final failing
 witness, so a deferred trial can never report `pass`; the measured checks keep
 their own verdicts and weights, so a missing artifact stays a missing artifact in

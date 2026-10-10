@@ -2,13 +2,18 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Observation } from '../../contracts/execution.js';
+import { captureObservation } from '../../capture/index.js';
+import { launchFixture } from './test-fixtures.js';
+import * as child from './child/index.js';
+import { sha256 } from './receipt/index.js';
+import type { NativeGrokUsage } from './worker/index.js';
 import { childFixture } from './child/fixture.js';
 import { grokLaunchFrom, grokProtectedPaths, writeGrokSlotReceipt } from './grok-fixtures.js';
 import { createDaimonNativeAdapter } from './index.js';
 
 vi.mock('./child/sandbox.js', () => ({ verifyChildSandbox: vi.fn(async () => undefined) }));
 const roots: string[] = [];
-afterEach(async () => { vi.clearAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 
 /**
  * A brokered Grok worker that did its work and then lost its transport.
@@ -142,4 +147,67 @@ it('reports absence rather than a zero when the broker sealed nothing', async ()
   // And no seal: an empty record would read as "the turn sealed nothing", which
   // is exactly the reading this stream exists to make impossible.
   expect(brokerSeal(observations)).toBeUndefined();
+});
+
+
+it.each([true, false].flatMap(accounting => ['none', 'before', 'after', 'always'].map(failure => ({ accounting, failure }))))(
+  'deduplicates recovered executions after transport/publication failure ($accounting, $failure)', async ({ accounting, failure }) => {
+  const f = await launchFixture();
+  f.launch.workspace.target = f.launch.workspace.source;
+  for (const projection of f.launch.projections) projection.target = projection.source;
+  roots.push(f.root);
+  const launch = await grokLaunchFrom(f.launch, f.root);
+  f.input.model = launch.agent.model;
+  f.input.protectedPaths = [...grokProtectedPaths(f.root), f.launch.workspace.source, launch.projections[0]!.source];
+  await writeGrokSlotReceipt(launch);
+  await f.save();
+  const rows: NativeGrokUsage[] = ['A', 'B', 'C'].map((wake, index) => ({
+    ...JSON.parse(sealedRow(launch.agent.id)), wake, turn: sha256(wake),
+    input: (index + 1) * 10, output: 0, cache_read: 0, total: (index + 1) * 10,
+  }));
+  await mkdir(dirname(launch.broker.usageLedgerPath), { recursive: true, mode: 0o700 });
+  await writeFile(launch.broker.usageLedgerPath, rows.map(row => JSON.stringify(row)).join('\n') + '\n', { mode: 0o600 });
+  let deliveries = 0;
+  // Actual adapter orchestration and filesystem recovery, with only the worker
+  // transport stubbed: the first frame arrives, the continuation transport dies.
+  vi.spyOn(child, 'startOwnedChild').mockResolvedValue({
+    name: 'unit-child', stop: async () => ({ state: 'acknowledged', quiescence: 'confirmed',
+      scope: 'native-handle', remoteWork: 'unknown', reason: 'Unit transport stopped', detail: 'Stubbed transport' }),
+    request: async <T>(): Promise<T> => {
+      if (++deliveries > 1) throw new Error('Continuation transport died');
+      return { schema: 'paideia.daimon-native.trial.v1', trialId: f.input.trialId, wakeId: 'task',
+        agentId: launch.agent.id, model: launch.agent.model, configSha256: launch.configSha256,
+        status: 'failed', blocked: 'awaiting-external-input', completedAt: new Date().toISOString(),
+        native: { traces: [], usage: [rows[0]], ...(accounting ? { accounting: { usage: [rows[0]], coverage: 'partial' } } : {}) },
+        coverage: [{ channel: 'usage', completeness: 'partial', ordering: 'source' }] } as T;
+    },
+  });
+  let events: Observation[] = [];
+  const attempts: Observation[] = [];
+  const session = await createDaimonNativeAdapter({ sealedUsage: { attempts: 1, intervalMs: 0 },
+    execution: { kind: 'child-process', externalInputs: { maxDeliveries: 1, next: async () => ({
+      id: 'answer', text: 'Answer', source: { kind: 'transport', id: 'reply', sha256: `sha256:${sha256('Answer')}` },
+    }) } } }).start({ ...f.input, onObservation: value => {
+      if (value.type === 'usage') {
+        attempts.push(structuredClone(value));
+        if (failure === 'always' || (failure === 'before' && attempts.length === 1)) throw new Error('Usage sink failed');
+      }
+      events = captureObservation(events, value);
+      if (value.type === 'usage' && failure === 'after' && attempts.length === 1) throw new Error('Usage sink failed');
+    } });
+  const result = await session.run({ id: 'task', text: 'Task' });
+  expect(deliveries, result.error).toBe(failure === 'none' ? 2 : 1);
+  expect(result.error).toContain(failure === 'none' ? 'Continuation transport died' : 'Usage sink failed');
+  expect(result.status).toBe('failed');
+  expect.soft(result.usage?.inputTokens).toBe(60);
+  const observations = events.filter(row => row.type === 'usage');
+  if (failure !== 'none') expect(attempts[1]).toEqual(attempts[0]);
+  if (failure === 'always') {
+    expect(attempts).toHaveLength(2);
+    expect(observations).toEqual([]);
+    return;
+  }
+  expect.soft(observations.map(row => row.usage?.inputTokens)).toEqual([10, 50]);
+  expect.soft(observations.reduce((total, row) => total + row.usage!.inputTokens!, 0)).toBe(60);
+  expect(observations.flatMap(row => (row.native as NativeGrokUsage[]).map(usage => usage.wake))).toEqual(['A', 'B', 'C']);
 });

@@ -28,6 +28,9 @@ function checkView(check: EvaluationResult, fallback: string, weights?: Record<s
   const weight = check.id === undefined ? undefined : weights?.[check.id];
   const raw = check.status === 'pass' || check.status === 'fail' ? check.score ?? (check.status === 'pass' ? 1 : 0) : null;
   return { id: check.id ?? fallback, label: check.id ?? fallback, status: check.status, score: check.score ?? null,
+    // Without this the viewer published `status: error` and no cause at all, and a
+    // whole training run ended on a judge nobody could name. The weight still shows.
+    ...(check.judgeFailure ? { judgeFailure: structuredClone(check.judgeFailure) } : {}),
     ...(weight === undefined ? {} : { weight, weightedContribution: raw === null ? null :
       raw * weight / Object.values(weights!).reduce((sum, value) => sum + value, 0) }),
     evidenceIds: check.evidence.map((reference) => reference.id),

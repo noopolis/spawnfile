@@ -3,14 +3,19 @@ import { test, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createWorkerController, executionClosed } from './control.js';
-import { configFixture, activityFixture, receiptFixture, traceFixture } from '../test-fixtures.js';
+import { AMBIGUOUS_NATIVE_EXECUTION, createWorkerController, executionClosed } from './control.js';
+import { configFixture, activityFixture, executionId, receiptFixture, traceFixture } from '../test-fixtures.js';
 import type { NativeHost, WorkerOptions } from './types.js';
 import { launchFixture } from '../test-fixtures.js';
 
-test('terminal closure rejects unknown authority and unrelated or multiple native executions', () => {
-  assert.throws(() => executionClosed({ ...activityFixture(), executions: [{ ...activityFixture(true).executions![0]!, agent_id: 'other' }] }, receiptFixture(), [], 'agent:writer'), /Unexpected/);
-  assert.throws(() => executionClosed(activityFixture(), receiptFixture(), [traceFixture(), traceFixture()], 'agent:writer'), /multiple/);
+test('terminal closure rejects unknown authority and a name two closed traces answer to', () => {
+  assert.throws(() => executionClosed({ ...activityFixture(), executions: [{ ...activityFixture(true).executions![0]!, agent_id: 'other' }] }, receiptFixture(), [], 'agent:writer', executionId), /Unexpected/);
+  // Two traces under ONE execution id is the genuine ambiguity and keeps its own
+  // word. How many executions a trial closed is not a question asked here at all:
+  // the trace this wake is accounted for by is named, and its neighbours are the
+  // same trial's other wakes.
+  assert.throws(() => executionClosed(activityFixture(), receiptFixture(), [traceFixture(), traceFixture()], 'agent:writer', executionId),
+    new RegExp(AMBIGUOUS_NATIVE_EXECUTION, 'u'));
 });
 
 test('native stop deadline remains unknown and terminal evidence retains the preparation receipt', async () => {

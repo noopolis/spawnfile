@@ -28,7 +28,7 @@ Owns fixed rubric prompts, typed judgments, evidence and judge calibration.
 
 - Named routes may explicitly permit one citation-only repair; the default is zero.
   Repair only exact citations, retaining the original score/verdict/reasons. Never
-  retry valid grades, JSON/schema failures, cancellation or provider errors.
+  retry valid grades, JSON/schema failures, cancellation or a provider's decision.
 - Citation source IDs are literal `input` or present `evidence`, never URLs or
   article section names. Version fixed prompt changes in the evaluator descriptor.
 - Await the trusted raw-response observer before accepting or repairing. Keep raw
@@ -42,6 +42,30 @@ Owns fixed rubric prompts, typed judgments, evidence and judge calibration.
   neutral; never import inference implementations into evaluation.
 - Protocol/evidence/control changes invalidate exact cache identities. Current
   llm-rubric descriptor is version 3; judgment cache format is v3.
+
+Every `error` a judge produces names its own cause. `failure.ts` owns the closed
+`JudgeFailureCause` vocabulary and is the only classifier; `rubric.ts` reaches
+`error` through one helper that requires a cause, so no branch can publish a bare
+`error` again. The cause is decided by typed discriminators only — the provider's
+`kind`, its closed `detail` refinement, a reported numeric `status`, or the
+judge's own `JudgeEvaluationError` — never by reading an error message. A
+published `JudgeFailure` carries the cause, the judge, the requested model and the
+provider/model/route that actually answered, so an unrequested judge route is
+visible rather than silent. It never carries a prompt, subject text, a response
+body, a reason string, a bearer or a grant token. An absent input stays `unknown`
+with no failure at all, and a named failure keeps its weight in the denominator.
+
+No current inference adapter attests a pre-judgment abort. A `protocol` failure
+may represent isolation rejection or a completed mismatched response; never retry
+it or infer eligibility from missing text or usage. The evaluator does not restart
+routing after a failure. Any future recovery must be adapter-attested and owned by
+the original routing session, preserving its provider/model, deadline, exclusions
+and accounting. Historical `retryOf`/`retryCause` fields remain readable in caches
+and replay, but are not produced by current evaluations.
+
+Rubric sidecar read failures are `route-unusable`; thrown cache reads and writes
+are `cache-unusable`. Catch these at their I/O boundaries before the outer evaluator
+can turn them into anonymous errors.
 
 Provider schema rejections retain attested response text and diagnostic codes in
 protected judge.attempt events only. Await and deduplicate routed failure audits

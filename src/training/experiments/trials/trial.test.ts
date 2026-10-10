@@ -1,11 +1,42 @@
 import { describe, expect, it } from 'vitest';
 import { readFile, stat, writeFile, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { Observation } from '../../contracts/execution.js';
+import { captureObservation } from '../../capture/index.js';
 import { createEvaluationRegistry, result } from '../../evaluation/index.js';
 import { runTrial } from '../index.js';
 import { capabilities, complete, setup } from './fixture.js';
 
 describe('native trial lifecycle', () => {
+  it.each(['before', 'after', 'always'])('refuses durable success when usage persistence rejects %s writing', async failure => {
+    const task = await setup(async (input, turn) => {
+      const event: Observation = { id: 'usage', source: 'native', seq: 1, type: 'usage',
+        trialId: input.trialId, wakeId: turn.id, timestamp: '2026-10-11T00:00:00.000Z',
+        usage: { inputTokens: 10, outputTokens: 2, cachedInputTokens: 0, reasoningTokens: null, source: 'native' } };
+      // Model an adapter's stable retry, including its existing recovery catch.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try { await input.onObservation(structuredClone(event)); } catch { /* failed delivery recovery */ }
+      }
+      return { ...complete, status: 'failed', usage: event.usage! };
+    });
+    const persist = task.options.persist;
+    let attempts = 0;
+    task.options.persist = async entry => {
+      if (entry.type !== 'observation') return persist(entry);
+      attempts++;
+      if (failure === 'always' || (failure === 'before' && attempts === 1)) throw new Error('Sink failed');
+      await persist(entry);
+      if (failure === 'after' && attempts === 1) throw new Error('Sink failed');
+    };
+    await expect(runTrial(task.options)).rejects.toThrow('Trial evidence persistence failed');
+    expect(attempts).toBe(2);
+    expect(task.journal.some(entry => entry.type === 'trial.completed')).toBe(false);
+    // The raw sink can contain a write whose acknowledgement was lost. Capture
+    // collapses that retry into exactly one semantic observation.
+    const captured = task.journal.filter(entry => entry.type === 'observation')
+      .reduce<Observation[]>((events, entry) => captureObservation(events, entry.payload as Observation), []);
+    expect(captured).toHaveLength(failure === 'always' ? 0 : 1);
+  });
   it('persists actual completion, immutable outputs and native evidence in a fresh workspace', async () => {
     const task = await setup(async (input, turn) => {
       expect(input.instructions).toBe('original instructions'); expect(input.protectedPaths).toContain(task.options.root); expect(input.protectedPaths).toContain(join(input.runtimeHomePath, '..', 'control').replace('/runtime/..', ''));

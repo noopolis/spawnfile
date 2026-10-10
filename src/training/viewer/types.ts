@@ -1,4 +1,4 @@
-import type { InferenceModelBasis, ObservationCoverage, Usage } from '../src/contracts/index.js';
+import type { InferenceModelBasis, JudgeFailure, ObservationCoverage, Usage } from '../src/contracts/index.js';
 
 /** A caller-filtered presentation projection. Never pass raw captures or prompts. */
 export interface ViewerData {
@@ -54,12 +54,15 @@ export interface ViewerActivity {
   toolCalls: number;
   judgeCalls: number;
   measurements: { stageId: string; criterionId: string; kind: 'criterion' | 'gate' | 'score';
-    status: string; score: number | null; weight?: number; weightedContribution?: number | null }[];
+    status: string; score: number | null; weight?: number; weightedContribution?: number | null;
+    judgeFailure?: JudgeFailure }[];
 }
 
 export interface ViewerCheck {
   weight?: number;
   weightedContribution?: number | null;
+  /** Why an errored judge produced no score, as a closed vocabulary. Absent on every other verdict. */
+  judgeFailure?: JudgeFailure;
   id: string;
   label: string;
   status: 'pass' | 'fail' | 'unknown' | 'error' | 'skipped';

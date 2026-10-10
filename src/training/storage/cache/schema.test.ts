@@ -7,10 +7,12 @@ const value = {response:JSON.stringify({score:0.5,verdict:'fail',reasons:['Weak'
   sourceCallId:'one',sourceCalls:[call]};
 
 it('accepts failed grades, retains attempt chains and isolates caller data', () => {
-  const fixture = {...value,sourceCallId:'three',sourceCalls:[
+  const fixture = {...value,sourceCallId:'four',sourceCalls:[
     {...call,outcome:'generation-error',failureKind:'quota'},
     {...call,id:'two',outcome:'invalid-response',fallbackOf:'one'},
-    {...call,id:'three',repairOf:'two',citationRepairs:1},
+    {...call,id:'three',outcome:'generation-error',failureKind:'protocol'},
+    // A judgement recovered from an aborted call keeps saying so once it is persisted.
+    {...call,id:'four',retryOf:'three',retryCause:'provider-error',repairOf:'two',citationRepairs:1},
   ]};
   const validated = validateCachedJudgment(fixture);
   expect(validated).toEqual(fixture);
@@ -23,6 +25,8 @@ it.each([
   {...value,sourceCalls:[call,call]},
   {...value,sourceCalls:[{...call,repairOf:'missing'}]},
   {...value,sourceCalls:[{...call,fallbackOf:'missing'}]},
+  {...value,sourceCalls:[{...call,retryOf:'missing'}]},
+  {...value,sourceCalls:[{...call,retryCause:'not-a-cause'}]},
   {...value,response:'broken'}, {...value,response:'{}'},
   {...value,sourceCalls:[{...call,usage:{inputTokens:-1}}]},
 ])('rejects malformed or infrastructure evidence %#', invalid => {

@@ -19,6 +19,15 @@ export interface JudgeCall {
   citationRepairs?: 0 | 1;
   /** A citation-only protocol repair of this earlier actual attempt. */
   repairOf?: string;
+  /**
+   * Historical retry provenance, retained for cache/replay compatibility.
+   * Older evaluations retried generic protocol failures without proof that no
+   * judgment existed. Current evaluations do not emit retries; this field alone
+   * must not be treated as proof of a pre-judgment abort or a same-route retry.
+   */
+  retryOf?: string;
+  /** Historical cause attributed to the prior failed attempt; present only beside `retryOf`. */
+  retryCause?: JudgeFailureCause;
   failureKind?: InferenceFailureKind;
   fallbackOf?: string;
 }
@@ -45,6 +54,65 @@ export interface JudgeRoute {
   /** Host-frozen dataset and phase identity, required for persistent reuse. */
   cacheScope?: string;
 }
+/**
+ * Why a judge produced no usable judgment, as a closed vocabulary rather than prose.
+ *
+ * A judge error used to publish a bare `status: 'error'` and nothing else: the
+ * reason string can quote the prompt, the article or a provider body, so nothing
+ * carried it, and a live run left an operator unable to tell a refused grant from
+ * an unreadable answer. These values name the FIRST thing that did not hold, and
+ * never carry a prompt, subject text, a response body, a bearer or a grant token.
+ *
+ * Absence is not one of them. A judge with no input to read stays `unknown` with
+ * no failure at all, which is a different claim from one that ran and refused.
+ */
+export const judgeFailureCauses = [
+  /** The grant broker declined to lend a grant for this call. */
+  'grant-refused',
+  /** A grant, or the credential realm behind it, was no longer valid. */
+  'grant-expired',
+  /** The provider itself failed; `status` carries its reported status when it reported one. */
+  'provider-error',
+  /** The answer was not JSON at all. */
+  'response-unparseable',
+  /** The answer parsed but was not a judgment of the requested shape. */
+  'response-schema',
+  /** The judgment's citations were not present in the evidence it was given. */
+  'response-citations',
+  /** A deadline passed before an answer arrived. */
+  'timeout',
+  /** The caller cancelled the trial before the judge settled. */
+  'cancelled',
+  /** The judge route is absent or its declared policy is unusable; nothing was asked. */
+  'route-unusable',
+  /** The selected evidence could not be prepared for the judge; nothing was asked. */
+  'evidence-unusable',
+  /** A persisted judgment could not be read back as one. */
+  'cache-unusable',
+  /** The attempt could not be recorded, so its answer may not be accepted. */
+  'evidence-unpersisted',
+  /** The provider failed with no typed discriminator at all; naming that is still a finding. */
+  'unclassified',
+] as const;
+export type JudgeFailureCause = (typeof judgeFailureCauses)[number];
+
+/**
+ * The published, prose-free account of one failed judge: the cause, which judge,
+ * and which model and route actually answered. An unrequested provider or route
+ * appearing here is how a silent judge fallback stops being silent.
+ */
+export interface JudgeFailure {
+  cause: JudgeFailureCause;
+  judge: string;
+  providerId: string | null;
+  requestedModel: string | null;
+  /** Provider-reported; null when no provider identity was returned. Never a requested alias. */
+  responseModel: string | null;
+  responseRoute: string | null;
+  kind?: InferenceFailureKind;
+  /** Only a provider-reported response status, as a number. */
+  status?: number;
+}
 export interface JudgeProtocolViolation {
   code: 'invalid-json' | 'invalid-judgment' | 'invalid-citations' | 'invalid-citation-repair' | 'invalid-evidence-ids';
   citations?: { index: number; source: string; reason: 'unknown-source' | 'quote-not-found' }[];
@@ -56,6 +124,8 @@ export interface EvaluationResult {
   status: Verdict;
   finality: Finality;
   reason: string;
+  /** Set on every `error` a judge produces; absent on any other verdict. */
+  judgeFailure?: JudgeFailure;
   score?: number;
   evidence: EvidenceReference[];
   children?: EvaluationResult[];
@@ -118,6 +188,8 @@ export interface EvaluationMeasurement {
   score: number | null;
   weight?: number;
   weightedContribution?: number | null;
+  /** Named cause of an errored judge criterion; the weight still counts against the denominator. */
+  judgeFailure?: JudgeFailure;
 }
 export interface RegisteredEvaluator {
   definition: EvaluatorDefinition;

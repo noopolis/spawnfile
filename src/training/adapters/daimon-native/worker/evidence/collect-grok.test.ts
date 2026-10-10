@@ -2,10 +2,10 @@ import { expect, test } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assertFreshNativeEvidence, collectNativeEvidence, GROK_TURN_NOTIONAL_USD_MAX, nativeUsageCoverage, readToolReceipts } from './evidence.js';
-import { aggregateUsage } from '../observations.js';
-import { executionId, traceFixture } from '../test-fixtures.js';
-import type { NativeGrokUsage } from './types.js';
+import { assertFreshNativeEvidence, collectNativeEvidence, GROK_TURN_NOTIONAL_USD_MAX, nativeUsageCoverage, readToolReceipts } from './index.js';
+import { aggregateUsage } from '../../observations.js';
+import { executionId, traceFixture } from '../../test-fixtures.js';
+import type { NativeGrokUsage } from '../types.js';
 
 const turn = 'c'.repeat(64);
 /** Shape of Daimon's `renderTurnUsageLine` for a sealed broker turn. */
@@ -80,12 +80,18 @@ test('Grok rows accept only the declared model or its build alias and reject mal
       await expect(f.read()).rejects.toThrow('model differs');
     }
     for (const invalid of [{ engine: 'codex' }, { turn: 'short' }, { notional_usd: -1 }, { notional_usd: 'free' }, { notional_usd: 1e15 }, { notional_usd: Number.MAX_VALUE }, { cache_write: undefined },
-      { limit_reason: 'budget' }, { estimated_requests: 0 }, { wake: 'foreign' }, { at: 'never' }]) {
+      { limit_reason: 'budget' }, { estimated_requests: 0 }, { wake: undefined }, { agent: 'another-agent' }, { at: 'never' }]) {
       await writeFile(f.usage, lines({ ...row, ...invalid }));
       await expect(f.read()).rejects.toThrow('Grok usage schema');
     }
     await writeFile(f.usage, lines(row));
-    for (const invalid of [{ usage_source: 'guess' }, { started_at: 'x' }, { ended_at: '2026-09-17T00:00:00.000Z' }, { turn: undefined }, { wake: 'foreign' }]) {
+    // A sealed row of this trial's that another of its wakes spent is that wake's
+    // account, not this one's: dropped from this wake's evidence rather than
+    // refused, so a continuation never fails over its own trial's earlier spend.
+    await writeFile(f.usage, lines({ ...row, wake: 'another-execution', turn: 'e'.repeat(64) }));
+    expect((await f.read()).usage).toEqual([]);
+    await writeFile(f.usage, lines(row));
+    for (const invalid of [{ usage_source: 'guess' }, { started_at: 'x' }, { ended_at: '2026-09-17T00:00:00.000Z' }, { turn: undefined }, { wake: undefined }, { agent: 'another-agent' }]) {
       await writeFile(f.requests, lines({ ...request, ...invalid }));
       await expect(f.read()).rejects.toThrow('Grok request schema');
     }

@@ -51,6 +51,77 @@ export interface SubjectCapabilities {
   protectedPaths: boolean;
 }
 
+/**
+ * Why a CLOSURE proof did not settle, as a closed vocabulary rather than prose.
+ *
+ * Closure answers one question — is anything still running or still spending? —
+ * and it is the conjunction of three independent proofs: the owned child process
+ * exited, the runtime sealed its own stop and acknowledged it, and the runtime's
+ * own activity projection admits no execution. For as long as the failing proof
+ * was swallowed, every unscorable run looked identical: two sessions in a row had
+ * to guess which one was missing from a control root that dies with its
+ * container. Absent means closure was proven; the value names the FIRST proof
+ * that did not hold, and never carries a path, a token, a body or an error
+ * string.
+ *
+ * What a trial can be SCORED from is a separate question with its own vocabulary
+ * (`TerminalEvidenceMissing`). Four members below are retired: they were scoring
+ * facts that had been placed inside this predicate, where each one demoted a
+ * healthy run to an infrastructure failure. They are kept so a sealed report that
+ * carries one still replays; nothing produces them.
+ */
+export type StopUnconfirmed =
+  | 'worker-unavailable'
+  /**
+   * Retired as closure causes, and reported as `unevidenced` instead. A terminal
+   * frame that never arrived, or that did not bind to this trial, says nothing
+   * about whether a worker is still spending: it is a fact about the last
+   * delivery's paperwork, read out of another service's inbox bookkeeping over
+   * HTTP. The live proofs beside it — no admitted execution, a sealed
+   * acknowledged stop, an exited child — are what that claim rests on.
+   */
+  | 'terminal-absent'
+  | 'terminal-unbound'
+  /**
+   * Retired as a closure cause. The delivery's disposition is a SCORING fact:
+   * reading it here demoted a scorable turn to an infrastructure failure, and the
+   * live proofs beside it already establish that no worker is still spending. A
+   * recurrence is an upstream regression and fails on the worker's own evidence
+   * instead.
+   */
+  | 'delivery-undisposed'
+  | 'activity-unreadable'
+  | 'activity-busy'
+  /** The activity projection omitted its execution authority or listed another agent's execution. */
+  | 'execution-unbound'
+  | 'native-stop-unacknowledged'
+  | 'child-running'
+  | 'child-exit';
+
+/**
+ * Why a trial has no terminal evidence to be scored from — which is NOT a closure
+ * fault and must never read as one.
+ *
+ * "The runtime might still be spending" and "this turn cannot be scored" call for
+ * fixes in different places, and collapsing them sent seven investigations after
+ * the wrong layer: a healthy, closed, idle, exited run kept publishing as unproven
+ * containment because its frame did not bind. A trial carrying one of these is
+ * unscorable for want of evidence, on a runtime that is provably quiet.
+ *
+ * `terminal-absent` is no frame at all for the last delivery; `terminal-unbound`
+ * is a frame whose identity, closed trace or resolved execution disagreed —
+ * including a frame belonging to a different trial, which is never accepted as
+ * this one's evidence.
+ *
+ * `terminal-ambiguous` is the third, and it is not a weaker `terminal-unbound`:
+ * the frame named an execution and the trial carries MORE THAN ONE closed trace
+ * for that same id, so nothing here can say which one the frame accounts for. A
+ * trial that legitimately ran several wakes resolves the one its frame names and
+ * is scored; two traces answering to one name is a runtime defect and fails
+ * closed under its own word, because the fix it calls for is not in Paideia.
+ */
+export type TerminalEvidenceMissing = 'terminal-absent' | 'terminal-unbound' | 'terminal-ambiguous';
+
 export interface StopReceipt {
   state: 'requested' | 'acknowledged' | 'unknown';
   scope: 'process' | 'process-group' | 'native-handle';
@@ -58,6 +129,32 @@ export interface StopReceipt {
   remoteWork: 'unknown';
   reason: string;
   detail: string;
+  /** Set only on an unconfirmed stop, and only by an adapter that knows which proof failed. */
+  unconfirmed?: StopUnconfirmed;
+  /**
+   * Set when this trial has no terminal evidence to be scored from. It is
+   * independent of `quiescence`: a run can be provably closed and still
+   * unscorable, and that pair is the whole point of keeping two names.
+   */
+  unevidenced?: TerminalEvidenceMissing;
+  /**
+   * The wake whose terminal frame this trial is scored from, when one bound.
+   *
+   * A trial that defers runs several wakes and each publishes its own frame, so
+   * "this trial has evidence" is a selection and not the newest answer: a
+   * continuation that did not bind must not erase a wake that did, and a scored
+   * report has to be able to say which wake it read. Absent exactly when
+   * `unevidenced` is present.
+   */
+  evidenced?: string;
+  /**
+   * Every delivery this trial made, in order, with why each one's own frame
+   * cannot be scored from. Selection is not suppression: the wake that carried
+   * the trial and the wake that failed are both real accounts, and an adapter
+   * whose own per-wake artifacts live on storage that dies with the runtime
+   * publishes them here, where the report keeps them.
+   */
+  wakes?: readonly { wakeId: string; unevidenced?: TerminalEvidenceMissing }[];
 }
 
 /**
@@ -168,6 +265,19 @@ export type InferenceModelBasis = 'provider-reported' | 'requested-assumption';
 /** `auth-stale`: a shared credential authority (a broker realm) is stale; routes on that authority fail fast. */
 export type InferenceFailureKind = 'quota' | 'transport' | 'unavailable' | 'authentication' | 'auth-stale' |
   'protocol' | 'invalid-response' | 'cancelled' | 'timeout' | 'unsupported' | 'unknown';
+
+/**
+ * What `kind` alone cannot express, as a closed vocabulary rather than prose.
+ *
+ * A borrowed inference grant has three different ways to stop working and `kind`
+ * collapsed all of them onto `unavailable`: the broker refusing to lend one, the
+ * lent grant outliving its own expiry, and the broker simply being down. A judge
+ * that reports only `unavailable` cannot tell an operator which of those to fix,
+ * so the adapter that knows names it here. Absent means the adapter had nothing
+ * more specific than `kind`; it never carries a token, a URL, a body or prose.
+ */
+export const inferenceFailureDetails = ['grant-refused', 'grant-expired', 'provider-status'] as const;
+export type InferenceFailureDetail = (typeof inferenceFailureDetails)[number];
 
 export const inferenceDiagnosticCodes = ['initialization', 'tool-isolation', 'subscription', 'transport-framing', 'native-process',
     'terminal-error', 'unfinished-response', 'empty-response', 'response-mismatch', 'session-mismatch',

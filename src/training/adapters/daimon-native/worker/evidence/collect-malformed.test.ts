@@ -3,8 +3,8 @@ import { test } from 'vitest';
 import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { collectNativeEvidence, readClosedTraces, readToolReceipts } from './evidence.js';
-import { traceFixture } from '../test-fixtures.js';
+import { collectNativeEvidence, readClosedTraces, readToolReceipts } from './index.js';
+import { traceFixture } from '../../test-fixtures.js';
 
 test('native evidence rejects malformed, foreign, unsafe and contradictory records', async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'native-malformed-unit-')));

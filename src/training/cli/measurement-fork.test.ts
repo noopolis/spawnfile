@@ -112,6 +112,7 @@ it('forks actual CLI/GEPA pending measurement without repeating prior native wor
     f.stderr.length = 0;
     expect(await main([...f.args, '--out', 'parent'], f.io, f.dependencies)).toBe(2);
     expect(f.stderr.join()).toContain('unscorable');
+    // A protocol failure is terminal; no unverified generation retry is billed.
     expect(f.native).toHaveLength(3); expect(f.calls).toEqual({ grounding: 3, prose: 3, reflection: 1 });
     const p = await projection(f), before = JSON.stringify(p.training);
     const { capturedTrial } = await import('../experiments/replay/index.js');
@@ -136,6 +137,7 @@ it('forks actual CLI/GEPA pending measurement without repeating prior native wor
     expect(await main(args, f.io, f.dependencies), f.stderr.join()).toBe(0);
     expect(f.stderr).toEqual([]);
     expect(f.native).toHaveLength(6);
+    // The explicit measurement repair adds calls without retrying protocol failures.
     expect(f.calls).toEqual({ grounding: 7, prose: 6, reflection: 1 });
     const index = JSON.parse(await readFile(join(f.root, 'child/invocation.json'), 'utf8'));
     const store = await openExperimentStore(join(f.root, 'child'));
