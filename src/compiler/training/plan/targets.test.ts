@@ -81,7 +81,7 @@ describe("training target ownership", () => {
       graders: { writing: "own.grader.yaml" },
       targets: [{ ...target, datasets: { train: "../training/train.yaml", test: "../training/test.yaml" } }]
     } }));
-    await writeTrainingFile(root, "a/own.grader.yaml", { questions: [{ id: "local", ask: "Local?", expected: true }] });
+    await writeTrainingFile(root, "a/own.grader.yaml", "Local calibrated decision model\n");
     const plan = await createTrainingPlan(root, { ...options, agent: "agent:a" });
     expect(plan.targets.map((entry) => [entry.declaredBy, entry.files[0].consumers])).toEqual([
       ["agent:a", ["agent:a"]], ["team:publication", ["agent:a", "agent:b"]]

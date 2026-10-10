@@ -98,6 +98,9 @@ graders; team targets use only their own team's graders, unaffected by agent sha
 Target, dataset, and grader filesystem checks occur ONLY during training-plan loading;
 ordinary compilation validates training structure without requiring those files to exist.
 
+Dataset and grader paths MUST name existing regular files whose lexical paths and realpaths
+are inside the project root (the compiled root manifest's directory).
+Dataset YAML MUST reject duplicate keys and unknown fields at every level.
 Dataset files use one strict YAML shape for all three roles:
 
 ```yaml
@@ -127,22 +130,7 @@ reports the matching item's declaring node ID. Team-target datasets MUST resolve
 EVERY consumer; one consumer's failure rejects the plan. Per-agent plans report the
 selected consumer's resolved IDs. There is no dataset `files` field or environments file.
 
-Each grader has one strict YAML file:
-
-```yaml
-questions:
-  - { id: actor-first, ask: "Are the central actor and act named in the first two sentences?", expected: yes }
-labels:
-  - { id: ice-headline, output: labels/ice-headline.json, answers: { actor-first: no } }
-```
-
-`questions` MUST be nonempty; question IDs MUST be unique and match `^[A-Za-z0-9_-]+$`.
-`ask` is a string and `expected` is a string, number, or boolean. OPTIONAL labels have
-unique nonempty IDs, a relative `output` resolved against the grader file's directory,
-and a nonempty `answers` map containing only declared question IDs and scalar values
-of those same types. Output existence is not checked in this phase. Dataset and grader
-YAML MUST reject duplicate keys and unknown fields at every level.
-The reserved answer-map key `__proto__` MUST produce an explicit validation error.
+The grader file's format is specified by the grader phase; this phase only requires that the path names an existing regular file inside the project.
 
 ```sh
 spawnfile train ./Spawnfile --agent agent:writer --plan
@@ -159,7 +147,7 @@ requires `--train`; the authoring surface does not change that execution path.
 The plan's file entries carry absolute `sourcePath` and project-relative POSIX `path`.
 `record.volumes` MUST uniquely resolve to effective unfed volume resources; git/bundle
 resources and fed volumes MUST fail (feeds already have a landing log). The plan records
-volume declaration IDs, grader counts, targets, and dataset example identities/overrides.
+volume declaration IDs, grader file references, targets, and dataset example identities/overrides.
 Graders include the selected agent's effective registry plus graders used by included
 team targets, retaining provenance when names overlap. Keys and arrays are sorted; pure
 resolution MUST be deterministic and perform no I/O or clock reads. The generated schema
@@ -737,25 +725,13 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
           "declaredBy": {
             "type": "string",
             "minLength": 1
-          },
-          "questions": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "labels": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
           }
         },
         "required": [
           "sourcePath",
           "path",
           "name",
-          "declaredBy",
-          "questions",
-          "labels"
+          "declaredBy"
         ],
         "additionalProperties": false
       }

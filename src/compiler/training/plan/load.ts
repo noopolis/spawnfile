@@ -5,7 +5,7 @@ import type { z } from "zod";
 
 import { getManifestPath, resolveProjectPath } from "../../../filesystem/index.js";
 import {
-  isInlineAgentMember, isReferencedMember, trainingDatasetSchema, trainingGraderSchema,
+  isInlineAgentMember, isReferencedMember, trainingDatasetSchema,
   type TrainingDeclaration
 } from "../../../manifest/index.js";
 import { parseManifest } from "../../../manifest/parseManifest.js";
@@ -67,6 +67,18 @@ const readYaml = async <T>(file: string, schema: z.ZodType<T>, declaredBy: strin
   }
 };
 
+const loadDataFileSource = async (root: string, file: string, declaredBy: string): Promise<TrainingFileSource> => {
+  const context = `Invalid training file ${file} declared by ${declaredBy}:`;
+  if (!inside(root, file)) invalidTraining(`${context} must be inside project root ${root}`);
+  const realPath = await realpath(file).catch((error: unknown) =>
+    invalidTraining(`${context} must be an existing regular file: ${reason(error)}`));
+  if (!inside(root, realPath)) invalidTraining(`${context} must be inside project root ${root} (no symlink escape)`);
+  const stats = await stat(file).catch((error: unknown) =>
+    invalidTraining(`${context} must be an existing regular file: ${reason(error)}`));
+  if (!stats.isFile()) invalidTraining(`${context} must be an existing regular file`);
+  return source(root, file);
+};
+
 /** Inspect every ancestor, including unreferenced Spawnfiles outside the compiled graph. */
 const nestedManifests = async (directory: string, file: string): Promise<string[]> => {
   if (!inside(directory, file)) return [];
@@ -76,7 +88,9 @@ const nestedManifests = async (directory: string, file: string): Promise<string[
     try {
       if ((await stat(manifest)).isFile()) manifests.push(manifest);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        invalidTraining(`Unable to inspect nested Spawnfile ${manifest} for training target ${file}: ${reason(error)}`);
+      }
     }
   }
   return manifests;
@@ -89,13 +103,14 @@ const loadTargetFile = async (
   try {
     result.realPath = await realpath(file);
     result.regular = (await stat(file)).isFile();
-    result.nestedManifests = [...new Set([
-      ...await nestedManifests(directory, file),
-      ...await nestedManifests(realDirectory, result.realPath)
-    ])].sort();
   } catch (error) {
     result.error = reason(error);
+    return result;
   }
+  result.nestedManifests = [...new Set([
+    ...await nestedManifests(directory, file),
+    ...await nestedManifests(realDirectory, result.realPath)
+  ])].sort();
   return result;
 };
 
@@ -106,7 +121,7 @@ export const loadTrainingProject = async (inputPath: string): Promise<LoadedTrai
   catch (error) { return invalidTraining(`Unable to load training project ${inputPath}: ${reason(error)}`); }
   await validateTrainingTargetSources(manifest);
   const compilePlan = await buildCompilePlan(manifest);
-  const root = path.dirname(manifest);
+  const root = path.dirname(compilePlan.root);
   const project: LoadedTrainingProject = { root, manifest, compilePlan, targets: [], datasets: {}, graders: {} };
   for (const node of compilePlan.nodes) {
     const training = node.value.training;
@@ -116,13 +131,7 @@ export const loadTrainingProject = async (inputPath: string): Promise<LoadedTrai
     const realDirectory = await realpath(directory);
     for (const grader of Object.values(training.graders)) {
       if (project.graders[grader.sourcePath]) continue;
-      const value = await readYaml(grader.sourcePath, trainingGraderSchema, grader.declaredBy);
-      project.graders[grader.sourcePath] = {
-        ...source(root, grader.sourcePath),
-        value: { ...value, ...(value.labels ? { labels: value.labels.map((label) => ({
-          ...label, output: path.resolve(path.dirname(grader.sourcePath), label.output)
-        })) } : {}) }
-      };
+      project.graders[grader.sourcePath] = await loadDataFileSource(root, grader.sourcePath, grader.declaredBy);
     }
     for (const declaration of training.targets) {
       const target: LoadedTrainingTarget = {
@@ -132,7 +141,9 @@ export const loadTrainingProject = async (inputPath: string): Promise<LoadedTrai
       project.targets.push(target);
       for (const file of Object.values(declaration.datasets)) {
         if (!file || project.datasets[file]) continue;
-        project.datasets[file] = { ...source(root, file), value: await readYaml(file, trainingDatasetSchema, node.id) };
+        project.datasets[file] = {
+          ...await loadDataFileSource(root, file, node.id), value: await readYaml(file, trainingDatasetSchema, node.id)
+        };
       }
     }
   }

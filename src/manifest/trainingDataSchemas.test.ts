@@ -1,15 +1,12 @@
 import { describe, expect, it } from "vitest";
-import YAML from "yaml";
 
-import { trainingDatasetSchema, trainingGraderSchema } from "./trainingDataSchemas.js";
+import { trainingDatasetSchema } from "./trainingDataSchemas.js";
 
 const example = {
   id: "ice-shooting.v1",
   at: "2026-10-09T10:20:31+02:00",
   wake: { surface: "moltnet", room: "assignment", from: "brass", text: "@tinkerton ..." }
 };
-const question = { id: "actor-first", ask: "Is the actor named first?", expected: "yes" };
-const label = { id: "ice-headline", output: "labels/ice-headline.json", answers: { "actor-first": "no" } };
 const resource = { id: "repo", kind: "git", url: "https://example.test/repo.git", mount: "./repo", mode: "readonly" };
 const memory = { id: "self", store: { kind: "memory" } };
 const network = { id: "news", provider: "moltnet", rooms: [{ id: "assignment", members: ["writer"] }] };
@@ -75,73 +72,6 @@ describe("training datasets", () => {
     });
     expect(data.examples[0]?.memory?.[0]).toEqual({
       id: "self", store: { kind: "memory" }, index: { lexical: { enabled: true } }
-    });
-  });
-});
-
-describe("training graders", () => {
-  it.each([false, true])("rejects a __proto__ answer key before record parsing (other keys: %s)", (withOtherKeys) => {
-    const answers = YAML.parse(`__proto__: no\n${withOtherKeys ? "actor-first: no\n" : ""}`);
-    expect(Object.hasOwn(answers, "__proto__")).toBe(true);
-    const result = trainingGraderSchema.safeParse({
-      questions: [question, { ...question, id: "__proto__" }], labels: [{ ...label, answers }]
-    });
-    expect(result.success).toBe(false);
-    expect(result.error?.issues).toContainEqual(expect.objectContaining({
-      path: ["labels", 0, "answers", "__proto__"], message: "training map key __proto__ is reserved"
-    }));
-  });
-
-  it("accepts questions and optional labels without reading output files", () => {
-    expect(trainingGraderSchema.parse({ questions: [question] })).toEqual({ questions: [question] });
-    const data = { questions: [question], labels: [label] };
-    expect(trainingGraderSchema.parse(data)).toEqual(data);
-    expect(trainingGraderSchema.safeParse({ questions: [question], labels: [{ ...label, id: "label.v1" }] }).success)
-      .toBe(true);
-  });
-
-  it.each(["yes", 1, true, false])("accepts scalar expected and answer values %s", (value) => {
-    expect(trainingGraderSchema.safeParse({
-      questions: [{ ...question, expected: value }], labels: [{ ...label, answers: { "actor-first": value } }]
-    }).success).toBe(true);
-  });
-
-  it.each(["constructor", "toString"])("preserves the ordinary answer key %s", (id) => {
-    const value = { questions: [{ ...question, id }], labels: [{ ...label, answers: { [id]: "yes" } }] };
-    expect(trainingGraderSchema.parse(value)).toEqual(value);
-  });
-
-  it.each([
-    { questions: [] },
-    { questions: [question, question] },
-    { questions: [{ ...question, id: "bad.id" }] },
-    { questions: [question], labels: [label, label] },
-    { questions: [question], labels: [{ ...label, id: "" }] },
-    { questions: [question], labels: [{ ...label, answers: {} }] },
-    { questions: [question], labels: [{ ...label, answers: { unknown: "no" } }] },
-    { questions: [{ ...question, expected: null }] },
-    { questions: [question], labels: [{ ...label, answers: { "actor-first": [] } }] },
-    { questions: [question], extra: true },
-    { questions: [{ ...question, extra: true }] },
-    { questions: [question], labels: [{ ...label, extra: true }] },
-    { questions: [question], labels: [{ ...label, output: "" }] }
-  ])("rejects malformed questions and labels", (value) => {
-    expect(trainingGraderSchema.safeParse(value).success).toBe(false);
-  });
-
-  it.each(["/labels/output.json", "C:/labels/output.json", "C:\\labels\\output.json", "labels\\output.json"])(
-    "rejects absolute or non-POSIX label output %s", (output) => {
-      expect(trainingGraderSchema.safeParse({ questions: [question], labels: [{ ...label, output }] }).success).toBe(false);
-    }
-  );
-
-  it("names the label and missing question in its diagnostic", () => {
-    const result = trainingGraderSchema.safeParse({
-      questions: [question], labels: [{ ...label, answers: { missing: "no" } }]
-    });
-    expect(result.error?.issues[0]).toMatchObject({
-      message: "label ice-headline answer references unknown question missing",
-      path: ["labels", 0, "answers", "missing"]
     });
   });
 });
