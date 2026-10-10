@@ -4,3 +4,5 @@ export * from "./renderSpawnfile.js";
 export * from "./scaffold.js";
 export * from "./schemas.js";
 export * from "./skillFrontmatter.js";
+export * from "./trainingSchemas.js";
+export * from "./trainingDataSchemas.js";

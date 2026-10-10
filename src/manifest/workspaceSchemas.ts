@@ -205,7 +205,7 @@ const teamWorkspaceResourceBundleSchema = z.object({
   }
 });
 
-const teamWorkspaceResourceSchema = z.discriminatedUnion("kind", [
+export const teamWorkspaceResourceSchema = z.discriminatedUnion("kind", [
   teamWorkspaceResourceGitSchema,
   teamWorkspaceResourceBundleSchema,
   teamWorkspaceResourceVolumeSchema
