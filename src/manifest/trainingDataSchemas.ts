@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { memoryBankSchema } from "./memorySchemas.js";
 import { teamNetworkSchema } from "./teamNetworkSchemas.js";
-import { trainingNameSchema, trainingRelativePathSchema } from "./trainingSchemas.js";
+import { trainingNamedMapSchema, trainingNameSchema, trainingRelativePathSchema } from "./trainingSchemas.js";
 import { teamWorkspaceResourceSchema } from "./workspaceSchemas.js";
 
 const uniqueIds = (entries: Array<{ id: string }>, context: z.RefinementCtx): void => {
@@ -48,7 +48,7 @@ const trainingQuestionSchema = z.object({
 const trainingLabelSchema = z.object({
   id: z.string().min(1),
   output: trainingRelativePathSchema,
-  answers: z.record(trainingNameSchema, trainingAnswerSchema).refine(
+  answers: trainingNamedMapSchema(trainingAnswerSchema).refine(
     (answers) => Object.keys(answers).length > 0,
     { message: "label answers must not be empty" }
   )

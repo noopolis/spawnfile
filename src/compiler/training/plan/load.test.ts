@@ -2,6 +2,7 @@ import { readFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { buildCompilePlan } from "../../buildCompilePlan.js";
 import { loadTrainingProject, createTrainingPlan } from "./load.js";
 import { trainingPlanJsonSchema, trainingPlanSchema } from "./contract.js";
 import { agentManifest, cleanTrainingProjects, dataFiles, example, target, training, trainingProject, writeTrainingFile } from "./fixtures.test-helper.js";
@@ -41,6 +42,18 @@ describe("training authoring loader", () => {
     await rm(path.join(root, "training/test.yaml"));
     await expect(createTrainingPlan(root, options)).rejects.toMatchObject({ code: "validation_error", message: expect.stringContaining("training/test.yaml") });
     await expect(loadTrainingProject(path.join(root, "missing"))).rejects.toMatchObject({ code: "validation_error" });
+  });
+
+  it.each(["train", "validation", "test", "grader"])("compiles without a missing %s file but plan loading names it", async (role) => {
+    const file = role === "grader" ? "training/writing.grader.yaml" : `training/${role}.yaml`;
+    const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest({
+      training: { ...training, targets: [{ ...target, datasets: { ...target.datasets, validation: "training/validation.yaml" } }] }
+    }), "training/validation.yaml": { examples: [example] } });
+    await rm(path.join(root, file));
+    await expect(buildCompilePlan(root)).resolves.toMatchObject({ root: path.join(root, "Spawnfile") });
+    await expect(loadTrainingProject(root)).rejects.toMatchObject({
+      code: "validation_error", message: expect.stringContaining(`Invalid training file ${path.join(root, file)} declared by agent:writer:`)
+    });
   });
 
   it("preserves valid POSIX relative names containing a colon", async () => {
