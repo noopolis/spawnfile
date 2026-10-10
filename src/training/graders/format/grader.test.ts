@@ -10,7 +10,7 @@ export function graderInput(): Record<string, unknown> {
   return {
     schema: 'paideia.grader.v1', id: 'writing', golden: 'labels.yaml', calibration: 'calibration.json',
     context: { evidence: { description: 'sources' } },
-    teachers: [{ id: 'c', provider: 'codex', model: 'm' }],
+    teachers: [{ id: 'c', provider: 'claude', model: 'm' }],
     model: { backend: 'teacher', teacher: 'c' }, escalate: { to: 'c', between: [0.3, 0.7] },
     questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body'] }], score: { method: 'weighted' },
   };
@@ -73,7 +73,7 @@ describe('grader formats', () => {
 
   it('enforces unique ids including derived ids and teacher references', () => {
     const base = graderInput();
-    expect(() => parseGrader({ ...base, teachers: [{ id: 'c', provider: 'codex', model: 'm' }, { id: 'c', provider: 'grok', model: 'm' }] })).toThrow('teachers.1.id');
+    expect(() => parseGrader({ ...base, teachers: [{ id: 'c', provider: 'claude', model: 'm' }, { id: 'c', provider: 'grok', model: 'm' }] })).toThrow('teachers.1.id');
     expect(() => parseGrader({ ...base, escalate: { to: 'x', between: [0, 1] } })).toThrow('escalate.to');
     expect(() => parseGrader({ ...base, model: { backend: 'teacher', teacher: 'x' } })).toThrow('model.teacher');
     expect(() => parseGrader({ ...base, gates: [{ id: 'q', check: {} }] })).toThrow('gates.0.id');
@@ -88,8 +88,26 @@ describe('grader formats', () => {
     expect(() => parseGrader(withCheck({ eval: 'tool-called' }))).toThrow('gates.0.check.eval');
     expect(() => parseGrader(withCheck({ all: [{ eval: 'tool-count' }] }))).toThrow('check.all.0.eval');
     expect(() => parseGrader(withCheck({ not: { eval: 'tool-sequence' } }))).toThrow('ending_at.event');
-    expect(parseGrader(withCheck({ any: [{ eval: 'tool-sequence', ending_at: { event: 'accepted-call' } }] }))).toBeDefined();
+    expect(parseGrader(withCheck({ any: [{ eval: 'tool-sequence', ending_at: { event: 'accepted-call' }, steps: [{ bind: { article: 'call.args.article' } }, { where: { cel: 'call.args.article == bindings.article' } }] }] }))).toBeDefined();
     expect(parseGrader(withCheck({ eval: 'project', parameters: { eval: 'tool-count' } }))).toBeDefined();
+  });
+
+  it('refuses teachers without native empty-tool attestation', () => {
+    expect(() => parseGrader({ ...graderInput(), teachers: [{ id: 'c', provider: 'codex', model: 'm' }] }))
+      .toThrow('codex exec has no native empty-tool attestation');
+    expect(() => parseGrader({ ...graderInput(), teachers: [{ id: 'c', provider: 'unknown', model: 'm' }] }))
+      .toThrow('expected claude or grok');
+  });
+
+  it('requires the final gate step to reference a binding from an earlier step', () => {
+    for (const steps of [undefined, [], [null], [{ bind: { article: 'call.args.article' } }],
+      [{ bind: { article: 'call.args.article' } }, { where: { cel: 'call.success' } }],
+      [{ bind: { other: 'call.args.article' } }, { where: { cel: 'call.args.article == bindings.article' } }],
+      [{}, { bind: { article: 'call.args.article' }, where: { cel: 'call.args.article == bindings.article' } }]]) {
+      expect(() => parseGrader({ ...graderInput(), gates: [{ id: 'g', check: {
+        eval: 'tool-sequence', ending_at: { event: 'accepted-call' }, steps,
+      } }] })).toThrow('final where.cel');
+    }
   });
 
   it('parses but refuses fitted weights, malformed bands and unknown schema fields', () => {

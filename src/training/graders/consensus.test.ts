@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { deriveConsensus } from './consensus.js';
 import type { Label, Labels } from './format/index.js';
 const labelers: Labels['labelers'] = {
-  a: { kind: 'model', provider: 'codex', model: 'm' }, b: { kind: 'model', provider: 'claude', model: 'm' },
+  a: { kind: 'model', provider: 'claude', model: 'm' }, b: { kind: 'model', provider: 'claude', model: 'm' },
   c: { kind: 'model', provider: 'grok', model: 'm' }, h: { kind: 'human', name: 'H' }, j: { kind: 'human', name: 'J' },
 };
 function label(votes: Label['votes'], asked?: string[]): Label {

@@ -13,7 +13,7 @@ export { calibrationIdentitySchema, calibrationFileSchema, parseCalibration, par
 export type { CalibrationIdentity, CalibrationFile, CalibrationCheck } from './identity.js';
 export { splitCalibration, fitPlatt, applyPlatt, calibrateQuestions, seededRandom, evidenceCounts,
   expectedCalibrationError, groupBootstrap, calibrationMetrics, evidenceFailures, calibrationBars,
-  teacherAgreement, inEscalationBand, planEscalation, escalationTeacherReport } from './calibration/index.js';
+  teacherAgreement, wilson90, inEscalationBand, planEscalation, escalationTeacherReport } from './calibration/index.js';
 export type { QuestionType, GoldenSource, CalibrationRecord, Exclusions, PlattParams, PlattFit,
   ScoredRecord, EvidenceCounts, Interval, CalibrationMetrics, CalibrationStatus, BarResult,
-  QuestionCalibration, TeacherAgreementRecord, EscalationBand, BandPolicy, CascadeRecord, BandPlan, EscalationTeacherReport } from './calibration/index.js';
+  QuestionCalibration, TeacherAgreementRecord, EscalationBand, BandPolicy, CascadeRecord, BandPlan, EscalationTeacherReport, EscalationCall } from './calibration/index.js';

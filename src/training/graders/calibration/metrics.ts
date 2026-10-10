@@ -1,6 +1,18 @@
 import { createHash } from 'node:crypto';
 import type { BarResult, CalibrationMetrics, EvidenceCounts, Interval, ScoredRecord } from './types.js';
 
+/** Two-sided 90% Wilson score interval; no observations cannot establish a bound. */
+export function wilson90(successes: number, total: number): Interval {
+  if (!Number.isInteger(total) || total < 0 || !Number.isInteger(successes) || successes < 0 || successes > total) {
+    throw new Error('Wilson counts: expected 0 <= successes <= total integers');
+  }
+  if (!total) return [0, 1];
+  const z = 1.6448536269514722, p = successes / total, denominator = 1 + z * z / total;
+  const centre = (p + z * z / (2 * total)) / denominator;
+  const radius = z * Math.sqrt(p * (1 - p) / total + z * z / (4 * total * total)) / denominator;
+  return [Math.max(0, centre - radius), Math.min(1, centre + radius)];
+}
+
 export function seededRandom(seed: string): () => number {
   let state = createHash('sha256').update(seed).digest().readUInt32LE(0);
   return () => {
@@ -18,11 +30,14 @@ export function evidenceCounts(records: readonly Pick<ScoredRecord, 'group' | 'g
 }
 
 /** Equal-mass bins; fewer than 10 instances cannot form a valid ECE bin. */
-export function expectedCalibrationError(records: readonly Pick<ScoredRecord, 'p' | 'good'>[]): number {
+export function expectedCalibrationError(records: readonly Pick<ScoredRecord, 'p' | 'good' | 'missing'>[]): number {
   if (records.length < 10) return 1;
-  const sorted = [...records].sort((a, b) => a.p - b.p);
+  const observed = records.filter(row => !row.missing);
+  const missing = records.length - observed.length;
+  if (observed.length < 10) return 1;
+  const sorted = [...observed].sort((a, b) => a.p - b.p);
   const bins = Math.min(10, Math.floor(sorted.length / 10));
-  let total = 0;
+  let total = missing;
   for (let index = 0; index < bins; index++) {
     const bin = sorted.slice(Math.floor(index * sorted.length / bins), Math.floor((index + 1) * sorted.length / bins));
     total += Math.abs(bin.reduce((sum, row) => sum + row.p - Number(row.good), 0));
@@ -30,8 +45,8 @@ export function expectedCalibrationError(records: readonly Pick<ScoredRecord, 'p
   return total / records.length;
 }
 
-function brier(records: readonly Pick<ScoredRecord, 'p' | 'good'>[]): number {
-  return records.length ? records.reduce((sum, row) => sum + (row.p - Number(row.good)) ** 2, 0) / records.length : 1;
+function brier(records: readonly Pick<ScoredRecord, 'p' | 'good' | 'missing'>[]): number {
+  return records.length ? records.reduce((sum, row) => sum + (row.missing ? 1 : (row.p - Number(row.good)) ** 2), 0) / records.length : 1;
 }
 
 function percentile(values: number[], fraction: number): number {
@@ -65,16 +80,17 @@ export function groupBootstrap(records: readonly ScoredRecord[], seed: string): 
 export function calibrationMetrics(records: readonly ScoredRecord[], baseRate: number, seed: string,
   gate = false): CalibrationMetrics {
   if (!Number.isFinite(baseRate) || baseRate < 0 || baseRate > 1) throw new Error('baseRate: expected probability');
-  if (records.some(record => !Number.isFinite(record.p) || record.p < 0 || record.p > 1)) {
+  if (records.some(record => !record.missing && (!Number.isFinite(record.p) || record.p < 0 || record.p > 1))) {
     throw new Error('p: expected finite probability');
   }
   const counts = evidenceCounts(records);
   return { ...counts, baseRate,
-    accuracy: records.length ? records.filter(row => (row.p >= 0.5) === row.good).length / records.length : 0,
+    accuracy: records.length ? records.filter(row => !row.missing && (row.p >= 0.5) === row.good).length / records.length : 0,
     brier: brier(records),
-    baseRateBrier: brier(records.map(row => ({ ...row, p: baseRate }))),
+    baseRateBrier: brier(records.map(row => ({ ...row, p: baseRate, missing: false }))),
     ece: expectedCalibrationError(records), ...groupBootstrap(records, seed),
-    ...(gate ? { falsePassRate: counts.bad ? records.filter(row => row.p >= 0.5 && !row.good).length / counts.bad : 0 } : {}),
+    ...(gate ? { falsePassRate: counts.bad ? records.filter(row => !row.missing && row.p >= 0.5 && !row.good).length / counts.bad : 0,
+      falsePassInterval: wilson90(records.filter(row => !row.missing && row.p >= 0.5 && !row.good).length, counts.bad) } : {}),
   };
 }
 
@@ -96,6 +112,9 @@ export function calibrationBars(metrics: CalibrationMetrics): BarResult {
   if (!(metrics.brier <= 0.20)) failures.push('calibration.brier <= 0.20');
   if (!(metrics.brier < metrics.baseRateBrier)) failures.push('calibration.brier < baseRateBrier');
   if (metrics.falsePassRate !== undefined && !(metrics.falsePassRate <= 0.10)) failures.push('gate.falsePassRate <= 0.10');
+  if (metrics.falsePassRate !== undefined && !(metrics.falsePassInterval?.[1] !== undefined && metrics.falsePassInterval[1] <= 0.20)) {
+    failures.push('gate.falsePass90Upper <= 0.20');
+  }
   return { status: failures.length ? 'uncalibrated' : 'calibrated', failures };
 }
 

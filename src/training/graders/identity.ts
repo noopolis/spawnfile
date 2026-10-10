@@ -20,7 +20,7 @@ export const calibrationFileSchema = z.strictObject({
   schema: z.literal('paideia.grader-calibration.v1'),
   identity: calibrationIdentitySchema,
   questions: z.record(identifier, z.strictObject({
-    status: z.enum(['calibrated', 'insufficient-evidence', 'uncalibrated', 'escalation-infeasible']),
+    status: z.enum(['calibrated', 'insufficient-evidence', 'uncalibrated', 'escalation-infeasible', 'unverified']),
     failures: z.array(z.string()),
     params: z.strictObject({ a: z.number(), b: z.number() }).optional(),
     band: z.tuple([probability, probability]).refine(([lo, hi]) => lo < hi, 'requires lo < hi').optional(),
@@ -30,7 +30,7 @@ export const calibrationFileSchema = z.strictObject({
       baseRate: probability,
       accuracy: probability.optional(), brier: probability.optional(), baseRateBrier: probability.optional(),
       ece: probability.optional(), eceInterval: interval.optional(), brierInterval: interval.optional(),
-      falsePassRate: probability.optional(), agreement: probability.optional(),
+      falsePassRate: probability.optional(), falsePassInterval: interval.optional(), cascadeInterval: interval.optional(), agreement: probability.optional(),
       cascadeAccuracy: probability.optional(), escalationRate: probability.optional(), coverage: probability.optional(),
     }),
   })),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calibrationBars, calibrationMetrics, expectedCalibrationError, groupBootstrap, teacherAgreement } from './index.js';
+import { calibrationBars, calibrationMetrics, expectedCalibrationError, groupBootstrap, teacherAgreement, wilson90 } from './index.js';
 import type { CalibrationMetrics, ScoredRecord, TeacherAgreementRecord } from './index.js';
 
 function rows(count = 30): ScoredRecord[] {
@@ -9,7 +9,7 @@ function rows(count = 30): ScoredRecord[] {
 }
 const passing: CalibrationMetrics = { groups: 15, instances: 30, good: 25, bad: 5,
   baseRate: 0.5, accuracy: 1, brier: 0.20, baseRateBrier: 0.25, ece: 0.10,
-  eceInterval: [0.01, 0.15], brierInterval: [0.1, 0.25], falsePassRate: 0.10 };
+  eceInterval: [0.01, 0.15], brierInterval: [0.1, 0.25], falsePassRate: 0.10, falsePassInterval: [0, 0.20] };
 
 describe('held-out metrics', () => {
   it('computes accuracy, Brier, fit base-rate Brier and conditional gate false-pass rate', () => {
@@ -23,6 +23,16 @@ describe('held-out metrics', () => {
     expect(calibrationMetrics([], 0, 's', true)).toMatchObject({ accuracy: 0, brier: 1, ece: 1 });
     expect(() => calibrationMetrics([], NaN, 's')).toThrow('baseRate');
     expect(() => calibrationMetrics([{ ...rows()[0]!, p: -1 }], 0.5, 's')).toThrow('p:');
+  });
+  it('keeps missing decisions in every denominator without treating them as probabilities', () => {
+    const sample = rows(40).map((row, index) => ({ ...row, p: row.good ? 1 : 0, missing: index < 10 }));
+    const result = calibrationMetrics(sample, 0.5, 'missing', true);
+    expect(result).toMatchObject({ instances: 40, groups: 20, good: 20, bad: 20,
+      accuracy: 0.75, brier: 0.25, baseRateBrier: 0.25, ece: 0.25, falsePassRate: 0 });
+    // Ignored sentinel probabilities cannot silently become true negatives or false passes.
+    sample.slice(0, 10).forEach(row => { row.p = NaN; });
+    expect(calibrationMetrics(sample, 0.5, 'missing', true)).toEqual(result);
+    expect(expectedCalibrationError(sample.map(row => ({ ...row, missing: true })))).toBe(1);
   });
   it('uses equal-mass bins of at least ten and no more than ten bins', () => {
     expect(expectedCalibrationError(rows(9))).toBe(1);
@@ -55,6 +65,8 @@ describe('calibration bars', () => {
       [{ ece: 0.1001 }, 'calibration.ece'], [{ eceInterval: [0, 0.1501] }, 'calibration.ece90Upper'],
       [{ brier: 0.2001 }, 'calibration.brier'], [{ baseRateBrier: 0.2 }, 'baseRateBrier'],
       [{ falsePassRate: 0.1001 }, 'gate.falsePassRate'],
+      [{ falsePassInterval: [0, 0.2001] }, 'gate.falsePass90Upper'],
+      [{ falsePassInterval: undefined }, 'gate.falsePass90Upper'],
     ] as const) {
       const result = calibrationBars({ ...passing, ...change } as CalibrationMetrics);
       expect(result.status).toBe('uncalibrated');
@@ -86,5 +98,18 @@ describe('teacher-only calibration', () => {
     examples[1]!.goldenLabelers = [];
     expect(teacherAgreement(examples, 'teacher').excludedSelfLabels).toBe(2);
     expect(teacherAgreement([], 'teacher').status).toBe('insufficient-evidence');
+  });
+});
+
+
+describe('Wilson 90% bounds', () => {
+  it('reports score intervals including empty and boundary samples', () => {
+    expect(wilson90(0, 0)).toEqual([0, 1]);
+    expect(wilson90(9, 10)[0]).toBeCloseTo(0.6523, 3);
+    expect(wilson90(9, 10)[1]).toBeCloseTo(0.9774, 3);
+    expect(wilson90(0, 40)[1]).toBeLessThan(0.20);
+    for (const [successes, total] of [[-1, 10], [11, 10], [1, -1], [0.5, 1], [0, 0.5]]) {
+      expect(() => wilson90(successes!, total!)).toThrow('Wilson counts');
+    }
   });
 });

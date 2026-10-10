@@ -5,6 +5,8 @@ export interface CalibrationRecord {
   type: QuestionType;
   group: string;
   example?: { dataset: string; id: string };
+  /** Missing decisions retain the golden denominator; rawPGood is ignored. */
+  missing?: boolean;
   rawPGood: number;
   good: boolean;
   source: GoldenSource;
@@ -27,8 +29,9 @@ export interface CalibrationMetrics extends EvidenceCounts {
   eceInterval: Interval;
   brierInterval: Interval;
   falsePassRate?: number;
+  falsePassInterval?: Interval;
 }
-export type CalibrationStatus = 'calibrated' | 'insufficient-evidence' | 'uncalibrated';
+export type CalibrationStatus = 'calibrated' | 'insufficient-evidence' | 'uncalibrated' | 'escalation-infeasible' | 'unverified';
 export interface BarResult { status: CalibrationStatus; failures: string[] }
 export interface QuestionCalibration extends BarResult {
   questionId: string;

@@ -44,23 +44,35 @@ describe('regularized Platt fit', () => {
     // gradient zero at (a,b)=(0.9,0.05), rather than assuming MLE consistency.
     const a = 0.9, b = 0.05, size = 20_000;
     const sample = [-1, 1].flatMap(x => {
-      const frequency = 1 / (1 + Math.exp(-(a * x + b))) + (a - 1) * x + b;
+      const frequency = 1 / (1 + Math.exp(-(a * x + b))) + 0.02 * ((a - 1) * x + b);
       return Array.from({ length: size }, (_, index) => ({ rawPGood: 1 / (1 + Math.exp(-x)),
         good: index < Math.round(size * frequency) }));
     });
     const fitted = fitPlatt(sample);
     expect(fitted.converged).toBe(true);
-    expect(fitted.a).toBeCloseTo(a, 4);
-    expect(fitted.b).toBeCloseTo(b, 4);
+    expect(fitted.a).toBeCloseTo(a, 3);
+    expect(fitted.b).toBeCloseTo(b, 3);
+  });
+  it('recovers generating parameters on synthetic data within regularization tolerance', () => {
+    const a = 1.4, b = -0.4, size = 10_000;
+    const sample = [-3, -2, -1, 0, 1, 2, 3].flatMap(x => {
+      const frequency = 1 / (1 + Math.exp(-(a * x + b)));
+      return Array.from({ length: size }, (_, index) => ({ rawPGood: 1 / (1 + Math.exp(-x)),
+        good: index < Math.round(size * frequency) }));
+    });
+    const fitted = fitPlatt(sample);
+    expect(fitted.converged).toBe(true);
+    expect(Math.abs(fitted.a - a)).toBeLessThan(0.10);
+    expect(Math.abs(fitted.b - b)).toBeLessThan(0.10);
   });
   it('learns a nontrivial correction, stays regularized and clips extremes', () => {
     const fitted = fitPlatt(Array.from({ length: 50 }, () => ({ rawPGood: 0.9, good: false })));
     expect(fitted.converged).toBe(true);
     expect(fitted.a).toBeLessThan(1);
-    expect(fitted.a).toBeGreaterThan(0);
+    expect(applyPlatt(0.9, fitted)).toBeLessThan(0.1);
     expect(fitted.b).toBeLessThan(0);
-    expect(applyPlatt(0, { a: 1, b: 0 })).toBeCloseTo(1e-4);
-    expect(applyPlatt(1, { a: 1, b: 0 })).toBeCloseTo(1 - 1e-4);
+    expect(applyPlatt(0, { a: 1, b: 0 })).toBeCloseTo(1e-6, 10);
+    expect(applyPlatt(1, { a: 1, b: 0 })).toBeCloseTo(1 - 1e-6, 10);
     expect(fitPlatt([], {})).toMatchObject({ converged: false, iterations: 0 });
     expect(fitPlatt([{ rawPGood: 0.9, good: false }], { maxIterations: 1 }).converged).toBe(false);
     for (const p of [NaN, -0.1, 1.1, Infinity]) expect(() => applyPlatt(p, { a: 1, b: 0 })).toThrow('rawPGood');
@@ -82,6 +94,22 @@ describe('question and pooled fitting', () => {
     const result = calibrateQuestions([...sparse, ...original], { seed: 's' })[0]!;
     expect(result).toMatchObject({ status: 'insufficient-evidence', fitGroups: 0,
       failures: expect.arrayContaining(['fit.questionInstances > 0']), metrics: { baseRate: 0 } });
+  });
+  it('splits the full golden universe and excludes missing decisions only from fitting', () => {
+    const original = records(100), split = splitCalibration(original, 'missing');
+    split.fit.slice(0, 5).forEach(row => { row.missing = true; row.rawPGood = NaN; });
+    split.heldOut.slice(0, 10).forEach(row => { row.missing = true; row.rawPGood = NaN; });
+    const result = calibrateQuestions(original, { seed: 'missing' })[0]!;
+    const fit = fitPlatt(split.fit.filter(row => !row.missing));
+    expect(result.fitGroups).toBe(45);
+    expect(result.params).toEqual({ a: fit.a, b: fit.b });
+    expect(result.metrics).toMatchObject({ groups: 50, instances: 50, accuracy: 0.8 });
+    expect(result.metrics.brier).toBeGreaterThanOrEqual(0.2);
+    expect(result.metrics.ece).toBeGreaterThanOrEqual(0.2);
+    expect(result.status).toBe('uncalibrated');
+    split.fit.forEach(row => { row.missing = true; });
+    expect(calibrateQuestions(original, { seed: 'missing' })[0]).toMatchObject({ fitGroups: 0,
+      status: 'insufficient-evidence', failures: expect.arrayContaining(['fit.questionInstances > 0']) });
   });
   it('pools only the matching type, exposes source metrics and gate false passes', () => {
     const rows = records(40);

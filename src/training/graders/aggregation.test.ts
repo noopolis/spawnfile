@@ -6,7 +6,7 @@ import type { GateOutcome, InstanceOutcome } from './aggregation.js';
 
 function grader(questions: unknown[], gates: unknown[] = [], passAt = 0.5) {
   return parseGrader({ schema: 'paideia.grader.v1', id: 'test', golden: 'golden.yaml', calibration: 'cal.json',
-    teachers: [{ id: 't', provider: 'codex', model: 'model' }], model: { backend: 'teacher', teacher: 't' },
+    teachers: [{ id: 't', provider: 'claude', model: 'model' }], model: { backend: 'teacher', teacher: 't' },
     escalate: { to: 't', between: [0.3, 0.7] }, gates,
     questions: questions.map(question => ({ id: 'q', type: 'yes-no', expected: 'yes', reads: [], ...question as object })),
     score: { method: 'weighted', pass_at: passAt } });

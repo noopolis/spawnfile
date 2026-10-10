@@ -5,13 +5,21 @@ evidence bars, escalation planning/enforcement and independent teacher agreement
 The public seam is index.ts. No provider calls, filesystem labels, trial lifecycle,
 or runtime imports belong here. Consumers supply verified golden records and identities.
 
-Platt uses mean NLL plus 0.5*((a-1)^2+b^2), fixed lambda=1.0. Its shrinkage persists
-at large sample sizes; arbitrary unregularized generating parameters are not recoverable.
+Platt clips raw probabilities to [1e-6, 1-1e-6] and uses mean NLL plus
+0.01*((a-1)^2+b^2). Its shrinkage persists at large sample sizes.
 Hash-ranked lineages split equally (odd remainder held out). Example exclusions remove
 all revisions of the matching lineage before the split. Bootstrap draws whole lineages.
 Retained group coverage means groups with at least one non-escalated instance; band
 endpoints are inclusive. ECE with fewer than ten instances is conservatively 1 and
 cannot pass evidence bars. Gate false-pass rate is conditional on golden bad instances.
+Cascade verification removes the escalation teacher before deriving strict option
+consensus, requires 15 independent held-out groups, and enforces Wilson 90% bounds.
+Supply raw votes/asked/labelers/expected and output/projection identities to planning.
+Missing local decisions remain in split/evidence denominators, never enter fitting,
+and count wrong for accuracy/cascade with Brier error 1 and ECE error contribution 1.
+These conservative penalties are reported as missing, not invented probabilities;
+the fit-split base-rate baseline still predicts every golden record.
+Global ordered calls across questions share each output budget; overflow counts wrong.
 Teacher fallback excludes golden answers contributed to by that teacher; callers may
 rederive those answers from other labelers and then supply their independent provenance.
 Agreement compares exact goldenAnswer and teacherAnswer options, including score integers;

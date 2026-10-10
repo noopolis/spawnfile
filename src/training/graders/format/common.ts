@@ -7,7 +7,8 @@ export const identifier = z.string().min(1).refine(value =>
   !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(value), 'control characters in identifier').refine(value =>
   !value.split(/[.@]/).some(part => unsafeKeys.has(part)), 'unsafe identifier');
 export const probability = z.number().min(0).max(1);
-export const provider = z.enum(['codex', 'claude', 'grok']);
+export const provider = z.enum(['claude', 'grok'], { error: issue => issue.input === 'codex'
+  ? 'codex exec has no native empty-tool attestation; use claude or grok' : 'expected claude or grok' });
 
 export function rejectUnsafeKeys(value: unknown, path = '$'): void {
   if (value === null || typeof value !== 'object') return;

@@ -33,6 +33,15 @@ function checkBinding(check: Record<string, unknown>, location: string): void {
   if (check.eval === 'tool-sequence' && (check.ending_at as { event?: unknown } | undefined)?.event !== 'accepted-call') {
     throw new Error(`${location}.ending_at.event: requires accepted-call`);
   }
+  if (check.eval === 'tool-sequence') {
+    const steps = Array.isArray(check.steps) ? check.steps as { bind?: Record<string, unknown>; where?: { cel?: unknown } }[] : [];
+    const cel = steps.at(-1)?.where?.cel;
+    const bound = new Set(steps.slice(0, -1).flatMap(step => Object.keys(step?.bind ?? {})));
+    const references = typeof cel === 'string' ? [...cel.matchAll(/\bbindings\.([A-Za-z_][A-Za-z0-9_]*)/g)] : [];
+    if (!references.some(match => bound.has(match[1]!))) {
+      throw new Error(`${location}.steps: final where.cel must reference bindings from an earlier step bind`);
+    }
+  }
   for (const op of ['all', 'any', 'not']) {
     const children = check[op];
     const items = Array.isArray(children) ? children : [children];

@@ -24,7 +24,7 @@ export function splitCalibration(records: readonly CalibrationRecord[], seed: st
 
 function logit(p: number): number {
   if (!Number.isFinite(p) || p < 0 || p > 1) throw new Error('rawPGood: expected finite probability in [0, 1]');
-  const clipped = Math.max(1e-4, Math.min(1 - 1e-4, p));
+  const clipped = Math.max(1e-6, Math.min(1 - 1e-6, p));
   return Math.log(clipped / (1 - clipped));
 }
 
@@ -35,7 +35,7 @@ export function applyPlatt(rawPGood: number, params: PlattParams): number {
   return sigmoid(params.a * logit(rawPGood) + params.b);
 }
 
-/** Mean binary NLL + lambda/2 * ((a-1)^2 + b^2), lambda=1.0.
+/** Mean binary NLL + lambda * ((a-1)^2 + b^2), lambda=0.01.
  * This fixed regularizer is intentionally not weakened by larger instance counts.
  */
 export function fitPlatt(records: readonly Pick<CalibrationRecord, 'rawPGood' | 'good'>[],
@@ -51,9 +51,9 @@ export function fitPlatt(records: readonly Pick<CalibrationRecord, 'rawPGood' | 
   const loss = (nextA: number, nextB: number): number => rows.reduce((sum, row) => {
     const z = nextA * row.x + nextB;
     return sum + Math.max(z, 0) + Math.log1p(Math.exp(-Math.abs(z))) - row.y * z;
-  }, 0) / rows.length + ((nextA - 1) ** 2 + nextB ** 2) / 2;
+  }, 0) / rows.length + 0.01 * ((nextA - 1) ** 2 + nextB ** 2);
   for (let iteration = 1; iteration <= maxIterations; iteration++) {
-    let ga = a - 1, gb = b, aa = 1, ab = 0, bb = 1;
+    let ga = 0.02 * (a - 1), gb = 0.02 * b, aa = 0.02, ab = 0, bb = 0.02;
     for (const row of rows) {
       const p = sigmoid(a * row.x + b), residual = (p - row.y) / rows.length;
       const curvature = p * (1 - p) / rows.length;
@@ -82,14 +82,15 @@ export function calibrateQuestions(records: readonly CalibrationRecord[], option
     if (records.some(record => record.questionId === questionId && record.type !== question.type)) {
       throw new Error(`${questionId}.type: inconsistent question types`);
     }
-    const questionFit = split.fit.filter(record => record.questionId === questionId);
+    const questionSplit = split.fit.filter(record => record.questionId === questionId);
+    const questionFit = questionSplit.filter(record => !record.missing);
     const fitGroups = new Set(questionFit.map(record => record.group)).size;
     const fitSource = fitGroups >= 20 ? 'question' : 'type';
-    const fit = fitSource === 'question' ? questionFit : split.fit.filter(record => record.type === question.type);
+    const fit = fitSource === 'question' ? questionFit : split.fit.filter(record => record.type === question.type && !record.missing);
     const params = fitPlatt(fit);
-    const baseRate = questionFit.length ? questionFit.filter(record => record.good).length / questionFit.length : 0;
+    const baseRate = questionSplit.length ? questionSplit.filter(record => record.good).length / questionSplit.length : 0;
     const heldOut = split.heldOut.filter(record => record.questionId === questionId)
-      .map(record => ({ ...record, p: applyPlatt(record.rawPGood, params) }));
+      .map(record => ({ ...record, p: record.missing ? 0 : applyPlatt(record.rawPGood, params) }));
     const gate = options.gates?.includes(questionId) ?? false;
     const metrics = calibrationMetrics(heldOut, baseRate, `${options.seed}:${questionId}`, gate);
     const bars = calibrationBars(metrics);

@@ -8,7 +8,7 @@ import { sha256 } from './common.js';
 
 const grader = parseGrader({
   schema: 'paideia.grader.v1', id: 'g', golden: 'l', calibration: 'c',
-  teachers: [{ id: 'c', provider: 'codex', model: 'm' }], model: { backend: 'teacher', teacher: 'c' },
+  teachers: [{ id: 'c', provider: 'claude', model: 'm' }], model: { backend: 'teacher', teacher: 'c' },
   escalate: { to: 'c', between: [0, 1] }, score: { method: 'weighted' },
   context: { evidence: { description: '' } },
   questions: [
@@ -19,7 +19,7 @@ const grader = parseGrader({
 });
 const base = {
   schema: 'paideia.labels.v1', grader: 'g',
-  labelers: { c: { kind: 'model', provider: 'codex', model: 'm' }, h: { kind: 'human', name: 'Human' } },
+  labelers: { c: { kind: 'model', provider: 'claude', model: 'm' }, h: { kind: 'human', name: 'Human' } },
   labels: [{ id: 'l', lineage: 'family', output: { body: ['Hello.'] }, context: { evidence: 'truth' },
     votes: { a: { c: 'yes', h: 'abstain' }, 'p@p0': { c: 'x' }, 'p.applies@p0': { c: 'yes' }, 's@p0.s0': { c: 4 } },
     asked: ['c', 'h'], provenance: { c: { reported_model: 'm', at: 'time' } } }],
@@ -41,6 +41,8 @@ describe('labels', () => {
   });
   it('rejects invalid labels and unknown maps', () => {
     expect(() => parseLabels({ ...base, grader: 'other' }, grader)).toThrow('$.grader');
+    expect(() => parseLabels({ ...base, labelers: { c: { kind: 'model', provider: 'codex', model: 'm' } } }, grader))
+      .toThrow('codex exec has no native empty-tool attestation');
     expect(() => parseLabels({ ...base, labels: [base.labels[0], base.labels[0]] }, grader)).toThrow('labels.1.id');
     expect(() => parseLabels(withLabel({ lineage: undefined }), grader)).toThrow('lineage');
     expect(() => parseLabels(withLabel({ asked: ['unknown'] }), grader)).toThrow('asked/provenance.unknown');
