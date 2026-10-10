@@ -1,3 +1,4 @@
+import { runGraderCommand } from './grader/index.js';
 import { readMeasurementRepair, verifyRepairProjection, importMeasurementCaptures, readParentCheckpoints } from '../experiments/repair/index.js';
 import { partitionTraining } from '../experiments/training/index.js';
 import { configuredCostRoutes, commandCheckpoint, prepareComparison } from './training/index.js';
@@ -16,6 +17,7 @@ import { createFailureReport, createProgressJournal } from './progress/index.js'
 
 async function execute(args: CliArguments, io: CliIO, dependencies: CliDependencies,
   timeoutMs: number, signal: AbortSignal): Promise<number> {
+  if (args.command === 'grader') return runGraderCommand(args, io, dependencies.grader, signal);
   if (args.command === 'view') {
     await viewInvocation(resolve(io.cwd, args.dataset!), count(args, 'port', 0, 65535, 0), io, signal);
     signal.throwIfAborted();

@@ -1,14 +1,20 @@
 import type { TrainingConfiguration } from '../contracts/training-config.js';
 export interface CliArguments {
-  command: 'help' | 'validate' | 'evaluate' | 'train' | 'view';
+  command: 'help' | 'validate' | 'evaluate' | 'train' | 'view' | 'grader';
+  graderCommand?: 'validate' | 'label' | 'calibrate';
   dataset?: string;
   training?: TrainingConfiguration;
   frozenDataset?: { path: string; sourceDigest: string };
   flags: Readonly<Record<string, readonly string[]>>;
 }
 
-const repeated = new Set(['instructions', 'supporting', 'locked', 'editable', 'resource', 'judge', 'judge-citation-repairs', 'validation-group']);
+const repeated = new Set(['instructions', 'supporting', 'locked', 'editable', 'resource', 'judge', 'judge-citation-repairs', 'validation-group', 'exclude-dataset']);
 const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'resource', 'judge', 'judge-citation-repairs', 'source-root', 'out', 'max-trials', 'timeout-ms', 'view', 'cost-config', 'spawnfile-context'];
+const graderFlags: Record<string, readonly string[]> = {
+  validate: ['grader'],
+  label: ['grader', 'inputs', 'teachers', 'relabel', 'adjudication', 'concurrency', 'limit'],
+  calibrate: ['grader', 'exclude-dataset', 'seed', 'report', 'concurrency'],
+};
 const flags: Record<string, readonly string[]> = {
   validate: ['judge', 'judge-citation-repairs'], evaluate: common, view: ['port', 'timeout-ms'],
   train: [...common, 'train', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed', 'dry-run', 'resume', 'repair-measurements', 'repair-context'],
@@ -16,6 +22,9 @@ const flags: Record<string, readonly string[]> = {
 
 export const helpText = `Paideia — explicit local native-agent experiments
 
+grader validate --grader FILE
+grader label --grader FILE --inputs FILE --teachers a,b [--relabel] [--adjudication N] [--concurrency N] [--limit N]
+grader calibrate --grader FILE [--exclude-dataset FILE]... [--seed S] [--report FILE.md] [--concurrency N]
 validate DATASET [--judge NAME=MODEL]
 view OUT_DIRECTORY [--port PORT] [--timeout-ms N]
 evaluate DATASET --runtime codex|daimon --model MODEL --instructions FILE --out DIRECTORY
@@ -53,16 +62,17 @@ Exit: 0 completed/passing, 1 completed with failed checks, 2 error, 130 cancelle
 export function parseArguments(argv: readonly string[]): CliArguments {
   if (argv.length === 0 || (argv.length === 1 && ['help', '--help', '-h'].includes(argv[0]!))) return { command: 'help', flags: {} };
   const command = argv[0]!;
-  const allowed = flags[command];
+  const graderCommand = command === 'grader' ? argv[1] : undefined;
+  const allowed = command === 'grader' ? graderFlags[graderCommand ?? ''] : flags[command];
   if (!allowed) throw new Error(`Unsupported command ${command}; use --help`);
   const values: Record<string, string[]> = {};
   const positional: string[] = [];
-  for (let index = 1; index < argv.length; index += 1) {
+  for (let index = command === 'grader' ? 2 : 1; index < argv.length; index += 1) {
     const token = argv[index]!;
     if (!token.startsWith('-')) { positional.push(token); continue; }
     const name = token.slice(2);
     if (!token.startsWith('--') || !allowed.includes(name)) throw new Error(`Unsupported option ${token} for ${command}`);
-    if (name === 'dry-run' || name === 'resume') {
+    if (name === 'dry-run' || name === 'resume' || name === 'relabel') {
       if (values[name]) throw new Error(`Option ${token} may appear only once`);
       values[name] = ['true'];
       continue;
@@ -71,6 +81,13 @@ export function parseArguments(argv: readonly string[]): CliArguments {
     if (value === undefined || value.length === 0 || value.startsWith('-')) throw new Error(`Option ${token} requires a value`);
     if (values[name] && !repeated.has(name)) throw new Error(`Option ${token} may appear only once`);
     (values[name] ??= []).push(value);
+  }
+  if (command === 'grader') {
+    if (positional.length) throw new Error('grader accepts flags only');
+    for (const required of graderCommand === 'label' ? ['grader', 'inputs', 'teachers'] : ['grader']) {
+      if (!values[required]) throw new Error(`Required option --${required} is missing`);
+    }
+    return { command: 'grader', graderCommand: graderCommand as CliArguments['graderCommand'], flags: values };
   }
   if (positional.length !== (command === 'train' ? 0 : 1)) throw new Error(`${command} requires ${command === 'train' ? '--train and --test, without positional arguments' : 'exactly one dataset path'}`);
   const args = { command: command as CliArguments['command'], dataset: positional[0], flags: values };

@@ -44,3 +44,13 @@ describe('explicit bounded CLI arguments', () => {
       .toThrow('unique NAME=VALUE');
   });
 });
+
+it('parses grader commands and rejects unsupported/missing/repeated flags', () => {
+  expect(parseArguments(['grader', 'validate', '--grader', 'g.yaml'])).toMatchObject({ command: 'grader', graderCommand: 'validate' });
+  expect(parseArguments(['grader', 'calibrate', '--grader', 'g', '--exclude-dataset', 'a', '--exclude-dataset', 'b']).flags['exclude-dataset']).toEqual(['a', 'b']);
+  expect(parseArguments(['grader', 'label', '--grader', 'g', '--inputs', 'i', '--teachers', 'a', '--relabel']).flags.relabel).toEqual(['true']);
+  for (const argv of [['grader'], ['grader', 'grade'], ['grader', 'validate'], ['grader', 'validate', '--grader', 'g', 'extra'],
+    ['grader', 'label', '--grader', 'g', '--inputs', 'i'], ['grader', 'validate', '--grader', 'a', '--grader', 'b']]) {
+    expect(() => parseArguments(argv)).toThrow();
+  }
+});

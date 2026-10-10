@@ -1,3 +1,4 @@
+import type { GraderDependencies } from './grader/index.js';
 import type { TrainingModel } from '../contracts/training-config.js';
 import type { GrokInferenceGrantAuthority, InferenceProvider, SubjectAdapter } from '../contracts/index.js';
 import type { BlobReference } from '../storage/index.js';
@@ -13,6 +14,7 @@ export interface CliIO {
 
 /** Tests inject only the native/inference boundaries; experiment/storage code stays real. */
 export interface CliDependencies {
+  grader?: GraderDependencies;
   /** Container integrations may bind internally; the launcher must publish only on host loopback. */
   viewerBindHost?: '127.0.0.1' | '0.0.0.0';
   adapter?: (runtime: 'codex' | 'daimon', options: { model: string; timeoutMs: number }) => SubjectAdapter;
