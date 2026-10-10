@@ -46,6 +46,7 @@ import {
 } from "./buildCompilePlanTraversalHelpers.js";
 import { resolveAgentNode } from "./buildCompilePlanAgent.js";
 import { createInlineAgentSource } from "./projectManifestGraph.js";
+import { resolveTrainingDeclaration } from "./training/resolution.js";
 
 type BuildCompilePlanTraversalDeps = {
   getLoadedManifest: (manifestPath: string) => Promise<LoadedManifest>;
@@ -241,6 +242,7 @@ export const createCompilePlanTraversal = ({
         skills: sharedSkills
       },
       source: canonicalPath,
+      training: resolveTrainingDeclaration(manifest.shared?.training, canonicalPath, canonicalPath)
     };
 
     const fingerprint = getTeamFingerprint(candidate);

@@ -8,6 +8,10 @@ This folder owns Spawnfile parsing and validation of user-authored schema.
 src/manifest/
 ├── index.ts                  # Barrel for manifest APIs
 ├── schemas.ts                # Zod schema and manifest type exports
+├── trainingSchemas.ts        # Strict manifest training declarations and target paths
+├── trainingSchemas.test.ts   # Training declarations and manifest placement tests
+├── trainingDataSchemas.ts    # Dataset schema; reuse authored override declarations
+├── trainingDataSchemas.test.ts # Dataset validation tests
 ├── commandSchemas.ts          # Shared argv and digest-pinned image schema fragments
 ├── volumeFeedSchemas.ts      # Host-fed volume feed: sources, include, prepare, ref rules, freeze
 ├── mcpSchemas.ts             # MCP auth, complete/shared (opt_in) server, and agent override entry schema fragments
@@ -30,6 +34,7 @@ src/manifest/
 ```
 
 This folder stops at authored-input validation. It should not perform graph resolution or adapter-specific lowering.
+Training declarations receive structural validation only; training-plan loading owns all training file checks.
 
 ## Rules
 

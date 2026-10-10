@@ -15,14 +15,15 @@ const assertSame = (
   field: string,
   existing: unknown,
   next: unknown,
-  nodeName: string
+  nodeName: string,
+  errorCode: "compile_error" | "validation_error" = "compile_error"
 ): void => {
   if (stableStringify(existing) === stableStringify(next)) {
     return;
   }
 
   throw new SpawnfileError(
-    "compile_error",
+    errorCode,
     `Agent ${nodeName} resolves with incompatible ${field} across team imports`
   );
 };
@@ -117,6 +118,7 @@ export const mergeCompatibleAgentNode = (
   assertSame("source", existing.source, next.source, existing.name);
   assertSame("source path", existing.sourcePath, next.sourcePath, existing.name);
   assertSame("surfaces", existing.surfaces, next.surfaces, existing.name);
+  assertSame("training", existing.training, next.training, existing.name, "validation_error");
 
   existing.docs = mergeDocuments(
     existing.docs,

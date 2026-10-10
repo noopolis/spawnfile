@@ -1,9 +1,9 @@
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { runCli } from "./runCli.js";
+import { runCli, type CliHandlers } from "./runCli.js";
 import type { DelegatePaideiaTrainingOptions } from "./paideiaDelegation.js";
 
 const directories: string[] = [];
@@ -16,6 +16,78 @@ async function project(): Promise<string> {
 }
 const container = ["--training-image", `sha256:${"a".repeat(64)}`, "--training-config", "/training.json"];
 const base = ["--train", "train.paideia.yaml", "--test", "test.paideia.yaml", "--out", "local output"];
+const { version: packageVersion } = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
+const emptyPlan = (root: string): Awaited<ReturnType<CliHandlers["createTrainingPlan"]>> => ({
+  agent: { id: "agent:author", name: "author" }, graders: [], optimizer: null,
+  producer: { package: "spawnfile", version: packageVersion },
+  project: { manifest: path.join(root, "Spawnfile"), root },
+  record: null, targets: [], version: "spawnfile.training-plan.v1"
+});
+
+describe("spawnfile train --plan", () => {
+  it.each([false, true])("prints the real authoring plan without execution with dryRun=%s", async (dryRun) => {
+    const flags = dryRun ? ["--dry-run"] : [];
+    const root = await project(), stdout: string[] = [], stderr: string[] = [];
+    const forbidden = vi.fn(async () => { throw Error("must not execute, extract a context or authenticate"); });
+    const code = await runCli(["train", root, "--plan", ...flags, "--timeout-ms", "invalid"], {
+      handlers: { createTrainingContext: forbidden, delegatePaideiaTraining: forbidden, compileProject: forbidden,
+        buildProject: forbidden, runProject: forbidden, upProject: forbidden, publishProject: forbidden,
+        importClaudeCodeAuth: forbidden, importCodexAuth: forbidden, importGrokAuth: forbidden,
+        requireAuthProfile: forbidden, provisionCredentials: forbidden },
+      streams: { stdout: (value) => stdout.push(value), stderr: (value) => stderr.push(value) }
+    });
+    expect(code).toBe(0);
+    expect(stdout).toEqual([JSON.stringify(emptyPlan(root), null, 2)]);
+    expect(stderr).toEqual([]);
+    expect(forbidden).not.toHaveBeenCalled();
+    expect(await readdir(root)).toEqual(["Spawnfile"]);
+  });
+
+  it("forwards only the input, exact agent id and package version to the plan handler", async () => {
+    const plan = emptyPlan("/canonical");
+    const createTrainingPlan = vi.fn(async () => plan);
+    const forbidden = vi.fn(async () => { throw Error("must not start training"); });
+    const stdout: string[] = [];
+    expect(await runCli(["train", "./project with spaces", "--plan", "--agent", "agent:author",
+      "--train", "unused.yaml", "--out", "unused-output", "--training-config", "unused.json", "--resume"], {
+      handlers: { createTrainingPlan, createTrainingContext: forbidden, delegatePaideiaTraining: forbidden },
+      streams: { stdout: (value) => stdout.push(value), stderr() {} }
+    })).toBe(0);
+    expect(createTrainingPlan).toHaveBeenCalledExactlyOnceWith("./project with spaces", { agent: "agent:author", packageVersion });
+    expect(stdout).toEqual([JSON.stringify(plan, null, 2)]);
+    expect(forbidden).not.toHaveBeenCalled();
+  });
+
+  it("writes exactly one trailing newline through the default stdout stream", async () => {
+    const root = await project();
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const forbidden = vi.fn(async () => { throw Error("must not start training"); });
+    try {
+      expect(await runCli(["train", root, "--plan"], {
+        handlers: { createTrainingContext: forbidden, delegatePaideiaTraining: forbidden }
+      })).toBe(0);
+      expect(stdout).toHaveBeenCalledExactlyOnceWith(`${JSON.stringify(emptyPlan(root), null, 2)}\n`);
+      expect(stderr).not.toHaveBeenCalled();
+      expect(forbidden).not.toHaveBeenCalled();
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+    }
+  });
+
+  it.each([false, true])("requires --train before context extraction without --plan with dryRun=%s", async (dryRun) => {
+    const flags = dryRun ? ["--dry-run"] : [];
+    const forbidden = vi.fn(async () => { throw Error("must not read the project"); });
+    const stderr: string[] = [];
+    expect(await runCli(["train", "/missing", ...flags], {
+      handlers: { createTrainingPlan: forbidden, createTrainingContext: forbidden, delegatePaideiaTraining: forbidden },
+      streams: { stdout() {}, stderr: (value) => stderr.push(value) }
+    })).toBe(2);
+    expect(stderr).toEqual(["error: required option '--train <value>' not specified"]);
+    expect(forbidden).not.toHaveBeenCalled();
+  });
+});
 
 describe("spawnfile train", () => {
   it("resolves the real canonical project and forwards only explicit Paideia options", async () => {

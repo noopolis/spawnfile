@@ -5,6 +5,7 @@ import { executionSchema } from "./executionSchemas.js";
 import { memoryBanksSchema } from "./memorySchemas.js";
 import { mcpServerEntrySchema, mcpServerSchema, sharedMcpServerSchema } from "./mcpSchemas.js";
 import { surfacesSchema } from "./surfaceSchemas.js";
+import { trainingDeclarationSchema } from "./trainingSchemas.js";
 import { externalParticipantServiceSchema } from "./externalParticipantSchemas.js";
 import {
   isDeclaredPairedRemoteRoomMember,
@@ -126,6 +127,7 @@ const subagentSchema = z
 const sharedSurfaceSchema = z
   .object({
     environment: sharedEnvironmentSchema.optional(),
+    training: trainingDeclarationSchema.optional(),
     workspace: teamWorkspaceSchema.optional()
   })
   .strict();
@@ -163,6 +165,7 @@ const inlineAgentMemberSchema = z
     runtime: runtimeBindingSchema.optional(),
     schedule: agentScheduleSchema.optional(),
     surfaces: surfacesSchema.optional(),
+    training: trainingDeclarationSchema.optional(),
     workspace: teamWorkspaceSchema
   })
   .strict()
@@ -193,6 +196,7 @@ const agentManifestSchema = commonManifestSchema
     runtime: runtimeBindingSchema.optional(),
     schedule: agentScheduleSchema.optional(),
     subagents: z.array(subagentSchema).optional(),
+    training: trainingDeclarationSchema.optional(),
     workspace: teamWorkspaceSchema.optional()
   })
   .superRefine(refineAgentMemoryAccess)

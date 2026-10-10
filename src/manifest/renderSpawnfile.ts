@@ -133,7 +133,8 @@ const orderSharedSurface = (
 
   return withDefinedEntries([
     ["workspace", orderWorkspace(shared.workspace)],
-    ["environment", orderEnvironment(shared.environment)]
+    ["environment", orderEnvironment(shared.environment)],
+    ["training", shared.training]
   ]) as unknown as SharedSurface;
 };
 
@@ -152,6 +153,7 @@ const orderMember = (member: ManifestMember): Record<string, unknown> => {
     ["runtime", orderRuntimeBinding(member.runtime)],
     ["execution", orderExecution(member.execution)],
     ["schedule", orderAgentSchedule(member.schedule)],
+    ["training", member.training],
     ["workspace", orderWorkspace(member.workspace)],
     ["environment", orderEnvironment(member.environment)],
     ["surfaces", orderSurfaces(member.surfaces)],
@@ -176,6 +178,7 @@ const orderAgentManifestSections = (manifest: AgentManifest): Record<string, unk
   withDefinedEntries([["runtime", orderRuntimeBinding(manifest.runtime)]]),
   withDefinedEntries([["execution", orderExecution(manifest.execution)]]),
   withDefinedEntries([["schedule", orderAgentSchedule(manifest.schedule)]]),
+  withDefinedEntries([["training", manifest.training]]),
   withDefinedEntries([["workspace", orderWorkspace(manifest.workspace)]]),
   withDefinedEntries([["environment", orderEnvironment(manifest.environment)]]),
   withDefinedEntries([["surfaces", orderSurfaces(manifest.surfaces)]]),
