@@ -24,6 +24,7 @@ import {
   clearProjectModelFallbacks,
   compileProject,
   createTrainingContext,
+  createTrainingPlan,
   initProject,
   listInitTemplates,
   preflightCompilePlan,
@@ -102,6 +103,7 @@ const createDefaultRenderEnvironment = (): CliRenderEnvironment => ({
 
 export interface CliHandlers {
   createTrainingContext: typeof createTrainingContext;
+  createTrainingPlan: typeof createTrainingPlan;
   delegatePaideiaTraining: typeof delegatePaideiaTraining;
   buildCompilePlan: typeof buildCompilePlan; buildOrganizationView: typeof buildOrganizationView;
   buildProject: typeof buildProject; compileProject: typeof compileProject;
@@ -136,7 +138,7 @@ export interface CliHandlers {
 }
 
 const createDefaultHandlers = (): CliHandlers => ({
-  createTrainingContext, delegatePaideiaTraining,
+  createTrainingContext, createTrainingPlan, delegatePaideiaTraining,
   buildCompilePlan, buildOrganizationView, buildProject, compileProject, publishProject,
   addAgentProject, addProjectModelFallback, addProjectSurface,
   addSubagentProject, addTeamProject, clearProjectModelFallbacks,

@@ -23,6 +23,7 @@ export const registerTrainCommand = (
     .option("--paideia-command <executable>", "Installed Paideia executable; no shell or automatic install", "paideia")
     .option("--training-image <immutable-image>", "Pinned image containing the complete training environment")
     .option("--training-config <json>", "V2 image recipe and declared inputs, or advanced v1 local bindings")
+    .option("--plan", "Print the resolved training authoring plan without executing training")
     .option("--dry-run", "Validate and estimate without compiling, authenticating or starting models")
     .option("--repair-measurements <parent-out>", "Fork captured work into a fresh output for authorized measurement repair")
     .option("--repair-witness <manifest>", "Explicit verified image witness for a legacy parent")
@@ -30,10 +31,20 @@ export const registerTrainCommand = (
   for (const name of forwarded) {
     const flag = `--${name} <value>`;
     if (repeated.has(name)) command.option(flag, `Paideia ${name}; repeatable`, (value: string, previous: string[]) => [...previous, value], []);
-    else if (name === "train") command.requiredOption(flag, `Paideia ${name}`);
     else command.option(flag, `Paideia ${name}`);
   }
   command.action(async (inputPath: string, options: Record<string, string | string[] | boolean | undefined>) => {
+    if (options.plan === true) {
+      const plan = await handlers.createTrainingPlan(inputPath, {
+        agent: options.agent as string | undefined, packageVersion
+      });
+      streams.stdout(JSON.stringify(plan, null, 2));
+      setExitCode(0);
+      return;
+    }
+    if (typeof options.train !== "string") {
+      throw new SpawnfileError("validation_error", "required option '--train <value>' not specified");
+    }
     if (options.dryRun !== true && typeof options.out !== "string") {
       throw new SpawnfileError("validation_error", "Actual training requires --out; dry-run does not write an output directory");
     }
