@@ -34,8 +34,7 @@ export const planGrader = (
   const grader = project.graders[reference.sourcePath]
     ?? invalidTraining(`Training grader ${name} declared by ${reference.declaredBy} was not loaded: ${reference.sourcePath}`);
   return {
-    name, declaredBy: reference.declaredBy, sourcePath: grader.sourcePath, path: grader.path,
-    questions: grader.value.questions.length, labels: grader.value.labels?.length ?? 0
+    name, declaredBy: reference.declaredBy, sourcePath: grader.sourcePath, path: grader.path
   };
 };
 

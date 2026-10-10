@@ -34,10 +34,7 @@ export const dataFiles = {
   "AGENTS.md": "Write precisely.\n",
   "training/train.yaml": { examples: [example] },
   "training/test.yaml": { examples: [{ ...example, id: "held-out" }] },
-  "training/writing.grader.yaml": {
-    questions: [{ id: "actor-first", ask: "Is the actor named?", expected: "yes" }],
-    labels: [{ id: "ice-headline", output: "labels/missing.json", answers: { "actor-first": "no" } }]
-  }
+  "training/writing.grader.yaml": "\u0000Opaque calibrated decision model\n"
 };
 export const agentManifest = (extra: Record<string, unknown> = {}) => ({
   spawnfile_version: "0.1", kind: "agent", name: "writer", runtime: "daimon",

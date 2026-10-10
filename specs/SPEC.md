@@ -1238,7 +1238,9 @@ A nested team member is a black box to the outer team:
 
 ### 4.4 Shared Workspace And Environment
 
-`shared.workspace.docs`, `shared.workspace.resources`, `shared.workspace.skills`, `shared.environment.env`, `shared.environment.secrets`, `shared.environment.packages`, `shared.environment.mcp_servers`, and `shared.training` are OPTIONAL and are inherited by direct agent members of the team, except that an `opt_in: true` MCP server is inherited only by members that select it (below), and `shared.training.targets` belongs to the team and is never inherited.
+`shared.workspace.docs`, `shared.workspace.resources`, `shared.workspace.skills`, `shared.environment.env`, `shared.environment.secrets`, `shared.environment.packages`, and `shared.environment.mcp_servers` are OPTIONAL and are inherited by all direct members of the team, except that an `opt_in: true` MCP server is inherited only by members that select it (below).
+
+`shared.training` is OPTIONAL and applies only to direct agent members; `shared.training.targets` belongs to the team and is never inherited.
 
 Inheritance rules:
 

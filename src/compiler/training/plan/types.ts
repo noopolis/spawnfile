@@ -1,4 +1,4 @@
-import type { TrainingDataset, TrainingGrader, TrainingTarget } from "../../../manifest/index.js";
+import type { TrainingDataset, TrainingTarget } from "../../../manifest/index.js";
 import type { CompilePlan, CompilePlanNode, ResolvedAgentNode } from "../../types.js";
 
 export interface TrainingFileSource {
@@ -27,18 +27,13 @@ export interface LoadedTrainingDataset extends TrainingFileSource {
   value: TrainingDataset;
 }
 
-export interface LoadedTrainingGrader extends TrainingFileSource {
-  /** Label outputs are absolute paths based at this grader; their existence is not checked. */
-  value: TrainingGrader;
-}
-
 export interface LoadedTrainingProject {
   root: string;
   manifest: string;
   compilePlan: CompilePlan;
   targets: LoadedTrainingTarget[];
   datasets: Record<string, LoadedTrainingDataset>;
-  graders: Record<string, LoadedTrainingGrader>;
+  graders: Record<string, TrainingFileSource>;
 }
 
 export type TrainingAgentNode = CompilePlanNode & { value: ResolvedAgentNode };

@@ -35,8 +35,7 @@ export const trainingPlanSchema = z.object({
   }).strict().nullable(),
   optimizer: trainingPlanOptimizerSchema.nullable(),
   graders: z.array(source.extend({
-    name: text.regex(/^[A-Za-z0-9_-]+$/u), declaredBy: text,
-    questions: z.number().int().min(1), labels: z.number().int().min(0)
+    name: text.regex(/^[A-Za-z0-9_-]+$/u), declaredBy: text
   }).strict()),
   targets: z.array(z.object({
     declaredBy: text, grader: text.regex(/^[A-Za-z0-9_-]+$/u),

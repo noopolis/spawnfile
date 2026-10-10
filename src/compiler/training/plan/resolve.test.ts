@@ -5,8 +5,8 @@ import { createTrainingPlan, loadTrainingProject } from "./load.js";
 import { resolveTrainingPlan } from "./resolve.js";
 import { trainingPlanSchema } from "./contract.js";
 import {
-  agentManifest, cleanTrainingProjects, dataFiles, example, optimizer, teamFiles,
-  training, trainingProject, writeTrainingFile
+  agentManifest, cleanTrainingProjects, dataFiles, example, optimizer, target, teamFiles,
+  training, trainingProject, volume, writeTrainingFile
 } from "./fixtures.test-helper.js";
 
 vi.mock("node:fs/promises", async () => {
@@ -65,6 +65,29 @@ describe("pure training plan resolution", () => {
       expect(() => resolveTrainingPlan(project, id, options.packageVersion)).toThrow(/--agent|No canonical agent/u);
     }
     expect(resolveTrainingPlan(project, "agent:a", options.packageVersion).agent.id).toBe("agent:a");
+  });
+
+  it("sorts target files authored in reverse order", async () => {
+    const root = await trainingProject({ ...dataFiles, "Z.md": "Last\n", "A.md": "First\n",
+      Spawnfile: agentManifest({ workspace: { docs: { system: "Z.md", soul: "A.md" } },
+        training: { ...training, targets: [{ ...target, files: ["Z.md", "A.md"] }] } })
+    });
+    const project = await loadTrainingProject(root);
+    expect(project.targets[0].files.map((file) => file.path)).toEqual(["Z.md", "A.md"]);
+    expect(resolveTrainingPlan(project, undefined, options.packageVersion).targets[0].files.map((file) => file.path))
+      .toEqual(["A.md", "Z.md"]);
+  });
+
+  it("sorts record volumes authored in reverse order", async () => {
+    const ids = ["z-state", "a-state"];
+    const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest({
+      workspace: { docs: { system: "AGENTS.md" },
+        resources: ids.map((id) => ({ ...volume, id, mount: `./${id}` })) },
+      training: { ...training, record: { volumes: ids } }
+    }) });
+    expect((await createTrainingPlan(root, options)).record?.volumes).toEqual([
+      { id: "a-state", declaredBy: "agent:writer" }, { id: "z-state", declaredBy: "agent:writer" }
+    ]);
   });
 
   it.each(["method", "model", "variants", "keep", "budget.rounds"])("names missing optimizer field %s when targets apply", async (field) => {
