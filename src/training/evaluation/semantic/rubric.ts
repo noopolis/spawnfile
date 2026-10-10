@@ -58,7 +58,9 @@ export async function evaluateRubric(check: CheckNode, context: EvaluationContex
   catch (error) { return failed('evidence-unusable', error instanceof Error ? error.message : 'Invalid evidence units'); }
   const judgeSystem = ids?.system ?? system;
   const parse = (text: string, original?: Judgment) => ids ? ids.parse(text) : parseJudgment(text, sources, original);
-  const instruction = rubric.prompt ?? await context.readText(rubric.file!);
+  let instruction: string;
+  try { instruction = rubric.prompt ?? await context.readText(rubric.file!); }
+  catch { return failed('route-unusable', 'Judge rubric could not be read'); }
   if (rubric.file) references.push(textReference('sidecar', rubric.file, instruction));
   let rendered = '';
   try { if (route.template) rendered = await renderJudgeTemplate(route.template, instruction, context.signal); }
@@ -114,7 +116,9 @@ export async function evaluateRubric(check: CheckNode, context: EvaluationContex
   };
   try {
     if (context.signal?.aborted) throw new JudgeEvaluationError('cancelled', 'Judge evaluation cancelled');
-    const cached = await route.cache?.get(cacheKey);
+    let cached;
+    try { cached = await route.cache?.get(cacheKey); }
+    catch { throw new JudgeEvaluationError('cache-unusable', 'Judge cache read failed'); }
     if (context.signal?.aborted) throw new JudgeEvaluationError('cancelled', 'Judge evaluation cancelled');
     if (cached) {
       const parsed = parse(cached.response);
@@ -138,7 +142,8 @@ export async function evaluateRubric(check: CheckNode, context: EvaluationContex
     if (context.signal?.aborted) throw new JudgeEvaluationError('cancelled', 'Judge evaluation cancelled');
     if (parsed.violation) return observed(failed(violationJudgeCause(parsed.violation), violationReason(parsed.violation)));
     const value = parsed.judgment!;
-    await route.cache?.put(cacheKey, { response: JSON.stringify(value), sourceCallId: calls.at(-1)!.id, sourceCalls: structuredClone(calls) });
+    try { await route.cache?.put(cacheKey, { response: JSON.stringify(value), sourceCallId: calls.at(-1)!.id, sourceCalls: structuredClone(calls) }); }
+    catch { throw new JudgeEvaluationError('cache-unusable', 'Judge cache write failed'); }
     const status = value.verdict === 'pass' && value.score >= (check.minimum as number) ? 'pass' : 'fail';
     return observed({ ...result(status, value.reasons.join('; '), context.snapshot.closed), score: value.score });
   } catch (error) {

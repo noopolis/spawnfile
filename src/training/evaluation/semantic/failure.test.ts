@@ -111,6 +111,27 @@ describe('a judge that fails names its own cause', () => {
     expect((await evaluateNode(check, cancelled, registry)).judgeFailure?.cause).toBe('cancelled');
   });
 
+  it('classifies thrown rubric I/O through evaluateNode before any generation', async () => {
+    const route = answering(JSON.stringify(good));
+    const context = evaluationContext({ readText: async () => { throw new Error('unreadable rubric'); },
+      judges: { grounding: { provider: route, model: 'grok-4.6' } } });
+    const evaluated = await evaluateNode({ ...check, rubric: { file: 'rubric.md' } }, context, registry);
+    expect(evaluated.status).toBe('error');
+    expect(evaluated.judgeFailure).toMatchObject({ cause: 'route-unusable', judge: 'grounding', requestedModel: 'grok-4.6' });
+    expect(route.generate).not.toHaveBeenCalled();
+  });
+
+  it.each(['get', 'put'] as const)('classifies thrown cache %s I/O through evaluateNode', async operation => {
+    const route = answering(JSON.stringify(good));
+    const cache = emptyCache();
+    cache[operation] = async () => { throw new Error('cache I/O failed'); };
+    const evaluated = await judged(route, { cache, identity: 'frozen' });
+    expect(evaluated.status).toBe('error');
+    expect(evaluated.judgeFailure?.cause).toBe('cache-unusable');
+    expect(route.generate).toHaveBeenCalledTimes(operation === 'get' ? 0 : 1);
+    expect(evaluated.judgeCalls).toHaveLength(operation === 'get' ? 0 : 1);
+  });
+
   it('keeps absence an absence: a judge that never ran reports no failure', async () => {
     const missing = evaluationContext({ snapshot: snapshot({ artifacts: {} }),
       judges: { grounding: { provider: answering(JSON.stringify(good)), model: 'grok-4.6' } } });
