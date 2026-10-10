@@ -20,6 +20,7 @@ import {
 } from "./schemas.js";
 import { parseManifest } from "./parseManifest.js";
 import { parseSkillFrontmatter } from "./skillFrontmatter.js";
+import { validateTrainingTargetSources } from "./trainingTargetSources.js";
 
 export interface LoadedManifest<TManifest extends Manifest = Manifest> {
   manifest: TManifest;
@@ -264,6 +265,7 @@ export const loadManifest = async (manifestPath: string): Promise<LoadedManifest
     throw error;
   }
   const manifest = parseManifest(source, manifestPath);
+  await validateTrainingTargetSources(manifestPath, manifest);
 
   if (isAgentManifest(manifest)) {
     await validateLocalAgentManifest(manifestPath, manifest);
