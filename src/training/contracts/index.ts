@@ -7,3 +7,4 @@ export { inferenceFailureDetails } from './execution.js';
 export { trainingRoutePolicies, trainingInferencePolicies } from './inference-policy.js';
 export type * from './inference-grants.js';
 export { GrokGrantRefusal, grokGrantEnvKey, grokGrantModels, grokGrantPurposes, grokGrantReasoningEfforts, grokGrantRefusalCodes } from './inference-grants.js';
+export type * from './grading.js';
