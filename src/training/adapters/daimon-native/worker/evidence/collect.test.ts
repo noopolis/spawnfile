@@ -3,9 +3,9 @@ import { test } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assertFreshNativeEvidence, collectNativeEvidence, nativeUsageCoverage, readClosedTraces } from './evidence.js';
-import type { NativeEvidence, NativeUsage } from './types.js';
-import { executionId, traceFixture } from '../test-fixtures.js';
+import { assertFreshNativeEvidence, collectNativeEvidence, nativeUsageCoverage, readClosedTraces } from './index.js';
+import type { NativeEvidence, NativeUsage } from '../types.js';
+import { executionId, traceFixture } from '../../test-fixtures.js';
 
 test('artifact reader retains real fields, never invents absent usage or tool calls', async () => {
   const root = await mkdtemp(join(tmpdir(), 'native-evidence-unit-'));
@@ -79,5 +79,24 @@ test('artifact reader rejects usage and model identities from another execution'
     await mkdir(join(root, '.codex/sessions/2026/09/13'), { recursive: true });
     await writeFile(join(root, '.codex/sessions/2026/09/13/rollout-unit.jsonl'), `${JSON.stringify({ type: 'turn_context', payload: { model: 'different-model' } })}\n`);
     await assert.rejects(collectNativeEvidence(root, join(root, 'usage.jsonl'), 'agent:writer', executionId, 'test-model-v1'), /differs/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+
+test('trial coverage includes unmetered or incomplete revisits independently of the bound wake', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'native-ledger-coverage-'));
+  try {
+    await mkdir(join(root, 'telemetry'));
+    const trace = traceFixture();
+    const usage = { v: 'noopolis.daimon.turn-usage.v1', agent: 'agent:writer', wake: executionId, engine: 'codex',
+      at: '2026-09-13T00:00:01.000Z', input: 10, output: 2, cache_read: 0, total: 12, complete: true };
+    await writeFile(join(root, 'telemetry/turns.ndjson'), [trace, { ...trace, turn_id: 'revisit' }].map(row => JSON.stringify(row) + '\n').join(''));
+    const read = () => collectNativeEvidence(root, join(root, 'usage.jsonl'), 'agent:writer', executionId, 'test-model-v1');
+    for (const revisit of [undefined, { ...usage, wake: 'revisit', complete: false }, { ...usage, wake: 'revisit' }]) {
+      await writeFile(join(root, 'usage.jsonl'), [usage, ...(revisit ? [revisit] : [])].map(row => JSON.stringify(row) + '\n').join(''));
+      const native = await read();
+      assert.equal(nativeUsageCoverage(native, executionId), 'complete');
+      assert.equal(native.accounting?.coverage, revisit?.complete ? 'complete' : 'partial');
+    }
   } finally { await rm(root, { recursive: true, force: true }); }
 });

@@ -47,9 +47,12 @@ is that wake's, not a fault. Refusing it ("foreign native execution trace") was
 the arity wearing an isolation word. Isolation is refused where it can actually
 fail — a trace or usage row that is not this agent's, a model context that is not
 the declared model — and the runtime home was asserted empty before startup, so
-what remains is this trial's own work. Nothing is merged across wakes: each frame
-carries its own execution's trace and its own metered row, and a wake that bound
-nothing carries no trace to speak for it.
+what remains is this trial's own work. Wake attribution remains separate from
+trial accounting: each frame carries its own execution's trace and usage, plus
+a cumulative accounting ledger containing
+all executions, including revisits. The observer counts ledger executions once
+across frames. Older persisted frames without accounting retain wake usage.
+`evidence/` owns this collection and bounded file I/O; its public index is the seam.
 
 The runtime wake ceiling this worker publishes is derived from that same bound
 (`MAX_TRIAL_WAKES` — the task delivery plus its continuations), never declared

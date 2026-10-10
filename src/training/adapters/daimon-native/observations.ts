@@ -7,6 +7,7 @@ import type { NativeGrokUsage, NativeUsage, TerminalEvidence } from './worker/in
 
 export function createNativeObserver(input: SubjectStart, runtimeHome: string, agentId: string, engine: 'codex' | 'grok' = 'codex') {
   let seq = 0;
+  const accounted = new Map<string, string>();
   const seen = new Set<string>();
   const emit = async (wakeId: string, value: Omit<Observation, 'id' | 'source' | 'seq' | 'timestamp' | 'trialId' | 'wakeId'>,
     timestamp = new Date().toISOString()): Promise<void> => {
@@ -99,8 +100,17 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
       try { await emit(wakeId, { type: 'diagnostic', text, native: ledger }); } catch { /* never fails an already-failed turn */ }
     },
     async terminal(wakeId: string, result: TerminalEvidence): Promise<Usage | null> {
-      const usage = aggregateUsage(result.native.usage);
-      if (usage) await emit(wakeId, { type: 'usage', usage, native: result.native.usage }, result.completedAt);
+      const rows = result.native.accounting?.usage.filter(row => {
+        const key = `${row.engine}:${row.wake}`;
+        const bytes = JSON.stringify(row);
+        const prior = accounted.get(key);
+        if (prior !== undefined && prior !== bytes) throw new Error('Conflicting native trial usage execution');
+        if (prior !== undefined) return false;
+        accounted.set(key, bytes);
+        return true;
+      }) ?? result.native.usage;
+      const usage = aggregateUsage(rows);
+      if (usage) await emit(wakeId, { type: 'usage', usage, native: rows }, result.completedAt);
       await emit(wakeId, { type: 'diagnostic', text: `Native execution ${result.status}`, native: result }, result.completedAt);
       // Operator-only, and a diagnostic on purpose: the wake text and the reply
       // must never become this trial's output, a captured call or a judge input.

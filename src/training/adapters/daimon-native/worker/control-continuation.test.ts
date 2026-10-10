@@ -4,7 +4,7 @@ import { appendFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createWorkerController } from './control.js';
-import { wakeEvidenceFile } from './evidence.js';
+import { wakeEvidenceFile } from './evidence/index.js';
 import { configFixture, receiptFixture, traceFixture } from '../test-fixtures.js';
 import type { NativeHost, WorkerOptions } from './types.js';
 

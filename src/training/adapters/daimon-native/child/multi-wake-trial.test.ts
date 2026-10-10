@@ -1,11 +1,14 @@
 import { expect, test, vi } from 'vitest';
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { childFixture } from './fixture.js';
 import { startOwnedChild } from './lifecycle.js';
-import { configFixture } from '../test-fixtures.js';
+import { configFixture, launchFixture } from '../test-fixtures.js';
+import { createNativeObserver } from '../observations.js';
+import { sumNativeUsage } from '../external.js';
+import type { Usage, Observation } from '../../../contracts/execution.js';
 import { createWorkerController } from '../worker/index.js';
 import type { NativeHost, NativeReceipt, TerminalEvidence, WorkerOptions } from '../worker/index.js';
 
@@ -151,20 +154,30 @@ test('a three-wake deferred trial binds each wake to its own execution and score
     // first one that ran for it, never a revisit of an earlier wake beside it.
     const first = (deliveryId: string) => worker.closed.find(row => row.deliveryId === deliveryId)!.executionId;
     expect(worker.frames.map(frame => frame.executionId)).toEqual(['unit-trial:task', 'unit-trial:answer-1', 'unit-trial:answer-2'].map(first));
-    // Nothing is merged across wakes: each frame carries its own execution's trace
-    // and its own metered row, and the revisits belong to no frame at all.
+    // Wake attribution stays exact; the independent trial ledger retains revisits.
     for (const frame of worker.frames) {
       expect(frame.native.traces.map(row => row.turn_id)).toEqual([frame.executionId]);
       expect(frame.native.usage.map(row => row.wake)).toEqual([frame.executionId]);
     }
+    expect(worker.frames.map(frame => frame.native.accounting?.usage.length)).toEqual([1, 3, 6]);
+    expect(worker.frames.at(-1)?.native.accounting?.usage.map(row => row.wake)).toEqual(worker.closed.map(row => row.executionId));
+    expect(worker.frames.every(frame => frame.native.accounting?.coverage === 'complete')).toBe(true);
     await writeFile(framesFile, JSON.stringify(worker.frames));
     // And the parent reads exactly those frames back over the real loopback.
     const handle = await startOwnedChild({ kind: 'child-process' }, fixture.launch,
       fixture.input.trialId, 20_000, undefined, 20_000, fixture.input.protectedPaths);
+    const events: Observation[] = [];
+    fixture.input.onObservation = event => { events.push(event); };
+    const observer = createNativeObserver(fixture.input, fixture.input.runtimeHomePath, fixture.launch.agent.id);
+    const usages: (Usage | null)[] = [];
     for (const frame of worker.frames) {
       const replayed = await handle.request<TerminalEvidence>('/trial/run', { wakeId: frame.wakeId, text: 'replayed' }, 5000);
       expect(replayed.executionId).toBe(frame.executionId);
+      usages.push(await observer.terminal(frame.wakeId, replayed));
     }
+    expect(sumNativeUsage(usages)).toMatchObject({ inputTokens: 210, outputTokens: 12 });
+    expect(events.filter(event => event.type === 'usage').flatMap(event => event.native as unknown[])).toHaveLength(6);
+    expect(await observer.terminal('answer-2', worker.frames[2]!)).toBeNull();
     const receipt = await handle.stop('Native trial work ended');
     expect(receipt.state).toBe('acknowledged');
     expect(receipt.quiescence).toBe('confirmed');
@@ -173,6 +186,30 @@ test('a three-wake deferred trial binds each wake to its own execution and score
     expect(receipt.unevidenced).toBeUndefined();
     expect(receipt.evidenced).toBe('answer-2');
     expect(receipt.wakes).toEqual([{ wakeId: 'task' }, { wakeId: 'answer-1' }, { wakeId: 'answer-2' }]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+
+test('the persisted trial ledger counts all six executions once, including revisits', async () => {
+  const fixture = await launchFixture();
+  const root = await mkdtemp(join(tmpdir(), 'native-multi-accounting-'));
+  try {
+    const worker = await workerFrames(root, fixture.input.trialId, fixture.launch.configSha256);
+    const observer = createNativeObserver(fixture.input, fixture.input.runtimeHomePath, fixture.launch.agent.id);
+    const usages: (Usage | null)[] = [];
+    for (let index = 0; index < worker.frames.length; index++) {
+      const persisted = JSON.parse(await readFile(join(root, `control/evidence.${index + 1}.json`), 'utf8')) as TerminalEvidence;
+      expect(persisted.native).toEqual(worker.frames[index]!.native);
+      expect(persisted.native.usage.map(row => row.wake)).toEqual([persisted.executionId]);
+      usages.push(await observer.terminal(persisted.wakeId, persisted));
+    }
+    expect(worker.closed).toHaveLength(6);
+    expect(sumNativeUsage(usages)).toMatchObject({ inputTokens: 210, outputTokens: 12 });
+    expect(worker.frames.at(-1)?.native.accounting?.usage.map(row => row.wake)).toEqual(worker.closed.map(row => row.executionId));
+    expect(await observer.terminal('answer-2', worker.frames[2]!)).toBeNull();
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(fixture.root, { recursive: true, force: true });

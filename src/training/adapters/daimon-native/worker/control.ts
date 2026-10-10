@@ -1,6 +1,6 @@
 import { createDeliveryGate, type DeliveryControls } from './deliveries.js';
 import { dirname, join } from 'node:path';
-import { collectNativeEvidence, nativeUsageCoverage, readClosedTraces, wakeEvidenceFile, writeEvidence } from './evidence.js';
+import { collectNativeEvidence, nativeUsageCoverage, readClosedTraces, wakeEvidenceFile, writeEvidence } from './evidence/index.js';
 import { isGrokLaunch, type NativeLaunch } from '../receipt/index.js';
 import type { NativeActivity, NativeAvailability, NativeConfig, NativeEvidence, NativeEvidenceSource, NativeHost,
   NativeReceipt, NativeTrace, NativeUsage, TerminalEvidence, WorkerOptions } from './types.js';
@@ -319,7 +319,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
         ...(blocked ? { blocked } : {}),
         coverage: [{ channel: 'tools', completeness: native.toolReceipts.length || native.traces.some(trace => trace.tools.length) ? 'partial' : 'absent', ordering: 'none' },
           { channel: 'output', completeness: 'absent', ordering: 'none' },
-          { channel: 'usage', completeness: nativeUsageCoverage(native, executionId), ordering: 'source' }],
+          { channel: 'usage', completeness: native.accounting?.coverage ?? nativeUsageCoverage(native, executionId), ordering: 'source' }],
         ...(error ? { error } : {}) };
       // This wake's own frame first, under a name no other delivery of this trial
       // writes, then the trial's latest frame. A trial that defers runs several

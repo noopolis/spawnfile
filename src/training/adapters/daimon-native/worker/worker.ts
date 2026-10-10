@@ -2,7 +2,7 @@ import { readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createWorkerController } from './control.js';
 import { MAX_TRIAL_WAKES } from './deliveries.js';
-import { assertFreshNativeEvidence } from './evidence.js';
+import { assertFreshNativeEvidence } from './evidence/index.js';
 import { assertNativeProfile, verifyNativeWorkerStartup, verifyWorkerPaths } from './profile.js';
 import { isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile } from '../receipt/index.js';
 import { loadDaimonRuntime } from './public.js';

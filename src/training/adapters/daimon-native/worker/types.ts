@@ -143,6 +143,8 @@ export interface NativeTurnSeal extends Record<string, unknown> {
 export interface NativeEvidence {
   traces: NativeTrace[];
   usage: NativeUsage[];
+  /** Cumulative trial ledger, including revisits. Absent in older persisted frames. */
+  accounting?: { usage: NativeUsage[]; coverage: 'complete' | 'partial' | 'absent' };
   toolReceipts: Record<string, unknown>[];
   modelContexts: { model: string; approvalPolicy: unknown; sandboxPolicy: unknown }[];
   /** Grok only: per-request broker rows. Codex evidence never carries this member. */

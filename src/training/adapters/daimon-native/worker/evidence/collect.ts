@@ -1,24 +1,8 @@
-import { lstat, readdir, readFile, rename, open } from 'node:fs/promises';
-import { dirname, extname, join } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { readPrivateFile } from '../receipt/index.js';
-import type { NativeCodexUsage, NativeEvidence, NativeEvidenceSource, NativeGrokUsage, NativeRequestUsage, NativeTrace, NativeTurnSeal } from './types.js';
-
-const MAX_STREAM = 64 * 1024 * 1024;
-function object(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Malformed native evidence record');
-  return value as Record<string, unknown>;
-}
-function timestamp(value: unknown): value is string {
-  return typeof value === 'string' && !Number.isNaN(Date.parse(value));
-}
-async function jsonLines(file: string, maximum = MAX_STREAM): Promise<unknown[]> {
-  let source: string;
-  try { source = await readPrivateFile(file, maximum); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw error; }
-  if (source && !source.endsWith('\n')) throw new Error('Native evidence stream has a torn final record');
-  return source.split('\n').filter(Boolean).map(line => JSON.parse(line) as unknown);
-}
+import { lstat } from 'node:fs/promises';
+import { join } from 'node:path';
+import { readPrivateFile } from '../../receipt/index.js';
+import type { NativeCodexUsage, NativeEvidence, NativeEvidenceSource, NativeGrokUsage, NativeRequestUsage, NativeTrace, NativeTurnSeal } from '../types.js';
+import { object, timestamp, jsonLines, files } from './io.js';
 
 export async function readClosedTraces(runtimeHome: string, agentId: string): Promise<NativeTrace[]> {
   return (await jsonLines(join(runtimeHome, 'telemetry', 'turns.ndjson'))).map(value => {
@@ -85,12 +69,12 @@ export function nativeUsageCoverage(native: NativeEvidence, executionId?: string
     ? 'complete' : 'partial';
 }
 
-async function files(directory: string): Promise<string[]> {
-  try {
-    const info = await lstat(directory);
-    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Native evidence directory must be real');
-    return await readdir(directory);
-  } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw error; }
+/** All execution totals in the fresh trial ledger, independently of wake attribution. */
+function trialAccounting(native: NativeEvidence): NonNullable<NativeEvidence['accounting']> {
+  const complete = native.traces.length === native.usage.length && native.usage.every(row =>
+    nativeUsageCoverage({ ...native, usage: [row], traces: native.traces.filter(trace => trace.turn_id === row.wake),
+      requests: native.requests?.filter(request => request.wake === row.wake) }, row.wake) === 'complete');
+  return { usage: native.usage, coverage: !native.usage.length ? 'absent' : complete ? 'complete' : 'partial' };
 }
 
 export async function readToolReceipts(runtimeHome: string, agentId: string, engine: NativeEvidenceSource['engine'] = 'codex'): Promise<Record<string, unknown>[]> {
@@ -147,18 +131,20 @@ export async function collectNativeEvidence(runtimeHome: string, usageFile: stri
   source: NativeEvidenceSource = { engine: 'codex' }): Promise<NativeEvidence> {
   if (source.engine === 'grok') return collectGrokEvidence(runtimeHome, usageFile, source.requestsFile, agentId, executionId, expectedModel, others);
   const [traces, usage, toolReceipts, modelContexts] = await Promise.all([
-    readClosedTraces(runtimeHome, agentId), readUsage(usageFile, agentId, executionId, others),
+    readClosedTraces(runtimeHome, agentId), readUsage(usageFile, agentId),
     readToolReceipts(runtimeHome, agentId), readModelContexts(runtimeHome),
   ]);
   if (modelContexts.some(row => row.model !== expectedModel)) throw new Error('Native model differs from the declared model');
-  return { traces: traces.filter(row => wakeOwns(row.turn_id, executionId, others)), usage, toolReceipts, modelContexts };
+  const accounting = trialAccounting({ traces, usage, toolReceipts, modelContexts });
+  return { traces: traces.filter(row => wakeOwns(row.turn_id, executionId, others)),
+    usage: usage.filter(row => wakeOwns(row.wake, executionId, others)), toolReceipts, modelContexts, accounting };
 }
 
 async function collectGrokEvidence(runtimeHome: string, usageFile: string, requestsFile: string, agentId: string,
   executionId: string | undefined, expectedModel: string, others: readonly string[]): Promise<NativeEvidence> {
   const [traces, usage, requests, toolReceipts] = await Promise.all([
-    readClosedTraces(runtimeHome, agentId), readGrokUsage(usageFile, agentId, executionId, expectedModel, others),
-    readGrokRequests(requestsFile, agentId, executionId, expectedModel, others), readToolReceipts(runtimeHome, agentId, 'grok'),
+    readClosedTraces(runtimeHome, agentId), readGrokUsage(usageFile, agentId, undefined, expectedModel, []),
+    readGrokRequests(requestsFile, agentId, undefined, expectedModel, []), readToolReceipts(runtimeHome, agentId, 'grok'),
   ]);
   for (const row of usage) {
     const estimated = requests.filter(request => request.turn === row.turn && request.usage_source === 'estimated').length;
@@ -166,7 +152,10 @@ async function collectGrokEvidence(runtimeHome: string, usageFile: string, reque
   }
   // Grok has no Codex session rollout: the broker-sealed usage row is its model identity.
   const modelContexts = usage.map(() => ({ model: expectedModel, approvalPolicy: null, sandboxPolicy: null }));
-  return { traces: traces.filter(row => wakeOwns(row.turn_id, executionId, others)), usage, toolReceipts, modelContexts, requests };
+  const accounting = trialAccounting({ traces, usage, toolReceipts, modelContexts, requests });
+  return { traces: traces.filter(row => wakeOwns(row.turn_id, executionId, others)),
+    usage: usage.filter(row => wakeOwns(row.wake, executionId, others)), toolReceipts, modelContexts, accounting,
+    requests: requests.filter(row => wakeOwns(row.wake, executionId, others)) };
 }
 
 /** Grok reports `grok-4.6` usage under its `-build` key; anything else is another model. */
@@ -257,36 +246,7 @@ export async function readSealedGrokUsage(usageFile: string, agentId: string, ex
 export async function assertFreshNativeEvidence(runtimeHome: string, usageFile: string, agentId: string, expectedModel: string,
   source: NativeEvidenceSource = { engine: 'codex' }): Promise<void> {
   const evidence = await collectNativeEvidence(runtimeHome, usageFile, agentId, undefined, expectedModel, [], source);
-  if (Object.values(evidence).some(rows => rows.length > 0)) throw new Error('A native trial requires fresh execution evidence');
-}
-
-/**
- * Where a single wake's terminal frame is filed, beside the trial's latest one.
- *
- * `evidence.json` is renamed over on every delivery, so a trial that ran several
- * wakes kept only its last frame and the account of every earlier wake — the
- * assignment that really bound, over a closed trace — was gone by the time
- * anything read it. Each delivery now also files its own frame under its
- * delivery ordinal, which is never reused within a trial, so the frames
- * accumulate instead of replacing one another. Nothing is merged: each file
- * holds exactly one wake's frame and that frame names its own wake.
- */
-export function wakeEvidenceFile(file: string, ordinal: number): string {
-  if (!Number.isSafeInteger(ordinal) || ordinal < 1) throw new Error('Invalid native evidence delivery ordinal');
-  const extension = extname(file);
-  return `${file.slice(0, file.length - extension.length)}.${ordinal}${extension}`;
-}
-
-export async function writeEvidence(file: string, value: unknown): Promise<void> {
-  const temporary = `${file}.${randomUUID()}.tmp`;
-  const handle = await open(temporary, 'wx', 0o600);
-  try { await handle.writeFile(`${JSON.stringify(value, null, 2)}\n`); await handle.sync(); }
-  finally { await handle.close(); }
-  await rename(temporary, file);
-  const directory = await open(dirname(file), 'r');
-  try { await directory.sync(); } finally { await directory.close(); }
-  const written = JSON.parse(await readFile(file, 'utf8')) as unknown;
-  if (JSON.stringify(written) !== JSON.stringify(value)) throw new Error('Native evidence readback differs');
+  if (evidence.traces.length || evidence.usage.length || evidence.toolReceipts.length || evidence.modelContexts.length || evidence.requests?.length) throw new Error('A native trial requires fresh execution evidence');
 }
 
 /**

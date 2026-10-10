@@ -2,10 +2,10 @@ import { expect, test } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assertFreshNativeEvidence, collectNativeEvidence, GROK_TURN_NOTIONAL_USD_MAX, nativeUsageCoverage, readToolReceipts } from './evidence.js';
-import { aggregateUsage } from '../observations.js';
-import { executionId, traceFixture } from '../test-fixtures.js';
-import type { NativeGrokUsage } from './types.js';
+import { assertFreshNativeEvidence, collectNativeEvidence, GROK_TURN_NOTIONAL_USD_MAX, nativeUsageCoverage, readToolReceipts } from './index.js';
+import { aggregateUsage } from '../../observations.js';
+import { executionId, traceFixture } from '../../test-fixtures.js';
+import type { NativeGrokUsage } from '../types.js';
 
 const turn = 'c'.repeat(64);
 /** Shape of Daimon's `renderTurnUsageLine` for a sealed broker turn. */

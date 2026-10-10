@@ -116,3 +116,20 @@ test('a broker turn seal names the tool call a hung turn was blocked on, and nev
     await observer.brokerSeal('wake', read([seal()]));
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
 });
+
+
+test('cumulative trial accounting rejects conflicting totals and retains legacy frame usage', async () => {
+  const fixture = await launchFixture();
+  try {
+    const observer = createNativeObserver(fixture.input, fixture.input.runtimeHomePath, fixture.launch.agent.id);
+    const row = { engine: 'codex', wake: 'execution', input: 10, output: 2, cache_read: 0 } as NativeUsage;
+    const frame = { status: 'completed', completedAt: new Date().toISOString(),
+      native: { usage: [row], accounting: { usage: [row], coverage: 'complete' } } } as TerminalEvidence;
+    assert.equal((await observer.terminal('task', frame))?.inputTokens, 10);
+    assert.equal(await observer.terminal('task', frame), null);
+    await assert.rejects(observer.terminal('continuation', { ...frame,
+      native: { ...frame.native, accounting: { usage: [{ ...row, input: 20 }], coverage: 'complete' } } }), /Conflicting native trial usage/);
+    const legacy = { ...frame, native: { ...frame.native, accounting: undefined } };
+    assert.equal((await observer.terminal('legacy', legacy))?.inputTokens, 10);
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
