@@ -142,7 +142,7 @@ const memoryAccessSchema = z
   })
   .strict();
 
-const memoryBankSchema = z
+export const memoryBankSchema = z
   .object({
     access: memoryAccessSchema.optional(),
     consolidation: memoryConsolidationSchema.optional(),

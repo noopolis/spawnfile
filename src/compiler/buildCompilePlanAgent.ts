@@ -20,6 +20,7 @@ import { loadResolvedSkills, mergeResolvedSkills } from "./surfaces.js";
 import { assertRuntimeSupportsAgentSurfaces } from "./surfaceSupport.js";
 import type { ResolvedAgentNode } from "./types.js";
 import { mergeWorkspaceResources } from "./workspaceResources.js";
+import { mergeTrainingDeclarations, resolveTrainingDeclaration } from "./training/resolution.js";
 
 interface ResolveAgentNodeOptions {
   context: AgentVisitContext;
@@ -98,6 +99,14 @@ export const resolveAgentNode = async ({
     ...(source === manifestPath ? {} : { sourcePath: manifestPath }),
     surfaces: resolveAgentSurfaces(manifest.surfaces),
     subagents: [],
+    training: mergeTrainingDeclarations(
+      resolveTrainingDeclaration(
+        context.inheritedShared?.surface?.training,
+        context.inheritedShared?.manifestPath ?? manifestPath,
+        context.inheritedShared?.manifestPath ?? source
+      ),
+      resolveTrainingDeclaration(manifest.training, manifestPath, source)
+    ),
     workspaceResources
   };
   assertRuntimeSupportsAgentSurfaces(runtime.name, candidate.surfaces, manifest.name);

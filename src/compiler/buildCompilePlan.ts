@@ -15,6 +15,7 @@ import { resolvePlanMemoryAccess } from "./memoryResolution.js";
 import { resolveMoltnetRoomMemberships } from "./moltnetRoomMemberships.js";
 import { createRuntimeGroups } from "./buildCompilePlanRuntime.js";
 import { validateAllowedWakeSenders } from "./moltnetAllowedWakeSendersValidation.js";
+import { resolvePlanTrainingSources } from "./training/resolution.js";
 import {
   createCompilePlanTraversal,
   type InternalNode
@@ -70,6 +71,7 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
   );
 
   resolvePlanMcpPlaceholders(nodes);
+  resolvePlanTrainingSources(nodes);
 
   const idBySource = new Map(nodes.map((node) => [node.value.source, node.id]));
 

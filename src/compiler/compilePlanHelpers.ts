@@ -47,6 +47,7 @@ export const getAgentFingerprint = (node: ResolvedAgentNode): string =>
       requiresMcp: skill.requiresMcp
     })),
     surfaces: node.surfaces,
+    training: node.training,
     workspaceResources: node.workspaceResources
   });
 
@@ -58,6 +59,7 @@ export const getTeamFingerprint = (node: ResolvedTeamNode): string =>
     lead: node.lead,
     external: node.external,
     networks: node.networks ?? [],
+    training: node.training,
     workspaceResources: node.workspaceResources,
     shared: {
       env: node.shared.env,
