@@ -1,10 +1,14 @@
-import { readFile, realpath, stat } from "node:fs/promises";
+import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { z } from "zod";
 
-import { getManifestPath } from "../../../filesystem/index.js";
-import { trainingDatasetSchema, trainingGraderSchema } from "../../../manifest/index.js";
+import { getManifestPath, resolveProjectPath } from "../../../filesystem/index.js";
+import {
+  isInlineAgentMember, isReferencedMember, trainingDatasetSchema, trainingGraderSchema,
+  type TrainingDeclaration
+} from "../../../manifest/index.js";
+import { parseManifest } from "../../../manifest/parseManifest.js";
 import { buildCompilePlan } from "../../buildCompilePlan.js";
 import { invalidTraining } from "./references.js";
 import { resolveTrainingPlan } from "./resolve.js";
@@ -18,6 +22,41 @@ const reason = (error: unknown): string => error instanceof Error ? error.messag
 const inside = (root: string, file: string): boolean => {
   const relative = path.relative(root, file);
   return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+};
+
+/** Training-only preflight preserves target diagnostics before the compiler reads docs/skills. */
+const validateTrainingTargetSources = async (manifestPath: string, visited = new Set<string>()): Promise<void> => {
+  const realManifest = await realpath(manifestPath).catch((error: unknown) =>
+    invalidTraining(`Unable to load training manifest ${manifestPath}: ${reason(error)}`));
+  if (visited.has(realManifest)) return;
+  visited.add(realManifest);
+  const manifest = parseManifest(await readFile(manifestPath, "utf8"), manifestPath);
+  const declarations: Array<{ declaredBy: string; training?: TrainingDeclaration }> = manifest.kind === "agent"
+    ? [{ declaredBy: `agent:${manifest.name}`, training: manifest.training }]
+    : [
+        { declaredBy: `team:${manifest.name}`, training: manifest.shared?.training },
+        ...manifest.members.filter(isInlineAgentMember).map((member) => ({
+          declaredBy: `agent:${member.id}`, training: member.training
+        }))
+      ];
+  for (const { declaredBy, training } of declarations) {
+    for (const target of training?.targets ?? []) {
+      for (const file of target.files) {
+        const sourcePath = resolveProjectPath(manifestPath, file);
+        const context = `Training target ${sourcePath} declared by ${declaredBy} (${manifestPath})`;
+        const stats = await lstat(sourcePath).catch((error: unknown) =>
+          invalidTraining(`${context} must be an existing regular .md file: ${reason(error)}`));
+        if (stats.isSymbolicLink()) invalidTraining(`${context} must not be a symlink`);
+        if (!stats.isFile()) invalidTraining(`${context} must be an existing regular .md file`);
+      }
+    }
+  }
+  const refs = manifest.kind === "team"
+    ? manifest.members.filter(isReferencedMember).map((member) => member.ref)
+    : (manifest.subagents ?? []).map((subagent) => subagent.ref);
+  for (const ref of refs) {
+    await validateTrainingTargetSources(getManifestPath(resolveProjectPath(manifestPath, ref)), visited);
+  }
 };
 
 const readYaml = async <T>(file: string, schema: z.ZodType<T>, declaredBy: string): Promise<T> => {
@@ -65,6 +104,7 @@ export const loadTrainingProject = async (inputPath: string): Promise<LoadedTrai
   let manifest: string;
   try { manifest = await realpath(getManifestPath(inputPath)); }
   catch (error) { return invalidTraining(`Unable to load training project ${inputPath}: ${reason(error)}`); }
+  await validateTrainingTargetSources(manifest);
   const compilePlan = await buildCompilePlan(manifest);
   const root = path.dirname(manifest);
   const project: LoadedTrainingProject = { root, manifest, compilePlan, targets: [], datasets: {}, graders: {} };

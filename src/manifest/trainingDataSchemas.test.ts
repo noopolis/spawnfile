@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import YAML from "yaml";
 
 import { trainingDatasetSchema, trainingGraderSchema } from "./trainingDataSchemas.js";
 
@@ -79,6 +80,18 @@ describe("training datasets", () => {
 });
 
 describe("training graders", () => {
+  it.each([false, true])("rejects a __proto__ answer key before record parsing (other keys: %s)", (withOtherKeys) => {
+    const answers = YAML.parse(`__proto__: no\n${withOtherKeys ? "actor-first: no\n" : ""}`);
+    expect(Object.hasOwn(answers, "__proto__")).toBe(true);
+    const result = trainingGraderSchema.safeParse({
+      questions: [question, { ...question, id: "__proto__" }], labels: [{ ...label, answers }]
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toContainEqual(expect.objectContaining({
+      path: ["labels", 0, "answers", "__proto__"], message: "training map key __proto__ is reserved"
+    }));
+  });
+
   it("accepts questions and optional labels without reading output files", () => {
     expect(trainingGraderSchema.parse({ questions: [question] })).toEqual({ questions: [question] });
     const data = { questions: [question], labels: [label] };
@@ -91,6 +104,11 @@ describe("training graders", () => {
     expect(trainingGraderSchema.safeParse({
       questions: [{ ...question, expected: value }], labels: [{ ...label, answers: { "actor-first": value } }]
     }).success).toBe(true);
+  });
+
+  it.each(["constructor", "toString"])("preserves the ordinary answer key %s", (id) => {
+    const value = { questions: [{ ...question, id }], labels: [{ ...label, answers: { [id]: "yes" } }] };
+    expect(trainingGraderSchema.parse(value)).toEqual(value);
   });
 
   it.each([

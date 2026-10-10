@@ -2,7 +2,9 @@
 
 - `contract.ts` defines the strict public `spawnfile.training-plan.v1` contract and JSON Schema.
 - `types.ts` defines the loaded project, parsed data files, and filesystem facts.
-- `load.ts` is the only I/O boundary: compile-graph resolution, YAML reads, and ownership facts.
+- `load.ts` is the only training-file I/O boundary: target preflight before compiler source reads, compile-graph resolution, YAML reads, and ownership facts.
+- `load.targetSources.test.ts` preserves consumed-target diagnostics and compile/plan validation boundaries.
+- `load.compileOutput.test.ts` compares every emitted compile file and report byte with and without training declarations.
 - `resolve.ts` selects an exact agent and builds a deterministic plan without I/O or a clock.
 - `references.ts` resolves override and record-volume identities from the existing compiled graph.
 - `targets.ts` validates ownership, consumer sets, graders, and datasets without I/O.

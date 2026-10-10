@@ -34,6 +34,16 @@ describe("training declarations", () => {
     expect(trainingDeclarationSchema.safeParse({ optimizer: { keep: 10, variants: 1 } }).success).toBe(true);
   });
 
+  it.each([false, true])("rejects a __proto__ grader key before record parsing (other keys: %s)", (withOtherKeys) => {
+    const graders = YAML.parse(`__proto__: training/proto.yaml\n${withOtherKeys ? "writing: training/writing.yaml\n" : ""}`);
+    expect(Object.hasOwn(graders, "__proto__")).toBe(true);
+    const result = trainingDeclarationSchema.safeParse({ graders });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toContainEqual(expect.objectContaining({
+      path: ["graders", "__proto__"], message: "training map key __proto__ is reserved"
+    }));
+  });
+
   it.each(["1m", "12h", "30d"])("accepts duration %s", (keep) => {
     expect(trainingDeclarationSchema.safeParse({ record: { keep } }).success).toBe(true);
   });

@@ -3,6 +3,17 @@ import { z } from "zod";
 
 export const trainingNameSchema = z.string().regex(/^[A-Za-z0-9_-]+$/u);
 
+/** Zod records skip __proto__ before validating keys, so inspect the authored map first. */
+export const trainingNamedMapSchema = <T extends z.ZodType>(valueSchema: T) => z.unknown().superRefine(
+  (value, context) => {
+    if (typeof value === "object" && value !== null && Object.hasOwn(value, "__proto__")) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom, path: ["__proto__"], message: "training map key __proto__ is reserved"
+      });
+    }
+  }
+).pipe(z.record(trainingNameSchema, valueSchema));
+
 export const trainingRelativePathSchema = z.string().min(1).refine(
   (value) => !posix.isAbsolute(value) && !win32.isAbsolute(value) && !value.includes("\\"),
   { message: "training paths must be relative to the declaring file and use forward slashes" }
@@ -42,7 +53,7 @@ export const trainingTargetSchema = z.object({
 export const trainingDeclarationSchema = z.object({
   record: trainingRecordSchema.optional(),
   optimizer: trainingOptimizerSchema.optional(),
-  graders: z.record(trainingNameSchema, trainingRelativePathSchema).optional(),
+  graders: trainingNamedMapSchema(trainingRelativePathSchema).optional(),
   targets: z.array(trainingTargetSchema).optional()
 }).strict();
 

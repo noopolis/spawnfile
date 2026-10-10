@@ -70,7 +70,8 @@ training:
   An agent plan with any target MUST have all five effective fields and `keep <= variants`;
   a validation error MUST name missing fields. An incomplete optimizer without targets
   is represented by `null` in the plan.
-- Grader names MUST match `^[A-Za-z0-9_-]+$`. Each name maps to one relative file path.
+- Grader names MUST match `^[A-Za-z0-9_-]+$` and MUST NOT be `__proto__`.
+  Each name maps to one relative file path.
 - Each target MUST contain nonempty, unique `.md` file paths, a grader name, and
   `datasets` with required `train` and `test` paths and OPTIONAL `validation`.
 
@@ -94,6 +95,8 @@ node. Team targets list every consumer's exact node ID, sorted. Each agent's pla
 its own targets and team targets for which it consumes at least one file; each included
 target retains its complete file list and consumer lists. Agent targets use effective
 graders; team targets use only their own team's graders, unaffected by agent shadowing.
+Target, dataset, and grader filesystem checks occur ONLY during training-plan loading;
+ordinary compilation validates training structure without requiring those files to exist.
 
 Dataset files use one strict YAML shape for all three roles:
 
@@ -139,6 +142,7 @@ unique nonempty IDs, a relative `output` resolved against the grader file's dire
 and a nonempty `answers` map containing only declared question IDs and scalar values
 of those same types. Output existence is not checked in this phase. Dataset and grader
 YAML MUST reject duplicate keys and unknown fields at every level.
+The reserved answer-map key `__proto__` MUST produce an explicit validation error.
 
 ```sh
 spawnfile train ./Spawnfile --agent agent:writer --plan
