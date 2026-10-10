@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { test, expect } from 'vitest';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Observation } from '../../contracts/execution.js';
+import { captureObservation } from '../../capture/index.js';
 import { aggregateUsage, createNativeObserver } from './observations.js';
 import { BROKER_REQUESTS_SCHEMA, BROKER_SEAL_SCHEMA, type BrokerSealLedger, type BrokerSealRecord } from './sealed-usage.js';
 import { launchFixture } from './test-fixtures.js';
@@ -155,5 +156,69 @@ test('recovery shares the trial ledger, returns only new usage and preserves it 
     fixture.input.onObservation = () => { throw new Error('Failed diagnostic sink'); };
     assert.equal((await observer.sealedUsage('task', [{ ...row, wake: 'C', input: 30 }]))?.inputTokens, 30);
     assert.equal(observer.usage()?.inputTokens, 60);
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
+test.each(['before', 'after'])('retries usage rejected %s persistence through recovery and later terminal frames', async failure => {
+  const fixture = await launchFixture();
+  try {
+    for (const retry of ['recovery', 'terminal']) {
+      let events: Observation[] = [];
+      const attempts: Observation[] = [];
+      fixture.input.onObservation = event => {
+        if (event.type !== 'usage') return;
+        attempts.push(structuredClone(event));
+        if (attempts.length === 1 && failure === 'before') throw new Error('Sink failed before persistence');
+        events = captureObservation(events, event);
+        if (attempts.length === 1) {
+          event.timestamp = 'sink mutated its input';
+          throw new Error('Sink failed after persistence');
+        }
+      };
+      const observer = createNativeObserver(fixture.input, fixture.input.runtimeHomePath, fixture.launch.agent.id);
+      const row = { engine: 'codex', wake: 'A', input: 10, output: 2, cache_read: 0 } as NativeUsage;
+      const frame = { status: 'completed', completedAt: '2026-10-11T00:00:00.000Z', native: { usage: [row] } } as TerminalEvidence;
+      await expect(observer.terminal('task', frame)).rejects.toThrow('Sink failed');
+      expect(observer.usage()).toMatchObject({ inputTokens: 10, outputTokens: 2 });
+      // Empty recovery must still flush accounted-but-unpublished executions,
+      // including Codex executions for which no sealed broker rows exist.
+      expect(await (retry === 'recovery' ? observer.sealedUsage('recovery', []) : observer.terminal('later', frame))).toBeNull();
+      expect(attempts).toHaveLength(2);
+      expect(attempts[1]).toEqual(attempts[0]);
+      expect(events).toHaveLength(1);
+      expect(events[0]?.usage).toEqual(observer.usage());
+      await observer.sealedUsage('again', []);
+      expect(attempts).toHaveLength(2);
+    }
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
+test('serializes concurrent usage retries without recounting or overlapping publication', async () => {
+  const fixture = await launchFixture();
+  try {
+    let events: Observation[] = [];
+    let active = 0;
+    let attempts = 0;
+    fixture.input.onObservation = async event => {
+      if (event.type !== 'usage') return;
+      active++;
+      try {
+        expect(active).toBe(1);
+        await new Promise<void>(resolve => setImmediate(resolve));
+        if (++attempts === 1) throw new Error('First publication failed');
+        events = captureObservation(events, event);
+      } finally { active--; }
+    };
+    const observer = createNativeObserver(fixture.input, fixture.input.runtimeHomePath, fixture.launch.agent.id);
+    const row = { engine: 'grok', wake: 'A', input: 10, output: 0, cache_read: 0, cache_write: 0, notional_usd: 0 } as NativeGrokUsage;
+    const deltas = await Promise.all([
+      observer.sealedUsage('task', [row]),
+      observer.sealedUsage('task', [row, { ...row, wake: 'B', input: 20 }]),
+      observer.sealedUsage('task', [row]),
+    ]);
+    expect(deltas.map(delta => delta?.inputTokens ?? null)).toEqual([10, 20, null]);
+    expect(events.map(event => event.usage?.inputTokens)).toEqual([10, 20]);
+    expect(attempts).toBe(3);
+    expect(observer.usage()?.inputTokens).toBe(30);
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
 });

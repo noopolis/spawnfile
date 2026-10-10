@@ -2,6 +2,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Observation } from '../../contracts/execution.js';
+import { captureObservation } from '../../capture/index.js';
 import { launchFixture } from './test-fixtures.js';
 import * as child from './child/index.js';
 import { sha256 } from './receipt/index.js';
@@ -149,7 +150,8 @@ it('reports absence rather than a zero when the broker sealed nothing', async ()
 });
 
 
-it.each([true, false])('deduplicates recovered executions after a continuation dies (accounting=%s)', async accounting => {
+it.each([true, false].flatMap(accounting => ['none', 'before', 'after', 'always'].map(failure => ({ accounting, failure }))))(
+  'deduplicates recovered executions after transport/publication failure ($accounting, $failure)', async ({ accounting, failure }) => {
   const f = await launchFixture();
   f.launch.workspace.target = f.launch.workspace.source;
   for (const projection of f.launch.projections) projection.target = projection.source;
@@ -180,17 +182,31 @@ it.each([true, false])('deduplicates recovered executions after a continuation d
         coverage: [{ channel: 'usage', completeness: 'partial', ordering: 'source' }] } as T;
     },
   });
-  const events: Observation[] = [];
+  let events: Observation[] = [];
+  const attempts: Observation[] = [];
   const session = await createDaimonNativeAdapter({ sealedUsage: { attempts: 1, intervalMs: 0 },
     execution: { kind: 'child-process', externalInputs: { maxDeliveries: 1, next: async () => ({
       id: 'answer', text: 'Answer', source: { kind: 'transport', id: 'reply', sha256: `sha256:${sha256('Answer')}` },
-    }) } } }).start({ ...f.input, onObservation: value => { events.push(value); } });
+    }) } } }).start({ ...f.input, onObservation: value => {
+      if (value.type === 'usage') {
+        attempts.push(structuredClone(value));
+        if (failure === 'always' || (failure === 'before' && attempts.length === 1)) throw new Error('Usage sink failed');
+      }
+      events = captureObservation(events, value);
+      if (value.type === 'usage' && failure === 'after' && attempts.length === 1) throw new Error('Usage sink failed');
+    } });
   const result = await session.run({ id: 'task', text: 'Task' });
-  expect(deliveries, result.error).toBe(2);
-  expect(result.error).toContain('Continuation transport died');
+  expect(deliveries, result.error).toBe(failure === 'none' ? 2 : 1);
+  expect(result.error).toContain(failure === 'none' ? 'Continuation transport died' : 'Usage sink failed');
   expect(result.status).toBe('failed');
   expect.soft(result.usage?.inputTokens).toBe(60);
   const observations = events.filter(row => row.type === 'usage');
+  if (failure !== 'none') expect(attempts[1]).toEqual(attempts[0]);
+  if (failure === 'always') {
+    expect(attempts).toHaveLength(2);
+    expect(observations).toEqual([]);
+    return;
+  }
   expect.soft(observations.map(row => row.usage?.inputTokens)).toEqual([10, 50]);
   expect.soft(observations.reduce((total, row) => total + row.usage!.inputTokens!, 0)).toBe(60);
   expect(observations.flatMap(row => (row.native as NativeGrokUsage[]).map(usage => usage.wake))).toEqual(['A', 'B', 'C']);

@@ -8,8 +8,18 @@ import type { NativeGrokUsage, NativeUsage, TerminalEvidence } from './worker/in
 export function createNativeObserver(input: SubjectStart, runtimeHome: string, agentId: string, engine: 'codex' | 'grok' = 'codex') {
   let seq = 0;
   const accounted = new Map<string, NativeUsage>();
+  // An execution stays accounted forever; its publication remains pending
+  // independently until the sink acknowledges the batch containing that row.
+  const pending = new Set<Observation>();
+  let publicationTail = Promise.resolve();
+  const observation = (wakeId: string, value: Omit<Observation, 'id' | 'source' | 'seq' | 'timestamp' | 'trialId' | 'wakeId'>,
+    timestamp = new Date().toISOString()): Observation => {
+    seq++;
+    return structuredClone({ id: `${input.trialId}:native:${seq}`, source: 'daimon.native-evidence', seq,
+      timestamp, trialId: input.trialId, wakeId, ...value });
+  };
   // One trial ledger owns both normal terminal frames and recovered broker rows.
-  const account = (rows: readonly NativeUsage[]) => {
+  const account = (wakeId: string, rows: readonly NativeUsage[], timestamp?: string) => {
     const added = new Map<string, NativeUsage>();
     for (const row of rows) {
       const key = `${row.engine}:${row.wake}`;
@@ -23,14 +33,25 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
     // partly consume execution identities or poison subsequent recovery.
     aggregateUsage([...accounted.values(), ...fresh]);
     for (const [key, row] of added) accounted.set(key, structuredClone(row));
-    return { rows: fresh, usage };
+    if (usage) pending.add(observation(wakeId, { type: 'usage', usage, native: fresh }, timestamp));
+    return usage;
+  };
+  // Retain the entire batch identity and payload until acknowledged. Capture
+  // deduplicates identical observations, including a persist-then-reject retry.
+  const publishUsage = (): Promise<void> => {
+    const operation = publicationTail.then(async () => {
+      for (const event of pending) {
+        await input.onObservation(structuredClone(event));
+        pending.delete(event);
+      }
+    });
+    publicationTail = operation.catch(() => undefined);
+    return operation;
   };
   const seen = new Set<string>();
   const emit = async (wakeId: string, value: Omit<Observation, 'id' | 'source' | 'seq' | 'timestamp' | 'trialId' | 'wakeId'>,
     timestamp = new Date().toISOString()): Promise<void> => {
-    seq++;
-    await input.onObservation({ id: `${input.trialId}:native:${seq}`, source: 'daimon.native-evidence', seq,
-      timestamp, trialId: input.trialId, wakeId, ...value });
+    await input.onObservation(observation(wakeId, value, timestamp));
   };
   return {
     usage: (): Usage | null => aggregateUsage([...accounted.values()]),
@@ -68,11 +89,11 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
      */
     async sealedUsage(wakeId: string, recovered: readonly NativeGrokUsage[]): Promise<Usage | null> {
       let delta: ReturnType<typeof account>;
-      try { delta = account(recovered); } catch { return null; }
+      try { delta = account(wakeId, recovered); } catch { return null; }
       try {
-        if (delta.usage) await emit(wakeId, { type: 'usage', usage: delta.usage, native: delta.rows });
+        await publishUsage();
       } catch { /* never fails an already-failed turn */ }
-      return delta.usage;
+      return delta;
     },
     /**
      * The broker's per-request timings for a turn that never reported one.
@@ -123,8 +144,8 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
       try { await emit(wakeId, { type: 'diagnostic', text, native: ledger }); } catch { /* never fails an already-failed turn */ }
     },
     async terminal(wakeId: string, result: TerminalEvidence): Promise<Usage | null> {
-      const { rows, usage } = account(result.native.accounting?.usage ?? result.native.usage);
-      if (usage) await emit(wakeId, { type: 'usage', usage, native: rows }, result.completedAt);
+      const usage = account(wakeId, result.native.accounting?.usage ?? result.native.usage, result.completedAt);
+      await publishUsage();
       await emit(wakeId, { type: 'diagnostic', text: `Native execution ${result.status}`, native: result }, result.completedAt);
       // Operator-only, and a diagnostic on purpose: the wake text and the reply
       // must never become this trial's output, a captured call or a judge input.
