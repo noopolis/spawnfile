@@ -938,6 +938,9 @@ schedule:
   timezone: UTC
   prompt: "Read heartbeat context and complete one bounded research iteration."
 
+training:
+  record: { keep: 30d }
+
 memory:
   - id: personal
     store:
@@ -1004,6 +1007,7 @@ Declared secrets are runtime inputs, not literal secret values. `spawnfile auth 
 For an agent manifest, skill `requires.mcp` names MUST be validated against that agent's visible MCP server list.
 
 All blocks other than the top-level required fields are OPTIONAL unless otherwise stated by their own rules.
+Agent and inline-member `training` is specified in [Training authoring](TRAINING.md#authoring).
 
 ### 3.3 Agent Schedule
 
@@ -1234,7 +1238,7 @@ A nested team member is a black box to the outer team:
 
 ### 4.4 Shared Workspace And Environment
 
-`shared.workspace.docs`, `shared.workspace.resources`, `shared.workspace.skills`, `shared.environment.env`, `shared.environment.secrets`, `shared.environment.packages`, and `shared.environment.mcp_servers` are OPTIONAL and are inherited by all direct members of the team, except that an `opt_in: true` MCP server is inherited only by members that select it (below).
+`shared.workspace.docs`, `shared.workspace.resources`, `shared.workspace.skills`, `shared.environment.env`, `shared.environment.secrets`, `shared.environment.packages`, `shared.environment.mcp_servers`, and `shared.training` are OPTIONAL and are inherited by direct agent members of the team, except that an `opt_in: true` MCP server is inherited only by members that select it (below), and `shared.training.targets` belongs to the team and is never inherited.
 
 Inheritance rules:
 
@@ -1255,6 +1259,7 @@ environment:
 ```
 - On env, secret, package, or resource name conflict, the member-local declaration MUST win.
 - The outer team's shared surface MUST NOT automatically propagate through a nested team boundary into that nested team's own members.
+- `shared.training` follows this direct-member boundary, including inline members; it MUST NOT propagate to nested teams or subagents. Training merges and target ownership are defined in [Training authoring](TRAINING.md#authoring).
 
 For validation of a shared skill's `requires.mcp`, the visible MCP scope is `shared.environment.mcp_servers`.
 

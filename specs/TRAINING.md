@@ -1,8 +1,8 @@
 # Canonical agent training
 
 `spawnfile train` resolves one agent from its full project and delegates to an installed
-Paideia CLI. Spawnfile owns canonical source resolution and native compilation;
-Paideia owns datasets, evaluation, cost planning, optimization and isolated trials.
+Paideia CLI. Spawnfile owns canonical source resolution, training authoring and native
+compilation; Paideia owns evaluation, cost planning, optimization and isolated trials.
 
 The [container boundary](TRAINING_CONTAINERS.md) runs the complete experiment
 inside one immutable image. The v2 training configuration prepares its pinned
@@ -33,6 +33,162 @@ does not interpret checkpoints, repeat trials or deploy the optimized candidate.
 `--agent` is an exact resolved node ID; omission is allowed only for one-agent projects.
 `--paideia-command` selects an installed executable, default `paideia`; no shell,
 automatic installation, model-provider fallback or production launch is involved.
+
+## Authoring
+
+Teams (including the root organization) MAY declare `shared.training`; agents and
+inline agent members MAY declare `training`. No other training fields are accepted.
+All training file paths MUST be relative, use forward slashes, and resolve from
+the declaring manifest's directory.
+
+```yaml
+# Team Spawnfile
+shared:
+  training:
+    record: { keep: 30d, volumes: [edition-state] }
+    optimizer: { method: gepa, model: claude-opus-5-5, variants: 8, keep: 3, budget: { rounds: 10 } }
+    graders: { writing: training/writing.grader.yaml }
+    targets:
+      - files: [SOUL.md]
+        grader: writing
+        datasets: { train: training/train.yaml, test: training/test.yaml }
+
+# Direct agent member's Spawnfile
+training:
+  optimizer: { budget: { rounds: 30 } }
+  targets:
+    - files: [AGENTS.md]
+      grader: writing
+      datasets: { train: training/train.yaml, validation: training/validation.yaml, test: training/test.yaml }
+```
+
+- `record` MAY contain `keep` and `volumes`. `keep` MUST match `^[1-9][0-9]*[mhd]$`;
+  volumes MUST be unique nonempty resource IDs. Recording is off without an effective
+  `record`; `record: {}` enables the format's recording intent.
+- Every optimizer field is OPTIONAL at declaration time. `method` and `model` MUST
+  be nonempty strings; `variants`, `keep`, and `budget.rounds` MUST be positive integers.
+  An agent plan with any target MUST have all five effective fields and `keep <= variants`;
+  a validation error MUST name missing fields. An incomplete optimizer without targets
+  is represented by `null` in the plan.
+- Grader names MUST match `^[A-Za-z0-9_-]+$`. Each name maps to one relative file path.
+- Each target MUST contain nonempty, unique `.md` file paths, a grader name, and
+  `datasets` with required `train` and `test` paths and OPTIONAL `validation`.
+
+`shared.training` applies ONLY to direct agent members, referenced or inline. It
+MUST NOT cross a nested-team boundary or propagate to subagents. Effective training
+merges that direct team's declaration (excluding targets) with the agent's declaration:
+`record` and `optimizer` merge by field, including `optimizer.budget`; closer fields
+win, and arrays replace wholesale. Graders merge by name with agent-local shadowing;
+each path retains its declaring directory and node. Targets are never inherited.
+The team retains its own declared targets and graders. Reaching one canonical agent
+through incompatible effective training declarations MUST fail validation; equivalent
+declarations are accepted. Grader source and declaring-node provenance participate in
+that comparison.
+
+Every target MUST be an existing regular `.md` file inside its declaring manifest's
+directory, checked by realpath without symlink escape. A nested directory containing
+another `Spawnfile` owns its entire tree, even if that node is not in the compiled graph;
+an ancestor MUST NOT target its files. A target MUST equal a resolved document or skill
+entry `sourcePath` of at least one compiled agent. Errors MUST name the file and declaring
+node. Team targets list every consumer's exact node ID, sorted. Each agent's plan includes
+its own targets and team targets for which it consumes at least one file; each included
+target retains its complete file list and consumer lists. Agent targets use effective
+graders; team targets use only their own team's graders, unaffected by agent shadowing.
+
+Dataset files use one strict YAML shape for all three roles:
+
+```yaml
+examples:
+  - id: ice-shooting
+    at: 2026-10-09T10:20:31+02:00
+    wake: { surface: moltnet, room: assignment, from: brass, text: "@writer report the event" }
+    memory: [{ id: self, store: { kind: memory } }]
+    resources: [{ id: edition-state, kind: volume, mount: ./edition-state, mode: mutable }]
+    networks:
+      - id: news
+        provider: moltnet
+        rooms: [{ id: assignment, members: [writer] }]
+```
+
+`examples` MUST be nonempty; IDs MUST be unique within the file and match
+`^[A-Za-z0-9._-]+$`. `at` is a REQUIRED ISO-8601 instant with an offset or `Z`.
+The strict v1 wake contains only `surface: moltnet` and string `room`, `from`, `text`.
+Optional `resources`, `memory`, and `networks` are full declarations validated by the
+existing workspace-resource, memory-bank, and team-network schemas, respectively.
+Overrides MUST identify an existing effective item; they never add an item. Resource
+IDs resolve against compiled `workspaceResources`; memory IDs resolve against the
+compiler's accessible own and team banks; network IDs resolve against team networks
+present in the agent's resolved surface attachments (including representative attachments).
+Zero matches is unknown; more than one distinct item is ambiguous. The resolved plan
+reports the matching item's declaring node ID. Team-target datasets MUST resolve for
+EVERY consumer; one consumer's failure rejects the plan. Per-agent plans report the
+selected consumer's resolved IDs. There is no dataset `files` field or environments file.
+
+Each grader has one strict YAML file:
+
+```yaml
+questions:
+  - { id: actor-first, ask: "Are the central actor and act named in the first two sentences?", expected: yes }
+labels:
+  - { id: ice-headline, output: labels/ice-headline.json, answers: { actor-first: no } }
+```
+
+`questions` MUST be nonempty; question IDs MUST be unique and match `^[A-Za-z0-9_-]+$`.
+`ask` is a string and `expected` is a string, number, or boolean. OPTIONAL labels have
+unique nonempty IDs, a relative `output` resolved against the grader file's directory,
+and a nonempty `answers` map containing only declared question IDs and scalar values
+of those same types. Output existence is not checked in this phase. Dataset and grader
+YAML MUST reject duplicate keys and unknown fields at every level.
+
+```sh
+spawnfile train ./Spawnfile --agent agent:writer --plan
+```
+
+`--plan` prints `spawnfile.training-plan.v1` as JSON with two-space indentation and a
+trailing newline, then exits 0. `--train` is not required with `--plan`; `--dry-run`
+does not change plan behavior. Selection requires the exact compiled agent ID unless
+the project has exactly one agent. Planning reads local sources and builds the resolved
+graph; it MUST NOT create a training context, invoke Paideia, emit compiled artifacts,
+build images, use Docker/auth, or execute training. Existing delegated training still
+requires `--train`; the authoring surface does not change that execution path.
+
+The plan's file entries carry absolute `sourcePath` and project-relative POSIX `path`.
+`record.volumes` MUST uniquely resolve to effective unfed volume resources; git/bundle
+resources and fed volumes MUST fail (feeds already have a landing log). The plan records
+volume declaration IDs, grader counts, targets, and dataset example identities/overrides.
+Graders include the selected agent's effective registry plus graders used by included
+team targets, retaining provenance when names overlap. Keys and arrays are sorted; pure
+resolution MUST be deterministic and perform no I/O or clock reads. The generated schema
+appears between the `training-plan-schema` markers below.
+
+## Moment record (format only)
+
+`spawnfile.moment-record.v1` specifies one record per wake; recording and replay are
+implemented in a later phase. Recording MUST be off unless an effective `record` exists,
+with zero recording cost when off. `record.keep` is snapshot retention.
+
+```json
+{
+  "version": "spawnfile.moment-record.v1",
+  "agent": "agent:writer",
+  "wake": { "at": "2026-10-09T08:20:31Z", "surface": "moltnet", "room": "assignment", "from": "brass", "messageId": "42" },
+  "recordedAt": "2026-10-09T08:20:32Z",
+  "resources": [{ "id": "archive", "kind": "git", "commit": "resolved-commit" }],
+  "feeds": [{ "id": "news", "revision": "revision-id", "tree": "tree-id", "commit": "resolved-commit", "paths": ["published"], "landedAt": "2026-10-09T08:00:00Z" }],
+  "memory": [{ "id": "self", "declaredBy": "agent:writer", "seq": 42, "generation": 3 }],
+  "moltnet": [{ "network": "news", "cursor": "wake-cursor" }],
+  "volumes": [{ "id": "edition-state", "snapshot": "incremental-snapshot-id" }]
+}
+```
+
+`agent` is the exact node ID. `wake.at` MUST be the real wake time (not the dataset's
+authored trial time); `recordedAt` is capture time. Both are instants with an offset or
+`Z`; `messageId` is OPTIONAL. Resources identify the git/bundle resolved commit per
+build/deploy. Feeds identify the fed-volume landing-log entry in effect at the wake.
+Memory pins the Mneme ledger sequence and active curation generation for each declared
+bank; Moltnet pins each network's per-wake message cursor. Volumes identify an incremental
+snapshot for every effective `record.volumes` entry. Rewind MUST use records when present;
+otherwise it is best effort and the trial MUST be labelled as such.
 
 ## Public handoff
 
@@ -383,3 +539,616 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
 }
 ```
 <!-- training-context-schema:end -->
+
+## Training plan JSON Schema
+
+<!-- training-plan-schema:start -->
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "spawnfile.training-plan.v1"
+    },
+    "producer": {
+      "type": "object",
+      "properties": {
+        "package": {
+          "type": "string",
+          "const": "spawnfile"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "package",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "project": {
+      "type": "object",
+      "properties": {
+        "root": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?:\\/|[A-Za-z]:[\\\\/])"
+        },
+        "manifest": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?:\\/|[A-Za-z]:[\\\\/])"
+        }
+      },
+      "required": [
+        "root",
+        "manifest"
+      ],
+      "additionalProperties": false
+    },
+    "agent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "record": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "keep": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^[1-9][0-9]*[mhd]$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "volumes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "declaredBy": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "id",
+                  "declaredBy"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "keep",
+            "volumes"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "optimizer": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "method": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "variants": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "keep": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "budget": {
+              "type": "object",
+              "properties": {
+                "rounds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "rounds"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "method",
+            "model",
+            "variants",
+            "keep",
+            "budget"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "graders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "sourcePath": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?:\\/|[A-Za-z]:[\\\\/])"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!\\/)[^\\\\]+$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "declaredBy": {
+            "type": "string",
+            "minLength": 1
+          },
+          "questions": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "labels": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "sourcePath",
+          "path",
+          "name",
+          "declaredBy",
+          "questions",
+          "labels"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "declaredBy": {
+            "type": "string",
+            "minLength": 1
+          },
+          "grader": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "files": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sourcePath": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^(?:\\/|[A-Za-z]:[\\\\/])"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^(?!\\/)[^\\\\]+$"
+                },
+                "consumers": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "sourcePath",
+                "path",
+                "consumers"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "datasets": {
+            "type": "object",
+            "properties": {
+              "train": {
+                "type": "object",
+                "properties": {
+                  "sourcePath": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(?:\\/|[A-Za-z]:[\\\\/])"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(?!\\/)[^\\\\]+$"
+                  },
+                  "examples": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9._-]+$"
+                        },
+                        "at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "wake": {
+                          "type": "object",
+                          "properties": {
+                            "surface": {
+                              "type": "string",
+                              "const": "moltnet"
+                            },
+                            "room": {
+                              "type": "string"
+                            },
+                            "from": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "surface",
+                            "room",
+                            "from",
+                            "text"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "overrides": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "declaredBy": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "section": {
+                                "type": "string",
+                                "enum": [
+                                  "resources",
+                                  "memory",
+                                  "networks"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "declaredBy",
+                              "section"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "at",
+                        "wake",
+                        "overrides"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "sourcePath",
+                  "path",
+                  "examples"
+                ],
+                "additionalProperties": false
+              },
+              "validation": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "sourcePath": {
+                        "type": "string",
+                        "minLength": 1,
+                        "pattern": "^(?:\\/|[A-Za-z]:[\\\\/])"
+                      },
+                      "path": {
+                        "type": "string",
+                        "minLength": 1,
+                        "pattern": "^(?!\\/)[^\\\\]+$"
+                      },
+                      "examples": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9._-]+$"
+                            },
+                            "at": {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                            },
+                            "wake": {
+                              "type": "object",
+                              "properties": {
+                                "surface": {
+                                  "type": "string",
+                                  "const": "moltnet"
+                                },
+                                "room": {
+                                  "type": "string"
+                                },
+                                "from": {
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "surface",
+                                "room",
+                                "from",
+                                "text"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "overrides": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "declaredBy": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "section": {
+                                    "type": "string",
+                                    "enum": [
+                                      "resources",
+                                      "memory",
+                                      "networks"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "declaredBy",
+                                  "section"
+                                ],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "at",
+                            "wake",
+                            "overrides"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "sourcePath",
+                      "path",
+                      "examples"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "test": {
+                "type": "object",
+                "properties": {
+                  "sourcePath": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(?:\\/|[A-Za-z]:[\\\\/])"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(?!\\/)[^\\\\]+$"
+                  },
+                  "examples": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9._-]+$"
+                        },
+                        "at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "wake": {
+                          "type": "object",
+                          "properties": {
+                            "surface": {
+                              "type": "string",
+                              "const": "moltnet"
+                            },
+                            "room": {
+                              "type": "string"
+                            },
+                            "from": {
+                              "type": "string"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "surface",
+                            "room",
+                            "from",
+                            "text"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "overrides": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "declaredBy": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "section": {
+                                "type": "string",
+                                "enum": [
+                                  "resources",
+                                  "memory",
+                                  "networks"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "declaredBy",
+                              "section"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "at",
+                        "wake",
+                        "overrides"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "sourcePath",
+                  "path",
+                  "examples"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "train",
+              "validation",
+              "test"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "declaredBy",
+          "grader",
+          "files",
+          "datasets"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "version",
+    "producer",
+    "project",
+    "agent",
+    "record",
+    "optimizer",
+    "graders",
+    "targets"
+  ],
+  "additionalProperties": false
+}
+```
+<!-- training-plan-schema:end -->
