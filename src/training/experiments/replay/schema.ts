@@ -22,9 +22,7 @@ const judgeCall = z.object({ id: identity, judge: identity, providerId: identity
   failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'auth-stale', 'protocol', 'invalid-response', 'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),
   fallbackOf: identity.optional(),
   citationRepairs: z.union([z.literal(0), z.literal(1)]).optional(), repairOf: identity.optional(),
-  // A replayed report keeps WHETHER a score came from a re-run of an aborted call, and
-  // of what: stripping it here would make a recovered judgement indistinguishable from
-  // one that answered first time, which is the whole point of publishing the retry.
+  // Preserve historical retry provenance without attesting that earlier calls aborted.
   retryOf: identity.optional(), retryCause: z.enum(judgeFailureCauses).optional(),
   responseModel: z.string().nullable(), responseRoute: z.string().nullable(),
   outcome: z.enum(['completed', 'invalid-response', 'generation-error']), usage: usage.nullable() });

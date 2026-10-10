@@ -55,4 +55,3 @@ export async function writeEvidence(file: string, value: unknown): Promise<void>
   const written = JSON.parse(await readFile(file, 'utf8')) as unknown;
   if (JSON.stringify(written) !== JSON.stringify(value)) throw new Error('Native evidence readback differs');
 }
-
