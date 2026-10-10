@@ -20,14 +20,13 @@ export interface JudgeCall {
   /** A citation-only protocol repair of this earlier actual attempt. */
   repairOf?: string;
   /**
-   * A re-run of this earlier attempt, which returned no judgement at all.
-   *
-   * Only an attempt that produced nothing is ever re-run, so this can never mark a
-   * judgement that was asked for twice until it read better. A score carrying this
-   * came from a second call, which is a different claim from one that came first time.
+   * Historical retry provenance, retained for cache/replay compatibility.
+   * Older evaluations retried generic protocol failures without proof that no
+   * judgment existed. Current evaluations do not emit retries; this field alone
+   * must not be treated as proof of a pre-judgment abort or a same-route retry.
    */
   retryOf?: string;
-  /** The named cause the re-run attempt failed with; present only beside `retryOf`. */
+  /** Historical cause attributed to the prior failed attempt; present only beside `retryOf`. */
   retryCause?: JudgeFailureCause;
   failureKind?: InferenceFailureKind;
   fallbackOf?: string;

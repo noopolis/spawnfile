@@ -32,19 +32,17 @@ it.each([false,true])('retains counted truncation evidence through actual HTTP a
   const context=evaluationContext({snapshot:snapshot({output:'Article'}),judges:{judge:{provider,model:'requested',identity:'frozen',
     cache:createJudgeCache({maxEntries:10})}},observeJudgeAttempt:observe});
   const report=await evaluatePlan(stages,context,createEvaluationRegistry());
-  // A response the provider never finished yields no judgement, so the judge re-runs it
-  // once: two attempts, both counted, both on the requested model. A re-run is not a
-  // fallback, so the declared backup route is still never asked.
-  expect(report.status).toBe('error');expect(report.judgeCalls).toHaveLength(2);
+  // Truncation does not attest a pre-judgment abort: one counted terminal failure,
+  // with neither an evaluator retry nor an authored protocol fallback.
+  expect(report.status).toBe('error');expect(report.judgeCalls).toHaveLength(1);
   for(const call of report.judgeCalls!)expect(call).toMatchObject({outcome:'generation-error',failureKind:'protocol',responseModel:'gpt-oss:20b',
     responseRoute:f.route,usage:{inputTokens:2445,outputTokens:1651,cachedInputTokens:null,reasoningTokens:null}});
-  expect(report.judgeCalls![1]).toMatchObject({retryOf:report.judgeCalls![0]!.id,retryCause:'provider-error'});
+  expect(report.judgeCalls![0]).not.toHaveProperty('retryOf');
   expect(report.checks.clarity!.usage).toEqual(report.judgeCalls!.map(call=>call.usage));
   for(const call of observe.mock.calls)expect(call[0].response).toBe('');
   expect(JSON.stringify(report)).not.toMatch(/TRUNCATED PRIVATE TEXT|HIDDEN REASONING/);
-  expect(backup.generate).not.toHaveBeenCalled();expect(f.requests).toHaveLength(2);
+  expect(backup.generate).not.toHaveBeenCalled();expect(f.requests).toHaveLength(1);
   expect(f.requests[0]).not.toHaveProperty('tools');expect(f.requests[0]!.model).toBe('requested');
-  expect(f.requests[1]).toEqual(f.requests[0]);
   expect((await evaluatePlan(stages,context,createEvaluationRegistry())).status).toBe('error');
-  expect(f.requests).toHaveLength(4);expect(backup.generate).not.toHaveBeenCalled();
+  expect(f.requests).toHaveLength(2);expect(backup.generate).not.toHaveBeenCalled();
 });

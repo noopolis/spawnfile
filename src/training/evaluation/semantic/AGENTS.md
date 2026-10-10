@@ -55,18 +55,17 @@ visible rather than silent. It never carries a prompt, subject text, a response
 body, a reason string, a bearer or a grant token. An absent input stays `unknown`
 with no failure at all, and a named failure keeps its weight in the denominator.
 
-A judge attempt the provider aborted part-way (`provider-error` refined by the typed
-`protocol` kind) is re-run exactly once, on the same judge, model and route, through
-`retriableJudgeAbort` in `failure.ts`. That failure produced no judgement at all, so
-re-running it recovers a lost call rather than sampling until an answer reads better;
-an attempt that answered, however badly, never reaches the re-run, and a repair is
-never re-run. Nothing backs off, because a refusal must still fail in ~0.35 s against
-the pinned `max_retries = 0`, and nothing falls back. Every other cause is excluded
-and says why in that function; `protocol` is the one no-verdict failure an authored
-route policy never falls back on, so it is the only judge call with no recovery
-otherwise. A re-run publishes itself on the second `JudgeCall` as `retryOf` and the
-`retryCause` it recovered from, so a score that came from a second attempt can never
-be mistaken for one that came first time, and both attempts keep their own usage.
+No current inference adapter attests a pre-judgment abort. A `protocol` failure
+may represent isolation rejection or a completed mismatched response; never retry
+it or infer eligibility from missing text or usage. The evaluator does not restart
+routing after a failure. Any future recovery must be adapter-attested and owned by
+the original routing session, preserving its provider/model, deadline, exclusions
+and accounting. Historical `retryOf`/`retryCause` fields remain readable in caches
+and replay, but are not produced by current evaluations.
+
+Rubric sidecar read failures are `route-unusable`; thrown cache reads and writes
+are `cache-unusable`. Catch these at their I/O boundaries before the outer evaluator
+can turn them into anonymous errors.
 
 Provider schema rejections retain attested response text and diagnostic codes in
 protected judge.attempt events only. Await and deduplicate routed failure audits
