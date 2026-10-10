@@ -4,8 +4,8 @@ import type { Rule, SourceCode } from 'eslint';
 import { preProcessFile } from 'typescript';
 import { canonicalPath, importTarget, inside, owner, pathParts } from './paths.js';
 
-const neutralOwners = new Set(['contracts', 'cases', 'evaluation', 'capture', 'candidates', 'storage']);
-const runtimeOwners = new Set(['adapters', 'inference', 'experiments', 'optimization']);
+const neutralOwners = new Set(['contracts', 'cases', 'evaluation', 'capture', 'candidates', 'storage', 'graders']);
+const runtimeOwners = new Set(['adapters', 'inference', 'experiments', 'optimization', 'cli']);
 const siblingPackages = /^(?:spawnfile|simfile|moltnet|@noopolis\/(?:daimon|mneme|stele))(?:\/|$)/;
 
 export const moduleBoundaries: Rule.RuleModule = {
