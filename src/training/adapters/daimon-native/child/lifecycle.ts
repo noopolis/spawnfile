@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
 import type { StopReceipt, StopUnconfirmed, SubjectStartupDiagnostic, TerminalEvidenceMissing } from '../../../contracts/execution.js';
 import { isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
-import { admittedExecutions, executionClosed, AMBIGUOUS_NATIVE_EXECUTION, type NativeActivity, type NativeStopEvidence,
+import { admittedExecutions, executionClosed, validateNativeFrame, AMBIGUOUS_NATIVE_EXECUTION, type NativeActivity, type NativeStopEvidence,
   type TerminalEvidence } from '../worker/index.js';
 import { createNativeHttpClient, type NativeExecutionHandle } from '../transport/index.js';
 import { ensureNativeTrialArtifacts, nativeChildArguments, nativeChildEnvironment, validateChildPaths } from './arguments.js';
@@ -265,9 +265,9 @@ export function bindTerminalEvidence(wake: WakeEvidence, value: TerminalEvidence
     value.receipt.agent_id === launch.agent.id && value.receipt.delivery_id === `${trialId}:${value.wakeId}`;
   wake.unevidenced = 'terminal-unbound';
   if (!own) { seal('terminal-unbound'); return; }
-  const trace = typeof value.executionId === 'string' ? value.native.traces.find(row => row.turn_id === value.executionId) : undefined;
   try {
-    if (value.native.traces.some(row => row.agent_id !== launch.agent.id)) throw new Error('Native execution evidence identity mismatch');
+    validateNativeFrame(value.activity!, value.receipt!, value.native.traces, launch.agent.id, value.executionId);
+    const trace = typeof value.executionId === 'string' ? value.native.traces.find(row => row.turn_id === value.executionId) : undefined;
     if (!trace || trace.status !== 'completed') return;
     if (executionClosed(value.activity!, value.receipt!, value.native.traces, launch.agent.id, trace.turn_id) === value.executionId) wake.unevidenced = undefined;
   } catch (conflict) {

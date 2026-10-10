@@ -116,3 +116,32 @@ it.each(['missing', 'failed'] as const)('seals the trial before returning for a 
   expect(() => bindTerminalEvidence({ wakeId: 'answer' }, continuation, fixture.launch, fixture.input.trialId, seal)).toThrow('identity mismatch');
   expect(sealed).toBe('terminal-unbound');
 });
+
+
+it.each(['failed-first', 'completed-first', 'missing-named', 'duplicate-history'] as const)(
+  'seals the whole trial for duplicate execution traces (%s) after an admissible wake', async order => {
+    const fixture = await launchFixture();
+    roots.push(fixture.root);
+    let sealed: TerminalEvidenceMissing | undefined;
+    const seal = (fault: TerminalEvidenceMissing): void => { sealed ??= fault; };
+    const trace = traceFixture();
+    const frame = { schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId,
+      agentId: fixture.launch.agent.id, model: fixture.launch.agent.model, configSha256: fixture.launch.configSha256,
+      wakeId: 'task', executionId: trace.turn_id, native: { traces: [trace] },
+      receipt: { agent_id: fixture.launch.agent.id, delivery_id: `${fixture.input.trialId}:task` },
+      activity: { executions: [] } } as unknown as TerminalEvidence;
+    const first = { wakeId: 'task', unevidenced: 'terminal-absent' as TerminalEvidenceMissing | undefined };
+    bindTerminalEvidence(first, frame, fixture.launch, fixture.input.trialId, seal);
+    expect(first.unevidenced).toBeUndefined();
+    expect(sealed).toBeUndefined();
+    const failed = { ...trace, status: 'failed' as const };
+    const traces = order === 'completed-first' ? [trace, failed] : [failed, trace];
+    const executionId = order === 'missing-named' ? 'missing' : order === 'duplicate-history' ? 'new' : trace.turn_id;
+    if (order === 'duplicate-history') traces.push({ ...trace, turn_id: 'new' });
+    const continuation = { ...frame, wakeId: 'answer', executionId,
+      receipt: { ...frame.receipt!, delivery_id: `${fixture.input.trialId}:answer` }, native: { ...frame.native, traces } };
+    const wake = { wakeId: 'answer', unevidenced: undefined as TerminalEvidenceMissing | undefined };
+    expect(() => bindTerminalEvidence(wake, continuation, fixture.launch, fixture.input.trialId, seal)).toThrow('ambiguous');
+    expect(wake.unevidenced).toBe('terminal-ambiguous');
+    expect(sealed).toBe('terminal-ambiguous');
+  });

@@ -152,3 +152,20 @@ test('a paused budget and stale receipt cannot outrun a just-admitted execution'
     assert.equal(result.native.modelContexts.length, 1);
   } finally { await publishing; await rm(root, { recursive: true, force: true }); }
 });
+
+
+test('frame-wide validation precedes busy or missing selection and covers unnamed history', () => {
+  const trace = traceFixture();
+  const history = { ...trace, turn_id: 'earlier' };
+  for (const active of [false, true]) {
+    for (const traces of [[{ ...trace, status: 'failed' as const }, trace], [trace, { ...trace, status: 'failed' as const }],
+      [history, history], [history, history, trace]]) {
+      assert.throws(() => executionClosed(activityFixture(active), receiptFixture(), traces, 'agent:writer', executionId),
+        new RegExp(AMBIGUOUS_NATIVE_EXECUTION, 'u'));
+    }
+    assert.throws(() => executionClosed(activityFixture(active), receiptFixture(), [{ ...history, agent_id: 'other' }],
+      'agent:writer', executionId), /identity/);
+    assert.throws(() => executionClosed(activityFixture(active), { ...receiptFixture(), execution_id: 'other' }, [],
+      'agent:writer', executionId), /identity/);
+  }
+});

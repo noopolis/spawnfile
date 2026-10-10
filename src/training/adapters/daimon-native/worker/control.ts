@@ -85,6 +85,21 @@ export function admittedExecutions(activity: NativeActivity, agentId: string): n
  */
 export const AMBIGUOUS_NATIVE_EXECUTION = 'One native execution closed more than once; its terminal evidence is ambiguous';
 
+/** Validate trial-wide attribution before selecting a trace or testing closure. */
+export function validateNativeFrame(activity: NativeActivity, receipt: NativeReceipt, traces: NativeEvidence['traces'],
+  agentId: string, named?: string): void {
+  admittedExecutions(activity, agentId);
+  if (receipt.agent_id !== agentId || traces.some(row => row.agent_id !== agentId)) throw new Error('Native execution evidence identity mismatch');
+  const ids = new Set<string>();
+  for (const trace of traces) {
+    if (ids.has(trace.turn_id)) throw new Error(AMBIGUOUS_NATIVE_EXECUTION);
+    ids.add(trace.turn_id);
+  }
+  if (named !== undefined && receipt.execution_id !== undefined && receipt.execution_id !== named) {
+    throw new Error('Native execution evidence identity mismatch');
+  }
+}
+
 /**
  * The closed execution this evidence binds to, or `undefined` when none does.
  *
@@ -98,19 +113,14 @@ export const AMBIGUOUS_NATIVE_EXECUTION = 'One native execution closed more than
  * must be this agent's and the receipt must be this agent's, whether or not the
  * trace is the one selected, so a foreign execution is rejected from a set of
  * three exactly as it was from a set of one. The receipt's own `execution_id`,
- * when it carries one, must name the resolved trace. Two traces sharing the named
- * id resolve to neither and throw `AMBIGUOUS_NATIVE_EXECUTION`.
+ * when it carries one, must name the resolved trace. Two traces sharing any execution
+ * id invalidate the frame and and throw `AMBIGUOUS_NATIVE_EXECUTION`.
  */
 export function executionClosed(activity: NativeActivity, receipt: NativeReceipt, traces: NativeEvidence['traces'],
   agentId: string, named: string): string | undefined {
+  validateNativeFrame(activity, receipt, traces, agentId, named);
   if (admittedExecutions(activity, agentId) > 0) return undefined;
-  if (receipt.agent_id !== agentId || traces.some(row => row.agent_id !== agentId)) throw new Error('Native execution evidence identity mismatch');
-  const matching = traces.filter(row => row.turn_id === named);
-  if (matching.length > 1) throw new Error(AMBIGUOUS_NATIVE_EXECUTION);
-  const trace = matching[0];
-  if (!trace) return undefined;
-  if (receipt.execution_id !== undefined && receipt.execution_id !== trace.turn_id) throw new Error('Native execution evidence identity mismatch');
-  return trace.turn_id;
+  return traces.find(row => row.turn_id === named)?.turn_id;
 }
 
 /**

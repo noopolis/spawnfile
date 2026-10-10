@@ -51,7 +51,13 @@ what remains is this trial's own work. Wake attribution remains separate from
 trial accounting: each frame carries its own execution's trace and usage, plus
 a cumulative accounting ledger containing
 all executions, including revisits. The observer counts ledger executions once
-across frames. Older persisted frames without accounting retain wake usage.
+across frames and failure recovery; it also owns the returned trial total. Older
+persisted frames without accounting supply wake usage to that same ledger.
+
+`validateNativeFrame` checks receipt/activity identity, every trace's agent, all
+duplicate execution IDs and receipt/named-execution conflicts before selection or
+an early return. The child reader uses this same public validation seam, so a
+missing, failed or busy named execution cannot hide a trial-wide fault.
 `evidence/` owns this collection and bounded file I/O; its public index is the seam.
 
 The runtime wake ceiling this worker publishes is derived from that same bound
