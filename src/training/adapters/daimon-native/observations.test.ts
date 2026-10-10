@@ -6,7 +6,7 @@ import type { Observation } from '../../contracts/execution.js';
 import { aggregateUsage, createNativeObserver } from './observations.js';
 import { BROKER_REQUESTS_SCHEMA, BROKER_SEAL_SCHEMA, type BrokerSealLedger, type BrokerSealRecord } from './sealed-usage.js';
 import { launchFixture } from './test-fixtures.js';
-import type { NativeUsage, TerminalEvidence } from './worker/index.js';
+import type { NativeGrokUsage, NativeUsage, TerminalEvidence } from './worker/index.js';
 
 test('receipt observations preserve errors/results and deduplicate actual action identity', async () => {
   const fixture = await launchFixture();
@@ -130,6 +130,30 @@ test('cumulative trial accounting rejects conflicting totals and retains legacy 
     await assert.rejects(observer.terminal('continuation', { ...frame,
       native: { ...frame.native, accounting: { usage: [{ ...row, input: 20 }], coverage: 'complete' } } }), /Conflicting native trial usage/);
     const legacy = { ...frame, native: { ...frame.native, accounting: undefined } };
-    assert.equal((await observer.terminal('legacy', legacy))?.inputTokens, 10);
+    assert.equal(await observer.terminal('legacy', legacy), null);
+    assert.equal(observer.usage()?.inputTokens, 10);
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
+
+test('recovery shares the trial ledger, returns only new usage and preserves it through publication failure', async () => {
+  const fixture = await launchFixture();
+  try {
+    const events: Observation[] = [];
+    fixture.input.onObservation = event => { events.push(event); };
+    const observer = createNativeObserver(fixture.input, fixture.input.runtimeHomePath, fixture.launch.agent.id);
+    const row = { engine: 'grok', wake: 'A', input: 10, output: 0, cache_read: 0, cache_write: 0, notional_usd: 0 } as NativeGrokUsage;
+    assert.equal((await observer.sealedUsage('task', [row, row]))?.inputTokens, 10);
+    assert.equal(await observer.sealedUsage('task', [row]), null);
+    assert.equal(events.filter(event => event.type === 'usage').length, 1);
+    // Reject the whole conflicting batch before reserving any new execution.
+    const next = { ...row, wake: 'B', input: 20 };
+    assert.equal(await observer.sealedUsage('task', [next, { ...row, input: 30 }]), null);
+    assert.equal(observer.usage()?.inputTokens, 10);
+    assert.equal((await observer.sealedUsage('task', [row, next]))?.inputTokens, 20);
+    assert.equal(observer.usage()?.inputTokens, 30);
+    fixture.input.onObservation = () => { throw new Error('Failed diagnostic sink'); };
+    assert.equal((await observer.sealedUsage('task', [{ ...row, wake: 'C', input: 30 }]))?.inputTokens, 30);
+    assert.equal(observer.usage()?.inputTokens, 60);
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
 });

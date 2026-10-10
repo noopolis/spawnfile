@@ -7,7 +7,24 @@ import type { NativeGrokUsage, NativeUsage, TerminalEvidence } from './worker/in
 
 export function createNativeObserver(input: SubjectStart, runtimeHome: string, agentId: string, engine: 'codex' | 'grok' = 'codex') {
   let seq = 0;
-  const accounted = new Map<string, string>();
+  const accounted = new Map<string, NativeUsage>();
+  // One trial ledger owns both normal terminal frames and recovered broker rows.
+  const account = (rows: readonly NativeUsage[]) => {
+    const added = new Map<string, NativeUsage>();
+    for (const row of rows) {
+      const key = `${row.engine}:${row.wake}`;
+      const prior = accounted.get(key) ?? added.get(key);
+      if (prior && JSON.stringify(prior) !== JSON.stringify(row)) throw new Error('Conflicting native trial usage execution');
+      if (!prior) added.set(key, row);
+    }
+    const fresh = [...added.values()];
+    const usage = aggregateUsage(fresh);
+    // Validate the total before committing any rows; a rejected frame cannot
+    // partly consume execution identities or poison subsequent recovery.
+    aggregateUsage([...accounted.values(), ...fresh]);
+    for (const [key, row] of added) accounted.set(key, structuredClone(row));
+    return { rows: fresh, usage };
+  };
   const seen = new Set<string>();
   const emit = async (wakeId: string, value: Omit<Observation, 'id' | 'source' | 'seq' | 'timestamp' | 'trialId' | 'wakeId'>,
     timestamp = new Date().toISOString()): Promise<void> => {
@@ -16,6 +33,7 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
       timestamp, trialId: input.trialId, wakeId, ...value });
   };
   return {
+    usage: (): Usage | null => aggregateUsage([...accounted.values()]),
     async externalInput(wakeId: string, value: NativeExternalInput): Promise<void> {
       await emit(wakeId, { type: 'input', text: value.text, native: { schema: 'paideia.external-input.v1', deliveryId: value.id, source: value.source } });
     },
@@ -48,8 +66,13 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
      * swallowed: this already runs on a failed turn, and instrumentation must
      * never replace a diagnosable failure with a confusing one.
      */
-    async sealedUsage(wakeId: string, usage: Usage, rows: readonly NativeGrokUsage[]): Promise<void> {
-      try { await emit(wakeId, { type: 'usage', usage, native: rows }); } catch { /* never fails an already-failed turn */ }
+    async sealedUsage(wakeId: string, recovered: readonly NativeGrokUsage[]): Promise<Usage | null> {
+      let delta: ReturnType<typeof account>;
+      try { delta = account(recovered); } catch { return null; }
+      try {
+        if (delta.usage) await emit(wakeId, { type: 'usage', usage: delta.usage, native: delta.rows });
+      } catch { /* never fails an already-failed turn */ }
+      return delta.usage;
     },
     /**
      * The broker's per-request timings for a turn that never reported one.
@@ -100,16 +123,7 @@ export function createNativeObserver(input: SubjectStart, runtimeHome: string, a
       try { await emit(wakeId, { type: 'diagnostic', text, native: ledger }); } catch { /* never fails an already-failed turn */ }
     },
     async terminal(wakeId: string, result: TerminalEvidence): Promise<Usage | null> {
-      const rows = result.native.accounting?.usage.filter(row => {
-        const key = `${row.engine}:${row.wake}`;
-        const bytes = JSON.stringify(row);
-        const prior = accounted.get(key);
-        if (prior !== undefined && prior !== bytes) throw new Error('Conflicting native trial usage execution');
-        if (prior !== undefined) return false;
-        accounted.set(key, bytes);
-        return true;
-      }) ?? result.native.usage;
-      const usage = aggregateUsage(rows);
+      const { rows, usage } = account(result.native.accounting?.usage ?? result.native.usage);
       if (usage) await emit(wakeId, { type: 'usage', usage, native: rows }, result.completedAt);
       await emit(wakeId, { type: 'diagnostic', text: `Native execution ${result.status}`, native: result }, result.completedAt);
       // Operator-only, and a diagnostic on purpose: the wake text and the reply

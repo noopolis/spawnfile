@@ -11,7 +11,10 @@ Keep adjacent tests, files below 400 lines and per-file coverage above 90 percen
 
 External continuations are opt-in, sourced, bounded to three deliveries and share
 one trial deadline. Deferred work is never success. Preserve per-wake evidence and
-aggregate usage once; cancellation must stop the owned runtime.
+aggregate usage once; cancellation must stop the owned runtime. One observer-owned
+trial ledger accounts for execution IDs across terminal, legacy and recovered
+frames. It publishes only new rows and supplies the returned trial total; the
+adapter must not sum a recovered cumulative ledger into prior delivery totals.
 
 Grok is engine-parameterized, not a Codex fork: launch.v2 records model/effort and a
 broker slot, never a credential. Daimon resolves the slot projection and verifies

@@ -13,12 +13,13 @@ test('adapter resumes only sourced deferred work and captures all usage once wit
     fixture.input.onObservation = event => { events.push(event); };
     const terminal = { schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
       agentId: 'agent:writer', model: 'test-model-v1', configSha256: fixture.launch.configSha256, status: 'failed', blocked: 'awaiting-external-input',
-      completedAt: new Date().toISOString(), native: { traces: [], toolReceipts: [], modelContexts: [], usage: [{ input: 100, output: 20, cache_read: 40 }] },
+      completedAt: new Date().toISOString(), native: { traces: [], toolReceipts: [], modelContexts: [], usage: [{ engine: 'codex', wake: 'execution-task', input: 100, output: 20, cache_read: 40 }] },
       coverage: [{ channel: 'output', completeness: 'absent', ordering: 'none' }, { channel: 'usage', completeness: 'partial', ordering: 'source' }] };
     docker.setTerminal(terminal);
     const text = 'Verified response';
     const next = vi.fn(async () => {
       docker.setTerminal({ ...terminal, wakeId: 'answer', status: 'completed', blocked: undefined,
+        native: { ...terminal.native, usage: terminal.native.usage.map(row => ({ ...row, wake: 'execution-answer' })) },
         coverage: [{ channel: 'usage', completeness: 'complete', ordering: 'source' }] });
       return { id: 'answer', text, source: { kind: 'transport', id: 'answer', sha256: `sha256:${createHash('sha256').update(text).digest('hex')}` } };
     });
@@ -43,7 +44,7 @@ test('a stop that races a verified deferred wake reports cancellation without th
     docker.setTerminal({ schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
       agentId: 'agent:writer', model: 'test-model-v1', configSha256: fixture.launch.configSha256, status: 'failed',
       blocked: 'awaiting-external-input', completedAt: new Date().toISOString(),
-      native: { traces: [], toolReceipts: [], modelContexts: [], usage: [{ input: 100, output: 20, cache_read: 40 }] },
+      native: { traces: [], toolReceipts: [], modelContexts: [], usage: [{ engine: 'codex', wake: 'execution-task', input: 100, output: 20, cache_read: 40 }] },
       coverage: [{ channel: 'usage', completeness: 'partial', ordering: 'source' }] });
     const opened: { session?: Awaited<ReturnType<ReturnType<typeof createDaimonNativeAdapter>['start']>> } = {};
     // Stopping while the verified terminal evidence is being published makes the turn
@@ -66,7 +67,7 @@ for (const mode of ['absent', 'duplicate', 'failure', 'cancelled'] as const) tes
     const docker = dockerFixture(fixture.launch, fixture.input.trialId);
     docker.setTerminal({ schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
       agentId: 'agent:writer', model: 'test-model-v1', configSha256: fixture.launch.configSha256, status: 'failed', blocked: 'awaiting-external-input',
-      completedAt: new Date().toISOString(), native: { traces: [], toolReceipts: [], modelContexts: [], usage: [{ input: 100, output: 20, cache_read: 40 }] },
+      completedAt: new Date().toISOString(), native: { traces: [], toolReceipts: [], modelContexts: [], usage: [{ engine: 'codex', wake: 'execution-task', input: 100, output: 20, cache_read: 40 }] },
       coverage: [{ channel: 'usage', completeness: 'partial', ordering: 'source' },
         { channel: 'output', completeness: 'absent', ordering: 'none' }, { channel: 'tools', completeness: 'partial', ordering: 'source' }] });
     const controller = new AbortController();

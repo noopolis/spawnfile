@@ -1,7 +1,7 @@
 import type { NativeExecutionHandle } from './transport/index.js';
 import { startOwnedChild, type NativeChildExecution } from './child/index.js';
-import { nextExternalInput, sumNativeUsage, weakestNativeCoverage, type NativeExternalInputs } from './external.js';
-import type { SubjectAdapter, Usage, SubjectTurnResult } from '../../contracts/execution.js';
+import { nextExternalInput, weakestNativeCoverage, type NativeExternalInputs } from './external.js';
+import type { SubjectAdapter, SubjectTurnResult } from '../../contracts/execution.js';
 import { MAX_EXTERNAL_DELIVERIES, type TerminalEvidence, type DeliveryControls } from './worker/index.js';
 import { dockerCommand, workerRequest, type DockerCommand } from './container/index.js';
 import { startOwnedContainer } from './container/index.js';
@@ -95,26 +95,25 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
               readSealedBrokerUsage(launch, sealedUsage), readSealedBrokerRequests(launch, sealedUsage),
               readSealedBrokerSeal(launch, sealedUsage),
             ]);
-            if (sealed.usage) await observer.sealedUsage(observedWakeId, sealed.usage, sealed.rows);
+            const usage = await observer.sealedUsage(observedWakeId, sealed.rows);
             if (requests) await observer.brokerRequests(observedWakeId, requests);
             if (seal) await observer.brokerSeal(observedWakeId, seal);
             // Whatever the worker said before it stopped answering, redacted.
             const record = container.diagnostic?.();
             if (record) await observer.childDiagnostic(observedWakeId, record);
             return { result: { status: wasCancelled ? 'cancelled' as const : 'failed' as const,
-              text: '', usage: sealed.usage, error: String(error), stop: receipt,
+              text: '', usage, error: String(error), stop: receipt,
               coverage: [{ channel: 'tools' as const, completeness: 'partial' as const, ordering: 'none' as const },
                 { channel: 'output' as const, completeness: 'absent' as const, ordering: 'none' as const },
                 // Measured, but never complete: the execution it belongs to never closed.
-                { channel: 'usage' as const, completeness: sealed.usage ? 'partial' as const : 'absent' as const,
-                  ordering: sealed.usage ? 'source' as const : 'none' as const }] } as SubjectTurnResult, terminal, verified: false };
+                { channel: 'usage' as const, completeness: usage ? 'partial' as const : 'absent' as const,
+                  ordering: usage ? 'source' as const : 'none' as const }] } as SubjectTurnResult, terminal, verified: false };
           } finally { for (const source of signals) source.removeEventListener('abort', abort); }
       };
       return { stop, async run(turn, signal) {
         if (used || stopped) throw new Error('Native Daimon session permits one delivery');
         used = true;
         const combined = AbortSignal.any([sessionCancellation.signal, input.signal, signal].filter((value): value is AbortSignal => value !== undefined));
-        const usages: (Usage | null)[] = [];
         const coverages: SubjectTurnResult['coverage'][] = [];
         const ids = new Set([turn.id]);
         let current = turn;
@@ -122,19 +121,18 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
         try {
           for (let ordinal = 0; ; ordinal++) {
             const { result, terminal, verified } = await deliver(current, combined, controls, turn.id);
-            usages.push(result.usage);
             coverages.push(result.coverage);
             // A cancelled wake never carries the deferral: cancellation is the machine's outcome.
-            if (verified && stopped) return { ...result, status: 'cancelled', blocked: undefined, usage: sumNativeUsage(usages),
+            if (verified && stopped) return { ...result, status: 'cancelled', blocked: undefined, usage: observer.usage(),
               coverage: weakestNativeCoverage(coverages), stop: await stop('Native subject stopped after verified wake') };
-            if (!verified || !external || terminal?.blocked !== 'awaiting-external-input') return { ...result, usage: sumNativeUsage(usages), coverage: weakestNativeCoverage(coverages) };
-            if (ordinal >= external.maxDeliveries) return { ...result, status: 'failed', usage: sumNativeUsage(usages), coverage: weakestNativeCoverage(coverages), stop: await stop('External input delivery budget exhausted') };
+            if (!verified || !external || terminal?.blocked !== 'awaiting-external-input') return { ...result, usage: observer.usage(), coverage: weakestNativeCoverage(coverages) };
+            if (ordinal >= external.maxDeliveries) return { ...result, status: 'failed', usage: observer.usage(), coverage: weakestNativeCoverage(coverages), stop: await stop('External input delivery budget exhausted') };
             const common = { trialId: input.trialId, turnId: turn.id, launch, terminal };
             const next = execution
               ? await nextExternalInput(childExternal!, { ...common, executionId: container.name }, deadline, combined)
               : await nextExternalInput(dockerExternal!, { ...common, containerName: container.name }, deadline, combined);
             combined.throwIfAborted();
-            if (!next) return { ...result, status: 'failed', usage: sumNativeUsage(usages), coverage: weakestNativeCoverage(coverages), stop: await stop('No matching external input') };
+            if (!next) return { ...result, status: 'failed', usage: observer.usage(), coverage: weakestNativeCoverage(coverages), stop: await stop('No matching external input') };
             if (ids.has(next.id)) throw new Error('External input delivery ID was reused');
             ids.add(next.id);
             await observer.externalInput(turn.id, next);
@@ -144,7 +142,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
         } catch (error) {
           const wasCancelled = combined.aborted;
           const receipt = await stop('External input continuation failed');
-          return { status: wasCancelled ? 'cancelled' : 'failed', text: '', usage: sumNativeUsage(usages), error: String(error), stop: receipt,
+          return { status: wasCancelled ? 'cancelled' : 'failed', text: '', usage: observer.usage(), error: String(error), stop: receipt,
             coverage: weakestNativeCoverage(coverages) };
         }
       } };

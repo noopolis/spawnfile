@@ -176,6 +176,7 @@ test('a three-wake deferred trial binds each wake to its own execution and score
       usages.push(await observer.terminal(frame.wakeId, replayed));
     }
     expect(sumNativeUsage(usages)).toMatchObject({ inputTokens: 210, outputTokens: 12 });
+    expect(observer.usage()).toMatchObject({ inputTokens: 210, outputTokens: 12 });
     expect(events.filter(event => event.type === 'usage').flatMap(event => event.native as unknown[])).toHaveLength(6);
     expect(await observer.terminal('answer-2', worker.frames[2]!)).toBeNull();
     const receipt = await handle.stop('Native trial work ended');
@@ -208,6 +209,7 @@ test('the persisted trial ledger counts all six executions once, including revis
     }
     expect(worker.closed).toHaveLength(6);
     expect(sumNativeUsage(usages)).toMatchObject({ inputTokens: 210, outputTokens: 12 });
+    expect(observer.usage()).toMatchObject({ inputTokens: 210, outputTokens: 12 });
     expect(worker.frames.at(-1)?.native.accounting?.usage.map(row => row.wake)).toEqual(worker.closed.map(row => row.executionId));
     expect(await observer.terminal('answer-2', worker.frames[2]!)).toBeNull();
   } finally {
