@@ -31,9 +31,11 @@ export function consumeCodexFrame(frames: CodexFrames, line: string): void {
       if (item['type'] !== 'agent_message' && item['type'] !== 'reasoning') {
         throw new InferenceFailure('protocol', 'Codex attempt refused: tool-call', { ...codexEvidence(frames), detail: 'tool-call' });
       }
+      const text = item['text'];
       if (!frames.turning || frames.completed || !['item.started', 'item.updated', 'item.completed'].includes(type) ||
-        typeof item['id'] !== 'string' || typeof item['text'] !== 'string') throw new Error('Invalid item');
-      if (type === 'item.completed' && item['type'] === 'agent_message') frames.text = item['text'];
+        typeof item['id'] !== 'string' ||
+        !(typeof text === 'string' || type === 'item.started' && text === undefined)) throw new Error('Invalid item');
+      if (type === 'item.completed' && item['type'] === 'agent_message' && typeof text === 'string') frames.text = text;
     } else if (type === 'error' || type === 'turn.failed') {
       const error = type === 'error' ? event : object(event['error']);
       throw new InferenceFailure(classifyCodexFailure(error['message']), 'Codex native generation failed', codexEvidence(frames));

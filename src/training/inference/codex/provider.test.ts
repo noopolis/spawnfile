@@ -81,6 +81,39 @@ it.each(['Logged in using an API key', 'Not logged in', 'Logged in using ChatGPT
   expect(calls).toBe(1);
 });
 
+it('preserves tool-call refusal when the runner rejects with a replacement error', async () => {
+  const replacement = new Error('runner replaced the callback error');
+  let callbackFailure: unknown;
+  const provider = createCodexInference({ process: options => {
+    const running = runner([])(options);
+    if (options.args.includes('status')) return running;
+    return { ...running, completion: (async () => {
+      try {
+        await options.onLine(JSON.stringify({ type: 'item.started', item: { id: 'tool', type: 'command_execution' } }),
+          new AbortController().signal);
+      } catch (error) { callbackFailure = error; }
+      throw replacement;
+    })() };
+  } });
+  await expect(provider.generate(request)).rejects.toMatchObject({ kind: 'protocol', detail: 'tool-call' });
+  expect(callbackFailure).toMatchObject({ kind: 'protocol', detail: 'tool-call' });
+});
+
+it.each(['agent_message', 'reasoning'])('accepts missing or empty text only on %s starts', async type => {
+  for (const text of [undefined, '']) {
+    const events = [...frames.slice(0, 2), { type: 'item.started', item: { id: 'start', type, text } }, ...frames.slice(2)];
+    expect((await createCodexInference({ process: runner(events) }).generate(request)).text).toBe('{"q":"yes"}');
+  }
+  for (const eventType of ['item.updated', 'item.completed']) {
+    const events = [...frames.slice(0, 2), { type: eventType, item: { id: 'start', type } }, ...frames.slice(2)];
+    await expect(createCodexInference({ process: runner(events) }).generate(request)).rejects.toMatchObject({ kind: 'protocol' });
+  }
+  for (const text of [null, 42, {}]) {
+    const events = [...frames.slice(0, 2), { type: 'item.started', item: { id: 'start', type, text } }, ...frames.slice(2)];
+    await expect(createCodexInference({ process: runner(events) }).generate(request)).rejects.toMatchObject({ kind: 'protocol' });
+  }
+});
+
 it.each([
   [], ['bad'], ['[]'], ['null'], [{}], [{ type: 'unknown' }], [frames[1]], [frames[0], frames[0]],
   [frames[0], frames[1], frames[1]], [...frames.slice(0, 2), { type: 'item.completed', item: { type: 'agent_message' } }],

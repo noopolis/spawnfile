@@ -60,6 +60,7 @@ export function createCodexInference(options: CodexInferenceOptions = {}): Infer
       const execute = options.process ?? runProcess;
       const command = options.command ?? 'codex';
       const frames: CodexFrames = { started: false, turning: false, completed: false, text: '', usage: null };
+      let failure: InferenceFailure | undefined;
       try {
         await mkdir(cwd);
         await mkdir(env['CODEX_HOME']!, { recursive: true });
@@ -72,7 +73,6 @@ export function createCodexInference(options: CodexInferenceOptions = {}): Infer
         const signedIn = auth.exitCode === 0 && /^Logged in using ChatGPT\s*$/u.test(`${authText}${auth.stderr}`.trim());
         authText = '';
         if (!signedIn) throw new InferenceFailure('authentication', 'Codex requires a saved ChatGPT subscription sign-in');
-        let failure: InferenceFailure | undefined;
         const result = await execute({ command, args: codexArguments(request, options.reasoningEffort), cwd, env,
           stdin: request.prompt, timeoutMs: options.timeoutMs ?? 180_000, signal: request.signal,
           requireLineTerminator: true,
@@ -90,6 +90,7 @@ export function createCodexInference(options: CodexInferenceOptions = {}): Infer
           modelBasis: frames.model === undefined ? 'requested-assumption' : 'provider-reported',
           usage: frames.usage, route: 'codex-subscription' };
       } catch (error) {
+        if (failure) throw failure;
         if (error instanceof InferenceFailure) throw error;
         throw new InferenceFailure('transport', 'Codex inference could not complete', codexEvidence(frames));
       } finally { await rm(root, { recursive: true, force: true }); }
