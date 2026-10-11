@@ -1,4 +1,5 @@
 export * from "./feedLand.js";
+export * from "./feedLandings.js";
 export * from "./feedLayout.js";
 export * from "./feedLock.js";
 export * from "./feedManifest.js";
