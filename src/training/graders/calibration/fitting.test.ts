@@ -134,3 +134,11 @@ describe('question and pooled fitting', () => {
     expect(calibrateQuestions([], { seed: 's' })).toEqual([]);
   });
 });
+
+it('reports editor agreement separately from model consensus', () => {
+  const rows = records(80).map(row => ({ ...row, source: 'editor' as const }));
+  const result = calibrateQuestions(rows, { seed: 'editor' })[0]!;
+  expect(result.interpretation).toBe('editor-adjudicated and teacher agreement');
+  expect(result.bySource.editor).toMatchObject({ instances: 40 });
+  expect(result.bySource.human).toBeUndefined();
+});

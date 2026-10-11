@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { loadGrader, loadLabels, parseCalibrationJson, createCalibrationIdentity, checkCalibration } from '../../graders/index.js';
+import { loadGrader, loadLabels, parseCalibration, calibrationIdentitySchema, createCalibrationIdentity, checkCalibration } from '../../graders/index.js';
 import { validateStoredVotes } from '../../graders/labeling/index.js';
 import { DECISION_PROMPT_VERSION } from '../../inference/decision/index.js';
 import { backendIdentity, graderBackend, type GraderDependencies } from './backend.js';
@@ -15,7 +15,12 @@ export async function runValidate(graderFile: string, dependencies: GraderDepend
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { status: 'valid', calibration: false };
     throw error;
   }
-  const calibration = parseCalibrationJson(source);
+  const value: unknown = JSON.parse(source);
+  if (value !== null && typeof value === 'object' && 'identity' in value &&
+    !calibrationIdentitySchema.safeParse(value.identity).success) {
+    throw new Error('calibration file is stale or from an older version; re-run grader calibrate');
+  }
+  const calibration = parseCalibration(value);
   const exclusions = await readExclusions(calibration.identity.exclusions.map(item => item.dataset));
   const identity = createCalibrationIdentity(grader, {
     backendModel: await backendIdentity(grader, graderBackend(grader, dependencies), signal),

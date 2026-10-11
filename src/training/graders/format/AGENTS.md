@@ -12,7 +12,8 @@ errors, content mismatches and unsupported scoring without invoking inference.
 
 `abstain` is reserved in choice options because it is the vote abstention marker.
 IDs/map keys reject prototype names; identifiers also reject control characters.
-Conflicting human answers remain disputed. Inline JSON is canonically hashed;
+Human votes precede editor votes, then model consensus; conflicts within the highest
+answering kind remain disputed. Editors declare a name and optional source description. Inline JSON is canonically hashed;
 references verify exact bytes before JSON decoding (for .json) or UTF-8 text loading.
 
 Golden labels accept a sidecar path or an inline labels body with implied grader.

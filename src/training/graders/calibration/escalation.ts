@@ -2,8 +2,8 @@ import { planCallAdmission, escalationCallKey as callKey, type EscalationCall } 
 export type { EscalationCall } from '../admission.js';
 import { deriveConsensus } from '../consensus.js';
 import type { Labels, Option } from '../format/index.js';
-import { wilson90 } from './metrics.js';
-import type { Interval, ScoredRecord } from './types.js';
+import { evidenceCounts, teacherAccuracyFailures, wilson90 } from './metrics.js';
+import type { EvidenceCounts, Interval, ScoredRecord } from './types.js';
 
 export type EscalationBand = readonly [number, number];
 export type BandPolicy = { between: EscalationBand } | { target_accuracy: number };
@@ -17,10 +17,11 @@ export interface CascadeRecord extends ScoredRecord {
   outputId?: string;
   projectionDigest?: string;
 }
-export interface EscalationTeacherReport {
+export interface EscalationTeacherReport extends EvidenceCounts {
   agreement: number;
   instances: number;
-  source: 'human' | 'independent';
+  source: 'human' | 'editor' | 'independent';
+  failures: string[];
   warnings: string[];
 }
 export interface BandPlan {
@@ -60,8 +61,8 @@ function independentGood(row: CascadeRecord, teacherId?: string): boolean | unde
     const answer = deriveConsensus(label, row.labelers).answer!.answer;
     return answer === undefined ? undefined : row.expected.includes(answer);
   }
-  // Human truth is independent; unidentified or model-derived truth requires original votes.
-  return row.source === 'human' ? row.good : undefined;
+  // Human/editor truth is independent; model-derived truth requires original votes.
+  return row.source === 'human' || row.source === 'editor' ? row.good : undefined;
 }
 
 function teacherAnswer(row: CascadeRecord, teacherId?: string): boolean | undefined {
@@ -73,12 +74,26 @@ function teacherAnswer(row: CascadeRecord, teacherId?: string): boolean | undefi
 }
 
 export function escalationTeacherReport(heldOut: readonly CascadeRecord[], teacherId: string): EscalationTeacherReport {
-  const independent = heldOut.filter(row => independentGood(row, teacherId) !== undefined);
-  const human = independent.filter(row => row.source === 'human');
-  const sample = human.length ? human : independent;
-  return { instances: sample.length, source: human.length ? 'human' : 'independent',
-    warnings: independent.length < heldOut.length ? ['Instances without independent golden answers are excluded from cascade verification.'] : [],
-    agreement: sample.length ? sample.filter(row => teacherAnswer(row, teacherId) !== undefined && teacherAnswer(row, teacherId) === independentGood(row, teacherId)).length / sample.length : 0 };
+  const independent = heldOut.flatMap(row => {
+    const good = independentGood(row, teacherId);
+    if (good === undefined) return [];
+    let correct = teacherAnswer(row, teacherId) === good;
+    if (row.votes && row.labelers && row.expected) {
+      const votes = Object.fromEntries(Object.entries(row.votes).filter(([name]) => name !== teacherId));
+      const asked = [...row.asked ?? Object.keys(row.votes)].filter(name => name !== teacherId);
+      const answer = deriveConsensus({ id: 'teacher', lineage: row.group, output: null, context: {},
+        votes: { answer: votes }, asked, provenance: {} }, row.labelers).answer!.answer;
+      // Exact options must agree; two different acceptable options are not agreement.
+      correct = row.votes[teacherId] === answer;
+    }
+    return [{ ...row, good, correct }];
+  });
+  const counts = evidenceCounts(independent);
+  const agreement = independent.length ? independent.filter(row => row.correct).length / independent.length : 0;
+  const source = independent.length && independent.every(row => row.source === 'human') ? 'human'
+    : independent.length && independent.every(row => row.source === 'editor') ? 'editor' : 'independent';
+  return { ...counts, source, agreement, failures: teacherAccuracyFailures({ ...counts, agreement }),
+    warnings: independent.length < heldOut.length ? ['Instances without independent golden answers are excluded from cascade verification.'] : [] };
 }
 
 function callFor(row: CascadeRecord): EscalationCall | undefined {
@@ -140,6 +155,7 @@ export function planEscalation(fit: readonly CascadeRecord[], heldOut: readonly 
   const coverage = options.forceTeacher ? 0 : retainedCoverage(heldOut, chosen);
   const failures: string[] = [];
   if (independentGroups < 15) failures.push('heldOut.independentGroups >= 15');
+  if (options.forceTeacher && report.teacherReport) failures.push(...report.teacherReport.failures);
   if ('target_accuracy' in policy) {
     if (heldOutAccuracy < policy.target_accuracy) failures.push('heldOut.cascadeAccuracy >= target_accuracy');
     if (cascadeInterval[0] < policy.target_accuracy - 0.10) failures.push('heldOut.cascade90Lower >= target_accuracy - 0.10');

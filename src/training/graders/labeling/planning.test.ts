@@ -85,12 +85,12 @@ describe('label planning', () => {
     delete labels.labels[0]!.votes.q!.t;
     expect(() => validateStoredVotes(g, labels)).not.toThrow();
   });
-  it('requires human re-adjudication when the question or evidence changes', () => {
+  it.each(['human', 'editor'] as const)('requires %s re-adjudication when the question or evidence changes', kind => {
     const g = grader(); g.questions[0]!.ask = 'Is it correct?';
     const output = { body: ['original'] };
     const vote = { question_digest: stableDigest(g.questions[0]),
       projection_digest: groupLabelInstances(g, output, {})[0]!.projectionDigest };
-    const labels: Labels = { schema: 'paideia.labels.v1', grader: 'g', labelers: { human: { kind: 'human', name: 'Reader' } },
+    const labels: Labels = { schema: 'paideia.labels.v1', grader: 'g', labelers: { human: { kind, name: 'Reader' } },
       labels: [{ id: 'human-truth', lineage: 'story', output, context: {}, votes: { q: { human: 'yes' } },
         provenance: { human: { votes: { q: vote } } } }] };
     expect(() => validateStoredVotes(g, labels, { resolved: true })).not.toThrow();
@@ -108,4 +108,12 @@ describe('label planning', () => {
     expect(() => validateStoredVotes(g, labels)).toThrow('re-adjudicate');
   });
 
+});
+
+it('pins the Codex containment policy separately from empty-tool teachers', () => {
+  const teacher = { id: 'codex', provider: 'codex' as const, model: 'gpt-5' };
+  expect(teacherPolicyDigest(teacher)).toBe(stableDigest({ teacher, prompt: 'paideia.grader-label-prompt.v1',
+    policy: 'subscription-codex-containment-one-schema-repair.v1' }));
+  expect(teacherPolicyDigest(teacher)).not.toBe(stableDigest({ teacher, prompt: 'paideia.grader-label-prompt.v1',
+    policy: 'subscription-empty-tools-one-schema-repair.v1' }));
 });

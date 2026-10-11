@@ -12,6 +12,7 @@ const identity = createCalibrationIdentity(grader, supplied);
 function calibration(): CalibrationFile {
   return parseCalibration({ schema: 'paideia.grader-calibration.v1', identity,
     questions: Object.fromEntries(['q', 'q.applies'].map(id => [id, { status: 'calibrated', failures: [],
+      teacherAccuracy: { groups: 20, instances: 40, good: 20, bad: 20, agreement: 1, source: 'human', failures: [], warnings: [] },
       params: { a: 1, b: 0 }, band: [0.4, 0.6], metrics: { groups: 20, instances: 40, good: 20, bad: 20, baseRate: 0.5,
         accuracy: 1, brier: 0.01, baseRateBrier: 0.25, ece: 0.1, eceInterval: [0, 0.15], brierInterval: [0, 0.1] } }])) });
 }
@@ -53,13 +54,14 @@ describe('calibration identities', () => {
     file.questions.q!.status = 'insufficient-evidence';
     file.questions.q!.failures = ['evidence.groups >= 15'];
     delete file.questions['q.applies'];
-    expect(checkCalibration(grader, file, identity)).toEqual({ ok: false, notCalibrated: ['q', 'q.applies'],
-      refusals: ['question q: evidence.groups >= 15', 'question q.applies: not calibrated'] });
+    expect(checkCalibration(grader, file, identity)).toMatchObject({ ok: false, notCalibrated: ['q', 'q.applies'],
+      refusals: expect.arrayContaining(['question q: evidence.groups >= 15', 'question q.applies: not calibrated']) });
     expect(checkCalibration(grader, file, identity, { quality: false }).ok).toBe(true);
     const fallback = { ...grader, uncalibrated: 'teacher' as const };
     expect(checkCalibration(fallback, file, identity).ok).toBe(false);
     file.identity = createCalibrationIdentity(fallback, supplied);
-    expect(checkCalibration(fallback, file, file.identity)).toMatchObject({ ok: true, notCalibrated: ['q', 'q.applies'] });
+    expect(checkCalibration(fallback, file, file.identity)).toMatchObject({ ok: false, notCalibrated: ['q', 'q.applies'] });
+    expect(checkCalibration(fallback, file, file.identity).refusals).toEqual([expect.stringContaining('teacher.accuracy missing')]);
     file.identity.seed = 'other';
     expect(checkCalibration({ ...grader, uncalibrated: 'teacher' }, file, identity).ok).toBe(false);
   });
@@ -93,4 +95,27 @@ describe('calibration identities', () => {
     expect(() => parseCalibration({ ...file, questions: JSON.parse('{"__proto__":{}}') })).toThrow('unsafe');
     expect(() => parseCalibration({ ...file, identity: { ...identity, golden: 'bad' } })).toThrow('golden');
   });
+});
+
+it.each([['groups', 14], ['instances', 29], ['good', 4], ['bad', 4], ['agreement', 0.72]] as const)(
+  'refuses forced teachers missing the %s bar', (field, value) => {
+    const file = calibration();
+    file.questions.q!.teacherAccuracy![field] = value;
+    const checked = checkCalibration(grader, file, identity);
+    expect(checked.ok).toBe(false);
+    expect(checked.refusals.join(';')).toContain(field === 'agreement' ? 'teacher.agreement >= 0.85' : `teacher.evidence.${field}`);
+    expect(checkCalibration(grader, file, identity, { quality: false }).ok).toBe(true);
+  });
+
+it('requires teacher metrics only for routes that force the teacher', () => {
+  const local = { ...grader, model: { backend: 'jev-http' as const, endpoint: 'http://localhost:8000', name: 'model' } };
+  const file = calibration();
+  delete file.questions.q!.teacherAccuracy;
+  file.identity = createCalibrationIdentity(local, supplied);
+  expect(checkCalibration(local, file, file.identity).ok).toBe(true);
+  file.questions.q!.status = 'uncalibrated';
+  expect(checkCalibration(local, file, file.identity).refusals).toEqual(['question q: not calibrated']);
+  local.uncalibrated = 'teacher';
+  file.identity = createCalibrationIdentity(local, supplied);
+  expect(checkCalibration(local, file, file.identity).refusals).toEqual([expect.stringContaining('teacher.accuracy missing')]);
 });

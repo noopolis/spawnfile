@@ -3,7 +3,10 @@
 Owns calibrated decisions, bounded projection escalation and result identity.
 Public seam: index.ts. Providers are injected neutral contracts; never import
 inference or CLI implementations, read historical labels, or open network routes.
-Identity mismatch refuses before scoring. Decisive failed mechanical gates return
+Identity mismatch refuses before scoring. Forced teacher routes additionally
+require stored independent teacher evidence (15 groups, 30 instances, 5 good/bad)
+and agreement >= 0.85; absent metrics require recalibration. Teacher backends
+retain their own verified teacher route even when an escalation teacher differs. Decisive failed mechanical gates return
 fail with score zero before backend identity or inference calls. Missing evidence and overflow remain
 missing. Every provider call must retain measured provenance and unknown usage.
 Verify adjacent tests, four negative mutations, ESLint and per-file coverage.

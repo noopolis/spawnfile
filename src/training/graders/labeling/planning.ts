@@ -58,7 +58,9 @@ export function decodeLabelVotes(text: string, group: LabelGroup): Record<string
 }
 
 export function teacherPolicyDigest(teacher: Grader['teachers'][number]): string {
-  return stableDigest({ teacher, prompt: labelPromptVersion, policy: 'subscription-empty-tools-one-schema-repair.v1' });
+  const policy = teacher.provider === 'codex' ? 'subscription-codex-containment-one-schema-repair.v1'
+    : 'subscription-empty-tools-one-schema-repair.v1';
+  return stableDigest({ teacher, prompt: labelPromptVersion, policy });
 }
 
 export interface AdjudicationRow { label: string; lineage: string; instance: string; answer: Option | null; disputed: boolean; votes: Record<string, Option>; output: Labels['labels'][number]['output']; context: Labels['labels'][number]['context'] }
@@ -93,14 +95,15 @@ export function validateStoredVotes(grader: Grader, labels: Labels, options: { r
     const instances = options.resolved ? new Map(expandInstances(grader, label.output, label.context).map(instance => [instance.key, instance])) : null;
     for (const [key, votes] of Object.entries(label.votes)) {
     for (const name of Object.keys(votes)) {
-      const human = labels.labelers[name]?.kind === 'human';
+      const kind = labels.labelers[name]?.kind;
+      const authoritative = kind === 'human' || kind === 'editor';
       const teacher = teachers.get(name);
       const question = questions.get(key.split('@')[0]!);
       const entry = voteProvenance(label, name, key);
       if (!question || entry?.question_digest !== stableDigest(question) ||
-        !human && (!teacher || entry.teacher_policy_digest !== teacherPolicyDigest(teacher)) ||
+        !authoritative && (!teacher || entry.teacher_policy_digest !== teacherPolicyDigest(teacher)) ||
         instances !== null && (instances.get(key)?.state !== 'ready' || entry.projection_digest !== instances.get(key)?.projectionDigest)) {
-        throw new Error(`Stale vote ${label.id}/${key}/${name}; ${human ? 're-adjudicate with current question and projection digests' : 'use --relabel'}`);
+        throw new Error(`Stale vote ${label.id}/${key}/${name}; ${authoritative ? 're-adjudicate with current question and projection digests' : 'use --relabel'}`);
       }
     }
   }

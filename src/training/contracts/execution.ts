@@ -276,7 +276,7 @@ export type InferenceFailureKind = 'quota' | 'transport' | 'unavailable' | 'auth
  * so the adapter that knows names it here. Absent means the adapter had nothing
  * more specific than `kind`; it never carries a token, a URL, a body or prose.
  */
-export const inferenceFailureDetails = ['grant-refused', 'grant-expired', 'provider-status'] as const;
+export const inferenceFailureDetails = ['grant-refused', 'grant-expired', 'provider-status', 'tool-call'] as const;
 export type InferenceFailureDetail = (typeof inferenceFailureDetails)[number];
 
 export const inferenceDiagnosticCodes = ['initialization', 'tool-isolation', 'subscription', 'transport-framing', 'native-process',
@@ -318,7 +318,7 @@ export interface InferenceResult {
 
 export interface InferenceProvider {
   id: string;
-  capabilities: { tools: 'disabled'; billing: 'subscription' | 'api' | 'local' | 'mixed'; temperature: boolean; seed: boolean;
+  capabilities: { tools: 'disabled' | 'contained'; billing: 'subscription' | 'api' | 'local' | 'mixed'; temperature: boolean; seed: boolean;
     /** Shared credential authority; after `auth-stale` routing skips every later route naming the same authority. */
     credentialAuthority?: string };
   generate(request: InferenceRequest): Promise<InferenceResult>;

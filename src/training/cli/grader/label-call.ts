@@ -1,6 +1,6 @@
 import { performance } from 'node:perf_hooks';
 import type { InferenceProvider, InferenceResult, InferenceFailureKind } from '../../contracts/execution.js';
-import { createClaudeInference, createGrokInference, InferenceFailure } from '../../inference/index.js';
+import { createClaudeInference, createCodexInference, createGrokInference, InferenceFailure } from '../../inference/index.js';
 import { stableDigest, type Grader, type Label } from '../../graders/index.js';
 import { buildLabelPrompt, decodeLabelVotes, teacherPolicyDigest, type LabelGroup } from '../../graders/labeling/index.js';
 
@@ -10,16 +10,18 @@ export function createGraderTeacher(teacher: Teacher, timeoutMs?: number): Infer
     if (teacher.effort !== undefined) throw new Error('Claude teacher effort is unsupported');
     return createClaudeInference({ timeoutMs });
   }
+  if (teacher.provider === 'codex') return createCodexInference({ timeoutMs, reasoningEffort: teacher.effort });
   const effort = teacher.effort;
   if (effort !== undefined && !['low', 'medium', 'high', 'xhigh'].includes(effort)) throw new Error('Unsupported Grok teacher effort');
   return createGrokInference({ timeoutMs, reasoningEffort: effort as 'low' | 'medium' | 'high' | 'xhigh' | undefined });
 }
 
 export async function labelCall(label: Label, group: LabelGroup, teacher: Teacher, provider: InferenceProvider, signal?: AbortSignal): Promise<{ calls: number; votes: number; missing: number; failures: Partial<Record<InferenceFailureKind, number>>; stopped?: InferenceFailureKind }> {
-  if (provider.capabilities.billing !== 'subscription' || provider.capabilities.tools !== 'disabled') throw new Error('Teacher requires a tool-free subscription provider');
+  if (provider.capabilities.billing !== 'subscription' || !['disabled', 'contained'].includes(provider.capabilities.tools)) throw new Error('Teacher requires a tool-isolated subscription provider');
   const request = buildLabelPrompt(group);
   const attempts: Record<string, unknown>[] = [];
   const failures: Partial<Record<InferenceFailureKind, number>> = {};
+  let refused = false;
   let stopped: InferenceFailureKind | undefined;
   let votes: ReturnType<typeof decodeLabelVotes> = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -37,6 +39,7 @@ export async function labelCall(label: Label, group: LabelGroup, teacher: Teache
     } catch (error) {
       signal?.throwIfAborted();
       failure = error instanceof InferenceFailure ? error : undefined;
+      refused = failure?.detail === 'tool-call';
       invalid = failure?.kind === 'invalid-response';
     }
     const failureKind = votes === null ? failure?.kind ?? (invalid ? 'invalid-response' : 'unknown') : null;
@@ -53,7 +56,7 @@ export async function labelCall(label: Label, group: LabelGroup, teacher: Teache
   const calls = (provenance.calls ??= {}) as Record<string, Label['provenance'][string]>;
   const receipt = JSON.parse(JSON.stringify({ teacher_policy_digest: teacherPolicyDigest(teacher),
     projection_digest: group.projectionDigest, instance_keys: group.instances.map(({ instance }) => instance.key),
-    prompt_digest: request.digest, status: votes ? 'ok' : 'missing', attempts })) as Label['provenance'][string];
+    prompt_digest: request.digest, status: votes ? 'ok' : refused ? 'refused' : 'missing', ...(refused ? { reason: 'tool-call' } : {}), attempts })) as Label['provenance'][string];
   const call = stableDigest(receipt);
   calls[call] = receipt;
   for (const { instance, question } of group.instances) {

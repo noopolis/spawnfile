@@ -47,7 +47,7 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
   }
   for (const teacher of teachers) {
     const previous = labels.labelers[teacher.id];
-    if (previous?.kind === 'human') throw new Error(`Teacher ${teacher.id} collides with human labeler`);
+    if (previous && previous.kind !== 'model') throw new Error(`Teacher ${teacher.id} collides with ${previous.kind} labeler`);
     labels.labelers[teacher.id] = { kind: 'model', provider: teacher.provider, model: teacher.model };
   }
   const jobs: (() => Promise<void>)[] = [];

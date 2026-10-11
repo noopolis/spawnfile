@@ -55,7 +55,7 @@ export async function gradeOutput(options: GradeOptions): Promise<GradeResult> {
   const requests: DecisionRequest[] = [];
   for (const instance of instances) {
     if (instance.state !== 'ready') continue;
-    if (checked.notCalibrated.includes(instance.questionId)) { escalate(instance); continue; }
+    if (grader.model.backend !== 'teacher' && checked.notCalibrated.includes(instance.questionId)) { escalate(instance); continue; }
     const question = questions.get(instance.questionId)!;
     requests.push({ key: instance.key, type: question.type, optionLabels: optionsFor(question),
       expectedOptions: expectedOptions(question), instructions: question.ask ?? question.id, projection: instance.projection });

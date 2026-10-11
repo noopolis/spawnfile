@@ -43,7 +43,7 @@ describe('grader calibration commands', () => {
     expect(result.code).toBe(0);
     expect(result.calibration.questions.q).toMatchObject({ status: 'calibrated', band: [0.4, 0.6] });
     const report = await readFile(result.reportFile, 'utf8');
-    expect(report).toContain('Human / consensus / single'); expect(report).toContain('human: n=');
+    expect(report).toContain('Human / editor / consensus / single'); expect(report).toContain('human: n=');
     expect(report).toContain('not validated correctness');
     const calls = f.score.mock.calls.length;
     expect((await runCalibrate({ graderFile: f.graderFile, seed: 'seed' }, f.dependencies)).code).toBe(0);
@@ -321,4 +321,27 @@ it('enforces the cascade Wilson bar for the forced teacher backend without a ret
   expect(result.calibration.questions.q!.failures).toContain('heldOut.cascade90Lower >= target_accuracy - 0.10');
   expect(result.calibration.questions.q!.failures).not.toContain('heldOut.retainedCoverage >= 0.30');
   expect(result.code).toBe(1);
+});
+
+it('calibrates editor labels and reports their source separately', async () => {
+  const f = await fixture();
+  f.labels.labelers.human = { kind: 'editor', name: 'Desk', source: 'send-back/pass' };
+  await writeFile(join(f.root, 'labels.yaml'), stringify(f.labels));
+  const result = await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
+  const report = await readFile(result.reportFile, 'utf8');
+  expect(report).toContain('Human / editor / consensus / single');
+  expect(report).toContain('editor: n=40');
+  expect(report).toContain('0 / 80 / 0 / 0');
+  expect(result.calibration.questions.q!.status).toBe('calibrated');
+});
+it('explains older calibration identity shapes before contacting the backend', async () => {
+  const f = await fixture();
+  const result = await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
+  for (const missing of ['expansion', 'escalation', 'escalationTeacher', 'uncalibrated']) {
+    const older = JSON.parse(JSON.stringify(result.calibration));
+    delete older.identity[missing];
+    await writeFile(join(f.root, 'calibration.json'), JSON.stringify(older));
+    await expect(runValidate(f.graderFile, f.dependencies)).rejects.toThrow(
+      'calibration file is stale or from an older version; re-run grader calibrate');
+  }
 });

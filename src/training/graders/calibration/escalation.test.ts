@@ -169,12 +169,34 @@ it('excludes disputed fit rows from band choice while retaining disputed held-ou
 });
 
 it('waives only coverage for forced teachers, preserving point, Wilson and independence bars', () => {
-  const held = rows(20).map(row => ({ ...row, teacherGood: row.good, missing: true }));
+  const held = rows(30).map(row => ({ ...row, teacherGood: row.good, missing: true }));
   const plan = (sample = held, target_accuracy = 0.8) => planEscalation([], sample,
     { target_accuracy }, { forceTeacher: true, teacherId: 'teacher' });
   expect(plan()).toMatchObject({ status: 'calibrated', heldOutAccuracy: 1, coverage: 0, failures: [] });
-  expect(plan(held, 1).failures).toEqual(['heldOut.cascade90Lower >= target_accuracy - 0.10']);
+  expect(plan(held.slice(0, 20), 1).failures).toContain('heldOut.cascade90Lower >= target_accuracy - 0.10');
   expect(plan(held.slice(0, 14)).status).toBe('unverified');
   expect(plan(held.map(row => ({ ...row, teacherGood: !row.good }))).failures)
     .toContain('heldOut.cascadeAccuracy >= target_accuracy');
+});
+
+it('requires the teacher evidence and accuracy bars for fixed-band forced routes', () => {
+  const held = rows(100).map((row, index) => ({ ...row, teacherGood: index < 72 ? row.good : !row.good }));
+  const result = planEscalation([], held, { between: [0.4, 0.6] }, { forceTeacher: true, teacherId: 'teacher' });
+  expect(result).toMatchObject({ status: 'escalation-infeasible', teacherReport: {
+    agreement: 0.72, groups: 100, instances: 100, good: 50, bad: 50,
+    failures: ['teacher.agreement >= 0.85'],
+  } });
+  expect(result.failures).toContain('teacher.agreement >= 0.85');
+  expect(escalationTeacherReport(held.slice(0, 4), 'teacher').failures).toEqual([
+    'teacher.evidence.groups >= 15', 'teacher.evidence.instances >= 30', 'teacher.evidence.good >= 5', 'teacher.evidence.bad >= 5',
+  ]);
+});
+
+it('compares exact options and derives editor truth ahead of remaining model votes', () => {
+  const held = modelRows().map(row => ({ ...row, source: 'editor' as const, expected: ['yes', 'alternative'],
+    votes: { teacher: 'alternative', other: 'no', editor: 'yes' }, labelers: { ...row.labelers!, editor: { kind: 'editor' as const, name: 'E' } } }));
+  expect(escalationTeacherReport(held, 'teacher')).toMatchObject({ agreement: 0, source: 'editor', good: 40 });
+  expect(planEscalation([], held, { between: [0, 1] }, { teacherId: 'teacher', forceTeacher: true }).independentGroups).toBe(40);
+  expect(escalationTeacherReport(rows().map(row => ({ ...row, source: 'editor', teacherGood: row.good })), 'teacher'))
+    .toMatchObject({ agreement: 1, source: 'editor', failures: [] });
 });

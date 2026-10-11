@@ -99,12 +99,13 @@ export function calibrateQuestions(records: readonly CalibrationRecord[], option
     if (!params.converged) { bars.status = 'insufficient-evidence'; bars.failures.push('fit.convergence'); }
     if (!questionFit.length) { bars.status = 'insufficient-evidence'; bars.failures.push('fit.questionInstances > 0'); }
     const bySource: QuestionCalibration['bySource'] = {};
-    for (const source of ['human', 'consensus', 'single-teacher'] as const) {
+    for (const source of ['human', 'editor', 'consensus', 'single-teacher'] as const) {
       const subset = heldOut.filter(record => record.source === source);
       if (subset.length) bySource[source] = calibrationMetrics(subset, baseRate, `${options.seed}:${questionId}:${source}`, gate);
     }
     return { questionId, params: { a: params.a, b: params.b }, fitSource, fitGroups, metrics, bySource, ...bars,
       interpretation: heldOut.some(record => record.source === 'human')
-        ? 'human-adjudicated and teacher agreement' : 'teacher agreement, not validated correctness' };
+        ? 'human-adjudicated and teacher agreement' : heldOut.some(record => record.source === 'editor')
+          ? 'editor-adjudicated and teacher agreement' : 'teacher agreement, not validated correctness' };
   });
 }

@@ -121,6 +121,13 @@ export function calibrationBars(metrics: CalibrationMetrics): BarResult {
   return { status: failures.length ? 'uncalibrated' : 'calibrated', failures };
 }
 
+/** The same independent evidence/accuracy bar applies to every forced teacher route. */
+export function teacherAccuracyFailures(metrics: EvidenceCounts & { agreement: number }): string[] {
+  const failures = evidenceFailures(metrics).map(failure => `teacher.${failure}`);
+  if (metrics.agreement < 0.85) failures.push('teacher.agreement >= 0.85');
+  return failures;
+}
+
 export interface TeacherAgreementRecord {
   group: string;
   good: boolean;
@@ -137,9 +144,8 @@ export function teacherAgreement(records: readonly TeacherAgreementRecord[], tea
   const counts = evidenceCounts(independent);
   const agreement = independent.length
     ? independent.filter(row => row.teacherAnswer !== undefined && row.teacherAnswer === row.goldenAnswer).length / independent.length : 0;
-  const failures = evidenceFailures(counts);
-  const insufficient = failures.length > 0;
-  if (agreement < 0.85) failures.push('teacher.agreement >= 0.85');
+  const failures = teacherAccuracyFailures({ ...counts, agreement });
+  const insufficient = evidenceFailures(counts).length > 0;
   return { ...counts, agreement, excludedSelfLabels: records.length - independent.length, failures,
     status: insufficient ? 'insufficient-evidence' : failures.length ? 'uncalibrated' : 'calibrated' };
 }

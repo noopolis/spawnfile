@@ -5,8 +5,8 @@ import type { GraderTeacher } from './types.js';
 
 /** Grading makes exactly one attempt per projection; failure spends its call slot. */
 export async function escalateGroup(group: LabelGroup, teacher: GraderTeacher, name: string, signal?: AbortSignal) {
-  if (teacher.provider.capabilities.billing !== 'subscription' || teacher.provider.capabilities.tools !== 'disabled') {
-    throw new Error('Escalation teacher requires a tool-free subscription provider');
+  if (teacher.provider.capabilities.billing !== 'subscription' || !['disabled', 'contained'].includes(teacher.provider.capabilities.tools)) {
+    throw new Error('Escalation teacher requires a tool-isolated subscription provider');
   }
   signal?.throwIfAborted();
   const request = buildLabelPrompt(group);

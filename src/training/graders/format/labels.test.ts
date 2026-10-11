@@ -42,8 +42,8 @@ describe('labels', () => {
   });
   it('rejects invalid labels and unknown maps', () => {
     expect(() => parseLabels({ ...base, grader: 'other' }, grader)).toThrow('$.grader');
-    expect(() => parseLabels({ ...base, labelers: { c: { kind: 'model', provider: 'codex', model: 'm' } } }, grader))
-      .toThrow('codex exec has no native empty-tool attestation');
+    expect(parseLabels({ ...base, labelers: { ...base.labelers, c: { kind: 'model', provider: 'codex', model: 'm' } } }, grader).labelers.c)
+      .toMatchObject({ provider: 'codex' });
     expect(() => parseLabels({ ...base, labels: [base.labels[0], base.labels[0]] }, grader)).toThrow('labels.1.id');
     expect(() => parseLabels(withLabel({ lineage: undefined }), grader)).toThrow('lineage');
     expect(() => parseLabels(withLabel({ asked: ['unknown'] }), grader)).toThrow('asked/provenance.unknown');
@@ -98,4 +98,15 @@ describe('labels', () => {
       expect((await loadLabels(labelFile, grader)).labels.labels[0]?.context.evidence).toBe('truth');
     } finally { await rm(directory, { recursive: true, force: true }); }
   });
+});
+
+it('accepts named editor signals with optional source descriptions and rejects incomplete declarations', () => {
+  for (const source of [undefined, 'Editor send-back/pass mapping']) {
+    const editor = { kind: 'editor', name: 'Desk editor', source };
+    const input = { ...base, labelers: { ...base.labelers, editor } };
+    expect(parseLabels(input, grader).labelers.editor).toEqual(editor);
+  }
+  for (const editor of [{ kind: 'editor' }, { kind: 'editor', name: '' }, { kind: 'editor', name: 'Desk', source: 2 }]) {
+    expect(() => parseLabels({ ...base, labelers: { ...base.labelers, editor } }, grader)).toThrow('labelers.editor');
+  }
 });
