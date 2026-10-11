@@ -36,7 +36,7 @@ export type MomentRecord = z.infer<typeof momentRecordSchema>;
 export const materializedInputSchema = inputIdentitySchema.extend({
   kind: z.enum(["git", "bundle", "feed", "volume", "memory", "moltnet"]),
   fidelity: z.enum(["exact", "approximate", "overridden"]).nullable(), basis: text,
-  source: z.object({ commit: text.optional(), revision: text.optional(), seq: count.optional(),
+  source: z.object({ commit: text.optional(), repository: text.optional(), revision: text.optional(), seq: count.optional(),
     generation: count.optional(), snapshot: text.optional(), cursor: text.optional() }).strict(),
   path: text.nullable(), notes: z.array(z.string()), refusal: text.nullable(), build: z.literal("deferred").optional()
 }).strict();

@@ -7,6 +7,7 @@ import { feedLandingSchema, materializeFeed, selectFeedLanding, type FeedLanding
 import { History } from "./history.js";
 import { commitTestGit, gitTestRoot, initTestGit, testGit, testMomentRecord } from "./git.test-helper.js";
 import type { InputContext } from "./types.js";
+import { stampTree } from "./timestamps.js";
 
 const AT = "2026-10-09T08:20:31Z", EARLY = "2026-10-09T08:00:00Z", LATE = "2026-10-09T09:00:00Z";
 const roots: string[] = [];
@@ -28,6 +29,23 @@ const fixture = async () => {
 };
 
 describe("feed rewind", () => {
+  it.each(["retained", "reconstructed"].flatMap((bytes) => ["author", "committer"].map((role) => [bytes, role])))
+    ("refuses a future selected commit before using %s bytes (%s date)", async (bytes, role) => {
+      const { context, repository, past, directory, landing, log } = await fixture();
+      testGit(repository, ["checkout", "--detach", past]);
+      testGit(repository, ["commit", "--allow-empty", "-m", "future metadata", `--date=${role === "author" ? LATE : EARLY}`], role === "committer" ? LATE : EARLY);
+      const commit = testGit(repository, ["rev-parse", "HEAD"]);
+      const revision = resolveFeedSource({ kind: "git", fetch: false, repo: repository, ref: commit, paths: ["published"] }).revision;
+      await log([{ ...landing, commit, revision, tree: revision, landedAt: EARLY }]);
+      if (bytes === "retained") {
+        const retained = path.join(directory, "trees", revision);
+        await mkdir(retained, { recursive: true }); await writeFile(path.join(retained, "future.txt"), "future retained bytes");
+        await stampTree(retained, EARLY, AT);
+      }
+      await expect(materializeFeed(context)).rejects.toThrow(`Selected commit ${commit} has an author or committer date after ${AT}`);
+      await expect(readdir(context.destination)).rejects.toThrow();
+    });
+
   it("selects exact boundary landings and matches offset-equivalent records", async () => {
     const { context, landing, log, revision } = await fixture();
     const selected = { ...landing, landedAt: AT };

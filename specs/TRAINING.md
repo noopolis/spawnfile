@@ -293,6 +293,9 @@ first-parent history and choose its newest commit with committer time `<= at`
 (`approximate`, `selector-at`); an absent selector means `HEAD`. Commit dates
 do not establish when a commit reached a branch or tag, so this fallback cannot
 prove historical ref membership. A missing eligible commit refuses.
+The selected commit's author AND committer dates MUST be `<= at` before any
+git checkout or bundle extraction, including pinned, recorded, and overridden
+git sources. All paths MUST use the same selected-commit guard.
 
 Git output MUST be a clean new repository containing only objects reachable
 from the selected commit, with one checked-out branch, no remotes, tags, source
@@ -324,6 +327,11 @@ feeds, and freeze/waiting behavior cannot reconstruct historical landings
 without a log and MUST refuse. Ref dates alone do not capture earlier freeze
 holds or when a producer made a ref available.
 
+Before choosing retained bytes versus extraction, the selected feed source
+commit MUST be verified as a commit object with author AND committer dates
+`<= at`. This single selection guard applies equally to plain, retained,
+prepared, and included git feeds; an eligible landing time does not make a
+future source commit eligible. Directory feeds have no git source commit.
 Feed bytes come from OPTIONAL retained `trees/<revision>/` when available.
 Otherwise a plain git feed re-extracts the landing's expanded paths at its commit
 and MUST verify the revision with the existing feed revision function. A mismatch
@@ -397,25 +405,53 @@ MUST be set with `lutimes`; following a symlink to set times is insufficient.
 ### Task clock
 
 `task-clock.json` is strict `spawnfile.task-clock.v1` with `{version, origin}`;
-`origin` is the example instant normalized to ISO-8601 with `Z`. The pure helper
-`taskClockEnvironment(origin, anchorEpochMs)` accepts a caller-supplied safe
-integer real launch anchor in milliseconds and returns these string variables:
+`origin` is the example instant normalized to ISO-8601 with `Z`. Trial preparation
+supplies one safe-integer real launch anchor in milliseconds. All processes MUST
+share `originEpochMs + (realNowEpochMs - anchorEpochMs)`; independently started
+children MUST NOT reset their clock to the origin. `originEpochMs` uses JavaScript
+`Date.parse(origin)` millisecond precision.
 
-| Variable | Value |
-| --- | --- |
-| `NOOPOLIS_TASK_CLOCK` | Compact JSON `{"version":"noopolis.task-clock.v1","origin":"<ISO Z>","anchorEpochMs":<int>}` |
-| `MNEME_CLOCK_ORIGIN` | The same normalized origin |
-| `MNEME_CLOCK_ANCHOR_MS` | Decimal anchor milliseconds |
-| `FAKETIME` | `@YYYY-MM-DD HH:MM:SS`, expressed in UTC |
-| `FAKETIME_DONT_FAKE_MONOTONIC` | `1` |
+Each process MUST have exactly one offset owner. These pure helpers replace
+`taskClockEnvironment`; their outputs MUST NOT be merged for a single process:
 
-Daimon consumes the cross-repository `noopolis.task-clock.v1` contract: reported
-agent wall time is `origin + (realNow - anchorEpochMs)`. Mneme consumes its generic
-clock variables. The libfaketime values take effect only in capable images with
-`LD_PRELOAD` configured by trial preparation. The clock offsets reported wall
-time; real timeouts and monotonic elapsed time MUST remain real. Rewind neither
-sleeps on nor advances a synthetic scheduler. Trial preparation owns the anchor
-and runtime environment; the immutable bundle carries only the origin.
+| Helper `(origin, anchorEpochMs)` | Recipient | Returned variables |
+| --- | --- | --- |
+| `harnessTaskClockEnvironment` | Top-level agent harness (Daimon), with an unshifted process clock | Only `NOOPOLIS_TASK_CLOCK`: compact JSON `{"version":"noopolis.task-clock.v1","origin":"<ISO Z>","anchorEpochMs":<int>}` |
+| `processClockEnvironment` | Child/tool process under libfaketime | Only `FAKETIME`: signed relative seconds `(originEpochMs - anchorEpochMs) / 1000`, and `FAKETIME_DONT_FAKE_MONOTONIC=1` |
+| `clockAwareEnvironment` | Clock-aware child (such as Mneme) without libfaketime | Only `MNEME_CLOCK_ORIGIN`: normalized origin, and `MNEME_CLOCK_ANCHOR_MS`: decimal anchor milliseconds |
+
+Daimon consumes the top-level contract and derives each child's environment itself.
+Trial preparation supplies the installed libfaketime path through `LD_PRELOAD` for
+the process-clock case. The helper cannot choose an image-specific library path.
+That child's environment MUST omit `NOOPOLIS_TASK_CLOCK`, `MNEME_CLOCK_ORIGIN`,
+and `MNEME_CLOCK_ANCHOR_MS`, including inherited values. A clock-aware child MUST
+instead omit libfaketime from `LD_PRELOAD` and omit `FAKETIME` and
+`NOOPOLIS_TASK_CLOCK`. Applying both offsets would shift time twice. The top-level
+harness MUST NOT itself run under libfaketime or receive the Mneme offset variables.
+
+Relative `FAKETIME` MUST include a sign, use seconds without a suffix, and preserve
+milliseconds (three fractional digits when nonzero; no fraction for integral
+seconds). Integer-second rounding and the `@` start-at form are forbidden.
+[Upstream libfaketime documentation](https://github.com/wolfcw/libfaketime#readme),
+sections 4d/4e, supports fractional signed offsets since 0.8 and notes that the
+decimal delimiter depends on locale. Trial preparation MUST ensure a dot-decimal
+numeric locale (for example `LC_ALL=C`) for these values.
+
+Shared Spawnfile/Daimon conformance vectors:
+
+| Origin | Anchor epoch ms | `FAKETIME` |
+| --- | --- | --- |
+| `2001-01-01T00:00:00.000Z` | `1821692800250` | `-843385600.250` |
+| `2001-01-01T00:00:00.000Z` | `1821692860250` | `-843385660.250` |
+| `2001-01-01T00:00:00.250Z` | `978307200000` | `+0.250` |
+| `2001-01-01T00:00:00.000Z` | `978307200001` | `-0.001` |
+| `2001-01-01T00:00:00.000Z` | `978307200000` | `+0` |
+| `2001-01-01T00:00:00.000Z` | `978307199000` | `+1` |
+
+The clock offsets reported wall time; real timeouts and monotonic elapsed time
+MUST remain real. Rewind neither sleeps on nor advances a synthetic scheduler.
+Trial preparation owns the anchor and runtime environment; the immutable bundle
+carries only the origin.
 
 ### Independent leak check and output
 
@@ -426,13 +462,26 @@ messages/events, and snapshots. Each finding carries `{input, class, path,
 detail}`; `input` is an input identity or `null` for bundle-level problems.
 Metadata is captured before payload reads; the checker restores the captured access
 times after inspection, preserving pre-existing future atimes for refusal.
+Every git-backed input MUST record its selected full commit ID in
+`moment.json`'s `inputs[].source.commit`; git feed identity MUST record the same
+ID. Acceptance MUST independently open the source history repository read-only,
+verify that ID names a commit object, and inspect its raw author and committer
+dates against `at`, regardless of retained bytes or normalized filesystem times.
+Missing/unreadable provenance and inconsistent feed commit IDs also refuse.
+History repositories are resolved by input identity from `--history`. A local
+pin or git-backed override resolved without that history entry MUST additionally
+record its absolute local repository path in `source.repository`; acceptance
+reopens it read-only. That source repository must remain available for subsequent
+verification. Directory feeds and explicitly overridden prebuilt tars have no git
+provenance. This source check is independent of the materialized git object's
+reachable-history check and MUST NOT reuse the producer's date assertion.
 Every finding refuses the moment:
 
 | Class | Refusal condition |
 | --- | --- |
 | `file-time` | A file, directory, or symlink atime or mtime is after `at`. |
 | `symlink-escape` | An absolute link or a lexically/physically escaping link resolves outside the bundle. |
-| `git-object` | Any commit author/committer time is after `at`, any object is unreachable from the selected commit, or refs/remotes/reflogs/fetch metadata exceed the single branch. Any `.git` directory/gitfile or bare repository (`HEAD` + `objects/` + `refs/`) anywhere outside the materialized git resource repository also refuses, including inside feed trees and bundles. |
+| `git-object` | Source provenance is missing, inconsistent, not a commit, or has author/committer time after `at`; any materialized commit has a future date, any object is unreachable from the selected commit, or refs/remotes/reflogs/fetch metadata exceed the single branch. Any `.git` directory/gitfile or bare repository (`HEAD` + `objects/` + `refs/`) anywhere outside the materialized git resource repository also refuses, including inside feed trees and bundles. |
 | `memory-event` | Future ledger events, sequence gaps, invalid prefix ordering, or derived/audit files are present. |
 | `moltnet-message` / `moltnet-event` / `moltnet-room` | Retained messages, delivery events, or rooms are after `at`. |
 | `feed-identity` | `landed_at` is after `at` or `current` does not target a tree inside the volume. |
@@ -1529,6 +1578,10 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
             "type": "object",
             "properties": {
               "commit": {
+                "type": "string",
+                "minLength": 1
+              },
+              "repository": {
                 "type": "string",
                 "minLength": 1
               },

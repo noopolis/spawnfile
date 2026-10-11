@@ -26,6 +26,21 @@ const fixture = async () => {
 };
 
 describe("git rewind", () => {
+  it.each(["git", "bundle"] as const)("refuses future recorded %s commits before materializing", async (kind) => {
+    const { repository, past, context } = await fixture();
+    context.input.declaration = kind === "git"
+      ? { id: "archive", kind, mode: "readonly", mount: "./archive", url: repository }
+      : { id: "archive", kind, mode: "readonly", mount: "./archive", build: { files: { root: "package" } } };
+    for (const role of ["author", "committer"]) {
+      testGit(repository, ["checkout", "--detach", past]);
+      testGit(repository, ["commit", "--allow-empty", "-m", "future metadata", `--date=${role === "author" ? LATE : EARLY}`], role === "committer" ? LATE : EARLY);
+      const commit = testGit(repository, ["rev-parse", "HEAD"]);
+      context.record = { ...testMomentRecord(), resources: [{ id: "archive", kind, commit }] };
+      await expect(materializeGit(context)).rejects.toThrow(`Selected commit ${commit} has an author or committer date after ${AT}`);
+      await expect(readdir(context.destination)).rejects.toThrow();
+    }
+  });
+
   it("records exactly one commit's reachable closure and removes future objects, refs and configuration", async () => {
     const { repository, past, future, context } = await fixture();
     context.record = { ...testMomentRecord(), resources: [{ id: "archive", kind: "git", commit: past }] };

@@ -4,6 +4,7 @@ import { materializedMomentSchema, leakCheckSchema, type LeakCheck, type LeakFin
 import { openHistory } from "./history.js";
 import { diskPath, inspectBundleFiles, restoreInspectedAccessTimes, snapshotBundleFiles } from "./leakFiles.js";
 import { inspectGitBundle } from "./leakGit.js";
+import { inspectInputProvenance } from "./leakProvenance.js";
 import { addInputFinding, inspectFeedBundle, inspectMemoryBundle, inspectMoltnetBundle, inspectVolumeBundle } from "./leakInputs.js";
 
 export interface LeakCheckOptions { historyDir?: string }
@@ -30,6 +31,7 @@ export const inspectTrainingMoment = async (
         // Do not hand git/SQLite a payload with escaping paths, even for a failed check.
         if (report.findings.some((finding) => finding.class === "symlink-escape"
           && (finding.path === input.path || finding.path.startsWith(`${input.path}/`)))) continue;
+        if (["git", "bundle", "feed"].includes(input.kind)) await inspectInputProvenance(root, input, report, options.historyDir);
         if (input.kind === "git") await inspectGitBundle(directory, input, report);
         if (input.kind === "memory") await inspectMemoryBundle(root, input, report);
         if (input.kind === "feed") await inspectFeedBundle(root, input, report);
