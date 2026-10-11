@@ -11,20 +11,28 @@ const escalation = z.union([
   z.strictObject({ to: identifier, between, max_calls_per_trial: z.number().int().positive().optional() }),
   z.strictObject({ to: identifier, target_accuracy: z.number().gt(0.5).max(1), max_calls_per_trial: z.number().int().positive().optional() }),
 ]);
+const localModel = z.strictObject({ backend: z.literal('jev-http'), endpoint: z.url(), name: z.string().min(1) });
+const ollamaModel = localModel.extend({ backend: z.literal('ollama-logprobs'),
+  context_tokens: z.number().int().min(2048).max(131072).default(16384) });
+const teacherModel = z.strictObject({ backend: z.literal('teacher'), teacher: identifier });
+const modelSchema = z.union([localModel, ollamaModel, teacherModel]);
+const namedModelSchema = z.union([localModel.extend({ id: identifier }), ollamaModel.extend({ id: identifier }), teacherModel.extend({ id: identifier })]);
+export type DecisionModel = z.infer<typeof modelSchema>;
+export type NamedDecisionModel = z.infer<typeof namedModelSchema>;
 export const graderSchema = z.strictObject({
   schema: z.literal('paideia.grader.v1'), id: identifier,
   golden: z.union([z.string().min(1), labelsSchema.extend({ grader: identifier.optional() })]), calibration: z.string().min(1),
   context: z.record(identifier, z.strictObject({ description: z.string() })).default({}),
   teachers: z.array(z.strictObject({ id: identifier, provider, model: z.string().min(1), effort: z.string().min(1).optional() })).min(1),
-  model: z.union([
-    z.strictObject({ backend: z.enum(['jev-http', 'ollama-logprobs']), endpoint: z.url(), name: z.string().min(1) }),
-    z.strictObject({ backend: z.literal('teacher'), teacher: identifier }),
-  ]),
+  model: modelSchema.optional(),
+  models: z.array(namedModelSchema).min(1).max(4).optional(),
   escalate: escalation,
   uncalibrated: z.enum(['refuse', 'teacher']).default('refuse'),
   gates: z.array(z.union([z.strictObject({ id: identifier, check: z.record(z.string(), z.unknown()) }), gateQuestionSchema])).default([]),
   questions: z.array(questionSchema).min(1),
   score: z.strictObject({ method: z.enum(['weighted', 'fitted-weights']), pass_at: probability.default(0) }),
+}).refine(value => (value.model === undefined) !== (value.models === undefined), {
+  path: ['models'], message: 'exactly one of model or models is required',
 });
 export type Grader = z.infer<typeof graderSchema>;
 export type Gate = Grader['gates'][number];
@@ -61,7 +69,13 @@ function validateStructure(grader: Grader): void {
     teachers.add(teacher.id);
   });
   if (!teachers.has(grader.escalate.to)) throw new Error('$.escalate.to: unknown teacher');
-  if (grader.model.backend === 'teacher' && !teachers.has(grader.model.teacher)) throw new Error('$.model.teacher: unknown teacher');
+  const models = decisionModels(grader);
+  const modelIds = new Set<string>();
+  for (const model of models) {
+    if (modelIds.has(model.id)) throw new Error(`$.models.${model.id}: duplicate model id`);
+    modelIds.add(model.id);
+    if (model.backend === 'teacher' && !teachers.has(model.teacher)) throw new Error(`$.model.teacher (${model.id}): unknown teacher`);
+  }
   const ids = new Set<string>();
   for (const [collection, entries] of [['questions', grader.questions], ['gates', grader.gates]] as const) {
     entries.forEach((entry, i) => {
@@ -102,4 +116,16 @@ export async function loadGrader(filename: string): Promise<Grader> {
     calibration: path.resolve(directory, grader.calibration) };
   rememberSourceDirectory(loaded, directory);
   return loaded;
+}
+
+/** Legacy model syntax has exactly the same routing semantics as id default. */
+export function decisionModels(grader: Grader): NamedDecisionModel[] {
+  return grader.models ?? [{ ...grader.model!, id: 'default' }];
+}
+
+/** A single-model view for transports and independent teacher truth. */
+export function graderForModel(grader: Grader, model: NamedDecisionModel): Grader & { model: DecisionModel } {
+  const { models: _models, ...rest } = grader;
+  const { id: _id, ...definition } = model;
+  return { ...rest, model: definition };
 }

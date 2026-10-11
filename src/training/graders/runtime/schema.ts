@@ -15,6 +15,7 @@ export function createGradeResultSchema(judgeCall: z.ZodType<JudgeCall>): z.ZodT
       instances: count, not_applicable: count, escalated: count, missing: count })),
     identity: z.strictObject({ calibration: calibrationIdentitySchema, calibrationDigest: digest,
       escalation: digest, teacherPolicy: digest, scoringPolicy: digest }),
-    backendBilling: z.enum(['local', 'subscription']), judgeCalls: z.array(judgeCall),
+    backendBilling: z.enum(['local', 'subscription', 'mixed']), judgeCalls: z.array(judgeCall),
+    decisions: z.array(z.strictObject({ instance: z.string().min(1), model: z.string().min(1), status: z.enum(['ok', 'missing']) })).optional(),
   });
 }

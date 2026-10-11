@@ -5,6 +5,7 @@ import { createJevDecision, createOllamaDecision } from './index.js';
 const request: DecisionRequest = { key: 'q', type: 'yes-no', optionLabels: ['yes', 'no'], instructions: 'Question?', projection: {} };
 const tags = { models: [{ name: 'm', digest: 'sha256:model' }] };
 const success = (url: string, init?: RequestInit) => {
+  if (url.endsWith('/version')) return new Response(JSON.stringify({ version: '0.34.0' }));
   if (url.endsWith('/tags')) return new Response(JSON.stringify(tags));
   if (url.endsWith('/chat')) return new Response(JSON.stringify({ done: true, logprobs: [{ token: 'A',
     top_logprobs: ['A', ' A', 'B', ' B'].map(token => ({ token, logprob: Math.log(0.25) })) }] }));

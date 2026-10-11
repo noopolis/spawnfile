@@ -1,7 +1,7 @@
 import { mkdir, writeFile, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { allQuestions, applyPlatt, calibrateQuestions, calibrationMetrics, createCalibrationIdentity,
-  evidenceFailures, expectedOptions, inEscalationBand, loadGrader, loadLabels, parseCalibration,
+  decisionModels, graderForModel, selectQuestionModel, stableDigest, evidenceFailures, expectedOptions, inEscalationBand, loadGrader, loadLabels, parseCalibration,
   planEscalation, splitCalibration, teacherAgreement, type CalibrationFile, type CalibrationRecord,
   type CascadeRecord, type BandPlan } from '../../graders/index.js';
 import { validateStoredVotes } from '../../graders/labeling/index.js';
@@ -27,25 +27,53 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
   const exclusions = await readExclusions(options.excludeDatasets ?? []);
   const labels = { ...loaded.labels, labels: excludeLabels(loaded.labels.labels, exclusions) };
   const seed = options.seed ?? '0';
-  const backend = graderBackend(grader, dependencies);
-  options.signal?.throwIfAborted();
-  const identity = await backendIdentity(grader, backend, options.signal);
-  const golden = goldenInstances(grader, labels);
-  // One eligible population owns splitting, routing and cascade verification.
-  // Disputes are filtered only by the full-panel fitting/metrics and fit-band owners.
+  const gates = grader.gates.map(gate => gate.id);
+  const models = decisionModels(grader);
+  const commonGolden = goldenInstances(grader, labels);
+  // Candidates share device capacity: finish one backend before starting the next.
+  // Each still owns its identity, cache and worker bound, in authored order.
+  const scoreCandidate = async (model: (typeof models)[number]) => {
+    const definition = graderForModel(grader, model);
+    try {
+      options.signal?.throwIfAborted();
+      const backend = graderBackend(definition, dependencies);
+      const identity = await backendIdentity(definition, backend, options.signal);
+      const golden = goldenInstances(definition, labels);
+      const results = await cachedScores(dirname(options.graderFile), backend, stableDigest({ model: model.id, identity }),
+        golden.rows.map(row => row.request), options.concurrency ?? 2, options.signal);
+      indexDecisionResults(golden.rows.map(row => row.request), results);
+      const valid = golden.rows.map((row, index) => {
+        const raw = rawGood(row, results[index]!);
+        return { row, record: { ...calibrationRecord(row, raw ?? 0), ...(raw === undefined ? { missing: true } : {}) } };
+      });
+      const records = valid.map(item => item.record);
+      const split = splitCalibration(records, seed);
+      // Selection shares the full-panel denominator. Teacher-only independent
+      // disputes are charged missing, never removed to improve a candidate's loss.
+      const selectionRecords = commonGolden.rows.map((row, index) => ({
+        ...calibrationRecord(row, valid[index]!.record.rawPGood),
+        ...(valid[index]!.record.missing || valid[index]!.record.disputed ? { missing: true } : {}),
+      }));
+      return { model, definition, backend, identity, golden, results, valid, split,
+        selection: { id: model.id, teacher: model.backend === 'teacher', fit: splitCalibration(selectionRecords, seed).fit },
+        fitted: model.backend === 'teacher' ? [] : calibrateQuestions(records, { seed, gates }) };
+    } catch (cause) { throw new Error(`Decision model ${model.id}: ${cause instanceof Error ? cause.message : 'calibration failed'}`, { cause }); }
+  };
+  const candidates: Awaited<ReturnType<typeof scoreCandidate>>[] = [];
+  for (const model of models) candidates.push(await scoreCandidate(model));
+  const selected = new Map(allQuestions(grader).map(question => {
+    const id = selectQuestionModel(question.id, question.type, candidates.map(candidate => candidate.selection));
+    return [question.id, candidates.find(candidate => candidate.model.id === id)!];
+  }));
+  const valid = commonGolden.rows.map((row, index) => selected.get(row.question.id)!.valid[index]!);
+  const golden = { ...commonGolden, rows: valid.map(item => item.row) };
   const observations = golden.rows.map(row => ({ ...row, outputId: row.label.id }));
-  const observed = await cachedScores(dirname(options.graderFile), backend, identity,
-    observations.map(row => row.request), options.concurrency ?? 2, options.signal);
-  const byKey = indexDecisionResults(observations.map(row => row.request), observed);
-  const results = golden.rows.map(row => byKey.get(row.request.key)!);
-  const valid = golden.rows.map((row, index) => {
-    const raw = rawGood(row, results[index]!);
-    return { row, record: { ...calibrationRecord(row, raw ?? 0), ...(raw === undefined ? { missing: true } : {}) } };
-  });
+  const results = golden.rows.map((row, index) => selected.get(row.question.id)!.results[index]!);
+  const byKey = indexDecisionResults(observations.map(row => row.request), results);
   const records = valid.map(item => item.record);
   const split = splitCalibration(records, seed);
-  const gates = grader.gates.map(gate => gate.id);
-  const fitted = grader.model.backend === 'teacher' ? [] : calibrateQuestions(records, { seed, gates });
+  const fitted = allQuestions(grader).flatMap(question => selected.get(question.id)!.fitted.filter(fit => fit.questionId === question.id));
+  const localQuestions = allQuestions(grader).filter(question => selected.get(question.id)!.model.backend !== 'teacher');
   const questions: CalibrationFile['questions'] = {};
   const diagnostics: Record<string, QuestionDiagnostics> = {};
   const cascades = new Map<CalibrationRecord, CascadeRecord>();
@@ -64,8 +92,8 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
     split.fit.filter(row => row.questionId === id).map(row => cascades.get(row)!),
     split.heldOut.filter(row => row.questionId === id).map(row => cascades.get(row)!), grader.escalate,
     { teacherId: grader.escalate.to, maxCallsPerTrial: grader.escalate.max_calls_per_trial, gate: gates.includes(id), calls, forceTeacher: forced.has(id) });
-  if (grader.model.backend !== 'teacher') {
-    for (const question of allQuestions(grader)) plans.set(question.id, plan(question.id));
+  if (localQuestions.length) {
+    for (const question of localQuestions) plans.set(question.id, plan(question.id));
     const heldOutputs = new Set(valid.filter(item => split.heldOut.includes(item.record)).map(item => item.row.label.id));
     const failedPlans = new Map<string, BandPlan>();
     // A newly failing cascade becomes forced-teacher and can consume earlier calls.
@@ -89,7 +117,7 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
         return raw !== undefined && band && fit && inEscalationBand(applyPlatt(raw, fit.params), band);
       }).map(row => ({ outputId: row.outputId, projectionDigest: row.instance.projectionDigest, instanceKeys: [row.instance.key] }));
       costCalls = calls;
-      for (const question of allQuestions(grader)) {
+      for (const question of localQuestions) {
         const updated = plan(question.id, calls), failure = failedPlans.get(question.id);
         plans.set(question.id, failure ? { ...updated, status: failure.status === 'calibrated' ? updated.status : failure.status,
           failures: [...updated.failures, ...(failure.status === 'calibrated' ? [] : ['local cascade requires forced-teacher routing'])] } : updated);
@@ -99,16 +127,20 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
     }
   }
   for (const question of allQuestions(grader)) {
+    const candidate = selected.get(question.id)!;
+    const { model, backend, identity } = candidate;
     const id = question.id, sample = golden.rows.filter(row => row.question.id === id && !row.golden.disputed);
     const indices = golden.rows.flatMap((row, index) => row.question.id === id && !row.golden.disputed ? [index] : []);
-    diagnostics[id] = { missingRate: sample.length ? indices.filter(i => results[i]!.status === 'missing').length / sample.length : 0,
+    diagnostics[id] = { candidates: candidates.map(candidate => ({ id: candidate.model.id,
+      ece: candidate.fitted.find(fit => fit.questionId === id)?.metrics.ece ?? null,
+      brier: candidate.fitted.find(fit => fit.questionId === id)?.metrics.brier ?? null })), missingRate: sample.length ? indices.filter(i => results[i]!.status === 'missing').length / sample.length : 0,
       boundedRate: sample.length ? indices.filter(i => results[i]!.bounded).length / sample.length : 0,
       sourceMix: { human: 0, editor: 0, consensus: 0, 'single-teacher': 0 } };
     for (const row of sample) diagnostics[id]!.sourceMix[row.golden.source]++;
-    if (grader.model.backend === 'teacher') {
+    if (model.backend === 'teacher') {
       // Teacher-only scoring uses the same pre-dispute held-out population.
       const held = new Set(split.heldOut);
-      const teacherId = grader.model.teacher;
+      const teacherId = model.teacher;
       const agreementRows = golden.rows.flatMap((row, index) => {
         if (row.question.id !== id || row.golden.disputed || !held.has(valid[index]!.record)) return [];
         const result = results[index]!;
@@ -131,7 +163,7 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
         const measured = teacherAgreement(subset, teacherId);
         return [source, { instances: measured.instances, agreement: measured.agreement }];
       }));
-      questions[id] = { status: agreement.status === 'calibrated' ? escalation.status : agreement.status,
+      questions[id] = { model: model.id, status: agreement.status === 'calibrated' ? escalation.status : agreement.status,
         failures: [...agreement.failures, ...escalation.failures], teacherAccuracy: escalation.teacherReport, metrics: {
         cascadeAccuracy: escalation.heldOutAccuracy, cascadeInterval: escalation.cascadeInterval, coverage: escalation.coverage,
         groups: agreement.groups, instances: agreement.instances, good: agreement.good, bad: agreement.bad,
@@ -142,19 +174,19 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
     const fit = fitted.find(fit => fit.questionId === id);
     if (!fit) {
       const metrics = calibrationMetrics([], 0, seed, gates.includes(id));
-      questions[id] = { status: 'insufficient-evidence', failures: evidenceFailures(metrics), metrics, teacherAccuracy: plans.get(id)!.teacherReport };
+      questions[id] = { model: model.id, status: 'insufficient-evidence', failures: evidenceFailures(metrics), metrics, teacherAccuracy: plans.get(id)!.teacherReport };
       continue;
     }
     const escalation = plans.get(id)!;
-    questions[id] = { status: fit.status === 'calibrated' ? escalation.status : fit.status,
+    questions[id] = { model: model.id, status: fit.status === 'calibrated' ? escalation.status : fit.status,
       failures: [...fit.failures, ...escalation.failures], params: fit.params, teacherAccuracy: escalation.teacherReport,
       ...(escalation.band ? { band: [...escalation.band] } : {}), metrics: { ...fit.metrics,
         cascadeAccuracy: escalation.heldOutAccuracy, cascadeInterval: escalation.cascadeInterval, escalationRate: escalation.escalationRate, coverage: escalation.coverage } };
     diagnostics[id]!.bySource = fit.bySource;
     // A fixed sample observes positional sensitivity, without selecting or modifying the prompt.
-    if (grader.model.backend === 'ollama-logprobs') {
+    if (model.backend === 'ollama-logprobs') {
       const chosen = indices.slice(0, 16);
-      const reversed = await cachedScores(dirname(options.graderFile), backend, identity,
+      const reversed = await cachedScores(dirname(options.graderFile), backend, stableDigest({ model: model.id, identity }),
         chosen.map(index => ({ ...golden.rows[index]!.request, optionLabels: [...golden.rows[index]!.request.optionLabels].reverse() })),
         options.concurrency ?? 2, options.signal);
       let compared = 0, flips = 0;
@@ -166,9 +198,15 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
       diagnostics[id]!.permutation = { compared, missing: chosen.length - compared, flipRate: compared ? flips / compared : null };
     }
   }
-  if (await backendIdentity(grader, backend, options.signal) !== identity) throw new Error('Backend identity changed during calibration');
+  for (const candidate of candidates) {
+    if (await backendIdentity(candidate.definition, candidate.backend, options.signal) !== candidate.identity) {
+      throw new Error(`Backend identity changed during calibration: ${candidate.model.id}`);
+    }
+  }
+  const modelIdentities = Object.fromEntries(candidates.map(candidate => [candidate.model.id, candidate.identity]));
   const calibration = parseCalibration({ schema: 'paideia.grader-calibration.v1', questions,
-    identity: createCalibrationIdentity(grader, { backendModel: identity, golden: loaded.goldenDigest,
+    identity: createCalibrationIdentity(grader, { backendModel: grader.models ? stableDigest(modelIdentities) : candidates[0]!.identity,
+      ...(grader.models ? { modelIdentities } : {}), golden: loaded.goldenDigest,
       promptTemplateVersion: DECISION_PROMPT_VERSION, seed, exclusions: exclusions.identities }) });
   const reportFile = options.reportFile ?? `${grader.calibration}.md`;
   options.signal?.throwIfAborted();

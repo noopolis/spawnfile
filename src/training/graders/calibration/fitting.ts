@@ -73,6 +73,16 @@ export function fitPlatt(records: readonly Pick<CalibrationRecord, 'rawPGood' | 
   return { a, b, converged: false, iterations: maxIterations };
 }
 
+/** This seam accepts fit rows only; candidate selection has no held-out input. */
+export function fitQuestion(fitRows: readonly CalibrationRecord[], questionId: string, type: CalibrationRecord['type']) {
+  const questionSplit = fitRows.filter(record => record.questionId === questionId && !record.disputed);
+  const questionFit = questionSplit.filter(record => !record.missing);
+  const fitGroups = new Set(questionFit.map(record => record.group)).size;
+  const fitSource = fitGroups >= 20 ? 'question' as const : 'type' as const;
+  const fit = fitSource === 'question' ? questionFit : fitRows.filter(record => record.type === type && !record.missing && !record.disputed);
+  return { questionSplit, questionFit, fitGroups, fitSource, params: fitPlatt(fit) };
+}
+
 export function calibrateQuestions(records: readonly CalibrationRecord[], options: {
   seed: string; exclusions?: Exclusions; gates?: readonly string[];
 }): QuestionCalibration[] {
@@ -84,12 +94,7 @@ export function calibrateQuestions(records: readonly CalibrationRecord[], option
     if (records.some(record => record.questionId === questionId && record.type !== question.type)) {
       throw new Error(`${questionId}.type: inconsistent question types`);
     }
-    const questionSplit = split.fit.filter(record => record.questionId === questionId);
-    const questionFit = questionSplit.filter(record => !record.missing);
-    const fitGroups = new Set(questionFit.map(record => record.group)).size;
-    const fitSource = fitGroups >= 20 ? 'question' : 'type';
-    const fit = fitSource === 'question' ? questionFit : split.fit.filter(record => record.type === question.type && !record.missing);
-    const params = fitPlatt(fit);
+    const { questionSplit, questionFit, fitGroups, fitSource, params } = fitQuestion(split.fit, questionId, question.type);
     const baseRate = questionSplit.length ? questionSplit.filter(record => record.good).length / questionSplit.length : 0;
     const heldOut = split.heldOut.filter(record => record.questionId === questionId)
       .map(record => ({ ...record, p: record.missing ? 0 : applyPlatt(record.rawPGood, params) }));

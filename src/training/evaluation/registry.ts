@@ -36,7 +36,7 @@ export function createEvaluationRegistry(custom: EvaluationRegistry = {}): Evalu
   };
   builtins.grader!.concurrency = (check, context) => {
     const route = named(context.graders ?? {}, check.grader);
-    const resources = route ? [route.resource] : [];
+    const resources = route ? [...route.resources ?? [route.resource]] : [];
     function collect(node: CheckNode): boolean {
       if (node.eval) {
         const nested = (builtins[node.eval] ?? custom[node.eval])?.concurrency?.(node, context);

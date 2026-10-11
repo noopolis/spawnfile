@@ -37,3 +37,7 @@ good is retained only for evidence counts. Different acceptable options do not a
 
 Verify with targeted Vitest tests/coverage, ESLint and TypeScript. Bound repair to three
 rounds; stop at an unresolved root defect. No thresholds may be weakened to pass tests.
+
+Per-question candidate selection consumes fit rows only and minimizes calibrated
+mean binary NLL. Missing fit answers retain their denominator with zero truth
+probability clipped to 1e-6; strict improvement preserves authored order on ties.
