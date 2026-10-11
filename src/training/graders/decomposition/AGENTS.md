@@ -4,7 +4,8 @@ Owns strict atomic-unit/template formats, evidence-bound extraction validation a
 pure deterministic check instantiation. Public seam is index.ts. Depend only on
 runtime-neutral grader format APIs; never import inference, CLI or sibling internals.
 Whitespace normalization may reconcile layout, never invent text. Rejected spans
-and missing state remain observable. Unit paragraph/sentence indices are zero based.
+and missing state remain observable. Persist rejected units and reasons; each stored
+rejection instantiates one missing check. Unit paragraph/sentence indices are zero based.
 Validation locates normalized spans; unique matches override hints, and ambiguous
 occurrences require consistent hints. Body citations derive from runtime segments
 under declared row patterns and leading-citation policy; disagreements are reported.

@@ -24,7 +24,7 @@ function variantDocument(document: Decomposition, unit: AtomicUnit, kind: TrapKi
     ? { audit: { ...document.audit, missed: document.audit.missed.map(transform) } } : {}) };
 }
 export function generateTraps(templates: CheckTemplates, document: Decomposition, inputs: DecompositionInputs,
-  options: { seed?: string | number } = {}): TrapSet {
+  options: { seed?: string | number; baseFinals?: Record<string, string | null> } = {}): TrapSet {
   const seed = String(options.seed ?? '0');
   const result: TrapSet = { schema: 'paideia.traps.v1', seed, traps: [], discarded: 0, rejections: [] };
   const base = validateDecomposition(document, inputs, templates);
@@ -39,6 +39,8 @@ export function generateTraps(templates: CheckTemplates, document: Decomposition
     const discard = (reason: string): void => {
       result.discarded++; result.rejections.push({ kind, unit: unit.id, reason });
     };
+    if (!['format-paraphrase', 'option-permutation'].includes(kind) && selected.some(instance =>
+      !instance.expected.includes(options.baseFinals?.[instance.id] ?? ''))) { discard('baseline final is not an expected good answer'); continue; }
     if (!selected.length) { discard('no ready affected checks'); continue; }
     try {
       const permutation = kind === 'option-permutation';

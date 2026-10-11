@@ -92,9 +92,18 @@ With those operator-authored files prepared, run from a fresh checkout:
 npm ci
 npm run build
 node dist/src/cli/main.js grader decompose --templates templates.yaml --inputs inputs.yaml --extractors codex,claude --out local/decompositions
-node dist/src/cli/main.js grader traps --templates templates.yaml --decompositions local/decompositions --out local/traps
+node dist/src/cli/main.js grader reference --templates templates.yaml --decompositions local/decompositions --teachers codex,claude --out local/base.json --timeout-ms 3600000
+node dist/src/cli/main.js grader traps --templates templates.yaml --decompositions local/decompositions --references local/base.json --out local/traps
 node dist/src/cli/main.js grader reference --templates templates.yaml --decompositions local/decompositions --traps local/traps --teachers codex,claude --out local/references.json --concurrency 2 --timeout-ms 3600000
 ```
+
+The base-only reference command deliberately returns STOP (exit 1): accuracy and
+consistency are unmeasured until traps exist. Its completed council finals are
+still persisted. `traps --references FILE` verifies that artifact's digest,
+templates and decomposition identities. Defects require every affected base final
+to belong to its template's `expected` answers. Without `--references`, only
+consistency controls can be generated. The final reference run also checks base
+eligibility before dispatching a defect variant.
 
 Extraction returns units; a fresh second extraction call audits omissions. With
 one selected extractor, the second call uses the same provider in a fresh session.
@@ -106,6 +115,10 @@ context. Validation searches output string fields itself and derives `location`
 spans use `context.<name>` paths. A unique occurrence overrides extractor location,
 paragraph and sentence hints; multiple occurrences require hints consistent with
 exactly one match. Zero matches and unresolved ambiguity are rejected.
+The decomposition persists each rejected unit with its text and rejection reasons.
+Both `traps` and `reference` refuse these artifacts unless `--allow-rejections`
+is explicit. With that flag, each rejected unit remains one missing check in the
+instantiation artifact, coverage and reference report, and the gate remains STOP.
 
 Body addresses use the grading runtime's English `Intl.Segmenter` and the shared
 row citation policy. `leading_citations: previous` moves a leading citation run to
@@ -128,7 +141,11 @@ Extraction supplies a strict draft-07 response schema and explicitly opts Codex
 and Claude into accepting exactly one surrounding `json` code fence before
 provider schema validation. Other inference requests retain strict JSON behavior. Extra prose, nested
 fences, duplicate keys and unknown properties fail parsing. Raw response receipts
-are saved before parsing, including malformed responses and cancellation.
+are saved before parsing, including malformed responses and cancellation. Native
+provider schema rejections retain the typed failure class and any protected
+provider diagnostic in the local mode-0600 checkpoint. Diagnostic response text
+is available only when the provider supplies it; no text is invented for providers
+that omit it. Malformed responses are retried on resume rather than replayed.
 
 Instantiation is deterministic. IDs are `<template>@<unit>` and digests include
 the rendered question and projection. Teachers see only declared state; identical
@@ -142,8 +159,13 @@ that much mass to the selected answer; unassigned mass stays explicitly unknown.
 Missing and abstaining teachers retain their share of the denominator.
 
 Disagreement or abstention triggers one adversarial adjudication round for the
-output. Teacher identities are hidden and competing answers are seeded-shuffled.
-A second fresh call with reversed order measures instability. Differing outcomes
+output. The default adjudicator is selected from the active teachers after window
+filtering. An adjudicated final needs positive-confidence support from at least
+one other teacher's independent answer. Teacher identities and probabilities are
+removed from competing answers; verbatim evidence spans remain. A random per-run
+secret shuffles peers and is persisted only in run state, never model prompts.
+The second fresh call reverses even panels and rotates odd panels so every
+position moves. Differing outcomes
 or unresolved answers remain uncertain. The references file retains independent
 answers, both adjudications, distributions, call usage/latency and content identity.
 Teacher agreement is also measured against peers with the evaluated teacher
@@ -154,12 +176,19 @@ traps and at least 95% **consistency** on format-paraphrase and option-permutati
 controls. Controls compare variant answers to the base answer, and never count
 as evidence of independent correctness. Either empty population means STOP.
 Missing and uncertain answers count against their respective denominators.
+Defect credit requires the intended final answer AND a change from the base final;
+a constant label cannot earn known-answer credit. Known-answer groups by kind
+and template independently require 95% accuracy when they contain at least ten
+traps. Smaller groups are reported as insufficient; pooled gates still apply.
+Control groups are reported separately as CONSISTENCY, never pooled into accuracy.
 Every decomposition is included in coverage: an output with no validated defect
 trap is reported as uncovered, including outputs whose trap bundle is absent.
-More than 10% uncovered outputs means STOP.
+Any uncovered output means STOP.
 
-Instability must be at most 5%, measured only on unique base checks that went to
-adjudication. Synthetic variants cannot dilute that population. Variant
+Instability must be at most 5%, with all unique ready base checks in the
+denominator. Agreed checks count as stable; any uncertain adjudication counts as
+unstable, including two identical uncertain answers. Missing-state checks stay
+outside this ready-check denominator. Synthetic variants cannot dilute that population. Variant
 adjudication is reported separately; only affected checks are evaluated for a
 variant, and duplicate variant check digests count once in that diagnostic.
 
@@ -169,7 +198,8 @@ serialized `output` payload as `embedded-output.json`; this is bundle metadata, 
 filesystem reference. Option permutation changes only criterion order. Independent
 validation recomputes preconditions from the saved variant and source rows:
 
-- Numbers must appear in cited evidence with formatting normalized; replacements
+- Numbers are extracted from citation-free claim text and heading-free evidence;
+  mutations preserve citation tokens. Numbers must appear in cited evidence with formatting normalized; replacements
   preserve digit count and precision, differ by at most 20%, and occur nowhere
   in cited rows. Units remain unchanged. Unchanged option controls retain the
   legitimate base number; format controls also exercise comma normalization when
@@ -178,9 +208,14 @@ validation recomputes preconditions from the saved variant and source rows:
   article, have the same independently recognizable type, and are absent from
   cited rows. The current conservative recognizer supports personal honorifics
   and explicit organization suffixes; ambiguous bare names are ineligible.
+  Honorific/legal-suffix variants, shared head tokens and contained names are
+  rejected as potentially co-referent.
 - Negation requires an affirmative verbatim cited sentence counterpart and only
-  inserts a negator. Existing negations or paraphrased evidence are ineligible.
-- Citation swaps require a replacement row with no shared content word of four
+  inserts a negator. Exactly one auxiliary is required, with no preceding
+  who/which/that/when/because/although/if marker. Has/have/had require a recognized
+  past participle. Existing negations, ambiguous clauses and paraphrased evidence
+  are ineligible; this is a conservative surface check, not a full grammar parser.
+- Citation swaps require exactly one cited row and one citation token, plus a replacement row with no shared content word of four
   or more characters after stop-word removal.
 - Redundancy requires changed rendered state exposing both occurrences to every
   affected check. A unit-only projection cannot observe a neighboring insertion.
@@ -193,9 +228,12 @@ semantic implications.
 Each teacher/projection and adjudication call checkpoints its receipt and raw
 response before decoding or propagating cancellation. Extraction does the same
 for each extraction/audit phase. Resume checks content/config identity, replays
-received responses, and invokes only missing or interrupted calls; completed
-calls and their original accounting are retained. Malformed extraction responses
-remain inspectable and fail again on resume without a duplicate provider call.
+received responses. In incomplete council checkpoints, generation-error and
+invalid-response calls are retried; only complete checkpoints are reused as-is.
+Resolved active teachers and the current window state are part of council identity;
+a changed window refuses resume and requires a fresh run destination. Extraction
+retries malformed responses and provider schema failures, retaining earlier receipts.
+Cancelled receipts remain inspectable but are excluded from report accounting totals.
 Reports and call receipts distinguish saved work from newly executed calls.
 External AI reviews and weak editor verdicts use `kind: signal`; no human annotation
 step participates in this pipeline. See [weak evidence provenance](graders.md#weak-evidence-provenance).

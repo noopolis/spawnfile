@@ -39,7 +39,7 @@ describe('independent council execution', () => {
     const options = setup(); options.providers.a = provider('no');
     const result = await runCouncil(options);
     expect(result.calls.map(call => call.phase)).toEqual(['teacher', 'teacher', 'adjudication', 'adjudication']);
-    expect(result.checks.a).toMatchObject({ distribution: { yes: 0.5, no: 0.5 }, final: 'yes', status: 'adjudicated' });
+    expect(result.checks.a).toMatchObject({ distribution: { yes: 0.5, no: 0.5 }, final: null, status: 'uncertain' });
     const prompts = vi.mocked(options.providers.c!.generate).mock.calls.map(([request]) => JSON.parse(request.prompt));
     const first = prompts[1].questions[0].competing, second = prompts[2].questions[0].competing;
     expect(first).toEqual([...second].reverse());
@@ -83,7 +83,8 @@ describe('independent council execution', () => {
     expect(outside.skipped[0]!.reason).toContain('Outside Grok window'); expect(options.providers.g.generate).not.toHaveBeenCalled();
     const inside = await runCouncil({ ...options, now: new Date('2026-10-11T21:00:00Z') });
     expect(inside.skipped).toEqual([]); expect(inside.calls).toHaveLength(3);
-    expect(await runCouncil({ ...options, providers: {}, previous: inside })).toBe(inside);
+    await expect(runCouncil({ ...options, providers: {}, previous: inside })).rejects.toThrow('Stale');
+    expect(await runCouncil({ ...options, now: new Date('2026-10-11T21:00:00Z'), providers: {}, previous: inside })).toBe(inside);
   });
   it('checks the window again before every Grok call', async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-12T04:29:00Z'));
@@ -163,4 +164,59 @@ describe('durable council call progress', () => {
     const result = await runCouncil({ ...options, previous: saved });
     expect(result.checks.a!.final).toBe('yes'); expect(options.providers.c.generate).toHaveBeenCalledTimes(1);
   });
+});
+
+it('selects the default adjudicator after filtering inactive Grok teachers', async () => {
+  const options = setup();
+  options.teachers.unshift({ id: 'g', provider: 'grok', model: 'g' });
+  options.providers.g = provider('yes'); options.providers.a = provider('no');
+  const result = await runCouncil(options);
+  expect(result.calls.filter(call => call.phase === 'adjudication').every(call => call.teacher === 'c')).toBe(true);
+  expect(options.providers.g.generate).not.toHaveBeenCalled();
+});
+it('requires another independent teacher to support the adjudicated final', async () => {
+  const options = setup();
+  options.providers.a = provider('abstain');
+  expect((await runCouncil(options)).checks.a!.final).toBeNull();
+  options.providers.a = provider('no');
+  options.providers.c = provider('yes', request => JSON.stringify({ a: { answer: request.system!.includes('Adversarially') ? 'no' : 'yes' } }));
+  expect((await runCouncil(options)).checks.a).toMatchObject({ final: 'no', status: 'adjudicated' });
+});
+it.each(['invalid-response', 'generation-error'] as const)('retries %s receipts on incomplete resume, retaining earlier accounting', async outcome => {
+  const options = setup(); let saved: CouncilOutput | undefined;
+  if (outcome === 'invalid-response') options.providers.c = provider('yes', () => 'invalid');
+  else vi.mocked(options.providers.c!.generate).mockRejectedValue(new Error('offline'));
+  options.onCheckpoint = output => {
+    saved = output;
+    if (output.calls[0]?.outcome === outcome) throw new Error('interrupt');
+  };
+  await expect(runCouncil(options)).rejects.toThrow('interrupt');
+  options.providers.c = provider('yes');
+  const result = await runCouncil({ ...options, previous: saved, onCheckpoint: undefined });
+  expect(result.checks.a!.final).toBe('yes');
+  expect(result.calls.map(call => call.outcome)).toEqual([outcome, 'completed', 'completed']);
+  expect(result.shuffle_secret).toBe(saved!.shuffle_secret);
+});
+it('pins the resolved window state on incomplete as well as complete resumes', async () => {
+  const options = setup(); let saved: CouncilOutput | undefined;
+  options.onCheckpoint = output => { saved = output; throw new Error('interrupt'); };
+  await expect(runCouncil(options)).rejects.toThrow('interrupt');
+  await expect(runCouncil({ ...options, previous: saved, now: new Date('2026-10-11T21:00:00Z') })).rejects.toThrow('Stale');
+});
+it('uses a private run secret, strips peer probabilities, retains spans and rotates odd panels', async () => {
+  const options = setup(); options.now = new Date('2026-10-11T21:00:00Z');
+  options.teachers.push({ id: 'g', provider: 'grok', model: 'g' });
+  options.providers.g = provider('abstain');
+  options.providers.a = provider('no', () => '{"a":{"answer":"no","p":0.8,"span":"exact evidence"}}');
+  const first = await runCouncil(options), second = await runCouncil(options);
+  expect(first.shuffle_secret).toMatch(/^[a-f0-9]{64}$/);
+  expect(second.shuffle_secret).not.toBe(first.shuffle_secret);
+  const prompts = vi.mocked(options.providers.c!.generate).mock.calls.slice(0, 3).map(([request]) => request.prompt);
+  expect(prompts.join()).not.toContain(first.shuffle_secret);
+  const a = JSON.parse(prompts[1]!).questions[0].competing;
+  const b = JSON.parse(prompts[2]!).questions[0].competing;
+  expect(a).toContainEqual({ answer: 'no', span: 'exact evidence' });
+  expect(a.every((vote: object) => !Object.hasOwn(vote, 'p'))).toBe(true);
+  expect(b).toEqual([...a.slice(1), a[0]]);
+  for (let i = 0; i < a.length; i++) expect(b[i]).not.toEqual(a[i]);
 });

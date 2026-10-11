@@ -13,6 +13,7 @@ export interface ReferenceCall {
   response_text?: string; answers?: Record<string, TeacherAnswer> | null;
 }
 export interface CheckReference {
+  ready?: boolean;
   digest: string; template_id: string; teachers: Record<string, TeacherAnswer>;
   distribution: Record<string, number>; unknown_mass: number;
   adjudication: TeacherAnswer[]; final: string | null;
@@ -20,6 +21,7 @@ export interface CheckReference {
 }
 export interface CouncilOutput {
   outputDigest: string; identity: string; digest: string; complete: boolean;
+  shuffle_secret?: string;
   checks: Record<string, CheckReference>; calls: ReferenceCall[]; active_teachers?: string[];
   skipped: { teacher: string; reason: string }[];
 }

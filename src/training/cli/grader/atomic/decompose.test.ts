@@ -54,7 +54,7 @@ it('resumes extraction after an audit failure and retains rejected invented unit
   await expect(runDecompose(f.decompose, f.dependencies)).rejects.toThrow('offline');
   expect(await runDecompose({ ...f.decompose, extractors: ['codex', 'claude'] }, f.dependencies)).toMatchObject({ completed: 1, rejected: 1 });
   expect(f.generate).toHaveBeenCalledTimes(3);
-  const loaded = await readDecompositions(f.decompose.out, await readTemplates(f.templatesFile));
+  const loaded = await readDecompositions(f.decompose.out, await readTemplates(f.templatesFile), true);
   expect(loaded[0]!.doc.units).toEqual([{ ...f.unit, location: 'body' }]);
 });
 

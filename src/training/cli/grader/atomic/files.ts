@@ -48,12 +48,13 @@ export async function readInputs(file: string, templates: CheckTemplates): Promi
       refs: { output: output.reference, context: Object.fromEntries(context.map(([name, loaded]) => [name, loaded.reference])) } };
   }));
 }
-export async function readDecompositions(directory: string, templates: CheckTemplates) {
+export async function readDecompositions(directory: string, templates: CheckTemplates, allowRejections = false) {
   const files = (await readdir(directory)).filter(file => file.endsWith('.decomposition.json')).sort();
   if (!files.length) throw new Error('No decomposition files');
   return Promise.all(files.map(async file => {
     const full = join(directory, file);
     const doc = parseDecomposition(JSON.parse(await readFile(full, 'utf8')));
+    if (doc.rejected?.length && !allowRejections) throw new Error(`Decomposition has rejections; use --allow-rejections: ${file}`);
     const output = await readValue(resolve(directory, doc.output.from), doc.output.sha256);
     const context = await Promise.all(Object.entries(doc.context).map(async ([name, ref]) =>
       [name, await readValue(resolve(directory, ref.from), ref.sha256)] as const));

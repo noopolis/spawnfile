@@ -1,5 +1,7 @@
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { InferenceFailure } from '../../../inference/index.js';
+import type { InferenceDiagnostic, InferenceFailureKind } from '../../../contracts/execution.js';
 import type { InferenceProvider, Usage, InferenceAttempt } from '../../../contracts/execution.js';
 import { stableDigest } from '../../../graders/index.js';
 import { parseDecomposition, validateDecomposition, instantiateChecksReport, extractionResponseSchema, parseExtractionResponse } from '../../../graders/decomposition/index.js';
@@ -13,6 +15,7 @@ export interface DecomposeOptions {
 }
 interface ExtractionReceipt {
   teacher: string; phase: 'extract' | 'audit'; response_text?: string;
+  failure_class?: InferenceFailureKind; diagnostic?: InferenceDiagnostic;
   outcome: 'received' | 'completed' | 'invalid-response' | 'generation-error' | 'cancelled';
   route: string | null; attempts?: readonly InferenceAttempt[];
   provider: string; model: string; prompt_digest: string; at: string;
@@ -45,7 +48,7 @@ async function extract(input: AtomicInput, config: CheckTemplates, teacher: NonN
     requirements: 'Return {"units":[{"id":"unique-id","kind":"declared-kind","text":"verbatim span","paragraph":0,"sentence":0,"cites":["row-id"],"fields":{"actor":"value","action":"value","object":"value","time":"value","modality":"value","quantity":"value"},"source_span":"verbatim span"}]}. Optional fields may be omitted. source_span (optional) = a verbatim quote from ONE of the unit\'s cited evidence rows that supports the unit; omit it if none. Location, paragraph and sentence are hints only; validation derives addresses and body citations from the output. Text must occur in output, or assignment context for obligation units. Preserve qualifiers. Do not invent spans or row ids.',
     output: input.output, context: input.context, ...(previous ? { existing_units: previous.units } : {}) });
   signal?.throwIfAborted();
-  const cached = checkpoint.receipts.find(receipt => receipt.phase === phase && receipt.response_text !== undefined);
+  const cached = checkpoint.receipts.find(receipt => receipt.phase === phase && ['received', 'completed'].includes(receipt.outcome) && receipt.response_text !== undefined);
   const receipt: ExtractionReceipt = cached ?? { teacher: teacher.id, phase,
     provider: teacher.provider, model: teacher.model, prompt_digest: stableDigest({ system, prompt }),
     at: new Date().toISOString(), reported_model: null, usage: null, wall_ms: 0, route: null, outcome: 'generation-error' };
@@ -64,7 +67,9 @@ async function extract(input: AtomicInput, config: CheckTemplates, teacher: NonN
         receipt.usage = failure.usage ?? null;
         if (failure.attempts) receipt.attempts = failure.attempts;
       }
-      receipt.outcome = signal?.aborted ? 'cancelled' : 'generation-error';
+      receipt.failure_class = error instanceof InferenceFailure ? error.kind : 'unknown';
+      if (error instanceof InferenceFailure && error.diagnostic) receipt.diagnostic = error.diagnostic;
+      receipt.outcome = signal?.aborted ? 'cancelled' : receipt.failure_class === 'protocol' || receipt.failure_class === 'invalid-response' ? 'invalid-response' : 'generation-error';
       receipt.wall_ms = performance.now() - start; checkpoint.receipts.push(receipt);
       await save();
       throw error;
@@ -80,7 +85,7 @@ async function extract(input: AtomicInput, config: CheckTemplates, teacher: NonN
     await save();
     return { units: payload.units, receipt };
   } catch (error) {
-    receipt.outcome = 'invalid-response';
+    receipt.outcome = 'invalid-response'; receipt.failure_class = 'invalid-response';
     await save();
     throw error;
   }
@@ -97,7 +102,7 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
   let completed = 0, resumed = 0, rejected = 0, dropped = 0;
   for (const input of inputs) {
     options.signal?.throwIfAborted();
-    const identity = stableDigest({ refs: input.refs, templates, teachers, protocol: 'paideia.extraction.v4' });
+    const identity = stableDigest({ refs: input.refs, templates, teachers, protocol: 'paideia.extraction.v5' });
     const basename = stableDigest(input.id);
     const checkpointFile = join(options.out, `${basename}.checkpoint.json`);
     const decompositionFile = join(options.out, `${basename}.decomposition.json`);

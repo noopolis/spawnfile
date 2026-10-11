@@ -4,7 +4,7 @@ import type { AtomicUnit, CheckTemplates, Decomposition, DecompositionInputs } f
 import type { Trap } from './types.js';
 import { formatParaphrase, keyTerms, replaceLeaf } from './mutations.js';
 
-import { affirmativeCounterpart, articleEntities, entityType, negator, numbers, numeric, plausibleNumber } from './preconditions.js';
+import { affirmativeCounterpart, articleEntities, entityType, coReferent, maskCitations, withoutHeadings, negationAuxiliary, negator, numbers, numeric, plausibleNumber } from './preconditions.js';
 
 /** Separate from candidate construction: validate the actual serialized variant. */
 export function validateTrap(trap: Trap, unit: AtomicUnit, inputs: DecompositionInputs, templates: CheckTemplates, baseDocument?: Decomposition): Trap['validation'] {
@@ -90,40 +90,45 @@ export function validateTrap(trap: Trap, unit: AtomicUnit, inputs: Decomposition
     if (normalizeWhitespace(mutation.source) !== normalizeWhitespace(unit.text)) reasons.push('mutation does not target base unit');
   }
   const rows = evidenceRows(templates, inputs);
-  const cited = rows.filter(row => unit.cites?.includes(row.id)).map(row => row.text).join('\n');
+  const cited = rows.filter(row => unit.cites?.includes(row.id)).map(row => withoutHeadings(row.text, templates)).join('\n');
   if (kind === 'number-substitution' || kind === 'entity-substitution') {
     const before = mutation.value_before; const after = mutation.value_after;
     if (!before || !after || !cited || cited.toLowerCase().includes(after.toLowerCase()) ||
       (kind === 'entity-substitution' && mutation.replacement !== mutation.source.replace(before, after)) || before === after) reasons.push('substitution not absent from cited evidence');
     if (kind === 'number-substitution') {
       if (!before || !after || !plausibleNumber(before, after)) reasons.push('invalid numeric substitution');
-      const oldNumbers = numbers(mutation.source), newNumbers = numbers(mutation.replacement);
+      const oldNumbers = numbers(maskCitations(mutation.source, templates)), newNumbers = numbers(maskCitations(mutation.replacement, templates));
       const differences = oldNumbers.map((value, i) => ({ value, next: newNumbers[i] })).filter(item => item.value !== item.next);
-      const oldShape = mutation.source.replace(/(?<![\p{L}\p{N}])\d+(?:[,.]\d+)*(?![\p{L}\p{N}])/gu, '#');
-      const newShape = mutation.replacement.replace(/(?<![\p{L}\p{N}])\d+(?:[,.]\d+)*(?![\p{L}\p{N}])/gu, '#');
-      if (oldShape !== newShape || oldNumbers.length !== newNumbers.length || differences.length !== 1 ||
+      const shape = (text: string) => {
+        const claim = maskCitations(text, templates);
+        return text.replace(/(?<![\p{L}\p{N}])\d+(?:[,.]\d+)*(?![\p{L}\p{N}])/gu,
+          (value, offset: number) => claim.slice(offset, offset + value.length) === value ? '#' : value);
+      };
+      const oldShape = shape(mutation.source), newShape = shape(mutation.replacement);
+      if (stableDigest(unit.cites ?? []) !== stableDigest(storedUnits.find(item => item.id === unit.id)?.cites ?? []) || oldShape !== newShape || oldNumbers.length !== newNumbers.length || differences.length !== 1 ||
         differences[0]?.value !== before || differences[0]?.next !== after) reasons.push('numeric substitution changed a different token');
       const values = numbers(cited).map(numeric);
       if (!before || !values.includes(numeric(before))) reasons.push('original number absent from cited evidence');
       if (after && values.includes(numeric(after))) reasons.push('numeric value already in cited evidence');
     }
     if (kind === 'entity-substitution') {
-      if (!before || !cited.includes(before) || !entityType(before) || entityType(before) !== entityType(after ?? '') ||
+      if (!before || coReferent(before, after ?? '') || !cited.includes(before) || !entityType(before) || entityType(before) !== entityType(after ?? '') ||
         !articleEntities(inputs.output).includes(after ?? '')) reasons.push('unverified same-type entity substitution');
     }
   }
   if (kind === 'negation-flip') {
     const inserted = /\b(is|are|was|were|will|can|has|have|had|does|did) not\b/i.exec(mutation.replacement);
-    if (!affirmativeCounterpart(mutation.source, cited, templates) || negator.test(mutation.source) || !inserted ||
+    if (!negationAuxiliary(maskCitations(mutation.source, templates)) || !affirmativeCounterpart(mutation.source, cited, templates) || negator.test(mutation.source) || !inserted ||
       mutation.replacement.replace(/\bnot /i, '') !== mutation.source) reasons.push('negation lacks affirmative cited counterpart');
   }
   if (kind === 'format-paraphrase' && mutation.replacement !== formatParaphrase(mutation.source)) reasons.push('not an allowed format paraphrase');
   if (kind === 'citation-swap') {
     const target = rows.find(row => row.id === mutation.value_after);
     const patterns = Object.values(templates.context).flatMap(item => item.rows ? [item.rows.cite] : []);
-    const old = patterns.flatMap(pattern => [...mutation.source.matchAll(new RegExp(pattern, 'gm'))]).find(match => match[1] === mutation.value_before);
+    const matches = patterns.flatMap(pattern => [...mutation.source.matchAll(new RegExp(pattern, 'gm'))]);
+    const old = matches.find(match => match[1] === mutation.value_before);
     const terms = keyTerms(old ? mutation.source.replace(old[0], '') : mutation.source);
-    if (!target || !old || !unit.cites?.includes(mutation.value_before!) || unit.cites.includes(target.id) || !terms.length ||
+    if (matches.length !== 1 || unit.cites?.length !== 1 || !target || !old || !unit.cites?.includes(mutation.value_before!) || unit.cites.includes(target.id) || !terms.length ||
       terms.some(term => target.text.toLowerCase().includes(term)) ||
       mutation.replacement !== mutation.source.replace(old[0], old[0].replace(old[1]!, target.id))) reasons.push('citation replacement has overlapping key terms or invalid row');
   }

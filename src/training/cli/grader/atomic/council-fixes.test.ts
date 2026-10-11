@@ -1,0 +1,74 @@
+import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { expect, it } from 'vitest';
+import { InferenceFailure } from '../../../inference/index.js';
+import { stableDigest } from '../../../graders/index.js';
+import { fixture } from './fixtures.js';
+import { runDecompose, runReference, runTraps } from './index.js';
+
+async function load(directory: string, suffix: string) {
+  const name = (await readdir(directory)).find(file => file.endsWith(suffix))!;
+  return JSON.parse(await readFile(join(directory, name), 'utf8'));
+}
+it('persists rejected real spans, refuses downstream by default and counts allowed rejections as missing checks', async () => {
+  const f = await fixture();
+  await writeFile(join(f.root, 'output.json'), JSON.stringify({ body: ['Alice reported 12 items. [R9]'] }));
+  expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ rejected: 1 });
+  const doc = await load(f.decompose.out, '.decomposition.json');
+  expect(doc.rejected).toMatchObject([{ id: 'claim', reasons: ['unknown cited row'], unit: { text: f.unit.text } }]);
+  const report = await load(f.decompose.out, '.instantiation.json');
+  expect(report.checks).toMatchObject([{ id: 'rejected@claim', status: 'missing' }]);
+  await expect(runTraps(f.traps)).rejects.toThrow('--allow-rejections');
+  await expect(runReference({ ...f.reference, traps: undefined }, f.dependencies)).rejects.toThrow('--allow-rejections');
+  expect(await runTraps({ ...f.traps, allowRejections: true })).toMatchObject({ missingChecks: 1 });
+  const result = await runReference({ ...f.reference, allowRejections: true }, f.dependencies);
+  expect(result).toMatchObject({ gate: 'STOP', coverage: { missingChecks: 1 }, instability: { items: 0 } });
+  expect(await readFile(result.reportFile, 'utf8')).toContain('Rejected units counted as missing checks: 1');
+  expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ resumed: 1, rejected: 1 });
+});
+it.each([true, false])('records provider schema failure class and available protected diagnostic (%s), then retries', async diagnosticAvailable => {
+  const f = await fixture();
+  const diagnostic = { code: 'response-schema' as const, response: { bytes: 3, sha256: 'sha256:digest', text: 'bad', omitted: false } };
+  f.generate.mockRejectedValueOnce(new InferenceFailure('protocol', 'private provider prose', diagnosticAvailable ? { diagnostic } : {}));
+  await expect(runDecompose(f.decompose, f.dependencies)).rejects.toThrow('private provider prose');
+  const saved = await load(f.decompose.out, '.checkpoint.json');
+  expect(saved.receipts[0]).toMatchObject({ failure_class: 'protocol', outcome: 'invalid-response' });
+  expect(saved.receipts[0].diagnostic).toEqual(diagnosticAvailable ? diagnostic : undefined);
+  expect(JSON.stringify(saved)).not.toContain('private provider prose');
+  expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ completed: 1 });
+  expect(f.generate).toHaveBeenCalledTimes(3);
+  expect((await load(f.decompose.out, '.checkpoint.json')).receipts).toHaveLength(3);
+});
+it('excludes cancelled calls from report totals while preserving run receipts', async () => {
+  const f = await fixture();
+  await runDecompose(f.decompose, f.dependencies);
+  f.generate.mockImplementation(async request => ({ text: '{"support@claim":{"answer":"supported"}}', model: request.model, route: 'subscription', usage: null }));
+  const result = await runReference({ ...f.reference, traps: undefined }, f.dependencies);
+  const directory = `${f.reference.out}.checkpoints`;
+  const name = (await readdir(directory))[0]!;
+  const saved = JSON.parse(await readFile(join(directory, name), 'utf8'));
+  saved.calls.push({ ...saved.calls[0], outcome: 'cancelled', wallMs: 1_000_000 });
+  const { digest: _digest, ...content } = saved;
+  await writeFile(join(directory, name), JSON.stringify({ ...content, digest: stableDigest(content) }));
+  await runReference({ ...f.reference, traps: undefined }, f.dependencies);
+  const report = await readFile(result.reportFile, 'utf8');
+  expect(report).toContain('Calls: 2;');
+  expect(Number(/recorded latency: (\d+)/.exec(report)![1])).toBeLessThan(1_000_000);
+  expect((await load(directory, '.json')).calls).toHaveLength(3);
+});
+it('binds trap generation to current completed base references and rejects missing or corrupt artifacts', async () => {
+  const f = await fixture();
+  await runDecompose(f.decompose, f.dependencies);
+  const references = join(f.root, 'base.json');
+  await expect(runTraps({ ...f.traps, references })).rejects.toThrow('Missing base');
+  await writeFile(references, JSON.stringify({ digest: 'bad' }));
+  await expect(runTraps({ ...f.traps, references })).rejects.toThrow('corrupt');
+  f.generate.mockImplementation(async request => ({ text: '{"support@claim":{"answer":"unsupported"}}', model: request.model, route: 'subscription', usage: null }));
+  await runReference({ ...f.reference, traps: undefined, out: references }, f.dependencies);
+  expect(await runTraps({ ...f.traps, references })).toMatchObject({ generated: 1 });
+  const artifact = JSON.parse(await readFile(references, 'utf8'));
+  for (const output of Object.values(artifact.outputs) as { complete: boolean }[]) output.complete = false;
+  const { digest: _digest, ...content } = artifact;
+  await writeFile(references, JSON.stringify({ ...content, digest: stableDigest(content) }));
+  await expect(runTraps({ ...f.traps, references })).rejects.toThrow('incomplete');
+});

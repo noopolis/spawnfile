@@ -8,7 +8,7 @@ async function checkpoint(directory: string) {
   const name = (await readdir(directory)).find(file => file.endsWith('.checkpoint.json'))!;
   return JSON.parse(await readFile(join(directory, name), 'utf8'));
 }
-it('persists malformed extraction receipts before parsing and does not repeat completed calls on resume', async () => {
+it('persists malformed extraction receipts before parsing and retries malformed responses on resume', async () => {
   const f = await fixture();
   f.generate.mockResolvedValue({ text: 'malformed', model: 'actual', route: 'subscription', usage: { inputTokens: 1, cachedInputTokens: null, outputTokens: null, reasoningTokens: null, source: 'provider' }, attempts: [] });
   await expect(runDecompose(f.decompose, f.dependencies)).rejects.toThrow();
@@ -16,7 +16,7 @@ it('persists malformed extraction receipts before parsing and does not repeat co
   expect(saved.receipts).toHaveLength(1);
   expect(saved.receipts[0]).toMatchObject({ response_text: 'malformed', outcome: 'invalid-response', usage: { inputTokens: 1, cachedInputTokens: null, outputTokens: null, reasoningTokens: null, source: 'provider' }, attempts: [] });
   await expect(runDecompose(f.decompose, f.dependencies)).rejects.toThrow();
-  expect(f.generate).toHaveBeenCalledTimes(1);
+  expect(f.generate).toHaveBeenCalledTimes(2);
 });
 it('persists cancellation accounting and resumes only the missing audit', async () => {
   const f = await fixture(), controller = new AbortController();

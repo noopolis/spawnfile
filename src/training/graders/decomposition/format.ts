@@ -21,6 +21,7 @@ export const decompositionSchema = z.strictObject({
   schema: z.literal('paideia.decomposition.v1'), output: reference,
   context: z.record(identifier, reference).default({}), units: z.array(unitSchema),
   extractors: z.array(extractor).min(1),
+  rejected: z.array(z.strictObject({ id, reasons: z.array(z.string()).min(1), unit: unitSchema })).optional(),
   audit: z.strictObject({ extractor, missed: z.array(unitSchema), at: z.iso.datetime({ offset: true }) }).optional(),
 });
 export type AtomicUnit = z.infer<typeof unitSchema>;
@@ -52,7 +53,8 @@ export type CheckTemplate = CheckTemplates['templates'][number];
 
 export function parseDecomposition(value: unknown): Decomposition {
   const result = parseSchema(decompositionSchema, value);
-  const ids = [...result.units, ...(result.audit?.missed ?? [])].map(unit => unit.id);
+  const ids = [...result.units, ...(result.audit?.missed ?? []), ...(result.rejected ?? []).map(item => item.unit)].map(unit => unit.id);
+  if (result.rejected?.some(item => item.id !== item.unit.id)) throw new Error('rejected unit id mismatch');
   if (new Set(ids).size !== ids.length) throw new Error('duplicate unit id');
   return result;
 }

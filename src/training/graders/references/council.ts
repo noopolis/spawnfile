@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { stableDigest } from '../format/index.js';
 import type { CheckInstance } from '../decomposition/index.js';
 import { averageAnswers, councilContentDigest, defaultGrokWindow, grokWindowOpen, reusableCouncil } from './policy.js';
@@ -13,23 +14,22 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
   if (new Set(instances.map(i => i.id)).size !== instances.length) throw new Error('Duplicate check IDs');
   if (options.timeoutMs !== undefined && (!Number.isInteger(options.timeoutMs) || options.timeoutMs <= 0)) throw new Error('Invalid council timeout');
   const window = options.grokWindow ?? defaultGrokWindow;
-  const adjudicatorId = options.adjudicator ?? teachers[0]!.id;
-  // Historical completed references remain reusable across the current clock window.
+  const now = options.now ?? new Date();
+  const windowOpen = grokWindowOpen(now, window);
+  const skipped = teachers.filter(t => t.provider === 'grok' && !windowOpen)
+    .map(t => ({ teacher: t.id, reason: `Outside Grok window ${window.start}-${window.end} ${window.timeZone ?? 'Europe/Berlin'}` }));
+  const active = teachers.filter(t => !skipped.some(s => s.teacher === t.id));
+  const adjudicator = options.adjudicator ? active.find(t => t.id === options.adjudicator) : active[0];
+  if (!adjudicator) throw new Error('Adjudicator is not an active teacher');
   const identity = stableDigest({ version: councilPromptVersion, output: options.outputDigest,
-    instances, teachers, adjudicator: adjudicatorId, window,
+    instances, teachers, adjudicator: adjudicator.id, window, windowOpen, active: active.map(t => t.id),
     seed: options.seed ?? 'paideia.council', timeoutMs: options.timeoutMs ?? 120_000 });
   if (options.previous) {
     const { digest, ...content } = options.previous;
     if (content.identity !== identity || digest !== councilContentDigest(content)) throw new Error('Stale or corrupt council checkpoint');
     if (reusableCouncil(options.previous, identity)) return options.previous;
   }
-  const now = options.now ?? new Date();
-  const skipped = options.previous?.skipped.map(item => ({ ...item })) ?? teachers.filter(t => t.provider === 'grok' && !grokWindowOpen(now, window))
-    .map(t => ({ teacher: t.id, reason: `Outside Grok window ${window.start}-${window.end} ${window.timeZone ?? 'Europe/Berlin'}` }));
-  const active = teachers.filter(t => options.previous?.active_teachers
-    ? options.previous.active_teachers.includes(t.id) : !skipped.some(s => s.teacher === t.id));
-  const adjudicator = active.find(t => t.id === adjudicatorId);
-  if (!adjudicator) throw new Error('Adjudicator is not an active teacher');
+  const shuffleSecret = options.previous?.shuffle_secret ?? randomBytes(32).toString('hex');
   for (const teacher of active) {
     const provider = providers[teacher.id];
     if (!provider || provider.capabilities.billing !== 'subscription' || !['disabled', 'contained'].includes(provider.capabilities.tools)) {
@@ -38,12 +38,12 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
   }
   const calls: ReferenceCall[] = structuredClone(options.previous?.calls ?? []);
   const checks: CouncilOutput['checks'] = Object.fromEntries(instances.map(instance => [instance.id, {
-    digest: instance.digest, template_id: instance.template_id, teachers: {},
+    ready: instance.status === 'ready', digest: instance.digest, template_id: instance.template_id, teachers: {},
     distribution: {}, unknown_mass: 1, adjudication: [], final: null, status: 'uncertain',
   }]));
   const checkpoint = async (complete = false) => {
     const content: Omit<CouncilOutput, 'digest'> = { outputDigest: options.outputDigest, identity, complete, checks, calls, skipped,
-      active_teachers: active.map(teacher => teacher.id) };
+      shuffle_secret: shuffleSecret, active_teachers: active.map(teacher => teacher.id) };
     const output = { ...content, digest: councilContentDigest(content) };
     await options.onCheckpoint?.(structuredClone(output));
     return output;
@@ -52,7 +52,7 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
     options.signal?.throwIfAborted();
     const prompt = councilPrompt(batch, competing);
     const id = stableDigest([identity, teacher.id, prompt.digest, run ?? null]);
-    const existing = calls.findLast(call => call.id === id && call.outcome !== 'cancelled');
+    const existing = calls.findLast(call => call.id === id && ['received', 'completed'].includes(call.outcome));
     if (existing && existing.outcome !== 'received') return existing.answers ?? null;
     if (!existing && teacher.provider === 'grok' && !grokWindowOpen(options.now ?? new Date(), window)) {
       if (!skipped.some(item => item.teacher === teacher.id)) skipped.push({ teacher: teacher.id,
@@ -116,18 +116,18 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
     } else disputed.push(instance);
   }
   if (disputed.length) {
-    // Stable seeded shuffling and a fresh reverse-order run reveal order sensitivity.
+    // A private run secret hides teacher order; the repeat moves every panel position.
     const competing = Object.fromEntries(disputed.map(instance => [instance.id,
-      active.map(teacher => ({ key: stableDigest([options.seed ?? 'paideia.council', instance.id, teacher.id]),
+      active.map(teacher => ({ key: stableDigest([shuffleSecret, instance.id, teacher.id]),
         vote: checks[instance.id]!.teachers[teacher.id]! })).sort((a, b) => a.key.localeCompare(b.key)).map(item => item.vote)]));
     for (const run of [0, 1]) {
-      const ordered = run === 0 ? competing : Object.fromEntries(Object.entries(competing).map(([id, votes]) => [id, [...votes].reverse()]));
+      const ordered = run === 0 ? competing : Object.fromEntries(Object.entries(competing).map(([id, votes]) => [id, votes.length % 2 ? [...votes.slice(1), votes[0]!] : [...votes].reverse()]));
       const answers = await invoke(adjudicator, disputed, ordered, run);
       for (const instance of disputed) checks[instance.id]!.adjudication.push(answers?.[instance.id] ?? { answer: 'uncertain' });
     }
     for (const instance of disputed) {
       const check = checks[instance.id]!, [first, second] = check.adjudication;
-      if (first!.answer !== 'uncertain' && first!.answer === second!.answer && (first!.p ?? 1) > 0 && (second!.p ?? 1) > 0) {
+      if (Object.entries(check.teachers).some(([id, vote]) => id !== adjudicator.id && vote.answer === first!.answer && (vote.p ?? 1) > 0) && first!.answer !== 'uncertain' && first!.answer === second!.answer && (first!.p ?? 1) > 0 && (second!.p ?? 1) > 0) {
         check.final = first!.answer; check.status = 'adjudicated';
       }
     }

@@ -14,7 +14,10 @@ async function prepared() {
       { answer: answer((prompt.projection ?? question.evidence)?.unit?.text) }]))),
       model: request.model, usage: null, route: 'subscription' };
   });
-  return f;
+  const baseline = join(f.root, 'base.json');
+  await runReference({ ...f.reference, traps: undefined, out: baseline }, f.dependencies);
+  f.generate.mockClear();
+  return { ...f, traps: { ...f.traps, references: baseline } };
 }
 
 it('generates deterministic traps and scores council references with checkpoint resume and markdown report', async () => {
@@ -23,7 +26,7 @@ it('generates deterministic traps and scores council references with checkpoint 
   expect(result.generated).toBe(2);
   expect(await runTraps(f.traps)).toEqual(result);
   const reference = await runReference(f.reference, f.dependencies);
-  expect(reference).toMatchObject({ gate: 'PASS', outputs: 3, overall: { total: 2, correct: 2, accuracy: 1 } });
+  expect(reference).toMatchObject({ gate: 'PASS', outputs: 3, knownAnswer: { total: 1, correct: 1, accuracy: 1 }, consistency: { total: 1, correct: 1 } });
   const artifact = JSON.parse(await readFile(f.reference.out, 'utf8'));
   expect(artifact).toMatchObject({ schema: 'paideia.references.v1', digest: expect.any(String) });
   expect(Object.values(artifact.outputs)).toHaveLength(3);
@@ -51,8 +54,8 @@ it('reports failing traps/templates and retains missing council answers as failu
     model: request.model, route: 'subscription', usage: null }));
   const result = await runReference(f.reference, f.dependencies);
   expect(result.gate).toBe('STOP');
-  expect(await readFile(result.reportFile, 'utf8')).toContain('Failing trap kind: number-substitution');
-  expect(await readFile(result.reportFile, 'utf8')).toContain('Failing template: support');
+  expect(await readFile(result.reportFile, 'utf8')).toContain('Insufficient known-answer samples for kind: number-substitution');
+  expect(await readFile(result.reportFile, 'utf8')).toContain('Insufficient known-answer samples for template: support');
 });
 
 it('rejects stale and tampered trap artifacts before starting inference', async () => {
@@ -69,7 +72,7 @@ it('rejects stale and tampered trap artifacts before starting inference', async 
   trap.decomposition = 'missing';
   await writeFile(file, JSON.stringify(trap));
   await expect(runReference(f.reference, f.dependencies)).rejects.toThrow('Stale trap decomposition');
-  expect(f.generate).toHaveBeenCalledTimes(2);
+  expect(f.generate).toHaveBeenCalledTimes(0);
 });
 
 it('propagates caller cancellation and validates concurrency before processing', async () => {
@@ -109,7 +112,7 @@ it('counts invalid council answers as wrong trap answers rather than dropping th
   const f = await prepared(); await runTraps(f.traps);
   f.generate.mockImplementation(async request => ({ text: '{}', model: request.model, usage: null, route: 'subscription' }));
   const result = await runReference(f.reference, f.dependencies);
-  expect(result).toMatchObject({ gate: 'STOP', overall: { correct: 0, total: 2, accuracy: 0 } });
+  expect(result).toMatchObject({ gate: 'STOP', knownAnswer: { correct: 0, total: 0, accuracy: null }, consistency: { correct: 0, total: 1, accuracy: 0 } });
 });
 
 it('rejects duplicate trap bundles so repeated artifacts cannot inflate gate accuracy', async () => {
@@ -117,7 +120,7 @@ it('rejects duplicate trap bundles so repeated artifacts cannot inflate gate acc
   const file = join(f.traps.out, (await readdir(f.traps.out))[0]!);
   await writeFile(join(f.traps.out, 'duplicate.traps.json'), await readFile(file));
   await expect(runReference(f.reference, f.dependencies)).rejects.toThrow('Duplicate trap decomposition');
-  expect(f.generate).toHaveBeenCalledTimes(2);
+  expect(f.generate).toHaveBeenCalledTimes(0);
 });
 
 it('reports every decomposition as uncovered when its entire trap bundle is removed', async () => {
@@ -156,20 +159,22 @@ it('keeps base instability separate from stable variant adjudications', async ()
   });
   const result = await runReference(f.reference, f.dependencies);
   expect(result).toMatchObject({ gate: 'STOP', instability: { items: 1, unstable: 1, rate: 1 },
-    variantAdjudication: { items: 2, unstable: 0, rate: 0 } });
+    variantAdjudication: { items: 1, unstable: 1, rate: 1 } });
 });
 
 it('does not call or count unaffected duplicate checks in trap variants', async () => {
   const f = await fixture();
   f.templates.templates.push({ ...f.templates.templates[0]!, id: 'other', traps: {} as typeof f.templates.templates[0]['traps'] });
   await writeFile(f.templatesFile, JSON.stringify(f.templates));
-  await runDecompose(f.decompose, f.dependencies); await runTraps(f.traps);
+  await runDecompose(f.decompose, f.dependencies);
   f.generate.mockImplementation(async request => {
     const prompt = JSON.parse(request.prompt);
     const answer = prompt.projection.unit.text.includes('12') ? 'supported' : 'unsupported';
     return { text: JSON.stringify(Object.fromEntries(prompt.questions.map((question: { check_id: string }) => [question.check_id, { answer }]))),
       model: request.model, route: 'subscription', usage: null };
   });
+  await runReference({ ...f.reference, traps: undefined }, f.dependencies);
+  await runTraps({ ...f.traps, references: f.reference.out });
   const result = await runReference(f.reference, f.dependencies);
   expect(result.gate).toBe('PASS');
   const artifact = JSON.parse(await readFile(result.file, 'utf8'));

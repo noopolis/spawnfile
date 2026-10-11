@@ -67,6 +67,13 @@ export function instantiateChecksReport(templates: CheckTemplates, document: Dec
       expected: template.expected, projection, status: reasons.length ? 'missing' as const : 'ready' as const, reasons };
     return [{ ...instance, digest: stableDigest({ template, instance }) }];
   }));
+  for (const rejected of document.rejected ?? []) {
+    const instance: Omit<CheckInstance, 'digest'> = { id: `rejected@${rejected.id}`, unit_id: rejected.id,
+      template_id: 'rejected', type: 'choice', instructions: 'Rejected decomposition unit',
+      criteria: { present: 'Validated', missing: 'Rejected' }, options: ['present', 'missing'], expected: ['present'],
+      projection: {}, status: 'missing', reasons: rejected.reasons };
+    checks.push({ ...instance, digest: stableDigest({ instance, rejected }) });
+  }
   return { checks, skipped };
 }
 export function instantiateChecks(templates: CheckTemplates, document: Decomposition, inputs: DecompositionInputs): CheckInstance[] {

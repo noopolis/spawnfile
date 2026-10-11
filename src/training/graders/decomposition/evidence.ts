@@ -27,7 +27,7 @@ export function evidenceRows(templates: CheckTemplates, inputs: DecompositionInp
   }
   return rows;
 }
-export interface RejectedUnit { id: string; reasons: string[] }
+export interface RejectedUnit { id: string; reasons: string[]; unit: AtomicUnit }
 export function validateDecomposition(value: unknown, inputs: DecompositionInputs, templates?: CheckTemplates): {
   decomposition: Decomposition; rejected: RejectedUnit[]; dropped: DroppedField[]; citationDisagreements: CitationDisagreement[];
 } {
@@ -61,9 +61,12 @@ export function validateDecomposition(value: unknown, inputs: DecompositionInput
       delete unit.source_span;
     }
     dropped.push(...dropUnboundFields(unit));
-    if (reasons.length) rejected.push({ id: unit.id, reasons });
+    if (reasons.length) rejected.push({ id: unit.id, reasons, unit });
     return reasons.length === 0;
   }
-  return { decomposition: { ...document, units: document.units.filter(valid),
-    ...(document.audit ? { audit: { ...document.audit, missed: document.audit.missed.filter(valid) } } : {}) }, rejected, dropped, citationDisagreements };
+  const units = document.units.filter(valid);
+  const audit = document.audit ? { ...document.audit, missed: document.audit.missed.filter(valid) } : undefined;
+  const allRejected = [...(document.rejected ?? []), ...rejected];
+  return { decomposition: { ...document, units, ...(audit ? { audit } : {}),
+    ...(allRejected.length ? { rejected: allRejected } : {}) }, rejected, dropped, citationDisagreements };
 }

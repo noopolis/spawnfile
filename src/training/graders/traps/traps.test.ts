@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { fixture } from './fixtures.js';
 import { trapKinds } from '../decomposition/index.js';
 import type { TrapKind } from '../decomposition/index.js';
-import { generateTraps, validateTrap } from './index.js';
+import { generateTraps as generate, validateTrap } from './index.js';
 import type { Trap } from './index.js';
 import { flipNegation, formatParaphrase, keyTerms, locateSpan, mutationFor, replaceLeaf } from './mutations.js';
+
+function generateTraps(...[templates, document, inputs, options]: Parameters<typeof generate>) {
+  const baseFinals = Object.fromEntries([...document.units, ...(document.audit?.missed ?? [])].flatMap(unit =>
+    templates.templates.filter(template => template.applies_to === unit.kind).map(template => [`${template.id}@${unit.id}`, template.expected[0]!] )));
+  return generate(templates, document, inputs, { baseFinals, ...options });
+}
 
 function selected(kind: TrapKind): { trap: Trap } & ReturnType<typeof fixture> {
   const setup = fixture();

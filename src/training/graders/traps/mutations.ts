@@ -1,7 +1,7 @@
 import { stableDigest } from '../format/index.js';
 import { evidenceRows, normalizeWhitespace, readPath, textLeaves } from '../decomposition/index.js';
 import type { AtomicUnit, CheckTemplates, Decomposition, DecompositionInputs, TrapKind } from '../decomposition/index.js';
-import { affirmativeCounterpart, articleEntities, entityType, negator, numbers, numeric, plausibleNumber } from './preconditions.js';
+import { affirmativeCounterpart, articleEntities, entityType, coReferent, maskCitations, withoutHeadings, negationAuxiliary, numbers, numeric, plausibleNumber } from './preconditions.js';
 import type { TrapMutation } from './types.js';
 
 export function replaceLeaf(output: unknown, path: string[], after: string): unknown {
@@ -19,9 +19,8 @@ export function locateSpan(output: unknown, text: string): { path: string[]; bef
   return matches.length === 1 ? matches[0] : undefined;
 }
 export function flipNegation(text: string): string | undefined {
-  if (negator.test(text)) return undefined;
-  if (/\b(is|are|was|were|will|can|has|have|had|does|did)\b/i.test(text)) return text.replace(/\b(is|are|was|were|will|can|has|have|had|does|did)\b/i, '$& not');
-  return undefined;
+  const match = negationAuxiliary(text);
+  return match ? text.slice(0, match.index) + match[0] + ' not' + text.slice(match.index! + match[0].length) : undefined;
 }
 export function formatParaphrase(text: string): string | undefined {
   if (/\b\d{1,3}(?:,\d{3})+\b/.test(text)) return text.replace(/\b\d{1,3}(?:,\d{3})+\b/, value => value.replaceAll(',', ''));
@@ -40,12 +39,13 @@ export function mutationFor(kind: TrapKind, unit: AtomicUnit, _document: Decompo
   const located = locateSpan(inputs.output, unit.text);
   if (!located) return undefined;
   const rows = evidenceRows(templates, inputs);
-  const cited = rows.filter(row => unit.cites?.includes(row.id)).map(row => row.text).join('\n');
+  const cited = rows.filter(row => unit.cites?.includes(row.id)).map(row => withoutHeadings(row.text, templates)).join('\n');
+  const claim = maskCitations(located.source, templates);
   let replacement: string | undefined;
   let valueBefore: string | undefined;
   let valueAfter: string | undefined;
   if (kind === 'number-substitution' && cited) {
-    valueBefore = numbers(located.source).find(value => numbers(cited).some(item => numeric(item) === numeric(value)));
+    valueBefore = numbers(claim).find(value => numbers(cited).some(item => numeric(item) === numeric(value)));
     if (valueBefore) {
       const precision = numeric(valueBefore).split('.')[1]?.length ?? 0;
       const step = 10 ** -precision;
@@ -61,14 +61,15 @@ export function mutationFor(kind: TrapKind, unit: AtomicUnit, _document: Decompo
   if (kind === 'entity-substitution' && cited) {
     const entities = articleEntities(inputs.output);
     valueBefore = entities.find(value => located.source.includes(value) && cited.includes(value));
-    valueAfter = entities.filter(value => value !== valueBefore && entityType(value) === entityType(valueBefore ?? '') &&
+    valueAfter = entities.filter(value => !coReferent(valueBefore ?? '', value) && entityType(value) === entityType(valueBefore ?? '') &&
       !cited.toLowerCase().includes(value.toLowerCase()))
       .sort((a, b) => stableDigest({ seed, a }).localeCompare(stableDigest({ seed, a: b })))[0];
   }
-  if (kind === 'citation-swap' && unit.cites?.length) {
+  if (kind === 'citation-swap' && unit.cites?.length === 1) {
     for (const declaration of Object.values(templates.context)) {
       if (!declaration.rows) continue;
-      const match = [...located.source.matchAll(new RegExp(declaration.rows.cite, 'gm'))].find(item => unit.cites!.includes(item[1]!));
+      const matches = [...located.source.matchAll(new RegExp(declaration.rows.cite, 'gm'))];
+      const match = matches.length === 1 ? matches.find(item => unit.cites!.includes(item[1]!)) : undefined;
       if (!match) continue;
       const terms = keyTerms(located.source.replace(match[0], ''));
       const next = rows.find(row => !unit.cites!.includes(row.id) && terms.length > 0 &&
@@ -89,8 +90,8 @@ export function mutationFor(kind: TrapKind, unit: AtomicUnit, _document: Decompo
   }
   if (valueBefore && valueAfter && !replacement) {
     let changed = false;
-    replacement = kind === 'number-substitution' ? located.source.replace(/(?<![\p{L}\p{N}])\d+(?:[,.]\d+)*(?![\p{L}\p{N}])/gu, value => {
-      if (changed || value !== valueBefore) return value;
+    replacement = kind === 'number-substitution' ? located.source.replace(/(?<![\p{L}\p{N}])\d+(?:[,.]\d+)*(?![\p{L}\p{N}])/gu, (value, offset: number) => {
+      if (changed || value !== valueBefore || claim.slice(offset, offset + value.length) !== value) return value;
       changed = true;
       return valueAfter!;
     }) : located.source.replace(valueBefore, valueAfter);

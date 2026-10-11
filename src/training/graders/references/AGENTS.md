@@ -9,6 +9,7 @@ Missing answers retain denominator mass. Resume requires both request identity
 and content digest. Run adjacent Vitest tests, scoped coverage, ESLint and tsc.
 
 Checkpoint every provider receipt before decoding or cancellation. Partial checkpoints
-replay received responses; retry only interrupted calls without a response. Preserve
+replay received responses; retry generation-error and invalid-response calls on
+incomplete resume. Complete reuse also pins active teachers and window state. Preserve
 original usage and separate attempt receipts. Grok configuration intersects the fixed
 20:30–06:30 Europe/Berlin bound and cannot widen it.

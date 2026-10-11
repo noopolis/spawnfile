@@ -11,14 +11,14 @@ import { atomicWrite, readDecompositions, readOptional, readTemplates, workers }
 
 export interface ReferenceOptions {
   templatesFile: string; decompositions: string; traps?: string; teachers: string[];
-  out: string; concurrency?: number; timeoutMs?: number; signal?: AbortSignal; now?: Date;
+  out: string; allowRejections?: boolean; concurrency?: number; timeoutMs?: number; signal?: AbortSignal; now?: Date;
 }
 type TrapBundle = TrapSet & { decomposition: string; decompositionDigest: string };
 export async function runReference(options: ReferenceOptions, dependencies: GraderDependencies = {}) {
   options.signal?.throwIfAborted();
   const templates = await readTemplates(options.templatesFile);
   const teachers = selectTeachers(templates, options.teachers);
-  const inputs = await readDecompositions(options.decompositions, templates);
+  const inputs = await readDecompositions(options.decompositions, templates, options.allowRejections);
   const trapBundles: TrapBundle[] = [];
   if (options.traps) {
     const files = (await readdir(options.traps)).filter(file => file.endsWith('.traps.json')).sort();
@@ -53,13 +53,19 @@ export async function runReference(options: ReferenceOptions, dependencies: Grad
   await workers(inputs, options.concurrency ?? 2, async input => {
     await run(input.file, input.digest, instantiateChecks(templates, input.doc, input.inputs));
     for (const bundle of trapBundles.filter(bundle => bundle.decomposition === input.file)) {
-      for (const trap of bundle.traps) await run(`${input.file}:${trap.id}`, stableDigest({ base: input.digest, trap }),
-        trap.instances.filter(instance => Object.hasOwn(trap.intended_answers, instance.id)));
+      for (const trap of bundle.traps) {
+        const affected = trap.instances.filter(instance => Object.hasOwn(trap.intended_answers, instance.id));
+        if (!['format-paraphrase', 'option-permutation'].includes(trap.kind) && affected.some(instance =>
+          !instance.expected.includes(outputs[input.file]!.checks[instance.id]?.final ?? ''))) continue;
+        await run(`${input.file}:${trap.id}`, stableDigest({ base: input.digest, trap }),
+        affected);
+      }
     }
   }, options.signal);
   const assessments: TrapAssessment[] = [];
   for (const bundle of trapBundles) for (const trap of bundle.traps) {
     const base = outputs[bundle.decomposition]!, variant = outputs[`${bundle.decomposition}:${trap.id}`]!;
+    if (!variant) continue;
     for (const [id, intended] of Object.entries(trap.intended_answers)) assessments.push({
       outputId: bundle.decomposition, kind: trap.kind, templateId: trap.instances.find(instance => instance.id === id)!.template_id,
       intended, actual: variant.checks[id]?.final ?? null, baseline: base.checks[id]?.final ?? null,
@@ -69,6 +75,7 @@ export async function runReference(options: ReferenceOptions, dependencies: Grad
   const baseOutputs = inputs.map(input => outputs[input.file]!);
   const baseKeys = new Set(inputs.map(input => input.file));
   const quality = referenceQuality(baseOutputs, assessments, { outputIds: inputs.map(input => input.file),
+    rejectedUnits: inputs.reduce((sum, input) => sum + (input.doc.rejected?.length ?? 0), 0),
     variantOutputs: Object.entries(sorted).filter(([key]) => !baseKeys.has(key)).map(([, output]) => output) });
   const artifact = { schema: 'paideia.references.v1', templatesDigest: stableDigest(templates), outputs: sorted, quality };
   await atomicWrite(options.out, { ...artifact, digest: stableDigest(artifact) });
@@ -79,11 +86,12 @@ export async function runReference(options: ReferenceOptions, dependencies: Grad
 function referenceReport(artifact: { outputs: Record<string, CouncilOutput>; quality: ReturnType<typeof referenceQuality> }): string {
   const { quality } = artifact;
   const skipped = [...new Set(Object.values(artifact.outputs).flatMap(output => output.skipped.map(skip => `${skip.teacher}: ${skip.reason}`)))];
-  const calls = Object.values(artifact.outputs).flatMap(output => output.calls);
+  const calls = Object.values(artifact.outputs).flatMap(output => output.calls).filter(call => call.outcome !== 'cancelled');
   return [`# Council references: ${quality.gate}`, '',
     `Known-answer accuracy: ${quality.knownAnswer.accuracy === null ? 'unmeasured (no validated traps)' : `${(quality.knownAnswer.accuracy * 100).toFixed(2)}%`} (${quality.knownAnswer.correct}/${quality.knownAnswer.total}).`,
     `Consistency: ${quality.consistency.accuracy === null ? 'unmeasured' : `${(quality.consistency.accuracy * 100).toFixed(2)}%`} (${quality.consistency.correct}/${quality.consistency.total}).`,
     `Known-answer output coverage: ${quality.coverage.covered}/${quality.coverage.total}; uncovered: ${quality.coverage.uncovered.join(', ') || 'none'}.`,
+    `Rejected units counted as missing checks: ${quality.coverage.missingChecks}.`,
     `Base adjudication instability: ${(quality.instability.rate * 100).toFixed(2)}% (${quality.instability.unstable}/${quality.instability.items}).`,
     `Variant adjudication (diagnostic): ${(quality.variantAdjudication.rate * 100).toFixed(2)}% (${quality.variantAdjudication.unstable}/${quality.variantAdjudication.items}).`,
     `Calls: ${calls.length}; recorded latency: ${calls.reduce((sum, call) => sum + call.wallMs, 0).toFixed(0)} ms. Usage and subscription accounting are recorded per call; unreported usage/cost remains unknown.`, '',
@@ -91,7 +99,10 @@ function referenceReport(artifact: { outputs: Record<string, CouncilOutput>; qua
     ...quality.failingKinds.map(kind => `- Failing trap kind: ${kind}`),
     ...quality.failingTemplates.map(id => `- Failing template: ${id}`),
     ...skipped.map(skip => `- Skipped ${skip}`), '',
-    'Trap accuracy by kind:', '', ...Object.entries(quality.byKind).map(([kind, score]) => `- ${kind}: ${score.correct}/${score.total}`), '',
+    ...quality.insufficientKinds.map(kind => `- Insufficient known-answer samples for kind: ${kind} (<10)`),
+    ...quality.insufficientTemplates.map(id => `- Insufficient known-answer samples for template: ${id} (<10)`),
+    'Known-answer accuracy by kind:', '', ...Object.entries(quality.byKind).map(([kind, score]) => `- ${kind}: ${score.correct}/${score.total}`), '',
+    'Control CONSISTENCY by kind:', '', ...Object.entries(quality.consistencyByKind).map(([kind, score]) => `- ${kind}: ${score.correct}/${score.total}`), '',
     'Option-permutation consistency: ' + (quality.optionPermutation.accuracy === null ? 'unmeasured' : `${quality.optionPermutation.correct}/${quality.optionPermutation.total}`) + '.', '',
     'Teachers against references excluding themselves:', '',
     ...Object.entries(quality.teachers).map(([id, score]) => `- ${id}: ${(score.agreement * 100).toFixed(2)}% agreement on ${score.items} checks; soft agreement ${score.softAgreement.toFixed(4)}.`), '',

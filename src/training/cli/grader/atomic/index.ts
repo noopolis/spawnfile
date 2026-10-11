@@ -17,13 +17,15 @@ export async function runAtomicCommand(args: CliArguments, io: CliIO, dependenci
     io.stdout(`${JSON.stringify(result)}\n`);
     return result.rejected ? 1 : 0;
   }
+  const allowRejections = args.flags['allow-rejections'] !== undefined;
   const decompositions = resolve(io.cwd, one(args, 'decompositions'));
   if (args.graderCommand === 'traps') {
-    const result = await runTraps({ templatesFile, out, signal, decompositions, seed: one(args, 'seed', '0') });
+    const result = await runTraps({ templatesFile, out, signal, decompositions, allowRejections,
+      references: args.flags.references ? resolve(io.cwd, one(args, 'references')) : undefined, seed: one(args, 'seed', '0') });
     io.stdout(`${JSON.stringify(result)}\n`);
     return result.generated ? 0 : 1;
   }
-  const result = await runReference({ templatesFile, out, signal, decompositions,
+  const result = await runReference({ templatesFile, out, signal, decompositions, allowRejections,
     traps: args.flags.traps ? resolve(io.cwd, one(args, 'traps')) : undefined,
     teachers: one(args, 'teachers').split(',').map(id => id.trim()), concurrency: count(args, 'concurrency', 2, 64),
     timeoutMs: count(args, 'timeout-ms', 180_000, 3_600_000) }, dependencies);

@@ -12,8 +12,11 @@ Verify adjacent tests with injected inference, command routing, cancellation,
 stale-resume rejection and filesystem artifacts. Run scoped coverage and parent
 CLI/grader checks. Common project rules apply.
 
-Resume received responses locally, including malformed responses, without another
-provider call. Retry missing responses and retain earlier failure accounting. Request
+Resume valid received responses locally. Retry malformed responses and native
+schema failures, retaining typed failure classes, protected diagnostics and earlier
+failure accounting. Persist rejected units; downstream commands require explicit
+--allow-rejections and count these units as missing checks. Defect traps require
+a completed base reference with expected good finals. Request
 strict JSON schemas on Codex/Claude extraction and retain dropped field and citation
 disagreement diagnostics. Pass kind descriptions to extractors and persist a local
 instantiation report with declared location exclusions.

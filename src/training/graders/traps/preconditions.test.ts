@@ -1,8 +1,14 @@
 import { expect, it } from 'vitest';
 import { stableDigest } from '../format/index.js';
-import { generateTraps, validateTrap } from './index.js';
+import { generateTraps as generate, validateTrap } from './index.js';
 import { fixture } from './fixtures.js';
 import { affirmativeCounterpart, articleEntities, entityType, numbers, plausibleNumber } from './preconditions.js';
+
+function generateTraps(...[templates, document, inputs, options]: Parameters<typeof generate>) {
+  const baseFinals = Object.fromEntries([...document.units, ...(document.audit?.missed ?? [])].flatMap(unit =>
+    templates.templates.filter(template => template.applies_to === unit.kind).map(template => [`${template.id}@${unit.id}`, template.expected[0]!] )));
+  return generate(templates, document, inputs, { baseFinals, ...options });
+}
 
 it('rejects negation without independently affirmative evidence, including existing negators', () => {
   for (const text of ['Dr Alice is not paid 1,000 dollars [R1].', 'Dr Alice is paid 1,000 dollars [R1].']) {

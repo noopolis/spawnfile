@@ -12,8 +12,8 @@ const repeated = new Set(['instructions', 'supporting', 'locked', 'editable', 'r
 const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'resource', 'judge', 'judge-citation-repairs', 'source-root', 'out', 'max-trials', 'timeout-ms', 'view', 'cost-config', 'spawnfile-context'];
 const graderFlags: Record<string, readonly string[]> = {
   decompose: ['templates', 'inputs', 'extractors', 'out', 'timeout-ms'],
-  traps: ['templates', 'decompositions', 'out', 'seed', 'timeout-ms'],
-  reference: ['templates', 'decompositions', 'traps', 'teachers', 'out', 'concurrency', 'timeout-ms'],
+  traps: ['allow-rejections', 'references', 'templates', 'decompositions', 'out', 'seed', 'timeout-ms'],
+  reference: ['allow-rejections', 'templates', 'decompositions', 'traps', 'teachers', 'out', 'concurrency', 'timeout-ms'],
   validate: ['grader', 'timeout-ms'],
   label: ['grader', 'import', 'inputs', 'teachers', 'relabel', 'adjudication', 'concurrency', 'limit', 'timeout-ms'],
   calibrate: ['grader', 'exclude-dataset', 'seed', 'report', 'concurrency', 'timeout-ms'],
@@ -28,8 +28,8 @@ const flags: Record<string, readonly string[]> = {
 export const helpText = `Paideia — explicit local native-agent experiments
 
 grader decompose --templates FILE --inputs FILE --extractors codex[,claude] --out DIR [--timeout-ms N]
-grader traps --templates FILE --decompositions DIR --out DIR [--seed S] [--timeout-ms N]
-grader reference --templates FILE --decompositions DIR [--traps DIR] --teachers codex,claude[,grok] --out FILE [--concurrency N] [--timeout-ms N]
+grader traps --templates FILE --decompositions DIR --out DIR [--references FILE] [--allow-rejections] [--seed S] [--timeout-ms N]
+grader reference --templates FILE --decompositions DIR [--traps DIR] [--allow-rejections] --teachers codex,claude[,grok] --out FILE [--concurrency N] [--timeout-ms N]
 grader validate --grader FILE [--timeout-ms N]
 grader label --grader FILE --inputs FILE --teachers a,b [--relabel] [--adjudication N] [--concurrency N] [--limit N] [--timeout-ms N]
 grader label --grader FILE --import FILE [--relabel] [--timeout-ms N]
@@ -83,7 +83,7 @@ export function parseArguments(argv: readonly string[]): CliArguments {
     if (!token.startsWith('-')) { positional.push(token); continue; }
     const name = token.slice(2);
     if (!token.startsWith('--') || !allowed.includes(name)) throw new Error(`Unsupported option ${token} for ${command}`);
-    if (name === 'dry-run' || name === 'resume' || name === 'relabel') {
+    if (name === 'dry-run' || name === 'resume' || name === 'relabel' || name === 'allow-rejections') {
       if (values[name]) throw new Error(`Option ${token} may appear only once`);
       values[name] = ['true'];
       continue;
