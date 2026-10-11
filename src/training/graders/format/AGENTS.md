@@ -26,3 +26,5 @@ Imported human/editor IDs must not collide with any configured teacher ID.
 
 Named models accept 1–4 unique IDs, mutually exclusive with legacy model syntax.
 The public decisionModels/graderForModel seams normalize default routing.
+
+Ollama models alone accept context_tokens: integer 2048..131072, default 16384.

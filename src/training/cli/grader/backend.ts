@@ -13,7 +13,7 @@ export interface GraderDependencies {
 export function graderBackend(grader: Grader, dependencies: GraderDependencies = {}): DecisionBackend {
   if (dependencies.backend) return dependencies.backend(grader);
   const model = grader.model!;
-  if (model.backend === 'ollama-logprobs') return createOllamaDecision({ endpoint: model.endpoint, model: model.name });
+  if (model.backend === 'ollama-logprobs') return createOllamaDecision({ endpoint: model.endpoint, model: model.name, contextTokens: model.context_tokens });
   if (model.backend !== 'teacher') return createJevDecision({ endpoint: model.endpoint });
   const teacher = grader.teachers.find(item => item.id === model.teacher)!;
   return createTeacherDecision({ provider: (dependencies.provider ?? createGraderTeacher)(teacher), model: teacher.model });

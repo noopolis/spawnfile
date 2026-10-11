@@ -354,14 +354,22 @@ backend endpoint. Local decision billing is `local`; teacher usage stays visible
   to obtain conservative `p_good`. Any omitted variant sets `bounded: true`;
   instances exceeding the bound are missing. Reports include missing,
   bounded and reversed-option permutation rates. Model digest comes from tags.
-  Prompt/probability protocol v2 ignores v1 cached scores and requires fresh
-  calibration so earlier optimistic probability bounds cannot be reused.
+  Optional `context_tokens` is an integer from 2048 to 131072, default 16384.
+  Every chat sends `options.num_ctx` with that budget and `truncate: false`,
+  `shift: false`; server version verification requires Ollama 0.34.0 or later.
+  Known Cloud routes are unsupported. An overlong input is refused, never cut;
+  scoring HTTP 4xx makes only that instance missing, with a bounded reason.
+  Context budget and refusal policy are pinned in backend identity.
+  Prompt/probability protocol v3 ignores v1/v2 cached scores and requires fresh
+  calibration so earlier optimistic bounds or silently truncated inputs cannot be reused.
 - **jev-http:** POST `{state, questions}` to an operator-run DecisionEngine wrapper
   using raw `temperature=1`; shared state is a JSON-encoded projection and batches
   contain at most 16 questions. Each question has `type`, `instructions`, `criteria`.
   Responses must contain stable `model` and `answers[key].probabilities` for every
   option, summing to one. Yes/no wire keys accept either complete `true`/`false` or `yes`/`no` pairs; score keys are
   zero-based scale indices; choices retain their labels. Identity uses a probe.
+  Servers must never truncate grader inputs: refuse overlong inputs with HTTP 4xx,
+  as the strict MiniCPM server does. Rejected request instances become missing.
 - **teacher:** `model: { backend: teacher, teacher: reviewer }` answers every
   instance with 0/1 outcomes. Calibration requires independent agreement ≥ 0.85
   and the same evidence bars; no ECE is claimed. All calls incur teacher work.

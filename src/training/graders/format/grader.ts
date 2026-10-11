@@ -11,10 +11,12 @@ const escalation = z.union([
   z.strictObject({ to: identifier, between, max_calls_per_trial: z.number().int().positive().optional() }),
   z.strictObject({ to: identifier, target_accuracy: z.number().gt(0.5).max(1), max_calls_per_trial: z.number().int().positive().optional() }),
 ]);
-const localModel = z.strictObject({ backend: z.enum(['jev-http', 'ollama-logprobs']), endpoint: z.url(), name: z.string().min(1) });
+const localModel = z.strictObject({ backend: z.literal('jev-http'), endpoint: z.url(), name: z.string().min(1) });
+const ollamaModel = localModel.extend({ backend: z.literal('ollama-logprobs'),
+  context_tokens: z.number().int().min(2048).max(131072).default(16384) });
 const teacherModel = z.strictObject({ backend: z.literal('teacher'), teacher: identifier });
-const modelSchema = z.union([localModel, teacherModel]);
-const namedModelSchema = z.union([localModel.extend({ id: identifier }), teacherModel.extend({ id: identifier })]);
+const modelSchema = z.union([localModel, ollamaModel, teacherModel]);
+const namedModelSchema = z.union([localModel.extend({ id: identifier }), ollamaModel.extend({ id: identifier }), teacherModel.extend({ id: identifier })]);
 export type DecisionModel = z.infer<typeof modelSchema>;
 export type NamedDecisionModel = z.infer<typeof namedModelSchema>;
 export const graderSchema = z.strictObject({

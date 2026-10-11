@@ -12,6 +12,10 @@ mass, adding zero per omitted expected variant and p_min per omitted unexpected
 variant before renormalizing; flag any omission bounded. This lowers p_good conservatively. No
 expected-option metadata enters prompts. Missing expected metadata fails closed
 when a bound is needed. Option order must remain part of caller cache identity.
+Ollama verifies native no-truncation support through the public Ollama seam and
+always sends truncate:false, shift:false and num_ctx (default 16384). Context and
+refusal policy enter backend identity; prompt protocol v3 invalidates old scores.
+Scoring 4xx is missing per instance; capability and other transport failures throw.
 
 Jev batches only identical projections (shared state), at most 16 questions.
 identity() obtains reported model with a fixed empty-state probe before scoring;

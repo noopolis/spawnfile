@@ -12,7 +12,7 @@ async function rejectionReason(response: Response): Promise<string> {
   try { body = await response.json(); }
   catch (error) { if (!(error instanceof SyntaxError)) throw error; }
   const record = body !== null && typeof body === 'object' ? body as Record<string, unknown> : {};
-  const detail = typeof record.detail === 'string' ? record.detail : typeof record.message === 'string' ? record.message : '';
+  const detail = typeof record.detail === 'string' ? record.detail : typeof record.message === 'string' ? record.message : typeof record.error === 'string' ? record.error : '';
   const sanitized = detail.replace(/[\p{C}\s]+/gu, ' ').trim();
   return `Decision HTTP ${response.status}${sanitized ? `: ${sanitized}` : ''}`.slice(0, 200);
 }

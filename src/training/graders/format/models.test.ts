@@ -22,7 +22,7 @@ describe('decision model authoring', () => {
   });
 
   it('accepts local and teacher models in authored order and makes isolated model views', () => {
-    const authored = [local, teacher, { ...local, id: 'ollama', backend: 'ollama-logprobs' },
+    const authored = [local, teacher, { ...local, id: 'ollama', backend: 'ollama-logprobs', context_tokens: 16384 },
       { ...local, id: 'fourth', name: 'large' }];
     const grader = parseGrader(withModels(authored));
     expect(decisionModels(grader)).toEqual(authored);
@@ -57,4 +57,21 @@ describe('decision model authoring', () => {
     'rejects unsafe candidate id %j', id => {
       expect(() => parseGrader(withModels([{ ...local, id }]))).toThrow('models.0.id');
     });
+});
+
+it('defaults and bounds Ollama context in legacy and named authoring only', () => {
+  const model = { backend: 'ollama-logprobs', endpoint: local.endpoint, name: local.name };
+  expect(parseGrader({ ...base, model }).model).toEqual({ ...model, context_tokens: 16384 });
+  expect(decisionModels(parseGrader(withModels([{ ...model, id: 'ollama' }])))[0])
+    .toEqual({ ...model, id: 'ollama', context_tokens: 16384 });
+  for (const context_tokens of [2048, 32768, 131072]) {
+    expect(parseGrader({ ...base, model: { ...model, context_tokens } }).model).toHaveProperty('context_tokens', context_tokens);
+  }
+  for (const context_tokens of [2047, 131073, 4096.5, '16384', null]) {
+    expect(() => parseGrader({ ...base, model: { ...model, context_tokens } })).toThrow('model');
+    expect(() => parseGrader(withModels([{ ...model, id: 'ollama', context_tokens }]))).toThrow('models');
+  }
+  for (const model of [local, teacher]) {
+    expect(() => parseGrader(withModels([{ ...model, context_tokens: 16384 }]))).toThrow('models');
+  }
 });

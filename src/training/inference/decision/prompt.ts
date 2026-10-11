@@ -1,8 +1,8 @@
 import type { DecisionRequest } from '../../contracts/grading.js';
 
-// v2 includes per-variant conservative probability decoding. v1 calibration must
-// be regenerated; its raw cache entries cannot be reused for recalibration.
-export const DECISION_PROMPT_VERSION = 'paideia.grader-prompt.v2';
+// v3 refuses input truncation. Regenerate calibration; v1/v2 raw scores may
+// contain optimistic bounds or silently truncated prompts and cannot be reused.
+export const DECISION_PROMPT_VERSION = 'paideia.grader-prompt.v3';
 export const DECISION_LETTERS = 'ABCDEFGHIJKLMNOP';
 
 export function validateDecisionRequest(request: DecisionRequest): void {

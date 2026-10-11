@@ -46,7 +46,7 @@ async function fixture(model: NonNullable<Grader['model']> = { backend: 'jev-htt
 
 it('binds exact file digests and shares normalized endpoint resources across distinct graders', async () => {
   const first = await fixture();
-  const second = await fixture({ backend: 'ollama-logprobs', endpoint: 'http://localhost:8123/', name: 'other' });
+  const second = await fixture({ backend: 'ollama-logprobs', endpoint: 'http://localhost:8123/', name: 'other', context_tokens: 16384 });
   const third = await fixture({ backend: 'jev-http', endpoint: 'http://localhost:8124', name: 'other' });
   const a = await buildGradingRuntime(first.graderFile, first.dependencies);
   const b = await buildGradingRuntime(second.graderFile, second.dependencies);

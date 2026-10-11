@@ -1,13 +1,21 @@
+import { createHash } from 'node:crypto';
+import { ollamaContextSupport } from '../ollama/index.js';
 import type { DecisionBackend, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
 import { decisionHttp, DecisionRequestRejected, type DecisionHttpOptions } from './http.js';
-import { DECISION_LETTERS, decisionPrompt, validateDecisionRequest } from './prompt.js';
+import { DECISION_LETTERS, DECISION_PROMPT_VERSION, decisionPrompt, validateDecisionRequest } from './prompt.js';
 
-export interface OllamaDecisionOptions extends DecisionHttpOptions { model: string }
+export interface OllamaDecisionOptions extends DecisionHttpOptions { model: string; contextTokens?: number }
 
 export function createOllamaDecision(options: OllamaDecisionOptions): DecisionBackend {
   const http = decisionHttp(options);
   if (!options.model.trim() || options.model.startsWith('-')) throw new Error('Invalid decision model');
   const url = (resource: string) => new URL(`${http.endpoint.pathname.replace(/\/$/u, '')}/api/${resource}`, http.endpoint).href;
+  const contextTokens = options.contextTokens ?? 16384;
+  if (!Number.isSafeInteger(contextTokens) || contextTokens < 2048 || contextTokens > 131072) throw new Error('Invalid decision context tokens');
+  if (http.endpoint.hostname === 'ollama.com' || http.endpoint.hostname.endsWith('.ollama.com') || options.model.endsWith('-cloud')) {
+    throw new Error('Ollama Cloud does not support explicit no-truncation context');
+  }
+  const verifyContext = ollamaContextSupport(http.endpoint, options.fetch ?? fetch);
   let pinnedDigest: string | undefined;
   async function identity(signal?: AbortSignal) {
     const data = await http.json(url('tags'), undefined, signal) as { models?: { name?: string; digest?: string }[] } | null;
@@ -15,7 +23,11 @@ export function createOllamaDecision(options: OllamaDecisionOptions): DecisionBa
     if (typeof installed?.digest !== 'string' || !installed.digest.trim()) throw new Error(`Decision model ${options.model} is not installed with a digest; never pull automatically`);
     if (pinnedDigest !== undefined && pinnedDigest !== installed.digest) throw new Error('Ollama model digest changed');
     pinnedDigest = installed.digest;
-    return { backend: 'ollama-logprobs', model: options.model, digest: installed.digest };
+    const timeout = AbortSignal.timeout(options.timeoutMs ?? 180_000);
+    await verifyContext(signal === undefined ? timeout : AbortSignal.any([signal, timeout]));
+    const digest = createHash('sha256').update(JSON.stringify({ modelDigest: installed.digest,
+      contextTokens, truncate: false, shift: false, protocol: DECISION_PROMPT_VERSION })).digest('hex');
+    return { backend: 'ollama-logprobs', model: options.model, digest };
   }
   return {
     identity,
@@ -28,9 +40,9 @@ export function createOllamaDecision(options: OllamaDecisionOptions): DecisionBa
         validateDecisionRequest(request);
         try {
           const data = await http.json(url('chat'), { model: options.model, stream: false, think: false,
-            logprobs: true, top_logprobs: 20,
+            logprobs: true, top_logprobs: 20, truncate: false, shift: false,
             messages: [...(request.system === undefined ? [] : [{ role: 'system', content: request.system }]),
-              { role: 'user', content: decisionPrompt(request) }], options: { temperature: 0, num_predict: 1 } }, signal);
+              { role: 'user', content: decisionPrompt(request) }], options: { temperature: 0, num_predict: 1, num_ctx: contextTokens } }, signal);
           results.push(decodeLogprobs(request, data));
         } catch (error) {
           if (!(error instanceof DecisionRequestRejected)) throw error;
