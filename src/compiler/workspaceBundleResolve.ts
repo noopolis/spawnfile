@@ -73,7 +73,7 @@ const hashPrebuilt = async (source: string): Promise<string> => {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 };
 
-type BundleFacts = Omit<CompileReportWorkspaceBundle, "id">;
+type BundleFacts = Omit<CompileReportWorkspaceBundle, "id" | "agent_node_ids" | "declared_by">;
 
 /**
  * A stable pin for a bundle without building it: the declared or computed
@@ -102,6 +102,7 @@ export const pinWorkspaceBundle = async (resource: BundleResource, options: { ar
  */
 export const resolveWorkspaceBundles = async (plan: CompilePlan, options: ResolveWorkspaceBundlesOptions): Promise<ResolvedWorkspaceBundles> => {
   const result: ResolvedWorkspaceBundles = { built: new Map(), builtCount: 0, report: [], reusedCount: 0 };
+  const recording = plan.nodes.some((node) => node.kind === "agent" && node.value.training?.record !== undefined);
   const cacheDirectory = resolveWorkspaceBundleCacheDirectory(options.cacheDirectory), { outputDirectory } = options;
   const identity = options.identity ?? "dev", usedKeys = new Set<string>();
   const bundles = plan.nodes.flatMap((node) => node.kind === "agent" ? (node.value.workspaceResources ?? []).filter((resource): resource is BundleResource => resource.kind === "bundle") : []);
@@ -156,7 +157,13 @@ export const resolveWorkspaceBundles = async (plan: CompilePlan, options: Resolv
       if (resource.sha256 !== undefined && resource.sha256 !== resolved.sha256) {
         throw new SpawnfileError("validation_error", `Workspace bundle ${resource.id} built to ${resolved.sha256}, but it declares ${resource.sha256}`);
       }
-      if (!result.report.some((existing) => existing.id === resource.id && existing.sha256 === resolved.sha256)) result.report.push({ id: resource.id, ...resolved });
+      if (recording) {
+        const declared_by = plan.nodes.find((entry) => entry.value.source === resource.scope.key)?.id;
+        let pin = result.report.find((entry) => entry.id === resource.id && entry.sha256 === resolved.sha256 && entry.declared_by === declared_by);
+        if (!pin) { pin = { id: resource.id, ...resolved, agent_node_ids: [], ...(declared_by ? { declared_by } : {}) }; result.report.push(pin); }
+        if (!pin.agent_node_ids!.includes(node.id)) pin.agent_node_ids!.push(node.id);
+        pin.agent_node_ids!.sort();
+      } else if (!result.report.some((existing) => existing.id === resource.id && existing.sha256 === resolved.sha256)) result.report.push({ id: resource.id, ...resolved });
       return { ...resource, sha256: resolved.sha256 };
     });
   }

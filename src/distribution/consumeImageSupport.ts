@@ -1,3 +1,5 @@
+import { readHomeDeploymentRecord, resolveDockerDeploymentTarget, verifyDockerDeploymentTarget, type DockerDeploymentTarget } from "../deployment/index.js";
+import type { ConsumeImageUpOptions } from "./consumeImage.js";
 import { randomBytes } from "node:crypto";
 
 import { normalizeProjectLabelSlug } from "./projectName.js";
@@ -104,3 +106,34 @@ export const renderEnvFileContent = (env: Record<string, string>): string =>
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([name, value]) => `${name}=${value}`)
     .join("\n") + "\n";
+
+export const readPreviousSource = async (
+  deploymentName: string
+): Promise<{ digest: string | null; ref: string } | null> => {
+  try {
+    const existing = await readHomeDeploymentRecord(deploymentName);
+    if (existing.source.kind !== "image") {
+      return null;
+    }
+    return { digest: existing.source.digest, ref: existing.source.ref };
+  } catch {
+    return null;
+  }
+};
+
+export const resolveExistingOrNewTarget = async (
+  deploymentName: string,
+  alreadyExists: boolean,
+  options: ConsumeImageUpOptions
+): Promise<DockerDeploymentTarget> => {
+  if (alreadyExists && !options.dockerContext && !options.dockerHost) {
+    const existing = await readHomeDeploymentRecord(deploymentName);
+    await verifyDockerDeploymentTarget(existing.target, { dockerCommand: options.dockerCommand });
+    return existing.target;
+  }
+  return resolveDockerDeploymentTarget({
+    context: options.dockerContext ?? null,
+    dockerCommand: options.dockerCommand,
+    dockerHost: options.dockerHost ?? null
+  });
+};

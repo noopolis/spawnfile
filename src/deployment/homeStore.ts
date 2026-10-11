@@ -1,14 +1,16 @@
 import path from "node:path";
-import { readdir, rename, rm, writeFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 
 import { resolveSpawnfileHome } from "../auth/index.js";
 import type { DistributionReport } from "../distribution/index.js";
-import { ensureDirectory, readUtf8File } from "../filesystem/index.js";
+import { ensureDirectory, readUtf8File, writeDurableFile } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { normalizeDeploymentName } from "./names.js";
 import { acquirePidLock, PidLockBusyError } from "./pidLock.js";
 import { parseDeploymentRecord, type DeploymentRecord } from "./record.js";
+import { bindDeploymentRecording, publishDeploymentRecord, writeAtomicDeploymentFile } from "./recordPublication.js";
+export { HomeDeploymentRecordingError } from "./recordPublication.js";
 
 export const resolveHomeDeploymentsDirectory = (): string =>
   path.join(resolveSpawnfileHome(), "deployments");
@@ -47,19 +49,11 @@ export const acquireHomeDeploymentLock = async (
   }
 };
 
-const writeAtomic = async (filePath: string, content: string): Promise<void> => {
-  const temporaryPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`
-  );
-  await writeFile(temporaryPath, content, "utf8");
-  await rename(temporaryPath, filePath);
-};
-
 /** Writes the record and the cached distribution report together, record last. */
 export const writeHomeDeployment = async (
   record: DeploymentRecord,
-  report: DistributionReport
+  report: DistributionReport,
+  previous?: DeploymentRecord | null
 ): Promise<{ recordPath: string; reportPath: string }> => {
   const parsed = parseDeploymentRecord(record);
   const directory = resolveHomeDeploymentDirectory(parsed.name);
@@ -67,8 +61,10 @@ export const writeHomeDeployment = async (
 
   const reportPath = resolveHomeReportPath(parsed.name);
   const recordPath = resolveHomeRecordPath(parsed.name);
-  await writeAtomic(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-  await writeAtomic(recordPath, `${JSON.stringify(parsed, null, 2)}\n`);
+  const reportBytes = `${JSON.stringify(report, null, 2)}\n`;
+  const bound = parseDeploymentRecord(bindDeploymentRecording(recordPath, parsed, report, reportBytes));
+  await publishDeploymentRecord(recordPath, bound,
+    (durable) => (durable ? writeDurableFile : writeAtomicDeploymentFile)(reportPath, reportBytes), previous);
   return { recordPath, reportPath };
 };
 

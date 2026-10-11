@@ -32,7 +32,9 @@ src/release/
 - Order is fixed and tested: build BEFORE drain (the drain window stays short),
   drain before deploy, ledger after the container settled on the built image
   and admission was confirmed. The deployment's home lock (the one `up` takes)
-  is held from before the drain until the ledger is written.
+  is held from before the drain until the ledger is written. The image consumer verifies
+  the old container stopped and captures activation immediately before replacement start;
+  the release clock is forwarded to that consumer for ordering tests.
 - Only containers whose every runtime has a drain contract (`DRAINABLE_RUNTIMES`)
   are drained; anything else is refused unless `--no-drain`. Keep every effect behind `ReleaseDependencies` so the order stays
   a test, not a comment.

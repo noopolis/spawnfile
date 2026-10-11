@@ -22,6 +22,7 @@ import { assertDaimonScheduleAuthority } from "./scheduleAuthority.js";
 import { assertDaimonAttentionAuthority, resolveDaimonAttention } from "./attention.js";
 import { resolveDaimonGrokTurnLimits } from "./grokTurnLimits.js";
 import { resolveDaimonGrokModel } from "./grokModel.js";
+import { assertDaimonRecordingIsolation, daimonRecordingMountId, resolveDaimonAgentRecording } from "./recording.js";
 
 export const DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY = { mode: "workspace-write", networkAccess: false, webSearch: "disabled" } as const;
 
@@ -210,6 +211,7 @@ export const createDaimonContainerTargets = async (
   const configAgents = agents
     .map((input) => {
       const memory = resolveDaimonAgentMemory(input.value);
+      const recording = resolveDaimonAgentRecording(input, DAIMON_ORGANIZATION_TARGET_ID, agents.length);
       return {
       engine: resolveDaimonEngineConfig(input.value),
       id: input.id,
@@ -221,6 +223,7 @@ export const createDaimonContainerTargets = async (
         ...(server.auth?.mode === "bearer" ? { authSecretEnv: server.auth.secret } : {})
       })) }),
       ...(memory ? { memory } : {}),
+      ...(recording ? { recording } : {}),
       ...(attentionById.get(input.id) === undefined ? {} : { attention: attentionById.get(input.id) }),
       ...(input.value.surfaces?.moltnet?.length ? { moltnet: {
         cliPath: "/usr/local/bin/moltnet",
@@ -233,6 +236,12 @@ export const createDaimonContainerTargets = async (
       };
     })
     .sort((left, right) => left.id.localeCompare(right.id));
+  assertDaimonRecordingIsolation(configAgents.map((agent) => agent.recording), DAIMON_INSTANCE_STATE_ROOT);
+  const recordingMounts = configAgents.flatMap((agent) => agent.recording ? [{
+    id: daimonRecordingMountId(path.posix.basename(agent.recording.directory)),
+    lifecycle: "exclusive-reattach" as const, mountPath: agent.recording.directory,
+    reason: `Daimon wake recording for ${agent.id}`
+  }] : []);
   const engineByNodeId = Object.fromEntries(configAgents.map((agent) => [agent.id, agent.engine.kind]));
   for (const agent of configAgents) assertTurnLimitsEngine(agent.id, agent.engine.kind, turnLimitsById.get(agent.id));
   const grokTurnLimitsByNodeId = Object.fromEntries(configAgents
@@ -303,7 +312,7 @@ export const createDaimonContainerTargets = async (
         ...(hasGrok ? [DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath] : [])
       ],
     } : {}),
-    persistentMounts: [...portableEngineHomeMounts, ...toolStateMounts, {
+    persistentMounts: [...portableEngineHomeMounts, ...toolStateMounts, ...recordingMounts, {
       id: DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID,
       mountPath: `<instance-root>/${DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY}`,
       reason: "Daimon organization durable wake acceptance store"

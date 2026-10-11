@@ -19,6 +19,7 @@ src/volume/
 ├── feedLayout.ts      # Every rule about what may touch the volume: lstat guards, freeze, land, link swap
 ├── feedManifest.ts    # Land-time manifest outside the volume; every file hashed on every check
 ├── feedRecord.ts      # Host record (outside) and identity record (inside the volume)
+├── feedLandings.ts    # Recording-only landing history, retention and at-instant lookup
 ├── feedLand.ts        # Stage -> validation hook -> freeze -> one rename in -> current swap -> record -> GC
 ├── feedRefresh.ts     # Refresh/verify orchestration, healing, heal limit, under the lock
 ├── feedVerify.ts      # Integrity sweep against the host record; never throws
@@ -35,6 +36,7 @@ src/volume/
 <volume>/trees/<revision>[.<gen>]/      frozen content, never rewritten or replaced in place;
                                         a re-land lands as a new generation beside the drifted tree
 <state>/landed.json, manifests/, staging/, trash/, lock, prepared/   host state, outside the volume
+<state>/landings.jsonl                 recording-only history, independent of tree retirement
 ```
 
 ## Rules
@@ -52,6 +54,21 @@ src/volume/
 - Domain rules about what content must contain stay with the organization, as the
   declared `validate` command. Keep this folder generic.
 - Retirement follows the host record's serving order, never filesystem mtimes.
+- Landing history is enabled only for feeds consumed by a recording compiled agent. Its retention
+  is the maximum consumer `record.keep` (default 30d); no recording means no log reads or writes.
+  Append and fsync only after `landed.json` succeeds, including generations, retained-tree re-points,
+  link repairs and provenance/period adoption. Sample `switching_at` immediately before the current
+  rename; `landed_at` stays the identity instant. Both include milliseconds. Lookup inside the
+  inclusive transition window returns the entry with `ambiguous: true`.
+  Before every host-record replacement, reconcile the already-read predecessor against the last entry.
+  The host record embeds the landing source/keep so failed appends survive source changes.
+  A clean refresh also seeds history when recording is enabled later. Preserve original
+  instants; refuse replacement when reconciliation fails. File fsync and directory fsync
+  after rename must complete before log append; a matching tail is reconciled only after fsync of
+  the log and its directory. Pruning syncs its rename directory. Recording off retains the original
+  host-record bytes and filesystem calls, except to reconcile a predecessor that recorded earlier.
+  Keep the newest entry at or before the retention cutoff as the state at the window's start.
+  Invalid JSONL lines are reported beside valid entries; readers never silently trust them.
 - A revision is decided before anything runs: with `include`/`prepare` it is composed from the
   source revision, include digests and the prepare recipe. Prepare output is verified by the
   land-time manifest, not by the revision.

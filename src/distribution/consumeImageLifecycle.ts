@@ -273,7 +273,8 @@ export const rollbackCandidateContainer = async (
   candidateId: string | undefined,
   candidateName: string,
   previous: ContainerSnapshot | null,
-  backupName: string
+  backupName: string,
+  onCandidateRemoved?: () => Promise<void>
 ): Promise<void> => {
   const failed: string[] = [];
   if (candidateId !== undefined) {
@@ -283,6 +284,7 @@ export const rollbackCandidateContainer = async (
         if (candidate.id !== candidateId || candidate.name !== candidateName) throw new Error("identity");
         await runDocker(["rm", "-f", candidateId]);
       }
+      await onCandidateRemoved?.();
     } catch { failed.push("candidate cleanup"); }
   }
   if (previous !== null) {

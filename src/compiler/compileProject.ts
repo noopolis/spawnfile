@@ -1,3 +1,6 @@
+import { cleanCompileOutput } from "./cleanCompileOutput.js";
+import { assertRecordingCapability } from "./recordingCapability.js";
+import type { DaimonContractManifest } from "../runtime/daimon/contractManifest.js";
 import path from "node:path";
 import { chmod } from "node:fs/promises";
 
@@ -63,6 +66,8 @@ export type {
 } from "./organizationReadyEvidence.js";
 
 export interface CompileProjectOptions {
+  /** Test seam for the receipt-bound manifest; normal compilation uses the verified vendored bytes. */
+  daimonContractManifest?: DaimonContractManifest;
   /** Docker CLI for dependency installs and image-run generated bundle steps; defaults to `docker`. */
   bundleDockerCommand?: string;
   /** Cache for built workspace bundles; defaults to `$SPAWNFILE_HOME/cache/workspace-bundles`. */
@@ -271,6 +276,7 @@ export const compileProject = async (
   options: CompileProjectOptions = {}
 ): Promise<CompileProjectResult> => {
   const plan = await buildCompilePlan(inputPath);
+  await assertRecordingCapability(plan, options.daimonContractManifest);
   const worldBindings = options.worldBindingsPath === undefined
     ? undefined
     : await loadWorldBindingsForCompile(
@@ -285,7 +291,7 @@ export const compileProject = async (
     : path.join(path.dirname(plan.root), DEFAULT_OUTPUT_DIRECTORY);
 
   if (options.clean ?? true) {
-    await removeDirectory(outputDirectory);
+    await cleanCompileOutput(outputDirectory);
   }
   await ensureDirectory(outputDirectory);
   const workspaceBundles = await resolveWorkspaceBundles(plan, {
@@ -356,6 +362,8 @@ export const compileProject = async (
     moltnet: moltnetArtifacts,
     moltnetRelease,
     runtimePackageOverrides: resolvedRuntimePackageOverrides,
+    workspaceGitResources: workspaceGitPins.report,
+    workspaceBundles: workspaceBundles.report,
     ...(worldBindings ? { worldBindings } : {})
   });
   await writeEmittedFiles(outputDirectory, containerArtifacts.files);
@@ -373,6 +381,7 @@ export const compileProject = async (
   });
   if (workspaceBundles.report.length > 0) report.workspace_bundles = workspaceBundles.report;
   if (workspaceGitPins.report.length > 0) report.workspace_git_resources = workspaceGitPins.report;
+  if (containerArtifacts.distribution.report.recording) report.recording = containerArtifacts.distribution.report.recording;
   const reportPath = await writeCompileReport(outputDirectory, report);
   const organizationReadinessEvidence = createOrganizationReadinessEvidence({
     compileVersion: report.spawnfile_version,

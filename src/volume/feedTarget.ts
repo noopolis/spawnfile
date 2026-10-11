@@ -32,6 +32,8 @@ export interface FeedTarget {
   keep: number;
   owner?: string;
   prepare?: FeedPrepare;
+  /** Landing-history retention for recording agents consuming this volume; absent means no log I/O. */
+  record?: { keepMs: number };
   /** Replaces `source.ref` of a git source with a ref chosen on every refresh. */
   refRule?: FeedRefRule;
   resourceId: string;

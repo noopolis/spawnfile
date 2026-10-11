@@ -91,6 +91,7 @@ export const runDaimonOrgCli = async (argv: string[]): Promise<void> => {
     .name("spawnfile-e2e daimon-org")
     .description("Run the opt-in legacy generated-Pi organization E2E against real Codex auth")
     .option("--codex-auth-path <path>", "Codex auth.json path")
+    .option("--discard-recorded-memory", "Allow local fixture execution and cleanup to discard recorded memory ledgers")
     .option("--fixture <path>", "Fixture directory override")
     .option("--keep-artifacts", "Keep temporary compile output")
     .option("--node-command <command>", "Node command", "node")
@@ -100,6 +101,7 @@ export const runDaimonOrgCli = async (argv: string[]): Promise<void> => {
   await command.parseAsync(argv, { from: "user" });
   const options = command.opts<{
     codexAuthPath?: string;
+    discardRecordedMemory?: boolean;
     fixture?: string;
     keepArtifacts?: boolean;
     nodeCommand?: string;
@@ -108,6 +110,7 @@ export const runDaimonOrgCli = async (argv: string[]): Promise<void> => {
   }>();
   const result = await runDaimonOrgE2E({
     codexAuthPath: options.codexAuthPath,
+    discardRecordedMemory: options.discardRecordedMemory,
     fixtureDirectory: options.fixture,
     keepArtifacts: options.keepArtifacts,
     nodeCommand: options.nodeCommand,

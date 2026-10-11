@@ -4,21 +4,24 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 
 import {
   acquireHomeDeploymentLock,
+  activationBeforeStart,
   captureCandidateDiagnostics,
   createDockerDeploymentLabels,
-  homeDeploymentExists,
+  listHomeDeploymentRecords,
+  HomeDeploymentRecordingError,
   normalizeDeploymentName,
-  readHomeDeploymentRecord,
-  resolveDockerDeploymentTarget,
   sanitizeCandidateDiagnostic,
-  verifyDockerDeploymentTarget,
+  recordDeploymentRollback,
+  resolveHomeRecordPath,
   writeHomeDeployment,
-  type DeploymentRecord,
-  type DockerDeploymentTarget
+  type DeploymentActivation,
+  type DeploymentRecord
 } from "../deployment/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import {
+  readPreviousSource,
+  resolveExistingOrNewTarget,
   deriveDeploymentName,
   derivePersistentMountVolumeName,
   renderEnvFileContent,
@@ -50,11 +53,7 @@ export interface ConsumeImageUpOptions {
   daimonContainerCredentialUid?: number;
   authProfileName?: string | null;
   deploymentName?: string;
-  /**
-   * The caller already holds this deployment's home lock (a drained release
-   * holds it from the drain through the swap so no concurrent `up` can replace
-   * the drained container). Never set it without holding the lock.
-   */
+  /** Caller owns the home lock across drain and swap; never set this without holding it. */
   deploymentLockHeld?: boolean;
   dockerCommand?: string;
   dockerContext?: string;
@@ -63,6 +62,7 @@ export interface ConsumeImageUpOptions {
   envFilePath?: string | null;
   pull?: boolean;
   runDocker?: DockerCommandRunner;
+  now?: () => Date;
 }
 
 export interface ConsumeImageUpResult {
@@ -169,7 +169,8 @@ const consumeImageUpLocked = async (
   options: ConsumeImageUpOptions
 ): Promise<ConsumeImageUpResult> => {
   void parsedRef;
-  const alreadyExists = await homeDeploymentExists(deploymentName);
+  const previousRecord = (await listHomeDeploymentRecords()).find((entry) => entry.record.name === deploymentName)?.record;
+  const alreadyExists = previousRecord !== undefined;
   if (alreadyExists && !isExplicitName) {
     throw new SpawnfileError(
       "validation_error",
@@ -253,11 +254,14 @@ const consumeImageUpLocked = async (
       report, deploymentName, containerName, imageRef, runDocker
     );
     const previousContainer = await inspectContainerSnapshot(runDocker, containerName);
+    const now = options.now ?? (() => new Date());
+    let stoppedAt: number | undefined;
     if (previousContainer !== null) {
       await runDocker(["rename", containerName, backupName]);
       try {
         await runDocker(["stop", backupName]);
         await assertContainerStopped(runDocker, backupName, previousContainer.id);
+        if (report.recording) stoppedAt = now().getTime();
       } catch (error) {
         try {
           await restorePreviousContainer(runDocker, previousContainer, backupName, containerName);
@@ -294,7 +298,9 @@ const consumeImageUpLocked = async (
     runArgs.push(imageRef);
 
     let candidateId: string | undefined;
+    let activation: DeploymentActivation = {};
     try {
+      activation = report.recording ? await activationBeforeStart(stoppedAt, now) : {};
       const runOutput = (await runDocker(runArgs)).toString("utf8").trim();
       const observedId = runOutput.split("\n").pop()?.trim();
       if (!observedId || !/^[a-f0-9]{64}$/u.test(observedId)) {
@@ -308,7 +314,9 @@ const consumeImageUpLocked = async (
       const record: DeploymentRecord = {
         auth_profile: options.authProfileName ?? null,
         compile_fingerprint: inspection.compileFingerprint,
-        created_at: new Date().toISOString(),
+        created_at: now().toISOString(),
+        ...activation,
+        ...(report.recording ? { recording: report.recording } : {}),
         ...(options.envFilePath ? { env_file: path.resolve(options.envFilePath) } : {}),
         manager: "docker",
         name: deploymentName,
@@ -330,7 +338,7 @@ const consumeImageUpLocked = async (
         version: "spawnfile.deployment.v2"
       };
 
-      const written = await writeHomeDeployment(record, report);
+      const written = await writeHomeDeployment(record, report, previousRecord);
       if (previousContainer !== null) {
         await runDocker(["rm", "-f", previousContainer.id]).catch(() => undefined);
       }
@@ -343,6 +351,10 @@ const consumeImageUpLocked = async (
         recordPath: written.recordPath
       };
     } catch (error) {
+      if (error instanceof HomeDeploymentRecordingError) {
+        if (previousContainer !== null) await runDocker(["rm", "-f", previousContainer.id]).catch(() => undefined);
+        throw error;
+      }
       const diagnostics = candidateId ? await captureCandidateDiagnostics({
         candidateId, deploymentName, runDocker, secretValues: Object.values(env)
       }) : null;
@@ -352,7 +364,10 @@ const consumeImageUpLocked = async (
         sanitizeCandidateDiagnostic(cause instanceof Error ? cause.message : String(cause), Object.values(env)) + detail);
       try {
         await rollbackCandidateContainer(
-          runDocker, candidateId, containerName, previousContainer, backupName
+          runDocker, candidateId, containerName, previousContainer, backupName,
+          report.recording && activation.activated_at ? () => recordDeploymentRollback(resolveHomeRecordPath(deploymentName),
+            { name: deploymentName, created_at: activation.activated_at!, ...activation }, report,
+            `${JSON.stringify(report, null, 2)}\n`, now().toISOString()) : undefined
         );
       } catch (rollbackError) {
         throw failure(rollbackError);
@@ -363,35 +378,4 @@ const consumeImageUpLocked = async (
     try { await volumeReservation?.release(); }
     finally { await rm(workDir, { force: true, recursive: true }).catch(() => undefined); }
   }
-};
-
-const readPreviousSource = async (
-  deploymentName: string
-): Promise<{ digest: string | null; ref: string } | null> => {
-  try {
-    const existing = await readHomeDeploymentRecord(deploymentName);
-    if (existing.source.kind !== "image") {
-      return null;
-    }
-    return { digest: existing.source.digest, ref: existing.source.ref };
-  } catch {
-    return null;
-  }
-};
-
-const resolveExistingOrNewTarget = async (
-  deploymentName: string,
-  alreadyExists: boolean,
-  options: ConsumeImageUpOptions
-): Promise<DockerDeploymentTarget> => {
-  if (alreadyExists && !options.dockerContext && !options.dockerHost) {
-    const existing = await readHomeDeploymentRecord(deploymentName);
-    await verifyDockerDeploymentTarget(existing.target, { dockerCommand: options.dockerCommand });
-    return existing.target;
-  }
-  return resolveDockerDeploymentTarget({
-    context: options.dockerContext ?? null,
-    dockerCommand: options.dockerCommand,
-    dockerHost: options.dockerHost ?? null
-  });
 };

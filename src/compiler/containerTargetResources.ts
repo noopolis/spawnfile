@@ -12,6 +12,7 @@ import { createExclusiveReattachVolumeName } from "../shared/index.js";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import {
   mergeWorkspaceResourcePlans,
+  workspaceResourceTargetId,
   type WorkspaceResourcePlan
 } from "./workspaceResources.js";
 
@@ -110,12 +111,6 @@ const resolveSourceWorkspacePath = (
     .replaceAll(WORKSPACE_PATH_PLACEHOLDER, instancePaths.workspacePath);
 };
 
-const sourceTargetId = (
-  target: ContainerTarget,
-  input: ContainerTargetInput,
-  isMergedTarget: boolean
-): string => isMergedTarget ? `${target.id}:${input.id}` : target.id;
-
 const pathsOverlap = (left: string, right: string): boolean =>
   left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`);
 
@@ -197,7 +192,6 @@ export const resolveTargetResources = (
     return [];
   }
 
-  const isMergedTarget = sourceIds.size > 1;
   const resources = inputs.flatMap((input): ResolvedTargetResourcePlan[] => {
     if (!sourceIds.has(input.id) || input.value.kind !== "agent") {
       return [];
@@ -207,7 +201,7 @@ export const resolveTargetResources = (
       input.value.workspaceResources ?? [],
       `${target.id}/${input.id}`,
       {
-        targetId: sourceTargetId(target, input, isMergedTarget),
+        targetId: workspaceResourceTargetId(target.id, input.id, sourceIds.size),
         workspacePath: resolveSourceWorkspacePath(input, instancePaths, meta)
       }
     ).map((resource) => {

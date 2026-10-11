@@ -55,6 +55,11 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
 
 ## Rules
 
+- Generic volume cleanup refuses recording memory before any teardown. The local-rootfs
+  `daimon-org` harness refuses current/prior recording reports unless
+  `--discard-recorded-memory` is explicit, including before compile cleans prior output.
+  Pure recording-cleanup tests inject commands; they never invoke Docker or credentials.
+
 - Keep Docker/process orchestration here, not in compiler modules.
 - Reuse compiler and auth APIs instead of shelling through the Spawnfile CLI.
 - Treat these flows as opt-in developer verification, not normal unit-test coverage.

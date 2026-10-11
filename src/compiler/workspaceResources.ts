@@ -36,6 +36,10 @@ export interface WorkspaceResourcePlan {
   url?: string;
 }
 
+/** Multi-agent runtime targets retain one resource identity per source agent. */
+export const workspaceResourceTargetId = (targetId: string, sourceId: string, sourceCount: number): string =>
+  sourceCount > 1 ? `${targetId}:${sourceId}` : targetId;
+
 const normalizeMount = (value: string): string => {
   const trimmed = value.trim();
   const workspaceRelative = trimmed.startsWith("${workspace}/")

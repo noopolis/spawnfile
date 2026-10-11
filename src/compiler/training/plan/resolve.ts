@@ -1,5 +1,5 @@
 import { TRAINING_PLAN_VERSION, trainingPlanSchema, type TrainingPlan } from "./contract.js";
-import { invalidTraining, lexical, resolveTrainingResource } from "./references.js";
+import { invalidTraining, lexical, resolveTrainingRecordVolumes, resolveTrainingResource } from "./references.js";
 import { planGrader, resolveTrainingTarget, trainingAgents } from "./targets.js";
 import type { LoadedTrainingProject, TrainingAgentNode } from "./types.js";
 
@@ -26,15 +26,11 @@ const recordFor = (project: LoadedTrainingProject, agent: TrainingAgentNode): Tr
   if (record === undefined) return null;
   return {
     keep: record.keep ?? null,
-    volumes: (record.volumes ?? []).map((id) => {
+    volumes: resolveTrainingRecordVolumes(agent).map(({ id }) => {
       const context = `Training record.volumes for ${agent.id}`;
-      const { resource, declaredBy } = resolveTrainingResource(project.compilePlan, agent, id, context);
-      if (resource.kind !== "volume") invalidTraining(`${context}: ${id} must be a volume`);
-      if (resource.kind === "volume" && resource.feed) {
-        invalidTraining(`${context}: fed volume ${id} is recorded through its landing log`);
-      }
+      const { declaredBy } = resolveTrainingResource(project.compilePlan, agent, id, context);
       return { id, declaredBy };
-    }).sort((left, right) => lexical(left.id, right.id))
+    })
   };
 };
 
