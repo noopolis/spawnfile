@@ -1,5 +1,6 @@
 import { isAbsolute, posix } from 'node:path';
 import { z } from 'zod';
+import { nativeTaskClockSchema } from './task-clock.js';
 
 const absolute = z.string().min(1).refine(value => isAbsolute(value) && !value.includes(','), 'Expected absolute bind-safe path');
 const nativePath = absolute.refine(value => posix.isAbsolute(value) && posix.normalize(value) === value, 'Expected canonical Linux path');
@@ -19,6 +20,8 @@ export const grokReasoningEfforts = ['low', 'medium', 'high'] as const;
 export const grokEvaluatorRoles = ['run-root', 'context', 'sealed-inputs', 'judge-home', 'slot-ledger'] as const;
 
 const common = {
+  delivery: z.enum(['direct', 'transport']).optional(),
+  taskClock: nativeTaskClockSchema.optional(),
   image: z.string().regex(/^(?:sha256:[a-f0-9]{64}|[^\s]+@sha256:[a-f0-9]{64})$/u),
   config: absolute,
   configSha256: digest,
