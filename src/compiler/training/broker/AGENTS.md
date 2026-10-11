@@ -22,12 +22,30 @@ container that runs a brokered Grok subject beside the evaluator.
   no caller-supplied path or command) and owns `startTrainingSlot`, the only
   way a slot comes up: `provision → start → canaries → generation → receipt`.
 - `receipt.ts` writes `noopolis.daimon.grok-slot-preflight.v2`.
+- `taskClock.ts` reclaims the clock on recycle,
+  and checks installed config bytes, clock modes, library identity and worker
+  access before the receipt. `projection.ts` requires Daimon's projection v2
+  with `workerConfigVariant: "clocked"` and the selected digest.
 - `seccompRoutes.ts` answers, from the pinned profile bytes alone, whether the
   worker uid may even attempt a namespace escape — the only honest way to say
   `seccomp` rather than `kernel` when a route is unavailable.
 - `entrypoint.ts`/`main.ts` are the image's root entrypoint.
 
 Local constraints:
+
+- Training always installs the clocked config; exactly one registration may use
+  the container's fixed clock directory. The shared root renderer creates
+  `/run/daimon-engine-broker/task-clock` as `2100:2100 0755` and `faketime` as
+  `2100:2100 0644`, initially `+0\n`. Reclaim that subtree before clearing the
+  control root on recycle; root lacks `CAP_DAC_OVERRIDE` and `CAP_FOWNER`.
+- Keep the clock directory and distro preload library visible through the
+  pinned strict profile's read-only `/run` and `/usr` directory mounts. Never
+  bind only the timestamp file: broker publication replaces its inode. Mask
+  the three broker sockets individually, not their shared ancestor. Create
+  broker-owned `0600` Unix socket nodes for deny-placement checks. Keep them
+  through startup attestation (which runs before the backend listens); each
+  listener replaces its own node. Readiness requires that replacement, not
+  just a socket's existence. Daimon refuses a regular file at startup.
 
 - Nothing per-trial may live on the Grok realm volume. The realm holds only
   `auth.json` and the broker credential journal; the turn store, worker home,
@@ -77,9 +95,9 @@ Local constraints:
 - Grok 1.0.34 materializes every `deny` target inside bubblewrap as the worker
   uid, so a deny entry it cannot create makes the whole profile fail. That is
   why `/run/paideia` is masked as a directory rather than file by file, and why
-  provisioning creates every non-bind deny target itself. One entry still fails
-  this way (`.runtime/grok-p5/EVIDENCE.md`): the wake-acceptance store, which is
-  Daimon's own protected path under a `2000:2000 0700` parent.
+  provisioning creates every non-bind deny target itself. The wake-acceptance
+  store is masked through its state-directory parent, whose ancestors remain
+  searchable; a file mask beneath that `2000:2000 0700` directory would fail.
 - **Nothing the launch mounts may sit inside a wipe target.** A mount point
   cannot be unlinked while it is mounted, so a recycle that must remove or
   empty a directory holding one aborts. The broker/relay `TMPDIR` lived at the

@@ -63,11 +63,15 @@ export const resolveTrainingGrokDenyPaths = (added: readonly string[] = TRAINING
     ...DAIMON_GROK_BASE_PROFILE_GRANTS, TRAINING_SLOT_WORKSPACE, grokHome,
     path.posix.join(grokHome, "sessions"), path.posix.join(TRAINING_WORKER_HOME, "tmp")
   ];
+  const clock = DAIMON_GROK_ENGINE_BROKER.worker.taskClock;
+  const clockPaths = [clock.directoryPath, clock.preloadPath,
+    "/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1", "/usr/lib/aarch64-linux-gnu/faketime/libfaketime.so.1"];
   const candidates = [...new Set([...daimonOwn, ...added])].sort();
   for (const entry of candidates) {
     assertCanonicalRegisteredPath("deny path", entry);
     const grant = grants.find((candidate) => within(candidate, entry));
     if (grant) fail(`Training Grok deny path ${entry} equals or contains the base profile grant ${grant}; Grok refuses such a profile`);
+    if (within(entry, clock.directoryPath) || clockPaths.some((required) => within(required, entry))) fail(`Training Grok deny path ${entry} hides the task clock`);
     if (within(TRAINING_SLOT_WORKSPACE, entry) || within(TRAINING_WORKER_HOME, entry) || within(TRAINING_SLOT_RUNTIME_HOME, entry)) {
       fail(`Training Grok deny path ${entry} would hide the subject's own workspace, home, or runtime home`);
     }
@@ -106,7 +110,7 @@ export const resolveTrainingGrokRegistration = (input: TrainingGrokSlotInput): D
   }
   const home = assertCanonicalRegisteredPath("home", TRAINING_WORKER_HOME);
   const grokHome = path.posix.join(home, DAIMON_GROK_WORKER_HOME_DIRECTORY);
-  const config = resolveDaimonGrokWorkerConfig(input.model, input.reasoningEffort);
+  const config = resolveDaimonGrokWorkerConfig(input.model, input.reasoningEffort, "clocked");
   const denyPaths = resolveTrainingGrokDenyPaths(input.denyPaths);
   const profile = renderDaimonGrokWorkerSandboxProfile(denyPaths);
   const eventsPath = path.posix.join(grokHome, DAIMON_GROK_ENGINE_BROKER.worker.home.sandboxEvents.relativePath);
@@ -119,6 +123,7 @@ export const resolveTrainingGrokRegistration = (input: TrainingGrokSlotInput): D
     config: config.bytes,
     ...(input.limits === undefined ? {} : { limits: { ...input.limits } }),
     configSha256: config.sha256,
+    workerConfigVariant: "clocked",
     deferredDenyPaths: denyPaths.filter((entry) => TRAINING_DEFERRED_DENY_PATHS.includes(entry)),
     denyPaths,
     eventsPath,

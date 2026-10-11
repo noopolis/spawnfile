@@ -1,5 +1,6 @@
 import { DAIMON_GROK_ENGINE_BROKER } from "../runtime/daimon/contractManifest.js";
 import { DAIMON_BROKER_UID, DAIMON_ORGANIZATION_UID } from "../runtime/daimon/runtimeIdentity.js";
+import { grokProvisioningConfigPins, renderDaimonGrokTaskClockProvisioning } from "./containerDaimonGrokTaskClock.js";
 import {
   DAIMON_GROK_DENIED_STATE_ROOTS,
   DAIMON_GROK_OPTIONAL_DENY_PATHS,
@@ -67,7 +68,7 @@ export const renderDaimonGrokWorkerProvisioning = (
 ): string[] => [
   `const grokWorkers = ${JSON.stringify(registrations.map(programRegistration))};`,
   `const optionalDenyPaths = new Set(${JSON.stringify([...optionalDenyPaths])});`,
-  `const pinnedConfigSha256 = ${JSON.stringify(DAIMON_GROK_ENGINE_BROKER.worker.configSha256)};`,
+  `const pinnedConfigSha256 = ${JSON.stringify(grokProvisioningConfigPins(registrations))};`,
   "const sha256Hex = (value) => crypto.createHash('sha256').update(value).digest('hex');",
   "for (const entry of grokWorkers) { if (sha256Hex(entry.config) !== entry.configSha256 || !Object.hasOwn(pinnedConfigSha256, entry.model) || !Object.hasOwn(pinnedConfigSha256[entry.model], entry.reasoningEffort) || pinnedConfigSha256[entry.model][entry.reasoningEffort] !== entry.configSha256 || sha256Hex(entry.profile) !== entry.profileSha256 || entry.denyPaths.length === 0) throw new Error(`Grok worker contract bytes for ${entry.agentId} do not match their pins`); }",
   // Root holds no CAP_FOWNER: every mode change reclaims the inode, sets the mode, then restores or hands over ownership.
@@ -81,6 +82,7 @@ export const renderDaimonGrokWorkerProvisioning = (
   "const ensureExactFile = (target, content, mode) => { let info; try { info = fs.lstatSync(target); } catch (error) { if (error.code !== 'ENOENT') throw error; fs.writeFileSync(target, content, { mode, flag: 'wx' }); info = fs.lstatSync(target); } if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) throw new Error('unsafe worker runtime file'); if (fs.readFileSync(target, 'utf8') !== content) throw new Error(`worker runtime file identity mismatch: ${target}`); fs.chownSync(target, 0, 0); fs.chmodSync(target, mode); };",
   `const ensureEventsFile = (target, uid) => { let info; try { info = fs.lstatSync(target); } catch (error) { if (error.code !== 'ENOENT') throw error; fs.writeFileSync(target, '', { mode: 0o640, flag: 'wx' }); info = fs.lstatSync(target); } if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || (info.uid !== uid && info.uid !== 0) || ![0, uid, ${DAIMON_BROKER_UID}].includes(info.gid) || ![0o600, 0o640, 0o644].includes(info.mode & 0o777)) throw new Error('unsafe worker attestation events'); fs.chownSync(target, 0, 0); fs.chmodSync(target, 0o640); fs.chownSync(target, uid, ${DAIMON_BROKER_UID}); };`,
   `fs.mkdirSync('${DAIMON_WORKER_ROOT}', { recursive: true, mode: 0o711 }); fs.chownSync('${DAIMON_WORKER_ROOT}', 0, 0); fs.chmodSync('${DAIMON_WORKER_ROOT}', 0o711); assertCanonical('${DAIMON_WORKER_ROOT}', 'worker root');`,
+  ...renderDaimonGrokTaskClockProvisioning(registrations),
   // Pass 1: every workspace and home exists, root-held, before any deny list is checked.
   `for (const entry of grokWorkers) { traversable(entry.workspace); secureWorkspace(entry.workspace, entry.uid); assertCanonical(entry.workspace, 'workspace'); ensureDirectory(entry.home, 0, 0, 0o700); ensureDirectory(entry.grokHome, 0, 0, 0o700); ensureDirectory(\`\${entry.grokHome}/sessions\`, 0, 0, 0o700); for (const target of [entry.home, entry.grokHome]) assertCanonical(target, 'home'); }`,
   "for (const denied of optionalDenyPaths) { try { fs.lstatSync(denied); } catch (error) { if (error.code !== 'ENOENT') throw error; fs.mkdirSync(denied, { mode: 0o700 }); fs.chownSync(denied, 0, 0); fs.chmodSync(denied, 0o700); } }",

@@ -44,6 +44,7 @@ src/compiler/
 ├── containerDaimonBrokerRender.ts # Fixed Daimon broker identities, registrations binary, credential realm, and root-launch provisioning
 ├── containerDaimonGrokWorkerRender.ts # Brokered Grok registrations: pinned worker config, sandbox deny list, service.json v2
 ├── containerDaimonGrokWorkerProvisioning.ts # Root program lines for the attested worker GROK_HOME layout and canonical-path checks
+├── containerDaimonGrokTaskClock.ts # Clocked config selection/count gate and shared root clock provisioning
 ├── containerArtifactsPlans.ts # Environment inventory and runtime target-plan orchestration
 ├── containerTargetPlanResolution.ts # Per-target paths, packages, auth, secrets, and exposure resolution
 ├── teamRoster.ts               # Context-scoped team roster generation and diagnostics

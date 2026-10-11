@@ -12,13 +12,20 @@ The recipe is opt-in during incubation; no published runtime is implied.
 
 ## Layer order and modes
 
-Layers run from least to most frequently changing: Python parent copies, the
-baked `2000`/`2100`/`2200` Daimon identities (context-independent, so first),
+Layers run from least to most frequently changing: Python parent copies,
+Bookworm's pinned `libfaketime=0.9.10-2.1`, the baked `2000`/`2100`/`2200` Daimon identities,
 locked Claude/Paideia/Spawnfile/compiler dependencies, the lock-keyed DSPy venv,
 one layout RUN, bridge source plus its editable install, then the entrypoints and
 distributions. Nothing RUNs after the late COPY layers, so a changed distribution
 rebuilds its own COPY layer, every later COPY layer and the label, but no RUN
 layer (no npm, pip or recursive chmod work).
+
+Both parents must use Debian Bookworm. The early package layer resolves the
+multiarch distro library with `dpkg-query` and creates the root-owned fixed
+symlink `/usr/local/lib/daimon/libfaketime.so.1`. Never set image-wide
+`LD_PRELOAD`: brokered Grok supplies it only through the clocked shell policy;
+direct Daimon tool children receive it from the trial caller. The mode verifier
+includes the symlink and resolved distro file on both architectures.
 
 The image copies no Grok binary: `spawnfile.training-container.v3` runs the
 native parent's pinned `/usr/local/bin/grok` through the broker, and a second

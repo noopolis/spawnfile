@@ -30,6 +30,7 @@ import {
   TRAINING_WORKER_UID
 } from "./paths.js";
 import { trainingNamespaceDenialMechanism } from "./seccompRoutes.js";
+import { renderTrainingTaskClockAssertions, renderTrainingTaskClockReset } from "./taskClock.js";
 
 const quote = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
 
@@ -127,10 +128,12 @@ export const renderTrainingBrokerProvisioning = (registration: DaimonGrokRegistr
   ...[...trainingSlotDirectories()].sort((left, right) => right.path.split("/").length - left.path.split("/").length)
     .map((entry) => `provision_dir ${quote(entry.path)} ${entry.mode} ${entry.uid} ${entry.gid}`),
   ...renderDaimonGrokHostPreflight(),
+  ...renderTrainingTaskClockReset(),
   ...renderDaimonBrokerProvisioningProgram([registration], [], {
     turnStore: TRAINING_SLOT_TURN_STORE,
     inferenceLedgerPath: TRAINING_INFERENCE_LEDGER
   }, "clear", TRAINING_OPTIONAL_DENY_DIRECTORIES, TRAINING_BROKER_TMPDIR),
+  ...renderTrainingTaskClockAssertions(registration),
   // The shared program leaves the broker's `/etc` root `0555 root:root`, which every uid can list. Training
   // denies that directory to its worker, and a canary can only observe a denial the kernel actually enforces.
   `chmod 0550 /etc/daimon-engine-broker; chown 0:${DAIMON_BROKER_UID} /etc/daimon-engine-broker`,
