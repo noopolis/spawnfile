@@ -1,4 +1,6 @@
 import type { NativeLaunch } from '../receipt/index.js';
+import type { NativeAcceptanceResult, TransportEvidence } from './wake-delivery/index.js';
+import type { NativeTaskClockEvidence } from '../receipt/index.js';
 
 /** Only fields consumed from Daimon's public /runtime contract are described here. */
 export interface NativeConfig {
@@ -30,7 +32,7 @@ export interface NativeHost {
   start(): Promise<void>;
   stop(): Promise<unknown>;
   health(): Promise<{ version: string; state: string; agents: { agentId: string; engine?: string; state?: string }[] }>;
-  accept(request: unknown): Promise<{ state: 'accepted'; acceptance_id: string } | { state: 'rejected' | 'stopped'; code: string }>;
+  accept(request: unknown): Promise<NativeAcceptanceResult>;
   wakeReceipt(token: string | undefined, acceptanceId: string): Promise<NativeReceipt | undefined>;
   activityV2(token: string | undefined): Promise<NativeActivity | undefined>;
   availability(token: string | undefined): Promise<NativeAvailability | undefined>;
@@ -164,6 +166,8 @@ export interface TerminalEvidence {
   configSha256: string;
   scheduleOverride: 'disabled';
   preparation?: Pick<NativeLaunch, 'sourceConfigSha256' | 'instructions' | 'overrides'>;
+  transport?: TransportEvidence;
+  taskClock?: NativeTaskClockEvidence;
   status: 'completed' | 'failed' | 'cancelled';
   /** A closed execution can leave its delivery deferred; this never marks the trial completed. */
   blocked?: 'awaiting-external-input';

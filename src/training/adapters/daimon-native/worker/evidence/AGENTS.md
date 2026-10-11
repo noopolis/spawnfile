@@ -10,5 +10,13 @@ observer emits each execution once. Older frames without accounting retain their
 original wake usage semantics. Complete trial usage requires a completed matching
 trace and complete non-estimated usage for every execution.
 
+The complete native member already persists in each numbered wake evidence file
+and the terminal diagnostic observation. `modelContexts` records model and policy
+metadata; Grok `requests` records token counts and timing, not provider request
+bodies. Neither proves what date the engine sent to its model. Do not reconstruct
+prompts or a rendered inbox allowance from current availability: Daimon computes
+the inbox budget when the tool is read, and its public control API does not expose
+that historical tool result.
+
 Verify collection, malformed evidence and Grok tests here, plus parent worker and
 child multi-wake tests. Keep filesystem bounds and negative identity tests intact.

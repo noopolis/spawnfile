@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { parseTransportSource, type TransportDeliverySource } from './wake-delivery/index.js';
 
 export interface ExternalInputSource { kind: string; id: string; sha256: string }
 export interface DeliveryControls { maxExternalDeliveries?: number; source?: ExternalInputSource }
@@ -32,7 +33,7 @@ export function verifyExternalSource(source: ExternalInputSource, text: string):
  * gate would admit above it is one whose later continuations could never execute,
  * so it is refused here rather than deadlocking on the wake that cannot run.
  */
-export function createDeliveryGate(timeoutMs: number, maxExecutions: number = MAX_TRIAL_WAKES) {
+export function createDeliveryGate(timeoutMs: number, maxExecutions: number = MAX_TRIAL_WAKES, delivery: 'direct' | 'transport' = 'direct') {
   const wakes = new Set<string>();
   const executions: string[] = [];
   let active = false;
@@ -41,17 +42,21 @@ export function createDeliveryGate(timeoutMs: number, maxExecutions: number = MA
   let deadline: number | undefined;
   return {
     executions,
-    begin(wakeId: string, text: string, controls: DeliveryControls = {}) {
+    begin(wakeId: string, text: string, controls: DeliveryControls = {}, source?: TransportDeliverySource) {
       if (Object.keys(controls).some(key => !['maxExternalDeliveries', 'source'].includes(key))) throw new Error('Unknown delivery controls');
       if (active || wakes.has(wakeId) || wakes.size > maximum || wakes.size > 0 && !deferred) throw new Error('Worker accepts exactly one native trial delivery unless a bounded deferred continuation is declared');
-      if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(wakeId) || !text.trim() || Buffer.byteLength(text) > 16384) throw new Error('Invalid bounded trial delivery');
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(wakeId) || delivery === 'direct' && !text.trim() || Buffer.byteLength(text) > 16384) throw new Error('Invalid bounded trial delivery');
+      if (delivery === 'transport') {
+        const expected = parseTransportSource(source);
+        if (wakes.size && expected.deliveryId === undefined) throw new Error('Transport continuation requires an exact delivery id');
+      } else if (source !== undefined) throw new Error('Direct delivery cannot declare a transport source');
       if (!wakes.size) {
         maximum = controls.maxExternalDeliveries ?? 0;
         if (!Number.isSafeInteger(maximum) || maximum < 0 || maximum > MAX_EXTERNAL_DELIVERIES || controls.source) throw new Error('Invalid external delivery bound');
         if (maximum + 1 > maxExecutions) throw new Error('Native execution policy admits fewer executions than the declared delivery budget');
       } else {
-        if (controls.maxExternalDeliveries !== undefined || !controls.source) throw new Error('Continuation requires a source and cannot change its delivery budget');
-        verifyExternalSource(controls.source, text);
+        if (controls.maxExternalDeliveries !== undefined || delivery === 'direct' && !controls.source) throw new Error('Continuation requires a source and cannot change its delivery budget');
+        if (controls.source) verifyExternalSource(controls.source, text);
       }
       deadline ??= Date.now() + timeoutMs;
       if (Date.now() >= deadline) throw new Error('Native trial deadline exceeded');

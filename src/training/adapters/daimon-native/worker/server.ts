@@ -2,8 +2,10 @@ import type { DeliveryControls } from './deliveries.js';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { WorkerController } from './control.js';
+import { parseTransportSource, type NativeWakeRequest } from './wake-delivery/index.js';
 
-export function createWorkerServer(controller: WorkerController, token: string): Server {
+export function createWorkerServer(controller: WorkerController, token: string, parseWake?: (value: unknown) => NativeWakeRequest): Server {
+  if (controller.transport && !parseWake) throw new Error('Transport delivery requires Daimon public wake parsing');
   const authenticated = (request: IncomingMessage): boolean => {
     const hash = (value: string) => createHash('sha256').update(value).digest();
     return timingSafeEqual(hash(request.headers.authorization ?? ''), hash(`Bearer ${token}`));
@@ -32,15 +34,30 @@ export function createWorkerServer(controller: WorkerController, token: string):
       if (request.method === 'POST' && url.pathname === '/trial/stop') {
         return reply(response, 200, await controller.stop());
       }
+      if (controller.transport && request.method === 'GET' && url.pathname === '/trial/run') {
+        return reply(response, 200, controller.transport.state());
+      }
+      if (controller.transport && request.method === 'POST' && url.pathname === '/v2/wakes') {
+        if (request.headers['content-type'] !== 'application/json') return reply(response, 400, { error: 'content_type_required' });
+        const value = await body(request, 65_536);
+        const parsed = parseWake!({ ...value, token });
+        const result = await controller.transport.accept(parsed);
+        const status = result.state === 'accepted' ? 202 : result.state === 'stopped' ? 409
+          : result.code === 'invalid_request' ? 400 : result.code === 'unauthorized' ? 401 : 409;
+        return reply(response, status, result);
+      }
       if (request.method === 'POST' && url.pathname === '/trial/run') {
         if (request.headers['content-type'] !== 'application/json') return reply(response, 400, { error: 'content_type_required' });
         const value = await body(request);
-        if (Object.keys(value).some(key => !['text', 'wakeId', 'controls'].includes(key)) || value.controls !== undefined && (!value.controls || typeof value.controls !== 'object' || Array.isArray(value.controls)) || typeof value.wakeId !== 'string' || typeof value.text !== 'string') {
+        const fields = controller.transport ? ['text', 'wakeId', 'controls', 'source'] : ['text', 'wakeId', 'controls'];
+        if (Object.keys(value).some(key => !fields.includes(key)) || value.controls !== undefined && (!value.controls || typeof value.controls !== 'object' || Array.isArray(value.controls)) || typeof value.wakeId !== 'string' ||
+            !(controller.transport && value.text === undefined) && typeof value.text !== 'string') {
           return reply(response, 400, { error: 'invalid_trial_delivery' });
         }
+        const source = controller.transport ? parseTransportSource(value.source) : undefined;
         const abandoned = (): void => { if (!response.writableEnded) void controller.stop(); };
         response.once('close', abandoned);
-        try { return reply(response, 200, await controller.run(value.wakeId, value.text, value.controls as DeliveryControls | undefined)); }
+        try { return reply(response, 200, await controller.run(value.wakeId, value.text as string ?? '', value.controls as DeliveryControls | undefined, source)); }
         finally { response.removeListener('close', abandoned); }
       }
       return reply(response, 404, { error: 'not_found' });
@@ -64,13 +81,13 @@ function reply(response: ServerResponse, status: number, value: unknown): void {
   response.end(`${JSON.stringify(value)}\n`);
 }
 
-async function body(request: IncomingMessage): Promise<Record<string, unknown>> {
+async function body(request: IncomingMessage, maximum = 32_768): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
     const bytes = Buffer.from(chunk as Uint8Array);
     size += bytes.length;
-    if (size > 32_768) throw new Error('Worker request body exceeds its bound');
+    if (size > maximum) throw new Error('Worker request body exceeds its bound');
     chunks.push(bytes);
   }
   const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));

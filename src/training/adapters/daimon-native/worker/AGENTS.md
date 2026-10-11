@@ -8,6 +8,16 @@ receipts, authenticated native activity, closed telemetry and verified containme
 Use public module indexes across child boundaries; no sibling implementation imports.
 Keep adjacent tests, files below 400 lines and per-file coverage above 90 percent.
 
+`wake-delivery/` owns transport source matching and route acceptance observation.
+Direct mode keeps its original manual delivery. Transport mode uses Daimon's public
+parser and authenticated `/v2/wakes`, while `/trial/run` only arms and observes;
+its GET form is the caller's publication barrier. Never pre-stamp task time or
+attribute a transport wake by trace count. An unobserved live batch fails closed;
+current availability is labelled separately from unavailable rendered allowances.
+`evidence/execution.ts` owns shared trace and execution attribution checks.
+Install optional task-clock environment only inside the already-running worker;
+record the same origin/anchor in readiness and each terminal frame.
+
 External continuations are opt-in, sourced, bounded to three deliveries and share
 one trial deadline. Deferred work is never success. Preserve per-wake evidence and
 aggregate usage once; cancellation must stop the owned runtime.

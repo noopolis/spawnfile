@@ -11,6 +11,15 @@ observer semantics unchanged. Reject redirects, unsupported paths, malformed or
 oversized responses and expired/cancelled requests. Tests use loopback servers
 and non-secret tokens; they prove transport behavior, not native isolation.
 
+Transport delivery providers reserve an expected source before `/trial/run` starts.
+Poll its authenticated GET status until that exact wake and selector are armed,
+then invoke publication once. Preparation, arming and publication share the real
+trial deadline and cancellation. Continuations require exact delivery IDs; an
+initial source may use a prefix. Match terminal receipts to the actual delivery,
+acceptance and observed batch. Never synthesize a wake or change its event.
+The HTTP client permits the arm-status GET only with explicit transport mode;
+the default direct-mode request contract stays unchanged.
+
 A worker holding the socket open is working, not broken. Every request therefore
 carries its own header and body timeouts, derived from the deadline it was given:
 undici's ambient 300-second default is shorter than a legitimate turn and used to
