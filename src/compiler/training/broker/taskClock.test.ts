@@ -23,8 +23,7 @@ describe("training task clock preflight", () => {
     // Quotes are shell-escaped by the outer command. Verify every access test survives rendering.
     for (const [verb, target] of [["test -r", clock.timestampFilePath], ["test ! -w", clock.timestampFilePath],
       ["test -x", clock.directoryPath], ["test ! -w", clock.directoryPath], ["test -r", clock.preloadPath]]) {
-      expect(probe).toContain(verb);
-      expect(probe).toContain(target);
+      expect(probe).toContain(`${verb} '"'"'${target}'"'"'`);
     }
     expect(() => renderTrainingTaskClockAssertions({ ...slot, workerConfigVariant: "unclocked" })).toThrow(/pinned clocked/u);
     expect(() => renderTrainingTaskClockAssertions({ ...slot, configSha256: "a".repeat(64) })).toThrow(/pinned clocked/u);
