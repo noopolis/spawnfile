@@ -142,3 +142,39 @@ describe('escalation planning', () => {
     expect(() => planEscalation([{ ...rows()[0]!, p: NaN }], [], { target_accuracy: 1 })).toThrow('p:');
   });
 });
+
+it('uses all held-out groups for coverage even without independent truth', () => {
+  const held = rows(100).map((row, index) => ({ ...row,
+    source: index < 15 ? 'human' as const : 'consensus' as const,
+    p: index < 10 ? row.p : 0.5, teacherGood: row.good,
+  }));
+  expect(planEscalation(rows(), held, { between: [0.4, 0.6] })).toMatchObject({
+    independentGroups: 15, heldOutAccuracy: 1, coverage: 0.1, status: 'escalation-infeasible',
+    failures: ['heldOut.retainedCoverage >= 0.30'],
+  });
+  held.forEach((row, index) => { row.p = index < 15 ? 0.5 : row.good ? 0.9 : 0.1; });
+  // The independently answerable subset has zero retention, but total retention is valid.
+  expect(planEscalation(rows(), held, { between: [0.4, 0.6] })).toMatchObject({
+    independentGroups: 15, heldOutAccuracy: 1, coverage: 0.85, status: 'calibrated',
+  });
+});
+
+it('excludes disputed fit rows from band choice while retaining disputed held-out truth', () => {
+  const fit = rows().map(row => ({ ...row, disputed: true, p: 0.9, good: true }));
+  expect(planEscalation(fit, rows(), { target_accuracy: 0.9 }).band).toBeUndefined();
+  expect(planEscalation(rows(), modelRows().map(row => ({ ...row, disputed: true })),
+    { target_accuracy: 0.9 }, { teacherId: 'teacher' })).toMatchObject({
+    independentGroups: 40, heldOutAccuracy: 0, status: 'escalation-infeasible',
+  });
+});
+
+it('waives only coverage for forced teachers, preserving point, Wilson and independence bars', () => {
+  const held = rows(20).map(row => ({ ...row, teacherGood: row.good, missing: true }));
+  const plan = (sample = held, target_accuracy = 0.8) => planEscalation([], sample,
+    { target_accuracy }, { forceTeacher: true, teacherId: 'teacher' });
+  expect(plan()).toMatchObject({ status: 'calibrated', heldOutAccuracy: 1, coverage: 0, failures: [] });
+  expect(plan(held, 1).failures).toEqual(['heldOut.cascade90Lower >= target_accuracy - 0.10']);
+  expect(plan(held.slice(0, 14)).status).toBe('unverified');
+  expect(plan(held.map(row => ({ ...row, teacherGood: !row.good }))).failures)
+    .toContain('heldOut.cascadeAccuracy >= target_accuracy');
+});

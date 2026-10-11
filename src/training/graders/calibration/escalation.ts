@@ -95,6 +95,7 @@ export function planEscalation(fit: readonly CascadeRecord[], heldOut: readonly 
   if (options.maxCallsPerTrial !== undefined && (!Number.isInteger(limit) || limit < 1)) {
     throw new Error('maxCallsPerTrial: expected positive integer');
   }
+  fit = fit.filter(row => !row.disputed);
   const report = options.teacherId === undefined ? {} : { teacherReport: escalationTeacherReport(heldOut, options.teacherId) };
   let band: EscalationBand | undefined;
   if ('between' in policy) {
@@ -136,14 +137,14 @@ export function planEscalation(fit: readonly CascadeRecord[], heldOut: readonly 
   const correct = independent.filter(row => row.answer !== undefined && row.answer === row.good).length;
   const heldOutAccuracy = independent.length ? correct / independent.length : 0;
   const cascadeInterval = wilson90(correct, independent.length);
-  const coverage = options.forceTeacher ? 0 : retainedCoverage(independent, chosen);
+  const coverage = options.forceTeacher ? 0 : retainedCoverage(heldOut, chosen);
   const failures: string[] = [];
   if (independentGroups < 15) failures.push('heldOut.independentGroups >= 15');
   if ('target_accuracy' in policy) {
     if (heldOutAccuracy < policy.target_accuracy) failures.push('heldOut.cascadeAccuracy >= target_accuracy');
     if (cascadeInterval[0] < policy.target_accuracy - 0.10) failures.push('heldOut.cascade90Lower >= target_accuracy - 0.10');
   }
-  if (coverage < 0.30) failures.push('heldOut.retainedCoverage >= 0.30');
+  if (!options.forceTeacher && coverage < 0.30) failures.push('heldOut.retainedCoverage >= 0.30');
   const bad = independent.filter(row => !row.good);
   const falsePassCount = bad.filter(row => row.answer === true).length;
   const falsePassRate = bad.length ? falsePassCount / bad.length : 0;

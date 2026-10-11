@@ -30,6 +30,7 @@ describe('labels', () => {
   it('validates typed instance votes, references and provenance', () => {
     expect(parseLabels(base, grader).labels[0]?.votes['s@p0.s0']).toEqual({ c: 4 });
     expect(parseLabelsYaml(JSON.stringify(base), grader).labels).toHaveLength(1);
+    expect(parseLabels(withLabel({ askedByInstance: { a: ['c'], 'p@p0': [] } }), grader).labels[0]!.askedByInstance).toEqual({ a: ['c'], 'p@p0': [] });
     expect(parseLabels(withLabel({ asked: undefined }), grader).labels[0]?.asked).toBeUndefined();
   });
   it.each([
@@ -46,6 +47,8 @@ describe('labels', () => {
     expect(() => parseLabels({ ...base, labels: [base.labels[0], base.labels[0]] }, grader)).toThrow('labels.1.id');
     expect(() => parseLabels(withLabel({ lineage: undefined }), grader)).toThrow('lineage');
     expect(() => parseLabels(withLabel({ asked: ['unknown'] }), grader)).toThrow('asked/provenance.unknown');
+    expect(() => parseLabels(withLabel({ askedByInstance: { a: ['unknown'] } }), grader)).toThrow('asked/provenance.unknown');
+    expect(() => parseLabels(withLabel({ askedByInstance: { unknown: ['c'] } }), grader)).toThrow('unknown question');
     expect(() => parseLabels(withLabel({ votes: { a: { unknown: 'yes' } } }), grader)).toThrow('votes.a.unknown');
     expect(() => parseLabels(withLabel({ context: { unknown: 'value' } }), grader)).toThrow('context.unknown');
     expect(() => parseLabels(withLabel({ output: { from: 'a.json', sha256: 'wrong' } }), grader)).toThrow('labels.0.output');

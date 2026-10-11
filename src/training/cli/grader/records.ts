@@ -1,5 +1,5 @@
 import type { DecisionRequest, DecisionResult } from '../../contracts/grading.js';
-import { allQuestions, deriveConsensus, expandInstances, expectedOptions, optionsFor,
+import { allQuestions, askedForInstance, deriveConsensus, expandInstances, expectedOptions, optionsFor,
   type Grader, type Labels, type Label, type QuestionInstance, type DecisionQuestion,
   type Consensus, type CalibrationRecord, type CascadeRecord } from '../../graders/index.js';
 
@@ -13,7 +13,9 @@ export interface GoldenInstance {
 
 export function independentConsensus(label: Label, labelers: Labels['labelers'], teacher: string, keys: string[]) {
   const remaining = Object.fromEntries(Object.entries(labelers).filter(([id]) => id !== teacher));
-  return deriveConsensus({ ...label, asked: label.asked?.filter(id => id !== teacher),
+  return deriveConsensus({ ...label,
+    askedByInstance: Object.fromEntries(keys.map(key => [key, askedForInstance(label, key).filter(id => id !== teacher)])),
+    asked: label.asked?.filter(id => id !== teacher),
     votes: Object.fromEntries(Object.entries(label.votes).map(([key, votes]) =>
       [key, Object.fromEntries(Object.entries(votes).filter(([id]) => id !== teacher))])) }, remaining, keys);
 }
@@ -31,7 +33,7 @@ export function goldenInstances(grader: Grader, labels: Labels): { rows: GoldenI
     for (const instance of instances) {
       if (instance.state !== 'ready') { if (instance.state === 'missing') unavailable++; continue; }
       const golden = consensus[instance.key]!;
-      if (golden.disputed) { disputed++; continue; }
+      if (golden.disputed) disputed++;
       const question = questions.get(instance.questionId)!;
       rows.push({ label, instance, golden, question, request: {
         key: JSON.stringify([label.id, instance.key]), type: question.type,
@@ -54,12 +56,13 @@ export function rawGood(row: Pick<GoldenInstance, 'request' | 'question'>, resul
 export function calibrationRecord(row: GoldenInstance, rawPGood: number): CalibrationRecord {
   return { questionId: row.question.id, type: row.question.type, group: row.label.lineage,
     example: row.label.example, source: row.golden.source,
+    ...(row.golden.disputed ? { disputed: true } : {}),
     rawPGood, good: expectedOptions(row.question).includes(row.golden.answer!) };
 }
 
 export function cascadeRecord(row: GoldenInstance, record: CalibrationRecord, p: number, labelers: Labels['labelers']): CascadeRecord {
   return { ...record, p, outputId: row.label.id, projectionDigest: row.instance.projectionDigest,
-    votes: row.label.votes[row.instance.key] ?? {}, asked: [...new Set([...(row.label.asked ?? []), ...Object.values(row.label.votes).flatMap(votes => Object.keys(votes))])], labelers,
+    votes: row.label.votes[row.instance.key] ?? {}, asked: askedForInstance(row.label, row.instance.key), labelers,
     expected: expectedOptions(row.question), goldenLabelers: Object.keys(row.golden.votes) };
 }
 

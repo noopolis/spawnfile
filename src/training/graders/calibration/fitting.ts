@@ -76,7 +76,9 @@ export function fitPlatt(records: readonly Pick<CalibrationRecord, 'rawPGood' | 
 export function calibrateQuestions(records: readonly CalibrationRecord[], options: {
   seed: string; exclusions?: Exclusions; gates?: readonly string[];
 }): QuestionCalibration[] {
-  const split = splitCalibration(records, options.seed, options.exclusions);
+  const population = splitCalibration(records, options.seed, options.exclusions);
+  const split = { fit: population.fit.filter(record => !record.disputed),
+    heldOut: population.heldOut.filter(record => !record.disputed) };
   return [...new Set(records.map(record => record.questionId))].map(questionId => {
     const question = records.find(record => record.questionId === questionId)!;
     if (records.some(record => record.questionId === questionId && record.type !== question.type)) {

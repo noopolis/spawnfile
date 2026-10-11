@@ -18,6 +18,7 @@ export const labelsSchema = z.strictObject({
     example: z.strictObject({ dataset: identifier, id: identifier }).optional(),
     output: z.json(), context: z.record(identifier, z.json()),
     asked: z.array(identifier).optional(),
+    askedByInstance: z.record(identifier, z.array(identifier)).optional(),
     votes: z.record(identifier, z.record(identifier, z.union([z.string(), z.number().int()]))),
     provenance: z.record(identifier, z.record(z.string(), z.json())),
   })),
@@ -47,10 +48,10 @@ export function parseLabels(value: unknown, grader: Grader): Labels {
       if (!Object.hasOwn(grader.context, name)) throw new Error(`${location}.context.${name}: undeclared context`);
       validateReference(value, `${location}.context.${name}`);
     }
-    for (const name of [...label.asked ?? [], ...Object.keys(label.provenance)]) {
+    for (const name of [...label.asked ?? [], ...Object.values(label.askedByInstance ?? {}).flat(), ...Object.keys(label.provenance)]) {
       if (!Object.hasOwn(labels.labelers, name)) throw new Error(`${location}.asked/provenance.${name}: unknown labeler`);
     }
-    for (const [key, votes] of Object.entries(label.votes)) {
+    for (const [key, votes] of Object.entries({ ...Object.fromEntries(Object.keys(label.askedByInstance ?? {}).map(key => [key, {}])), ...label.votes })) {
       const match = /^(.*?)(?:@p(0|[1-9]\d*)(?:\.s(0|[1-9]\d*))?)?$/s.exec(key)!;
       const question = questions.get(match[1]!);
       if (!question) throw new Error(`${location}.votes.${key}: unknown question`);

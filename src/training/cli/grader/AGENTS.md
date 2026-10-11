@@ -22,3 +22,6 @@ Failed label attempts retain only typed failure classes, never raw diagnostics.
 Account failures stop that teacher for the run; queued votes remain unasked and
 other teachers continue. Summaries count failure classes per teacher and exit one.
 Calibration request keys encode the label/instance pair and reject duplicate indexing.
+
+Persist dispatch membership per instance; preserve it through resume and independent
+consensus. Calibration uses one eligible population before filtering panel disputes.

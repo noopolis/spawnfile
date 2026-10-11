@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { stringify } from 'yaml';
 import type { InferenceProvider, InferenceFailureKind } from '../../contracts/execution.js';
-import { loadGrader, parseLabelsYaml, parseLabels, labelsSchema, stableDigest, type Grader, type Labels } from '../../graders/index.js';
+import { askedForInstance, loadGrader, parseLabelsYaml, parseLabels, labelsSchema, stableDigest, type Grader, type Labels } from '../../graders/index.js';
 import { parseSchema, parseYaml } from '../../graders/format/index.js';
 import { groupLabelInstances, validateStoredVotes, adjudicationRows } from '../../graders/labeling/index.js';
 import { loadLabelInputs, resolveStoredLabels } from './label-inputs.js';
@@ -73,7 +73,7 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
       const content = (value: typeof label) => [value!.output, value!.context, value!.lineage, value!.example];
       if (stableDigest(content(label)) !== stableDigest(content(input.label))) {
         if (!options.relabel) throw new Error(`Stale content ${label.id}; use --relabel`);
-        Object.assign(label, input.label);
+        Object.assign(label, input.label, { askedByInstance: {} });
       }
     } else { label = input.label; labels.labels.push(label); }
     const target = label;
@@ -81,12 +81,21 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
       for (const votes of Object.values(target.votes)) delete votes[name];
       delete target.provenance[name];
       if (target.asked) target.asked = target.asked.filter(id => id !== name);
+      for (const [key, asked] of Object.entries(target.askedByInstance ?? {})) target.askedByInstance![key] = asked.filter(id => id !== name);
     }
     if (options.relabel) for (const [key, votes] of Object.entries(target.votes)) {
-      if (!Object.keys(votes).length) delete target.votes[key];
+      if (!Object.keys(votes).length) {
+        delete target.votes[key];
+        if (target.askedByInstance?.[key]?.length === 0) delete target.askedByInstance[key];
+      }
     }
+    // Snapshot legacy denominators before dispatch can change the output-wide summary.
+    const groups = groupLabelInstances(grader, input.output, input.context);
+    const membership = Object.fromEntries(groups.flatMap(group => group.instances.map(({ instance }) =>
+      [instance.key, askedForInstance(target, instance.key)])));
+    target.askedByInstance = { ...target.askedByInstance, ...membership };
     const outputJobs: (() => Promise<void>)[] = [];
-    for (const group of groupLabelInstances(grader, input.output, input.context)) {
+    for (const group of groups) {
       // Keep empty maps for unanswered instances so adjudication includes missing votes.
       for (const { instance } of group.instances) target.votes[instance.key] ??= {};
       for (const teacher of teachers) {
@@ -94,6 +103,9 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
         const pending = { ...group, instances: group.instances.filter(({ instance }) => !Object.hasOwn(target.votes[instance.key]!, teacher.id)) };
         outputJobs.push(async () => {
           if (Object.hasOwn(stopped, teacher.id)) return;
+          for (const { instance } of pending.instances) {
+            target.askedByInstance![instance.key] = [...new Set([...target.askedByInstance![instance.key]!, teacher.id])];
+          }
           target.asked = [...new Set([...target.asked ?? [], teacher.id])];
           const result = await labelCall(target, pending, teacher, providers.get(teacher.id)!, options.signal);
           if (result.stopped) stopped[teacher.id] = result.stopped;

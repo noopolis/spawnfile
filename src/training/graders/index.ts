@@ -2,7 +2,7 @@ export { graderSchema, parseGrader, parseGraderYaml, validateGrader, loadGrader,
   optionsFor, expectedOptions, applicabilityQuestion, labelsSchema, parseLabels, parseLabelsYaml,
   loadLabels, stableDigest, sha256 } from './format/index.js';
 export type { Grader, Gate, Question, GateQuestion, DecisionQuestion, Option, Labels, Label, Labeler } from './format/index.js';
-export { deriveConsensus } from './consensus.js';
+export { deriveConsensus, askedForInstance } from './consensus.js';
 export type { Consensus } from './consensus.js';
 export { expandInstances, segmenterIdentity } from './instances.js';
 export type { QuestionInstance } from './instances.js';

@@ -7,12 +7,18 @@ export interface Consensus {
   votes: Record<string, Option>;
 }
 
+/** Explicit instance dispatch wins; legacy labels retain their conservative output-wide denominator. */
+export function askedForInstance(label: Label, key: string): string[] {
+  const asked = label.askedByInstance ? label.askedByInstance[key] ?? [] :
+    [...label.asked ?? [], ...Object.values(label.votes).flatMap(votes => Object.keys(votes))];
+  return [...new Set([...asked, ...Object.keys(label.votes[key] ?? {})])];
+}
+
 /** Missing and abstaining teachers stay in the asked denominator. */
 export function deriveConsensus(label: Label, labelers: Labels['labelers'], instanceKeys = Object.keys(label.votes)): Record<string, Consensus> {
-  const asked = new Set([...(label.asked ?? []), ...Object.values(label.votes).flatMap(votes => Object.keys(votes))]);
-  const teachers = [...asked].filter(name => labelers[name]?.kind === 'model');
   return Object.fromEntries(instanceKeys.map(key => {
     const votes = label.votes[key] ?? {};
+    const teachers = askedForInstance(label, key).filter(name => labelers[name]?.kind === 'model');
     const humanAnswers = new Set(Object.entries(votes).filter(([name, vote]) =>
       labelers[name]?.kind === 'human' && vote !== 'abstain').map(([, vote]) => vote));
     if (humanAnswers.size) {

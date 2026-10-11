@@ -25,3 +25,11 @@ describe('consensus', () => {
     expect(deriveConsensus(label({ q: { absent: 'yes' } }), labelers).q?.disputed).toBe(true);
   });
 });
+
+it('treats absent instance membership as unasked once per-instance dispatch is recorded', () => {
+  const input = { ...label({ q: { b: 'yes' }, failed: {} }, ['a', 'b']), askedByInstance: { failed: ['a'] } };
+  expect(deriveConsensus(input, labelers)).toMatchObject({
+    q: { answer: 'yes', disputed: false, source: 'single-teacher' },
+    failed: { disputed: true, source: 'single-teacher' },
+  });
+});

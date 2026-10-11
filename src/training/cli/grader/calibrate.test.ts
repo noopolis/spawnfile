@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { stringify } from 'yaml';
 import type { DecisionBackend, DecisionRequest } from '../../contracts/grading.js';
 import { main } from '../commands.js';
-import { parseGrader, parseLabels, stableDigest, allQuestions, type Labels } from '../../graders/index.js';
+import { parseGrader, parseLabels, stableDigest, allQuestions, splitCalibration, fitPlatt, type Labels } from '../../graders/index.js';
 import { teacherPolicyDigest } from '../../graders/labeling/index.js';
 import { runCalibrate } from './calibrate.js';
 import { runValidate } from './validate.js';
@@ -132,6 +132,7 @@ describe('grader calibration commands', () => {
     const f = await fixture('teacher');
     let result = await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
     expect(result.code).toBe(0); expect(result.calibration.questions.q!.metrics.agreement).toBe(1);
+    expect(result.calibration.questions.q!.metrics).toMatchObject({ cascadeAccuracy: 1, coverage: 0 });
     expect(result.calibration.questions.q!.metrics.ece).toBeUndefined();
     await rm(join(f.root, '.paideia'), { recursive: true });
     f.runtime.score = async requests => requests.map(request => ({ key: request.key, status: 'missing', probabilities: null }));
@@ -260,4 +261,64 @@ it('keeps colliding legacy request pairs attached to their own evidence through 
     expect(result.calibration.questions['b:c']!.metrics.agreement).toBe(1);
   }
   expect(new Set(f.score.mock.calls.flatMap(([requests]) => requests.map(r => r.key))).size).toBe(4);
+});
+
+it('splits before panel disputes and verifies every independently answerable held-out instance', async () => {
+  const f = await fixture('jev-http', 400);
+  f.grader.gates = [];
+  f.grader.teachers.push({ id: 'other', provider: 'grok', model: 'm' });
+  f.grader.escalate = { to: 'teacher', target_accuracy: 0.9, max_calls_per_trial: 1 };
+  f.labels.labelers = Object.fromEntries(f.grader.teachers.map(t => [t.id, { kind: 'model', provider: t.provider, model: t.model }]));
+  f.labels.labels.forEach((label, index) => {
+    const good = (label.output as { good: boolean }).good;
+    label.askedByInstance = { q: ['teacher', 'other'] };
+    label.votes = { q: { teacher: good ? 'yes' : 'no', other: (index < 200 ? good : !good) ? 'yes' : 'no' } };
+    label.provenance = Object.fromEntries(f.grader.teachers.map(t => [t.id, { votes: { q: {
+      question_digest: stableDigest(f.grader.questions[0]!), teacher_policy_digest: teacherPolicyDigest(t),
+      projection_digest: stableDigest({ 'output.good': good }),
+    } } }]));
+  });
+  await writeFile(f.graderFile, stringify(f.grader));
+  await writeFile(join(f.root, 'labels.yaml'), stringify(f.labels));
+  const population = f.labels.labels.map((label, index) => ({ questionId: 'q', type: 'yes-no' as const,
+    group: label.lineage, good: index % 2 === 0, rawPGood: index % 2 === 0 ? 0.98 : 0.02,
+    source: 'consensus' as const, disputed: index >= 200 }));
+  const split = splitCalibration(population, '0');
+  const result = await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
+  const q = result.calibration.questions.q!;
+  expect(result.code).toBe(1);
+  expect(q.status).toBe('escalation-infeasible');
+  expect(q.metrics.cascadeAccuracy).toBe(split.heldOut.filter(row => !row.disputed).length / 200);
+  expect(q.metrics.instances).toBe(split.heldOut.filter(row => !row.disputed).length);
+  const params = fitPlatt(split.fit.filter(row => !row.disputed));
+  expect(q.params).toEqual({ a: params.a, b: params.b });
+  expect(q.failures).toContain('heldOut.cascadeAccuracy >= target_accuracy');
+});
+
+it('enforces the cascade Wilson bar for the forced teacher backend without a retention bar', async () => {
+  const f = await fixture('teacher', 60);
+  f.grader.gates = [];
+  f.grader.escalate = { to: 'teacher', target_accuracy: 1 };
+  f.grader.questions[0]!.reads.push('output.id');
+  for (const label of f.labels.labels) {
+    delete label.votes.gate;
+    (label.output as Record<string, unknown>).id = label.id;
+    label.provenance.human = { votes: { q: {
+      question_digest: stableDigest(f.grader.questions[0]!),
+      projection_digest: stableDigest({ 'output.good': (label.output as { good: boolean }).good, 'output.id': label.id }),
+    } } };
+  }
+  await writeFile(join(f.root, 'labels.yaml'), stringify(f.labels));
+  await writeFile(f.graderFile, stringify(f.grader));
+  const normal = f.runtime.score;
+  // At 30 held-out groups, one wrong answer passes 0.85 agreement but fails the cascade bounds.
+  f.runtime.score = async (requests, signal) => (await normal(requests, signal)).map(result => {
+    const index = Number(JSON.parse(result.key)[0].slice(1));
+    return index < 4 ? { ...result, probabilities: { yes: result.probabilities!.no!, no: result.probabilities!.yes! } } : result;
+  });
+  const result = await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
+  expect(result.calibration.questions.q!.metrics.agreement).toBeGreaterThanOrEqual(0.85);
+  expect(result.calibration.questions.q!.failures).toContain('heldOut.cascade90Lower >= target_accuracy - 0.10');
+  expect(result.calibration.questions.q!.failures).not.toContain('heldOut.retainedCoverage >= 0.30');
+  expect(result.code).toBe(1);
 });

@@ -4,11 +4,12 @@ import { tmpdir } from 'node:os';
 import { stringify, parse } from 'yaml';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import type { InferenceProvider, InferenceRequest } from '../../contracts/execution.js';
-import { loadGrader, loadLabels, type Labels } from '../../graders/index.js';
+import { deriveConsensus, loadGrader, loadLabels, type Labels } from '../../graders/index.js';
 import { voteProvenance } from '../../graders/labeling/index.js';
 import { InferenceFailure } from '../../inference/index.js';
 import { main } from '../commands.js';
 import { runLabel, createGraderTeacher } from './label.js';
+import { independentConsensus } from './records.js';
 import { loadLabelInputs, resolveStoredLabels } from './label-inputs.js';
 
 const directories: string[] = [];
@@ -248,6 +249,13 @@ it.each(['quota', 'authentication', 'auth-stale'] as const)('stops only the fail
   expect(voteProvenance(labels.labels[0], 't', 'q')).toMatchObject({ attempts: [{ failure_kind: kind, reported_model: 'actual', usage: { inputTokens: 2 } }] });
   expect(voteProvenance(labels.labels[0], 't', 'q2')).toBeUndefined();
   expect(labels.labels[1]!.asked).toEqual(['other']);
+  expect(labels.labels[0]!.askedByInstance).toEqual({ q: ['t', 'other'], q2: ['other'] });
+  expect(deriveConsensus(labels.labels[0]!, labels.labelers)).toMatchObject({
+    q: { disputed: true }, q2: { answer: 'yes', disputed: false, source: 'single-teacher' },
+  });
+  // Independent truth must preserve the same dispatch population after removing a teacher.
+  expect(independentConsensus(labels.labels[0]!, labels.labelers, 'unused', ['q', 'q2']).q2)
+    .toMatchObject({ answer: 'yes', source: 'single-teacher' });
   expect(labels.labels[1]!.provenance.t).toBeUndefined();
   expect(JSON.stringify({ labels, summary, stderr })).not.toContain('SECRET');
   // Stop state is scoped to this run; resume can try the teacher again.

@@ -7,6 +7,8 @@ export interface CalibrationRecord {
   example?: { dataset: string; id: string };
   /** Missing decisions retain the golden denominator; rawPGood is ignored. */
   missing?: boolean;
+  /** Retained for splitting and cascade verification, excluded from full-panel fitting/metrics. */
+  disputed?: boolean;
   rawPGood: number;
   good: boolean;
   source: GoldenSource;

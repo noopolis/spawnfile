@@ -13,6 +13,10 @@ Retained group coverage means groups with at least one non-escalated instance; b
 endpoints are inclusive. ECE requires at least ten observed instances; otherwise it and its interval are
 null and fail as insufficient evidence. A bootstrap draw without a bin also makes
 the interval unavailable; never drop that draw to narrow the interval. Gate false-pass rate is conditional on golden bad instances.
+Split eligible lineages before filtering disputes. Exclude disputed rows from Platt
+fitting, full-panel metrics and fit-side band selection only. Retained coverage uses
+all held-out groups, including rows without independent truth; forced-teacher
+routing skips that coverage bar only.
 Cascade verification removes the escalation teacher before deriving strict option
 consensus, requires 15 independent held-out groups, and enforces Wilson 90% bounds.
 Supply raw votes/asked/labelers/expected and output/projection identities to planning.

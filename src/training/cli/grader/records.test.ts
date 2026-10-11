@@ -37,6 +37,8 @@ describe('calibration record preparation', () => {
     expect(result.rows[1]!.request.instructions).toBe('choice');
     input.labels[0]!.votes.q = { a: 'yes', b: 'no' };
     expect(goldenInstances(grader(), input)).toMatchObject({ unavailable: 1, disputed: 1 });
+    expect(goldenInstances(grader(), input).rows).toHaveLength(2);
+    expect(calibrationRecord(goldenInstances(grader(), input).rows[0]!, 0.8).disputed).toBe(true);
     expect(goldenInstances(grader(), { ...input, labels: [] })).toEqual({ rows: [], unavailable: 0, disputed: 0 });
   });
   it('excludes the decision teacher before deriving golden, preserving human and asked missing votes', () => {
@@ -92,4 +94,14 @@ it('encodes colon-containing request pairs without collision and rejects duplica
   expect(indexed.get(JSON.stringify(['a:b', 'c']))!.probabilities!.yes).toBe(0.9);
   expect(indexed.get(JSON.stringify(['a', 'b:c']))!.probabilities!.yes).toBe(0.1);
   expect(() => indexDecisionResults([requests[0]!, requests[0]!], results)).toThrow('Duplicate calibration request key');
+});
+
+it('carries only the instance dispatch membership into independent cascade truth', () => {
+  const input = labels();
+  input.labels[0]!.askedByInstance = { q: ['b'], choice: ['a', 'b', 'missing'] };
+  input.labels[0]!.votes.q = { b: 'yes' };
+  const row = goldenInstances(grader(), input).rows[0]!;
+  expect(cascadeRecord(row, calibrationRecord(row, 0.9), 0.9, input.labelers).asked).toEqual(['b']);
+  expect(independentConsensus(row.label, input.labelers, 'a', ['q']).q)
+    .toMatchObject({ answer: 'yes', source: 'single-teacher' });
 });

@@ -108,7 +108,11 @@ of `{id, lineage, output: {from: ...}, context: {evidence: {from: ...}}}` entrie
 
 Labeling batches identical projections per teacher. One malformed-JSON repair is
 allowed. Missing/abstaining votes count against a strict majority of teachers
-asked; no majority means disputed. Human votes override model consensus.
+asked for that instance; no majority means disputed. New labels persist
+`askedByInstance: {<instance>: [<teacher>, ...]}` at dispatch. A dispatched failure
+counts against those instances; stopped teachers do not count against later,
+unasked projections. Existing labels without instance membership retain the
+conservative output-wide `asked`/vote denominator. Human votes override model consensus.
 One-teacher answers are explicitly marked single-teacher. `--adjudication N`
 writes a local sheet containing sampled consensus instances and every dispute.
 
@@ -153,7 +157,9 @@ Raw `p_good` sums probabilities of expected options. Platt scaling computes
 `[1e-6, 1-1e-6]`. Fit uses mean binary NLL plus
 `0.01 * ((a-1)^2 + b^2)`. A question gets its own fit with at least 20 fit groups;
 otherwise parameters pool by question type. Seeded lineage groups split 50/50
-into fitting and held-out sets. Exclusions happen before inference and splitting.
+into fitting and held-out sets before filtering panel disputes. Disputed instances
+stay out of Platt fitting, full-panel calibration metrics and fit-side band search.
+Exclusions happen before inference and splitting.
 Pass every validation/test dataset through `--exclude-dataset`; recorded
 exclusions are part of calibration identity. An excluded record’s `group` or `id`
 matching a label’s `lineage` excludes the lineage, as does an exact
@@ -190,9 +196,19 @@ change requires recalibration. Results additionally identify the scoring policy.
 Alternatively `target_accuracy: 0.90` chooses the narrowest fitting band on a
 0.05 grid retaining at least 30% of fit groups. Held-out cascade acceptance
 requires target point accuracy, Wilson 90% lower bound ≥ target − 0.10, and at
-least 30% retained coverage. Gate false-pass Wilson upper bound must be ≤ 0.20.
-The independent golden answer excludes the escalation teacher; insufficient
-independent groups means unverified, never a calibration pass.
+least 30% retained coverage over **all eligible held-out groups**: a retained group
+has at least one admitted local, non-escalated instance. Missing local decisions
+do not count as retained. Gate false-pass Wilson upper bound must be ≤ 0.20.
+Verification includes full-panel disputes. Truth is derived without the escalation
+teacher: human votes first, otherwise strict-majority option consensus of remaining
+teachers actually asked for that instance. Rows without independent truth do not
+enter accuracy, but their groups still enter retained coverage. Fewer than 15
+independent groups means unverified.
+
+Forced-teacher questions (`uncalibrated: teacher` or backend `teacher`) have zero
+local retention and skip only the coverage bar. Point accuracy, Wilson bounds and
+independent-group requirements still apply. A failed local calibration retains its
+status so runtime fallback remains forced; the report measures that routed cascade.
 
 Escalations share one teacher call per output/projection, bounded by
 `max_calls_per_trial`. Overflow and teacher failures become missing. Calls are admitted in the order of their first requested instance in expansion

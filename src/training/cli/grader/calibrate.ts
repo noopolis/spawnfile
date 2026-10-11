@@ -1,7 +1,7 @@
 import { mkdir, writeFile, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { allQuestions, applyPlatt, calibrateQuestions, calibrationMetrics, createCalibrationIdentity,
-  evidenceFailures, expandInstances, expectedOptions, optionsFor, inEscalationBand, loadGrader, loadLabels, parseCalibration,
+  evidenceFailures, expectedOptions, inEscalationBand, loadGrader, loadLabels, parseCalibration,
   planEscalation, splitCalibration, teacherAgreement, type CalibrationFile, type CalibrationRecord,
   type CascadeRecord, type BandPlan } from '../../graders/index.js';
 import { validateStoredVotes } from '../../graders/labeling/index.js';
@@ -31,17 +31,9 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
   options.signal?.throwIfAborted();
   const identity = await backendIdentity(grader, backend, options.signal);
   const golden = goldenInstances(grader, labels);
-  // Routing observes every ready instance, including those without usable golden
-  // truth. Only golden rows enter fitting and accuracy denominators below.
-  const byQuestion = new Map(allQuestions(grader).map(question => [question.id, question]));
-  const observations = labels.labels.flatMap(label => expandInstances(grader, label.output, label.context)
-    .filter(instance => instance.state === 'ready').map(instance => {
-      const question = byQuestion.get(instance.questionId)!;
-      return { outputId: label.id, instance, question, request: {
-        key: JSON.stringify([label.id, instance.key]), type: question.type, optionLabels: optionsFor(question),
-        expectedOptions: expectedOptions(question), instructions: question.ask ?? question.id, projection: instance.projection,
-      } };
-    }));
+  // One eligible population owns splitting, routing and cascade verification.
+  // Disputes are filtered only by the full-panel fitting/metrics and fit-band owners.
+  const observations = golden.rows.map(row => ({ ...row, outputId: row.label.id }));
   const observed = await cachedScores(dirname(options.graderFile), backend, identity,
     observations.map(row => row.request), options.concurrency ?? 2, options.signal);
   const byKey = indexDecisionResults(observations.map(row => row.request), observed);
@@ -99,27 +91,26 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
       costCalls = calls;
       for (const question of allQuestions(grader)) {
         const updated = plan(question.id, calls), failure = failedPlans.get(question.id);
-        plans.set(question.id, failure ? { ...updated, status: failure.status, failures: failure.failures } : updated);
+        plans.set(question.id, failure ? { ...updated, status: failure.status === 'calibrated' ? updated.status : failure.status,
+          failures: [...updated.failures, ...(failure.status === 'calibrated' ? [] : ['local cascade requires forced-teacher routing'])] } : updated);
       }
       if (grader.uncalibrated !== 'teacher' || before === forced.size &&
         [...plans].every(([id, candidate]) => forced.has(id) || candidate.status === 'calibrated')) break;
     }
   }
   for (const question of allQuestions(grader)) {
-    const id = question.id, sample = golden.rows.filter(row => row.question.id === id);
-    const indices = golden.rows.flatMap((row, index) => row.question.id === id ? [index] : []);
+    const id = question.id, sample = golden.rows.filter(row => row.question.id === id && !row.golden.disputed);
+    const indices = golden.rows.flatMap((row, index) => row.question.id === id && !row.golden.disputed ? [index] : []);
     diagnostics[id] = { missingRate: sample.length ? indices.filter(i => results[i]!.status === 'missing').length / sample.length : 0,
       boundedRate: sample.length ? indices.filter(i => results[i]!.bounded).length / sample.length : 0,
       sourceMix: { human: 0, consensus: 0, 'single-teacher': 0 } };
     for (const row of sample) diagnostics[id]!.sourceMix[row.golden.source]++;
     if (grader.model.backend === 'teacher') {
-      // Keep missing backend answers in agreement denominator; split all golden instances.
-      const allRecords = golden.rows.map(row => calibrationRecord(row, 0));
-      const teacherSplit = splitCalibration(allRecords, seed);
-      const held = new Set(teacherSplit.heldOut);
+      // Teacher-only scoring uses the same pre-dispute held-out population.
+      const held = new Set(split.heldOut);
       const teacherId = grader.model.teacher;
       const agreementRows = golden.rows.flatMap((row, index) => {
-        if (row.question.id !== id || !held.has(allRecords[index]!)) return [];
+        if (row.question.id !== id || row.golden.disputed || !held.has(valid[index]!.record)) return [];
         const result = results[index]!;
         const answer = result.status === 'ok' ? row.request.optionLabels.find(option => result.probabilities?.[String(option)] === 1) : undefined;
         return [{ source: row.golden.source, group: row.label.lineage, good: expectedOptions(row.question).includes(row.golden.answer!),
@@ -127,12 +118,22 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
           goldenLabelers: Object.keys(row.golden.votes).filter(name => name !== teacherId) }];
       });
       const agreement = teacherAgreement(agreementRows, teacherId);
+      const heldCascade = valid.flatMap((item, index) => {
+        if (item.record.questionId !== id || !held.has(item.record)) return [];
+        const result = results[index]!;
+        const answer = result.status === 'ok' ? item.row.request.optionLabels.find(option => result.probabilities?.[String(option)] === 1) : undefined;
+        const cascade = cascades.get(item.record)!;
+        return [{ ...cascade, votes: { ...cascade.votes, [teacherId]: answer ?? 'abstain' } }];
+      });
+      const escalation = planEscalation([], heldCascade, grader.escalate, { teacherId, forceTeacher: true, gate: gates.includes(id) });
       diagnostics[id]!.sourceAgreement = Object.fromEntries(['human', 'consensus', 'single-teacher'].map(source => {
         const subset = agreementRows.filter(row => row.source === source);
         const measured = teacherAgreement(subset, teacherId);
         return [source, { instances: measured.instances, agreement: measured.agreement }];
       }));
-      questions[id] = { status: agreement.status, failures: agreement.failures, metrics: {
+      questions[id] = { status: agreement.status === 'calibrated' ? escalation.status : agreement.status,
+        failures: [...agreement.failures, ...escalation.failures], metrics: {
+        cascadeAccuracy: escalation.heldOutAccuracy, cascadeInterval: escalation.cascadeInterval, coverage: escalation.coverage,
         groups: agreement.groups, instances: agreement.instances, good: agreement.good, bad: agreement.bad,
         baseRate: agreement.instances ? agreement.good / agreement.instances : 0, agreement: agreement.agreement,
       } };
