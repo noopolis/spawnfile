@@ -90,6 +90,36 @@ describe('evidence validation', () => {
 });
 
 describe('deterministic check instantiation', () => {
+  it.each([{ cites: undefined }, { cites: [] }])('renders uncited units as ready with empty cited rows (cites: $cites)', ({ cites }) => {
+    const { templates, document, inputs } = fixture();
+    document.units = [{ id: 'uncited', kind: 'claim', text: 'Bob was promoted.', ...(cites ? { cites } : {}) }];
+    templates.templates[0]!.instructions = 'Check {unit.text} against {unit.cited_rows}.';
+    const [instance] = instantiateChecks(templates, document, inputs);
+    expect(instance).toMatchObject({ status: 'ready', reasons: [],
+      projection: { 'unit.cited_rows': [] }, instructions: 'Check Bob was promoted. against [].' });
+  });
+  it('keeps unknown derived citation IDs missing', () => {
+    const { templates, document, inputs } = fixture();
+    const text = 'Bob was promoted [R9].';
+    inputs.output = { body: [text] };
+    document.units = [{ id: 'unknown', kind: 'claim', text, cites: ['R9'] }];
+    templates.templates[0]!.instructions = 'Check {unit.text} against {unit.cited_rows}.';
+    const [instance] = instantiateChecks(templates, document, inputs);
+    expect(instance).toMatchObject({ status: 'missing' });
+    expect(instance!.reasons).toContain('unknown cited row');
+    expect(instance!.reasons).toContain('missing state unit.cited_rows');
+    expect(instance!.projection).not.toHaveProperty('unit.cited_rows');
+  });
+  it('keeps uncited units missing when no row structure is declared', () => {
+    const { templates, document, inputs } = fixture();
+    templates.context = {};
+    document.units = [{ id: 'uncited', kind: 'claim', text: 'Bob was promoted.' }];
+    templates.templates[0]!.instructions = 'Check {unit.text} against {unit.cited_rows}.';
+    const [instance] = instantiateChecks(templates, document, inputs);
+    expect(instance).toMatchObject({ status: 'missing' });
+    expect(instance!.reasons).toContain('missing state unit.cited_rows');
+    expect(instance!.projection).not.toHaveProperty('unit.cited_rows');
+  });
   it('renders declared state only, retains digests, and represents missing placeholders/state', () => {
     const { templates, document, inputs } = fixture();
     const template = templates.templates[0]!;

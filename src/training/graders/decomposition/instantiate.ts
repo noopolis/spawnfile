@@ -10,7 +10,8 @@ export interface CheckInstance {
 function resolve(state: string, unit: AtomicUnit, inputs: DecompositionInputs, templates: CheckTemplates): unknown {
   if (state === 'unit') return unit;
   if (state === 'unit.cited_rows') {
-    if (!unit.cites?.length || !Object.values(templates.context).some(item => item.rows)) return undefined;
+    if (!Object.values(templates.context).some(item => item.rows)) return undefined;
+    if (!unit.cites?.length) return [];
     const rows = evidenceRows(templates, inputs);
     if (unit.cites.some(id => !rows.some(row => row.id === id))) return undefined;
     return rows.filter(row => unit.cites!.includes(row.id));

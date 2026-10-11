@@ -178,6 +178,11 @@ provider diagnostic in the local mode-0600 checkpoint. Diagnostic response text
 is available only when the provider supplies it; no text is invented for providers
 that omit it. Malformed responses are retried on resume rather than replayed.
 
+When context declares row structure, an uncited unit renders `unit.cited_rows`
+as `[]`: the state is present and the check is ready for the judge to assess
+the absence of cited support. This does not imply a passing answer. Unknown cited
+IDs and absent row declarations still make this state missing.
+
 Instantiation is deterministic. IDs are `<template>@<unit>` and digests include
 the rendered question and projection. Council calls batch ready checks from one
 output in instance order, up to `--batch-size N` (default 40, positive integer).
