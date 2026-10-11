@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { closeSync, constants, fchmodSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeSync } from "node:fs";
 import path from "node:path";
+import { syncDirectorySync } from "./durableWrite.js";
 
 export interface JsonlReadResult<T> { entries: T[]; errors: string[] }
 
@@ -82,6 +83,7 @@ export const appendRetainedJsonl = <T>(file: string, entry: T, options: {
   mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   const fd = openSync(file, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW, 0o600);
   try { fchmodSync(fd, 0o600); writeAndSync(fd, line); } finally { closeSync(fd); }
+  syncDirectorySync(path.dirname(file));
 
   const parsed = parseLines(previous + line, options.isEntry);
   const entries = parsed.lines.flatMap(({ entry: value }) => value === undefined ? [] : [value]);
@@ -93,5 +95,6 @@ export const appendRetainedJsonl = <T>(file: string, entry: T, options: {
     const scratch = openSync(temporary, "wx", 0o600);
     try { writeAndSync(scratch, `${kept.map(({ line: raw }) => raw).join("\n")}\n`); } finally { closeSync(scratch); }
     renameSync(temporary, file);
+    syncDirectorySync(path.dirname(file));
   } finally { rmSync(temporary, { force: true }); }
 };

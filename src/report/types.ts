@@ -293,8 +293,14 @@ export interface ContainerReport {
   workspace_resources?: ContainerWorkspaceResourceReport[];
 }
 
+/** Association captured while walking the resolved compile graph. */
+export interface WorkspaceResourceOwnership {
+  agent_node_ids: string[];
+  declared_by?: string;
+}
+
 /** One workspace bundle archive the compile staged, with the digest Spawnfile built or verified. */
-export interface CompileReportWorkspaceBundle {
+export interface CompileReportWorkspaceBundle extends WorkspaceResourceOwnership {
   cache_key?: string;
   content_bytes?: number;
   file_count?: number;
@@ -308,7 +314,7 @@ export interface CompileReportWorkspaceBundle {
 }
 
 /** A `fetch: build` git resource: the commit its selector resolved to and the archive cut from that commit. */
-export interface CompileReportWorkspaceGitResource {
+export interface CompileReportWorkspaceGitResource extends WorkspaceResourceOwnership {
   auth: "none" | "ssh_key" | "ssh_key_env";
   cache_key: string;
   commit: string;

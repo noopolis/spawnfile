@@ -23,7 +23,7 @@ import {
 } from "./organizationHandoffAuthorityStore.js";
 import { readDeploymentRecordFromOutput } from "./record.js";
 import type { DeploymentRecord } from "./record.js";
-import { assertRecordedMemoryRetention } from "./recordedMemoryRetention.js";
+import { assertRecordedMemoryRetention, recordedMemoryForDeletion } from "./recordedMemoryRetention.js";
 import { readHomeDeploymentRecord, readHomeDeploymentReport, resolveHomeRecordPath } from "./homeStore.js";
 import { resolveDeploymentRecordPath } from "./names.js";
 import { dockerContextNameForTarget } from "./target.js";
@@ -111,7 +111,7 @@ const imageDown = async (
     report.persistent_mounts,
     (mount) => derivePersistentMountVolumeName(record.name, mount)
   );
-  assertRecordedMemoryRetention(report.recording, report.persistent_mounts, owned,
+  assertRecordedMemoryRetention(recordedMemoryForDeletion(record, report, report.persistent_mounts, options), report.persistent_mounts, owned,
     (mount) => derivePersistentMountVolumeName(record.name, mount), options);
   const volumes = [...owned, ...skipped].sort();
   const removed = await removeDockerContainer(record.target, unit.container_id, runner);
@@ -272,7 +272,7 @@ export const downDeployment = async (
   const report = await readCompileReport(compiledOutputDirectory);
   const mounts = report?.container?.persistent_mounts ?? [];
   const { owned, skipped } = partitionDeclaredVolumes(mounts, (mount) => mount.volume_name);
-  assertRecordedMemoryRetention(report?.recording, mounts, owned, (mount) => mount.volume_name, options);
+  assertRecordedMemoryRetention(recordedMemoryForDeletion(initialRecord, report, mounts, options), mounts, owned, (mount) => mount.volume_name, options);
   const record = await ensureExported(initialRecord, {
     ...options,
     compiledOutputDirectory,

@@ -81,3 +81,20 @@ describe("retained JSONL", () => {
     expect(fs.readdirSync(directory)).toEqual(["history.jsonl"]);
   });
 });
+
+it("fsyncs the parent directory after a pruning rename", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "spawnfile-prune-sync-"));
+  try {
+    const file = path.join(root, "log.jsonl");
+    const append = (date: number) => appendRetainedJsonl(file, entry(date), { keepMs: dayMs, now: new Date(entry(date).at), timeOf, isEntry });
+    append(1); append(2);
+    const rename = vi.spyOn(fs, "renameSync"), sync = vi.spyOn(fs, "fsyncSync");
+    const open = vi.spyOn(fs, "openSync");
+    append(10);
+    const renamed = rename.mock.invocationCallOrder[0]!;
+    const dirOpen = open.mock.calls.findIndex(([name], index) => name === root && open.mock.invocationCallOrder[index]! > renamed);
+    expect(dirOpen).toBeGreaterThanOrEqual(0);
+    const fd = open.mock.results[dirOpen]!.value as number;
+    expect(sync.mock.calls.some(([descriptor], index) => descriptor === fd && sync.mock.invocationCallOrder[index]! > open.mock.invocationCallOrder[dirOpen]!)).toBe(true);
+  } finally { vi.restoreAllMocks(); fs.rmSync(root, { recursive: true, force: true }); }
+});

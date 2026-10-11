@@ -1,15 +1,16 @@
 import path from "node:path";
-import { readdir, rename, rm, writeFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 
 import { resolveSpawnfileHome } from "../auth/index.js";
 import type { DistributionReport } from "../distribution/index.js";
-import { ensureDirectory, readUtf8File } from "../filesystem/index.js";
+import { ensureDirectory, readUtf8File, writeDurableFile } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { normalizeDeploymentName } from "./names.js";
 import { acquirePidLock, PidLockBusyError } from "./pidLock.js";
 import { parseDeploymentRecord, type DeploymentRecord } from "./record.js";
-import { appendDeployResources } from "./resourceLog.js";
+import { bindDeploymentRecording, publishDeploymentRecord } from "./recordPublication.js";
+export { HomeDeploymentRecordingError } from "./recordPublication.js";
 
 export const resolveHomeDeploymentsDirectory = (): string =>
   path.join(resolveSpawnfileHome(), "deployments");
@@ -48,22 +49,6 @@ export const acquireHomeDeploymentLock = async (
   }
 };
 
-const writeAtomic = async (filePath: string, content: string): Promise<void> => {
-  const temporaryPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`
-  );
-  await writeFile(temporaryPath, content, "utf8");
-  await rename(temporaryPath, filePath);
-};
-
-/** Publication succeeded: callers must not roll back the container named by the persisted record. */
-export class HomeDeploymentRecordingError extends SpawnfileError {
-  public constructor(deployment: string, cause: unknown) {
-    super("io_error", `Deployment ${deployment} is published, but recording failed: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
-  }
-}
-
 /** Writes the record and the cached distribution report together, record last. */
 export const writeHomeDeployment = async (
   record: DeploymentRecord,
@@ -76,10 +61,8 @@ export const writeHomeDeployment = async (
   const reportPath = resolveHomeReportPath(parsed.name);
   const recordPath = resolveHomeRecordPath(parsed.name);
   const reportBytes = `${JSON.stringify(report, null, 2)}\n`;
-  await writeAtomic(reportPath, reportBytes);
-  await writeAtomic(recordPath, `${JSON.stringify(parsed, null, 2)}\n`);
-  try { await appendDeployResources(directory, parsed, report, reportBytes); }
-  catch (cause) { throw new HomeDeploymentRecordingError(parsed.name, cause); }
+  const bound = parseDeploymentRecord(bindDeploymentRecording(recordPath, parsed, report, reportBytes));
+  await publishDeploymentRecord(recordPath, bound, () => writeDurableFile(reportPath, reportBytes));
   return { recordPath, reportPath };
 };
 

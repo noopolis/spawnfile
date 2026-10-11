@@ -2,14 +2,13 @@ import path from "node:path";
 import { rm } from "node:fs/promises";
 
 import {
-  appendDeployResources,
   createOrganizationReadinessPending,
   createDockerDeploymentRecord,
   probeDockerOrganizationReadiness,
   readDeploymentRecord,
   resolveDockerDeploymentTarget,
   resolveDeploymentRecordPath,
-  resolveHomeDeploymentDirectory,
+  type DeploymentActivation,
   type DockerTargetExecFile,
   writeDeploymentRecord,
   writeDockerDeploymentRecordForRun,
@@ -36,7 +35,7 @@ import {
   resolveDeploymentLineage
 } from "./deploymentLineage.js";
 import { ensureNoopolisRunId, resolveNoopolisRunId } from "../runtime/index.js";
-import { fileExists, readUtf8File } from "../filesystem/index.js";
+import { fileExists } from "../filesystem/index.js";
 import { resolveHostCliCredential } from "./runProjectAuth.js";
 import { defaultDockerTargetExecFile } from "../target/dockerTargetExecFile.js";
 import {
@@ -70,6 +69,7 @@ export interface UpProjectOptions extends CompileProjectOptions {
   imageTag?: string;
   lifecycleRecovery?: UpLifecycleRecovery;
   runRunner?: DockerRunRunner;
+  now?: () => Date;
   onDetachedReservation?: (authority: {
     containerName: string;
     deploymentLabels: Readonly<Record<string, string>>;
@@ -92,7 +92,9 @@ export interface UpProjectResult extends BuildProjectResult {
   supportDirectory: string | null;
 }
 const stableRecord = (record: Awaited<ReturnType<typeof readDeploymentRecord>>) => {
-  const { created_at: _createdAt, export_index: _exportIndex, organization_ready: _organizationReady, ...stable } = record;
+  const { created_at: _createdAt, export_index: _exportIndex, organization_ready: _organizationReady,
+    activated_at: _activatedAt, activation_exact: _activationExact, activation_note: _activationNote,
+    resource_snapshot: _snapshot, recording: _recording, ...stable } = record;
   return stable;
 };
 const canonicalJson = (value: unknown): string => {
@@ -188,6 +190,15 @@ export const upProject = async (
     };
   }
 
+  let activation: DeploymentActivation = {};
+  const recordingRunner: DockerRunRunner = async (runInvocation) => {
+    if (buildResult.report.recording && invocation.detach && invocation.deploymentName) {
+      const hasPredecessor = await fileExists(resolveDeploymentRecordPath(buildResult.outputDirectory, invocation.deploymentName));
+      activation = { activated_at: (options.now ?? (() => new Date()))().toISOString(), activation_exact: !hasPredecessor,
+        ...(hasPredecessor ? { activation_note: "Project up does not stop or drain the previous container; turns may overlap" } : {}) };
+    }
+    return (options.runRunner ?? runDockerContainer)(runInvocation);
+  };
   let deploymentRecordPath: string | null;
   if (handoff) {
     const executed = await executeOrganizationHandoff({
@@ -196,7 +207,7 @@ export const upProject = async (
       invocation,
       lifecycleRecovery: options.lifecycleRecovery,
       onDetachedReservation: options.onDetachedReservation,
-      runRunner: options.runRunner ?? runDockerContainer,
+      runRunner: recordingRunner,
       targetExecFile: options.targetExecFile,
     });
     const { organizationHandoffHandle, runMetadata } = executed;
@@ -237,6 +248,7 @@ export const upProject = async (
     } else {
       deploymentRecordPath = invocation.detach && invocation.deploymentName
         ? await writeDockerDeploymentRecordForRun({
+            ...activation,
             authProfileName: authProfile?.name ?? null,
             envFilePath: resolvedOptions.envFilePath,
             imageTag,
@@ -265,9 +277,10 @@ export const upProject = async (
         });
       }
       dockerLifecycleInvoked = true;
-      const runMetadata = await executeDockerRunWithSupportCleanup(invocation, options.runRunner ?? runDockerContainer);
+      const runMetadata = await executeDockerRunWithSupportCleanup(invocation, recordingRunner);
       deploymentRecordPath = invocation.detach && invocation.deploymentName
         ? await writeDockerDeploymentRecordForRun({
+            ...activation,
             authProfileName: authProfile?.name ?? null,
             envFilePath: resolvedOptions.envFilePath,
             imageTag,
@@ -323,12 +336,6 @@ export const upProject = async (
       ...pendingRecord,
       organization_ready: organizationReady
     });
-  }
-
-  if (deploymentRecordPath && buildResult.report.recording) {
-    const record = await readDeploymentRecord(deploymentRecordPath);
-    await appendDeployResources(resolveHomeDeploymentDirectory(record.name), record,
-      buildResult.report, await readUtf8File(buildResult.reportPath));
   }
 
   return {

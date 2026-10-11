@@ -19,8 +19,8 @@ import {
   pointCurrent, removeTree, type LinkOps
 } from "./feedLayout.js";
 import { buildFeedManifest, compareFeedManifest, manifestDrift, readFeedManifest, removeFeedManifest, writeFeedManifest } from "./feedManifest.js";
-import { appendFeedLanding } from "./feedLandings.js";
-import { FEED_IDENTITY_VERSION, FEED_LANDED_VERSION, writeFeedIdentity, writeFeedLanded, type FeedLandedRecord } from "./feedRecord.js";
+import { ensureFeedLanding, publishFeedLanded } from "./feedLandings.js";
+import { FEED_IDENTITY_VERSION, FEED_LANDED_VERSION, writeFeedIdentity, type FeedLandedRecord } from "./feedRecord.js";
 import { stageFeedContent } from "./feedPrepare.js";
 import { digestDirectory, hostExec, type FeedExec, type ResolvedFeedSource } from "./feedSource.js";
 import { feedStagingDir, feedTrashDir, type FeedTarget } from "./feedTarget.js";
@@ -146,6 +146,7 @@ export const landFeed = (
   { exact = false, force = false, heals = {}, period, runtime = {} }: { exact?: boolean; force?: boolean; heals?: Record<string, number>; period?: string; runtime?: FeedRuntime } = {}
 ): FeedLandResult => {
   const clock = runtime.now ?? (() => new Date()), log = runtime.log ?? (() => undefined), exec = runtime.exec ?? hostExec;
+  if (record && (target.record || record.recording)) ensureFeedLanding(target, record, clock());
   // Preserve the existing timestamp behavior when recording is absent.
   const started = target.record ? undefined : clock();
   if (!assertRealDirectory(treesDirOf(target), "the fed volume's trees/ directory")) mkdirSync(treesDirOf(target), { mode: 0o755 });
@@ -169,9 +170,8 @@ export const landFeed = (
   const identitySha = writeFeedIdentity(target.volume, identity, { owner: target.owner, tmpDir: feedStagingDir(target) });
   // Order is serving history: the serving tree is always last.
   let trees = [...(record?.trees ?? []).filter((entry) => entry !== name), name];
-  const write = (): FeedLandedRecord => writeFeedLanded(target.stateDir, { heals, identity, identity_sha256: identitySha, ...(period ? { period } : {}), revision, tree: name, trees, version: FEED_LANDED_VERSION });
-  const landedRecord = write();
-  appendFeedLanding(target, landedRecord, now);
+  const write = (): FeedLandedRecord => publishFeedLanded(target, { heals, identity, identity_sha256: identitySha, ...(period ? { period } : {}), revision, tree: name, trees, version: FEED_LANDED_VERSION }, now);
+  write();
   const gc = collectGarbage(target, trees, name, now);
   if (gc.removed.length) {
     for (const removed of gc.removed) removeFeedManifest(target.stateDir, removed);

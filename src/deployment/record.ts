@@ -1,12 +1,13 @@
 import path from "node:path";
-import { readdir, rename, writeFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 
 import { z } from "zod";
 
 import {
-  ensureDirectory,
   readUtf8File
 } from "../filesystem/index.js";
+import { deployResourcesSchema } from "./resourceLog.js";
+import { publishDeploymentRecord } from "./recordPublication.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { parseOrganizationHandoff, type OrganizationHandoff } from "./organizationHandoffTypes.js";
@@ -105,6 +106,11 @@ const deploymentRecordV1Schema = z.object({
 }).strict();
 
 export const deploymentRecordSchema = z.object({
+  activated_at: z.iso.datetime({ offset: true }).optional(),
+  activation_exact: z.boolean().optional(),
+  activation_note: z.string().min(1).optional(),
+  recording: z.object({ keep_ms: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), memory_mount_ids: z.array(z.string().min(1)) }).strict().optional(),
+  resource_snapshot: deployResourcesSchema.optional(),
   auth_profile: z.string().min(1).nullable(),
   compile_fingerprint: z.string().min(1),
   created_at: z.string().min(1),
@@ -292,13 +298,6 @@ export const writeDeploymentRecord = async (
 ): Promise<string> => {
   const parsed = parseDeploymentRecord(record);
   const recordPath = resolveDeploymentRecordPath(outputDirectory, parsed.name);
-  await ensureDirectory(path.dirname(recordPath));
-
-  const temporaryPath = path.join(
-    path.dirname(recordPath),
-    `.${path.basename(recordPath)}.${process.pid}.${Date.now()}.tmp`
-  );
-  await writeFile(temporaryPath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
-  await rename(temporaryPath, recordPath);
+  await publishDeploymentRecord(recordPath, parsed);
   return recordPath;
 };

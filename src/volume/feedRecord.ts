@@ -7,6 +7,8 @@
 
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, chmodSync, lchownSync } from "node:fs";
 import path from "node:path";
+import { writeDurableFileSync } from "../filesystem/index.js";
+import { isFeedLanding, type FeedLanding } from "./feedLandings.js";
 
 import { FEED_IDENTITY_FILE, feedError, feedTreeLink } from "./feedLayout.js";
 import { sha256Hex } from "./feedManifest.js";
@@ -31,6 +33,8 @@ export interface FeedIdentity {
 }
 
 export interface FeedLandedRecord {
+  /** Recoverable history, independent of the next refresh's source declaration. */
+  recording?: { keep_ms: number; landing: FeedLanding };
   /** Re-land cycles per revision since the volume was last clean; a ceiling suspends auto-repair. */
   heals: Record<string, number>;
   identity: FeedIdentity;
@@ -75,6 +79,10 @@ export const feedLandedFindings = (record: unknown): string[] => {
   if (value.identity && (value.identity.revision !== value.revision || value.identity.tree !== `trees/${value.tree}`)) findings.push("identity must describe the serving tree");
   if (value.period !== undefined && (typeof value.period !== "string" || !/^\d{4}-\d{2}-\d{2}$/u.test(value.period))) findings.push("period must be a YYYY-MM-DD date");
   if (!value.heals || typeof value.heals !== "object" || Array.isArray(value.heals)) findings.push("heals must be an object");
+  if (value.recording !== undefined && (!Number.isSafeInteger(value.recording?.keep_ms)
+    || value.recording.keep_ms <= 0 || !isFeedLanding(value.recording.landing)
+    || value.recording.landing.landed_at !== value.identity?.landed_at
+    || value.recording.landing.tree !== value.identity?.tree)) findings.push("recording must describe the landed identity");
   return findings;
 };
 
@@ -95,10 +103,7 @@ export const writeFeedLanded = (stateDir: string, record: FeedLandedRecord): Fee
   const findings = feedLandedFindings(record);
   if (findings.length) throw feedError(`refusing to write an invalid landed.json: ${findings.join("; ")}`);
   mkdirSync(stateDir, { mode: 0o700, recursive: true });
-  const file = landedPath(stateDir), tmp = `${file}.${process.pid}.tmp`;
-  rmSync(tmp, { force: true });
-  writeFileSync(tmp, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
-  renameSync(tmp, file);
+  writeDurableFileSync(landedPath(stateDir), `${JSON.stringify(record, null, 2)}\n`);
   return record;
 };
 
