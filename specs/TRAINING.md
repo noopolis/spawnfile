@@ -155,40 +155,49 @@ appears between the `training-plan-schema` markers below.
 
 ## Moment record
 
-`spawnfile.moment-record.v1` specifies one record per wake; rewind consumes this format,
-while the recording phase produces it. Recording MUST be off unless an effective `record` exists,
-with zero recording cost when off. `record.keep` is snapshot retention.
+The recording PR (`feat/training-recording`, not yet merged) owns the normative
+`spawnfile.moment-record.v1` format in `specs/TRAINING.md`, “Moment record” and
+“Host histories and retention”. Rewind depends on that PR, not the superseded
+format sketch. The consumer-dependent recording text below is carried unchanged
+until the recording PR merges; it is the same contract, not a second format.
 
-```json
-{
-  "version": "spawnfile.moment-record.v1",
-  "agent": "agent:writer",
-  "wake": { "at": "2026-10-09T08:20:31Z", "surface": "moltnet", "room": "assignment", "from": "brass", "messageId": "42" },
-  "recordedAt": "2026-10-09T08:20:32Z",
-  "resources": [{ "id": "archive", "kind": "git", "commit": "0123456789abcdef0123456789abcdef01234567" }],
-  "feeds": [{ "id": "news", "revision": "revision-id", "tree": "tree-id", "commit": "0123456789abcdef0123456789abcdef01234567", "paths": ["published"], "landedAt": "2026-10-09T08:00:00Z" }],
-  "memory": [{ "id": "self", "declaredBy": "agent:writer", "seq": 42, "generation": 3 }],
-  "moltnet": [{ "network": "news", "cursor": "wake-cursor" }],
-  "volumes": [{ "id": "edition-state", "snapshot": "incremental-snapshot-id" }]
-}
-```
+All instants MUST use one host clock, shared by its containers, and include an offset
+or `Z`. Every pin MUST describe state in effect at `wake.startedAt`, not capture time.
+A later `recordedAt` MUST NOT advance a pin.
 
-`agent` is the exact node ID. `wake.at` MUST be the real wake time (not the dataset's
-authored trial time); `recordedAt` is capture time. Both are instants with an offset or
-`Z`; `messageId` is OPTIONAL. Resources identify the git/bundle resolved commit per
-build/deploy. Every recorded `resources[].commit`, `feeds[].commit`, and non-null
-landing-log `commit` MUST be a full 40- or 64-hex object ID, normalized to lowercase.
-Moving selectors and abbreviated IDs refuse. For every non-overridden input,
-rewind MUST verify matching moment-record IDs and every non-null landing-log ID
-as commit objects in that input's history repository; tree/blob IDs and annotated
-tag objects refuse without peeling. This validation also applies to pinned
-resources, feed-rule fallback, and retained feed trees; it does not change which
-valid commit takes selection precedence.
-Feeds identify the fed-volume landing-log entry in effect at the wake.
-Memory pins the Mneme ledger sequence and active curation generation for each declared
-bank; Moltnet pins each network's per-wake message cursor. Volumes identify an incremental
-snapshot for every effective `record.volumes` entry. Rewind MUST use records when present;
-otherwise it is best effort and the trial MUST be labelled as such.
+- `agent` MUST be the exact compiled node ID; `recordedAt` is the capture instant.
+- `wake` MUST contain `at`, `startedAt`, `executionId`, and nonempty `deliveries` of
+  `{deliveryId, kind, occurredAt}`. `at` is the first delivery's `occurred_at` (real wake
+  time); `startedAt` is when the turn began. Queued deliveries can precede that instant.
+  `surface`, `room`, `from`, and `messageId` are OPTIONAL, derived from a
+  `moltnet:<id>` delivery and its Moltnet message when available; other deliveries
+  MUST NOT invent Moltnet metadata.
+- `resources` MUST use `{id, kind:"git", commit, sha256?}` or
+  `{id, kind:"bundle", sha256}` from the deploy resource entry in effect at
+  `startedAt`, selected by deployment record identity and `agent_node_ids` containing
+  that exact agent node ID. Bundles have no commit. An inexact activation boundary
+  MUST set the moment's `exact:false`; an overlapping predecessor can still run old pins.
+- `feeds` MUST use `{id, revision, tree, commit?, ref?, paths?, landedAt, period?}`
+  from the landing entry in effect at `startedAt` for each consumed fed volume.
+  A wake inside the inclusive `[switching_at, landed_at]` transition window MUST
+  set `exact:false`; the helper returns that landing with `ambiguous:true`.
+- `memory` MUST use `{id, declaredBy, seq}` for each accessible bank. `seq` is the
+  highest Mneme ledger sequence whose `createdAt <= startedAt`; 0 means empty.
+  `generation` is OPTIONAL and MUST be omitted while Mneme has no generations.
+  Mneme's append-only `events.jsonl` is the source of truth; there are no curation
+  archives or generations to pin today.
+- `moltnet` MUST use `{network, cursor}` with `cursor = startedAt`. Visible history
+  contains messages with `created_at <= cursor`: server timestamps order history,
+  while message IDs do not order messages across rooms. OPTIONAL `messageIds` lists
+  wake message IDs, not a history cursor.
+- `volumes` MUST use `{id, snapshot}` for each successful pre-turn snapshot of an
+  effective `record.volumes` root. A failed root MUST be omitted and named in OPTIONAL
+  `errors: [string]`. REQUIRED `exact` MUST be `false` on any snapshot or pin failure;
+  otherwise it MUST be `true`. Missing or invalid history MUST NOT be guessed.
+
+Recorded commit fields MUST additionally be full 40- or 64-hex object IDs,
+normalized to lowercase and verified as commit objects without peeling tags.
+Bundles carry only a `sha256:…` digest, never a commit. Unknown fields refuse.
 
 ## Rewind
 
@@ -226,53 +235,71 @@ paths in replacement declarations resolve from the dataset file's directory.
 Every input MUST materialize successfully; present-day data MUST NOT substitute
 for unavailable history.
 
-The history consumer layout is normative:
+The local history import layout is normative:
 
 ```text
 DIR/
-  moments/*.jsonl
-  git/<declaredBy>/<id>/
+  moments/**/*.json                         # one record per file; .jsonl also accepted
+  bundles/<sha256 hex>.tar
+  git/<declaredBy>/<id>/                    # local repository mirror
   feeds/<declaredBy>/<id>/landings.jsonl
-  feeds/<declaredBy>/<id>/repo/
-  feeds/<declaredBy>/<id>/trees/<revision>/
+  feeds/<declaredBy>/<id>/repo/              # local git source mirror
+  feeds/<declaredBy>/<id>/trees/<tree name>/ # preserve .N re-land suffixes
   memory/<declaredBy>/<id>/events.jsonl
-  memory/<declaredBy>/<id>/generations.jsonl
   moltnet/<declaredBy>/<id>/state.json | moltnet.sqlite
-  volumes/<declaredBy>/<id>/snapshots.jsonl
-  volumes/<declaredBy>/<id>/objects/<sha256>
+  recording/<agent slug>/wake-moments.jsonl
+  recording/<agent slug>/snapshots/<root id>/<snapshot id>/
+  recording/<agent slug>/snapshots/<root id>/<snapshot id>.manifest.json
 ```
 
 `<declaredBy>` MUST be `encodeURIComponent` of the node ID: `agent:writer`
-becomes `agent%3Awriter`. IDs and content-addressed names MUST be safe path
-segments. Every read MUST remain inside `DIR` both lexically and after realpath
-resolution; symlink escapes MUST refuse. History repositories MAY be bare or
-ordinary repositories and MUST remain unmodified. Every JSONL line MUST be
-validated strictly; an invalid line MUST refuse affected inputs and identify
-the history file, line, and reason. History writers use these line shapes:
+becomes `agent%3Awriter`. `<agent slug>` is the selected compiled node's existing
+slug, including the compiler's collision handling. `<root id>` is the
+`record.volumes` resource ID. IDs and archive names MUST be safe path segments.
+Every read MUST remain inside `DIR` lexically and after realpath resolution;
+symlink escapes refuse. JSON and every JSONL line are validated strictly;
+invalid lines refuse the affected input with file, line number, and reason.
 
-- `moments/*.jsonl`: one `spawnfile.moment-record.v1` object per line, any filename.
-- `landings.jsonl`: `{revision, tree, commit, ref, paths, landedAt}`.
-  `revision` is the lowercase 64-hex feed digest; `tree` names that revision,
-  optionally with its re-land generation or `trees/` prefix. Directory sources
-  use `null` commit/ref/paths; git sources require commit/ref, with `null` or `[]`
-  paths denoting the whole tree.
-- OPTIONAL `generations.jsonl`: `{generation, switchedAt, ledger}`, with `ledger`
-  relative to that bank's directory and naming its current or archived ledger.
-- `snapshots.jsonl`: `{snapshot, takenAt, parent, files}`, where `parent` is a
-  snapshot ID or `null`; `files` maps changed relative paths to SHA-256 digests or
-  `null` for deletion. `objects/<sha256>` contains each referenced file's bytes.
+Import copies deployment evidence verbatim: composed moment JSON files; the
+host feed state's `landings.jsonl` beside `landed.json`; retained feed volume
+`trees/` directories; deployed bundle tars from `container/workspace-bundles/`;
+Daimon's persisted `recording/<agent slug>/` rows, snapshot trees and manifests;
+Mneme's `<home>/memory/events.jsonl`; and the network's consistent Moltnet store
+(including SQLite recovery sidecars when needed). The `git/` repositories and
+feed `repo/` directories are local mirrors retaining historical commits, not
+recorder output. Rewind neither fetches nor changes these mirrors.
 
-Moment records match when `agent` equals the plan agent ID and `wake.at` is the
-same parsed instant as example `at`; different offset spellings are equivalent.
-Several matching records MUST agree in every field used for the selected
-inputs, otherwise the moment refuses. Every matching record's commit IDs for each
-non-overridden input MUST pass history-object validation, including fields omitted
-from selection comparisons for pinned resources. An invalid candidate refuses
-its affected input. No matching record triggers each input's
-fallback rule. Fallbacks are labelled `approximate`; independent immutable pins
-and landing logs retain the exact fidelity specified below. All timestamp
-comparisons MUST compare instants, preserving RFC3339 nanoseconds where present,
-never timestamp strings or UUID order. Boundary instants equal to `at` are included.
+Feed logs follow the recording PR's `spawnfile.volume-feed-landing.v1` shape:
+`{version, resource, volume, revision, tree, source, commit?, ref?, paths?,
+switching_at?, landed_at, period?}`. Source identifies `{kind:"git", repo}` or
+`{kind:"directory", directory}`, with optional prepared provenance. This reader
+accepts older entries without `switching_at`; new recording writes transition
+boundaries. The isolated compatibility reader must be replaced by P3's
+`readFeedLandings` / `feedLandingAt` after that PR merges.
+
+Moment records match exact compiled `agent` and parsed `wake.at == example.at`.
+For several attempts of that wake, select the EARLIEST `wake.startedAt` (original
+turn), even when replay pins differ or append/capture order differs. Conflicting
+copies at that same earliest instant still refuse when their used pins differ.
+Validate recorded commit IDs in every earliest-attempt copy for each used input,
+including IDs hidden by declared pin precedence; later replays cannot replace
+or invalidate the original turn's pins.
+
+The report retains dataset `at` and adds `effectiveAt = selected wake.startedAt`,
+or `effectiveAt = at` if unmatched. Task-clock origin, historical selection, and
+leak bounds MUST use `effectiveAt`. Report the matching count, selected execution
+ID, selected start instant, and `earliest-startedAt` choice. All comparisons parse
+instants, preserving RFC3339 nanoseconds rather than ordering strings or UUIDs.
+
+An `exact:false` record does not invalidate healthy pins: a present pin is used
+with `exact` fidelity and `record` basis (`record-cursor` for Moltnet), unless its
+`errors` names that input. Errored pins are ignored, absent pins use fallback
+rules, and those inputs are labelled `approximate`, with the record's error text
+in notes. Explicit section or declaring-node qualifications apply only to that
+input; unqualified ID errors conservatively apply to every input with that ID.
+A missing fallback still refuses. No matching record uses the normal
+rules below; independent immutable git pins and unambiguous landing logs may
+still be exact.
 
 ### Per-input reconstruction and fidelity
 
@@ -286,14 +313,14 @@ regardless of its declared storage backend; trial preparation consumes or import
 that snapshot. With no `--history`, only locally materializable pins
 and explicit overrides can succeed; everything else refuses.
 
-Git resources and source-backed bundles select a full 40- or 64-hex declared
+Git resources select a full 40- or 64-hex declared
 commit first (`exact`, `pinned`), otherwise the matching record's resource
 commit (`exact`, `record`). Otherwise they walk the declared selector's
-first-parent history and choose its newest commit with committer time `<= at`
+first-parent history and choose its newest commit with committer time `<= effectiveAt`
 (`approximate`, `selector-at`); an absent selector means `HEAD`. Commit dates
 do not establish when a commit reached a branch or tag, so this fallback cannot
 prove historical ref membership. A missing eligible commit refuses.
-The selected commit's author AND committer dates MUST be `<= at` before any
+The selected commit's author AND committer dates MUST be `<= effectiveAt` before any
 git checkout or bundle extraction, including pinned, recorded, and overridden
 git sources. All paths MUST use the same selected-commit guard.
 
@@ -302,11 +329,18 @@ from the selected commit, with one checked-out branch, no remotes, tags, source
 packed refs, reflogs, `FETCH_HEAD`, or `ORIG_HEAD`. Git commands use argv without
 a shell and sanitized configuration. History MUST NOT be mutated. The leak
 check also rejects any reachable ancestor with author or committer time after
-`at`. Bundle `build.files` extracts `files.root` at the selected commit and honors
+`effectiveAt`. Bundle `build.files` extracts `files.root` at the selected commit and honors
 `exclude`. `build.dependencies` and `build.generated` retain their source
 directory or declared inputs at that commit and report `build: deferred`;
-trial preparation owns builds. Bundle output MAY be a plain tree. A prebuilt
-`source` tar without a record or explicit override is un-rewindable and refuses.
+trial preparation owns builds. Bundle output MAY be a plain tree. A record pins only its bundle SHA-256.
+Exact bundle output requires `bundles/<sha256 hex>.tar` whose actual digest
+matches that pin. Validate the archive before extraction: escaping paths,
+symlinks, hard links, devices, and other special entries refuse. Acceptance
+reopens the archive and compares output paths, bytes, and executable modes.
+Absent or digest-mismatched archives fall back to source reconstruction where
+available, always `approximate` even with a pinned source commit; notes explain
+that the recorded SHA-256 could not be reproduced. A prebuilt `source` tar has
+no historical source fallback and refuses unless overridden.
 Generated inputs spanning multiple repositories or independently pinned input
 refs cannot be represented by this one-repository/one-commit history contract
 and MUST refuse. Bundle roots whose historical repository prefix cannot be
@@ -316,43 +350,51 @@ attribute-driven transforms, `export-subst`, or `export-ignore` semantics.
 Symlinks MUST be recreated as symlinks and pass the independent escape check;
 gitlink/submodule entries MUST refuse with an explicit unsupported-history error.
 
-Fed volumes select the newest landing with `landedAt <= at` when a landing log
-exists (`exact`, `landing-log`); no eligible landing refuses. A matching record
-feed entry MUST agree with that landing. Without a log, a plain git feed expands
-its ref template and paths using `at`, including `${date}` in UTC and
-`${date:<IANA zone>}` in that zone. The primary ref is used only if it has an
-eligible first-parent commit; otherwise the declared fallback is tried. Its
-newest eligible commit is `approximate`, `feed-rule-at`. Commands, directory
-feeds, and freeze/waiting behavior cannot reconstruct historical landings
-without a log and MUST refuse. Ref dates alone do not capture earlier freeze
-holds or when a producer made a ref available.
+Fed volumes use a matching record pin with `exact`, `record`, including when no
+landing log is retained. Otherwise, lookup inside the inclusive
+`[switching_at, landed_at]` window selects the incoming entry with `approximate`,
+`landing-log` and an ambiguous-transition note. Outside windows, choose the
+newest `landed_at <= effectiveAt`, breaking equal timestamps by last append
+(`exact`, `landing-log`). Before the first entry, there is no landed state.
+
+Without selected recorded state, a plain git feed evaluates its ref template
+and paths at `effectiveAt`, including `${date}` in UTC and `${date:<IANA zone>}`.
+Use the primary ref only if it has an eligible first-parent commit; otherwise
+try the fallback. Its newest eligible commit is `approximate`, `feed-rule-at`.
+Command refs, directory feeds, prepared/include recipes and freeze/waiting state
+cannot be reconstructed this way and refuse. Commit dates do not establish ref
+availability or historical freeze holds.
 
 Before choosing retained bytes versus extraction, the selected feed source
 commit MUST be verified as a commit object with author AND committer dates
-`<= at`. This single selection guard applies equally to plain, retained,
+`<= effectiveAt`. This single selection guard applies equally to plain, retained,
 prepared, and included git feeds; an eligible landing time does not make a
 future source commit eligible. Directory feeds have no git source commit.
-Feed bytes come from OPTIONAL retained `trees/<revision>/` when available.
+Feed bytes come from OPTIONAL retained `trees/<tree name>/` when available.
 Otherwise a plain git feed re-extracts the landing's expanded paths at its commit
 and MUST verify the revision with the existing feed revision function. A mismatch
 refuses. `include` or `prepare` requires retained bytes; rewind MUST NOT run them.
 Raw blob extraction ignores repository-local `info/attributes` as well as committed
 archive attributes; later tags cannot change historical file bytes.
-Output preserves the agent-visible `trees/<revision>/`, relative `current`
+Output preserves the agent-visible `trees/<tree name>/`, including re-land suffixes, relative `current`
 symlink, and `.spawnfile-feed.json` (`spawnfile.volume-feed.v1`). Its `landed_at`
 is the selected landing time, or the selected commit's committer time for an
-approximation, always `<= at`.
+feed-rule approximation. A recorded pin or ambiguous incoming transition may
+have publication metadata after `effectiveAt`; this does not advance the trial
+clock or filesystem timestamps. The independent gate reopens its record/window
+before allowing such publication metadata. Directory feeds are not refetchable:
+retained tree bytes MUST recompute to the recorded revision or refuse (including
+prepared directory revisions whose composite identity cannot be reproduced).
 
-Memory selects the generation with greatest `switchedAt <= at`, refusing if
-the generation log contains none or its archived ledger is unavailable. Without
-a generation log, the sole current ledger is treated as original generation 0;
-a record naming another generation refuses. A matching record MUST name the
-selected generation. Its `seq` selects the first `seq` ledger lines (`exact`,
-`record`). Otherwise selection stops before the FIRST event after `at`
-(`approximate`, `created-at-prefix`): subsequent clock regression never reopens
-the cut. The prefix MUST end in LF, contain contiguous sequences from 1, and
-contain only nondecreasing event times `<= at`. Legacy seq-less events are
-allowed only as a leading run. Invalid sequence or time ordering refuses.
+Memory uses Mneme's single append-only ledger. Any recorded `generation`,
+including 0, refuses as unsupported: Mneme has no generations or curation
+archives. There is no `generations.jsonl` reader. A record's `seq` selects the
+first `seq` ledger lines (`exact`, `record`); `seq:0` is an exact empty bank and
+requires no ledger. Otherwise selection stops before the FIRST event after
+`effectiveAt` (`approximate`, `created-at-prefix`): a subsequent clock regression
+never reopens the cut. The prefix MUST end in LF, contain contiguous sequences
+from 1, and only nondecreasing event times `<= effectiveAt`. Legacy seq-less
+events are allowed only as a leading run. Invalid sequence or time ordering refuses.
 
 Memory output is `memory/<declaredBy>/<id>/memory/events.jsonl`. It MUST exclude
 `index.sqlite`, `causal*`, `authority-receipts.jsonl`, and `authority-receipts/`.
@@ -374,38 +416,57 @@ Opening an index alone does NOT rebuild it. A materialized bank without
 `index.sqlite` is complete because this index is derived state; trial preparation
 MUST preserve those rebuild-before-read consumers. Rewind requires no Mneme runtime
 dependency and does not create even a temporary index.
-Missing bank history also refuses unless the bank is overridden.
+Missing bank history refuses unless the bank is overridden or recorded at `seq:0`.
 
 Moltnet JSON and SQLite stores remove messages, rooms, and attachment-delivery
-events after `at`. Empty threads/DMs and threads/DMs whose root is after the cut
+events after `effectiveAt`. Empty threads/DMs and threads/DMs whose root is after the cut
 are dropped. Thread/DM message counts and last-message times are recomputed;
 attachment cursors are clamped/remapped to retained events. Room removals after
-`at` are undone when removal time and restorable room metadata exist; a missing
+`effectiveAt` are undone when removal time and restorable room metadata exist; a missing
 historical removal time retains current removal state. Agents and memberships
 have no historical log and are retained as now, explicitly disclosed in input
 `notes`: even a cursor-exact content cut cannot prove historical membership.
 SQLite changes apply only to a copy through `node:sqlite` on the supported
 Node >=22.19 line; if that API is unavailable, SQLite rewind refuses. RFC3339Nano
 fractions with omitted trailing zeros MUST be compared as parsed instants.
-A record cursor yields `exact`, `record-cursor` only if it identifies a retained
-message and no retained message is later than that cursor's message. Otherwise
-fidelity is `approximate`, `created-at-cut`. Missing stores refuse unless overridden.
+A record cursor is an instant, MUST equal `wake.startedAt`, and cuts messages at
+`created_at <= cursor` (`exact`, `record-cursor`). When `messageIds` is present,
+every listed wake message MUST survive the cut; otherwise refuse. With no pin,
+cut at `effectiveAt` (`approximate`, `created-at-cut`). Missing stores refuse
+unless overridden; UUIDs never order messages.
 
-Unfed volumes choose the newest snapshot with `takenAt <= at`. A record MUST
-name that snapshot or an ancestor-consistent exact snapshot; a valid record is
-`exact`, otherwise selection is `approximate`. The full parent chain is replayed
-from its root, including deletions, and every copied object is SHA-256 verified.
-Missing history, missing parents/objects, or no eligible snapshot refuses.
-Materialized content must equal the replayed snapshot, checked independently.
+Unfed volumes consume full point-in-time Daimon trees, not deltas or object
+chains. Rows in `recording/<agent slug>/wake-moments.jsonl` use
+`noopolis.daimon.wake-moment.v1` with `agent_id`, `execution_id`, `started_at`,
+`deliveries`, `snapshots:[{id,snapshot,files,copied,linked,skipped}]`, and optional
+`error`. Snapshot names are compact `started_at` plus execution ID (for example
+`20261009T082031123Z-execution-17`), but time selection MUST use the row's
+`started_at`, not that prefix. A record names its exact snapshot (`exact`,
+`record`); otherwise use the newest complete snapshot row `<= effectiveAt`
+(`approximate`, `snapshot-at`). `.partial` directories never count. Missing
+named history or no complete eligible snapshot refuses.
 
-All materialized files and directories MUST have atime/mtime `<= at`, using the
-source commit, landing, event, or snapshot instant capped at `at`. Symlink times
+The sibling manifest contains `{version,id,snapshot,started_at,sourcePath,entries}`.
+Entries map relative paths to `{type,mode,size,source,target?}`: type is file,
+directory or symlink; size is a decimal string; source preserves recorder
+`dev`, `ino`, `size`, `mtimeNs`, `ctimeNs`, and `mode`; target is symlink text.
+Copy file bytes into new inodes; do not hard-link into the bundle. Verify paths,
+entry types, modes, file/symlink sizes and targets against the manifest; missing
+or extra entries refuse. Restore source directory modes (the recorder protects
+retained directories as 0700). Directory inode size and copied inode identity
+are filesystem metadata, not portable tree invariants. Verify their manifest
+structure but not equality to new inodes. Acceptance independently checks the
+manifest and compares copied bytes with the retained tree, catching same-size
+byte mutations even though recorder manifests contain no content digest.
+
+All materialized files and directories MUST have atime/mtime `<= effectiveAt`, using the
+source commit, landing, event, or snapshot instant capped at `effectiveAt`. Symlink times
 MUST be set with `lutimes`; following a symlink to set times is insufficient.
 
 ### Task clock
 
 `task-clock.json` is strict `spawnfile.task-clock.v1` with `{version, origin}`;
-`origin` is the example instant normalized to ISO-8601 with `Z`. Trial preparation
+`origin` is `effectiveAt` normalized to ISO-8601 with `Z`. Trial preparation
 supplies one safe-integer real launch anchor in milliseconds. All processes MUST
 share `originEpochMs + (realNowEpochMs - anchorEpochMs)`; independently started
 children MUST NOT reset their clock to the origin. `originEpochMs` uses JavaScript
@@ -466,27 +527,27 @@ Every git-backed input MUST record its selected full commit ID in
 `moment.json`'s `inputs[].source.commit`; git feed identity MUST record the same
 ID. Acceptance MUST independently open the source history repository read-only,
 verify that ID names a commit object, and inspect its raw author and committer
-dates against `at`, regardless of retained bytes or normalized filesystem times.
+dates against `effectiveAt`, regardless of retained bytes or normalized filesystem times.
 Missing/unreadable provenance and inconsistent feed commit IDs also refuse.
 History repositories are resolved by input identity from `--history`. A local
 pin or git-backed override resolved without that history entry MUST additionally
 record its absolute local repository path in `source.repository`; acceptance
 reopens it read-only. That source repository must remain available for subsequent
-verification. Directory feeds and explicitly overridden prebuilt tars have no git
-provenance. This source check is independent of the materialized git object's
+verification. Directory feeds and digest-pinned or explicitly overridden prebuilt tars have no git
+provenance. Recorded bundles are independently checked against their digest-pinned archive. This source check is independent of the materialized git object's
 reachable-history check and MUST NOT reuse the producer's date assertion.
 Every finding refuses the moment:
 
 | Class | Refusal condition |
 | --- | --- |
-| `file-time` | A file, directory, or symlink atime or mtime is after `at`. |
+| `file-time` | A file, directory, or symlink atime or mtime is after `effectiveAt`. |
 | `symlink-escape` | An absolute link or a lexically/physically escaping link resolves outside the bundle. |
-| `git-object` | Source provenance is missing, inconsistent, not a commit, or has author/committer time after `at`; any materialized commit has a future date, any object is unreachable from the selected commit, or refs/remotes/reflogs/fetch metadata exceed the single branch. Any `.git` directory/gitfile or bare repository (`HEAD` + `objects/` + `refs/`) anywhere outside the materialized git resource repository also refuses, including inside feed trees and bundles. |
+| `git-object` | Source provenance is missing, inconsistent, not a commit, or has author/committer time after `effectiveAt`; any materialized commit has a future date, any object is unreachable from the selected commit, or refs/remotes/reflogs/fetch metadata exceed the single branch. Any `.git` directory/gitfile or bare repository (`HEAD` + `objects/` + `refs/`) anywhere outside the materialized git resource repository also refuses, including inside feed trees and bundles. |
 | `memory-event` | Future ledger events, sequence gaps, invalid prefix ordering, or derived/audit files are present. |
-| `moltnet-message` / `moltnet-event` / `moltnet-room` | Retained messages, delivery events, or rooms are after `at`. |
-| `feed-identity` | `landed_at` is after `at` or `current` does not target a tree inside the volume. |
-| `dated-path` | A path segment contains a calendar date `YYYY-MM-DD` later than the UTC date of `at + 14h`, the latest possible local date. |
-| `snapshot` | An unfed volume differs from its selected replayed snapshot. |
+| `moltnet-message` / `moltnet-event` / `moltnet-room` | Retained messages, delivery events, or rooms are after `effectiveAt`. |
+| `feed-identity` | Unproved publication time after `effectiveAt`, a directory revision mismatch, or `current` outside its selected tree. |
+| `dated-path` | A path segment contains a calendar date `YYYY-MM-DD` later than the UTC date of `effectiveAt + 14h`, the latest possible local date. |
+| `snapshot` | An unfed volume differs from its selected full snapshot manifest or retained bytes. |
 
 `OUT` MUST be absent or an empty directory. The materializer builds in a sibling
 staging directory and renames into place only after the disk leak check passes:
@@ -502,7 +563,8 @@ OUT/
 ```
 
 `moment.json` is strict `spawnfile.materialized-moment.v1`: status, agent,
-`example: {id, role, dataset}`, normalized `at`, sorted inputs, `record: {matched}`,
+`example: {id, role, dataset}`, normalized `at`, `effectiveAt`, sorted inputs, and `record: {matched, attempts?,
+selectedStartedAt?, executionId?, selection?}`,
 and `leakCheck: {ok, findings}`. Inputs sort by section, declaring node, then ID;
 each reports kind, fidelity (or `null` on refusal), basis, source identifiers,
 relative output path (or `null`), notes, and refusal reason (or `null`). Deferred
@@ -1523,6 +1585,11 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
       "format": "date-time",
       "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
     },
+    "effectiveAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+    },
     "inputs": {
       "type": "array",
       "items": {
@@ -1594,10 +1661,13 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
                 "minimum": 0,
                 "maximum": 9007199254740991
               },
-              "generation": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
+              "sha256": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              },
+              "agentSlug": {
+                "type": "string",
+                "minLength": 1
               },
               "snapshot": {
                 "type": "string",
@@ -1606,6 +1676,16 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
               "cursor": {
                 "type": "string",
                 "minLength": 1
+              },
+              "switchingAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              "landedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
               }
             },
             "additionalProperties": false
@@ -1663,6 +1743,24 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
       "properties": {
         "matched": {
           "type": "boolean"
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "selectedStartedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        },
+        "executionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selection": {
+          "type": "string",
+          "const": "earliest-startedAt"
         }
       },
       "required": [
@@ -1695,6 +1793,7 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
     "agent",
     "example",
     "at",
+    "effectiveAt",
     "inputs",
     "record",
     "leakCheck"

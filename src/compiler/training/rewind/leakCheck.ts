@@ -18,7 +18,7 @@ export const inspectTrainingMoment = async (
   try {
     const moment = materializedMomentSchema.parse(JSON.parse(await readFile(await diskPath(root, "moment.json"), "utf8")));
     if (skipRefused && moment.status === "refused") return { moment, check: null };
-    const report: LeakCheck = { version: "spawnfile.leak-check.v1", at: moment.at, ok: false,
+    const report: LeakCheck = { version: "spawnfile.leak-check.v1", at: moment.effectiveAt, ok: false,
       checked: { files: 0, gitObjects: 0, memoryEvents: 0, moltnetMessages: 0, moltnetEvents: 0, snapshots: 0 }, findings: [] };
     await inspectBundleFiles(root, moment.inputs, report, files);
     for (const input of moment.inputs) {
@@ -34,7 +34,7 @@ export const inspectTrainingMoment = async (
         if (["git", "bundle", "feed"].includes(input.kind)) await inspectInputProvenance(root, input, report, options.historyDir);
         if (input.kind === "git") await inspectGitBundle(directory, input, report);
         if (input.kind === "memory") await inspectMemoryBundle(root, input, report);
-        if (input.kind === "feed") await inspectFeedBundle(root, input, report);
+        if (input.kind === "feed") await inspectFeedBundle(root, input, report, moment, await openHistory(options.historyDir));
         if (input.kind === "moltnet") await inspectMoltnetBundle(root, input, report);
         if (input.kind === "volume") await inspectVolumeBundle(root, input, report, await openHistory(options.historyDir));
       } catch (error) {

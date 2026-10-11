@@ -12,16 +12,17 @@ import type { InputContext } from "./types.js";
 const AT = "2026-10-09T08:20:31Z", EARLY = "2026-10-09T08:00:00Z", REVISION = "e".repeat(64);
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
-const landing = (commit: string | null) => ({ revision: REVISION, tree: REVISION, commit, ref: "main", paths: [], landedAt: EARLY });
+const landing = (commit: string) => ({ version: "spawnfile.volume-feed-landing.v1", resource: "news", volume: "org-news", source: { kind: "git", repo: "recorded-repo" }, revision: REVISION, tree: REVISION, commit, ref: "main", paths: [], landed_at: EARLY });
 const feedRecord = (commit: string) => ({ id: "news", revision: REVISION, tree: REVISION, commit, paths: [], landedAt: EARLY });
-const recordedValue = (field: "resources" | "feeds" | "landing", commit: string): string | null => {
+const recordedValue = (field: "resources" | "feeds" | "landing", commit: string): string | undefined => {
   if (field === "landing") return feedLandingSchema.parse(landing(commit)).commit;
   const value = momentRecordSchema.parse({ ...testMomentRecord(), [field]: field === "resources"
     ? [{ id: "archive", kind: "git", commit }]
     : [{ id: "news", revision: REVISION, tree: REVISION, commit, paths: [], landedAt: EARLY }] });
-  return value[field][0]!.commit;
+  const entry = value[field][0]!;
+  return "commit" in entry ? entry.commit : undefined;
 };
-const fixture = async (kind: "git" | "bundle" = "git") => {
+const fixture = async () => {
   const root = await gitTestRoot(); roots.push(root);
   const repository = path.join(root, "history/git/agent%3Awriter/archive");
   await initTestGit(repository);
@@ -30,10 +31,9 @@ const fixture = async (kind: "git" | "bundle" = "git") => {
   const objects = { blob: testGit(repository, ["rev-parse", `${past}:readme.txt`]),
     tree: testGit(repository, ["rev-parse", `${past}^{tree}`]), tag: testGit(repository, ["rev-parse", "refs/tags/record-tag"]) };
   const context: InputContext = { at: AT, destination: path.join(root, "output"), history: new History(path.join(root, "history")),
-    record: { ...testMomentRecord(), resources: [{ id: "archive", kind, commit: past }] },
+    record: { ...testMomentRecord(), resources: [{ id: "archive", kind: "git", commit: past }] },
     input: { section: "resources", declaredBy: "agent:writer", id: "archive", declarationBase: root, overridden: false,
-      declaration: kind === "git" ? { id: "archive", kind, mode: "readonly", mount: "./archive", url: repository }
-        : { id: "archive", kind, mode: "readonly", mount: "./archive", source: "never-open-todays.tar" } } };
+      declaration: { id: "archive", kind: "git", mode: "readonly", mount: "./archive", url: repository } } };
   return { root, repository, past, objects, context };
 };
 const retainedFeed = async () => {
@@ -62,30 +62,32 @@ describe("recorded commit contracts", () => {
     }
   });
 
-  it("retains null commit support for directory landing logs", () => {
-    expect(feedLandingSchema.parse(landing(null)).commit).toBeNull();
+  it("directory landing logs omit git commit fields", () => {
+    const { commit: _commit, ref: _ref, paths: _paths, ...entry } = landing("a".repeat(40));
+    expect(feedLandingSchema.parse({ ...entry, source: { kind: "directory", directory: "/source" } }).commit).toBeUndefined();
   });
 });
 
-describe.each(["git", "bundle"] as const)("recorded %s commit objects", (kind) => {
+describe("recorded git commit objects", () => {
+  const kind = "git" as const;
   it("materializes the full recorded ID case-insensitively", async () => {
-    const { past, context } = await fixture(kind);
-    context.record!.resources[0]!.commit = past.toUpperCase();
+    const { past, context } = await fixture();
+    context.record!.resources[0] = { id: "archive", kind: "git", commit: past.toUpperCase() };
     expect(await materializeGit(context)).toMatchObject({ fidelity: "exact", basis: "record", source: { commit: past } });
     expect(await readFile(path.join(context.destination, "readme.txt"), "utf8")).toBe("recorded bytes\n");
   });
 
   it.each(["blob", "tree", "tag"] as const)("refuses a recorded %s object without peeling it", async (type) => {
-    const { objects, context } = await fixture(kind);
-    context.record!.resources[0]!.commit = objects[type];
+    const { objects, context } = await fixture();
+    context.record!.resources[0] = { id: "archive", kind: "git", commit: objects[type] };
     await expect(materializeGit(context)).rejects.toThrow(`Recorded object ${objects[type]} must be a commit object; found ${type}`);
     await expect(readdir(context.destination)).rejects.toThrow();
   });
 
   it("refuses moving and abbreviated records even when their selectors resolve", async () => {
-    const { past, context } = await fixture(kind);
+    const { past, context } = await fixture();
     for (const commit of ["HEAD", past.slice(0, 12)]) {
-      context.record!.resources[0]!.commit = commit;
+      context.record!.resources[0] = { id: "archive", kind: "git", commit };
       await expect(materializeGit(context)).rejects.toThrow("Expected a full 40- or 64-hex commit object id");
     }
     await expect(readdir(context.destination)).rejects.toThrow();
@@ -98,22 +100,22 @@ describe.each(["git", "bundle"] as const)("recorded %s commit objects", (kind) =
   };
 
   it.each(["blob", "tree", "tag"] as const)("refuses a matching %s record despite a valid declared pin", async (type) => {
-    const { context, past, objects } = await fixture(kind);
-    pin(context, past); context.record!.resources[0]!.commit = objects[type];
+    const { context, past, objects } = await fixture();
+    pin(context, past); context.record!.resources[0] = { id: "archive", kind: "git", commit: objects[type] };
     await expect(materializeGit(context)).rejects.toThrow(`Recorded object ${objects[type]} must be a commit object; found ${type}`);
     await expect(readdir(context.destination)).rejects.toThrow();
   });
 
   it("keeps pin precedence after verifying a different valid recorded commit", async () => {
-    const { context, repository, past } = await fixture(kind);
+    const { context, repository, past } = await fixture();
     const next = await commitTestGit(repository, { "readme.txt": "other recorded commit\n" }, "2026-10-09T08:10:00Z");
-    pin(context, past); context.record!.resources[0]!.commit = next.toUpperCase();
+    pin(context, past); context.record!.resources[0] = { id: "archive", kind: "git", commit: next.toUpperCase() };
     expect(await materializeGit(context)).toMatchObject({ fidelity: "exact", basis: "pinned", source: { commit: past } });
     expect(await readFile(path.join(context.destination, "readme.txt"), "utf8")).toBe("recorded bytes\n");
   });
 
   it("does not verify unrelated recorded inputs", async () => {
-    const { context, past, objects } = await fixture(kind);
+    const { context, past, objects } = await fixture();
     pin(context, past); context.record!.resources[0] = { id: "other", kind, commit: objects.blob };
     expect(await materializeGit(context)).toMatchObject({ fidelity: "exact", basis: "pinned", source: { commit: past } });
   });
@@ -130,7 +132,7 @@ describe("recorded commit validation authority", () => {
 
   it("does not verify the replaced input's recorded commit for an override", async () => {
     const { context, repository, past, objects } = await fixture();
-    context.input.overridden = true; context.history = undefined; context.record!.resources[0]!.commit = objects.blob;
+    context.input.overridden = true; context.history = undefined; context.record!.resources[0] = { id: "archive", kind: "git", commit: objects.blob };
     context.candidateRecords = [context.record!];
     context.input.declaration = { id: "archive", kind: "git", mode: "readonly", mount: "./archive", url: repository, ref: past };
     expect(await materializeGit(context)).toMatchObject({ fidelity: "overridden", source: { commit: past } });
@@ -169,7 +171,7 @@ describe("retained feed recorded commit objects", () => {
 
   it.each(["blob", "tree", "tag"] as const)("validates an unselected landing's %s commit object", async (type) => {
     const { context, past, objects, directory } = await retainedFeed();
-    const entries = [landing(past), { ...landing(objects[type]), landedAt: "2026-10-09T09:00:00Z" }];
+    const entries = [landing(past), { ...landing(objects[type]), landed_at: "2026-10-09T09:00:00Z" }];
     await writeFile(path.join(directory, "landings.jsonl"), `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
     await expect(materializeFeed(context)).rejects.toThrow(`Recorded object ${objects[type]} must be a commit object; found ${type}`);
     await expect(readdir(context.destination)).rejects.toThrow();
@@ -191,10 +193,10 @@ describe("feed moment records without landing logs", () => {
     await expect(readdir(context.destination)).rejects.toThrow();
   });
 
-  it("validates a moment commit but keeps feed-rule selection without a landing log", async () => {
+  it("uses a verified moment commit without a landing log", async () => {
     const { context, past } = await fallbackFeed();
     context.record = { ...testMomentRecord(), feeds: [feedRecord(past.toUpperCase())] };
-    expect(await materializeFeed(context)).toMatchObject({ fidelity: "approximate", basis: "feed-rule-at", source: { commit: past } });
+    expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", basis: "record", source: { commit: past } });
   });
 
   it("does not verify unrelated feed moment records", async () => {

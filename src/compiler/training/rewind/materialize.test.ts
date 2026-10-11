@@ -42,8 +42,8 @@ describe("materializeTrainingMoment", () => {
     await mkdir(fixture.options.out);
     const record = { ...emptyRecord("agent:a", "2026-10-09T10:20:31+02:00"),
       resources: [{ id: "code", kind: "git", commit: fixture.commit }],
-      memory: [{ id: "self", declaredBy: "agent:a", seq: 1, generation: 0 }],
-      volumes: [{ id: "edition-state", snapshot: "snapshot-1" }] };
+      memory: [{ id: "self", declaredBy: "agent:a", seq: 1 }],
+      volumes: [{ id: "edition-state", snapshot: "20261009T070000000Z-execution-17" }] };
     await jsonl(fixture.historyDir, "moments/anything.jsonl", [record]);
     const result = await materializeTrainingMoment(fixture.options);
     expect(result.status).toBe("materialized");
@@ -72,7 +72,7 @@ describe("materializeTrainingMoment", () => {
       .toBe(`Recorded object ${blob} must be a commit object; found blob`);
     expect(result.inputs.filter((input) => input.refusal !== null).map((input) => input.id)).toEqual(["code"]);
     expect(result.inputs.find((input) => input.id === "edition-state"))
-      .toMatchObject({ fidelity: "approximate", source: { snapshot: "snapshot-1" }, refusal: null });
+      .toMatchObject({ fidelity: "approximate", source: { snapshot: "20261009T070000000Z-execution-17" }, refusal: null });
     expect(snapshotBeforeDiscard).toBe("snapshot bytes\n");
     expect(await readdir(fixture.options.out)).toEqual(["moment.json"]);
   });
@@ -114,7 +114,7 @@ describe("materializeTrainingMoment", () => {
   it("refuses contradictory matching records and malformed history lines without a usable payload", async () => {
     const fixture = await rewindFixture();
     await jsonl(fixture.historyDir, "moments/conflict.jsonl", [emptyRecord(), {
-      ...emptyRecord(), memory: [{ id: "self", declaredBy: "agent:a", seq: 1, generation: 0 }]
+      ...emptyRecord(), memory: [{ id: "self", declaredBy: "agent:a", seq: 1 }]
     }]);
     const refused = await materializeTrainingMoment(fixture.options);
     expect(refused.inputs.filter((input) => input.fidelity !== "overridden")

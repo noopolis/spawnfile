@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { emptyRecord } from "./fixtures.test-helper.js";
 import { momentRecordSchema } from "./contract.js";
 import { History, historyKey, openHistory, safeSegment } from "./history.js";
 
@@ -16,9 +17,7 @@ const fixture = async () => {
   await writeFile(path.join(outside, "secret"), "outside bytes");
   return { root, directory, outside, history: (await openHistory(directory))! };
 };
-const record = { version: "spawnfile.moment-record.v1", agent: "agent:writer",
-  wake: { at: "2026-10-09T08:20:31Z", surface: "moltnet", room: "assignment", from: "brass" },
-  recordedAt: "2026-10-09T08:20:31Z", resources: [], feeds: [], memory: [], moltnet: [], volumes: [] };
+const record = emptyRecord("agent:writer");
 
 describe("history containment and strict reads", () => {
   it("allows missing history and entries but rejects non-directory roots and non-file reads", async () => {

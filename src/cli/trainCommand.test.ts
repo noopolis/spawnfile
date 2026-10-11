@@ -83,7 +83,7 @@ describe("spawnfile train --materialize", () => {
     const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest() });
     const materializeTrainingMoment = vi.fn<CliHandlers["materializeTrainingMoment"]>(async ({ plan }) => ({
       version: "spawnfile.materialized-moment.v1", status: "materialized", agent: plan.agent.id,
-      example: { id: example.id, role: "train", dataset: "training/train.yaml" }, at: example.at,
+      example: { id: example.id, role: "train", dataset: "training/train.yaml" }, at: example.at, effectiveAt: example.at,
       inputs: [], record: { matched: false }, leakCheck: { ok: true, findings: 0 }
     }));
     const stdout: string[] = [];

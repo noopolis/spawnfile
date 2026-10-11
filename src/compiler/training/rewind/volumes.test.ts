@@ -1,48 +1,61 @@
-import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, mkdir, readFile, readdir, readlink, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openHistory } from "./history.js";
-import { momentRecordSchema } from "./contract.js";
+import { momentRecordSchema, type LeakCheck, type MaterializedInput } from "./contract.js";
+import { inspectVolumeBundle } from "./leakInputs.js";
+import { writeRecordedVolumeSnapshot } from "./snapshotFixtures.test-helper.js";
 import type { InputContext } from "./types.js";
-import { materializeVolume, replayVolumeSnapshot, selectVolumeSnapshot, type VolumeSnapshot } from "./volumes.js";
+import { materializeVolume } from "./volumes.js";
 
 const at = "2026-10-09T10:00:00Z", before = "2026-10-09T09:00:00Z", future = "2026-10-09T10:00:00.001Z";
-const digest = (bytes: string): string => createHash("sha256").update(bytes).digest("hex");
 const temps: string[] = [];
 afterEach(async () => { await Promise.all(temps.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); });
-const snapshot = (id: string, time: string, parent: string | null, files: VolumeSnapshot["files"]): VolumeSnapshot =>
-  ({ snapshot: id, takenAt: time, parent, files });
-const fixtures = async (snapshots?: VolumeSnapshot[]) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "rewind-volumes-")); temps.push(root);
-  const bank = path.join(root, "volumes/team%3Aorg/state"); await mkdir(path.join(bank, "objects"), { recursive: true });
-  if (snapshots) await writeFile(path.join(bank, "snapshots.jsonl"), snapshots.map((item) => JSON.stringify(item)).join("\n") + "\n");
+const fixtures = async () => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "rewind-volumes-"))); temps.push(root);
   const context: InputContext = { at, record: null, history: await openHistory(root), destination: path.join(root, "out"),
+    agentSlug: "writer-compiled-slug", agentId: "agent:writer",
     input: { section: "resources", id: "state", declaredBy: "team:org", declarationBase: root, overridden: false,
       declaration: { id: "state", kind: "volume", mount: "./state", mode: "mutable" } } };
-  return { root, bank, context, object: async (bytes: string) => writeFile(path.join(bank, "objects", digest(bytes)), bytes) };
+  const snapshot = (name: string, startedAt: string, files: Record<string, string> = {}) => writeRecordedVolumeSnapshot(root,
+    { agentSlug: context.agentSlug!, agentId: context.agentId!, rootId: "state", snapshot: name, startedAt, files });
+  return { root, context, snapshot };
 };
+const record = (snapshot: string) => momentRecordSchema.parse({ version: "spawnfile.moment-record.v1", agent: "agent:writer",
+  wake: { at, startedAt: at, executionId: "execution", deliveries: [{ deliveryId: "wake", kind: "message", occurredAt: at }] },
+  recordedAt: at, exact: true, resources: [], feeds: [], memory: [], moltnet: [], volumes: [{ id: "state", snapshot }] });
+const report = (): LeakCheck => ({ version: "spawnfile.leak-check.v1", at, ok: false,
+  checked: { files: 0, gitObjects: 0, memoryEvents: 0, moltnetMessages: 0, moltnetEvents: 0, snapshots: 0 }, findings: [] });
 
-describe("unfed volume replay", () => {
-  it("includes equal instants, excludes one millisecond later, and selects an ancestor record exactly", async () => {
-    const rows = [snapshot("first", before, null, { old: digest("old") }),
-      snapshot("next", "2026-10-09T12:00:00+02:00", "first", { old: null, "nested/new": digest("new") }),
-      snapshot("future", future, "next", { later: digest("future") })];
-    expect(selectVolumeSnapshot(rows, at).snapshot).toBe("next");
-    expect(selectVolumeSnapshot(rows, at, "first").snapshot).toBe("first");
-    expect(replayVolumeSnapshot(rows, "next").files).toEqual({ "nested/new": digest("new") });
-    const { context, object } = await fixtures(rows); await object("old"); await object("new");
-    const result = await materializeVolume(context);
-    expect(result).toMatchObject({ fidelity: "approximate", basis: "snapshot-at", source: { snapshot: "next" } });
+describe("unfed recorded volume trees", () => {
+  it("selects by inclusive row started_at, copies a full tree, and uses the named record exactly", async () => {
+    const { context, snapshot } = await fixtures();
+    await snapshot("20261009T080000000Z-first", before, { old: "old" });
+    const newest = await snapshot("20261009T070000000Z-newest", "2026-10-09T12:00:00+02:00", { "nested/new": "new" });
+    await snapshot("20261009T060000000Z-future", future, { later: "future" });
+    expect(await materializeVolume(context)).toMatchObject({ fidelity: "approximate", basis: "snapshot-at",
+      source: { snapshot: "20261009T070000000Z-newest", agentSlug: "writer-compiled-slug" } });
     expect(await readdir(context.destination)).toEqual(["nested"]);
     expect(await readFile(path.join(context.destination, "nested/new"), "utf8")).toBe("new");
-    context.destination += "-record";
-    context.record = momentRecordSchema.parse({ version: "spawnfile.moment-record.v1", agent: "agent:writer",
-      wake: { at, surface: "moltnet", room: "assignment", from: "brass" }, recordedAt: at,
-      resources: [], feeds: [], memory: [], moltnet: [], volumes: [{ id: "state", snapshot: "first" }] });
-    expect(await materializeVolume(context)).toMatchObject({ fidelity: "exact", basis: "record", source: { snapshot: "first" } });
+    expect((await lstat(path.join(context.destination, "nested/new"))).ino)
+      .not.toBe((await lstat(path.join(newest.directory, "nested/new"))).ino);
+    context.destination += "-record"; context.record = record("20261009T080000000Z-first");
+    expect(await materializeVolume(context)).toMatchObject({ fidelity: "exact", basis: "record" });
     expect(await readFile(path.join(context.destination, "old"), "utf8")).toBe("old");
+  });
+
+  it("ignores incomplete and .partial trees and chooses the last row when instants tie", async () => {
+    const { context, snapshot } = await fixtures();
+    await snapshot("first", before, { data: "first" });
+    await snapshot("tie", before, { data: "last" });
+    const incomplete = await snapshot("incomplete", at, { data: "unfinished" });
+    await rm(incomplete.manifestPath);
+    await snapshot("incoming.partial", at, { data: "partial" });
+    expect(await materializeVolume(context)).toMatchObject({ source: { snapshot: "tie" } });
+    expect(await readFile(path.join(context.destination, "data"), "utf8")).toBe("last");
+    context.record = record("incoming.partial"); context.destination += "-record";
+    await expect(materializeVolume(context)).rejects.toThrow(/partial/i);
   });
 
   it("creates an empty overridden volume without history", async () => {
@@ -51,43 +64,76 @@ describe("unfed volume replay", () => {
     expect(await readdir(context.destination)).toEqual([]);
   });
 
-  it("refuses unavailable history, future-only snapshots, divergent pins, cycles and missing ancestors", async () => {
-    const { context } = await fixtures();
+  it("refuses missing history, missing rows, future-only snapshots, and absent named snapshots", async () => {
+    const { context, snapshot } = await fixtures();
     await expect(materializeVolume(context)).rejects.toThrow("Missing volume snapshot history");
+    await snapshot("future", future);
+    await expect(materializeVolume(context)).rejects.toThrow("No complete volume snapshot");
+    context.record = record("missing");
+    await expect(materializeVolume(context)).rejects.toThrow("Recorded volume snapshot missing");
     context.history = undefined;
     await expect(materializeVolume(context)).rejects.toThrow("requires --history");
-    expect(() => selectVolumeSnapshot([snapshot("late", future, null, {})], at)).toThrow("No volume snapshot");
-    const rows = [snapshot("one", before, null, {}), snapshot("other", at, null, {})];
-    expect(() => selectVolumeSnapshot(rows, at, "one")).toThrow("not the latest eligible snapshot or its ancestor");
-    expect(() => replayVolumeSnapshot([snapshot("one", at, "missing", {})], "one")).toThrow("Missing volume snapshot ancestor");
-    expect(() => replayVolumeSnapshot([snapshot("one", at, "one", {})], "one")).toThrow("Cycle");
-    expect(() => replayVolumeSnapshot([snapshot("one", at, null, {}), snapshot("two", before, "one", {})], "two")).toThrow("later than child");
   });
 
-  it("breaks same-instant ties only by ancestry and refuses malformed records and unsafe paths", async () => {
-    const rows = [snapshot("one", at, null, {}), snapshot("two", at, "one", {})];
-    expect(selectVolumeSnapshot(rows, at).snapshot).toBe("two");
-    expect(() => selectVolumeSnapshot([...rows, snapshot("three", at, null, {})], at)).toThrow("Ambiguous");
-    expect(() => replayVolumeSnapshot([rows[0]!, rows[0]!], "one")).toThrow("Duplicate");
-    expect(() => replayVolumeSnapshot([snapshot("one", at, null, { a: digest("a"), "a/b": digest("b") })], "one")).toThrow("collision");
-    const { context, bank } = await fixtures();
-    await writeFile(path.join(bank, "snapshots.jsonl"), JSON.stringify({ ...rows[0], unexpected: true }) + "\n");
-    await expect(materializeVolume(context)).rejects.toThrow("snapshots.jsonl:1");
-    await writeFile(path.join(bank, "snapshots.jsonl"), JSON.stringify(snapshot("one", at, null, { "../escape": digest("x") })) + "\n");
-    await expect(materializeVolume(context)).rejects.toThrow("normalized relative POSIX");
+  it("refuses invalid rows with line numbers and mismatched manifest identity", async () => {
+    const { context, snapshot } = await fixtures(), saved = await snapshot("one", before, { data: "bytes" });
+    await writeFile(saved.rowsPath, `${await readFile(saved.rowsPath, "utf8")}{}\n`);
+    await expect(materializeVolume(context)).rejects.toThrow("wake-moments.jsonl:2");
+    await writeFile(saved.rowsPath, (await readFile(saved.rowsPath, "utf8")).split("\n")[0] + "\n");
+    await writeFile(saved.manifestPath, JSON.stringify({ ...saved.manifest, id: "other" }));
+    await expect(materializeVolume(context)).rejects.toThrow("manifest identity");
   });
 
-  it("verifies every chain object, including deleted bytes, and refuses symlink escape", async () => {
-    const { context, bank, root, object } = await fixtures([
-      snapshot("one", before, null, { old: digest("old") }), snapshot("two", at, "one", { old: null })]);
-    await expect(materializeVolume(context)).rejects.toThrow("Missing volume snapshot object");
-    await object("old"); await writeFile(path.join(bank, "objects", digest("old")), "tampered");
-    await expect(materializeVolume(context)).rejects.toThrow("SHA-256 mismatch");
-    const outside = await mkdtemp(path.join(os.tmpdir(), "rewind-volume-outside-")); temps.push(outside);
-    await writeFile(path.join(outside, "object"), "old");
-    await rm(path.join(bank, "objects", digest("old")));
-    await symlink(path.join(outside, "object"), path.join(bank, "objects", digest("old")));
-    await expect(materializeVolume(context)).rejects.toThrow("symlink escape");
-    expect(await readdir(root)).not.toContain("out");
+  it.each(["extra", "missing", "type", "size", "mode", "unsafe"])("refuses manifest %s mismatches", async (mutation) => {
+    const { context, snapshot } = await fixtures(), saved = await snapshot("one", before, { data: "bytes" });
+    if (mutation === "extra") await writeFile(path.join(saved.directory, "extra"), "extra");
+    if (mutation === "missing") await rm(path.join(saved.directory, "data"));
+    if (mutation === "type") { await rm(path.join(saved.directory, "data")); await mkdir(path.join(saved.directory, "data")); }
+    if (mutation === "size") await writeFile(path.join(saved.directory, "data"), "shortened");
+    if (mutation === "mode") await chmod(path.join(saved.directory, "data"), 0o600);
+    if (mutation === "unsafe") {
+      const manifest = JSON.parse(await readFile(saved.manifestPath, "utf8"));
+      manifest.entries["../escape"] = manifest.entries.data; await writeFile(saved.manifestPath, JSON.stringify(manifest));
+    }
+    await expect(materializeVolume(context)).rejects.toThrow({
+      extra: "Unexpected snapshot entry extra", missing: "Missing snapshot entry data", type: "Snapshot type mismatch for data",
+      size: "Snapshot size mismatch for data", mode: "Snapshot mode mismatch for data", unsafe: "Snapshot paths must be normalized"
+    }[mutation]!);
+  });
+
+  it("restores recorded directory modes without comparing nonportable directory sizes and verifies symlinks", async () => {
+    const { context, root } = await fixtures();
+    const saved = await writeRecordedVolumeSnapshot(root, { agentSlug: context.agentSlug!, agentId: context.agentId!, rootId: "state",
+      snapshot: "tree", startedAt: before, files: { "nested/data": "bytes" }, directories: { nested: 0o750 }, symlinks: { link: "nested/data" } });
+    const manifest = JSON.parse(await readFile(saved.manifestPath, "utf8"));
+    manifest.entries.nested.size = "999999"; manifest.entries.nested.source.size = "999999";
+    await writeFile(saved.manifestPath, JSON.stringify(manifest)); await chmod(path.join(saved.directory, "nested"), 0o700);
+    await materializeVolume(context);
+    expect((await lstat(path.join(context.destination, "nested"))).mode & 0o777).toBe(0o750);
+    expect(await readlink(path.join(context.destination, "link"))).toBe("nested/data");
+    manifest.entries.link.target = "other/data";
+    await writeFile(saved.manifestPath, JSON.stringify(manifest)); context.destination += "-bad-link";
+    await expect(materializeVolume(context)).rejects.toThrow(/symlink target/i);
+  });
+
+  it.each(["bytes", "mode", "extra", "missing", "target"])("independently rejects a bundle %s mutation", async (mutation) => {
+    const { root, context } = await fixtures();
+    await writeRecordedVolumeSnapshot(root, { agentSlug: context.agentSlug!, agentId: context.agentId!, rootId: "state",
+      snapshot: "one", startedAt: before, files: { data: "bytes", other: "other" }, symlinks: { link: "data" } });
+    const result = await materializeVolume(context);
+    if (mutation === "bytes") await writeFile(path.join(context.destination, "data"), "wrong");
+    if (mutation === "mode") await chmod(path.join(context.destination, "data"), 0o600);
+    if (mutation === "extra") await writeFile(path.join(context.destination, "extra"), "extra");
+    if (mutation === "missing") await rm(path.join(context.destination, "other"));
+    if (mutation === "target") {
+      await rm(path.join(context.destination, "link")); await symlink("other", path.join(context.destination, "link"));
+    }
+    const input: MaterializedInput = { section: "resources", id: "state", declaredBy: "team:org", kind: "volume", path: "out",
+      fidelity: result.fidelity, basis: result.basis, source: result.source, notes: [], refusal: null };
+    const check = report(); await inspectVolumeBundle(root, input, check, context.history);
+    expect(check.findings).toContainEqual(expect.objectContaining({ class: "snapshot", path: "out", detail: expect.stringMatching({
+      bytes: /Snapshot digest mismatch for data/, mode: /Snapshot mode mismatch for data/, extra: /Unexpected snapshot entry extra/,
+      missing: /Missing snapshot entry other/, target: /Snapshot symlink target mismatch for link/
+    }[mutation]!) }));
   });
 });

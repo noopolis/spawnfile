@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { materializeMoltnet } from "./moltnet.js";
 import { momentRecordSchema } from "./contract.js";
 import { openHistory } from "./history.js";
-import { emptyMoltnetSnapshot, inspectMoltnetJson, moltnetCursorExact, moltnetMessages, parseMoltnetSnapshot, rewindMoltnetJson } from "./moltnetJson.js";
+import { emptyMoltnetSnapshot, inspectMoltnetJson, moltnetMessages, parseMoltnetSnapshot, rewindMoltnetJson } from "./moltnetJson.js";
 import type { MoltnetMessage } from "./moltnetSchemas.js";
 import type { InputContext } from "./types.js";
 
@@ -44,9 +44,6 @@ describe("Moltnet JSON rewind", () => {
     expect(cut.attachment_delivery_cursors).toEqual({ writer: 2, brass: 1 });
     expect(moltnetMessages(cut).map((entry) => entry.id)).toEqual(["old", "boundary", "kept-old"]);
     expect(source.threads.kept?.message_count).toBe(99);
-    expect(moltnetCursorExact(moltnetMessages(cut), "boundary")).toBe(true);
-    expect(moltnetCursorExact(moltnetMessages(cut), "old")).toBe(false);
-    expect(moltnetCursorExact(moltnetMessages(cut), "missing")).toBe(false);
   });
 
   it("restores known later removals, keeps zero-time unknown removals and refuses missing restoration metadata", () => {
@@ -63,19 +60,34 @@ describe("Moltnet JSON rewind", () => {
   it("materializes exact cursor and approximate cuts, keeps history unchanged and makes fresh overridden rooms", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "rewind-moltnet-")); temps.push(root);
     const bank = path.join(root, "moltnet/team%3Aorg/news"); await mkdir(bank, { recursive: true });
-    const source = emptyMoltnetSnapshot(network, before); source.room_messages.assignment = [message("cursor", at), message("future", future)];
+    const source = emptyMoltnetSnapshot(network, before);
+    source.room_messages.assignment = [message("wake", before), message("boundary", at), message("future", future)];
     const bytes = JSON.stringify(source); await writeFile(path.join(bank, "state.json"), bytes);
     const context: InputContext = { at, record: null, history: await openHistory(root), destination: path.join(root, "out"),
       input: { section: "networks", id: "news", declaredBy: "team:org", overridden: false, declarationBase: root, declaration: network } };
     expect(await materializeMoltnet(context)).toMatchObject({ fidelity: "approximate", basis: "created-at-cut" });
     expect(await readFile(path.join(bank, "state.json"), "utf8")).toBe(bytes);
-    expect(await inspectMoltnetJson(path.join(context.destination, "state.json"), at)).toMatchObject({ messages: 1, findings: [] });
+    expect(await inspectMoltnetJson(path.join(context.destination, "state.json"), at)).toMatchObject({ messages: 2, findings: [] });
     context.record = momentRecordSchema.parse({ version: "spawnfile.moment-record.v1", agent: "agent:writer",
-      wake: { at, surface: "moltnet", room: "assignment", from: "brass" }, recordedAt: at,
-      resources: [], feeds: [], memory: [], moltnet: [{ network: "news", cursor: "cursor" }], volumes: [] });
+      wake: { at, startedAt: at, executionId: "turn-1", deliveries: [{ deliveryId: "moltnet:wake", kind: "message", occurredAt: at }],
+        surface: "moltnet", room: "assignment", from: "brass" }, recordedAt: at, exact: true,
+      resources: [], feeds: [], memory: [], moltnet: [{ network: "news", cursor: at, messageIds: ["wake", "boundary"] }], volumes: [] });
     expect(await materializeMoltnet(context)).toMatchObject({ fidelity: "exact", basis: "record-cursor" });
-    context.record.moltnet[0]!.cursor = "missing";
-    expect(await materializeMoltnet(context)).toMatchObject({ fidelity: "approximate" });
+    expect(moltnetMessages(parseMoltnetSnapshot(JSON.parse(await readFile(path.join(context.destination, "state.json"), "utf8"))))
+      .map((entry) => entry.id)).toEqual(["wake", "boundary"]);
+    context.record.moltnet[0]!.cursor = "2026-10-09T12:00:00.100000000+02:00";
+    expect(await materializeMoltnet(context)).toMatchObject({ fidelity: "exact", basis: "record-cursor" });
+    for (const cursor of [before, future]) {
+      context.record.moltnet[0]!.cursor = cursor;
+      await expect(materializeMoltnet(context)).rejects.toThrow(/cursor must equal.*startedAt/);
+    }
+    context.record.moltnet[0]!.cursor = at;
+    for (const messageIds of [["missing"], ["wake", "future"]]) {
+      context.record.moltnet[0]!.messageIds = messageIds;
+      await expect(materializeMoltnet(context)).rejects.toThrow(/wake message.*not retained/);
+    }
+    delete context.record.moltnet[0]!.messageIds;
+    expect(await materializeMoltnet(context)).toMatchObject({ fidelity: "exact", basis: "record-cursor" });
     context.input.overridden = true; context.history = undefined;
     expect(await materializeMoltnet(context)).toMatchObject({ fidelity: "overridden" });
     const output = parseMoltnetSnapshot(JSON.parse(await readFile(path.join(context.destination, "state.json"), "utf8")));

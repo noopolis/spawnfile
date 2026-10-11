@@ -13,6 +13,8 @@ export type RewindInput = InputBase & (
 export interface InputContext {
   input: RewindInput;
   at: string;
+  agentSlug?: string;
+  agentId?: string;
   record: MomentRecord | null;
   candidateRecords?: readonly MomentRecord[];
   history: History | undefined;

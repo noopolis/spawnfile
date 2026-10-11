@@ -1,7 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { historyKey } from "./history.js";
-import { emptyMoltnetSnapshot, moltnetCursorExact, moltnetMessages, parseMoltnetSnapshot, rewindMoltnetJson } from "./moltnetJson.js";
+import { compareInstants } from "./instant.js";
+import { emptyMoltnetSnapshot, moltnetMessages, parseMoltnetSnapshot, rewindMoltnetJson } from "./moltnetJson.js";
 import { rewindMoltnetSqlite } from "./moltnetSqlite.js";
 import type { InputContext, InputResult } from "./types.js";
 
@@ -12,6 +13,10 @@ export const materializeMoltnet = async (context: InputContext): Promise<InputRe
     await mkdir(destination, { recursive: true });
     await writeFile(path.join(destination, "state.json"), `${JSON.stringify(emptyMoltnetSnapshot(input.declaration, at), null, 2)}\n`);
     return { fidelity: "overridden", basis: "override", source: {}, notes: ["Fresh network state is stored as a JSON snapshot with the declared rooms."], instant: at };
+  }
+  const pin = record?.moltnet.find((entry) => entry.network === input.id);
+  if (pin && compareInstants(pin.cursor, at) !== 0) {
+    throw new Error(`Moltnet network ${input.id}: recorded cursor must equal wake.startedAt (${at})`);
   }
   if (!history) throw new Error(`Moltnet network ${input.id} requires --history or an override`);
   const base = `moltnet/${historyKey(input)}`;
@@ -34,11 +39,11 @@ export const materializeMoltnet = async (context: InputContext): Promise<InputRe
     }
     messages = await rewindMoltnetSqlite(file, at);
   }
-  const cursor = record?.moltnet.find((entry) => entry.network === input.id)?.cursor;
-  const exact = moltnetCursorExact(messages, cursor);
-  return { fidelity: exact ? "exact" : "approximate", basis: exact ? "record-cursor" : "created-at-cut",
-    source: cursor === undefined ? {} : { cursor }, instant: at,
+  const retainedIds = new Set(messages.map((message) => message.id));
+  const missing = pin?.messageIds?.filter((id) => !retainedIds.has(id)) ?? [];
+  if (missing.length) throw new Error(`Moltnet network ${input.id}: recorded wake message IDs ${missing.join(", ")} are not retained after the cursor cut`);
+  return { fidelity: pin ? "exact" : "approximate", basis: pin ? "record-cursor" : "created-at-cut",
+    source: pin ? { cursor: pin.cursor } : {}, instant: at,
     notes: ["Agent registrations and memberships have no historical log and are kept as now (best effort).",
-      "Room removals without a recorded removal instant retain the current removal state; current JSON Moltnet uses a zero-time marker.",
-      ...(cursor !== undefined && !exact ? ["The recorded cursor is absent after the cut or is earlier than a retained message; exact cursor fidelity cannot be established."] : [])] };
+      "Room removals without a recorded removal instant retain the current removal state; current JSON Moltnet uses a zero-time marker."] };
 };
