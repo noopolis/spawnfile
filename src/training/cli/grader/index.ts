@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import type { CliArguments } from '../arguments.js';
 import type { CliIO } from '../types.js';
 import { one, count, pairs } from '../arguments.js';
+import { runLabelImport } from './label-import.js';
 import { runLabel } from './label.js';
 import { runValidate } from './validate.js';
 import { runCalibrate } from './calibrate.js';
@@ -27,6 +28,12 @@ export async function runGraderCommand(args: CliArguments, io: CliIO, dependenci
       signal }, dependencies);
     io.stdout(`${JSON.stringify(result)}\n`);
     return result.status === 'pass' ? 0 : 1;
+  }
+  if (args.graderCommand === 'label' && args.flags.import) {
+    const result = await runLabelImport({ graderFile, importFile: resolve(io.cwd, one(args, 'import')),
+      relabel: Boolean(args.flags.relabel), signal });
+    io.stdout(`${JSON.stringify(result)}\n`);
+    return 0;
   }
   const concurrency = count(args, 'concurrency', 2, 64);
   if (args.graderCommand === 'label') {

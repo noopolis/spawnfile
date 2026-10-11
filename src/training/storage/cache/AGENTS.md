@@ -25,3 +25,5 @@ evaluator and is revalidated on hits. Keep raw responses and source-call attribu
 unchanged. Storage imports contracts only, not evaluator implementation modules.
 Grader-origin judge calls retain explicit billing route and measured wall milliseconds.
 Unknown billing values and negative/nonfinite timing are rejected by the strict schema.
+Typed tool-call refusals may survive in attempt history but cannot be the completed
+source answer of a cached judgment.

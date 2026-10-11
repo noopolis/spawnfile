@@ -16,7 +16,10 @@ the interval unavailable; never drop that draw to narrow the interval. Gate fals
 Split eligible lineages before filtering disputes. Exclude disputed rows from Platt
 fitting, full-panel metrics and fit-side band selection only. Retained coverage uses
 all held-out groups, including rows without independent truth; forced-teacher
-routing skips that coverage bar only.
+routing skips that coverage bar only. Every forced teacher must additionally meet
+independent held-out agreement >= 0.85 with 15 groups, 30 instances, 5 good and
+5 bad. Persist its exact-option agreement and evidence counts separately from
+local metrics; absent/abstaining teacher answers remain wrong.
 Cascade verification removes the escalation teacher before deriving strict option
 consensus, requires 15 independent held-out groups, and enforces Wilson 90% bounds.
 Supply raw votes/asked/labelers/expected and output/projection identities to planning.

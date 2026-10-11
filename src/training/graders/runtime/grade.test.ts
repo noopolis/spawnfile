@@ -23,7 +23,7 @@ async function fixture(p = 0.9): Promise<GradeOptions> {
   const goldenDigest = stableDigest('golden'), promptTemplateVersion = 'v1';
   const calibration: CalibrationFile = { schema: 'paideia.grader-calibration.v1', identity: createCalibrationIdentity(grader,
     { backendModel: await decisionBackendIdentity(grader, backend), golden: goldenDigest, promptTemplateVersion, seed: '0', exclusions: [] }),
-  questions: { q: { status: 'calibrated', failures: [], params: { a: 1, b: 0 }, band: [0.3, 0.7],
+  questions: { q: { status: 'calibrated', failures: [], teacherAccuracy: { groups: 20, instances: 40, good: 20, bad: 20, agreement: 1, source: 'human', failures: [], warnings: [] }, params: { a: 1, b: 0 }, band: [0.3, 0.7],
     metrics: { groups: 20, instances: 40, good: 20, bad: 20, baseRate: 0.5 } } } };
   return { grader, calibration, backend, teacher: { provider, model: 'opus' }, goldenDigest, promptTemplateVersion,
     resource: {}, output: { body: ['Report.'] }, context: { evidence: 'Source.' } };
@@ -143,7 +143,7 @@ it('rejects wrong teacher policy and non-subscription routes', async () => {
   await expect(gradeOutput(f)).rejects.toThrow('declared policy');
   f.teacher!.model = 'opus';
   f.teacher!.provider.capabilities.billing = 'api';
-  await expect(gradeOutput(f)).rejects.toThrow('tool-free subscription');
+  await expect(gradeOutput(f)).rejects.toThrow('tool-isolated subscription');
 });
 it('preserves backend teacher calls and uses one-hot scores without Platt', async () => {
   const f = await fixture(1);
@@ -210,4 +210,44 @@ it('orders mixed forced and calibrated instances in a shared teacher prompt by e
   const prompt = JSON.parse(vi.mocked(f.teacher!.provider.generate).mock.calls[0]![0].prompt) as { questions: { key: string }[] };
   expect(prompt.questions.map(q => q.key)).toEqual(['q', 'forced']);
   expect(result).toMatchObject({ status: 'pass', coverage: 1 });
+});
+
+it.each(['fallback', 'backend'] as const)('refuses a 0.72-agreement forced teacher at grading (%s)', async route => {
+  const f = await fixture(1);
+  f.grader.uncalibrated = 'teacher';
+  if (route === 'backend') f.grader.model = { backend: 'teacher', teacher: 'c' };
+  else f.calibration.questions.q!.status = 'uncalibrated';
+  f.calibration.questions.q!.teacherAccuracy!.agreement = 0.72;
+  await reidentify(f);
+  await expect(gradeOutput(f)).rejects.toThrow('question q: teacher.agreement >= 0.85');
+  expect(f.backend.score).not.toHaveBeenCalled();
+  expect(f.teacher!.provider.generate).not.toHaveBeenCalled();
+  f.calibration.questions.q!.teacherAccuracy!.agreement = 0.85;
+  expect(await gradeOutput(f)).toMatchObject({ status: 'pass', score: 1 });
+});
+
+it('uses the verified backend teacher when an unrelated escalation teacher is declared', async () => {
+  const f = await fixture(1);
+  f.grader.uncalibrated = 'teacher';
+  f.grader.model = { backend: 'teacher', teacher: 'c' };
+  f.grader.teachers.push({ id: 'other', provider: 'grok', model: 'other' });
+  f.grader.escalate.to = 'other';
+  f.calibration.questions.q!.status = 'uncalibrated';
+  await reidentify(f);
+  expect(await gradeOutput(f)).toMatchObject({ status: 'pass', score: 1 });
+  expect(f.backend.score).toHaveBeenCalledTimes(1);
+  expect(f.teacher!.provider.generate).not.toHaveBeenCalled();
+});
+
+it('keeps typed containment refusal in grading evidence with zero coverage and no retry', async () => {
+  const f = await fixture(0.5);
+  // Runtime consumes the neutral typed fields exposed by inference failures.
+  f.teacher!.provider.generate = vi.fn(async () => { throw Object.assign(new Error('SECRET native diagnostic'), {
+    kind: 'protocol', detail: 'tool-call', responseModel: 'actual', responseRoute: 'contained', usage: null,
+  }); });
+  const result = JSON.parse(JSON.stringify(await gradeOutput(f)));
+  expect(result).toMatchObject({ status: 'unknown', score: 0, coverage: 0, questions: [{ missing: 1 }],
+    judgeCalls: [{ outcome: 'refused', failureKind: 'protocol', failureDetail: 'tool-call', responseModel: 'actual' }] });
+  expect(f.teacher!.provider.generate).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(result)).not.toContain('SECRET');
 });

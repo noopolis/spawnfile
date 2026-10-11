@@ -1,5 +1,5 @@
 import type { DecisionBackend, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
-import { decisionHttp, type DecisionHttpOptions } from './http.js';
+import { decisionHttp, DecisionRequestRejected, type DecisionHttpOptions } from './http.js';
 import { validateDecisionRequest } from './prompt.js';
 
 type JevEnvelope = { model?: unknown; answers?: Record<string, { probabilities?: unknown }> };
@@ -42,8 +42,13 @@ export function createJevDecision(options: DecisionHttpOptions): DecisionBackend
       for (const group of groups.values()) {
         for (let start = 0; start < group.length; start += 16) {
           const batch = group.slice(start, start + 16);
-          const response = await send(batch, signal);
-          for (const request of batch) results.set(request.key, decodeJev(request, response.answers?.[request.key]?.probabilities));
+          try {
+            const response = await send(batch, signal);
+            for (const request of batch) results.set(request.key, decodeJev(request, response.answers?.[request.key]?.probabilities));
+          } catch (error) {
+            if (!(error instanceof DecisionRequestRejected)) throw error;
+            for (const request of batch) results.set(request.key, { key: request.key, status: 'missing', probabilities: null, reason: error.message });
+          }
         }
       }
       return requests.map(request => results.get(request.key)!);
@@ -59,8 +64,10 @@ function wireOption(request: DecisionRequest, option: string | number): string {
 function decodeJev(request: DecisionRequest, raw: unknown): DecisionResult {
   const probabilities: Record<string, number> = {};
   if (raw !== null && typeof raw === 'object') {
+    const values = raw as Record<string, unknown>;
+    const yesNoKeys = request.type === 'yes-no' && !('true' in values || 'false' in values);
     for (const option of request.optionLabels) {
-      const p = (raw as Record<string, unknown>)[wireOption(request, option)];
+      const p = values[yesNoKeys ? String(option) : wireOption(request, option)];
       if (typeof p !== 'number' || !Number.isFinite(p) || p < 0 || p > 1) break;
       probabilities[String(option)] = p;
     }

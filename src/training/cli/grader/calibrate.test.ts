@@ -43,7 +43,7 @@ describe('grader calibration commands', () => {
     expect(result.code).toBe(0);
     expect(result.calibration.questions.q).toMatchObject({ status: 'calibrated', band: [0.4, 0.6] });
     const report = await readFile(result.reportFile, 'utf8');
-    expect(report).toContain('Human / consensus / single'); expect(report).toContain('human: n=');
+    expect(report).toContain('Human / editor / consensus / single'); expect(report).toContain('human: n=');
     expect(report).toContain('not validated correctness');
     const calls = f.score.mock.calls.length;
     expect((await runCalibrate({ graderFile: f.graderFile, seed: 'seed' }, f.dependencies)).code).toBe(0);
@@ -321,4 +321,48 @@ it('enforces the cascade Wilson bar for the forced teacher backend without a ret
   expect(result.calibration.questions.q!.failures).toContain('heldOut.cascade90Lower >= target_accuracy - 0.10');
   expect(result.calibration.questions.q!.failures).not.toContain('heldOut.retainedCoverage >= 0.30');
   expect(result.code).toBe(1);
+});
+
+it('calibrates editor labels and reports their source separately', async () => {
+  const f = await fixture();
+  f.labels.labelers.human = { kind: 'editor', name: 'Desk', source: 'send-back/pass' };
+  await writeFile(join(f.root, 'labels.yaml'), stringify(f.labels));
+  const result = await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
+  const report = await readFile(result.reportFile, 'utf8');
+  expect(report).toContain('Human / editor / consensus / single');
+  expect(report).toContain('editor: n=40');
+  expect(report).toContain('0 / 80 / 0 / 0');
+  expect(result.calibration.questions.q!.status).toBe('calibrated');
+});
+it('explains older calibration identity shapes before contacting the backend', async () => {
+  const f = await fixture();
+  const result = await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
+  for (const missing of ['expansion', 'escalation', 'escalationTeacher', 'uncalibrated']) {
+    const older = JSON.parse(JSON.stringify(result.calibration));
+    delete older.identity[missing];
+    await writeFile(join(f.root, 'calibration.json'), JSON.stringify(older));
+    await expect(runValidate(f.graderFile, f.dependencies)).rejects.toThrow(
+      'calibration file is stale or from an older version; re-run grader calibrate');
+  }
+});
+
+it('persists calibration and per-question missing rates after a real Jev transport 422', async () => {
+  const f = await fixture();
+  const { createJevDecision } = await import('../../inference/decision/index.js');
+  const backend = createJevDecision({ endpoint: 'http://localhost/jev', fetch: async (_url, init) => {
+    const body = JSON.parse(init!.body as string) as { state: string; questions: Record<string, unknown> };
+    const state = JSON.parse(body.state) as Record<string, unknown>;
+    if (state['output.good'] === true) return new Response('{"detail":"input exceeds 2560 tokens"}', { status: 422 });
+    return new Response(JSON.stringify({ model: 'reported', answers: Object.fromEntries(Object.keys(body.questions)
+      .map(key => [key, { probabilities: { true: 0.02, false: 0.98 } }])) }));
+  } });
+  const result = await runCalibrate({ graderFile: f.graderFile }, { backend: () => backend });
+  expect(result.code).toBe(1);
+  const persisted = JSON.parse(await readFile(result.calibrationFile, 'utf8'));
+  expect(persisted.questions.q.metrics.instances).toBe(40);
+  expect(persisted.questions.gate.metrics.instances).toBe(40);
+  const report = await readFile(result.reportFile, 'utf8');
+  for (const id of ['q', 'gate']) {
+    expect(report.split('\n').find(line => line.startsWith(`| ${id} |`))).toContain('0.500 / 0.000');
+  }
 });

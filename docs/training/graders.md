@@ -72,7 +72,8 @@ score: { method: weighted, pass_at: 0.75 }
 schema: paideia.labels.v1
 grader: writing
 labelers:
-  editor: { kind: human, name: Report editor }
+  reviewer: { kind: human, name: Reviewer }
+  editor: { kind: editor, name: Editor agent, source: Editorial pass/send-back verdicts }
 labels:
   - id: report-1
     lineage: source-family-1
@@ -125,6 +126,56 @@ once, referenced by its votes; partial resumes retain earlier receipts. Records
 retain requested/reported model, provider, CLI version (null when unknown), prompt
 digest, timing and usage. Older repeated call records
 remain readable. Credentials never enter labels or calibration artifacts.
+
+## Importing editor and human labels
+
+`paideia grader label --grader FILE --import FILE [--relabel] [--timeout-ms N]`
+imports external editorial verdicts or human review sheets without model calls.
+The import accepts YAML or JSON; referenced paths resolve beside the import file:
+
+```yaml
+schema: paideia.label-import.v1
+grader: writing
+labelers:
+  editor: { kind: editor, name: Editor verdicts, source: Mapped editorial verdicts }
+  reviewer: { kind: human, name: External review }
+items:
+  - id: draft-s-1-r1
+    lineage: s-1
+    example: { dataset: test, id: x }
+    output: { from: data/x.json }
+    context: { evidence: { from: data/x.md } }
+    labeler: editor
+    votes: { clear: yes, connection@p0: earned }
+    note: Reviewed against the supplied source material
+```
+
+Only declared human/editor labelers are accepted. Questions, instance suffixes,
+options and context names must match the grader; missing or inapplicable instances
+and duplicate label/labeler/instance entries are refused. Votes must be actual
+options (not `abstain`). Score votes use numbers. `context`, `example` and `note`
+may be omitted. Multiple reviewers can supply separate items for the same label.
+
+New labels are appended. Existing IDs require matching output/context content
+addresses and lineage; an explicit example must match too. References store the
+SHA256 of exact file bytes, with paths rebased beside the golden labels file.
+Different paths to identical bytes can merge. `--relabel` never bypasses content
+or labeler-definition conflicts; changed content needs a new label ID.
+
+Each vote retains its kind, note, import timestamp and import-file byte digest,
+plus the same question and projection digests used by teacher labeling. Teacher
+policy does not apply. Replaying the same file preserves receipts and timestamps.
+Changing an existing answer or refreshing a stale question requires `--relabel`.
+Existing votes from other labelers and teacher call receipts are preserved.
+Consensus prefers human votes, then editor votes, then teacher consensus.
+
+The complete import is validated before an atomic temporary-file/rename write.
+An invalid item or interrupted pre-rename write leaves the previous checkpoint
+intact; replay is safe. A separate golden labels file is required. `--import`
+cannot be combined with `--inputs`, `--teachers`, `--adjudication`, `--limit` or
+`--concurrency`. JSON output reports `items`, unique `labelsAdded`/`labelsMerged`,
+and input vote counts in `votesByLabeler` and `votesByQuestion` (instances summed
+under their question ID, including unchanged votes).
 
 ## Local commands
 
@@ -185,7 +236,7 @@ questions additionally report false passes.
 | Gate calibration | False-pass rate ≤ 0.10, plus the other bars |
 
 `uncalibrated: refuse` rejects any question or gate question missing these bars.
-`uncalibrated: teacher` always routes such questions to the escalation teacher.
+`uncalibrated: teacher` routes such questions only to a verified escalation teacher: held-out independent exact-option agreement must be at least 0.85, across at least 15 groups, 30 instances, 5 good and 5 bad. Missing or failing teacher evidence refuses grading and names the bar.
 Identity mismatches always refuse: question definitions, prompt version,
 segmenter, option mapping, backend/model, golden set, split seed and exclusions.
 Calibration also pins the escalation teacher policy, escalation configuration
@@ -200,7 +251,7 @@ least 30% retained coverage over **all eligible held-out groups**: a retained gr
 has at least one admitted local, non-escalated instance. Missing local decisions
 do not count as retained. Gate false-pass Wilson upper bound must be ≤ 0.20.
 Verification includes full-panel disputes. Truth is derived without the escalation
-teacher: human votes first, otherwise strict-majority option consensus of remaining
+teacher: human votes first, then editor votes, otherwise strict-majority option consensus of remaining
 teachers actually asked for that instance. Rows without independent truth do not
 enter accuracy, but their groups still enter retained coverage. Fewer than 15
 independent groups means unverified.
@@ -267,16 +318,23 @@ backend endpoint. Local decision billing is `local`; teacher usage stays visible
   using raw `temperature=1`; shared state is a JSON-encoded projection and batches
   contain at most 16 questions. Each question has `type`, `instructions`, `criteria`.
   Responses must contain stable `model` and `answers[key].probabilities` for every
-  option, summing to one. Yes/no wire keys are `true`/`false`; score keys are
+  option, summing to one. Yes/no wire keys accept either complete `true`/`false` or `yes`/`no` pairs; score keys are
   zero-based scale indices; choices retain their labels. Identity uses a probe.
 - **teacher:** `model: { backend: teacher, teacher: reviewer }` answers every
   instance with 0/1 outcomes. Calibration requires independent agreement ≥ 0.85
   and the same evidence bars; no ECE is claimed. All calls incur teacher work.
 
 Claude/Grok teachers use explicitly selected subscriptions and attested empty
-native tool lists. Codex is refused because its supported native invocation lacks
-empty-tool attestation; observed tool non-use cannot satisfy that contract. There
-is no paid API fallback, model serving, decision-head training or automatic deployment.
+native tool lists. Codex teachers and model labelers use containment: a ChatGPT
+sign-in preflight, an empty disposable workspace, an auth-only clean home,
+read-only sandbox, approvals never, memories off, no MCP or web search, and no
+sandbox network enablement. All API-key and provider environment overrides are
+excluded. Model and optional effort come from the teacher declaration. The strict
+JSONL decoder accepts the final agent message only after turn completion. Any
+non-message/non-reasoning item refuses the attempt without retry; vote provenance
+records `status: refused`, `reason: tool-call`. Asked-but-refused teachers remain
+in the consensus denominator. This is containment, not empty-tool attestation.
+No paid API fallback, model serving, decision-head training or automatic deployment.
 Without human-adjudicated examples, metrics measure agreement with teacher
 consensus, not validated correctness. Protocol/unit tests do not establish live
 backend availability or useful quality on a new report-writing corpus.
@@ -286,3 +344,12 @@ schema repairs. The command summary counts failures per teacher. Authentication,
 stale-authentication and quota/payment failures stop further calls for that teacher
 in the run; remaining votes stay unasked, other teachers continue, and the command
 exits 1 naming the teacher and class. Already dispatched calls can finish.
+
+Editor labelers have `kind: editor`, `name`, and optional descriptive `source`.
+Consensus precedence is human, editor, then model; conflicting votes in the
+highest present kind are disputed. Human/editor votes require current question
+and projection digests, but do not depend on teacher-policy freshness. Calibration
+reports distinguish human/editor/consensus/single sources. Independent teacher
+truth always removes the evaluated teacher before applying that precedence.
+Forced routing persists `teacherAccuracy` held-out counts, agreement and failures
+in the calibration file and report; runtime checks these bars before inference.

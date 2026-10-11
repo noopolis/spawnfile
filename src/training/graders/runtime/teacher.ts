@@ -5,8 +5,8 @@ import type { GraderTeacher } from './types.js';
 
 /** Grading makes exactly one attempt per projection; failure spends its call slot. */
 export async function escalateGroup(group: LabelGroup, teacher: GraderTeacher, name: string, signal?: AbortSignal) {
-  if (teacher.provider.capabilities.billing !== 'subscription' || teacher.provider.capabilities.tools !== 'disabled') {
-    throw new Error('Escalation teacher requires a tool-free subscription provider');
+  if (teacher.provider.capabilities.billing !== 'subscription' || !['disabled', 'contained'].includes(teacher.provider.capabilities.tools)) {
+    throw new Error('Escalation teacher requires a tool-isolated subscription provider');
   }
   signal?.throwIfAborted();
   const request = buildLabelPrompt(group);
@@ -27,7 +27,10 @@ export async function escalateGroup(group: LabelGroup, teacher: GraderTeacher, n
     signal?.throwIfAborted();
     // Neutral provider failures may carry measured evidence; never parse error prose.
     if (error !== null && typeof error === 'object') {
-      const failure = error as Partial<Pick<JudgeCall, 'usage' | 'responseModel' | 'responseRoute'>>;
+      const failure = error as Partial<Pick<JudgeCall, 'usage' | 'responseModel' | 'responseRoute'>> & { kind?: unknown; detail?: unknown };
+      if (error instanceof Error && failure.kind === 'protocol' && failure.detail === 'tool-call') {
+        call.outcome = 'refused'; call.failureKind = 'protocol'; call.failureDetail = 'tool-call';
+      }
       call.usage = failure.usage ?? null;
       call.responseModel = failure.responseModel ?? null;
       call.responseRoute = failure.responseRoute ?? null;

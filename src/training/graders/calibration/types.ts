@@ -1,5 +1,5 @@
 export type QuestionType = 'yes-no' | 'choice' | 'score';
-export type GoldenSource = 'human' | 'consensus' | 'single-teacher';
+export type GoldenSource = 'human' | 'editor' | 'consensus' | 'single-teacher';
 export interface CalibrationRecord {
   questionId: string;
   type: QuestionType;
@@ -42,5 +42,5 @@ export interface QuestionCalibration extends BarResult {
   fitGroups: number;
   metrics: CalibrationMetrics;
   bySource: Partial<Record<GoldenSource, CalibrationMetrics>>;
-  interpretation: 'human-adjudicated and teacher agreement' | 'teacher agreement, not validated correctness';
+  interpretation: 'human-adjudicated and teacher agreement' | 'editor-adjudicated and teacher agreement' | 'teacher agreement, not validated correctness';
 }

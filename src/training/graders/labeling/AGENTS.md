@@ -10,5 +10,10 @@ Compact provenance stores call receipts once and per-vote call references plus
 question digests. Resolve both compact and legacy receipts through voteProvenance;
 missing references, stale policies and mismatched projections refuse reuse.
 
-Human votes require current question and projection digests too; only teacher
+Human and editor votes require current question and projection digests too; only teacher
 policy checks are exempt. Changed meaning/evidence requires re-adjudication.
+
+External vote merges reuse ready projection groups and pin question/evidence
+identities. Content-address or ancestry conflicts cannot be bypassed by relabel.
+Before calibration, configured teacher votes must match model kind, provider, model
+and teacher-policy provenance. Human/editor IDs cannot impersonate teachers.

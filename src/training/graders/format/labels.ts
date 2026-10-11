@@ -9,6 +9,7 @@ const referenceSchema = z.strictObject({ from: z.string().min(1), sha256: z.stri
 const labelerSchema = z.union([
   z.strictObject({ kind: z.literal('model'), provider, model: z.string().min(1) }),
   z.strictObject({ kind: z.literal('human'), name: z.string().min(1) }),
+  z.strictObject({ kind: z.literal('editor'), name: z.string().min(1), source: z.string().min(1).optional() }),
 ]);
 export const labelsSchema = z.strictObject({
   schema: z.literal('paideia.labels.v1'), grader: identifier,

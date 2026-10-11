@@ -67,3 +67,13 @@ it('cancels identity probes using the caller signal', async () => {
   await expect(backend.identity(controller.signal)).rejects.toThrow();
   expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+it.each([{ yes: 0.8, no: 0.2 }, { true: 0.8, false: 0.2 }])('accepts a complete noul probability key pair: %j', async probabilities => {
+  const backend = createJevDecision({ ...options, fetch: async () => new Response(JSON.stringify({ model: 'm', answers: { q: { probabilities } } })) });
+  expect(await backend.score([request])).toEqual([{ key: 'q', status: 'ok', probabilities: { yes: 0.8, no: 0.2 } }]);
+  expect(await backend.score([{ ...request, optionLabels: ['no', 'yes'] }])).toEqual([{ key: 'q', status: 'ok', probabilities: { no: 0.2, yes: 0.8 } }]);
+});
+it.each([{ true: 0.8, no: 0.2 }, { yes: 0.8, false: 0.2 }])('rejects mixed incomplete noul key pairs: %j', async probabilities => {
+  const backend = createJevDecision({ ...options, fetch: async () => new Response(JSON.stringify({ model: 'm', answers: { q: { probabilities } } })) });
+  expect((await backend.score([request]))[0]!.status).toBe('missing');
+});

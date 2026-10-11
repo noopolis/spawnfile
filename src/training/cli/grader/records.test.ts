@@ -105,3 +105,16 @@ it('carries only the instance dispatch membership into independent cascade truth
   expect(independentConsensus(row.label, input.labelers, 'a', ['q']).q)
     .toMatchObject({ answer: 'yes', source: 'single-teacher' });
 });
+
+it('uses editor truth after excluding the escalation teacher, while humans remain authoritative', () => {
+  const input = labels();
+  input.labelers.editor = { kind: 'editor', name: 'Desk' };
+  const row = input.labels[0]!;
+  delete row.votes.q!.human;
+  row.votes.q!.editor = 'yes';
+  expect(independentConsensus(row, input.labelers, 'a', ['q']).q)
+    .toMatchObject({ answer: 'yes', source: 'editor' });
+  row.votes.q!.human = 'no';
+  expect(independentConsensus(row, input.labelers, 'a', ['q']).q)
+    .toMatchObject({ answer: 'no', source: 'human' });
+});

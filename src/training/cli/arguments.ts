@@ -12,7 +12,7 @@ const repeated = new Set(['instructions', 'supporting', 'locked', 'editable', 'r
 const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'resource', 'judge', 'judge-citation-repairs', 'source-root', 'out', 'max-trials', 'timeout-ms', 'view', 'cost-config', 'spawnfile-context'];
 const graderFlags: Record<string, readonly string[]> = {
   validate: ['grader', 'timeout-ms'],
-  label: ['grader', 'inputs', 'teachers', 'relabel', 'adjudication', 'concurrency', 'limit', 'timeout-ms'],
+  label: ['grader', 'import', 'inputs', 'teachers', 'relabel', 'adjudication', 'concurrency', 'limit', 'timeout-ms'],
   calibrate: ['grader', 'exclude-dataset', 'seed', 'report', 'concurrency', 'timeout-ms'],
   grade: ['grader', 'output', 'context', 'timeout-ms'],
 };
@@ -25,6 +25,7 @@ export const helpText = `Paideia — explicit local native-agent experiments
 
 grader validate --grader FILE [--timeout-ms N]
 grader label --grader FILE --inputs FILE --teachers a,b [--relabel] [--adjudication N] [--concurrency N] [--limit N] [--timeout-ms N]
+grader label --grader FILE --import FILE [--relabel] [--timeout-ms N]
 grader calibrate --grader FILE [--exclude-dataset FILE]... [--seed S] [--report FILE.md] [--concurrency N] [--timeout-ms N]
 grader grade --grader FILE --output FILE.json [--context NAME=FILE]... [--timeout-ms N]
 validate DATASET [--judge NAME=MODEL]
@@ -86,7 +87,9 @@ export function parseArguments(argv: readonly string[]): CliArguments {
   }
   if (command === 'grader') {
     if (positional.length) throw new Error('grader accepts flags only');
-    for (const required of graderCommand === 'label' ? ['grader', 'inputs', 'teachers'] : graderCommand === 'grade' ? ['grader', 'output'] : ['grader']) {
+    if (values.import && (values.inputs || values.teachers)) throw new Error('--import is mutually exclusive with --inputs/--teachers');
+    if (values.import && (values.adjudication || values.concurrency || values.limit)) throw new Error('--import does not accept --adjudication/--concurrency/--limit');
+    for (const required of graderCommand === 'label' && !values.import ? ['grader', 'inputs', 'teachers'] : graderCommand === 'grade' ? ['grader', 'output'] : ['grader']) {
       if (!values[required]) throw new Error(`Required option --${required} is missing`);
     }
     return { command: 'grader', graderCommand: graderCommand as CliArguments['graderCommand'], flags: values };

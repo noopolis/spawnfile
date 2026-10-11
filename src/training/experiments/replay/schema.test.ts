@@ -116,3 +116,11 @@ test('persisted replay retains full grading identity, coverage and call provenan
       checks: { old: { ...report.evaluation.checks.old, grading: invalid } } } })).toThrow();
   }
 });
+
+test('replay preserves typed tool refusal on persisted grading calls', async () => {
+  const refused: JudgeCall = { ...call, outcome: 'refused', failureKind: 'protocol', failureDetail: 'tool-call' };
+  const { report } = await fixture(report => { report.evaluation.judgeCalls = [refused]; });
+  expect(trialReportSchema.parse(JSON.parse(JSON.stringify(report))).evaluation.judgeCalls).toEqual([refused]);
+  expect(() => trialReportSchema.parse({ ...report, evaluation: { ...report.evaluation,
+    judgeCalls: [{ ...refused, failureDetail: 'SECRET' }] } })).toThrow();
+});

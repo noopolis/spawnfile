@@ -25,3 +25,9 @@ Calibration request keys encode the label/instance pair and reject duplicate ind
 
 Persist dispatch membership per instance; preserve it through resume and independent
 consensus. Calibration uses one eligible population before filtering panel disputes.
+
+External human/editor import IO validates the full transaction before atomic
+replacement; it constructs no inference providers and preserves replay receipts.
+Import relabel validates stored structure before replacement and the complete current
+rubric afterward. Current refusal receipts are terminal on resume; explicit relabel
+clears them for retry, while asked membership remains in the denominator.

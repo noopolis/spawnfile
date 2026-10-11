@@ -24,6 +24,7 @@ it.each(['{"q":"abstain"}', '{}', '{"q":"yes","extra":1}', '{"q":"yes","q":"no"}
 it('accepts Grok, refuses other billing/tools/providers and invalid model', () => {
   const fake = provider('');
   expect(createTeacherDecision({ provider: { ...fake, id: 'grok-subscription' }, model: 'grok' })).toBeDefined();
+  expect(createTeacherDecision({ provider: { ...fake, id: 'codex-subscription', capabilities: { ...fake.capabilities, tools: 'contained' } }, model: 'm' })).toBeDefined();
   for (const patch of [{ id: 'codex-subscription' }, { capabilities: { ...fake.capabilities, billing: 'api' as const } }, { capabilities: { ...fake.capabilities, tools: 'enabled' as 'disabled' } }]) {
     expect(() => createTeacherDecision({ provider: { ...fake, ...patch }, model: 'm' })).toThrow(/attestation/);
   }
@@ -46,4 +47,17 @@ it('retains failed call evidence and never claims an assumed response model', as
   const { InferenceFailure } = await import('../index.js');
   fake.generate = async () => { throw new InferenceFailure('transport', 'failed', { responseModel: 'actual', responseRoute: 'r' }); };
   expect((await backend.score([request]))[0]!.judgeCalls![0]).toMatchObject({ responseModel: 'actual', responseRoute: 'r', failureKind: 'transport' });
+});
+
+it('retains typed tool refusal without retry, answer or diagnostic text', async () => {
+  const { InferenceFailure } = await import('../index.js');
+  const fake = provider(''); fake.id = 'codex-subscription'; fake.capabilities.tools = 'contained';
+  fake.generate = vi.fn(async () => { throw new InferenceFailure('protocol', 'SECRET native diagnostic', {
+    detail: 'tool-call', responseModel: 'actual', responseRoute: 'codex-subscription',
+  }); });
+  const results = JSON.parse(JSON.stringify(await createTeacherDecision({ provider: fake, model: 'm' }).score([request])));
+  expect(results).toMatchObject([{ status: 'missing', probabilities: null, reason: 'Teacher refused: tool-call',
+    judgeCalls: [{ outcome: 'refused', failureKind: 'protocol', failureDetail: 'tool-call', responseModel: 'actual' }] }]);
+  expect(fake.generate).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(results)).not.toContain('SECRET');
 });

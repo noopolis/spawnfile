@@ -3,7 +3,7 @@ import type { Label, Labels, Option } from './format/index.js';
 export interface Consensus {
   answer?: Option;
   disputed: boolean;
-  source: 'human' | 'consensus' | 'single-teacher';
+  source: 'human' | 'editor' | 'consensus' | 'single-teacher';
   votes: Record<string, Option>;
 }
 
@@ -19,11 +19,13 @@ export function deriveConsensus(label: Label, labelers: Labels['labelers'], inst
   return Object.fromEntries(instanceKeys.map(key => {
     const votes = label.votes[key] ?? {};
     const teachers = askedForInstance(label, key).filter(name => labelers[name]?.kind === 'model');
-    const humanAnswers = new Set(Object.entries(votes).filter(([name, vote]) =>
-      labelers[name]?.kind === 'human' && vote !== 'abstain').map(([, vote]) => vote));
-    if (humanAnswers.size) {
-      const answer = humanAnswers.size === 1 ? [...humanAnswers][0] : undefined;
-      return [key, { answer, disputed: answer === undefined, source: 'human', votes }];
+    for (const kind of ['human', 'editor'] as const) {
+      const answers = new Set(Object.entries(votes).filter(([name, vote]) =>
+        labelers[name]?.kind === kind && vote !== 'abstain').map(([, vote]) => vote));
+      if (answers.size) {
+        const answer = answers.size === 1 ? [...answers][0] : undefined;
+        return [key, { answer, disputed: answer === undefined, source: kind, votes }];
+      }
     }
     const counts = new Map<Option, number>();
     for (const teacher of teachers) {

@@ -11,12 +11,13 @@ const usage = z.object({
 const call = z.object({
   id: z.string().min(1), judge: z.string().min(1), providerId: z.string().min(1), requestedModel: z.string().min(1),
   responseModel: z.string().nullable(), responseRoute: z.string().nullable(),
-  outcome: z.enum(['completed', 'invalid-response', 'generation-error']), usage: usage.nullable(),
+  outcome: z.enum(['completed', 'invalid-response', 'generation-error', 'refused']), usage: usage.nullable(),
   wallMs: z.number().finite().nonnegative().optional(),
   billing: z.enum(['local', 'subscription', 'api', 'mixed']).optional(),
   citationRepairs: z.union([z.literal(0), z.literal(1)]).optional(),
   repairOf: z.string().optional(), fallbackOf: z.string().optional(),
   retryOf: z.string().optional(), retryCause: z.enum(judgeFailureCauses).optional(),
+  failureDetail: z.literal('tool-call').optional(),
   failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'auth-stale', 'protocol', 'invalid-response',
     'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),
 }).strict();

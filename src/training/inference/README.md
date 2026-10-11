@@ -66,10 +66,10 @@ and `createTeacherDecision`. These return option probabilities and truthful mode
 identity; neutral grader rules own calibration, escalation and aggregation.
 Ollama requires observable option logprobs; Jev requires a complete normalized
 probability vector. Missing scores stay missing. Teacher mode uses the same
-attested tool-free subscription providers and never claims local-model ECE.
+subscription providers (Claude/Grok empty-tool attestation or Codex containment) and never claims local-model ECE.
 No adapter installs models, starts servers or silently changes billing routes.
 See the [grader guide](../../docs/graders.md) for wire contracts, calibration bars,
-CLI commands and the Codex empty-tool-attestation refusal.
+CLI commands and Codex containment.
 
 ## Container training
 
@@ -102,3 +102,17 @@ awaited before fallback and shares the route deadline. Provider errors expose
 these diagnostics through a non-enumerable getter only; serialized results,
 attempts and checkpoints never include them. Semantic judges persist them as
 evaluator-only events. Native thinking, stderr and unsafe envelopes supply no text.
+
+## Contained Codex teachers
+
+`createCodexInference` checks `codex login status` for a ChatGPT subscription.
+It excludes API keys and ambient provider overrides, links only the selected auth
+file into a clean `CODEX_HOME`, and executes in an empty disposable workspace.
+Native controls use read-only sandboxing, approvals never, ephemeral sessions,
+memories disabled, no MCP, web search disabled and no sandbox network enablement.
+The requested model and effort are explicit; reported model and usage remain
+unknown when the native stream omits them. Strict JSONL completion supplies the
+final agent message. Any item other than an agent message or reasoning refuses
+the attempt as `tool-call`, without retry. The capability is `contained`, distinct
+from `disabled`; graders accept this containment contract. Fake-binary and event
+stream tests verify the adapter contract; they do not establish live model quality.

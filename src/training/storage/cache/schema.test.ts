@@ -68,3 +68,11 @@ it('retains measured grader call timing and billing while rejecting invented met
     expect(() => validateCachedJudgment({ ...value, sourceCalls: [{ ...call, ...metadata }] })).toThrow('provenance');
   }
 });
+
+it('retains typed refusal history but never caches a refused answer as completed', () => {
+  const refused = { ...call, outcome: 'refused', failureKind: 'protocol', failureDetail: 'tool-call' };
+  const history = { ...value, sourceCallId: 'two', sourceCalls: [refused, { ...call, id: 'two' }] };
+  expect(validateCachedJudgment(JSON.parse(JSON.stringify(history)))).toEqual(history);
+  expect(() => validateCachedJudgment({ ...value, sourceCalls: [refused] })).toThrow('completed');
+  expect(() => validateCachedJudgment({ ...history, sourceCalls: [{ ...refused, failureDetail: 'SECRET' }, history.sourceCalls[1]] })).toThrow('provenance');
+});

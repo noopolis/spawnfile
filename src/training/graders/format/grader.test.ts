@@ -92,11 +92,10 @@ describe('grader formats', () => {
     expect(parseGrader(withCheck({ eval: 'project', parameters: { eval: 'tool-count' } }))).toBeDefined();
   });
 
-  it('refuses teachers without native empty-tool attestation', () => {
-    expect(() => parseGrader({ ...graderInput(), teachers: [{ id: 'c', provider: 'codex', model: 'm' }] }))
-      .toThrow('codex exec has no native empty-tool attestation');
+  it('accepts contained Codex teachers', () => {
+    expect(parseGrader({ ...graderInput(), teachers: [{ id: 'c', provider: 'codex', model: 'm' }], escalate: { to: 'c', between: [0.2, 0.8] } }).teachers[0]!.provider).toBe('codex');
     expect(() => parseGrader({ ...graderInput(), teachers: [{ id: 'c', provider: 'unknown', model: 'm' }] }))
-      .toThrow('expected claude or grok');
+      .toThrow('provider');
   });
 
   it('requires the final gate step to reference a binding from an earlier step', () => {

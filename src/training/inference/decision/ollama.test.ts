@@ -70,7 +70,7 @@ describe('Ollama option probabilities', () => {
     }
     for (const model of ['', '-m']) expect(() => createOllamaDecision({ ...options, model })).toThrow(/model/);
   });
-  it('refuses digest drift and propagates cancellation while reporting transport misses', async () => {
+  it('refuses digest drift and propagates connection failures and cancellation', async () => {
     let digest = 'one';
     const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(JSON.stringify({ models: [{ name: 'm', digest }] })));
     const backend = createOllamaDecision({ ...options, fetch });
@@ -80,7 +80,7 @@ describe('Ollama option probabilities', () => {
       if (String(url).endsWith('/tags')) return new Response(JSON.stringify(tags));
       throw Error('offline');
     } });
-    expect((await failure.score([request]))[0]).toMatchObject({ status: 'missing', reason: 'Ollama decision request failed' });
+    await expect(failure.score([request])).rejects.toThrow('offline');
     await expect(failure.score([request], AbortSignal.abort())).rejects.toThrow(/cancelled/);
     const controller = new AbortController();
     const cancelled = createOllamaDecision({ ...options, fetch: async url => {

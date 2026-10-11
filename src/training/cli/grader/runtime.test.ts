@@ -34,7 +34,8 @@ async function fixture(model: Grader['model'] = { backend: 'jev-http', endpoint:
   const calibration: CalibrationFile = { schema: 'paideia.grader-calibration.v1',
     identity: createCalibrationIdentity(grader, { backendModel: await backendIdentity(grader, backend),
       golden: golden.goldenDigest, promptTemplateVersion: DECISION_PROMPT_VERSION, seed: 'seed', exclusions: [] }),
-    questions: { q: { status: 'calibrated', failures: [], params: { a: 1, b: 0 }, band: [0.4, 0.6],
+    questions: { q: { status: 'calibrated', failures: [],
+      teacherAccuracy: { groups: 20, instances: 40, good: 20, bad: 20, agreement: 1, source: 'human', failures: [], warnings: [] }, params: { a: 1, b: 0 }, band: [0.4, 0.6],
       metrics: { groups: 20, instances: 40, good: 20, bad: 20, baseRate: 0.5 } } } };
   await writeFile(grader.calibration, JSON.stringify(calibration));
   const factory = vi.fn(() => provider);

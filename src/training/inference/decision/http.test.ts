@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { decisionHttp } from './http.js';
+import { decisionHttp, DecisionRequestRejected } from './http.js';
 
 afterEach(() => vi.unstubAllGlobals());
 it('validates endpoints and timeouts; supports default fetch and HTTP GET', async () => {
@@ -13,6 +13,25 @@ it('validates endpoints and timeouts; supports default fetch and HTTP GET', asyn
 it('reports HTTP and JSON failures', async () => {
   await expect(decisionHttp({ endpoint: 'http://localhost', fetch: async () => new Response('', { status: 503 }) }).json('http://localhost')).rejects.toThrow('Decision HTTP 503');
   await expect(decisionHttp({ endpoint: 'http://localhost', fetch: async () => new Response('invalid') }).json('http://localhost')).rejects.toThrow();
+});
+it.each([
+  [{ detail: 'token\nlimit\u0000\u202e exceeded', message: 'ignored', private: 'hidden' }, 'Decision HTTP 422: token limit exceeded'],
+  [{ message: 'too long' }, 'Decision HTTP 422: too long'],
+  [{ detail: { private: 'hidden' }, message: 'invalid state' }, 'Decision HTTP 422: invalid state'],
+  [{ detail: ' \n ', private: 'hidden' }, 'Decision HTTP 422'],
+  [null, 'Decision HTTP 422'],
+  [{ detail: 'x'.repeat(300) }, `Decision HTTP 422: ${'x'.repeat(300)}`.slice(0, 200)],
+])('bounds and sanitizes only short JSON error fields: %j', async (body, reason) => {
+  const http = decisionHttp({ endpoint: 'http://localhost', fetch: async () => new Response(JSON.stringify(body), { status: 422 }) });
+  await expect(http.json('http://localhost', {})).rejects.toThrow(new DecisionRequestRejected(reason));
+});
+it('never exposes non-JSON response bodies or disguises response body connection failures', async () => {
+  const invalid = decisionHttp({ endpoint: 'http://localhost', fetch: async () => new Response('<html>private</html>', { status: 400 }) });
+  await expect(invalid.json('http://localhost')).rejects.toThrow(new DecisionRequestRejected('Decision HTTP 400'));
+  const broken = decisionHttp({ endpoint: 'http://localhost', fetch: async () => Object.assign(new Response('', { status: 422 }), {
+    json: async () => { throw new TypeError('connection terminated'); },
+  }) });
+  await expect(broken.json('http://localhost')).rejects.toThrow('connection terminated');
 });
 it('times out response bodies and handles explicit cancellation', async () => {
   const slow: typeof fetch = async (_url, init) => Object.assign(new Response('{}'), { json: async () => new Promise((_resolve, reject) => {

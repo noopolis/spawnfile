@@ -12,9 +12,14 @@ errors, content mismatches and unsupported scoring without invoking inference.
 
 `abstain` is reserved in choice options because it is the vote abstention marker.
 IDs/map keys reject prototype names; identifiers also reject control characters.
-Conflicting human answers remain disputed. Inline JSON is canonically hashed;
+Human votes precede editor votes, then model consensus; conflicts within the highest
+answering kind remain disputed. Editors declare a name and optional source description. Inline JSON is canonically hashed;
 references verify exact bytes before JSON decoding (for .json) or UTF-8 text loading.
 
 Golden labels accept a sidecar path or an inline labels body with implied grader.
 Inline references resolve from the grader file without adding paths to digests.
 YAML diagnostics show the first issue with line/column and a remaining issue count.
+
+External label-import manifests admit human/editor declarations only and validate
+declared context/labelers and unique vote coordinates before any golden write.
+Imported human/editor IDs must not collide with any configured teacher ID.

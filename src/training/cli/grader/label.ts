@@ -4,7 +4,7 @@ import { stringify } from 'yaml';
 import type { InferenceProvider, InferenceFailureKind } from '../../contracts/execution.js';
 import { askedForInstance, loadGrader, parseLabelsYaml, parseLabels, labelsSchema, stableDigest, type Grader, type Labels } from '../../graders/index.js';
 import { parseSchema, parseYaml } from '../../graders/format/index.js';
-import { groupLabelInstances, validateStoredVotes, adjudicationRows } from '../../graders/labeling/index.js';
+import { groupLabelInstances, validateStoredVotes, adjudicationRows, voteProvenance, teacherPolicyDigest } from '../../graders/labeling/index.js';
 import { loadLabelInputs, resolveStoredLabels } from './label-inputs.js';
 import { labelCall, createGraderTeacher } from './label-call.js';
 
@@ -47,7 +47,7 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
   }
   for (const teacher of teachers) {
     const previous = labels.labelers[teacher.id];
-    if (previous?.kind === 'human') throw new Error(`Teacher ${teacher.id} collides with human labeler`);
+    if (previous && previous.kind !== 'model') throw new Error(`Teacher ${teacher.id} collides with ${previous.kind} labeler`);
     labels.labelers[teacher.id] = { kind: 'model', provider: teacher.provider, model: teacher.model };
   }
   const jobs: (() => Promise<void>)[] = [];
@@ -99,8 +99,16 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
       // Keep empty maps for unanswered instances so adjudication includes missing votes.
       for (const { instance } of group.instances) target.votes[instance.key] ??= {};
       for (const teacher of teachers) {
-        if (group.instances.every(({ instance }) => Object.hasOwn(target.votes[instance.key]!, teacher.id))) continue;
-        const pending = { ...group, instances: group.instances.filter(({ instance }) => !Object.hasOwn(target.votes[instance.key]!, teacher.id)) };
+        const pending = { ...group, instances: group.instances.filter(({ instance, question }) => {
+          const receipt = voteProvenance(target, teacher.id, instance.key);
+          if (receipt?.status === 'refused' && receipt.teacher_policy_digest === teacherPolicyDigest(teacher) &&
+            receipt.question_digest === stableDigest(question) && receipt.projection_digest === group.projectionDigest) {
+            counts.missing++;
+            return false;
+          }
+          return !Object.hasOwn(target.votes[instance.key]!, teacher.id);
+        }) };
+        if (!pending.instances.length) continue;
         outputJobs.push(async () => {
           if (Object.hasOwn(stopped, teacher.id)) return;
           for (const { instance } of pending.instances) {

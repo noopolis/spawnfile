@@ -33,3 +33,20 @@ it('treats absent instance membership as unasked once per-instance dispatch is r
     failed: { disputed: true, source: 'single-teacher' },
   });
 });
+
+it('gives human then editor precedence and disputes conflicts at the highest answering kind', () => {
+  const sources: Labels['labelers'] = { ...labelers,
+    e: { kind: 'editor', name: 'Desk' }, f: { kind: 'editor', name: 'Copy desk', source: 'send-back verdict' } };
+  expect(deriveConsensus(label({ q: { a: 'yes', b: 'yes', e: 'no' } }), sources).q)
+    .toMatchObject({ answer: 'no', disputed: false, source: 'editor' });
+  expect(deriveConsensus(label({ q: { a: 'yes', e: 'no', f: 'yes' } }), sources).q)
+    .toMatchObject({ answer: undefined, disputed: true, source: 'editor' });
+  expect(deriveConsensus(label({ q: { h: 'yes', e: 'no', f: 'yes' } }), sources).q)
+    .toMatchObject({ answer: 'yes', disputed: false, source: 'human' });
+  expect(deriveConsensus(label({ q: { h: 'yes', j: 'no', e: 'yes' } }), sources).q)
+    .toMatchObject({ answer: undefined, disputed: true, source: 'human' });
+  expect(deriveConsensus(label({ q: { h: 'abstain', e: 'no', f: 'abstain' } }), sources).q)
+    .toMatchObject({ answer: 'no', disputed: false, source: 'editor' });
+  expect(deriveConsensus(label({ q: { e: 'abstain', a: 'yes' } }), sources).q)
+    .toMatchObject({ answer: 'yes', disputed: false, source: 'single-teacher' });
+});

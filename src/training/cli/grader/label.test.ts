@@ -140,7 +140,10 @@ describe('teacher labeling runner', () => {
     await runLabel({ ...f, relabel: true }, deps);
     const labels = await saved(f.dir); labels.labelers.t = { kind: 'human', name: 'H' };
     await writeFile(path.join(f.dir, 'labels.yaml'), stringify(labels));
-    await expect(runLabel(f, deps)).rejects.toThrow('collides');
+    await expect(runLabel(f, deps)).rejects.toThrow('collides with human');
+    labels.labelers.t = { kind: 'editor', name: 'Desk', source: 'agent verdict' };
+    await writeFile(path.join(f.dir, 'labels.yaml'), stringify(labels));
+    await expect(runLabel(f, deps)).rejects.toThrow('collides with editor');
     await writeFile(path.join(f.dir, 'labels.yaml'), 'bad');
     await expect(runLabel(f, deps)).rejects.toThrow();
   });
@@ -204,6 +207,7 @@ describe('teacher labeling runner', () => {
     expect(voteProvenance((await saved(f.dir)).labels[0], 't', 'q')).toMatchObject({ instance_keys: ['q', 'q2'] });
   });
   it('builds subscription providers and rejects unsupported effort', () => {
+    expect(createGraderTeacher({ id: 't', provider: 'codex', model: 'm', effort: 'high' }).id).toBe('codex-subscription');
     expect(createGraderTeacher({ id: 't', provider: 'claude', model: 'm' }).id).toBe('claude-subscription');
     expect(createGraderTeacher({ id: 't', provider: 'grok', model: 'm', effort: 'high' }, 100).id).toBe('grok-subscription');
     expect(createGraderTeacher({ id: 't', provider: 'grok', model: 'm' }).id).toBe('grok-subscription');
@@ -274,4 +278,51 @@ it('records every failed attempt class including repaired schema failures and un
     { failure_kind: 'invalid-response' }, { failure_kind: 'unknown' },
   ] });
   expect(await readFile(result.labelsFile, 'utf8')).not.toContain('SECRET');
+});
+
+it('records contained tool attempts as refused, retains the asked denominator, and never repairs them', async () => {
+  const f = await fixture();
+  const generate = vi.fn(async () => { throw new InferenceFailure('protocol', 'refused', { detail: 'tool-call' }); });
+  const fake = provider(generate); fake.capabilities.tools = 'contained';
+  const result = await runLabel({ ...f, limit: 1 }, { provider: () => fake });
+  expect(result).toMatchObject({ calls: 1, votes: 0, missing: 2 });
+  expect(generate).toHaveBeenCalledTimes(1);
+  const labels = await saved(f.dir), label = labels.labels[0]!;
+  expect(voteProvenance(label, 't', 'q')).toMatchObject({ status: 'refused', reason: 'tool-call' });
+  expect(label.askedByInstance!.q).toEqual(['t']);
+  expect(label.votes.q).toEqual({});
+  labels.labelers.other = { kind: 'model', provider: 'claude', model: 'm' };
+  label.votes.q = { other: 'yes' }; label.askedByInstance!.q!.push('other');
+  expect(deriveConsensus(label, labels.labelers).q!.disputed).toBe(true);
+});
+
+it('resumes current refusals without generation and retries only with relabel', async () => {
+  const f = await fixture();
+  const generate = vi.fn(async (): Promise<string> => { throw new InferenceFailure('protocol', 'SECRET', { detail: 'tool-call' }); });
+  const deps = { provider: () => provider(generate) };
+  await runLabel({ ...f, limit: 1 }, deps);
+  const original = await readFile(path.join(f.dir, 'labels.yaml'), 'utf8');
+  generate.mockImplementation(async () => '{"q":"yes","q2":"no"}');
+  expect(await runLabel({ ...f, limit: 1 }, deps)).toMatchObject({ calls: 0, votes: 0, missing: 2 });
+  expect(generate).toHaveBeenCalledTimes(1);
+  expect(await saved(f.dir)).toEqual(parse(original));
+  expect((await saved(f.dir)).labels[0]!.askedByInstance).toEqual({ q: ['t'], q2: ['t'] });
+  expect(await runLabel({ ...f, limit: 1, relabel: true }, deps)).toMatchObject({ calls: 1, votes: 2, missing: 0 });
+  expect(generate).toHaveBeenCalledTimes(2);
+  expect((await saved(f.dir)).labels[0]!.votes.q!.t).toBe('yes');
+});
+
+it.each(['question', 'policy', 'projection'])('does not reuse a refusal after its %s identity changes', async field => {
+  const f = await fixture();
+  await runLabel({ ...f, limit: 1 }, { provider: () => provider(async () => { throw new InferenceFailure('protocol', 'refused', { detail: 'tool-call' }); }) });
+  const labels = await saved(f.dir), provenance = labels.labels[0]!.provenance.t!;
+  if (field === 'question') {
+    const votes = provenance.votes as Record<string, { question_digest: string }>;
+    for (const vote of Object.values(votes)) vote.question_digest = 'stale';
+  } else {
+    const calls = provenance.calls as Record<string, Record<string, string>>;
+    for (const call of Object.values(calls)) call[field === 'policy' ? 'teacher_policy_digest' : 'projection_digest'] = 'stale';
+  }
+  await writeFile(path.join(f.dir, 'labels.yaml'), stringify(labels));
+  expect(await runLabel({ ...f, limit: 1 }, { provider: () => provider() })).toMatchObject({ calls: 1, votes: 2 });
 });

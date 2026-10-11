@@ -103,7 +103,7 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
     const indices = golden.rows.flatMap((row, index) => row.question.id === id && !row.golden.disputed ? [index] : []);
     diagnostics[id] = { missingRate: sample.length ? indices.filter(i => results[i]!.status === 'missing').length / sample.length : 0,
       boundedRate: sample.length ? indices.filter(i => results[i]!.bounded).length / sample.length : 0,
-      sourceMix: { human: 0, consensus: 0, 'single-teacher': 0 } };
+      sourceMix: { human: 0, editor: 0, consensus: 0, 'single-teacher': 0 } };
     for (const row of sample) diagnostics[id]!.sourceMix[row.golden.source]++;
     if (grader.model.backend === 'teacher') {
       // Teacher-only scoring uses the same pre-dispute held-out population.
@@ -126,13 +126,13 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
         return [{ ...cascade, votes: { ...cascade.votes, [teacherId]: answer ?? 'abstain' } }];
       });
       const escalation = planEscalation([], heldCascade, grader.escalate, { teacherId, forceTeacher: true, gate: gates.includes(id) });
-      diagnostics[id]!.sourceAgreement = Object.fromEntries(['human', 'consensus', 'single-teacher'].map(source => {
+      diagnostics[id]!.sourceAgreement = Object.fromEntries(['human', 'editor', 'consensus', 'single-teacher'].map(source => {
         const subset = agreementRows.filter(row => row.source === source);
         const measured = teacherAgreement(subset, teacherId);
         return [source, { instances: measured.instances, agreement: measured.agreement }];
       }));
       questions[id] = { status: agreement.status === 'calibrated' ? escalation.status : agreement.status,
-        failures: [...agreement.failures, ...escalation.failures], metrics: {
+        failures: [...agreement.failures, ...escalation.failures], teacherAccuracy: escalation.teacherReport, metrics: {
         cascadeAccuracy: escalation.heldOutAccuracy, cascadeInterval: escalation.cascadeInterval, coverage: escalation.coverage,
         groups: agreement.groups, instances: agreement.instances, good: agreement.good, bad: agreement.bad,
         baseRate: agreement.instances ? agreement.good / agreement.instances : 0, agreement: agreement.agreement,
@@ -142,12 +142,12 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
     const fit = fitted.find(fit => fit.questionId === id);
     if (!fit) {
       const metrics = calibrationMetrics([], 0, seed, gates.includes(id));
-      questions[id] = { status: 'insufficient-evidence', failures: evidenceFailures(metrics), metrics };
+      questions[id] = { status: 'insufficient-evidence', failures: evidenceFailures(metrics), metrics, teacherAccuracy: plans.get(id)!.teacherReport };
       continue;
     }
     const escalation = plans.get(id)!;
     questions[id] = { status: fit.status === 'calibrated' ? escalation.status : fit.status,
-      failures: [...fit.failures, ...escalation.failures], params: fit.params,
+      failures: [...fit.failures, ...escalation.failures], params: fit.params, teacherAccuracy: escalation.teacherReport,
       ...(escalation.band ? { band: [...escalation.band] } : {}), metrics: { ...fit.metrics,
         cascadeAccuracy: escalation.heldOutAccuracy, cascadeInterval: escalation.cascadeInterval, escalationRate: escalation.escalationRate, coverage: escalation.coverage } };
     diagnostics[id]!.bySource = fit.bySource;

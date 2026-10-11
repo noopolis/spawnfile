@@ -1,3 +1,4 @@
+export { createCodexInference, type CodexInferenceOptions } from './codex/index.js';
 export { createClaudeInference, type ClaudeInferenceOptions } from './claude/index.js';
 export { InferenceFailure, type InferenceFailureEvidence } from './failure.js';
 export { createRoutedInference, type InferenceRoute, type RoutedInferenceOptions } from './routing.js';
