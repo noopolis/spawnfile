@@ -31,14 +31,17 @@ export function estimatedTokens(model: string, requests: DecisionRequest[]): num
 
 export function decode(request: DecisionRequest, raw: unknown): DecisionResult {
   const answer = raw as { type?: unknown; noul?: unknown; probabilities?: Record<string, unknown> } | null;
-  const fail = () => missing(request, 'TypeSafe requires probabilities over every option summing to one');
+  const fail = () => missing(request, 'TypeSafe requires probabilities over every option with total in [0.97, 1.03]');
   if (answer?.type !== (request.type === 'yes-no' ? 'noul' : request.type)) return fail();
   const values = request.type === 'yes-no'
     ? [answer.noul, typeof answer.noul === 'number' ? 1 - answer.noul : undefined]
     : request.optionLabels.map((label, i) => answer.probabilities?.[request.type === 'score' ? String(i) : String(label)]);
-  if (values.some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) ||
-    Math.abs((values as number[]).reduce((sum, value) => sum + value, 0) - 1) > 1e-5) return fail();
-  const probabilities = request.type === 'yes-no' ? { yes: values[0] as number, no: values[1] as number }
-    : Object.fromEntries(request.optionLabels.map((label, i) => [String(label), values[i] as number]));
-  return { key: request.key, status: 'ok', probabilities };
+  if (values.some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1)) return fail();
+  const total = (values as number[]).reduce((sum, value) => sum + value, 0);
+  const tolerance = Number.EPSILON * values.length;
+  if (total < 0.97 - tolerance || total > 1.03 + tolerance) return fail();
+  const normalized = (values as number[]).map(value => value / total);
+  const probabilities = request.type === 'yes-no' ? { yes: normalized[0]!, no: normalized[1]! }
+    : Object.fromEntries(request.optionLabels.map((label, i) => [String(label), normalized[i]!]));
+  return { key: request.key, status: 'ok', probabilities, providerRounded: true };
 }

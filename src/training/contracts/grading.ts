@@ -16,6 +16,8 @@ export interface DecisionResult {
   status: 'ok' | 'missing';
   reason?: string;
   bounded?: boolean;
+  /** Provider probabilities have approximately 0.01 resolution, even when their sum is one. */
+  providerRounded?: boolean;
   teacherAnswered?: boolean;
   /** Actual subscription attempts, absent for local option scorers. */
   judgeCalls?: JudgeCall[];

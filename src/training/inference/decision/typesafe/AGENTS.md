@@ -16,3 +16,6 @@ when floating-point estimates underflow. Each HTTP attempt owns a fresh timeout;
 caller cancellation stays terminal. Retry network/timeouts with bounded 5xx backoff.
 State groups use a pool (default 8, configured 1–32); split batches stay sequential.
 Stop admission and drain started work on failure before exposing receipts.
+Cancel unread response bodies before retry/return, including authentication errors.
+Hosted probabilities have ~0.01 resolution. Normalize complete totals in [0.97, 1.03]
+and mark successful results providerRounded; invalid or partial distributions stay missing.

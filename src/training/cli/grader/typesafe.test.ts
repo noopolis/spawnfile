@@ -6,6 +6,7 @@ import { stringify } from 'yaml';
 import { main } from '../commands.js';
 import { parseGrader, allQuestions, stableDigest } from '../../graders/index.js';
 import { runCalibrate } from './calibrate.js';
+import { createTypeSafeDecision } from '../../inference/decision/index.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -78,6 +79,32 @@ it('shares the authored TypeSafe spend cap across candidates and permits an expl
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(JSON.parse(output[0]!).decisionAccounting).toMatchObject({ requests: 1, inputTokens: 1_000_000, usd: 0.042 });
   expect(await readFile(stopped.reportFile, 'utf8')).toContain('spend cap');
+});
+
+it('counts shared backend receipts once and only within the current calibration invocation', async () => {
+  const f = await fixture(2);
+  const { model, ...rest } = f.grader;
+  await writeFile(f.graderFile, stringify({ ...rest,
+    models: [{ ...model, id: 'one' }, { ...model, id: 'two' }] }));
+  const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+    const body = JSON.parse(String(init!.body)) as { questions: Record<string, unknown> };
+    return Response.json({ model: 'jev-1.13.0', usage: { input_tokens: 100, output_tokens: 0 },
+      answers: Object.fromEntries(Object.keys(body.questions).map(key => [key, { type: 'noul', noul: 0.9 }])) });
+  });
+  const backend = createTypeSafeDecision({ model: 'jev-1.13.0', env: { TYPESAFE_API_KEY: 'fake-shared-key' }, fetch });
+  const dependencies = { backend: () => backend };
+  const first = await runCalibrate(f, dependencies);
+  expect(fetch).toHaveBeenCalledTimes(4);
+  expect(first.decisionAccounting).toMatchObject({ requests: 4, inputTokens: 400, outputTokens: 0 });
+  expect(first.decisionAccounting!.receipts).toHaveLength(4);
+  expect(first.decisionAccounting!.usd).toBeCloseTo(0.0000168, 12);
+  const second = await runCalibrate(f, dependencies);
+  expect(fetch).toHaveBeenCalledTimes(4);
+  expect(backend.requestReceipts!()).toHaveLength(4);
+  expect(second.decisionAccounting).toMatchObject({ requests: 0, inputTokens: 0, outputTokens: 0, usd: 0, receipts: [] });
+  const report = await readFile(second.reportFile, 'utf8');
+  expect(report).toContain('"requests": 0');
+  expect(report).toContain('"usd": 0');
 });
 
 it.each([1, 2])('emits completed and failed API receipts after %i successful calibration requests', async completed => {

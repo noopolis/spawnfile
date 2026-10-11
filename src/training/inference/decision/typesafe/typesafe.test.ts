@@ -26,6 +26,7 @@ describe('TypeSafe mapping and batching', () => {
     const inputs: DecisionRequest[] = [request('yes'), { ...request('choice'), type: 'choice', optionLabels: ['a', 'b'], system: 'Rubric' },
       { ...request('score'), type: 'score', optionLabels: [-1, 0, 1] }];
     const results = await backend.score(inputs);
+    expect(results.every(result => result.providerRounded === true)).toBe(true);
     expect(results.map(result => result.probabilities)).toEqual([{ yes: 0.75, no: 0.25 }, { a: 0.4, b: 0.6 }, { '-1': 0.1, '0': 0.2, '1': 0.7 }]);
     const init = fetch.mock.calls[0]![1]!;
     expect(init).toMatchObject({ method: 'POST', redirect: 'error', headers: { Authorization: `Bearer ${key}` } });
@@ -69,6 +70,28 @@ describe('TypeSafe mapping and batching', () => {
     const backend = createTypeSafeDecision({ model, env, fetch: responder({ answers: { q: { type: 'score', score: 3, probabilities: { '2': 0.4, '3': 0.6 } } } }) });
     expect(await backend.score([{ ...request(), type: 'score', optionLabels: [2, 3] }])).toMatchObject([{ status: 'missing' }]);
   });
+  it.each(['choice', 'score'] as const)('normalizes provider-rounded %s probabilities within inclusive limits', async type => {
+    const optionLabels = type === 'choice' ? ['a', 'b', 'c'] : [-1, 0, 1];
+    const keys = type === 'choice' ? optionLabels : ['0', '1', '2'];
+    for (const values of [[0.33, 0.33, 0.33], [0.31, 0.33, 0.33], [0.37, 0.33, 0.33], [0.34, 0.33, 0.33],
+      [0.06, 0.82, 0.09], [0.07, 0.56, 0.4]]) {
+      const probabilities = Object.fromEntries(keys.map((label, i) => [label, values[i]]));
+      const backend = createTypeSafeDecision({ model, env, fetch: responder({ answers: { q: { type, probabilities } } }) });
+      const [result] = await backend.score([{ ...request(), type, optionLabels }]);
+      expect(result).toMatchObject({ status: 'ok', providerRounded: true });
+      const total = values.reduce((sum, value) => sum + value, 0);
+      for (const [i, label] of optionLabels.entries()) expect(result!.probabilities![label]).toBeCloseTo(values[i]! / total, 14);
+      expect(Object.values(result!.probabilities!).reduce((sum, p) => sum + p, 0)).toBeCloseTo(1, 14);
+    }
+  });
+  it.each([[0.309, 0.33, 0.33], [0.371, 0.33, 0.33], [0.33, 0.33], [0, 0, 0], [1.01, 0, 0], [-0.01, 0.5, 0.5]])(
+    'keeps invalid or partial provider distributions missing: %j', async (...values) => {
+      const probabilities = Object.fromEntries(values.map((value, i) => [['a', 'b', 'c'][i], value]));
+      const backend = createTypeSafeDecision({ model, env, fetch: responder({ answers: { q: { type: 'choice', probabilities } } }) });
+      const [result] = await backend.score([{ ...request(), type: 'choice', optionLabels: ['a', 'b', 'c'] }]);
+      expect(result).toMatchObject({ status: 'missing', probabilities: null });
+      expect(result!.providerRounded).toBeUndefined();
+    });
   it('validates typed option limits and full instruction presence', async () => {
     const backend = createTypeSafeDecision({ model, env, fetch: responder() });
     const invalid: DecisionRequest[] = [ { ...request(), key: '' }, { ...request(), instructions: ' ' },

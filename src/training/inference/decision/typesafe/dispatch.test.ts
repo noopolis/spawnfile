@@ -146,6 +146,37 @@ it('requires HTTPS before any credential-bearing dispatch', () => {
   expect(fetch).not.toHaveBeenCalled();
 });
 
+it.each([401, 403, 422, 429, 500, 529])('cancels unread HTTP %i bodies before retry or return', async status => {
+  const cancelled: number[] = [], signals: AbortSignal[] = [];
+  const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+    expect(cancelled).toHaveLength(signals.length);
+    expect(signals.every(signal => signal.aborted)).toBe(true);
+    signals.push(init!.signal!);
+    const index = signals.length;
+    return new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode('unread error body')); },
+      cancel() { cancelled.push(index); },
+    }), { status });
+  });
+  const backend = createTypeSafeDecision({ model, env, fetch, retryBaseMs: 0 });
+  if (status === 401) await expect(backend.score(requests(1))).rejects.toThrow('authentication failed');
+  else if (status === 429 || status >= 500) await expect(backend.score(requests(1))).rejects.toThrow('retry attempts exhausted');
+  else expect(await backend.score(requests(1))).toMatchObject([{ status: 'missing' }]);
+  const count = status === 429 || status >= 500 ? 3 : 1;
+  expect(fetch).toHaveBeenCalledTimes(count);
+  expect(cancelled).toEqual(Array.from({ length: count }, (_, i) => i + 1));
+  expect(signals.every(signal => signal.aborted)).toBe(true);
+  expect(backend.requestReceipts!()).toHaveLength(count);
+});
+
+it('sanitizes failed body cancellation without losing HTTP accounting', async () => {
+  const cancel = vi.fn(() => Promise.reject(new Error(env.TYPESAFE_API_KEY)));
+  const backend = createTypeSafeDecision({ model, env, fetch: async () => new Response(new ReadableStream({ cancel }), { status: 401 }) });
+  await expect(backend.score(requests(1))).rejects.toThrow('TypeSafe authentication failed (401)');
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(backend.requestReceipts!()).toMatchObject([{ status: 401 }]);
+});
+
 it('refuses zero paid prices and blocks a zero cap independently even when the estimate underflows', async () => {
   const fetch = vi.fn<typeof globalThis.fetch>();
   expect(() => createTypeSafeDecision({ model, env, fetch, maxSpendUsd: 0, pricePerMtokUsd: 0 })).toThrow('Invalid TypeSafe transport options');

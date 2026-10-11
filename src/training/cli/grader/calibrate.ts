@@ -223,7 +223,7 @@ async function calibrate(options: CalibrateOptions, dependencies: GraderDependen
   await writeFile(temporary, `${JSON.stringify(calibration, null, 2)}\n`, { mode: 0o600 });
   await rename(temporary, grader.calibration);
   await mkdir(dirname(reportFile), { recursive: true });
-  const receipts = candidates.flatMap(candidate => candidate.backend.requestReceipts?.() ?? []);
+  const receipts = [...backends].flatMap(([backend, offset]) => backend.requestReceipts?.().slice(offset) ?? []);
   const decisionAccounting = candidates.some(candidate => candidate.backend.capabilities?.billing === 'api')
     ? summarizeDecisionAccounting(receipts) : undefined;
   const missingReasons = candidates.flatMap(candidate => candidate.results.filter(result => result.status === 'missing')

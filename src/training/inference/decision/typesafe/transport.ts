@@ -63,9 +63,10 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
         const deadline = new AbortController();
         const timer = setTimeout(() => deadline.abort(), timeout);
         const attemptSignal = AbortSignal.any([signal, deadline.signal]);
+        let response: Response | undefined;
         try {
           // No request capture: Authorization exists only at this transport boundary.
-          const response = await (options.fetch ?? fetch)(endpoint.href, { method: 'POST', redirect: 'error', signal: attemptSignal,
+          response = await (options.fetch ?? fetch)(endpoint.href, { method: 'POST', redirect: 'error', signal: attemptSignal,
             headers: { 'content-type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(body) });
           attemptSignal.throwIfAborted();
           receipt.status = response.status;
@@ -92,6 +93,10 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
           // Network errors and this attempt's timeout share the bounded 5xx retry policy.
           // Caller/pool cancellation, authentication and model drift remain terminal.
         } finally {
+          // Release unread error bodies before returning or admitting another attempt.
+          // Aborting also closes a fetch body whose reader failed or was interrupted.
+          deadline.abort();
+          if (response?.body && !response.bodyUsed) await response.body.cancel().catch(() => {});
           clearTimeout(timer);
           receipt.latencyMs = performance.now() - start;
           receipts.push(receipt);

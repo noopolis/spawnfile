@@ -511,6 +511,11 @@ score uses 2–10 ordered levels and zero-based probability keys. Option labels
 supply descriptions. Put the full question meaning in `ask`: request IDs are not
 model-visible. The existing grader authoring limit remains 16 choice options;
 the transport supports up to 255. Missing/partial distributions remain missing.
+Hosted Jev probabilities have approximately 0.01 resolution; calibration cannot
+resolve distinctions below that provider precision. Complete distributions with
+totals in the inclusive range [0.97, 1.03] are renormalized to one; totals outside
+that range remain missing. Successful results record `providerRounded: true`,
+including distributions whose reported total already equals one.
 
 Identical projections share a request, including uncached calibration instances.
 State groups run in a bounded pool (default eight, maximum 32, configured through
