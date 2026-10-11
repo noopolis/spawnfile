@@ -178,3 +178,27 @@ it('does not call or count unaffected duplicate checks in trap variants', async 
     .toEqual([['support@claim'], ['support@claim']]);
   expect(outputs.find(([key]) => !key.includes(':'))![1].checks).toHaveProperty('other@claim');
 });
+
+it('keeps units with invalid source hints, reports drops and never sends hints to council teachers', async () => {
+  const f = await fixture();
+  const source_span = 'Fabricated source hint';
+  f.generate.mockResolvedValueOnce({ text: JSON.stringify({ units: [{ ...f.unit, source_span }] }),
+    model: 'test', usage: null, route: 'subscription' });
+  expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ completed: 1, rejected: 0, dropped: 1 });
+  const files = await readdir(f.decompose.out);
+  const load = async (suffix: string) => JSON.parse(await readFile(join(f.decompose.out, files.find(file => file.endsWith(suffix))!), 'utf8'));
+  expect(await load('.checkpoint.json')).toMatchObject({ dropped: [{ id: 'claim', field: 'source_span', value: source_span }] });
+  const doc = await load('.decomposition.json');
+  expect(doc.units).toHaveLength(1);
+  expect(doc.units[0]).not.toHaveProperty('source_span');
+  expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ resumed: 1, rejected: 0, dropped: 1 });
+  f.generate.mockClear();
+  f.generate.mockImplementation(async request => {
+    expect(request.prompt).not.toContain(source_span);
+    expect(request.prompt).not.toContain('source_span');
+    return { text: JSON.stringify({ 'support@claim': { answer: 'supported' } }),
+      model: request.model, usage: null, route: 'subscription' };
+  });
+  await runReference({ ...f.reference, traps: undefined }, f.dependencies);
+  expect(f.generate.mock.calls.length).toBeGreaterThan(0);
+});

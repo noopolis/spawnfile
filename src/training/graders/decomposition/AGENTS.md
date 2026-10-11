@@ -8,7 +8,7 @@ and missing state remain observable. Unit paragraph/sentence indices are zero ba
 Validation locates normalized spans; unique matches override hints, and ambiguous
 occurrences require consistent hints. Body citations derive from runtime segments
 under declared row patterns and leading-citation policy; disagreements are reported.
-Location-scoped templates report exclusions through instantiateChecksReport. Source spans must occur in cited rows.
+Location-scoped templates report exclusions through instantiateChecksReport. Source spans must occur in cited rows; drop and report invalid hints without rejecting verified units.
 Drop and report fields absent from unit text; missing applicability fields create
 missing checks. Extraction accepts strict JSON, optionally one surrounding json
 fence, and exports the strict provider response schema.

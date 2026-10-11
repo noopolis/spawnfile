@@ -34,6 +34,7 @@ it('sends kind descriptions and persists citation disagreements and location exc
     model: 'test', usage: null, route: 'subscription' });
   expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ rejected: 0 });
   for (const [request] of f.generate.mock.calls) {
+    expect(JSON.parse(request.prompt).requirements).toContain("source_span (optional) = a verbatim quote from ONE of the unit's cited evidence rows that supports the unit; omit it if none.");
     expect(JSON.parse(request.prompt)).toMatchObject({ kinds: ['claim', 'display'],
       kind_descriptions: { claim: 'Verbatim factual claim', display: 'Headline or deck' } });
   }

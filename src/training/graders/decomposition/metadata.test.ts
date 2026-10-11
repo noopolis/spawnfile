@@ -31,14 +31,22 @@ it('binds uncited subspans to the containing sentence, including leading-citatio
   expect(validateDecomposition(document, inputs, templates).decomposition.units[0]).toMatchObject({ sentence: 1, cites: ['R2'] });
 });
 
-it('requires source spans to occur within a cited row', () => {
+it('drops and reports invalid source spans without rejecting verified units', () => {
   const { templates, document, inputs } = fixture();
   for (const source_span of ['Fabricated evidence', 'Bob was promoted.', ' ']) {
     document.units[0]!.source_span = source_span;
-    expect(validateDecomposition(document, inputs, templates).rejected[0]!.reasons).toContain('source_span is not a verbatim cited row span');
+    const result = validateDecomposition(document, inputs, templates);
+    expect(result.rejected).toEqual([]);
+    expect(result.decomposition.units).toHaveLength(1);
+    expect(result.decomposition.units[0]).not.toHaveProperty('source_span');
+    expect(result.dropped).toEqual([{ id: 'c1', field: 'source_span', value: source_span,
+      reason: 'source_span is not a verbatim cited row span' }]);
+    expect(instantiateChecks(templates, document, inputs)[0]!.projection.unit).not.toHaveProperty('source_span');
   }
   document.units[0]!.source_span = 'Alice\n is paid 1,000 dollars.';
-  expect(validateDecomposition(document, inputs, templates).rejected).toEqual([]);
+  const result = validateDecomposition(document, inputs, templates);
+  expect(result).toMatchObject({ rejected: [], dropped: [] });
+  expect(result.decomposition.units[0]!.source_span).toBe(document.units[0]!.source_span);
 });
 
 it('drops and reports fabricated fields and never skips a missing applicability field', () => {

@@ -73,7 +73,8 @@ it('retains source-row guards using derived cites and supports non-body and assi
   const { templates, document, inputs } = fixture();
   document.units[0]!.cites = ['R2'];
   document.units[0]!.source_span = 'Bob was promoted.';
-  expect(validateDecomposition(document, inputs, templates).rejected[0]!.reasons).toContain('source_span is not a verbatim cited row span');
+  expect(validateDecomposition(document, inputs, templates)).toMatchObject({ rejected: [],
+    dropped: [{ field: 'source_span', reason: 'source_span is not a verbatim cited row span' }] });
   document.units[0]!.source_span = 'Alice is paid 1,000 dollars.';
   expect(validateDecomposition(document, inputs, templates).rejected).toEqual([]);
   document.units[0]!.text = 'Alice is paid 1,000 dollars [R9].';

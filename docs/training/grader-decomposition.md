@@ -117,7 +117,9 @@ Non-body spans have no paragraph/sentence address and no cites. Supplied citatio
 disagreements are recorded in checkpoint `citationDisagreements`; omitted cites
 are simply derived. Unknown derived row IDs still fail validation. A supplied
 `source_span` must occur verbatim after whitespace normalization in a derived cited
-row. The new extraction protocol refuses earlier checkpoints as stale; use a fresh
+row. Invalid optional source spans are dropped and reported without rejecting an
+otherwise valid unit; dropped hints never enter council evidence. Omit the hint
+when no supporting quote exists. The new extraction protocol refuses earlier checkpoints as stale; use a fresh
 output directory when regenerating an older extraction. Extracted
 fields absent from the unit text are dropped and reported; a `when` condition on
 a dropped or absent field retains a missing instance.

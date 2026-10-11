@@ -57,7 +57,8 @@ export function validateDecomposition(value: unknown, inputs: DecompositionInput
     }
     if (unit.source_span !== undefined && (!normalizeWhitespace(unit.source_span) || !rows.some(row =>
       unit.cites?.includes(row.id) && normalizeWhitespace(row.text).includes(normalizeWhitespace(unit.source_span!))))) {
-      reasons.push('source_span is not a verbatim cited row span');
+      dropped.push({ id: unit.id, field: 'source_span', value: unit.source_span, reason: 'source_span is not a verbatim cited row span' });
+      delete unit.source_span;
     }
     dropped.push(...dropUnboundFields(unit));
     if (reasons.length) rejected.push({ id: unit.id, reasons });
