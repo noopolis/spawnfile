@@ -22,6 +22,8 @@ disagreement diagnostics. Pass kind descriptions to extractors and persist a loc
 instantiation report with declared location exclusions.
 
 Assign unit IDs by response order (x1… extraction, a1… audit); retain extractor IDs
-as labels. Drop audit repeats by whitespace-normalized text and kind, recording
-duplicate identities in checkpoints and counts in command summaries. Protocol
+as labels. Drop audit repeats only when kind, normalized text and resolved occurrence
+(location, paragraph, sentence and source character offset) match. Keep distinct
+occurrences and unresolved spans for validation; record duplicate identities in
+checkpoints and counts in command summaries. Protocol
 changes invalidate earlier extraction checkpoints.

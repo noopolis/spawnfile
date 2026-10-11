@@ -4,7 +4,7 @@ import type { AtomicUnit, CheckTemplates, Decomposition, DecompositionInputs } f
 import type { Trap } from './types.js';
 import { formatParaphrase, keyTerms, replaceLeaf, replaceNumber } from './mutations.js';
 
-import { affirmativeCounterpart, articleEntities, entityType, coReferent, exactNumber, maskCitations, withoutHeadings, negationAuxiliary, negator, numbers, numeric, plausibleNumber } from './preconditions.js';
+import { affirmativeCounterpart, articleEntities, entityType, coReferent, exactQuantities, maskCitations, withoutHeadings, negationAuxiliary, negator, numbers, numeric, plausibleNumber } from './preconditions.js';
 
 /** Separate from candidate construction: validate the actual serialized variant. */
 export function validateTrap(trap: Trap, unit: AtomicUnit, inputs: DecompositionInputs, templates: CheckTemplates, baseDocument?: Decomposition): Trap['validation'] {
@@ -100,7 +100,7 @@ export function validateTrap(trap: Trap, unit: AtomicUnit, inputs: Decomposition
     if (before && (kind === 'number-substitution' ? numbers(mutatedClaim).some(value => numeric(value) === numeric(before)) :
       normalizeWhitespace(mutatedClaim).toLowerCase().includes(normalizeWhitespace(before).toLowerCase()))) reasons.push('original value remains in mutated claim');
     if (kind === 'number-substitution') {
-      if (before && !exactNumber(maskCitations(mutation.source, templates), before)) reasons.push('number is bounded, approximate or part of a range');
+      if (!exactQuantities(unit) || !exactQuantities({ text: mutation.source, fields: unit.fields })) reasons.push('number is bounded, approximate or part of a range');
       if (!before || !after || !plausibleNumber(before, after)) reasons.push('invalid numeric substitution');
       const oldNumbers = numbers(maskCitations(mutation.source, templates)), newNumbers = numbers(maskCitations(mutation.replacement, templates));
       const differences = oldNumbers.map((value, i) => ({ value, next: newNumbers[i] })).filter(item => item.value !== item.next);

@@ -1,6 +1,16 @@
 import { expect, it } from 'vitest';
-import { instantiateChecksReport, parseCheckTemplates, validateDecomposition } from './index.js';
+import { instantiateChecksReport, locateUnit, parseCheckTemplates, validateDecomposition } from './index.js';
 import { fixture } from './fixtures.js';
+
+it('resolves raw character offsets through whitespace and literal punctuation without hiding overlaps', () => {
+  const { templates, inputs } = fixture();
+  inputs.output = { body: ['  Earlier words.\n\tPaid  10 (USD).'] };
+  const unit = { id: 'c', kind: 'claim', text: 'Paid 10 (USD).' };
+  expect(locateUnit(unit, inputs, templates)).toMatchObject({ location: 'body', paragraph: 0, sentence: 1, offset: 18 });
+  expect(locateUnit({ ...unit, text: '10 (USD)' }, inputs, templates)).toMatchObject({ offset: 24 });
+  inputs.output = { body: ['ababa'] };
+  expect(locateUnit({ ...unit, text: 'aba' }, inputs, templates)).toBe('ambiguous source span');
+});
 
 it('locates display fields and body spans despite wrong hints and derives trailing cites', () => {
   const { templates, document, inputs } = fixture();

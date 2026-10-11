@@ -8,3 +8,4 @@ export { extractionResponseSchema, parseExtractionResponse } from './transport.j
 export { instantiateChecks, instantiateChecksReport } from './instantiate.js';
 export type { CheckInstance, InstantiationReport } from './instantiate.js';
 export type { CitationDisagreement } from './location.js';
+export { locateUnit } from './location.js';

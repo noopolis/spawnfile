@@ -2,7 +2,7 @@ import { moveLeadingCitations } from '../format/index.js';
 import type { AtomicUnit, CheckTemplates, DecompositionInputs } from './format.js';
 import { normalizeWhitespace, readPath, textLeaves } from './spans.js';
 
-interface LocatedSpan { location: string; paragraph?: number; sentence?: number; cites: string[] }
+interface LocatedSpan { location: string; paragraph?: number; sentence?: number; offset: number; cites: string[] }
 export interface CitationDisagreement { id: string; supplied: string[]; derived: string[] }
 
 /** Whitespace-only offsets preserve citation ownership when tokens move between sentences. */
@@ -20,16 +20,17 @@ export function locateUnit(unit: AtomicUnit, inputs: DecompositionInputs, templa
   }
   const matches: LocatedSpan[] = [];
   const needle = normalizeWhitespace(unit.text);
+  const pattern = needle.split(' ').map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
   for (const source of sources) {
-    const text = normalizeWhitespace(source.text);
     const body = source.path.length === 2 && source.path[0] === 'body' && Array.isArray(readPath(inputs.output, ['body']));
     const sentences = body ? moveLeadingCitations(Array.from(new Intl.Segmenter('en', { granularity: 'sentence' })
       .segment(source.text), item => item.segment.trim()).filter(Boolean), previous) : [];
-    for (let start = text.indexOf(needle); start !== -1; start = text.indexOf(needle, start + 1)) {
-      const match: LocatedSpan = { location: body ? 'body' : source.path.join('.') || 'output', cites: [] };
+    // Lookahead retains overlapping occurrences; offsets address the original source string.
+    for (const occurrence of source.text.matchAll(new RegExp(`(?=${pattern})`, 'gu'))) {
+      const match: LocatedSpan = { location: body ? 'body' : source.path.join('.') || 'output', offset: occurrence.index, cites: [] };
       if (body) {
         match.paragraph = Number(source.path[1]);
-        const from = width(text.slice(0, start)), to = from + width(needle);
+        const from = width(source.text.slice(0, occurrence.index)), to = from + width(needle);
         let offset = 0;
         sentences.forEach((sentence, index) => {
           const end = offset + width(sentence);
@@ -57,7 +58,8 @@ export function bindLocation(unit: AtomicUnit, located: LocatedSpan): CitationDi
   const supplied = unit.cites;
   delete unit.paragraph;
   delete unit.sentence;
-  Object.assign(unit, located);
+  const { offset: _offset, ...address } = located;
+  Object.assign(unit, address);
   if (supplied && JSON.stringify([...supplied].sort()) !== JSON.stringify(located.cites)) {
     return { id: unit.id, supplied, derived: located.cites };
   }

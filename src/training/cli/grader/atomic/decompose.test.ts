@@ -149,14 +149,14 @@ it('drops and reports normalized audit duplicates without merging different kind
   const file = join(f.decompose.out, (await readdir(f.decompose.out)).find(file => file.endsWith('.checkpoint.json'))!);
   const checkpoint = JSON.parse(await readFile(file, 'utf8'));
   expect(checkpoint.duplicates).toEqual([
-    { id: 'a1', label: 'claim', duplicate_of: 'x1', reason: 'duplicate audit unit: normalized text and kind match' },
-    { id: 'a3', label: 'claim', duplicate_of: 'a2', reason: 'duplicate audit unit: normalized text and kind match' },
+    { id: 'a1', label: 'claim', duplicate_of: 'x1', reason: 'duplicate audit unit: same kind, text and resolved occurrence' },
+    { id: 'a3', label: 'claim', duplicate_of: 'a2', reason: 'duplicate audit unit: same kind, text and resolved occurrence' },
   ]);
   expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ resumed: 1, duplicates: 2 });
   expect(f.generate).toHaveBeenCalledTimes(2);
 });
 
-it('refuses v5 extraction checkpoints before making calls', async () => {
+it('refuses v6 extraction checkpoints before making calls', async () => {
   const f = await fixture();
   await runDecompose(f.decompose, f.dependencies);
   const templates = await readTemplates(f.templatesFile);
@@ -164,8 +164,48 @@ it('refuses v5 extraction checkpoints before making calls', async () => {
   const file = join(f.decompose.out, (await readdir(f.decompose.out)).find(file => file.endsWith('.checkpoint.json'))!);
   const { digest: _digest, ...content } = JSON.parse(await readFile(file, 'utf8'));
   content.identity = stableDigest({ refs: input!.refs, templates, teachers: selectTeachers(templates, f.decompose.extractors),
-    protocol: 'paideia.extraction.v5' });
+    protocol: 'paideia.extraction.v6' });
   await writeFile(file, JSON.stringify({ ...content, digest: stableDigest(content) }));
   await expect(runDecompose(f.decompose, f.dependencies)).rejects.toThrow('Stale decomposition checkpoint');
   expect(f.generate).toHaveBeenCalledTimes(2);
+});
+
+it.each(['paragraph', 'sentence', 'location'])('keeps identical audit claims at a distinct resolved %s', async dimension => {
+  const f = await fixture();
+  const text = 'Dr Alice received 10 dollars';
+  const output = dimension === 'paragraph' ? { body: [`${text} [R1].`, `${text} [R2].`] }
+    : dimension === 'sentence' ? { body: [`${text} [R1]. ${text} [R2].`] }
+      : { headline: text, body: [`${text} [R2].`] };
+  await writeFile(join(f.root, 'output.json'), JSON.stringify(output));
+  await writeFile(join(f.root, 'evidence.md'), '## R1\nDr Alice received 10 dollars.\n## R2\nDr Alice received 20 dollars.');
+  const first = { id: 'same', kind: 'claim', text, location: dimension === 'location' ? 'headline' : 'body',
+    ...(dimension === 'location' ? {} : { paragraph: 0, sentence: 0 }), cites: ['R1'] };
+  const second = { id: 'same', kind: 'claim', text, location: 'body',
+    paragraph: dimension === 'paragraph' ? 1 : 0, sentence: dimension === 'sentence' ? 1 : 0, cites: ['R2'] };
+  const response = (units: unknown[]) => ({ text: JSON.stringify({ units }), model: 'test', usage: null, route: 'subscription' as const });
+  f.generate.mockResolvedValueOnce(response([first])).mockResolvedValueOnce(response([second, second]));
+  expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ rejected: 0, duplicates: 1 });
+  const [loaded] = await readDecompositions(f.decompose.out, await readTemplates(f.templatesFile));
+  expect(loaded!.doc.units).toHaveLength(1);
+  expect(loaded!.doc.audit!.missed).toEqual([{ ...second, id: 'a1', label: 'same' }]);
+  const files = await readdir(f.decompose.out);
+  const report = JSON.parse(await readFile(join(f.decompose.out, files.find(file => file.endsWith('.instantiation.json'))!), 'utf8'));
+  expect(report.checks).toHaveLength(2);
+  expect(report.checks[1]).toMatchObject({ id: 'support@a1', status: 'ready' });
+  expect(JSON.stringify(report.checks[1].projection)).toContain('Dr Alice received 20 dollars.');
+  expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ resumed: 1, duplicates: 1 });
+  expect(f.generate).toHaveBeenCalledTimes(2);
+});
+
+it('resolves audit hints before deduplication and retains unresolved occurrences as rejections', async () => {
+  const f = await fixture();
+  const response = (units: unknown[]) => ({ text: JSON.stringify({ units }), model: 'test', usage: null, route: 'subscription' as const });
+  f.generate.mockResolvedValueOnce(response([f.unit])).mockResolvedValueOnce(response([
+    { ...f.unit, location: 'headline', paragraph: 9, sentence: 9 },
+    { ...f.unit, text: 'Invented' }, { ...f.unit, text: 'Invented' },
+  ]));
+  expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ rejected: 2, duplicates: 1 });
+  const [loaded] = await readDecompositions(f.decompose.out, await readTemplates(f.templatesFile), true);
+  expect(loaded!.doc.audit!.missed).toEqual([]);
+  expect(loaded!.doc.rejected!.map(unit => unit.id)).toEqual(['a2', 'a3']);
 });

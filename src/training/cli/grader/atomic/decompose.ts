@@ -4,8 +4,8 @@ import { InferenceFailure } from '../../../inference/index.js';
 import type { InferenceDiagnostic, InferenceFailureKind } from '../../../contracts/execution.js';
 import type { InferenceProvider, Usage, InferenceAttempt } from '../../../contracts/execution.js';
 import { stableDigest } from '../../../graders/index.js';
-import { parseDecomposition, validateDecomposition, instantiateChecksReport, extractionResponseSchema, parseExtractionResponse, normalizeWhitespace } from '../../../graders/decomposition/index.js';
-import type { CheckTemplates, Decomposition } from '../../../graders/decomposition/index.js';
+import { parseDecomposition, validateDecomposition, instantiateChecksReport, extractionResponseSchema, parseExtractionResponse, normalizeWhitespace, locateUnit } from '../../../graders/decomposition/index.js';
+import type { AtomicUnit, CheckTemplates, Decomposition } from '../../../graders/decomposition/index.js';
 import type { GraderDependencies } from '../backend.js';
 import { createGraderTeacher } from '../label-call.js';
 import { atomicWrite, readInputs, readOptional, readTemplates, type AtomicInput } from './files.js';
@@ -105,7 +105,7 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
   let completed = 0, resumed = 0, rejected = 0, dropped = 0, duplicates = 0;
   for (const input of inputs) {
     options.signal?.throwIfAborted();
-    const identity = stableDigest({ refs: input.refs, templates, teachers, protocol: 'paideia.extraction.v6' });
+    const identity = stableDigest({ refs: input.refs, templates, teachers, protocol: 'paideia.extraction.v7' });
     const basename = stableDigest(input.id);
     const checkpointFile = join(options.out, `${basename}.checkpoint.json`);
     const decompositionFile = join(options.out, `${basename}.decomposition.json`);
@@ -135,16 +135,24 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
     if (!checkpoint.complete) {
       const teacher = teachers[1] ?? teachers[0]!;
       const result = await extract(input, templates, teacher, (dependencies.provider ?? createGraderTeacher)(teacher), checkpoint, save, options.signal);
-      const key = (unit: { kind: string; text: string }) => JSON.stringify([unit.kind, normalizeWhitespace(unit.text)]);
+      const key = (unit: AtomicUnit) => {
+        const located = locateUnit(unit, input, templates);
+        if (typeof located === 'string') return undefined;
+        return JSON.stringify([unit.kind, normalizeWhitespace(unit.text), located.location,
+          located.paragraph, located.sentence, located.offset]);
+      };
       const seen = new Map(checkpoint.decomposition!.units.map(unit => [key(unit), unit.id]));
       const missed = result.units.filter(unit => {
-        const duplicate = seen.get(key(unit));
+        const identity = key(unit);
+        // Unresolved spans must reach validation and remain visible as rejections.
+        if (identity === undefined) return true;
+        const duplicate = seen.get(identity);
         if (duplicate !== undefined) {
           checkpoint.duplicates.push({ id: unit.id, label: unit.label, duplicate_of: duplicate,
-            reason: 'duplicate audit unit: normalized text and kind match' });
+            reason: 'duplicate audit unit: same kind, text and resolved occurrence' });
           return false;
         }
-        seen.set(key(unit), unit.id);
+        seen.set(identity, unit.id);
         return true;
       });
       const validated = validateDecomposition(parseDecomposition({ ...checkpoint.decomposition,

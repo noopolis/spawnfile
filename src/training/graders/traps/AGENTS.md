@@ -18,6 +18,8 @@ validation rejection, keep source/tests under 400 lines and coverage above 90%.
 Substitutions remove every occurrence of the chosen fact from claim text and
 update fields consistently. Independently reject any surviving original value;
 numeric equivalence uses parsed values (commas, decimal zeroes and percentage
-numbers), while citations remain unchanged. Reject bound, approximation and range
-occurrences before construction and independently in validation. Entity survival
+numbers), while citations remain unchanged. Number traps are deliberately limited to exact, unqualified quantities: reject
+bound, approximation or comparison vocabulary and range constructions anywhere
+in the entire unit text or any claim field, before construction and independently
+in validation. Qualifiers on other quantities also make the whole unit ineligible. Entity survival
 checks ignore case and normalize whitespace.

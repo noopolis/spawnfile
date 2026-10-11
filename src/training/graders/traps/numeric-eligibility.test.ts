@@ -3,7 +3,7 @@ import { instantiateChecks, validateDecomposition } from '../decomposition/index
 import { fixture } from './fixtures.js';
 import { generateTraps, validateTrap } from './index.js';
 import { mutationFor, replaceLeaf } from './mutations.js';
-import { exactNumber, numeric } from './preconditions.js';
+import { exactQuantities, numeric } from './preconditions.js';
 import type { Trap } from './types.js';
 
 const baseFinals = { 'supported@c1': 'supported', 'supported@c2': 'supported' };
@@ -74,7 +74,12 @@ const qualified = ['at most 10', 'at least 10', 'up to 10', 'more than 10', 'les
   'nearly 10', 'almost 10', 'approximately 10', 'some 10', '~10', '~ 10',
   'AT\tMOST 10', 'about $10', '10-12', '8-10', '10–12', '8—10', '10 to 12',
   'between 10 and 12', 'between 8 and 10', 'between 8 dollars and 10',
-  '10%-12%', 'between 8% and 10%', '10 or about 10.00'];
+  '10%-12%', 'between 8% and 10%', '10 or about 10.00',
+  '10 dollars at most', 'at most USD 10', 'between 8 US dollars and 10', '10 at most',
+  '10 or so', '10 plus', 'minimum 10', '10 maximum', 'fewer than 10', '>10', '<10', '≥10', '≤10',
+  'from 8 US dollars to 10', '8 US dollars to USD 10', '8 US dollars—USD 10',
+  'about 20 dollars and 10', '10 dollars and between 2 US dollars and 4',
+  '10 dollars and from 2 US dollars to 4', '10 dollars and 2 US dollars–USD 4'];
 it.each(qualified)('rejects non-exact values at construction and independent validation: %s', quantity => {
   const f = claim(`Dr Alice received ${quantity} dollars`);
   expect(constructed(f)).toBeUndefined();
@@ -84,14 +89,27 @@ it.each(qualified)('rejects non-exact values at construction and independent val
   expect(validateTrap(trap, f.document.units[0]!, f.inputs, f.templates).reasons)
     .toEqual(['number is bounded, approximate or part of a range']);
 });
-it('targets only equal-valued quantities and ignores citation qualifiers', () => {
-  expect(exactNumber('Dr Alice received 10 and 12 dollars', '10')).toBe(true);
-  expect(exactNumber('Dr Alice received about 20 dollars and 10 items', '10')).toBe(true);
-  expect(exactNumber('Dr Alice received 10 dollars, and 12 items', '10')).toBe(true);
+it('accepts exact whole units and rejects qualifiers even inside citation text', () => {
+  expect(exactQuantities({ text: 'Dr Alice received 10 and 12 dollars' })).toBe(true);
+  expect(exactQuantities({ text: 'Dr Alice received about 20 dollars and 10 items' })).toBe(false);
+  expect(exactQuantities({ text: 'Dr Alice received 10 dollars, and 12 items', fields: { quantity: undefined } })).toBe(true);
   const f = claim('Dr Alice received 10 dollars');
   f.templates.context.evidence!.rows!.cite = '\\[about (R[0-9]+)\\]';
   f.document.units[0]!.text = 'Dr Alice received [about R1] 10 dollars.';
   f.inputs.output = { body: [f.document.units[0]!.text] };
-  expect(constructed(f)).toBeDefined();
+  expect(constructed(f)).toBeUndefined();
   expect(numeric('1,000.00')).toBe(1000);
+});
+
+it.each(['at most USD 10', '10 dollars at most', 'between 8 US dollars and 10',
+  'from 8 US dollars to 10', '8 US dollars—USD 10'])('checks every claim field independently: %s', quantity => {
+  const f = claim('Dr Alice received 10 dollars');
+  const trap = forged(f, 'Dr Alice received 11 dollars [R1].');
+  for (const field of ['actor', 'action', 'object', 'time', 'modality', 'quantity'] as const) {
+    const unit = { ...f.document.units[0]!, fields: { [field]: quantity } };
+    expect(exactQuantities(unit)).toBe(false);
+    expect(mutationFor('number-substitution', unit, f.document, f.inputs, f.templates, '0')).toBeUndefined();
+    expect(validateTrap(trap, unit, f.inputs, f.templates).reasons)
+      .toEqual(['number is bounded, approximate or part of a range']);
+  }
 });

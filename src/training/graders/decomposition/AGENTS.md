@@ -7,7 +7,9 @@ Whitespace normalization may reconcile layout, never invent text. Rejected spans
 and missing state remain observable. Persist rejected units and reasons; each stored
 rejection instantiates one missing check. Unit paragraph/sentence indices are zero based.
 Validation locates normalized spans; unique matches override hints, and ambiguous
-occurrences require consistent hints. Body citations derive from runtime segments
+occurrences require consistent hints. The public locateUnit resolver also returns
+the raw source character offset for occurrence identity; offsets are recomputed,
+not extractor hints or persisted unit fields. Body citations derive from runtime segments
 under declared row patterns and leading-citation policy; disagreements are reported.
 Location-scoped templates report exclusions through instantiateChecksReport. Source spans must occur in cited rows; drop and report invalid hints without rejecting verified units.
 Drop and report fields absent from unit text; missing applicability fields create

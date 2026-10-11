@@ -118,10 +118,12 @@ paragraph and sentence hints; multiple occurrences require hints consistent with
 exactly one match. Zero matches and unresolved ambiguity are rejected.
 The CLI assigns `x1`, `x2`, … to extraction units and `a1`, `a2`, … to audit units
 in response order, retaining each extractor ID as `label`. Audit units matching an
-existing unit's whitespace-normalized text and kind are dropped; checkpoint
+existing unit's kind, whitespace-normalized text and resolved occurrence (location,
+paragraph, sentence and raw source character offset) are dropped. Identical text
+at a different occurrence is retained; unresolved spans still reach validation. Checkpoint
 `duplicates` records their IDs, labels, matching IDs and reasons, and the command
 summary reports their count. Repeats within the audit response are also dropped.
-Extraction protocol v6 rejects earlier checkpoints; regenerate in a fresh directory.
+Extraction protocol v7 rejects earlier checkpoints; regenerate in a fresh directory.
 The decomposition persists each rejected unit with its text and rejection reasons.
 Both `traps` and `reference` refuse these artifacts unless `--allow-rejections`
 is explicit. With that flag, each rejected unit remains one missing check in the
@@ -223,6 +225,15 @@ validation recomputes preconditions from the saved variant and source rows:
   preserve digit count and precision, differ by at most 20%, and occur nowhere
   in cited rows. Every occurrence of the selected numeric value is replaced,
   including equivalent comma formatting, while citation tokens are preserved.
+  Number traps are deliberately limited to exact, unqualified quantities. The
+  entire unit text (including citation text) and every claim field must contain no
+  bound, approximation or comparison vocabulary: at most, at least, up to, more
+  than, less than, fewer, over, under, above, below, about, around, roughly, nearly,
+  almost, approximately, some, or so, plus, minimum, maximum, ~, >, <, ≥ or ≤.
+  They must also contain no range construction: between … and, from … to, or a
+  dash or “to” between numbers, including intervening currency/unit words.
+  Qualifiers on other quantities also exclude the whole unit. Construction and
+  independent validation recompute the same eligibility rule.
   Measurement units remain unchanged. Unchanged option controls retain the
   legitimate base number; format controls also exercise comma normalization when
   available.

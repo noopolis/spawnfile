@@ -1,7 +1,7 @@
 import { stableDigest } from '../format/index.js';
 import { evidenceRows, normalizeWhitespace, readPath, textLeaves } from '../decomposition/index.js';
 import type { AtomicUnit, CheckTemplates, Decomposition, DecompositionInputs, TrapKind } from '../decomposition/index.js';
-import { affirmativeCounterpart, articleEntities, entityType, coReferent, exactNumber, maskCitations, withoutHeadings, negationAuxiliary, numbers, numeric, plausibleNumber } from './preconditions.js';
+import { affirmativeCounterpart, articleEntities, entityType, coReferent, exactQuantities, maskCitations, withoutHeadings, negationAuxiliary, numbers, numeric, plausibleNumber } from './preconditions.js';
 import type { TrapMutation } from './types.js';
 
 export function replaceLeaf(output: unknown, path: string[], after: string): unknown {
@@ -50,8 +50,8 @@ export function mutationFor(kind: TrapKind, unit: AtomicUnit, _document: Decompo
   let replacement: string | undefined;
   let valueBefore: string | undefined;
   let valueAfter: string | undefined;
-  if (kind === 'number-substitution' && cited) {
-    valueBefore = numbers(claim).find(value => exactNumber(claim, value) && numbers(cited).some(item => numeric(item) === numeric(value)));
+  if (kind === 'number-substitution' && cited && exactQuantities(unit)) {
+    valueBefore = numbers(claim).find(value => numbers(cited).some(item => numeric(item) === numeric(value)));
     if (valueBefore) {
       const precision = valueBefore.split('.')[1]?.length ?? 0;
       const step = 10 ** -precision;
