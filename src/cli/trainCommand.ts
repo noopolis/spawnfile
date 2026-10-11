@@ -17,13 +17,15 @@ export const registerTrainCommand = (
   signal?: AbortSignal
 ): void => {
   const command = program.command("train")
-    .description("Train one canonical agent through Paideia's isolated native integration")
+    .description("Plan, rewind, or train one canonical agent through its declared training inputs")
     .argument("[path]", "Canonical project directory or Spawnfile path", process.cwd())
     .option("--agent <id>", "Exact canonical agent node id (inferred only for a single-agent project)")
     .option("--paideia-command <executable>", "Installed Paideia executable; no shell or automatic install", "paideia")
     .option("--training-image <immutable-image>", "Pinned image containing the complete training environment")
     .option("--training-config <json>", "V2 image recipe and declared inputs, or advanced v1 local bindings")
     .option("--plan", "Print the resolved training authoring plan without executing training")
+    .option("--materialize <example>", "Rewind an authored example into --out without running training")
+    .option("--history <directory>", "Local recorded history for --materialize")
     .option("--dry-run", "Validate and estimate without compiling, authenticating or starting models")
     .option("--repair-measurements <parent-out>", "Fork captured work into a fresh output for authorized measurement repair")
     .option("--repair-witness <manifest>", "Explicit verified image witness for a legacy parent")
@@ -31,9 +33,32 @@ export const registerTrainCommand = (
   for (const name of forwarded) {
     const flag = `--${name} <value>`;
     if (repeated.has(name)) command.option(flag, `Paideia ${name}; repeatable`, (value: string, previous: string[]) => [...previous, value], []);
-    else command.option(flag, `Paideia ${name}`);
+    else command.option(flag, name === "out" ? "Output directory for training or moment materialization" : `Paideia ${name}`);
   }
   command.action(async (inputPath: string, options: Record<string, string | string[] | boolean | undefined>) => {
+    if (typeof options.materialize === "string") {
+      if (options.plan === true) {
+        throw new SpawnfileError("validation_error", "--materialize and --plan are mutually exclusive");
+      }
+      if (typeof options.out !== "string") {
+        throw new SpawnfileError("validation_error", "--materialize requires --out");
+      }
+      const project = await handlers.loadTrainingProject(inputPath);
+      const plan = handlers.resolveTrainingPlan(project, options.agent as string | undefined, packageVersion);
+      const moment = await handlers.materializeTrainingMoment({ plan, project, example: options.materialize,
+        historyDir: options.history as string | undefined, out: options.out });
+      if (moment.status === "refused") {
+        streams.stderr(`error: Moment refused: ${moment.inputs.filter((input) => input.refusal !== null).length} input refusal(s), ${moment.leakCheck.findings} leak finding(s); see moment.json in --out`);
+        setExitCode(1);
+      } else {
+        streams.stdout(JSON.stringify(moment, null, 2));
+        setExitCode(0);
+      }
+      return;
+    }
+    if (options.history !== undefined) {
+      throw new SpawnfileError("validation_error", "--history requires --materialize");
+    }
     if (options.plan === true) {
       const plan = await handlers.createTrainingPlan(inputPath, {
         agent: options.agent as string | undefined, packageVersion

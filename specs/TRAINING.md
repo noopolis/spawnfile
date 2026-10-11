@@ -155,68 +155,9 @@ appears between the `training-plan-schema` markers below.
 
 ## Moment record
 
-`spawnfile.moment-record.v1` records one turn attempt of one compiled agent. Recording MUST
-be off without an effective `record`, with no recording I/O or artifact changes when
-off, except reconciliation owed by an earlier recorded deployment or landing. Recording requires a Daimon runtime whose receipt-bound contract manifest declares
-`wakeMoments` version `noopolis.daimon.wake-moment.v1` and consumes `agents[].recording`;
-other runtimes or a missing capability fail compile. Enabling it requires a capable
-Daimon release and a `runtimes.yaml` / contract-manifest re-pin, never a version guess.
-
-The compiler emits per-agent `recording: {directory, keepMs, snapshots:[{id,path}]}`.
-The directory is `/var/lib/spawnfile/recording/<agent slug>`, a runtime-owned `0700`
-exclusive-reattach volume; snapshot paths are the resolved unfed volume backing roots,
-not workspace symlinks. Recording stores receive the same deletion guard as memory.
-
-`spawnfile record sync [path] [--deployment <name>]` selects a deployment like `usage`,
-reads wake rows and memory ledgers in bounded exec chunks, and joins host histories using
-the compiled agent facts from the activation entry in effect at each row's `started_at`.
-Missing activation entries or agent facts MUST set `exact:false` with a reason, including
-when the agent has no resource pins. Today's deployment facts MUST NOT fill historical gaps.
-It writes private `0600` records via temporary file, fsync and rename to
-`<deployment state dir>/moments/<agent slug>/<compact startedAt>-<sanitized executionId>-<row hash>.json`.
-For project records the state directory is `<output>/deployments/<name>/`; for home
-records it is `~/.spawnfile/deployments/<name>/`, scoped to the same identity as the
-sibling resource log. The row hash is the first 12 lowercase hex characters of SHA-256
-over canonical wake-row JSON (object keys sorted recursively, array order preserved).
-Existing records are never rewritten. Replays may share both `executionId` and `startedAt`;
-different row contents produce distinct attempt filenames, while resync skips the same row. Moment
-retention deletes attempts older than `now - keep`, preserving the newest per agent
-(including ties). Snapshots remain in the deployment's recording volume; records name
-them, and P4 reads them. Non-exact records do not fail sync; operational failures do.
-
-All instants MUST use one host clock, shared by its containers, and include an offset
-or `Z`. Every pin MUST describe state in effect at `wake.startedAt`, not capture time.
-A later `recordedAt` MUST NOT advance a pin.
-
-- `agent` MUST be the exact compiled node ID; `recordedAt` is the capture instant.
-- `wake` MUST contain `at`, `startedAt`, `executionId`, and nonempty `deliveries` of
-  `{deliveryId, kind, occurredAt}`. `at` is the first delivery's `occurred_at` (real wake
-  time); `startedAt` is when the turn began. Queued deliveries can precede that instant.
-  `surface`, `room`, `from`, and `messageId` are OPTIONAL, derived from a
-  `moltnet:<id>` delivery and its Moltnet message when available; other deliveries
-  MUST NOT invent Moltnet metadata.
-- `resources` MUST use `{id, kind:"git", commit, sha256?}` or
-  `{id, kind:"bundle", sha256}` from the deploy resource entry in effect at
-  `startedAt`, selected by deployment record identity and `agent_node_ids` containing
-  that exact agent node ID. Bundles have no commit. An inexact activation boundary
-  MUST set the moment's `exact:false`; an overlapping predecessor can still run old pins.
-- `feeds` MUST use `{id, revision, tree, commit?, ref?, paths?, landedAt, period?}`
-  from the landing entry in effect at `startedAt` for each consumed fed volume.
-  A wake inside the inclusive `[switching_at, landed_at]` transition window MUST
-  set `exact:false`; the helper returns that landing with `ambiguous:true`.
-- `memory` MUST use `{id, declaredBy, seq}` for each accessible bank. `seq` is the
-  highest Mneme ledger sequence whose `createdAt <= startedAt`; 0 means empty.
-  `generation` is OPTIONAL and MUST be omitted while Mneme has no generations.
-  Mneme's append-only `events.jsonl` is the source of truth; there are no curation
-  archives or generations to pin today.
-- `moltnet` MUST use `{network, cursor}` with `cursor = startedAt`. Visible history
-  contains messages with `created_at <= cursor`: server timestamps order history,
-  while message IDs do not order messages across rooms. OPTIONAL `messageIds` lists
-  wake message IDs, not a history cursor.
-- `volumes` MUST use `{id, snapshot}` for each successful pre-turn snapshot of an
-  effective `record.volumes` root. A failed root MUST be omitted and named in OPTIONAL
-  `errors: [string]`. REQUIRED `exact` MUST be `false` on any snapshot or pin failure;
-  otherwise it MUST be `true`. Missing or invalid history MUST NOT be guessed.
+`spawnfile.moment-record.v1` specifies one record per wake; rewind consumes this format,
+while the recording phase produces it. Recording MUST be off unless an effective `record` exists,
+with zero recording cost when off. `record.keep` is snapshot retention.
 
 ```json
 {
@@ -367,6 +308,265 @@ Mneme stays independent and its ledger MUST NOT be truncated by recording retent
 
 Rewind MUST use records when present; otherwise it is best effort and the trial MUST
 be labelled as such.
+
+## Rewind
+
+```sh
+spawnfile train ./Spawnfile --agent agent:writer --materialize train:ice-shooting --history ./history --out ./moment
+```
+
+`--materialize <example>` MUST require the existing `--out` option and follows
+the plan's exact-agent selection (inferred only for a single-agent project).
+It requires neither `--train` nor `--training-config`. It is mutually exclusive
+with `--plan`. `--history` is OPTIONAL and applies only to materialization. The
+command resolves the authoring plan and selected example using local files. It
+MUST NOT invoke cognition, Paideia, Docker, authentication, network access, or
+compiled-artifact emission. `materializeTrainingMoment({plan, project, example,
+historyDir?, out})` exposes the same operation to trial preparation. Selection,
+input enumeration, and historical cuts are available as pure library functions.
+
+The example selector is an ID from the agent's plan targets. If that ID occurs
+in several dataset/role pairs it MUST be qualified as `train:<id>`,
+`validation:<id>`, or `test:<id>`. Repeated references to the same dataset, role,
+and example are one candidate. A qualified selector that still matches several
+datasets MUST refuse. Ambiguity errors MUST list role, ID, and dataset for every
+candidate.
+
+### Inputs and history
+
+Inputs are EVERY effective item in the agent's compiled `workspaceResources`,
+accessible `memoryAccess` banks deduplicated by bank source, and Moltnet networks
+in its resolved surface attachments, including representative attachments. Each
+input is identified by `{section, id, declaredBy}`, using the same declaring-node
+resolution as authoring-plan overrides. Sections are `resources`, `memory`, and
+`networks`. A dataset example's full declaration replaces the effective item
+with the same section and ID; the plan guarantees exactly one match. Relative
+paths in replacement declarations resolve from the dataset file's directory.
+Every input MUST materialize successfully; present-day data MUST NOT substitute
+for unavailable history.
+
+The history consumer layout is normative:
+
+```text
+DIR/
+  moments/*.jsonl
+  git/<declaredBy>/<id>/
+  feeds/<declaredBy>/<id>/landings.jsonl
+  feeds/<declaredBy>/<id>/repo/
+  feeds/<declaredBy>/<id>/trees/<revision>/
+  memory/<declaredBy>/<id>/events.jsonl
+  memory/<declaredBy>/<id>/generations.jsonl
+  moltnet/<declaredBy>/<id>/state.json | moltnet.sqlite
+  volumes/<declaredBy>/<id>/snapshots.jsonl
+  volumes/<declaredBy>/<id>/objects/<sha256>
+```
+
+`<declaredBy>` MUST be `encodeURIComponent` of the node ID: `agent:writer`
+becomes `agent%3Awriter`. IDs and content-addressed names MUST be safe path
+segments. Every read MUST remain inside `DIR` both lexically and after realpath
+resolution; symlink escapes MUST refuse. History repositories MAY be bare or
+ordinary repositories and MUST remain unmodified. Every JSONL line MUST be
+validated strictly; an invalid line MUST refuse affected inputs and identify
+the history file, line, and reason. History writers use these line shapes:
+
+- `moments/*.jsonl`: one `spawnfile.moment-record.v1` object per line, any filename.
+- `landings.jsonl`: `{revision, tree, commit, ref, paths, landedAt}`.
+  `revision` is the lowercase 64-hex feed digest; `tree` names that revision,
+  optionally with its re-land generation or `trees/` prefix. Directory sources
+  use `null` commit/ref/paths; git sources require commit/ref, with `null` or `[]`
+  paths denoting the whole tree.
+- OPTIONAL `generations.jsonl`: `{generation, switchedAt, ledger}`, with `ledger`
+  relative to that bank's directory and naming its current or archived ledger.
+- `snapshots.jsonl`: `{snapshot, takenAt, parent, files}`, where `parent` is a
+  snapshot ID or `null`; `files` maps changed relative paths to SHA-256 digests or
+  `null` for deletion. `objects/<sha256>` contains each referenced file's bytes.
+
+Moment records match when `agent` equals the plan agent ID and `wake.at` is the
+same parsed instant as example `at`; different offset spellings are equivalent.
+Several matching records MUST agree in every field used for the selected
+inputs, otherwise the moment refuses. No matching record triggers each input's
+fallback rule. Fallbacks are labelled `approximate`; independent immutable pins
+and landing logs retain the exact fidelity specified below. All timestamp
+comparisons MUST compare instants, preserving RFC3339 nanoseconds where present,
+never timestamp strings or UUID order. Boundary instants equal to `at` are included.
+
+### Per-input reconstruction and fidelity
+
+Each successful input reports `fidelity: exact | approximate | overridden`, a
+`basis`, and the selected source identifiers. Explicit overrides report
+`overridden` and `basis: override`. A replacement git/bundle declaration must
+still supply locally available historical bytes. A replacement memory bank,
+network, or volume starts fresh: an empty bank/volume, or an empty network store
+with its declared rooms. A network override writes a fresh `state.json` snapshot
+regardless of its declared storage backend; trial preparation consumes or imports
+that snapshot. With no `--history`, only locally materializable pins
+and explicit overrides can succeed; everything else refuses.
+
+Git resources and source-backed bundles select a full 40- or 64-hex declared
+commit first (`exact`, `pinned`), otherwise the matching record's resource
+commit (`exact`, `record`). Otherwise they walk the declared selector's
+first-parent history and choose its newest commit with committer time `<= at`
+(`approximate`, `selector-at`); an absent selector means `HEAD`. Commit dates
+do not establish when a commit reached a branch or tag, so this fallback cannot
+prove historical ref membership. A missing eligible commit refuses.
+
+Git output MUST be a clean new repository containing only objects reachable
+from the selected commit, with one checked-out branch, no remotes, tags, source
+packed refs, reflogs, `FETCH_HEAD`, or `ORIG_HEAD`. Git commands use argv without
+a shell and sanitized configuration. History MUST NOT be mutated. The leak
+check also rejects any reachable ancestor with author or committer time after
+`at`. Bundle `build.files` extracts `files.root` at the selected commit and honors
+`exclude`. `build.dependencies` and `build.generated` retain their source
+directory or declared inputs at that commit and report `build: deferred`;
+trial preparation owns builds. Bundle output MAY be a plain tree. A prebuilt
+`source` tar without a record or explicit override is un-rewindable and refuses.
+Generated inputs spanning multiple repositories or independently pinned input
+refs cannot be represented by this one-repository/one-commit history contract
+and MUST refuse. Bundle roots whose historical repository prefix cannot be
+established also refuse. Bundle file trees preserve the existing compiler's
+symlink refusal; excluded symlinks do not need materialization.
+
+Fed volumes select the newest landing with `landedAt <= at` when a landing log
+exists (`exact`, `landing-log`); no eligible landing refuses. A matching record
+feed entry MUST agree with that landing. Without a log, a plain git feed expands
+its ref template and paths using `at`, including `${date}` in UTC and
+`${date:<IANA zone>}` in that zone. The primary ref is used only if it has an
+eligible first-parent commit; otherwise the declared fallback is tried. Its
+newest eligible commit is `approximate`, `feed-rule-at`. Commands, directory
+feeds, and freeze/waiting behavior cannot reconstruct historical landings
+without a log and MUST refuse. Ref dates alone do not capture earlier freeze
+holds or when a producer made a ref available.
+
+Feed bytes come from OPTIONAL retained `trees/<revision>/` when available.
+Otherwise a plain git feed re-extracts the landing's expanded paths at its commit
+and MUST verify the revision with the existing feed revision function. A mismatch
+refuses. `include` or `prepare` requires retained bytes; rewind MUST NOT run them.
+Unrecorded repository-local `info/attributes` also requires retained bytes;
+reconstruction otherwise honors the commit's archive attributes.
+Output preserves the agent-visible `trees/<revision>/`, relative `current`
+symlink, and `.spawnfile-feed.json` (`spawnfile.volume-feed.v1`). Its `landed_at`
+is the selected landing time, or the selected commit's committer time for an
+approximation, always `<= at`.
+
+Memory selects the generation with greatest `switchedAt <= at`, refusing if
+the generation log contains none or its archived ledger is unavailable. Without
+a generation log, the sole current ledger is treated as original generation 0;
+a record naming another generation refuses. A matching record MUST name the
+selected generation. Its `seq` selects the first `seq` ledger lines (`exact`,
+`record`). Otherwise selection stops before the FIRST event after `at`
+(`approximate`, `created-at-prefix`): subsequent clock regression never reopens
+the cut. The prefix MUST end in LF, contain contiguous sequences from 1, and
+contain only nondecreasing event times `<= at`. Legacy seq-less events are
+allowed only as a leading run. Invalid sequence or time ordering refuses.
+
+Memory output is `memory/<declaredBy>/<id>/memory/events.jsonl`. It MUST exclude
+`index.sqlite`, `causal*`, `authority-receipts.jsonl`, and `authority-receipts/`.
+The installed Mneme 0.1.1 package publicly exports `createMemoryIndex`; rewind
+rebuilds a temporary index from the selected ledger through this root API,
+verifies it can be queried, then discards it. No deep imports are permitted.
+Mneme rebuilds from its ledger before kernel searches; opening an index alone
+does NOT rebuild it. Trial preparation must retain that search/rebuild behavior.
+Mneme remains a development dependency: if its public rebuild API is unavailable,
+historical memory materialization refuses explicitly without auto-installing it.
+Missing bank history also refuses unless the bank is overridden.
+
+Moltnet JSON and SQLite stores remove messages, rooms, and attachment-delivery
+events after `at`. Empty threads/DMs and threads/DMs whose root is after the cut
+are dropped. Thread/DM message counts and last-message times are recomputed;
+attachment cursors are clamped/remapped to retained events. Room removals after
+`at` are undone when removal time and restorable room metadata exist; a missing
+historical removal time retains current removal state. Agents and memberships
+have no historical log and are retained as now, explicitly disclosed in input
+`notes`: even a cursor-exact content cut cannot prove historical membership.
+SQLite changes apply only to a copy through `node:sqlite` on the supported
+Node >=22.19 line; if that API is unavailable, SQLite rewind refuses. RFC3339Nano
+fractions with omitted trailing zeros MUST be compared as parsed instants.
+A record cursor yields `exact`, `record-cursor` only if it identifies a retained
+message and no retained message is later than that cursor's message. Otherwise
+fidelity is `approximate`, `created-at-cut`. Missing stores refuse unless overridden.
+
+Unfed volumes choose the newest snapshot with `takenAt <= at`. A record MUST
+name that snapshot or an ancestor-consistent exact snapshot; a valid record is
+`exact`, otherwise selection is `approximate`. The full parent chain is replayed
+from its root, including deletions, and every copied object is SHA-256 verified.
+Missing history, missing parents/objects, or no eligible snapshot refuses.
+Materialized content must equal the replayed snapshot, checked independently.
+
+All materialized files and directories MUST have atime/mtime `<= at`, using the
+source commit, landing, event, or snapshot instant capped at `at`. Symlink times
+MUST be set with `lutimes`; following a symlink to set times is insufficient.
+
+### Task clock
+
+`task-clock.json` is strict `spawnfile.task-clock.v1` with `{version, origin}`;
+`origin` is the example instant normalized to ISO-8601 with `Z`. The pure helper
+`taskClockEnvironment(origin, anchorEpochMs)` accepts a caller-supplied safe
+integer real launch anchor in milliseconds and returns these string variables:
+
+| Variable | Value |
+| --- | --- |
+| `NOOPOLIS_TASK_CLOCK` | Compact JSON `{"version":"noopolis.task-clock.v1","origin":"<ISO Z>","anchorEpochMs":<int>}` |
+| `MNEME_CLOCK_ORIGIN` | The same normalized origin |
+| `MNEME_CLOCK_ANCHOR_MS` | Decimal anchor milliseconds |
+| `FAKETIME` | `@YYYY-MM-DD HH:MM:SS`, expressed in UTC |
+| `FAKETIME_DONT_FAKE_MONOTONIC` | `1` |
+
+Daimon consumes the cross-repository `noopolis.task-clock.v1` contract: reported
+agent wall time is `origin + (realNow - anchorEpochMs)`. Mneme consumes its generic
+clock variables. The libfaketime values take effect only in capable images with
+`LD_PRELOAD` configured by trial preparation. The clock offsets reported wall
+time; real timeouts and monotonic elapsed time MUST remain real. Rewind neither
+sleeps on nor advances a synthetic scheduler. Trial preparation owns the anchor
+and runtime environment; the immutable bundle carries only the origin.
+
+### Independent leak check and output
+
+The leak checker MUST re-read the bundle from disk independently of materializer
+state. Its strict `spawnfile.leak-check.v1` result contains `{version, at, ok,
+checked, findings}`; counters cover files, git objects, memory events, Moltnet
+messages/events, and snapshots. Each finding carries `{input, class, path,
+detail}`; `input` is an input identity or `null` for bundle-level problems.
+Every finding refuses the moment:
+
+| Class | Refusal condition |
+| --- | --- |
+| `file-time` | A file, directory, or symlink mtime is after `at`. |
+| `symlink-escape` | An absolute link or a lexically/physically escaping link resolves outside the bundle. |
+| `git-object` | Any commit author/committer time is after `at`, any object is unreachable from the selected commit, or refs/remotes/reflogs/fetch metadata exceed the single branch. |
+| `memory-event` | Future ledger events, sequence gaps, invalid prefix ordering, or derived/audit files are present. |
+| `moltnet-message` / `moltnet-event` / `moltnet-room` | Retained messages, delivery events, or rooms are after `at`. |
+| `feed-identity` | `landed_at` is after `at` or `current` does not target a tree inside the volume. |
+| `dated-path` | A path segment contains a calendar date `YYYY-MM-DD` later than the UTC date of `at + 14h`, the latest possible local date. |
+| `snapshot` | An unfed volume differs from its selected replayed snapshot. |
+
+`OUT` MUST be absent or an empty directory. The materializer builds in a sibling
+staging directory and renames into place only after the disk leak check passes:
+
+```text
+OUT/
+  moment.json
+  leak-check.json
+  task-clock.json
+  resources/<declaredBy>/<id>/...
+  memory/<declaredBy>/<id>/memory/events.jsonl
+  moltnet/<declaredBy>/<id>/...
+```
+
+`moment.json` is strict `spawnfile.materialized-moment.v1`: status, agent,
+`example: {id, role, dataset}`, normalized `at`, sorted inputs, `record: {matched}`,
+and `leakCheck: {ok, findings}`. Inputs sort by section, declaring node, then ID;
+each reports kind, fidelity (or `null` on refusal), basis, source identifiers,
+relative output path (or `null`), notes, and refusal reason (or `null`). Deferred
+bundle builds additionally report `build: deferred`.
+
+On any input refusal or leak, staging is removed and `OUT` contains ONLY
+`moment.json` with `status: refused`, all refusal reasons, and `leak-check.json`
+if the check ran. Partial input data and task-clock files MUST NOT remain usable.
+Success prints `moment.json` to stdout as JSON and exits 0. Refusal emits a
+one-line stderr summary and exits 1. Invalid flags, projects, or example
+selections can fail before a moment exists and need not create a report.
+Generated schemas for the three bundle documents appear below; schema-sync
+tests MUST keep them identical to the exported runtime contracts.
 
 ## Public handoff
 
@@ -1318,3 +1518,411 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
 }
 ```
 <!-- training-plan-schema:end -->
+
+## Materialized moment JSON Schema
+
+<!-- materialized-moment-schema:start -->
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "spawnfile.materialized-moment.v1"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "materialized",
+        "refused"
+      ]
+    },
+    "agent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "example": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "train",
+            "validation",
+            "test"
+          ]
+        },
+        "dataset": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "role",
+        "dataset"
+      ],
+      "additionalProperties": false
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "section": {
+            "type": "string",
+            "enum": [
+              "resources",
+              "memory",
+              "networks"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "declaredBy": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "git",
+              "bundle",
+              "feed",
+              "volume",
+              "memory",
+              "moltnet"
+            ]
+          },
+          "fidelity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "exact",
+                  "approximate",
+                  "overridden"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "basis": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "commit": {
+                "type": "string",
+                "minLength": 1
+              },
+              "revision": {
+                "type": "string",
+                "minLength": 1
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "generation": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "snapshot": {
+                "type": "string",
+                "minLength": 1
+              },
+              "cursor": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "refusal": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "build": {
+            "type": "string",
+            "const": "deferred"
+          }
+        },
+        "required": [
+          "section",
+          "id",
+          "declaredBy",
+          "kind",
+          "fidelity",
+          "basis",
+          "source",
+          "path",
+          "notes",
+          "refusal"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "record": {
+      "type": "object",
+      "properties": {
+        "matched": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "matched"
+      ],
+      "additionalProperties": false
+    },
+    "leakCheck": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "findings": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "ok",
+        "findings"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "version",
+    "status",
+    "agent",
+    "example",
+    "at",
+    "inputs",
+    "record",
+    "leakCheck"
+  ],
+  "additionalProperties": false
+}
+```
+<!-- materialized-moment-schema:end -->
+
+## Leak check JSON Schema
+
+<!-- leak-check-schema:start -->
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "spawnfile.leak-check.v1"
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "checked": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "gitObjects": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "memoryEvents": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "moltnetMessages": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "moltnetEvents": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "snapshots": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "files",
+        "gitObjects",
+        "memoryEvents",
+        "moltnetMessages",
+        "moltnetEvents",
+        "snapshots"
+      ],
+      "additionalProperties": false
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "section": {
+                    "type": "string",
+                    "enum": [
+                      "resources",
+                      "memory",
+                      "networks"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "declaredBy": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "section",
+                  "id",
+                  "declaredBy"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "class": {
+            "type": "string",
+            "enum": [
+              "file-time",
+              "symlink-escape",
+              "git-object",
+              "memory-event",
+              "moltnet-message",
+              "moltnet-event",
+              "moltnet-room",
+              "feed-identity",
+              "dated-path",
+              "snapshot"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "detail": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "input",
+          "class",
+          "path",
+          "detail"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "version",
+    "at",
+    "ok",
+    "checked",
+    "findings"
+  ],
+  "additionalProperties": false
+}
+```
+<!-- leak-check-schema:end -->
+
+## Task clock JSON Schema
+
+<!-- task-clock-schema:start -->
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "spawnfile.task-clock.v1"
+    },
+    "origin": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+    }
+  },
+  "required": [
+    "version",
+    "origin"
+  ],
+  "additionalProperties": false
+}
+```
+<!-- task-clock-schema:end -->
