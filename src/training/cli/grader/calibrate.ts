@@ -1,4 +1,4 @@
-import type { DecisionAccounting, DecisionBackend } from '../../contracts/grading.js';
+import type { DecisionAccounting, DecisionBackend, DecisionRequestReceipt } from '../../contracts/grading.js';
 import { mkdir, writeFile, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { withDecisionFailureAccounting, summarizeDecisionAccounting, allQuestions, applyPlatt, calibrateQuestions, calibrationMetrics, createCalibrationIdentity,
@@ -20,11 +20,12 @@ export interface CalibrateOptions {
 }
 
 export async function runCalibrate(options: CalibrateOptions, dependencies: GraderDependencies = {}) {
-  const backends = new Map<DecisionBackend, number>();
-  return withDecisionFailureAccounting(backends, () => calibrate(options, dependencies, backends));
+  const backends = new Set<DecisionBackend>();
+  const receipts: DecisionRequestReceipt[] = [];
+  return withDecisionFailureAccounting(backends, receipts, () => calibrate(options, dependencies, backends, receipts));
 }
 
-async function calibrate(options: CalibrateOptions, dependencies: GraderDependencies, backends: Map<DecisionBackend, number>): Promise<{
+async function calibrate(options: CalibrateOptions, dependencies: GraderDependencies, backends: Set<DecisionBackend>, receipts: DecisionRequestReceipt[]): Promise<{
   calibrationFile: string; reportFile: string; calibration: CalibrationFile; code: 0 | 1; decisionAccounting?: DecisionAccounting;
 }> {
   const grader = await loadGrader(options.graderFile);
@@ -44,11 +45,11 @@ async function calibrate(options: CalibrateOptions, dependencies: GraderDependen
     try {
       options.signal?.throwIfAborted();
       const backend = graderBackend(definition, dependencies);
-      if (!backends.has(backend)) backends.set(backend, backend.requestReceipts?.().length ?? 0);
-      const identity = await backendIdentity(definition, backend, options.signal);
+      backends.add(backend);
+      const identity = await backendIdentity(definition, backend, options.signal, receipts);
       const golden = goldenInstances(definition, labels);
       const results = await cachedScores(dirname(options.graderFile), backend, stableDigest({ model: model.id, identity }),
-        golden.rows.map(row => row.request), options.concurrency ?? 2, options.signal);
+        golden.rows.map(row => row.request), options.concurrency ?? 2, options.signal, receipts);
       indexDecisionResults(golden.rows.map(row => row.request), results);
       const valid = golden.rows.map((row, index) => {
         const raw = rawGood(row, results[index]!);
@@ -196,7 +197,7 @@ async function calibrate(options: CalibrateOptions, dependencies: GraderDependen
       const chosen = indices.slice(0, 16);
       const reversed = await cachedScores(dirname(options.graderFile), backend, stableDigest({ model: model.id, identity }),
         chosen.map(index => ({ ...golden.rows[index]!.request, optionLabels: [...golden.rows[index]!.request.optionLabels].reverse() })),
-        options.concurrency ?? 2, options.signal);
+        options.concurrency ?? 2, options.signal, receipts);
       let compared = 0, flips = 0;
       reversed.forEach((result, index) => {
         const original = rawGood(golden.rows[chosen[index]!]!, results[chosen[index]!]!);
@@ -207,7 +208,7 @@ async function calibrate(options: CalibrateOptions, dependencies: GraderDependen
     }
   }
   for (const candidate of candidates) {
-    if (await backendIdentity(candidate.definition, candidate.backend, options.signal) !== candidate.identity) {
+    if (await backendIdentity(candidate.definition, candidate.backend, options.signal, receipts) !== candidate.identity) {
       throw new Error(`Backend identity changed during calibration: ${candidate.model.id}`);
     }
   }
@@ -223,7 +224,6 @@ async function calibrate(options: CalibrateOptions, dependencies: GraderDependen
   await writeFile(temporary, `${JSON.stringify(calibration, null, 2)}\n`, { mode: 0o600 });
   await rename(temporary, grader.calibration);
   await mkdir(dirname(reportFile), { recursive: true });
-  const receipts = [...backends].flatMap(([backend, offset]) => backend.requestReceipts?.().slice(offset) ?? []);
   const decisionAccounting = candidates.some(candidate => candidate.backend.capabilities?.billing === 'api')
     ? summarizeDecisionAccounting(receipts) : undefined;
   const missingReasons = candidates.flatMap(candidate => candidate.results.filter(result => result.status === 'missing')

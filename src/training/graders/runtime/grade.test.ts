@@ -43,7 +43,7 @@ it('applies Platt scaling, passes outside band and pins result policy digests', 
   expect(result.identity.teacherPolicy).toHaveLength(64);
   expect(result.identity.scoringPolicy).toHaveLength(64);
   expect(f.teacher!.provider.generate).not.toHaveBeenCalled();
-  expect(f.backend.score).toHaveBeenCalledWith([expect.objectContaining({ key: 'q', expectedOptions: ['yes'] })], undefined);
+  expect(f.backend.score).toHaveBeenCalledWith([expect.objectContaining({ key: 'q', expectedOptions: ['yes'] })], undefined, []);
 });
 it.each(['backendModel', 'golden', 'promptTemplateVersion', 'segmenter', 'questions', 'optionMapping'] as const)(
   'refuses changed calibration identity %s before scoring', async component => {
@@ -250,4 +250,19 @@ it('keeps typed containment refusal in grading evidence with zero coverage and n
     judgeCalls: [{ outcome: 'refused', failureKind: 'protocol', failureDetail: 'tool-call', responseModel: 'actual' }] });
   expect(f.teacher!.provider.generate).toHaveBeenCalledTimes(1);
   expect(JSON.stringify(result)).not.toContain('SECRET');
+});
+
+it.each([false, true])('accounts for spending identity probes including a failed probe (failure=%s)', async failure => {
+  const f = await fixture();
+  const receipt = { billing: 'api' as const, model: 'm', endpoint: 'https://example.test',
+    inputTokens: 10, outputTokens: 0, usd: 0.1, estimatedInputTokens: 10, estimatedUsd: 0.1, latencyMs: 1, status: 200 };
+  f.backend.capabilities = { billing: 'api' };
+  f.backend.identity = async (_signal, receipts) => {
+    receipts!.push(receipt);
+    if (failure) throw new Error('probe failed');
+    return { backend: 'fake', model: 'm' };
+  };
+  const run = gradeOutput(f);
+  if (failure) await expect(run).rejects.toMatchObject({ decisionAccounting: { requests: 1, inputTokens: 10 } });
+  else expect((await run).decisionAccounting).toMatchObject({ requests: 2, inputTokens: 20 });
 });

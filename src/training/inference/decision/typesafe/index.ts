@@ -16,10 +16,9 @@ export function createTypeSafeDecision(options: TypeSafeDecisionOptions): Decisi
     capabilities: { billing: 'api', batch: true },
     identity: async signal => transport.identity(signal),
     requestReceipts: transport.receipts,
-    async score(requests, signal) {
+    async score(requests, signal, receipts) {
       transport.identity(signal);
       const stop = new AbortController();
-      const combined = signal ? AbortSignal.any([signal, stop.signal]) : stop.signal;
       const groups = new Map<string, DecisionRequest[]>();
       const results = new Map<string, DecisionResult>();
       for (const request of requests) {
@@ -33,7 +32,7 @@ export function createTypeSafeDecision(options: TypeSafeDecisionOptions): Decisi
         group.push(request); groups.set(state, group);
       }
       const send = async (batch: DecisionRequest[]) => {
-        const response = await transport.send(payload(options.model, batch), estimatedTokens(options.model, batch), combined);
+        const response = await transport.send(payload(options.model, batch), estimatedTokens(options.model, batch), signal, receipts);
         const answers = (response.data as { answers?: Record<string, unknown> } | undefined)?.answers;
         for (const request of batch) results.set(request.key, response.reason
           ? missing(request, response.reason) : decode(request, answers?.[request.key]));
@@ -43,6 +42,7 @@ export function createTypeSafeDecision(options: TypeSafeDecisionOptions): Decisi
         for (const request of group) {
           if (batch.length && (batch.length === 64 || estimatedTokens(options.model, [...batch, request]) > limit)) {
             await send(batch); batch = [];
+            if (stop.signal.aborted) return;
           }
           batch.push(request);
         }

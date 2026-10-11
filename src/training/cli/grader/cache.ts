@@ -1,11 +1,11 @@
 import { mkdir, readFile, appendFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stableDigest } from '../../graders/index.js';
-import type { DecisionBackend, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
+import type { DecisionBackend, DecisionRequestReceipt, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
 import { DECISION_PROMPT_VERSION } from '../../inference/decision/index.js';
 
 export async function cachedScores(directory: string, backend: DecisionBackend, identity: string,
-  requests: readonly DecisionRequest[], concurrency: number, signal?: AbortSignal): Promise<DecisionResult[]> {
+  requests: readonly DecisionRequest[], concurrency: number, signal?: AbortSignal, receipts?: DecisionRequestReceipt[]): Promise<DecisionResult[]> {
   if (!Number.isSafeInteger(concurrency) || concurrency < 1) throw new Error('concurrency must be a positive integer');
   signal?.throwIfAborted();
   const root = join(directory, '.paideia', 'grader-cache');
@@ -39,7 +39,7 @@ export async function cachedScores(directory: string, backend: DecisionBackend, 
           return { index, request, digest, cached: cache.get(digest) };
         });
         const pending = entries.filter(entry => !entry.cached);
-        const scored = pending.length ? await backend.score(pending.map(entry => entry.request), workSignal) : [];
+        const scored = pending.length ? await backend.score(pending.map(entry => entry.request), workSignal, receipts) : [];
         workSignal.throwIfAborted();
         for (const { index, request, digest, cached } of entries) {
           const result = cached ?? scored.find(item => item.key === request.key);

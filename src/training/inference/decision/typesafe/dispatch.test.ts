@@ -61,7 +61,7 @@ it('times out only the hung attempt and retries it while other groups complete',
   expect(backend.requestReceipts!().filter(receipt => receipt.status === null)).toHaveLength(1);
 });
 
-it('exhausts isolated request timeouts and retains a receipt and reservation for every attempt', async () => {
+it('exhausts isolated request timeouts, retains every receipt and releases the reservation', async () => {
   const budget = createDecisionSpendBudget();
   const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
     await delay(10_000, undefined, { signal: init!.signal! }); return response(init);
@@ -71,7 +71,7 @@ it('exhausts isolated request timeouts and retains a receipt and reservation for
   expect(fetch).toHaveBeenCalledTimes(2);
   const receipts = backend.requestReceipts!();
   expect(receipts.map(receipt => receipt.status)).toEqual([null, null]);
-  expect(budget.reservedUsd).toBeCloseTo(receipts.reduce((sum, receipt) => sum + receipt.estimatedUsd, 0), 12);
+  expect(budget.reservedUsd).toBe(0);
 });
 
 it('retries network failures with backoff and fresh signals, then fails closed on exhaustion', async () => {
@@ -109,19 +109,22 @@ it('applies the timeout through body reading, then retries with a fresh attempt'
   expect(backend.requestReceipts!().map(receipt => receipt.status)).toEqual([200, 200]);
 });
 
-it('stops queued groups and drains cancelled siblings before returning a terminal failure', async () => {
+it('stops queued groups and drains active siblings without aborting them on terminal failure', async () => {
   let settled = false;
   const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
     const key = Object.keys(JSON.parse(String(init!.body)).questions)[0];
     if (key === '0') { await delay(1); return new Response('', { status: 401 }); }
-    try { await delay(10_000, undefined, { signal: init!.signal! }); return response(init); }
-    finally { await delay(5); settled = true; }
+    try {
+      await delay(20, undefined, { signal: init!.signal! });
+      expect(init!.signal!.aborted).toBe(false);
+      return response(init);
+    } finally { settled = true; }
   });
   const backend = createTypeSafeDecision({ model, env, fetch, concurrency: 2 });
   await expect(backend.score(requests(10))).rejects.toThrow('authentication failed');
   expect(settled).toBe(true);
   expect(fetch).toHaveBeenCalledTimes(2);
-  expect(backend.requestReceipts!()).toHaveLength(2);
+  expect(backend.requestReceipts!()).toMatchObject([{ status: 401 }, { status: 200, inputTokens: 10 }]);
 });
 
 it('reserves before every concurrent dispatch, replaces only measured usage, and shares the cap across calls', async () => {
@@ -184,4 +187,50 @@ it('refuses zero paid prices and blocks a zero cap independently even when the e
   expect(await backend.score(requests(2))).toMatchObject([{ reason: 'spend cap' }, { reason: 'spend cap' }]);
   expect(fetch).not.toHaveBeenCalled();
   expect(backend.requestReceipts!()).toEqual([]);
+});
+
+it.each(['retry', 'rejected', 'exhausted', 'unknown', 'cancelled', 'drift'] as const)(
+  'reserves once across attempts and releases on %s without stranding the shared budget', async mode => {
+    // The cap fits one request estimate but not two reservations.
+    const budget = createDecisionSpendBudget(0.0001);
+    const controller = new AbortController();
+    const reservations: number[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      reservations.push(budget.reservedUsd);
+      if (mode === 'cancelled') { controller.abort(); throw new Error('cancel'); }
+      if (mode === 'rejected') return new Response('', { status: 400 });
+      if (mode === 'exhausted' || mode === 'retry' && reservations.length < 3) return new Response('', { status: 503 });
+      if (mode === 'unknown') return Response.json({ model, answers: {}, usage: { input_tokens: 1.5 } });
+      if (mode === 'drift') return Response.json({ model: 'jev-9.0.0', usage: { input_tokens: 10 } });
+      return response(init);
+    });
+    const backend = createTypeSafeDecision({ model, env, fetch, budget, pricePerMtokUsd: 1, retryBaseMs: 0 });
+    const run = backend.score(requests(1), controller.signal);
+    if (mode === 'exhausted') await expect(run).rejects.toThrow('retry attempts exhausted');
+    else if (mode === 'cancelled') await expect(run).rejects.toThrow('cancelled');
+    else if (mode === 'drift') await expect(run).rejects.toThrow('differs from pinned');
+    else expect(await run).toMatchObject([{ status: mode === 'retry' ? 'ok' : 'missing' }]);
+    expect(reservations).toHaveLength(mode === 'retry' || mode === 'exhausted' ? 3 : 1);
+    expect(reservations[0]).toBeGreaterThan(0);
+    expect(new Set(reservations).size).toBe(1);
+    expect(budget.reservedUsd).toBe(0);
+    expect(budget.spentUsd).toBe(mode === 'retry' || mode === 'drift' ? 0.00001 : 0);
+    const next = createTypeSafeDecision({ model, env, budget, pricePerMtokUsd: 1, fetch: async (_url, init) => response(init) });
+    expect(await next.score(requests(1))).toMatchObject([{ status: 'ok' }]);
+    expect(budget.reservedUsd).toBe(0);
+  });
+
+it('drains only the started batch and stops split-batch admission after sibling failure', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+    const keys = Object.keys(JSON.parse(String(init!.body)).questions);
+    if (keys[0] === 'failure') { await delay(1); return new Response('', { status: 401 }); }
+    await delay(20, undefined, { signal: init!.signal! });
+    return response(init);
+  });
+  const input = [{ ...requests(1)[0]!, key: 'failure', projection: {} },
+    ...requests(65).map(request => ({ ...request, projection: { shared: true } }))];
+  const backend = createTypeSafeDecision({ model, env, fetch, concurrency: 2 });
+  await expect(backend.score(input)).rejects.toThrow('authentication failed');
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(backend.requestReceipts!()).toMatchObject([{ status: 401 }, { status: 200, inputTokens: 10 }]);
 });

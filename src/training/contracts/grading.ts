@@ -36,7 +36,9 @@ export interface DecisionAccounting {
 }
 export interface DecisionBackend {
   capabilities?: { billing: 'local' | 'subscription' | 'api'; batch?: boolean };
+  /** Diagnostic history only; never use for invocation accounting. */
   requestReceipts?(): DecisionRequestReceipt[];
-  identity(signal?: AbortSignal): Promise<DecisionIdentity>;
-  score(requests: DecisionRequest[], signal?: AbortSignal): Promise<DecisionResult[]>;
+  /** Append only this call's dispatched receipts, including failures, before settling. */
+  identity(signal?: AbortSignal, receipts?: DecisionRequestReceipt[]): Promise<DecisionIdentity>;
+  score(requests: DecisionRequest[], signal?: AbortSignal, receipts?: DecisionRequestReceipt[]): Promise<DecisionResult[]>;
 }

@@ -538,10 +538,10 @@ Authorization is sent only at the transport boundary and is not captured.
 
 `grader calibrate` and `grader grade` accept `--max-spend-usd N`, overriding
 `max_spend_usd`; zero blocks billable dispatch. A shared command budget covers all
-model candidates. The configured paid price must be positive. Before every
-attempt, estimated input cost is reserved; reported input usage replaces that
-reservation. Unknown usage retains its reservation
-conservatively. A request exceeding the remaining estimate budget is not sent;
+model candidates. The configured paid price must be positive. Each send reserves
+estimated input cost once across all retry attempts and releases it on every exit.
+Reported usage adds measured spend; unknown usage remains null in receipts and
+does not retain a reservation. Unknown usage prevents claiming a strict spend bound. A request exceeding the remaining estimate budget is not sent;
 its instances are missing with reason `spend cap`, visible in calibration reports
 and grade decisions. Actual usage can exceed estimates across already dispatched
 calls.
@@ -551,7 +551,9 @@ tokens, estimated USD from measured input usage, and nearest-rank p50/p95 latenc
 in milliseconds. Output is free under this configured rate card. The default
 input rate is 0.042 USD/million, configurable and not a live pricing claim or an
 invoice. Missing usage makes aggregate tokens/cost unknown; retry latency and
-attempts still count. Cached scores add no current request/cost. Mock transport
+attempts still count. Scoring and spending identity probes report directly into
+their caller's receipt collector. Concurrent invocations never read each other's
+receipt history. Cached scores add no current request/cost. Mock transport
 and command tests verify this contract; live hosted availability is unverified.
 
 Failed grading or calibration emits a `paideia.grader-failure.v1` JSON result

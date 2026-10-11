@@ -234,11 +234,9 @@ it('grades on the explicit TypeSafe route with accounting and propagates CLI spe
 
 it('emits sanitized accounting for paid grading failure before returning nonzero', async () => {
   const f = await fixture();
-  const receipts: import('../../contracts/grading.js').DecisionRequestReceipt[] = [];
   f.backend.capabilities = { billing: 'api' };
-  f.backend.requestReceipts = () => receipts;
-  f.backend.score = async () => {
-    receipts.push({ billing: 'api', model: 'paid', endpoint: 'https://example.test', inputTokens: 100,
+  f.backend.score = async (_requests, _signal, receipts) => {
+    receipts!.push({ billing: 'api', model: 'paid', endpoint: 'https://example.test', inputTokens: 100,
       outputTokens: 0, usd: 0.1, estimatedInputTokens: 120, estimatedUsd: 0.12, latencyMs: 2, status: 200 });
     throw new Error('infrastructure unavailable');
   };

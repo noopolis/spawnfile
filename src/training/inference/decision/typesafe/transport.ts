@@ -49,63 +49,68 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
       check(signal);
       return { backend: 'typesafe', model: options.model, endpoint: endpoint.href };
     },
-    async send(body: unknown, tokens: number, signal: AbortSignal): Promise<{ data?: unknown; reason?: string }> {
+    async send(body: unknown, tokens: number, signal?: AbortSignal, collector?: DecisionRequestReceipt[]): Promise<{ data?: unknown; reason?: string }> {
       check(signal);
       const estimate = tokens * price / 1e6;
-      for (let attempt = 0; attempt < attempts; attempt++) {
-        check(signal);
-        if (budget.maxUsd === 0 || (budget.maxUsd !== undefined && budget.spentUsd + budget.reservedUsd + estimate > budget.maxUsd)) return { reason: 'spend cap' };
-        budget.reservedUsd += estimate;
-        const receipt: DecisionRequestReceipt = { billing: 'api', model: options.model, endpoint: endpoint.href,
-          inputTokens: null, outputTokens: null, usd: null, estimatedInputTokens: tokens, estimatedUsd: estimate,
-          latencyMs: 0, status: null };
-        const start = performance.now();
-        const deadline = new AbortController();
-        const timer = setTimeout(() => deadline.abort(), timeout);
-        const attemptSignal = AbortSignal.any([signal, deadline.signal]);
-        let response: Response | undefined;
-        try {
-          // No request capture: Authorization exists only at this transport boundary.
-          response = await (options.fetch ?? fetch)(endpoint.href, { method: 'POST', redirect: 'error', signal: attemptSignal,
-            headers: { 'content-type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(body) });
-          attemptSignal.throwIfAborted();
-          receipt.status = response.status;
-          if (response.status === 401) throw new Error('TypeSafe authentication failed (401)');
-          const retry = response.status === 429 || response.status >= 500;
-          if (!retry && !response.ok) return { reason: `TypeSafe HTTP ${response.status}: request rejected` };
-          if (!retry) {
-            const raw: unknown = await response.json();
-            attemptSignal.throwIfAborted();
-            const data = raw as { model?: unknown; usage?: { input_tokens?: unknown; output_tokens?: unknown } } | null;
-            const input = data?.usage?.input_tokens, output = data?.usage?.output_tokens;
-            if (typeof input === 'number' && Number.isSafeInteger(input) && input >= 0) {
-              receipt.inputTokens = input; receipt.usd = input * price / 1e6;
-              budget.reservedUsd -= estimate; budget.spentUsd += receipt.usd;
-            }
-            if (typeof output === 'number' && Number.isSafeInteger(output) && output >= 0) receipt.outputTokens = output;
-            if (data?.model !== options.model) { drifted = true; check(); }
-            return { data: raw };
-          }
-        } catch {
-          // Never propagate fetch/JSON/abort errors: they may embed Authorization or echoed credentials.
+      if (budget.maxUsd === 0 || (budget.maxUsd !== undefined && budget.spentUsd + budget.reservedUsd + estimate > budget.maxUsd)) return { reason: 'spend cap' };
+      budget.reservedUsd += estimate;
+      try {
+        for (let attempt = 0; attempt < attempts; attempt++) {
           check(signal);
-          if (receipt.status === 401) throw new Error('TypeSafe authentication failed (401)');
-          // Network errors and this attempt's timeout share the bounded 5xx retry policy.
-          // Caller/pool cancellation, authentication and model drift remain terminal.
-        } finally {
-          // Release unread error bodies before returning or admitting another attempt.
-          // Aborting also closes a fetch body whose reader failed or was interrupted.
-          deadline.abort();
-          if (response?.body && !response.bodyUsed) await response.body.cancel().catch(() => {});
-          clearTimeout(timer);
-          receipt.latencyMs = performance.now() - start;
-          receipts.push(receipt);
+          const receipt: DecisionRequestReceipt = { billing: 'api', model: options.model, endpoint: endpoint.href,
+            inputTokens: null, outputTokens: null, usd: null, estimatedInputTokens: tokens, estimatedUsd: estimate,
+            latencyMs: 0, status: null };
+          const start = performance.now();
+          const deadline = new AbortController();
+          const timer = setTimeout(() => deadline.abort(), timeout);
+          const attemptSignal = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
+          let response: Response | undefined;
+          try {
+            // No request capture: Authorization exists only at this transport boundary.
+            response = await (options.fetch ?? fetch)(endpoint.href, { method: 'POST', redirect: 'error', signal: attemptSignal,
+              headers: { 'content-type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(body) });
+            attemptSignal.throwIfAborted();
+            receipt.status = response.status;
+            if (response.status === 401) throw new Error('TypeSafe authentication failed (401)');
+            const retry = response.status === 429 || response.status >= 500;
+            if (!retry && !response.ok) return { reason: `TypeSafe HTTP ${response.status}: request rejected` };
+            if (!retry) {
+              const raw: unknown = await response.json();
+              attemptSignal.throwIfAborted();
+              const data = raw as { model?: unknown; usage?: { input_tokens?: unknown; output_tokens?: unknown } } | null;
+              const input = data?.usage?.input_tokens, output = data?.usage?.output_tokens;
+              if (typeof input === 'number' && Number.isSafeInteger(input) && input >= 0) {
+                receipt.inputTokens = input; receipt.usd = input * price / 1e6;
+                budget.spentUsd += receipt.usd;
+              }
+              if (typeof output === 'number' && Number.isSafeInteger(output) && output >= 0) receipt.outputTokens = output;
+              if (data?.model !== options.model) { drifted = true; check(); }
+              return { data: raw };
+            }
+          } catch {
+            // Never propagate fetch/JSON/abort errors: they may embed Authorization or echoed credentials.
+            check(signal);
+            if (receipt.status === 401) throw new Error('TypeSafe authentication failed (401)');
+            // Network errors and this attempt's timeout share the bounded 5xx retry policy.
+            // Caller cancellation, authentication and model drift remain terminal.
+          } finally {
+            // Release unread error bodies before returning or admitting another attempt.
+            // Aborting also closes a fetch body whose reader failed or was interrupted.
+            deadline.abort();
+            if (response?.body && !response.bodyUsed) await response.body.cancel().catch(() => {});
+            clearTimeout(timer);
+            receipt.latencyMs = performance.now() - start;
+            receipts.push(receipt);
+            collector?.push({ ...receipt });
+          }
+          if (attempt + 1 === attempts) throw new Error('TypeSafe infrastructure failure: retry attempts exhausted');
+          try { await delay(base * 2 ** attempt * (1 + Math.random()), undefined, { signal }); }
+          catch { throw new Error('TypeSafe request cancelled or timed out'); }
         }
-        if (attempt + 1 === attempts) throw new Error('TypeSafe infrastructure failure: retry attempts exhausted');
-        try { await delay(base * 2 ** attempt * (1 + Math.random()), undefined, { signal }); }
-        catch { throw new Error('TypeSafe request cancelled or timed out'); }
+        throw new Error('TypeSafe infrastructure failure');
+      } finally {
+        budget.reservedUsd -= estimate;
       }
-      throw new Error('TypeSafe infrastructure failure');
     },
   };
 }

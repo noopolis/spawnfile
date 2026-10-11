@@ -197,14 +197,14 @@ describe('TypeSafe spend reservations', () => {
     expect(await zero.score([request()])).toMatchObject([{ reason: 'spend cap' }]);
     expect(fetch).toHaveBeenCalledTimes(1);
   });
-  it('reserves across concurrent backends and keeps unknown usage reserved', async () => {
+  it('reserves across concurrent backends and releases unknown usage without inventing spend', async () => {
     const budget = createDecisionSpendBudget(0.0001), fetch = responder({ usage: {} });
     const a = createTypeSafeDecision({ model, env, fetch, pricePerMtokUsd: 1, budget });
     const b = createTypeSafeDecision({ model, env, fetch, pricePerMtokUsd: 1, budget });
     const results = await Promise.all([a.score([request()]), b.score([request()])]);
     expect(results.flat().filter(r => r.reason === 'spend cap')).toHaveLength(1);
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(budget.reservedUsd).toBeGreaterThan(0);
+    expect(budget.reservedUsd).toBe(0);
     expect(budget.spentUsd).toBe(0);
     expect(a.requestReceipts!()[0]).toMatchObject({ inputTokens: null, outputTokens: null, usd: null });
   });

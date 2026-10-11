@@ -1,4 +1,4 @@
-import type { DecisionBackend, DecisionSpendBudget } from '../../contracts/grading.js';
+import type { DecisionBackend, DecisionRequestReceipt, DecisionSpendBudget } from '../../contracts/grading.js';
 import type { InferenceProvider } from '../../contracts/execution.js';
 import type { Grader } from '../../graders/index.js';
 import { decisionBackendIdentity, decisionModels, graderForModel } from '../../graders/index.js';
@@ -24,8 +24,8 @@ export function graderBackend(grader: Grader, dependencies: GraderDependencies =
 }
 
 /** Include routing and teacher policy as well as the backend's reported identity. */
-export async function backendIdentity(grader: Grader, backend: DecisionBackend, signal?: AbortSignal): Promise<string> {
-  return decisionBackendIdentity(grader, backend, signal);
+export async function backendIdentity(grader: Grader, backend: DecisionBackend, signal?: AbortSignal, receipts?: DecisionRequestReceipt[]): Promise<string> {
+  return decisionBackendIdentity(grader, backend, signal, receipts);
 }
 
 export function graderBackends(grader: Grader, dependencies: GraderDependencies = {}, ids?: ReadonlySet<string>): Record<string, DecisionBackend> {

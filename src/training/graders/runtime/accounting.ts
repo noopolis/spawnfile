@@ -19,17 +19,17 @@ export class DecisionAccountingError extends Error {
 }
 
 /** Register each backend before calling it; await drained provider work before rejection. */
-export async function withDecisionFailureAccounting<T>(backends: Map<DecisionBackend, number>, operation: () => Promise<T>): Promise<T> {
+export async function withDecisionFailureAccounting<T>(backends: Set<DecisionBackend>, receipts: DecisionRequestReceipt[], operation: () => Promise<T>): Promise<T> {
   try { return await operation(); }
   catch (cause) {
-    const paid = [...backends].filter(([backend]) => backend.capabilities?.billing === 'api');
+    const paid = [...backends].filter(backend => backend.capabilities?.billing === 'api');
     if (!paid.length) throw cause;
-    const receipts = paid.flatMap(([backend, offset]) => (backend.requestReceipts?.() ?? []).slice(offset).map(receipt => ({
+    const allowed = receipts.map(receipt => ({
       billing: receipt.billing, model: receipt.model, endpoint: receipt.endpoint,
       inputTokens: receipt.inputTokens, outputTokens: receipt.outputTokens, usd: receipt.usd,
       estimatedInputTokens: receipt.estimatedInputTokens, estimatedUsd: receipt.estimatedUsd,
       latencyMs: receipt.latencyMs, status: receipt.status,
-    })));
-    throw new DecisionAccountingError(cause, summarizeDecisionAccounting(receipts));
+    }));
+    throw new DecisionAccountingError(cause, summarizeDecisionAccounting(allowed));
   }
 }

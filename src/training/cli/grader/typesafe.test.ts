@@ -133,3 +133,64 @@ it.each([1, 2])('emits completed and failed API receipts after %i successful cal
   expect(JSON.stringify(result) + stderr.join('')).not.toContain(secret);
   expect(stderr.join('')).toContain('retry attempts exhausted');
 });
+
+it.each([false, true])('owns exactly its requests across overlapping gradeOutput calls (failure=%s)', async failure => {
+  const { gradeOutput, createCalibrationIdentity, decisionBackendIdentity, DecisionAccountingError } = await import('../../graders/index.js');
+  const { DECISION_PROMPT_VERSION } = await import('../../inference/decision/index.js');
+  const f = await fixture(0);
+  const deferred = () => {
+    let resolve!: () => void;
+    const promise = new Promise<void>(done => { resolve = done; });
+    return { promise, resolve };
+  };
+  const started = [deferred(), deferred()], release = [deferred(), deferred()];
+  let calls = 0;
+  const backend = createTypeSafeDecision({ model: 'jev-1.13.0', env: { TYPESAFE_API_KEY: 'fake-overlap' },
+    maxAttempts: 1, fetch: async (_url, init) => {
+      const index = calls++;
+      started[index]!.resolve();
+      await release[index]!.promise;
+      if (failure && index === 1) return new Response('', { status: 401 });
+      const body = JSON.parse(String(init!.body)) as { questions: Record<string, unknown> };
+      return Response.json({ model: 'jev-1.13.0', usage: { input_tokens: 100, output_tokens: 1 },
+        answers: Object.fromEntries(Object.keys(body.questions).map(key => [key, { type: 'noul', noul: 0.9 }])) });
+    } });
+  const options = { grader: f.grader, backend, resource: {}, output: { good: true },
+    goldenDigest: stableDigest('golden'), promptTemplateVersion: DECISION_PROMPT_VERSION,
+    calibration: { schema: 'paideia.grader-calibration.v1' as const,
+      identity: createCalibrationIdentity(f.grader, { backendModel: await decisionBackendIdentity(f.grader, backend),
+        golden: stableDigest('golden'), promptTemplateVersion: DECISION_PROMPT_VERSION, seed: '0', exclusions: [] }),
+      questions: Object.fromEntries(['q', 'q2'].map(id => [id, { status: 'calibrated' as const, failures: [],
+        params: { a: 1, b: 0 }, band: [0.4, 0.6] as [number, number],
+        metrics: { groups: 20, instances: 40, good: 20, bad: 20, baseRate: 0.5 } }])) } };
+  const first = gradeOutput(options);
+  await started[0]!.promise;
+  const second = gradeOutput(options).catch(error => {
+    expect(error).toBeInstanceOf(DecisionAccountingError);
+    return error as InstanceType<typeof DecisionAccountingError>;
+  });
+  await started[1]!.promise;
+  release[0]!.resolve();
+  expect((await first).decisionAccounting).toMatchObject({ requests: 1, inputTokens: 100 });
+  release[1]!.resolve();
+  const result = await second;
+  expect(result.decisionAccounting).toMatchObject({ requests: 1, inputTokens: failure ? null : 100,
+    receipts: [{ status: failure ? 401 : 200 }] });
+  expect(calls).toBe(2);
+  expect(backend.requestReceipts!()).toHaveLength(2);
+});
+
+it.each([false, true])('calibration collects its spending identity probes (failure=%s)', async failure => {
+  const f = await fixture(0);
+  const backend = createTypeSafeDecision({ model: 'jev-1.13.0', env: { TYPESAFE_API_KEY: 'fake-probe' } });
+  const identity = backend.identity;
+  backend.identity = async (signal, receipts) => {
+    receipts!.push({ billing: 'api', model: 'jev-1.13.0', endpoint: 'https://example.test',
+      inputTokens: 10, outputTokens: 0, usd: 0.1, estimatedInputTokens: 10, estimatedUsd: 0.1, latencyMs: 1, status: 200 });
+    if (failure) throw new Error('probe failure');
+    return identity(signal);
+  };
+  const run = runCalibrate(f, { backend: () => backend });
+  if (failure) await expect(run).rejects.toMatchObject({ decisionAccounting: { requests: 1, inputTokens: 10 } });
+  else expect((await run).decisionAccounting).toMatchObject({ requests: 2, inputTokens: 20 });
+});

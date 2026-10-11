@@ -16,11 +16,11 @@ it('retains only current paid receipts and their allowed fields on failure', asy
   const { vi } = await import('vitest');
   const receipt: DecisionRequestReceipt = { billing: 'api', model: 'm', endpoint: 'https://example.test',
     inputTokens: 100, outputTokens: 0, usd: 0.1, estimatedInputTokens: 80, estimatedUsd: 0.08, latencyMs: 10, status: 200 };
-  const receipts = [receipt];
+  const receipts: DecisionRequestReceipt[] = [];
   const backend = { capabilities: { billing: 'api' as const }, requestReceipts: () => receipts,
     identity: vi.fn(), score: vi.fn() };
   const cause = new Error('diagnostic');
-  const failure = await withDecisionFailureAccounting(new Map([[backend, 1]]), async () => {
+  const failure = await withDecisionFailureAccounting(new Set([backend]), receipts, async () => {
     receipts.push({ ...receipt, Authorization: 'secret' } as DecisionRequestReceipt);
     throw cause;
   }).catch(error => error as InstanceType<typeof DecisionAccountingError>);
@@ -28,9 +28,9 @@ it('retains only current paid receipts and their allowed fields on failure', asy
   expect(failure.cause).toBe(cause);
   expect(failure.decisionAccounting).toMatchObject({ requests: 1, inputTokens: 100, usd: 0.1, receipts: [receipt] });
   expect(JSON.stringify(failure.decisionAccounting)).not.toContain('secret');
-  expect(await withDecisionFailureAccounting(new Map(), async () => 'done')).toBe('done');
-  await expect(withDecisionFailureAccounting(new Map(), async () => { throw cause; })).rejects.toBe(cause);
-  await expect(withDecisionFailureAccounting(new Map([[{ ...backend, requestReceipts: undefined }, 0]]), async () => {
+  expect(await withDecisionFailureAccounting(new Set(), [], async () => 'done')).toBe('done');
+  await expect(withDecisionFailureAccounting(new Set(), [], async () => { throw cause; })).rejects.toBe(cause);
+  await expect(withDecisionFailureAccounting(new Set([backend]), [], async () => {
     throw 'untyped failure';
   })).rejects.toMatchObject({ message: 'Decision operation failed', decisionAccounting: { requests: 0 } });
 });

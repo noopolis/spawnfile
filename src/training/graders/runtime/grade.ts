@@ -1,4 +1,4 @@
-import type { DecisionRequest, DecisionResult } from '../../contracts/grading.js';
+import type { DecisionRequest, DecisionResult, DecisionRequestReceipt } from '../../contracts/grading.js';
 import { allQuestions, decisionModels, expectedOptions, optionsFor, stableDigest, type DecisionQuestion } from '../format/index.js';
 import { planCallAdmission } from '../admission.js';
 import { expandInstances } from '../instances.js';
@@ -24,11 +24,11 @@ function goodProbability(question: DecisionQuestion, result: DecisionResult): nu
 /** No golden examples enter requests. Calibration is checked before any scoring. */
 export async function gradeOutput(options: GradeOptions): Promise<GradeResult> {
   const backends = options.backends ?? (options.grader.model ? { default: options.backend } : {});
-  const offsets = new Map(Object.values(backends).map(backend => [backend, backend.requestReceipts?.().length ?? 0]));
-  return withDecisionFailureAccounting(offsets, () => gradeOutputInternal(options));
+  const receipts: DecisionRequestReceipt[] = [];
+  return withDecisionFailureAccounting(new Set(Object.values(backends)), receipts, () => gradeOutputInternal(options, receipts));
 }
 
-async function gradeOutputInternal(options: GradeOptions): Promise<GradeResult> {
+async function gradeOutputInternal(options: GradeOptions, receipts: DecisionRequestReceipt[]): Promise<GradeResult> {
   const { grader, calibration, signal } = options;
   signal?.throwIfAborted();
   if (grader.gates.some(gate => 'check' in gate && options.gateOutcomes?.[gate.id] === 'fail')) {
@@ -37,12 +37,11 @@ async function gradeOutputInternal(options: GradeOptions): Promise<GradeResult> 
   }
   const models = decisionModels(grader);
   const backends = options.backends ?? (grader.model ? { default: options.backend } : {});
-  const offsets = new Map(Object.values(backends).map(backend => [backend, backend.requestReceipts?.().length ?? 0]));
   const selectedId = (question: string) => calibration.questions[question]?.model ?? 'default';
   for (const question of allQuestions(grader)) {
     if (!backends[selectedId(question.id)]) throw new Error(`Decision model ${selectedId(question.id)}: missing backend`);
   }
-  const reported = await decisionModelIdentities(grader, backends, signal);
+  const reported = await decisionModelIdentities(grader, backends, signal, receipts);
   const modelIdentities = { ...calibration.identity.modelIdentities, ...reported };
   const backendModel = grader.models ? stableDigest(modelIdentities) : reported.default!;
   const identity = createCalibrationIdentity(grader, { ...calibration.identity, backendModel,
@@ -85,7 +84,7 @@ async function gradeOutputInternal(options: GradeOptions): Promise<GradeResult> 
   const decisions: NonNullable<GradeResult['decisions']> = [];
   const resultMap = new Map<string, DecisionResult>();
   for (const [model, requests] of requestsByModel) {
-    const results = await backends[model]!.score(requests, signal);
+    const results = await backends[model]!.score(requests, signal, receipts);
     for (const result of results) {
       if (resultMap.has(result.key) || !requests.some(request => request.key === result.key)) throw new Error(`Unexpected decision key: ${result.key}`);
       resultMap.set(result.key, result);
@@ -125,10 +124,10 @@ async function gradeOutputInternal(options: GradeOptions): Promise<GradeResult> 
     }
   }
   signal?.throwIfAborted();
-  if (stableDigest(await decisionModelIdentities(grader, backends, signal)) !== stableDigest(reported)) throw new Error('Backend identity changed during grading');
+  if (stableDigest(await decisionModelIdentities(grader, backends, signal, receipts)) !== stableDigest(reported)) throw new Error('Backend identity changed during grading');
   const apiBackends = [...new Set(Object.values(backends))].filter(backend => backend.capabilities?.billing === 'api');
   return { ...aggregateGrader(grader, instances, outcomes, options.gateOutcomes), judgeCalls, decisions,
-    ...(apiBackends.length ? { decisionAccounting: summarizeDecisionAccounting(apiBackends.flatMap(backend => backend.requestReceipts!().slice(offsets.get(backend)))) } : {}),
+    ...(apiBackends.length ? { decisionAccounting: summarizeDecisionAccounting(receipts) } : {}),
     ...resultIdentity(options, identity) };
 }
 
