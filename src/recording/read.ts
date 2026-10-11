@@ -30,7 +30,7 @@ const chunkSchema = z.object({
  * Pin the initial length/inode so appends cannot make sync chase a growing ledger forever. */
 export const readRecordingJsonl = async <T>(
   exec: UsageLedgerExec, file: string, parser: RecordingJsonlParser<T>, chunkBytes = 256 * 1024
-): Promise<RecordingJsonlRead<T> & { failure?: string }> => {
+): Promise<RecordingJsonlRead<T> & { failure?: string; missing?: true }> => {
   const decoder = new StringDecoder("utf8");
   let offset = 0, length: number | undefined, identity: string | undefined;
   try {
@@ -41,7 +41,7 @@ export const readRecordingJsonl = async <T>(
       const chunk = chunkSchema.parse(JSON.parse(stdout));
       if (chunk === null) {
         if (length !== undefined) throw new Error("Runtime file disappeared during read");
-        return parser.finish();
+        return { ...parser.finish(), missing: true };
       }
       length ??= chunk.size; identity ??= chunk.identity;
       if (identity !== chunk.identity || chunk.size < length) throw new Error("Runtime file replaced or truncated during read");

@@ -36,7 +36,10 @@ it("executes default-sized chunks without imposing the gateway cap on the comple
 
 it("distinguishes an absent runtime file from a failed executable or a non-file", async () => {
   const exec = (command: string[]) => run(command[0]!, command.slice(1), { maxBuffer: 1024, timeout: 3000 });
-  expect(await readRecordingJsonl(exec, path.join(root, "missing"), createMemoryLedgerParser(), 128)).toEqual({ entries: [], errors: [] });
+  expect(await readRecordingJsonl(exec, path.join(root, "missing"), createMemoryLedgerParser(), 128)).toEqual({ entries: [], errors: [], missing: true });
+  const empty = path.join(root, "empty");
+  await writeFile(empty, "");
+  expect(await readRecordingJsonl(exec, empty, createMemoryLedgerParser(), 128)).toEqual({ entries: [], errors: [] });
   expect(await readRecordingJsonl(exec, root, createMemoryLedgerParser(), 128)).toHaveProperty("failure");
   expect(await readRecordingJsonl(async () => { throw Object.assign(new Error("no such file or directory"), { code: "ENOENT" }); },
     "ledger", createMemoryLedgerParser())).toHaveProperty("failure");
