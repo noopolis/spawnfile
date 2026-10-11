@@ -2,12 +2,14 @@ import path from "node:path";
 import { rm } from "node:fs/promises";
 
 import {
+  appendDeployResources,
   createOrganizationReadinessPending,
   createDockerDeploymentRecord,
   probeDockerOrganizationReadiness,
   readDeploymentRecord,
   resolveDockerDeploymentTarget,
   resolveDeploymentRecordPath,
+  resolveHomeDeploymentDirectory,
   type DockerTargetExecFile,
   writeDeploymentRecord,
   writeDockerDeploymentRecordForRun,
@@ -34,7 +36,7 @@ import {
   resolveDeploymentLineage
 } from "./deploymentLineage.js";
 import { ensureNoopolisRunId, resolveNoopolisRunId } from "../runtime/index.js";
-import { fileExists } from "../filesystem/index.js";
+import { fileExists, readUtf8File } from "../filesystem/index.js";
 import { resolveHostCliCredential } from "./runProjectAuth.js";
 import { defaultDockerTargetExecFile } from "../target/dockerTargetExecFile.js";
 import {
@@ -321,6 +323,12 @@ export const upProject = async (
       ...pendingRecord,
       organization_ready: organizationReady
     });
+  }
+
+  if (deploymentRecordPath && buildResult.report.recording) {
+    const record = await readDeploymentRecord(deploymentRecordPath);
+    await appendDeployResources(resolveHomeDeploymentDirectory(record.name), record,
+      buildResult.report, await readUtf8File(buildResult.reportPath));
   }
 
   return {

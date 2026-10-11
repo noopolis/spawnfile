@@ -7,6 +7,7 @@ import {
   captureCandidateDiagnostics,
   createDockerDeploymentLabels,
   homeDeploymentExists,
+  HomeDeploymentRecordingError,
   normalizeDeploymentName,
   readHomeDeploymentRecord,
   resolveDockerDeploymentTarget,
@@ -50,11 +51,7 @@ export interface ConsumeImageUpOptions {
   daimonContainerCredentialUid?: number;
   authProfileName?: string | null;
   deploymentName?: string;
-  /**
-   * The caller already holds this deployment's home lock (a drained release
-   * holds it from the drain through the swap so no concurrent `up` can replace
-   * the drained container). Never set it without holding the lock.
-   */
+  /** Caller owns the home lock across drain and swap; never set this without holding it. */
   deploymentLockHeld?: boolean;
   dockerCommand?: string;
   dockerContext?: string;
@@ -343,6 +340,10 @@ const consumeImageUpLocked = async (
         recordPath: written.recordPath
       };
     } catch (error) {
+      if (error instanceof HomeDeploymentRecordingError) {
+        if (previousContainer !== null) await runDocker(["rm", "-f", previousContainer.id]).catch(() => undefined);
+        throw error;
+      }
       const diagnostics = candidateId ? await captureCandidateDiagnostics({
         candidateId, deploymentName, runDocker, secretValues: Object.values(env)
       }) : null;

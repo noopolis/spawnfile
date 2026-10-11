@@ -1,5 +1,6 @@
 /* v8 ignore file -- type-only module */
 import type { ModelAuthMethod } from "../shared/index.js";
+import type { RecordingReport } from "../report/index.js";
 
 export type DistributionSecretCategory = "model" | "project" | "runtime" | "surface";
 
@@ -103,10 +104,15 @@ export interface DistributionReport {
   persistent_mounts: DistributionPersistentMount[];
   port_mappings: DistributionPortMapping[];
   ports: number[];
+  recording?: RecordingReport;
   resources: DistributionWorkspaceResource[];
   runtime_instances: DistributionRuntimeInstance[];
   secrets: Record<DistributionSecretCategory, DistributionSecretEntry[]>;
   version: "spawnfile.distribution-report.v1";
+  /** Recording-only pins; ids are workspace resource ids, never scoped report keys. */
+  workspace_git_resources?: Array<{ id: string; commit: string; sha256: string }>;
+  /** Recording-only bundle identity; no creator-host paths or URLs are published. */
+  workspace_bundles?: Array<{ id: string; sha256: string; origin?: string }>;
   world_bindings?: DistributionWorldBindingsEvidence;
 }
 
