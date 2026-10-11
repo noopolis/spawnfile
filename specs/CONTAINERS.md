@@ -187,6 +187,31 @@ Daimon contract enters Spawnfile: it reads a Daimon checkout
 (`SPAWNFILE_DAIMON_SOURCE_DIR`) and writes the canonical contract manifest and
 digest plus Daimon's worker `config.toml` renderer bytes.
 
+Manifest v4 adds the separate clocked worker variant, engine-broker protocol v3
+and projection v2. The published `0.2.0-8349559` pin still attests manifest
+`sha256:f7bdd283c420cb6685d32fb556bfb1dcf48f756b3a5ca5ae61e96950152a5cc0`,
+not the newly vendored manifest. Until a real re-pin, **all production Daimon
+container compiles refuse** the exact-manifest gate, including unclocked
+organizations. Schedule capability is reported as degraded and schedule/attention
+target creation refuses under the old pin. The selected image is never granted
+authority by version alone. A matching attested local development identity
+remains available; no published digest or receipt is fabricated here.
+
+`src/runtime/install.test.ts` preserves the old published identity and asserts
+the manifest mismatch. `src/runtime/container.test.ts`,
+`src/compiler/publicDaimonHost.test.ts`, `src/compiler/recordingCapability.test.ts`,
+and the Daimon adapter, schedule-authority and attention tests now explicitly
+express **requires a re-pin**. The published
+authority tests still prove that an exact matching published receipt is accepted.
+
+Release order: merge Daimon; update `publish-inputs.json` to the exact merged
+commit that emits the vendored manifest; publish the immutable image through
+the `runtime-images` workflow's `workflow_dispatch`; then review and pin its
+index digest, manifest digest and per-architecture capability receipts in
+`runtimes.yaml`. Restore the production acceptance expectations only with those
+real receipts. Build training images from that runtime (or an explicitly
+attested matching local artifact), then run the Linux clock/sandbox checks.
+
 Daimon organizations containing a Grok agent run with
 `--security-opt=seccomp=<pinned default-plus-userns profile>` and
 `--security-opt=apparmor=unconfined`; the profile ships with Spawnfile and is
