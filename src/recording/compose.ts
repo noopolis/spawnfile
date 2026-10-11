@@ -60,8 +60,17 @@ export const composeMomentRecord = (input: ComposeMomentRecordInput): MomentReco
     memory.push({ id: bank.id, declaredBy: bank.declared_by, seq });
   }
 
-  for (const id of orderedUnique(agent?.snapshots ?? [])) {
+  const snapshotIds = orderedUnique(agent?.snapshots ?? []);
+  for (const id of snapshotIds) {
     if (!row.snapshots.some((entry) => entry.id === id)) errors.push(`Missing pre-turn snapshot for ${id}`);
+  }
+  const volumes: MomentRecord["volumes"] = [];
+  for (const { id, snapshot } of [...row.snapshots].sort((a, b) => a.id.localeCompare(b.id))) {
+    if (!snapshotIds.includes(id)) {
+      errors.push(`Unexpected pre-turn snapshot for ${id}: not an effective recording root for ${agentNodeId}`);
+      continue;
+    }
+    volumes.push({ id, snapshot });
   }
   const messageIds = row.deliveries.flatMap(({ delivery_id }) => {
     const match = /^moltnet:(.+)$/u.exec(delivery_id);
@@ -77,7 +86,7 @@ export const composeMomentRecord = (input: ComposeMomentRecordInput): MomentReco
     recordedAt: input.recordedAt, exact: errors.length === 0, resources, feeds, memory,
     moltnet: orderedUnique(agent?.networks ?? []).map((network) => ({ network, cursor: startedAt,
       ...(messageIds.length ? { messageIds: [...messageIds] } : {}) })),
-    volumes: [...row.snapshots].sort((a, b) => a.id.localeCompare(b.id)).map(({ id, snapshot }) => ({ id, snapshot })),
+    volumes,
     ...(errors.length ? { errors } : {})
   };
 };

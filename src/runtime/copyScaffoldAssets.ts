@@ -35,3 +35,7 @@ for (const entry of entries) {
     }
   }
 }
+
+for (const asset of ["contract-manifest.json", "contract-manifest.sha256"]) {
+  await cp(path.join(sourceRoot, "daimon", asset), path.join(destinationRoot, "daimon", asset));
+}
