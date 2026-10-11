@@ -24,7 +24,7 @@ import {
   clearProjectModelFallbacks,
   compileProject,
   createTrainingContext,
-  createTrainingPlan,
+  createTrainingPlan, loadTrainingProject, resolveTrainingPlan, materializeTrainingMoment,
   initProject,
   listInitTemplates,
   preflightCompilePlan,
@@ -77,9 +77,7 @@ import { delegatePaideiaTraining } from "./paideiaDelegation.js";
 const packageJsonPath = new URL("../../package.json", import.meta.url);
 
 const readPackageVersion = (): string => {
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
-    version?: unknown;
-  };
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { version?: unknown };
   return typeof packageJson.version === "string" ? packageJson.version : "0.0.0";
 };
 
@@ -105,6 +103,8 @@ const createDefaultRenderEnvironment = (): CliRenderEnvironment => ({
 export interface CliHandlers {
   createTrainingContext: typeof createTrainingContext;
   createTrainingPlan: typeof createTrainingPlan;
+  loadTrainingProject: typeof loadTrainingProject; resolveTrainingPlan: typeof resolveTrainingPlan;
+  materializeTrainingMoment: typeof materializeTrainingMoment;
   delegatePaideiaTraining: typeof delegatePaideiaTraining;
   buildCompilePlan: typeof buildCompilePlan; buildOrganizationView: typeof buildOrganizationView;
   buildProject: typeof buildProject; compileProject: typeof compileProject;
@@ -139,7 +139,7 @@ export interface CliHandlers {
 }
 
 const createDefaultHandlers = (): CliHandlers => ({
-  createTrainingContext, createTrainingPlan, delegatePaideiaTraining,
+  createTrainingContext, createTrainingPlan, loadTrainingProject, resolveTrainingPlan, materializeTrainingMoment, delegatePaideiaTraining,
   buildCompilePlan, buildOrganizationView, buildProject, compileProject, publishProject,
   addAgentProject, addProjectModelFallback, addProjectSurface,
   addSubagentProject, addTeamProject, clearProjectModelFallbacks,

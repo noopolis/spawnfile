@@ -29,25 +29,4 @@ export interface ComposeMomentRecordInput {
   recordedAt: string;
 }
 
-export interface MomentRecord {
-  version: typeof MOMENT_RECORD_VERSION;
-  agent: string;
-  wake: {
-    at: string;
-    startedAt: string;
-    executionId: string;
-    deliveries: { deliveryId: string; kind: string; occurredAt: string }[];
-    surface?: "moltnet";
-    messageId?: string;
-  };
-  recordedAt: string;
-  exact: boolean;
-  resources: ({ id: string; kind: "git"; commit: string; sha256?: string }
-    | { id: string; kind: "bundle"; sha256: string })[];
-  feeds: { id: string; revision: string; tree: string; commit?: string; ref?: string;
-    paths?: string[]; landedAt: string; period?: string }[];
-  memory: { id: string; declaredBy: string; seq: number }[];
-  moltnet: { network: string; cursor: string; messageIds?: string[] }[];
-  volumes: { id: string; snapshot: string }[];
-  errors?: string[];
-}
+export type { MomentRecord } from "./moment.js";

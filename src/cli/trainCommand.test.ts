@@ -5,9 +5,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCli, type CliHandlers } from "./runCli.js";
 import type { DelegatePaideiaTrainingOptions } from "./paideiaDelegation.js";
+import {
+  agentManifest, cleanTrainingProjects, dataFiles, example, trainingProject, volume
+} from "../compiler/training/plan/fixtures.test-helper.js";
 
 const directories: string[] = [];
 afterEach(async () => { await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); });
+afterEach(cleanTrainingProjects);
 async function project(): Promise<string> {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "spawnfile-train-command-")));
   directories.push(root);
@@ -22,6 +26,120 @@ const emptyPlan = (root: string): Awaited<ReturnType<CliHandlers["createTraining
   producer: { package: "spawnfile", version: packageVersion },
   project: { manifest: path.join(root, "Spawnfile"), root },
   record: null, targets: [], version: "spawnfile.training-plan.v1"
+});
+
+describe("spawnfile train --materialize", () => {
+  it.each([example.id, `train:${example.id}`])("materializes %s locally without delegated training flags", async (selector) => {
+    const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest() });
+    const out = path.join(root, "rewound"), stdout: string[] = [], stderr: string[] = [];
+    const forbidden = vi.fn(async () => { throw Error("must not execute, authenticate, or compile output"); });
+    const code = await runCli(["train", path.join(root, "Spawnfile"), "--agent", "agent:writer",
+      "--materialize", selector, "--out", out], {
+      handlers: { createTrainingContext: forbidden, delegatePaideiaTraining: forbidden, compileProject: forbidden,
+        buildProject: forbidden, runProject: forbidden, upProject: forbidden, publishProject: forbidden,
+        importClaudeCodeAuth: forbidden, importCodexAuth: forbidden, importGrokAuth: forbidden,
+        requireAuthProfile: forbidden, provisionCredentials: forbidden },
+      streams: { stdout: (value) => stdout.push(value), stderr: (value) => stderr.push(value) }
+    });
+    expect(code).toBe(0);
+    expect(stderr).toEqual([]);
+    expect(stdout).toHaveLength(1);
+    const moment = JSON.parse(stdout[0]!);
+    expect(moment).toMatchObject({ status: "materialized", agent: "agent:writer",
+      example: { id: example.id, role: "train", dataset: "training/train.yaml" }, inputs: [],
+      record: { matched: false }, leakCheck: { ok: true, findings: 0 } });
+    expect(JSON.parse(await readFile(path.join(out, "moment.json"), "utf8"))).toEqual(moment);
+    expect(JSON.parse(await readFile(path.join(out, "task-clock.json"), "utf8"))).toEqual({
+      version: "spawnfile.task-clock.v1", origin: "2026-10-09T08:20:31Z"
+    });
+    expect(forbidden).not.toHaveBeenCalled();
+  });
+
+  it("lists ambiguous roles and materializes a qualified selection", async () => {
+    const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest(),
+      "training/test.yaml": { examples: [example] } });
+    const out = path.join(root, "rewound"), stderr: string[] = [];
+    const options = { streams: { stdout() {}, stderr: (value: string) => stderr.push(value) } };
+    const args = ["train", root, "--agent", "agent:writer", "--out", out, "--materialize"];
+    expect(await runCli([...args, example.id], options)).toBe(1);
+    expect(stderr).toHaveLength(1);
+    expect(stderr[0]).toContain(`train:${example.id} (training/train.yaml)`);
+    expect(stderr[0]).toContain(`test:${example.id} (training/test.yaml)`);
+    expect(await readdir(root)).not.toContain("rewound");
+    expect(await runCli([...args, `test:${example.id}`], options)).toBe(0);
+    expect(JSON.parse(await readFile(path.join(out, "moment.json"), "utf8")).example.role).toBe("test");
+  });
+
+  it("retains the plan's single-agent inference when --agent is omitted", async () => {
+    const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest() });
+    const stdout: string[] = [];
+    expect(await runCli(["train", root, "--materialize", example.id, "--out", path.join(root, "out")], {
+      streams: { stdout: (value) => stdout.push(value), stderr() {} }
+    })).toBe(0);
+    expect(JSON.parse(stdout[0]!).agent).toBe("agent:writer");
+  });
+
+  it("forwards a loaded project, resolved plan, history and the existing --out option", async () => {
+    const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest() });
+    const materializeTrainingMoment = vi.fn<CliHandlers["materializeTrainingMoment"]>(async ({ plan }) => ({
+      version: "spawnfile.materialized-moment.v1", status: "materialized", agent: plan.agent.id,
+      example: { id: example.id, role: "train", dataset: "training/train.yaml" }, at: example.at, effectiveAt: example.at,
+      inputs: [], record: { matched: false }, leakCheck: { ok: true, findings: 0 }
+    }));
+    const stdout: string[] = [];
+    expect(await runCli(["train", root, "--agent", "agent:writer", "--materialize", example.id,
+      "--history", "history with spaces", "--out", "out with spaces"], {
+      handlers: { materializeTrainingMoment }, streams: { stdout: (value) => stdout.push(value), stderr() {} }
+    })).toBe(0);
+    expect(materializeTrainingMoment).toHaveBeenCalledOnce();
+    expect(materializeTrainingMoment.mock.calls[0]![0]).toMatchObject({
+      project: { root, manifest: path.join(root, "Spawnfile") },
+      plan: { agent: { id: "agent:writer" }, producer: { version: packageVersion } },
+      example: example.id, historyDir: "history with spaces", out: "out with spaces"
+    });
+    expect(JSON.parse(stdout[0]!).status).toBe("materialized");
+  });
+
+  it("returns one-line stderr and exit 1 for a refused moment with report-only output", async () => {
+    const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest({
+      workspace: { docs: { system: "AGENTS.md" }, resources: [volume] }
+    }) });
+    const out = path.join(root, "refused"), stdout: string[] = [], stderr: string[] = [];
+    expect(await runCli(["train", root, "--agent", "agent:writer", "--materialize", example.id, "--out", out], {
+      streams: { stdout: (value) => stdout.push(value), stderr: (value) => stderr.push(value) }
+    })).toBe(1);
+    expect(stdout).toEqual([]);
+    expect(stderr).toHaveLength(1);
+    expect(stderr[0]).toMatch(/^error: Moment refused: 1 input refusal\(s\), 0 leak finding\(s\)/u);
+    expect(stderr[0]).not.toContain("\n");
+    expect(await readdir(out)).toEqual(["moment.json"]);
+    expect(JSON.parse(await readFile(path.join(out, "moment.json"), "utf8"))).toMatchObject({
+      status: "refused", inputs: [{ id: volume.id, refusal: expect.any(String) }]
+    });
+    expect((await readdir(root)).filter((name) => name.includes("staging"))).toEqual([]);
+  });
+
+  it.each([
+    ["--materialize", example.id, "--agent", "agent:writer"],
+    ["--materialize", example.id, "--agent", "agent:writer", "--out", "output", "--plan"],
+    ["--history", "history", "--plan"]
+  ])("rejects incomplete or conflicting local mode options %j before reads", async (...flags) => {
+    const forbidden = vi.fn(async () => { throw Error("must not read project"); });
+    expect(await runCli(["train", "/missing", ...flags], {
+      handlers: { loadTrainingProject: forbidden, createTrainingPlan: forbidden, materializeTrainingMoment: forbidden,
+        createTrainingContext: forbidden, delegatePaideiaTraining: forbidden }, streams: { stdout() {}, stderr() {} }
+    })).toBe(2);
+    expect(forbidden).not.toHaveBeenCalled();
+  });
+
+  it("registers --out exactly once alongside --materialize and --history", async () => {
+    const stdout: string[] = [];
+    expect(await runCli(["train", "--help"], { streams: { stdout: (value) => stdout.push(value), stderr() {} } })).toBe(0);
+    const help = stdout.join("\n");
+    expect(help.match(/--out <value>/gu)).toHaveLength(1);
+    expect(help).toContain("--materialize <example>");
+    expect(help).toContain("--history <directory>");
+  });
 });
 
 describe("spawnfile train --plan", () => {

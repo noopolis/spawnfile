@@ -13,7 +13,7 @@ src/cli/
 ├── composedLifecycleContractSet.ts # Closed machine command/contract inventory
 ├── evidenceExportHelperCommand.ts # Local helper construction command
 ├── compileBuildCommands.ts # `compile` and `build` command registration
-├── trainCommand.ts # Canonical agent selection and Paideia CLI option forwarding
+├── trainCommand.ts # Canonical plan/rewind selection and Paideia CLI option forwarding
 ├── paideiaDelegation.ts # Private versioned context handoff, child lifecycle and completion receipts
 ├── paideiaSupervisor.ts # Packaged group leader retaining identity until native child/group cleanup
 ├── lifecycleCommands.ts # Thin lifecycle/compile/build/run/publish/up/down registration composition
