@@ -15,12 +15,28 @@ import type { NativeAcceptance, NativeAcceptanceResult, NativeWakeRequest } from
 
 // Resolve the optional installed package only through its public runtime export.
 // Acceptance persistence below is a double; parsing/digest and rejection are real.
-const packageName = '@noopolis/daimon/runtime';
-const daimon = await import(packageName) as {
+interface DaimonWakeContract {
   parseWakeAcceptanceRequest(value: unknown): NativeWakeRequest;
   wakeAcceptanceDigest(value: NativeWakeRequest): string;
   createOrganizationRuntimeControlHost(config: unknown, options: { acceptanceStorePath: string; controlToken: string }): NativeHost;
-};
+}
+let daimon: DaimonWakeContract | undefined;
+const packageName = '@noopolis/daimon/runtime';
+let installed = false;
+try {
+  import.meta.resolve(packageName);
+  installed = true;
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== 'ERR_MODULE_NOT_FOUND') throw error;
+}
+if (installed) {
+  // An installed but incompatible peer is a contract failure, never a skipped check.
+  const loaded = await import(packageName) as Record<string, unknown>;
+  const required = ['parseWakeAcceptanceRequest', 'wakeAcceptanceDigest', 'createOrganizationRuntimeControlHost'];
+  if (!required.every(name => typeof loaded[name] === 'function')) throw new Error('Installed Daimon lacks the required wake contract exports');
+  daimon = loaded as unknown as DaimonWakeContract;
+}
+const contract = (): DaimonWakeContract => daimon!;
 const token = 'isolated-control-token';
 const request: Omit<NativeWakeRequest, 'token'> = {
   agent_id: 'agent:writer', delivery_id: 'moltnet:actual-message', event: {
@@ -28,11 +44,11 @@ const request: Omit<NativeWakeRequest, 'token'> = {
   },
 };
 
-test('bridge wake HTTP preserves native parsed identity and digest across authenticated retries', async () => {
+test.skipIf(!daimon)('bridge wake HTTP preserves native parsed identity and digest across authenticated retries (skipped only when @noopolis/daimon/runtime is absent)', async () => {
   const stored = new Map<string, NativeAcceptance>();
   const accept = vi.fn(async (value: unknown): Promise<NativeAcceptanceResult> => {
-    const parsed = daimon.parseWakeAcceptanceRequest(value);
-    const digest = daimon.wakeAcceptanceDigest(parsed);
+    const parsed = contract().parseWakeAcceptanceRequest(value);
+    const digest = contract().wakeAcceptanceDigest(parsed);
     const key = JSON.stringify([parsed.agent_id, parsed.delivery_id]);
     const previous = stored.get(key);
     if (previous) return previous.request_digest === digest ? previous : {
@@ -58,7 +74,7 @@ test('bridge wake HTTP preserves native parsed identity and digest across authen
     const accepted = await response.json() as NativeAcceptance;
     expect(response.status).toBe(202);
     expect(accepted).toEqual(stored.get(JSON.stringify([request.agent_id, request.delivery_id])));
-    expect(accepted.request_digest).toBe(daimon.wakeAcceptanceDigest(daimon.parseWakeAcceptanceRequest({ ...request, token })));
+    expect(accepted.request_digest).toBe(contract().wakeAcceptanceDigest(contract().parseWakeAcceptanceRequest({ ...request, token })));
     expect(accept).toHaveBeenCalledExactlyOnceWith({ ...request, token });
     const reordered = { event: { occurred_at: request.event.occurred_at, text: request.event.text,
       kind: request.event.kind, version: request.event.version }, delivery_id: request.delivery_id, agent_id: request.agent_id };
@@ -66,7 +82,7 @@ test('bridge wake HTTP preserves native parsed identity and digest across authen
     expect(retry.status).toBe(202);
     expect(await retry.json()).toEqual(accepted);
     const changed = { ...request, event: { ...request.event, text: 'Different message' } };
-    expect(daimon.wakeAcceptanceDigest(daimon.parseWakeAcceptanceRequest({ ...changed, token }))).not.toBe(accepted.request_digest);
+    expect(contract().wakeAcceptanceDigest(contract().parseWakeAcceptanceRequest({ ...changed, token }))).not.toBe(accepted.request_digest);
     const conflict = await call.post('/v2/wakes', changed);
     expect(conflict.status).toBe(409);
     expect(await conflict.json()).toEqual({ version: 'noopolis.daimon.wake-acceptance.v2', state: 'rejected', code: 'delivery_conflict' });
@@ -86,9 +102,9 @@ test('bridge wake HTTP preserves native parsed identity and digest across authen
   } finally { server.close(); }
 });
 
-test('native host owns schema rejection and all structured rejection fields reach the bridge', async () => {
+test.skipIf(!daimon)('native host owns schema rejection and all structured rejection fields reach the bridge (skipped only when @noopolis/daimon/runtime is absent)', async () => {
   // An unstarted public host validates without launching an engine or writing state.
-  const host = daimon.createOrganizationRuntimeControlHost(configFixture(), {
+  const host = contract().createOrganizationRuntimeControlHost(configFixture(), {
     acceptanceStorePath: '/unused-unstarted-native-host', controlToken: token,
   });
   const accept = vi.spyOn(host, 'accept');
@@ -123,25 +139,12 @@ test('native host owns schema rejection and all structured rejection fields reac
     const response = await call.post('/v2/wakes', request);
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual(unauthorized);
-    accept.mockClear();
-    for (const value of [null, [], 'text', 0, false]) {
-      const malformed = await call.post('/v2/wakes', value);
-      expect(malformed.status).toBe(400);
-      expect(await malformed.json()).toEqual({ error: 'request body must be an object' });
-    }
-    expect(accept).not.toHaveBeenCalled();
-    const contentType = await call.fetch('http://unit.invalid/v2/wakes', { method: 'POST', headers: { authorization: 'Bearer ' + token } });
-    expect(contentType.status).toBe(400);
-    expect(await contentType.json()).toEqual({ error: 'content-type must be application/json' });
   } finally { accept.mockRestore(); server.close(); }
 });
 
 test('bridge wake HTTP accepts exactly 1,048,576 bytes and rejects the next byte before native admission', async () => {
-  const accept = vi.fn(async (value: unknown): Promise<NativeAcceptanceResult> => {
-    const parsed = daimon.parseWakeAcceptanceRequest(value);
-    return { state: 'accepted', acceptance_id: receiptFixture().acceptance_id, agent_id: parsed.agent_id,
-      delivery_id: parsed.delivery_id, request_digest: daimon.wakeAcceptanceDigest(parsed) };
-  });
+  const accepted: NativeAcceptance = { ...receiptFixture(), state: 'accepted', delivery_id: request.delivery_id };
+  const accept = vi.fn<NativeHost['accept']>().mockResolvedValue(accepted);
   const host = { accept } as unknown as NativeHost;
   const transport = createTransportDelivery(host, request.agent_id);
   transport.begin('task', { kind: 'transport', deliveryId: request.delivery_id });
@@ -153,7 +156,8 @@ test('bridge wake HTTP accepts exactly 1,048,576 bytes and rejects the next byte
     for (const size of [65_537, 1_048_576]) {
       const response = await call.raw(json + ' '.repeat(size - bytes));
       expect(response.status).toBe(202);
-      expect((await response.json() as NativeAcceptance).request_digest).toBe(daimon.wakeAcceptanceDigest(daimon.parseWakeAcceptanceRequest({ ...request, token })));
+      expect(await response.json()).toEqual(accepted);
+      expect(accept).toHaveBeenLastCalledWith({ ...request, token });
     }
     expect(accept).toHaveBeenCalledTimes(2);
     const tooLarge = await call.raw(json + ' '.repeat(1_048_577 - bytes));
@@ -163,7 +167,38 @@ test('bridge wake HTTP accepts exactly 1,048,576 bytes and rejects the next byte
   } finally { server.close(); }
 });
 
-test('wake status, body and Retry-After match the installed Daimon HTTP route for every acceptance outcome', async () => {
+test('bridge wake HTTP preserves rejection responses and enforces admission, authentication and body guards without Daimon', async () => {
+  const accept = vi.fn<NativeHost['accept']>();
+  const host = { accept } as unknown as NativeHost;
+  const transport = createTransportDelivery(host, request.agent_id);
+  const server = createWorkerServer({ host, transport } as unknown as WorkerController, token);
+  const call = requests(server);
+  try {
+    expect((await call.post('/v2/wakes', request)).status).toBe(409);
+    transport.begin('task', { kind: 'transport', deliveryId: request.delivery_id });
+    for (const authorization of ['', 'wrong-token']) expect((await call.post('/v2/wakes', request, authorization)).status).toBe(401);
+    for (const value of [null, [], 'text', 0, false]) {
+      const malformed = await call.post('/v2/wakes', value);
+      expect(malformed.status).toBe(400);
+      expect(await malformed.json()).toEqual({ error: 'request body must be an object' });
+    }
+    const contentType = await call.fetch('http://unit.invalid/v2/wakes', { method: 'POST', headers: { authorization: 'Bearer ' + token } });
+    expect(contentType.status).toBe(400);
+    expect(await contentType.json()).toEqual({ error: 'content-type must be application/json' });
+    expect(accept).not.toHaveBeenCalled();
+    for (const [state, code, status] of [['rejected', 'invalid_request', 400], ['rejected', 'unauthorized', 401],
+      ['rejected', 'delivery_conflict', 409], ['rejected', 'unknown_agent', 409], ['stopped', 'host_stopping', 409]] as const) {
+      const outcome: NativeAcceptanceResult = { state, code };
+      accept.mockResolvedValue(outcome);
+      const response = await call.post('/v2/wakes', { ...request, token: 'body-cannot-override-header' });
+      expect(response.status).toBe(status);
+      expect(await response.json()).toEqual(outcome);
+      expect(accept).toHaveBeenLastCalledWith({ ...request, token });
+    }
+  } finally { server.close(); }
+});
+
+test.skipIf(!daimon)('wake status, body and Retry-After match the installed Daimon HTTP route for every acceptance outcome (skipped only when @noopolis/daimon/runtime is absent)', async () => {
   // Execute the installed route and its helpers verbatim, without running the CLI,
   // constructing a native runtime, starting an engine or binding a TCP listener.
   const source = await readFile('node_modules/@noopolis/daimon/src/runtime/cli.ts', 'utf8');
