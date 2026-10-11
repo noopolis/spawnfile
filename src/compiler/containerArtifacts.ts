@@ -122,7 +122,7 @@ export const createContainerArtifacts = async (
     .map((variable) => variable.name)
     .sort();
   const memoryArtifacts = createMemoryArtifactBundle(plan, options.deploymentLineage);
-  const recording = resolveRecordingReport(plan, memoryArtifacts.memories);
+  const recording = resolveRecordingReport(plan, memoryArtifacts.memories, options.workspaceGitResources);
   const { resources: resolvedWorkspaceResources, mounts: workspaceResourceMounts } =
     resolveWorkspaceResourceVolumes(runtimePlans);
   const persistentMountCandidates: ContainerPersistentMountReport[] = [

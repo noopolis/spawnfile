@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createDeployResources, deployResourcesAt } from "../deployment/index.js";
 import { DISTRIBUTION_REPORT_OUTPUT_FILE, parseDistributionReport } from "../distribution/index.js";
+import { capableDaimonManifest } from "../runtime/daimon/recording.test-helper.js";
 import { compileProject } from "./compileProject.js";
 import type { CompilePlan } from "./types.js";
 import { resolveWorkspaceGitPins } from "./workspaceGitPins.js";
@@ -195,9 +196,11 @@ describe("fetch: build git resources", () => {
       shared: { training: { record: {} } }, members: ["a", "b"].map((id) => ({ id, ref: id })) }));
     for (const [agent, branch] of [["a", BRANCH], ["b", "other"]] as const) {
       await mkdir(path.join(org, agent));
-      await writeFile(path.join(org, agent, "Spawnfile"), agentSpawnfile(pinnedResource(`file://${source}`, `branch: ${branch}`)).replace("name: reporter", `name: ${agent}`));
+      await writeFile(path.join(org, agent, "Spawnfile"), agentSpawnfile(pinnedResource(`file://${source}`, `branch: ${branch}`))
+        .replace("name: reporter", `name: ${agent}`).replace("runtime: openclaw", "runtime: daimon")
+        .replace("provider: anthropic", "provider: openai").replace("method: claude-code", "method: codex"));
     }
-    const compiled = await compile("recording-out");
+    const compiled = await compile("recording-out", { daimonContractManifest: capableDaimonManifest() });
     const pins = compiled.report.workspace_git_resources!;
     expect(new Set(pins.map((pin) => pin.id)).size).toBe(1);
     expect(new Set(pins.map((pin) => pin.sha256)).size).toBe(1);

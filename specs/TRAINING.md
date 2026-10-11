@@ -155,11 +155,29 @@ appears between the `training-plan-schema` markers below.
 
 ## Moment record
 
-`spawnfile.moment-record.v1` records one wake of one compiled agent. Recording MUST
+`spawnfile.moment-record.v1` records one turn attempt of one compiled agent. Recording MUST
 be off without an effective `record`, with no recording I/O or artifact changes when
-off, except reconciliation owed by an earlier recorded deployment or landing. Recording requires a Daimon runtime whose contract manifest declares `wakeMoments`;
-other runtimes fail compile. Runtime enforcement, pre-turn snapshots and composition
-land in the next packet; this packet supplies the host histories below.
+off, except reconciliation owed by an earlier recorded deployment or landing. Recording requires a Daimon runtime whose receipt-bound contract manifest declares
+`wakeMoments` version `noopolis.daimon.wake-moment.v1` and consumes `agents[].recording`;
+other runtimes or a missing capability fail compile. Enabling it requires a capable
+Daimon release and a `runtimes.yaml` / contract-manifest re-pin, never a version guess.
+
+The compiler emits per-agent `recording: {directory, keepMs, snapshots:[{id,path}]}`.
+The directory is `/var/lib/spawnfile/recording/<agent slug>`, a runtime-owned `0700`
+exclusive-reattach volume; snapshot paths are the resolved unfed volume backing roots,
+not workspace symlinks. Recording stores receive the same deletion guard as memory.
+
+`spawnfile record sync [path] [--deployment <name>]` selects a deployment like `usage`,
+reads its wake rows and memory ledgers, and joins host histories using deployed compiled
+facts. It writes private `0600` records via temporary file, fsync and rename to
+`<deployment state dir>/moments/<agent slug>/<compact startedAt>-<sanitized executionId>.json`.
+For project records the state directory is `<output>/deployments/<name>/`; for home
+records it is `~/.spawnfile/deployments/<name>/`, scoped to the same identity as the
+sibling resource log. Existing records are never rewritten. Replays share `executionId`
+but have distinct `startedAt` instants and files: one record per attempt. Moment
+retention deletes attempts older than `now - keep`, preserving the newest per agent
+(including ties). Snapshots remain in the deployment's recording volume; records name
+them, and P4 reads them. Non-exact records do not fail sync; operational failures do.
 
 All instants MUST use one host clock, shared by its containers, and include an offset
 or `Z`. Every pin MUST describe state in effect at `wake.startedAt`, not capture time.
@@ -204,7 +222,7 @@ A later `recordedAt` MUST NOT advance a pin.
     "startedAt": "2026-10-09T08:20:31.250Z",
     "executionId": "execution-17",
     "deliveries": [{ "deliveryId": "moltnet:42", "kind": "message", "occurredAt": "2026-10-09T08:20:31.000Z" }],
-    "surface": "moltnet", "room": "assignment", "from": "brass", "messageId": "42"
+    "surface": "moltnet", "messageId": "42"
   },
   "recordedAt": "2026-10-09T08:20:32.000Z",
   "exact": true,
@@ -223,7 +241,7 @@ A later `recordedAt` MUST NOT advance a pin.
 
 `record.keep` bounds landing logs, deploy logs, snapshots and moment records; omission
 means **30d**. A shared history MUST use the maximum effective keep among its recording
-consumers (all recording agents for the deploy log). Pruning MUST keep entries newer
+consumers (all recording agents for the deploy log). History-log pruning MUST keep entries newer
 than `now - keep` AND the newest entry at or before that cutoff, even across a long gap.
 Lookups are inclusive; equal timestamps use the last appended entry. Before the first
 entry, lookup returns no state. Invalid lines MUST be reported alongside valid entries.

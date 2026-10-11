@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { SpawnfileError } from "../shared/index.js";
+import { recordingReportSchema } from "../report/index.js";
 
 import {
   DISTRIBUTION_ENGINE_KINDS,
@@ -118,10 +119,7 @@ export const distributionReportSchema = z.object({
     published_port: portSchema
   }).strict()),
   ports: z.array(portSchema),
-  recording: z.object({
-    keep_ms: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-    memory_mount_ids: z.array(instanceIdSchema)
-  }).strict().optional(),
+  recording: recordingReportSchema.optional(),
   resources: z.array(z.object({
     id: z.string().min(1),
     kind: z.union([z.literal("bundle"), z.literal("git"), z.literal("volume")]),

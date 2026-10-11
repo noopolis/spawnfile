@@ -99,7 +99,7 @@ const isAbsentLedgerFile = (error: unknown): boolean => {
 
 /** `cat`s one generation through `exec`. A genuinely absent file reads as
  * empty; every other failure is reported, never swallowed. */
-const readLedgerGeneration = async (
+export const readRuntimeFileViaExec = async (
   exec: UsageLedgerExec,
   filePath: string
 ): Promise<{ failure?: UsageLedgerReadFailure; text: string }> => {
@@ -127,8 +127,8 @@ export const readUsageLedgerViaExec = async (
   paths: UsageLedgerPaths
 ): Promise<UsageLedgerRead> => {
   const [rotated, primary] = await Promise.all([
-    readLedgerGeneration(exec, paths.rotatedFilePath),
-    readLedgerGeneration(exec, paths.filePath)
+    readRuntimeFileViaExec(exec, paths.rotatedFilePath),
+    readRuntimeFileViaExec(exec, paths.filePath)
   ]);
   return {
     // Every row is kept, across both generations: aggregates dedupe by `turn`

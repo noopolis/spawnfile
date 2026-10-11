@@ -28,7 +28,7 @@ src/distribution/
 ## Rules
 
 - The distribution report is the public interface of a published image. It must stay secret-free (names only, never values) and creator-host-path-free (no project roots, output directories, or node source paths). Tests enforce both.
-- When recording is on, carry `recording` (keep and protected memory mount IDs) and
+- When recording is on, carry `recording` (keep, protected memory/recording mount IDs and portable agent facts) and
   portable `workspace_git_resources`/`workspace_bundles` pins for image up/release.
   Their IDs are agent-visible resource IDs; retain compiled `agent_node_ids` and
   `declared_by` so equal IDs/digests with different commits remain distinguishable. Omit all three fields when recording is off;

@@ -1,12 +1,15 @@
-import type { ContainerMemoryReport, RecordingReport } from "../report/index.js";
+import type { CompileReport, ContainerMemoryReport, RecordingReport } from "../report/index.js";
 import { maxRecordingKeepMs } from "../shared/index.js";
+import { daimonRecordingMountId } from "../runtime/daimon/recording.js";
+import { resolveRecordingAgentFacts } from "./recordingAgentFacts.js";
 
 import type { CompilePlan } from "./types.js";
 
 /** Project effective agent declarations and existing memory access facts only. */
 export const resolveRecordingReport = (
   plan: CompilePlan,
-  memories: readonly ContainerMemoryReport[]
+  memories: readonly ContainerMemoryReport[],
+  gitPins: CompileReport["workspace_git_resources"] = []
 ): RecordingReport | undefined => {
   const agents = plan.nodes.filter((node) => node.kind === "agent" && node.value.training?.record !== undefined);
   const keepMs = maxRecordingKeepMs(agents.map((node) => node.value.training?.record));
@@ -15,5 +18,9 @@ export const resolveRecordingReport = (
   const memoryMountIds = memories.flatMap((memory) =>
     memory.store.persistent_mount_id !== undefined && memory.accessible_node_ids.some((id) => agentIds.has(id))
       ? [memory.store.persistent_mount_id] : []);
-  return { keep_ms: keepMs, memory_mount_ids: [...new Set(memoryMountIds)].sort() };
+  return {
+    keep_ms: keepMs, memory_mount_ids: [...new Set(memoryMountIds)].sort(),
+    recording_mount_ids: agents.filter((agent) => agent.runtimeName === "daimon").map((agent) => daimonRecordingMountId(agent.slug)).sort(),
+    agents: resolveRecordingAgentFacts(plan, gitPins)
+  };
 };

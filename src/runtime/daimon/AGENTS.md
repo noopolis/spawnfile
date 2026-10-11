@@ -70,6 +70,14 @@ samples). The manifest also pins Grok CLI 1.0.34 (URL + sha256 per
 architecture), which the runtime image, the local builder, and generated
 organization images all verify.
 
+`wakeMoments.ts` mirrors the optional data-only wake recording capability;
+`contractManifest.ts` requires it and `agents[].recording` together. Its presence
+in the receipt-bound manifest, never a version guess, permits recording.
+`recording.ts` lowers the shared training record-volume resolver to container
+backing paths and emits per-agent private recording stores. Their mounts use
+`exclusive-reattach` and the ordinary Daimon 0700 ownership preparation; snapshots
+never use workspace links. Compilation enforces capability before emission.
+
 The consumed manifest also pins the native Grok broker source/x64/arm64
 digests, fixed root/org/broker/worker identities, root-only registrations,
 and loopback-only provider/MCP endpoints. Container provisioning must match

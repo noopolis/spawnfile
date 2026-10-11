@@ -1,5 +1,6 @@
 import type { RuntimeLifecycleStatus } from "../shared/index.js";
 import type { ModelAuthMethod } from "../shared/index.js";
+import type { RecordingAgentReport } from "./recording.js";
 
 export type CapabilityOutcome = "degraded" | "supported" | "unsupported";
 
@@ -330,10 +331,13 @@ export interface CompileReportWorkspaceGitResource extends Partial<WorkspaceReso
 
 /** Present only when at least one effective compiled agent enables recording. */
 export interface RecordingReport {
+  agents?: RecordingAgentReport[];
   /** Maximum recording window across agents, including the 30-day default. */
   keep_ms: number;
   /** Durable memory mounts accessible to any recording agent, including team banks. */
   memory_mount_ids: string[];
+  /** Per-agent recording stores protected by the same destructive-volume guard. */
+  recording_mount_ids?: string[];
 }
 
 export interface CompileReport {

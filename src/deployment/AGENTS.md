@@ -78,7 +78,7 @@ src/deployment/
   Matching history tails must still fsync file and directory before reconciliation succeeds.
   `candidateRecording.ts` records rolled-back startup intervals as inexact; lookup excludes
   their published snapshots after rollback, and retention keeps the restored predecessor.
-- `down --volumes` refuses deletion of recording memory before export or teardown unless
+- `down --volumes` refuses deletion of recording memory and snapshot stores before export or teardown unless
   `--discard-recorded-memory` is explicit; `--force` alone is insufficient. Match protected
   mount IDs from the DEPLOYED record to actual volume names, including aliases. Refuse
   report disagreement that could weaken protection. Declared shared names stay retained.

@@ -27,6 +27,8 @@ src/compiler/
 ├── cleanCompileOutput.ts       # Clean generated output while retaining deployment records/history
 ├── compileProjectReports.ts    # Node report augmentation derived from compile support
 ├── recordingReport.ts          # Effective recording keep and accessible memory mount projection
+├── recordingCapability.ts      # Receipt-bound Daimon wake-moment capability gate, before output writes
+├── recordingAgentFacts.ts      # Portable per-agent recording facts carried into deployment reports
 ├── compileProjectSupport.ts    # Shared compile-time artifact injection and file writing helpers
 ├── dockerBuildContext.ts       # Emitted Docker ignore policy, surviving-file inventory/digest, and COPY/ADD safety checks
 ├── dockerBuildSkip.ts          # Bounded image inspection and ordered context-cache skip decision
@@ -101,8 +103,8 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
 ## Rules
 
 - Keep the compiler deterministic.
-- Recording metadata is optional: only recording agents contribute to `recording.keep_ms`
-  and `memory_mount_ids`. Reuse workspace git/bundle report pins in the distribution report,
+- Recording metadata is optional: only recording agents contribute to `recording.keep_ms`,
+  `memory_mount_ids`, and `recording_mount_ids`. Reuse workspace git/bundle report pins in the distribution report,
   dropping host paths/URLs. Never resolve sources again for recording; off emits no fields.
 - Project `up` persists recording protections and resource snapshots in its output-scoped
   deployment record; clean compile preserves `deployments/`. Pins retain `agent_node_ids`
