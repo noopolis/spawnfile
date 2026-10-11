@@ -188,7 +188,11 @@ Daimon contract enters Spawnfile: it reads a Daimon checkout
 digest plus Daimon's worker `config.toml` renderer bytes.
 
 Manifest v4 adds the separate clocked worker variant, engine-broker protocol v3
-and projection v2. The published `0.2.0-8349559` pin still attests manifest
+and projection v2. It also declares `wakeMoments` and `agents[].recording`:
+with an image attesting this manifest, declared training recording passes the
+recording capability gate. Recording remains opt-in.
+
+The published `0.2.0-8349559` pin still attests manifest
 `sha256:f7bdd283c420cb6685d32fb556bfb1dcf48f756b3a5ca5ae61e96950152a5cc0`,
 not the newly vendored manifest. Until a real re-pin, **all production Daimon
 container compiles refuse** the exact-manifest gate, including unclocked
