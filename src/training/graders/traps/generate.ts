@@ -15,9 +15,9 @@ function variantDocument(document: Decomposition, unit: AtomicUnit, kind: TrapKi
     const changed = text !== normalizeWhitespace(item.text);
     const fields = changed && before && after && item.fields ? Object.fromEntries(Object.entries(item.fields)
       .map(([key, value]) => [key, value?.replace(before, after)])) : item.fields;
-    const source_span = changed && item.source_span ? normalizeWhitespace(item.source_span)
-      .replace(normalizeWhitespace(source), normalizeWhitespace(replacement)) : item.source_span;
-    return { ...item, text, ...(cites ? { cites } : {}), ...(fields ? { fields } : {}),
+    const source_span = changed ? undefined : item.source_span;
+    const { source_span: _span, ...rest } = item;
+    return { ...rest, text, ...(cites ? { cites } : {}), ...(fields ? { fields } : {}),
       ...(source_span === undefined ? {} : { source_span }) };
   }
   return { ...document, units: document.units.map(transform), ...(document.audit
@@ -46,11 +46,12 @@ export function generateTraps(templates: CheckTemplates, document: Decomposition
         : mutationFor(kind, unit, document, inputs, templates, seed);
       if (!mutation) { discard('no unambiguous eligible mutation'); continue; }
       const output = permutation ? structuredClone(inputs.output) : replaceLeaf(inputs.output, mutation.path, mutation.after);
-      const decomposition = variantDocument(document, unit, kind, mutation.source, mutation.replacement,
+      let decomposition = variantDocument(document, unit, kind, mutation.source, mutation.replacement,
         mutation.value_before, mutation.value_after);
       decomposition.output = { from: 'embedded-output.json', sha256: sha256(JSON.stringify(output)) };
       const invalid = validateDecomposition(decomposition, { ...inputs, output }, templates);
       if (invalid.rejected.length) { discard('mutation invalidated another extracted span'); continue; }
+      decomposition = invalid.decomposition;
       let instances = instantiateChecks(templates, decomposition, { ...inputs, output });
       const intended_answers = Object.fromEntries(selected.map(instance => [instance.id,
         configured.find(template => template.id === instance.template_id)!.traps![kind]!]));
@@ -62,7 +63,7 @@ export function generateTraps(templates: CheckTemplates, document: Decomposition
       const trap: Trap = { id: stableDigest({ seed, kind, unit: unit.id, mutation, document, templates }), kind,
         base_unit: unit.id, mutation, affected_template_ids: selected.map(instance => instance.template_id), intended_answers,
         output, decomposition, instances, context_digest: stableDigest(inputs.context), validation: { valid: false, reasons: [] } };
-      trap.validation = validateTrap(trap, unit, inputs, templates);
+      trap.validation = validateTrap(trap, unit, inputs, templates, document);
       if (!trap.validation.valid) { discard(trap.validation.reasons.join('; ')); continue; }
       if (instances.some(instance => Object.hasOwn(intended_answers, instance.id) && instance.status !== 'ready')) {
         discard('affected check became missing'); continue;

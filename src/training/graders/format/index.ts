@@ -8,3 +8,5 @@ export { stableDigest, sha256, parseYaml, parseSchema, identifier, probability }
 export { parseLabelImport } from './label-import.js';
 export type { LabelImport } from './label-import.js';
 export { rowsSchema, sentenceCitationPolicy } from './rows.js';
+
+export { moveLeadingCitations } from './sentences.js';

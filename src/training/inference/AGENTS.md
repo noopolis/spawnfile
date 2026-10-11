@@ -30,6 +30,9 @@ generation and the entire completed JSON response afterward. Support synchronous
 draft-07 object schemas with local references, no external fetching or custom
 formats, at most 64 KiB. Reject non-finite values and duplicate response keys.
 Providers retain measured usage and model identity when rejecting a completion.
+Codex/Claude extraction may explicitly opt into responseJsonFence: accept only one
+surrounding json fence before the same schema/duplicate-key validation. Default
+requests remain strict. Native structured_output, when present, stays authoritative.
 
 Only a completed isolation-attested response that fails its requested schema is
 `invalid-response`; the next authored fallback may run inside the existing budget.

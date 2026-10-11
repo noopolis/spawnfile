@@ -9,11 +9,13 @@ export function grokWindowOpen(now: Date, window: GrokWindow = defaultGrokWindow
     return hours! * 60 + mins!;
   };
   const start = minutes(window.start), end = minutes(window.end);
+  if (window.timeZone !== undefined && window.timeZone !== 'Europe/Berlin') throw new Error('Grok window timezone must be Europe/Berlin');
   if (start === end) throw new Error('Grok window must have distinct boundaries');
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: window.timeZone ?? 'Europe/Berlin',
     hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
   const current = Number(parts.find(p => p.type === 'hour')!.value) * 60 + Number(parts.find(p => p.type === 'minute')!.value);
-  return start < end ? current >= start && current < end : current >= start || current < end;
+  const outer = current >= 20 * 60 + 30 || current < 6 * 60 + 30;
+  return outer && (start < end ? current >= start && current < end : current >= start || current < end);
 }
 
 /** Confidence is supported answer mass; unassigned mass remains explicitly unknown. */

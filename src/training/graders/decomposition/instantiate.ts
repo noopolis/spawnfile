@@ -31,7 +31,8 @@ function placeholder(path: string, projection: Record<string, unknown>): unknown
 export function instantiateChecks(templates: CheckTemplates, document: Decomposition, inputs: DecompositionInputs): CheckInstance[] {
   const validation = validateDecomposition(document, inputs, templates);
   const rejected = new Map(validation.rejected.map(item => [item.id, item.reasons]));
-  const units = [...document.units, ...(document.audit?.missed ?? [])];
+  const sanitized = new Map([...validation.decomposition.units, ...(validation.decomposition.audit?.missed ?? [])].map(unit => [unit.id, unit]));
+  const units = [...document.units, ...(document.audit?.missed ?? [])].map(unit => sanitized.get(unit.id) ?? unit);
   return templates.templates.flatMap(template => units.filter(unit => unit.kind === template.applies_to).flatMap(unit => {
     const reasons = [...(rejected.get(unit.id) ?? [])];
     if (template.when) {

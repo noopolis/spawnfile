@@ -84,7 +84,7 @@ export function createCodexInference(options: CodexInferenceOptions = {}): Infer
         interrupted(result, request.signal, codexEvidence(frames));
         if (result.exitCode !== 0) throw new InferenceFailure(classifyCodexFailure(result.stderr), 'Codex generation failed', codexEvidence(frames));
         if (!frames.completed) throw new InferenceFailure('protocol', 'Codex omitted a completed final answer', codexEvidence(frames));
-        try { validateInferenceResponse(frames.text, schema); }
+        try { validateInferenceResponse(frames.text, schema, request.responseJsonFence); }
         catch { throw new InferenceFailure('invalid-response', 'Codex answer violated the requested schema', codexEvidence(frames)); }
         return { text: frames.text, model: frames.model ?? request.model,
           modelBasis: frames.model === undefined ? 'requested-assumption' : 'provider-reported',

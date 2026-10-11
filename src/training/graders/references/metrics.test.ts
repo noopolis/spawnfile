@@ -10,7 +10,9 @@ function output(checks: CheckReference[]): CouncilOutput {
   return { outputDigest: 'output', identity: 'identity', digest: 'digest', complete: true,
     checks: Object.fromEntries(checks.map((value, index) => [index, value])), calls: [], skipped: [] };
 }
-const correct: TrapAssessment = { kind: 'number-substitution', templateId: 'support', intended: 'no', actual: 'no' };
+const correct: TrapAssessment = { outputId: 'output', kind: 'number-substitution', templateId: 'support', intended: 'no', actual: 'no' };
+const control: TrapAssessment = { outputId: 'output', kind: 'option-permutation', templateId: 'support', intended: 'unchanged', actual: 'no', baseline: 'no' };
+const population = { outputIds: ['output'] };
 describe('council quality gate', () => {
   it('counts uncertain as an answer and uses adjudicated items, not all items, as the instability denominator', () => {
     const outputs = [output([check(), check(['yes', 'yes']), check(['yes', 'no']), check(['uncertain', 'uncertain']), check(['uncertain', 'yes'])])];
@@ -27,9 +29,9 @@ describe('council quality gate', () => {
   it('passes exactly 95% accuracy and 5% instability and stops just outside the boundary', () => {
     const traps = [...Array.from({ length: 19 }, () => correct), { ...correct, actual: 'yes' }];
     const checks = [...Array.from({ length: 19 }, () => check(['yes', 'yes'])), check(['yes', 'no'])];
-    expect(referenceQuality([output(checks)], traps).gate).toBe('PASS');
-    expect(referenceQuality([output(checks.slice(1))], traps).gate).toBe('STOP');
-    expect(referenceQuality([output(checks)], traps.slice(1)).gate).toBe('STOP');
+    expect(referenceQuality([output(checks)], [...traps, control], population).gate).toBe('PASS');
+    expect(referenceQuality([output(checks.slice(1))], [...traps, control], population).gate).toBe('STOP');
+    expect(referenceQuality([output(checks)], [...traps.slice(1), control], population).gate).toBe('STOP');
   });
   it('measures unchanged controls only against present baseline answers', () => {
     const controls: TrapAssessment[] = ['yes', null, undefined].map(baseline => ({ kind: 'option-permutation', templateId: 'support',
@@ -37,6 +39,36 @@ describe('council quality gate', () => {
     const quality = referenceQuality([], controls);
     expect(quality.optionPermutation).toEqual({ total: 3, correct: 1, accuracy: 1 / 3 });
     expect(quality.byKind['option-permutation']!.accuracy).toBe(1 / 3);
+  });
+  it('cannot certify accuracy with identical wrong control answers or certify consistency with defects alone', () => {
+    const controlsOnly = referenceQuality([output([check()])], [control], population);
+    expect(controlsOnly).toMatchObject({ gate: 'STOP', knownAnswer: { total: 0, accuracy: null }, consistency: { accuracy: 1 } });
+    expect(controlsOnly.coverage.uncovered).toEqual(['output']);
+    expect(referenceQuality([], [correct], population)).toMatchObject({ gate: 'STOP', consistency: { accuracy: null } });
+    expect(referenceQuality([], [correct, { ...control, actual: 'yes' }], population).gate).toBe('STOP');
+    const disguised = referenceQuality([], [{ ...control, intended: 'no' }, { ...correct, intended: 'unchanged' }], population);
+    expect(disguised).toMatchObject({ gate: 'STOP', knownAnswer: { total: 0 }, consistency: { total: 0 } });
+  });
+  it('freezes coverage from all declared outputs and allows at most ten percent uncovered', () => {
+    const outputIds = Array.from({ length: 10 }, (_, i) => `output-${i}`);
+    const known = outputIds.slice(1).map(outputId => ({ ...correct, outputId }));
+    const result = referenceQuality([], [...known, control], { outputIds });
+    expect(result).toMatchObject({ gate: 'PASS', coverage: { total: 10, covered: 9, uncovered: ['output-0'], uncoveredRate: 0.1 } });
+    expect(referenceQuality([], [...known.slice(1), control], { outputIds }).gate).toBe('STOP');
+    expect(referenceQuality([], [...known, control]).gate).toBe('STOP');
+    expect(referenceQuality([], [correct, control], { outputIds: ['different'] }).coverage.uncovered).toEqual(['different']);
+  });
+  it('uses only unique base checks for instability and reports variant adjudication separately', () => {
+    const base = output([check(['yes', 'no'])]);
+    const variants = Array.from({ length: 20 }, (_, i) => ({ ...output([check(['yes', 'yes'])]), outputDigest: `variant-${i}` }));
+    const result = referenceQuality([base], [correct, control], { ...population, variantOutputs: variants });
+    expect(result).toMatchObject({ gate: 'STOP', instability: { items: 1, unstable: 1, rate: 1 },
+      variantAdjudication: { items: 1, unstable: 0, rate: 0 } });
+    expect(adjudicationInstability([base, base])).toEqual({ items: 1, unstable: 1, rate: 1 });
+    const stableCopy = output([check(['yes', 'yes'])]);
+    expect(adjudicationInstability([base, stableCopy])).toEqual({ items: 1, unstable: 1, rate: 1 });
+    expect(adjudicationInstability([stableCopy, base])).toEqual({ items: 1, unstable: 1, rate: 1 });
+    expect(adjudicationInstability([output([check()]), stableCopy])).toEqual({ items: 1, unstable: 0, rate: 0 });
   });
   it('scores teachers against references excluding themselves, including missing peer mass', () => {
     const disagreement = check();

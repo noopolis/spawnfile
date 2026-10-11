@@ -73,12 +73,13 @@ export function createClaudeInference(options: ClaudeInferenceOptions = {}): Inf
         let decoded;
         try {
           if (responseSchema !== undefined) validateInferenceResponse(resultLine, { type: 'object' });
-          decoded = decodeClaudeResult(result, responseSchema !== undefined);
+          decoded = decodeClaudeResult(result, responseSchema !== undefined &&
+            !(request.responseJsonFence && result['structured_output'] === undefined));
 
         } catch {
           throw new InferenceFailure('protocol', 'Claude response violated the requested output contract', { ...evidence(), diagnostic: captureInferenceDiagnostic('response-envelope') });
         }
-        try { validateInferenceResponse(decoded.text, responseSchema); }
+        try { validateInferenceResponse(decoded.text, responseSchema, request.responseJsonFence); }
         catch { throw new InferenceFailure('invalid-response', 'Claude response violated the requested schema', {
           ...evidence(), diagnostic: captureInferenceDiagnostic('response-schema', decoded.text),
         }); }

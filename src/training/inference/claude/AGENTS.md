@@ -22,7 +22,9 @@ schema before auth/process work, snapshot it, require structured_output on the
 successful terminal envelope and validate its serialized data independently.
 Validate raw terminal JSON first so duplicate keys cannot disappear on parsing.
 Keep measured usage/model/route when schema validation fails. Ordinary result prose
-is never substituted for requested structured_output; tool isolation stays strict.
+is never substituted for requested structured_output by default. Explicit extraction
+responseJsonFence permits terminal result JSON (optionally one json fence) only
+when structured_output is absent; schema and tool-isolation checks stay strict.
 Installed CLI help confirms the flag. Native structured generation still needs a
 successful subscription smoke once quota is available; unit fixtures do not prove it.
 

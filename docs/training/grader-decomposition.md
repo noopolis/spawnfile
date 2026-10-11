@@ -42,7 +42,8 @@ templates:
 
 Choose installed subscription model identifiers explicitly. Teacher identifiers in
 CLI flags select these declarations. Grok is optional and runs only inside the
-configured `grok_window`, default `{start: '20:30', end: '06:30'}` in Europe/Berlin.
+binding 20:30–06:30 Europe/Berlin window. A configured `grok_window` is
+intersected with that outer bound and can only narrow it.
 The end boundary is exclusive. No API-key fallback is available.
 
 Criteria are answer-to-description maps. Noul uses quoted `"true"` and `"false"`
@@ -87,7 +88,18 @@ one selected extractor, the second call uses the same provider in a fresh sessio
 Use two providers for vendor independence. Output/context byte hashes bind the
 saved decomposition to its inputs. Text must occur within an output string after
 whitespace normalization. Obligation units may instead quote declared assignment
-context. Invented spans and unknown cited rows are rejected and reported.
+context. Citation IDs must match those in the unit or its containing sentence, using the
+declared row citation pattern and `leading_citations` policy. A supplied
+`source_span` must occur verbatim after whitespace normalization in a cited row.
+Invented spans and redirected citations are rejected and reported. Extracted
+fields absent from the unit text are dropped and reported; a `when` condition on
+a dropped or absent field retains a missing instance.
+
+Extraction supplies a strict draft-07 response schema and explicitly opts Codex
+and Claude into accepting exactly one surrounding `json` code fence before
+provider schema validation. Other inference requests retain strict JSON behavior. Extra prose, nested
+fences, duplicate keys and unknown properties fail parsing. Raw response receipts
+are saved before parsing, including malformed responses and cancellation.
 
 Instantiation is deterministic. IDs are `<template>@<unit>` and digests include
 the rendered question and projection. Teachers see only declared state; identical
@@ -108,20 +120,53 @@ answers, both adjudications, distributions, call usage/latency and content ident
 Teacher agreement is also measured against peers with the evaluated teacher
 excluded; it is not an independent claim of correctness.
 
-The gate requires at least 95% trap accuracy and at most 5% adjudication instability.
-Missing and uncertain trap answers count against accuracy. No validated traps means
-STOP. Reports identify failed trap kinds and templates and report option-permutation
-consistency. Passing synthetic controls does not establish general factual truth.
+The gate requires both at least 95% **known-answer accuracy** on validated defect
+traps and at least 95% **consistency** on format-paraphrase and option-permutation
+controls. Controls compare variant answers to the base answer, and never count
+as evidence of independent correctness. Either empty population means STOP.
+Missing and uncertain answers count against their respective denominators.
+Every decomposition is included in coverage: an output with no validated defect
+trap is reported as uncovered, including outputs whose trap bundle is absent.
+More than 10% uncovered outputs means STOP.
+
+Instability must be at most 5%, measured only on unique base checks that went to
+adjudication. Synthetic variants cannot dilute that population. Variant
+adjudication is reported separately; only affected checks are evaluated for a
+variant, and duplicate variant check digests count once in that diagnostic.
 
 Number/entity, negation, citation, redundancy and formatting mutations alter output
 content; evidence remains untouched. Embedded variant decompositions address the
 serialized `output` payload as `embedded-output.json`; this is bundle metadata, not a separate
 filesystem reference. Option permutation changes only criterion order. Independent
-code validation checks the applied mutation and substitution
-absence from cited rows. It cannot prove arbitrary semantic implications; authored
-trap mappings remain part of the operator's evaluation contract.
+validation recomputes preconditions from the saved variant and source rows:
 
-Completed outputs checkpoint locally and resume only with matching content/config
-identity. Reports and call receipts distinguish saved work from newly executed calls.
+- Numbers must appear in cited evidence with formatting normalized; replacements
+  preserve digit count and precision, differ by at most 20%, and occur nowhere
+  in cited rows. Units remain unchanged. Unchanged option controls retain the
+  legitimate base number; format controls also exercise comma normalization when
+  available.
+- Entity originals must occur in cited rows. Replacements come from the same
+  article, have the same independently recognizable type, and are absent from
+  cited rows. The current conservative recognizer supports personal honorifics
+  and explicit organization suffixes; ambiguous bare names are ineligible.
+- Negation requires an affirmative verbatim cited sentence counterpart and only
+  inserts a negator. Existing negations or paraphrased evidence are ineligible.
+- Citation swaps require a replacement row with no shared content word of four
+  or more characters after stop-word removal.
+- Redundancy requires changed rendered state exposing both occurrences to every
+  affected check. A unit-only projection cannot observe a neighboring insertion.
+
+Rejected mutations are counted with reasons. Validation does not regenerate
+candidates. Authored answer mappings remain the contract between these mechanical
+defects and each template's answer vocabulary; the checks do not prove arbitrary
+semantic implications.
+
+Each teacher/projection and adjudication call checkpoints its receipt and raw
+response before decoding or propagating cancellation. Extraction does the same
+for each extraction/audit phase. Resume checks content/config identity, replays
+received responses, and invokes only missing or interrupted calls; completed
+calls and their original accounting are retained. Malformed extraction responses
+remain inspectable and fail again on resume without a duplicate provider call.
+Reports and call receipts distinguish saved work from newly executed calls.
 External AI reviews and weak editor verdicts use `kind: signal`; no human annotation
 step participates in this pipeline. See [weak evidence provenance](graders.md#weak-evidence-provenance).

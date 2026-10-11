@@ -19,13 +19,15 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
     instances, teachers, adjudicator: adjudicatorId, window,
     seed: options.seed ?? 'paideia.council', timeoutMs: options.timeoutMs ?? 120_000 });
   if (options.previous) {
-    if (!reusableCouncil(options.previous, identity)) throw new Error('Stale or corrupt council checkpoint');
-    return options.previous;
+    const { digest, ...content } = options.previous;
+    if (content.identity !== identity || digest !== councilContentDigest(content)) throw new Error('Stale or corrupt council checkpoint');
+    if (reusableCouncil(options.previous, identity)) return options.previous;
   }
   const now = options.now ?? new Date();
-  const skipped = teachers.filter(t => t.provider === 'grok' && !grokWindowOpen(now, window))
+  const skipped = options.previous?.skipped.map(item => ({ ...item })) ?? teachers.filter(t => t.provider === 'grok' && !grokWindowOpen(now, window))
     .map(t => ({ teacher: t.id, reason: `Outside Grok window ${window.start}-${window.end} ${window.timeZone ?? 'Europe/Berlin'}` }));
-  const active = teachers.filter(t => !skipped.some(s => s.teacher === t.id));
+  const active = teachers.filter(t => options.previous?.active_teachers
+    ? options.previous.active_teachers.includes(t.id) : !skipped.some(s => s.teacher === t.id));
   const adjudicator = active.find(t => t.id === adjudicatorId);
   if (!adjudicator) throw new Error('Adjudicator is not an active teacher');
   for (const teacher of active) {
@@ -34,42 +36,60 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
       throw new Error(`Council teacher ${teacher.id} requires tool-isolated subscription inference`);
     }
   }
-  const calls: ReferenceCall[] = [];
+  const calls: ReferenceCall[] = structuredClone(options.previous?.calls ?? []);
   const checks: CouncilOutput['checks'] = Object.fromEntries(instances.map(instance => [instance.id, {
     digest: instance.digest, template_id: instance.template_id, teachers: {},
     distribution: {}, unknown_mass: 1, adjudication: [], final: null, status: 'uncertain',
   }]));
+  const checkpoint = async (complete = false) => {
+    const content: Omit<CouncilOutput, 'digest'> = { outputDigest: options.outputDigest, identity, complete, checks, calls, skipped,
+      active_teachers: active.map(teacher => teacher.id) };
+    const output = { ...content, digest: councilContentDigest(content) };
+    await options.onCheckpoint?.(structuredClone(output));
+    return output;
+  };
   const invoke = async (teacher: CouncilTeacher, batch: CheckInstance[], competing?: Record<string, TeacherAnswer[]>, run?: number) => {
     options.signal?.throwIfAborted();
-    if (teacher.provider === 'grok' && !grokWindowOpen(options.now ?? new Date(), window)) {
+    const prompt = councilPrompt(batch, competing);
+    const id = stableDigest([identity, teacher.id, prompt.digest, run ?? null]);
+    const existing = calls.findLast(call => call.id === id && call.outcome !== 'cancelled');
+    if (existing && existing.outcome !== 'received') return existing.answers ?? null;
+    if (!existing && teacher.provider === 'grok' && !grokWindowOpen(options.now ?? new Date(), window)) {
       if (!skipped.some(item => item.teacher === teacher.id)) skipped.push({ teacher: teacher.id,
         reason: `Grok window closed before ${competing ? 'adjudication' : 'teacher'} call` });
       return null;
     }
-    const prompt = councilPrompt(batch, competing), start = performance.now();
-    const call: ReferenceCall = { id: stableDigest([identity, teacher.id, prompt.digest, calls.length]),
+    const start = performance.now();
+    const call: ReferenceCall = existing ?? { id,
       teacher: teacher.id, provider: teacher.provider, requestedModel: teacher.model, reportedModel: null, route: null,
       prompt_digest: prompt.digest, phase: competing ? 'adjudication' : 'teacher', ...(run === undefined ? {} : { run }),
       check_ids: batch.map(i => i.id), at: new Date().toISOString(), wallMs: 0, usage: null, outcome: 'generation-error' };
-    let answers: Record<string, TeacherAnswer> | null = null;
-    try {
-      const response = await providers[teacher.id]!.generate({ model: teacher.model, system: prompt.system,
-        prompt: prompt.prompt, responseSchema: prompt.schema, signal: AbortSignal.any([AbortSignal.timeout(options.timeoutMs ?? 120_000), ...(options.signal ? [options.signal] : [])]) });
-      call.reportedModel = response.modelBasis === 'requested-assumption' ? null : response.model;
-      call.route = response.route; call.usage = response.usage;
-      if (response.attempts) call.attempts = response.attempts;
-      answers = decodeCouncilAnswers(response.text, batch, competing !== undefined);
-      call.outcome = answers ? 'completed' : 'invalid-response';
-    } catch (error) {
-      options.signal?.throwIfAborted();
-      if (error !== null && typeof error === 'object') {
-        const failure = error as Partial<ReferenceCall> & { responseModel?: string; responseRoute?: string };
-        call.usage = failure.usage ?? null;
-        call.reportedModel = failure.responseModel ?? null; call.route = failure.responseRoute ?? null;
-        if (failure.attempts) call.attempts = failure.attempts;
+    if (!existing) {
+      try {
+        const response = await providers[teacher.id]!.generate({ model: teacher.model, system: prompt.system,
+          prompt: prompt.prompt, responseSchema: prompt.schema, signal: AbortSignal.any([AbortSignal.timeout(options.timeoutMs ?? 120_000), ...(options.signal ? [options.signal] : [])]) });
+        call.reportedModel = response.modelBasis === 'requested-assumption' ? null : response.model;
+        call.route = response.route; call.usage = response.usage;
+        if (response.attempts) call.attempts = response.attempts;
+        call.response_text = response.text; call.outcome = 'received';
+      } catch (error) {
+        if (error !== null && typeof error === 'object') {
+          const failure = error as Partial<ReferenceCall> & { responseModel?: string; responseRoute?: string };
+          call.usage = failure.usage ?? null;
+          call.reportedModel = failure.responseModel ?? null; call.route = failure.responseRoute ?? null;
+          if (failure.attempts) call.attempts = failure.attempts;
+        }
+        if (options.signal?.aborted) call.outcome = 'cancelled';
       }
+      call.wallMs = performance.now() - start; calls.push(call);
+      // Commit the actual provider receipt before parsing or observing cancellation.
+      await checkpoint();
+      options.signal?.throwIfAborted();
     }
-    call.wallMs = performance.now() - start; calls.push(call);
+    const answers = call.response_text === undefined ? null : decodeCouncilAnswers(call.response_text, batch, competing !== undefined);
+    call.answers = answers;
+    if (call.outcome === 'received') call.outcome = answers ? 'completed' : 'invalid-response';
+    await checkpoint();
     return answers;
   };
   const batches = new Map<string, CheckInstance[]>();
@@ -112,8 +132,5 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
       }
     }
   }
-  const content: Omit<CouncilOutput, 'digest'> = { outputDigest: options.outputDigest, identity, complete: true, checks, calls, skipped };
-  const output = { ...content, digest: councilContentDigest(content) };
-  await options.onCheckpoint?.(output);
-  return output;
+  return checkpoint(true);
 }

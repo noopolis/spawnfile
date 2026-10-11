@@ -1,6 +1,7 @@
 import { stableDigest } from '../format/index.js';
 import { evidenceRows, normalizeWhitespace, readPath, textLeaves } from '../decomposition/index.js';
 import type { AtomicUnit, CheckTemplates, Decomposition, DecompositionInputs, TrapKind } from '../decomposition/index.js';
+import { affirmativeCounterpart, articleEntities, entityType, negator, numbers, numeric, plausibleNumber } from './preconditions.js';
 import type { TrapMutation } from './types.js';
 
 export function replaceLeaf(output: unknown, path: string[], after: string): unknown {
@@ -18,7 +19,7 @@ export function locateSpan(output: unknown, text: string): { path: string[]; bef
   return matches.length === 1 ? matches[0] : undefined;
 }
 export function flipNegation(text: string): string | undefined {
-  if (/\bnot\s+/i.test(text)) return text.replace(/\bnot\s+/i, '');
+  if (negator.test(text)) return undefined;
   if (/\b(is|are|was|were|will|can|has|have|had|does|did)\b/i.test(text)) return text.replace(/\b(is|are|was|were|will|can|has|have|had|does|did)\b/i, '$& not');
   return undefined;
 }
@@ -34,7 +35,7 @@ export function keyTerms(text: string): string[] {
   const stop = new Set(['that', 'this', 'with', 'from', 'have', 'were', 'been', 'said', 'will', 'they', 'their', 'there', 'than', 'into']);
   return [...new Set(text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])].filter(word => word.length > 3 && !stop.has(word));
 }
-export function mutationFor(kind: TrapKind, unit: AtomicUnit, document: Decomposition, inputs: DecompositionInputs,
+export function mutationFor(kind: TrapKind, unit: AtomicUnit, _document: Decomposition, inputs: DecompositionInputs,
   templates: CheckTemplates, seed: string): TrapMutation | undefined {
   const located = locateSpan(inputs.output, unit.text);
   if (!located) return undefined;
@@ -44,17 +45,25 @@ export function mutationFor(kind: TrapKind, unit: AtomicUnit, document: Decompos
   let valueBefore: string | undefined;
   let valueAfter: string | undefined;
   if (kind === 'number-substitution' && cited) {
-    valueBefore = /\b\d+(?:[,.]\d+)*\b/.exec(located.source)?.[0];
-    let number = parseInt(stableDigest({ seed, unit: unit.id }).slice(0, 8), 16) % 900_000 + 100_000;
-    while (cited.includes(String(number)) || located.source.includes(String(number))) number++;
-    valueAfter = String(number);
+    valueBefore = numbers(located.source).find(value => numbers(cited).some(item => numeric(item) === numeric(value)));
+    if (valueBefore) {
+      const precision = numeric(valueBefore).split('.')[1]?.length ?? 0;
+      const step = 10 ** -precision;
+      const sign = parseInt(stableDigest({ seed, unit: unit.id }).slice(0, 2), 16) % 2 ? 1 : -1;
+      for (const delta of [sign, -sign, 2 * sign, -2 * sign]) {
+        const candidate = (Number(numeric(valueBefore)) + delta * step).toFixed(precision);
+        if (plausibleNumber(valueBefore, candidate) && !numbers(cited).some(value => numeric(value) === candidate)) {
+          valueAfter = candidate; break;
+        }
+      }
+    }
   }
   if (kind === 'entity-substitution' && cited) {
-    valueBefore = [unit.fields?.actor, unit.fields?.object].find(value => value && located.source.includes(value));
-    const entities = [...document.units, ...(document.audit?.missed ?? [])].flatMap(other => [other.fields?.actor, other.fields?.object])
-      .filter((value): value is string => Boolean(value && value !== valueBefore &&
-        textLeaves(inputs.output).some(leaf => leaf.text.includes(value)) && !cited.toLowerCase().includes(value.toLowerCase())));
-    valueAfter = entities.sort((a, b) => stableDigest({ seed, a }).localeCompare(stableDigest({ seed, a: b })))[0];
+    const entities = articleEntities(inputs.output);
+    valueBefore = entities.find(value => located.source.includes(value) && cited.includes(value));
+    valueAfter = entities.filter(value => value !== valueBefore && entityType(value) === entityType(valueBefore ?? '') &&
+      !cited.toLowerCase().includes(value.toLowerCase()))
+      .sort((a, b) => stableDigest({ seed, a }).localeCompare(stableDigest({ seed, a: b })))[0];
   }
   if (kind === 'citation-swap' && unit.cites?.length) {
     for (const declaration of Object.values(templates.context)) {
@@ -70,7 +79,7 @@ export function mutationFor(kind: TrapKind, unit: AtomicUnit, document: Decompos
       break;
     }
   }
-  if (kind === 'negation-flip') replacement = flipNegation(located.source);
+  if (kind === 'negation-flip' && affirmativeCounterpart(located.source, cited, templates)) replacement = flipNegation(located.source);
   if (kind === 'format-paraphrase') replacement = formatParaphrase(located.source);
   if (kind === 'injected-redundancy' && unit.paragraph !== undefined) {
     const path = ['body', String(unit.paragraph + 1)];
@@ -78,7 +87,14 @@ export function mutationFor(kind: TrapKind, unit: AtomicUnit, document: Decompos
     if (typeof before !== 'string') return undefined;
     return { path, before, after: `${before} ${located.source}`, source: located.source, replacement: located.source };
   }
-  if (valueBefore && valueAfter && !replacement) replacement = located.source.replace(valueBefore, valueAfter);
+  if (valueBefore && valueAfter && !replacement) {
+    let changed = false;
+    replacement = kind === 'number-substitution' ? located.source.replace(/(?<![\p{L}\p{N}])\d+(?:[,.]\d+)*(?![\p{L}\p{N}])/gu, value => {
+      if (changed || value !== valueBefore) return value;
+      changed = true;
+      return valueAfter!;
+    }) : located.source.replace(valueBefore, valueAfter);
+  }
   if (!replacement || replacement === located.source) return undefined;
   return { ...located, after: located.before.replace(located.source, replacement), replacement,
     ...(valueBefore && valueAfter ? { value_before: valueBefore, value_after: valueAfter } : {}) };

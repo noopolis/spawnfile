@@ -1,20 +1,9 @@
 import type { AtomicUnit, CheckTemplates, Decomposition, DecompositionInputs } from './format.js';
 import { parseDecomposition } from './format.js';
+import { citationMetadataReasons, dropUnboundFields, type DroppedField } from './metadata.js';
 
-export function normalizeWhitespace(text: string): string { return text.replace(/\s+/gu, ' ').trim(); }
-export function textLeaves(value: unknown, path: string[] = []): { path: string[]; text: string }[] {
-  if (typeof value === 'string') return [{ path, text: value }];
-  if (value === null || typeof value !== 'object') return [];
-  return Object.entries(value).flatMap(([key, entry]) => textLeaves(entry, [...path, key]));
-}
-export function readPath(value: unknown, path: string[]): unknown {
-  let current = value;
-  for (const key of path) {
-    if (current === null || typeof current !== 'object' || !Object.hasOwn(current, key)) return undefined;
-    current = (current as Record<string, unknown>)[key];
-  }
-  return current;
-}
+import { normalizeWhitespace, readPath, textLeaves } from './spans.js';
+export { normalizeWhitespace, readPath, textLeaves } from './spans.js';
 export interface EvidenceRow { id: string; text: string; context: string }
 export function evidenceRows(templates: CheckTemplates, inputs: DecompositionInputs): EvidenceRow[] {
   const rows: EvidenceRow[] = [];
@@ -39,10 +28,11 @@ export function evidenceRows(templates: CheckTemplates, inputs: DecompositionInp
 }
 export interface RejectedUnit { id: string; reasons: string[] }
 export function validateDecomposition(value: unknown, inputs: DecompositionInputs, templates?: CheckTemplates): {
-  decomposition: Decomposition; rejected: RejectedUnit[];
+  decomposition: Decomposition; rejected: RejectedUnit[]; dropped: DroppedField[];
 } {
   const document = parseDecomposition(value);
   const rejected: RejectedUnit[] = [];
+  const dropped: DroppedField[] = [];
   let rows: EvidenceRow[] = [];
   let rowError: string | undefined;
   if (templates) {
@@ -53,11 +43,12 @@ export function validateDecomposition(value: unknown, inputs: DecompositionInput
   function valid(unit: AtomicUnit): boolean {
     const reasons: string[] = [];
     const assignment = Object.entries(inputs.context).filter(([name]) => name === 'assignment' || templates?.context[name]?.role === 'assignment').map(([, value]) => value);
-    const sources = unit.kind === 'obligation' ? [...textLeaves(inputs.output), ...assignment.flatMap(value => textLeaves(value))] : textLeaves(inputs.output);
+    let sources = unit.kind === 'obligation' ? [...textLeaves(inputs.output), ...assignment.flatMap(value => textLeaves(value))] : textLeaves(inputs.output);
     if (!sources.some(source => normalizeWhitespace(source.text).includes(normalizeWhitespace(unit.text)))) reasons.push('text is not a verbatim source span');
     if (unit.kind !== 'obligation' && unit.paragraph !== undefined) {
       const paragraph = readPath(inputs.output, ['body', String(unit.paragraph)]);
       if (typeof paragraph !== 'string' || !normalizeWhitespace(paragraph).includes(normalizeWhitespace(unit.text))) reasons.push('paragraph does not contain span');
+      sources = typeof paragraph === 'string' ? [{ path: ['body', String(unit.paragraph)], text: paragraph }] : [];
     }
     if (templates && !templates.templates.some(template => template.applies_to === unit.kind)) reasons.push(`undeclared unit kind ${unit.kind}`);
     if (hasRows && unit.cites?.length) {
@@ -65,9 +56,15 @@ export function validateDecomposition(value: unknown, inputs: DecompositionInput
       else if (unit.cites.some(id => !rows.some(row => row.id === id))) reasons.push('unknown cited row');
     }
     if (unit.cites && new Set(unit.cites).size !== unit.cites.length) reasons.push('duplicate cited row');
+    reasons.push(...citationMetadataReasons(unit, sources.map(source => source.text), templates));
+    if (unit.source_span !== undefined && (!normalizeWhitespace(unit.source_span) || !rows.some(row =>
+      unit.cites?.includes(row.id) && normalizeWhitespace(row.text).includes(normalizeWhitespace(unit.source_span!))))) {
+      reasons.push('source_span is not a verbatim cited row span');
+    }
+    dropped.push(...dropUnboundFields(unit));
     if (reasons.length) rejected.push({ id: unit.id, reasons });
     return reasons.length === 0;
   }
   return { decomposition: { ...document, units: document.units.filter(valid),
-    ...(document.audit ? { audit: { ...document.audit, missed: document.audit.missed.filter(valid) } } : {}) }, rejected };
+    ...(document.audit ? { audit: { ...document.audit, missed: document.audit.missed.filter(valid) } } : {}) }, rejected, dropped };
 }

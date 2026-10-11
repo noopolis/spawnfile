@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stableDigest } from '../../../graders/index.js';
 import { instantiateChecks } from '../../../graders/decomposition/index.js';
-import { generateTraps } from '../../../graders/traps/index.js';
+import { validateTrap, type TrapSet } from '../../../graders/traps/index.js';
 import { runCouncil, referenceQuality, type CouncilOutput, type TrapAssessment } from '../../../graders/references/index.js';
 import type { GraderDependencies } from '../backend.js';
 import { createGraderTeacher } from '../label-call.js';
@@ -13,7 +13,7 @@ export interface ReferenceOptions {
   templatesFile: string; decompositions: string; traps?: string; teachers: string[];
   out: string; concurrency?: number; timeoutMs?: number; signal?: AbortSignal; now?: Date;
 }
-type TrapBundle = ReturnType<typeof generateTraps> & { decomposition: string; decompositionDigest: string };
+type TrapBundle = TrapSet & { decomposition: string; decompositionDigest: string };
 export async function runReference(options: ReferenceOptions, dependencies: GraderDependencies = {}) {
   options.signal?.throwIfAborted();
   const templates = await readTemplates(options.templatesFile);
@@ -27,8 +27,15 @@ export async function runReference(options: ReferenceOptions, dependencies: Grad
       if (trapBundles.some(previous => previous.decomposition === bundle.decomposition)) throw new Error(`Duplicate trap decomposition: ${file}`);
       const input = inputs.find(input => input.file === bundle.decomposition);
       if (!input || input.digest !== bundle.decompositionDigest) throw new Error(`Stale trap decomposition: ${file}`);
-      const regenerated = generateTraps(templates, input.doc, input.inputs, { seed: bundle.seed });
-      if (stableDigest(bundle.traps) !== stableDigest(regenerated.traps)) throw new Error(`Invalid trap checkpoint: ${file}`);
+      const units = [...input.doc.units, ...(input.doc.audit?.missed ?? [])];
+      const ids = new Set<string>();
+      for (const trap of bundle.traps) {
+        const unit = units.find(unit => unit.id === trap.base_unit);
+        if (ids.has(trap.id) || !unit || !validateTrap(trap, unit, input.inputs, templates, input.doc).valid) {
+          throw new Error(`Invalid trap checkpoint: ${file}`);
+        }
+        ids.add(trap.id);
+      }
       trapBundles.push(bundle);
     }
   }
@@ -46,19 +53,23 @@ export async function runReference(options: ReferenceOptions, dependencies: Grad
   await workers(inputs, options.concurrency ?? 2, async input => {
     await run(input.file, input.digest, instantiateChecks(templates, input.doc, input.inputs));
     for (const bundle of trapBundles.filter(bundle => bundle.decomposition === input.file)) {
-      for (const trap of bundle.traps) await run(`${input.file}:${trap.id}`, stableDigest({ base: input.digest, trap }), trap.instances);
+      for (const trap of bundle.traps) await run(`${input.file}:${trap.id}`, stableDigest({ base: input.digest, trap }),
+        trap.instances.filter(instance => Object.hasOwn(trap.intended_answers, instance.id)));
     }
   }, options.signal);
   const assessments: TrapAssessment[] = [];
   for (const bundle of trapBundles) for (const trap of bundle.traps) {
     const base = outputs[bundle.decomposition]!, variant = outputs[`${bundle.decomposition}:${trap.id}`]!;
     for (const [id, intended] of Object.entries(trap.intended_answers)) assessments.push({
-      kind: trap.kind, templateId: trap.instances.find(instance => instance.id === id)!.template_id,
+      outputId: bundle.decomposition, kind: trap.kind, templateId: trap.instances.find(instance => instance.id === id)!.template_id,
       intended, actual: variant.checks[id]?.final ?? null, baseline: base.checks[id]?.final ?? null,
     });
   }
   const sorted = Object.fromEntries(Object.entries(outputs).sort(([a], [b]) => a.localeCompare(b)));
-  const quality = referenceQuality(Object.values(sorted), assessments);
+  const baseOutputs = inputs.map(input => outputs[input.file]!);
+  const baseKeys = new Set(inputs.map(input => input.file));
+  const quality = referenceQuality(baseOutputs, assessments, { outputIds: inputs.map(input => input.file),
+    variantOutputs: Object.entries(sorted).filter(([key]) => !baseKeys.has(key)).map(([, output]) => output) });
   const artifact = { schema: 'paideia.references.v1', templatesDigest: stableDigest(templates), outputs: sorted, quality };
   await atomicWrite(options.out, { ...artifact, digest: stableDigest(artifact) });
   const reportFile = `${options.out}.md`;
@@ -70,8 +81,11 @@ function referenceReport(artifact: { outputs: Record<string, CouncilOutput>; qua
   const skipped = [...new Set(Object.values(artifact.outputs).flatMap(output => output.skipped.map(skip => `${skip.teacher}: ${skip.reason}`)))];
   const calls = Object.values(artifact.outputs).flatMap(output => output.calls);
   return [`# Council references: ${quality.gate}`, '',
-    `Constructed-control accuracy: ${quality.overall.accuracy === null ? 'unmeasured (no validated traps)' : `${(quality.overall.accuracy * 100).toFixed(2)}%`} (${quality.overall.correct}/${quality.overall.total}).`,
-    `Adjudication instability: ${(quality.instability.rate * 100).toFixed(2)}% (${quality.instability.unstable}/${quality.instability.items}).`,
+    `Known-answer accuracy: ${quality.knownAnswer.accuracy === null ? 'unmeasured (no validated traps)' : `${(quality.knownAnswer.accuracy * 100).toFixed(2)}%`} (${quality.knownAnswer.correct}/${quality.knownAnswer.total}).`,
+    `Consistency: ${quality.consistency.accuracy === null ? 'unmeasured' : `${(quality.consistency.accuracy * 100).toFixed(2)}%`} (${quality.consistency.correct}/${quality.consistency.total}).`,
+    `Known-answer output coverage: ${quality.coverage.covered}/${quality.coverage.total}; uncovered: ${quality.coverage.uncovered.join(', ') || 'none'}.`,
+    `Base adjudication instability: ${(quality.instability.rate * 100).toFixed(2)}% (${quality.instability.unstable}/${quality.instability.items}).`,
+    `Variant adjudication (diagnostic): ${(quality.variantAdjudication.rate * 100).toFixed(2)}% (${quality.variantAdjudication.unstable}/${quality.variantAdjudication.items}).`,
     `Calls: ${calls.length}; recorded latency: ${calls.reduce((sum, call) => sum + call.wallMs, 0).toFixed(0)} ms. Usage and subscription accounting are recorded per call; unreported usage/cost remains unknown.`, '',
     ...quality.failures.map(failure => `- STOP: ${failure}`),
     ...quality.failingKinds.map(kind => `- Failing trap kind: ${kind}`),

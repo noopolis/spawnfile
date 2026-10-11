@@ -5,6 +5,16 @@ const schema = { type: 'object', properties: { 'agents/reporter/AGENTS.md': { ty
   required: ['agents/reporter/AGENTS.md'], additionalProperties: false };
 
 describe('native inference structured response boundary', () => {
+  it('allows exactly one json fence only with explicit transport opt-in', () => {
+    const text = '```json\n{"agents/reporter/AGENTS.md":"ok"}\n```';
+    expect(() => validateInferenceResponse(text, schema)).toThrow();
+    validateInferenceResponse(text, schema, true);
+    validateInferenceResponse('{"agents/reporter/AGENTS.md":"ok"}', schema, true);
+    for (const invalid of ['prose\n' + text, text + '\nprose', '```json\n' + text + '\n```',
+      '```\n{"agents/reporter/AGENTS.md":"ok"}\n```', '```json\n{"agents/reporter/AGENTS.md":"first","agents/reporter/AGENTS.md":"second"}\n```']) {
+      expect(() => validateInferenceResponse(invalid, schema, true)).toThrow();
+    }
+  });
   it('accepts exact resource mappings and preserves unstructured requests', () => {
     validateInferenceSchema(schema);
     validateInferenceResponse(JSON.stringify({ 'agents/reporter/AGENTS.md': 'Write clearly.\nUse evidence.' }), schema);

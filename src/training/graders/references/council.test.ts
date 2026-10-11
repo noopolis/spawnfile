@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { InferenceProvider, InferenceRequest } from '../../contracts/index.js';
 import type { CheckInstance } from '../decomposition/index.js';
 import { runCouncil } from './council.js';
-import type { CouncilOptions } from './types.js';
+import type { CouncilOptions, CouncilOutput } from './types.js';
 
 function instance(id = 'a', projection: Record<string, unknown> = { text: 'exact evidence' }): CheckInstance {
   return { id, template_id: 'support', unit_id: id, type: 'choice', instructions: 'Support?',
@@ -115,5 +115,52 @@ describe('independent council execution', () => {
     await expect(runCouncil(options)).rejects.toThrow('subscription');
     options.providers.c!.capabilities.billing = 'subscription'; options.providers.c!.capabilities.tools = 'enabled' as 'disabled';
     await expect(runCouncil(options)).rejects.toThrow('subscription');
+  });
+});
+
+
+describe('durable council call progress', () => {
+  it('retains completed and cancelled teacher receipts, resuming only the missing response', async () => {
+    const options = setup(), controller = new AbortController();
+    let saved: CouncilOutput | undefined;
+    options.onCheckpoint = output => { saved = output; };
+    const original = options.providers.a!.generate;
+    options.providers.a!.generate = vi.fn(async () => {
+      controller.abort();
+      throw { usage: { costUsd: 1 }, responseModel: 'actual', responseRoute: 'subscription', attempts: [] };
+    });
+    await expect(runCouncil({ ...options, signal: controller.signal })).rejects.toThrow();
+    expect(saved!.complete).toBe(false);
+    expect(saved!.calls.map(call => call.outcome)).toEqual(['completed', 'cancelled']);
+    expect(saved!.calls[1]).toMatchObject({ usage: { costUsd: 1 }, reportedModel: 'actual', attempts: [] });
+    options.providers.a!.generate = original;
+    const result = await runCouncil({ ...options, previous: saved });
+    expect(result.complete).toBe(true); expect(result.checks.a!.final).toBe('yes');
+    expect(options.providers.c!.generate).toHaveBeenCalledTimes(1);
+    expect(original).toHaveBeenCalledTimes(1); expect(result.calls).toHaveLength(3);
+  });
+  it('persists responses before decoding and recovers an interrupted adjudication without repeating calls', async () => {
+    const options = setup(); options.providers.a = provider('no');
+    let saved: CouncilOutput | undefined;
+    options.onCheckpoint = output => {
+      saved = output;
+      if (output.calls.at(-1)?.phase === 'adjudication' && output.calls.at(-1)?.outcome === 'received') throw new Error('interrupted write');
+    };
+    await expect(runCouncil(options)).rejects.toThrow('interrupted write');
+    expect(saved!.calls.at(-1)).toMatchObject({ outcome: 'received', response_text: '{"a":{"answer":"yes"}}' });
+    const result = await runCouncil({ ...options, previous: saved, onCheckpoint: undefined });
+    expect(result.calls).toHaveLength(4); expect(result.checks.a!.adjudication).toHaveLength(2);
+    expect(options.providers.c!.generate).toHaveBeenCalledTimes(3);
+    expect(options.providers.a!.generate).toHaveBeenCalledTimes(1);
+  });
+  it('retains a successful response when cancellation arrives with it', async () => {
+    const options = setup(), controller = new AbortController();
+    let saved: CouncilOutput | undefined;
+    options.onCheckpoint = output => { saved = output; };
+    options.providers.c = provider('yes', () => { controller.abort(); return '{"a":{"answer":"yes"}}'; });
+    await expect(runCouncil({ ...options, signal: controller.signal })).rejects.toThrow();
+    expect(saved!.calls[0]!.outcome).toBe('received');
+    const result = await runCouncil({ ...options, previous: saved });
+    expect(result.checks.a!.final).toBe('yes'); expect(options.providers.c.generate).toHaveBeenCalledTimes(1);
   });
 });

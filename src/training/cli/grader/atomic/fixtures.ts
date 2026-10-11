@@ -13,7 +13,7 @@ export async function fixture() {
     instructions: 'Is {unit.text} supported?', criteria: { supported: 'Supported', unsupported: 'Unsupported' },
     expected: ['supported'], state: ['unit', 'unit.cited_rows'], dimension: 'facts', severity: 'major',
     traps: { 'number-substitution': 'unsupported', 'option-permutation': 'unchanged' } }],
-    context: { evidence: { rows: { heading: '^## ([A-Z][0-9]+)', cite: '\\[([A-Z][0-9]+)\\]' } } },
+    context: { evidence: { rows: { leading_citations: 'previous', heading: '^## ([A-Z][0-9]+)', cite: '\\[([A-Z][0-9]+)\\]' } } },
     teachers: [{ id: 'codex', provider: 'codex', model: 'test-codex' }, { id: 'claude', provider: 'claude', model: 'test-claude' },
       { id: 'grok', provider: 'grok', model: 'test-grok' }] };
   const templatesFile = join(root, 'templates.yaml'), inputsFile = join(root, 'inputs.yaml');

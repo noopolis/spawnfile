@@ -9,7 +9,8 @@ export interface ReferenceCall {
   reportedModel: string | null; route: string | null; prompt_digest: string;
   phase: 'teacher' | 'adjudication'; run?: number; check_ids: string[];
   at: string; wallMs: number; usage: Usage | null; attempts?: readonly InferenceAttempt[];
-  outcome: 'completed' | 'invalid-response' | 'generation-error';
+  outcome: 'received' | 'completed' | 'invalid-response' | 'generation-error' | 'cancelled';
+  response_text?: string; answers?: Record<string, TeacherAnswer> | null;
 }
 export interface CheckReference {
   digest: string; template_id: string; teachers: Record<string, TeacherAnswer>;
@@ -18,8 +19,8 @@ export interface CheckReference {
   status: 'agreed' | 'adjudicated' | 'uncertain';
 }
 export interface CouncilOutput {
-  outputDigest: string; identity: string; digest: string; complete: true;
-  checks: Record<string, CheckReference>; calls: ReferenceCall[];
+  outputDigest: string; identity: string; digest: string; complete: boolean;
+  checks: Record<string, CheckReference>; calls: ReferenceCall[]; active_teachers?: string[];
   skipped: { teacher: string; reason: string }[];
 }
 export interface CouncilOptions {
@@ -29,6 +30,7 @@ export interface CouncilOptions {
   signal?: AbortSignal; previous?: CouncilOutput; onCheckpoint?: (output: CouncilOutput) => void | Promise<void>;
 }
 export interface TrapAssessment {
+  outputId?: string;
   kind: string; templateId: string; intended: string; actual: string | null;
   baseline?: string | null;
 }

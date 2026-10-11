@@ -12,9 +12,12 @@ describe('reference policy', () => {
     ['2026-10-11T18:29:00Z', false], ['2026-10-11T18:30:00Z', true], ['2026-10-12T04:29:00Z', true],
     ['2026-10-12T04:30:00Z', false], ['2026-12-12T19:30:00Z', true], ['2026-12-12T05:30:00Z', false],
   ])('enforces Berlin overnight boundaries and DST at %s', (at, open) => expect(grokWindowOpen(new Date(at))).toBe(open));
-  it('supports explicit daytime windows and refuses invalid or ambiguous boundaries', () => {
-    expect(grokWindowOpen(new Date('2026-10-11T10:00:00Z'), { start: '09:00', end: '17:00' })).toBe(true);
-    expect(grokWindowOpen(new Date('2026-10-11T18:00:00Z'), { start: '09:00', end: '17:00', timeZone: 'UTC' })).toBe(false);
+  it('intersects configured windows with the binding Berlin outer window', () => {
+    expect(grokWindowOpen(new Date('2026-10-11T10:00:00Z'), { start: '00:00', end: '23:59' })).toBe(false);
+    expect(grokWindowOpen(new Date('2026-10-11T21:00:00Z'), { start: '22:00', end: '02:00' })).toBe(true);
+    expect(grokWindowOpen(new Date('2026-10-11T19:00:00Z'), { start: '22:00', end: '02:00' })).toBe(false);
+    expect(grokWindowOpen(new Date('2026-10-12T03:00:00Z'), { start: '01:00', end: '06:00' })).toBe(true);
+    expect(() => grokWindowOpen(new Date(), { start: '09:00', end: '17:00', timeZone: 'UTC' })).toThrow('timezone');
     expect(() => grokWindowOpen(new Date(), { start: '24:01', end: '06:30' })).toThrow('Invalid');
     expect(() => grokWindowOpen(new Date(), { start: '00:00', end: '00:00' })).toThrow('distinct');
   });

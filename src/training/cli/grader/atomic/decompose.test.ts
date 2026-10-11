@@ -45,9 +45,9 @@ it('refuses bad teacher selections, uncontained providers, malformed and duplica
   f.provider.capabilities.billing = 'api';
   await expect(runDecompose(f.decompose, f.dependencies)).rejects.toThrow('subscription');
   f.provider.capabilities.billing = 'subscription';
-  for (const text of ['{}', '{"units":[],"extra":1}', '{"units":[],"units":[]}', 'null', '[]', '{"units":null}', 'units: []']) {
+  for (const [index, text] of ['{}', '{"units":[],"extra":1}', '{"units":[],"units":[]}', 'null', '[]', '{"units":null}', 'units: []'].entries()) {
     f.generate.mockResolvedValueOnce({ text, model: 'fake', usage: null, route: 'subscription' });
-    await expect(runDecompose(f.decompose, f.dependencies)).rejects.toThrow();
+    await expect(runDecompose({ ...f.decompose, out: join(f.root, `invalid-${index}`) }, f.dependencies)).rejects.toThrow();
   }
   await expect(runDecompose({ ...f.decompose, signal: AbortSignal.abort() }, f.dependencies)).rejects.toThrow();
 });
