@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./daimon/contractManifest.js";
 
 import {
   assertInstallSelectionsCoverCompileableRuntimes,
@@ -17,7 +18,7 @@ describe("runtime install selection", () => {
     ]);
   });
 
-  it("resolves Daimon install selection from the pinned runtime image", async () => {
+  it("preserves the published install pin and its old manifest; requires a re-pin", async () => {
     await expect(resolveRuntimeInstallSelection("daimon")).resolves.toEqual({
       capabilityReceipt: undefined,
       capabilityReceipts: { amd64: "sha256:4714bbf377acdb098fcf90c0c91e55494f0996fca77e28cd599b6a72c7cac2dc", arm64: "sha256:f48018b729b984fde30af433607087c2f72019aad59ccf26d2641f18757c2dc6" },
@@ -32,6 +33,8 @@ describe("runtime install selection", () => {
       selectionSource: "runtime_registry_install",
       tag: "0.2.0-8349559"
     });
+    const selection = await resolveRuntimeInstallSelection("daimon");
+    expect(selection.kind === "container_image" && selection.contractManifestSha256).not.toBe(DAIMON_CONTRACT_MANIFEST_SHA256);
   });
 
   it("resolves OpenClaw install selection from the pinned runtime image", async () => {

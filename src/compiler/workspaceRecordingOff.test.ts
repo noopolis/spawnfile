@@ -4,10 +4,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { createDistributionFingerprint, DISTRIBUTION_REPORT_OUTPUT_FILE, type DistributionReport } from "../distribution/index.js";
-import { capableDaimonManifest } from "../runtime/daimon/recording.test-helper.js";
+import { capableDaimonManifest, useMatchingDaimonTestImage } from "../runtime/daimon/recording.test-helper.js";
 import { compileProject } from "./compileProject.js";
 
 const run = promisify(execFile);
@@ -39,9 +39,10 @@ beforeEach(async () => {
     }));
   }
 });
-afterEach(async () => { await rm(root, { recursive: true, force: true }); });
+afterEach(async () => { vi.unstubAllEnvs(); await rm(root, { recursive: true, force: true }); });
 
 const compile = async (recording: boolean) => {
+  if (recording) useMatchingDaimonTestImage(root);
   if (recording) for (const name of ["a", "b"]) {
     const file = path.join(org, name, "Spawnfile"), manifest = JSON.parse(await readFile(file, "utf8"));
     await writeFile(file, json({ ...manifest, runtime: "daimon", execution: undefined }));

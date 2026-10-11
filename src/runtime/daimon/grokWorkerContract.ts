@@ -8,7 +8,9 @@ import {
   type DaimonGrokBrokerModel,
   type DaimonGrokBrokerReasoningEffort
 } from "./contractManifest.js";
-import { DAIMON_GROK_WORKER_CONFIG_BYTES } from "./grokWorkerConfigBytes.js";
+import { DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES, DAIMON_GROK_WORKER_CONFIG_BYTES } from "./grokWorkerConfigBytes.js";
+
+export type DaimonGrokWorkerConfigVariant = "unclocked" | "clocked";
 
 export const DAIMON_GROK_WORKER_SANDBOX_PROFILE = "daimon-strict" as const;
 export const DAIMON_GROK_WORKER_HOME_DIRECTORY = ".grok" as const;
@@ -26,9 +28,10 @@ const UNSAFE_DENY_PATH_CHARACTER = new RegExp("[\"\\\\\\u0000-\\u001f\\u007f*?[\
 export const resolveDaimonGrokWorkerConfig = (
   model: DaimonGrokBrokerModel,
   reasoningEffort: DaimonGrokBrokerReasoningEffort,
-  vendored: Readonly<Record<string, Readonly<Record<string, string>>>> = DAIMON_GROK_WORKER_CONFIG_BYTES
+  variant: DaimonGrokWorkerConfigVariant = "unclocked",
+  vendored: Readonly<Record<string, Readonly<Record<string, string>>>> = variant === "clocked" ? DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES : DAIMON_GROK_WORKER_CONFIG_BYTES
 ): { bytes: string; sha256: string } => {
-  const pins = DAIMON_GROK_ENGINE_BROKER.worker.configSha256 as Readonly<Record<string, Readonly<Record<string, string>> | undefined>>;
+  const pins = (variant === "clocked" ? DAIMON_GROK_ENGINE_BROKER.worker.clockedConfigSha256 : DAIMON_GROK_ENGINE_BROKER.worker.configSha256) as Readonly<Record<string, Readonly<Record<string, string>> | undefined>>;
   const pin = pins[model]?.[reasoningEffort];
   const bytes = vendored[model]?.[reasoningEffort];
   if (pin === undefined || bytes === undefined || sha256(bytes) !== pin) {
