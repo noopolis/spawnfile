@@ -69,6 +69,10 @@ export const resolveVolumeHostPath = (name: string, { exec = hostExec, volumePat
   }
 };
 
+/** Shared host-history location, including callers which only have deployed volume facts. */
+export const resolveFeedStateDirectory = (name: string, options: FeedTargetOptions = {}): string =>
+  path.resolve(options.stateDir ?? path.join(path.dirname(resolveVolumeHostPath(name, options)), "spawnfile-feed"));
+
 const toPrepare = (prepare: NonNullable<DeclaredFeed["prepare"]>, options: FeedTargetOptions): FeedPrepare => {
   const timeoutMs = (prepare.timeout_seconds ?? DEFAULT_FEED_PREPARE_TIMEOUT_MS / 1000) * 1000;
   if (prepare.host) return { command: prepare.command, kind: "host", timeoutMs };
@@ -103,7 +107,7 @@ export const toFeedTarget = (declared: DeclaredVolumeFeed, options: FeedTargetOp
     resourceId: declared.id,
     source,
     // Beside the volume's content root: the same filesystem (rename stays atomic), never inside it.
-    stateDir: path.resolve(options.stateDir ?? path.join(path.dirname(volume), "spawnfile-feed")),
+    stateDir: resolveFeedStateDirectory(declared.name, { ...options, volumePath: volume }),
     ...(feed.validate ? { validate: { command: feed.validate, cwd: declared.base, timeoutMs: options.validateTimeoutMs ?? DEFAULT_FEED_VALIDATE_TIMEOUT_MS } } : {}),
     volume,
     volumeName: declared.name

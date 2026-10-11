@@ -1903,8 +1903,10 @@ spawnfile publish [path] --tag <image-ref> [--out <dir>]
 See `DISTRIBUTION.md` for `publish`, image-reference `up`/`status`, and the `--image`/`--pull`/`--pull-check` flags.
 `--runtime-env-file` is the env-file option on `up`, `dev up`, `run`, `release`, `auth sync` and `auth provision`. `--env-file` remains a hidden alias, but Node (22.23 and 24.21 verified) reads `--env-file` anywhere in its argv, after the script path too: a missing or unreadable file exits 9 before Spawnfile runs and a `NODE_OPTIONS=` line in it is applied to the CLI process. Callers SHOULD use `--runtime-env-file`.
 See `TRAINING.md` for canonical source handoff, Paideia requirements and delegated training outcomes.
-[Moment records](TRAINING.md#moment-record) pin state at turn start using host landing/deploy
-histories; opt-in recording defaults to 30d retention and protects durable memory ledgers.
+[Moment records](TRAINING.md#moment-record) pin state per turn attempt using Daimon wake rows
+and host histories. `spawnfile record sync [path] [--deployment <name>]` writes immutable
+records under the deployment's `moments/<agent slug>/` directory. Recording requires the
+receipt-bound `wakeMoments` capability, defaults to 30d, and protects memory and snapshot stores.
 
 ### Exit Codes
 

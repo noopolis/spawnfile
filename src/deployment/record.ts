@@ -9,6 +9,7 @@ import {
 import { deployResourcesSchema } from "./resourceLog.js";
 import { publishDeploymentRecord } from "./recordPublication.js";
 import { SpawnfileError } from "../shared/index.js";
+import { recordingReportSchema } from "../report/index.js";
 
 import { parseOrganizationHandoff, type OrganizationHandoff } from "./organizationHandoffTypes.js";
 import { parseOpaqueTargetHandle, type OpaqueTargetHandle } from "../target/index.js";
@@ -109,7 +110,7 @@ export const deploymentRecordSchema = z.object({
   activated_at: z.iso.datetime({ offset: true }).optional(),
   activation_exact: z.boolean().optional(),
   activation_note: z.string().min(1).optional(),
-  recording: z.object({ keep_ms: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), memory_mount_ids: z.array(z.string().min(1)) }).strict().optional(),
+  recording: recordingReportSchema.optional(),
   resource_snapshot: deployResourcesSchema.optional(),
   auth_profile: z.string().min(1).nullable(),
   compile_fingerprint: z.string().min(1),

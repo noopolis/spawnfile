@@ -14,9 +14,11 @@ import {
   DAIMON_CONTRACT_MANIFEST_SHA256,
   DAIMON_CONTRACT_MANIFEST_VERSION,
   DAIMON_GROK_ENGINE_BROKER,
+  daimonSupportsWakeMoments,
   parseDaimonContractManifest,
   readVerifiedDaimonContractManifest
 } from "./contractManifest.js";
+import { DAIMON_WAKE_MOMENTS } from "./wakeMoments.js";
 
 const temporaryDirectories: string[] = [];
 const canonical = (value: unknown): string => {
@@ -85,6 +87,21 @@ afterEach(async () => {
 });
 
 describe("Daimon contract manifest", () => {
+  it("supports wake recording only when its exact section and consumed field appear together", () => {
+    expect(daimonSupportsWakeMoments(parseDaimonContractManifest(manifest()))).toBe(false);
+    const capable = { ...manifest(), wakeMoments: DAIMON_WAKE_MOMENTS,
+      consumedConfigFields: [...manifest().consumedConfigFields, "agents[].recording"] };
+    expect(parseDaimonContractManifest(capable).wakeMoments).toEqual(DAIMON_WAKE_MOMENTS);
+    expect(daimonSupportsWakeMoments(parseDaimonContractManifest(capable))).toBe(true);
+    expect(() => parseDaimonContractManifest({ ...capable, consumedConfigFields: manifest().consumedConfigFields })).toThrow(/configuration contract/u);
+    const { wakeMoments: _wakeMoments, ...fieldOnly } = capable;
+    expect(() => parseDaimonContractManifest(fieldOnly)).toThrow(/configuration contract/u);
+    for (const value of [undefined, null, [], {}, { ...DAIMON_WAKE_MOMENTS, version: "noopolis.daimon.wake-moment.v2" },
+      { ...DAIMON_WAKE_MOMENTS, extra: true }, ...Object.keys(DAIMON_WAKE_MOMENTS).map((key) =>
+        Object.fromEntries(Object.entries(DAIMON_WAKE_MOMENTS).filter(([candidate]) => candidate !== key)))]) {
+      expect(() => parseDaimonContractManifest({ ...capable, wakeMoments: value })).toThrow(/wakeMoments/u);
+    }
+  });
   it("accepts canonical source-free contract bytes", async () => {
     const source = `${canonical(manifest())}\n`;
     await expect(readVerifiedDaimonContractManifest(await writeManifest(source))).resolves.toMatchObject({
@@ -167,6 +184,7 @@ describe("Daimon contract manifest", () => {
     const vendoredRoot = path.dirname(fileURLToPath(import.meta.url));
     const vendored = await readVerifiedDaimonContractManifest(vendoredRoot);
     expect(vendored.digest).toBe(DAIMON_CONTRACT_MANIFEST_SHA256);
+    expect(daimonSupportsWakeMoments(vendored.manifest)).toBe(false);
     const bytes = await readFile(path.join(vendoredRoot, DAIMON_CONTRACT_MANIFEST_FILE), "utf8");
     const raw = JSON.parse(bytes) as { consumedConfigFields: string[] };
     expect(raw.consumedConfigFields).toContain("agents[].memory");

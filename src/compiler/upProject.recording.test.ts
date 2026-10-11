@@ -6,6 +6,7 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { readDeployResources, readDeploymentRecord, deployResourceLogPath, deployResourcesAt, downDeployment } from "../deployment/index.js";
+import { capableDaimonManifest } from "../runtime/daimon/recording.test-helper.js";
 import { compileProject } from "./compileProject.js";
 import { upProject } from "./upProject.js";
 
@@ -28,10 +29,10 @@ afterEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); rmSync(root, { recursi
 
 it.each([false, true])("project up writes a deployment resource entry only with recording=%s", async (recording) => {
   writeFileSync(path.join(root, "Spawnfile"), JSON.stringify({
-    spawnfile_version: "0.1", kind: "agent", name: "writer", runtime: "openclaw",
+    spawnfile_version: "0.1", kind: "agent", name: "writer", runtime: "daimon",
     ...(recording ? { training: { record: {} } } : {})
   }));
-  const compiled = await compileProject(root);
+  const compiled = await compileProject(root, { daimonContractManifest: capableDaimonManifest() });
   doubles.build.mockResolvedValue({ ...compiled, imageTag: "example/news:v1", organizationReadinessEvidence: undefined });
   doubles.invocation.mockResolvedValue({
     args: [], command: "docker", containerName: "news", detach: true, deploymentName: "news", dockerContext: "local",
@@ -58,9 +59,9 @@ it.each([false, true])("project up writes a deployment resource entry only with 
 const deploy = async (project: string, keep = "30d", clock = () => new Date()) => {
   const { mkdirSync } = await import("node:fs");
   mkdirSync(project, { recursive: true });
-  writeFileSync(path.join(project, "Spawnfile"), JSON.stringify({ spawnfile_version: "0.1", kind: "agent", name: "writer", runtime: "openclaw",
+  writeFileSync(path.join(project, "Spawnfile"), JSON.stringify({ spawnfile_version: "0.1", kind: "agent", name: "writer", runtime: "daimon",
     memory: [{ id: "self", store: { kind: "json", path: "/data/memory/events.jsonl" } }], training: { record: { keep } } }));
-  const compiled = await compileProject(project);
+  const compiled = await compileProject(project, { daimonContractManifest: capableDaimonManifest() });
   doubles.build.mockResolvedValue({ ...compiled, imageTag: "example/news:v1", organizationReadinessEvidence: undefined });
   doubles.invocation.mockResolvedValue({ args: [], command: "docker", containerName: "news", detach: true, deploymentName: "default", dockerContext: "local",
     envFilePath: path.join(project, "run.env"), supportDirectory: project, cwd: project });
@@ -75,7 +76,7 @@ it.each([false, true])("deploys recording on, recompiles off (clean=%s), then re
   const result = await deploy(root);
   const before = await readDeploymentRecord(result.deploymentRecordPath!);
   expect(before.recording).toEqual(result.report.recording);
-  writeFileSync(path.join(root, "Spawnfile"), JSON.stringify({ spawnfile_version: "0.1", kind: "agent", name: "writer", runtime: "openclaw",
+  writeFileSync(path.join(root, "Spawnfile"), JSON.stringify({ spawnfile_version: "0.1", kind: "agent", name: "writer", runtime: "daimon",
     memory: [{ id: "self", store: { kind: "json", path: "/data/memory/events.jsonl" } }] }));
   await compileProject(root, { clean });
   expect((await readDeploymentRecord(result.deploymentRecordPath!)).recording).toEqual(before.recording);

@@ -1,5 +1,5 @@
 import { SpawnfileError } from "../../../shared/index.js";
-import type { CompilePlan } from "../../types.js";
+import type { CompilePlan, ResolvedAgentNode } from "../../types.js";
 import type { ResolvedWorkspaceResource } from "../../workspaceResources.js";
 import type { TrainingPlanOverride } from "./contract.js";
 import type { TrainingAgentNode } from "./types.js";
@@ -19,6 +19,18 @@ const one = <T>(matches: T[], id: string, context: string): T => {
   if (matches.length > 1) invalidTraining(`${context}: ambiguous id ${id}`);
   return matches[0]!;
 };
+
+/** Shared selection for the authoring plan and runtime recording; resolved visibility is authoritative. */
+export const resolveTrainingRecordVolumes = (
+  agent: { id: string; value: ResolvedAgentNode }
+): Array<ResolvedWorkspaceResource & { kind: "volume" }> =>
+  (agent.value.training?.record?.volumes ?? []).map((id) => {
+    const context = `Training record.volumes for ${agent.id}`;
+    const resource = one((agent.value.workspaceResources ?? []).filter((entry) => entry.id === id), id, context);
+    if (resource.kind !== "volume") return invalidTraining(`${context}: ${id} must be a volume`);
+    if (resource.feed) return invalidTraining(`${context}: fed volume ${id} is recorded through its landing log`);
+    return resource;
+  }).sort((left, right) => lexical(left.id, right.id));
 
 export const resolveTrainingResource = (
   plan: CompilePlan, agent: TrainingAgentNode, id: string, context: string
