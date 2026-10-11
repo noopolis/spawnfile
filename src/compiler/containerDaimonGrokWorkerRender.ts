@@ -23,7 +23,8 @@ import {
   DAIMON_GROK_WORKER_HOME_DIRECTORY,
   daimonGrokWorkerSandboxProfileSha256,
   renderDaimonGrokWorkerSandboxProfile,
-  resolveDaimonGrokWorkerConfig
+  resolveDaimonGrokWorkerConfig,
+  type DaimonGrokWorkerConfigVariant
 } from "../runtime/daimon/grokWorkerContract.js";
 import { DAIMON_FIRST_WORKER_UID } from "../runtime/daimon/runtimeIdentity.js";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
@@ -93,6 +94,8 @@ export interface DaimonGrokRegistration {
   agentId: string;
   config: string;
   configSha256: string;
+  /** Omission preserves production's unclocked config and multi-worker layout. */
+  workerConfigVariant?: DaimonGrokWorkerConfigVariant;
   denyPaths: string[];
   /** Deny entries the main entrypoint materializes after root provisioning (workspace resource backings); absent is allowed there, a symlink never. */
   deferredDenyPaths: string[];

@@ -9,11 +9,14 @@ import { DAIMON_GROK_WORKER_CONFIG_BYTES } from "../runtime/daimon/grokWorkerCon
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import { renderDaimonGrokHostPreflight, renderDaimonGrokWorkerProvisioning } from "./containerDaimonGrokWorkerProvisioning.js";
 import { resolveDaimonGrokRegistrations, type DaimonGrokRegistration } from "./containerDaimonGrokWorkerRender.js";
+import { resolveTrainingGrokRegistration } from "./training/broker/registration.js";
+import { TRAINING_BROKER_SOCKET_PATHS, TRAINING_OPTIONAL_DENY_DIRECTORIES } from "./training/broker/paths.js";
+import { DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES } from "../runtime/daimon/grokWorkerConfigBytes.js";
 
 const INSTANCE = "/var/lib/spawnfile/instances/daimon/daimon-organization";
 const BROKER = 2100;
 
-type Node = { content: string; gid: number; kind: "dir" | "file" | "link"; mode: number; target?: string; uid: number };
+type Node = { content: string; gid: number; kind: "dir" | "file" | "link" | "socket"; mode: number; target?: string; uid: number };
 
 /**
  * Just enough of `node:fs` to run the rendered root program without root — including the one
@@ -39,7 +42,7 @@ const memoryFs = (seed: Record<string, Partial<Node>>) => {
   const stat = (target: string) => {
     const node = get(target);
     const type = node.kind === "dir" ? 0o040000 : node.kind === "file" ? 0o100000 : 0o120000;
-    return { gid: node.gid, isDirectory: () => node.kind === "dir", isFile: () => node.kind === "file", isSymbolicLink: () => node.kind === "link", mode: type | node.mode, nlink: 1, uid: node.uid };
+    return { gid: node.gid, isDirectory: () => node.kind === "dir", isFile: () => node.kind === "file", isSocket: () => node.kind === "socket", isSymbolicLink: () => node.kind === "link", mode: type | node.mode, nlink: 1, uid: node.uid };
   };
   // uid 0 without CAP_DAC_OVERRIDE: only the owner/group/other write bits that actually apply to it.
   const rootMayWrite = (node: Node) => (node.uid === 0 && (node.mode & 0o200) !== 0)
@@ -64,7 +67,7 @@ const memoryFs = (seed: Record<string, Partial<Node>>) => {
       if (nodes.has(target)) { if (options.recursive) return; throw Object.assign(new Error("EEXIST"), { code: "EEXIST" }); }
       if (!options.recursive) get(path.posix.dirname(target));
       assertCreatableIn(target);
-      put(target, { kind: "dir", mode: options.mode ?? 0o755 });
+      put(target, { kind: "dir", mode: (options.mode ?? 0o755) & ~process.umask() });
     },
     readFileSync: (target: string) => get(target).content,
     realpathSync: (target: string) => {
@@ -80,7 +83,7 @@ const memoryFs = (seed: Record<string, Partial<Node>>) => {
     writeFileSync: (target: string, content: string, options: { flag?: string; mode?: number } = {}) => {
       if (options.flag === "wx" && nodes.has(target)) throw Object.assign(new Error("EEXIST"), { code: "EEXIST" });
       if (!nodes.has(target)) assertCreatableIn(target);
-      put(target, { content: String(content), kind: "file", mode: options.mode ?? 0o644 });
+      put(target, { content: String(content), kind: "file", mode: (options.mode ?? 0o644) & ~process.umask() });
     }
   };
   return { fs, nodes };
@@ -105,15 +108,39 @@ const run = (registrations: readonly DaimonGrokRegistration[], seed: Record<stri
   const memory = memoryFs(seed);
   const secureWorkspace = (): void => undefined;
   const program = new Function("fs", "crypto", "secureWorkspace", "require", lines.join("\n"));
-  program(memory.fs, crypto, secureWorkspace, (name: string) => name === "node:path" ? path.posix : undefined);
+  program(memory.fs, crypto, secureWorkspace, (name: string) => name === "node:path" ? path.posix : name === "node:child_process" ? {
+    execFileSync: (_command: string, args: string[]) => {
+      const target = args[2]!;
+      memory.fs.writeFileSync(target, "", { flag: "wx", mode: 0o600 });
+      Object.assign(memory.nodes.get(target)!, { kind: "socket", uid: Number(args[3]), gid: Number(args[4]) });
+    }
+  } : undefined);
   return memory.nodes;
 };
 
 describe("Grok worker home provisioning", () => {
   const registrations = resolveDaimonGrokRegistrations([plan({ "agent:a": "grok", "agent:b": "grok", "agent:c": "codex" })]);
 
+  it("executes clocked training provisioning with exact clock ownership and modes, including a restrictive umask", () => {
+    const entry = resolveTrainingGrokRegistration({ agentId: "agent:a", model: "grok-4.6", reasoningEffort: "low" });
+    const clock = DAIMON_GROK_ENGINE_BROKER.worker.taskClock;
+    const seed = { ...seedFor([entry], [...TRAINING_BROKER_SOCKET_PATHS]), "/run/daimon-engine-broker": { gid: BROKER, mode: 0o731 } };
+    const lines = renderDaimonGrokWorkerProvisioning([entry], {}, TRAINING_OPTIONAL_DENY_DIRECTORIES);
+    const previous = process.umask(0o077);
+    let nodes: Map<string, Node>;
+    try { nodes = run([entry], seed, lines); } finally { process.umask(previous); }
+    expect(nodes.get(`${entry.grokHome}/config.toml`)).toMatchObject({
+      content: DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES["grok-4.6"].low, uid: 0, gid: 0, mode: 0o444
+    });
+    expect(nodes.get(clock.directoryPath)).toMatchObject({ kind: "dir", uid: 2100, gid: 2100, mode: 0o755 });
+    expect(nodes.get(clock.timestampFilePath)).toMatchObject({ kind: "file", content: "+0\n", uid: 2100, gid: 2100, mode: 0o644 });
+    for (const socket of TRAINING_BROKER_SOCKET_PATHS) expect(nodes.get(socket)).toMatchObject({ kind: "socket", uid: 2100, gid: 2100, mode: 0o600 });
+    expect(() => run([entry], { ...seed, "/run/daimon-engine-broker": { gid: BROKER, mode: 0o730 } }, lines)).toThrow(/task clock ancestor/u);
+  });
+
   it("provisions Daimon's attested layout: sticky root:worker homes and root-owned read-only turn files", () => {
     const nodes = run(registrations, seedFor(registrations));
+    expect(nodes.has(DAIMON_GROK_ENGINE_BROKER.worker.taskClock.directoryPath)).toBe(false);
     for (const entry of registrations) {
       expect(nodes.get(entry.home)).toMatchObject({ gid: BROKER, mode: 0o710, uid: entry.uid });
       for (const directory of [entry.grokHome, `${entry.grokHome}/sessions`]) {

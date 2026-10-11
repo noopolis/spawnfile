@@ -14,6 +14,7 @@ import { MOUNT_AWARE_CLEAR_HELPER } from "../../containerDaimonBrokerRender.js";
 import { renderTrainingBrokerProvisioning, renderTrainingIdentities } from "./provisioning.js";
 import { startBrokerProcesses, stopBrokerProcesses, type BrokerChild } from "./processes.js";
 import { buildTrainingSlotReceipt, readGrokExecutableSha256, resolveTrainingCanaries } from "./receipt.js";
+import { renderTrainingTaskClockAssertions } from "./taskClock.js";
 import type { TrainingSlotRuntime } from "./supervisor.js";
 import {
   DAIMON_ORGANIZATION_UID,
@@ -155,12 +156,15 @@ export const createTrainingSlotRuntime = (options: TrainingSlotRuntimeOptions): 
       if (result.stdout.trim()) log(`provisioning: ${result.stdout.trim().slice(-2048)}`);
     },
     start: async () => { children = await startBrokerProcesses({ log, procRoot: options.procRoot }); },
-    canaries: async () => resolveTrainingCanaries({
-      denyPaths: options.registration.denyPaths, probe, log, hostBindPaths: TRAINING_HOST_BIND_DENY_PATHS,
-      sealedPaths: TRAINING_SEALED_DENY_PATHS,
-      mountinfo: await readFile(`${options.procRoot ?? "/proc"}/self/mountinfo`, "utf8"),
-      unenforcedBindPolicy: options.declaration.unenforcedBindPolicy
-    }),
+    canaries: async () => {
+      await run(shell, ["--noprofile", "--norc", "-ceu", renderTrainingTaskClockAssertions(options.registration).join("\n")]);
+      return resolveTrainingCanaries({
+        denyPaths: options.registration.denyPaths, probe, log, hostBindPaths: TRAINING_HOST_BIND_DENY_PATHS,
+        sealedPaths: TRAINING_SEALED_DENY_PATHS,
+        mountinfo: await readFile(`${options.procRoot ?? "/proc"}/self/mountinfo`, "utf8"),
+        unenforcedBindPolicy: options.declaration.unenforcedBindPolicy
+      });
+    },
     nextGeneration: async () => {
       const previous = await readFile(TRAINING_SLOT_GENERATION_FILE, "utf8").catch(() => "");
       const parsed = Number.parseInt((JSON.parse(previous || "{}") as { generation?: unknown }).generation as string ?? "0", 10);

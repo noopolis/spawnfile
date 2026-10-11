@@ -17,7 +17,7 @@ import { TRAINING_SLOT_RUNTIME_HOME, TRAINING_SLOT_STATE_ROOT, TRAINING_SLOT_WOR
 export interface DaimonProjectionModule {
   resolveOrganizationGrokBrokerProjection(config: unknown, agentId: string, options: Record<string, unknown>): { version: string; profileSha256: string; denyPaths: readonly string[] };
   grokBrokerProjectionSha256(projection: unknown): string;
-  GROK_ENGINE_BROKER: { projectionVersion: string; slotPreflightVersion: string; nativeAbiVersion: number };
+  GROK_ENGINE_BROKER: { projectionVersion: string; slotPreflightVersion: string; nativeAbiVersion: number; controlProtocolVersion: string };
 }
 
 /** Indirect specifier: Daimon is an in-image runtime peer of the training container, never a Spawnfile source dependency. */
@@ -33,6 +33,7 @@ export const loadDaimonProjectionModule = async (load: () => Promise<unknown> = 
   if (typeof daimon.resolveOrganizationGrokBrokerProjection !== "function" || typeof daimon.grokBrokerProjectionSha256 !== "function"
     || daimon.GROK_ENGINE_BROKER?.projectionVersion !== DAIMON_GROK_ENGINE_BROKER.projectionVersion
     || daimon.GROK_ENGINE_BROKER.slotPreflightVersion !== DAIMON_GROK_ENGINE_BROKER.slotPreflightVersion
+    || daimon.GROK_ENGINE_BROKER.controlProtocolVersion !== DAIMON_GROK_ENGINE_BROKER.controlProtocolVersion
     || daimon.GROK_ENGINE_BROKER.nativeAbiVersion !== DAIMON_GROK_ENGINE_BROKER.nativeAbiVersion) {
     throw new SpawnfileError("runtime_error", "The installed Daimon Grok broker contract differs from this compiler's vendored manifest");
   }
@@ -84,6 +85,7 @@ export const resolveTrainingGrokProjection = async (
       slot: registration.slot,
       workerUid: registration.uid,
       workerHomePath: TRAINING_WORKER_HOME,
+      workerConfigVariant: "clocked",
       architecture: declaration.architecture,
       usageLedgerPath: registration.usageLedgerPath,
       limits: declaration.limits,
@@ -95,6 +97,15 @@ export const resolveTrainingGrokProjection = async (
       seccompProfileSha256: declaration.seccompProfileSha256,
       profileSha256: registration.profileSha256
     }) as unknown as Record<string, unknown>;
+  const clock = DAIMON_GROK_ENGINE_BROKER.worker.taskClock;
+  const projectedClock = projection.taskClock as Record<string, unknown> | undefined;
+  if (registration.workerConfigVariant !== "clocked" || projection.version !== DAIMON_GROK_ENGINE_BROKER.projectionVersion
+    || projection.workerConfigVariant !== "clocked" || projection.workerConfigSha256 !== registration.configSha256
+    || projection.profileSha256 !== registration.profileSha256 || !projectedClock
+    || Object.keys(projectedClock).length !== Object.keys(clock).length
+    || Object.entries(clock).some(([key, value]) => projectedClock[key] !== value)) {
+    throw new SpawnfileError("runtime_error", "Daimon's Grok broker projection differs from the provisioned clocked worker config");
+  }
   const denied = [...(projection.denyPaths as string[])];
   if (denied.length !== registration.denyPaths.length || denied.some((entry, index) => entry !== registration.denyPaths[index])) {
     throw new SpawnfileError("runtime_error", "Daimon's Grok broker projection deny list differs from the provisioned sandbox profile");

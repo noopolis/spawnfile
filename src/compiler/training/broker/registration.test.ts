@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { DAIMON_GROK_ENGINE_BROKER } from "../../../runtime/daimon/contractManifest.js";
+import { DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES } from "../../../runtime/daimon/grokWorkerConfigBytes.js";
+import { renderDaimonGrokWorkerProvisioning } from "../../containerDaimonGrokWorkerProvisioning.js";
 
 import { renderDaimonGrokServiceConfig } from "../../containerDaimonGrokWorkerRender.js";
 import { trainingBrokerTmpfsTargets } from "../container/security.js";
@@ -8,6 +11,7 @@ import { resolveTrainingGrokDenyPaths, resolveTrainingGrokRegistration } from ".
 import {
   TRAINING_ADDED_DENY_PATHS,
   TRAINING_BROKER_TMPDIR,
+  TRAINING_BROKER_SOCKET_PATHS,
   TRAINING_SLOT_RUNTIME_HOME,
   TRAINING_WORKER_HOME,
   TRAINING_SLOT_WORKSPACE,
@@ -35,7 +39,7 @@ describe("training Grok slot registration", () => {
       expect(denied.some((entry) => covered === entry || covered.startsWith(`${entry}/`)), covered).toBe(true);
     }
     for (const entry of [...TRAINING_EVALUATOR_ROOTS.map((role) => role.path),
-      "/run/daimon-engine-broker", "/etc/daimon-engine-broker", TRAINING_GRANT_HOME_ROOT, TRAINING_INFERENCE_DIRECTORY,
+      ...TRAINING_BROKER_SOCKET_PATHS, "/etc/daimon-engine-broker", TRAINING_GRANT_HOME_ROOT, TRAINING_INFERENCE_DIRECTORY,
       TRAINING_SLOT_STATE_ROOT, TRAINING_SLOT_TURN_STORE, TRAINING_REALM_MOUNT]) {
       expect(denied, entry).toContain(entry);
     }
@@ -75,6 +79,28 @@ describe("training Grok slot registration", () => {
   it("points the registration at the per-slot ledger, never the container ledger", () => {
     expect(slot().usageLedgerPath).toBe(TRAINING_SLOT_USAGE_LEDGER);
     expect(slot().usageLedgerPath.startsWith("/var/lib/spawnfile/daimon/usage")).toBe(false);
+  });
+
+  it("selects the vendored clocked bytes and keeps the directory visible through strict's read-only /run mount", () => {
+    const registration = slot(), clock = DAIMON_GROK_ENGINE_BROKER.worker.taskClock;
+    expect(registration.workerConfigVariant).toBe("clocked");
+    expect(registration.config).toBe(DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES["grok-4.6"].low);
+    expect(registration.configSha256).toBe(DAIMON_GROK_ENGINE_BROKER.worker.clockedConfigSha256["grok-4.6"].low);
+    expect(registration.profile).toContain('extends = "strict"');
+    expect(registration.profile).not.toMatch(/write|read_write/u);
+    for (const file of [clock.timestampFilePath, clock.directoryPath, clock.preloadPath,
+      "/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1", "/usr/lib/aarch64-linux-gnu/faketime/libfaketime.so.1"]) {
+      expect(registration.denyPaths.some((denied) => file === denied || file.startsWith(`${denied}/`))).toBe(false);
+      expect(() => resolveTrainingGrokDenyPaths([...TRAINING_ADDED_DENY_PATHS, file])).toThrow(/task clock|base profile grant/u);
+    }
+    expect(() => resolveTrainingGrokDenyPaths([...TRAINING_ADDED_DENY_PATHS, "/run/daimon-engine-broker"])).toThrow(/task clock/u);
+  });
+
+  it("refuses multiple registrations when any slot is clocked", () => {
+    for (const variant of ["clocked", "unclocked"] as const) {
+      expect(() => renderDaimonGrokWorkerProvisioning([slot(), { ...slot(), agentId: "agent:peer", workerConfigVariant: variant }]))
+        .toThrow(/exactly one registration/u);
+    }
   });
 
   it("refuses an undeclared model or reasoning effort", () => {

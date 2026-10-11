@@ -6,6 +6,11 @@ import { SpawnfileError } from "../../../shared/index.js";
 import { DAIMON_GROK_ENGINE_BROKER } from "../../../runtime/daimon/contractManifest.js";
 import { DAIMON_BROKER_UID, TRAINING_BROKER_TMPDIR } from "./paths.js";
 
+interface SocketIdentity { dev: number; ino: number; ctimeMs: number; isSocket(): boolean }
+/** An existing placement socket is not readiness. Its inode (or reuse timestamp) must change. */
+export const isStartedBrokerSocket = (current: SocketIdentity | undefined, previous: SocketIdentity | undefined): boolean =>
+  current?.isSocket() === true && (!previous || current.dev !== previous.dev || current.ino !== previous.ino || current.ctimeMs !== previous.ctimeMs);
+
 export const DAIMON_RUNTIME_ROOT = "/opt/spawnfile/runtime-installs/daimon";
 /** `00000000000000c1` = CHOWN|SETGID|SETUID, the launcher's bounding set after `setpriv`. */
 export const LAUNCHER_CAPABILITY_BOUND = "00000000000000c1";
@@ -67,6 +72,7 @@ export const startBrokerProcesses = async (options: StartBrokerOptions): Promise
   const deadline = Date.now() + timeoutMs;
   try {
     for (const entry of brokerProcessPlan()) {
+      const previousSocket = await stat(entry.socket).catch(() => undefined);
       const child = spawn(entry.argv[0]!, entry.argv.slice(1), { stdio: ["ignore", "inherit", "inherit"] });
       if (child.pid === undefined) throw new SpawnfileError("runtime_error", `${entry.name} did not start`);
       let exited = false;
@@ -76,7 +82,7 @@ export const startBrokerProcesses = async (options: StartBrokerOptions): Promise
         if (exited) throw new SpawnfileError("runtime_error", `${entry.name} exited before readiness`);
         if (Date.now() > deadline) throw new SpawnfileError("runtime_error", `${entry.name} readiness timed out`);
         const socket = await stat(entry.socket).catch(() => undefined);
-        if (socket?.isSocket()) {
+        if (isStartedBrokerSocket(socket, previousSocket)) {
           const identity = await processIdentity(child.pid, procRoot);
           if (identity.uid === String(entry.uid) && identity.capBnd === entry.capBnd) break;
         }

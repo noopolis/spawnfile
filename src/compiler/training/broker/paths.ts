@@ -76,6 +76,9 @@ export const TRAINING_WORKER_ROOT = DAIMON_WORKER_ROOT;
 export const TRAINING_SLOT_INDEX = 0;
 export const TRAINING_WORKER_UID = DAIMON_FIRST_WORKER_UID + TRAINING_SLOT_INDEX;
 export const TRAINING_WORKER_HOME = path.posix.join(TRAINING_WORKER_ROOT, String(TRAINING_WORKER_UID));
+/** Keep /run's read-only directory mount visible for atomic clock-file replacement. */
+export const TRAINING_BROKER_SOCKET_PATHS = [DAIMON_GROK_ENGINE_BROKER.controlSocketPath,
+  DAIMON_GROK_ENGINE_BROKER.backendSocketPath, DAIMON_GROK_ENGINE_BROKER.launcherSocketPath] as const;
 
 /**
  * Paideia's own fixed container paths (`containerPaths` in its native launch
@@ -121,7 +124,7 @@ export const TRAINING_EVALUATOR_PATHS: readonly { role: "run-root" | "context" |
   { role: "context", path: TRAINING_INFERENCE_DIRECTORY },
   { role: "context", path: TRAINING_SLOT_TURN_STORE },
   { role: "context", path: TRAINING_SUPERVISOR_DIRECTORY },
-  { role: "context", path: path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.controlSocketPath) },
+  ...TRAINING_BROKER_SOCKET_PATHS.map((socket) => ({ role: "context" as const, path: socket })),
   { role: "context", path: path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.registrationPath) },
   { role: "context", path: DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath },
   { role: "context", path: DAIMON_WAKE_FUSE_DIRECTORY }

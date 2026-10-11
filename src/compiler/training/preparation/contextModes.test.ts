@@ -99,6 +99,7 @@ it("hands Docker a normalized context and never runs a layer after the distribut
     "spawnfile/package.json", "spawnfile/runtimes.yaml", "train", "train-broker"]);
   expect(instructions.filter(line => line.startsWith("COPY --from"))).toHaveLength(2);
   expect(dockerfile.match(/ln -s \S+ \S+/gu)).toEqual([
+    'ln -s "$library" /usr/local/lib/daimon/libfaketime.so.1',
     "ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon node_modules/@noopolis/daimon",
     "ln -s /opt/training/claude/node_modules/.bin/claude /opt/training/bin/claude",
     "ln -s /opt/training/paideia/dist/src/cli/main.js /opt/training/bin/paideia",

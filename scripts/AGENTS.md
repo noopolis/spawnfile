@@ -29,9 +29,14 @@ tools live in `../archive/legacy-worktree-tools/` and are not active helpers.
 - `vendor-daimon-grok-contract.ts` (run with `node --import tsx`) is the only
   way Daimon's contract enters Spawnfile: it reads a Daimon checkout as data and
   writes `src/runtime/daimon/contract-manifest.{json,sha256}` plus
-  `grokWorkerConfigBytes.ts` (Daimon's own worker `config.toml` renderer bytes
+  `grokWorkerConfigBytes.ts` (Daimon's unclocked and clocked worker `config.toml` renderer bytes
   and sandbox-profile samples). `--check` fails on drift. It never builds or
   writes inside Daimon.
+  Update `DAIMON_CONTRACT_MANIFEST_SHA256`, the manifest version and the mirrored
+  broker contract in `src/runtime/daimon/contractManifest.ts` by hand to match.
+  Preserve published registry digests/receipts until a real publication exists;
+  install and production-compile tests must express any required re-pin, never
+  relabel an old image as attesting the new manifest.
 - The local builder pushes only to the fixed loopback development repository.
   Its generated immutable manifest/receipt identity is ignored and never
   edits `runtimes.yaml`. Clean-source builds select the native Docker

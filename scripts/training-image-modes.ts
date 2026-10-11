@@ -2,7 +2,8 @@
 
 /** One `find -printf` record per entry: path, octal mode, owner, group, type, link target. */
 export const MODE_LISTING_FORMAT = "%p\\t%m\\t%u\\t%g\\t%y\\t%l\\n";
-export const MODE_ROOTS = ["/opt/training", "/opt/training/paideia/bridges/dspy/.venv"] as const;
+export const TASK_CLOCK_LIBRARY = "/usr/local/lib/daimon/libfaketime.so.1";
+export const MODE_ROOTS = ["/opt/training", "/opt/training/paideia/bridges/dspy/.venv", "/usr/local/lib/daimon"] as const;
 /**
  * `find` arguments. Only non-nested roots: `find a a/b` walks `a/b` twice and every
  * entry beneath it would arrive duplicated, which `parse` rejects. The venv stays a
@@ -10,6 +11,8 @@ export const MODE_ROOTS = ["/opt/training", "/opt/training/paideia/bridges/dspy/
  */
 export const LISTING_ROOTS = MODE_ROOTS.filter((root, _index, all) =>
   !all.some(other => other !== root && root.startsWith(other + "/")));
+/** Include the resolved distro library too; finding the symlink alone cannot prove its target exists. */
+export const MODE_LISTING_SCRIPT = `library="$(readlink -e ${TASK_CLOCK_LIBRARY})"; test -f "$library"; find ${LISTING_ROOTS.join(" ")} "$library" -printf '${MODE_LISTING_FORMAT}'`;
 /** The former recipe's whole-tree closure; a control recipe without it is not a control. */
 export const CONTROL_CLOSURE = "chmod -R a+rX /opt/training";
 
@@ -62,6 +65,16 @@ function parse(listing: string, label: string): Map<string, string> {
     entries.set(entry, fields.join("\t"));
   }
   if (!MODE_ROOTS.every(root => entries.has(root))) throw Error(`${label} listing is missing a required root (${MODE_ROOTS.join(", ")})`);
+  const link = entries.get(TASK_CLOCK_LIBRARY)?.split("\t");
+  if (!link || link[0] !== "777" || link[1] !== "root" || link[2] !== "root" || link[3] !== "l"
+    || !/^\/usr\/lib\/(x86_64|aarch64)-linux-gnu\/faketime\/libfaketime\.so\.1$/u.test(link[4]!)) {
+    throw Error(`${label} listing has an unsafe task clock symlink`);
+  }
+  const library = entries.get(link[4]!)?.split("\t");
+  if (!library || library[1] !== "root" || library[2] !== "root" || library[3] !== "f"
+    || (Number.parseInt(library[0]!, 8) & 0o022) !== 0 || (Number.parseInt(library[0]!, 8) & 0o444) !== 0o444) {
+    throw Error(`${label} listing has an unsafe or missing task clock library`);
+  }
   return entries;
 }
 
