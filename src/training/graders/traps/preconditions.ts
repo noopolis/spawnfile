@@ -2,12 +2,28 @@ import { normalizeWhitespace, textLeaves } from '../decomposition/index.js';
 import type { CheckTemplates } from '../decomposition/index.js';
 
 export function numbers(text: string): string[] { return text.match(/(?<![\p{L}\p{N}])\d+(?:[,.]\d+)*(?![\p{L}\p{N}])/gu) ?? []; }
-export function numeric(value: string): string { return value.replaceAll(',', ''); }
+export function numeric(value: string): number { return Number(value.replaceAll(',', '')); }
 export function plausibleNumber(before: string, after: string): boolean {
-  const a = numeric(before), b = numeric(after);
+  const a = before.replaceAll(',', ''), b = after.replaceAll(',', '');
   return /^\d+(?:\.\d+)?$/.test(a) && /^\d+(?:\.\d+)?$/.test(b) &&
     a.replace('.', '').length === b.replace('.', '').length && a.split('.')[1]?.length === b.split('.')[1]?.length &&
     Number(a) !== Number(b) && Number(a) > 0 && Math.abs(Number(a) - Number(b)) / Number(a) <= 0.2;
+}
+/** Every equal-valued occurrence must be exact, since substitution changes all of them. */
+export function exactNumber(text: string, value: string): boolean {
+  const tokens = [...text.matchAll(/(?<![\p{L}\p{N}])\d+(?:[,.]\d+)*(?![\p{L}\p{N}])/gu)];
+  const qualifier = /(?:\b(?:at\s+most|at\s+least|up\s+to|more\s+than|less\s+than|over|under|above|below|about|around|roughly|nearly|almost|approximately|some|between)|~)\s*[$€£]?\s*$/i;
+  const range = /^\s*(?:%|percent|per\s+cent|[\p{L}]+)?\s*(?:[-–—]|to|and)\s*[$€£]?\s*$/iu;
+  return tokens.filter(token => numeric(token[0]) === numeric(value)).every(token => {
+    const start = token.index;
+    if (qualifier.test(text.slice(0, start))) return false;
+    const index = tokens.indexOf(token), previous = tokens[index - 1], next = tokens[index + 1];
+    const isRange = (left: RegExpMatchArray, right: RegExpMatchArray): boolean => {
+      const gap = text.slice(left.index! + left[0].length, right.index);
+      return range.test(gap) && (!/\band\b/i.test(gap) || /\bbetween\s*[$€£]?\s*$/i.test(text.slice(0, left.index)));
+    };
+    return !(previous && isRange(previous, token)) && !(next && isRange(token, next));
+  });
 }
 /** Only surface forms that independently identify a type are eligible. Bare names are ambiguous. */
 export function entityType(value: string): string | undefined {

@@ -1,7 +1,7 @@
 import { stableDigest } from '../format/index.js';
 import { evidenceRows, normalizeWhitespace, readPath, textLeaves } from '../decomposition/index.js';
 import type { AtomicUnit, CheckTemplates, Decomposition, DecompositionInputs, TrapKind } from '../decomposition/index.js';
-import { affirmativeCounterpart, articleEntities, entityType, coReferent, maskCitations, withoutHeadings, negationAuxiliary, numbers, numeric, plausibleNumber } from './preconditions.js';
+import { affirmativeCounterpart, articleEntities, entityType, coReferent, exactNumber, maskCitations, withoutHeadings, negationAuxiliary, numbers, numeric, plausibleNumber } from './preconditions.js';
 import type { TrapMutation } from './types.js';
 
 export function replaceLeaf(output: unknown, path: string[], after: string): unknown {
@@ -51,14 +51,14 @@ export function mutationFor(kind: TrapKind, unit: AtomicUnit, _document: Decompo
   let valueBefore: string | undefined;
   let valueAfter: string | undefined;
   if (kind === 'number-substitution' && cited) {
-    valueBefore = numbers(claim).find(value => numbers(cited).some(item => numeric(item) === numeric(value)));
+    valueBefore = numbers(claim).find(value => exactNumber(claim, value) && numbers(cited).some(item => numeric(item) === numeric(value)));
     if (valueBefore) {
-      const precision = numeric(valueBefore).split('.')[1]?.length ?? 0;
+      const precision = valueBefore.split('.')[1]?.length ?? 0;
       const step = 10 ** -precision;
       const sign = parseInt(stableDigest({ seed, unit: unit.id }).slice(0, 2), 16) % 2 ? 1 : -1;
       for (const delta of [sign, -sign, 2 * sign, -2 * sign]) {
         const candidate = (Number(numeric(valueBefore)) + delta * step).toFixed(precision);
-        if (plausibleNumber(valueBefore, candidate) && !numbers(cited).some(value => numeric(value) === candidate)) {
+        if (plausibleNumber(valueBefore, candidate) && !numbers(cited).some(value => numeric(value) === numeric(candidate))) {
           valueAfter = candidate; break;
         }
       }

@@ -47,3 +47,21 @@ it.each(['number-substitution', 'entity-substitution'] as const)('independently 
   expect(validateTrap(trap, f.document.units[0]!, f.inputs, f.templates).reasons)
     .toContain('original value remains in mutated claim');
 });
+it.each(['DR ALICE', 'Dr\tAlice', 'dR \n ALICE'])('independently detects entity survival after normalization: %s', survivor => {
+  const f = repeated('entity-substitution');
+  const trap = structuredClone(f.trap);
+  const before = trap.mutation.value_before!, after = trap.mutation.value_after!;
+  trap.mutation.source = trap.mutation.source.replace(before, survivor);
+  trap.mutation.before = trap.mutation.source;
+  f.document.units[0]!.text = trap.mutation.source;
+  f.inputs.output = replaceLeaf(f.inputs.output, trap.mutation.path, trap.mutation.source);
+  trap.mutation.replacement = trap.mutation.source.replaceAll(before, after);
+  trap.mutation.after = trap.mutation.replacement;
+  trap.output = replaceLeaf(f.inputs.output, trap.mutation.path, trap.mutation.after);
+  trap.decomposition.units[0]!.text = trap.mutation.replacement;
+  trap.decomposition.units[0]!.fields = { actor: after };
+  trap.decomposition = validateDecomposition(trap.decomposition, { ...f.inputs, output: trap.output }, f.templates).decomposition;
+  trap.instances = instantiateChecks(f.templates, trap.decomposition, { ...f.inputs, output: trap.output });
+  expect(validateTrap(trap, f.document.units[0]!, f.inputs, f.templates).reasons)
+    .toEqual(['original value remains in mutated claim']);
+});

@@ -17,4 +17,7 @@ validation rejection, keep source/tests under 400 lines and coverage above 90%.
 
 Substitutions remove every occurrence of the chosen fact from claim text and
 update fields consistently. Independently reject any surviving original value;
-numeric equivalence includes comma formatting, while citations remain unchanged.
+numeric equivalence uses parsed values (commas, decimal zeroes and percentage
+numbers), while citations remain unchanged. Reject bound, approximation and range
+occurrences before construction and independently in validation. Entity survival
+checks ignore case and normalize whitespace.
