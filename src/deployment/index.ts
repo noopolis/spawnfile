@@ -34,4 +34,4 @@ export * from "./target.js";
 export * from "./upReceiptTypes.js";
 export * from "./resourceLog.js";
 export * from "./activation.js";
-export { bindDeploymentRecording } from "./recordPublication.js";
+export { bindDeploymentRecording, reconcileDeploymentResources } from "./recordPublication.js";

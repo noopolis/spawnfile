@@ -66,8 +66,11 @@ export const feedLandingAt = (entries: readonly FeedLanding[], instant: string |
   return transition ? { ...transition, ambiguous: true } : entryAt(entries, instant, (entry) => entry.landed_at);
 };
 
-const landingFromRecord = (target: FeedTarget, record: FeedLandedRecord): FeedLanding => {
+type LandingTarget = Pick<FeedTarget, "stateDir" | "record"> & Partial<Pick<FeedTarget, "source">>;
+
+const landingFromRecord = (target: LandingTarget, record: FeedLandedRecord): FeedLanding => {
   if (record.recording) return record.recording.landing;
+  if (!target.source) throw new Error("Landed record has no recoverable recording provenance");
   const identity = record.identity, provenance = identity.source;
   const source: FeedLanding["source"] = target.source.kind === "git"
     ? { kind: "git", repo: target.source.repo }
@@ -82,7 +85,7 @@ const landingFromRecord = (target: FeedTarget, record: FeedLandedRecord): FeedLa
 };
 
 /** Call only after writing the corresponding landed.json; the existing feed lock serializes writers. */
-export const appendFeedLanding = (target: FeedTarget, record: FeedLandedRecord, now: Date): void => {
+export const appendFeedLanding = (target: LandingTarget, record: FeedLandedRecord, now: Date): void => {
   const keepMs = record.recording?.keep_ms ?? target.record?.keepMs;
   if (keepMs === undefined) return;
   const entry = landingFromRecord(target, record);
@@ -92,7 +95,7 @@ export const appendFeedLanding = (target: FeedTarget, record: FeedLandedRecord, 
 };
 
 /** A verified clean host record seeds opt-in history or repairs a previously failed append. */
-export const ensureFeedLanding = (target: FeedTarget, record: FeedLandedRecord, now: Date): void => {
+export const ensureFeedLanding = (target: LandingTarget, record: FeedLandedRecord, now: Date): void => {
   if (!target.record && !record.recording) return;
   const expected = JSON.stringify(landingFromRecord(target, record));
   const history = readFeedLandings(target.stateDir);

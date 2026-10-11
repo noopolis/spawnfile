@@ -1,23 +1,22 @@
 import path from "node:path";
 
-import { readDeployResources, type DeployResources } from "../deployment/resourceLog.js";
+import { deployResourcesAt, type DeployResources } from "../deployment/index.js";
 import type { RecordingAgentReport } from "../report/index.js";
 import type { UsageLedgerExec } from "../runtime/usageLedgerRead.js";
 import type { FeedLanding } from "../volume/index.js";
 import { composeMomentRecord } from "./compose.js";
-import { recordingHistoryAt } from "./history.js";
+import { readRecordingDeployHistory, recordingHistoryAt, type RecordingHistory } from "./history.js";
 import { createMemoryLedgerParser, createWakeMomentsParser } from "./parse.js";
 import { readRecordingJsonl } from "./read.js";
 import { newestMomentInstant, pruneMomentRecords, withMomentStore, writeMomentRecord } from "./store.js";
 import type { MemoryLedgerRead, WakeMomentRow } from "./types.js";
 
-interface History<T> { entries: T[]; errors: string[] }
 export interface SyncMomentRecordsOptions {
   recordPath: string;
   agents: readonly RecordingAgentReport[];
   execForAgent: (agent: RecordingAgentReport) => UsageLedgerExec;
-  readFeedHistory: (feed: RecordingAgentReport["feeds"][number]) => Promise<History<FeedLanding>>;
-  readDeployHistory?: (recordPath: string) => History<DeployResources>;
+  readFeedHistory: (feed: RecordingAgentReport["feeds"][number]) => Promise<RecordingHistory<FeedLanding>>;
+  readDeployHistory?: (recordPath: string) => RecordingHistory<DeployResources> | Promise<RecordingHistory<DeployResources>>;
   readChunkBytes?: number;
   now?: () => Date;
 }
@@ -36,7 +35,10 @@ export const syncMomentRecords = async (options: SyncMomentRecordsOptions): Prom
   if (!options.agents.length) return result;
   const now = (options.now ?? (() => new Date()))();
   if (!Number.isFinite(now.getTime())) throw new Error("Recording requires a valid clock");
-  const deploy = (options.readDeployHistory ?? readDeployResources)(options.recordPath);
+  const deploy = await (options.readDeployHistory ?? readRecordingDeployHistory)(options.recordPath);
+  const deployTail = deploy.entries.at(-1);
+  const deployPendingSince = deployTail ? Date.parse(deployTail.activated_at) : -Infinity;
+  const currentDeployment = deployResourcesAt(deploy.entries, options.recordPath, now);
   for (const agent of options.agents) {
     try {
       if (!Number.isSafeInteger(agent.keep_ms) || agent.keep_ms <= 0) throw new Error("Invalid recording retention");
@@ -62,8 +64,8 @@ export const syncMomentRecords = async (options: SyncMomentRecordsOptions): Prom
           rows.push({ row, directory }); rowsBySlug.set(slug, rows);
         }
       }
-      const memoryLedgers: Record<string, MemoryLedgerRead> = Object.create(null) as Record<string, MemoryLedgerRead>;
-      const feedCache = new Map<string, History<FeedLanding>>();
+      const memoryCache: Record<string, MemoryLedgerRead> = Object.create(null) as Record<string, MemoryLedgerRead>;
+      const feedCache = new Map<string, RecordingHistory<FeedLanding>>();
       result.warnings.push(...errors.map((error) => `${agent.node_id}: ${error}`));
       for (const [slug, rows] of rowsBySlug) await withMomentStore(options.recordPath, slug, async (directory) => {
         const newest = rows.reduce((latest, { row }) => Math.max(latest, Date.parse(row.started_at)),
@@ -72,8 +74,9 @@ export const syncMomentRecords = async (options: SyncMomentRecordsOptions): Prom
           const started = Date.parse(row.started_at);
           // Do not recreate already-pruned attempts on every sync while Daimon retains its row log.
           if (started < now.getTime() - agent.keep_ms && started < newest) { result.skipped += 1; continue; }
-          const historical = recordingHistoryAt(deploy.entries, options.recordPath, row.started_at, agent.node_id).agent;
+          const { agent: historical, deployment } = recordingHistoryAt(deploy.entries, options.recordPath, row.started_at, agent.node_id);
           const rowErrors = [...errors];
+          if (deploy.publicationPending && started >= deployPendingSince) rowErrors.push("Deploy history publication pending");
           if (historical && historical.directory !== sourceDirectory) rowErrors.push("Wake row directory differs from activation recording facts");
           const feedLandings: Record<string, FeedLanding[]> = Object.create(null) as Record<string, FeedLanding[]>;
           for (const feed of historical?.feeds ?? []) {
@@ -84,13 +87,28 @@ export const syncMomentRecords = async (options: SyncMomentRecordsOptions): Prom
             }
             const history = feedCache.get(key)!;
             feedLandings[feed.id] = history.entries.filter((entry) => entry.resource === feed.id && entry.volume === feed.volume_name);
+            const tail = history.entries.at(-1);
+            const pendingSince = tail ? Date.parse(tail.landed_at) : -Infinity;
+            if (history.publicationPending && started >= pendingSince) rowErrors.push(`Feed ${feed.id}: history publication pending`);
             rowErrors.push(...history.errors.map((error) => `Feed ${feed.id}: ${error}`));
           }
+          const memoryLedgers: Record<string, MemoryLedgerRead> = Object.create(null) as Record<string, MemoryLedgerRead>;
           for (const bank of historical?.memory ?? []) {
-            if (bank.ledger_path === null || memoryLedgers[bank.ledger_path] !== undefined) continue;
-            const ledger = await readRecordingJsonl(exec, bank.ledger_path, createMemoryLedgerParser(), options.readChunkBytes);
-            memoryLedgers[bank.ledger_path] = ledger.failure
-              ? { entries: [], errors: [`Ledger unreadable: ${ledger.failure}`] } : ledger;
+            if (bank.ledger_path === null) continue;
+            const current = agent.memory.some((entry) => entry.id === bank.id && entry.declared_by === bank.declared_by
+              && entry.ledger_path === bank.ledger_path);
+            // Older facts do not carry a physical volume ID. A different report cannot
+            // establish that today's readable path still names the historical bank.
+            if (!current || deployment?.report_sha256 !== currentDeployment?.report_sha256) {
+              memoryLedgers[bank.ledger_path] = { entries: [], errors: ["Historical bank identity or mount cannot be verified in the current deployment"] };
+              continue;
+            }
+            if (!memoryCache[bank.ledger_path]) {
+              const ledger = await readRecordingJsonl(exec, bank.ledger_path, createMemoryLedgerParser(), options.readChunkBytes);
+              memoryCache[bank.ledger_path] = ledger.failure || ledger.missing
+                ? { entries: [], errors: [`Ledger unreadable: ${ledger.failure ?? "runtime file is absent"}`] } : ledger;
+            }
+            memoryLedgers[bank.ledger_path] = memoryCache[bank.ledger_path]!;
           }
           const record = composeMomentRecord({ row, agentNodeId: agent.node_id, deploymentRecordPath: options.recordPath,
             feedLandings, deployResources: deploy.entries, memoryLedgers, errors: rowErrors, recordedAt: now.toISOString() });

@@ -5,7 +5,8 @@ import {
   type DeploymentRecord
 } from "../deployment/index.js";
 import { SpawnfileError } from "../shared/index.js";
-import { readFeedLandings, resolveFeedStateDirectory } from "../volume/index.js";
+import { resolveFeedStateDirectory } from "../volume/index.js";
+import { readRecordingFeedHistory } from "./history.js";
 import { syncMomentRecords, type SyncMomentRecordsOptions, type SyncMomentRecordsResult } from "./sync.js";
 
 export interface RecordingDeploymentHandlers {
@@ -50,7 +51,7 @@ export const syncDeploymentMoments = async (
       const state = resolveFeedStateDirectory(feed.volume_name, { exec: (_command, args) => execFileSync(
         options.dockerCommand ?? "docker", [...dockerTarget, ...args], { timeout: options.timeoutMs ?? 30_000, maxBuffer: 1024 * 1024 }
       ) });
-      return readFeedLandings(state);
+      return readRecordingFeedHistory(state, (handlers.now ?? (() => new Date()))());
     })
   });
 };

@@ -29,6 +29,15 @@ const priorRecord = async (recordPath: string): Promise<DeploymentRecord | null>
   return parseDeploymentRecord(JSON.parse(bytes), recordPath);
 };
 
+/** Caller holds the publication lock; recover a published snapshot before using its history. */
+export const reconcileDeploymentResources = async (recordPath: string): Promise<void> => {
+  const previous = await priorRecord(recordPath);
+  if (previous?.resource_snapshot && previous.recording) {
+    await syncFile(recordPath);
+    ensureDeployResources(recordPath, previous.resource_snapshot, previous.recording.keep_ms);
+  }
+};
+
 /** The original non-recording publication sequence, including its temporary name and permissions. */
 export const writeAtomicDeploymentFile = async (file: string, bytes: string): Promise<void> => {
   const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`);
@@ -49,11 +58,7 @@ export const publishDeploymentRecord = async (
   }
   const release = await acquirePidLock(`${recordPath}.resource-log.lock`);
   try {
-    const previous = await priorRecord(recordPath);
-    if (previous?.resource_snapshot && previous.recording) {
-      await syncFile(recordPath);
-      ensureDeployResources(recordPath, previous.resource_snapshot, previous.recording.keep_ms);
-    }
+    await reconcileDeploymentResources(recordPath);
     await publishReport?.(true);
     try { await writeDurableFile(recordPath, `${JSON.stringify(record, null, 2)}\n`); }
     catch (cause) {

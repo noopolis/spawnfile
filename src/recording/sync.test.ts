@@ -69,7 +69,7 @@ describe("syncMomentRecords", () => {
     expect(momentFileName({ ...row, snapshots: [{ ...row.snapshots[0]!, skipped: 1 }] })).not.toBe(momentFileName(row));
   });
 
-  it("reads historical ledger paths and removed feeds/resources after a release, from the real persisted log", async () => {
+  it("retains historical feeds/resources but rejects a bank no longer mounted in the current deployment", async () => {
     const oldTime = "2026-10-09T08:00:00.000Z", releaseTime = "2026-10-09T08:30:00.000Z";
     const oldFacts = { ...agent, resources: [{ id: "archive", kind: "git" as const }],
       feeds: [{ id: "news", volume_name: "old-news-volume" }] };
@@ -88,10 +88,11 @@ describe("syncMomentRecords", () => {
       switching_at: oldTime, landed_at: oldTime, revision: "a".repeat(64), tree: `trees/${feed.volume_name}`,
       source: { kind: "directory" as const, directory: "/feed" }
     }], errors: [] }));
-    expect(await run(exec, { agents: [current], readDeployHistory: undefined, readFeedHistory })).toMatchObject({ written: 2, nonExact: 0, failures: [] });
+    expect(await run(exec, { agents: [current], readDeployHistory: undefined, readFeedHistory })).toMatchObject({ written: 2, nonExact: 1, failures: [] });
     const moments = await records();
-    expect(moments.find((row) => row.wake.startedAt === startedAt)).toMatchObject({ exact: true,
-      resources: [{ id: "archive", commit: "a".repeat(40) }], memory: [{ declaredBy: "agent:writer", seq: 7 }],
+    expect(moments.find((row) => row.wake.startedAt === startedAt)).toMatchObject({ exact: false,
+      resources: [{ id: "archive", commit: "a".repeat(40) }], memory: [],
+      errors: [expect.stringContaining("identity or mount")],
       feeds: [{ tree: "trees/old-news-volume" }], moltnet: [{ network: "news" }] });
     expect(moments.find((row) => row.wake.startedAt === releaseTime)).toMatchObject({ exact: true,
       resources: [], memory: [{ declaredBy: "team:new", seq: 99 }], feeds: [{ tree: "trees/new-news-volume" }], moltnet: [{ network: "new-desk" }] });
@@ -110,6 +111,39 @@ describe("syncMomentRecords", () => {
     const exec = chunkExec((file) => file.endsWith("wake-moments.jsonl") ? wakeLog : ledger, maxBuffer);
     expect(await run(exec, { readChunkBytes: 192 })).toMatchObject({ written: 4, nonExact: 0, failures: [] });
     expect((await records()).map((record) => record.memory[0]!.seq)).toEqual([49, 49, 49, 49]);
+  });
+
+  it.each(["missing", "empty"])("historical ledger %s in the current container is distinguished from an unreadable bank", async (state) => {
+    const entries = ["2026-10-09T08:00:00Z", "2026-10-09T08:30:00Z"].map((time) => createDeployResources(recordPath(), {
+      name: "news", created_at: time, activated_at: time, activation_exact: true
+    }, { recording: { keep_ms: agent.keep_ms, memory_mount_ids: [], agents: [agent] } }, "same physical mounts"));
+    const exec = chunkExec((file) => file.endsWith("wake-moments.jsonl") ? JSON.stringify(wake()) : state === "missing" ? null : "");
+    expect(await run(exec, { readDeployHistory: () => ({ entries, errors: [] }) }))
+      .toMatchObject({ written: 1, nonExact: state === "missing" ? 1 : 0, failures: [] });
+    expect((await records())[0]).toMatchObject(state === "missing"
+      ? { exact: false, memory: [], errors: [expect.stringContaining("runtime file is absent")] }
+      : { exact: true, memory: [{ seq: 0 }] });
+  });
+
+  it.each(["bank", "owner", "mount", "physical volume"])("does not read a historical %s through today's bank or poison its cache", async (change) => {
+    const oldBank = agent.memory[0]!;
+    const current = { ...agent, memory: [{ ...oldBank,
+      ...(change === "bank" ? { id: "replacement" } : {}),
+      ...(change === "owner" ? { declared_by: "team:new" } : {}),
+      ...(change === "mount" ? { ledger_path: "/new/events.jsonl" } : {}) }] };
+    const releaseTime = "2026-10-09T08:30:00Z";
+    const entries = [agent, current].map((facts, index) => createDeployResources(recordPath(), {
+      name: "news", created_at: index ? releaseTime : "2026-10-09T08:00:00Z",
+      activated_at: index ? releaseTime : "2026-10-09T08:00:00Z", activation_exact: true
+    }, { recording: { keep_ms: agent.keep_ms, memory_mount_ids: [], agents: [facts] } },
+    change === "physical volume" && index ? "replacement physical volume" : "original physical volume"));
+    // Read current first: a cached empty ledger must not certify an older bank at the same path.
+    expect(await run(execFor([wake(releaseTime), wake()], ""), { agents: [current], readDeployHistory: () => ({ entries, errors: [] }) }))
+      .toMatchObject({ written: 2, nonExact: 1, failures: [] });
+    const moments = await records();
+    expect(moments.find((row) => row.wake.startedAt === startedAt)).toMatchObject({ exact: false, memory: [],
+      errors: [expect.stringContaining("identity or mount")] });
+    expect(moments.find((row) => row.wake.startedAt === releaseTime)).toMatchObject({ exact: true, memory: [{ seq: 0 }] });
   });
 
   it("marks rows before the first activation non-exact even when the current agent has no pins", async () => {
@@ -134,7 +168,7 @@ describe("syncMomentRecords", () => {
     expect(await run(execFor(rows))).toMatchObject({ written: 0, skipped: 2 });
   });
 
-  it("unreadable memory is non-exact, while an absent memory file is successfully empty", async () => {
+  it("unreadable and absent memory are non-exact; only an existing empty ledger is exact at seq 0", async () => {
     const unreadable = chunkExec((file) => {
       if (file.endsWith("wake-moments.jsonl")) return JSON.stringify(wake());
       throw new Error("permission denied");
@@ -143,8 +177,12 @@ describe("syncMomentRecords", () => {
     expect((await records())[0]).toMatchObject({ exact: false, errors: [expect.stringContaining("unreadable")] });
     const absent = chunkExec((file) => file.endsWith("wake-moments.jsonl")
       ? JSON.stringify(wake("2026-10-09T08:22:00Z", "new")) : null);
-    expect(await run(absent)).toMatchObject({ written: 1, nonExact: 0, failures: [] });
-    expect((await records()).find((record) => record.wake.executionId === "new")?.memory).toEqual([{ id: "self", declaredBy: agent.node_id, seq: 0 }]);
+    expect(await run(absent)).toMatchObject({ written: 1, nonExact: 1, failures: [] });
+    expect((await records()).find((record) => record.wake.executionId === "new")).toMatchObject({ exact: false, memory: [],
+      errors: [expect.stringContaining("runtime file is absent")] });
+    expect(await run(execFor([wake("2026-10-09T08:23:00Z", "empty")], ""))).toMatchObject({ written: 1, nonExact: 0, failures: [] });
+    expect((await records()).find((record) => record.wake.executionId === "empty")).toMatchObject({ exact: true,
+      memory: [{ id: "self", declaredBy: agent.node_id, seq: 0 }] });
   });
 
   it("reports failed wake reads as operational failures and absent wake files as empty", async () => {
