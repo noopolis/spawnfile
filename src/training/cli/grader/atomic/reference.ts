@@ -11,7 +11,7 @@ import { atomicWrite, readDecompositions, readOptional, readTemplates, workers }
 
 export interface ReferenceOptions {
   templatesFile: string; decompositions: string; traps?: string; teachers: string[];
-  out: string; allowRejections?: boolean; concurrency?: number; timeoutMs?: number; signal?: AbortSignal; now?: Date;
+  out: string; allowRejections?: boolean; concurrency?: number; batchSize?: number; timeoutMs?: number; signal?: AbortSignal; now?: Date;
 }
 type TrapBundle = TrapSet & { decomposition: string; decompositionDigest: string };
 export async function runReference(options: ReferenceOptions, dependencies: GraderDependencies = {}) {
@@ -47,7 +47,7 @@ export async function runReference(options: ReferenceOptions, dependencies: Grad
     const filename = join(checkpoints, `${stableDigest(key)}.json`);
     const previous = await readOptional<CouncilOutput>(filename);
     outputs[key] = await runCouncil({ outputDigest, instances, teachers, providers, previous,
-      now: options.now, grokWindow: templates.grok_window, timeoutMs: options.timeoutMs, signal: options.signal,
+      batchSize: options.batchSize, now: options.now, grokWindow: templates.grok_window, timeoutMs: options.timeoutMs, signal: options.signal,
       onCheckpoint: output => atomicWrite(filename, output) });
   };
   await workers(inputs, options.concurrency ?? 2, async input => {
@@ -91,7 +91,8 @@ export async function runReference(options: ReferenceOptions, dependencies: Grad
 function referenceReport(artifact: { outputs: Record<string, CouncilOutput>; quality: ReturnType<typeof referenceQuality> }): string {
   const { quality } = artifact;
   const skipped = [...new Set(Object.values(artifact.outputs).flatMap(output => output.skipped.map(skip => `${skip.teacher}: ${skip.reason}`)))];
-  const calls = Object.values(artifact.outputs).flatMap(output => output.calls).filter(call => call.outcome !== 'cancelled');
+  const retained = Object.values(artifact.outputs).flatMap(output => output.calls);
+  const calls = retained.filter(call => call.outcome !== 'cancelled');
   return [`# Council references: ${quality.gate}`, '',
     `Known-answer accuracy: ${quality.knownAnswer.accuracy === null ? 'unmeasured (no validated traps)' : `${(quality.knownAnswer.accuracy * 100).toFixed(2)}%`} (${quality.knownAnswer.correct}/${quality.knownAnswer.total}).`,
     `Consistency: ${quality.consistency.accuracy === null ? 'unmeasured' : `${(quality.consistency.accuracy * 100).toFixed(2)}%`} (${quality.consistency.correct}/${quality.consistency.total}).`,
@@ -103,6 +104,16 @@ function referenceReport(artifact: { outputs: Record<string, CouncilOutput>; qua
     `Base adjudication instability: ${(quality.instability.rate * 100).toFixed(2)}% (${quality.instability.unstable}/${quality.instability.items}).`,
     `Variant adjudication (diagnostic): ${(quality.variantAdjudication.rate * 100).toFixed(2)}% (${quality.variantAdjudication.unstable}/${quality.variantAdjudication.items}).`,
     `Calls: ${calls.length}; recorded latency: ${calls.reduce((sum, call) => sum + call.wallMs, 0).toFixed(0)} ms. Usage and subscription accounting are recorded per call; unreported usage/cost remains unknown.`, '',
+    'Per-teacher accounting (all retained calls, including adjudication, failed/cancelled calls and earlier attempts; resume does not add reused calls):', '',
+    ...[...new Set(Object.values(artifact.outputs).flatMap(output => [...(output.active_teachers ?? []), ...output.skipped.map(skip => skip.teacher)]))].map(id => {
+      const own = retained.filter(call => call.teacher === id);
+      const tokens = (key: 'inputTokens' | 'outputTokens') => {
+        const known = own.filter(call => call.usage?.[key] != null);
+        const sum = known.reduce((total, call) => total + call.usage![key]!, 0);
+        return known.length === own.length ? String(sum) : `${sum} reported; ${own.length - known.length} calls unknown`;
+      };
+      return `- ${id}: ${own.length} calls; input tokens: ${tokens('inputTokens')}; output tokens: ${tokens('outputTokens')}; summed call wall time: ${own.reduce((sum, call) => sum + call.wallMs, 0).toFixed(0)} ms.`;
+    }), '',
     ...quality.failures.map(failure => `- STOP: ${failure}`),
     ...quality.failingKinds.map(kind => `- Failing trap kind: ${kind}`),
     ...quality.failingTemplates.map(id => `- Failing template: ${id}`),

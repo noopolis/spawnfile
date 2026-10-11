@@ -22,17 +22,17 @@ function setup(): CouncilOptions {
   providers: { c: provider('yes'), a: provider('yes') }, now: new Date('2026-10-11T12:00:00Z') };
 }
 describe('independent council execution', () => {
-  it('batches each teacher by exact projection, retains missing instances and checkpoints', async () => {
+  it('batches each teacher per output, retains missing instances and checkpoints', async () => {
     const options = setup(); options.instances.push(instance('b'), instance('c', { other: 'projection' }), { ...instance('missing'), status: 'missing' });
     const checkpoint = vi.fn(); options.onCheckpoint = checkpoint;
     const output = await runCouncil(options);
-    expect(output.calls).toHaveLength(4); expect(output.checks.a!.status).toBe('agreed');
+    expect(output.calls).toHaveLength(2); expect(output.checks.a!.status).toBe('agreed');
     expect(output.checks.a!.distribution).toEqual({ yes: 1, no: 0 });
     expect(output.checks.missing).toMatchObject({ final: null, status: 'uncertain', unknown_mass: 1 });
     expect(output.calls.every(call => call.wallMs >= 0 && call.prompt_digest.length === 64)).toBe(true);
     expect(checkpoint).toHaveBeenCalledWith(output);
     const resumed = await runCouncil({ ...options, previous: output });
-    expect(resumed).toBe(output); expect(options.providers.c!.generate).toHaveBeenCalledTimes(2);
+    expect(resumed).toBe(output); expect(options.providers.c!.generate).toHaveBeenCalledTimes(1);
     await expect(runCouncil({ ...options, outputDigest: 'different', previous: output })).rejects.toThrow('Stale');
   });
   it('adjudicates disagreements once plus one fresh reversed-order probe, without teacher identities', async () => {
@@ -132,7 +132,7 @@ describe('durable council call progress', () => {
     });
     await expect(runCouncil({ ...options, signal: controller.signal })).rejects.toThrow();
     expect(saved!.complete).toBe(false);
-    expect(saved!.calls.map(call => call.outcome)).toEqual(['completed', 'cancelled']);
+    expect(saved!.calls.map(call => call.outcome)).toEqual(['received', 'cancelled']);
     expect(saved!.calls[1]).toMatchObject({ usage: { costUsd: 1 }, reportedModel: 'actual', attempts: [] });
     options.providers.a!.generate = original;
     const result = await runCouncil({ ...options, previous: saved });

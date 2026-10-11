@@ -169,8 +169,8 @@ it('does not call or count unaffected duplicate checks in trap variants', async 
   await runDecompose(f.decompose, f.dependencies);
   f.generate.mockImplementation(async request => {
     const prompt = JSON.parse(request.prompt);
-    const answer = prompt.projection.unit.text.includes('12') ? 'supported' : 'unsupported';
-    return { text: JSON.stringify(Object.fromEntries(prompt.questions.map((question: { check_id: string }) => [question.check_id, { answer }]))),
+    return { text: JSON.stringify(Object.fromEntries(prompt.questions.map((question: { check_id: string; evidence: { unit: { text: string } } }) =>
+      [question.check_id, { answer: question.evidence.unit.text.includes('12') ? 'supported' : 'unsupported' }]))),
       model: request.model, route: 'subscription', usage: null };
   });
   await runReference({ ...f.reference, traps: undefined }, f.dependencies);
@@ -206,4 +206,26 @@ it('keeps units with invalid source hints, reports drops and never sends hints t
   });
   await runReference({ ...f.reference, traps: undefined }, f.dependencies);
   expect(f.generate.mock.calls.length).toBeGreaterThan(0);
+});
+
+it('reports measured per-teacher calls, tokens and summed wall time without counting reuse twice', async () => {
+  const f = await fixture();
+  await runDecompose(f.decompose, f.dependencies);
+  f.generate.mockImplementation(async request => ({
+    text: '{"support@x1":{"answer":"supported"}}', model: request.model, route: 'subscription',
+    usage: request.model === 'test-codex' ? { inputTokens: 100, outputTokens: 20, cachedInputTokens: 50, reasoningTokens: null, source: 'test' } : null,
+  }));
+  const options = { ...f.reference, traps: undefined, teachers: ['codex', 'claude', 'grok'] };
+  const result = await runReference(options, f.dependencies);
+  const artifact = JSON.parse(await readFile(result.file, 'utf8'));
+  const output = Object.values(artifact.outputs)[0] as { calls: { teacher: string; wallMs: number }[] };
+  const report = await readFile(result.reportFile, 'utf8');
+  const ms = output.calls.find(call => call.teacher === 'codex')!.wallMs.toFixed(0);
+  expect(report).toContain(`codex: 1 calls; input tokens: 100; output tokens: 20; summed call wall time: ${ms} ms.`);
+  expect(report).toContain('claude: 1 calls; input tokens: 0 reported; 1 calls unknown; output tokens: 0 reported; 1 calls unknown;');
+  expect(report).toContain('grok: 0 calls; input tokens: 0; output tokens: 0; summed call wall time: 0 ms.');
+  f.generate.mockClear();
+  await runReference(options, f.dependencies);
+  expect(f.generate).not.toHaveBeenCalled();
+  expect(await readFile(result.reportFile, 'utf8')).toBe(report);
 });

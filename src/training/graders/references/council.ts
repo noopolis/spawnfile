@@ -13,6 +13,8 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
   }
   if (new Set(instances.map(i => i.id)).size !== instances.length) throw new Error('Duplicate check IDs');
   if (options.timeoutMs !== undefined && (!Number.isInteger(options.timeoutMs) || options.timeoutMs <= 0)) throw new Error('Invalid council timeout');
+  const batchSize = options.batchSize ?? 40;
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1) throw new Error('Invalid council batch size');
   const window = options.grokWindow ?? defaultGrokWindow;
   const now = options.now ?? new Date();
   const windowOpen = grokWindowOpen(now, window);
@@ -22,7 +24,7 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
   const adjudicator = options.adjudicator ? active.find(t => t.id === options.adjudicator) : active[0];
   if (!adjudicator) throw new Error('Adjudicator is not an active teacher');
   const identity = stableDigest({ version: councilPromptVersion, output: options.outputDigest,
-    instances, teachers, adjudicator: adjudicator.id, window, windowOpen, active: active.map(t => t.id),
+    instances, teachers, batchSize, adjudicator: adjudicator.id, window, windowOpen, active: active.map(t => t.id),
     seed: options.seed ?? 'paideia.council', timeoutMs: options.timeoutMs ?? 120_000 });
   if (options.previous) {
     const { digest, ...content } = options.previous;
@@ -41,11 +43,13 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
     ready: instance.status === 'ready', digest: instance.digest, template_id: instance.template_id, teachers: {},
     distribution: {}, unknown_mass: 1, adjudication: [], final: null, status: 'uncertain',
   }]));
+  let writes = Promise.resolve();
   const checkpoint = async (complete = false) => {
-    const content: Omit<CouncilOutput, 'digest'> = { outputDigest: options.outputDigest, identity, complete, checks, calls, skipped,
-      shuffle_secret: shuffleSecret, active_teachers: active.map(teacher => teacher.id) };
+    const content: Omit<CouncilOutput, 'digest'> = structuredClone({ outputDigest: options.outputDigest, identity, complete, checks, calls, skipped,
+      shuffle_secret: shuffleSecret, active_teachers: active.map(teacher => teacher.id) });
     const output = { ...content, digest: councilContentDigest(content) };
-    await options.onCheckpoint?.(structuredClone(output));
+    writes = writes.then(() => options.onCheckpoint?.(output));
+    await writes;
     return output;
   };
   const invoke = async (teacher: CouncilTeacher, batch: CheckInstance[], competing?: Record<string, TeacherAnswer[]>, run?: number) => {
@@ -92,18 +96,19 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
     await checkpoint();
     return answers;
   };
-  const batches = new Map<string, CheckInstance[]>();
-  for (const instance of instances.filter(i => i.status === 'ready')) {
-    const key = stableDigest(instance.projection), batch = batches.get(key) ?? [];
-    batch.push(instance); batches.set(key, batch);
-  }
-  // All independent responses are collected before exposing any peer evidence.
-  for (const teacher of active) {
-    for (const batch of batches.values()) {
+  const ready = instances.filter(instance => instance.status === 'ready');
+  const batches: CheckInstance[][] = [];
+  for (let offset = 0; offset < ready.length; offset += batchSize) batches.push(ready.slice(offset, offset + batchSize));
+  // Each teacher has one serial queue. Drain all queues before adjudication or failure.
+  const independent = await Promise.allSettled(active.map(async teacher => {
+    for (const batch of batches) {
+      await writes;
       const answers = await invoke(teacher, batch);
       for (const instance of batch) checks[instance.id]!.teachers[teacher.id] = answers?.[instance.id] ?? { answer: null, status: 'missing' };
     }
-  }
+  }));
+  const failure = independent.find(result => result.status === 'rejected');
+  if (failure) throw failure.reason;
   const disputed: CheckInstance[] = [];
   for (const instance of instances) {
     const check = checks[instance.id]!;
@@ -122,8 +127,11 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
         vote: checks[instance.id]!.teachers[teacher.id]! })).sort((a, b) => a.key.localeCompare(b.key)).map(item => item.vote)]));
     for (const run of [0, 1]) {
       const ordered = run === 0 ? competing : Object.fromEntries(Object.entries(competing).map(([id, votes]) => [id, votes.length % 2 ? [...votes.slice(1), votes[0]!] : [...votes].reverse()]));
-      const answers = await invoke(adjudicator, disputed, ordered, run);
-      for (const instance of disputed) checks[instance.id]!.adjudication.push(answers?.[instance.id] ?? { answer: null, status: 'uncertain' });
+      for (let offset = 0; offset < disputed.length; offset += batchSize) {
+        const batch = disputed.slice(offset, offset + batchSize);
+        const answers = await invoke(adjudicator, batch, ordered, run);
+        for (const instance of batch) checks[instance.id]!.adjudication.push(answers?.[instance.id] ?? { answer: null, status: 'uncertain' });
+      }
     }
     for (const instance of disputed) {
       const check = checks[instance.id]!, [first, second] = check.adjudication;

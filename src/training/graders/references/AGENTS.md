@@ -21,3 +21,9 @@ unready checks and null finals; report counts per template and output.
 Operator-declared diagnostic trap mappings report accuracy separately; exclude them
 from all gates, group floors and known-answer output coverage. The CLI derives status
 from the current templates, never from untrusted trap metadata.
+
+Batch ready checks per output in instance order (default 40), carrying each question's
+rendered evidence. Teacher queues run concurrently with one call per teacher per
+output; drain every independent queue before adjudication. Bound adjudication batches
+too. Serialize immutable checkpoint writes; prompt version and batch size pin reuse.
+Verify batch boundaries, per-question evidence and interrupted concurrent resume.

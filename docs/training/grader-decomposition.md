@@ -110,7 +110,7 @@ npm run build
 node dist/src/cli/main.js grader decompose --templates templates.yaml --inputs inputs.yaml --extractors codex,claude --out local/decompositions
 node dist/src/cli/main.js grader reference --templates templates.yaml --decompositions local/decompositions --teachers codex,claude --out local/base.json --timeout-ms 3600000
 node dist/src/cli/main.js grader traps --templates templates.yaml --decompositions local/decompositions --references local/base.json --out local/traps
-node dist/src/cli/main.js grader reference --templates templates.yaml --decompositions local/decompositions --traps local/traps --teachers codex,claude --out local/references.json --concurrency 2 --timeout-ms 3600000
+node dist/src/cli/main.js grader reference --templates templates.yaml --decompositions local/decompositions --traps local/traps --teachers codex,claude --out local/references.json --concurrency 2 --batch-size 40 --timeout-ms 3600000
 ```
 
 The base-only reference command deliberately returns STOP (exit 1): accuracy and
@@ -179,8 +179,16 @@ is available only when the provider supplies it; no text is invented for provide
 that omit it. Malformed responses are retried on resume rather than replayed.
 
 Instantiation is deterministic. IDs are `<template>@<unit>` and digests include
-the rendered question and projection. Teachers see only declared state; identical
-projections share a batch. All teachers answer before any sees peer answers.
+the rendered question and projection. Council calls batch ready checks from one
+output in instance order, up to `--batch-size N` (default 40, positive integer).
+Each question carries its own `evidence` containing exactly its rendered projection;
+there is no shared projection. Thus 100 ready checks require three independent
+calls per teacher at the default size, even with 100 different projections.
+Teachers run concurrently, with one call in flight per teacher for that output.
+`--concurrency` still bounds output workers (default 2), so several outputs may
+use the same teacher concurrently. Independent calls never contain peer answers;
+adjudication waits for every teacher's queue to finish. Each adjudication pass
+uses the same batch-size bound.
 
 ## Reference interpretation
 
@@ -191,8 +199,9 @@ Missing and abstaining teachers retain their share of the denominator. Persisted
 non-answers use `answer: null` with a typed `status` (`missing`, `abstain` or
 `uncertain`), so provider failures cannot collide with an authored answer label.
 An agreed final requires real, positive-confidence teacher answers; adjudication
-cannot supply missing independent support. Council protocol v3 invalidates older
-checkpoints; regenerate them in a fresh destination.
+cannot supply missing independent support. Council protocol v4 invalidates older
+checkpoints; regenerate them in a fresh destination. Batch size also enters checkpoint
+identity, so changing it requires a fresh destination.
 
 Disagreement or abstention triggers one adversarial adjudication round for the
 output. The default adjudicator is selected from the active teachers after window
@@ -309,7 +318,7 @@ candidates. Authored answer mappings remain the contract between these mechanica
 defects and each template's answer vocabulary; the checks do not prove arbitrary
 semantic implications.
 
-Each teacher/projection and adjudication call checkpoints its receipt and raw
+Each teacher batch and adjudication call checkpoints its receipt and raw
 response before decoding or propagating cancellation. Extraction does the same
 for each extraction/audit phase. Resume checks content/config identity, replays
 received responses. In incomplete council checkpoints, generation-error and
@@ -317,7 +326,14 @@ invalid-response calls are retried; only complete checkpoints are reused as-is.
 Resolved active teachers and the current window state are part of council identity;
 a changed window refuses resume and requires a fresh run destination. Extraction
 retries malformed responses and provider schema failures, retaining earlier receipts.
-Cancelled receipts remain inspectable but are excluded from report accounting totals.
-Reports and call receipts distinguish saved work from newly executed calls.
+Checkpoint writes are serialized immutable snapshots so concurrent teacher completions
+cannot overwrite a newer receipt with an older snapshot. Started queues drain before
+failure is returned; a failed checkpoint write stops further batches.
+The legacy aggregate calls/latency line excludes cancelled receipts. Per-teacher
+accounting includes all retained calls (independent, adjudication, failed and cancelled),
+input/output token totals and summed call wall time. Missing tokens are explicitly
+counted as unknown; cached-input tokens are subsets, not added again. Reused calls
+retain their original receipts and are not counted twice. Summed call wall time is
+provider-call duration, not elapsed command time when output workers overlap.
 External AI reviews and weak editor verdicts use `kind: signal`; no human annotation
 step participates in this pipeline. See [weak evidence provenance](graders.md#weak-evidence-provenance).

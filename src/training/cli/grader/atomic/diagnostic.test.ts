@@ -21,7 +21,7 @@ it.each([
   await runDecompose(f.decompose, f.dependencies);
   f.generate.mockImplementation(async request => {
     const prompt = JSON.parse(request.prompt);
-    const answer = prompt.projection.unit.text.includes('Dr Bob') ? 'unsupported' : 'supported';
+    const answer = prompt.questions[0].evidence.unit.text.includes('Dr Bob') ? 'unsupported' : 'supported';
     return { text: JSON.stringify({ 'support@x1': { answer } }), model: request.model, usage: null, route: 'subscription' };
   });
   const base = join(f.root, 'base.json');

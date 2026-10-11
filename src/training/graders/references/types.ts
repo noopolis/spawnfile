@@ -29,7 +29,7 @@ export interface CouncilOutput {
 export interface CouncilOptions {
   outputDigest: string; instances: CheckInstance[]; teachers: CouncilTeacher[];
   providers: Record<string, InferenceProvider>; adjudicator?: string;
-  grokWindow?: GrokWindow; now?: Date; seed?: string; timeoutMs?: number;
+  grokWindow?: GrokWindow; now?: Date; seed?: string; timeoutMs?: number; batchSize?: number;
   signal?: AbortSignal; previous?: CouncilOutput; onCheckpoint?: (output: CouncilOutput) => void | Promise<void>;
 }
 export interface TrapAssessment {

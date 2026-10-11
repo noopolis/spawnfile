@@ -53,6 +53,8 @@ it('excludes cancelled calls from report totals while preserving run receipts', 
   await runReference({ ...f.reference, traps: undefined }, f.dependencies);
   const report = await readFile(result.reportFile, 'utf8');
   expect(report).toContain('Calls: 2;');
+  expect(report).toContain('codex: 2 calls; input tokens: 0 reported; 2 calls unknown;');
+  expect(report).toContain('including adjudication, failed/cancelled calls');
   expect(Number(/recorded latency: (\d+)/.exec(report)![1])).toBeLessThan(1_000_000);
   expect((await load(directory, '.json')).calls).toHaveLength(3);
 });
@@ -86,7 +88,7 @@ it.each(['placeholder', 'condition', 'null-final'])('stops %s base checks despit
     const answers = prompt.questions.map((question: { check_id: string; evidence?: { unit: { text: string } } }) => {
       const text = (prompt.projection ?? question.evidence).unit.text as string;
       return [question.check_id, { answer: question.check_id.startsWith('actor@')
-        ? question.evidence ? 'uncertain' : 'abstain' : text.includes('12') ? 'supported' : 'unsupported' }];
+        ? request.system!.includes('Adversarially') ? 'uncertain' : 'abstain' : text.includes('12') ? 'supported' : 'unsupported' }];
     });
     return { text: JSON.stringify(Object.fromEntries(answers)), model: request.model, route: 'subscription', usage: null };
   });

@@ -31,3 +31,8 @@ as labels. Drop audit repeats only when kind, normalized text and resolved occur
 occurrences and unresolved spans for validation; record duplicate identities in
 checkpoints and counts in command summaries. Protocol
 changes invalidate earlier extraction checkpoints.
+
+Reference --batch-size defaults to 40 and bounds council questions per output call.
+--concurrency bounds output workers independently of concurrent teacher queues.
+Report per-teacher retained calls, known/unknown tokens and summed call wall time;
+resume preserves original receipts without counting reused calls twice.

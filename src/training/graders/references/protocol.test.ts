@@ -8,8 +8,8 @@ const instance: CheckInstance = { id: 'support@c1', template_id: 'support', unit
 describe('strict council protocol', () => {
   it('projects only declared evidence and option descriptions', () => {
     const prompt = councilPrompt([instance]);
-    expect(JSON.parse(prompt.prompt)).toEqual({ projection: instance.projection, questions: [{ check_id: instance.id,
-      type: 'choice', instructions: instance.instructions, criteria: [{ answer: 'yes', description: 'Supported' }, { answer: 'no', description: 'Unsupported' }] }] });
+    expect(JSON.parse(prompt.prompt)).toEqual({ questions: [{ check_id: instance.id,
+      type: 'choice', instructions: instance.instructions, evidence: instance.projection, criteria: [{ answer: 'yes', description: 'Supported' }, { answer: 'no', description: 'Unsupported' }] }] });
     expect(prompt.system).toContain('independently');
     expect(prompt.digest).toHaveLength(64);
     expect(councilPrompt([instance], { [instance.id]: [{ answer: 'yes' }] }).system).toContain('Adversarially');
@@ -22,7 +22,7 @@ describe('strict council protocol', () => {
     expect(permuted.criteria).toEqual([...base.criteria].reverse());
     expect(permuted.criteria.map((criterion: { answer: string }) => criterion.answer)).toEqual(['3', '2', '1']);
     expect(permuted).not.toHaveProperty('options');
-    expect(Object.keys(permuted)).toEqual(['check_id', 'type', 'instructions', 'criteria']);
+    expect(Object.keys(permuted)).toEqual(['check_id', 'type', 'instructions', 'evidence', 'criteria']);
   });
   it('accepts probability, verbatim span, abstention and adjudication uncertainty', () => {
     const value = { [instance.id]: { answer: 'yes', p: 0.8, span: 'Verbatim' } };

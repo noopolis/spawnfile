@@ -49,3 +49,23 @@ it('rejects missing/repeated atomic flags and propagates command cancellation', 
     '--extractors', 'codex', '--out', 'decompositions']), { cwd: f.root, stdout: () => undefined, stderr: () => undefined }, f.dependencies,
   AbortSignal.abort())).rejects.toThrow();
 });
+
+it('passes --batch-size to council calls and refuses invalid values', async () => {
+  const f = await fixture();
+  f.templates.templates.push({ ...f.templates.templates[0]!, id: 'second' });
+  await writeFile(f.templatesFile, JSON.stringify(f.templates));
+  const io = { cwd: f.root, stdout: () => undefined, stderr: () => undefined };
+  const run = (args: string[]) => runGraderCommand(parseArguments(['grader', ...args]), io, f.dependencies);
+  await run(['decompose', '--templates', 'templates.yaml', '--inputs', 'inputs.yaml', '--extractors', 'codex', '--out', 'decompositions']);
+  f.generate.mockClear();
+  f.generate.mockImplementation(async request => ({
+    text: JSON.stringify(Object.fromEntries(JSON.parse(request.prompt).questions.map((q: { check_id: string }) => [q.check_id, { answer: 'supported' }]))),
+    model: request.model, route: 'subscription', usage: null,
+  }));
+  const args = ['reference', '--templates', 'templates.yaml', '--decompositions', 'decompositions', '--teachers', 'codex,claude', '--out', 'base.json'];
+  await expect(run([...args, '--batch-size', '0'])).rejects.toThrow('--batch-size');
+  expect(f.generate).not.toHaveBeenCalled();
+  expect(await run([...args, '--batch-size', '1'])).toBe(1);
+  expect(f.generate).toHaveBeenCalledTimes(4);
+  expect(f.generate.mock.calls.every(([r]) => JSON.parse(r.prompt).questions.length === 1)).toBe(true);
+});

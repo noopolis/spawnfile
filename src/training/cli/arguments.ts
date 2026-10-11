@@ -13,7 +13,7 @@ const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'res
 const graderFlags: Record<string, readonly string[]> = {
   decompose: ['templates', 'inputs', 'extractors', 'out', 'timeout-ms'],
   traps: ['allow-rejections', 'references', 'templates', 'decompositions', 'out', 'seed', 'timeout-ms'],
-  reference: ['allow-rejections', 'templates', 'decompositions', 'traps', 'teachers', 'out', 'concurrency', 'timeout-ms'],
+  reference: ['allow-rejections', 'templates', 'decompositions', 'traps', 'teachers', 'out', 'concurrency', 'batch-size', 'timeout-ms'],
   validate: ['grader', 'timeout-ms'],
   label: ['grader', 'import', 'inputs', 'teachers', 'relabel', 'adjudication', 'concurrency', 'limit', 'timeout-ms'],
   calibrate: ['grader', 'exclude-dataset', 'seed', 'report', 'concurrency', 'timeout-ms'],

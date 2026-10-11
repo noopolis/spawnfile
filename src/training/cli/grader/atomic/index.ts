@@ -28,6 +28,7 @@ export async function runAtomicCommand(args: CliArguments, io: CliIO, dependenci
   const result = await runReference({ templatesFile, out, signal, decompositions, allowRejections,
     traps: args.flags.traps ? resolve(io.cwd, one(args, 'traps')) : undefined,
     teachers: one(args, 'teachers').split(',').map(id => id.trim()), concurrency: count(args, 'concurrency', 2, 64),
+    batchSize: count(args, 'batch-size', 40, Number.MAX_SAFE_INTEGER),
     timeoutMs: count(args, 'timeout-ms', 180_000, 3_600_000) }, dependencies);
   io.stdout(`${JSON.stringify(result)}\n`);
   return result.gate === 'PASS' ? 0 : 1;
