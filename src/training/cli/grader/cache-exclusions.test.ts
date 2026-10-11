@@ -54,7 +54,7 @@ describe('raw decision cache', () => {
     const dir = await temporary(), signal = new AbortController().signal;
     let active = 0, peak = 0;
     const provider = backend(async (requests, receivedSignal) => {
-      expect(receivedSignal).toBe(signal); active++; peak = Math.max(peak, active);
+      expect(receivedSignal?.aborted).toBe(false); active++; peak = Math.max(peak, active);
       await new Promise<void>(resolve => setTimeout(resolve, 2));
       active--; return requests.map(r => result(r.key));
     });

@@ -30,13 +30,13 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
   const gates = grader.gates.map(gate => gate.id);
   const models = decisionModels(grader);
   const commonGolden = goldenInstances(grader, labels);
-  // Each model owns its backend, identity, cache and worker bound. Startup errors
-  // identify the authored candidate; none is silently dropped from comparison.
-  const candidates = await Promise.all(models.map(async model => {
+  // Candidates share device capacity: finish one backend before starting the next.
+  // Each still owns its identity, cache and worker bound, in authored order.
+  const scoreCandidate = async (model: (typeof models)[number]) => {
     const definition = graderForModel(grader, model);
     try {
-      const backend = graderBackend(definition, dependencies);
       options.signal?.throwIfAborted();
+      const backend = graderBackend(definition, dependencies);
       const identity = await backendIdentity(definition, backend, options.signal);
       const golden = goldenInstances(definition, labels);
       const results = await cachedScores(dirname(options.graderFile), backend, stableDigest({ model: model.id, identity }),
@@ -58,7 +58,9 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
         selection: { id: model.id, teacher: model.backend === 'teacher', fit: splitCalibration(selectionRecords, seed).fit },
         fitted: model.backend === 'teacher' ? [] : calibrateQuestions(records, { seed, gates }) };
     } catch (cause) { throw new Error(`Decision model ${model.id}: ${cause instanceof Error ? cause.message : 'calibration failed'}`, { cause }); }
-  }));
+  };
+  const candidates: Awaited<ReturnType<typeof scoreCandidate>>[] = [];
+  for (const model of models) candidates.push(await scoreCandidate(model));
   const selected = new Map(allQuestions(grader).map(question => {
     const id = selectQuestionModel(question.id, question.type, candidates.map(candidate => candidate.selection));
     return [question.id, candidates.find(candidate => candidate.model.id === id)!];

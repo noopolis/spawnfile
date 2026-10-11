@@ -81,7 +81,11 @@ models:
 ```
 
 Calibration scores every eligible instance with every candidate, with separate
-backend identities, raw-score caches and concurrency bounds. An unavailable
+backend identities, raw-score caches and concurrency bounds. Candidates run
+sequentially in authored order, so only one candidate's backend scores at a time;
+`--concurrency` bounds workers within that candidate. On failure, calibration stops
+starting work, signals cancellation to in-flight scores, and waits for every
+started score call and cache append to settle before rejecting. An unavailable
 candidate is a named error. Per question (including gates and derived applicability),
 each local candidate fits Platt parameters on the fit split with the existing
 question/type pooling rule. Selection minimizes mean binary NLL of calibrated

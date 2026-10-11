@@ -97,7 +97,7 @@ describe('grader calibration commands', () => {
     let probed = false, scored = false;
     f.runtime.identity = async signal => { expect(signal).toBe(controller.signal); probed = true; return identity(signal); };
     f.runtime.score = async (_requests, signal) => {
-      expect(signal).toBe(controller.signal); scored = true;
+      expect(signal?.aborted).toBe(false); scored = true;
       controller.abort(new Error('calibration deadline')); signal!.throwIfAborted(); return [];
     };
     await expect(runCalibrate({ graderFile: f.graderFile, signal: controller.signal }, f.dependencies)).rejects.toThrow('calibration deadline');
