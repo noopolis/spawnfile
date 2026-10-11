@@ -28,6 +28,12 @@ src/distribution/
 ## Rules
 
 - The distribution report is the public interface of a published image. It must stay secret-free (names only, never values) and creator-host-path-free (no project roots, output directories, or node source paths). Tests enforce both.
+- When recording is on, carry `recording` (keep and protected memory mount IDs) and
+  portable `workspace_git_resources`/`workspace_bundles` pins for image up/release.
+  Their IDs are agent-visible resource IDs. Omit all three fields when recording is off;
+  omit source URLs, cache paths and other private compile metadata from image pins.
+  If recording fails after home publication, report the failure and keep the published
+  container; retire the previous one as on success. Never roll back a published record's container.
 - This folder is pure: no filesystem access, no compiler imports. The compiler projects its plan/report data into the structural input types defined here.
 - The fingerprint is computed over the report body excluding `generated_at`, so identical compiles fingerprint identically across machines and times.
 - Frozen contract values (`spawnfile.distribution-report.v1`, `spawnfile.image.v1`, the in-image report path) live in `types.ts` and change only with a contract version bump.

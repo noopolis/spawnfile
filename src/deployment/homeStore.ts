@@ -9,6 +9,7 @@ import { SpawnfileError } from "../shared/index.js";
 import { normalizeDeploymentName } from "./names.js";
 import { acquirePidLock, PidLockBusyError } from "./pidLock.js";
 import { parseDeploymentRecord, type DeploymentRecord } from "./record.js";
+import { appendDeployResources } from "./resourceLog.js";
 
 export const resolveHomeDeploymentsDirectory = (): string =>
   path.join(resolveSpawnfileHome(), "deployments");
@@ -56,6 +57,13 @@ const writeAtomic = async (filePath: string, content: string): Promise<void> => 
   await rename(temporaryPath, filePath);
 };
 
+/** Publication succeeded: callers must not roll back the container named by the persisted record. */
+export class HomeDeploymentRecordingError extends SpawnfileError {
+  public constructor(deployment: string, cause: unknown) {
+    super("io_error", `Deployment ${deployment} is published, but recording failed: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+  }
+}
+
 /** Writes the record and the cached distribution report together, record last. */
 export const writeHomeDeployment = async (
   record: DeploymentRecord,
@@ -67,8 +75,11 @@ export const writeHomeDeployment = async (
 
   const reportPath = resolveHomeReportPath(parsed.name);
   const recordPath = resolveHomeRecordPath(parsed.name);
-  await writeAtomic(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  const reportBytes = `${JSON.stringify(report, null, 2)}\n`;
+  await writeAtomic(reportPath, reportBytes);
   await writeAtomic(recordPath, `${JSON.stringify(parsed, null, 2)}\n`);
+  try { await appendDeployResources(directory, parsed, report, reportBytes); }
+  catch (cause) { throw new HomeDeploymentRecordingError(parsed.name, cause); }
   return { recordPath, reportPath };
 };
 

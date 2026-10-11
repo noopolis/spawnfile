@@ -322,6 +322,14 @@ export interface CompileReportWorkspaceGitResource {
   url: string;
 }
 
+/** Present only when at least one effective compiled agent enables recording. */
+export interface RecordingReport {
+  /** Maximum recording window across agents, including the 30-day default. */
+  keep_ms: number;
+  /** Durable memory mounts accessible to any recording agent, including team banks. */
+  memory_mount_ids: string[];
+}
+
 export interface CompileReport {
   compile_fingerprint?: string;
   container?: ContainerReport;
@@ -330,6 +338,7 @@ export interface CompileReport {
   nodes: NodeReport[];
   output_directory?: string;
   project_name?: string;
+  recording?: RecordingReport;
   root: string;
   spawnfile_version: "0.1";
   workspace_bundles?: CompileReportWorkspaceBundle[];

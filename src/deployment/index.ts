@@ -27,6 +27,8 @@ export * from "./pidLock.js";
 export * from "./canaryCutover.js";
 export * from "./productStateClone.js";
 export * from "./record.js";
+export * from "./recordedMemoryRetention.js";
 // Compatibility target exports remain available from this legacy deployment barrel.
 export * from "./target.js";
 export * from "./upReceiptTypes.js";
+export * from "./resourceLog.js";

@@ -356,6 +356,8 @@ export const compileProject = async (
     moltnet: moltnetArtifacts,
     moltnetRelease,
     runtimePackageOverrides: resolvedRuntimePackageOverrides,
+    workspaceGitResources: workspaceGitPins.report,
+    workspaceBundles: workspaceBundles.report,
     ...(worldBindings ? { worldBindings } : {})
   });
   await writeEmittedFiles(outputDirectory, containerArtifacts.files);
@@ -373,6 +375,7 @@ export const compileProject = async (
   });
   if (workspaceBundles.report.length > 0) report.workspace_bundles = workspaceBundles.report;
   if (workspaceGitPins.report.length > 0) report.workspace_git_resources = workspaceGitPins.report;
+  if (containerArtifacts.distribution.report.recording) report.recording = containerArtifacts.distribution.report.recording;
   const reportPath = await writeCompileReport(outputDirectory, report);
   const organizationReadinessEvidence = createOrganizationReadinessEvidence({
     compileVersion: report.spawnfile_version,

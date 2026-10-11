@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { buildDistributionReport, createDistributionImageLabels, DISTRIBUTION_REPORT_OUTPUT_FILE, normalizeProjectLabelSlug, WORLD_BINDINGS_IMAGE_PATH } from "../distribution/index.js";
 import type { DistributionReport } from "../distribution/index.js";
-import type { ContainerPersistentMountReport } from "../report/index.js";
+import type { CompileReport, ContainerPersistentMountReport } from "../report/index.js";
 import { DAIMON_LOCAL_RUNTIME_IDENTITY_ENV, loadLocalDaimonRuntimeIdentity, type EmittedFile, type RuntimeContainerPackageOverrides } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
@@ -12,6 +12,7 @@ import { createDockerIgnoreContent } from "./dockerBuildContext.js";
 import { createDaimonTelemetryArtifacts } from "./daimonTelemetryArtifacts.js";
 import { createRootfsFiles, renderDockerfile, renderEntrypoint, renderEnvExample } from "./containerArtifactsRender.js";
 import { createMemoryArtifactBundle } from "./memoryArtifacts.js";
+import { resolveRecordingReport } from "./recordingReport.js";
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import type { MoltnetReleaseIdentity } from "./moltnetBinaries.js";
 import type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./containerArtifactsTypes.js";
@@ -30,39 +31,17 @@ export interface ContainerArtifactOptions {
   moltnet?: MoltnetArtifacts | null;
   moltnetRelease?: MoltnetReleaseIdentity;
   worldBindings?: ResolvedWorldBindings;
-  /** Resolved local overrides for runtime install npm packages, produced by
-   * stageRuntimePackageOverrides.ts from a compile-time-only
-   * RuntimePackageOverrideRequest (see compileProject.ts). Undefined for a
-   * standard compile. */
+  workspaceGitResources?: CompileReport["workspace_git_resources"];
+  workspaceBundles?: CompileReport["workspace_bundles"];
+  /** Opt-in install overrides resolved by stageRuntimePackageOverrides. */
   runtimePackageOverrides?: RuntimeContainerPackageOverrides;
 }
 
 /**
- * Enforces the `specs/SURFACES.md` Moltnet/daimon promise: "A release without
- * `daimon-bridge` is rejected; the public pi-only release cannot be relabeled
- * as dual-capability."
- *
- * A daimon Moltnet attachment lowers a node runtime config of
- * `kind: "daimon"` carrying `agent_id`, `token_env`, and `receipt_store_path`
- * (`./moltnetRuntimeConfig.ts`). No published Moltnet release implements that
- * kind -- `pkg/bridgeconfig` has no `RuntimeDaimon` through the latest tag, and
- * `pkg/nodeconfig` decodes with `DisallowUnknownFields()`, so the node exits on
- * `agent_id` at strict decode, before `Validate()` is even reached. The
- * entrypoint launches `moltnet node <config> &` and then `wait -n`
- * (`./containerEntrypointRender.ts`), so that exit tears the whole container
- * down. Both a locally built Moltnet (`./localMoltnetAuthority.ts`) and, since
- * the v0.1.18 pin, the published authority (`./moltnetReleaseAuthority.ts`) can
- * advertise `daimon-bridge`; anything older, including every release through
- * v0.1.17, advertises only `pi-bridge` and is still rejected here.
- *
- * This throws rather than warning, which is the opposite call from the other
- * unlowerable-declaration diagnostics in this compiler. Those keep working
- * projects compiling; here every affected project is already broken, and the
- * failure it replaces is an opaque JSON decode error at container boot.
- *
- * `receiptStorePath` is set on a node plan if and only if the attached agent's
- * runtime is daimon (`./moltnetArtifacts.ts`), so it is the exact daimon
- * signal on an already-resolved plan.
+ * Refuse a Daimon attachment unless the pinned Moltnet release advertises
+ * daimon-bridge (specs/SURFACES.md). Older pi-only releases reject its config
+ * and tear down the container at boot. receiptStorePath identifies resolved
+ * Daimon attachments; unsupported configs are errors, never degradations.
  */
 const assertMoltnetDaimonBridgeCapability = (
   moltnet: MoltnetArtifacts | undefined | null,
@@ -143,6 +122,7 @@ export const createContainerArtifacts = async (
     .map((variable) => variable.name)
     .sort();
   const memoryArtifacts = createMemoryArtifactBundle(plan, options.deploymentLineage);
+  const recording = resolveRecordingReport(plan, memoryArtifacts.memories);
   const { resources: resolvedWorkspaceResources, mounts: workspaceResourceMounts } =
     resolveWorkspaceResourceVolumes(runtimePlans);
   const persistentMountCandidates: ContainerPersistentMountReport[] = [
@@ -161,15 +141,11 @@ export const createContainerArtifacts = async (
   ];
   const persistentMounts = mergePersistentMounts(persistentMountCandidates);
 
-  const runtimeInternalPorts = runtimePlans.flatMap((plan) =>
-    plan.port ? [plan.port] : []
-  );
+  const runtimeInternalPorts = runtimePlans.flatMap((plan) => plan.port ? [plan.port] : []);
   const internalPorts = [...new Set([...runtimeInternalPorts, ...(options.moltnet?.ports ?? [])])].sort(
     (left, right) => left - right
   );
-  const runtimePublishedPorts = runtimePlans.flatMap((plan) =>
-    plan.publishedPort ? [plan.publishedPort] : []
-  );
+  const runtimePublishedPorts = runtimePlans.flatMap((plan) => plan.publishedPort ? [plan.publishedPort] : []);
   const publishedPorts = [
     ...new Set([...runtimePublishedPorts, ...(options.moltnet?.publishedPorts ?? [])])
   ].sort((left, right) => left - right);
@@ -272,15 +248,10 @@ export const createContainerArtifacts = async (
     modelAuthMethods: mergedModelAuthMethods,
     moltnetNetworks,
     organization,
-    // The report deliberately omits the compiler-DERIVED volume name: it
-    // encodes the creator's plan root and deployment lineage and is private to
-    // that host. An author-DECLARED name is different — it is part of the
-    // declaration the image publishes, so a consumer must honour it verbatim
-    // or an operator who pre-created that volume silently gets an empty one.
+    // Derived volume names encode private host paths. Only author-declared
+    // names are portable; image consumers must honor them verbatim.
     persistentMounts: persistentMounts.map((mount) => ({
-      ...(mount.declared_volume_name
-        ? { declared_volume_name: mount.declared_volume_name }
-        : {}),
+      ...(mount.declared_volume_name ? { declared_volume_name: mount.declared_volume_name } : {}),
       durability: "persistent" as const,
       id: mount.id,
       kind: "volume" as const,
@@ -289,6 +260,11 @@ export const createContainerArtifacts = async (
     })),
     portMappings,
     publishedPorts,
+    ...(recording ? {
+      recording,
+      workspaceGitResources: options.workspaceGitResources?.map(({ id, commit, sha256 }) => ({ id, commit, sha256 })),
+      workspaceBundles: options.workspaceBundles?.map(({ id, sha256, origin }) => ({ id, sha256, origin }))
+    } : {}),
     resources: workspaceResources.map((resource) => ({
       id: resource.id,
       kind: resource.kind,
@@ -300,10 +276,7 @@ export const createContainerArtifacts = async (
     runtimeInstances,
     ...(worldBindingsEvidence ? { worldBindings: worldBindingsEvidence } : {})
   });
-  const distributionLabels = createDistributionImageLabels(
-    projectSlug,
-    distributionReport.compile_fingerprint
-  );
+  const distributionLabels = createDistributionImageLabels(projectSlug, distributionReport.compile_fingerprint);
 
   const files: EmittedFile[] = [
     ...createRootfsFiles(
