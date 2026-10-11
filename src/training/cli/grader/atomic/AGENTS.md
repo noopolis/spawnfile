@@ -5,7 +5,11 @@ index.ts. Consume grader decomposition, traps and references through public entr
 points; never duplicate their validation or reference semantics. Subscription
 providers come from the parent grader seam; no API fallback or credentials in files.
 
-Pin raw input bytes, templates and selected model policies. Checkpoint every extraction/audit response and failure receipt
+Pin raw input bytes, extraction-only template declarations and selected model policies.
+Share the allowlisted view between prompts and checkpoint identity: kinds/descriptions,
+applies_to, locations, when field names, context rows/roles. Never expose grading
+answers, criteria, traps or instructions. Grading-only edits reuse extraction receipts.
+Checkpoint every extraction/audit response and failure receipt
 atomically before decoding or cancellation; refuse changed inputs on resume. Extraction and omission auditing use
 fresh independent calls. Inference failures are explicit, never empty success.
 Verify adjacent tests with injected inference, command routing, cancellation,

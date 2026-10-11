@@ -121,6 +121,13 @@ to belong to its template's `expected` answers. Without `--references`, only
 consistency controls can be generated. The final reference run also checks base
 eligibility before dispatching a defect variant.
 
+Extraction and omission-audit prompts share an extraction-only template view with
+checkpoint identity: kind descriptions, per-template `applies_to`, `locations`,
+`when.field` (without comparison values), and context rows/roles. Grading answers,
+criteria, traps, dimensions, severities and instructions are excluded. Editing only
+those grading fields reuses extractions; extraction declaration changes invalidate
+them. Instantiation reports are regenerated using the current full templates.
+
 Extraction returns units; a fresh second extraction call audits omissions. With
 one selected extractor, the second call uses the same provider in a fresh session.
 Use two providers for vendor independence. Output/context byte hashes bind the
@@ -138,7 +145,7 @@ paragraph, sentence and raw source character offset) are dropped. Identical text
 at a different occurrence is retained; unresolved spans still reach validation. Checkpoint
 `duplicates` records their IDs, labels, matching IDs and reasons, and the command
 summary reports their count. Repeats within the audit response are also dropped.
-Extraction protocol v7 rejects earlier checkpoints; regenerate in a fresh directory.
+Extraction protocol v8 rejects earlier checkpoints; regenerate in a fresh directory.
 The decomposition persists each rejected unit with its text and rejection reasons.
 Both `traps` and `reference` refuse these artifacts unless `--allow-rejections`
 is explicit. With that flag, each rejected unit remains one missing check in the

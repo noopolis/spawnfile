@@ -36,7 +36,19 @@ export function selectTeachers(templates: CheckTemplates, ids: string[]) {
     return teacher;
   });
 }
-async function extract(input: AtomicInput, config: CheckTemplates, teacher: NonNullable<CheckTemplates['teachers']>[number],
+// One allowlist owns both the provider payload and extraction checkpoint identity.
+function extractionView(config: CheckTemplates) {
+  return {
+    kinds: config.kinds ?? {},
+    templates: config.templates.map(template => ({
+      applies_to: template.applies_to, locations: template.locations,
+      when: template.when ? { field: template.when.field } : undefined,
+    })),
+    context: Object.fromEntries(Object.entries(config.context).map(([name, declaration]) =>
+      [name, { rows: declaration.rows, role: declaration.role }])),
+  };
+}
+async function extract(input: AtomicInput, config: ReturnType<typeof extractionView>, teacher: NonNullable<CheckTemplates['teachers']>[number],
   provider: InferenceProvider, checkpoint: Checkpoint, save: () => Promise<void>, signal?: AbortSignal) {
   if (provider.capabilities.billing !== 'subscription' || !['disabled', 'contained'].includes(provider.capabilities.tools)) {
     throw new Error('Extractor requires a tool-isolated subscription provider');
@@ -102,10 +114,11 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
     throw new Error('Select one or two Codex/Claude extractors');
   }
   const inputs = await readInputs(options.inputsFile, templates);
+  const extraction = extractionView(templates);
   let completed = 0, resumed = 0, rejected = 0, dropped = 0, duplicates = 0;
   for (const input of inputs) {
     options.signal?.throwIfAborted();
-    const identity = stableDigest({ refs: input.refs, templates, teachers, protocol: 'paideia.extraction.v7' });
+    const identity = stableDigest({ refs: input.refs, templates: extraction, teachers, protocol: 'paideia.extraction.v8' });
     const basename = stableDigest(input.id);
     const checkpointFile = join(options.out, `${basename}.checkpoint.json`);
     const decompositionFile = join(options.out, `${basename}.decomposition.json`);
@@ -123,7 +136,7 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
     const save = () => persist(checkpointFile, checkpoint);
     if (!checkpoint.decomposition) {
       const teacher = teachers[0]!;
-      const result = await extract(input, templates, teacher, (dependencies.provider ?? createGraderTeacher)(teacher), checkpoint, save, options.signal);
+      const result = await extract(input, extraction, teacher, (dependencies.provider ?? createGraderTeacher)(teacher), checkpoint, save, options.signal);
       const validated = validateDecomposition(parseDecomposition({ schema: 'paideia.decomposition.v1', ...input.refs,
         units: result.units, extractors: [{ provider: result.receipt.provider, model: result.receipt.model,
           prompt_digest: result.receipt.prompt_digest, at: result.receipt.at }] }), input, templates);
@@ -134,7 +147,7 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
     }
     if (!checkpoint.complete) {
       const teacher = teachers[1] ?? teachers[0]!;
-      const result = await extract(input, templates, teacher, (dependencies.provider ?? createGraderTeacher)(teacher), checkpoint, save, options.signal);
+      const result = await extract(input, extraction, teacher, (dependencies.provider ?? createGraderTeacher)(teacher), checkpoint, save, options.signal);
       const key = (unit: AtomicUnit) => {
         const located = locateUnit(unit, input, templates);
         if (typeof located === 'string') return undefined;
