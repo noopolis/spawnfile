@@ -183,6 +183,30 @@ describe("composeMomentRecord", () => {
     });
   });
 
+  it("ignores row snapshots belonging to another agent or a later activation", () => {
+    const value = input();
+    value.deployResources[0]!.recording_agents!.push({ ...facts(), node_id: "agent:other", snapshots: ["other-state"] });
+    value.deployResources = [...value.deployResources, deployment({ activated_at: after,
+      recording_agents: [{ ...facts(), snapshots: ["edition-state", "future-state"] }] })];
+    value.row.snapshots.push(...["other-state", "future-state"].map((id) => ({ ...value.row.snapshots[0]!, id })));
+    expect(composeMomentRecord(value)).toMatchObject({ exact: false,
+      volumes: [{ id: "edition-state", snapshot: "20261009T082031250Z-execution-17" }],
+      errors: [
+        "Unexpected pre-turn snapshot for future-state: not an effective recording root for agent:writer",
+        "Unexpected pre-turn snapshot for other-state: not an effective recording root for agent:writer"
+      ]
+    });
+  });
+
+  it("ignores row snapshots after their effective roots are removed", () => {
+    const value = input();
+    value.deployResources = [deployment(), deployment({ activated_at: startedAt,
+      recording_agents: [{ ...facts(), snapshots: [] }] })];
+    expect(composeMomentRecord(value)).toMatchObject({ exact: false, volumes: [], errors: [
+      "Unexpected pre-turn snapshot for edition-state: not an effective recording root for agent:writer"
+    ] });
+  });
+
   it.each([undefined, { entries: [], errors: ["permission denied"] }, { entries: [{ seq: 1, createdAt: before }], errors: ["line 2 invalid"] }])("does not label an unknown memory history as empty: %j", (ledger) => {
     const value = input();
     value.memoryLedgers = ledger ? { "/memory/writer/events.jsonl": ledger } : {};
@@ -263,8 +287,9 @@ describe("composeMomentRecord", () => {
     { entries: [deployment({ activated_at: after })] }])("requires activation facts even when no pins are configured: %#", ({ entries }) => {
     const value = input();
     value.deployResources = entries;
-    expect(composeMomentRecord(value)).toMatchObject({ exact: false, resources: [], feeds: [], memory: [], moltnet: [],
-      errors: [expect.stringContaining("Missing")] });
+    expect(composeMomentRecord(value)).toMatchObject({ exact: false, resources: [], feeds: [], memory: [], moltnet: [], volumes: [],
+      errors: [expect.stringContaining("Missing"),
+        "Unexpected pre-turn snapshot for edition-state: not an effective recording root for agent:writer"] });
   });
 
   it("uses old facts after a release removes resources, feeds, snapshots, networks and changes memory paths", () => {

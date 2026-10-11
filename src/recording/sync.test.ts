@@ -149,7 +149,10 @@ describe("syncMomentRecords", () => {
   it("marks rows before the first activation non-exact even when the current agent has no pins", async () => {
     expect(await run(execFor([wake()]), { readDeployHistory: () => ({ entries: [], errors: [] }) }))
       .toMatchObject({ written: 1, nonExact: 1, failures: [] });
-    expect((await records())[0]).toMatchObject({ resources: [], memory: [], errors: [expect.stringContaining("Missing deployment history")] });
+    expect((await records())[0]).toMatchObject({ resources: [], memory: [], volumes: [], errors: [
+      expect.stringContaining("Missing deployment history"),
+      "Unexpected pre-turn snapshot for state: not an effective recording root for agent:writer"
+    ] });
   });
 
   it("prunes expired files, retains the inclusive boundary, and does not recreate pruned rows", async () => {
