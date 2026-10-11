@@ -60,6 +60,38 @@ const fixture = async () => {
 };
 
 describe("Moltnet SQLite rewind", () => {
+  it("round-trips an empty actor type through the SQLite cut without rewriting stored JSON", async () => {
+    const { file, database, context } = await fixture();
+    room(database, "assignment"); message(database, "operator-message", before); message(database, "future", future);
+    const from = '{ "type" : "", "id" : "operator" }', parts = '[ { "kind" : "text" } ]';
+    database.prepare("UPDATE messages SET from_json = ?, parts_json = ? WHERE id = 'operator-message'").run(from, parts);
+    const delivery = `{ "id": "operator-event", "type": "message.created", "network_id": "news", "created_at": "${before}",
+      "message": { "id": "operator-message", "network_id": "news", "target": { "kind": "room", "room_id": "assignment" },
+        "from": ${from}, "parts": ${parts}, "created_at": "${before}" } }`;
+    database.prepare("INSERT INTO attachment_delivery_events (event_id, event_json, created_at) VALUES (?, ?, ?)")
+      .run("operator-event", delivery, before);
+    database.prepare("INSERT INTO attachment_delivery_cursors VALUES ('writer', 1, ?)").run(before);
+    const stored = database.prepare("SELECT * FROM messages WHERE id = 'operator-message'").get();
+    database.close(); const sourceBytes = await readFile(file);
+    expect(await materializeMoltnet(context)).toMatchObject({ fidelity: "approximate", basis: "created-at-cut" });
+    const output = path.join(context.destination, "moltnet.sqlite"), result = new DatabaseSync(output, { readOnly: true });
+    try {
+      expect(result.prepare("SELECT * FROM messages").all()).toEqual([stored]);
+      expect(result.prepare("SELECT event_json FROM attachment_delivery_events").all()).toEqual([{ event_json: delivery }]);
+      expect(result.prepare("SELECT event_seq FROM attachment_delivery_cursors").all()).toEqual([{ event_seq: 1 }]);
+    } finally { result.close(); }
+    expect(await inspectMoltnetSqlite(output, at)).toMatchObject({ messages: 1, events: 1, findings: [] });
+    expect(await readFile(file)).toEqual(sourceBytes);
+  });
+
+  it.each([{ type: "" }, { type: "", id: "" }])("refuses a SQLite actor without a nonempty id: %j", async (from) => {
+    const { database, context, file } = await fixture();
+    room(database, "assignment"); message(database, "operator-message", before);
+    database.prepare("UPDATE messages SET from_json = ?").run(JSON.stringify(from)); database.close();
+    await expect(materializeMoltnet(context)).rejects.toThrow(/"id"/);
+    await expect(inspectMoltnetSqlite(file, at)).rejects.toThrow(/"id"/);
+  });
+
   it("cuts a copy, preserves nanos ordering, prunes topology/artifacts, restores rooms, and erases deleted payload bytes", async () => {
     const { file, database, context } = await fixture();
     room(database, "assignment"); room(database, "future-room", future); room(database, "restored", before, future); room(database, "removed", before, before);
