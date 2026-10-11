@@ -46,3 +46,10 @@ test('missing evidence on a non-primary selection never passes on the first exec
     expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer')).toThrow(message);
   }
 });
+
+test.each(['failed', 'completed'] as const)('an unsampled %s execution cannot disappear behind a successful retry', status => {
+  const { evidence, native } = fixture();
+  native.traces.unshift({ ...traceFixture(), turn_id: 'between-polls', status });
+  expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer'))
+    .toThrow('terminal trace omitted execution ownership');
+});

@@ -20,7 +20,8 @@ test('existing receipts preserve their exact shape while direct/transport and a 
       expect(parseNativeLaunch(launch)).not.toHaveProperty('delivery');
       expect(parseNativeLaunch(launch)).not.toHaveProperty('taskClock');
       for (const delivery of ['direct', 'transport']) {
-        const declared = { ...launch, delivery, taskClock: clock };
+        const declared = { ...launch, delivery, taskClock: clock,
+          ...('broker' in launch ? { broker: { ...launch.broker, workerConfigVariant: 'clocked' } } : {}) };
         expect(parseNativeLaunch(declared)).toEqual(declared);
       }
       for (const invalid of [{ ...launch, delivery: 'manual' }, { ...launch, delivery: null },

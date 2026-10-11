@@ -29,6 +29,7 @@ async function persistGrokBrokerProjection(runtime: NativeRuntimeModule, config:
   const agent = config.agents[0]!;
   const { broker } = launch;
   const projection = grokBrokerProjectionSchema.parse(resolve(config, agent.id, { slot: broker.slot, workerUid: broker.workerUid,
+    workerConfigVariant: broker.workerConfigVariant,
     workerHomePath: broker.workerHomePath, architecture: broker.architecture, usageLedgerPath: broker.usageLedgerPath, limits: broker.limits,
     // The deny mask Daimon lifts, and the value `projection_sha256` binds: never the per-trial artifact directory inside it.
     // `denyPaths` and `profileSha256` are the provisioner's verbatim values (see grokBrokerLaunchSchema): deriving the deny

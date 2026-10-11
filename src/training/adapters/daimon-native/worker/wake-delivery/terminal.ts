@@ -7,6 +7,7 @@ export function validateTransportExecutions(evidence: TransportEvidence, native:
   activity: NativeActivity, agentId: string): void {
   if (!evidence.batch) throw new Error('Transport execution closed without observable batch membership');
   if (!evidence.selectedDeliveries?.length) throw new Error('Transport selection evidence is missing');
+  const owned = new Set<string>();
   for (const selected of evidence.selectedDeliveries) {
     const receipt = selected.receipt;
     if (!receipt || !selected.executionIds.length) throw new Error('Transport delivery omitted execution binding');
@@ -19,6 +20,11 @@ export function validateTransportExecutions(evidence: TransportEvidence, native:
       if (!trace) throw new Error('Transport execution omitted terminal telemetry');
       if (trace.status !== 'completed') throw new Error(describeNativeFailure(receipt, trace, native.usage));
       if (!native.usage.some(row => row.wake === executionId)) throw new Error('Transport execution omitted token usage evidence');
+      owned.add(executionId);
     }
   }
+  // This home was empty at trial startup. Reconcile its entire retained terminal
+  // history, including attempts that opened and closed between activity polls.
+  // Receipt retries may erase a binding, but cannot erase that attempt's trace.
+  if (native.traces.some(trace => !owned.has(trace.turn_id))) throw new Error('Transport terminal trace omitted execution ownership');
 }

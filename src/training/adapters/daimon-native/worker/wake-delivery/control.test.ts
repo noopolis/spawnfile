@@ -163,6 +163,27 @@ test('missing live batch observation fails closed even with a completed receipt 
   expect((await pending).error).toMatch(/without observable batch/);
 });
 
+test.each(['failed', 'completed'] as const)('a %s attempt closed between polls cannot be erased by a successful retry', async status => {
+  const f = await fixture();
+  const pending = f.controller.run('task', '', {}, { kind: 'transport', deliveryId: 'm:task' });
+  await f.deliver('m:task');
+  const missed = randomUUID(); const retry = randomUUID();
+  // Retained telemetry is the only observation of the first attempt: neither
+  // activity nor a sampled receipt ever names it. Do not call dispatch for it.
+  await f.close([], missed, [], status);
+  await f.dispatch(['m:task'], retry); await f.close(['m:task'], retry);
+  const result = await pending;
+  expect(result.status).toBe('failed');
+  expect(result.error).toContain('terminal trace omitted execution ownership');
+  expect(result.transport?.selectedDeliveries).toMatchObject([{ executionIds: [retry] }]);
+  expect(result.transport?.batches?.map(row => row.executionId)).toEqual([retry]);
+  expect(result.native.traces.map(row => [row.turn_id, row.status])).toEqual([[missed, status], [retry, 'completed']]);
+  expect(f.host.stop).toHaveBeenCalledTimes(1);
+  for (const file of [f.options.evidence, join(f.options.controlRoot, 'evidence.1.json')]) {
+    expect(JSON.parse(await readFile(file, 'utf8')).status).toBe('failed');
+  }
+});
+
 test.each(['completed', 'failed'] as const)('retains and validates a second selected execution with a %s trace', async status => {
   const f = await fixture();
   const pending = f.controller.run('task', '', {}, { kind: 'transport', deliveryIdPrefix: 'm:' });

@@ -17,8 +17,9 @@ import { grokSlotPreflightSchema, readPrivateFile, type GrokNativeLaunch } from 
  *
  * Only the denial set is returned. Receipt freshness stays with the evaluator's
  * slot freshness store, which is the single authority for nonce and generation;
- * the projection digest is checked here because it is what binds this denial set
- * to this launch.
+ * the projection v2 digest is checked here because it binds this denial set and
+ * the declared workerConfigVariant to this launch. The slot receipt remains v2
+ * for both worker variants; launch parsing refuses unclocked task-clock trials.
  */
 export async function readGrokSlotDenials(launch: GrokNativeLaunch): Promise<string[]> {
   const file = launch.broker.slotPreflightReceipt;

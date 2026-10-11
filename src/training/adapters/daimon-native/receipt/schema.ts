@@ -58,7 +58,8 @@ const grokAgent = z.strictObject({ id: identity, engine: nativeEngines.extract([
  * party that recomputes this projection passes these same values.
  */
 export const grokBrokerLaunchSchema = z.strictObject({
-  projectionVersion: z.literal('noopolis.daimon.grok-broker-projection.v1'),
+  projectionVersion: z.literal('noopolis.daimon.grok-broker-projection.v2'),
+  workerConfigVariant: z.enum(['unclocked', 'clocked']),
   projectionSha256: digest,
   slot: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   workerUid: z.number().int().min(2200).max(4_294_967_294),
@@ -112,6 +113,7 @@ export function parseNativeLaunch(value: unknown): NativeLaunch {
 
 function assertGrokBroker(launch: GrokNativeLaunch): void {
   const { broker } = launch;
+  if (launch.taskClock && broker.workerConfigVariant !== 'clocked') throw new Error('Grok taskClock requires workerConfigVariant: clocked');
   // A Grok slot has exactly two writable subject roots, and the projection digest binds both:
   // `workspacePath` and `runtimeHomePath`. Any further projection would be a writable root no
   // digest covers, so the union is closed here rather than filtered later.

@@ -249,7 +249,8 @@ records the declared `model` (`grok-4.6`, `grok-4.5`, `grok-build`) and
 
 | Member | Meaning |
 |---|---|
-| `projectionVersion`, `projectionSha256` | `noopolis.daimon.grok-broker-projection.v1` and the canonical digest the slot supervisor bound |
+| `projectionVersion`, `projectionSha256` | `noopolis.daimon.grok-broker-projection.v2` and the canonical digest the slot supervisor bound |
+| `workerConfigVariant` | Required `unclocked` or `clocked`, passed unchanged to Daimon; `taskClock` requires `clocked` |
 | `slot`, `workerUid`, `workerHomePath`, `architecture`, `usageLedgerPath`, `seccompProfileSha256`, `limits` | Passed verbatim to Daimon's `resolveOrganizationGrokBrokerProjection` |
 | `evaluatorPaths[]` | `{role, path}` for `run-root`, `context`, `sealed-inputs`, `judge-home`, `slot-ledger` (the usage ledger directory); passed as the projection's `denyPaths` |
 | `slotPreflightReceipt` | Input path contract: the root slot supervisor writes `noopolis.daimon.grok-slot-preflight.v2` here after provisioning or recycling the slot |
@@ -351,7 +352,10 @@ Startup, in order, with no model call and no `codex sandbox` process:
    if any is missing. The config must declare the same model and effort and no
    Codex sandbox; broker token limit must not exceed the launch wake ceiling.
 2. The resolved projection's canonical digest must equal Daimon's digest and the
-   launch receipt; its turn timeout must fit the trial deadline.
+   launch receipt; its turn timeout must fit the trial deadline. The worker variant,
+   model/effort config pin and clock metadata must match; both v2 variants have
+   offline parity coverage against Daimon's public resolver. Linux shell-clock
+   operation still requires the provisioner's native container verification.
 3. The slot receipt must exist and pass Daimon's verifier (exact deny-path canaries,
    profile, seccomp, executable, and freshness: the launch nonce and a generation
    of at least `minGeneration`; v1 receipts are refused). Paideia then requires the control root and every

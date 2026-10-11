@@ -4,6 +4,7 @@ import type { NativeWakeRequest } from './wake-delivery/index.js';
 
 /** Grok projection options passed to Daimon verbatim from the launch receipt's broker section. */
 export interface GrokBrokerProjectionOptions {
+  workerConfigVariant: 'unclocked' | 'clocked';
   slot: number; workerUid: number; workerHomePath: string; architecture: 'arm64' | 'x64'; usageLedgerPath: string;
   limits: { maxRequests: number; maxTokens: number; timeoutMs: number }; acceptanceStorePath: string; denyPaths: readonly string[]; seccompProfileSha256: string;
   /** The provisioner's sandbox profile digest; Daimon refuses a value that differs from its own render. */

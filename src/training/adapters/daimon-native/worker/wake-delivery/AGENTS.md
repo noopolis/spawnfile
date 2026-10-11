@@ -12,6 +12,9 @@ admissions and an unchanged generation across control reads and evidence collect
 Retain cumulative selected receipts, execution histories and observed batches;
 validate all their closed traces and usage before success. Historical snapshots
 must not mutate earlier wake frames. Schema rejections come directly from the host.
+Reconcile every retained terminal trace from the fresh trial home with those
+execution owners. An attempt missed between polls still fails if failed or
+unattributed; a later successful retry cannot remove it from validation.
 Sealing also closes new native admission until the next arm. Permit only identities
 actually accepted with matching returned agent/delivery through to native retry
 semantics; a queue decided by a conflicting identity never grants that permission.

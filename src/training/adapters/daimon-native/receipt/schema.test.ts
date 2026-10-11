@@ -52,6 +52,9 @@ test('launch v2 selects Codex or Grok and v1 receipts still parse as Codex', asy
       { ...valid, agent: { ...valid.agent, reasoningEffort: 'xhigh' } },
       { ...valid, broker: { ...broker, projectionSha256: 'bad' } },
       { ...valid, broker: { ...broker, workerUid: 2000 } },
+      { ...valid, broker: { ...broker, workerConfigVariant: undefined } },
+      { ...valid, broker: { ...broker, workerConfigVariant: 'unknown' } },
+      { ...valid, broker: { ...broker, projectionVersion: 'noopolis.daimon.grok-broker-projection.v1' } },
       { ...valid, broker: { ...broker, projectionVersion: 'noopolis.daimon.grok-broker-projection.v0' } },
       { ...valid, broker: { ...broker, evaluatorPaths: broker.evaluatorPaths.filter(row => row.role !== 'judge-home') } },
       { ...valid, broker: { ...broker, evaluatorPaths: [...broker.evaluatorPaths.slice(1), { ...broker.evaluatorPaths[1]!, role: 'run-root' }] } },
@@ -67,5 +70,8 @@ test('launch v2 selects Codex or Grok and v1 receipts still parse as Codex', asy
       { ...valid, broker: { ...broker, expectedNonce: 'B'.repeat(64) } },
       { ...valid, broker: { ...broker, minGeneration: 0 } },
     ]) expect(() => parseNativeLaunch(mutation), JSON.stringify(mutation).slice(0, 80)).toThrow();
+    const clocked = { ...valid, taskClock: { origin: '2024-02-29T00:00:00Z', anchorEpochMs: Date.now(), libfaketimePath: '/usr/local/lib/daimon/libfaketime.so.1' } };
+    expect(() => parseNativeLaunch(clocked)).toThrow('taskClock requires workerConfigVariant: clocked');
+    expect(parseNativeLaunch({ ...clocked, broker: { ...broker, workerConfigVariant: 'clocked' } }).taskClock).toEqual(clocked.taskClock);
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
