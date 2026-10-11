@@ -9,8 +9,8 @@ import { DECISION_PROMPT_VERSION, validateDecisionRequest } from './prompt.js';
 export interface TeacherDecisionOptions { provider: InferenceProvider; model: string }
 
 export function createTeacherDecision({ provider, model }: TeacherDecisionOptions): DecisionBackend {
-  if (!['claude-subscription', 'grok-subscription'].includes(provider.id) || provider.capabilities.billing !== 'subscription' || provider.capabilities.tools !== 'disabled') {
-    throw new Error('Decision teacher requires Claude/Grok subscription with native empty-tool attestation; codex exec has none');
+  if (!['claude-subscription', 'grok-subscription', 'codex-subscription'].includes(provider.id) || provider.capabilities.billing !== 'subscription' || provider.capabilities.tools !== (provider.id === 'codex-subscription' ? 'contained' : 'disabled')) {
+    throw new Error('Decision teacher requires subscription with native empty-tool attestation or Codex containment');
   }
   if (!model.trim() || model.startsWith('-')) throw new Error('Invalid teacher model');
   return {

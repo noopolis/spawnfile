@@ -24,6 +24,7 @@ it.each(['{"q":"abstain"}', '{}', '{"q":"yes","extra":1}', '{"q":"yes","q":"no"}
 it('accepts Grok, refuses other billing/tools/providers and invalid model', () => {
   const fake = provider('');
   expect(createTeacherDecision({ provider: { ...fake, id: 'grok-subscription' }, model: 'grok' })).toBeDefined();
+  expect(createTeacherDecision({ provider: { ...fake, id: 'codex-subscription', capabilities: { ...fake.capabilities, tools: 'contained' } }, model: 'm' })).toBeDefined();
   for (const patch of [{ id: 'codex-subscription' }, { capabilities: { ...fake.capabilities, billing: 'api' as const } }, { capabilities: { ...fake.capabilities, tools: 'enabled' as 'disabled' } }]) {
     expect(() => createTeacherDecision({ provider: { ...fake, ...patch }, model: 'm' })).toThrow(/attestation/);
   }

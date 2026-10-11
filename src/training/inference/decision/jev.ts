@@ -59,8 +59,10 @@ function wireOption(request: DecisionRequest, option: string | number): string {
 function decodeJev(request: DecisionRequest, raw: unknown): DecisionResult {
   const probabilities: Record<string, number> = {};
   if (raw !== null && typeof raw === 'object') {
+    const values = raw as Record<string, unknown>;
+    const yesNoKeys = request.type === 'yes-no' && !('true' in values || 'false' in values);
     for (const option of request.optionLabels) {
-      const p = (raw as Record<string, unknown>)[wireOption(request, option)];
+      const p = values[yesNoKeys ? String(option) : wireOption(request, option)];
       if (typeof p !== 'number' || !Number.isFinite(p) || p < 0 || p > 1) break;
       probabilities[String(option)] = p;
     }

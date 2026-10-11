@@ -17,7 +17,9 @@ Jev batches only identical projections (shared state), at most 16 questions.
 identity() obtains reported model with a fixed empty-state probe before scoring;
 subsequent model drift refuses results. Endpoint must serve raw temperature=1
 probabilities; Paideia does not claim to inspect operator model configuration.
-Teacher fallback accepts Claude/Grok subscription providers with disabled tools.
+Noul responses accept complete true/false or yes/no key pairs; mixed pairs refuse.
+Teacher fallback accepts Claude/Grok subscriptions with disabled tools or Codex
+subscriptions with containment and trace-based tool refusal.
 Each teacher fallback attempt returns judge-call provenance, including measured
 usage, response-model basis, billing and wall time, even for invalid responses.
 
