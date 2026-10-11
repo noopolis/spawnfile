@@ -156,4 +156,3 @@ export function disposedWakeExecution(receipt: NativeReceipt, traces: NativeEvid
   if (added.length > 1) throw new Error(AMBIGUOUS_WAKE_EXECUTION);
   return added[0]?.turn_id;
 }
-
