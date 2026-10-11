@@ -98,6 +98,16 @@ at parse time. Regexes and the extraction version enter question/label digests
 and ordered calibration expansion identity; changing them requires relabeling
 and recalibration even if the selected row bytes happen to stay identical.
 
+For citations placed after a sentence-final period, set
+`rows.leading_citations: previous` (default: `keep`). In each paragraph, a leading
+run of `cite` matches separated only by whitespace moves to the previous sentence;
+the first sentence keeps its leading run. Following text stays in its sentence,
+and a citation-only tail leaves no empty unit. All opted-in context patterns apply
+to every sentence unit, including sentence-only questions and applicability checks.
+The adjusted text is shared by `sentence`, cited-row reads and `grader expand`;
+paragraph/article reads retain the original text. The setting, matching patterns
+and movement algorithm version enter sentence-question and expansion identity.
+
 ```sh
 paideia grader expand --grader writing.grader.yaml --output report.json --context evidence=evidence.md
 ```

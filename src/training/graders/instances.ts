@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
-import { allQuestions, stableDigest, questionDefinitionDigest } from './format/index.js';
-import { citedRows } from './rows.js';
+import { allQuestions, stableDigest, questionDefinitionDigest, sentenceCitationPolicy } from './format/index.js';
+import { citedRows, moveLeadingCitations } from './rows.js';
 import type { Grader, DecisionQuestion } from './format/index.js';
 
 export interface QuestionInstance {
@@ -35,7 +35,7 @@ function ownPath(value: unknown, path: string[]): Resolution {
   return current === undefined ? { missing: `missing path ${path.join('.')}` } : { value: current };
 }
 
-function units(question: DecisionQuestion, output: unknown): Unit[] {
+function units(question: DecisionQuestion, output: unknown, grader: Grader): Unit[] {
   if (question.level === 'article') return [{ suffix: '' }];
   const body = ownPath(output, ['body']).value;
   if (!Array.isArray(body) || body.length === 0) return [{ suffix: '', invalid: 'output.body has no units' }];
@@ -48,7 +48,10 @@ function units(question: DecisionQuestion, output: unknown): Unit[] {
     } else if (question.level === 'paragraph') {
       result.push({ suffix: `@p${index}`, paragraph: index, text: paragraph });
     } else {
-      const sentences = Array.from(segmenter.segment(paragraph), item => item.segment.trim()).filter(Boolean);
+      const sentences = moveLeadingCitations(
+        Array.from(segmenter.segment(paragraph), item => item.segment.trim()).filter(Boolean),
+        sentenceCitationPolicy(grader).patterns,
+      );
       sentences.forEach((sentence, sentenceIndex) => result.push({
         suffix: `@p${index}.s${sentenceIndex}`, paragraph: index, sentence, sentenceIndex, text: sentence,
       }));
@@ -78,7 +81,7 @@ function resolveRead(read: string, output: unknown, context: Record<string, unkn
 }
 
 function expandQuestion(question: DecisionQuestion, output: unknown, context: Record<string, unknown>, grader: Grader): QuestionInstance[] {
-  return units(question, output).map(unit => {
+  return units(question, output, grader).map(unit => {
     const projection: Record<string, unknown> = {};
     const reasons: string[] = unit.invalid ? [unit.invalid] : [];
     let state: QuestionInstance['state'] = unit.invalid ? 'missing' : 'ready';

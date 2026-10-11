@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Grader, Gate } from './grader.js';
 import { identifier, probability, stableDigest } from './common.js';
+import { sentenceCitationPolicy } from './rows.js';
 
 const predicate = z.union([
   z.strictObject({ field: z.string().min(1), equals: z.json() }),
@@ -96,5 +97,8 @@ export function questionDefinitionDigest(grader: Grader, question: DecisionQuest
   const reads = [...question.reads, ...(typeof question.when === 'object' ? [question.when.field] : [])];
   const rows = Object.fromEntries(reads.filter(read => read.startsWith('context.') && read.endsWith('@cited'))
     .map(read => [read, grader.context[read.slice(8, -6)]!.rows]));
-  return stableDigest(Object.keys(rows).length ? { question, rows, extraction: 'cited-rows.v1' } : question);
+  const definition = Object.keys(rows).length ? { question, rows, extraction: 'cited-rows.v1' } : question;
+  const policy = sentenceCitationPolicy(grader);
+  return stableDigest(question.level === 'sentence' && policy.patterns.length
+    ? { definition, sentenceCitations: policy } : definition);
 }

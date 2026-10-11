@@ -7,3 +7,4 @@ export type { Labels, Label, Labeler } from './labels.js';
 export { stableDigest, sha256, parseYaml, parseSchema, identifier, probability } from './common.js';
 export { parseLabelImport } from './label-import.js';
 export type { LabelImport } from './label-import.js';
+export { sentenceCitationPolicy } from './rows.js';

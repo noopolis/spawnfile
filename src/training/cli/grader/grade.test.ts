@@ -185,3 +185,25 @@ it('exposes sentence addresses and readiness for cited-row label builders', asyn
   expect(result.instances.map(instance => instance.projectionDigest)).toEqual(runtime.map(instance => instance.projectionDigest));
   expect(result.instances[2]?.reason).toContain('E9');
 });
+
+it('grader expand prints adjusted sentence units for citations after a period', async () => {
+  const f = await fixture();
+  const grader = parseGrader({ ...f.grader,
+    context: { evidence: { description: 'Evidence rows', rows: {
+      heading: '^### \\[(E\\d+)\\]', cite: '\\[(E\\d+)\\]', leading_citations: 'previous',
+    } } },
+    questions: [{ id: 'q', level: 'sentence', type: 'yes-no', expected: 'yes', reads: ['sentence', 'context.evidence@cited'] }],
+  });
+  await writeFile(f.graderFile, stringify(grader));
+  await writeFile(f.outputFile, JSON.stringify({ body: ['One. [E1][E7] Two. [E2] Three.'] }));
+  await writeFile(f.contextFiles.policy, '### [E1]\nFirst\n### [E7]\nOther\n### [E2]\nSecond');
+  const printed: string[] = [];
+  expect(await main(['grader', 'expand', '--grader', 'grader.yaml', '--output', 'output.json',
+    '--context', 'evidence=policy.md'],
+  { cwd: f.root, stdout: text => printed.push(text), stderr: text => { throw new Error(text); } })).toBe(0);
+  const result = JSON.parse(printed[0]!) as Awaited<ReturnType<typeof runExpand>>;
+  expect(result.instances.map(i => [i.key, i.unit.text, i.state])).toEqual([
+    ['q@p0.s0', 'One. [E1][E7]', 'ready'], ['q@p0.s1', 'Two. [E2]', 'ready'],
+    ['q@p0.s2', 'Three.', 'not-applicable'],
+  ]);
+});
