@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { labelsSchema, parseLabels } from './labels.js';
 import { identifier, probability, provider, parseSchema, parseYaml, rememberSourceDirectory } from './common.js';
 import { questionSchema, gateQuestionSchema, validateQuestion, allQuestions } from './questions.js';
+import { rowsSchema } from './rows.js';
 import { requiresArgumentBinding } from './binding.js';
 
 const between = z.tuple([probability, probability]).refine(([lo, hi]) => lo < hi, 'requires lo < hi');
@@ -22,7 +23,7 @@ export type NamedDecisionModel = z.infer<typeof namedModelSchema>;
 export const graderSchema = z.strictObject({
   schema: z.literal('paideia.grader.v1'), id: identifier,
   golden: z.union([z.string().min(1), labelsSchema.extend({ grader: identifier.optional() })]), calibration: z.string().min(1),
-  context: z.record(identifier, z.strictObject({ description: z.string() })).default({}),
+  context: z.record(identifier, z.strictObject({ description: z.string(), rows: rowsSchema.optional() })).default({}),
   teachers: z.array(z.strictObject({ id: identifier, provider, model: z.string().min(1), effort: z.string().min(1).optional() })).min(1),
   model: modelSchema.optional(),
   models: z.array(namedModelSchema).min(1).max(4).optional(),

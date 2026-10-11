@@ -1,5 +1,5 @@
 export { decisionModels, graderForModel, graderSchema, parseGrader, parseGraderYaml, validateGrader, loadGrader, allQuestions,
-  optionsFor, expectedOptions, applicabilityQuestion, labelsSchema, parseLabels, parseLabelsYaml,
+  optionsFor, expectedOptions, questionDefinitionDigest, applicabilityQuestion, labelsSchema, parseLabels, parseLabelsYaml,
   loadLabels, stableDigest, sha256 } from './format/index.js';
 export type { Grader, DecisionModel, NamedDecisionModel, Gate, Question, GateQuestion, DecisionQuestion, Option, Labels, Label, Labeler } from './format/index.js';
 export { deriveConsensus, askedForInstance } from './consensus.js';

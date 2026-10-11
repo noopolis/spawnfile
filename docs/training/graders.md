@@ -66,6 +66,69 @@ score: { method: weighted, pass_at: 0.75 }
 - Weights default to 1 and cannot be negative; their total must be positive.
   `fitted-weights` is recognized but refused as unimplemented.
 
+## Cited evidence rows and instance expansion
+
+A paragraph or sentence question can read only the evidence its unit cites:
+
+```yaml
+context:
+  evidence:
+    description: Sources available to the report writer
+    rows: { heading: '^### \[(E\d+)\]', cite: '\[(E\d+)\]' }
+questions:
+  - id: supported
+    level: sentence
+    type: yes-no
+    expected: yes
+    ask: Is this sentence supported by its cited evidence?
+    reads: [sentence, context.evidence@cited]
+```
+
+Both regexes must compile, contain exactly one capture group (the row ID), and
+be at most 200 characters. Backreferences, lookaround and nested quantifiers
+(star height greater than one, including quantified branches inside a repeated
+group) are rejected at parse time. This restriction blocks nested repetition,
+but does not establish a linear-time guarantee for JavaScript regex matching.
+Heading matching runs per line with multiline semantics;
+rows include the whole heading line through the next heading, preserving bytes.
+LF, CR, U+2028 and U+2029 delimit lines; CRLF is one boundary. Row contexts
+longer than 2,000,000 characters are missing, never truncated or scanned.
+The preamble is excluded. Citation matching is global and multiline on the unit
+text alone. The projection is an ordered list of `{ id, text }` in context order,
+with repeated citations deduplicated, including adjacent `[E1][E7]` citations.
+No citations across all cited reads makes the instance `not-applicable`:
+uncited claims are the article-level question's job. A citation in any read keeps the check applicable;
+another uncited context contributes an empty list. Missing evidence takes
+precedence over applicability. Unknown cited IDs, duplicate row IDs, absent or
+nontext row context, or matches without a captured ID make the instance `missing`
+with a reason. Article-level cited reads and contexts without `rows` are refused
+at parse time. Regexes and the extraction version enter question/label digests
+and ordered calibration expansion identity; changing them requires relabeling
+and recalibration even if the selected row bytes happen to stay identical.
+
+For citations placed after a sentence-final period, set
+`rows.leading_citations: previous` (default: `keep`). In each paragraph, a leading
+run of `cite` matches separated only by whitespace moves to the previous sentence;
+the first sentence keeps its leading run. Following text stays in its sentence,
+and a citation-only tail leaves no empty unit. All opted-in context patterns apply
+to every sentence unit, including sentence-only questions and applicability checks.
+The adjusted text is shared by `sentence`, cited-row reads and `grader expand`;
+paragraph/article reads retain the original text. The setting, matching patterns
+and movement algorithm version enter sentence-question and expansion identity.
+
+```sh
+paideia grader expand --grader writing.grader.yaml --output report.json --context evidence=evidence.md
+```
+
+`--output` is the input report JSON file. The command prints
+`{ instances: [{ key, questionId, level, unit, state, reason?, projectionDigest }] }`
+using runtime expansion, without inference or reading calibration/golden sidecars.
+Repeat `--context name=FILE` for named JSON or UTF-8 text inputs. Unit metadata is
+`{}` for article instances, `{ paragraph, text }` for paragraphs, and
+`{ paragraph, sentence, text }` for sentences; indexes are zero-based, sentence
+text is trimmed by the shared segmenter, and missing units omit unavailable
+fields. Keys such as `supported@p0.s1` can be used directly in external labels.
+
 ## Per-question decision models
 
 Keep `model:` for a single decision model (implicit ID `default`), or replace it
@@ -360,14 +423,30 @@ backend endpoint. Local decision billing is `local`; teacher usage stays visible
   Known Cloud routes are unsupported. An overlong input is refused, never cut;
   scoring HTTP 4xx makes only that instance missing, with a bounded reason.
   Context budget and refusal policy are pinned in backend identity.
-  Prompt/probability protocol v3 ignores v1/v2 cached scores and requires fresh
+  Prompt/probability protocol v4 ignores v1–v3 cached scores and requires fresh
   calibration so earlier optimistic bounds or silently truncated inputs cannot be reused.
 - **jev-http:** POST `{state, questions}` to an operator-run DecisionEngine wrapper
   using raw `temperature=1`; shared state is a JSON-encoded projection and batches
   contain at most 16 questions. Each question has `type`, `instructions`, `criteria`.
   Responses must contain stable `model` and `answers[key].probabilities` for every
   option, summing to one. Yes/no wire keys accept either complete `true`/`false` or `yes`/`no` pairs; score keys are
-  zero-based scale indices; choices retain their labels. Identity uses a probe.
+  zero-based scale indices; choices retain their labels. Each command creates a fresh
+  backend, whose first `identity()` read runs two fixed canaries once: the
+  empty-state question and a deterministic approximately 40,000-character state with one yes/no question. Identity is
+  `{ backend, model, fingerprint }`; the fingerprint hashes model/protocol, each
+  canary's `2xx`/`4xx` status class, argmax decision on successful responses
+  (ties select the first option), and string `fingerprint` and/or
+  `system_fingerprint` response fields. Probability jitter that preserves the
+  argmax does not change identity. Servers SHOULD return a stable revision/hash in either field (including 4xx JSON responses),
+  changing it whenever weights, tokenizer, templates, context limits or input
+  preparation changes. Later identity reads, including the final check, reuse
+  the completed probe. Scoring responses are checked for model and declared
+  revision drift; an observed change permanently refuses scoring and identity
+  reuse for that backend. Undeclared changes between requests are not observable.
+  The full identity flows into raw-score caches and calibration identity. 5xx, timeout,
+  connection failures and malformed successful responses throw; if neither
+  canary succeeds, identity fails closed. Canaries distinguish observed behavior;
+  declared revisions cover changes that the fixed inputs do not expose.
   Servers must never truncate grader inputs: refuse overlong inputs with HTTP 4xx,
   as the strict MiniCPM server does. Rejected request instances become missing.
 - **teacher:** `model: { backend: teacher, teacher: reviewer }` answers every

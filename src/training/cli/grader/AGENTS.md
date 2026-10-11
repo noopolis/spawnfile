@@ -9,6 +9,8 @@ while examples match both dataset and ID. Cache identities include question, pro
 backend and versioned prompt. Tests inject providers/fetch and keep artifacts local.
 Grade JSON inputs and explicit JSON/text context files through the shared runtime;
 do not invent trial snapshots for mechanical gates. Grade exit zero requires pass.
+Expand uses the same runtime instance expansion and exposes unit addresses/digests
+without calibration, labels or inference. Its output file option names the input JSON.
 Run adjacent tests plus grader/provider suites, ESLint, typecheck and per-file coverage.
 
 Labeling writes only separate golden files, atomically after each completed output.
@@ -16,7 +18,7 @@ Resume retains completed votes and original call receipts, including partial gro
 compact receipt references must remain readable by stale checks and cost estimates.
 
 Whole-command cancellation reaches identity probes, scoring and teacher calls;
-validate/label/calibrate/grade accept the existing bounded --timeout-ms control.
+validate/label/calibrate/grade/expand accept the existing bounded --timeout-ms control.
 
 Failed label attempts retain only typed failure classes, never raw diagnostics.
 Account failures stop that teacher for the run; queued votes remain unasked and

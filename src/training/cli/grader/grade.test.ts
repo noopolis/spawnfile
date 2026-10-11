@@ -3,12 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { stringify } from 'yaml';
-import { createCalibrationIdentity, loadGrader, loadLabels, parseGrader } from '../../graders/index.js';
+import { createCalibrationIdentity, expandInstances, loadGrader, loadLabels, parseGrader } from '../../graders/index.js';
 import type { DecisionBackend, DecisionRequest } from '../../contracts/grading.js';
 import { DECISION_PROMPT_VERSION } from '../../inference/decision/index.js';
 import { main } from '../commands.js';
 import { backendIdentity } from './backend.js';
-import { runGrade } from './grade.js';
+import { runExpand, runGrade } from './grade.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -111,4 +111,99 @@ it('propagates cancellation through grade identity probes, scoring and teacher c
     capabilities: { billing: 'subscription', tools: 'disabled', seed: false, temperature: false }, generate }) })).rejects.toThrow('teacher deadline');
   expect(probes.length).toBeGreaterThanOrEqual(2);
   expect(generate).toHaveBeenCalledOnce();
+});
+
+it('expands exact runtime units and digests without labels, calibration or inference', async () => {
+  const f = await fixture();
+  const source = parseGrader({ ...f.grader, questions: [
+    { id: 'article', type: 'yes-no', expected: 'yes', reads: ['output.body', 'context.policy'] },
+    { id: 'paragraph', level: 'paragraph', type: 'yes-no', expected: 'yes', reads: ['paragraph'] },
+    { id: 'sentence', level: 'sentence', type: 'yes-no', expected: 'yes', reads: ['sentence', 'context.evidence'] },
+    { id: 'missing', type: 'yes-no', expected: 'yes', reads: ['output.absent', 'output.alsoAbsent'] },
+    { id: 'inapplicable', type: 'yes-no', expected: 'yes', reads: ['output.body'], when: { field: 'output.enabled', equals: true } },
+  ] });
+  const output = { body: ['Dr. Lane agreed. Another claim!', 'Final paragraph.'], enabled: false };
+  await writeFile(f.graderFile, stringify(source));
+  await writeFile(f.outputFile, JSON.stringify(output));
+  await rm(f.grader.calibration);
+  await rm(join(f.root, 'labels.yaml'));
+  const printed: string[] = [];
+  const backend = vi.fn(() => { throw new Error('inference is forbidden'); });
+  const provider = vi.fn(() => { throw new Error('inference is forbidden'); });
+  expect(await main(['grader', 'expand', '--grader', 'grader.yaml', '--output', 'output.json',
+    '--context', 'evidence=evidence.json', '--context', 'policy=policy.md'],
+  { cwd: f.root, stdout: text => printed.push(text), stderr: text => { throw new Error(text); } },
+  { grader: { backend, provider } })).toBe(0);
+  const expected = expandInstances(source, output, { evidence: { fact: true }, policy: 'Exact rules\n' });
+  const result = JSON.parse(printed[0]!) as Awaited<ReturnType<typeof runExpand>>;
+  expect(result.instances).toEqual(expected.map(({ key, questionId, level, unit, state, reasons, projectionDigest }) => ({
+    key, questionId, level, unit, state, ...(reasons.length ? { reason: reasons.join('; ') } : {}), projectionDigest,
+  })));
+  expect(result.instances.filter(instance => instance.level === 'sentence').map(instance => instance.key))
+    .toEqual(['sentence@p0.s0', 'sentence@p0.s1', 'sentence@p0.s2', 'sentence@p1.s0']);
+  expect(result.instances.find(instance => instance.key === 'article')?.unit).toEqual({});
+  expect(result.instances.find(instance => instance.key === 'sentence@p1.s0')?.unit)
+    .toEqual({ paragraph: 1, sentence: 0, text: 'Final paragraph.' });
+  expect(result.instances.find(instance => instance.key === 'missing')).toMatchObject({ state: 'missing',
+    reason: 'output.absent: missing path absent; output.alsoAbsent: missing path alsoAbsent' });
+  expect(result.instances.find(instance => instance.key === 'inapplicable')?.state).toBe('not-applicable');
+  expect(backend).not.toHaveBeenCalled();
+  expect(provider).not.toHaveBeenCalled();
+});
+
+it('expands missing contexts and rejects invalid files, unknown contexts and cancellation', async () => {
+  const f = await fixture();
+  const withoutContexts = await runExpand({ graderFile: f.graderFile, outputFile: f.outputFile });
+  expect(withoutContexts.instances[0]).toMatchObject({ state: 'missing', reason: expect.stringContaining('context.evidence') });
+  await expect(runExpand({ ...f, contextFiles: { other: f.outputFile } })).rejects.toThrow('Unknown grader context other');
+  await expect(runExpand({ ...f, signal: AbortSignal.abort() })).rejects.toThrow();
+  await writeFile(f.contextFiles.evidence, '{broken');
+  await expect(runExpand(f)).rejects.toThrow();
+  await writeFile(f.outputFile, '{broken');
+  const errors: string[] = [];
+  expect(await main(['grader', 'expand', '--grader', 'grader.yaml', '--output', 'output.json'],
+    { cwd: f.root, stdout: () => { throw new Error('unexpected output'); }, stderr: text => errors.push(text) })).toBe(2);
+  expect(errors).toHaveLength(1);
+});
+
+it('exposes sentence addresses and readiness for cited-row label builders', async () => {
+  const f = await fixture();
+  const grader = parseGrader({ ...f.grader,
+    context: { evidence: { description: 'Evidence rows', rows: { heading: '^### \\[(E\\d+)\\]', cite: '\\[(E\\d+)\\]' } } },
+    questions: [{ id: 'q', level: 'sentence', type: 'yes-no', expected: 'yes', reads: ['sentence', 'context.evidence@cited'] }],
+  });
+  const output = { body: ['A claim [E1]. An uncited claim. Unknown [E9].'] };
+  const evidence = 'Preamble\n### [E1]\nKnown fact\n### [E2]\nUncited fact\n';
+  await writeFile(f.graderFile, stringify(grader));
+  await writeFile(f.outputFile, JSON.stringify(output));
+  await writeFile(f.contextFiles.policy, evidence);
+  const result = await runExpand({ ...f, contextFiles: { evidence: f.contextFiles.policy } });
+  const runtime = expandInstances(grader, output, { evidence });
+  expect(result.instances.map(instance => [instance.key, instance.state])).toEqual([
+    ['q@p0.s0', 'ready'], ['q@p0.s1', 'not-applicable'], ['q@p0.s2', 'missing'],
+  ]);
+  expect(result.instances.map(instance => instance.projectionDigest)).toEqual(runtime.map(instance => instance.projectionDigest));
+  expect(result.instances[2]?.reason).toContain('E9');
+});
+
+it('grader expand prints adjusted sentence units for citations after a period', async () => {
+  const f = await fixture();
+  const grader = parseGrader({ ...f.grader,
+    context: { evidence: { description: 'Evidence rows', rows: {
+      heading: '^### \\[(E\\d+)\\]', cite: '\\[(E\\d+)\\]', leading_citations: 'previous',
+    } } },
+    questions: [{ id: 'q', level: 'sentence', type: 'yes-no', expected: 'yes', reads: ['sentence', 'context.evidence@cited'] }],
+  });
+  await writeFile(f.graderFile, stringify(grader));
+  await writeFile(f.outputFile, JSON.stringify({ body: ['One. [E1][E7] Two. [E2] Three.'] }));
+  await writeFile(f.contextFiles.policy, '### [E1]\nFirst\n### [E7]\nOther\n### [E2]\nSecond');
+  const printed: string[] = [];
+  expect(await main(['grader', 'expand', '--grader', 'grader.yaml', '--output', 'output.json',
+    '--context', 'evidence=policy.md'],
+  { cwd: f.root, stdout: text => printed.push(text), stderr: text => { throw new Error(text); } })).toBe(0);
+  const result = JSON.parse(printed[0]!) as Awaited<ReturnType<typeof runExpand>>;
+  expect(result.instances.map(i => [i.key, i.unit.text, i.state])).toEqual([
+    ['q@p0.s0', 'One. [E1][E7]', 'ready'], ['q@p0.s1', 'Two. [E2]', 'ready'],
+    ['q@p0.s2', 'Three.', 'not-applicable'],
+  ]);
 });

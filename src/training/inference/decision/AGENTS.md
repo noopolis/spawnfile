@@ -14,15 +14,21 @@ expected-option metadata enters prompts. Missing expected metadata fails closed
 when a bound is needed. Option order must remain part of caller cache identity.
 Ollama verifies native no-truncation support through the public Ollama seam and
 always sends truncate:false, shift:false and num_ctx (default 16384). Context and
-refusal policy enter backend identity; prompt protocol v3 invalidates old scores.
+refusal policy enter backend identity; prompt protocol v4 invalidates old scores.
 Scoring 4xx is missing per instance; capability and other transport failures throw.
 
 Jev batches only identical projections (shared state), at most 16 questions.
-identity() obtains reported model with a fixed empty-state probe before scoring;
-subsequent model drift refuses results. Endpoint must serve raw temperature=1
-probabilities; Paideia does not claim to inspect operator model configuration.
+identity() runs fixed empty and ~40k-character canaries once per backend instance
+(commands construct fresh instances), and reuses the result for final checks.
+It fingerprints status class, argmax decision and declared server revisions;
+probability jitter within the same decision does not affect identity. Scoring
+checks declared revisions and model; observed drift permanently refuses scoring
+and identity reuse. Servers SHOULD declare a fingerprint that changes with their
+input preparation. Unreported changes cannot be detected by cached identity.
+Endpoint must serve raw temperature=1 probabilities; Paideia does not claim to
+inspect operator model configuration.
 Scoring HTTP 4xx responses mark exactly that request's instances missing, with a
-sanitized status/detail reason capped at 200 characters. Identity HTTP errors,
+sanitized status/detail reason capped at 200 characters. Canary 4xx enters identity (at least one canary must succeed);
 5xx, connection failures, timeouts and cancellation remain thrown failures.
 Noul responses accept complete true/false or yes/no key pairs; mixed pairs refuse.
 Teacher fallback accepts Claude/Grok subscriptions with disabled tools or Codex

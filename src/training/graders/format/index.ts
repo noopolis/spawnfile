@@ -1,9 +1,10 @@
 export { decisionModels, graderForModel, graderSchema, parseGrader, parseGraderYaml, validateGrader, loadGrader, allQuestions } from './grader.js';
 export type { Grader, DecisionModel, NamedDecisionModel, Gate } from './grader.js';
-export { optionsFor, expectedOptions, applicabilityQuestion } from './questions.js';
+export { optionsFor, expectedOptions, questionDefinitionDigest, applicabilityQuestion } from './questions.js';
 export type { Question, GateQuestion, DecisionQuestion, Option } from './questions.js';
 export { labelsSchema, parseLabels, parseLabelsYaml, loadLabels } from './labels.js';
 export type { Labels, Label, Labeler } from './labels.js';
 export { stableDigest, sha256, parseYaml, parseSchema, identifier, probability } from './common.js';
 export { parseLabelImport } from './label-import.js';
 export type { LabelImport } from './label-import.js';
+export { sentenceCitationPolicy } from './rows.js';

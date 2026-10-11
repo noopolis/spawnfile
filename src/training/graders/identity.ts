@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { teacherAccuracyFailures } from './calibration/index.js';
 import { teacherPolicyDigest } from './labeling/index.js';
 import { segmenterIdentity } from './instances.js';
-import { allQuestions, decisionModels, optionsFor, parseSchema, identifier, probability, stableDigest, type Grader, type Labels } from './format/index.js';
+import { questionDefinitionDigest, allQuestions, decisionModels, optionsFor, parseSchema, identifier, probability, stableDigest, type Grader, type Labels } from './format/index.js';
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const interval = z.tuple([probability, probability]).refine(([lo, hi]) => lo <= hi, 'unordered interval');
@@ -64,8 +64,8 @@ export function createCalibrationIdentity(grader: Grader, supplied: Omit<Calibra
     escalation: stableDigest(grader.escalate),
     escalationTeacher: teacherPolicyDigest(grader.teachers.find(teacher => teacher.id === grader.escalate.to)!),
     uncalibrated: grader.uncalibrated,
-    expansion: questions.map(question => [question.id, stableDigest(question)]),
-    questions: Object.fromEntries(questions.map(question => [question.id, stableDigest(question)])),
+    expansion: questions.map(question => [question.id, questionDefinitionDigest(grader, question)]),
+    questions: Object.fromEntries(questions.map(question => [question.id, questionDefinitionDigest(grader, question)])),
     // Fixed A–P ordering; backend token extraction is owned by inference.
     optionMapping: Object.fromEntries(questions.map(question => [question.id, stableDigest(optionsFor(question).map((option, index) =>
       ({ option, token: String.fromCharCode(65 + index) })))])),

@@ -26,7 +26,7 @@ export function mergeImportedLabel(grader: Grader, labels: Labels, item: LabelIm
     const entry = instances.get(key);
     if (!entry) throw new Error(`Label ${item.id}: instance ${key} is unknown, inapplicable or missing`);
     if (!optionsFor(entry.question).includes(vote)) throw new Error(`Label ${item.id}: invalid option for ${key}`);
-    const questionDigest = stableDigest(entry.question);
+    const questionDigest = entry.instance.definitionDigest;
     const prior = voteProvenance(target, item.labeler, key);
     const previous = target.votes[key]?.[item.labeler];
     const current = prior?.question_digest === questionDigest && prior.projection_digest === entry.instance.projectionDigest;
