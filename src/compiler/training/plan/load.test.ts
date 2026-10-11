@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildCompilePlan } from "../../buildCompilePlan.js";
 import { loadTrainingProject, createTrainingPlan } from "./load.js";
 import { trainingPlanJsonSchema, trainingPlanSchema } from "./contract.js";
+import { materializedMomentJsonSchema, leakCheckJsonSchema, taskClockJsonSchema } from "../rewind/contract.js";
 import {
   agentManifest, cleanTrainingProjects, dataFiles, example, target, teamManifest, training,
   trainingProject, writeTrainingFile
@@ -76,10 +77,16 @@ describe("training authoring loader", () => {
     expect((await createTrainingPlan(root, options)).targets[0].files[0].path).toBe("C:notes.md");
   });
 
-  it("keeps the documented plan JSON Schema identical to the exported contract", async () => {
+  it.each([
+    ["training-plan-schema", trainingPlanJsonSchema],
+    ["materialized-moment-schema", materializedMomentJsonSchema],
+    ["leak-check-schema", leakCheckJsonSchema],
+    ["task-clock-schema", taskClockJsonSchema]
+  ])("keeps the documented %s identical to the exported contract", async (marker, expected) => {
     const doc = await readFile(new URL("../../../../specs/TRAINING.md", import.meta.url), "utf8");
-    const schema = doc.match(/<!-- training-plan-schema:start -->\n```json\n([\s\S]*?)\n```/u)?.[1];
-    expect(JSON.parse(schema!)).toEqual(trainingPlanJsonSchema);
+    const pattern = "<!-- " + marker + ":start -->\\n```json\\n([\\s\\S]*?)\\n```";
+    const schema = doc.match(new RegExp(pattern, "u"))?.[1];
+    expect(JSON.parse(schema!)).toEqual(expected);
   });
 });
 
