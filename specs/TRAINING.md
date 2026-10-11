@@ -155,11 +155,34 @@ appears between the `training-plan-schema` markers below.
 
 ## Moment record
 
-The recording PR (`feat/training-recording`, not yet merged) owns the normative
-`spawnfile.moment-record.v1` format in `specs/TRAINING.md`, “Moment record” and
-“Host histories and retention”. Rewind depends on that PR, not the superseded
-format sketch. The consumer-dependent recording text below is carried unchanged
-until the recording PR merges; it is the same contract, not a second format.
+`spawnfile.moment-record.v1` records one turn attempt of one compiled agent. Recording MUST
+be off without an effective `record`, with no recording I/O or artifact changes when
+off, except reconciliation owed by an earlier recorded deployment or landing. Recording requires a Daimon runtime whose receipt-bound contract manifest declares
+`wakeMoments` version `noopolis.daimon.wake-moment.v1` and consumes `agents[].recording`;
+other runtimes or a missing capability fail compile. Enabling it requires a capable
+Daimon release and a `runtimes.yaml` / contract-manifest re-pin, never a version guess.
+
+The compiler emits per-agent `recording: {directory, keepMs, snapshots:[{id,path}]}`.
+The directory is `/var/lib/spawnfile/recording/<agent slug>`, a runtime-owned `0700`
+exclusive-reattach volume; snapshot paths are the resolved unfed volume backing roots,
+not workspace symlinks. Recording stores receive the same deletion guard as memory.
+
+`spawnfile record sync [path] [--deployment <name>]` selects a deployment like `usage`,
+reads wake rows and memory ledgers in bounded exec chunks, and joins host histories using
+the compiled agent facts from the activation entry in effect at each row's `started_at`.
+Missing activation entries or agent facts MUST set `exact:false` with a reason, including
+when the agent has no resource pins. Today's deployment facts MUST NOT fill historical gaps.
+It writes private `0600` records via temporary file, fsync and rename to
+`<deployment state dir>/moments/<agent slug>/<compact startedAt>-<sanitized executionId>-<row hash>.json`.
+For project records the state directory is `<output>/deployments/<name>/`; for home
+records it is `~/.spawnfile/deployments/<name>/`, scoped to the same identity as the
+sibling resource log. The row hash is the first 12 lowercase hex characters of SHA-256
+over canonical wake-row JSON (object keys sorted recursively, array order preserved).
+Existing records are never rewritten. Replays may share both `executionId` and `startedAt`;
+different row contents produce distinct attempt filenames, while resync skips the same row. Moment
+retention deletes attempts older than `now - keep`, preserving the newest per agent
+(including ties). Snapshots remain in the deployment's recording volume; records name
+them, and P4 reads them. Non-exact records do not fail sync; operational failures do.
 
 All instants MUST use one host clock, shared by its containers, and include an offset
 or `Z`. Every pin MUST describe state in effect at `wake.startedAt`, not capture time.
@@ -195,9 +218,155 @@ A later `recordedAt` MUST NOT advance a pin.
   `errors: [string]`. REQUIRED `exact` MUST be `false` on any snapshot or pin failure;
   otherwise it MUST be `true`. Missing or invalid history MUST NOT be guessed.
 
-Recorded commit fields MUST additionally be full 40- or 64-hex object IDs,
-normalized to lowercase and verified as commit objects without peeling tags.
-Bundles carry only a `sha256:…` digest, never a commit. Unknown fields refuse.
+```json
+{
+  "version": "spawnfile.moment-record.v1",
+  "agent": "agent:writer",
+  "wake": {
+    "at": "2026-10-09T08:20:31.000Z",
+    "startedAt": "2026-10-09T08:20:31.250Z",
+    "executionId": "execution-17",
+    "deliveries": [{ "deliveryId": "moltnet:42", "kind": "message", "occurredAt": "2026-10-09T08:20:31.000Z" }],
+    "surface": "moltnet", "messageId": "42"
+  },
+  "recordedAt": "2026-10-09T08:20:32.000Z",
+  "exact": true,
+  "resources": [
+    { "id": "archive", "kind": "git", "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { "id": "tools", "kind": "bundle", "sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+  ],
+  "feeds": [{ "id": "news", "revision": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "tree": "trees/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.1", "commit": "dddddddddddddddddddddddddddddddddddddddd", "ref": "data/2026-10-09", "paths": ["published"], "landedAt": "2026-10-09T08:00:00.000Z", "period": "2026-10-09" }],
+  "memory": [{ "id": "self", "declaredBy": "agent:writer", "seq": 42 }],
+  "moltnet": [{ "network": "news", "cursor": "2026-10-09T08:20:31.250Z", "messageIds": ["42"] }],
+  "volumes": [{ "id": "edition-state", "snapshot": "incremental-snapshot-17" }]
+}
+```
+
+### Host histories and retention
+
+`record.keep` bounds landing logs, deploy logs, snapshots and moment records; omission
+means **30d**. A shared history MUST use the maximum effective keep among its recording
+consumers (all recording agents for the deploy log). History-log pruning MUST keep entries newer
+than `now - keep` AND the newest entry at or before that cutoff, even across a long gap.
+Lookups are inclusive; equal timestamps use the last appended entry. Before the first
+entry, lookup returns no state. Invalid lines MUST be reported alongside valid entries.
+
+For each fed volume consumed by a recording agent, the host MUST append
+`landings.jsonl` beside `landed.json` after each successful land, generation re-land,
+retained-tree re-point or link repair. Provenance/period adoption MUST also be logged.
+Before ANY replacement of `landed.json` (including revision advances, re-points,
+repairs and adoption), the publisher MUST reconcile its previous recording snapshot
+against the last log entry and append it if missing, preserving the original instant.
+A failed reconciliation MUST prevent replacement. A clean refresh also seeds history
+when recording is enabled later. Recorded host state retains the original source and
+keep window so a changed source declaration cannot rewrite pending provenance.
+The entry MUST follow a successful `landed.json` write and contain:
+`{version:"spawnfile.volume-feed-landing.v1", resource, volume, revision, tree,
+source, commit?, ref?, paths?, switching_at, landed_at, period?}`. `switching_at`
+MUST be sampled immediately BEFORE the `current` rename, including link repair;
+`landed_at` remains the post-switch instant and MUST equal
+`identity.landed_at`; `period` is the host record's period. `source` MUST identify
+`{kind:"git", repo}` or `{kind:"directory", directory}` and preserve any `prepared`
+provenance. Git entries MUST carry the resolved commit and expanded requested ref;
+`paths`, when present, MUST be the expanded git paths. Commit, paths and revision
+permit refetch and verification without retaining trees. Directory feeds are verifiable
+by revision digest but **not refetchable**. Prepared feeds also require their recorded
+include digests and recipe inputs; a revision does not promise reproducible prepare output.
+Lookup inside either endpoint of `[switching_at, landed_at]` MUST return the incoming
+entry plus `ambiguous:true`. Outside transition windows, select the most recent
+`landed_at <= instant`. Adoption without a content switch uses `switching_at = landed_at`;
+old nonrecorded identities seeded on opt-in use the same degenerate window. Recording
+history missing a required transition boundary is invalid, never assumed exact.
+
+When any compiled agent records, project `up` and home deployment publication
+(including image `up` and release) MUST append a resource log beside their record:
+`<output>/deployments/<name>.resource-log.jsonl` for project records, and
+`~/.spawnfile/deployments/<name>/resource-log.jsonl` for home records. `deployment_id`
+is the absolute canonical record path; lookup MUST require that identity. Independent
+outputs with the same deployment name MUST NOT share history or retention.
+
+Each `{version:"spawnfile.deploy-resources.v1", deployment, deployment_id, activated_at,
+activation_exact, activation_note?, deployed_at, report_sha256, resources, recording_agents}` entry MUST
+reuse `workspace_git_resources` and `workspace_bundles`, without resolving sources again.
+`recording_agents` MUST copy the validated compiled recording facts for every recording
+agent: node ID, slug, recording directory, keep window, snapshot IDs, consumed feed IDs
+and volume names, git/bundle resource IDs, memory bank IDs with declaring node and ledger
+path, and attached Moltnet networks. These facts survive releases that remove or change
+inputs. Legacy entries without them remain readable but cannot produce exact moments.
+Every resource MUST retain its workspace-visible `id`, compiled `agent_node_ids`, and
+`declared_by` node ID when known. Git adds `{kind:"git", commit, sha256, url?}`; bundles
+add `{kind:"bundle", sha256, origin?}`. Ownership MUST survive compile and distribution
+projection, including equal IDs/digests with different commits. Image pins omit host
+paths and source URLs. Unowned legacy history MUST be reported as invalid, never guessed.
+With no effective recording agent, compile reports MUST omit `agent_node_ids` and
+`declared_by` and preserve the original resource deduplication and serialized shape.
+
+Lookups and retention MUST use `activated_at`; `deployed_at` is informational record
+creation time. Activation ordering is path-specific:
+
+- Image `up` renames/stops the previous container, verifies it stopped, then samples
+  `activated_at` immediately before `docker run`. It waits for a later host-clock tick
+  than the stopped observation, so no old turn can have an equal timestamp.
+- Drained release first closes admission and waits for old turns, then calls image `up`
+  under the home lock; the same stop/verify/activation/start sequence applies.
+- Project `up` samples immediately before invoking its launch runner. First deployment
+  has no recorded predecessor. Replacement does not stop/drain its predecessor and MAY
+  overlap it: entries MUST set `activation_exact:false` with `activation_note`. Records
+  without a captured launch boundary (including recovered launches) are likewise inexact.
+
+If a started candidate is removed on readiness or publication failure, image `up`,
+release and project `up` MUST append its pins with `{activated_at, rolled_back_at,
+exact:false, activation_exact:false}`. `rolled_back_at` is sampled after candidate
+removal, before restoration where applicable. This interval MUST NOT replace the
+predecessor's authoritative record. Lookup inside the inclusive interval returns the
+candidate with `exact:false`, even if it previously published a successful-looking
+snapshot; after the interval, that snapshot is excluded and the predecessor applies
+until another deployment activates. Retention MUST preserve intervals crossing the
+cutoff and the predecessor needed after rollback. No candidate history is written when
+recording is off. A failed candidate cleanup MUST NOT invent a completed rollback.
+These interval entries describe execution and removal, not successful publication;
+their append follows removal without requiring a new authoritative deployment record.
+
+The host clock MUST remain monotonic across these operations. Containers MUST share
+that clock; remote clock skew invalidates exact reconstruction. A moment arriving before
+publication MUST wait for its authoritative deployment record/history, or be inexact.
+
+The deployment record MUST persist `recording: {keep_ms, memory_mount_ids}` and its
+complete `resource_snapshot`, including the hash of the exact persisted UTF-8 report
+bytes. Before replacing a deployment record OR its cached report, the publisher MUST
+reconcile that snapshot against the last log entry. Reconciliation failure MUST abort
+replacement. Recompilation MUST preserve deployment records/history, including clean
+compiles; it cannot erase a pending snapshot. Retried publication of the same snapshot
+MUST NOT append a duplicate. Turning recording off still reconciles an owed predecessor.
+Writers MUST receive predecessor metadata from the lifecycle's existing record read;
+only effective recording or a recorded predecessor permits additional record reads.
+
+Host records and cached deployment reports MUST be published by file fsync, rename,
+and parent-directory fsync BEFORE log append. Both logs MUST append each complete JSON
+line in one write followed by file and directory fsync. Pruning MUST use an exclusive
+0600 temporary file, file fsync, rename and directory fsync under a writer lock.
+With recording off and no recorded predecessor, neither log nor its lock may be touched.
+Host-record/report writes in that case MUST retain their original write/rename sequence,
+permissions and bytes, without added reads, durable writes or fsyncs. A matching last
+log line MUST still be file- and directory-fsynced before reconciliation succeeds:
+visibility alone does not prove a previous failed append became durable.
+A deploy-log failure after publication MUST be reported without rolling back the
+container named by the published deployment record.
+If record rename succeeds but directory fsync fails, the named container MUST also
+remain; no log entry may be appended until the authoritative record is re-synced.
+
+Spawnfile MUST enforce memory protection from the DEPLOYED record's `recording`
+metadata, independent of later compile settings. For recorded state, teardown with volume deletion MUST
+refuse a changed report fingerprint, missing protected mount, reduced keep, or dropped
+recording/mount protection unless explicitly overridden. `down --volumes --discard-recorded-memory`
+is that override; `--force` alone is insufficient. Author-declared shared volume names
+remain retained under the existing teardown rule. Internal fixture cleanup MUST apply
+the same guard. Spawnfile has no memory-ledger reset/prune command; release prunes only
+images. This guarantee covers Spawnfile's deletion paths, not external Docker commands.
+Mneme stays independent and its ledger MUST NOT be truncated by recording retention.
+
+Rewind MUST use records when present; otherwise it is best effort and the trial MUST
+be labelled as such.
 
 ## Rewind
 
