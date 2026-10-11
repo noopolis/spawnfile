@@ -25,7 +25,7 @@ const preparedFixture = async (kind: "git" | "directory", recipe: "include" | "p
   expect(digestDirectory(retained)).not.toBe(resolved.revision);
   const log = "feeds/team%3Apublication/news/landings.jsonl";
   await jsonl(f.historyDir, log, [{ version: "spawnfile.volume-feed-landing.v1", resource: "news", volume: "news",
-    revision: resolved.revision, tree: `trees/${resolved.revision}`, landed_at: BEFORE,
+    revision: resolved.revision, tree: `trees/${resolved.revision}`, switching_at: BEFORE, landed_at: BEFORE,
     source: { kind, ...(kind === "git" ? { repo: f.feedRepo } : { directory: sourceDirectory }), prepared: resolved.provenance.prepared },
     ...(kind === "git" ? { commit: f.commit, ref: "main" } : {}) }]);
   if (recordOnly) {

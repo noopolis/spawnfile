@@ -1,7 +1,9 @@
 import { chmod, lstat, mkdir, readFile, readdir, readlink, realpath, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { z } from "zod";
-import { momentRecordSchema, type MomentRecord } from "./contract.js";
+import { momentRecordSchema, parseMomentRecord, parseWakeMoments, type MomentRecord, type WakeMomentRow } from "../../../recording/index.js";
+import { deployResourceLogPath, deployResourcesAt, deployResourcesSchema, type DeployResources } from "../../../deployment/index.js";
+import { readFeedLandings, type FeedLanding } from "../../../volume/index.js";
 
 export const inside = (root: string, target: string): boolean => {
   const relative = path.relative(root, target);
@@ -65,6 +67,52 @@ export class History {
       catch (error) { throw new Error(`Invalid history ${relative}:${index + 1}: ${reason(error)}`); }
     });
   }
+  async feedLandings(key: string, resource: string): Promise<FeedLanding[]> {
+    const relative = `${key}/landings.jsonl`, file = await this.path(relative);
+    if (!file) return [];
+    if (!(await lstat(await realpath(file))).isFile()) throw new Error(`History entry must be a regular file: ${relative}`);
+    const result = readFeedLandings(path.dirname(file));
+    if (result.errors.length) throw new Error(`Invalid history ${result.errors.map((error) => `${relative}:${error.replace(/^(?:wake moments )?line /u, "")}`).join("; ")}`);
+    result.entries.forEach((entry, index) => {
+      if (entry.resource !== resource) throw new Error(`Invalid history ${relative}:${index + 1}: Landing resource disagrees with the history input`);
+    });
+    return result.entries;
+  }
+  async wakeMoments(relative: string): Promise<WakeMomentRow[] | null> {
+    const payload = await this.text(relative);
+    if (payload === null) return null;
+    const result = parseWakeMoments(payload);
+    if (result.errors.length) throw new Error(`Invalid history ${result.errors.map((error) => `${relative}:${error.replace(/^(?:wake moments )?line /u, "")}`).join("; ")}`);
+    return result.entries;
+  }
+  /** One imported deployment, preserving its original absolute identity without opening that path. */
+  async deploymentResources(at: string, agentId?: string): Promise<DeployResources | null> {
+    const directory = await this.path("deployments");
+    if (!directory) return null;
+    const logs: string[] = [];
+    for (const name of (await readdir(directory)).sort()) {
+      const relative = `deployments/${name}`, entry = await this.path(relative);
+      if (!entry) throw new Error(`History entry vanished: ${relative}`);
+      if (name.endsWith(".resource-log.jsonl")) logs.push(relative);
+      else if ((await lstat(await realpath(entry))).isDirectory() && await this.path(`${relative}/resource-log.jsonl`)) logs.push(`${relative}/resource-log.jsonl`);
+    }
+    if (!logs.length) return null;
+    if (logs.length !== 1) throw new Error("Rewind history must contain one deployment resource log; multiple deployments are ambiguous");
+    const relative = logs[0]!, entries = await this.jsonl(relative, deployResourcesSchema) ?? [];
+    if (!entries.length) return null;
+    const identities = new Set(entries.map((entry) => entry.deployment_id));
+    const recordPath = entries[0]!.deployment_id;
+    if (identities.size !== 1 || !path.isAbsolute(recordPath) || path.resolve(recordPath) !== recordPath) {
+      throw new Error(`Invalid history ${relative}: expected one canonical deployment_id`);
+    }
+    const originalLog = deployResourceLogPath(recordPath);
+    const mirror = path.basename(recordPath) === "record.json"
+      ? `deployments/${path.basename(path.dirname(recordPath))}/${path.basename(originalLog)}`
+      : `deployments/${path.basename(originalLog)}`;
+    if (relative !== mirror) throw new Error(`Invalid history ${relative}: deployment_id requires ${mirror}`);
+    if (!agentId) throw new Error("Deployment resource lookup requires the compiled agent ID");
+    return deployResourcesAt(entries, recordPath, at, agentId);
+  }
   async records(): Promise<MomentRecord[]> {
     const directory = await this.path("moments");
     if (!directory) return [];
@@ -80,7 +128,7 @@ export class History {
         for (const name of (await readdir(file)).sort()) await walk(`${relative}/${name}`);
       } else if (relative.endsWith(".jsonl")) records.push(...(await this.jsonl(relative, momentRecordSchema) ?? []));
       else if (relative.endsWith(".json")) {
-        try { records.push(momentRecordSchema.parse(JSON.parse((await this.text(relative))!))); }
+        try { records.push(parseMomentRecord((await this.text(relative))!)); }
         catch (error) { throw new Error(`Invalid history ${relative}: ${reason(error)}`); }
       }
     };

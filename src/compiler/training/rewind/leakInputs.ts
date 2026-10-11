@@ -13,7 +13,6 @@ import { parseMemoryLedger } from "./memory.js";
 import { inspectMoltnetJson } from "./moltnetJson.js";
 import { inspectMoltnetSqlite } from "./moltnetSqlite.js";
 import { readSnapshotManifest, snapshotBytes, snapshotHistoryPath, snapshotTreeFindings } from "./snapshotManifest.js";
-import { wakeSnapshotRowSchema } from "./volumes.js";
 
 export const addInputFinding = (report: LeakCheck, input: MaterializedInput, kind: LeakFinding["class"], detail: string, file = input.path!): void => {
   report.findings.push({ input: { section: input.section, id: input.id, declaredBy: input.declaredBy }, class: kind, path: file, detail });
@@ -111,7 +110,7 @@ export const inspectVolumeBundle = async (root: string, input: MaterializedInput
   const retained = await history.path(relative);
   if (!manifest || !retained) throw new Error("Snapshot tree or manifest is missing");
   if (compareInstants(manifest.started_at, report.at) > 0) throw new Error("Selected snapshot is later than the moment");
-  const rows = await history.jsonl(`recording/${safeSegment(input.source.agentSlug)}/wake-moments.jsonl`, wakeSnapshotRowSchema);
+  const rows = await history.wakeMoments(`recording/${safeSegment(input.source.agentSlug)}/wake-moments.jsonl`);
   if (!rows?.some((row) => compareInstants(row.started_at, manifest.started_at) === 0
     && row.snapshots.some((entry) => entry.id === input.id && entry.snapshot === input.source.snapshot))) {
     throw new Error("Selected snapshot has no matching wake row");

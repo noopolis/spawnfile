@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { MomentRecord } from "./contract.js";
+import type { MomentRecord } from "../../../recording/index.js";
 import { rewindGitEnvironment } from "./gitProcess.js";
 
 export const gitTestRoot = async (): Promise<string> => realpath(await mkdtemp(path.join(os.tmpdir(), "spawnfile-rewind-git-")));

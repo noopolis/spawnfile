@@ -404,11 +404,15 @@ paths in replacement declarations resolve from the dataset file's directory.
 Every input MUST materialize successfully; present-day data MUST NOT substitute
 for unavailable history.
 
-The local history import layout is normative:
+Records and host logs MUST use the merged [Moment record](#moment-record) and
+[Host histories and retention](#host-histories-and-retention) contracts. Rewind
+uses their shared parsers and lookup helpers. The local history import layout is:
 
 ```text
 DIR/
-  moments/**/*.json                         # one record per file; .jsonl also accepted
+  moments/<agent slug>/<compact startedAt>-<sanitized executionId>-<row hash>.json
+  deployments/<name>.resource-log.jsonl     # project deployment (choose one log)
+  deployments/<name>/resource-log.jsonl     # home deployment (alternative)
   bundles/<sha256 hex>.tar
   git/<declaredBy>/<id>/                    # local repository mirror
   feeds/<declaredBy>/<id>/landings.jsonl
@@ -419,6 +423,7 @@ DIR/
   recording/<agent slug>/wake-moments.jsonl
   recording/<agent slug>/snapshots/<root id>/<snapshot id>/
   recording/<agent slug>/snapshots/<root id>/<snapshot id>.manifest.json
+  recording/<agent slug>/snapshots/<root id>/<snapshot id>.complete
 ```
 
 `<declaredBy>` MUST be `encodeURIComponent` of the node ID: `agent:writer`
@@ -426,33 +431,39 @@ becomes `agent%3Awriter`. `<agent slug>` is the selected compiled node's existin
 slug, including the compiler's collision handling. `<root id>` is the
 `record.volumes` resource ID. IDs and archive names MUST be safe path segments.
 Every read MUST remain inside `DIR` lexically and after realpath resolution;
-symlink escapes refuse. JSON and every JSONL line are validated strictly;
+symlink escapes refuse. JSON and every JSONL line are validated by their owning contract;
 invalid lines refuse the affected input with file, line number, and reason.
 
-Import copies deployment evidence verbatim: composed moment JSON files; the
+Import copies deployment evidence verbatim: the deployment state directory's
+`moments/` subtree (including agent slug and hashed filenames); exactly one resource
+log from the project output or home `deployments/` location above; the
 host feed state's `landings.jsonl` beside `landed.json`; retained feed volume
 `trees/` directories; deployed bundle tars from `container/workspace-bundles/`;
-Daimon's persisted `recording/<agent slug>/` rows, snapshot trees and manifests;
+Daimon's persisted `recording/<agent slug>/` rows, snapshot trees, manifests and completion markers;
 Mneme's `<home>/memory/events.jsonl`; and the network's consistent Moltnet store
 (including SQLite recovery sidecars when needed). The `git/` repositories and
 feed `repo/` directories are local mirrors retaining historical commits, not
 recorder output. Rewind neither fetches nor changes these mirrors.
 
-Feed logs follow the recording PR's `spawnfile.volume-feed-landing.v1` shape:
-`{version, resource, volume, revision, tree, source, commit?, ref?, paths?,
-switching_at?, landed_at, period?}`. Source identifies `{kind:"git", repo}` or
-`{kind:"directory", directory}`, with optional prepared provenance. This reader
-accepts older entries without `switching_at`; new recording writes transition
-boundaries. The isolated compatibility reader must be replaced by P3's
-`readFeedLandings` / `feedLandingAt` after that PR merges.
+The log retains its original absolute `deployment_id`; that identity is passed to
+`deployResourcesAt` without opening the original path. Its name/location MUST mirror
+`deployResourceLogPath(deployment_id)`. Multiple logs, mixed deployment identities,
+invalid lines, or ambiguous pins refuse; omit the log if it is unavailable. Resource
+lookup is scoped to the exact compiled agent and, when present, `declared_by`.
+Moment discovery also accepts nested JSONL imports (one shared-format record per line).
+Feed history MUST include the required transition boundary; older entries without it
+are invalid under the merged contract and refuse.
 
 Moment records match exact compiled `agent` and parsed `wake.at == example.at`.
 For several attempts of that wake, select the EARLIEST `wake.startedAt` (original
 turn), even when replay pins differ or append/capture order differs. Conflicting
-copies at that same earliest instant still refuse when any input's effective
+copies at that same earliest instant (including replays sharing BOTH execution ID
+and startedAt but differing in row hash) still refuse when any input's effective
 decision differs: usable pin versus fallback, selected pin, or fallback fidelity
 given `exact` and input-specific `errors`. The refusal MUST name the input.
-Unrelated errors and unusable pin values do not create a conflict.
+Unrelated errors and unusable pin values do not create a conflict. Discovery sorts
+paths lexically, so equivalent earliest copies yield a deterministic representative;
+row hash, capture order and execution ID MUST NOT resolve differing input decisions.
 Validate recorded commit IDs in every earliest-attempt copy for each used input,
 including IDs hidden by declared pin precedence; later replays cannot replace
 or invalidate the original turn's pins.
@@ -460,8 +471,10 @@ or invalidate the original turn's pins.
 The report retains dataset `at` and adds `effectiveAt = selected wake.startedAt`,
 or `effectiveAt = at` if unmatched. Task-clock origin, historical selection, and
 leak bounds MUST use `effectiveAt`. Report the matching count, selected execution
-ID, selected start instant, and `earliest-startedAt` choice. All comparisons parse
-instants, preserving RFC3339 nanoseconds rather than ordering strings or UUIDs.
+ID, selected start instant, and `earliest-startedAt` choice. Record matching and
+payload cuts compare parsed instants with RFC3339 nanosecond
+precision, never strings or UUIDs. Host landing/deployment selection uses the merged
+helpers' millisecond host-clock contract.
 
 An `exact:false` record does not invalidate healthy pins: a present pin is used
 with `exact` fidelity and `record` basis (`record-cursor` for Moltnet), unless its
@@ -487,8 +500,15 @@ and explicit overrides can succeed; everything else refuses.
 
 Git resources select a full 40- or 64-hex declared
 commit first (`exact`, `pinned`), otherwise the matching record's resource
-commit (`exact`, `record`). Otherwise they walk the declared selector's
-first-parent history and choose its newest commit with committer time `<= effectiveAt`
+commit (`exact`, `record`). With no usable moment pin, consult the imported
+deployment log at `effectiveAt` using `deployResourcesAt`; use the selected commit
+with `basis: deploy-log`. Fidelity is `exact` only when `activation_exact` is true
+and `exact` is not false; inexact activation boundaries and inclusive rollback
+intervals MUST remain `approximate`, with the activation/rollback reason in notes.
+The merged helper excludes a rolled-back candidate after its interval and restores
+the predecessor. A pin that is present but unavailable in the repository refuses.
+Only an absent deployment pin falls back to the declared selector's
+first-parent history, choosing its newest commit with committer time `<= effectiveAt`
 (`approximate`, `selector-at`); an absent selector means `HEAD`. Commit dates
 do not establish when a commit reached a branch or tag, so this fallback cannot
 prove historical ref membership. A missing eligible commit refuses.
@@ -504,13 +524,17 @@ check also rejects any reachable ancestor with author or committer time after
 `effectiveAt`. Bundle `build.files` extracts `files.root` at the selected commit and honors
 `exclude`. `build.dependencies` and `build.generated` retain their source
 directory or declared inputs at that commit and report `build: deferred`;
-trial preparation owns builds. Bundle output MAY be a plain tree. A record pins only its bundle SHA-256.
+trial preparation owns builds. Bundle output MAY be a plain tree. A moment record
+or, when absent, the deployment log pins a bundle by SHA-256 only.
 Exact bundle output requires `bundles/<sha256 hex>.tar` whose actual digest
-matches that pin. Validate the archive before extraction: escaping paths,
+matches that pin (`record` or `deploy-log` basis). A deploy-log digest retains
+the activation/rollback fidelity above even when its bytes verify. A present
+deployment bundle pin without a matching archive refuses; it MUST NOT silently
+select a different source commit. Validate the archive before extraction: escaping paths,
 symlinks, hard links, devices, and other special entries refuse. Acceptance
 reopens the archive and compares output paths, bytes, and executable modes.
-Absent or digest-mismatched archives fall back to source reconstruction where
-available, always `approximate` even with a pinned source commit; notes explain
+For a moment-record bundle pin, absent or digest-mismatched archives fall back to
+source reconstruction where available, always `approximate` even with a pinned source commit; notes explain
 that the recorded SHA-256 could not be reproduced. A prebuilt `source` tar has
 no historical source fallback and refuses unless overridden.
 Generated inputs spanning multiple repositories or independently pinned input
@@ -619,16 +643,16 @@ every listed wake message MUST survive the cut; otherwise refuse. With no pin,
 cut at `effectiveAt` (`approximate`, `created-at-cut`). Missing stores refuse
 unless overridden; UUIDs never order messages.
 
-Unfed volumes consume full point-in-time Daimon trees, not deltas or object
-chains. Rows in `recording/<agent slug>/wake-moments.jsonl` use
-`noopolis.daimon.wake-moment.v1` with `agent_id`, `execution_id`, `started_at`,
-`deliveries`, `snapshots:[{id,snapshot,files,copied,linked,skipped}]`, and optional
-`error`. Snapshot names are compact `started_at` plus execution ID (for example
-`20261009T082031123Z-execution-17`), but time selection MUST use the row's
-`started_at`, not that prefix. A record names its exact snapshot (`exact`,
-`record`); otherwise use the newest complete snapshot row `<= effectiveAt`
-(`approximate`, `snapshot-at`). `.partial` directories never count. Missing
-named history or no complete eligible snapshot refuses.
+Unfed volumes consume the Daimon wake-moment contract required by
+[Moment record](#moment-record), including its nonempty deliveries, snapshot name
+constraints, and `.complete` publication marker. Read rows with the shared recording
+parser. Trees are full point-in-time copies; time selection MUST use row `started_at`,
+not the snapshot name. A record names its exact snapshot (`exact`, `record`);
+otherwise use the newest complete snapshot row `<= effectiveAt`
+(`approximate`, `snapshot-at`). Both the tree and manifest MUST have a published
+sibling `<snapshot id>.complete` marker. `.partial` directories never count.
+Missing named history or no complete eligible snapshot refuses. Independent
+acceptance rechecks the marker, manifest and matching wake row.
 
 The sibling manifest contains `{version,id,snapshot,started_at,sourcePath,entries}`.
 Entries map relative paths to `{type,mode,size,source,target?}`: type is file,

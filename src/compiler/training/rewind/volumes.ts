@@ -1,25 +1,16 @@
 import { lstat, mkdir } from "node:fs/promises";
-import { z } from "zod";
-import { trainingInstantSchema } from "../../../manifest/index.js";
 import { safeSegment, type History } from "./history.js";
 import { compareInstants } from "./instant.js";
 import { copySnapshotTree, readSnapshotManifest, snapshotHistoryPath, type SnapshotManifest } from "./snapshotManifest.js";
 import type { InputContext, InputResult } from "./types.js";
 
-const text = z.string().min(1), count = z.number().int().nonnegative();
-export const wakeSnapshotRowSchema = z.object({ version: z.literal("noopolis.daimon.wake-moment.v1"),
-  agent_id: text, execution_id: text, started_at: trainingInstantSchema,
-  deliveries: z.array(z.object({ acceptance_id: text, delivery_id: text, kind: text, occurred_at: trainingInstantSchema }).strict()),
-  snapshots: z.array(z.object({ id: text, snapshot: text, files: count, copied: count, linked: count, skipped: count }).strict()),
-  error: text.optional() }).strict();
-export type WakeSnapshotRow = z.infer<typeof wakeSnapshotRowSchema>;
 export interface SelectedVolumeSnapshot { snapshot: string; startedAt: string; manifest: SnapshotManifest; relative: string }
 
 /** A published row plus retained directory and manifest is complete; never infer time from its name. */
 export const selectVolumeSnapshot = async (history: History, agentSlug: string, agentId: string, id: string,
   at: string, recordId?: string): Promise<SelectedVolumeSnapshot> => {
   const rowsPath = `recording/${safeSegment(agentSlug)}/wake-moments.jsonl`;
-  const rows = await history.jsonl(rowsPath, wakeSnapshotRowSchema);
+  const rows = await history.wakeMoments(rowsPath);
   if (!rows) throw new Error(`Missing volume snapshot history ${rowsPath}`);
   const candidates = rows.flatMap((row, index) => row.agent_id !== agentId ? [] : row.snapshots.filter((entry) => entry.id === id)
     .map((entry) => ({ row, entry, index })))

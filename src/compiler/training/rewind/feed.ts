@@ -2,18 +2,17 @@ import { lstat, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises"
 import path from "node:path";
 import type { TeamWorkspaceResource } from "../../../manifest/index.js";
 import { digestDirectory, expandFeedPaths, expandFeedRefTemplate, FEED_IDENTITY_FILE, FEED_IDENTITY_VERSION,
-  type FeedIdentity } from "../../../volume/index.js";
+  feedLandingAt, isFeedLanding, type FeedIdentity, type FeedLanding } from "../../../volume/index.js";
 import { assertPreparedFeedRevision, feedGitRevision } from "./feedContent.js";
 import { resolveRecordedCommit } from "./recordedCommit.js";
-import { feedLandingSchema, readFeedLandingHistory, selectFeedLanding, type FeedLanding } from "./feedLandings.js";
 import { exportFeedGitTree } from "./gitArchive.js";
+import { safeCommittedPath } from "./gitTree.js";
 import { assertLocalGitRepository } from "./gitHistory.js";
 import { assertCommitNotFuture, commitAt, type SelectedCommit } from "./gitProcess.js";
 import { historyKey } from "./history.js";
 import { compareInstants } from "./instant.js";
 import type { InputContext, InputResult } from "./types.js";
 
-export { feedLandingSchema, selectFeedLanding, type FeedLanding } from "./feedLandings.js";
 type VolumeFeed = NonNullable<Extract<TeamWorkspaceResource, { kind: "volume" }>["feed"]>;
 
 const feedPaths = (paths: string[] | undefined): string[] | undefined => paths?.length ? paths : undefined;
@@ -54,7 +53,7 @@ export const materializeFeed = async (context: InputContext): Promise<InputResul
   }
   if (!history) throw new Error(`Missing feed history for ${input.id}; --history is required`);
   const key = `feeds/${historyKey(input)}`;
-  const log = await readFeedLandingHistory(history, key, input.id);
+  const log = await history.feedLandings(key, input.id);
   let landing: FeedLanding, repository: string | null = null, basis: string, ambiguous = false;
   const openRepository = async (): Promise<string> => {
     repository ??= await history.repository(`${key}/repo`);
@@ -63,6 +62,7 @@ export const materializeFeed = async (context: InputContext): Promise<InputResul
     return repository;
   };
   for (const [index, entry] of (log ?? []).entries()) {
+    for (const selected of entry.paths ?? []) safeCommittedPath(selected);
     if (!entry.commit) continue;
     try { await resolveRecordedCommit(await openRepository(), entry.commit); }
     catch (error) { throw new Error(`Invalid history ${key}/landings.jsonl:${index + 1}: ${error instanceof Error ? error.message : String(error)}`); }
@@ -75,18 +75,18 @@ export const materializeFeed = async (context: InputContext): Promise<InputResul
   const recordedCommit = record?.commit === undefined ? undefined : await resolveRecordedCommit(await openRepository(), record.commit);
   const matching = record ? log?.findLast((entry) => entry.revision === record.revision && treeName(entry.tree) === treeName(record.tree)
     && compareInstants(entry.landed_at, record.landedAt) === 0 && entry.commit === recordedCommit) : undefined;
-  const selected = record ? null : selectFeedLanding(log ?? [], context.at);
+  const selected = record ? null : feedLandingAt(log, context.at);
   if (record) {
     // A wake pin is authoritative even if a later attempt or landing changed the currently selected log row.
     landing = { version: "spawnfile.volume-feed-landing.v1", resource: input.id, volume: matching?.volume ?? resource.name!,
-      revision: record.revision, tree: record.tree, landed_at: record.landedAt,
+      revision: record.revision, tree: `trees/${treeName(record.tree)}`, landed_at: record.landedAt,
+      switching_at: matching?.switching_at ?? record.landedAt,
       source: matching?.source ?? (feed.git ? { kind: "git", repo: feed.git.repo } : { kind: "directory", directory: feed.directory! }),
       ...(recordedCommit ? { commit: recordedCommit, ref: record.ref ?? recordedCommit } : {}),
-      ...(record.paths ? { paths: record.paths } : {}), ...(record.period ? { period: record.period } : {}),
-      ...(matching?.switching_at ? { switching_at: matching.switching_at } : {}) };
+      ...(record.paths ? { paths: record.paths } : {}), ...(record.period ? { period: record.period } : {}) };
     basis = "record";
   } else if (selected) {
-    landing = selected.landing; ambiguous = selected.ambiguous; basis = "landing-log";
+    landing = selected; ambiguous = selected.ambiguous === true; basis = "landing-log";
   } else {
     // Refuse unknown historical behavior before touching any declared source or executing any command.
     if (!feed.git || feed.freeze || typeof feed.git.ref === "object" && feed.git.ref.command) await selectFeedCommit(feed, "", context.at);
@@ -95,11 +95,12 @@ export const materializeFeed = async (context: InputContext): Promise<InputResul
     const paths = expandFeedPaths(feed.git!.paths, new Date(context.at));
     const revision = feedGitRevision(repo, commit.commit, commit.ref, paths);
     landing = { version: "spawnfile.volume-feed-landing.v1", resource: input.id, volume: resource.name!,
-      revision, tree: revision, source: { kind: "git", repo: feed.git!.repo },
-      commit: commit.commit, ref: commit.ref, ...(paths ? { paths } : {}), landed_at: commit.instant };
+      revision, tree: `trees/${revision}`, source: { kind: "git", repo: feed.git!.repo },
+      commit: commit.commit, ref: commit.ref, ...(paths ? { paths } : {}), switching_at: commit.instant, landed_at: commit.instant };
     basis = "feed-rule-at";
   }
-  landing = feedLandingSchema.parse(landing);
+  if (!isFeedLanding(landing)) throw new Error(`Invalid feed landing for ${input.id}`);
+  for (const selected of landing.paths ?? []) safeCommittedPath(selected);
   // Selection owns this check: retained/prepared bytes must obey the same cutoff as extraction.
   if (landing.source.kind === "git" && (!landing.commit || !landing.ref)) throw new Error("Git feed landing must record its commit and ref");
   if (landing.commit) {
@@ -144,7 +145,8 @@ export const materializeFeed = async (context: InputContext): Promise<InputResul
   await symlink(identity.tree, path.join(context.destination, "current"));
   await writeFile(path.join(context.destination, FEED_IDENTITY_FILE), `${JSON.stringify(identity, null, 2)}\n`);
   return { fidelity: isPrepared || basis === "feed-rule-at" || ambiguous ? "approximate" : "exact", basis,
-    source: { revision: landing.revision, landedAt: landing.landed_at, ...(landing.switching_at ? { switchingAt: landing.switching_at } : {}),
+    source: { revision: landing.revision, landedAt: landing.landed_at,
+      ...(basis === "landing-log" || matching ? { switchingAt: landing.switching_at } : {}),
       ...(landing.commit ? { commit: landing.commit } : {}), ...(isPrepared ? { prepared: true } : {}) },
     instant: compareInstants(landing.landed_at, context.at) > 0 ? context.at : landing.landed_at,
     notes: [...(isPrepared ? ["prepared output not content-verifiable"] : []),

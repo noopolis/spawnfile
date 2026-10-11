@@ -1,4 +1,4 @@
-import { recordedCommitSchema } from "./contract.js";
+import { recordedCommitSchema } from "../../../recording/index.js";
 import { rewindGit } from "./gitProcess.js";
 
 /** Recorded identity names the commit object itself, never a selector or a peeled tag. */

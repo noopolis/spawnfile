@@ -6,7 +6,7 @@ import { loadTrainingProject, resolveTrainingPlan } from "../plan/index.js";
 import { rewindGitEnvironment } from "./gitProcess.js";
 import { resolveFeedSource } from "../../../volume/feedSource.js";
 import { writeRecordedVolumeSnapshot } from "./snapshotFixtures.test-helper.js";
-import type { MomentRecord } from "./contract.js";
+import type { MomentRecord } from "../../../recording/index.js";
 import type { MemoryLedgerEvent } from "./memorySchemas.js";
 
 export const AT = "2026-10-09T08:20:31Z";
@@ -46,7 +46,7 @@ export const rewindFixture = async () => {
   testGit(root, ["clone", "--quiet", "--no-local", gitRepo, feedRepo]);
   const feedSource = resolveFeedSource({ kind: "git", repo: feedRepo, ref: commit, fetch: false });
   await jsonl(historyDir, "feeds/team%3Apublication/news/landings.jsonl", [{ version: "spawnfile.volume-feed-landing.v1", resource: "news", volume: "news", source: { kind: "git", repo: feedRepo }, revision: feedSource.revision,
-    tree: `trees/${feedSource.revision}`, commit, ref: "main", landed_at: BEFORE }]);
+    tree: `trees/${feedSource.revision}`, commit, ref: "main", switching_at: BEFORE, landed_at: BEFORE }]);
   await writeFile(path.join(gitRepo, "future.txt"), "secret after wake\n");
   testGit(gitRepo, ["add", "."]); testGit(gitRepo, ["commit", "--quiet", "-m", "future"], "2026-10-10T00:00:00Z");
   const futureCommit = testGit(gitRepo, ["rev-parse", "HEAD"]);

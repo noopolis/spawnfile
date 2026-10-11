@@ -1,6 +1,7 @@
 import type { MemoryBank, TeamNetwork, TeamWorkspaceResource } from "../../../manifest/index.js";
 import type { ResolvedMemoryBank } from "../../types.js";
-import type { MomentRecord, MaterializedInput } from "./contract.js";
+import type { MaterializedInput } from "./contract.js";
+import type { MomentRecord } from "../../../recording/index.js";
 import type { History } from "./history.js";
 
 export interface InputIdentity { section: "resources" | "memory" | "networks"; id: string; declaredBy: string }

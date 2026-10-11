@@ -1,4 +1,4 @@
-import type { MomentRecord } from "./contract.js";
+import type { MomentRecord } from "../../../recording/index.js";
 import type { InputIdentity, RewindInput } from "./types.js";
 
 const sections: Record<string, InputIdentity["section"]> = {

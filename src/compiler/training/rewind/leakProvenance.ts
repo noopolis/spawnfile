@@ -16,7 +16,7 @@ export const inspectInputProvenance = async (
 ): Promise<void> => {
   const add = (detail: string) => addInputFinding(report, input, "git-object", detail);
   try {
-    if (input.kind === "bundle" && input.basis === "record" && input.source.sha256) {
+    if (input.kind === "bundle" && (input.basis === "record" || input.basis === "deploy-log") && input.source.sha256) {
       await verifyRecordedBundle(await openHistory(historyDir), input.source.sha256, await diskPath(root, input.path!));
       return;
     }

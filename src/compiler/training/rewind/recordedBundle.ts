@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { lstat, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { validateWorkspaceBundleTar } from "../../workspaceBundleArtifacts.js";
-import { recordedSha256Schema } from "./contract.js";
+import { recordedSha256Schema } from "../../../recording/index.js";
 import { extractBundleBytes } from "./gitTree.js";
 import type { History } from "./history.js";
 

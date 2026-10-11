@@ -3,7 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openHistory } from "./history.js";
-import { momentRecordSchema, type LeakCheck, type MaterializedInput } from "./contract.js";
+import { type LeakCheck, type MaterializedInput } from "./contract.js";
+import { momentRecordSchema } from "../../../recording/index.js";
 import { inspectVolumeBundle } from "./leakInputs.js";
 import { writeRecordedVolumeSnapshot } from "./snapshotFixtures.test-helper.js";
 import type { InputContext } from "./types.js";
@@ -29,6 +30,26 @@ const report = (): LeakCheck => ({ version: "spawnfile.leak-check.v1", at, ok: f
   checked: { files: 0, gitObjects: 0, memoryEvents: 0, moltnetMessages: 0, moltnetEvents: 0, snapshots: 0 }, findings: [] });
 
 describe("unfed recorded volume trees", () => {
+  it("requires the merged completion marker in both selection and independent acceptance", async () => {
+    const { root, context, snapshot } = await fixtures();
+    const saved = await snapshot("20261009T090000000Z-completed", before, { data: "bytes" });
+    const result = await materializeVolume(context);
+    await rm(`${saved.directory}.complete`);
+    context.destination += "-incomplete";
+    await expect(materializeVolume(context)).rejects.toThrow("No complete volume snapshot");
+    const input: MaterializedInput = { section: "resources", id: "state", declaredBy: "team:org", kind: "volume", path: "out",
+      fidelity: result.fidelity, basis: result.basis, source: result.source, notes: [], refusal: null };
+    await expect(inspectVolumeBundle(root, input, report(), context.history)).rejects.toThrow("Snapshot tree or manifest is missing");
+  });
+
+  it("uses the merged row parser's nonempty delivery requirement", async () => {
+    const { context, snapshot } = await fixtures();
+    const saved = await snapshot("20261009T090000000Z-deliveries", before, { data: "bytes" });
+    const row = JSON.parse(await readFile(saved.rowsPath, "utf8")); row.deliveries = [];
+    await writeFile(saved.rowsPath, `${JSON.stringify(row)}\n`);
+    await expect(materializeVolume(context)).rejects.toThrow(/wake-moments.jsonl:1:/u);
+  });
+
   it("selects by inclusive row started_at, copies a full tree, and uses the named record exactly", async () => {
     const { context, snapshot } = await fixtures();
     await snapshot("20261009T080000000Z-first", before, { old: "old" });
@@ -47,14 +68,14 @@ describe("unfed recorded volume trees", () => {
 
   it("ignores incomplete and .partial trees and chooses the last row when instants tie", async () => {
     const { context, snapshot } = await fixtures();
-    await snapshot("first", before, { data: "first" });
-    await snapshot("tie", before, { data: "last" });
-    const incomplete = await snapshot("incomplete", at, { data: "unfinished" });
+    await snapshot("20261009T090000000Z-first", before, { data: "first" });
+    await snapshot("20261009T090000000Z-tie", before, { data: "last" });
+    const incomplete = await snapshot("20261009T090000000Z-incomplete", at, { data: "unfinished" });
     await rm(incomplete.manifestPath);
-    await snapshot("incoming.partial", at, { data: "partial" });
-    expect(await materializeVolume(context)).toMatchObject({ source: { snapshot: "tie" } });
+    await snapshot("20261009T090000000Z-incoming.partial", at, { data: "partial" });
+    expect(await materializeVolume(context)).toMatchObject({ source: { snapshot: "20261009T090000000Z-tie" } });
     expect(await readFile(path.join(context.destination, "data"), "utf8")).toBe("last");
-    context.record = record("incoming.partial"); context.destination += "-record";
+    context.record = record("20261009T090000000Z-incoming.partial"); context.destination += "-record";
     await expect(materializeVolume(context)).rejects.toThrow(/partial/i);
   });
 
@@ -67,16 +88,16 @@ describe("unfed recorded volume trees", () => {
   it("refuses missing history, missing rows, future-only snapshots, and absent named snapshots", async () => {
     const { context, snapshot } = await fixtures();
     await expect(materializeVolume(context)).rejects.toThrow("Missing volume snapshot history");
-    await snapshot("future", future);
+    await snapshot("20261009T090000000Z-future", future);
     await expect(materializeVolume(context)).rejects.toThrow("No complete volume snapshot");
-    context.record = record("missing");
-    await expect(materializeVolume(context)).rejects.toThrow("Recorded volume snapshot missing");
+    context.record = record("20261009T090000000Z-missing");
+    await expect(materializeVolume(context)).rejects.toThrow("Recorded volume snapshot 20261009T090000000Z-missing");
     context.history = undefined;
     await expect(materializeVolume(context)).rejects.toThrow("requires --history");
   });
 
   it("refuses invalid rows with line numbers and mismatched manifest identity", async () => {
-    const { context, snapshot } = await fixtures(), saved = await snapshot("one", before, { data: "bytes" });
+    const { context, snapshot } = await fixtures(), saved = await snapshot("20261009T090000000Z-one", before, { data: "bytes" });
     await writeFile(saved.rowsPath, `${await readFile(saved.rowsPath, "utf8")}{}\n`);
     await expect(materializeVolume(context)).rejects.toThrow("wake-moments.jsonl:2");
     await writeFile(saved.rowsPath, (await readFile(saved.rowsPath, "utf8")).split("\n")[0] + "\n");
@@ -85,7 +106,7 @@ describe("unfed recorded volume trees", () => {
   });
 
   it.each(["extra", "missing", "type", "size", "mode", "unsafe"])("refuses manifest %s mismatches", async (mutation) => {
-    const { context, snapshot } = await fixtures(), saved = await snapshot("one", before, { data: "bytes" });
+    const { context, snapshot } = await fixtures(), saved = await snapshot("20261009T090000000Z-one", before, { data: "bytes" });
     if (mutation === "extra") await writeFile(path.join(saved.directory, "extra"), "extra");
     if (mutation === "missing") await rm(path.join(saved.directory, "data"));
     if (mutation === "type") { await rm(path.join(saved.directory, "data")); await mkdir(path.join(saved.directory, "data")); }
@@ -104,7 +125,7 @@ describe("unfed recorded volume trees", () => {
   it("restores recorded directory modes without comparing nonportable directory sizes and verifies symlinks", async () => {
     const { context, root } = await fixtures();
     const saved = await writeRecordedVolumeSnapshot(root, { agentSlug: context.agentSlug!, agentId: context.agentId!, rootId: "state",
-      snapshot: "tree", startedAt: before, files: { "nested/data": "bytes" }, directories: { nested: 0o750 }, symlinks: { link: "nested/data" } });
+      snapshot: "20261009T090000000Z-tree", startedAt: before, files: { "nested/data": "bytes" }, directories: { nested: 0o750 }, symlinks: { link: "nested/data" } });
     const manifest = JSON.parse(await readFile(saved.manifestPath, "utf8"));
     manifest.entries.nested.size = "999999"; manifest.entries.nested.source.size = "999999";
     await writeFile(saved.manifestPath, JSON.stringify(manifest)); await chmod(path.join(saved.directory, "nested"), 0o700);
@@ -119,7 +140,7 @@ describe("unfed recorded volume trees", () => {
   it.each(["bytes", "mode", "extra", "missing", "target"])("independently rejects a bundle %s mutation", async (mutation) => {
     const { root, context } = await fixtures();
     await writeRecordedVolumeSnapshot(root, { agentSlug: context.agentSlug!, agentId: context.agentId!, rootId: "state",
-      snapshot: "one", startedAt: before, files: { data: "bytes", other: "other" }, symlinks: { link: "data" } });
+      snapshot: "20261009T090000000Z-one", startedAt: before, files: { data: "bytes", other: "other" }, symlinks: { link: "data" } });
     const result = await materializeVolume(context);
     if (mutation === "bytes") await writeFile(path.join(context.destination, "data"), "wrong");
     if (mutation === "mode") await chmod(path.join(context.destination, "data"), 0o600);

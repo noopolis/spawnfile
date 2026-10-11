@@ -38,8 +38,8 @@ const fixture = async (kind: Kind) => {
     const directory = path.dirname(repository), retained = path.join(directory, "trees", revision);
     await mkdir(retained, { recursive: true });
     await writeFile(path.join(retained, "data.txt"), "past bytes\n");
-    await writeFile(path.join(directory, "landings.jsonl"), JSON.stringify({ version: "spawnfile.volume-feed-landing.v1", resource: "source", volume: "source", source: { kind: "git", repo: repository }, revision, tree: revision, commit: selected,
-      ref: "main", landed_at: BEFORE }) + "\n");
+    await writeFile(path.join(directory, "landings.jsonl"), JSON.stringify({ version: "spawnfile.volume-feed-landing.v1", resource: "source", volume: "source", source: { kind: "git", repo: repository }, revision, tree: `trees/${revision}`, commit: selected,
+      ref: "main", switching_at: BEFORE, landed_at: BEFORE }) + "\n");
     await stampTree(retained, BEFORE, AT);
   };
   const stage = async () => {

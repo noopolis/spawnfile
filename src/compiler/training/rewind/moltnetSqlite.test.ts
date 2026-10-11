@@ -4,7 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { materializeMoltnet } from "./moltnet.js";
-import { momentRecordSchema } from "./contract.js";
+import { momentRecordSchema } from "../../../recording/index.js";
 import { openHistory } from "./history.js";
 import { inspectMoltnetSqlite } from "./moltnetSqlite.js";
 import type { InputContext } from "./types.js";
