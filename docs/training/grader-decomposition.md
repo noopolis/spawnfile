@@ -236,6 +236,31 @@ outside this ready-check denominator. Synthetic variants cannot dilute that popu
 adjudication is reported separately; only affected checks are evaluated for a
 variant, and duplicate variant check digests count once in that diagnostic.
 
+### Known limits of lexically validated traps
+
+Independent validation proves that the mutation happened and its lexical
+preconditions hold; it cannot prove non-entailment. An operator-declared
+known-answer label can therefore still be wrong:
+
+- **Citation swap:** a replacement row can paraphrase the claim without sharing
+  a content word. “The physician resigned” remains supported by “The doctor quit.”
+- **Negation:** inserting a negator inside an uncertainty frame need not change
+  support. “Whether Dr. Vale is paid remains unknown” and “Whether Dr. Vale is not
+  paid remains unknown” can both be supported by the same uncertainty. A cited
+  row can also contain both the affirmative sentence and its negated counterpart;
+  finding the affirmative counterpart does not rule out support for the mutation.
+- **Entity substitution:** universally quantified evidence can support a person
+  absent from the row. “Every person is paid ten dollars; Dr. Vale is a person”
+  can still support “Dr. Reed is paid ten dollars” after replacing Dr. Vale.
+- **Number substitution:** bounds or comparisons can preserve support despite a
+  changed number. Evidence of exactly 10 dollars supports both “a sum not
+  exceeding 10 dollars” and “a sum not exceeding 11 dollars.” Operators should
+  declare number substitution `known_answer: false`.
+
+The 95% thresholds absorb a small label-noise rate, so a gate result is a
+statistical signal, not a proof. Operators should keep only trap kinds whose
+failure modes are rare in their corpus and report diagnostic kinds separately.
+
 Number/entity, negation, citation, redundancy and formatting mutations alter output
 content; evidence remains untouched. Embedded variant decompositions address the
 serialized `output` payload as `embedded-output.json`; this is bundle metadata, not a separate
