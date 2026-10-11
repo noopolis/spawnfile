@@ -4,17 +4,21 @@
 - `history.ts` is the only boundary for reading history files, logs and retained bytes; every path must be lexically and physically contained.
 - `select.ts` and `inputs.ts` resolve records, examples and effective inputs without I/O.
 - `types.ts` defines input identities, declarations and per-kind contexts/results; `index.ts` exports the public materializer and pure selection/cut helpers.
-- `git.ts` owns resources; `gitProcess.ts`, `gitHistory.ts`, `gitTree.ts`, and `gitArchive.ts` isolate argv execution, containment, blob trees, and feed archives.
+- `git.ts` owns resources; `gitProcess.ts`, `gitHistory.ts`, `gitTree.ts`, and `gitArchive.ts` isolate argv execution, containment, blob trees, and raw feed trees; `recordedCommit.ts` verifies full recorded IDs name commit objects without peeling.
 - `feed.ts`, `memory.ts`, and `volumes.ts` own their cuts and history-log schemas; `memorySchemas.ts` validates native ledger events.
 - `moltnet.ts` dispatches stores; `moltnetJson.ts`, `moltnetSqlite.ts`, `moltnetSqliteData.ts`, and `moltnetSchemas.ts` own snapshots, copied databases, SQL decoding, and strict native shapes.
 - `materialize.ts` stages all inputs and publishes only after the independent disk reader in `leakCheck.ts` accepts them.
-- `leakFiles.ts`, `leakGit.ts`, and `leakInputs.ts` inspect disk metadata, every git object, and native payloads independently of materialization decisions.
+- `leakFiles.ts`, `leakGit.ts`, and `leakInputs.ts` inspect disk metadata, every git object, and native payloads independently of materialization decisions. Discover unexpected `.git` directories/gitfiles and bare repositories throughout every input; only the materialized git resource repository is allowed.
 - `instant.ts` compares parsed nanosecond instants; `timestamps.ts` stamps metadata without following symlinks.
 - `taskClock.ts` defines offset wall-clock environment only; timeouts remain real. libfaketime requires trial-owned LD_PRELOAD.
 - Adjacent tests use local temporary repositories and fixtures. Never use Docker, production hosts or network fetches.
 - `fixtures.test-helper.ts` and `git.test-helper.ts` build disposable real projects and repositories; package emission excludes them.
 - Selector-at git history is approximate: committer dates cannot prove when a commit reached a ref. Feed-rule approximation cannot reconstruct freeze holds.
 - Reuse P2 effective input identity resolution. No input may silently use present-day data.
-- Mneme's root API validates the cut through a temporary rebuilt index, which is discarded: output contains neither derived indexes nor authority/audit state. Missing optional Mneme support refuses explicitly.
+- Feed/bundle extraction reads raw blobs, never `git archive` or attribute-driven transformations. Preserve symlinks for the escape check; refuse gitlinks. Recorded commits must be full lowercase 40/64-hex IDs verified as commit objects, including retained feeds.
+- Validate each non-overridden input's recorded commit IDs in every same-agent/same-wake candidate before accepting that input, even when pin precedence omits those fields from selection comparisons.
+- Validate memory JSONL structure locally; rewind never imports Mneme or ships an index/audit state. Checksum verification is skipped because persisted normalized events cannot recover the original JSON checksum input (`node_modules/@noopolis/mneme/dist/identity/ids.js:15-17`, `dist/store/store.js:249-274`).
+- Mneme 0.1.1's index is rebuilt from the ledger before every index read, not on open: `node_modules/@noopolis/mneme/dist/runtime/runtime.js:86-87` (embedding recall), `node_modules/@noopolis/mneme/dist/kernel/kernel.js:152-153` (search), and `:207-208` (locate). A ledger-only materialized bank is complete.
+- Inspect atime and mtime from metadata captured before payload reads, then restore captured access times without hiding existing future atimes.
 - Generated inputs spanning repositories refuse: this history contract carries one commit per resource. Never claim that one repository proves another repository's bytes.
 - Keep modules under 400 lines, use named/barrel exports, and never import Mneme internals.

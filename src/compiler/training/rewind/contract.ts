@@ -3,6 +3,9 @@ import { trainingInstantSchema } from "../../../manifest/index.js";
 
 const text = z.string().min(1);
 const count = z.number().int().nonnegative();
+export const recordedCommitSchema = z.string()
+  .regex(/^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/u, "Expected a full 40- or 64-hex commit object id")
+  .toLowerCase();
 export const inputIdentitySchema = z.object({
   section: z.enum(["resources", "memory", "networks"]), id: text, declaredBy: text
 }).strict();
@@ -20,8 +23,8 @@ export const momentRecordSchema = z.object({
   wake: z.object({ at: trainingInstantSchema, surface: z.literal("moltnet"), room: z.string(),
     from: z.string(), messageId: text.optional() }).strict(),
   recordedAt: trainingInstantSchema,
-  resources: unique(z.object({ id: text, kind: z.enum(["git", "bundle"]), commit: text }).strict(), (r) => r.id),
-  feeds: unique(z.object({ id: text, revision: text, tree: text, commit: text,
+  resources: unique(z.object({ id: text, kind: z.enum(["git", "bundle"]), commit: recordedCommitSchema }).strict(), (r) => r.id),
+  feeds: unique(z.object({ id: text, revision: text, tree: text, commit: recordedCommitSchema,
     paths: z.array(text), landedAt: trainingInstantSchema }).strict(), (r) => r.id),
   memory: unique(z.object({ id: text, declaredBy: text, seq: count, generation: count }).strict(),
     (r) => JSON.stringify([r.declaredBy, r.id])),

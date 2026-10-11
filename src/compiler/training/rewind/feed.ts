@@ -4,6 +4,8 @@ import { z } from "zod";
 import { trainingInstantSchema, type TeamWorkspaceResource } from "../../../manifest/index.js";
 import { expandFeedPaths, expandFeedRefTemplate, FEED_IDENTITY_FILE, FEED_IDENTITY_VERSION,
   resolveFeedSource, type FeedExec, type FeedIdentity } from "../../../volume/index.js";
+import { recordedCommitSchema } from "./contract.js";
+import { resolveRecordedCommit } from "./recordedCommit.js";
 import { exportFeedGitTree } from "./gitArchive.js";
 import { assertLocalGitRepository } from "./gitHistory.js";
 import { assertCommitNotFuture, commitAt, rewindGitSync, type SelectedCommit } from "./gitProcess.js";
@@ -18,7 +20,7 @@ const plainPath = z.string().min(1).refine((value) => !value.startsWith("/") && 
   && !value.split("/").some((segment) => !segment || segment === "." || segment === ".." || segment.toLowerCase() === ".git"), "Expected a plain tree-relative path");
 export const feedLandingSchema = z.object({
   revision, tree: z.string().regex(/^(?:trees\/)?[a-f0-9]{64}(?:\.[1-9][0-9]*)?$/u),
-  commit: z.string().min(1).nullable(), ref: z.string().min(1).nullable(), paths: z.array(plainPath).nullable(),
+  commit: recordedCommitSchema.nullable(), ref: z.string().min(1).nullable(), paths: z.array(plainPath).nullable(),
   landedAt: trainingInstantSchema
 }).strict().superRefine((value, context) => {
   if (!value.tree.replace(/^trees\//u, "").startsWith(value.revision)) context.addIssue({ code: "custom", message: "Landing tree must belong to its revision" });
@@ -81,16 +83,20 @@ export const materializeFeed = async (context: InputContext): Promise<InputResul
     repository ??= await history.repository(`${key}/repo`);
     if (!repository) throw new Error(`Missing feed source repository for ${input.id}`);
     await assertLocalGitRepository(repository, history);
-    const gitDirectory = (rewindGitSync(repository, ["rev-parse", "--absolute-git-dir"])).toString().trim();
-    if (await history.text(path.relative(history.root, path.join(gitDirectory, "info/attributes")))) throw new Error("Feed archive cannot reproduce unrecorded info/attributes; retain the landed tree");
     return repository;
   };
+  for (const candidate of context.candidateRecords ?? []) {
+    const entry = candidate.feeds.find((record) => record.id === input.id);
+    if (entry) await resolveRecordedCommit(await openRepository(), entry.commit);
+  }
+  const record = context.record?.feeds.find((entry) => entry.id === input.id);
+  const recordedCommit = record ? await resolveRecordedCommit(await openRepository(), record.commit) : null;
   if (log) {
+    for (const entry of log) if (entry.commit) await resolveRecordedCommit(await openRepository(), entry.commit);
     const selected = selectFeedLanding(log, context.at);
     if (!selected) throw new Error(`No feed landing exists at or before ${context.at}`);
     landing = selected;
-    const record = context.record?.feeds.find((entry) => entry.id === input.id);
-    if (record && (record.revision !== landing.revision || record.tree !== landing.tree || record.commit !== landing.commit
+    if (record && (record.revision !== landing.revision || record.tree !== landing.tree || recordedCommit !== landing.commit
       || JSON.stringify(feedPaths(record.paths)) !== JSON.stringify(feedPaths(landing.paths)) || compareInstants(record.landedAt, landing.landedAt) !== 0)) {
       throw new Error(`Moment feed ${input.id} disagrees with its landing log`);
     }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { TeamWorkspaceResource } from "../../../manifest/index.js";
 import { BundleTarWriter } from "../../workspaceBundleTar.js";
@@ -47,7 +47,6 @@ describe("git rewind", () => {
     const { repository, past, context } = await fixture();
     context.history = undefined;
     context.input.declaration = { id: "archive", kind: "git", mode: "readonly", mount: "./archive", url: repository, ref: past.toUpperCase() };
-    context.record = { ...testMomentRecord(), resources: [{ id: "archive", kind: "bundle", commit: "not-the-pin" }] };
     vi.stubEnv("GIT_DIR", "/does/not/exist");
     vi.stubEnv("GIT_CONFIG_COUNT", "1"); vi.stubEnv("GIT_CONFIG_KEY_0", "core.worktree"); vi.stubEnv("GIT_CONFIG_VALUE_0", "/elsewhere");
     expect(await materializeGit(context)).toMatchObject({ fidelity: "exact", basis: "pinned", source: { commit: past } });
@@ -135,15 +134,18 @@ describe("git rewind", () => {
     await expect(materializeGit(context)).rejects.toThrow("multiple git repositories");
   });
 
-  it("preserves the compiler's bundle symlink refusal after applying exclusions", async () => {
+  it("recreates bundle symlinks and applies declared exclusions", async () => {
     const { repository, context } = await fixture();
     await symlink("package.json", path.join(repository, "package/link"));
     const ref = await commitTestGit(repository, {}, "2026-10-09T08:10:00Z");
     context.input.declaration = { id: "archive", kind: "bundle", mode: "readonly", mount: "./archive", build: { files: { root: "package", ref } } };
-    await expect(materializeGit(context)).rejects.toThrow("Bundle input is a symlink");
+    expect(await materializeGit(context)).toMatchObject({ fidelity: "exact" });
+    expect(await readlink(path.join(context.destination, "link"))).toBe("package.json");
+    expect(await readFile(path.join(context.destination, "link"), "utf8")).toBe("{}\n");
     await rm(context.destination, { recursive: true, force: true });
     context.input.declaration.build!.files!.exclude = ["link"];
     expect(await materializeGit(context)).toMatchObject({ fidelity: "exact" });
+    expect(await readdir(context.destination)).not.toContain("link");
   });
 
   it("extracts a validated local prebuilt override", async () => {

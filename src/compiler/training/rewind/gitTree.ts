@@ -13,7 +13,18 @@ export const safeCommittedPath = (value: string): string => {
   return value;
 };
 
-export interface ExportTreeOptions { root?: string; exclude?: readonly string[]; paths?: readonly string[]; prefix?: string; mergeIdentical?: boolean; refuseSymlinks?: boolean }
+/** Never traverse a symlink left by an earlier generated input while merging trees. */
+const parentDirectory = async (root: string, relative: string): Promise<void> => {
+  let directory = root;
+  for (const segment of relative.split("/").slice(0, -1)) {
+    directory = path.join(directory, segment);
+    const existing = await lstat(directory).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
+    if (existing && !existing.isDirectory()) throw new Error(`Committed entry traverses a non-directory: ${relative}`);
+    if (!existing) await mkdir(directory);
+  }
+};
+
+export interface ExportTreeOptions { root?: string; exclude?: readonly string[]; paths?: readonly string[]; prefix?: string; mergeIdentical?: boolean }
 
 /** Materialize blobs by object id, without invoking archive attributes, filters or extraction tools. */
 export const exportGitTree = async (repo: string, commit: string, destination: string, options: ExportTreeOptions = {}): Promise<void> => {
@@ -28,10 +39,9 @@ export const exportGitTree = async (repo: string, commit: string, destination: s
     const tab = entry.indexOf("\t"), name = safeCommittedPath(entry.slice(tab + 1));
     const [mode, kind, oid] = entry.slice(0, tab).split(" ");
     if (excluded(name) || (options.paths && !options.paths.some((selected) => name === selected || name.startsWith(`${selected}/`)))) continue;
-    if (options.refuseSymlinks && mode === "120000") throw new Error(`Bundle input is a symlink; exclude it or replace it with a file: ${name}`);
     if (kind !== "blob" || !["100644", "100755", "120000"].includes(mode!)) throw new Error(`Committed path ${name} is not a supported file or symlink (submodules need their own history)`);
     const target = path.join(destination, prefix, name), bytes = await rewindGit(repo, ["cat-file", "blob", oid!]);
-    await mkdir(path.dirname(target), { recursive: true });
+    await parentDirectory(destination, [prefix, name].filter(Boolean).join("/"));
     if (options.mergeIdentical) {
       const present = await lstat(target).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
       if (present) {

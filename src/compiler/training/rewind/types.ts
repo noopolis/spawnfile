@@ -14,6 +14,7 @@ export interface InputContext {
   input: RewindInput;
   at: string;
   record: MomentRecord | null;
+  candidateRecords?: readonly MomentRecord[];
   history: History | undefined;
   destination: string;
 }

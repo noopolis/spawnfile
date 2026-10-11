@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, readdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { lstat, lutimes, mkdir, readFile, readdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanTrainingProjects } from "../plan/fixtures.test-helper.js";
@@ -22,6 +22,11 @@ const cases: Array<[string, LeakFinding["class"], Mutation]> = [
   ["future file mtime", "file-time", async (fixture) => { await writeFile(path.join(fixture.options.out, "future"), "future"); }],
   ["future directory mtime", "file-time", async (fixture) => { await mkdir(path.join(fixture.options.out, "new-directory")); }],
   ["future symlink mtime", "file-time", async (fixture) => { await symlink("moment.json", path.join(fixture.options.out, "new-link")); }],
+  ["future report atime", "file-time", async () => {}],
+  ["future report mtime", "file-time", async () => {}],
+  ["future file atime", "file-time", async (fixture) => { await writeFile(path.join(fixture.options.out, "future"), "future"); }],
+  ["future directory atime", "file-time", async (fixture) => { await mkdir(path.join(fixture.options.out, "new-directory")); }],
+  ["future symlink atime", "file-time", async (fixture) => { await symlink("moment.json", path.join(fixture.options.out, "new-link")); }],
   ["extra unreachable future commit", "git-object", async (fixture, moment) => {
     const code = inputPath(fixture, moment, "git");
     const pack = await rewindGit(fixture.gitRepo, ["pack-objects", "--revs", "--stdout"], Buffer.from(`${fixture.futureCommit}\n`));
@@ -42,10 +47,12 @@ const cases: Array<[string, LeakFinding["class"], Mutation]> = [
     await writeFile(path.join(fixture.options.out, "moment.json"), JSON.stringify(moment));
   }],
   ["future memory event", "memory-event", async (fixture, moment) => {
-    await appendFile(path.join(inputPath(fixture, moment, "memory"), "memory/events.jsonl"), `${JSON.stringify(memoryEvent(2, FUTURE))}\n`);
+    const file = path.join(inputPath(fixture, moment, "memory"), "memory/events.jsonl");
+    const event = JSON.parse((await readFile(file, "utf8")).trim());
+    await writeFile(file, `${JSON.stringify({ ...event, createdAt: FUTURE })}\n`);
   }],
   ["memory seq gap", "memory-event", async (fixture, moment) => {
-    await appendFile(path.join(inputPath(fixture, moment, "memory"), "memory/events.jsonl"), `${JSON.stringify(memoryEvent(3))}\n`);
+    await writeFile(path.join(inputPath(fixture, moment, "memory"), "memory/events.jsonl"), `${JSON.stringify(memoryEvent(3))}\n`);
   }],
   ["memory audit state", "memory-event", async (fixture, moment) => {
     await writeFile(path.join(inputPath(fixture, moment, "memory"), "memory/index.sqlite"), "future derived state");
@@ -74,18 +81,54 @@ const cases: Array<[string, LeakFinding["class"], Mutation]> = [
   }]
 ];
 
+const intendedFinding = (name: string, fixture: Fixture, moment: MaterializedMoment): { path: string; detail: string | RegExp } => {
+  const relative = (kind: string) => moment.inputs.find((input) => input.kind === kind)!.path!;
+  if (name.startsWith("future ") && /[am]time$/u.test(name)) return {
+    path: name.includes("report") ? "moment.json" : name.includes("directory") ? "new-directory" : name.includes("symlink") ? "new-link" : "future",
+    detail: `${name.endsWith("atime") ? "Access" : "Modification"} time is later than the moment`
+  };
+  const findings: Record<string, { path: string; detail: string | RegExp }> = {
+    "extra unreachable future commit": { path: relative("git"), detail: `Object ${fixture.futureCommit} is not reachable from ${fixture.commit}` },
+    "extra tag": { path: relative("git"), detail: "Exactly one branch and HEAD must name the materialized commit" },
+    "extra remote": { path: relative("git"), detail: "Forbidden git configuration remote.leaked.url" },
+    "reachable commit future author only": { path: relative("git"), detail: /^Commit [a-f0-9]+ has a future author date$/u },
+    "reachable commit future committer only": { path: relative("git"), detail: /^Commit [a-f0-9]+ has a future committer date$/u },
+    "future memory event": { path: relative("memory"), detail: "Future memory event at line 1" },
+    "memory seq gap": { path: relative("memory"), detail: "Noncontiguous memory sequence at line 1" },
+    "memory audit state": { path: relative("memory"), detail: "Derived or audit memory state index.sqlite is forbidden" },
+    "future Moltnet message": { path: `${relative("moltnet")}/state.json`, detail: "Message future is later than the moment" },
+    "future Moltnet event": { path: `${relative("moltnet")}/state.json`, detail: "Attachment event future is later than the moment" },
+    "future Moltnet room": { path: `${relative("moltnet")}/state.json`, detail: "Room future is later than the moment" },
+    "escaping symlink": { path: "escape", detail: 'Unsafe symlink target "../outside"' },
+    "absolute symlink": { path: "escape", detail: `Unsafe symlink target ${JSON.stringify(fixture.root)}` },
+    "future dated path": { path: "edition-2026-10-11", detail: "Calendar date 2026-10-11 is later than the latest possible local date 2026-10-09" },
+    "tampered snapshot": { path: relative("volume"), detail: "Snapshot digest mismatch for saved.txt" },
+    "future feed landing": { path: relative("feed"), detail: "Feed landed_at is later than the moment" },
+    "feed current outside its volume": { path: relative("feed"), detail: "Feed current does not point to its tree inside the volume" }
+  };
+  return findings[name]!;
+};
+
 describe("independent disk leak check mutation guarantees", () => {
-  it.each(cases)("refuses %s with class %s", async (_name, expectedClass, mutate) => {
+  it.each(cases)("refuses %s with class %s", async (name, expectedClass, mutate) => {
     const fixture = await rewindFixture();
     const moment = await materializeTrainingMoment(fixture.options);
     expect(moment.status).toBe("materialized");
     await mutate(fixture, moment);
-    // Non-time violations must be detected from content even when their filesystem timestamps look old.
-    if (expectedClass !== "file-time") await stampTree(fixture.options.out, AT, AT);
-    else await utimes(path.join(fixture.options.out, "moment.json"), new Date(AT), new Date(AT));
+    const expected = intendedFinding(name, fixture, moment);
+    // Restore every parent and unrelated entry; time mutations change only the intended field on the target.
+    await stampTree(fixture.options.out, AT, AT);
+    if (expectedClass === "file-time") {
+      const target = path.join(fixture.options.out, expected.path);
+      const setTimes = (await lstat(target)).isSymbolicLink() ? lutimes : utimes;
+      await setTimes(target, new Date(name.endsWith("atime") ? FUTURE : AT), new Date(name.endsWith("mtime") ? FUTURE : AT));
+    }
     const check = await leakCheckTrainingMoment(fixture.options.out, { historyDir: fixture.historyDir });
     expect(check.ok).toBe(false);
-    expect(check.findings.map((finding) => finding.class)).toContain(expectedClass);
+    expect(check.findings).toContainEqual(expect.objectContaining({ class: expectedClass, path: expected.path,
+      detail: typeof expected.detail === "string" ? expected.detail : expect.stringMatching(expected.detail) }));
+    if (expectedClass === "file-time") expect(check.findings.filter((finding) => finding.class === "file-time"))
+      .toEqual([expect.objectContaining({ class: expectedClass, ...expected })]);
     const out = path.join(fixture.root, "rejected");
     const refused = await finalizeTrainingMoment(fixture.options.out, out, { historyDir: fixture.historyDir });
     expect(refused.status).toBe("refused");

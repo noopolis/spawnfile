@@ -1,4 +1,4 @@
-import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, utimes, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readdir, realpath, rename, rm, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { LoadedTrainingProject, TrainingPlan } from "../plan/index.js";
 import { materializedMomentSchema, type MaterializedInput, type MaterializedMoment, type MomentRecord } from "./contract.js";
@@ -6,10 +6,10 @@ import { materializeFeed } from "./feed.js";
 import { materializeGit } from "./git.js";
 import { historyKey, inside, openHistory, type History } from "./history.js";
 import { resolveRewindInputs } from "./inputs.js";
-import { leakCheckTrainingMoment, type LeakCheckOptions } from "./leakCheck.js";
+import { inspectTrainingMoment, type LeakCheckOptions } from "./leakCheck.js";
 import { materializeMemory } from "./memory.js";
 import { materializeMoltnet } from "./moltnet.js";
-import { selectMomentRecord } from "./select.js";
+import { matchingMomentRecords, selectMomentRecord } from "./select.js";
 import { createTaskClock } from "./taskClock.js";
 import { restoreAccessTimes, stampTree } from "./timestamps.js";
 import type { InputContext, InputResult, RewindInput } from "./types.js";
@@ -28,7 +28,8 @@ export const resolveTrainingMoment = (
   plan: TrainingPlan, project: LoadedTrainingProject, example: string, records: MomentRecord[] = []
 ) => {
   const resolved = resolveRewindInputs(plan, project, example);
-  return { ...resolved, record: selectMomentRecord(records, plan.agent.id, resolved.at,
+  const candidateRecords = matchingMomentRecords(records, plan.agent.id, resolved.at);
+  return { ...resolved, candidateRecords, record: selectMomentRecord(candidateRecords, plan.agent.id, resolved.at,
     resolved.inputs.filter((input) => !input.overridden)) };
 };
 
@@ -66,9 +67,9 @@ const discardPayload = async (staging: string, moment: MaterializedMoment): Prom
 
 /** A separately callable disk acceptance gate, also used to test deliberately broken producers. */
 export const finalizeTrainingMoment = async (staging: string, out: string, options: LeakCheckOptions = {}): Promise<MaterializedMoment> => {
-  const moment = materializedMomentSchema.parse(JSON.parse(await readFile(path.join(staging, "moment.json"), "utf8")));
-  if (moment.status === "materialized") {
-    const check = await leakCheckTrainingMoment(staging, options);
+  // Capture disk metadata before reading even moment.json; inspection preserves access times.
+  const { moment, check } = await inspectTrainingMoment(staging, options, true);
+  if (check) {
     moment.leakCheck = { ok: check.ok, findings: check.findings.length };
     if (!check.ok) {
       for (const finding of check.findings) {
@@ -105,8 +106,10 @@ export const materializeTrainingMoment = async (options: MaterializeTrainingMome
   const staging = await mkdtemp(path.join(path.dirname(out), `.${path.basename(out)}.rewind-`));
   try {
     let record: MomentRecord | null = null, recordError: string | undefined;
+    let candidateRecords: MomentRecord[] = [];
     try {
-      record = selectMomentRecord(await history?.records() ?? [], plan.agent.id, resolved.at,
+      candidateRecords = matchingMomentRecords(await history?.records() ?? [], plan.agent.id, resolved.at);
+      record = selectMomentRecord(candidateRecords, plan.agent.id, resolved.at,
         resolved.inputs.filter((input) => !input.overridden));
     } catch (error) { recordError = reason(error); }
     const moment: MaterializedMoment = {
@@ -121,7 +124,7 @@ export const materializeTrainingMoment = async (options: MaterializeTrainingMome
         if (!input.overridden && (historyError || recordError)) throw new Error(historyError ?? recordError);
         const relative = `${input.section === "networks" ? "moltnet" : input.section}/${historyKey(input)}`;
         const destination = path.join(staging, relative);
-        const result = await dispatch({ input, at: resolved.at, record, history, destination });
+        const result = await dispatch({ input, at: resolved.at, record, candidateRecords, history, destination });
         await stampTree(destination, result.instant, resolved.at);
         Object.assign(entry, { fidelity: result.fidelity, basis: result.basis, source: result.source,
           notes: result.notes, path: relative, ...(result.build ? { build: result.build } : {}) });

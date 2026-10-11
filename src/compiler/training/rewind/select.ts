@@ -32,11 +32,14 @@ const canonical = (value: unknown): string => JSON.stringify(value, (_key, item:
   item && typeof item === "object" && !Array.isArray(item)
     ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
 
+export const matchingMomentRecords = (records: readonly MomentRecord[], agent: string, at: string): MomentRecord[] =>
+  records.filter((record) => record.agent === agent && compareInstants(record.wake.at, at) === 0);
+
 /** Capture time and wake payload are not used to materialize data. Normalize actual used instants. */
 export const selectMomentRecord = (
   records: MomentRecord[], agent: string, at: string, inputs?: Array<InputIdentity | RewindInput>
 ): MomentRecord | null => {
-  const matches = records.filter((record) => record.agent === agent && compareInstants(record.wake.at, at) === 0);
+  const matches = matchingMomentRecords(records, agent, at);
   if (!matches.length) return null;
   const includes = (section: InputIdentity["section"], id: string, declaredBy?: string, field?: "resources" | "feeds" | "volumes"): boolean =>
     !inputs || inputs.some((input) => {

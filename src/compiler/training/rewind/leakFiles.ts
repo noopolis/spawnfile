@@ -1,4 +1,5 @@
-import { lstat, readdir, readlink, realpath } from "node:fs/promises";
+import type { BigIntStats } from "node:fs";
+import { lstat, lutimes, readdir, readlink, realpath, utimes } from "node:fs/promises";
 import path from "node:path";
 import { inside } from "./history.js";
 import { instantNanos } from "./instant.js";
@@ -14,20 +15,52 @@ export const diskPath = async (root: string, relative: string): Promise<string> 
   return candidate;
 };
 
+/** Capture metadata before any inspection read can advance an entry's access time. */
+export const snapshotBundleFiles = async (root: string): Promise<Map<string, BigIntStats>> => {
+  const files = new Map<string, BigIntStats>();
+  const visit = async (file: string): Promise<void> => {
+    const stats = await lstat(file, { bigint: true });
+    files.set(file, stats);
+    if (stats.isDirectory()) for (const name of (await readdir(file)).sort()) await visit(path.join(file, name));
+  };
+  await visit(root);
+  return files;
+};
+
+/** Preserve the inspected access times, including future ones; never hide an existing violation. */
+export const restoreInspectedAccessTimes = async (files: Map<string, BigIntStats>): Promise<void> => {
+  for (const [file, stats] of [...files].reverse()) {
+    await (stats.isSymbolicLink() ? lutimes : utimes)(file, Number(stats.atimeNs / 1_000n) / 1_000_000, Number(stats.mtimeNs / 1_000n) / 1_000_000);
+  }
+};
+
 /** No symlinks are traversed. Inspection never reads a target outside the bundle. */
-export const inspectBundleFiles = async (root: string, inputs: MaterializedInput[], report: LeakCheck): Promise<void> => {
+export const inspectBundleFiles = async (root: string, inputs: MaterializedInput[], report: LeakCheck, files: Map<string, BigIntStats>): Promise<void> => {
   const at = instantNanos(report.at);
   const latestDate = new Date(Date.parse(report.at) + 14 * 3600_000).toISOString().slice(0, 10);
   const visit = async (file: string): Promise<void> => {
     const relative = path.relative(root, file).split(path.sep).join("/") || ".";
     const owner = inputAtPath(inputs, relative);
     const input = owner ? { section: owner.section, id: owner.id, declaredBy: owner.declaredBy } : null;
-    const add = (kind: "file-time" | "symlink-escape" | "dated-path", detail: string) => {
+    const add = (kind: "file-time" | "symlink-escape" | "dated-path" | "git-object", detail: string) => {
       report.findings.push({ input, class: kind, path: relative, detail });
     };
-    const stats = await lstat(file, { bigint: true });
+    const stats = files.get(file)!;
     report.checked.files++;
     if (stats.mtimeNs > at) add("file-time", "Modification time is later than the moment");
+    if (stats.atimeNs > at) add("file-time", "Access time is later than the moment");
+    const allowedGitDirectory = owner?.kind === "git" && relative === `${owner.path}/.git` && stats.isDirectory();
+    if (path.basename(file).toLowerCase() === ".git" && !allowedGitDirectory) {
+      add("git-object", "Unexpected .git repository metadata outside the materialized git resource repository");
+    }
+    const head = files.get(path.join(file, "HEAD"));
+    const objects = files.get(path.join(file, "objects"));
+    const refs = files.get(path.join(file, "refs"));
+    if (stats.isDirectory() && head && (head.isFile() || head.isSymbolicLink())
+      && objects && (objects.isDirectory() || objects.isSymbolicLink())
+      && refs && (refs.isDirectory() || refs.isSymbolicLink()) && !allowedGitDirectory) {
+      add("git-object", "Unexpected bare repository (HEAD, objects/, refs/) outside the materialized git resource repository");
+    }
     for (const match of path.basename(file).matchAll(/\d{4}-\d{2}-\d{2}/gu)) {
       const date = match[0];
       const parsed = Date.parse(`${date}T00:00:00Z`);
@@ -54,9 +87,7 @@ export const inspectBundleFiles = async (root: string, inputs: MaterializedInput
           target = path.dirname(target);
         }
       }
-    } else if (stats.isDirectory()) {
-      for (const name of (await readdir(file)).sort()) await visit(path.join(file, name));
-    } else if (!stats.isFile()) add("symlink-escape", "Special files are not allowed in a moment bundle");
+    } else if (!stats.isDirectory() && !stats.isFile()) add("symlink-escape", "Special files are not allowed in a moment bundle");
   };
-  await visit(root);
+  for (const file of files.keys()) await visit(file);
 };

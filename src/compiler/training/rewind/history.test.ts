@@ -81,7 +81,7 @@ describe("history containment and strict reads", () => {
   it.each([
     { ...record, unexpected: true },
     { ...record, wake: { ...record.wake, text: "not in the record format" } },
-    { ...record, resources: [{ id: "same", kind: "git", commit: "one" }, { id: "same", kind: "git", commit: "two" }] }
+    { ...record, resources: [{ id: "same", kind: "git", commit: "1".repeat(40) }, { id: "same", kind: "git", commit: "2".repeat(40) }] }
   ])("strictly validates record fields and identities", async (invalid) => {
     const { directory, history } = await fixture();
     await writeFile(path.join(directory, "invalid.jsonl"), `${JSON.stringify(invalid)}\n`);
