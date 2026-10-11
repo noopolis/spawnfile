@@ -4,7 +4,7 @@ import { readdir } from "node:fs/promises";
 import { z } from "zod";
 
 import {
-  readUtf8File
+  ensureDirectory, readUtf8File
 } from "../filesystem/index.js";
 import { deployResourcesSchema } from "./resourceLog.js";
 import { publishDeploymentRecord } from "./recordPublication.js";
@@ -294,10 +294,12 @@ export const listDeploymentRecords = async (
 
 export const writeDeploymentRecord = async (
   outputDirectory: string,
-  record: DeploymentRecord
+  record: DeploymentRecord,
+  previous?: DeploymentRecord | null
 ): Promise<string> => {
   const parsed = parseDeploymentRecord(record);
   const recordPath = resolveDeploymentRecordPath(outputDirectory, parsed.name);
-  await publishDeploymentRecord(recordPath, parsed);
+  await ensureDirectory(path.dirname(recordPath));
+  await publishDeploymentRecord(recordPath, parsed, undefined, previous);
   return recordPath;
 };

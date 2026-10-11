@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { z } from "zod";
 
-import { appendRetainedJsonl, entryAt, readRetainedJsonl } from "../filesystem/index.js";
+import { appendRetainedJsonl, entryAt, readRetainedJsonl, syncFileSync } from "../filesystem/index.js";
 import type { RecordingReport } from "../report/index.js";
 
 export const DEPLOY_RESOURCES_VERSION = "spawnfile.deploy-resources.v1";
@@ -18,17 +18,19 @@ export const deployResourcesSchema = z.object({
   version: z.literal(DEPLOY_RESOURCES_VERSION), deployment: text,
   deployment_id: text,
   activated_at: z.iso.datetime({ offset: true }), activation_exact: z.boolean(), activation_note: text.optional(),
+  rolled_back_at: z.iso.datetime({ offset: true }).optional(), exact: z.literal(false).optional(),
   deployed_at: z.iso.datetime({ offset: true }), report_sha256: digest,
   resources: z.array(resourceSchema)
-}).strict();
+}).strict().refine((value) => !value.rolled_back_at || (value.exact === false && !value.activation_exact
+  && Date.parse(value.rolled_back_at) >= Date.parse(value.activated_at)), "Invalid candidate interval");
 export type DeployResources = z.infer<typeof deployResourcesSchema>;
 
 export interface ResourceOwnership { agent_node_ids: string[]; declared_by?: string }
 /** Both reports carry the already-resolved pins; distribution omits private URLs. */
 export interface DeployResourceReport {
   recording?: RecordingReport;
-  workspace_git_resources?: Array<ResourceOwnership & { id: string; commit: string; sha256: string; url?: string }>;
-  workspace_bundles?: Array<ResourceOwnership & { id: string; sha256: string; origin?: string }>;
+  workspace_git_resources?: Array<Partial<ResourceOwnership> & { id: string; commit: string; sha256: string; url?: string }>;
+  workspace_bundles?: Array<Partial<ResourceOwnership> & { id: string; sha256: string; origin?: string }>;
 }
 export interface DeploymentActivation {
   activated_at?: string;
@@ -65,10 +67,27 @@ export const readDeployResources = (recordPath: string) =>
 export const deployResourcesAt = (
   entries: readonly DeployResources[], recordPath: string, instant: string | Date, agentNodeId?: string
 ): DeployResources | null => {
-  const entry = entryAt(entries.filter((value) => value.deployment_id === path.resolve(recordPath)), instant, (value) => value.activated_at);
+  const scoped = entries.filter((value) => value.deployment_id === path.resolve(recordPath));
+  const at = instant instanceof Date ? instant.getTime() : Date.parse(instant);
+  const candidate = entryAt(scoped.filter((value) => value.rolled_back_at && at <= Date.parse(value.rolled_back_at)), instant, (value) => value.activated_at);
+  const entry = candidate ?? entryAt(activeDeployments(scoped), instant, (value) => value.activated_at);
   return entry && agentNodeId !== undefined
     ? { ...entry, resources: entry.resources.filter((resource) => resource.agent_node_ids.includes(agentNodeId)) }
     : entry;
+};
+
+/** A published project candidate can subsequently fail readiness. Its successful-looking
+ * snapshot must not outlive its rollback interval, nor replace the restored predecessor. */
+const activeDeployments = (entries: readonly DeployResources[]): DeployResources[] => {
+  const rolledBack = new Set(entries.filter((entry) => entry.rolled_back_at)
+    .map((entry) => `${entry.activated_at}:${entry.report_sha256}`));
+  return entries.filter((entry) => !entry.rolled_back_at && !rolledBack.has(`${entry.activated_at}:${entry.report_sha256}`));
+};
+
+const retainDeployResources = (entries: readonly DeployResources[], cutoff: number): DeployResources[] => {
+  const predecessor = entryAt(activeDeployments(entries), new Date(cutoff), (entry) => entry.activated_at);
+  return entries.filter((entry) => entry === predecessor || Date.parse(entry.activated_at) > cutoff
+    || (entry.rolled_back_at !== undefined && Date.parse(entry.rolled_back_at) >= cutoff));
 };
 
 /** Caller holds the publication lock. Reconcile only against the LAST entry. */
@@ -76,8 +95,12 @@ export const ensureDeployResources = (recordPath: string, entry: DeployResources
   if (entry.deployment_id !== path.resolve(recordPath)) throw new Error("Deployment history identity does not match its record path");
   const history = readDeployResources(recordPath);
   if (history.errors.length) throw new Error(`Cannot reconcile deployment history: ${history.errors.join("; ")}`);
-  if (JSON.stringify(history.entries.at(-1)) === JSON.stringify(entry)) return;
+  if (JSON.stringify(history.entries.at(-1)) === JSON.stringify(entry)) {
+    syncFileSync(deployResourceLogPath(recordPath));
+    return;
+  }
   appendRetainedJsonl(deployResourceLogPath(recordPath), entry, {
-    keepMs, now: new Date(), timeOf: (value) => value.activated_at, isEntry: isDeployResources
+    keepMs, now: new Date(), timeOf: (value) => value.activated_at, isEntry: isDeployResources,
+    retain: retainDeployResources
   });
 };

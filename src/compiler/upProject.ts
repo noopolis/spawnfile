@@ -1,11 +1,12 @@
 import path from "node:path";
-import { rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 
 import {
   createOrganizationReadinessPending,
   createDockerDeploymentRecord,
   probeDockerOrganizationReadiness,
   readDeploymentRecord,
+  recordDeploymentRollback,
   resolveDockerDeploymentTarget,
   resolveDeploymentRecordPath,
   type DeploymentActivation,
@@ -248,6 +249,7 @@ export const upProject = async (
     } else {
       deploymentRecordPath = invocation.detach && invocation.deploymentName
         ? await writeDockerDeploymentRecordForRun({
+            previousRecord: resolvedOptions.previousRecord,
             ...activation,
             authProfileName: authProfile?.name ?? null,
             envFilePath: resolvedOptions.envFilePath,
@@ -280,6 +282,7 @@ export const upProject = async (
       const runMetadata = await executeDockerRunWithSupportCleanup(invocation, recordingRunner);
       deploymentRecordPath = invocation.detach && invocation.deploymentName
         ? await writeDockerDeploymentRecordForRun({
+            previousRecord: resolvedOptions.previousRecord,
             ...activation,
             authProfileName: authProfile?.name ?? null,
             envFilePath: resolvedOptions.envFilePath,
@@ -327,6 +330,10 @@ export const upProject = async (
           [...prefix, "container", "rm", "--force", reference],
           { timeout: 30_000 }
         );
+      }
+      if (buildResult.report.recording) {
+        await recordDeploymentRollback(deploymentRecordPath, record, buildResult.report,
+          record.resource_snapshot ? "" : await readFile(buildResult.reportPath, "utf8"), (options.now ?? (() => new Date()))().toISOString());
       }
       await rm(invocation.supportDirectory, { recursive: true, force: true });
       await rm(deploymentRecordPath, { force: true });

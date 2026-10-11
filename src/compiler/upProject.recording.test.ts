@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import os from "node:os";
@@ -9,12 +9,14 @@ import { readDeployResources, readDeploymentRecord, deployResourceLogPath, deplo
 import { compileProject } from "./compileProject.js";
 import { upProject } from "./upProject.js";
 
-const doubles = vi.hoisted(() => ({ build: vi.fn(), invocation: vi.fn() }));
+const doubles = vi.hoisted(() => ({ build: vi.fn(), invocation: vi.fn(), probe: vi.fn() }));
 vi.mock("./buildProject.js", async (original) => ({ ...await original<typeof import("./buildProject.js")>(), buildProject: doubles.build }));
 vi.mock("./runProjectAuth.js", async (original) => ({ ...await original<typeof import("./runProjectAuth.js")>(), resolveHostCliCredential: async () => null }));
 vi.mock("./runProject.js", async (original) => ({
-  ...await original<typeof import("./runProject.js")>(), createDockerRunInvocation: doubles.invocation,
-  resolveDetachedDeploymentOptions: async (_out: string, options: object) => options
+  ...await original<typeof import("./runProject.js")>(), createDockerRunInvocation: doubles.invocation
+}));
+vi.mock("../deployment/index.js", async (original) => ({
+  ...await original<typeof import("../deployment/index.js")>(), probeDockerOrganizationReadiness: doubles.probe
 }));
 let root: string;
 beforeEach(() => {
@@ -110,4 +112,48 @@ it("captures activation before a startup turn and marks project replacement over
   const replacement = await deploy(root, "30d", clock);
   const next = readDeployResources(replacement.deploymentRecordPath!).entries.at(-1)!;
   expect(next).toMatchObject({ activation_exact: false, activation_note: expect.stringContaining("overlap") });
+});
+
+
+it("records the startup interval of a project candidate rolled back after publication and readiness failure", async () => {
+  const predecessor = await deploy(root);
+  const before = readDeployResources(predecessor.deploymentRecordPath!).entries[0]!;
+  const compiled = await compileProject(root);
+  const support = path.join(root, "support"); mkdirSync(support);
+  doubles.build.mockResolvedValue({ ...compiled, imageTag: "example/news:v2", organizationReadinessEvidence: {
+    compileFingerprint: compiled.report.compile_fingerprint, compileVersion: "0.1", hasExternalMoltnet: false,
+    networks: [], organizationMembers: [], projectLabel: "news", version: "spawnfile.organization-ready-evidence.v1", worldBindings: null
+  } });
+  doubles.invocation.mockResolvedValue({ args: [], command: "docker", containerName: "news", detach: true, deploymentName: "default", dockerContext: "local",
+    envFilePath: path.join(support, "run.env"), supportDirectory: support, cwd: root });
+  let time = Date.now() + 1000, wake = "";
+  const now = () => new Date(++time);
+  doubles.probe.mockImplementation(async ({ record }) => { time++; return { ...record.organization_ready, state: "failed" }; });
+  const remove = vi.fn(async () => { time++; return { stdout: '\"unix:///var/run/docker.sock\"\n', stderr: "" }; });
+  await expect(upProject(root, { detach: true, deploymentName: "default", outputDirectory: compiled.outputDirectory, now,
+    runRunner: async () => { wake = now().toISOString(); return { containerId: "candidate", imageId: "i2" }; }, targetExecFile: remove
+  })).rejects.toThrow("rolled back");
+  expect(remove.mock.calls.length).toBeGreaterThan(1);
+  const { entries, errors } = readDeployResources(predecessor.deploymentRecordPath!);
+  expect(errors).toEqual([]);
+  const candidate = deployResourcesAt(entries, predecessor.deploymentRecordPath!, wake)!;
+  expect(candidate).toMatchObject({ activated_at: expect.any(String), rolled_back_at: expect.any(String), activation_exact: false, exact: false });
+  expect(Date.parse(candidate.activated_at)).toBeLessThan(Date.parse(wake));
+  expect(Date.parse(candidate.rolled_back_at!)).toBeGreaterThan(Date.parse(wake));
+  expect(deployResourcesAt(entries, predecessor.deploymentRecordPath!, new Date(time + 1))).toEqual(before);
+});
+
+
+it("uses the lifecycle predecessor read to reconcile history while switching project recording off", async () => {
+  const deployed = await deploy(root);
+  const pending = (await readDeploymentRecord(deployed.deploymentRecordPath!)).resource_snapshot!;
+  unlinkSync(deployResourceLogPath(deployed.deploymentRecordPath!));
+  writeFileSync(path.join(root, "Spawnfile"), JSON.stringify({ spawnfile_version: "0.1", kind: "agent", name: "writer", runtime: "openclaw" }));
+  const compiled = await compileProject(root);
+  doubles.build.mockResolvedValue({ ...compiled, imageTag: "example/news:v2", organizationReadinessEvidence: undefined });
+  await upProject(root, { detach: true, deploymentName: "default", outputDirectory: compiled.outputDirectory, dockerContext: "local",
+    runRunner: async () => ({ containerId: "new", imageId: "i2" }),
+    targetExecFile: async () => ({ stdout: '\"unix:///var/run/docker.sock\"\n', stderr: "" }) });
+  expect(readDeployResources(deployed.deploymentRecordPath!).entries).toEqual([pending]);
+  expect((await readDeploymentRecord(deployed.deploymentRecordPath!)).recording).toBeUndefined();
 });

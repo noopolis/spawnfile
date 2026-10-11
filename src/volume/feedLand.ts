@@ -159,7 +159,9 @@ export const landFeed = (
     name = retained;
   } else ({ name, resolved: landedSource } = stageAndLand(target, resolved, { exact, exec, log }));
   const revision = landedSource.revision;
-  const changed = pointCurrent(target.volume, feedTreeLink(name), { ops: runtime.ops ?? LINK_OPS, tmpDir: feedStagingDir(target) });
+  let switchingAt: string | undefined;
+  const changed = pointCurrent(target.volume, feedTreeLink(name), { ops: runtime.ops ?? LINK_OPS, tmpDir: feedStagingDir(target),
+    ...(target.record ? { beforeRename: () => { switchingAt = clock().toISOString(); } } : {}) });
   const now = started ?? clock();
   if (changed) log(`current -> ${feedTreeLink(name.slice(0, 12))}`);
   const manifest = readFeedManifest(target.stateDir, name) ?? buildFeedManifest(path.join(treesDirOf(target), name), name);
@@ -170,7 +172,8 @@ export const landFeed = (
   const identitySha = writeFeedIdentity(target.volume, identity, { owner: target.owner, tmpDir: feedStagingDir(target) });
   // Order is serving history: the serving tree is always last.
   let trees = [...(record?.trees ?? []).filter((entry) => entry !== name), name];
-  const write = (): FeedLandedRecord => publishFeedLanded(target, { heals, identity, identity_sha256: identitySha, ...(period ? { period } : {}), revision, tree: name, trees, version: FEED_LANDED_VERSION }, now);
+  let previous = record;
+  const write = (): FeedLandedRecord => previous = publishFeedLanded(target, { heals, identity, identity_sha256: identitySha, ...(period ? { period } : {}), revision, tree: name, trees, version: FEED_LANDED_VERSION }, now, previous, switchingAt);
   write();
   const gc = collectGarbage(target, trees, name, now);
   if (gc.removed.length) {

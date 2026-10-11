@@ -25,3 +25,5 @@ This folder is the only place that should know about raw filesystem mechanics un
 - Recording log callers hold their domain writer lock through append and pruning.
   Sync the directory after log creation and prune renames.
   Keep the newest state at/before the retention cutoff; preserve corrupt lines for reporting.
+  Interval-history callers may supply retention that also preserves the state restored
+  after a rollback; ordinary point histories retain the default cutoff predecessor.

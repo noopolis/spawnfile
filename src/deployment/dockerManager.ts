@@ -200,6 +200,7 @@ export const writeDockerDeploymentRecord = async (
   writeDeploymentRecord(input.outputDirectory, createDockerDeploymentRecord(input));
 
 export const writeDockerDeploymentRecordForRun = async (input: DeploymentActivation & {
+  previousRecord?: DeploymentRecord;
   authProfileName: string | null;
   envFilePath?: string;
   imageTag: string;
@@ -252,7 +253,7 @@ export const writeDockerDeploymentRecordForRun = async (input: DeploymentActivat
   const bound = input.report.recording
     ? bindDeploymentRecording(recordPath, record, input.report, await readUtf8File(path.join(input.outputDirectory, REPORT_FILENAME)))
     : record;
-  return writeDeploymentRecord(input.outputDirectory, bound);
+  return writeDeploymentRecord(input.outputDirectory, bound, input.previousRecord);
 };
 
 export interface ProbeDockerOrganizationReadinessInput {

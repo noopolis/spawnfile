@@ -300,7 +300,7 @@ export interface WorkspaceResourceOwnership {
 }
 
 /** One workspace bundle archive the compile staged, with the digest Spawnfile built or verified. */
-export interface CompileReportWorkspaceBundle extends WorkspaceResourceOwnership {
+export interface CompileReportWorkspaceBundle extends Partial<WorkspaceResourceOwnership> {
   cache_key?: string;
   content_bytes?: number;
   file_count?: number;
@@ -314,7 +314,7 @@ export interface CompileReportWorkspaceBundle extends WorkspaceResourceOwnership
 }
 
 /** A `fetch: build` git resource: the commit its selector resolved to and the archive cut from that commit. */
-export interface CompileReportWorkspaceGitResource extends WorkspaceResourceOwnership {
+export interface CompileReportWorkspaceGitResource extends Partial<WorkspaceResourceOwnership> {
   auth: "none" | "ssh_key" | "ssh_key_env";
   cache_key: string;
   commit: string;

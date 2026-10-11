@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -13,7 +13,7 @@ let home: string;
 beforeEach(() => { home = mkdtempSync(path.join(os.tmpdir(), "spawnfile-image-recording-")); vi.stubEnv("SPAWNFILE_HOME", home); });
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); rmSync(home, { recursive: true, force: true }); });
 
-it.each(["off", "on", "release", "log-failure"])("image up records pins for %s", async (mode) => {
+it.each(["off", "on", "release", "log-failure", "off-next"])("image up records pins for %s", async (mode) => {
   const pins = [{ id: "archive", agent_node_ids: ["agent:writer"], commit: "a".repeat(40), sha256: `sha256:${"b".repeat(64)}` }];
   const report = buildDistributionReport({
     envVariables: [], generatedAt: new Date().toISOString(), internalPorts: [], modelAuthMethods: {}, moltnetNetworks: [],
@@ -56,4 +56,13 @@ it.each(["off", "on", "release", "log-failure"])("image up records pins for %s",
   else expect(readDeployResources(resolveHomeRecordPath("news")).entries[0]!.resources).toEqual([
     { ...pins[0], kind: "git" }, { id: "tools", agent_node_ids: ["agent:writer"], kind: "bundle", sha256: `sha256:${"c".repeat(64)}`, origin: "prebuilt" }
   ]);
+  if (mode === "off-next") {
+    const pending = (await readHomeDeploymentRecord("news")).resource_snapshot!;
+    unlinkSync(path.join(state, "resource-log.jsonl"));
+    const { recording: _recording, workspace_git_resources: _git, workspace_bundles: _bundles, ...off } = report;
+    extract.mockResolvedValue({ report: off, compileFingerprint: off.compile_fingerprint });
+    await consumeImageUp("example/news:v2", { deploymentName: "news", dockerHost: "unix:///test-only.sock", runDocker });
+    expect(readDeployResources(resolveHomeRecordPath("news")).entries).toEqual([pending]);
+    expect((await readHomeDeploymentRecord("news")).recording).toBeUndefined();
+  }
 });

@@ -87,12 +87,12 @@ describe("workspace bundle resolution", () => {
     await writeFile(path.join(repo, "org/Spawnfile"), agentSpawnfile(prebuilt));
     const result = await compileProject(path.join(repo, "org"), { bundleCacheDirectory: cache, containerArchitecture: "amd64", outputDirectory: path.join(repo, "out-b") });
     const digest = `sha256:${createHash("sha256").update(await readFile(path.join(repo, "prebuilt.tar"))).digest("hex")}`;
-    expect(result.report.workspace_bundles).toEqual([{ id: "tools", origin: "prebuilt", sha256: digest, agent_node_ids: ["agent:analyst"], declared_by: "agent:analyst" }]);
+    expect(result.report.workspace_bundles).toEqual([{ id: "tools", origin: "prebuilt", sha256: digest }]);
     expect(await readdir(path.join(repo, "out-b/container/workspace-bundles"))).toEqual([`${digest.slice(7)}.tar`]);
 
     await writeFile(path.join(repo, "org/Spawnfile"), agentSpawnfile([...prebuilt, `  sha256: ${digest}`]));
     const pinned = await compileProject(path.join(repo, "org"), { bundleCacheDirectory: cache, containerArchitecture: "amd64", outputDirectory: path.join(repo, "out-c") });
-    expect(pinned.report.workspace_bundles).toEqual([{ id: "tools", origin: "prebuilt", sha256: digest, agent_node_ids: ["agent:analyst"], declared_by: "agent:analyst" }]);
+    expect(pinned.report.workspace_bundles).toEqual([{ id: "tools", origin: "prebuilt", sha256: digest }]);
   }, 60_000);
 
   it("never lets a built archive stand in for a pinned prebuilt tar with the same digest", async () => {

@@ -57,12 +57,16 @@ src/volume/
 - Landing history is enabled only for feeds consumed by a recording compiled agent. Its retention
   is the maximum consumer `record.keep` (default 30d); no recording means no log reads or writes.
   Append and fsync only after `landed.json` succeeds, including generations, retained-tree re-points,
-  link repairs and provenance/period adoption. Recording timestamps retain milliseconds at the change.
-  Before every host-record replacement, reconcile the predecessor against the last entry.
+  link repairs and provenance/period adoption. Sample `switching_at` immediately before the current
+  rename; `landed_at` stays the identity instant. Both include milliseconds. Lookup inside the
+  inclusive transition window returns the entry with `ambiguous: true`.
+  Before every host-record replacement, reconcile the already-read predecessor against the last entry.
   The host record embeds the landing source/keep so failed appends survive source changes.
   A clean refresh also seeds history when recording is enabled later. Preserve original
   instants; refuse replacement when reconciliation fails. File fsync and directory fsync
-  after rename must complete before log append; pruning syncs its rename directory.
+  after rename must complete before log append; a matching tail is reconciled only after fsync of
+  the log and its directory. Pruning syncs its rename directory. Recording off retains the original
+  host-record bytes and filesystem calls, except to reconcile a predecessor that recorded earlier.
   Keep the newest entry at or before the retention cutoff as the state at the window's start.
   Invalid JSONL lines are reported beside valid entries; readers never silently trust them.
 - A revision is decided before anything runs: with `include`/`prepare` it is composed from the

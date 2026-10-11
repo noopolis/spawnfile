@@ -5,6 +5,7 @@ export * from "./artifactsExportTypes.js";
 export * from "./privateArtifactsExport.js";
 export * from "./buildImageCacheStore.js";
 export * from "./candidateDiagnostics.js";
+export * from "./candidateRecording.js";
 export * from "./dockerLabels.js";
 export * from "./dockerInspect.js";
 export * from "./dockerLogs.js";

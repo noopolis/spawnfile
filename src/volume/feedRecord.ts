@@ -103,7 +103,14 @@ export const writeFeedLanded = (stateDir: string, record: FeedLandedRecord): Fee
   const findings = feedLandedFindings(record);
   if (findings.length) throw feedError(`refusing to write an invalid landed.json: ${findings.join("; ")}`);
   mkdirSync(stateDir, { mode: 0o700, recursive: true });
-  writeDurableFileSync(landedPath(stateDir), `${JSON.stringify(record, null, 2)}\n`);
+  const file = landedPath(stateDir), bytes = `${JSON.stringify(record, null, 2)}\n`;
+  if (record.recording) writeDurableFileSync(file, bytes);
+  else {
+    const tmp = `${file}.${process.pid}.tmp`;
+    rmSync(tmp, { force: true });
+    writeFileSync(tmp, bytes, { mode: 0o600 });
+    renameSync(tmp, file);
+  }
   return record;
 };
 

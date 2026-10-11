@@ -179,6 +179,8 @@ A later `recordedAt` MUST NOT advance a pin.
   MUST set the moment's `exact:false`; an overlapping predecessor can still run old pins.
 - `feeds` MUST use `{id, revision, tree, commit?, ref?, paths?, landedAt, period?}`
   from the landing entry in effect at `startedAt` for each consumed fed volume.
+  A wake inside the inclusive `[switching_at, landed_at]` transition window MUST
+  set `exact:false`; the helper returns that landing with `ambiguous:true`.
 - `memory` MUST use `{id, declaredBy, seq}` for each accessible bank. `seq` is the
   highest Mneme ledger sequence whose `createdAt <= startedAt`; 0 means empty.
   `generation` is OPTIONAL and MUST be omitted while Mneme has no generations.
@@ -237,7 +239,9 @@ when recording is enabled later. Recorded host state retains the original source
 keep window so a changed source declaration cannot rewrite pending provenance.
 The entry MUST follow a successful `landed.json` write and contain:
 `{version:"spawnfile.volume-feed-landing.v1", resource, volume, revision, tree,
-source, commit?, ref?, paths?, landed_at, period?}`. `landed_at` MUST equal
+source, commit?, ref?, paths?, switching_at, landed_at, period?}`. `switching_at`
+MUST be sampled immediately BEFORE the `current` rename, including link repair;
+`landed_at` remains the post-switch instant and MUST equal
 `identity.landed_at`; `period` is the host record's period. `source` MUST identify
 `{kind:"git", repo}` or `{kind:"directory", directory}` and preserve any `prepared`
 provenance. Git entries MUST carry the resolved commit and expanded requested ref;
@@ -245,6 +249,11 @@ provenance. Git entries MUST carry the resolved commit and expanded requested re
 permit refetch and verification without retaining trees. Directory feeds are verifiable
 by revision digest but **not refetchable**. Prepared feeds also require their recorded
 include digests and recipe inputs; a revision does not promise reproducible prepare output.
+Lookup inside either endpoint of `[switching_at, landed_at]` MUST return the incoming
+entry plus `ambiguous:true`. Outside transition windows, select the most recent
+`landed_at <= instant`. Adoption without a content switch uses `switching_at = landed_at`;
+old nonrecorded identities seeded on opt-in use the same degenerate window. Recording
+history missing a required transition boundary is invalid, never assumed exact.
 
 When any compiled agent records, project `up` and home deployment publication
 (including image `up` and release) MUST append a resource log beside their record:
@@ -261,6 +270,8 @@ Every resource MUST retain its workspace-visible `id`, compiled `agent_node_ids`
 add `{kind:"bundle", sha256, origin?}`. Ownership MUST survive compile and distribution
 projection, including equal IDs/digests with different commits. Image pins omit host
 paths and source URLs. Unowned legacy history MUST be reported as invalid, never guessed.
+With no effective recording agent, compile reports MUST omit `agent_node_ids` and
+`declared_by` and preserve the original resource deduplication and serialized shape.
 
 Lookups and retention MUST use `activated_at`; `deployed_at` is informational record
 creation time. Activation ordering is path-specific:
@@ -275,6 +286,19 @@ creation time. Activation ordering is path-specific:
   overlap it: entries MUST set `activation_exact:false` with `activation_note`. Records
   without a captured launch boundary (including recovered launches) are likewise inexact.
 
+If a started candidate is removed on readiness or publication failure, image `up`,
+release and project `up` MUST append its pins with `{activated_at, rolled_back_at,
+exact:false, activation_exact:false}`. `rolled_back_at` is sampled after candidate
+removal, before restoration where applicable. This interval MUST NOT replace the
+predecessor's authoritative record. Lookup inside the inclusive interval returns the
+candidate with `exact:false`, even if it previously published a successful-looking
+snapshot; after the interval, that snapshot is excluded and the predecessor applies
+until another deployment activates. Retention MUST preserve intervals crossing the
+cutoff and the predecessor needed after rollback. No candidate history is written when
+recording is off. A failed candidate cleanup MUST NOT invent a completed rollback.
+These interval entries describe execution and removal, not successful publication;
+their append follows removal without requiring a new authoritative deployment record.
+
 The host clock MUST remain monotonic across these operations. Containers MUST share
 that clock; remote clock skew invalidates exact reconstruction. A moment arriving before
 publication MUST wait for its authoritative deployment record/history, or be inexact.
@@ -286,12 +310,18 @@ reconcile that snapshot against the last log entry. Reconciliation failure MUST 
 replacement. Recompilation MUST preserve deployment records/history, including clean
 compiles; it cannot erase a pending snapshot. Retried publication of the same snapshot
 MUST NOT append a duplicate. Turning recording off still reconciles an owed predecessor.
+Writers MUST receive predecessor metadata from the lifecycle's existing record read;
+only effective recording or a recorded predecessor permits additional record reads.
 
 Host records and cached deployment reports MUST be published by file fsync, rename,
 and parent-directory fsync BEFORE log append. Both logs MUST append each complete JSON
 line in one write followed by file and directory fsync. Pruning MUST use an exclusive
 0600 temporary file, file fsync, rename and directory fsync under a writer lock.
 With recording off and no recorded predecessor, neither log nor its lock may be touched.
+Host-record/report writes in that case MUST retain their original write/rename sequence,
+permissions and bytes, without added reads, durable writes or fsyncs. A matching last
+log line MUST still be file- and directory-fsynced before reconciliation succeeds:
+visibility alone does not prove a previous failed append became durable.
 A deploy-log failure after publication MUST be reported without rolling back the
 container named by the published deployment record.
 If record rename succeeds but directory fsync fails, the named container MUST also

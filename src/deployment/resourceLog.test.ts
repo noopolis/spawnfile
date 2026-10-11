@@ -38,7 +38,7 @@ const report = (enabled = true) => buildDistributionReport({
   envVariables: [], generatedAt: record().created_at, internalPorts: [], modelAuthMethods: {}, moltnetNetworks: [],
   organization: { agents: [], teams: [], project: "news" }, persistentMounts: [], portMappings: [], publishedPorts: [],
   resources: [], runtimeInstances: [], ...(enabled ? { recording: pins.recording,
-    workspaceGitResources: pins.workspace_git_resources!.map(({ id, commit, sha256, agent_node_ids, declared_by }) => ({ id, commit, sha256, agent_node_ids, declared_by })),
+    workspaceGitResources: pins.workspace_git_resources!.map(({ id, commit, sha256, agent_node_ids, declared_by }) => ({ id, commit, sha256, agent_node_ids: agent_node_ids!, declared_by })),
     workspaceBundles: [{ id: "tools", agent_node_ids: ["agent:writer"], sha256: pins.workspace_bundles![0]!.sha256, origin: "built" }] } : {})
 });
 
