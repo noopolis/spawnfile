@@ -148,7 +148,7 @@ stripping; that private behavior needs Daimon's own tests and live verification.
 
 Producer delivery timestamps must remain real UTC milliseconds; Daimon shifts
 them once at dispatch. Historical dates inside text remain unchanged. This
-adapter supplies no provider-prompt date correction.
+adapter leaves provider-prompt date correction to Daimon and preserves its observations.
 
 ## Evidence and cancellation
 
@@ -167,11 +167,10 @@ usage remains unknown. The terminal evidence retains preparation receipts.
 Each wake's complete frame is already persisted as `evidence.<ordinal>.json`
 beside the latest `evidence.json` in the private trial artifact root, and as an
 operator-only diagnostic in the run's raw `events.jsonl`. Inspect
-`native.modelContexts` and (Grok) `native.requests` there. These existing fields
-contain model/policy and request timing/token metadata, respectively; they do
-**not** contain provider request prompts. Brokered Grok's private session tree is
-not readable by this adapter. Date leakage inside engine-injected model context
-therefore remains unmeasured without a public engine/broker capture export.
+`native.modelContexts`, `native.requests`, and optional `native.turnSeals`.
+Seals retain `provider_clock` counters and dates (recovery: `rows[].providerClock`).
+Absence stays absent; this evidences broker rewriting, not provider delivery.
+Prompts remain private; the inspected seal writer omits `cleanupDiagnostic`.
 
 A completed execution that defers its inbox delivery stays a failed trial with
 `blocked: "awaiting-external-input"` in terminal evidence. Recorded usage and
@@ -355,7 +354,8 @@ Startup, in order, with no model call and no `codex sandbox` process:
    if any is missing. The config must declare the same model and effort and no
    Codex sandbox; broker token limit must not exceed the launch wake ceiling.
 2. The resolved projection's canonical digest must equal Daimon's digest and the
-   launch receipt; its turn timeout must fit the trial deadline. The worker variant,
+   launch receipt; wake timeout/token overrides are capped by its registered limits.
+   Shorter trial deadlines lower the wake timeout. Codex is unchanged. The worker variant,
    model/effort config pin and clock metadata must match; both v2 variants have
    offline parity coverage against Daimon's public resolver. Linux shell-clock
    operation still requires the provisioner's native container verification.

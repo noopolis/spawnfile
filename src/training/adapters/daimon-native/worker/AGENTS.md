@@ -133,6 +133,10 @@ Grok usage comes from the broker's per-slot ledger, never this process: rows nee
 `-build` alias) and a `turn` key. Byte-identical replays of one turn count once;
 differing rows under one turn fail. Estimated requests keep coverage partial.
 Load the Grok runtime exports only for Grok launches and fail closed if absent.
+Grok per-wake timeout and token overrides are the minimum of the trial/launch
+limit and the broker registration. A shorter trial may lower the broker ceiling;
+the persisted projection still records the registration, and the trial deadline
+still spans all wakes. Codex limits and aliases retain their original behavior.
 
 `verifyNativeWorkerStartup` is the public, side-effect-free composition of the
 startup checks, for callers that must validate a prepared launch before starting

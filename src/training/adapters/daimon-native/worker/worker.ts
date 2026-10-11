@@ -46,8 +46,9 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
   process.env.DAIMON_WAKE_FUSE_MAX_TOKENS = String(launch.limits.maxTokens);
   delete process.env.DAIMON_WAKE_FUSE;
   // Engine-neutral names; the Codex aliases stay equal so older Codex runtimes keep their bound and Daimon never sees a conflict.
-  process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS = String(options.timeoutMs);
-  process.env.DAIMON_ENGINE_WAKE_TOKEN_CEILING = String(launch.limits.wakeTokenCeiling);
+  // Broker turn overrides may only lower the registered limits; the trial deadline still spans all wakes.
+  process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS = String(grok ? Math.min(options.timeoutMs, grok.broker.limits.timeoutMs) : options.timeoutMs);
+  process.env.DAIMON_ENGINE_WAKE_TOKEN_CEILING = String(grok ? Math.min(launch.limits.wakeTokenCeiling, grok.broker.limits.maxTokens) : launch.limits.wakeTokenCeiling);
   process.env.DAIMON_CODEX_WAKE_TIMEOUT_MS = process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS;
   process.env.DAIMON_CODEX_WAKE_TOKEN_CEILING = process.env.DAIMON_ENGINE_WAKE_TOKEN_CEILING;
   // Set only after this worker is running. Daimon consumes the loader path for

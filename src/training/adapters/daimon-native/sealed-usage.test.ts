@@ -324,7 +324,7 @@ describe('readSealedBrokerSeal', () => {
     expect(await readSealedBrokerSeal(launch, once)).toEqual({ schema: BROKER_SEAL_SCHEMA, outcome: 'unreadable', failure: 'malformed' });
     // Each refusal of the strict reader, one per member it types.
     for (const bad of [{ v: 'noopolis.daimon.turn-seal.v2' }, { agent: 'agent:other' }, { engine: 'codex' }, { at: 'never' },
-      { turn: 'short' }, { requests: -1 }, { outcome: 'cancelled' }, { limit_reason: 'deadline' }, { code: undefined },
+      { turn: 'invalid/turn' }, { requests: -1 }, { outcome: 'cancelled' }, { limit_reason: 'deadline' }, { code: undefined },
       { outcome: 'completed' }, { code: 'invented' }, { model: 'grok-9' },
       { diagnostic: { status: 'cancelled', stage: 'wait', failure_class: 'cancelled', exit_code: 0 } },
       { diagnostic: { status: 'cancelled', stage: 'wait', failure_class: 'cancelled', exit_code: 0, term_signal: 9, reason: 'a\u0000b' } },
@@ -354,11 +354,11 @@ describe('readSealedBrokerSeal', () => {
   it('publishes names, timings and closed vocabularies only, collapses a replayed seal, and waits the same bounded moment', async () => {
     const { launch, ledger } = await grok();
     const file = sealFile(ledger);
-    // The broker's row tolerates unknown members; none of them may reach an operator.
+    // The seal writer has a closed field set; unknown members refuse the whole row.
     await write(file, sealRow({ prompt: 'the article assignment', authorization: 'Bearer sk-live-4f2c9a', text: 'the filed article' }));
     const published = JSON.stringify(await readSealedBrokerSeal(launch, once));
     for (const forbidden of ['prompt', 'the article assignment', 'authorization', 'Bearer', 'sk-live', 'the filed article']) expect(published).not.toContain(forbidden);
-    expect(published).toContain('"outstandingMs":430112');
+    expect(published).toBe(JSON.stringify({ schema: BROKER_SEAL_SCHEMA, outcome: 'unreadable', failure: 'schema' }));
 
     // A replay appends the same bytes twice; a reader counts that turn once.
     await write(file, sealRow() + sealRow() + sealRow({ turn: 'b'.repeat(64) }));

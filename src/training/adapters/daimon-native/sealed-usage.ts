@@ -226,6 +226,8 @@ export interface BrokerSealRecord {
   outcome: 'completed' | 'failed';
   requests: number;
   limitReason: 'tokens' | 'requests' | 'timeout' | 'none';
+  shellClock?: NativeTurnSeal['shell_clock'];
+  providerClock?: NativeTurnSeal['provider_clock'];
   code?: string;
   status?: string;
   stage?: string;
@@ -238,7 +240,8 @@ export interface BrokerSealRecord {
    * "never observed"; `started: 0` is "observed, and it called nothing". The
    * two are different answers and this record never collapses them.
    */
-  mcp?: { started: number; answered: number; undecoded: number; outstanding: BrokerSealOutstandingCall[]; tunnels?: BrokerSealTunnels };
+  mcp?: { started: number; answered: number; undecoded: number; outstanding: BrokerSealOutstandingCall[];
+    refusals?: NonNullable<NativeTurnSeal['mcp']>['refusals']; tunnels?: BrokerSealTunnels };
 }
 
 export type BrokerSealLedger =
@@ -251,6 +254,13 @@ const publishedSeals = 64;
 const sealRecord = (row: NativeTurnSeal): BrokerSealRecord => ({
   turn: row.turn, wake: row.wake, at: String(row.at), model: row.model,
   outcome: row.outcome, requests: row.requests, limitReason: row.limit_reason,
+  ...(row.shell_clock === undefined ? {} : { shellClock: row.shell_clock }),
+  ...(row.provider_clock === undefined ? {} : { providerClock: {
+    requests: row.provider_clock.requests, linesRewritten: row.provider_clock.linesRewritten,
+    requestsWithoutDateLine: row.provider_clock.requestsWithoutDateLine,
+    ...(row.provider_clock.linesIgnored === undefined ? {} : { linesIgnored: row.provider_clock.linesIgnored }),
+    injectedDate: row.provider_clock.injectedDate, taskDate: row.provider_clock.taskDate,
+  } }),
   ...(row.code === undefined ? {} : { code: row.code }),
   ...(row.diagnostic === undefined ? {} : {
     status: row.diagnostic.status, stage: row.diagnostic.stage, failureClass: row.diagnostic.failure_class,
@@ -261,6 +271,10 @@ const sealRecord = (row: NativeTurnSeal): BrokerSealRecord => ({
     mcp: {
       started: row.mcp.started, answered: row.mcp.answered, undecoded: row.mcp.undecoded,
       outstanding: row.mcp.outstanding.map(call => ({ name: call.name, outstandingMs: call.outstanding_ms })),
+      ...(row.mcp.refusals === undefined ? {} : { refusals: {
+        route: row.mcp.refusals.route, expired: row.mcp.refusals.expired, exhausted: row.mcp.refusals.exhausted,
+        unrouted: row.mcp.refusals.unrouted, oversized: row.mcp.refusals.oversized,
+      } }),
       // Absent when the row predates the tunnel observation: not `opened: 0`.
       ...(row.mcp.tunnels === undefined ? {} : {
         tunnels: {

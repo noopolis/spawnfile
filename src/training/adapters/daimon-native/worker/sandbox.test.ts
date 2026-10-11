@@ -86,9 +86,8 @@ test.each(['unclocked', 'clocked'] as const)('%s Grok projection is resolved by 
     await writeGrokSlotReceipt(launch, slotPreflightFor(projection, projection.denyPaths, launch.broker.minGeneration - 1, launch.broker.expectedNonce));
     await assert.rejects(persist(), /stale: generation/);
     await writeGrokSlotReceipt(launch);
-    await assert.rejects(persistNativeSandboxProjection(runtime, config, { ...options, timeoutMs: 1000 }, launch), /timeout exceeds/);
     await assert.rejects(readFile(join(artifacts, 'sandbox-projection.json')), /ENOENT/);
-    await persist();
+    await persistNativeSandboxProjection(runtime, config, { ...options, timeoutMs: 1000 }, launch);
     assert.deepEqual(calls.at(-1), { expectedNonce: launch.broker.expectedNonce, minGeneration: launch.broker.minGeneration });
     const receipt = JSON.parse(await readFile(join(artifacts, 'sandbox-projection.json'), 'utf8'));
     assert.equal(receipt.schema, 'paideia.daimon-native.grok-broker-projection.v1');

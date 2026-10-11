@@ -1,8 +1,9 @@
 import { lstat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { readPrivateFile } from '../../receipt/index.js';
 import type { NativeCodexUsage, NativeEvidence, NativeEvidenceSource, NativeGrokUsage, NativeRequestUsage, NativeTrace, NativeTurnSeal } from '../types.js';
 import { object, timestamp, jsonLines, files } from './io.js';
+import { parseNativeTurnSeal } from './seal.js';
 
 export async function readClosedTraces(runtimeHome: string, agentId: string): Promise<NativeTrace[]> {
   return (await jsonLines(join(runtimeHome, 'telemetry', 'turns.ndjson'))).map(value => {
@@ -142,9 +143,10 @@ export async function collectNativeEvidence(runtimeHome: string, usageFile: stri
 
 async function collectGrokEvidence(runtimeHome: string, usageFile: string, requestsFile: string, agentId: string,
   executionId: string | undefined, expectedModel: string, others: readonly string[]): Promise<NativeEvidence> {
-  const [traces, usage, requests, toolReceipts] = await Promise.all([
+  const [traces, usage, requests, toolReceipts, seals] = await Promise.all([
     readClosedTraces(runtimeHome, agentId), readGrokUsage(usageFile, agentId, undefined, expectedModel, []),
     readGrokRequests(requestsFile, agentId, undefined, expectedModel, []), readToolReceipts(runtimeHome, agentId, 'grok'),
+    readSealedGrokTurnSeals(join(dirname(usageFile), 'turns.jsonl'), agentId, expectedModel),
   ]);
   for (const row of usage) {
     const estimated = requests.filter(request => request.turn === row.turn && request.usage_source === 'estimated').length;
@@ -153,9 +155,11 @@ async function collectGrokEvidence(runtimeHome: string, usageFile: string, reque
   // Grok has no Codex session rollout: the broker-sealed usage row is its model identity.
   const modelContexts = usage.map(() => ({ model: expectedModel, approvalPolicy: null, sandboxPolicy: null }));
   const accounting = trialAccounting({ traces, usage, toolReceipts, modelContexts, requests });
+  const turnSeals = seals.filter(row => wakeOwns(row.wake, executionId, others));
   return { traces: traces.filter(row => wakeOwns(row.turn_id, executionId, others)),
     usage: usage.filter(row => wakeOwns(row.wake, executionId, others)), toolReceipts, modelContexts, accounting,
-    requests: requests.filter(row => wakeOwns(row.wake, executionId, others)) };
+    requests: requests.filter(row => wakeOwns(row.wake, executionId, others)),
+    ...(turnSeals.length ? { turnSeals } : {}) };
 }
 
 /** Grok reports `grok-4.6` usage under its `-build` key; anything else is another model. */
@@ -246,7 +250,7 @@ export async function readSealedGrokUsage(usageFile: string, agentId: string, ex
 export async function assertFreshNativeEvidence(runtimeHome: string, usageFile: string, agentId: string, expectedModel: string,
   source: NativeEvidenceSource = { engine: 'codex' }): Promise<void> {
   const evidence = await collectNativeEvidence(runtimeHome, usageFile, agentId, undefined, expectedModel, [], source);
-  if (evidence.traces.length || evidence.usage.length || evidence.toolReceipts.length || evidence.modelContexts.length || evidence.requests?.length) throw new Error('A native trial requires fresh execution evidence');
+  if (evidence.traces.length || evidence.usage.length || evidence.toolReceipts.length || evidence.modelContexts.length || evidence.requests?.length || evidence.turnSeals?.length) throw new Error('A native trial requires fresh execution evidence');
 }
 
 /**
@@ -265,96 +269,11 @@ export async function readSealedGrokRequests(requestsFile: string, agentId: stri
   return readGrokRequests(requestsFile, agentId, undefined, expectedModel, []);
 }
 
-const failureCodes = ['auth_stale', 'cancelled', 'engine_failed', 'invalid_request', 'limit_exceeded', 'turn_conflict', 'unavailable'];
-const callName = /^(?:<invalid>|<truncated>|[A-Za-z0-9_.-]{1,64})$/u;
-/** A bounded, non-empty, control-character-free string: the shape Daimon's protocol already admits. */
-const controlFree = (value: unknown, maximum: number): boolean => {
-  if (typeof value !== 'string' || value.length === 0 || Buffer.byteLength(value, 'utf8') > maximum) return false;
-  for (let index = 0; index < value.length; index++) {
-    const code = value.charCodeAt(index);
-    if (code < 0x20 || code === 0x7f) return false;
-  }
-  return true;
-};
-
-/** Daimon's closed diagnostic, re-typed at this side's strictness; `reason` is already redacted and bounded there. */
-function sealDiagnostic(value: unknown): NativeTurnSeal['diagnostic'] {
-  const row = object(value);
-  const fields = ['status', 'stage', 'failure_class', 'exit_code', 'term_signal'];
-  const keys = Object.keys(row);
-  if (keys.length !== fields.length + (row.reason === undefined ? 0 : 1) || fields.some(field => !Object.hasOwn(row, field))) throw new Error('Native Grok seal diagnostic schema mismatch');
-  if (!fields.slice(0, 3).every(field => controlFree(row[field], 64)) || !tokens(row, ['exit_code', 'term_signal'])) throw new Error('Native Grok seal diagnostic schema mismatch');
-  if (row.reason !== undefined && !controlFree(row.reason, 768)) throw new Error('Native Grok seal diagnostic schema mismatch');
-  return row as NativeTurnSeal['diagnostic'];
-}
-
-/** Names, counts and elapsed milliseconds, internally consistent: never more answered than started. */
-function sealMcp(value: unknown): NonNullable<NativeTurnSeal['mcp']> {
-  const row = object(value);
-  if (Object.keys(row).length !== 4 + (row.tunnels === undefined ? 0 : 1) || !tokens(row, ['started', 'answered', 'undecoded']) || !Array.isArray(row.outstanding) ||
-      row.outstanding.length > 16 || Number(row.answered) > Number(row.started)) throw new Error('Native Grok seal MCP observation schema mismatch');
-  const outstanding = row.outstanding.map(entry => {
-    const call = object(entry);
-    if (Object.keys(call).length !== 2 || typeof call.name !== 'string' || !callName.test(call.name) ||
-        !tokens(call, ['outstanding_ms'])) throw new Error('Native Grok seal MCP observation schema mismatch');
-    return { name: call.name, outstanding_ms: Number(call.outstanding_ms) };
-  });
-  if (outstanding.length > Number(row.started) - Number(row.answered)) throw new Error('Native Grok seal MCP observation schema mismatch');
-  const tunnels = row.tunnels === undefined ? undefined : sealTunnels(row.tunnels);
-  return { started: Number(row.started), answered: Number(row.answered), undecoded: Number(row.undecoded), outstanding, ...(tunnels === undefined ? {} : { tunnels }) };
-}
-
-/**
- * The session's GET SSE tunnels, at this side's strictness.
- *
- * A worker parked reading that stream wrote nothing anywhere until the broker
- * observed it, so this is the one member that tells "idle on an open tunnel"
- * from "idle having closed it" — and `delivered` tells a tunnel actively
- * carrying frames from one held open having received nothing. Counts and
- * elapsed milliseconds only, and internally consistent: nothing closes before
- * it opens, nothing delivers without opening, and no more is reported open
- * than `opened - closed`.
- */
-function sealTunnels(value: unknown): NonNullable<NonNullable<NativeTurnSeal['mcp']>['tunnels']> {
-  const row = object(value);
-  if (Object.keys(row).length !== 4 || !tokens(row, ['opened', 'closed', 'delivered']) || !Array.isArray(row.open) ||
-      row.open.length > 8 || Number(row.closed) > Number(row.opened) || Number(row.delivered) > Number(row.opened) ||
-      row.open.length > Number(row.opened) - Number(row.closed)) throw new Error('Native Grok seal MCP tunnel schema mismatch');
-  const open = row.open.map(entry => {
-    const tunnel = object(entry);
-    if (Object.keys(tunnel).length !== 2 || typeof tunnel.delivered !== 'boolean' ||
-        !tokens(tunnel, ['open_ms'])) throw new Error('Native Grok seal MCP tunnel schema mismatch');
-    return { open_ms: Number(tunnel.open_ms), delivered: tunnel.delivered };
-  });
-  return { opened: Number(row.opened), closed: Number(row.closed), delivered: Number(row.delivered), open };
-}
-
-/**
- * The sealed terminal record of a turn whose terminal response never travelled.
- *
- * The third stream the broker writes beside `usage.jsonl` and `requests.jsonl`.
- * It is the only route by which a *cancelled* turn's failure code, its worker's
- * redacted last words and the MCP tool call it was still blocked on reach this
- * side: the response those ride on is answered to a client that is already
- * gone, and the broker's own turn record sits in a `0700` store this uid cannot
- * read. Same strict schema, same dedupe-by-`turn`, no execution to filter on.
- *
- * Optional members are validated only when present and never defaulted: `mcp`
- * absent means the facade never observed the turn, which is not `started: 0`.
- */
+/** Broker-sealed terminal observations; validate before attribution and deduplicate replays. */
 export async function readSealedGrokTurnSeals(sealFile: string, agentId: string, expectedModel: string): Promise<NativeTurnSeal[]> {
-  const rows = (await jsonLines(sealFile, 4 * 1024 * 1024)).map(value => {
-    const row = object(value);
-    if (row.v !== 'noopolis.daimon.turn-seal.v1' || row.agent !== agentId || row.engine !== 'grok' || typeof row.wake !== 'string' ||
-        !timestamp(row.at) || typeof row.turn !== 'string' || !turnKey.test(row.turn) || !tokens(row, ['requests']) ||
-        !['completed', 'failed'].includes(String(row.outcome)) ||
-        !['tokens', 'requests', 'timeout', 'none'].includes(String(row.limit_reason)) ||
-        (row.outcome === 'failed') !== (row.code !== undefined) ||
-        row.code !== undefined && !failureCodes.includes(String(row.code))) throw new Error('Native Grok seal schema or execution identity mismatch');
-    grokModel(row.model, expectedModel);
-    if (row.diagnostic !== undefined) sealDiagnostic(row.diagnostic);
-    if (row.mcp !== undefined) sealMcp(row.mcp);
-    return { key: row.turn, row: row as NativeTurnSeal };
+  const rows = (await jsonLines(sealFile, 4 * 1024 * 1024, 8192)).map(value => {
+    const row = parseNativeTurnSeal(value, agentId, expectedModel);
+    return { key: row.turn, row };
   });
   return dedupe(rows);
 }

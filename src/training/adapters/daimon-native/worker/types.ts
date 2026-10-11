@@ -123,6 +123,12 @@ export interface NativeTurnSeal extends Record<string, unknown> {
   requests: number;
   model: string;
   limit_reason: 'tokens' | 'requests' | 'timeout' | 'none';
+  shell_clock?: 'task' | 'real' | 'gap';
+  /** Broker-observed rewriting of engine-injected dates. Missing is unobserved, never zero. */
+  provider_clock?: {
+    requests: number; linesRewritten: number; requestsWithoutDateLine: number; linesIgnored?: number;
+    injectedDate: string | null; taskDate: string | null;
+  };
   /** Present exactly for a failed turn: the broker's closed failure vocabulary. */
   code?: string;
   /** Present when the sealed response carried one; `reason` is the worker's own words, redacted by Daimon. */
@@ -134,6 +140,7 @@ export interface NativeTurnSeal extends Record<string, unknown> {
    */
   mcp?: {
     started: number; answered: number; undecoded: number; outstanding: { name: string; outstanding_ms: number }[];
+    refusals?: { route: number; expired: number; exhausted: number; unrouted: number; oversized: number };
     /**
      * The session's standalone GET SSE tunnels. Present only when the broker
      * observed that channel at all: a row sealed before the instrument existed
@@ -151,6 +158,8 @@ export interface NativeEvidence {
   modelContexts: { model: string; approvalPolicy: unknown; sandboxPolicy: unknown }[];
   /** Grok only: per-request broker rows. Codex evidence never carries this member. */
   requests?: NativeRequestUsage[];
+  /** Grok seals attributed to this wake's execution(s); absent when no matching seal was observed. */
+  turnSeals?: NativeTurnSeal[];
 }
 /** Where native evidence lives for the selected engine. */
 export type NativeEvidenceSource = { engine: 'codex' } | { engine: 'grok'; requestsFile: string };
