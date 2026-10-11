@@ -23,6 +23,7 @@ import {
 } from "./organizationHandoffAuthorityStore.js";
 import { readDeploymentRecordFromOutput } from "./record.js";
 import type { DeploymentRecord } from "./record.js";
+import { assertRecordedMemoryRetention } from "./recordedMemoryRetention.js";
 import { readHomeDeploymentRecord, readHomeDeploymentReport, resolveHomeRecordPath } from "./homeStore.js";
 import { resolveDeploymentRecordPath } from "./names.js";
 import { dockerContextNameForTarget } from "./target.js";
@@ -46,6 +47,8 @@ export interface DownDeploymentOptions {
    * folder rule — this is the only reversible-by-default lifecycle boundary spawnfile
    * has: containers are cheap to recreate, the durable stores are not). */
   removeVolumes?: boolean;
+  /** Explicitly permits deleting memory ledgers used by recording agents. */
+  discardRecordedMemory?: boolean;
   expectedLifecycleCorrelation?: DeploymentLifecycleCorrelation;
   timeoutMs?: number;
 }
@@ -108,6 +111,8 @@ const imageDown = async (
     report.persistent_mounts,
     (mount) => derivePersistentMountVolumeName(record.name, mount)
   );
+  assertRecordedMemoryRetention(report.recording, report.persistent_mounts, owned,
+    (mount) => derivePersistentMountVolumeName(record.name, mount), options);
   const volumes = [...owned, ...skipped].sort();
   const removed = await removeDockerContainer(record.target, unit.container_id, runner);
   if (!removed.removed) return { deployment: record.name, errors: [`unable to remove container ${unit.container_id} (unit ${unit.id}): ${removed.error}`], retained_volumes: volumes, units_stopped: [], version: DOWN_RECEIPT_VERSION, ...(skipped.length > 0 ? { skipped_volumes: skipped } : {}) };
@@ -264,6 +269,10 @@ export const downDeployment = async (
   );
   const runnerOptions = { dockerCommand, execFile: execFileImpl, timeoutMs };
   if (resolved.mode === "image") return imageDown(initialRecord, options, runnerOptions);
+  const report = await readCompileReport(compiledOutputDirectory);
+  const mounts = report?.container?.persistent_mounts ?? [];
+  const { owned, skipped } = partitionDeclaredVolumes(mounts, (mount) => mount.volume_name);
+  assertRecordedMemoryRetention(report?.recording, mounts, owned, (mount) => mount.volume_name, options);
   const record = await ensureExported(initialRecord, {
     ...options,
     compiledOutputDirectory,
@@ -298,12 +307,6 @@ export const downDeployment = async (
       );
     }
   }
-
-  const report = await readCompileReport(compiledOutputDirectory);
-  const { owned, skipped } = partitionDeclaredVolumes(
-    report?.container?.persistent_mounts ?? [],
-    (mount) => mount.volume_name,
-  );
 
   // Declared volumes are retained unconditionally: they are shared project
   // state, not this deployment's, so `--volumes` must never destroy them.

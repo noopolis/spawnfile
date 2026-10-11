@@ -5,6 +5,8 @@ import { lstat, mkdtemp, realpath, symlink } from "node:fs/promises";
 import { promisify } from "node:util";
 
 import { compileProject } from "../compiler/index.js";
+import { assertRecordedMemoryRetention } from "../deployment/index.js";
+import type { CompileReport } from "../report/index.js";
 import {
   ensureDirectory,
   fileExists,
@@ -12,7 +14,7 @@ import {
   removeDirectory,
   writeUtf8File
 } from "../filesystem/index.js";
-import { SpawnfileError } from "../shared/index.js";
+import { REPORT_FILENAME, SpawnfileError } from "../shared/index.js";
 import { ensureNoopolisRunId } from "../runtime/index.js";
 import { findDaimonRuntimeInstance, resolveDaimonRuntimeRoot } from "./daimonRuntimeInstanceLookup.js";
 import {
@@ -25,6 +27,7 @@ const execFile = promisify(execFileCallback);
 
 export interface DaimonOrgE2EOptions {
   codexAuthPath?: string;
+  discardRecordedMemory?: boolean;
   fixtureDirectory?: string;
   keepArtifacts?: boolean;
   nodeCommand?: string;
@@ -191,11 +194,26 @@ export const runDaimonOrgE2E = async (
   const outputDirectory =
     options.outputDirectory ?? await mkdtemp(path.join(os.tmpdir(), "spawnfile-daimon-org-"));
   const keepArtifacts = options.keepArtifacts ?? Boolean(options.outputDirectory);
+  let report: CompileReport | undefined;
+  const assertLocalRecordingAllowed = (report: CompileReport): void => {
+    if (report.recording && !options.discardRecordedMemory) {
+      throw new SpawnfileError("runtime_error",
+        "Local-rootfs E2E recording requires --discard-recorded-memory because compile and cleanup can delete its ledgers");
+    }
+  };
+  // A previous local-rootfs run can leave real ledgers in compile output.
+  // Refuse before compile's clean step, even if the new fixture turns recording off.
+  const previousReportPath = path.join(outputDirectory, REPORT_FILENAME);
+  if (await fileExists(previousReportPath)) {
+    assertLocalRecordingAllowed(JSON.parse(await readUtf8File(previousReportPath)) as CompileReport);
+  }
 
   try {
     const compileResult = await compileProject(options.fixtureDirectory ?? fixturesRoot, {
       outputDirectory
     });
+    report = compileResult.report;
+    assertLocalRecordingAllowed(report);
     const container = compileResult.report.container;
     const instance = findDaimonRuntimeInstance(container?.runtime_instances);
     if (!container || !instance || !instance.home_path || !instance.workspace_path) {
@@ -256,6 +274,12 @@ export const runDaimonOrgE2E = async (
     };
   } finally {
     if (!keepArtifacts) {
+      const mounts = report?.container?.persistent_mounts ?? [];
+      const localPath = (mount: typeof mounts[number]): string =>
+        toRootfsPath(path.join(outputDirectory, "container", "rootfs"), mount.mount_path);
+      assertRecordedMemoryRetention(report?.recording, mounts, mounts.map(localPath), localPath,
+        { removeVolumes: true, discardRecordedMemory: options.discardRecordedMemory },
+        "pass --discard-recorded-memory to explicitly permit local E2E ledger deletion");
       await removeDirectory(outputDirectory);
     }
   }

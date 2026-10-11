@@ -54,6 +54,7 @@ export const lifecyclePlanRequestSchema = z.discriminatedUnion("operation", [
     .object({
       ...common,
       deployment: z.string().min(1).max(128),
+      discard_recorded_memory: z.boolean().optional(),
       export_to: z.string().min(1).max(4096).nullable(),
       force: z.boolean(),
       operation: z.literal("down"),
@@ -258,6 +259,7 @@ export const createPlannedLifecycleInvocation = async (
   const options: DownOptions = {
     compiled: request.compiled ?? undefined,
     deployment: request.deployment,
+    discardRecordedMemory: request.discard_recorded_memory,
     dockerCommand: request.docker_command ?? undefined,
     exportTo: request.export_to ?? undefined,
     force: request.force,
