@@ -7,11 +7,12 @@ import { materializeGit } from "./git.js";
 import { historyKey, inside, openHistory, type History } from "./history.js";
 import { resolveRewindInputs } from "./inputs.js";
 import { inspectTrainingMoment, type LeakCheckOptions } from "./leakCheck.js";
+import { inspectBundleFiles, restoreInspectedAccessTimes, snapshotBundleFiles } from "./leakFiles.js";
 import { materializeMemory } from "./memory.js";
 import { materializeMoltnet } from "./moltnet.js";
 import { matchingMomentRecords, originalMomentRecords, selectMomentRecord } from "./select.js";
 import { hasRecordPin, recordForInput } from "./recordInput.js";
-import { createTaskClock } from "./taskClock.js";
+import { assertTaskClockInstant, createTaskClock } from "./taskClock.js";
 import { restoreAccessTimes, stampTree } from "./timestamps.js";
 import type { InputContext, InputResult, RewindInput } from "./types.js";
 import { materializeVolume } from "./volumes.js";
@@ -29,9 +30,12 @@ export const resolveTrainingMoment = (
   plan: TrainingPlan, project: LoadedTrainingProject, example: string, records: MomentRecord[] = []
 ) => {
   const resolved = resolveRewindInputs(plan, project, example);
+  assertTaskClockInstant(resolved.at);
   const candidateRecords = originalMomentRecords(matchingMomentRecords(records, plan.agent.id, resolved.at));
   const record = selectMomentRecord(candidateRecords, plan.agent.id, resolved.at, resolved.inputs.filter((input) => !input.overridden));
-  return { ...resolved, candidateRecords, record, effectiveAt: record?.wake.startedAt ?? resolved.at };
+  const effectiveAt = record?.wake.startedAt ?? resolved.at;
+  assertTaskClockInstant(effectiveAt);
+  return { ...resolved, candidateRecords, record, effectiveAt };
 };
 
 const reason = (error: unknown): string => error instanceof Error ? error.message : String(error);
@@ -89,6 +93,33 @@ export const finalizeTrainingMoment = async (staging: string, out: string, optio
   await restoreAccessTimes(staging, moment.effectiveAt);
   await assertEmptyOutput(out);
   await rename(staging, out);
+  if (check?.ok) {
+    // The post-restoration, post-rename payload is the acceptance target.
+    try {
+      const files = await snapshotBundleFiles(out);
+      const published = { ...check, checked: { ...check.checked, files: 0 }, findings: [] as typeof check.findings };
+      try { await inspectBundleFiles(out, moment.inputs, published, files); }
+      finally { await restoreInspectedAccessTimes(files); }
+      if (published.findings.length) {
+        check.findings.push(...published.findings); check.ok = false;
+        moment.leakCheck = { ok: false, findings: check.findings.length };
+        for (const finding of published.findings) for (const input of moment.inputs.filter((entry) => !finding.input
+          || entry.section === finding.input.section && entry.id === finding.input.id && entry.declaredBy === finding.input.declaredBy)) {
+          input.refusal = `${finding.class}: ${finding.path}: ${finding.detail}`;
+        }
+        await discardPayload(out, moment);
+        await writeFile(path.join(out, "moment.json"), serialize(materializedMomentSchema.parse(moment)));
+        await stampTree(path.join(out, "moment.json"), moment.effectiveAt, moment.effectiveAt);
+      }
+      check.checked.files = published.checked.files;
+      await writeFile(path.join(out, "leak-check.json"), serialize(check));
+      await stampTree(path.join(out, "leak-check.json"), moment.effectiveAt, moment.effectiveAt);
+      await utimes(out, new Date(moment.effectiveAt), new Date(moment.effectiveAt));
+    } catch (error) {
+      await rm(out, { recursive: true, force: true });
+      throw error;
+    }
+  }
   return moment;
 };
 
@@ -96,26 +127,28 @@ export const finalizeTrainingMoment = async (staging: string, out: string, optio
 export const materializeTrainingMoment = async (options: MaterializeTrainingMomentOptions): Promise<MaterializedMoment> => {
   const { plan, project, example } = options;
   const resolved = resolveRewindInputs(plan, project, example);
+  assertTaskClockInstant(resolved.at);
   let out = path.resolve(options.out);
   await assertEmptyOutput(out);
   let history: History | undefined, historyError: string | undefined;
   try { history = await openHistory(options.historyDir); }
   catch (error) { historyError = `Cannot open history: ${reason(error)}`; }
+  let record: MomentRecord | null = null, recordError: string | undefined;
+  let candidateRecords: MomentRecord[] = [];
+  try {
+    candidateRecords = matchingMomentRecords(await history?.records() ?? [], plan.agent.id, resolved.at);
+    record = selectMomentRecord(candidateRecords, plan.agent.id, resolved.at,
+      resolved.inputs.filter((input) => !input.overridden));
+  } catch (error) { recordError = reason(error); }
+  const attempts = candidateRecords.length;
+  candidateRecords = originalMomentRecords(candidateRecords);
+  const effectiveAt = record?.wake.startedAt ?? resolved.at;
+  assertTaskClockInstant(effectiveAt);
   await mkdir(path.dirname(out), { recursive: true });
   out = path.join(await realpath(path.dirname(out)), path.basename(out));
   if (history && (inside(history.root, out) || inside(out, history.root))) throw new Error("Rewind output and history must not overlap");
   const staging = await mkdtemp(path.join(path.dirname(out), `.${path.basename(out)}.rewind-`));
   try {
-    let record: MomentRecord | null = null, recordError: string | undefined;
-    let candidateRecords: MomentRecord[] = [];
-    try {
-      candidateRecords = matchingMomentRecords(await history?.records() ?? [], plan.agent.id, resolved.at);
-      record = selectMomentRecord(candidateRecords, plan.agent.id, resolved.at,
-        resolved.inputs.filter((input) => !input.overridden));
-    } catch (error) { recordError = reason(error); }
-    const attempts = candidateRecords.length;
-    candidateRecords = originalMomentRecords(candidateRecords);
-    const effectiveAt = record?.wake.startedAt ?? resolved.at;
     const moment: MaterializedMoment = {
       version: "spawnfile.materialized-moment.v1", status: "materialized", agent: plan.agent.id,
       example: { id: resolved.selected.id, role: resolved.selected.role, dataset: resolved.selected.dataset },

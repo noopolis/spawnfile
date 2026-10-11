@@ -1,6 +1,7 @@
 import type { TrainingPlan } from "../plan/index.js";
 import type { MomentRecord } from "./contract.js";
 import { compareInstants, normalizeInstant } from "./instant.js";
+import { hasRecordPin, recordForInput, recordPins } from "./recordInput.js";
 import type { InputIdentity, RewindInput } from "./types.js";
 
 export type DatasetRole = "train" | "validation" | "test";
@@ -48,31 +49,25 @@ export const selectMomentRecord = (
 ): MomentRecord | null => {
   const matches = originalMomentRecords(matchingMomentRecords(records, agent, at));
   if (!matches.length) return null;
-  const includes = (section: InputIdentity["section"], id: string, declaredBy?: string, field?: "resources" | "feeds" | "volumes"): boolean =>
-    !inputs || inputs.some((input) => {
-      if (input.section !== section || input.id !== id || (declaredBy && input.declaredBy !== declaredBy)) return false;
-      if (!("declaration" in input)) return true;
-      if (input.overridden) return false;
-      if (input.section !== "resources" || !field) return true;
-      const resource = input.declaration;
-      if (field === "feeds") return resource.kind === "volume" && Boolean(resource.feed);
-      if (field === "volumes") return resource.kind === "volume" && !resource.feed;
-      if (resource.kind === "volume") return false;
-      // Retained bundle digests take precedence over even a pinned build source.
-      if (resource.kind === "bundle") return true;
-      const ref = resource.ref;
-      return !ref || !/^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/u.test(ref);
-    });
-  const sort = <T>(entries: T[]): T[] => entries.sort((a, b) => canonical(a).localeCompare(canonical(b)));
-  const used = (record: MomentRecord): string => canonical({
-    resources: sort(record.resources.filter((item) => includes("resources", item.id, undefined, "resources"))),
-    feeds: sort(record.feeds.filter((item) => includes("resources", item.id, undefined, "feeds")).map((item) => ({
-      ...item, landedAt: normalizeInstant(item.landedAt)
-    }))),
-    memory: sort(record.memory.filter((item) => includes("memory", item.id, item.declaredBy))),
-    moltnet: sort(record.moltnet.filter((item) => includes("networks", item.network)).map((item) => ({ ...item, cursor: normalizeInstant(item.cursor) }))),
-    volumes: sort(record.volumes.filter((item) => includes("resources", item.id, undefined, "volumes")))
-  });
-  if (matches.some((record) => used(record) !== used(matches[0]!))) throw new Error(`Conflicting moment records for ${agent} at ${normalizeInstant(at)}`);
+  const identities: Array<InputIdentity | RewindInput> = inputs ?? matches.flatMap((record): InputIdentity[] => [
+    ...[...record.resources, ...record.feeds, ...record.volumes].map(({ id }) => ({ section: "resources" as const, id, declaredBy: agent })),
+    ...record.memory.map(({ id, declaredBy }) => ({ section: "memory" as const, id, declaredBy })),
+    ...record.moltnet.map(({ network }) => ({ section: "networks" as const, id: network, declaredBy: agent }))
+  ]);
+  for (const input of identities) {
+    if ("overridden" in input && input.overridden) continue;
+    const declaredPin = "declaration" in input && input.section === "resources" && input.declaration.kind === "git"
+      && /^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/u.test(input.declaration.ref ?? "");
+    const decision = (record: MomentRecord): string => {
+      const usable = recordForInput(record, input);
+      const pins = recordPins(usable, input).map((pin) => "landedAt" in pin ? { ...pin, landedAt: normalizeInstant(pin.landedAt) }
+        : "cursor" in pin ? { ...pin, cursor: normalizeInstant(pin.cursor) } : pin);
+      return canonical({ pin: declaredPin ? "declared-pin" : pins.sort((a, b) => canonical(a).localeCompare(canonical(b))),
+        approximateFallback: !record.exact && !hasRecordPin(usable, input) });
+    };
+    if (matches.some((record) => decision(record) !== decision(matches[0]!))) {
+      throw new Error(`Conflicting moment records for ${agent} at ${normalizeInstant(at)}: ${input.section} ${input.declaredBy}/${input.id} has different effective pin/fallback decisions`);
+    }
+  }
   return matches[0]!;
 };

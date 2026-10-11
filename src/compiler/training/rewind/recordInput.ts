@@ -31,13 +31,15 @@ export const recordInputErrors = (record: MomentRecord, input: InputIdentity): s
 };
 
 /** Do not discard healthy pins just because another input made the whole record inexact. */
-export const recordForInput = (record: MomentRecord | null, input: RewindInput): MomentRecord | null =>
+export const recordForInput = (record: MomentRecord | null, input: InputIdentity): MomentRecord | null =>
   record && !recordInputErrors(record, input).length ? record : null;
 
-export const hasRecordPin = (record: MomentRecord | null, input: RewindInput): boolean => {
-  if (!record) return false;
-  if (input.section === "memory") return record.memory.some((entry) => entry.id === input.id && entry.declaredBy === input.declaredBy);
-  if (input.section === "networks") return record.moltnet.some((entry) => entry.network === input.id);
-  const pins = input.declaration.kind !== "volume" ? record.resources : input.declaration.feed ? record.feeds : record.volumes;
-  return pins.some((entry) => entry.id === input.id);
+export const recordPins = (record: MomentRecord | null, input: InputIdentity | RewindInput) => {
+  if (!record) return [];
+  if (input.section === "memory") return record.memory.filter((entry) => entry.id === input.id && entry.declaredBy === input.declaredBy);
+  if (input.section === "networks") return record.moltnet.filter((entry) => entry.network === input.id);
+  const pins = !("declaration" in input) ? [...record.resources, ...record.feeds, ...record.volumes]
+    : input.declaration.kind !== "volume" ? record.resources : input.declaration.feed ? record.feeds : record.volumes;
+  return pins.filter((entry) => entry.id === input.id);
 };
+export const hasRecordPin = (record: MomentRecord | null, input: InputIdentity | RewindInput): boolean => recordPins(record, input).length > 0;

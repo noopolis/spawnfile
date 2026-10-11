@@ -1,12 +1,23 @@
-import { normalizeInstant } from "./instant.js";
+import { instantNanos, normalizeInstant } from "./instant.js";
 import { taskClockSchema } from "./contract.js";
 
+/** Shared ecosystem range applies to trial instants, not historical source timestamps. */
+export const assertTaskClockInstant = (instant: string): void => {
+  const nanos = instantNanos(instant);
+  if (nanos < 0n || nanos > 253_402_300_799_999_000_000n) {
+    throw new Error(`Trial instant ${instant} must be within 1970-01-01T00:00:00Z .. 9999-12-31T23:59:59.999Z`);
+  }
+};
+const taskOrigin = (origin: string): string => {
+  assertTaskClockInstant(origin);
+  return normalizeInstant(origin);
+};
 export const createTaskClock = (origin: string) => taskClockSchema.parse({
-  version: "spawnfile.task-clock.v1", origin: normalizeInstant(origin)
+  version: "spawnfile.task-clock.v1", origin: taskOrigin(origin)
 });
 const clockOrigin = (origin: string, anchorEpochMs: number): string => {
   if (!Number.isSafeInteger(anchorEpochMs)) throw new Error("Task clock anchorEpochMs must be a safe integer");
-  return normalizeInstant(origin);
+  return taskOrigin(origin);
 };
 
 /** Top-level Daimon only: its clock stays real and it derives each child's clock environment. */

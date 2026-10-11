@@ -280,7 +280,10 @@ boundaries. The isolated compatibility reader must be replaced by P3's
 Moment records match exact compiled `agent` and parsed `wake.at == example.at`.
 For several attempts of that wake, select the EARLIEST `wake.startedAt` (original
 turn), even when replay pins differ or append/capture order differs. Conflicting
-copies at that same earliest instant still refuse when their used pins differ.
+copies at that same earliest instant still refuse when any input's effective
+decision differs: usable pin versus fallback, selected pin, or fallback fidelity
+given `exact` and input-specific `errors`. The refusal MUST name the input.
+Unrelated errors and unusable pin values do not create a conflict.
 Validate recorded commit IDs in every earliest-attempt copy for each used input,
 including IDs hidden by declared pin precedence; later replays cannot replace
 or invalidate the original turn's pins.
@@ -370,10 +373,21 @@ commit MUST be verified as a commit object with author AND committer dates
 `<= effectiveAt`. This single selection guard applies equally to plain, retained,
 prepared, and included git feeds; an eligible landing time does not make a
 future source commit eligible. Directory feeds have no git source commit.
-Feed bytes come from OPTIONAL retained `trees/<tree name>/` when available.
-Otherwise a plain git feed re-extracts the landing's expanded paths at its commit
-and MUST verify the revision with the existing feed revision function. A mismatch
-refuses. `include` or `prepare` requires retained bytes; rewind MUST NOT run them.
+Plain git feed bytes MUST come from re-extraction of the landing's expanded paths
+at its selected commit, with revision verification using the existing feed
+revision function. When retained `trees/<tree name>/` bytes also exist, they MUST
+match that extraction (paths, types, executable bits, symlink targets and bytes);
+any mismatch refuses. A missing history repository refuses even when retained
+bytes exist. Acceptance MUST independently re-extract from the history repository
+at the selected commit and paths and compare the bundle bytes and revision.
+`include` or `prepare` requires retained bytes; rewind MUST NOT run them.
+Prepared revisions identify source/include/recipe provenance, not output content.
+When prepared provenance is retained, its composite revision MUST match, and its
+git source revision MUST match the selected commit and paths. Prepared output
+MUST always be `approximate`, with the note `prepared output not content-verifiable`
+and `source.prepared: true` in the moment input (including record-only pins without
+a landing log). The independent acceptance gate enforces that fidelity and note.
+All leak-check classes still apply to prepared output.
 Raw blob extraction ignores repository-local `info/attributes` as well as committed
 archive attributes; later tags cannot change historical file bytes.
 Output preserves the agent-visible `trees/<tree name>/`, including re-land suffixes, relative `current`
@@ -382,9 +396,10 @@ is the selected landing time, or the selected commit's committer time for an
 feed-rule approximation. A recorded pin or ambiguous incoming transition may
 have publication metadata after `effectiveAt`; this does not advance the trial
 clock or filesystem timestamps. The independent gate reopens its record/window
-before allowing such publication metadata. Directory feeds are not refetchable:
-retained tree bytes MUST recompute to the recorded revision or refuse (including
-prepared directory revisions whose composite identity cannot be reproduced).
+before allowing such publication metadata. Plain directory feeds are not
+refetchable: retained tree bytes MUST recompute to the recorded revision or refuse.
+Prepared directory bytes MUST NOT be compared to their provenance revision as
+though it were a directory content digest.
 
 Memory uses Mneme's single append-only ledger. Any recorded `generation`,
 including 0, refuses as unsupported: Mneme has no generations or curation
@@ -472,6 +487,14 @@ share `originEpochMs + (realNowEpochMs - anchorEpochMs)`; independently started
 children MUST NOT reset their clock to the origin. `originEpochMs` uses JavaScript
 `Date.parse(origin)` millisecond precision.
 
+Both dataset `at` and selected `effectiveAt` MUST be within the inclusive range
+`1970-01-01T00:00:00Z` .. `9999-12-31T23:59:59.999Z`, compared as instants before
+millisecond truncation. Out-of-range trials MUST refuse before any materialization
+or output creation. This range is shared with Daimon's ecosystem task-clock
+contract. Historical source timestamps may precede 1970; filesystem stamping and
+restoration MUST preserve their negative epochs using `Date` or numeric-string
+arguments to `utimes`/`lutimes`, never negative numeric seconds.
+
 Each process MUST have exactly one offset owner. These pure helpers replace
 `taskClockEnvironment`; their outputs MUST NOT be merged for a single process:
 
@@ -523,6 +546,9 @@ messages/events, and snapshots. Each finding carries `{input, class, path,
 detail}`; `input` is an input identity or `null` for bundle-level problems.
 Metadata is captured before payload reads; the checker restores the captured access
 times after inspection, preserving pre-existing future atimes for refusal.
+After restoration and rename, filesystem metadata MUST be checked again on the
+final published bundle. A failure removes the payload and records the refusal;
+the pre-publication check alone cannot establish the published timestamps.
 Every git-backed input MUST record its selected full commit ID in
 `moment.json`'s `inputs[].source.commit`; git feed identity MUST record the same
 ID. Acceptance MUST independently open the source history repository read-only,
@@ -1686,6 +1712,10 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
                 "type": "string",
                 "format": "date-time",
                 "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              "prepared": {
+                "type": "boolean",
+                "const": true
               }
             },
             "additionalProperties": false

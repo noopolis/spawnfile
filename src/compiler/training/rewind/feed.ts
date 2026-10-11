@@ -1,13 +1,14 @@
-import { lstat, mkdir, readdir, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { TeamWorkspaceResource } from "../../../manifest/index.js";
 import { digestDirectory, expandFeedPaths, expandFeedRefTemplate, FEED_IDENTITY_FILE, FEED_IDENTITY_VERSION,
-  resolveFeedSource, type FeedExec, type FeedIdentity } from "../../../volume/index.js";
+  type FeedIdentity } from "../../../volume/index.js";
+import { assertPreparedFeedRevision, feedGitRevision } from "./feedContent.js";
 import { resolveRecordedCommit } from "./recordedCommit.js";
 import { feedLandingSchema, readFeedLandingHistory, selectFeedLanding, type FeedLanding } from "./feedLandings.js";
 import { exportFeedGitTree } from "./gitArchive.js";
 import { assertLocalGitRepository } from "./gitHistory.js";
-import { assertCommitNotFuture, commitAt, rewindGitSync, type SelectedCommit } from "./gitProcess.js";
+import { assertCommitNotFuture, commitAt, type SelectedCommit } from "./gitProcess.js";
 import { historyKey } from "./history.js";
 import { compareInstants } from "./instant.js";
 import type { InputContext, InputResult } from "./types.js";
@@ -15,10 +16,6 @@ import type { InputContext, InputResult } from "./types.js";
 export { feedLandingSchema, selectFeedLanding, type FeedLanding } from "./feedLandings.js";
 type VolumeFeed = NonNullable<Extract<TeamWorkspaceResource, { kind: "volume" }>["feed"]>;
 
-const revisionExec: FeedExec = (command, args) => {
-  if (command !== "git" || args[0] !== "-C" || !args[1]) throw new Error("Feed revision may only read a local git repository");
-  return rewindGitSync(args[1], args.slice(2));
-};
 const feedPaths = (paths: string[] | undefined): string[] | undefined => paths?.length ? paths : undefined;
 const treeName = (tree: string): string => tree.replace(/^trees\//u, "");
 
@@ -96,9 +93,9 @@ export const materializeFeed = async (context: InputContext): Promise<InputResul
     if (feed.include || feed.prepare) throw new Error("Prepared/included feed requires a landing log and retained tree bytes");
     const repo = await openRepository(), commit = await selectFeedCommit(feed, repo, context.at);
     const paths = expandFeedPaths(feed.git!.paths, new Date(context.at));
-    const source = resolveFeedSource({ kind: "git", fetch: false, repo, ref: commit.commit, label: commit.ref, paths }, { exec: revisionExec });
+    const revision = feedGitRevision(repo, commit.commit, commit.ref, paths);
     landing = { version: "spawnfile.volume-feed-landing.v1", resource: input.id, volume: resource.name!,
-      revision: source.revision, tree: source.revision, source: { kind: "git", repo: feed.git!.repo },
+      revision, tree: revision, source: { kind: "git", repo: feed.git!.repo },
       commit: commit.commit, ref: commit.ref, ...(paths ? { paths } : {}), landed_at: commit.instant };
     basis = "feed-rule-at";
   }
@@ -110,19 +107,30 @@ export const materializeFeed = async (context: InputContext): Promise<InputResul
     await assertCommitNotFuture(await openRepository(), landing.commit, context.at);
   }
   const retainedName = treeName(landing.tree), tree = path.join(context.destination, "trees", retainedName);
-  const needsRetained = landing.source.kind === "directory" || landing.source.prepared !== undefined
+  const isPrepared = landing.source.prepared !== undefined
     || basis === "record" && !matching && (feed.include !== undefined || feed.prepare !== undefined);
-  if (await history.path(`${key}/trees/${retainedName}`)) await history.copyTree(`${key}/trees/${retainedName}`, tree);
-  else {
-    if (needsRetained) throw new Error("Directory/prepared/included feed requires retained landed tree bytes");
-    if (!landing.commit || !landing.ref) throw new Error("Git feed landing must record its commit and ref");
-    const repo = await openRepository();
-    const resolved = resolveFeedSource({ kind: "git", fetch: false, repo, ref: landing.commit, label: landing.ref, paths: feedPaths(landing.paths) }, { exec: revisionExec });
-    if (resolved.revision !== landing.revision) throw new Error(`Feed revision mismatch: recorded ${landing.revision}, reconstructed ${resolved.revision}`);
-    const commit = resolved.provenance.kind === "git" ? resolved.provenance.commit : landing.commit;
-    await exportFeedGitTree(repo, commit, tree, feedPaths(landing.paths));
+  if (landing.source.prepared) {
+    assertPreparedFeedRevision(landing.revision, landing.source.prepared);
+    if (landing.commit && feedGitRevision(await openRepository(), landing.commit, landing.ref!, landing.paths)
+      !== landing.source.prepared.source_revision) throw new Error("Prepared feed source revision disagrees with selected commit and paths");
   }
-  if (landing.source.kind === "directory") {
+  if (landing.source.kind === "git" && !isPrepared) {
+    const repo = await openRepository();
+    const revision = feedGitRevision(repo, landing.commit!, landing.ref!, landing.paths);
+    if (revision !== landing.revision) throw new Error(`Feed revision mismatch: recorded ${landing.revision}, reconstructed ${revision}`);
+    await exportFeedGitTree(repo, landing.commit!, tree, feedPaths(landing.paths));
+    if (await history.path(`${key}/trees/${retainedName}`)) {
+      const retained = path.join(context.destination, ".retained-check");
+      try {
+        await history.copyTree(`${key}/trees/${retainedName}`, retained);
+        if (digestDirectory(retained) !== digestDirectory(tree)) throw new Error("Retained git feed bytes disagree with selected commit and paths");
+      } finally { await rm(retained, { recursive: true, force: true }); }
+    }
+  } else {
+    if (!await history.path(`${key}/trees/${retainedName}`)) throw new Error("Directory/prepared/included feed requires retained landed tree bytes");
+    await history.copyTree(`${key}/trees/${retainedName}`, tree);
+  }
+  if (landing.source.kind === "directory" && !isPrepared) {
     const actual = digestDirectory(tree);
     if (actual !== landing.revision) throw new Error(`Directory feed revision mismatch: recorded ${landing.revision}, retained ${actual}`);
   }
@@ -135,10 +143,11 @@ export const materializeFeed = async (context: InputContext): Promise<InputResul
       : { kind: "directory", ...prepared } };
   await symlink(identity.tree, path.join(context.destination, "current"));
   await writeFile(path.join(context.destination, FEED_IDENTITY_FILE), `${JSON.stringify(identity, null, 2)}\n`);
-  return { fidelity: basis === "feed-rule-at" || ambiguous ? "approximate" : "exact", basis,
+  return { fidelity: isPrepared || basis === "feed-rule-at" || ambiguous ? "approximate" : "exact", basis,
     source: { revision: landing.revision, landedAt: landing.landed_at, ...(landing.switching_at ? { switchingAt: landing.switching_at } : {}),
-      ...(landing.commit ? { commit: landing.commit } : {}) },
+      ...(landing.commit ? { commit: landing.commit } : {}), ...(isPrepared ? { prepared: true } : {}) },
     instant: compareInstants(landing.landed_at, context.at) > 0 ? context.at : landing.landed_at,
-    notes: ambiguous ? ["The trial instant falls inside an ambiguous feed transition; the incoming landing is used."]
-      : basis === "feed-rule-at" ? ["Commit dates do not establish when a ref advanced; historical freeze holds cannot be reconstructed."] : [] };
+    notes: [...(isPrepared ? ["prepared output not content-verifiable"] : []),
+      ...(ambiguous ? ["The trial instant falls inside an ambiguous feed transition; the incoming landing is used."]
+        : basis === "feed-rule-at" ? ["Commit dates do not establish when a ref advanced; historical freeze holds cannot be reconstructed."] : [])] };
 };

@@ -1,4 +1,4 @@
-import { cp, lstat, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, readFile, readdir, rename, symlink, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadTrainingProject, resolveTrainingPlan } from "../plan/index.js";
@@ -7,12 +7,72 @@ import { materializeTrainingMoment, resolveTrainingMoment } from "./materialize.
 import { leakCheckTrainingMoment } from "./leakCheck.js";
 import * as gitMaterializer from "./git.js";
 import * as volumeMaterializer from "./volumes.js";
+import { rewindGit } from "./gitProcess.js";
+import { selectTrainingExample } from "./select.js";
 import { AT, BEFORE, FUTURE, emptyRecord, jsonl, rewindFixture, testGit } from "./fixtures.test-helper.js";
 
 afterEach(cleanTrainingProjects);
 afterEach(() => vi.restoreAllMocks());
+vi.mock("node:fs/promises", async () => {
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  return { ...actual, rename: vi.fn(actual.rename) };
+});
 
 describe("materializeTrainingMoment", () => {
+  it.each(["at", "effectiveAt"])("refuses out-of-range %s before creating output or dispatching inputs", async (field) => {
+    const f = await rewindFixture(), selected = selectTrainingExample(f.plan, f.options.example), original = selected.example;
+    const dispatch = vi.spyOn(gitMaterializer, "materializeGit");
+    for (const instant of ["1969-12-31T23:59:59.999999999Z", "9999-12-31T23:59:59.999000001Z"]) {
+      const record = emptyRecord();
+      if (field === "at") {
+        original.at = instant;
+        f.project.datasets[selected.sourcePath]!.value.examples.find((entry) => entry.id === selected.id)!.at = instant;
+      }
+      else { record.wake.startedAt = instant; await jsonl(f.historyDir, "moments/range.jsonl", [record]); }
+      const out = path.join(f.root, "not-created", "out");
+      expect(() => resolveTrainingMoment(f.plan, f.project, f.options.example, field === "effectiveAt" ? [record] : []))
+        .toThrow(/must be within 1970.*9999/u);
+      await expect(materializeTrainingMoment({ ...f.options, out })).rejects.toThrow(/must be within 1970.*9999/u);
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(await readdir(f.root)).not.toContain("not-created");
+    }
+  });
+
+  it("preserves a pre-1970 source commit on the final published bundle", async () => {
+    const f = await rewindFixture(), old = "1960-01-01T00:00:00Z";
+    testGit(f.gitRepo, ["read-tree", f.commit]); await symlink("news.txt", path.join(f.gitRepo, "old-link"));
+    testGit(f.gitRepo, ["add", "old-link"]);
+    const tree = testGit(f.gitRepo, ["write-tree"]);
+    const raw = `tree ${tree}\nauthor Rewind <rewind@example.invalid> -315619200 +0000\ncommitter Rewind <rewind@example.invalid> -315619200 +0000\n\nOld source\n`;
+    // Git's authoring CLI refuses negative dates; retained raw historical objects can still contain them.
+    const commit = (await rewindGit(f.gitRepo, ["hash-object", "--literally", "-t", "commit", "-w", "--stdin"], Buffer.from(raw))).toString().trim();
+    const input = resolveTrainingMoment(f.plan, f.project, f.options.example).inputs.find((entry) => entry.id === "code")!;
+    if (input.section !== "resources" || input.declaration.kind !== "git") throw new Error("Expected git");
+    input.declaration.ref = commit; delete input.declaration.branch;
+    const result = await materializeTrainingMoment(f.options);
+    expect(result, JSON.stringify(result.inputs)).toMatchObject({ status: "materialized", leakCheck: { ok: true } });
+    const directory = path.join(f.options.out, result.inputs.find((entry) => entry.id === "code")!.path!);
+    for (const name of ["", "news.txt", "old-link"]) {
+      const stats = await lstat(path.join(directory, name));
+      expect(stats.mtimeMs, name).toBe(Date.parse(old)); expect(stats.atimeMs, name).toBe(Date.parse(old));
+    }
+    expect((await leakCheckTrainingMoment(f.options.out, { historyDir: f.historyDir })).findings).toEqual([]);
+    expect((await lstat(path.join(directory, "news.txt"))).mtimeMs).toBe(Date.parse(old));
+  });
+
+  it("rejects timestamps changed during rename on the published bundle", async () => {
+    const f = await rewindFixture(), actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    vi.mocked(rename).mockImplementationOnce(async (from, to) => {
+      await actual.rename(from, to);
+      await utimes(path.join(String(to), "resources/team%3Apublication/code/news.txt"), new Date(FUTURE), new Date(BEFORE));
+    });
+    const result = await materializeTrainingMoment(f.options);
+    expect(result).toMatchObject({ status: "refused", leakCheck: { ok: false } });
+    const check = JSON.parse(await readFile(path.join(f.options.out, "leak-check.json"), "utf8"));
+    expect(check.findings).toContainEqual(expect.objectContaining({ class: "file-time", path: "resources/team%3Apublication/code/news.txt",
+      detail: "Access time is later than the moment" }));
+    expect(await readdir(f.options.out)).toEqual(["leak-check.json", "moment.json"]);
+  });
   it("stages every effective input, verifies disk, and preserves source times", async () => {
     const fixture = await rewindFixture();
     const resolved = resolveTrainingMoment(fixture.plan, fixture.project, example.id);

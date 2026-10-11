@@ -18,7 +18,8 @@ export const restoreAccessTimes = async (root: string, at: string): Promise<void
   const visit = async (file: string): Promise<void> => {
     const stats = await lstat(file);
     if (stats.isDirectory()) for (const name of await readdir(file)) await visit(path.join(file, name));
-    await (stats.isSymbolicLink() ? lutimes : utimes)(file, Math.min(stats.mtimeMs, Date.parse(at)) / 1000, stats.mtimeMs / 1000);
+    await (stats.isSymbolicLink() ? lutimes : utimes)(file,
+      new Date(Math.min(stats.mtimeMs, Date.parse(at))), new Date(stats.mtimeMs));
   };
   await visit(root);
 };

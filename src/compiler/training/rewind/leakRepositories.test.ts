@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanTrainingProjects } from "../plan/fixtures.test-helper.js";
@@ -6,6 +6,7 @@ import { AT, rewindFixture, testGit } from "./fixtures.test-helper.js";
 import { leakCheckTrainingMoment } from "./leakCheck.js";
 import { finalizeTrainingMoment, materializeTrainingMoment } from "./materialize.js";
 import { stampTree } from "./timestamps.js";
+import { digestDirectory } from "../../../volume/index.js";
 
 afterEach(cleanTrainingProjects);
 const unexpected = "Unexpected .git repository metadata outside the materialized git resource repository";
@@ -19,6 +20,11 @@ describe("repository discovery across every bundle input", () => {
     await mkdir(retained, { recursive: true });
     await cp(fixture.gitRepo, path.join(retained, "nested"), { recursive: true });
     await stampTree(retained, AT, AT);
+    // A plain directory revision can match malicious repository bytes; repository discovery must still reject them.
+    landing.revision = digestDirectory(retained); landing.tree = `trees/${landing.revision}`;
+    landing.source = { kind: "directory", directory: "never-read" }; delete landing.commit; delete landing.ref;
+    await rename(retained, path.join(feedDirectory, landing.tree));
+    await writeFile(path.join(feedDirectory, "landings.jsonl"), JSON.stringify(landing) + "\n");
     const result = await materializeTrainingMoment(fixture.options);
     expect(result.status).toBe("refused");
     const check = JSON.parse(await readFile(path.join(fixture.options.out, "leak-check.json"), "utf8"));

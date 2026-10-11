@@ -8,12 +8,13 @@ import { commitTestGit, gitTestRoot, initTestGit, testGit, testMomentRecord } fr
 import { History } from "./history.js";
 import { resolveRecordedCommit } from "./recordedCommit.js";
 import type { InputContext } from "./types.js";
+import { resolveFeedSource } from "../../../volume/index.js";
 
 const AT = "2026-10-09T08:20:31Z", EARLY = "2026-10-09T08:00:00Z", REVISION = "e".repeat(64);
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 const landing = (commit: string) => ({ version: "spawnfile.volume-feed-landing.v1", resource: "news", volume: "org-news", source: { kind: "git", repo: "recorded-repo" }, revision: REVISION, tree: REVISION, commit, ref: "main", paths: [], landed_at: EARLY });
-const feedRecord = (commit: string) => ({ id: "news", revision: REVISION, tree: REVISION, commit, paths: [], landedAt: EARLY });
+const feedRecord = (commit: string, revision = REVISION) => ({ id: "news", revision, tree: revision, commit, paths: [], landedAt: EARLY });
 const recordedValue = (field: "resources" | "feeds" | "landing", commit: string): string | undefined => {
   if (field === "landing") return feedLandingSchema.parse(landing(commit)).commit;
   const value = momentRecordSchema.parse({ ...testMomentRecord(), [field]: field === "resources"
@@ -41,14 +42,15 @@ const retainedFeed = async () => {
   const directory = path.join(source.root, "history/feeds/agent%3Awriter/news"), repository = path.join(directory, "repo");
   await mkdir(directory, { recursive: true });
   testGit(source.root, ["clone", "--quiet", "--bare", source.repository, repository]);
-  const retained = path.join(directory, "trees", REVISION);
-  await mkdir(retained, { recursive: true }); await writeFile(path.join(retained, "prepared.txt"), "retained bytes\n");
+  const revision = resolveFeedSource({ kind: "git", repo: repository, ref: source.past, fetch: false }).revision;
+  const retained = path.join(directory, "trees", revision);
+  await mkdir(retained, { recursive: true }); await writeFile(path.join(retained, "readme.txt"), "recorded bytes\n");
   const context: InputContext = { at: AT, destination: path.join(source.root, "feed-output"), history: source.context.history, record: null,
     input: { section: "resources", declaredBy: "agent:writer", id: "news", declarationBase: source.root, overridden: false,
       declaration: { id: "news", kind: "volume", mode: "mutable", mount: "./news", name: "org-news",
         feed: { git: { repo: "never-fetch" }, prepare: { host: true, command: ["never-run"] } } } } };
-  const log = async (commit: string) => writeFile(path.join(directory, "landings.jsonl"), `${JSON.stringify(landing(commit))}\n`);
-  return { ...source, repository, directory, context, log };
+  const log = async (commit: string) => writeFile(path.join(directory, "landings.jsonl"), `${JSON.stringify({ ...landing(commit), revision, tree: revision })}\n`);
+  return { ...source, repository, directory, context, log, revision };
 };
 
 describe("recorded commit contracts", () => {
@@ -141,11 +143,11 @@ describe("recorded commit validation authority", () => {
 
 describe("retained feed recorded commit objects", () => {
   it("normalizes landing and moment IDs before comparing and reports the commit object", async () => {
-    const { context, past, log } = await retainedFeed();
+    const { context, past, log, revision } = await retainedFeed();
     await log(past.toUpperCase());
-    context.record = { ...testMomentRecord(), feeds: [feedRecord(past.toUpperCase())] };
+    context.record = { ...testMomentRecord(), feeds: [feedRecord(past.toUpperCase(), revision)] };
     expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", source: { commit: past } });
-    expect(await readFile(path.join(context.destination, "current/prepared.txt"), "utf8")).toBe("retained bytes\n");
+    expect(await readFile(path.join(context.destination, "current/readme.txt"), "utf8")).toBe("recorded bytes\n");
   });
 
   it.each(["blob", "tree", "tag"] as const)("refuses a retained tree whose recorded commit is a %s", async (type) => {
@@ -194,8 +196,8 @@ describe("feed moment records without landing logs", () => {
   });
 
   it("uses a verified moment commit without a landing log", async () => {
-    const { context, past } = await fallbackFeed();
-    context.record = { ...testMomentRecord(), feeds: [feedRecord(past.toUpperCase())] };
+    const { context, past, revision } = await fallbackFeed();
+    context.record = { ...testMomentRecord(), feeds: [feedRecord(past.toUpperCase(), revision)] };
     expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", basis: "record", source: { commit: past } });
   });
 

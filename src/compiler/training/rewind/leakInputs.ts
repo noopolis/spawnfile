@@ -3,8 +3,10 @@ import path from "node:path";
 import { feedIdentityFindings, type FeedIdentity } from "../../../volume/feedRecord.js";
 import type { LeakCheck, LeakFinding, MaterializedInput, MaterializedMoment } from "./contract.js";
 import { digestDirectory } from "../../../volume/index.js";
+import { assertPreparedFeedRevision, feedGitRevision, verifyPlainFeedTree } from "./feedContent.js";
+import { assertLocalGitRepository } from "./gitHistory.js";
 import { permitsFeedPublicationTime } from "./leakFeed.js";
-import { inside, safeSegment, type History } from "./history.js";
+import { historyKey, inside, safeSegment, type History } from "./history.js";
 import { compareInstants } from "./instant.js";
 import { diskPath } from "./leakFiles.js";
 import { parseMemoryLedger } from "./memory.js";
@@ -65,8 +67,23 @@ export const inspectFeedBundle = async (root: string, input: MaterializedInput, 
     || !inside(path.join(directory, "trees"), await realpath(current))) {
     addInputFinding(report, input, "feed-identity", "Feed current does not point to its tree inside the volume");
   } else if (!(await lstat(await realpath(current))).isDirectory()) addInputFinding(report, input, "feed-identity", "Feed tree must be a directory");
-  else if (identity.source.kind === "directory" && digestDirectory(await realpath(current)) !== identity.revision) {
-    addInputFinding(report, input, "feed-identity", "Directory feed revision disagrees with retained bytes");
+  else {
+    const prepared = identity.source.prepared !== undefined || input.source.prepared === true;
+    if (prepared && (input.fidelity !== "approximate" || !input.notes.includes("prepared output not content-verifiable"))) {
+      addInputFinding(report, input, "feed-identity", "Prepared feed must be approximate: prepared output not content-verifiable");
+    }
+    if (identity.source.prepared) assertPreparedFeedRevision(identity.revision, identity.source.prepared);
+    if (identity.source.kind === "directory" && !prepared && digestDirectory(await realpath(current)) !== identity.revision) {
+      addInputFinding(report, input, "feed-identity", "Directory feed revision disagrees with retained bytes");
+    }
+    if (identity.source.kind === "git") {
+      const repository = await history?.repository(`feeds/${historyKey(input)}/repo`);
+      if (!repository) throw new Error("Missing feed source history repository for content verification");
+      await assertLocalGitRepository(repository, history);
+      if (!prepared) await verifyPlainFeedTree(repository, identity, await realpath(current));
+      else if (identity.source.prepared && feedGitRevision(repository, identity.source.commit, identity.source.ref, identity.source.paths)
+        !== identity.source.prepared.source_revision) throw new Error("Prepared feed source revision disagrees with selected commit and paths");
+    }
   }
 };
 
