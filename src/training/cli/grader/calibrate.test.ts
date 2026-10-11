@@ -345,3 +345,24 @@ it('explains older calibration identity shapes before contacting the backend', a
       'calibration file is stale or from an older version; re-run grader calibrate');
   }
 });
+
+it('persists calibration and per-question missing rates after a real Jev transport 422', async () => {
+  const f = await fixture();
+  const { createJevDecision } = await import('../../inference/decision/index.js');
+  const backend = createJevDecision({ endpoint: 'http://localhost/jev', fetch: async (_url, init) => {
+    const body = JSON.parse(init!.body as string) as { state: string; questions: Record<string, unknown> };
+    const state = JSON.parse(body.state) as Record<string, unknown>;
+    if (state['output.good'] === true) return new Response('{"detail":"input exceeds 2560 tokens"}', { status: 422 });
+    return new Response(JSON.stringify({ model: 'reported', answers: Object.fromEntries(Object.keys(body.questions)
+      .map(key => [key, { probabilities: { true: 0.02, false: 0.98 } }])) }));
+  } });
+  const result = await runCalibrate({ graderFile: f.graderFile }, { backend: () => backend });
+  expect(result.code).toBe(1);
+  const persisted = JSON.parse(await readFile(result.calibrationFile, 'utf8'));
+  expect(persisted.questions.q.metrics.instances).toBe(40);
+  expect(persisted.questions.gate.metrics.instances).toBe(40);
+  const report = await readFile(result.reportFile, 'utf8');
+  for (const id of ['q', 'gate']) {
+    expect(report.split('\n').find(line => line.startsWith(`| ${id} |`))).toContain('0.500 / 0.000');
+  }
+});

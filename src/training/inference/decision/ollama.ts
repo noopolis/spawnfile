@@ -1,5 +1,5 @@
 import type { DecisionBackend, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
-import { decisionHttp, type DecisionHttpOptions } from './http.js';
+import { decisionHttp, DecisionRequestRejected, type DecisionHttpOptions } from './http.js';
 import { DECISION_LETTERS, decisionPrompt, validateDecisionRequest } from './prompt.js';
 
 export interface OllamaDecisionOptions extends DecisionHttpOptions { model: string }
@@ -33,8 +33,8 @@ export function createOllamaDecision(options: OllamaDecisionOptions): DecisionBa
               { role: 'user', content: decisionPrompt(request) }], options: { temperature: 0, num_predict: 1 } }, signal);
           results.push(decodeLogprobs(request, data));
         } catch (error) {
-          if (signal?.aborted) throw error;
-          results.push(missing(request, 'Ollama decision request failed'));
+          if (!(error instanceof DecisionRequestRejected)) throw error;
+          results.push(missing(request, error.message));
         }
       }
       return results;

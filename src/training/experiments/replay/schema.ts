@@ -20,6 +20,7 @@ const subjectUsage = z.object({ status: z.enum(['complete', 'incomplete']), usag
   source: z.string().min(1),
 }).nullable() });
 const judgeCall = z.object({ id: identity, judge: identity, providerId: identity, requestedModel: identity,
+  failureDetail: z.literal('tool-call').optional(),
   failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'auth-stale', 'protocol', 'invalid-response', 'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),
   fallbackOf: identity.optional(), wallMs: z.number().finite().nonnegative().optional(),
   billing: z.enum(['local', 'subscription', 'api', 'mixed']).optional(),
@@ -27,7 +28,7 @@ const judgeCall = z.object({ id: identity, judge: identity, providerId: identity
   // Preserve historical retry provenance without attesting that earlier calls aborted.
   retryOf: identity.optional(), retryCause: z.enum(judgeFailureCauses).optional(),
   responseModel: z.string().nullable(), responseRoute: z.string().nullable(),
-  outcome: z.enum(['completed', 'invalid-response', 'generation-error']), usage: usage.nullable() });
+  outcome: z.enum(['completed', 'invalid-response', 'generation-error', 'refused']), usage: usage.nullable() });
 const stop = z.object({ state: z.enum(['requested', 'acknowledged', 'unknown']), scope: z.enum(['process', 'process-group', 'native-handle']),
   quiescence: z.enum(['confirmed', 'unknown']), remoteWork: z.literal('unknown'), reason: z.string(), detail: z.string(),
   // A replayed report has to keep WHICH closure proof failed: the object schema

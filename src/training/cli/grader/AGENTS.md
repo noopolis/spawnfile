@@ -28,3 +28,6 @@ consensus. Calibration uses one eligible population before filtering panel dispu
 
 External human/editor import IO validates the full transaction before atomic
 replacement; it constructs no inference providers and preserves replay receipts.
+Import relabel validates stored structure before replacement and the complete current
+rubric afterward. Current refusal receipts are terminal on resume; explicit relabel
+clears them for retry, while asked membership remains in the denominator.

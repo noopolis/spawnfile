@@ -13,3 +13,5 @@ Verify adjacent tests, four negative mutations, ESLint and per-file coverage.
 The public grading-result schema preserves typed persisted identity, coverage and
 question/gate results; callers supply their explicit judge-call schema. No passthrough
 objects may bypass validation of persisted grading fields.
+Contained tool-call rejections retain refused outcomes and typed tool-call detail in
+judge-call evidence; they consume their call slot and contribute no answer.

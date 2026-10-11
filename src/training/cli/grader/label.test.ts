@@ -295,3 +295,34 @@ it('records contained tool attempts as refused, retains the asked denominator, a
   label.votes.q = { other: 'yes' }; label.askedByInstance!.q!.push('other');
   expect(deriveConsensus(label, labels.labelers).q!.disputed).toBe(true);
 });
+
+it('resumes current refusals without generation and retries only with relabel', async () => {
+  const f = await fixture();
+  const generate = vi.fn(async (): Promise<string> => { throw new InferenceFailure('protocol', 'SECRET', { detail: 'tool-call' }); });
+  const deps = { provider: () => provider(generate) };
+  await runLabel({ ...f, limit: 1 }, deps);
+  const original = await readFile(path.join(f.dir, 'labels.yaml'), 'utf8');
+  generate.mockImplementation(async () => '{"q":"yes","q2":"no"}');
+  expect(await runLabel({ ...f, limit: 1 }, deps)).toMatchObject({ calls: 0, votes: 0, missing: 2 });
+  expect(generate).toHaveBeenCalledTimes(1);
+  expect(await saved(f.dir)).toEqual(parse(original));
+  expect((await saved(f.dir)).labels[0]!.askedByInstance).toEqual({ q: ['t'], q2: ['t'] });
+  expect(await runLabel({ ...f, limit: 1, relabel: true }, deps)).toMatchObject({ calls: 1, votes: 2, missing: 0 });
+  expect(generate).toHaveBeenCalledTimes(2);
+  expect((await saved(f.dir)).labels[0]!.votes.q!.t).toBe('yes');
+});
+
+it.each(['question', 'policy', 'projection'])('does not reuse a refusal after its %s identity changes', async field => {
+  const f = await fixture();
+  await runLabel({ ...f, limit: 1 }, { provider: () => provider(async () => { throw new InferenceFailure('protocol', 'refused', { detail: 'tool-call' }); }) });
+  const labels = await saved(f.dir), provenance = labels.labels[0]!.provenance.t!;
+  if (field === 'question') {
+    const votes = provenance.votes as Record<string, { question_digest: string }>;
+    for (const vote of Object.values(votes)) vote.question_digest = 'stale';
+  } else {
+    const calls = provenance.calls as Record<string, Record<string, string>>;
+    for (const call of Object.values(calls)) call[field === 'policy' ? 'teacher_policy_digest' : 'projection_digest'] = 'stale';
+  }
+  await writeFile(path.join(f.dir, 'labels.yaml'), stringify(labels));
+  expect(await runLabel({ ...f, limit: 1 }, { provider: () => provider() })).toMatchObject({ calls: 1, votes: 2 });
+});

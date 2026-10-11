@@ -238,3 +238,16 @@ it('uses the verified backend teacher when an unrelated escalation teacher is de
   expect(f.backend.score).toHaveBeenCalledTimes(1);
   expect(f.teacher!.provider.generate).not.toHaveBeenCalled();
 });
+
+it('keeps typed containment refusal in grading evidence with zero coverage and no retry', async () => {
+  const f = await fixture(0.5);
+  // Runtime consumes the neutral typed fields exposed by inference failures.
+  f.teacher!.provider.generate = vi.fn(async () => { throw Object.assign(new Error('SECRET native diagnostic'), {
+    kind: 'protocol', detail: 'tool-call', responseModel: 'actual', responseRoute: 'contained', usage: null,
+  }); });
+  const result = JSON.parse(JSON.stringify(await gradeOutput(f)));
+  expect(result).toMatchObject({ status: 'unknown', score: 0, coverage: 0, questions: [{ missing: 1 }],
+    judgeCalls: [{ outcome: 'refused', failureKind: 'protocol', failureDetail: 'tool-call', responseModel: 'actual' }] });
+  expect(f.teacher!.provider.generate).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(result)).not.toContain('SECRET');
+});

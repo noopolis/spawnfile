@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { readFile, writeFile, mkdir, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { stringify } from 'yaml';
-import { loadGrader, parseLabelsYaml, parseLabels, sha256, stableDigest, type Label, type Labels } from '../../graders/index.js';
-import { parseLabelImport } from '../../graders/format/index.js';
+import { loadGrader, parseLabelsYaml, parseLabels, labelsSchema, sha256, stableDigest, type Label, type Labels } from '../../graders/index.js';
+import { parseSchema, parseYaml, parseLabelImport } from '../../graders/format/index.js';
 import { resolveStoredLabels } from './label-inputs.js';
 import { mergeImportedLabel } from '../../graders/labeling/index.js';
 
@@ -25,7 +25,8 @@ export async function runLabelImport(options: ImportLabelOptions): Promise<Impor
   let original: string | undefined;
   try {
     original = await readFile(labelsFile, 'utf8');
-    labels = parseLabelsYaml(original, grader);
+    labels = options.relabel ? parseSchema(labelsSchema, parseYaml(original)) : parseLabelsYaml(original, grader);
+    if (labels.grader !== grader.id) throw new Error('Labels grader mismatch');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     labels = { schema: 'paideia.labels.v1', grader: grader.id, labelers: {}, labels: [] };

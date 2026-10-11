@@ -26,3 +26,4 @@ Evaluation services preserve injected grader runtimes alongside judges and embed
 Replay preserves the complete typed grader result, calibration/scoring identity,
 coverage and measured judge billing/timing on every nested result surface. Validate
 those fields explicitly; object stripping must never erase grading evidence.
+Judge-call replay retains typed refused outcomes and tool-call failure details.

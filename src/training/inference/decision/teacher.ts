@@ -45,8 +45,9 @@ export function createTeacherDecision({ provider, model }: TeacherDecisionOption
           if (error instanceof InferenceFailure) {
             call.responseModel = error.responseModel; call.responseRoute = error.responseRoute;
             call.usage = error.usage; call.failureKind = error.kind;
+            if (error.detail === 'tool-call') { call.outcome = 'refused'; call.failureDetail = 'tool-call'; }
           }
-          results.push({ key: request.key, status: 'missing', probabilities: null, reason: 'Teacher response missing or invalid', teacherAnswered: true, judgeCalls: receipt() });
+          results.push({ key: request.key, status: 'missing', probabilities: null, reason: call.outcome === 'refused' ? 'Teacher refused: tool-call' : 'Teacher response missing or invalid', teacherAnswered: true, judgeCalls: receipt() });
         }
       }
       return results;

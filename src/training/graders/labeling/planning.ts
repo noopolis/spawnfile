@@ -95,9 +95,13 @@ export function validateStoredVotes(grader: Grader, labels: Labels, options: { r
     const instances = options.resolved ? new Map(expandInstances(grader, label.output, label.context).map(instance => [instance.key, instance])) : null;
     for (const [key, votes] of Object.entries(label.votes)) {
     for (const name of Object.keys(votes)) {
-      const kind = labels.labelers[name]?.kind;
+      const labeler = labels.labelers[name];
+      const kind = labeler?.kind;
       const authoritative = kind === 'human' || kind === 'editor';
       const teacher = teachers.get(name);
+      if (teacher && (labeler?.kind !== 'model' || labeler.provider !== teacher.provider || labeler.model !== teacher.model)) {
+        throw new Error(`Teacher identity mismatch ${label.id}/${key}/${name}`);
+      }
       const question = questions.get(key.split('@')[0]!);
       const entry = voteProvenance(label, name, key);
       if (!question || entry?.question_digest !== stableDigest(question) ||

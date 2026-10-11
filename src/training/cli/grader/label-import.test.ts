@@ -212,3 +212,41 @@ it('refuses duplicate vote coordinates before writing', async () => {
   const f = await fixture(); f.manifest.items.push(structuredClone(f.item)); await f.save();
   await expect(runLabelImport(f)).rejects.toThrow('duplicate import vote q/editor');
 });
+
+it.each(['human', 'editor'])('rejects imported %s IDs reserved for teachers before writing', async kind => {
+  const f = await fixture();
+  await fs.writeFile(f.importFile, stringify({ ...f.manifest, labelers: { t: { kind, name: 'Impersonator' } },
+    items: [{ ...f.item, labeler: 't' }] }));
+  await expect(runLabelImport(f)).rejects.toThrow('t collides with configured teacher');
+  await expect(fs.readFile(f.labelsFile)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it.each(['type', 'option'])('relabels answers invalidated by changed %s and validates the complete transaction', async change => {
+  const f = await fixture(); await runLabelImport(f);
+  const original = await fs.readFile(f.labelsFile, 'utf8');
+  const key = change === 'type' ? 'q' : 'p@p0';
+  const questions = f.grader.questions.map(q => q.id === key.split('@')[0]
+    ? { ...q, type: 'choice', options: ['replacement', 'other'], expected: ['replacement'] } : q);
+  await fs.writeFile(f.graderFile, stringify({ ...f.grader, questions }));
+  f.item.votes[key] = 'replacement'; await f.save();
+  await expect(runLabelImport(f)).rejects.toThrow('invalid option');
+  // An unrelated replacement must not allow an invalid historical vote to survive.
+  await fs.writeFile(f.importFile, stringify({ ...f.manifest, items: [{ ...f.item, votes: change === 'type' ? { 'p@p0': 'bad' } : { q: 'yes' } }] }));
+  await expect(runLabelImport({ ...f, relabel: true })).rejects.toThrow('invalid option');
+  expect(await fs.readFile(f.labelsFile, 'utf8')).toBe(original);
+  await f.save();
+  await runLabelImport({ ...f, relabel: true });
+  const g = await loadGrader(f.graderFile), loaded = await loadLabels(f.labelsFile, g);
+  expect(loaded.labels.labels[0]!.votes[key]!.editor).toBe('replacement');
+  expect(() => validateStoredVotes(g, loaded.labels, { resolved: true })).not.toThrow();
+});
+
+it('relabel still rejects malformed stored schema and wrong grader identity', async () => {
+  const f = await fixture(); await runLabelImport(f);
+  const stored = await f.saved();
+  for (const invalid of [{ ...stored, grader: 'wrong' }, { ...stored, labels: 'bad' }]) {
+    const bytes = stringify(invalid); await fs.writeFile(f.labelsFile, bytes);
+    await expect(runLabelImport({ ...f, relabel: true })).rejects.toThrow();
+    expect(await fs.readFile(f.labelsFile, 'utf8')).toBe(bytes);
+  }
+});

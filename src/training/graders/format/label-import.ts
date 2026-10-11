@@ -21,6 +21,7 @@ export function parseLabelImport(source: string, grader: Grader): LabelImport {
   const manifest = parseSchema(importSchema, parseYaml(source));
   if (manifest.grader !== grader.id) throw new Error('Import grader does not match grader.id');
   for (const [id, labeler] of Object.entries(manifest.labelers)) {
+    if (grader.teachers.some(teacher => teacher.id === id)) throw new Error(`Import labeler ${id} collides with configured teacher`);
     if (labeler.kind !== 'human' && labeler.kind !== 'editor') throw new Error(`Import labeler ${id}: only human/editor kinds are allowed`);
   }
   const seen = new Set<string>();

@@ -14,7 +14,7 @@ export interface JudgeCall {
   /** Must be a provider-reported identity; requested-model fallbacks and missing identities are null. */
   responseModel: string | null;
   responseRoute: string | null;
-  outcome: 'completed' | 'invalid-response' | 'generation-error';
+  outcome: 'completed' | 'invalid-response' | 'generation-error' | 'refused';
   usage: Usage | null;
   /** Configured maximum, including when no repair was needed. Omitted only in legacy captures. */
   citationRepairs?: 0 | 1;
@@ -30,6 +30,8 @@ export interface JudgeCall {
   /** Historical cause attributed to the prior failed attempt; present only beside `retryOf`. */
   retryCause?: JudgeFailureCause;
   failureKind?: InferenceFailureKind;
+  /** Typed containment rejection; never provider diagnostic prose. */
+  failureDetail?: 'tool-call';
   fallbackOf?: string;
   wallMs?: number;
   billing?: 'local' | 'subscription' | 'api' | 'mixed';

@@ -15,3 +15,5 @@ policy checks are exempt. Changed meaning/evidence requires re-adjudication.
 
 External vote merges reuse ready projection groups and pin question/evidence
 identities. Content-address or ancestry conflicts cannot be bypassed by relabel.
+Before calibration, configured teacher votes must match model kind, provider, model
+and teacher-policy provenance. Human/editor IDs cannot impersonate teachers.
