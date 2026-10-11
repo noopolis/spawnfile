@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { runProcess, type ProcessOptions, type ProcessResult, type RunningProcess } from '../../platform/process/index.js';
 import { createGrokInference, type GrokInferenceOptions } from './provider.js';
 import { decodeGrok, grokEnvironment, type GrokFrames } from './protocol.js';
@@ -183,4 +183,12 @@ it('rejects invalid response schemas before cognition and wrong typed JSON after
   await expect(provider.generate({ prompt: 'p', model: 'm', responseSchema: { type: 'object' } })).rejects.toMatchObject({
     kind: 'invalid-response', usage: { inputTokens: 6, outputTokens: 4 }, responseModel: 'grok-actual', responseRoute: 'grok-subscription',
   });
+});
+
+it('keeps the TypeSafe key outside the Grok child environment', () => {
+  vi.stubEnv('TYPESAFE_API_KEY', 'fake-typesafe-key');
+  try {
+    expect(grokEnvironment()['TYPESAFE_API_KEY']).toBeUndefined();
+    expect(process.env['TYPESAFE_API_KEY']).toBe('fake-typesafe-key');
+  } finally { vi.unstubAllEnvs(); }
 });

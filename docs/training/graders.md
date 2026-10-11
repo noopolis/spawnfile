@@ -488,6 +488,7 @@ in the calibration file and report; runtime checks these bars before inference.
 Declare the paid route explicitly; it is never a fallback for a local model or
 subscription teacher. Set `TYPESAFE_API_KEY` in the process environment before
 construction. A missing key refuses immediately. No key belongs in grader YAML.
+Endpoints require HTTPS; Claude and Grok teacher children do not inherit the key.
 
 ```yaml
 model:
@@ -495,6 +496,7 @@ model:
   name: jev-1.13.0
   # endpoint defaults to https://api.typesafe.ai/v1/systemone
   price_per_mtok_usd: 0.042
+  concurrency: 8  # 1–32 concurrent state groups
 max_spend_usd: 0.50
 ```
 
@@ -511,25 +513,33 @@ model-visible. The existing grader authoring limit remains 16 choice options;
 the transport supports up to 255. Missing/partial distributions remain missing.
 
 Identical projections share a request, including uncached calibration instances.
+State groups run in a bounded pool (default eight, maximum 32, configured through
+model `concurrency`). Split batches within a state group remain sequential.
 Batches split at 64 questions or an estimated 48,000 tokens (JSON characters / 3).
 The factory's `maxEstimatedTokens` is configurable up to 64,000; state plus each
 individual question also stays below 32,000 estimated tokens. Oversized instances
 are missing; no truncation. These are estimates, not an exact tokenizer guarantee.
 
 HTTP 401 throws an authentication failure. Other 4xx except 429 mark that request's
-instances missing with a bounded status reason. HTTP 429, 529 and other 5xx retry
-with exponential backoff and jitter (three attempts by default), within the
-cancellation/deadline budget; exhaustion throws an infrastructure failure.
+instances missing with a bounded status reason. HTTP 429, 529, other 5xx, network
+errors and attempt timeouts retry with exponential backoff and jitter (three
+attempts by default). Each HTTP attempt has its own 180-second timeout, including
+body reading; caller cancellation still bounds all work and is never retried.
+Exhaustion throws an infrastructure failure. Terminal failure stops queued groups
+and drains started work before returning. The CLI whole-command deadline remains
+independent; select `--timeout-ms` explicitly for longer calibration runs.
 Raw error bodies, headers and native errors never enter diagnostics or receipts.
 Authorization is sent only at the transport boundary and is not captured.
 
 `grader calibrate` and `grader grade` accept `--max-spend-usd N`, overriding
 `max_spend_usd`; zero blocks billable dispatch. A shared command budget covers all
-model candidates. Before every attempt, estimated input cost is reserved; reported
-input usage replaces that reservation. Unknown usage retains its reservation
+model candidates. The configured paid price must be positive. Before every
+attempt, estimated input cost is reserved; reported input usage replaces that
+reservation. Unknown usage retains its reservation
 conservatively. A request exceeding the remaining estimate budget is not sent;
 its instances are missing with reason `spend cap`, visible in calibration reports
-and grade decisions. Actual usage can exceed the estimate on the last sent call.
+and grade decisions. Actual usage can exceed estimates across already dispatched
+calls.
 
 `decisionAccounting` records each API attempt and aggregates requests, input/output
 tokens, estimated USD from measured input usage, and nearest-rank p50/p95 latency
@@ -538,3 +548,8 @@ input rate is 0.042 USD/million, configurable and not a live pricing claim or an
 invoice. Missing usage makes aggregate tokens/cost unknown; retry latency and
 attempts still count. Cached scores add no current request/cost. Mock transport
 and command tests verify this contract; live hosted availability is unverified.
+
+Failed grading or calibration emits a `paideia.grader-failure.v1` JSON result
+with sanitized `decisionAccounting` before exiting nonzero. Receipts include
+completed requests and failed attempts from every candidate already started;
+unknown usage stays unknown, while measured usage remains visible per receipt.

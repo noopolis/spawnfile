@@ -210,7 +210,7 @@ it('grader expand prints adjusted sentence units for citations after a period', 
 
 it('grades on the explicit TypeSafe route with accounting and propagates CLI spend-cap missing reasons', async () => {
   const f = await fixture();
-  f.grader.model = { backend: 'typesafe', endpoint: 'https://api.typesafe.ai/v1/systemone', name: 'jev-1.13.0' };
+  f.grader.model = { backend: 'typesafe', endpoint: 'https://api.typesafe.ai/v1/systemone', name: 'jev-1.13.0', concurrency: 8 };
   await writeFile(f.graderFile, stringify(f.grader));
   const { graderBackend } = await import('./backend.js');
   vi.stubEnv('TYPESAFE_API_KEY', 'FAKE_GRADE_API_KEY');
@@ -230,4 +230,24 @@ it('grades on the explicit TypeSafe route with accounting and propagates CLI spe
   expect(JSON.parse(output[0]!)).toMatchObject({ status: 'unknown', coverage: 0,
     decisions: [{ reason: 'spend cap' }], decisionAccounting: { requests: 0, usd: 0 } });
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('emits sanitized accounting for paid grading failure before returning nonzero', async () => {
+  const f = await fixture();
+  const receipts: import('../../contracts/grading.js').DecisionRequestReceipt[] = [];
+  f.backend.capabilities = { billing: 'api' };
+  f.backend.requestReceipts = () => receipts;
+  f.backend.score = async () => {
+    receipts.push({ billing: 'api', model: 'paid', endpoint: 'https://example.test', inputTokens: 100,
+      outputTokens: 0, usd: 0.1, estimatedInputTokens: 120, estimatedUsd: 0.12, latencyMs: 2, status: 200 });
+    throw new Error('infrastructure unavailable');
+  };
+  const stdout: string[] = [], stderr: string[] = [];
+  expect(await main(['grader', 'grade', '--grader', f.graderFile, '--output', f.outputFile,
+    '--context', `evidence=${f.contextFiles.evidence}`, '--context', `policy=${f.contextFiles.policy}`], {
+    cwd: f.root, stdout: text => stdout.push(text), stderr: text => stderr.push(text),
+  }, { grader: f.dependencies })).toBe(2);
+  expect(JSON.parse(stdout[0]!)).toMatchObject({ schema: 'paideia.grader-failure.v1', status: 'failed', command: 'grade',
+    decisionAccounting: { requests: 1, inputTokens: 100, usd: 0.1, receipts: [{ status: 200 }] } });
+  expect(stderr.join('')).toContain('infrastructure unavailable');
 });

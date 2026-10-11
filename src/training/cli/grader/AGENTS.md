@@ -43,3 +43,7 @@ planning. Candidate held-out metrics are informational, never selection inputs.
 Explicit TypeSafe routes share one command spend budget across candidates. Cache
 misses reach batch-capable transports together; successful cache hits incur no
 new usage. Reports preserve API receipts and spend-cap missing reasons.
+
+Grade/calibrate failures emit paideia.grader-failure.v1 JSON accounting before
+nonzero exit. Include completed earlier candidates and failed attempts, exclude
+prior invocations, and keep diagnostics outside the sanitized accounting result.

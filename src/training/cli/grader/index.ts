@@ -1,3 +1,4 @@
+import { DecisionAccountingError } from '../../graders/index.js';
 import { resolve } from 'node:path';
 import type { CliArguments } from '../arguments.js';
 import type { CliIO } from '../types.js';
@@ -17,6 +18,17 @@ export { buildGradingRuntime } from './runtime.js';
 export type { GraderDependencies } from './backend.js';
 
 export async function runGraderCommand(args: CliArguments, io: CliIO, dependencies: GraderDependencies = {}, signal?: AbortSignal): Promise<number> {
+  try { return await executeGraderCommand(args, io, dependencies, signal); }
+  catch (error) {
+    if (error instanceof DecisionAccountingError) io.stdout(`${JSON.stringify({
+      schema: 'paideia.grader-failure.v1', status: 'failed', command: args.graderCommand,
+      decisionAccounting: error.decisionAccounting,
+    })}\n`);
+    throw error;
+  }
+}
+
+async function executeGraderCommand(args: CliArguments, io: CliIO, dependencies: GraderDependencies, signal?: AbortSignal): Promise<number> {
   const maxSpendUsd = args.flags['max-spend-usd'] ? Number(one(args, 'max-spend-usd')) : undefined;
   const graderFile = resolve(io.cwd, one(args, 'grader'));
   if (args.graderCommand === 'validate') {

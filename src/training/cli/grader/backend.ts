@@ -17,7 +17,7 @@ export function graderBackend(grader: Grader, dependencies: GraderDependencies =
   const model = grader.model!;
   if (model.backend === 'ollama-logprobs') return createOllamaDecision({ endpoint: model.endpoint, model: model.name, contextTokens: model.context_tokens });
   if (model.backend === 'typesafe') return createTypeSafeDecision({ endpoint: model.endpoint, model: model.name,
-    pricePerMtokUsd: model.price_per_mtok_usd, budget: dependencies.decisionBudget, maxSpendUsd: dependencies.maxSpendUsd ?? grader.max_spend_usd });
+    concurrency: model.concurrency, pricePerMtokUsd: model.price_per_mtok_usd, budget: dependencies.decisionBudget, maxSpendUsd: dependencies.maxSpendUsd ?? grader.max_spend_usd });
   if (model.backend !== 'teacher') return createJevDecision({ endpoint: model.endpoint });
   const teacher = grader.teachers.find(item => item.id === model.teacher)!;
   return createTeacherDecision({ provider: (dependencies.provider ?? createGraderTeacher)(teacher), model: teacher.model });

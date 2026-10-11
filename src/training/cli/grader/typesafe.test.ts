@@ -60,7 +60,7 @@ it('shares the authored TypeSafe spend cap across candidates and permits an expl
   const f = await fixture(2);
   const { model, ...rest } = f.grader;
   await writeFile(f.graderFile, stringify({ ...rest, max_spend_usd: 0,
-    models: [{ ...model, id: 'one' }, { ...model, id: 'two' }] }));
+    models: [{ ...model, id: 'one', concurrency: 1 }, { ...model, id: 'two', concurrency: 1 }] }));
   vi.stubEnv('TYPESAFE_API_KEY', 'FAKE_SPEND_KEY');
   const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
     const body = JSON.parse(String(init!.body)) as { questions: Record<string, unknown> };
@@ -78,4 +78,31 @@ it('shares the authored TypeSafe spend cap across candidates and permits an expl
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(JSON.parse(output[0]!).decisionAccounting).toMatchObject({ requests: 1, inputTokens: 1_000_000, usd: 0.042 });
   expect(await readFile(stopped.reportFile, 'utf8')).toContain('spend cap');
+});
+
+it.each([1, 2])('emits completed and failed API receipts after %i successful calibration requests', async completed => {
+  const f = await fixture(2), secret = 'FAKE_SECRET_FAILURE_ACCOUNTING';
+  const { model, ...rest } = f.grader;
+  await writeFile(f.graderFile, stringify({ ...rest,
+    models: [{ ...model, id: 'one', concurrency: 1 }, { ...model, id: 'two', concurrency: 1 }] }));
+  vi.stubEnv('TYPESAFE_API_KEY', secret);
+  let calls = 0;
+  vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+    calls++;
+    if (calls > completed) return new Response(secret, { status: 529 });
+    const body = JSON.parse(String(init!.body)) as { questions: Record<string, unknown> };
+    return Response.json({ model: 'jev-1.13.0', usage: { input_tokens: 100, output_tokens: 0 },
+      echoedAuthorization: secret, answers: Object.fromEntries(Object.keys(body.questions).map(key => [key, { type: 'noul', noul: 0.9 }])) });
+  }));
+  const stdout: string[] = [], stderr: string[] = [];
+  expect(await main(['grader', 'calibrate', '--grader', f.graderFile], {
+    cwd: f.root, stdout: text => stdout.push(text), stderr: text => stderr.push(text),
+  })).toBe(2);
+  const result = JSON.parse(stdout[0]!) as { decisionAccounting: { receipts: { status: number; inputTokens: number | null }[] } };
+  expect(result).toMatchObject({ schema: 'paideia.grader-failure.v1', command: 'calibrate', status: 'failed' });
+  expect(result.decisionAccounting.receipts.filter(receipt => receipt.status === 200)).toHaveLength(completed);
+  expect(result.decisionAccounting.receipts.filter(receipt => receipt.status === 529).length).toBeGreaterThanOrEqual(3);
+  expect(result.decisionAccounting.receipts.slice(0, completed).map(receipt => receipt.inputTokens)).toEqual(Array(completed).fill(100));
+  expect(JSON.stringify(result) + stderr.join('')).not.toContain(secret);
+  expect(stderr.join('')).toContain('retry attempts exhausted');
 });

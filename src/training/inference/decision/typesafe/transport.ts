@@ -26,13 +26,13 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
   let endpoint: URL;
   try { endpoint = new URL(options.endpoint ?? TYPESAFE_ENDPOINT); }
   catch { throw new Error('Invalid TypeSafe endpoint'); }
-  if (!['https:', 'http:'].includes(endpoint.protocol) || endpoint.username || endpoint.password ||
+  if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password ||
     endpoint.search || endpoint.hash || endpoint.href.includes(key)) throw new Error('Invalid TypeSafe endpoint');
   if (!/^jev-\d+\.\d+\.\d+$/.test(options.model) || options.model.includes(key)) throw new Error('TypeSafe requires a pinned versioned model');
   // Configurable estimate, never a claim about the current provider price or invoice.
   const price = options.pricePerMtokUsd ?? 0.042;
   const attempts = options.maxAttempts ?? 3, timeout = options.timeoutMs ?? 180_000, base = options.retryBaseMs ?? 250;
-  if (!Number.isFinite(price) || price < 0 || !Number.isSafeInteger(attempts) || attempts < 1 || attempts > 10 ||
+  if (!Number.isFinite(price) || price <= 0 || !Number.isSafeInteger(attempts) || attempts < 1 || attempts > 10 ||
     !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2_147_483_647 || !Number.isSafeInteger(base) || base < 0 || base > 60_000) {
     throw new Error('Invalid TypeSafe transport options');
   }
@@ -54,24 +54,27 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
       const estimate = tokens * price / 1e6;
       for (let attempt = 0; attempt < attempts; attempt++) {
         check(signal);
-        if (budget.maxUsd !== undefined && budget.spentUsd + budget.reservedUsd + estimate > budget.maxUsd) return { reason: 'spend cap' };
+        if (budget.maxUsd === 0 || (budget.maxUsd !== undefined && budget.spentUsd + budget.reservedUsd + estimate > budget.maxUsd)) return { reason: 'spend cap' };
         budget.reservedUsd += estimate;
         const receipt: DecisionRequestReceipt = { billing: 'api', model: options.model, endpoint: endpoint.href,
           inputTokens: null, outputTokens: null, usd: null, estimatedInputTokens: tokens, estimatedUsd: estimate,
           latencyMs: 0, status: null };
         const start = performance.now();
+        const deadline = new AbortController();
+        const timer = setTimeout(() => deadline.abort(), timeout);
+        const attemptSignal = AbortSignal.any([signal, deadline.signal]);
         try {
           // No request capture: Authorization exists only at this transport boundary.
-          const response = await (options.fetch ?? fetch)(endpoint.href, { method: 'POST', redirect: 'error', signal,
+          const response = await (options.fetch ?? fetch)(endpoint.href, { method: 'POST', redirect: 'error', signal: attemptSignal,
             headers: { 'content-type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(body) });
-          check(signal);
+          attemptSignal.throwIfAborted();
           receipt.status = response.status;
           if (response.status === 401) throw new Error('TypeSafe authentication failed (401)');
           const retry = response.status === 429 || response.status >= 500;
           if (!retry && !response.ok) return { reason: `TypeSafe HTTP ${response.status}: request rejected` };
           if (!retry) {
             const raw: unknown = await response.json();
-            check(signal);
+            attemptSignal.throwIfAborted();
             const data = raw as { model?: unknown; usage?: { input_tokens?: unknown; output_tokens?: unknown } } | null;
             const input = data?.usage?.input_tokens, output = data?.usage?.output_tokens;
             if (typeof input === 'number' && Number.isSafeInteger(input) && input >= 0) {
@@ -86,8 +89,10 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
           // Never propagate fetch/JSON/abort errors: they may embed Authorization or echoed credentials.
           check(signal);
           if (receipt.status === 401) throw new Error('TypeSafe authentication failed (401)');
-          throw new Error('TypeSafe infrastructure failure');
+          // Network errors and this attempt's timeout share the bounded 5xx retry policy.
+          // Caller/pool cancellation, authentication and model drift remain terminal.
         } finally {
+          clearTimeout(timer);
           receipt.latencyMs = performance.now() - start;
           receipts.push(receipt);
         }
@@ -97,6 +102,5 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
       }
       throw new Error('TypeSafe infrastructure failure');
     },
-    timeout,
   };
 }

@@ -112,7 +112,7 @@ describe('TypeSafe transport safety', () => {
       async () => Response.json({ model: key, diagnostic: key }),
       async () => Response.json({ model, usage: { input_tokens: key, output_tokens: key } })];
     for (const fetch of failures) {
-      const backend = createTypeSafeDecision({ model, env, fetch });
+      const backend = createTypeSafeDecision({ model, env, fetch, retryBaseMs: 0 });
       let output: unknown;
       try { output = await backend.score([request()]); } catch (error) { output = error; }
       expect(inspect({ output, receipts: backend.requestReceipts!() }, { depth: null })).not.toContain(key);
@@ -156,11 +156,11 @@ describe('TypeSafe transport safety', () => {
       setTimeout(() => waiting.abort(key), 0); return new Response('', { status: 429 });
     } });
     await expect(retry.score([request()], waiting.signal)).rejects.toThrow('cancelled');
-    const timed = createTypeSafeDecision({ model, env, timeoutMs: 5, fetch: async (_url, init) => {
+    const timed = createTypeSafeDecision({ model, env, timeoutMs: 5, retryBaseMs: 0, fetch: async (_url, init) => {
       await new Promise((_, reject) => init!.signal!.addEventListener('abort', () => reject(new Error(key))));
       throw new Error(key);
     } });
-    await expect(timed.score([request()])).rejects.toThrow('timed out');
+    await expect(timed.score([request()])).rejects.toThrow('retry attempts exhausted');
   });
 });
 

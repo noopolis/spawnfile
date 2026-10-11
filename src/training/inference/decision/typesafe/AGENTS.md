@@ -10,3 +10,9 @@ Shared budgets reserve before dispatch, including concurrent calls and retries.
 Unknown usage holds its reservation; measured usage replaces the estimate.
 Verify adjacent mocked tests, cancellation, model drift, batching, redaction and
 spend mutations; no live key or network required.
+
+HTTPS only; configured paid prices are positive and zero caps block dispatch even
+when floating-point estimates underflow. Each HTTP attempt owns a fresh timeout;
+caller cancellation stays terminal. Retry network/timeouts with bounded 5xx backoff.
+State groups use a pool (default 8, configured 1–32); split batches stay sequential.
+Stop admission and drain started work on failure before exposing receipts.

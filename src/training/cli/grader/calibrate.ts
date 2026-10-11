@@ -1,7 +1,7 @@
-import type { DecisionAccounting } from '../../contracts/grading.js';
+import type { DecisionAccounting, DecisionBackend } from '../../contracts/grading.js';
 import { mkdir, writeFile, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { summarizeDecisionAccounting, allQuestions, applyPlatt, calibrateQuestions, calibrationMetrics, createCalibrationIdentity,
+import { withDecisionFailureAccounting, summarizeDecisionAccounting, allQuestions, applyPlatt, calibrateQuestions, calibrationMetrics, createCalibrationIdentity,
   decisionModels, graderForModel, selectQuestionModel, stableDigest, evidenceFailures, expectedOptions, inEscalationBand, loadGrader, loadLabels, parseCalibration,
   planEscalation, splitCalibration, teacherAgreement, type CalibrationFile, type CalibrationRecord,
   type CascadeRecord, type BandPlan } from '../../graders/index.js';
@@ -19,7 +19,12 @@ export interface CalibrateOptions {
   concurrency?: number; signal?: AbortSignal; maxSpendUsd?: number;
 }
 
-export async function runCalibrate(options: CalibrateOptions, dependencies: GraderDependencies = {}): Promise<{
+export async function runCalibrate(options: CalibrateOptions, dependencies: GraderDependencies = {}) {
+  const backends = new Map<DecisionBackend, number>();
+  return withDecisionFailureAccounting(backends, () => calibrate(options, dependencies, backends));
+}
+
+async function calibrate(options: CalibrateOptions, dependencies: GraderDependencies, backends: Map<DecisionBackend, number>): Promise<{
   calibrationFile: string; reportFile: string; calibration: CalibrationFile; code: 0 | 1; decisionAccounting?: DecisionAccounting;
 }> {
   const grader = await loadGrader(options.graderFile);
@@ -39,6 +44,7 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
     try {
       options.signal?.throwIfAborted();
       const backend = graderBackend(definition, dependencies);
+      if (!backends.has(backend)) backends.set(backend, backend.requestReceipts?.().length ?? 0);
       const identity = await backendIdentity(definition, backend, options.signal);
       const golden = goldenInstances(definition, labels);
       const results = await cachedScores(dirname(options.graderFile), backend, stableDigest({ model: model.id, identity }),

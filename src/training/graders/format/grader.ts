@@ -17,7 +17,8 @@ const ollamaModel = localModel.extend({ backend: z.literal('ollama-logprobs'),
   context_tokens: z.number().int().min(2048).max(131072).default(16384) });
 const teacherModel = z.strictObject({ backend: z.literal('teacher'), teacher: identifier });
 const typeSafeModel = z.strictObject({ backend: z.literal('typesafe'), name: z.string().regex(/^jev-\d+\.\d+\.\d+$/),
-  endpoint: z.url().default('https://api.typesafe.ai/v1/systemone'), price_per_mtok_usd: z.number().finite().nonnegative().optional() });
+  endpoint: z.url({ protocol: /^https$/ }).default('https://api.typesafe.ai/v1/systemone'),
+  price_per_mtok_usd: z.number().finite().positive().optional(), concurrency: z.number().int().min(1).max(32).default(8) });
 const modelSchema = z.union([localModel, ollamaModel, teacherModel, typeSafeModel]);
 const namedModelSchema = z.union([localModel.extend({ id: identifier }), ollamaModel.extend({ id: identifier }), teacherModel.extend({ id: identifier }), typeSafeModel.extend({ id: identifier })]);
 export type DecisionModel = z.infer<typeof modelSchema>;

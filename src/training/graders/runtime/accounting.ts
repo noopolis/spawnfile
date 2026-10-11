@@ -1,4 +1,4 @@
-import type { DecisionAccounting, DecisionRequestReceipt } from '../../contracts/grading.js';
+import type { DecisionAccounting, DecisionBackend, DecisionRequestReceipt } from '../../contracts/grading.js';
 
 /** Current invocation only: cached scores are not new billable requests. */
 export function summarizeDecisionAccounting(receipts: DecisionRequestReceipt[]): DecisionAccounting {
@@ -8,4 +8,28 @@ export function summarizeDecisionAccounting(receipts: DecisionRequestReceipt[]):
   const percentile = (p: number) => latencies.length ? latencies[Math.ceil(p * latencies.length) - 1]! : null;
   return { billing: 'api', requests: receipts.length, inputTokens: sum('inputTokens'), outputTokens: sum('outputTokens'),
     usd: sum('usd'), latencyMs: { p50: percentile(0.5), p95: percentile(0.95) }, receipts };
+}
+
+/** Failure data excludes diagnostics, request bodies and provider response extensions. */
+export class DecisionAccountingError extends Error {
+  constructor(cause: unknown, readonly decisionAccounting: DecisionAccounting) {
+    super(cause instanceof Error ? cause.message : 'Decision operation failed', { cause });
+    this.name = 'DecisionAccountingError';
+  }
+}
+
+/** Register each backend before calling it; await drained provider work before rejection. */
+export async function withDecisionFailureAccounting<T>(backends: Map<DecisionBackend, number>, operation: () => Promise<T>): Promise<T> {
+  try { return await operation(); }
+  catch (cause) {
+    const paid = [...backends].filter(([backend]) => backend.capabilities?.billing === 'api');
+    if (!paid.length) throw cause;
+    const receipts = paid.flatMap(([backend, offset]) => (backend.requestReceipts?.() ?? []).slice(offset).map(receipt => ({
+      billing: receipt.billing, model: receipt.model, endpoint: receipt.endpoint,
+      inputTokens: receipt.inputTokens, outputTokens: receipt.outputTokens, usd: receipt.usd,
+      estimatedInputTokens: receipt.estimatedInputTokens, estimatedUsd: receipt.estimatedUsd,
+      latencyMs: receipt.latencyMs, status: receipt.status,
+    })));
+    throw new DecisionAccountingError(cause, summarizeDecisionAccounting(receipts));
+  }
 }

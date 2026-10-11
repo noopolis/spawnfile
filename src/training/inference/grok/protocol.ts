@@ -22,7 +22,7 @@ export const grokRoute = (mode: GrokAuthMode): string => mode.auth === 'subscrip
 
 export function grokEnvironment(): NodeJS.ProcessEnv {
   const env = { ...process.env };
-  for (const key of Object.keys(env)) if (/^(XAI_|GROK_(API_KEY|BASE_URL|AUTH_TOKEN)|OPENAI_API_KEY|ANTHROPIC_API_KEY)/u.test(key)) delete env[key];
+  for (const key of Object.keys(env)) if (/^(XAI_|GROK_(API_KEY|BASE_URL|AUTH_TOKEN)|TYPESAFE_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY)/u.test(key)) delete env[key];
   return env;
 }
 

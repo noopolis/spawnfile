@@ -43,3 +43,6 @@ structured_output independently. Invocation policy v2 invalidates old cache/resu
 identities; a source overlay is a diagnostic, never the original training image.
 Typed API-error terminals use strict401 authentication or429 quota; other/missing
 statuses remain unknown even if error prose mentions authentication or transport.
+
+Strip TYPESAFE_API_KEY from the child environment; paid decision credentials
+belong only to their explicitly selected transport, never teacher processes.

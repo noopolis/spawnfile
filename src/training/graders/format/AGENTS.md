@@ -36,3 +36,6 @@ row structure and paragraph/sentence scope. questionDefinitionDigest pins these
 regexes and extraction version wherever executable question identity is needed.
 rows.leading_citations defaults to keep; previous supplies the shared, versioned
 sentence citation policy used by expansion and every sentence-question identity.
+
+TypeSafe models require HTTPS endpoints and positive price estimates. Their
+concurrency defaults to eight and accepts only integers 1–32.

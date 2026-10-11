@@ -6,7 +6,7 @@ import { aggregateGrader, type InstanceOutcome } from '../aggregation.js';
 import { checkCalibration, createCalibrationIdentity } from '../identity.js';
 import { applyPlatt, inEscalationBand } from '../calibration/index.js';
 import { teacherPolicyDigest, type LabelGroup } from '../labeling/index.js';
-import { summarizeDecisionAccounting } from './accounting.js';
+import { summarizeDecisionAccounting, withDecisionFailureAccounting } from './accounting.js';
 import { decisionModelIdentities } from './identity.js';
 import { escalateGroup } from './teacher.js';
 import type { GradeOptions, GradeResult } from './types.js';
@@ -23,6 +23,12 @@ function goodProbability(question: DecisionQuestion, result: DecisionResult): nu
 
 /** No golden examples enter requests. Calibration is checked before any scoring. */
 export async function gradeOutput(options: GradeOptions): Promise<GradeResult> {
+  const backends = options.backends ?? (options.grader.model ? { default: options.backend } : {});
+  const offsets = new Map(Object.values(backends).map(backend => [backend, backend.requestReceipts?.().length ?? 0]));
+  return withDecisionFailureAccounting(offsets, () => gradeOutputInternal(options));
+}
+
+async function gradeOutputInternal(options: GradeOptions): Promise<GradeResult> {
   const { grader, calibration, signal } = options;
   signal?.throwIfAborted();
   if (grader.gates.some(gate => 'check' in gate && options.gateOutcomes?.[gate.id] === 'fail')) {

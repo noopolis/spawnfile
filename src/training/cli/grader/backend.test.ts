@@ -61,10 +61,10 @@ it('passes authored context through backend construction', () => {
 });
 
 it('constructs the explicitly declared TypeSafe paid route only', () => {
-  const definition = grader({ backend: 'typesafe', name: 'jev-1.13.0', price_per_mtok_usd: 0.1 });
+  const definition = grader({ backend: 'typesafe', name: 'jev-1.13.0', price_per_mtok_usd: 0.1, concurrency: 16 });
   expect(graderBackend(definition, { maxSpendUsd: 2 })).toBe(backend);
   expect(createTypeSafeDecision).toHaveBeenCalledWith({ endpoint: 'https://api.typesafe.ai/v1/systemone',
-    model: 'jev-1.13.0', pricePerMtokUsd: 0.1, maxSpendUsd: 2, budget: undefined });
+    model: 'jev-1.13.0', concurrency: 16, pricePerMtokUsd: 0.1, maxSpendUsd: 2, budget: undefined });
   expect(createJevDecision).not.toHaveBeenCalled();
 });
 
