@@ -1,5 +1,5 @@
 import type { TrainingPlan } from "../plan/index.js";
-import type { MomentRecord } from "./contract.js";
+import type { MomentRecord } from "../../../recording/index.js";
 import { compareInstants, normalizeInstant } from "./instant.js";
 import { hasRecordPin, recordForInput, recordPins } from "./recordInput.js";
 import type { InputIdentity, RewindInput } from "./types.js";
@@ -36,7 +36,7 @@ const canonical = (value: unknown): string => JSON.stringify(value, (_key, item:
 export const matchingMomentRecords = (records: readonly MomentRecord[], agent: string, at: string): MomentRecord[] =>
   records.filter((record) => record.agent === agent && compareInstants(record.wake.at, at) === 0);
 
-/** Replays keep the wake identity but later attempts have different pins. Only the original is relevant. */
+/** Replays can share executionId AND startedAt. Keep every earliest tie for per-input agreement. */
 export const originalMomentRecords = (records: readonly MomentRecord[]): MomentRecord[] => {
   const first = records.reduce<MomentRecord | null>((earliest, entry) =>
     !earliest || compareInstants(entry.wake.startedAt, earliest.wake.startedAt) < 0 ? entry : earliest, null);

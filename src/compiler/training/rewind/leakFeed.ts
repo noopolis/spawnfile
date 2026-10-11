@@ -1,6 +1,5 @@
-import type { FeedIdentity } from "../../../volume/index.js";
+import { feedLandingAt, type FeedIdentity } from "../../../volume/index.js";
 import type { MaterializedInput, MaterializedMoment } from "./contract.js";
-import { readFeedLandingHistory, selectFeedLanding } from "./feedLandings.js";
 import { historyKey, type History } from "./history.js";
 import { compareInstants } from "./instant.js";
 import { recordInputErrors } from "./recordInput.js";
@@ -20,9 +19,8 @@ export const permitsFeedPublicationTime = async (
       && pin.commit === input.source.commit && compareInstants(pin.landedAt, identity.landed_at) === 0);
   }
   if (input.basis !== "landing-log" || input.fidelity !== "approximate") return false;
-  const selection = selectFeedLanding(await readFeedLandingHistory(history, `feeds/${historyKey(input)}`, input.id) ?? [], moment.effectiveAt);
-  const landing = selection?.landing;
-  return Boolean(selection?.ambiguous && landing && landing.revision === identity.revision
+  const landing = feedLandingAt(await history.feedLandings(`feeds/${historyKey(input)}`, input.id), moment.effectiveAt);
+  return Boolean(landing?.ambiguous && landing.revision === identity.revision
     && landing.tree.replace(/^trees\//u, "") === identity.tree.replace(/^trees\//u, "")
     && landing.commit === input.source.commit && landing.switching_at === input.source.switchingAt
     && compareInstants(landing.landed_at, identity.landed_at) === 0);

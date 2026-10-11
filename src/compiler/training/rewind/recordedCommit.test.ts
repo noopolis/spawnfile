@@ -1,25 +1,29 @@
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { momentRecordSchema } from "./contract.js";
-import { feedLandingSchema, materializeFeed } from "./feed.js";
+import { momentRecordSchema } from "../../../recording/index.js";
+import { materializeFeed } from "./feed.js";
 import { materializeGit } from "./git.js";
 import { commitTestGit, gitTestRoot, initTestGit, testGit, testMomentRecord } from "./git.test-helper.js";
 import { History } from "./history.js";
 import { resolveRecordedCommit } from "./recordedCommit.js";
 import type { InputContext } from "./types.js";
-import { resolveFeedSource } from "../../../volume/index.js";
+import { resolveFeedSource, isFeedLanding } from "../../../volume/index.js";
 
 const AT = "2026-10-09T08:20:31Z", EARLY = "2026-10-09T08:00:00Z", REVISION = "e".repeat(64);
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
-const landing = (commit: string) => ({ version: "spawnfile.volume-feed-landing.v1", resource: "news", volume: "org-news", source: { kind: "git", repo: "recorded-repo" }, revision: REVISION, tree: REVISION, commit, ref: "main", paths: [], landed_at: EARLY });
-const feedRecord = (commit: string, revision = REVISION) => ({ id: "news", revision, tree: revision, commit, paths: [], landedAt: EARLY });
+const landing = (commit: string) => ({ version: "spawnfile.volume-feed-landing.v1", resource: "news", volume: "org-news", source: { kind: "git", repo: "recorded-repo" }, revision: REVISION, tree: `trees/${REVISION}`, commit, ref: "main", paths: [], switching_at: EARLY, landed_at: EARLY });
+const feedRecord = (commit: string, revision = REVISION) => ({ id: "news", revision, tree: `trees/${revision}`, commit, paths: [], landedAt: EARLY });
 const recordedValue = (field: "resources" | "feeds" | "landing", commit: string): string | undefined => {
-  if (field === "landing") return feedLandingSchema.parse(landing(commit)).commit;
+  if (field === "landing") {
+    const row = landing(commit);
+    if (!isFeedLanding(row)) throw new Error("Expected a full 40- or 64-hex commit object id in a valid landing");
+    return row.commit;
+  }
   const value = momentRecordSchema.parse({ ...testMomentRecord(), [field]: field === "resources"
     ? [{ id: "archive", kind: "git", commit }]
-    : [{ id: "news", revision: REVISION, tree: REVISION, commit, paths: [], landedAt: EARLY }] });
+    : [{ id: "news", revision: REVISION, tree: `trees/${REVISION}`, commit, paths: [], landedAt: EARLY }] });
   const entry = value[field][0]!;
   return "commit" in entry ? entry.commit : undefined;
 };
@@ -49,12 +53,18 @@ const retainedFeed = async () => {
     input: { section: "resources", declaredBy: "agent:writer", id: "news", declarationBase: source.root, overridden: false,
       declaration: { id: "news", kind: "volume", mode: "mutable", mount: "./news", name: "org-news",
         feed: { git: { repo: "never-fetch" }, prepare: { host: true, command: ["never-run"] } } } } };
-  const log = async (commit: string) => writeFile(path.join(directory, "landings.jsonl"), `${JSON.stringify({ ...landing(commit), revision, tree: revision })}\n`);
+  const log = async (commit: string) => writeFile(path.join(directory, "landings.jsonl"), `${JSON.stringify({ ...landing(commit), revision, tree: `trees/${revision}` })}\n`);
   return { ...source, repository, directory, context, log, revision };
 };
 
 describe("recorded commit contracts", () => {
-  it.each(["resources", "feeds", "landing"] as const)("normalizes full SHA-1 and SHA-256 %s commits to lowercase", (field) => {
+  it("requires the merged landing contract's lowercase full commit IDs", () => {
+    for (const length of [40, 64]) {
+      expect(recordedValue("landing", "a".repeat(length))).toBe("a".repeat(length));
+      expect(() => recordedValue("landing", "A".repeat(length))).toThrow();
+    }
+  });
+  it.each(["resources", "feeds"] as const)("normalizes full SHA-1 and SHA-256 %s commits to lowercase", (field) => {
     for (const length of [40, 64]) expect(recordedValue(field, "AbCDef12".repeat(length / 8))).toBe("abcdef12".repeat(length / 8));
   });
 
@@ -66,7 +76,7 @@ describe("recorded commit contracts", () => {
 
   it("directory landing logs omit git commit fields", () => {
     const { commit: _commit, ref: _ref, paths: _paths, ...entry } = landing("a".repeat(40));
-    expect(feedLandingSchema.parse({ ...entry, source: { kind: "directory", directory: "/source" } }).commit).toBeUndefined();
+    expect(isFeedLanding({ ...entry, source: { kind: "directory", directory: "/source" } })).toBe(true);
   });
 });
 
@@ -142,9 +152,9 @@ describe("recorded commit validation authority", () => {
 });
 
 describe("retained feed recorded commit objects", () => {
-  it("normalizes landing and moment IDs before comparing and reports the commit object", async () => {
+  it("normalizes moment IDs before comparing with lowercase landings and reports the commit object", async () => {
     const { context, past, log, revision } = await retainedFeed();
-    await log(past.toUpperCase());
+    await log(past);
     context.record = { ...testMomentRecord(), feeds: [feedRecord(past.toUpperCase(), revision)] };
     expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", source: { commit: past } });
     expect(await readFile(path.join(context.destination, "current/readme.txt"), "utf8")).toBe("recorded bytes\n");

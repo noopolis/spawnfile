@@ -1,7 +1,8 @@
 import { lstat, mkdir, mkdtemp, readdir, realpath, rename, rm, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { LoadedTrainingProject, TrainingPlan } from "../plan/index.js";
-import { materializedMomentSchema, type MaterializedInput, type MaterializedMoment, type MomentRecord } from "./contract.js";
+import { materializedMomentSchema, type MaterializedInput, type MaterializedMoment } from "./contract.js";
+import { type MomentRecord } from "../../../recording/index.js";
 import { materializeFeed } from "./feed.js";
 import { materializeGit } from "./git.js";
 import { historyKey, inside, openHistory, type History } from "./history.js";

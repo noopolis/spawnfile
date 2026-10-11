@@ -1,7 +1,8 @@
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { momentRecordSchema } from "./contract.js";
+import { momentRecordSchema, momentFileName, withMomentStore, writeMomentRecord, type WakeMomentRow } from "../../../recording/index.js";
+import * as rewindContract from "./contract.js";
 import { AT, BEFORE, emptyRecord, jsonl, memoryEvent, rewindFixture } from "./fixtures.test-helper.js";
 import { gitTestRoot } from "./git.test-helper.js";
 import { History } from "./history.js";
@@ -18,6 +19,9 @@ const recorded = () => ({
 });
 
 describe("P3 recording format", () => {
+  it("leaves the moment record schema owned only by the recording barrel", () => {
+    expect(rewindContract).not.toHaveProperty("momentRecordSchema");
+  });
   it("accepts the recording shape and rejects the superseded sketch", () => {
     const value = { ...recorded(), exact: false, errors: ["volume state: capture failed"],
       resources: [{ id: "git", kind: "git", commit: "a".repeat(40) }, { id: "bundle", kind: "bundle", sha256: `sha256:${"b".repeat(64)}` }],
@@ -49,6 +53,42 @@ describe("P3 recording format", () => {
 });
 
 describe("recording pins in a materialized trial", () => {
+  it.each([false, true])("consumes equal executionId+startedAt replay files and refuses differing decisions=%s", async (conflicting) => {
+    const f = await rewindFixture(); roots.push(f.root);
+    const first = emptyRecord(); first.memory = [{ id: "self", declaredBy: "agent:a", seq: 0 }];
+    const second = structuredClone(first);
+    second.wake.deliveries[0]!.deliveryId = "replay-delivery";
+    if (conflicting) second.memory[0]!.seq = 1;
+    const row = (record: typeof first): WakeMomentRow => ({ version: "noopolis.daimon.wake-moment.v1",
+      agent_id: record.agent, execution_id: record.wake.executionId, started_at: record.wake.startedAt,
+      deliveries: record.wake.deliveries.map((delivery) => ({ acceptance_id: delivery.deliveryId,
+        delivery_id: delivery.deliveryId, kind: delivery.kind, occurred_at: delivery.occurredAt })), snapshots: [] });
+    const slug = f.project.compilePlan.nodes.find((node) => node.id === f.plan.agent.id)!.slug;
+    await withMomentStore(path.join(f.historyDir, "record.json"), slug, async (directory) => {
+      for (const record of [second, first]) expect(await writeMomentRecord(directory, record, row(record))).toBe(true);
+      expect(await readdir(directory)).toEqual(expect.arrayContaining([momentFileName(row(first)), momentFileName(row(second))]));
+    });
+    expect(momentFileName(row(first))).not.toBe(momentFileName(row(second)));
+    const result = await materializeTrainingMoment(f.options);
+    if (conflicting) {
+      expect(result.status).toBe("refused");
+      expect(result.inputs.find((input) => input.kind === "memory")!.refusal).toMatch(/Conflicting moment records.*memory agent:a\/self/u);
+      expect(await readdir(f.options.out)).toEqual(["moment.json"]);
+    } else {
+      expect(result.status, JSON.stringify(result.inputs)).toBe("materialized");
+      expect(result.record).toMatchObject({ matched: true, attempts: 2, executionId: first.wake.executionId, selectedStartedAt: AT });
+      expect(result.inputs.find((input) => input.kind === "memory")).toMatchObject({ fidelity: "exact", source: { seq: 0 } });
+    }
+  });
+
+  it.each(["json", "jsonl"])("applies shared recording validation to .%s discovery", async (suffix) => {
+    const root = await gitTestRoot(); roots.push(root);
+    const record = { ...recorded(), memory: [{ id: "self", declaredBy: "agent:a", seq: Number.MAX_SAFE_INTEGER + 1 }] };
+    await mkdir(path.join(root, "moments/a"), { recursive: true });
+    await writeFile(path.join(root, `moments/a/invalid.${suffix}`), `${JSON.stringify(record)}\n`);
+    await expect(new History(root).records()).rejects.toThrow(/Invalid history moments\/a\/invalid/u);
+  });
+
   it.each([false, true])("refuses conflicting copies instead of choosing the empty pin or nonempty fallback (reverse=%s)", async (reverse) => {
     const f = await rewindFixture(); roots.push(f.root);
     const healthy = emptyRecord(); healthy.memory = [{ id: "self", declaredBy: "agent:a", seq: 0 }];

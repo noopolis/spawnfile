@@ -36,7 +36,7 @@ describe("raw historical blob extraction", () => {
     let output = context.destination;
     if (kind === "feed") {
       const revision = resolveFeedSource({ kind: "git", repo: repository, ref: commit, fetch: false }).revision;
-      await writeFile(path.join(repository, "../landings.jsonl"), `${JSON.stringify({ version: "spawnfile.volume-feed-landing.v1", resource: "input", volume: "input", source: { kind: "git", repo: repository }, revision, tree: revision, commit, ref: "main", landed_at: BEFORE })}\n`);
+      await writeFile(path.join(repository, "../landings.jsonl"), `${JSON.stringify({ version: "spawnfile.volume-feed-landing.v1", resource: "input", volume: "input", source: { kind: "git", repo: repository }, revision, tree: `trees/${revision}`, commit, ref: "main", switching_at: BEFORE, landed_at: BEFORE })}\n`);
       expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", source: { revision, commit } });
       output = path.join(output, "current");
     } else expect(await materializeGit(context)).toMatchObject({ fidelity: "approximate", source: { commit } });

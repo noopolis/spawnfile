@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { emptyRecord } from "./fixtures.test-helper.js";
-import { momentRecordSchema } from "./contract.js";
+import { momentRecordSchema } from "../../../recording/index.js";
 import { History, historyKey, openHistory, safeSegment } from "./history.js";
 
 const roots: string[] = [];

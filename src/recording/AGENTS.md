@@ -1,5 +1,6 @@
 # Moment Recording
 
+- `moment.ts` owns the shared strict moment-record schema, inferred type and parser; rewind consumes the public barrel.
 - `types.ts`, `parse.ts`, and `compose.ts` own the pure wake-row contract and pin composition.
 - `sync.ts` joins activation-scoped evidence; `read.ts` reads bounded byte chunks via the usage exec transport.
 - `history.ts` selects recording facts from the activation log; `deployment.ts` selects the live deployment and resolves feed histories.

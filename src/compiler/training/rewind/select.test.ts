@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TrainingPlan } from "../plan/index.js";
-import type { MomentRecord } from "./contract.js";
+import type { MomentRecord } from "../../../recording/index.js";
 import { selectMomentRecord, selectTrainingExample } from "./select.js";
 
 const at = "2026-10-09T08:20:31Z";

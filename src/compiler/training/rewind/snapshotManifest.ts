@@ -37,6 +37,8 @@ export const snapshotHistoryPath = (agentSlug: string, id: string, snapshot: str
   `recording/${safeSegment(agentSlug)}/snapshots/${safeSegment(id === "." || id === ".." ? id.replaceAll(".", "%2E") : id)}/${safeSegment(snapshot)}`;
 
 export const readSnapshotManifest = async (history: History, relative: string, id: string, snapshot: string): Promise<SnapshotManifest | null> => {
+  // Daimon publishes this marker only after the tree and manifest are durable.
+  if (await history.bytes(`${relative}.complete`) === null) return null;
   const bytes = await history.text(`${relative}.manifest.json`);
   if (bytes === null) return null;
   let manifest: SnapshotManifest;

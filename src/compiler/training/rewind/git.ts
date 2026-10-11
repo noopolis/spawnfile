@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { TeamWorkspaceResource } from "../../../manifest/index.js";
+import { deployedResource } from "./deployedResource.js";
 import { historyKey } from "./history.js";
 import { assertLocalGitRepository } from "./gitHistory.js";
 import { assertCommitNotFuture, commitAt, commitInstant, resolveRewindCommit, rewindGit } from "./gitProcess.js";
@@ -95,12 +96,18 @@ export const materializeGit = async (context: InputContext): Promise<InputResult
   const candidateCommits = input.overridden ? [] : context.candidateRecords?.flatMap((candidate) =>
     candidate.resources.flatMap((entry) => entry.id === input.id && entry.kind === "git" ? [entry.commit] : [])) ?? [];
   if (matchingRecord && matchingRecord.kind !== resource.kind) throw new Error(`Moment resource ${input.id} kind disagrees with its declaration`);
-  const bundlePin = matchingRecord?.kind === "bundle" ? matchingRecord : undefined;
+  const deployed = !input.overridden && !matchingRecord && !(resource.kind === "git" && pinned)
+    ? await deployedResource(context) : null;
+  if (deployed && deployed.pin.kind !== resource.kind) throw new Error(`Deployment resource ${input.id} kind disagrees with its declaration`);
+  const effectivePin = matchingRecord ?? deployed?.pin;
+  const bundlePin = effectivePin?.kind === "bundle" ? effectivePin : undefined;
   if (bundlePin && await materializeRecordedBundle(history, bundlePin.sha256, context.destination)) {
-    return { fidelity: "exact", basis: "record", source: { sha256: bundlePin.sha256 }, notes: [], instant: context.at };
+    return { fidelity: deployed && !deployed.exact ? "approximate" : "exact", basis: deployed ? "deploy-log" : "record",
+      source: { sha256: bundlePin.sha256 }, notes: deployed?.notes ?? [], instant: context.at };
   }
+  if (deployed && bundlePin) throw new Error(`Deployment bundle ${bundlePin.sha256} could not be reproduced from retained archive bytes`);
   const bundleNote = bundlePin ? `Recorded bundle ${bundlePin.sha256} could not be reproduced from retained archive bytes.` : undefined;
-  const gitPin = matchingRecord?.kind === "git" ? matchingRecord : undefined;
+  const gitPin = effectivePin?.kind === "git" ? effectivePin : undefined;
   const record = pinned ? undefined : gitPin;
   if (input.overridden && resource.kind === "bundle" && resource.source) {
     await extractOverrideBundle(localRepositoryPath(resource.source, input.declarationBase), context.destination, resource.sha256);
@@ -127,10 +134,11 @@ export const materializeGit = async (context: InputContext): Promise<InputResult
   const deferred = resource.kind === "bundle" ? await materializeBundle(resource, context, repository, selected.commit) : false;
   if (resource.kind === "git") await materializeCleanRepository(repository, selected.commit, context.destination);
   return {
-    fidelity: input.overridden ? "overridden" : resource.kind === "bundle" ? "approximate" : pinned || record ? "exact" : "approximate",
-    basis: input.overridden ? "override" : pinned ? "pinned" : record ? "record" : "selector-at",
+    fidelity: input.overridden ? "overridden" : resource.kind === "bundle" ? "approximate"
+      : deployed ? deployed.exact ? "exact" : "approximate" : pinned || record ? "exact" : "approximate",
+    basis: input.overridden ? "override" : pinned ? "pinned" : deployed ? "deploy-log" : record ? "record" : "selector-at",
     source: { commit: selected.commit, ...(!fromHistory ? { repository } : {}) }, instant: selected.instant,
-    notes: [...(pinned || record || input.overridden ? [] : ["Commit dates do not establish when a commit reached the selected ref."]),
+    notes: [...(deployed?.notes ?? []), ...(pinned || record || input.overridden ? [] : ["Commit dates do not establish when a commit reached the selected ref."]),
       ...(!input.overridden && resource.kind === "bundle" ? [bundleNote ?? "Source reconstruction has no matching recorded bundle digest."] : [])],
     ...(deferred ? { build: "deferred" } : {})
   };

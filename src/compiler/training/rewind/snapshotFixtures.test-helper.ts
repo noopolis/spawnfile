@@ -7,7 +7,7 @@ interface SnapshotFixture {
   directories?: Record<string, number>; symlinks?: Record<string, string>;
 }
 
-/** Recorder-format data only: no imports from the parallel Daimon implementation. */
+/** Recorder-format data only: no runtime dependency on Daimon. */
 export const writeRecordedVolumeSnapshot = async (historyRoot: string, options: SnapshotFixture) => {
   const recording = path.join(historyRoot, "recording", options.agentSlug);
   const base = path.join(recording, "snapshots", options.rootId);
@@ -42,8 +42,10 @@ export const writeRecordedVolumeSnapshot = async (historyRoot: string, options: 
   const manifest = { version: "noopolis.daimon.wake-moment.v1", id: options.rootId, snapshot: options.snapshot,
     started_at: options.startedAt, sourcePath: `/deployment/${options.rootId}`, entries };
   await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
+  await writeFile(`${directory}.complete`, "");
   await appendFile(rowsPath, `${JSON.stringify({ version: manifest.version, agent_id: options.agentId,
-    execution_id: options.executionId ?? "execution", started_at: options.startedAt, deliveries: [],
+    execution_id: options.executionId ?? "execution", started_at: options.startedAt,
+    deliveries: [{ acceptance_id: "acceptance", delivery_id: "delivery", kind: "manual", occurred_at: options.startedAt }],
     snapshots: [{ id: options.rootId, snapshot: options.snapshot, files: Object.keys(options.files).length,
       copied: Object.keys(options.files).length, linked: 0, skipped: 0 }] })}\n`);
   return { directory, manifestPath, rowsPath, manifest };

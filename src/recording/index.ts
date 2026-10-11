@@ -1,4 +1,5 @@
 export * from "./types.js";
+export * from "./moment.js";
 export * from "./compose.js";
 export * from "./parse.js";
 export * from "./store.js";
