@@ -101,6 +101,7 @@ export const materializeGit = async (context: InputContext): Promise<InputResult
   }
   if (resource.kind === "bundle" && resource.source && !record) throw new Error("Prebuilt bundle has no recorded commit and cannot be rewound; provide an override");
   let repository = input.overridden ? null : await history?.repository(`git/${historyKey(input)}`);
+  const fromHistory = Boolean(repository);
   if ((matchingRecord || candidateCommits.length) && !repository) throw new Error(`Missing git history for recorded resource ${input.id}`);
   if (!repository && (pinned || input.overridden)) {
     const declared = localRoot(resource);
@@ -115,13 +116,13 @@ export const materializeGit = async (context: InputContext): Promise<InputResult
       .then(async (commit) => ({ commit, instant: await commitInstant(repository!, commit) }))
     : await commitAt(repository, selector, context.at);
   if (!selected) throw new Error(`No first-parent commit for ${selector} exists at or before ${context.at}`);
-  if (resource.kind === "bundle") await assertCommitNotFuture(repository, selected.commit, context.at);
+  await assertCommitNotFuture(repository, selected.commit, context.at);
   const deferred = resource.kind === "bundle" ? await materializeBundle(resource, context, repository, selected.commit) : false;
   if (resource.kind === "git") await materializeCleanRepository(repository, selected.commit, context.destination);
   return {
     fidelity: input.overridden ? "overridden" : pinned || record ? "exact" : "approximate",
     basis: input.overridden ? "override" : pinned ? "pinned" : record ? "record" : "selector-at",
-    source: { commit: selected.commit }, instant: selected.instant,
+    source: { commit: selected.commit, ...(!fromHistory ? { repository } : {}) }, instant: selected.instant,
     notes: pinned || record || input.overridden ? [] : ["Commit dates do not establish when a commit reached the selected ref."],
     ...(deferred ? { build: "deferred" } : {})
   };

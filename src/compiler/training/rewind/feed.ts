@@ -109,6 +109,9 @@ export const materializeFeed = async (context: InputContext): Promise<InputResul
     const source = resolveFeedSource({ kind: "git", fetch: false, repo, ref: selected.commit, label: selected.ref, paths }, { exec: revisionExec });
     landing = { revision: source.revision, tree: source.revision, commit: selected.commit, ref: selected.ref, paths: paths ?? null, landedAt: selected.instant };
   }
+  // Selection owns this check: retained/prepared bytes must obey the same cutoff as extraction.
+  if (feed.git && (!landing.commit || !landing.ref)) throw new Error("Git feed landing must record its commit and ref");
+  if (landing.commit) await assertCommitNotFuture(await openRepository(), landing.commit, context.at);
   const tree = path.join(context.destination, "trees", landing.revision);
   if (await history.path(`${key}/trees/${landing.revision}`)) await history.copyTree(`${key}/trees/${landing.revision}`, tree);
   else {
@@ -118,7 +121,6 @@ export const materializeFeed = async (context: InputContext): Promise<InputResul
     const resolved = resolveFeedSource({ kind: "git", fetch: false, repo, ref: landing.commit, label: landing.ref, paths: feedPaths(landing.paths) }, { exec: revisionExec });
     if (resolved.revision !== landing.revision) throw new Error(`Feed revision mismatch: recorded ${landing.revision}, reconstructed ${resolved.revision}`);
     const commit = resolved.provenance.kind === "git" ? resolved.provenance.commit : landing.commit;
-    await assertCommitNotFuture(repo, commit, context.at);
     await exportFeedGitTree(repo, commit, tree, feedPaths(landing.paths));
   }
   const files = await fileCount(tree);
@@ -126,7 +128,6 @@ export const materializeFeed = async (context: InputContext): Promise<InputResul
   const identity: FeedIdentity = { version: FEED_IDENTITY_VERSION, resource: input.id, volume: resource.name!, revision: landing.revision,
     tree: `trees/${landing.revision}`, files, landed_at: landing.landedAt,
     source: feed.git ? { kind: "git", commit: landing.commit!, ref: landing.ref!, paths: landing.paths } : { kind: "directory" } };
-  if (feed.git && (!landing.commit || !landing.ref)) throw new Error("Git feed landing must record its commit and ref");
   await symlink(identity.tree, path.join(context.destination, "current"));
   await writeFile(path.join(context.destination, FEED_IDENTITY_FILE), `${JSON.stringify(identity, null, 2)}\n`);
   return { fidelity: log ? "exact" : "approximate", basis: log ? "landing-log" : "feed-rule-at",

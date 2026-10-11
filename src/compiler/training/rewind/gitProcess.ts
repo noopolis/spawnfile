@@ -45,7 +45,7 @@ export const commitInstant = async (repo: string, commit: string): Promise<strin
   return new Date(timestamp * 1000).toISOString();
 };
 
-/** Plain trees discard git metadata, so reject a future selected commit before that evidence disappears. */
+/** Validate the selected source before any copy/export, regardless of the materialized layout. */
 export const assertCommitNotFuture = async (repo: string, commit: string, at: string): Promise<void> => {
   const dates = (await rewindGit(repo, ["show", "-s", "--format=%at %ct", commit, "--"])).toString().trim().split(" ");
   if (dates.length !== 2 || dates.some((value) => !Number.isSafeInteger(Number(value)) || compareInstants(new Date(Number(value) * 1000).toISOString(), at) > 0)) {
