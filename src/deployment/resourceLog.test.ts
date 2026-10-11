@@ -10,6 +10,8 @@ import { writeHomeDeployment, resolveHomeDeploymentDirectory, resolveHomeReportP
 import { createDeployResources, deployResourcesAt, readDeployResources, ensureDeployResources } from "./resourceLog.js";
 import type { DeployResourceReport } from "./resourceLog.js";
 import type { DeploymentRecord } from "./record.js";
+import { readDeploymentRecord } from "./record.js";
+import type { RecordingAgentReport } from "../report/index.js";
 
 vi.mock("node:fs/promises", async (original) => ({ ...await original<typeof import("node:fs/promises")>() }));
 const day = 86_400_000;
@@ -94,4 +96,27 @@ it("retains the state at the cutoff and uses inclusive lookup boundaries", async
   expect(deployResourcesAt(entries, resolveHomeRecordPath("news"), new Date(Date.parse(record(3).created_at) - 1))).toBeNull();
   writeFileSync(path.join(state, "resource-log.jsonl"), `not-json\n${JSON.stringify(entries[0])}\n{}\n`);
   expect(readDeployResources(resolveHomeRecordPath("news"))).toEqual({ entries: [entries[0]], errors: ["line 1: invalid JSON or entry", "line 3: invalid JSON or entry"] });
+});
+
+it("persists complete activation-scoped recording facts through report, record and log publication", async () => {
+  const agent: RecordingAgentReport = {
+    node_id: "agent:writer", slug: "writer", directory: "/var/lib/spawnfile/recording/writer", keep_ms: 2 * day,
+    snapshots: ["drafts"], resources: [{ id: "archive", kind: "git" }, { id: "tools", kind: "bundle" }],
+    feeds: [{ id: "news", volume_name: "news-feed" }], networks: ["desk"],
+    memory: [{ id: "notes", declared_by: "team:news", ledger_path: "/memory/notes/events.jsonl" }]
+  };
+  const first = report();
+  first.recording!.agents = [agent];
+  await writeHomeDeployment({ ...record(9), activated_at: record(9).created_at, activation_exact: true }, first);
+  const next = report();
+  next.recording!.agents = [{ ...agent, resources: [], feeds: [], networks: [], snapshots: [],
+    memory: [{ id: "notes", declared_by: "agent:writer", ledger_path: "/memory/new/events.jsonl" }] }];
+  await writeHomeDeployment({ ...record(), activated_at: record().created_at, activation_exact: true }, next);
+  const file = resolveHomeRecordPath("news"), history = readDeployResources(file);
+  expect(history.errors).toEqual([]);
+  expect(history.entries).toHaveLength(2);
+  expect(deployResourcesAt(history.entries, file, record(9).created_at)!.recording_agents).toEqual([agent]);
+  expect(deployResourcesAt(history.entries, file, record().created_at)!.recording_agents).toEqual(next.recording!.agents);
+  expect((await readDeploymentRecord(file)).resource_snapshot!.recording_agents).toEqual(next.recording!.agents);
+  expect(createDeployResources(file, record(), {}, "off")).not.toHaveProperty("recording_agents");
 });

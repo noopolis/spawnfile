@@ -52,7 +52,8 @@ it.each([false, true])("project up writes a deployment resource entry only with 
   expect(readDeployResources(state)).toEqual({ entries: [{
     version: "spawnfile.deploy-resources.v1", deployment: "news", deployed_at: record.created_at,
     deployment_id: state, activated_at: record.activated_at, activation_exact: true,
-    report_sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`, resources: []
+    report_sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`, resources: [],
+    recording_agents: compiled.report.recording!.agents
   }], errors: [] });
 });
 
@@ -119,7 +120,7 @@ it("captures activation before a startup turn and marks project replacement over
 it("records the startup interval of a project candidate rolled back after publication and readiness failure", async () => {
   const predecessor = await deploy(root);
   const before = readDeployResources(predecessor.deploymentRecordPath!).entries[0]!;
-  const compiled = await compileProject(root);
+  const compiled = await compileProject(root, { daimonContractManifest: capableDaimonManifest() });
   const support = path.join(root, "support"); mkdirSync(support);
   doubles.build.mockResolvedValue({ ...compiled, imageTag: "example/news:v2", organizationReadinessEvidence: {
     compileFingerprint: compiled.report.compile_fingerprint, compileVersion: "0.1", hasExternalMoltnet: false,

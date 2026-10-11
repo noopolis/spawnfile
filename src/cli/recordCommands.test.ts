@@ -1,20 +1,31 @@
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import type { DeploymentRecord, DockerInspectionResult } from "../deployment/index.js";
+import { createDeployResources, deployResourceLogPath, type DeploymentRecord, type DockerInspectionResult } from "../deployment/index.js";
 import type { RecordingAgentReport } from "../report/index.js";
 import { deploymentMomentsDirectory } from "../recording/index.js";
+import { chunkExec } from "../recording/fixtures.test-helper.js";
 import { executeRecordSyncCommand, registerRecordCommands, type RecordCommandHandlers } from "./recordCommands.js";
 
 let root: string;
-beforeEach(async () => { root = await mkdtemp(path.join(os.tmpdir(), "record-command-")); });
+beforeEach(async () => {
+  root = await mkdtemp(path.join(os.tmpdir(), "record-command-"));
+  for (const file of [path.join(root, "news.json"), path.join(root, "home/news/record.json")]) await writeHistory(file);
+});
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
 const agent: RecordingAgentReport = { node_id: "agent:writer", slug: "writer", directory: "/var/lib/spawnfile/recording/writer",
   keep_ms: 86_400_000, memory: [], networks: [], feeds: [], resources: [], snapshots: [] };
+const writeHistory = async (file: string, facts = agent) => {
+  await mkdir(path.dirname(file), { recursive: true });
+  const entry = createDeployResources(file, { name: "news", created_at: "2026-10-09T00:00:00Z",
+    activated_at: "2026-10-09T00:00:00Z", activation_exact: true },
+  { recording: { keep_ms: facts.keep_ms, memory_mount_ids: [], agents: [facts] } }, "report");
+  await writeFile(deployResourceLogPath(file), `${JSON.stringify(entry)}\n`);
+};
 const record = (name = "news"): DeploymentRecord => ({
   version: "spawnfile.deployment.v2", name, manager: "docker", compile_fingerprint: "fingerprint", created_at: "2026-10-09T00:00:00Z",
   auth_profile: null, output_directory: root, source: { kind: "project", root }, target: { kind: "host", value: "unix:///var/run/docker.sock" },
@@ -31,9 +42,9 @@ const handlers = (running = true): RecordCommandHandlers => ({
   listHomeDeploymentRecords: vi.fn(async () => [{ path: path.join(root, "home/news/record.json"), record: record() }]),
   inspectDockerDeployment: vi.fn(async () => inspection(running)),
   createDockerProbeGateway: vi.fn(() => ({
-    exec: async () => ({ stderr: "", stdout: JSON.stringify({ version: "noopolis.daimon.wake-moment.v1", agent_id: agent.node_id,
+    exec: chunkExec(() => JSON.stringify({ version: "noopolis.daimon.wake-moment.v1", agent_id: agent.node_id,
       execution_id: "wake", started_at: "2026-10-09T08:00:00.000Z", deliveries: [{ acceptance_id: "accepted", delivery_id: "wake",
-        kind: "manual", occurred_at: "2026-10-09T07:59:00.000Z" }], snapshots: [] }) }),
+        kind: "manual", occurred_at: "2026-10-09T07:59:00.000Z" }], snapshots: [] })),
     httpGet: vi.fn(), inspectUnit: vi.fn()
   })),
   now: () => new Date("2026-10-09T09:00:00.000Z")
@@ -68,6 +79,7 @@ it("uses --out to select project records even from the default path", async () =
 
 it("reports non-exact evidence without failing the command", async () => {
   const h = handlers();
+  await writeHistory(path.join(root, "news.json"), { ...agent, feeds: [{ id: "news", volume_name: "news" }] });
   h.listDeploymentRecords = async () => [{ path: path.join(root, "news.json"), record: {
     ...record(), recording: { ...record().recording!, agents: [{ ...agent, feeds: [{ id: "news", volume_name: "news" }] }] }
   } }];

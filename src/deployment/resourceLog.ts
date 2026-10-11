@@ -3,7 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import { appendRetainedJsonl, entryAt, readRetainedJsonl, syncFileSync } from "../filesystem/index.js";
-import type { RecordingReport } from "../report/index.js";
+import { recordingAgentSchema, type RecordingReport } from "../report/index.js";
 
 export const DEPLOY_RESOURCES_VERSION = "spawnfile.deploy-resources.v1";
 export const DEPLOY_RESOURCE_LOG_FILE = "resource-log.jsonl";
@@ -20,7 +20,8 @@ export const deployResourcesSchema = z.object({
   activated_at: z.iso.datetime({ offset: true }), activation_exact: z.boolean(), activation_note: text.optional(),
   rolled_back_at: z.iso.datetime({ offset: true }).optional(), exact: z.literal(false).optional(),
   deployed_at: z.iso.datetime({ offset: true }), report_sha256: digest,
-  resources: z.array(resourceSchema)
+  resources: z.array(resourceSchema),
+  recording_agents: z.array(recordingAgentSchema).optional()
 }).strict().refine((value) => !value.rolled_back_at || (value.exact === false && !value.activation_exact
   && Date.parse(value.rolled_back_at) >= Date.parse(value.activated_at)), "Invalid candidate interval");
 export type DeployResources = z.infer<typeof deployResourcesSchema>;
@@ -52,6 +53,7 @@ export const createDeployResources = (
   activation_exact: record.activation_exact ?? false,
   ...((record.activation_note || !record.activated_at) ? { activation_note: record.activation_note ?? "Activation boundary was not recorded" } : {}),
   report_sha256: `sha256:${createHash("sha256").update(reportBytes).digest("hex")}`,
+  ...(report.recording?.agents ? { recording_agents: report.recording.agents } : {}),
   resources: [
     ...(report.workspace_git_resources ?? []).map(({ id, commit, sha256, url, agent_node_ids, declared_by }) =>
       ({ id, kind: "git", commit, sha256, agent_node_ids, ...(declared_by ? { declared_by } : {}), ...(url === undefined ? {} : { url }) })),

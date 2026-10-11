@@ -15,22 +15,12 @@ export interface WakeMomentRow {
   error?: string;
 }
 
-export interface RecordingAgentFacts {
-  nodeId: string;
-  slug: string;
-  networks: readonly string[];
-  memory: readonly { id: string; declaredBy: string; ledgerPath: string | null }[];
-  feeds: readonly string[];
-  resources: readonly { id: string; kind: "git" | "bundle" }[];
-  snapshots: readonly string[];
-}
-
 export interface MemoryLedgerEntry { seq: number; createdAt: string }
 export interface MemoryLedgerRead { entries: readonly MemoryLedgerEntry[]; errors?: readonly string[] }
 
 export interface ComposeMomentRecordInput {
   row: WakeMomentRow;
-  agent: RecordingAgentFacts;
+  agentNodeId: string;
   deploymentRecordPath: string;
   feedLandings: Readonly<Record<string, readonly FeedLanding[]>>;
   deployResources: readonly DeployResources[];

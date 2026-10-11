@@ -22,26 +22,53 @@ const wakeMomentSchema = z.object({
 const memoryLedgerSchema = z.object({ seq: count.positive(), createdAt: instant });
 
 export interface RecordingJsonlRead<T> { entries: T[]; errors: string[] }
+export interface RecordingJsonlParser<T> {
+  write: (chunk: string) => void;
+  finish: () => RecordingJsonlRead<T>;
+}
 
-const parseLines = <T>(payload: string, label: string, schema: z.ZodType<T>, maxBytes?: number): RecordingJsonlRead<T> => {
-  if (payload === "") return { entries: [], errors: [] };
-  const lines = payload.split("\n"), entries: T[] = [], errors: string[] = [];
-  if (lines.at(-1) === "") lines.pop();
-  lines.forEach((line, index) => {
+const lineParser = <T>(label: string, schema: z.ZodType<T>, maxBytes?: number): RecordingJsonlParser<T> => {
+  const entries: T[] = [], errors: string[] = [];
+  let pending = "", lineNumber = 0, oversized = false;
+  const parseLine = (line: string): void => {
+    lineNumber += 1;
     try {
-      if (maxBytes !== undefined && Buffer.byteLength(line, "utf8") + 1 > maxBytes) throw new Error("row size limit");
+      if (oversized || (maxBytes !== undefined && Buffer.byteLength(line, "utf8") + 1 > maxBytes)) throw new Error("row size limit");
       entries.push(schema.parse(JSON.parse(line)));
     } catch {
-      errors.push(`${label} line ${index + 1}: invalid JSON or entry`);
+      errors.push(`${label} line ${lineNumber}: invalid JSON or entry`);
     }
-  });
-  return { entries, errors };
+    oversized = false;
+  };
+  return {
+    write(chunk) {
+      const lines = chunk.split("\n");
+      for (let index = 0; index < lines.length; index += 1) {
+        if (!oversized) pending += lines[index]!;
+        if (maxBytes !== undefined && Buffer.byteLength(pending, "utf8") + 1 > maxBytes) {
+          oversized = true; pending = "";
+        }
+        if (index < lines.length - 1) { parseLine(pending); pending = ""; }
+      }
+    },
+    finish() {
+      if (pending || oversized) { parseLine(pending); pending = ""; }
+      return { entries, errors };
+    }
+  };
 };
 
+export const createWakeMomentsParser = (): RecordingJsonlParser<WakeMomentRow> =>
+  lineParser("wake moments", wakeMomentSchema, 4_194_304);
+export const createMemoryLedgerParser = (): RecordingJsonlParser<MemoryLedgerEntry> =>
+  lineParser("memory ledger", memoryLedgerSchema);
+
 /** Preserve valid rows and report each malformed line, including a torn final append. */
-export const parseWakeMoments = (payload: string): RecordingJsonlRead<WakeMomentRow> =>
-  parseLines(payload, "wake moments", wakeMomentSchema, 4_194_304);
+export const parseWakeMoments = (payload: string): RecordingJsonlRead<WakeMomentRow> => {
+  const parser = createWakeMomentsParser(); parser.write(payload); return parser.finish();
+};
 
 /** Missing/invalid sequence numbers are unknown history; never infer them from line order. */
-export const parseMemoryLedger = (payload: string): RecordingJsonlRead<MemoryLedgerEntry> =>
-  parseLines(payload, "memory ledger", memoryLedgerSchema);
+export const parseMemoryLedger = (payload: string): RecordingJsonlRead<MemoryLedgerEntry> => {
+  const parser = createMemoryLedgerParser(); parser.write(payload); return parser.finish();
+};

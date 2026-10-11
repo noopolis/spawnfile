@@ -4,3 +4,5 @@ export * from "./parse.js";
 export * from "./store.js";
 export * from "./sync.js";
 export * from "./deployment.js";
+export * from "./history.js";
+export * from "./read.js";

@@ -68,6 +68,9 @@ it("uses agent-scoped compiled git pins after git resources are lowered to bundl
     { node_id: "agent:a", resources: [{ id: "repo", kind: "git" }] },
     { node_id: "agent:b", resources: [{ id: "repo", kind: "bundle" }] }
   ]);
+  const unowned = pins.map(({ agent_node_ids: _owners, declared_by: _declaring, ...pin }) => pin);
+  expect(resolveRecordingAgentFacts(await buildCompilePlan(root), unowned).map(({ resources }) => resources))
+    .toEqual([[{ id: "repo", kind: "bundle" }], [{ id: "repo", kind: "bundle" }]]);
 });
 
 it("deduplicates repeated visible bank access and rejects a missing declaring node", async () => {
