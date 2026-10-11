@@ -10,6 +10,9 @@ quality still requires a real corpus run and the reference gate.
 
 ```yaml
 schema: paideia.check-templates.v1
+kinds:
+  claim: A verbatim factual proposition, preserving qualifiers.
+  display: A headline, deck or kicker span.
 teachers:
   - { id: codex, provider: codex, model: YOUR_CODEX_MODEL }
   - { id: claude, provider: claude, model: YOUR_CLAUDE_MODEL }
@@ -18,10 +21,12 @@ context:
     rows:
       heading: '^## ([a-z0-9-]+)'
       cite: '\[([a-z0-9-]+)\]'
+      leading_citations: previous
   assignment: { role: assignment }
 templates:
   - id: supported
     applies_to: claim
+    locations: [body]
     type: choice
     instructions: 'Is {unit.text} supported by the cited evidence?'
     criteria:
@@ -52,6 +57,14 @@ are `unit`, `unit.cited_rows`, `output.<path>`, `context.<name>`, `paragraph`, a
 `neighbors`. Paragraph and sentence addresses are zero-based. A template can add
 `when: {field: modality, equals: required}`. Missing state produces a missing
 instance rather than silently removing a check.
+
+Optional top-level `kinds` maps kind names to descriptions passed to both extractor
+calls. Kinds referenced by `applies_to` remain valid without descriptions. Optional
+per-template `locations` restricts matching kinds to declared output fields;
+omission means every location. Excluded template/unit pairs appear in
+`instantiateChecksReport(...).skipped` and the local `<id>.instantiation.json`
+artifact written by `grader decompose`. Invalid spans remain missing checks, even
+with a location restriction; they cannot use a hint to bypass validation.
 
 Trap mappings are explicit because arbitrary operator-authored questions cannot
 safely be assigned an intended answer from their wording. Only mapped templates
@@ -88,10 +101,24 @@ one selected extractor, the second call uses the same provider in a fresh sessio
 Use two providers for vendor independence. Output/context byte hashes bind the
 saved decomposition to its inputs. Text must occur within an output string after
 whitespace normalization. Obligation units may instead quote declared assignment
-context. Citation IDs must match those in the unit or its containing sentence, using the
-declared row citation pattern and `leading_citations` policy. A supplied
-`source_span` must occur verbatim after whitespace normalization in a cited row.
-Invented spans and redirected citations are rejected and reported. Extracted
+context. Validation searches output string fields itself and derives `location`
+(`body`, `headline`, `deck`, `kicker`, or a dotted nested field path). Assignment
+spans use `context.<name>` paths. A unique occurrence overrides extractor location,
+paragraph and sentence hints; multiple occurrences require hints consistent with
+exactly one match. Zero matches and unresolved ambiguity are rejected.
+
+Body addresses use the grading runtime's English `Intl.Segmenter` and the shared
+row citation policy. `leading_citations: previous` moves a leading citation run to
+the preceding sentence in the same paragraph; the default `keep` retains it.
+`cites` derives from that runtime sentence, regardless of extractor-supplied cites.
+A span crossing ICU sentence boundaries starts at the first touched sentence and
+collects citations from all touched sentences (for example, an abbreviation split).
+Non-body spans have no paragraph/sentence address and no cites. Supplied citation
+disagreements are recorded in checkpoint `citationDisagreements`; omitted cites
+are simply derived. Unknown derived row IDs still fail validation. A supplied
+`source_span` must occur verbatim after whitespace normalization in a derived cited
+row. The new extraction protocol refuses earlier checkpoints as stale; use a fresh
+output directory when regenerating an older extraction. Extracted
 fields absent from the unit text are dropped and reported; a `when` condition on
 a dropped or absent field retains a missing instance.
 

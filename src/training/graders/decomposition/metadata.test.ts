@@ -2,11 +2,14 @@ import { expect, it } from 'vitest';
 import { instantiateChecks, validateDecomposition } from './index.js';
 import { fixture } from './fixtures.js';
 
-it('rejects citations redirected to existing rows and missing real citations', () => {
+it('derives citations despite redirected or omitted extractor citations', () => {
   const { templates, document, inputs } = fixture();
   for (const cites of [['R2'], [], undefined]) {
     document.units[0]!.cites = cites;
-    expect(validateDecomposition(document, inputs, templates).rejected[0]!.reasons).toContain('cites do not match source citations');
+    const result = validateDecomposition(document, inputs, templates);
+    expect(result.rejected).toEqual([]);
+    expect(result.decomposition.units[0]!.cites).toEqual(['R1']);
+    expect(result.citationDisagreements).toEqual(cites ? [{ id: 'c1', supplied: cites, derived: ['R1'] }] : []);
   }
 });
 
@@ -17,7 +20,7 @@ it('binds uncited subspans to the containing sentence, including leading-citatio
   document.units[0]!.cites = [];
   expect(validateDecomposition(document, inputs, templates).rejected).toEqual([]);
   templates.context.evidence!.rows!.leading_citations = 'previous';
-  expect(validateDecomposition(document, inputs, templates).rejected[0]!.reasons).toContain('cites do not match source citations');
+  expect(validateDecomposition(document, inputs, templates).decomposition.units[0]!.cites).toEqual(['R1']);
   document.units[0]!.cites = ['R1'];
   expect(validateDecomposition(document, inputs, templates).rejected).toEqual([]);
   document.units[0]!.text = 'Bob was promoted';
@@ -25,7 +28,7 @@ it('binds uncited subspans to the containing sentence, including leading-citatio
   document.units[0]!.cites = ['R2'];
   expect(validateDecomposition(document, inputs, templates).rejected).toEqual([]);
   document.units[0]!.sentence = 0;
-  expect(validateDecomposition(document, inputs, templates).rejected[0]!.reasons).toContain('sentence does not contain span');
+  expect(validateDecomposition(document, inputs, templates).decomposition.units[0]).toMatchObject({ sentence: 1, cites: ['R2'] });
 });
 
 it('requires source spans to occur within a cited row', () => {
@@ -50,6 +53,12 @@ it('drops and reports fabricated fields and never skips a missing applicability 
   expect(checks).toHaveLength(1);
   expect(checks[0]).toMatchObject({ status: 'missing', reasons: expect.arrayContaining(['missing condition field modality']) });
   expect((checks[0]!.projection.unit as { fields: object }).fields).toEqual({ quantity: '1,000' });
+});
+
+it('preserves explicitly absent optional extraction fields', () => {
+  const { templates, document, inputs } = fixture();
+  document.units[0]!.fields = { actor: undefined };
+  expect(validateDecomposition(document, inputs, templates)).toMatchObject({ dropped: [], rejected: [] });
 });
 
 it('rejects ambiguous unlocated spans but accepts explicitly located citations', () => {

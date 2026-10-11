@@ -5,5 +5,6 @@ export { normalizeWhitespace, textLeaves, readPath, evidenceRows, validateDecomp
 export type { EvidenceRow, RejectedUnit } from './evidence.js';
 export type { DroppedField } from './metadata.js';
 export { extractionResponseSchema, parseExtractionResponse } from './transport.js';
-export { instantiateChecks } from './instantiate.js';
-export type { CheckInstance } from './instantiate.js';
+export { instantiateChecks, instantiateChecksReport } from './instantiate.js';
+export type { CheckInstance, InstantiationReport } from './instantiate.js';
+export type { CitationDisagreement } from './location.js';

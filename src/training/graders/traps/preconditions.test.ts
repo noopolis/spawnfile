@@ -115,3 +115,12 @@ it('pins extraction metadata across serialized variants independently of lexical
   expect(validateTrap(trap, f.document.units[0]!, f.inputs, f.templates, f.document).reasons)
     .toContain('variant changed unrelated extraction metadata');
 });
+
+it('rejects forged serialized trap citations even though extraction citations are hints', () => {
+  const f = fixture();
+  const trap = generateTraps(f.templates, f.document, f.inputs).traps.find(item => item.kind === 'number-substitution')!;
+  expect(trap).toBeDefined();
+  trap.decomposition.units[0]!.cites = ['R2'];
+  expect(validateTrap(trap, f.document.units[0]!, f.inputs, f.templates, f.document).reasons)
+    .toContain('variant citations differ from source');
+});

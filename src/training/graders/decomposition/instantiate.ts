@@ -28,12 +28,21 @@ function placeholder(path: string, projection: Record<string, unknown>): unknown
   if (prefix === undefined) return undefined;
   return path === prefix ? projection[prefix] : readPath(projection[prefix], path.slice(prefix.length + 1).split('.'));
 }
-export function instantiateChecks(templates: CheckTemplates, document: Decomposition, inputs: DecompositionInputs): CheckInstance[] {
+export interface InstantiationReport {
+  checks: CheckInstance[];
+  skipped: { template_id: string; unit_id: string; location: string; reason: string }[];
+}
+export function instantiateChecksReport(templates: CheckTemplates, document: Decomposition, inputs: DecompositionInputs): InstantiationReport {
   const validation = validateDecomposition(document, inputs, templates);
   const rejected = new Map(validation.rejected.map(item => [item.id, item.reasons]));
   const sanitized = new Map([...validation.decomposition.units, ...(validation.decomposition.audit?.missed ?? [])].map(unit => [unit.id, unit]));
   const units = [...document.units, ...(document.audit?.missed ?? [])].map(unit => sanitized.get(unit.id) ?? unit);
-  return templates.templates.flatMap(template => units.filter(unit => unit.kind === template.applies_to).flatMap(unit => {
+  const skipped: InstantiationReport['skipped'] = [];
+  const checks = templates.templates.flatMap(template => units.filter(unit => unit.kind === template.applies_to).flatMap(unit => {
+    if (!rejected.has(unit.id) && template.locations && !template.locations.includes(unit.location!)) {
+      skipped.push({ template_id: template.id, unit_id: unit.id, location: unit.location!, reason: 'outside declared template locations' });
+      return [];
+    }
     const reasons = [...(rejected.get(unit.id) ?? [])];
     if (template.when) {
       const field = unit.fields?.[template.when.field];
@@ -58,4 +67,8 @@ export function instantiateChecks(templates: CheckTemplates, document: Decomposi
       expected: template.expected, projection, status: reasons.length ? 'missing' as const : 'ready' as const, reasons };
     return [{ ...instance, digest: stableDigest({ template, instance }) }];
   }));
+  return { checks, skipped };
+}
+export function instantiateChecks(templates: CheckTemplates, document: Decomposition, inputs: DecompositionInputs): CheckInstance[] {
+  return instantiateChecksReport(templates, document, inputs).checks;
 }

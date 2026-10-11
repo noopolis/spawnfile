@@ -14,4 +14,6 @@ CLI/grader checks. Common project rules apply.
 
 Resume received responses locally, including malformed responses, without another
 provider call. Retry missing responses and retain earlier failure accounting. Request
-strict JSON schemas on Codex/Claude extraction and retain dropped field diagnostics.
+strict JSON schemas on Codex/Claude extraction and retain dropped field and citation
+disagreement diagnostics. Pass kind descriptions to extractors and persist a local
+instantiation report with declared location exclusions.

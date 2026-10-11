@@ -9,6 +9,7 @@ const reference = z.strictObject({ from: z.string().min(1), sha256: z.string().r
 export const unitSchema = z.strictObject({
   id, kind: identifier, text: z.string().refine(value => value.trim().length > 0, 'text must not be blank'),
   paragraph: z.number().int().nonnegative().optional(), sentence: z.number().int().nonnegative().optional(),
+  location: z.string().min(1).optional(),
   cites: z.array(identifier).optional(),
   fields: z.strictObject(Object.fromEntries(['actor', 'action', 'object', 'time', 'modality', 'quantity']
     .map(key => [key, z.string().optional()])) as Record<'actor' | 'action' | 'object' | 'time' | 'modality' | 'quantity', z.ZodOptional<z.ZodString>>).optional(),
@@ -33,10 +34,12 @@ const templateSchema = z.strictObject({
   state: z.array(read).min(1), dimension: identifier, severity: z.enum(['critical', 'major', 'minor']),
   when: z.strictObject({ field: z.enum(['actor', 'action', 'object', 'time', 'modality', 'quantity']),
     equals: z.string() }).optional(),
+  locations: z.array(z.string().min(1)).min(1).optional(),
   traps: z.partialRecord(z.enum(trapKinds), answer).optional(),
 });
 export const checkTemplatesSchema = z.strictObject({
   schema: z.literal('paideia.check-templates.v1'), templates: z.array(templateSchema).min(1),
+  kinds: z.record(identifier, z.string().min(1)).optional(),
   context: z.record(identifier, z.strictObject({ rows: rowsSchema.optional(),
     role: z.literal('assignment').optional(), description: z.string().optional() })).default({}),
   teachers: z.array(z.strictObject({ id: identifier, provider: z.enum(['codex', 'claude', 'grok']),

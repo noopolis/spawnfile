@@ -39,16 +39,16 @@ describe('evidence validation', () => {
     expect(result.decomposition.units).toHaveLength(0);
     expect(result.rejected).toHaveLength(1);
   });
-  it('rejects invented spans, paragraph lies, undeclared kinds and unknown/duplicate citations', () => {
+  it('rejects invented spans and undeclared kinds while deriving addresses and citations', () => {
     const { templates, document, inputs } = fixture();
     const original = document.units[0]!;
     const check = (change: object) => validateDecomposition({ ...document, units: [{ ...original, ...change }] }, inputs, templates);
     expect(check({ text: 'Alice\n is  paid 1,000 dollars [R1].' }).rejected).toEqual([]);
     expect(check({ text: 'Alice is paid one million dollars.' }).rejected[0]!.reasons).toContain('text is not a verbatim source span');
-    expect(check({ paragraph: 1 }).rejected).toHaveLength(1);
+    expect(check({ paragraph: 1 }).decomposition.units[0]!.paragraph).toBe(0);
     expect(check({ kind: 'invented' }).rejected).toHaveLength(1);
-    expect(check({ cites: ['R9'] }).rejected).toHaveLength(1);
-    expect(check({ cites: ['R1', 'R1'] }).rejected).toHaveLength(1);
+    expect(check({ cites: ['R9'] }).decomposition.units[0]!.cites).toEqual(['R1']);
+    expect(check({ cites: ['R1', 'R1'] }).decomposition.units[0]!.cites).toEqual(['R1']);
     expect(validateDecomposition(document, inputs).rejected).toEqual([]);
     expect(validateDecomposition(document, { ...inputs, context: {} }, templates).rejected).toHaveLength(1);
   });
@@ -101,9 +101,9 @@ describe('deterministic check instantiation', () => {
     const { templates, document, inputs } = fixture();
     const template = templates.templates[0]!;
     document.units[0]!.cites = [];
-    expect(instantiateChecks(templates, document, inputs)[0]!.status).toBe('missing');
+    expect(instantiateChecks(templates, document, inputs)[0]!.status).toBe('ready');
     document.units[0]!.cites = ['R9'];
-    expect(instantiateChecks(templates, document, inputs)[0]!.status).toBe('missing');
+    expect(instantiateChecks(templates, document, inputs)[0]!.status).toBe('ready');
     document.units[0]!.cites = ['R1']; inputs.context.evidence = null;
     expect(instantiateChecks(templates, document, inputs)[0]!.reasons.some(reason => reason.includes('row context'))).toBe(true);
     template.state = ['unit', 'paragraph']; delete document.units[0]!.paragraph;

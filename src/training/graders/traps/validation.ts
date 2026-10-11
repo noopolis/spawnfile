@@ -9,9 +9,20 @@ import { affirmativeCounterpart, articleEntities, entityType, negator, numbers, 
 /** Separate from candidate construction: validate the actual serialized variant. */
 export function validateTrap(trap: Trap, unit: AtomicUnit, inputs: DecompositionInputs, templates: CheckTemplates, baseDocument?: Decomposition): Trap['validation'] {
   const reasons: string[] = [];
+  if (baseDocument) {
+    const base = validateDecomposition(baseDocument, inputs, templates);
+    if (base.rejected.length) reasons.push('invalid base decomposition');
+    baseDocument = base.decomposition;
+    unit = [...baseDocument.units, ...(baseDocument.audit?.missed ?? [])].find(item => item.id === unit.id) ?? unit;
+  }
   const { mutation: mutation, kind } = trap;
   const variant = validateDecomposition(trap.decomposition, { ...inputs, output: trap.output }, templates);
   if (variant.rejected.length) reasons.push('invalid variant decomposition');
+  const storedUnits = [...trap.decomposition.units, ...(trap.decomposition.audit?.missed ?? [])];
+  for (const located of [...variant.decomposition.units, ...(variant.decomposition.audit?.missed ?? [])]) {
+    const stored = storedUnits.find(item => item.id === located.id)!;
+    if (stableDigest(stored.cites ?? []) !== stableDigest(located.cites)) reasons.push('variant citations differ from source');
+  }
   const rendered = instantiateChecks(templates, trap.decomposition, { ...inputs, output: trap.output });
   if (kind === 'option-permutation') for (const instance of rendered) {
     if (!Object.hasOwn(trap.intended_answers, instance.id)) continue;
@@ -36,7 +47,7 @@ export function validateTrap(trap: Trap, unit: AtomicUnit, inputs: Decomposition
       const expectedText = ['option-permutation', 'injected-redundancy'].includes(kind) ? base.text :
         normalizeWhitespace(base.text).replace(normalizeWhitespace(mutation.source), normalizeWhitespace(mutation.replacement));
       if (normalizeWhitespace(changed.text) !== normalizeWhitespace(expectedText) || changed.paragraph !== base.paragraph ||
-        changed.sentence !== base.sentence) reasons.push('variant changed unrelated unit state');
+        changed.sentence !== base.sentence || changed.location !== base.location) reasons.push('variant changed unrelated unit state');
       const textChanged = normalizeWhitespace(expectedText) !== normalizeWhitespace(base.text);
       const expectedFields = Object.fromEntries(Object.entries(base.fields ?? {}).flatMap(([key, value]) => {
         if (value === undefined) return [];

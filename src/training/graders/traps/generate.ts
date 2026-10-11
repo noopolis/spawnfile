@@ -29,6 +29,7 @@ export function generateTraps(templates: CheckTemplates, document: Decomposition
   const result: TrapSet = { schema: 'paideia.traps.v1', seed, traps: [], discarded: 0, rejections: [] };
   const base = validateDecomposition(document, inputs, templates);
   if (base.rejected.length) throw new Error(`invalid base decomposition: ${base.rejected.map(item => item.id).join(', ')}`);
+  document = base.decomposition;
   const baseInstances = instantiateChecks(templates, document, inputs);
   const units = [...document.units, ...(document.audit?.missed ?? [])];
   for (const unit of units) for (const kind of trapKinds) {

@@ -26,6 +26,26 @@ it('extracts, audits, pins bytes, stores receipt accounting and resumes without 
   await expect(runDecompose(f.decompose, f.dependencies)).rejects.toThrow('Invalid decomposition checkpoint');
 });
 
+it('sends kind descriptions and persists citation disagreements and location exclusions', async () => {
+  const f = await fixture();
+  await writeFile(f.templatesFile, stringify({ ...f.templates, kinds: { claim: 'Verbatim factual claim', display: 'Headline or deck' },
+    templates: [{ ...f.templates.templates[0], locations: ['headline'] }] }));
+  f.generate.mockResolvedValueOnce({ text: JSON.stringify({ units: [{ ...f.unit, paragraph: 7, sentence: 3, cites: ['B2'] }] }),
+    model: 'test', usage: null, route: 'subscription' });
+  expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ rejected: 0 });
+  for (const [request] of f.generate.mock.calls) {
+    expect(JSON.parse(request.prompt)).toMatchObject({ kinds: ['claim', 'display'],
+      kind_descriptions: { claim: 'Verbatim factual claim', display: 'Headline or deck' } });
+  }
+  const files = await readdir(f.decompose.out);
+  const load = async (suffix: string) => JSON.parse(await readFile(join(f.decompose.out, files.find(file => file.endsWith(suffix))!), 'utf8'));
+  expect(await load('.checkpoint.json')).toMatchObject({ citationDisagreements: [{ id: 'claim', supplied: ['B2'], derived: ['A1'] }] });
+  expect(await load('.instantiation.json')).toEqual({ checks: [], skipped: [{ template_id: 'support', unit_id: 'claim',
+    location: 'body', reason: 'outside declared template locations' }] });
+  expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ resumed: 1 });
+  expect(f.generate).toHaveBeenCalledTimes(2);
+});
+
 it('resumes extraction after an audit failure and retains rejected invented units', async () => {
   const f = await fixture();
   f.generate.mockResolvedValueOnce({ text: JSON.stringify({ units: [f.unit, { ...f.unit, id: 'invented', text: 'Invented detail.' }] }),
@@ -34,7 +54,7 @@ it('resumes extraction after an audit failure and retains rejected invented unit
   expect(await runDecompose({ ...f.decompose, extractors: ['codex', 'claude'] }, f.dependencies)).toMatchObject({ completed: 1, rejected: 1 });
   expect(f.generate).toHaveBeenCalledTimes(3);
   const loaded = await readDecompositions(f.decompose.out, await readTemplates(f.templatesFile));
-  expect(loaded[0]!.doc.units).toEqual([f.unit]);
+  expect(loaded[0]!.doc.units).toEqual([{ ...f.unit, location: 'body' }]);
 });
 
 it('refuses bad teacher selections, uncontained providers, malformed and duplicate-key extraction responses', async () => {
