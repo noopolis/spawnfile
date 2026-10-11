@@ -79,7 +79,9 @@ For a low-level caller:
 3. Publish on the real transport. Only matching acceptances received after arming
    can bind; retries of earlier deliveries cannot become the new wake. Terminal
    sealing waits for in-flight admissions and repeats control/evidence reads if
-   admission changes during collection. Once sealed, new native identities get
+   admission changes during collection. It also waits for every agent acceptance
+   and activity row to be disposed and for native pending to be zero; unselected
+   queued work cannot escape the trial. Before the first arm and once sealed, new native identities get
    HTTP 409 `{error: "transport_admission_sealed"}` before native admission until
    the next run arms; retries of actually accepted identities still reach Daimon
    for its own idempotency/conflict response. The POST
@@ -93,9 +95,10 @@ is invoked only after the matching run is armed. Configure this alongside
 continuations keep the existing `id`, `text`, and content-hashed `source` evidence,
 and add `transport: {source, publish}`. That transport source must name an exact
 message ID. At most three continuations share the original deadline. Providers
-must honor cancellation and must not publish during preparation. The shared real
-deadline stays active through terminal receipt, including after publication
-succeeds. Request/shutdown grace cannot turn late completion into success.
+must honor cancellation and must not publish during preparation. Preparation and
+publication share the real deadline. Eight seconds of terminal grace preserve
+failure reports; success requires a valid worker completion timestamp before the
+original deadline. Cancellation remains immediate.
 
 Daimon owns inbox batching, dispositions, deferred items and clock projection.
 Evidence keeps every selected delivery's receipt and execution history in

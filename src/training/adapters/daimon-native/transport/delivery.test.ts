@@ -37,7 +37,7 @@ it('bounds prepare and publish callbacks by real time and propagates cancellatio
 });
 
 function frame(expected: TransportDeliverySource = source): TerminalEvidence {
-  return { agentId: 'agent:test', status: 'completed', receipt: { agent_id: 'agent:test', delivery_id: source.deliveryId, acceptance_id: 'accepted-1' }, executionId: 'execution-1',
+  return { agentId: 'agent:test', status: 'completed', completedAt: new Date().toISOString(), receipt: { agent_id: 'agent:test', delivery_id: source.deliveryId, acceptance_id: 'accepted-1' }, executionId: 'execution-1',
     transport: { source: expected, deliveryId: source.deliveryId, acceptanceId: 'accepted-1',
       batch: { executionId: 'execution-1', deliveryIds: [source.deliveryId, 'moltnet:message-2'] } } } as TerminalEvidence;
 }
@@ -98,7 +98,7 @@ it('starts observation and waits for the matching arm before publishing once', a
     return states[Math.min(polls++, 3)] as T;
   };
   const publish = vi.fn(async () => { expect(polls).toBe(4); finish(frame()); });
-  expect(await requestTransportDelivery(request, { wakeId: 'task', source }, { source, publish }, Date.now() + 1000, signal())).toEqual(frame());
+  expect(await requestTransportDelivery(request, { wakeId: 'task', source }, { source, publish }, Date.now() + 1000, signal())).toMatchObject({ status: 'completed' });
   expect(publish).toHaveBeenCalledTimes(1);
   expect(calls[0]).toEqual({ path: '/trial/run', body: { wakeId: 'task', source } });
 });
@@ -118,7 +118,7 @@ it('never publishes a rejected or already-finished run', async () => {
   const rejected = (async (_path: string, body?: unknown) => { if (body) throw new Error('Run refused'); return { state: 'idle' }; }) as NativeWorkerRequest;
   await expect(requestTransportDelivery(rejected, { wakeId: 'task', source }, delivery, Date.now() + 1000, signal())).rejects.toThrow('Run refused');
   const completed = (async (_path: string, body?: unknown) => body ? frame() : { state: 'waiting', wakeId: 'task', source }) as NativeWorkerRequest;
-  expect(await requestTransportDelivery(completed, { wakeId: 'task', source }, delivery, Date.now() + 1000, signal())).toEqual(frame());
+  expect(await requestTransportDelivery(completed, { wakeId: 'task', source }, delivery, Date.now() + 1000, signal())).toMatchObject({ status: 'completed' });
   expect(delivery.publish).not.toHaveBeenCalled();
 });
 
@@ -180,5 +180,62 @@ it('refuses late completion even when a blocked event loop has not fired the dea
   try {
     const deadline = Date.now() + 100;
     await expect(boundedTransportCall(async () => { vi.setSystemTime(deadline); return frame(); }, deadline, signal())).rejects.toThrow('deadline');
+  } finally { vi.useRealTimers(); }
+});
+
+it.each(['failed', 'completed'] as const)('returns %s evidence during terminal grace when work finished within its bound', async status => {
+  vi.useFakeTimers();
+  try {
+    let finish!: (value: TerminalEvidence) => void;
+    let requestSignal: AbortSignal | undefined;
+    let requestTimeout: number | undefined;
+    const request = (async (_path: string, body?: unknown, timeout?: number, current?: AbortSignal) => {
+      if (!body) return { state: 'waiting', wakeId: 'task', source };
+      requestSignal = current; requestTimeout = timeout;
+      return new Promise<TerminalEvidence>(resolve => { finish = resolve; });
+    }) as NativeWorkerRequest;
+    const deadline = Date.now() + 100;
+    const result = requestTransportDelivery(request, { wakeId: 'task', source }, prepared(), deadline, signal());
+    await vi.advanceTimersByTimeAsync(50);
+    const evidence = { ...frame(), status, error: 'Transport delivery deadline exceeded: no matching delivery arrived' };
+    await vi.advanceTimersByTimeAsync(100);
+    expect(requestTimeout).toBe(8100);
+    expect(requestSignal?.aborted).toBe(false);
+    if (status === 'failed') evidence.completedAt = new Date().toISOString();
+    finish(evidence);
+    expect(await result).toEqual(evidence);
+  } finally { vi.useRealTimers(); }
+});
+
+it('still bounds a hung terminal by grace and never starts a run after its deadline', async () => {
+  vi.useFakeTimers();
+  try {
+    let requestSignal: AbortSignal | undefined;
+    const request = vi.fn(async (_path: string, body?: unknown, _timeout?: number, current?: AbortSignal) => {
+      if (!body) return { state: 'waiting', wakeId: 'task', source };
+      requestSignal = current;
+      return new Promise(() => undefined);
+    }) as unknown as NativeWorkerRequest;
+    await expect(requestTransportDelivery(request, { wakeId: 'task', source }, prepared(), Date.now(), signal())).rejects.toThrow('deadline');
+    expect(request).not.toHaveBeenCalled();
+    const result = requestTransportDelivery(request, { wakeId: 'task', source }, prepared(), Date.now() + 100, signal());
+    const rejected = expect(result).rejects.toThrow('deadline');
+    await vi.advanceTimersByTimeAsync(8101);
+    await rejected;
+    expect(requestSignal?.aborted).toBe(true);
+  } finally { vi.useRealTimers(); }
+});
+
+it.each(['late', 'absent', 'malformed'] as const)('refuses %s completion evidence even before the timeout callback runs', async kind => {
+  vi.useFakeTimers();
+  try {
+    const deadline = Date.now() + 100;
+    const request = (async (_path: string, body?: unknown) => {
+      if (!body) return { state: 'waiting', wakeId: 'task', source };
+      const evidence = frame();
+      evidence.completedAt = kind === 'absent' ? undefined as unknown as string : kind === 'malformed' ? 'invalid' : new Date(deadline).toISOString();
+      return evidence;
+    }) as NativeWorkerRequest;
+    await expect(requestTransportDelivery(request, { wakeId: 'task', source }, prepared(), deadline, signal())).rejects.toThrow('terminal completion evidence');
   } finally { vi.useRealTimers(); }
 });

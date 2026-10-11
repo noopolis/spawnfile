@@ -14,9 +14,10 @@ and non-secret tokens; they prove transport behavior, not native isolation.
 Transport delivery providers reserve an expected source before `/trial/run` starts.
 Poll its authenticated GET status until that exact wake and selector are armed,
 then invoke publication once. Preparation, arming and publication share the real
-trial deadline and cancellation through terminal receipt. Successful publication
-never removes that deadline; late success is refused even if the timeout callback
-has not run yet. Grace is for failure evidence and shutdown only. Continuations require exact delivery IDs; an
+trial deadline. Cancellation remains active through terminal receipt. The terminal
+request has eight seconds of report/shutdown grace; completed evidence must carry
+a valid completedAt before the original deadline, even if the timeout callback
+has not run yet. Late or missing completion evidence cannot pass. Continuations require exact delivery IDs; an
 initial source may use a prefix. Match terminal receipts to the actual delivery,
 acceptance and observed batch. Never synthesize a wake or change its event.
 The HTTP client permits the arm-status GET only with explicit transport mode;

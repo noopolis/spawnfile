@@ -3,9 +3,13 @@ import { createWorkerServer, listenWorker } from '../server.js';
 import { Readable } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import type { Server } from 'node:http';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { runInNewContext } from 'node:vm';
+import { createSourceFile, isFunctionDeclaration, ModuleKind, ScriptTarget, transpileModule } from 'typescript';
 import type { WorkerController } from '../control.js';
 import type { NativeHost } from '../types.js';
-import { configFixture, receiptFixture } from '../../test-fixtures.js';
+import { activityFixture, configFixture, receiptFixture, traceFixture } from '../../test-fixtures.js';
 import { createTransportDelivery } from './transport.js';
 import type { NativeAcceptance, NativeAcceptanceResult, NativeWakeRequest } from './types.js';
 
@@ -67,7 +71,10 @@ test('bridge wake HTTP preserves native parsed identity and digest across authen
     expect(conflict.status).toBe(409);
     expect(await conflict.json()).toEqual({ version: 'noopolis.daimon.wake-acceptance.v2', state: 'rejected', code: 'delivery_conflict' });
     expect(accept.mock.calls).toEqual([[{ ...request, token }], [{ ...reordered, token }], [{ ...changed, token }]]);
-    expect(run.seal(run.generation())).toBe(true);
+    run.observe({ ...receiptFixture(), ...accepted, state: 'completed' }, activityFixture(), {
+      version: 'availability', state: 'running', agents: [{ agent_id: request.agent_id, pending: 0, running: false, deferred: 0, budget: {} }],
+    });
+    expect(run.seal(run.generation(), [traceFixture()])).toBe(true);
     const sealed = await call.post('/v2/wakes', { ...request, delivery_id: 'moltnet:late' });
     expect(sealed.status).toBe(409);
     expect(await sealed.json()).toEqual({ error: 'transport_admission_sealed' });
@@ -89,6 +96,11 @@ test('native host owns schema rejection and all structured rejection fields reac
   const server = createWorkerServer({ host, transport } as unknown as WorkerController, token);
   const call = requests(server);
   try {
+    const beforeArm = await call.post('/v2/wakes', request);
+    expect(beforeArm.status).toBe(409);
+    expect(await beforeArm.json()).toEqual({ error: 'transport_admission_sealed' });
+    expect(accept).not.toHaveBeenCalled();
+    transport.begin('task', { kind: 'transport', deliveryId: request.delivery_id });
     for (const invalid of [{}, { ...request, extra: 'not allowed' },
       { ...request, event: { ...request.event, kind: 'invented' } },
       { ...request, event: { ...request.event, occurred_at: '2026-10-11T12:34:56Z' } },
@@ -132,6 +144,7 @@ test('bridge wake HTTP accepts exactly 1,048,576 bytes and rejects the next byte
   });
   const host = { accept } as unknown as NativeHost;
   const transport = createTransportDelivery(host, request.agent_id);
+  transport.begin('task', { kind: 'transport', deliveryId: request.delivery_id });
   const server = createWorkerServer({ host, transport } as unknown as WorkerController, token);
   const call = requests(server);
   const json = JSON.stringify(request);
@@ -148,6 +161,51 @@ test('bridge wake HTTP accepts exactly 1,048,576 bytes and rejects the next byte
     expect(await tooLarge.json()).toEqual({ error: 'request body is too large' });
     expect(accept).toHaveBeenCalledTimes(2);
   } finally { server.close(); }
+});
+
+test('wake status, body and Retry-After match the installed Daimon HTTP route for every acceptance outcome', async () => {
+  // Execute the installed route and its helpers verbatim, without running the CLI,
+  // constructing a native runtime, starting an engine or binding a TCP listener.
+  const source = await readFile('node_modules/@noopolis/daimon/src/runtime/cli.ts', 'utf8');
+  const parsed = createSourceFile('cli.ts', source, ScriptTarget.ES2022, true);
+  const names = ['handleRequest', 'authorized', 'readJson', 'bodyRecord', 'respond'];
+  const declarations = parsed.statements.filter(node => isFunctionDeclaration(node) && names.includes(node.name?.text ?? ''));
+  expect(declarations).toHaveLength(names.length);
+  const bound = parsed.statements.find(node => node.getText(parsed).startsWith('const MAX_BODY_BYTES ='));
+  expect(bound).toBeDefined();
+  const code = transpileModule([bound!, ...declarations].map(node => node.getText(parsed)).join('\n'), {
+    compilerOptions: { target: ScriptTarget.ES2022, module: ModuleKind.ESNext },
+  }).outputText;
+  const handle = runInNewContext(`${code}\nhandleRequest`, { Buffer, URL, createHash, timingSafeEqual }) as
+    (request: unknown, response: unknown, host: NativeHost, control: NativeHost, token: string) => Promise<void>;
+  const outcomes: NativeAcceptanceResult[] = [
+    { ...receiptFixture(), state: 'accepted' },
+    ...['invalid_request', 'unauthorized', 'unknown_agent', 'delivery_conflict'].map(code => ({ state: 'rejected' as const, code })),
+    ...['operator_stop', 'ledger_unavailable', 'host_stopping', 'host_stopped', 'queue_full'].map(reason => ({
+      version: 'noopolis.daimon.wake-acceptance.v2', state: 'stopped' as const,
+      code: reason === 'host_stopped' ? 'host_stopped' : 'host_stopping',
+      blocked: { version: 'noopolis.daimon.work-blocked.v1', reason, retry_after_ms: 30000 },
+    })),
+  ];
+  const accept = vi.fn<NativeHost['accept']>();
+  const host = { accept } as unknown as NativeHost;
+  const transport = createTransportDelivery(host, request.agent_id);
+  transport.begin('task', { kind: 'transport', deliveryId: request.delivery_id });
+  const worker = createWorkerServer({ host, transport } as unknown as WorkerController, token);
+  const native = new EventEmitter() as Server;
+  native.on('request', (incoming, response) => { void handle(incoming, response, host, host, token); });
+  try {
+    for (const outcome of outcomes) {
+      accept.mockResolvedValue(outcome);
+      const expected = await requests(native).post('/v2/wakes', request);
+      const actual = await requests(worker).post('/v2/wakes', request);
+      expect(actual.status).toBe(expected.status);
+      expect(actual.headers).toEqual(expected.headers);
+      expect(actual.headers['retry-after']).toBeUndefined();
+      expect(await actual.json()).toEqual(await expected.json());
+      expect(await actual.json()).toEqual(outcome);
+    }
+  } finally { worker.close(); }
 });
 
 test('transport receipt reads and arming preserve their native and caller identities', async () => {
@@ -254,14 +312,14 @@ function requests(server: Server) {
 /** Exercise real HTTP handlers with byte streams, without binding a TCP port. */
 function dispatch(server: Server) {
   return (url: string, options: { method?: string; headers?: Record<string, string>; body?: string } = {}) =>
-    new Promise<{ status: number; json(): Promise<unknown> }>(resolve => {
+    new Promise<{ status: number; headers: Record<string, string>; json(): Promise<unknown> }>(resolve => {
       const request = Object.assign(Readable.from(options.body === undefined ? [] : [Buffer.from(options.body)]), {
         method: options.method ?? 'GET', url: new URL(url).pathname + new URL(url).search, headers: options.headers ?? {},
       });
       const response = Object.assign(new EventEmitter(), {
-        destroyed: false, writableEnded: false, status: 0,
-        writeHead(status: number) { this.status = status; },
-        end(value: string) { this.writableEnded = true; resolve({ status: this.status, json: async () => JSON.parse(value) as unknown }); },
+        destroyed: false, writableEnded: false, status: 0, headers: {} as Record<string, string>,
+        writeHead(status: number, headers: Record<string, string>) { this.status = status; this.headers = headers; },
+        end(value: string) { this.writableEnded = true; resolve({ status: this.status, headers: this.headers, json: async () => JSON.parse(value) as unknown }); },
       });
       server.emit('request', request, response);
     });

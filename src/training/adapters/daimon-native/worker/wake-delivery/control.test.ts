@@ -34,8 +34,8 @@ async function fixture(timeoutMs = 1500) {
       return { ...receipt, state: 'accepted' as const };
     }),
     wakeReceipt: async (_token, id) => [...receipts.values()].find(row => row.acceptance_id === id),
-    activityV2: async () => { if (executions?.length) activeReads++; return { version: 'activity',
-      items: [...receipts.values()].map(row => ({ ...row, active: row.state === 'running' })), executions }; },
+    activityV2: vi.fn(async () => { if (executions?.length) activeReads++; return { version: 'activity',
+      items: [...receipts.values()].map(row => ({ ...row, active: row.state === 'running' })), executions }; }),
     availability: async () => ({ version: 'availability', state: 'running', agents: [
       { agent_id: 'agent:writer', pending: 0, running: true, deferred: 0, budget: { remaining: 3 } }] }),
   };
@@ -61,7 +61,7 @@ async function fixture(timeoutMs = 1500) {
       deferred: deferred.includes(id), execution_id: deferred.includes(id) ? undefined : executionId });
     executions = [];
   };
-  return { f, host, controller, deliver, dispatch, close, options, clock };
+  return { f, host, controller, deliver, dispatch, close, options, clock, receipts };
 }
 
 test('transport run never accepts itself; binds a native batch of two and persists original envelope and clock', async () => {
@@ -71,6 +71,7 @@ test('transport run never accepts itself; binds a native batch of two and persis
   expect(f.host.accept).not.toHaveBeenCalled();
   await f.deliver('moltnet:foreign', 'different-agent');
   await f.deliver('other:1');
+  f.receipts.get('other:1')!.state = 'stopped';
   expect(f.controller.transport!.state().state).toBe('waiting');
   await f.deliver('moltnet:1'); await f.deliver('moltnet:2');
   const execution = randomUUID(); await f.dispatch(['moltnet:1', 'moltnet:2'], execution);
@@ -107,9 +108,24 @@ test('no matching delivery by the deadline is a transport failure, never a fresh
   expect(f.host.stop).toHaveBeenCalledTimes(1);
 });
 
+test('the parent receives the worker no-match deadline report during terminal grace', async () => {
+  const f = await fixture(75);
+  const source = { kind: 'transport' as const, deliveryId: 'm:missing' };
+  const request = (async (_path: string, body?: unknown) => body
+    ? f.controller.run('task', '', {}, source) : f.controller.transport!.state()) as NativeWorkerRequest;
+  const terminal = await requestTransportDelivery(request, { wakeId: 'task', source },
+    { source, publish: async () => undefined }, Date.now() + 75, new AbortController().signal);
+  expect(terminal.status).toBe('failed');
+  expect(terminal.error).toBe('Transport delivery deadline exceeded: no matching delivery arrived');
+  expect(terminal).toEqual(JSON.parse(await readFile(f.options.evidence, 'utf8')));
+  expect(f.host.stop).toHaveBeenCalledOnce();
+});
+
 test('an old acceptance retry cannot bind a run that started later', async () => {
   const f = await fixture(50);
+  const old = f.controller.transport!.begin('old', { kind: 'transport', deliveryId: 'moltnet:old' });
   await f.deliver('moltnet:old');
+  old.finish();
   const pending = f.controller.run('task', '', {}, { kind: 'transport', deliveryIdPrefix: 'moltnet:' });
   await f.deliver('moltnet:old');
   expect((await pending).error).toMatch(/no matching delivery/);
@@ -128,6 +144,7 @@ test('deferred batch members never pass; continuation waits for its declared mes
   expect(f.host.stop).not.toHaveBeenCalled();
   const second = f.controller.run('answer', '', {}, { kind: 'transport', deliveryId: 'm:answer' });
   await f.deliver('m:unexpected'); expect(f.controller.transport!.state().state).toBe('waiting');
+  f.receipts.get('m:unexpected')!.state = 'stopped';
   await f.deliver('m:answer');
   const e2 = randomUUID(); await f.dispatch(['m:peer', 'm:answer'], e2); await f.close(['m:peer', 'm:answer'], e2);
   const completed = await second;
@@ -137,6 +154,76 @@ test('deferred batch members never pass; continuation waits for its declared mes
   expect(blocked.transport?.batches?.map(row => row.executionId)).toEqual([e1]);
   expect(JSON.parse(await readFile(join(f.options.controlRoot, 'evidence.1.json'), 'utf8')).wakeId).toBe('task');
   expect(JSON.parse(await readFile(join(f.options.controlRoot, 'evidence.2.json'), 'utf8')).receipt.delivery_id).toBe('m:answer');
+  await f.controller.stop();
+});
+
+test.each(['queued', 'acceptance-only', 'activity-only', 'availability-only'] as const)(
+  'pending agent work prevents success until the deadline (%s)', async kind => {
+    const f = await fixture(650);
+    const pending = f.controller.run('task', '', {}, { kind: 'transport', deliveryId: 'm:task' });
+    await f.deliver('m:task');
+    if (kind === 'queued' || kind === 'acceptance-only') await f.deliver('m:other');
+    if (kind === 'activity-only') f.receipts.set('m:other', { ...receiptFixture(),
+      delivery_id: 'm:other', state: 'accepted', execution_id: undefined });
+    if (kind === 'acceptance-only') {
+      const activity = vi.mocked(f.host.activityV2).getMockImplementation()!;
+      vi.spyOn(f.host, 'activityV2').mockImplementation(async token => {
+        const value = await activity(token);
+        return { ...value!, items: value!.items.filter(row => row.delivery_id !== 'm:other') };
+      });
+    }
+    if (kind === 'queued' || kind === 'availability-only') {
+      vi.spyOn(f.host, 'availability').mockResolvedValue({ version: 'availability', state: 'running', agents: [
+        { agent_id: 'agent:writer', pending: 1, running: false, deferred: 0, budget: {} }] });
+    }
+    const execution = randomUUID();
+    await f.dispatch(['m:task'], execution); await f.close(['m:task'], execution);
+    const terminal = await pending;
+    expect(terminal.status).toBe('failed');
+    expect(terminal.error).toBe('Native trial deadline exceeded');
+    expect(terminal.native.traces).toMatchObject([{ turn_id: execution, status: 'completed' }]);
+    expect(f.host.stop).toHaveBeenCalledOnce();
+  });
+
+test('waits for an unselected acceptance to become terminal and for native pending to reach zero', async () => {
+  const f = await fixture();
+  let pendingCount = 1;
+  vi.spyOn(f.host, 'availability').mockImplementation(async () => ({ version: 'availability', state: 'running', agents: [
+    { agent_id: 'agent:writer', pending: pendingCount, running: false, deferred: 0, budget: {} }] }));
+  let settled = false;
+  const pending = f.controller.run('task', '', {}, { kind: 'transport', deliveryId: 'm:task' }).finally(() => { settled = true; });
+  await f.deliver('m:task'); await f.deliver('m:other');
+  const execution = randomUUID();
+  await f.dispatch(['m:task'], execution); await f.close(['m:task'], execution);
+  const reads = vi.mocked(f.host.activityV2).mock.calls.length;
+  await vi.waitFor(() => expect(vi.mocked(f.host.activityV2).mock.calls.length).toBeGreaterThan(reads + 3));
+  expect(settled).toBe(false);
+  f.receipts.get('m:other')!.state = 'stopped';
+  pendingCount = 0;
+  expect((await pending).status).toBe('completed');
+  await f.controller.stop();
+});
+
+test('a requeued selected delivery stays open after its earlier execution until its revisit closes', async () => {
+  const f = await fixture(2500);
+  const first = f.controller.run('task', '', { maxExternalDeliveries: 1 }, { kind: 'transport', deliveryId: 'm:task' });
+  await f.deliver('m:task');
+  const e1 = randomUUID(); await f.dispatch(['m:task'], e1); await f.close(['m:task'], e1, ['m:task']);
+  expect((await first).blocked).toBe('awaiting-external-input');
+  f.receipts.get('m:task')!.deferred = false;
+  let settled = false;
+  const next = f.controller.run('answer', '', {}, { kind: 'transport', deliveryId: 'm:answer' }).finally(() => { settled = true; });
+  await f.deliver('m:answer');
+  const e2 = randomUUID(); await f.dispatch(['m:answer'], e2); await f.close(['m:answer'], e2);
+  const reads = vi.mocked(f.host.activityV2).mock.calls.length;
+  await vi.waitFor(() => expect(vi.mocked(f.host.activityV2).mock.calls.length).toBeGreaterThan(reads + 3));
+  expect(settled).toBe(false);
+  const e3 = randomUUID(); await f.dispatch(['m:task'], e3); await f.close(['m:task'], e3);
+  const terminal = await next;
+  expect(terminal.status, terminal.error).toBe('completed');
+  expect(terminal.transport?.selectedDeliveries).toMatchObject([
+    { deliveryId: 'm:task', executionIds: [e1, e3] }, { deliveryId: 'm:answer', executionIds: [e2] },
+  ]);
   await f.controller.stop();
 });
 

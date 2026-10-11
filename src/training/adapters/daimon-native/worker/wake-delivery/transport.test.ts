@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest';
-import { activityFixture, receiptFixture } from '../../test-fixtures.js';
+import { activityFixture, receiptFixture, traceFixture } from '../../test-fixtures.js';
 import type { NativeHost } from '../types.js';
 import { createTransportDelivery } from './transport.js';
 import type { NativeAcceptance, NativeWakeRequest } from './types.js';
@@ -8,17 +8,17 @@ const source = { kind: 'transport' as const, deliveryId: 'trial:wake' };
 const request: NativeWakeRequest = { agent_id: 'agent:writer', delivery_id: 'trial:wake', event: {
   version: 'noopolis.daimon.wake.v2', kind: 'message', text: 'original', occurred_at: '2026-10-11T01:00:00.000Z' } };
 const accepted = { ...receiptFixture(), state: 'accepted' as const };
-const available = { version: 'availability', state: 'running', agents: [] };
+const available = { version: 'availability', state: 'running', agents: [
+  { agent_id: 'agent:writer', pending: 0, running: false, deferred: 0, budget: undefined }] };
 
-test('acceptances begun before arming cannot bind', async () => {
-  let resolve!: (value: NativeAcceptance) => void;
-  const host = { accept: vi.fn(() => new Promise<NativeAcceptance>(done => { resolve = done; })) } as unknown as NativeHost;
+test('every identity is refused before the first arm without calling the native host', async () => {
+  const host = { accept: vi.fn() } as unknown as NativeHost;
   const transport = createTransportDelivery(host, 'agent:writer');
-  const early = transport.accept(request);
-  const run = transport.begin('task', source);
-  resolve(accepted); await early;
-  expect(transport.state().state).toBe('waiting');
-  run.finish(); expect(transport.state()).toEqual({ state: 'idle' });
+  for (const value of [request, { ...request, agent_id: 'foreign' }, {}, null]) {
+    await expect(transport.accept(value)).rejects.toThrow('transport_admission_sealed');
+  }
+  expect(host.accept).not.toHaveBeenCalled();
+  expect(transport.state()).toEqual({ state: 'idle' });
 });
 
 test.each(['agent_id', 'delivery_id'] as const)('a conflicting returned %s cannot bind a fresh delivery', async field => {
@@ -41,20 +41,22 @@ test('terminal sealing settles admission and requires an unchanged generation', 
   const run = transport.begin('task', source);
   const before = run.generation();
   const pending = transport.accept(request);
-  expect(run.seal(run.generation())).toBe(false); // Same generation, but still in flight.
+  expect(run.seal(run.generation(), [])).toBe(false); // Same generation, but still in flight.
   resolve(accepted); await pending;
-  expect(run.seal(before)).toBe(false); // Settled, but evidence predates admission.
+  expect(run.seal(before, [])).toBe(false); // Settled, but evidence predates admission.
   expect(run.evidence.unresolvedDeliveryIds).toEqual([request.delivery_id]);
   expect(run.closed([])).toBe(false);
-  expect(run.seal(run.generation())).toBe(true);
+  expect(run.seal(run.generation(), [])).toBe(false); // No terminal observations yet.
+  run.observe(receiptFixture(), activityFixture(), available);
+  expect(run.seal(run.generation(), [traceFixture()])).toBe(true);
   expect(transport.state()).toEqual({ state: 'idle' });
 });
 
 test('rejections are forwarded and do not poison a later genuine acceptance', async () => {
   const host = { accept: vi.fn().mockResolvedValue({ state: 'rejected', code: 'delivery_conflict' }) } as unknown as NativeHost;
   const transport = createTransportDelivery(host, 'agent:writer');
-  expect(await transport.accept(request)).toEqual({ state: 'rejected', code: 'delivery_conflict' });
   const run = transport.begin('task', source);
+  expect(await transport.accept(request)).toEqual({ state: 'rejected', code: 'delivery_conflict' });
   vi.mocked(host.accept).mockResolvedValue(accepted);
   await transport.accept(request); expect(await run.accepted).toEqual(accepted);
   run.observe(receiptFixture(), activityFixture(), available);
@@ -76,7 +78,8 @@ test('sealed runs refuse new admission, retain authentic retries, and reopen onl
   const transport = createTransportDelivery(host, 'agent:writer');
   const run = transport.begin('task', source);
   await transport.accept(request);
-  expect(run.seal(run.generation())).toBe(true);
+  run.observe(receiptFixture(), activityFixture(), available);
+  expect(run.seal(run.generation(), [traceFixture()])).toBe(true);
   const next = { ...request, delivery_id: 'next' };
   await expect(transport.accept(next)).rejects.toThrow('transport_admission_sealed');
   expect(host.accept).toHaveBeenCalledTimes(1);
@@ -98,24 +101,26 @@ test.each(['agent_id', 'delivery_id'] as const)('a mismatched native %s never ea
   expect(host.accept).toHaveBeenCalledOnce();
 });
 
-test('a thrown persistence error before arming permits a genuine later retry', async () => {
+test('a thrown persistence error permits a genuine later retry', async () => {
   const host = { accept: vi.fn().mockRejectedValueOnce(new Error('store unavailable')).mockResolvedValue(accepted) } as unknown as NativeHost;
   const transport = createTransportDelivery(host, 'agent:writer');
-  await expect(transport.accept(request)).rejects.toThrow('store unavailable');
   const run = transport.begin('task', source);
+  await expect(transport.accept(request)).rejects.toThrow('store unavailable');
   await transport.accept(request);
   expect(transport.state().state).toBe('observing');
   expect(await run.accepted).toEqual(accepted);
   run.finish();
 });
 
-test.each([true, false])('overlapping retry keeps its own arrival when a pre-arm attempt throws (retry settles first: %s)', async retryFirst => {
+test.each([true, false])('overlapping retry keeps its own arrival when an older run attempt throws (retry settles first: %s)', async retryFirst => {
   let reject!: (error: Error) => void;
   let resolve!: (value: NativeAcceptance) => void;
   const host = { accept: vi.fn().mockImplementationOnce(() => new Promise((_resolve, failed) => { reject = failed; }))
     .mockImplementationOnce(() => new Promise<NativeAcceptance>(done => { resolve = done; })) } as unknown as NativeHost;
   const transport = createTransportDelivery(host, 'agent:writer');
+  const old = transport.begin('old', source);
   const early = transport.accept(request).catch(() => undefined);
+  old.finish();
   const run = transport.begin('task', source);
   const retry = transport.accept(request);
   if (retryFirst) { resolve(accepted); await retry; expect(transport.state().state).toBe('waiting'); }
@@ -156,6 +161,6 @@ test('an in-flight acceptance cannot move from an older armed run to its success
   old.finish(); const current = transport.begin('new', source);
   resolve(accepted); await arrival;
   expect(transport.state()).toMatchObject({ state: 'waiting', wakeId: 'new' });
-  expect(old.seal(old.generation())).toBe(false);
+  expect(old.seal(old.generation(), [])).toBe(false);
   current.finish();
 });

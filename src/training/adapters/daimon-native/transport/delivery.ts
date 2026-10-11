@@ -66,28 +66,33 @@ export function transportTerminalBinding(value: TerminalEvidence, source: Transp
 /** Start observation, prove the matching run is armed, then let the provider publish. */
 export async function requestTransportDelivery(request: NativeWorkerRequest, body: { wakeId: string; source: TransportDeliverySource },
   delivery: PreparedTransportDelivery, deadline: number, signal: AbortSignal): Promise<TerminalEvidence> {
-  // Keep the same real deadline through terminal receipt. The socket's grace is
-  // only an infrastructure bound; it never grants the subject more working time.
+  if (Date.now() >= deadline) throw new Error('Native trial deadline exceeded awaiting transport delivery');
+  // Publication keeps the work deadline. Terminal transport gets shutdown/report
+  // grace, while the worker's completion evidence still has to predate the deadline.
   return boundedTransportCall(async bound => {
     let settled = false;
     const terminal = request<TerminalEvidence>('/trial/run', body, Math.max(1, deadline - Date.now()) + 8000, bound)
       .finally(() => { settled = true; });
     let publishing = false;
-    const publish = (async () => {
+    const publish = boundedTransportCall(async publication => {
       for (;;) {
         const status = await request<{ state: string; wakeId?: string; source?: TransportDeliverySource }>(
-          '/trial/run', undefined, Math.max(1, deadline - Date.now()), bound);
+          '/trial/run', undefined, Math.max(1, deadline - Date.now()), publication);
         if (settled) return;
         if (['waiting', 'observing'].includes(status.state) && status.wakeId === body.wakeId && status.source && sameSource(status.source, body.source)) break;
-        await pause(20, undefined, { signal: bound });
+        await pause(20, undefined, { signal: publication });
       }
-      bound.throwIfAborted();
+      publication.throwIfAborted();
       publishing = true;
-      await delivery.publish(bound);
-    })();
+      await delivery.publish(publication);
+    }, deadline, bound);
     // A rejected run never publishes; a provider failure aborts the owned request.
     await Promise.race([publish, terminal]);
     if (publishing) await publish;
-    return await terminal;
-  }, deadline, signal);
+    const evidence = await terminal;
+    if (evidence.status === 'completed' && !(Date.parse(evidence.completedAt) < deadline)) {
+      throw new Error('Native trial deadline exceeded in terminal completion evidence');
+    }
+    return evidence;
+  }, deadline + 8000, signal);
 }

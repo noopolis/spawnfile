@@ -157,7 +157,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
           if (incoming) {
             // Synchronously seal against route admission before deciding a terminal
             // outcome. No in-flight acceptance can be omitted by this snapshot.
-            if (!incoming.seal(generation!)) { await pause(100, cancellation.signal); continue; }
+            if (!incoming.seal(generation!, native.traces)) { await pause(100, cancellation.signal); continue; }
             validateTransportExecutions(incoming.evidence, native, activity, agent.id);
           }
           // The trace this wake's own execution closed, never whichever one came

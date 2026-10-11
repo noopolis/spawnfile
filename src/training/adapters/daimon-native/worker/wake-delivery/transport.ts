@@ -21,9 +21,10 @@ export class TransportAdmissionClosedError extends Error {
 /** Only the HTTP route calls accept. run() arms and observes this mailbox. */
 export function createTransportDelivery(host: NativeHost, agentId: string) {
   let armed: ArmedRun | undefined;
-  let sealed = false;
+  let sealed = true;
   const seen = new Set<string>();
   const admittedIdentities = new Set<string>();
+  const agentAcceptances = new Map<string, string>();
   const arrivals = new Map<string, DeliveryArrivals>();
   const envelopes = new Map<string, TransportEvidence['deliveries'][number]>();
   const selected = new Map<string, { receipt?: NativeReceipt; executionIds: Set<string> }>();
@@ -73,23 +74,29 @@ export function createTransportDelivery(host: NativeHost, agentId: string) {
       const accepted = new Promise<NativeAcceptance>(done => { resolve = done; });
       const evidence: TransportEvidence = { source, deliveries: [], deferredDeliveryIds: [], unresolvedDeliveryIds: [], renderedAllowances: 'unavailable-public-api' };
       const current: ArmedRun = { wakeId, evidence, resolve, generation: 0, pending: 0 };
+      let observed: NativeReceipt[] = [];
+      let nativePending: number | undefined;
+      const disposed = (row: NativeReceipt) => ['completed', 'failed', 'stopped'].includes(row.state) ||
+        row.state === 'accepted' && row.deferred === true && selected.has(row.delivery_id);
+      const closed = (traces: NativeTrace[]) => nativePending === 0 && observed.every(disposed) &&
+        [...agentAcceptances].every(([id, acceptance]) => observed.some(row =>
+          row.delivery_id === id && row.acceptance_id === acceptance && disposed(row))) &&
+        [...selected.values()].every(row => row.receipt && disposed(row.receipt) &&
+          [...row.executionIds].every(id => traces.some(trace => trace.turn_id === id)));
       armed = current;
       return {
-        accepted, evidence,
+        accepted, evidence, closed,
         generation: () => current.generation,
         /** Synchronous admission/sealing linearization point: no await may split it. */
-        seal(generation: number) {
-          if (current !== armed || current.pending !== 0 || current.generation !== generation) return false;
+        seal(generation: number, traces: NativeTrace[]) {
+          if (current !== armed || current.pending !== 0 || current.generation !== generation || !closed(traces)) return false;
           armed = undefined;
           sealed = true;
           return true;
         },
-        closed(traces: NativeTrace[]) {
-          return [...selected.values()].every(row => row.receipt &&
-            !(row.receipt.state === 'accepted' && !row.receipt.deferred && row.executionIds.size === 0) &&
-            [...row.executionIds].every(id => traces.some(trace => trace.turn_id === id)));
-        },
         observe(receipt: NativeReceipt, activity: NativeActivity, availability: NativeAvailability, executionId?: string) {
+          observed = structuredClone([...activity.items, receipt].filter(row => row.agent_id === agentId));
+          nativePending = availability.agents.find(row => row.agent_id === agentId)?.pending;
           for (const batch of activity.executions ?? []) {
             if (batch.agent_id !== agentId || !batch.delivery_ids.some(id => selected.has(id))) continue;
             const primary = batch.delivery_ids.includes(evidence.deliveryId!);
@@ -151,6 +158,9 @@ export function createTransportDelivery(host: NativeHost, agentId: string) {
         if (result.agent_id === request.agent_id && result.delivery_id === request.delivery_id) admittedIdentities.add(identity);
         if (request.agent_id === agentId && result.agent_id === agentId && result.delivery_id === request.delivery_id && !envelopes.has(request.delivery_id)) {
           envelopes.set(request.delivery_id, { acceptanceId: result.acceptance_id, deliveryId: request.delivery_id, event: structuredClone(request.event) });
+        }
+        if (current && result.agent_id === agentId && result.delivery_id === request.delivery_id) {
+          agentAcceptances.set(request.delivery_id, result.acceptance_id);
         }
         arrival.outcome = result; bind(queue);
         return result;
