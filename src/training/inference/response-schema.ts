@@ -28,7 +28,7 @@ export function validateInferenceResponse(text: string, schema: ResponseSchema, 
   if (schema === undefined) return;
   const validate = compile(schema);
   try {
-    if (jsonFence) text = /^```json\r?\n([\s\S]*)\r?\n```$/u.exec(text.trim())?.[1] ?? text;
+    if (jsonFence) text = /^```json\r?\n([\s\S]*?)\r?\n```$/u.exec(text.trim())?.[1] ?? text;
     const value: unknown = JSON.parse(text);
     if (parseDocument(text, { uniqueKeys: true }).errors.length || !validate(value)) throw new Error('Invalid structured response');
     z.json().parse(value);

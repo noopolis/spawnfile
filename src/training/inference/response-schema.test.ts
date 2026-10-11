@@ -9,6 +9,7 @@ describe('native inference structured response boundary', () => {
     const text = '```json\n{"agents/reporter/AGENTS.md":"ok"}\n```';
     expect(() => validateInferenceResponse(text, schema)).toThrow();
     validateInferenceResponse(text, schema, true);
+    validateInferenceResponse(text.replaceAll('\n', '\r\n'), schema, true);
     validateInferenceResponse('{"agents/reporter/AGENTS.md":"ok"}', schema, true);
     for (const invalid of ['prose\n' + text, text + '\nprose', '```json\n' + text + '\n```',
       '```\n{"agents/reporter/AGENTS.md":"ok"}\n```', '```json\n{"agents/reporter/AGENTS.md":"first","agents/reporter/AGENTS.md":"second"}\n```']) {

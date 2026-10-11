@@ -27,3 +27,8 @@ rendered evidence. Teacher queues run concurrently with one call per teacher per
 output; drain every independent queue before adjudication. Bound adjudication batches
 too. Serialize immutable checkpoint writes; prompt version and batch size pin reuse.
 Verify batch boundaries, per-question evidence and interrupted concurrent resume.
+
+Council v5 uses positional q1…qN response keys, mapped to check IDs only in code.
+Accept a single JSON fence with the same strict decoding. Failed receipts retain
+typed failure classes and available protected provider diagnostics; reports show
+classes, never raw provider error prose.

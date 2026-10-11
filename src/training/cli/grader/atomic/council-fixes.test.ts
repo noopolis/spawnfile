@@ -42,7 +42,7 @@ it.each([true, false])('records provider schema failure class and available prot
 it('excludes cancelled calls from report totals while preserving run receipts', async () => {
   const f = await fixture();
   await runDecompose(f.decompose, f.dependencies);
-  f.generate.mockImplementation(async request => ({ text: '{"support@x1":{"answer":"supported"}}', model: request.model, route: 'subscription', usage: null }));
+  f.generate.mockImplementation(async request => ({ text: '{"q1":{"answer":"supported"}}', model: request.model, route: 'subscription', usage: null }));
   const result = await runReference({ ...f.reference, traps: undefined }, f.dependencies);
   const directory = `${f.reference.out}.checkpoints`;
   const name = (await readdir(directory))[0]!;
@@ -65,7 +65,7 @@ it('binds trap generation to current completed base references and rejects missi
   await expect(runTraps({ ...f.traps, references })).rejects.toThrow('Missing base');
   await writeFile(references, JSON.stringify({ digest: 'bad' }));
   await expect(runTraps({ ...f.traps, references })).rejects.toThrow('corrupt');
-  f.generate.mockImplementation(async request => ({ text: '{"support@x1":{"answer":"unsupported"}}', model: request.model, route: 'subscription', usage: null }));
+  f.generate.mockImplementation(async request => ({ text: '{"q1":{"answer":"unsupported"}}', model: request.model, route: 'subscription', usage: null }));
   await runReference({ ...f.reference, traps: undefined, out: references }, f.dependencies);
   expect(await runTraps({ ...f.traps, references })).toMatchObject({ generated: 1 });
   const artifact = JSON.parse(await readFile(references, 'utf8'));
@@ -85,9 +85,9 @@ it.each(['placeholder', 'condition', 'null-final'])('stops %s base checks despit
   await runDecompose(f.decompose, f.dependencies);
   f.generate.mockImplementation(async request => {
     const prompt = JSON.parse(request.prompt);
-    const answers = prompt.questions.map((question: { check_id: string; evidence?: { unit: { text: string } } }) => {
+    const answers = prompt.questions.map((question: { key: string; evidence?: { unit: { text: string } } }) => {
       const text = (prompt.projection ?? question.evidence).unit.text as string;
-      return [question.check_id, { answer: question.check_id.startsWith('actor@')
+      return [question.key, { answer: question.key === 'q2'
         ? request.system!.includes('Adversarially') ? 'uncertain' : 'abstain' : text.includes('12') ? 'supported' : 'unsupported' }];
     });
     return { text: JSON.stringify(Object.fromEntries(answers)), model: request.model, route: 'subscription', usage: null };
@@ -104,4 +104,20 @@ it.each(['placeholder', 'condition', 'null-final'])('stops %s base checks despit
   expect(report).toContain('Missing base checks: 50.00% (1/2); required <= 0%.');
   expect(report).toContain('Missing base checks for template actor: 1/1.');
   expect(report).toContain(`Missing base checks for output ${Object.keys(result.completeness.byOutput)[0]}: 1/2.`);
+});
+
+it('reports council provider failure classes and persists protected evidence without provider prose', async () => {
+  const f = await fixture();
+  await runDecompose(f.decompose, f.dependencies);
+  const diagnostic = { code: 'response-schema' as const, response: { bytes: 3, sha256: 'sha256:digest', text: 'bad', omitted: false } };
+  f.generate.mockRejectedValue(new InferenceFailure('invalid-response', 'private provider prose', { diagnostic }));
+  const result = await runReference({ ...f.reference, traps: undefined }, f.dependencies);
+  const saved = await load(`${f.reference.out}.checkpoints`, '.json');
+  expect(saved.calls).toHaveLength(4);
+  for (const call of saved.calls) expect(call).toMatchObject({ failure_class: 'invalid-response', diagnostic });
+  const report = await readFile(result.reportFile, 'utf8');
+  expect(report.match(/Failed council call/g)).toHaveLength(4);
+  expect(report).toContain('invalid-response; 1 checks affected.');
+  expect(report).not.toContain('sha256:digest');
+  expect(JSON.stringify(saved) + report).not.toContain('private provider prose');
 });

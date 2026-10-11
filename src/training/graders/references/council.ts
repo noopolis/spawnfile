@@ -1,3 +1,4 @@
+import type { InferenceFailureKind } from '../../contracts/index.js';
 import { randomBytes } from 'node:crypto';
 import { stableDigest } from '../format/index.js';
 import type { CheckInstance } from '../decomposition/index.js';
@@ -71,14 +72,18 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
     if (!existing) {
       try {
         const response = await providers[teacher.id]!.generate({ model: teacher.model, system: prompt.system,
-          prompt: prompt.prompt, responseSchema: prompt.schema, signal: AbortSignal.any([AbortSignal.timeout(options.timeoutMs ?? 120_000), ...(options.signal ? [options.signal] : [])]) });
+          prompt: prompt.prompt, responseSchema: prompt.schema, responseJsonFence: true, signal: AbortSignal.any([AbortSignal.timeout(options.timeoutMs ?? 120_000), ...(options.signal ? [options.signal] : [])]) });
         call.reportedModel = response.modelBasis === 'requested-assumption' ? null : response.model;
         call.route = response.route; call.usage = response.usage;
         if (response.attempts) call.attempts = response.attempts;
         call.response_text = response.text; call.outcome = 'received';
       } catch (error) {
+        call.failure_class = 'unknown';
         if (error !== null && typeof error === 'object') {
-          const failure = error as Partial<ReferenceCall> & { responseModel?: string; responseRoute?: string };
+          const failure = error as Partial<ReferenceCall> & { responseModel?: string; responseRoute?: string; kind?: InferenceFailureKind };
+          if (failure.kind && ['quota', 'transport', 'unavailable', 'authentication', 'auth-stale', 'protocol',
+            'invalid-response', 'cancelled', 'timeout', 'unsupported', 'unknown'].includes(failure.kind)) call.failure_class = failure.kind;
+          if (failure.diagnostic) call.diagnostic = failure.diagnostic;
           call.usage = failure.usage ?? null;
           call.reportedModel = failure.responseModel ?? null; call.route = failure.responseRoute ?? null;
           if (failure.attempts) call.attempts = failure.attempts;
@@ -92,7 +97,10 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
     }
     const answers = call.response_text === undefined ? null : decodeCouncilAnswers(call.response_text, batch, competing !== undefined);
     call.answers = answers;
-    if (call.outcome === 'received') call.outcome = answers ? 'completed' : 'invalid-response';
+    if (call.outcome === 'received') {
+      call.outcome = answers ? 'completed' : 'invalid-response';
+      if (!answers) call.failure_class = 'invalid-response';
+    }
     await checkpoint();
     return answers;
   };

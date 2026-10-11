@@ -1,4 +1,4 @@
-import type { InferenceProvider, Usage, InferenceAttempt } from '../../contracts/index.js';
+import type { InferenceProvider, Usage, InferenceAttempt, InferenceFailureKind, InferenceDiagnostic } from '../../contracts/index.js';
 import type { CheckInstance } from '../decomposition/index.js';
 
 export interface CouncilTeacher { id: string; provider: string; model: string; effort?: string }
@@ -11,6 +11,7 @@ export interface ReferenceCall {
   phase: 'teacher' | 'adjudication'; run?: number; check_ids: string[];
   at: string; wallMs: number; usage: Usage | null; attempts?: readonly InferenceAttempt[];
   outcome: 'received' | 'completed' | 'invalid-response' | 'generation-error' | 'cancelled';
+  failure_class?: InferenceFailureKind; diagnostic?: InferenceDiagnostic;
   response_text?: string; answers?: Record<string, TeacherAnswer> | null;
 }
 export interface CheckReference {

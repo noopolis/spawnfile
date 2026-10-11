@@ -22,8 +22,8 @@ function setup(count = 100): CouncilOptions {
   return { outputDigest: 'output', instances, teachers, providers, now: new Date('2026-10-11T12:00:00Z') };
 }
 function response(request: InferenceRequest, answer = 'yes') {
-  const { questions } = JSON.parse(request.prompt) as { questions: { check_id: string }[] };
-  return { text: JSON.stringify(Object.fromEntries(questions.map(q => [q.check_id, { answer }]))),
+  const { questions } = JSON.parse(request.prompt) as { questions: { key: string }[] };
+  return { text: JSON.stringify(Object.fromEntries(questions.map(q => [q.key, { answer }]))),
     model: request.model, route: 'subscription', usage: null };
 }
 function deferred() {
@@ -40,7 +40,8 @@ it('sends 100 distinct projections in ordered 40/40/20 batches per teacher, each
     const requests = vi.mocked(provider.generate).mock.calls.map(([request]) => JSON.parse(request.prompt));
     expect(requests.map(request => request.questions.length)).toEqual([40, 40, 20]);
     const questions = requests.flatMap(request => request.questions);
-    expect(questions.map(q => q.check_id)).toEqual(options.instances.map(instance => instance.id));
+    expect(requests.map(request => request.questions.map((q: { key: string }) => q.key)))
+      .toEqual([40, 40, 20].map(count => Array.from({ length: count }, (_, index) => `q${index + 1}`)));
     expect(questions.map(q => q.evidence)).toEqual(options.instances.map(instance => instance.projection));
     expect(requests.every(request => Object.keys(request).join() === 'questions')).toBe(true);
     expect(questions.every(q => !Object.hasOwn(q, 'competing'))).toBe(true);
@@ -122,12 +123,12 @@ it('drains in-flight teachers after a checkpoint failure and starts no more batc
   for (const provider of Object.values(options.providers)) expect(provider.generate).toHaveBeenCalledTimes(1);
 });
 
-it('pins batch size and the v4 protocol and refuses v3 checkpoint reuse', async () => {
+it('pins batch size and the v5 protocol and refuses v4 checkpoint reuse', async () => {
   const options = setup(1), result = await runCouncil(options);
-  expect(councilPromptVersion).toBe('paideia.council.v4');
+  expect(councilPromptVersion).toBe('paideia.council.v5');
   await expect(runCouncil({ ...options, previous: result, batchSize: 1 })).rejects.toThrow('Stale');
-  const identity = stableDigest({ version: 'paideia.council.v3', output: options.outputDigest,
-    instances: options.instances, teachers: options.teachers, adjudicator: 'c', window: defaultGrokWindow,
+  const identity = stableDigest({ version: 'paideia.council.v4', output: options.outputDigest,
+    instances: options.instances, teachers: options.teachers, batchSize: 40, adjudicator: 'c', window: defaultGrokWindow,
     windowOpen: false, active: ['c', 'a'], seed: 'paideia.council', timeoutMs: 120_000 });
   const { digest: _digest, ...old } = { ...result, identity };
   await expect(runCouncil({ ...options, previous: { ...old, digest: councilContentDigest(old) } })).rejects.toThrow('Stale');

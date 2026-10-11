@@ -22,7 +22,7 @@ it.each([
   f.generate.mockImplementation(async request => {
     const prompt = JSON.parse(request.prompt);
     const answer = prompt.questions[0].evidence.unit.text.includes('Dr Bob') ? 'unsupported' : 'supported';
-    return { text: JSON.stringify({ 'support@x1': { answer } }), model: request.model, usage: null, route: 'subscription' };
+    return { text: JSON.stringify({ q1: { answer } }), model: request.model, usage: null, route: 'subscription' };
   });
   const base = join(f.root, 'base.json');
   await runReference({ ...f.reference, traps: undefined, out: base }, f.dependencies);

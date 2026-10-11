@@ -114,6 +114,8 @@ function referenceReport(artifact: { outputs: Record<string, CouncilOutput>; qua
       };
       return `- ${id}: ${own.length} calls; input tokens: ${tokens('inputTokens')}; output tokens: ${tokens('outputTokens')}; summed call wall time: ${own.reduce((sum, call) => sum + call.wallMs, 0).toFixed(0)} ms.`;
     }), '',
+    ...retained.filter(call => call.failure_class).map(call =>
+      `- Failed council call ${call.id} (${call.teacher}, ${call.phase}): ${call.failure_class}; ${call.check_ids.length} checks affected.`),
     ...quality.failures.map(failure => `- STOP: ${failure}`),
     ...quality.failingKinds.map(kind => `- Failing trap kind: ${kind}`),
     ...quality.failingTemplates.map(id => `- Failing template: ${id}`),

@@ -8,9 +8,9 @@ async function prepared() {
   const f = await fixture();
   await runDecompose(f.decompose, f.dependencies);
   f.generate.mockImplementation(async request => {
-    const prompt = JSON.parse(request.prompt) as { projection?: { unit?: { text: string } }; questions: { check_id: string; evidence?: { unit?: { text: string } } }[] };
+    const prompt = JSON.parse(request.prompt) as { projection?: { unit?: { text: string } }; questions: { key: string; evidence?: { unit?: { text: string } } }[] };
     const answer = (text: string | undefined) => text?.includes('12') ? 'supported' : 'unsupported';
-    return { text: JSON.stringify(Object.fromEntries(prompt.questions.map(question => [question.check_id,
+    return { text: JSON.stringify(Object.fromEntries(prompt.questions.map(question => [question.key,
       { answer: answer((prompt.projection ?? question.evidence)?.unit?.text) }]))),
       model: request.model, usage: null, route: 'subscription' };
   });
@@ -50,7 +50,7 @@ it('stops quality gates without traps, reports window skips and option consisten
 
 it('reports failing traps/templates and retains missing council answers as failure', async () => {
   const f = await prepared(); await runTraps(f.traps);
-  f.generate.mockImplementation(async request => ({ text: JSON.stringify({ 'support@x1': { answer: 'supported' } }),
+  f.generate.mockImplementation(async request => ({ text: JSON.stringify({ q1: { answer: 'supported' } }),
     model: request.model, route: 'subscription', usage: null }));
   const result = await runReference(f.reference, f.dependencies);
   expect(result.gate).toBe('STOP');
@@ -155,7 +155,7 @@ it('keeps base instability separate from stable variant adjudications', async ()
     const answer = adjudication
       ? numeric ? 'unsupported' : permutation || ++baseAdjudications === 1 ? 'supported' : 'unsupported'
       : request.model === 'test-codex' ? 'supported' : 'unsupported';
-    return { text: JSON.stringify({ [question.check_id]: { answer } }), model: request.model, route: 'subscription', usage: null };
+    return { text: JSON.stringify({ [question.key]: { answer } }), model: request.model, route: 'subscription', usage: null };
   });
   const result = await runReference(f.reference, f.dependencies);
   expect(result).toMatchObject({ gate: 'STOP', instability: { items: 1, unstable: 1, rate: 1 },
@@ -169,8 +169,8 @@ it('does not call or count unaffected duplicate checks in trap variants', async 
   await runDecompose(f.decompose, f.dependencies);
   f.generate.mockImplementation(async request => {
     const prompt = JSON.parse(request.prompt);
-    return { text: JSON.stringify(Object.fromEntries(prompt.questions.map((question: { check_id: string; evidence: { unit: { text: string } } }) =>
-      [question.check_id, { answer: question.evidence.unit.text.includes('12') ? 'supported' : 'unsupported' }]))),
+    return { text: JSON.stringify(Object.fromEntries(prompt.questions.map((question: { key: string; evidence: { unit: { text: string } } }) =>
+      [question.key, { answer: question.evidence.unit.text.includes('12') ? 'supported' : 'unsupported' }]))),
       model: request.model, route: 'subscription', usage: null };
   });
   await runReference({ ...f.reference, traps: undefined }, f.dependencies);
@@ -201,7 +201,7 @@ it('keeps units with invalid source hints, reports drops and never sends hints t
   f.generate.mockImplementation(async request => {
     expect(request.prompt).not.toContain(source_span);
     expect(request.prompt).not.toContain('source_span');
-    return { text: JSON.stringify({ 'support@x1': { answer: 'supported' } }),
+    return { text: JSON.stringify({ q1: { answer: 'supported' } }),
       model: request.model, usage: null, route: 'subscription' };
   });
   await runReference({ ...f.reference, traps: undefined }, f.dependencies);
@@ -212,7 +212,7 @@ it('reports measured per-teacher calls, tokens and summed wall time without coun
   const f = await fixture();
   await runDecompose(f.decompose, f.dependencies);
   f.generate.mockImplementation(async request => ({
-    text: '{"support@x1":{"answer":"supported"}}', model: request.model, route: 'subscription',
+    text: '{"q1":{"answer":"supported"}}', model: request.model, route: 'subscription',
     usage: request.model === 'test-codex' ? { inputTokens: 100, outputTokens: 20, cachedInputTokens: 50, reasoningTokens: null, source: 'test' } : null,
   }));
   const options = { ...f.reference, traps: undefined, teachers: ['codex', 'claude', 'grok'] };

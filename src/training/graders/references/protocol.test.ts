@@ -8,11 +8,41 @@ const instance: CheckInstance = { id: 'support@c1', template_id: 'support', unit
 describe('strict council protocol', () => {
   it('projects only declared evidence and option descriptions', () => {
     const prompt = councilPrompt([instance]);
-    expect(JSON.parse(prompt.prompt)).toEqual({ questions: [{ check_id: instance.id,
+    expect(JSON.parse(prompt.prompt)).toEqual({ questions: [{ key: 'q1',
       type: 'choice', instructions: instance.instructions, evidence: instance.projection, criteria: [{ answer: 'yes', description: 'Supported' }, { answer: 'no', description: 'Unsupported' }] }] });
     expect(prompt.system).toContain('independently');
     expect(prompt.digest).toHaveLength(64);
     expect(councilPrompt([instance], { [instance.id]: [{ answer: 'yes' }] }).system).toContain('Adversarially');
+  });
+  it('maps positional keys to arbitrary check IDs in both phases and binds evidence by position', () => {
+    const second = { ...instance, id: 'claim-supported@x1', projection: { text: 'Second quote' } };
+    const instances = [instance, second];
+    const wire = { q2: { answer: 'no', span: 'Second' }, q1: { answer: 'yes', span: 'Verbatim' } };
+    for (const adjudication of [false, true]) {
+      const prompt = councilPrompt(instances, adjudication ? { [second.id]: [{ answer: 'no' }] } : undefined);
+      expect(prompt.schema).toMatchObject({ required: ['q1', 'q2'], additionalProperties: false });
+      expect(Object.keys(prompt.schema.properties as object)).toEqual(['q1', 'q2']);
+      expect(JSON.stringify(prompt.schema)).not.toContain('@');
+      expect(JSON.parse(prompt.prompt).questions.map((q: { key: string }) => q.key)).toEqual(['q1', 'q2']);
+      expect(decodeCouncilAnswers(JSON.stringify(wire), instances, adjudication))
+        .toEqual({ [instance.id]: wire.q1, [second.id]: wire.q2 });
+      expect(decodeCouncilAnswers(JSON.stringify(wire), [...instances].reverse(), adjudication)).toBeNull();
+    }
+    for (const bad of [{ ...wire, q3: wire.q1 }, { q1: wire.q1, other: wire.q2 },
+      { [instance.id]: wire.q1, [second.id]: wire.q2 }]) {
+      expect(decodeCouncilAnswers(JSON.stringify(bad), instances)).toBeNull();
+    }
+  });
+  it('accepts only one surrounding JSON fence with the same strict validation', () => {
+    const json = '{"q1":{"answer":"yes"}}';
+    for (const newline of ['\n', '\r\n']) {
+      const fence = ['```json', json, '```'].join(newline);
+      expect(decodeCouncilAnswers(` ${fence} `, [instance])).toEqual({ [instance.id]: { answer: 'yes' } });
+    }
+    for (const bad of ['Prose\n```json\n' + json + '\n```', '```json\n' + json + '\n```\ntrailing',
+      '```json\n```json\n' + json + '\n```\n```', '```json\n{"q1":{"answer":"yes"},"q1":{"answer":"no"}}\n```']) {
+      expect(decodeCouncilAnswers(bad, [instance])).toBeNull();
+    }
   });
   it('reverses the visible criterion descriptions for numeric score permutations', () => {
     const score = { ...instance, type: 'score' as const, criteria: { '1': 'low', '2': 'medium', '3': 'high' },
@@ -22,24 +52,24 @@ describe('strict council protocol', () => {
     expect(permuted.criteria).toEqual([...base.criteria].reverse());
     expect(permuted.criteria.map((criterion: { answer: string }) => criterion.answer)).toEqual(['3', '2', '1']);
     expect(permuted).not.toHaveProperty('options');
-    expect(Object.keys(permuted)).toEqual(['check_id', 'type', 'instructions', 'evidence', 'criteria']);
+    expect(Object.keys(permuted)).toEqual(['key', 'type', 'instructions', 'evidence', 'criteria']);
   });
   it('accepts probability, verbatim span, abstention and adjudication uncertainty', () => {
-    const value = { [instance.id]: { answer: 'yes', p: 0.8, span: 'Verbatim' } };
-    expect(decodeCouncilAnswers(JSON.stringify(value), [instance])).toEqual(value);
-    expect(decodeCouncilAnswers(JSON.stringify({ [instance.id]: { answer: 'abstain' } }), [instance]))
+    const value = { q1: { answer: 'yes', p: 0.8, span: 'Verbatim' } };
+    expect(decodeCouncilAnswers(JSON.stringify(value), [instance])).toEqual({ [instance.id]: value.q1 });
+    expect(decodeCouncilAnswers(JSON.stringify({ q1: { answer: 'abstain' } }), [instance]))
       .toEqual({ [instance.id]: { answer: null, status: 'abstain' } });
-    expect(decodeCouncilAnswers(JSON.stringify({ [instance.id]: { answer: 'uncertain' } }), [instance], true))
+    expect(decodeCouncilAnswers(JSON.stringify({ q1: { answer: 'uncertain' } }), [instance], true))
       .toEqual({ [instance.id]: { answer: null, status: 'uncertain' } });
   });
-  it.each(['broken', 'null', '[]', '{}', '{"support@c1":null}', '{"support@c1":[]}',
-    '{"support@c1":{"answer":"yes"},"support@c1":{"answer":"no"}}',
-    '{"other":{"answer":"yes"}}', '{"support@c1":{"answer":"unknown"}}',
-    '{"support@c1":{"answer":true}}', '{"support@c1":{"answer":"yes","extra":1}}',
-    '{"support@c1":{"answer":"yes","p":1.1}}', '{"support@c1":{"answer":"yes","p":-1}}',
-    '{"support@c1":{"answer":"yes","p":"1"}}', '{"support@c1":{"answer":"yes","p":1e400}}',
-    '{"support@c1":{"answer":"yes","span":"invented"}}', '{"support@c1":{"answer":"yes","span":1}}',
-    '{"support@c1":{"answer":"yes","span":""}}'])('rejects malformed or ungrounded answers %s', text => {
+  it.each(['broken', 'null', '[]', '{}', '{"q1":null}', '{"q1":[]}',
+    '{"q1":{"answer":"yes"},"q1":{"answer":"no"}}',
+    '{"other":{"answer":"yes"}}', '{"q1":{"answer":"unknown"}}',
+    '{"q1":{"answer":true}}', '{"q1":{"answer":"yes","extra":1}}',
+    '{"q1":{"answer":"yes","p":1.1}}', '{"q1":{"answer":"yes","p":-1}}',
+    '{"q1":{"answer":"yes","p":"1"}}', '{"q1":{"answer":"yes","p":1e400}}',
+    '{"q1":{"answer":"yes","span":"invented"}}', '{"q1":{"answer":"yes","span":1}}',
+    '{"q1":{"answer":"yes","span":""}}'])('rejects malformed or ungrounded answers %s', text => {
     expect(decodeCouncilAnswers(text, [instance])).toBeNull();
   });
 });

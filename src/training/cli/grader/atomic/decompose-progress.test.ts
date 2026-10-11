@@ -41,9 +41,10 @@ it('resumes a response received with cancellation without repeating the extracti
   expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ completed: 1 });
   expect(f.generate).toHaveBeenCalledTimes(2);
 });
-it('requests a strict response schema and accepts one surrounding JSON fence', async () => {
+it.each(['\n', '\r\n'])('requests a strict response schema and accepts one surrounding JSON fence (%j)', async newline => {
   const f = await fixture();
-  f.generate.mockResolvedValueOnce({ text: '```json\n' + JSON.stringify({ units: [f.unit] }) + '\n```', model: 'actual', route: 'subscription', usage: null });
+  f.generate.mockResolvedValueOnce({ text: ['```json', JSON.stringify({ units: [f.unit] }), '```'].join(newline), model: 'actual', route: 'subscription', usage: null });
   expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ completed: 1, rejected: 0 });
+  expect(f.generate.mock.calls.every(([request]) => request.responseJsonFence === true)).toBe(true);
   expect(f.generate.mock.calls[0]![0].responseSchema).toMatchObject({ type: 'object', additionalProperties: false });
 });

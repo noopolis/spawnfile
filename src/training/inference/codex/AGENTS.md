@@ -10,3 +10,7 @@ Preserve captured protocol refusals even when a process runner replaces the call
 error. Message/reasoning starts may omit text; updates and completions require it.
 Verify adjacent fake-process and fake-binary tests, including tool rejection,
 subscription preflight, environment stripping and cleanup; mutation-check rejection.
+
+Structured requests write a private schema file in the disposable workspace and
+pass --output-schema to exec. Validate the completion again and remove the schema
+with the workspace on every exit. Tool containment remains enforced.

@@ -11,8 +11,8 @@ function instance(id = 'a', projection: Record<string, unknown> = { text: 'exact
 function provider(answer: string, hook?: (request: InferenceRequest) => string): InferenceProvider {
   return { id: answer, capabilities: { billing: 'subscription', tools: 'disabled', seed: false, temperature: false },
     generate: vi.fn(async request => {
-      const payload = JSON.parse(request.prompt) as { questions: { check_id: string }[] };
-      return { text: hook ? hook(request) : JSON.stringify(Object.fromEntries(payload.questions.map(q => [q.check_id, { answer }]))),
+      const payload = JSON.parse(request.prompt) as { questions: { key: string }[] };
+      return { text: hook ? hook(request) : JSON.stringify(Object.fromEntries(payload.questions.map(q => [q.key, { answer }]))),
         model: 'reported', route: 'subscription', usage: null };
     }) };
 }
@@ -48,17 +48,17 @@ describe('independent council execution', () => {
   });
   it('retains unstable and uncertain adjudications without promoting either answer', async () => {
     const options = setup(); let count = 0;
-    options.providers.c = provider('yes', () => JSON.stringify({ a: { answer: ++count === 3 ? 'no' : 'yes' } }));
+    options.providers.c = provider('yes', () => JSON.stringify({ q1: { answer: ++count === 3 ? 'no' : 'yes' } }));
     options.providers.a = provider('abstain');
     const output = await runCouncil(options);
     expect(output.checks.a).toMatchObject({ final: null, status: 'uncertain', adjudication: [{ answer: 'yes' }, { answer: 'no' }] });
     const uncertain = setup(); uncertain.providers.a = provider('abstain');
-    uncertain.providers.c = provider('yes', request => JSON.stringify({ a: { answer: request.system!.includes('Adversarially') ? 'uncertain' : 'yes' } }));
+    uncertain.providers.c = provider('yes', request => JSON.stringify({ q1: { answer: request.system!.includes('Adversarially') ? 'uncertain' : 'yes' } }));
     expect((await runCouncil(uncertain)).checks.a!.final).toBeNull();
   });
   it('does not call zero-confidence unanimity agreed', async () => {
     const options = setup();
-    options.providers.c = options.providers.a = provider('yes', () => '{"a":{"answer":"yes","p":0}}');
+    options.providers.c = options.providers.a = provider('yes', () => '{"q1":{"answer":"yes","p":0}}');
     const output = await runCouncil(options);
     expect(output.checks.a).toMatchObject({ final: null, status: 'uncertain', unknown_mass: 1 });
   });
@@ -68,8 +68,8 @@ describe('independent council execution', () => {
     vi.mocked(options.providers.c.generate).mockResolvedValue({ text: 'invalid', model: 'assumed', modelBasis: 'requested-assumption', usage: null, route: 'r', attempts: [] });
     vi.mocked(options.providers.a!.generate).mockRejectedValue({ responseModel: 'actual', responseRoute: 'failure-route', usage: { costUsd: 1 }, attempts: [] });
     const output = await runCouncil(options);
-    expect(output.calls[0]).toMatchObject({ outcome: 'invalid-response', reportedModel: null, attempts: [] });
-    expect(output.calls[1]).toMatchObject({ outcome: 'generation-error', reportedModel: 'actual', route: 'failure-route', usage: { costUsd: 1 } });
+    expect(output.calls[0]).toMatchObject({ outcome: 'invalid-response', failure_class: 'invalid-response', reportedModel: null, attempts: [] });
+    expect(output.calls[1]).toMatchObject({ outcome: 'generation-error', failure_class: 'unknown', reportedModel: 'actual', route: 'failure-route', usage: { costUsd: 1 } });
     expect(output.checks.a).toMatchObject({ unknown_mass: 1, final: null });
     vi.mocked(options.providers.a!.generate).mockRejectedValue('failure');
     expect((await runCouncil(options)).calls[1]!.usage).toBeNull();
@@ -91,7 +91,7 @@ describe('independent council execution', () => {
     try {
       const options = setup(); delete options.now;
       options.teachers.push({ id: 'g', provider: 'grok', model: 'g' }); options.providers.g = provider('yes');
-      options.providers.c = provider('yes', () => { vi.setSystemTime(new Date('2026-10-12T04:30:00Z')); return '{"a":{"answer":"yes"}}'; });
+      options.providers.c = provider('yes', () => { vi.setSystemTime(new Date('2026-10-12T04:30:00Z')); return '{"q1":{"answer":"yes"}}'; });
       const output = await runCouncil(options);
       expect(options.providers.g.generate).not.toHaveBeenCalled(); expect(output.skipped[0]!.reason).toContain('closed before');
       expect(output.checks.a!.teachers.g).toEqual({ answer: null, status: 'missing' });
@@ -148,7 +148,7 @@ describe('durable council call progress', () => {
       if (output.calls.at(-1)?.phase === 'adjudication' && output.calls.at(-1)?.outcome === 'received') throw new Error('interrupted write');
     };
     await expect(runCouncil(options)).rejects.toThrow('interrupted write');
-    expect(saved!.calls.at(-1)).toMatchObject({ outcome: 'received', response_text: '{"a":{"answer":"yes"}}' });
+    expect(saved!.calls.at(-1)).toMatchObject({ outcome: 'received', response_text: '{"q1":{"answer":"yes"}}' });
     const result = await runCouncil({ ...options, previous: saved, onCheckpoint: undefined });
     expect(result.calls).toHaveLength(4); expect(result.checks.a!.adjudication).toHaveLength(2);
     expect(options.providers.c!.generate).toHaveBeenCalledTimes(3);
@@ -158,7 +158,7 @@ describe('durable council call progress', () => {
     const options = setup(), controller = new AbortController();
     let saved: CouncilOutput | undefined;
     options.onCheckpoint = output => { saved = output; };
-    options.providers.c = provider('yes', () => { controller.abort(); return '{"a":{"answer":"yes"}}'; });
+    options.providers.c = provider('yes', () => { controller.abort(); return '{"q1":{"answer":"yes"}}'; });
     await expect(runCouncil({ ...options, signal: controller.signal })).rejects.toThrow();
     expect(saved!.calls[0]!.outcome).toBe('received');
     const result = await runCouncil({ ...options, previous: saved });
@@ -179,7 +179,7 @@ it('requires another independent teacher to support the adjudicated final', asyn
   options.providers.a = provider('abstain');
   expect((await runCouncil(options)).checks.a!.final).toBeNull();
   options.providers.a = provider('no');
-  options.providers.c = provider('yes', request => JSON.stringify({ a: { answer: request.system!.includes('Adversarially') ? 'no' : 'yes' } }));
+  options.providers.c = provider('yes', request => JSON.stringify({ q1: { answer: request.system!.includes('Adversarially') ? 'no' : 'yes' } }));
   expect((await runCouncil(options)).checks.a).toMatchObject({ final: 'no', status: 'adjudicated' });
 });
 it.each(['invalid-response', 'generation-error'] as const)('retries %s receipts on incomplete resume, retaining earlier accounting', async outcome => {
@@ -207,7 +207,7 @@ it('uses a private run secret, strips peer probabilities, retains spans and rota
   const options = setup(); options.now = new Date('2026-10-11T21:00:00Z');
   options.teachers.push({ id: 'g', provider: 'grok', model: 'g' });
   options.providers.g = provider('abstain');
-  options.providers.a = provider('no', () => '{"a":{"answer":"no","p":0.8,"span":"exact evidence"}}');
+  options.providers.a = provider('no', () => '{"q1":{"answer":"no","p":0.8,"span":"exact evidence"}}');
   const first = await runCouncil(options), second = await runCouncil(options);
   expect(first.shuffle_secret).toMatch(/^[a-f0-9]{64}$/);
   expect(second.shuffle_secret).not.toBe(first.shuffle_secret);
@@ -227,7 +227,7 @@ it('keeps failed teachers distinct from authored missing labels even when adjudi
   options.instances[0]!.options = ['present', 'missing'];
   options.providers.c = provider('missing', request => {
     if (!request.system!.includes('Adversarially')) throw new Error('offline');
-    return '{"a":{"answer":"missing"}}';
+    return '{"q1":{"answer":"missing"}}';
   });
   vi.mocked(options.providers.a!.generate).mockRejectedValue(new Error('offline'));
   const result = await runCouncil(options);
@@ -246,4 +246,36 @@ it('cannot promote abstentions to an authored answer or adjudicated final', asyn
   const result = await runCouncil(options);
   expect(result.checks.a).toMatchObject({ final: null, unknown_mass: 1, status: 'uncertain' });
   expect(result.checks.a!.teachers.a).toEqual({ answer: null, status: 'abstain' });
+});
+
+it('enables fenced council answers through providers and decodes them to check IDs', async () => {
+  const options = setup();
+  options.instances[0]!.id = 'claim-supported@x1';
+  options.providers.c = options.providers.a = provider('yes', request => {
+    expect(request.responseJsonFence).toBe(true);
+    return '```json\n{"q1":{"answer":"yes"}}\n```';
+  });
+  const output = await runCouncil(options);
+  expect(output.calls).toHaveLength(2);
+  expect(output.checks['claim-supported@x1']).toMatchObject({ final: 'yes', status: 'agreed' });
+});
+
+it.each([true, false])('checkpoints every provider failure class with available protected diagnostic (%s)', async available => {
+  const options = setup();
+  const diagnostic = { code: 'response-schema', response: { text: 'bad', bytes: 3, sha256: 'digest', omitted: false } };
+  const error = Object.assign(new Error('private provider prose'), { kind: 'protocol' });
+  // The actual provider exposes protected diagnostics via a non-enumerable getter.
+  Object.defineProperty(error, 'diagnostic', { get: () => available ? diagnostic : undefined });
+  for (const p of Object.values(options.providers)) vi.mocked(p.generate).mockRejectedValue(error);
+  const checkpoint = vi.fn(); options.onCheckpoint = checkpoint;
+  const output = await runCouncil(options);
+  expect(output.calls).toHaveLength(4);
+  for (const call of output.calls) {
+    expect(call).toMatchObject({ failure_class: 'protocol', outcome: 'generation-error' });
+    expect(call.diagnostic).toEqual(available ? diagnostic : undefined);
+    const firstReceipt = checkpoint.mock.calls.map(([saved]) => saved as CouncilOutput)
+      .find(saved => saved.calls.some(receipt => receipt.id === call.id))!;
+    expect(firstReceipt.calls.find(receipt => receipt.id === call.id)).toMatchObject({ failure_class: 'protocol' });
+  }
+  expect(JSON.stringify(output)).not.toContain('private provider prose');
 });
