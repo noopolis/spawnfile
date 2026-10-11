@@ -15,3 +15,8 @@ question/gate results; callers supply their explicit judge-call schema. No passt
 objects may bypass validation of persisted grading fields.
 Contained tool-call rejections retain refused outcomes and typed tool-call detail in
 judge-call evidence; they consume their call slot and contribute no answer.
+Per-question calibration selects a named decision route. Probe all supplied routes
+before and after scoring, and require a backend for every selected model. Preserve
+single-model callers through the default route. Persist model IDs in decision
+accounting without inventing provider calls; shared endpoint resources cover every
+constructed model. Teacher selections keep their own route and bypass Platt.

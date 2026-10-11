@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
-import { loadGrader, loadLabels, parseCalibration, calibrationIdentitySchema, createCalibrationIdentity, checkCalibration } from '../../graders/index.js';
+import { loadGrader, loadLabels, parseCalibration, calibrationIdentitySchema, createCalibrationIdentity, checkCalibration, decisionModelIdentities, stableDigest } from '../../graders/index.js';
 import { validateStoredVotes } from '../../graders/labeling/index.js';
 import { DECISION_PROMPT_VERSION } from '../../inference/decision/index.js';
-import { backendIdentity, graderBackend, type GraderDependencies } from './backend.js';
+import { graderBackends, type GraderDependencies } from './backend.js';
 import { readExclusions } from './exclusions.js';
 
 export async function runValidate(graderFile: string, dependencies: GraderDependencies = {}, signal?: AbortSignal): Promise<{ status: 'valid'; calibration: boolean }> {
@@ -22,8 +22,10 @@ export async function runValidate(graderFile: string, dependencies: GraderDepend
   }
   const calibration = parseCalibration(value);
   const exclusions = await readExclusions(calibration.identity.exclusions.map(item => item.dataset));
+  const modelIdentities = await decisionModelIdentities(grader, graderBackends(grader, dependencies), signal);
   const identity = createCalibrationIdentity(grader, {
-    backendModel: await backendIdentity(grader, graderBackend(grader, dependencies), signal),
+    backendModel: grader.models ? stableDigest(modelIdentities) : modelIdentities.default!,
+    ...(grader.models ? { modelIdentities } : {}),
     promptTemplateVersion: DECISION_PROMPT_VERSION, golden: loaded.goldenDigest,
     seed: calibration.identity.seed, exclusions: exclusions.identities,
   });

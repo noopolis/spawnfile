@@ -27,7 +27,7 @@ export function goldenInstances(grader: Grader, labels: Labels): { rows: GoldenI
   for (const label of labels.labels) {
     const instances = expandInstances(grader, label.output, label.context);
     const keys = instances.map(instance => instance.key);
-    const consensus = grader.model.backend === 'teacher'
+    const consensus = grader.model?.backend === 'teacher'
       ? independentConsensus(label, labels.labelers, grader.model.teacher, keys)
       : deriveConsensus(label, labels.labelers, keys);
     for (const instance of instances) {

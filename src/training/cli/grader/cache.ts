@@ -22,26 +22,35 @@ export async function cachedScores(directory: string, backend: DecisionBackend, 
   }
   const results: DecisionResult[] = new Array(requests.length);
   let next = 0;
-  // Reserve synchronous positions, then await only the backend; workers never exceed the bound.
-  await Promise.all(Array.from({ length: Math.min(concurrency, requests.length) }, async () => {
-    while (next < requests.length) {
-      signal?.throwIfAborted();
-      const index = next++, request = requests[index]!;
-      const { key: _key, ...content } = request;
-      const digest = stableDigest({ content, identity, prompt: DECISION_PROMPT_VERSION });
-      let result = cache.get(digest);
-      if (!result) {
-        const batch = await backend.score([request], signal);
-        result = batch.find(item => item.key === request.key);
-        if (!result) throw new Error(`Backend omitted result ${request.key}`);
-        // Failures are resumable; never turn one transient outage into a permanent cached miss.
-        if (result.status === 'ok') {
-          cache.set(digest, result);
-          await appendFile(file, `${JSON.stringify({ digest, result })}\n`, { mode: 0o600 });
+  const controller = new AbortController();
+  const workSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+  // Abort at the first worker failure, but drain all scores and writes before returning.
+  await Promise.allSettled(Array.from({ length: Math.min(concurrency, requests.length) }, async () => {
+    try {
+      while (next < requests.length) {
+        workSignal.throwIfAborted();
+        const index = next++, request = requests[index]!;
+        const { key: _key, ...content } = request;
+        const digest = stableDigest({ content, identity, prompt: DECISION_PROMPT_VERSION });
+        let result = cache.get(digest);
+        if (!result) {
+          const batch = await backend.score([request], workSignal);
+          workSignal.throwIfAborted();
+          result = batch.find(item => item.key === request.key);
+          if (!result) throw new Error(`Backend omitted result ${request.key}`);
+          // Failures are resumable; never turn one transient outage into a permanent cached miss.
+          if (result.status === 'ok') {
+            cache.set(digest, result);
+            await appendFile(file, `${JSON.stringify({ digest, result })}\n`, { mode: 0o600 });
+          }
         }
+        results[index] = { ...result, key: request.key };
       }
-      results[index] = { ...result, key: request.key };
+    } catch (error) {
+      controller.abort(error);
+      throw error;
     }
   }));
+  workSignal.throwIfAborted();
   return results;
 }

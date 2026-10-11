@@ -66,6 +66,48 @@ score: { method: weighted, pass_at: 0.75 }
 - Weights default to 1 and cannot be negative; their total must be positive.
   `fitted-weights` is recognized but refused as unimplemented.
 
+## Per-question decision models
+
+Keep `model:` for a single decision model (implicit ID `default`), or replace it
+with `models:` containing 1–4 candidates with unique IDs. Exactly one form is
+required. Local candidates declare `id`, `backend`, `endpoint` and `name`;
+teacher candidates declare `id`, `backend: teacher` and a declared `teacher`:
+
+```yaml
+models:
+  - { id: intern, backend: jev-http, endpoint: http://127.0.0.1:8000, name: Intern-Decision-4B }
+  - { id: minicpm, backend: jev-http, endpoint: http://127.0.0.1:8001, name: MiniCPM5-2B-Jev }
+  - { id: reader, backend: teacher, teacher: reader }
+```
+
+Calibration scores every eligible instance with every candidate, with separate
+backend identities, raw-score caches and concurrency bounds. Candidates run
+sequentially in authored order, so only one candidate's backend scores at a time;
+`--concurrency` bounds workers within that candidate. On failure, calibration stops
+starting work, signals cancellation to in-flight scores, and waits for every
+started score call and cache append to settle before rejecting. An unavailable
+candidate is a named error. Per question (including gates and derived applicability),
+each local candidate fits Platt parameters on the fit split with the existing
+question/type pooling rule. Selection minimizes mean binary NLL of calibrated
+fit probabilities; ties preserve authored order. Missing fit answers keep the
+full denominator and receive maximum binary error, like held-out metrics:
+truth probability zero, clipped to `1e-6` for finite NLL. They cannot improve a
+candidate by abstaining. Teacher candidates retain their 0/1 decision semantics
+and independent-labeler evidence requirements; no ECE is claimed for them.
+
+Held-out rows never select a model. Only the selected model determines each
+question's status, escalation band and cascade verification. The report names
+the selection and lists candidate held-out ECE/Brier as **not used for selection**.
+A selected model that fails the held-out bars is not replaced with a held-out
+winner; the existing refusal or verified-teacher policy applies.
+
+Calibration stores each question's selected model ID and per-model identities,
+including the authored model list. Changes require recalibration. Standalone
+`grader grade` and `eval: grader` construct reusable backends and route instances
+to their question's selected model. Decision accounting records instance/model
+IDs; subscription judge calls retain the actual requested/reported model and
+usage. Escalations continue to share the existing per-output call budget.
+
 ## Labels and resume
 
 ```yaml
@@ -312,14 +354,22 @@ backend endpoint. Local decision billing is `local`; teacher usage stays visible
   to obtain conservative `p_good`. Any omitted variant sets `bounded: true`;
   instances exceeding the bound are missing. Reports include missing,
   bounded and reversed-option permutation rates. Model digest comes from tags.
-  Prompt/probability protocol v2 ignores v1 cached scores and requires fresh
-  calibration so earlier optimistic probability bounds cannot be reused.
+  Optional `context_tokens` is an integer from 2048 to 131072, default 16384.
+  Every chat sends `options.num_ctx` with that budget and `truncate: false`,
+  `shift: false`; server version verification requires Ollama 0.34.0 or later.
+  Known Cloud routes are unsupported. An overlong input is refused, never cut;
+  scoring HTTP 4xx makes only that instance missing, with a bounded reason.
+  Context budget and refusal policy are pinned in backend identity.
+  Prompt/probability protocol v3 ignores v1/v2 cached scores and requires fresh
+  calibration so earlier optimistic bounds or silently truncated inputs cannot be reused.
 - **jev-http:** POST `{state, questions}` to an operator-run DecisionEngine wrapper
   using raw `temperature=1`; shared state is a JSON-encoded projection and batches
   contain at most 16 questions. Each question has `type`, `instructions`, `criteria`.
   Responses must contain stable `model` and `answers[key].probabilities` for every
   option, summing to one. Yes/no wire keys accept either complete `true`/`false` or `yes`/`no` pairs; score keys are
   zero-based scale indices; choices retain their labels. Identity uses a probe.
+  Servers must never truncate grader inputs: refuse overlong inputs with HTTP 4xx,
+  as the strict MiniCPM server does. Rejected request instances become missing.
 - **teacher:** `model: { backend: teacher, teacher: reviewer }` answers every
   instance with 0/1 outcomes. Calibration requires independent agreement ≥ 0.85
   and the same evidence bars; no ECE is claimed. All calls incur teacher work.

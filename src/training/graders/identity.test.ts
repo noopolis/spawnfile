@@ -119,3 +119,23 @@ it('requires teacher metrics only for routes that force the teacher', () => {
   file.identity = createCalibrationIdentity(local, supplied);
   expect(checkCalibration(local, file, file.identity).refusals).toEqual([expect.stringContaining('teacher.accuracy missing')]);
 });
+
+
+it('names missing multi-model identity components and refuses unknown question selections', () => {
+  const multi = parseGrader({ ...grader, model: undefined, models: [{ id: 't', backend: 'teacher', teacher: 't' }] });
+  const file = calibration();
+  file.identity = createCalibrationIdentity(multi, { ...supplied, modelIdentities: { t: 'identity' } });
+  for (const question of Object.values(file.questions)) question.model = 't';
+  const current = structuredClone(file.identity);
+  delete file.identity.models;
+  expect(checkCalibration(multi, file, current).refusals).toContain('calibration identity mismatch: models');
+  file.identity = structuredClone(current);
+  delete file.identity.modelIdentities;
+  expect(checkCalibration(multi, file, current).refusals).toContain('calibration identity mismatch: modelIdentities.t');
+  expect(checkCalibration(multi, file, file.identity).refusals).toContain('calibration identity mismatch: modelIdentities.t');
+  file.identity = structuredClone(current);
+  delete file.questions.q!.model;
+  expect(checkCalibration(multi, file, current).refusals).toContain('question q: unknown or missing selected model undefined');
+  file.questions.q!.model = 'unknown';
+  expect(checkCalibration(multi, file, current).refusals).toContain('question q: unknown or missing selected model unknown');
+});

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DecisionBackend, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
 import { sha256, stableDigest, type Label } from '../../graders/index.js';
+import { createOllamaDecision } from '../../inference/decision/index.js';
 import { cachedScores } from './cache.js';
 import { readExclusions, excludeLabels } from './exclusions.js';
 
@@ -22,13 +23,13 @@ function backend(score: DecisionBackend['score']): DecisionBackend {
 }
 
 describe('raw decision cache', () => {
-  it('rescores legacy v1 probabilities instead of reusing optimistic cached values', async () => {
+  it.each(['v1', 'v2'])('rescores legacy %s probabilities instead of reusing unsafe cached values', async version => {
     const dir = await temporary(), input = request('one');
     const { key: _key, ...content } = input;
     const root = join(dir, '.paideia/grader-cache');
     await mkdir(root, { recursive: true });
     const optimistic = { ...result(input.key), probabilities: { yes: 0.99, no: 0.01 } };
-    const legacyDigest = stableDigest({ content, identity: 'm', prompt: 'paideia.grader-prompt.v1' });
+    const legacyDigest = stableDigest({ content, identity: 'm', prompt: `paideia.grader-prompt.${version}` });
     await writeFile(join(root, 'm.jsonl'), `${JSON.stringify({ digest: legacyDigest, result: optimistic })}\n`);
     let calls = 0;
     const provider = backend(async requests => { calls++; return requests.map(r => result(r.key)); });
@@ -54,7 +55,7 @@ describe('raw decision cache', () => {
     const dir = await temporary(), signal = new AbortController().signal;
     let active = 0, peak = 0;
     const provider = backend(async (requests, receivedSignal) => {
-      expect(receivedSignal).toBe(signal); active++; peak = Math.max(peak, active);
+      expect(receivedSignal?.aborted).toBe(false); active++; peak = Math.max(peak, active);
       await new Promise<void>(resolve => setTimeout(resolve, 2));
       active--; return requests.map(r => result(r.key));
     });
@@ -135,4 +136,23 @@ describe('dataset exclusions', () => {
     expect(excludeLabels(labels, { ids: new Set(['direct']), examples: new Set([JSON.stringify(['any', 'test-id'])]), identities: [] }).map(row => row.id)).toEqual(['d', 'e']);
     expect(excludeLabels(labels, { ids: new Set(), examples: new Set(), identities: [] })).toEqual(labels);
   });
+});
+
+it('separates raw cached scores by effective Ollama context even without authored model identity', async () => {
+  const dir = await temporary();
+  const fetch: typeof globalThis.fetch = async url => new Response(JSON.stringify(String(url).endsWith('/tags')
+    ? { models: [{ name: 'm', digest: 'installed' }] } : { version: '0.34.0' }));
+  const create = (contextTokens?: number) => createOllamaDecision({ endpoint: 'http://localhost', model: 'm', fetch, contextTokens });
+  const defaultIdentity = stableDigest(await create().identity());
+  const changedIdentity = stableDigest(await create(32768).identity());
+  const oldIdentity = stableDigest({ backend: 'ollama-logprobs', model: 'm', digest: 'installed' });
+  expect(new Set([defaultIdentity, changedIdentity, oldIdentity]).size).toBe(3);
+  let calls = 0;
+  const provider = backend(async requests => { calls++; return requests.map(r => result(r.key)); });
+  for (const identity of [oldIdentity, defaultIdentity, changedIdentity]) {
+    await cachedScores(dir, provider, identity, [request('same')], 1);
+  }
+  expect(calls).toBe(3);
+  await cachedScores(dir, provider, defaultIdentity, [request('same')], 1);
+  expect(calls).toBe(3);
 });

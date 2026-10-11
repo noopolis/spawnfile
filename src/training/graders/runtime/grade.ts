@@ -1,12 +1,12 @@
 import type { DecisionRequest, DecisionResult } from '../../contracts/grading.js';
-import { allQuestions, expectedOptions, optionsFor, stableDigest, type DecisionQuestion } from '../format/index.js';
+import { allQuestions, decisionModels, expectedOptions, optionsFor, stableDigest, type DecisionQuestion } from '../format/index.js';
 import { planCallAdmission } from '../admission.js';
 import { expandInstances } from '../instances.js';
 import { aggregateGrader, type InstanceOutcome } from '../aggregation.js';
 import { checkCalibration, createCalibrationIdentity } from '../identity.js';
 import { applyPlatt, inEscalationBand } from '../calibration/index.js';
 import { teacherPolicyDigest, type LabelGroup } from '../labeling/index.js';
-import { decisionBackendIdentity } from './identity.js';
+import { decisionModelIdentities } from './identity.js';
 import { escalateGroup } from './teacher.js';
 import type { GradeOptions, GradeResult } from './types.js';
 
@@ -22,20 +22,30 @@ function goodProbability(question: DecisionQuestion, result: DecisionResult): nu
 
 /** No golden examples enter requests. Calibration is checked before any scoring. */
 export async function gradeOutput(options: GradeOptions): Promise<GradeResult> {
-  const { grader, calibration, backend, signal } = options;
+  const { grader, calibration, signal } = options;
   signal?.throwIfAborted();
   if (grader.gates.some(gate => 'check' in gate && options.gateOutcomes?.[gate.id] === 'fail')) {
     return { ...aggregateGrader(grader, expandInstances(grader, options.output, options.context), {}, options.gateOutcomes),
-      judgeCalls: [], ...resultIdentity(options) };
+      judgeCalls: [], decisions: [], ...resultIdentity(options) };
   }
-  const backendModel = await decisionBackendIdentity(grader, backend, signal);
+  const models = decisionModels(grader);
+  const backends = options.backends ?? (grader.model ? { default: options.backend } : {});
+  const selectedId = (question: string) => calibration.questions[question]?.model ?? 'default';
+  for (const question of allQuestions(grader)) {
+    if (!backends[selectedId(question.id)]) throw new Error(`Decision model ${selectedId(question.id)}: missing backend`);
+  }
+  const reported = await decisionModelIdentities(grader, backends, signal);
+  const modelIdentities = { ...calibration.identity.modelIdentities, ...reported };
+  const backendModel = grader.models ? stableDigest(modelIdentities) : reported.default!;
   const identity = createCalibrationIdentity(grader, { ...calibration.identity, backendModel,
+    ...(grader.models ? { modelIdentities } : {}),
     segmenter: undefined, golden: options.goldenDigest, promptTemplateVersion: options.promptTemplateVersion });
   const checked = checkCalibration(grader, calibration, identity);
   if (!checked.ok) throw new Error(checked.refusals.join('; '));
   const questions = new Map(allQuestions(grader).map(question => [question.id, question]));
+  const selectedModel = (question: string) => models.find(model => model.id === selectedId(question))!;
   for (const [id] of questions) {
-    if (calibration.questions[id]?.status === 'calibrated' && grader.model.backend !== 'teacher' &&
+    if (calibration.questions[id]?.status === 'calibrated' && selectedModel(id).backend !== 'teacher' &&
       (!calibration.questions[id]!.params || !calibration.questions[id]!.band)) {
       throw new Error(`question ${id}: calibration lacks Platt parameters or escalation band`);
     }
@@ -52,21 +62,29 @@ export async function gradeOutput(options: GradeOptions): Promise<GradeResult> {
     group.instances.push({ instance, question: questions.get(instance.questionId)! });
     outcomes[instance.key] = { status: 'missing', escalated: true };
   };
-  const requests: DecisionRequest[] = [];
+  const requestsByModel = new Map<string, DecisionRequest[]>();
   for (const instance of instances) {
     if (instance.state !== 'ready') continue;
-    if (grader.model.backend !== 'teacher' && checked.notCalibrated.includes(instance.questionId)) { escalate(instance); continue; }
+    if (selectedModel(instance.questionId).backend !== 'teacher' && checked.notCalibrated.includes(instance.questionId)) { escalate(instance); continue; }
     const question = questions.get(instance.questionId)!;
+    const id = selectedId(instance.questionId);
+    const requests = requestsByModel.get(id) ?? [];
+    requestsByModel.set(id, requests);
     requests.push({ key: instance.key, type: question.type, optionLabels: optionsFor(question),
       expectedOptions: expectedOptions(question), instructions: question.ask ?? question.id, projection: instance.projection });
   }
   const judgeCalls: GradeResult['judgeCalls'] = [];
-  const results = requests.length ? await backend.score(requests, signal) : [];
+  const decisions: NonNullable<GradeResult['decisions']> = [];
   const resultMap = new Map<string, DecisionResult>();
-  for (const result of results) {
-    if (resultMap.has(result.key) || !requests.some(request => request.key === result.key)) throw new Error(`Unexpected decision key: ${result.key}`);
-    resultMap.set(result.key, result);
-    judgeCalls.push(...result.judgeCalls ?? []);
+  for (const [model, requests] of requestsByModel) {
+    const results = await backends[model]!.score(requests, signal);
+    for (const result of results) {
+      if (resultMap.has(result.key) || !requests.some(request => request.key === result.key)) throw new Error(`Unexpected decision key: ${result.key}`);
+      resultMap.set(result.key, result);
+      judgeCalls.push(...result.judgeCalls ?? []);
+    }
+    for (const request of requests) decisions.push({ instance: request.key, model,
+      status: resultMap.get(request.key)?.status === 'ok' && resultMap.get(request.key)?.probabilities ? 'ok' : 'missing' });
   }
   for (const instance of instances) {
     const result = resultMap.get(instance.key);
@@ -74,8 +92,9 @@ export async function gradeOutput(options: GradeOptions): Promise<GradeResult> {
     const raw = goodProbability(questions.get(instance.questionId)!, result);
     if (raw === undefined) continue;
     const fitted = calibration.questions[instance.questionId]!;
-    const pGood = grader.model.backend === 'teacher' ? raw : applyPlatt(raw, fitted.params!);
-    if (grader.model.backend !== 'teacher' && inEscalationBand(pGood, fitted.band!)) escalate(instance);
+    const teacherModel = selectedModel(instance.questionId).backend === 'teacher';
+    const pGood = teacherModel ? raw : applyPlatt(raw, fitted.params!);
+    if (!teacherModel && inEscalationBand(pGood, fitted.band!)) escalate(instance);
     else outcomes[instance.key] = { pGood };
   }
   const calls = planCallAdmission(instances.filter(instance => outcomes[instance.key]?.escalated)
@@ -97,15 +116,17 @@ export async function gradeOutput(options: GradeOptions): Promise<GradeResult> {
     }
   }
   signal?.throwIfAborted();
-  if (await decisionBackendIdentity(grader, backend, signal) !== backendModel) throw new Error('Backend identity changed during grading');
-  return { ...aggregateGrader(grader, instances, outcomes, options.gateOutcomes), judgeCalls,
+  if (stableDigest(await decisionModelIdentities(grader, backends, signal)) !== stableDigest(reported)) throw new Error('Backend identity changed during grading');
+  return { ...aggregateGrader(grader, instances, outcomes, options.gateOutcomes), judgeCalls, decisions,
     ...resultIdentity(options, identity) };
 }
 
 function resultIdentity(options: GradeOptions, identity = options.calibration.identity): Pick<GradeResult, 'identity' | 'backendBilling'> {
   const { grader, calibration } = options;
+  const selected = new Set(Object.values(calibration.questions).map(question => question.model ?? 'default'));
+  const billing = new Set(decisionModels(grader).filter(model => selected.has(model.id)).map(model => model.backend === 'teacher' ? 'subscription' : 'local'));
   return {
-    backendBilling: grader.model.backend === 'teacher' ? 'subscription' : 'local',
+    backendBilling: billing.size > 1 ? 'mixed' : billing.has('subscription') ? 'subscription' : 'local',
     identity: { calibration: identity, calibrationDigest: stableDigest(calibration), escalation: stableDigest(grader.escalate),
       teacherPolicy: stableDigest({ escalation: teacherPolicyDigest(grader.teachers.find(t => t.id === grader.escalate.to)!),
         uncalibrated: grader.uncalibrated }),

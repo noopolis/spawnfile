@@ -7,3 +7,5 @@ export type { QuestionType, GoldenSource, CalibrationRecord, Exclusions, PlattPa
   QuestionCalibration } from './types.js';
 export type { TeacherAgreementRecord } from './metrics.js';
 export type { EscalationBand, BandPolicy, CascadeRecord, BandPlan, EscalationTeacherReport, EscalationCall } from './escalation.js';
+
+export { selectQuestionModel, fitNll } from './selection.js';

@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { DecisionBackend } from '../../contracts/grading.js';
 import type { InferenceProvider } from '../../contracts/execution.js';
-import { parseGrader, stableDigest, type Grader } from '../../graders/index.js';
+import { parseGrader, stableDigest } from '../../graders/index.js';
 import { createOllamaDecision, createJevDecision, createTeacherDecision } from '../../inference/decision/index.js';
 import { createGraderTeacher } from './label.js';
 import { backendIdentity, graderBackend } from './backend.js';
@@ -11,7 +11,7 @@ vi.mock('./label.js', () => ({ createGraderTeacher: vi.fn() }));
 const backend: DecisionBackend = { identity: async () => ({ backend: 'fake', model: 'm' }), score: async () => [] };
 const provider: InferenceProvider = { id: 'test', capabilities: { billing: 'subscription', tools: 'disabled', temperature: false, seed: false },
   generate: async () => ({ model: 'm', text: 'yes', usage: null, route: 'fake' }) };
-function grader(model: Grader['model']) {
+function grader(model: unknown) {
   return parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'calibration.json',
     teachers: [{ id: 'c', provider: 'claude', model: 'opus' }], model, escalate: { to: 'c', between: [0.3, 0.7] },
     questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body'] }], score: { method: 'weighted' } });
@@ -25,7 +25,7 @@ beforeEach(() => {
 });
 it('constructs only the declared Ollama or Jev route', () => {
   expect(graderBackend(grader({ backend: 'ollama-logprobs', endpoint: 'http://localhost:11434', name: 'local' }))).toBe(backend);
-  expect(createOllamaDecision).toHaveBeenCalledExactlyOnceWith({ endpoint: 'http://localhost:11434', model: 'local' });
+  expect(createOllamaDecision).toHaveBeenCalledExactlyOnceWith({ endpoint: 'http://localhost:11434', model: 'local', contextTokens: 16384 });
   expect(graderBackend(grader({ backend: 'jev-http', endpoint: 'http://localhost/jev', name: 'ignored-until-reported' }))).toBe(backend);
   expect(createJevDecision).toHaveBeenCalledExactlyOnceWith({ endpoint: 'http://localhost/jev' });
   expect(createGraderTeacher).not.toHaveBeenCalled();
@@ -52,4 +52,9 @@ it('pins authored route, reported identity and teacher policy in cache identity'
   expect(await backendIdentity(local, backend)).toBe(stableDigest({ configured: local.model, reported: await backend.identity() }));
   const changed = { ...backend, identity: async () => ({ backend: 'fake', model: 'different' }) };
   expect(await backendIdentity(local, changed)).not.toBe(await backendIdentity(local, backend));
+});
+
+it('passes authored context through backend construction', () => {
+  graderBackend(grader({ backend: 'ollama-logprobs', endpoint: 'http://localhost', name: 'local', context_tokens: 32768 }));
+  expect(createOllamaDecision).toHaveBeenCalledExactlyOnceWith({ endpoint: 'http://localhost', model: 'local', contextTokens: 32768 });
 });
