@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { SpawnfileError } from "../../shared/index.js";
+import { DAIMON_WAKE_MOMENTS, isDaimonWakeMoments } from "./wakeMoments.js";
 
 export const DAIMON_CONTRACT_MANIFEST_VERSION =
   "noopolis.daimon.runtime-contract-manifest.v3" as const;
@@ -175,6 +176,7 @@ export type DaimonPortableEngine = keyof typeof DAIMON_ENGINE_CREDENTIALS;
 type DaimonCredentialMaterial = (typeof DAIMON_ENGINE_CREDENTIALS)[DaimonPortableEngine];
 
 export interface DaimonContractManifest {
+  readonly wakeMoments?: typeof DAIMON_WAKE_MOMENTS;
   readonly agySubscriptionRealm: typeof DAIMON_AGY_SUBSCRIPTION_REALM;
   readonly consumedConfigFields: readonly string[];
   readonly engineCredentialMaterial: Readonly<Record<DaimonPortableEngine, DaimonCredentialMaterial>>;
@@ -269,12 +271,15 @@ const matchesGrokEngineBroker = (value: unknown): value is typeof DAIMON_GROK_EN
 
 export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifest => {
   const root = asRecord(raw, "root");
+  const hasWakeMoments = Object.hasOwn(root, "wakeMoments");
+  if (hasWakeMoments && !isDaimonWakeMoments(root.wakeMoments)) return fail("has an unsupported wakeMoments contract");
+  const configFields = hasWakeMoments ? [...expectedConfigFields, DAIMON_WAKE_MOMENTS.configField] : expectedConfigFields;
   if (
     root.version !== DAIMON_CONTRACT_MANIFEST_VERSION ||
     !Array.isArray(root.supportedEngineKinds) ||
     root.supportedEngineKinds.join("\0") !== "agy\0codex\0grok" ||
     !Array.isArray(root.consumedConfigFields) ||
-    root.consumedConfigFields.join("\0") !== expectedConfigFields.join("\0") ||
+    root.consumedConfigFields.join("\0") !== configFields.join("\0") ||
     !Array.isArray(root.wakeAcceptanceTypes) ||
     root.wakeAcceptanceTypes.join("\0") !== "manual\0message\0schedule\0external"
   ) return fail("has an unsupported version or configuration contract");
@@ -307,7 +312,8 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
   }
   return Object.freeze({
     agySubscriptionRealm: Object.freeze({ ...DAIMON_AGY_SUBSCRIPTION_REALM }),
-    consumedConfigFields: Object.freeze([...expectedConfigFields]),
+    consumedConfigFields: Object.freeze([...configFields]),
+    ...(hasWakeMoments ? { wakeMoments: DAIMON_WAKE_MOMENTS } : {}),
     engineCredentialMaterial: Object.freeze({ ...DAIMON_ENGINE_CREDENTIALS }),
     grokSubscriptionRealm: Object.freeze({ ...DAIMON_GROK_SUBSCRIPTION_REALM }),
     grokEngineBroker: Object.freeze({ ...DAIMON_GROK_ENGINE_BROKER }),
@@ -320,6 +326,10 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
     version: DAIMON_CONTRACT_MANIFEST_VERSION
   });
 };
+
+/** Capability comes from receipt-bound manifest content, never a runtime version. */
+export const daimonSupportsWakeMoments = (manifest: DaimonContractManifest): boolean =>
+  manifest.wakeMoments !== undefined;
 
 export const assertDaimonRuntimeHome = (candidate: string): string => {
   if (!path.posix.isAbsolute(candidate)) fail("runtime home must be an absolute POSIX path");

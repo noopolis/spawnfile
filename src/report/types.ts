@@ -1,5 +1,6 @@
 import type { RuntimeLifecycleStatus } from "../shared/index.js";
 import type { ModelAuthMethod } from "../shared/index.js";
+import type { RecordingAgentReport } from "./recording.js";
 
 export type CapabilityOutcome = "degraded" | "supported" | "unsupported";
 
@@ -293,8 +294,14 @@ export interface ContainerReport {
   workspace_resources?: ContainerWorkspaceResourceReport[];
 }
 
+/** Association captured while walking the resolved compile graph. */
+export interface WorkspaceResourceOwnership {
+  agent_node_ids: string[];
+  declared_by?: string;
+}
+
 /** One workspace bundle archive the compile staged, with the digest Spawnfile built or verified. */
-export interface CompileReportWorkspaceBundle {
+export interface CompileReportWorkspaceBundle extends Partial<WorkspaceResourceOwnership> {
   cache_key?: string;
   content_bytes?: number;
   file_count?: number;
@@ -308,7 +315,7 @@ export interface CompileReportWorkspaceBundle {
 }
 
 /** A `fetch: build` git resource: the commit its selector resolved to and the archive cut from that commit. */
-export interface CompileReportWorkspaceGitResource {
+export interface CompileReportWorkspaceGitResource extends Partial<WorkspaceResourceOwnership> {
   auth: "none" | "ssh_key" | "ssh_key_env";
   cache_key: string;
   commit: string;
@@ -322,6 +329,17 @@ export interface CompileReportWorkspaceGitResource {
   url: string;
 }
 
+/** Present only when at least one effective compiled agent enables recording. */
+export interface RecordingReport {
+  agents?: RecordingAgentReport[];
+  /** Maximum recording window across agents, including the 30-day default. */
+  keep_ms: number;
+  /** Durable memory mounts accessible to any recording agent, including team banks. */
+  memory_mount_ids: string[];
+  /** Per-agent recording stores protected by the same destructive-volume guard. */
+  recording_mount_ids?: string[];
+}
+
 export interface CompileReport {
   compile_fingerprint?: string;
   container?: ContainerReport;
@@ -330,6 +348,7 @@ export interface CompileReport {
   nodes: NodeReport[];
   output_directory?: string;
   project_name?: string;
+  recording?: RecordingReport;
   root: string;
   spawnfile_version: "0.1";
   workspace_bundles?: CompileReportWorkspaceBundle[];

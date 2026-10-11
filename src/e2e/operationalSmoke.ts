@@ -9,6 +9,7 @@ import {
   type UpProjectResult
 } from "../compiler/index.js";
 import { runCli } from "../cli/runCli.js";
+import { assertRecordedMemoryRetention } from "../deployment/index.js";
 import { removeDirectory } from "../filesystem/index.js";
 import { isSpawnfileError, SpawnfileError } from "../shared/index.js";
 import {
@@ -270,6 +271,10 @@ const cleanup = async (
     runCommand: DockerCommandRunner;
   }
 ): Promise<void> => {
+  const mounts = input.buildResult?.report.container?.persistent_mounts ?? [];
+  assertRecordedMemoryRetention(input.buildResult?.report.recording, mounts,
+    mounts.map((mount) => mount.volume_name), (mount) => mount.volume_name,
+    { removeVolumes: true }, "automatic E2E cleanup cannot discard recorded memory");
   if (input.buildResult?.containerName) {
     await input.runCommand(input.dockerCommand, ["rm", "-f", input.buildResult.containerName])
       .catch(() => undefined);

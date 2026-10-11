@@ -16,7 +16,7 @@ src/runtime/
 ├── localDaimonAuthority.ts # Exact non-production identity-file parser for loopback Daimon images
 ├── registry.ts            # Bundled adapter registration and lookup
 ├── usageLedger.ts         # Pure parser/aggregator for Daimon's per-turn usage ledger
-├── usageLedgerRead.ts     # Ledger read transport: `cat`s both generations through a caller-supplied exec and separates "absent" from "unreadable"
+├── usageLedgerRead.ts     # Shared artifact `cat` reader distinguishes absent/unreadable; usage merges two generations
 ├── usageRequestLedger.ts  # Pure parser for Daimon's per-request stream (`requests.jsonl`): timing, model, usage source, broker-turn dedupe
 ├── scheduleUtils.ts       # Shared duration schedule helpers for runtime lowering
 ├── daimon/                # Public Daimon organization-host adapter

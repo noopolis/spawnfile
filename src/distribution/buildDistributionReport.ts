@@ -35,9 +35,12 @@ export interface BuildDistributionReportInput {
   persistentMounts: DistributionPersistentMount[];
   portMappings: DistributionPortMapping[];
   publishedPorts: number[];
+  recording?: DistributionReport["recording"];
   resources: DistributionWorkspaceResource[];
   runtimeInstances: DistributionRuntimeInstance[];
   worldBindings?: DistributionWorldBindingsEvidence;
+  workspaceGitResources?: DistributionReport["workspace_git_resources"];
+  workspaceBundles?: DistributionReport["workspace_bundles"];
 }
 
 const createSecretCategoryMap = (
@@ -90,6 +93,11 @@ export const buildDistributionReport = (
     ),
     secrets: createSecretCategoryMap(input.envVariables),
     version: DISTRIBUTION_REPORT_VERSION,
+    ...(input.recording ? {
+      recording: input.recording,
+      workspace_git_resources: input.workspaceGitResources ?? [],
+      workspace_bundles: input.workspaceBundles ?? []
+    } : {}),
     ...(input.worldBindings ? { world_bindings: input.worldBindings } : {})
   };
 

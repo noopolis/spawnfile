@@ -67,6 +67,7 @@ import { registerRuntimeCommands } from "./runtimeCommands.js";
 import { registerSurfaceCommands } from "./surfaceCommands.js";
 import { registerStatusCommand } from "./statusCommand.js";
 import { registerUsageCommand } from "./usageCommand.js";
+import { registerRecordCommands } from "./recordCommands.js";
 import { registerProductionTargetCommands } from "./targetProductionCommands.js";
 import { registerViewCommand } from "./viewCommand.js";
 import { registerVolumeCommands } from "./volumeCommands.js";
@@ -343,9 +344,8 @@ export const runCli: RunCli = async (
   registerStatusCommand(program, handlers, streams, (exitCode) => {
     commandExitCode = exitCode;
   });
-  registerUsageCommand(program, streams, (exitCode) => {
-    commandExitCode = exitCode;
-  }, handlers);
+  registerUsageCommand(program, streams, (exitCode) => { commandExitCode = exitCode; }, handlers);
+  registerRecordCommands(program, streams, (exitCode) => { commandExitCode = exitCode; }, handlers);
   registerViewCommand(program, handlers, streams, cliOptions.renderEnvironment);
   registerTrainCommand(program, handlers, streams, readPackageVersion(), (code) => {
     commandExitCode = code;

@@ -6,6 +6,9 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { createDeployResources, deployResourcesAt } from "../deployment/index.js";
+import { DISTRIBUTION_REPORT_OUTPUT_FILE, parseDistributionReport } from "../distribution/index.js";
+import { capableDaimonManifest } from "../runtime/daimon/recording.test-helper.js";
 import { compileProject } from "./compileProject.js";
 import type { CompilePlan } from "./types.js";
 import { resolveWorkspaceGitPins } from "./workspaceGitPins.js";
@@ -177,11 +180,43 @@ describe("fetch: build git resources", () => {
     await git(source, "commit", "-q", "--allow-empty", "-m", "empty");
     await git(source, "branch", "other", first);
     const resource = (branch: string, agent: string) => ({ branch, fetch: "build", id: "private-source", kind: "git", mode: "readonly", mount: "./repos/private-source", scope: { key: path.join(org, agent, "Spawnfile"), kind: "agent", name: agent }, sharing: "per_agent", url: `file://${source}` });
-    const plan = { nodes: [["a", BRANCH], ["b", "other"]].map(([agent, branch]) => ({ kind: "agent", value: { workspaceResources: [resource(branch!, agent!)] } })) } as unknown as CompilePlan;
+    const plan = { nodes: [["a", BRANCH], ["b", "other"]].map(([agent, branch]) => ({ id: `agent:${agent}`, kind: "agent", value: { source: path.join(org, agent!, "Spawnfile"), workspaceResources: [resource(branch!, agent!)] } })) } as unknown as CompilePlan;
     const { report } = await resolveWorkspaceGitPins(plan, { architecture: "amd64", bundleCacheDirectory: path.join(cache, "workspace-bundles"), outputDirectory: path.join(root, "out-plan") });
     expect(report).toHaveLength(2);
     expect(new Set(report.map((entry) => entry.sha256)).size).toBe(1);
     expect(new Set(report.map((entry) => entry.commit)).size).toBe(2);
+  }, 60_000);
+
+  it("recording preserves agent ownership for the same id and digest with different commits through distribution", async () => {
+    const first = await commitDay("same\n");
+    await git(source, "commit", "-q", "--allow-empty", "-m", "empty");
+    const second = (await git(source, "rev-parse", "HEAD")).stdout.trim();
+    await git(source, "branch", "other", first);
+    await writeFile(path.join(org, "Spawnfile"), JSON.stringify({ spawnfile_version: "0.1", kind: "team", name: "news", mode: "swarm",
+      shared: { training: { record: {} } }, members: ["a", "b"].map((id) => ({ id, ref: id })) }));
+    for (const [agent, branch] of [["a", BRANCH], ["b", "other"]] as const) {
+      await mkdir(path.join(org, agent));
+      await writeFile(path.join(org, agent, "Spawnfile"), agentSpawnfile(pinnedResource(`file://${source}`, `branch: ${branch}`))
+        .replace("name: reporter", `name: ${agent}`).replace("runtime: openclaw", "runtime: daimon")
+        .replace("provider: anthropic", "provider: openai").replace("method: claude-code", "method: codex"));
+    }
+    const compiled = await compile("recording-out", { daimonContractManifest: capableDaimonManifest() });
+    const pins = compiled.report.workspace_git_resources!;
+    expect(new Set(pins.map((pin) => pin.id)).size).toBe(1);
+    expect(new Set(pins.map((pin) => pin.sha256)).size).toBe(1);
+    expect(new Set(pins.map((pin) => pin.commit)).size).toBe(2);
+    const bytes = await readFile(path.join(compiled.outputDirectory, DISTRIBUTION_REPORT_OUTPUT_FILE), "utf8");
+    const distributed = parseDistributionReport(JSON.parse(bytes));
+    const file = path.join(root, "record.json"), activated_at = "2026-10-10T10:00:00.000Z";
+    for (const report of [compiled.report, distributed]) {
+      const entry = createDeployResources(file, { name: "default", created_at: activated_at, activated_at, activation_exact: true }, report, bytes);
+      for (const [agent, commit] of [["a", second], ["b", first]]) {
+        const nodeId = compiled.report.nodes.find((node) => node.kind === "agent" && node.source === path.join(org, agent!, "Spawnfile"))!.id;
+        expect(deployResourcesAt([entry], file, activated_at, nodeId)!.resources).toEqual([
+          expect.objectContaining({ id: "private-source", commit, agent_node_ids: [nodeId], declared_by: nodeId })
+        ]);
+      }
+    }
   }, 60_000);
 
   it("maps selectors to remote refs", () => {

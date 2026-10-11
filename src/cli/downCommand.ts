@@ -24,6 +24,7 @@ import type { CliHandlers, CliStreams } from "./runCli.js";
 export interface DownOptions {
   compiled?: string;
   deployment: string;
+  discardRecordedMemory?: boolean;
   dockerCommand?: string;
   exportTo?: string;
   force?: boolean;
@@ -35,6 +36,7 @@ export interface DownOptions {
 }
 
 export const createDownLifecyclePolicy = (options: DownOptions) => ({
+  ...(options.discardRecordedMemory ? { discard_recorded_memory: true } : {}),
   docker_command: options.dockerCommand ?? null,
   export_to: options.exportTo ? path.resolve(options.exportTo) : null,
   force: options.force ?? false,
@@ -119,6 +121,7 @@ export const registerDownCommand = (
     .option("--docker-command <command>", "Docker command")
     .option("--export-to <directory>", "Export first, then tear down")
     .option("--force", "Discard un-exported artifacts")
+    .option("--discard-recorded-memory", "Allow --volumes to discard memory ledgers used by recording agents")
     .option(
       "--reader-image <image>",
       "Image used to read named volumes during auto export",
@@ -149,6 +152,7 @@ export const registerDownCommand = (
         const receipt: DownReceipt = await handlers.downDeployment({
           compiledOutputDirectory: compiled,
           deploymentName: options.deployment,
+          discardRecordedMemory: options.discardRecordedMemory,
           dockerCommand: options.dockerCommand,
           exportTo: options.exportTo,
           force: options.force,

@@ -23,7 +23,7 @@ const emittedFiles = async (directory: string, relative = ""): Promise<Array<{ p
   return files.sort((left, right) => left.path.localeCompare(right.path));
 };
 
-it("keeps every emitted compile artifact and the report byte-identical with missing training files", async () => {
+it("keeps compile artifacts byte-identical with missing training files when recording is off", async () => {
   const workspace = { docs: { system: "AGENTS.md" } };
   const agent = { spawnfile_version: "0.1", kind: "agent", name: "writer", runtime: "openclaw", workspace };
   const team = { spawnfile_version: "0.1", kind: "team", name: "newsroom", mode: "swarm",
@@ -40,7 +40,7 @@ it("keeps every emitted compile artifact and the report byte-identical with miss
     "Dockerfile", "entrypoint.sh", path.relative(outputDirectory, before.reportPath)
   ]));
   const declaration = {
-    record: { keep: "30d", volumes: [] }, optimizer,
+    optimizer,
     graders: { writing: "missing/grader.yaml" },
     targets: [{ ...target, files: ["missing/TARGET.md"],
       datasets: { train: "missing/train.yaml", validation: "missing/validation.yaml", test: "missing/test.yaml" } }]

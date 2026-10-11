@@ -154,7 +154,7 @@ export const moveAsideCommand = (volume: string, target: string): string =>
  * the new one, never a missing name. The target is relative so it resolves the same on the host and at
  * the container mount. Returns false when the link already points at `target`.
  */
-export const pointCurrent = (volume: string, target: string, { ops = LINK_OPS, tmpDir }: { ops?: LinkOps; tmpDir: string }): boolean => {
+export const pointCurrent = (volume: string, target: string, { ops = LINK_OPS, tmpDir, beforeRename }: { ops?: LinkOps; tmpDir: string; beforeRename?: () => void }): boolean => {
   const live = path.join(volume, FEED_CURRENT_LINK);
   let existing = null;
   try { existing = ops.lstat(live); } catch { /* absent: the first land */ }
@@ -165,6 +165,7 @@ export const pointCurrent = (volume: string, target: string, { ops = LINK_OPS, t
   const tmp = path.join(tmpDir, `.${FEED_CURRENT_LINK}.${process.pid}.tmp`);
   try { ops.unlink(tmp); } catch { /* no leftover from a crashed run */ }
   ops.symlink(target, tmp);
+  beforeRename?.();
   ops.rename(tmp, live);
   return true;
 };

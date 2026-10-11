@@ -5,6 +5,7 @@ export * from "./artifactsExportTypes.js";
 export * from "./privateArtifactsExport.js";
 export * from "./buildImageCacheStore.js";
 export * from "./candidateDiagnostics.js";
+export * from "./candidateRecording.js";
 export * from "./dockerLabels.js";
 export * from "./dockerInspect.js";
 export * from "./dockerLogs.js";
@@ -27,6 +28,10 @@ export * from "./pidLock.js";
 export * from "./canaryCutover.js";
 export * from "./productStateClone.js";
 export * from "./record.js";
+export * from "./recordedMemoryRetention.js";
 // Compatibility target exports remain available from this legacy deployment barrel.
 export * from "./target.js";
 export * from "./upReceiptTypes.js";
+export * from "./resourceLog.js";
+export * from "./activation.js";
+export { bindDeploymentRecording, reconcileDeploymentResources } from "./recordPublication.js";
